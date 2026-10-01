@@ -365,6 +365,8 @@ object RankThemeVisualRegistry {
  * Compatibility anchor used by Phase 3 regression tests. These remain the two canonical reference
  * themes even after the full 12-theme visual registry is enabled.
  */
+private val REFERENCE_RANK_THEME_IDS = setOf(RankThemeId.FIRST_PAGE, RankThemeId.NEON_ARCHIVE)
+
 object ReferenceRankThemeVisualRegistry {
 	val firstPage: ReferenceRankThemeVisualSpec
 		get() = RankThemeVisualRegistry.firstPage
@@ -381,7 +383,7 @@ object ReferenceRankThemeVisualRegistry {
 
 	fun validate(): List<String> {
 		val errors = mutableListOf<String>()
-		val expected = setOf(RankThemeId.FIRST_PAGE, RankThemeId.NEON_ARCHIVE)
+		val expected = REFERENCE_RANK_THEME_IDS
 		if (all.map { it.themeId }.toSet() != expected) {
 			errors += "reference registry must contain only First Page and Neon Archive"
 		}

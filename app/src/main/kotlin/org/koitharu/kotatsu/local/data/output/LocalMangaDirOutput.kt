@@ -83,6 +83,16 @@ class LocalMangaDirOutput(
 		true
 	}
 
+	override suspend fun discardChapter(chapter: MangaChapter) {
+		mutex.withLock {
+		chaptersOutput.remove(chapter)?.let { output ->
+			output.closeQuietly()
+			output.file.deleteAwait()
+		}
+		index.removeChapter(chapter.id)
+		}
+	}
+
 	override suspend fun finish() = mutex.withLock {
 		for (output in chaptersOutput.values) {
 			output.flushAndFinish()
@@ -145,13 +155,12 @@ class LocalMangaDirOutput(
 			check(chapterCanonical.parentFile == rootCanonical) {
 				"Refusing to delete non-chapter path: $chapterCanonical"
 			}
-			check(chapterCanonical.exists()) {
-				"Chapter artifact not found: $chapterCanonical"
+			if (chapterCanonical.exists()) {
+				check(chapterCanonical.deleteAwait() && !chapterCanonical.exists()) {
+					"Cannot delete chapter artifact: $chapterCanonical"
+				}
 			}
-			check(chapterCanonical.deleteAwait() && !chapterCanonical.exists()) {
-				"Cannot delete chapter artifact: $chapterCanonical"
-			}
-			// Never mutate the in-memory download state until the physical artifact is confirmed gone.
+			// Manual filesystem cleanup may have removed the artifact already; keep the index truthful.
 			index.removeChapter(chapter.value.id)
 		}
 		check(victimsIds.isEmpty()) {

@@ -783,7 +783,6 @@
     <string name="reader_journey_collection_filter_nameplates">Nameplate</string>
     <string name="reader_journey_collection_filter_badges">Badge</string>
     <string name="reader_journey_collection_filter_wallpapers">Wallpaper</string>
-    <string name="reader_journey_exclusive_theme_set">%1$s · Tema Exclusive</string>
     <string name="reader_journey_customize_title">Kustomisasi Tema Exclusive</string>
     <string name="reader_journey_customize_theme_mix">Campuran Tema</string>
     <string name="reader_journey_customize_profile_card">Kartu Profil</string>
@@ -812,7 +811,6 @@
     <string name="reader_journey_theme_collection_title">Koleksi Tema / Kosmetik</string>
     <string name="reader_journey_rank_journey">Perjalanan Rank</string>
     <string name="reader_journey_next_reward">Reward berikutnya</string>
-    <string name="reader_journey_next_reward_detail">%1$s · Terbuka di Lv.%2$d</string>
     <string name="reader_journey_unlock_at_level">Terbuka pada Level %1$d</string>
     <string name="reader_journey_unlocked_at_level">Sudah terbuka sejak Level %1$d</string>
     <string name="reader_journey_customize_selected">Dipilih</string>
@@ -952,6 +950,18 @@
 	<string name="library_scan_scanning">Memeriksa judul dan metadata lokal…</string>
 	<string name="library_scan_none_title">Tidak ada judul serupa</string>
 	<string name="library_scan_none_message">Tidak ditemukan manga lain dalam kategori ini yang terdeteksi sebagai seri yang sama.</string>
+	<string name="library_scan_confidence_high">Keyakinan tinggi</string>
+	<string name="library_scan_confidence_review">Perlu ditinjau</string>
+	<string name="library_scan_reason_primary">judul sama</string>
+	<string name="library_scan_reason_alternative">judul alternatif</string>
+	<string name="library_scan_reason_description">judul alternatif dalam deskripsi</string>
+	<string name="library_scan_reason_fuzzy">judul serupa</string>
+	<string name="library_scan_reason_author">penulis sama</string>
+	<string name="library_scan_link">Tautkan sumber</string>
+	<string name="library_scan_reject">Bukan seri yang sama</string>
+	<string name="library_scan_later">Nanti</string>
+	<string name="library_scan_conflict">Entri ini sudah berada di grup yang berbeda. Tinjau grup tersebut sebelum menautkannya.</string>
+	<string name="library_scan_summary_title">Pemindaian selesai</string>
 	<string name="library_scan_error">Gagal memindai judul serupa</string>
 
 	<string name="stats_chapters_read">Bab dibaca</string>
@@ -983,4 +993,29 @@
 
 	<string name="reader_journey_profile_verified_breakdown">Bacaan terverifikasi</string>
     <string name="developer_exclusive_theme_qa">QA Tema Eksklusif</string>
+	<string name="reader_journey_source_reading">Membaca</string>
+	<string name="reader_journey_source_reread">Baca ulang</string>
+	<string name="reader_journey_source_exploration">Eksplorasi</string>
+	<string name="reader_journey_source_exploration_new_title">Eksplorasi · judul baru</string>
+	<string name="reader_journey_source_exploration_diverse">Eksplorasi · 5 chapter / beberapa judul</string>
+	<string name="reader_journey_source_weekly">Mingguan · %1$s</string>
+	<string name="reader_journey_source_weekly_bonus">Bonus mingguan</string>
+	<string name="reader_journey_source_achievement">Pencapaian · %1$s</string>
+	<string name="reader_journey_source_milestone">tonggak</string>
+	<string name="reader_journey_source_rested">Istirahat</string>
+	<string name="reader_journey_source_welcome_back">Selamat datang kembali</string>
+	<string name="reader_journey_source_active_days">Hari aktif</string>
+	<string name="reader_journey_source_mixed_format">Manga + Novel</string>
+	<string name="reader_journey_source_journey">Journey</string>
+	<string name="reader_journey_weekly_read_3_chapters">3 chapter</string>
+	<string name="reader_journey_weekly_read_2_days">2 hari</string>
+	<string name="reader_journey_weekly_read_2_titles">2 judul</string>
+	<string name="reader_journey_weekly_read_1_novel">1 chapter novel</string>
+	<string name="reader_journey_weekly_read_5_chapters">5 chapter</string>
+	<string name="reader_journey_weekly_new_title">judul baru</string>
+	<string name="reader_journey_weekly_read_4_manga">4 chapter manga</string>
+	<string name="reader_journey_weekly_read_2_novels">2 chapter novel</string>
+	<string name="reader_journey_weekly_read_3_days">3 hari</string>
+	<string name="reader_journey_weekly_task">tugas</string>
+	<string name="reader_journey_share_failed">Gagal membuat kartu berbagi Reader Journey</string>
 </resources>

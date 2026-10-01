@@ -289,13 +289,14 @@ class DownloadWorker @AssistedInject constructor(
 						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 						continue
 					}
-					val pages = runFailsafe {
-						repo.getPages(chapter.value).also { resolvedPages ->
-							if (resolvedPages.isEmpty()) {
-								throw IOException("Source returned no pages for chapter ${chapter.value.id}")
-							}
-						}
+					val resolvedPages = runFailsafe {
+						repo.getPages(chapter.value)
 					} ?: continue
+					if (resolvedPages.isEmpty()) {
+						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
+						continue
+					}
+					val pages = resolvedPages
 					val resumeDir = getResumeChapterDir(mangaDetails.id, chapter.value.id)
 					val downloadedPages = arrayOfNulls<DownloadedPage>(pages.size)
 					val pageCounter = AtomicInteger(0)
@@ -378,6 +379,10 @@ class DownloadWorker @AssistedInject constructor(
 					}
 
 					if (downloadedPages.any { it == null }) {
+						// Successful pages may already be inside a temporary archive. Explicitly discard
+						// the chapter so finish() can never publish a partial CBZ as complete.
+						output.discardChapter(chapter.value)
+						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 						continue
 					}
 					// The page counter already represents pages materialized into the temporary CBZ.
@@ -396,8 +401,8 @@ class DownloadWorker @AssistedInject constructor(
 					val chapterFinalized = output.flushChapter(chapter.value)
 					if (chapterFinalized) {
 						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
+						completedRequestedChapters++
 					}
-					completedRequestedChapters++
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 					publishState(
 						currentState.copy(

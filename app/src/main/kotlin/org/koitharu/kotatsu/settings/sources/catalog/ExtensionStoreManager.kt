@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.mihon.model.MihonExtensionInfo
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.net.URI
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -47,6 +48,9 @@ internal fun validateExtensionStoreContentType(
 	selectedType: ExtensionStoreContentType,
 ) {
 	val detectedTypes = catalog.detectedExtensionStoreContentTypes()
+	// Anime repositories commonly use ordinary package names. Their explicit store assignment is
+	// authoritative; the package-name heuristic is advisory and must not make a valid repo unavailable.
+	if (selectedType == ExtensionStoreContentType.ANIME) return
 	if (detectedTypes.isNotEmpty() && selectedType !in detectedTypes) {
 		throw ExtensionStoreContentTypeMismatchException(selectedType, detectedTypes)
 	}
@@ -323,18 +327,18 @@ class ExtensionStoreManager @Inject constructor(
 	}
 }
 
+private fun ExternalExtensionRepoEntry.explicitContentType(): ExtensionStoreContentType? = when {
+	packageName.contains(".animeextension.", ignoreCase = true) -> ExtensionStoreContentType.ANIME
+	isNovelExtension -> ExtensionStoreContentType.NOVEL
+	packageName.contains(".extension.", ignoreCase = true) -> ExtensionStoreContentType.MANGA
+	else -> null
+}
+
 internal fun List<ExternalExtensionRepoEntry>.forContentType(
 	contentType: ExtensionStoreContentType,
-): List<ExternalExtensionRepoEntry> = when (contentType) {
-	ExtensionStoreContentType.MANGA -> filterNot {
-		it.isNovelExtension || it.packageName.contains(".animeextension.", ignoreCase = true)
-	}
-	ExtensionStoreContentType.NOVEL -> filter {
-		it.isNovelExtension && !it.packageName.contains(".animeextension.", ignoreCase = true)
-	}
-	ExtensionStoreContentType.ANIME -> filter {
-		it.packageName.contains(".animeextension.", ignoreCase = true)
-	}
+): List<ExternalExtensionRepoEntry> = filter { entry ->
+	val explicitType = entry.explicitContentType()
+	explicitType == null || explicitType == contentType
 }
 
 /** Preserves the old three-argument helper contract while allowing typed callers. */
@@ -363,9 +367,9 @@ fun shouldForceStoreRefresh(forceRefresh: Boolean, migrationPerformed: Boolean):
 	forceRefresh || migrationPerformed
 
 fun extensionStoreDisplayLabels(stores: List<ExtensionStoreRecord>): Map<String, String> {
-	val duplicateNames = stores.groupingBy { it.displayName.lowercase() }.eachCount()
+	val duplicateNames = stores.groupingBy { it.displayName.lowercase(Locale.ROOT) }.eachCount()
 	return stores.associate { store ->
-		val label = if (duplicateNames.getValue(store.displayName.lowercase()) > 1) {
+		val label = if (duplicateNames.getValue(store.displayName.lowercase(Locale.ROOT)) > 1) {
 			val host = runCatching { URI(store.indexUrl).host }.getOrNull()
 			host?.let { "${store.displayName} · $it" } ?: store.displayName
 		} else {

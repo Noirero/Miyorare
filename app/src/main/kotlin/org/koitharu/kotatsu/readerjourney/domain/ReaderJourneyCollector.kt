@@ -209,6 +209,7 @@ class ReaderJourneyCollector @Inject constructor(
 			ReaderJourneyRules.MANGA_COMPLETION_XP
 		}
 		scope.launch(Dispatchers.IO) {
+			var persistenceCommitted = false
 			runCatchingCancellable {
 				// The setting can change after the UI signal that completed the chapter but before
 				// this coroutine reaches persistent storage. Opt-out wins that race.
@@ -237,7 +238,7 @@ class ReaderJourneyCollector @Inject constructor(
 					val after = ReaderJourneyRules.progress(finalTotalXp)
 					val breakdown = db.getReaderJourneyDao()
 						.getXpEventsAt(completedAt)
-						.filter { event -> event.source != ReaderJourneyXpSource.ACHIEVEMENT.name }
+						.filter { event -> event.xp > 0 && event.source != ReaderJourneyXpSource.ACHIEVEMENT.name }
 						.map { event ->
 							ReaderJourneyXpBreakdown(
 								source = event.source,
@@ -254,6 +255,7 @@ class ReaderJourneyCollector @Inject constructor(
 						breakdown = breakdown,
 					)
 				} ?: return@runCatchingCancellable
+				persistenceCommitted = true
 
 				if (persisted.after.level > persisted.before.level &&
 					persisted.after.rank.minLevel > persisted.before.rank.minLevel
@@ -292,8 +294,10 @@ class ReaderJourneyCollector @Inject constructor(
 					onMilestoneUnlocked.call(persisted.achievementResult.newlyUnlocked.size)
 				}
 			}.onFailure { error ->
-				synchronized(this@ReaderJourneyCollector) {
-					entry.awarded = false
+				if (!persistenceCommitted) {
+					synchronized(this@ReaderJourneyCollector) {
+						entry.awarded = false
+					}
 				}
 				error.printStackTraceDebug()
 			}

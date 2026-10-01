@@ -4,9 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationOrnamentRegistry
 import java.io.File
-import java.security.MessageDigest
 
 class ReaderJourneyFinalVisualRegressionTest {
 
@@ -213,68 +211,16 @@ class ReaderJourneyFinalVisualRegressionTest {
 	}
 
 	@Test
-	fun `exclusive navigation uses approved runtime ornament assets without bitmap UI`() {
-		val expected = listOf(
-			"navigation/themes/01_First_Page_Silver.webp",
-			"navigation/themes/02_First_Light_Blue.webp",
-			"navigation/themes/03_Cyan_Orbit.webp",
-			"navigation/themes/04_Emerald_Pulse.webp",
-			"navigation/themes/05_Arcane_Scholar.webp",
-			"navigation/themes/06_Violet_Halo.webp",
-			"navigation/themes/07_Rose_Nebula.webp",
-			"navigation/themes/08_Crimson_Ember.webp",
-			"navigation/themes/09_Amber_Manuscript.webp",
-			"navigation/themes/10_Golden_Manuscript_Deluxe.webp",
-			"navigation/themes/11_Eternal_Library_Prism.webp",
-			"navigation/themes/12_Celestial_Infinity.webp",
-		)
-		assertEquals(expected, ExclusiveBottomNavigationOrnamentRegistry.presets.map { it.assetPath })
-		assertTrue(ExclusiveBottomNavigationOrnamentRegistry.validate().isEmpty())
-
-		val expectedSha256 = mapOf(
-			"navigation/themes/01_First_Page_Silver.webp" to "bf44fc66e24861f6eb636b89b33a00b09ae0abfd0151513e8253777a846eb24e",
-			"navigation/themes/02_First_Light_Blue.webp" to "3ae478d0939627901ac66300d857ead168d564fa011d5b44780749f70940de45",
-			"navigation/themes/03_Cyan_Orbit.webp" to "8da2044ab761ec70e1af6313faa1b8712956c161672059253817d8efd93e9dae",
-			"navigation/themes/04_Emerald_Pulse.webp" to "673a9397661f6db0e975affe562b9073942498f3c55d46c5cfa96bba60ffdfc8",
-			"navigation/themes/05_Arcane_Scholar.webp" to "70f2cf5ef386be5cfb26a474d97367ddb7e031c3ce9cfe172f3093d3bd0b4066",
-			"navigation/themes/06_Violet_Halo.webp" to "7ff92591260d02e4a9a51d92f1a60238106e1c40c975c7920a9a4966152987c1",
-			"navigation/themes/07_Rose_Nebula.webp" to "49a3fce5cb1a6ce37703500b27d824e922ec32ce0af97af3402044ee815f1455",
-			"navigation/themes/08_Crimson_Ember.webp" to "5fcf84f3def0f45670a1c309a4128e81ad944c33a4bc232904a86ca58b047682",
-			"navigation/themes/09_Amber_Manuscript.webp" to "986b12e9dc2a84001ea86035dfc94cca1b47eb60fe3ed315014ac899bcb6d67f",
-			"navigation/themes/10_Golden_Manuscript_Deluxe.webp" to "df414d1105c844fe2d7727703286e1d2360f985ecbb11ea3a5f00d6edc31d0c5",
-			"navigation/themes/11_Eternal_Library_Prism.webp" to "809ffddf408b1a0a10638275968c1cb69b9e5561e13116def588bfd5f06b4c26",
-			"navigation/themes/12_Celestial_Infinity.webp" to "8b2610d49d69f8d2618ac88cbfbd3238d3986971b5b031493936c8de69e2069f",
-		)
-		expected.forEach { assetPath ->
-			val asset = sequenceOf(
-				File("src/main/assets", assetPath),
-				File("app/src/main/assets", assetPath),
-			).firstOrNull(File::isFile)
-			assertTrue("Missing approved runtime ornament: $assetPath", asset != null && asset.length() > 0L)
-			val digest = MessageDigest.getInstance("SHA-256")
-				.digest(requireNotNull(asset).readBytes())
-				.joinToString("") { "%02x".format(it) }
-			assertEquals("Approved ornament bytes changed: $assetPath", expectedSha256[assetPath], digest)
-		}
-
+	fun `exclusive navigation uses native production renderer without obsolete bitmap ornament path`() {
 		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
 			.replace(Regex("\\s+"), "")
-		assertTrue(renderer.contains("contentScale=ContentScale.Fit"))
-		assertTrue(renderer.contains("BoxWithConstraints("))
-		assertTrue(renderer.contains("modifier.height(navigationHeight)"))
-		assertTrue(renderer.contains("maxWidth/ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO"))
-		assertTrue(renderer.contains("navigationHeight/ornament.visibleHeightFraction"))
-		assertTrue(renderer.contains("ornament.contentInsetStartFraction"))
-		assertTrue(renderer.contains("ornament.contentWidthFraction"))
-		assertTrue(renderer.contains("MIN_TOUCH_TARGET_DP.dp"))
-		assertTrue(renderer.contains("requiredWidth(ornamentWidth)"))
-		assertTrue(renderer.contains("offset(x=contentStart,y=touchTop)"))
-		assertFalse(renderer.contains("visualCanvasHeight"))
-		assertFalse(renderer.contains("modifier.aspectRatio(ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO)"))
+		assertFalse(renderer.contains("ExclusiveBottomNavigationOrnamentRegistry"))
+		assertFalse(renderer.contains("BitmapFactory"))
+		assertFalse(renderer.contains("ContentScale.Crop"))
+		assertTrue(renderer.contains("exclusiveBodyPath("))
 		assertTrue(renderer.contains("NavIcon("))
 		assertTrue(renderer.contains("Text(text=title"))
 		assertTrue(renderer.contains("Role.Tab"))
-		assertFalse(renderer.contains("ContentScale.Crop"))
 	}
 
 	private fun source(relativePath: String): String {

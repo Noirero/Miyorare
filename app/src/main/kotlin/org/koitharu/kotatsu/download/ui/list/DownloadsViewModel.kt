@@ -161,6 +161,15 @@ class DownloadsViewModel @Inject constructor(
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 
+	init {
+		viewModelScope.launch(Dispatchers.Default) {
+			localStorageChanges.collect {
+				hydratedDownloadSizes.value = emptyMap()
+				synchronized(downloadSizeRequests) { downloadSizeRequests.clear() }
+			}
+		}
+	}
+
 	/**
 	 * Keep only a tiny grace period for the enqueue-to-WorkManager publication race. The old 300 ms
 	 * delay made an empty/new queue feel visibly sluggish every time Downloads was opened.
@@ -412,12 +421,9 @@ class DownloadsViewModel @Inject constructor(
 			val representative = stateMembers.maxBy { it.timestamp }
 			val workIds = members.mapTo(LinkedHashSet(members.size)) { it.id }
 			val manga = representative.manga!!
-			val activeMembers = members.filter {
-				it.workState == WorkInfo.State.RUNNING ||
-					it.workState == WorkInfo.State.BLOCKED ||
-					it.workState == WorkInfo.State.ENQUEUED
-			}
-			val progressMembers = activeMembers.ifEmpty { stateMembers }
+			// Group progress represents the whole batch, including members that already finished.
+			// Dropping completed members made progress jump backwards while sibling work was still active.
+			val progressMembers = members.filter { it.max > 0 }.ifEmpty { stateMembers }
 			val aggregateMax = if (progressMembers.size > 1) {
 				progressMembers.sumOf { it.max.coerceAtLeast(0) }
 			} else {

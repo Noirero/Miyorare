@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import android.content.res.Configuration
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -118,14 +119,22 @@ abstract class BaseActivity<B : ViewBinding> :
 	private fun observeExclusiveRankThemeChanges(settings: AppSettings) {
 		if (settings.miyorareDesignStyle != MiyorareDesignStyle.MODERN) return
 		val runtime = applicationContext.readerJourneyThemeRuntimeOrNull() ?: return
-		var previousState = runtime.state.value
+		fun resolvedTheme(state: org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeRuntimeState) =
+			state.resolveExclusiveTheme(
+				explicitCustomAppearance = settings.miyorareThemePreset == MiyorareThemePreset.CUSTOM,
+				darkTheme = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+					Configuration.UI_MODE_NIGHT_YES,
+				amoled = settings.isAmoledTheme,
+			)
+		var previousResolvedTheme = resolvedTheme(runtime.state.value)
 		lifecycleScope.launch {
 			repeatOnLifecycle(Lifecycle.State.STARTED) {
 				runtime.state.collect { currentState ->
-					val stateChanged = currentState != previousState
-					previousState = currentState
+					val currentResolvedTheme = resolvedTheme(currentState)
+					val themeChanged = currentResolvedTheme != previousResolvedTheme
+					previousResolvedTheme = currentResolvedTheme
 					if (
-						stateChanged &&
+						themeChanged &&
 						currentState.ledgerReady &&
 						(settings.isRankThemeEnabled || currentState.qaState.isActive) &&
 						!isFinishing &&

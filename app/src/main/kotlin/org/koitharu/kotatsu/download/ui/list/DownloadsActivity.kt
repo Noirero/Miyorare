@@ -403,11 +403,11 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	}
 
 	override fun onSkipClick(item: DownloadItemModel) {
-		scheduler.skip(item.id)
+		item.workIds.forEach(scheduler::skip)
 	}
 
 	override fun onSkipAllClick(item: DownloadItemModel) {
-		scheduler.skipAll(item.id)
+		item.workIds.forEach(scheduler::skipAll)
 	}
 
 	override fun onSelectionChanged(controller: ListSelectionController, count: Int) {

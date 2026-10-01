@@ -1,10 +1,6 @@
 package org.koitharu.kotatsu.readerjourney.ui
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.PowerManager
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -30,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -412,7 +409,7 @@ private fun BadgeAmbientOverlay(
 	qualityMode: BadgeQualityMode,
 	previewing: Boolean,
 ) {
-	val transition = rememberInfiniteTransition(label = "exclusive-badge-idle")
+	val transition = key(asset.fullRes) { rememberInfiniteTransition(label = "exclusive-badge-idle") }
 	val phase by transition.animateFloat(
 		initialValue = 0f,
 		targetValue = 1f,
@@ -837,22 +834,7 @@ internal object ExclusiveBadgeRuntimeTestHooks {
 @Composable
 private fun rememberBadgePowerSaveMode(): Boolean {
 	val context = LocalContext.current
-	val powerManager = remember(context) {
-		context.getSystemService(Context.POWER_SERVICE) as PowerManager
-	}
-	var powerSaveMode by remember(powerManager) { mutableStateOf(powerManager.isPowerSaveMode) }
-	DisposableEffect(context, powerManager) {
-		val receiver = object : BroadcastReceiver() {
-			override fun onReceive(context: Context?, intent: Intent?) {
-				powerSaveMode = powerManager.isPowerSaveMode
-			}
-		}
-		context.registerReceiver(receiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
-		onDispose { context.unregisterReceiver(receiver) }
-	}
-	return if (BuildConfig.DEBUG) {
-		ExclusiveBadgeRuntimeTestHooks.powerSaveModeOverride ?: powerSaveMode
-	} else {
-		powerSaveMode
-	}
+	ExclusivePowerSaveModeRuntime.ensureInitialized(context)
+	val powerSaveMode by ExclusivePowerSaveModeRuntime.state.collectAsState()
+	return if (BuildConfig.DEBUG) ExclusiveBadgeRuntimeTestHooks.powerSaveModeOverride ?: powerSaveMode else powerSaveMode
 }

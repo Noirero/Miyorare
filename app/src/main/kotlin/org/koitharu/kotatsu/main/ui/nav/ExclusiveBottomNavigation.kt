@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.BitmapFactory
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
@@ -18,7 +17,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -26,7 +24,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -53,6 +50,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,10 +62,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -83,11 +79,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.ExclusiveThemeComponentPalette
-import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationOrnamentRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationSpec
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeQaRuntime
@@ -126,20 +123,6 @@ internal fun ExclusiveBottomNavigationBar(
 	// Selection/press, one-shot accents and ambient decoration are independent channels.
 	// Accessibility/power policy only suppresses decorative loops; selection feedback remains.
 	val context = LocalContext.current
-	// Keep every Exclusive theme on the native/code renderer baseline.
-	// Artwork assets remain available as references, but none of them defines runtime nav geometry.
-	val ornament = remember(spec.stableId) {
-		ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId).takeIf { false }
-	}
-	val ornamentBitmap = remember(context, ornament?.assetPath) {
-		ornament?.assetPath?.let { assetPath ->
-			runCatching {
-				context.assets.open(assetPath).use { input ->
-					BitmapFactory.decodeStream(input)?.asImageBitmap()
-				}
-			}.getOrNull()
-		}
-	}
 	val qaState by ExclusiveThemeQaRuntime.state.collectAsState()
 	val reduceMotionPreference by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
 	val reduceMotion = qaState.effectiveReduceMotion(reduceMotionPreference)
@@ -212,11 +195,13 @@ internal fun ExclusiveBottomNavigationBar(
 		lifecycleResumed,
 	) {
 		if (BuildConfig.DEBUG) {
-			val animatorScale = Settings.Global.getFloat(
-				context.contentResolver,
-				Settings.Global.ANIMATOR_DURATION_SCALE,
-				1f,
-			)
+			val animatorScale = withContext(Dispatchers.IO) {
+				Settings.Global.getFloat(
+					context.contentResolver,
+					Settings.Global.ANIMATOR_DURATION_SCALE,
+					1f,
+				)
+			}
 			Log.d(
 				"ExclusiveNav",
 				"renderer=EXCLUSIVE navigationStableId=${spec.stableId} " +
@@ -236,109 +221,16 @@ internal fun ExclusiveBottomNavigationBar(
 	val glowBrush = remember(palette.glowStops) {
 		Brush.horizontalGradient(palette.glowStops)
 	}
-	val selectedIndex = items.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
+	var lastValidSelectedIndex by remember(items.map { it.id }) { mutableIntStateOf(0) }
+	val currentSelectedIndex = items.indexOfFirst { it.id == selectedId }
+	val selectedIndex = if (currentSelectedIndex >= 0) currentSelectedIndex else lastValidSelectedIndex.coerceIn(items.indices)
+	LaunchedEffect(currentSelectedIndex) {
+		if (currentSelectedIndex >= 0) lastValidSelectedIndex = currentSelectedIndex
+	}
 	val radiusDp = spec.cornerRadiusDp.dp
 	val navigationHeight = spec.heightDp.dp
 
-	if (ornamentBitmap != null && ornament != null) {
-		/*
-		 * Keep native navigation geometry independent from the decorative 960x320 canvas.
-		 * maxWidth chooses the responsive ornament scale; vertical alpha-bound metadata prevents
-		 * authored artwork from being clipped while the interactive layer stays at spec.heightDp.
-		 */
-		BoxWithConstraints(
-			modifier = modifier.height(navigationHeight),
-			contentAlignment = Alignment.TopStart,
-		) {
-			val desiredOrnamentHeight =
-				maxWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
-			val maxOrnamentHeightWithoutCroppingVisibleArtwork =
-				navigationHeight / ornament.visibleHeightFraction
-			val ornamentHeight = minOf(
-				desiredOrnamentHeight,
-				maxOrnamentHeightWithoutCroppingVisibleArtwork,
-			)
-			val ornamentWidth =
-				ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
-			val ornamentStart = (maxWidth - ornamentWidth) / 2f
 
-			val visibleCenterYFraction =
-				ornament.visibleInsetTopFraction + ornament.visibleHeightFraction / 2f
-			val ornamentTop =
-				navigationHeight / 2f - ornamentHeight * visibleCenterYFraction
-
-			// Shared 11% fractions are applied to the ACTUAL rendered ornament width, never bitmap px.
-			val contentStart =
-				ornamentStart + ornamentWidth * ornament.contentInsetStartFraction
-			val contentTop =
-				ornamentTop + ornamentHeight * ornament.contentInsetTopFraction
-			val contentWidth = ornamentWidth * ornament.contentWidthFraction
-			val visualContentHeight = ornamentHeight * ornament.contentHeightFraction
-			val visualCenterY =
-				contentTop +
-					visualContentHeight / 2f +
-					ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.CONTENT_VERTICAL_CENTER_OFFSET_FRACTION
-
-			// Only this inner Row is interactive. Transparent image margins are decoration only.
-			val touchHeight = maxOf(
-				visualContentHeight,
-				ExclusiveBottomNavigationOrnamentRegistry.MIN_TOUCH_TARGET_DP.dp,
-			).coerceAtMost(navigationHeight)
-			val touchTop = (visualCenterY - touchHeight / 2f).coerceIn(
-				0.dp,
-				navigationHeight - touchHeight,
-			)
-
-			// Keep selected chrome/icon inside the authored central body band.
-			val labelBudget = if (showLabels) 15.dp else 5.dp
-			val activeDiameter = (visualContentHeight - labelBudget).coerceIn(
-				24.dp,
-				spec.activeDiameterDp.dp,
-			)
-			val iconSize = (activeDiameter * .68f).coerceIn(18.dp, 21.dp)
-
-			Image(
-				bitmap = ornamentBitmap,
-				contentDescription = null,
-				modifier = Modifier
-					.offset(x = ornamentStart, y = ornamentTop)
-					.requiredWidth(ornamentWidth)
-					.requiredHeight(ornamentHeight),
-				contentScale = ContentScale.Fit,
-			)
-
-			Row(
-				modifier = Modifier
-					.offset(x = contentStart, y = touchTop)
-					.width(contentWidth)
-					.height(touchHeight),
-				verticalAlignment = Alignment.CenterVertically,
-			) {
-				items.forEach { item ->
-					ExclusiveNavigationItem(
-						item = item,
-						selected = item.id == selectedId,
-						showLabel = showLabels,
-						spec = spec,
-						palette = palette,
-						activeDiameter = activeDiameter,
-						iconSize = iconSize,
-						ambientPhase = ambientPhase,
-						selectionEventPhase = if (item.id == selectedId) oneShotAccentEvent.value else 1f,
-						reduceMotion = reduceMotion,
-						reduceGlow = reduceGlow,
-						onClick = {
-							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
-						},
-						onLongClick = { onItemLongClick(item.id) },
-					)
-				}
-			}
-		}
-		return
-	}
-
-	// Missing/corrupt assets degrade safely to the previous code renderer instead of breaking nav.
 	Box(
 		modifier = modifier
 			.height(navigationHeight)

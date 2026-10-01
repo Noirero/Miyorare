@@ -488,6 +488,9 @@ class FavouritesListViewModel @Inject constructor(
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
 	override fun onRefresh() {
+		// Scan candidates are a snapshot; any refresh after a destructive/library mutation must not
+		// leave actions bound to stale manga ids.
+		similarTitleScanState.value = null
 		invalidateCardEnrichment()
 		refreshTrigger.value = Any()
 	}

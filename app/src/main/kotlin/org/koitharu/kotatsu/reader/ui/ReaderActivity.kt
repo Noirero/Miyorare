@@ -481,35 +481,42 @@ class ReaderActivity :
     }
 
     private fun readerJourneyXpSourceLabel(source: String, context: String?): String = when (source) {
-        "READING_COMPLETION" -> "Reading"
-        "REREAD" -> "Reread"
-        "EXPLORATION" -> when (context) {
-            "NEW_TITLE" -> "Exploration · judul baru"
-            "DIVERSE_5" -> "Exploration · 5 chapter / beberapa judul"
-            else -> "Exploration"
-        }
-        "WEEKLY_TASK" -> "Weekly · " + weeklyJourneyContextLabel(context)
-        "WEEKLY_BONUS" -> "Weekly bonus"
-        "ACHIEVEMENT" -> "Achievement · " + (context?.replace('_', ' ') ?: "milestone")
-        "RESTED" -> "Rested"
-        "WELCOME_BACK" -> "Welcome Back"
-        "ACTIVE_DAYS" -> "Active days"
-        "MIXED_FORMAT" -> "Manga + Novel"
-        else -> "Journey"
+        "READING_COMPLETION" -> getString(R.string.reader_journey_source_reading)
+        "REREAD" -> getString(R.string.reader_journey_source_reread)
+        "EXPLORATION" -> getString(
+            when (context) {
+                "NEW_TITLE" -> R.string.reader_journey_source_exploration_new_title
+                "DIVERSE_5" -> R.string.reader_journey_source_exploration_diverse
+                else -> R.string.reader_journey_source_exploration
+            },
+        )
+        "WEEKLY_TASK" -> getString(R.string.reader_journey_source_weekly, weeklyJourneyContextLabel(context))
+        "WEEKLY_BONUS" -> getString(R.string.reader_journey_source_weekly_bonus)
+        "ACHIEVEMENT" -> getString(
+            R.string.reader_journey_source_achievement,
+            context?.replace('_', ' ') ?: getString(R.string.reader_journey_source_milestone),
+        )
+        "RESTED" -> getString(R.string.reader_journey_source_rested)
+        "WELCOME_BACK" -> getString(R.string.reader_journey_source_welcome_back)
+        "ACTIVE_DAYS" -> getString(R.string.reader_journey_source_active_days)
+        "MIXED_FORMAT" -> getString(R.string.reader_journey_source_mixed_format)
+        else -> getString(R.string.reader_journey_source_journey)
     }
 
-    private fun weeklyJourneyContextLabel(context: String?): String = when (context) {
-        "READ_3_CHAPTERS" -> "3 chapter"
-        "READ_2_DAYS" -> "2 hari"
-        "READ_2_TITLES" -> "2 judul"
-        "READ_1_NOVEL" -> "1 chapter novel"
-        "READ_5_CHAPTERS" -> "5 chapter"
-        "TRY_NEW_TITLE" -> "judul baru"
-        "READ_4_MANGA" -> "4 chapter manga"
-        "READ_2_NOVELS" -> "2 chapter novel"
-        "READ_3_DAYS" -> "3 hari"
-        else -> "task"
-    }
+    private fun weeklyJourneyContextLabel(context: String?): String = getString(
+        when (context) {
+            "READ_3_CHAPTERS" -> R.string.reader_journey_weekly_read_3_chapters
+            "READ_2_DAYS" -> R.string.reader_journey_weekly_read_2_days
+            "READ_2_TITLES" -> R.string.reader_journey_weekly_read_2_titles
+            "READ_1_NOVEL" -> R.string.reader_journey_weekly_read_1_novel
+            "READ_5_CHAPTERS" -> R.string.reader_journey_weekly_read_5_chapters
+            "TRY_NEW_TITLE" -> R.string.reader_journey_weekly_new_title
+            "READ_4_MANGA" -> R.string.reader_journey_weekly_read_4_manga
+            "READ_2_NOVELS" -> R.string.reader_journey_weekly_read_2_novels
+            "READ_3_DAYS" -> R.string.reader_journey_weekly_read_3_days
+            else -> R.string.reader_journey_weekly_task
+        },
+    )
 
     private fun onLoadingStateChanged(value: Pair<Boolean, Boolean>) {
         val (isLoading, hasPages) = value

@@ -21,6 +21,7 @@ import com.davemorrissey.labs.subscaleview.DefaultOnImageEventListener
 import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -117,7 +118,10 @@ abstract class BasePageHolder<B : ViewBinding>(
 
 	fun reloadImage() {
 		val state = viewModel.state.value as? PageState.Shown ?: return
-		if (state.isAnimatedImage) return
+		if (state.isAnimatedImage) {
+			showAnimatedImage(state.source)
+			return
+		}
 		settings.applyBitmapConfig(ssiv)
 		ssiv.setImage(state.source)
 	}
@@ -150,6 +154,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 	}
 
 	override fun onPause() {
+		(animatedImageView.drawable as? Animatable)?.stop()
 		super.onPause()
 		ssiv.applyDownSampling(isForeground = false)
 	}
@@ -259,7 +264,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 				bindingInfo.textViewStatus.setText(R.string.preparing_)
 				bindingInfo.textViewStatus.isVisible = true
 				if (state.isAnimatedImage) {
-					showAnimatedImage(state)
+					showAnimatedImage(state.source)
 				} else {
 					animatedLoadJob?.cancel()
 					(animatedImageView.drawable as? Animatable)?.stop()
@@ -284,8 +289,8 @@ abstract class BasePageHolder<B : ViewBinding>(
 		}
 	}
 
-	private fun showAnimatedImage(state: PageState.Loaded) {
-		val uri = (state.source as? ImageSource.Uri)?.uri ?: return
+	private fun showAnimatedImage(source: ImageSource) {
+		val uri = (source as? ImageSource.Uri)?.uri ?: return
 		animatedLoadJob?.cancel()
 		ssiv.recycle()
 		ssiv.isGone = true
@@ -297,8 +302,16 @@ abstract class BasePageHolder<B : ViewBinding>(
 				(drawable as? Animatable)?.start()
 				bindingInfo.textViewStatus.isVisible = false
 				viewModel.onImageLoaded()
+			} catch (e: CancellationException) {
+				throw e
 			} catch (e: Throwable) {
-				viewModel.onImageLoadError(e)
+				animatedImageView.setImageDrawable(null)
+				animatedImageView.isGone = true
+				ssiv.isVisible = true
+				settings.applyBitmapConfig(ssiv)
+				ssiv.setImage(source)
+				bindingInfo.textViewStatus.isVisible = false
+				viewModel.onImageLoaded()
 			}
 		}
 	}

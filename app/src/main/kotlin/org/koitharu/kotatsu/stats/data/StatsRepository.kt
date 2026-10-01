@@ -30,7 +30,6 @@ import org.koitharu.kotatsu.stats.domain.YearInReview
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
 import java.time.temporal.WeekFields
@@ -188,7 +187,7 @@ class StatsRepository @Inject constructor(
 		val journeyTitleCount = journeyDao.countDistinctCompletedTitles()
 		val achievementStreak = calculateLongestVerifiedReadingStreak(
 			completedAt = journeyAwards.map { it.firstCompletedAt },
-			zone = ZoneOffset.UTC,
+			zone = zone,
 		)
 		val achievements = achievementRepository.refresh(
 			longestStreak = achievementStreak,
@@ -503,6 +502,8 @@ class StatsRepository @Inject constructor(
 
 	suspend fun clearStats() {
 		db.getStatsDao().clear()
+		cachedSnapshot = null
+		cachedYearInReview = null
 	}
 
 	suspend fun rerollWeeklyTask(taskId: ReaderJourneyWeeklyTaskId): Boolean =

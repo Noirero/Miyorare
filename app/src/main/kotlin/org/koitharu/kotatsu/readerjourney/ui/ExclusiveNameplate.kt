@@ -1,10 +1,6 @@
 package org.koitharu.kotatsu.readerjourney.ui
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.PowerManager
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.annotation.DrawableRes
@@ -31,11 +27,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,7 +63,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -492,16 +493,19 @@ private fun ExclusiveNameplateCatalogThumbnail(
 	}
 	val context = LocalContext.current
 	val densityDpi = context.resources.displayMetrics.densityDpi
-	val thumbnailBitmap = remember(asset.thumbnailRes, densityDpi) {
-		NameplateCatalogBitmapCache.get(context, asset.thumbnailRes)
+	val thumbnailBitmap by produceState<ImageBitmap?>(null, asset.thumbnailRes, densityDpi) {
+		value = withContext(Dispatchers.IO) {
+			NameplateCatalogBitmapCache.get(context, asset.thumbnailRes)
+		}
 	}
 	Box(
 		modifier = modifier,
 		contentAlignment = Alignment.Center,
 	) {
-		if (thumbnailBitmap != null) {
+		val loadedThumbnail = thumbnailBitmap
+		if (loadedThumbnail != null) {
 			Image(
-				bitmap = thumbnailBitmap,
+				bitmap = loadedThumbnail,
 				contentDescription = null,
 				contentScale = ContentScale.Fit,
 				colorFilter = lockedColorFilter,
@@ -717,7 +721,7 @@ private fun NameplateAmbientOverlay(
 	secondary: Color,
 	strength: Float,
 ) {
-	val transition = rememberInfiniteTransition(label = "exclusive-nameplate-idle")
+	val transition = key(asset.drawableRes) { rememberInfiniteTransition(label = "exclusive-nameplate-idle") }
 	val phase by transition.animateFloat(
 		initialValue = 0f,
 		targetValue = 1f,
@@ -898,22 +902,7 @@ internal object ExclusiveNameplateRuntimeTestHooks {
 @Composable
 private fun rememberNameplatePowerSaveMode(): Boolean {
 	val context = LocalContext.current
-	val powerManager = remember(context) {
-		context.getSystemService(Context.POWER_SERVICE) as PowerManager
-	}
-	var powerSaveMode by remember(powerManager) { mutableStateOf(powerManager.isPowerSaveMode) }
-	DisposableEffect(context, powerManager) {
-		val receiver = object : BroadcastReceiver() {
-			override fun onReceive(context: Context?, intent: Intent?) {
-				powerSaveMode = powerManager.isPowerSaveMode
-			}
-		}
-		context.registerReceiver(receiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
-		onDispose { context.unregisterReceiver(receiver) }
-	}
-	return if (BuildConfig.DEBUG) {
-		ExclusiveNameplateRuntimeTestHooks.powerSaveModeOverride ?: powerSaveMode
-	} else {
-		powerSaveMode
-	}
+	ExclusivePowerSaveModeRuntime.ensureInitialized(context)
+	val powerSaveMode by ExclusivePowerSaveModeRuntime.state.collectAsState()
+	return if (BuildConfig.DEBUG) ExclusiveNameplateRuntimeTestHooks.powerSaveModeOverride ?: powerSaveMode else powerSaveMode
 }

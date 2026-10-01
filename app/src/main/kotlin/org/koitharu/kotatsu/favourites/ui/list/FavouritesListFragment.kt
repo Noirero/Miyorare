@@ -401,8 +401,11 @@ class FavouritesListFragment : MangaListFragment() {
 			.create()
 		progress.show()
 		viewLifecycleScope.launch {
-			val result = runCatchingCancellable { viewModel.enterSimilarTitleScanMode() }
-			if (progress.isShowing) progress.dismiss()
+			val result = try {
+				runCatchingCancellable { viewModel.enterSimilarTitleScanMode() }
+			} finally {
+				if (progress.isShowing) progress.dismiss()
+			}
 			if (!isAdded) return@launch
 			result.onSuccess {
 				viewBinding?.recyclerView?.post {

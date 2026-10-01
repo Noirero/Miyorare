@@ -165,7 +165,17 @@ internal fun ReaderJourneyExclusiveCollection(
 			}
 		}
 
-		collection.forEach { entry ->
+		val visibleCollection = remember(collection, filter) {
+			when (filter) {
+				ReaderJourneyCollectionFilter.ALL -> collection
+				ReaderJourneyCollectionFilter.THEMES -> collection.filter { it.visualSpec.themeId != null }
+				ReaderJourneyCollectionFilter.FRAMES -> collection.filter { it.visualSpec.frameId.isNotBlank() }
+				ReaderJourneyCollectionFilter.NAMEPLATES -> collection.filter { it.visualSpec.nameplateId.isNotBlank() }
+				ReaderJourneyCollectionFilter.BADGES -> collection.filter { it.visualSpec.badgeId.isNotBlank() }
+				ReaderJourneyCollectionFilter.WALLPAPERS -> collection.filter { it.visualSpec.wallpaperId.isNotBlank() }
+			}
+		}
+		visibleCollection.forEach { entry ->
 			val equipped = if (filter == ReaderJourneyCollectionFilter.NAMEPLATES) {
 				loadout.selectedNameplateId?.let { selectedId ->
 					selectedId == entry.visualSpec.nameplateId
@@ -1283,7 +1293,7 @@ private fun ExclusiveFrameSelector(
 @Composable
 internal fun ExclusiveNameplateSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
-	accessRank: ReaderRank = ReaderRank.LEGEND,
+	accessRank: ReaderRank,
 	selectedNameplateId: String?,
 	allowFollowBase: Boolean,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,

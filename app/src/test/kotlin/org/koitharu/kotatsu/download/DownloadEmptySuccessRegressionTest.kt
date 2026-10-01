@@ -12,7 +12,8 @@ class DownloadEmptySuccessRegressionTest {
 			"org/koitharu/kotatsu/download/ui/worker/DownloadWorker.kt",
 		).replace(Regex("\\s+"), "")
 
-		assertTrue(worker.contains("if(resolvedPages.isEmpty()){throwIOException("))
+		assertTrue(worker.contains("if(resolvedPages.isEmpty()){clearResumeChapterDir("))
+		assertTrue(worker.contains("clearResumeChapterDir(mangaDetails.id,chapter.value.id)continue"))
 		assertTrue(worker.contains("varcompletedRequestedChapters=0"))
 		assertTrue(worker.contains("completedRequestedChapters++"))
 		assertTrue(worker.contains("check(completedRequestedChapters>0)"))

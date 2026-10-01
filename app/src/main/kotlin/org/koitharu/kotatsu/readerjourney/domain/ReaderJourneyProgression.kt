@@ -328,7 +328,9 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		if (index < 0) return@withTransaction false
 
 		val rerollPrefix = weeklyRerollEventPrefix(bounds.key)
-		val rerollsUsed = dao.countXpEventsByKeyPrefix(rerollPrefix)
+		// XP events are canonical for current installs; the persisted count remains a compatibility
+		// floor for older/restored weekly snapshots that predate reroll ledger events.
+		val rerollsUsed = maxOf(state.rerollsUsed, dao.countXpEventsByKeyPrefix(rerollPrefix))
 		if (rerollsUsed >= ReaderJourneyRules.WEEKLY_REROLL_LIMIT) return@withTransaction false
 		val rerollKey = weeklyRerollEventKey(bounds.key, index)
 		if (dao.hasXpEvent(rerollKey)) return@withTransaction false
@@ -457,9 +459,11 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			completedTaskCount = tasks.count { it.awarded || it.isComplete },
 			completionBonusAwarded = dao.hasXpEvent("weekly-bonus:" + bounds.key),
 			rerollsRemaining = (
-				ReaderJourneyRules.WEEKLY_REROLL_LIMIT -
-					dao.countXpEventsByKeyPrefix(weeklyRerollEventPrefix(bounds.key))
-				).coerceAtLeast(0),
+				ReaderJourneyRules.WEEKLY_REROLL_LIMIT - maxOf(
+					state.rerollsUsed,
+					dao.countXpEventsByKeyPrefix(weeklyRerollEventPrefix(bounds.key)),
+				)
+			).coerceAtLeast(0),
 		)
 	}
 
@@ -541,7 +545,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			.take(ReaderJourneyRules.WEEKLY_TASK_COUNT)
 
 	private fun startOfDayMillis(at: Long): Long {
-		val zone = ZoneId.systemDefault()
+		val zone = JOURNEY_ECONOMY_ZONE
 		return Instant.ofEpochMilli(at).atZone(zone).toLocalDate()
 			.atStartOfDay(zone).toInstant().toEpochMilli()
 	}

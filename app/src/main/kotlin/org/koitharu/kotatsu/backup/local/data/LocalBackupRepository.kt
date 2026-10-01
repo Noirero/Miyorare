@@ -545,7 +545,7 @@ class LocalBackupRepository @Inject constructor(
 				ReaderJourneyProfileSelectionBackup(
 					selectedTitleId = readerProfileStore.backupSelectedTitleId(),
 					cosmeticLoadoutV2 = readerProfileStore.backupCosmeticSnapshot(),
-					lifetimeXpFloor = database.getReaderJourneyDao().getProfile()?.totalXp ?: 0L,
+					lifetimeXp = database.getReaderJourneyDao().getProfile()?.totalXp ?: 0L,
 				),
 				this,
 			)
@@ -558,7 +558,7 @@ class LocalBackupRepository @Inject constructor(
 	private suspend fun restoreReaderJourneyProfileSelection(input: InputStream): CompositeResult =
 		runCatchingCancellable {
 			val backup = json.decodeFromStream<ReaderJourneyProfileSelectionBackup>(input)
-			database.getReaderJourneyDao().reconcileXpFloor(backup.lifetimeXpFloor)
+			database.getReaderJourneyDao().reconcileXpFloor(backup.lifetimeXp)
 			database.getReaderJourneyDao().rebuildProfileFromLedger()
 			val journey = database.getReaderJourneyDao().getProfile()
 			val currentRank = ReaderJourneyRules.progress(journey?.totalXp ?: 0L).rank
