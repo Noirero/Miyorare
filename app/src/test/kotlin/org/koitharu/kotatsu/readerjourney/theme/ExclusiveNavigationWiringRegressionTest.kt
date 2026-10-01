@@ -190,7 +190,7 @@ class ExclusiveNavigationWiringRegressionTest {
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(host.contains("modifier=if(hasExclusiveNavigation)Modifier.fillMaxWidth()elseModifier.wrapContentWidth()"))
-		assertTrue(renderer.contains("valornament=remember(spec.stableId){null}"))
+		assertTrue(renderer.contains("ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId).takeIf{false}"))
 		assertTrue(registry.contains("ornament=ExclusiveNavigationOrnament.SILVER_CRYSTALS"))
 		assertTrue(renderer.contains("ExclusiveNavigationOrnament.SILVER_CRYSTALS->{"))
 		assertTrue(renderer.contains(".weight(1f).fillMaxHeight()"))
