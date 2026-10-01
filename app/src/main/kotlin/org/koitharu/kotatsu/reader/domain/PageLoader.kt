@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.reader.domain
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.Animatable
 import android.net.Uri
 import androidx.annotation.AnyThread
 import androidx.annotation.CheckResult
@@ -211,12 +212,18 @@ class PageLoader @Inject constructor(
 		}
 	}
 
+	suspend fun isAnimatedImage(uri: Uri): Boolean {
+		val request = ImageRequest.Builder(context)
+			.data(uri)
+			.build()
+		return coil.execute(request).image?.asDrawable(context.resources) is Animatable
+	}
+
 	suspend fun loadAnimatedDrawable(uri: Uri): Drawable? {
 		val request = ImageRequest.Builder(context)
 			.data(uri)
 			.build()
-		val drawable = coil.execute(request).image?.asDrawable(context.resources)
-		return drawable?.takeIf { it is android.graphics.drawable.Animatable }
+		return coil.execute(request).image?.asDrawable(context.resources)?.takeIf { it is Animatable }
 	}
 
 	suspend fun getTrimmedBounds(uri: Uri): Rect? = runCatchingCancellable {
