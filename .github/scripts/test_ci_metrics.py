@@ -6,8 +6,10 @@ runs=[
  {"name":"Other","status":"completed","conclusion":"success","run_started_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:10:00Z"},
 ]
 s=summarize(runs)
-assert s["CI Fast"]["samples"]==2
-assert s["CI Fast"]["median_seconds"]==120.0
-assert s["CI Fast"]["failure_rate"]==0.5
+assert s["workflows"]["CI Fast"]["samples"]==2
+assert s["workflows"]["CI Fast"]["median_seconds"]==120.0
+assert s["workflows"]["CI Fast"]["failure_rate"]==0.5
+assert s["top_recurring_failures"][0]=={"workflow":"CI Fast","failures":1}
+assert s["flaky_workflow_candidates"]==["CI Fast"]
 assert "CI Fast" in markdown(s)
 print("ci metrics tests passed")
