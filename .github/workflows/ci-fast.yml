@@ -20,6 +20,7 @@ env:
 jobs:
   fast:
     name: Fast
+    if: github.event_name != 'pull_request' || github.event.pull_request.base.ref != 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
