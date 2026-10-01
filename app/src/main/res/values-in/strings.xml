@@ -952,6 +952,18 @@
 	<string name="library_scan_scanning">Memeriksa judul dan metadata lokal…</string>
 	<string name="library_scan_none_title">Tidak ada judul serupa</string>
 	<string name="library_scan_none_message">Tidak ditemukan manga lain dalam kategori ini yang terdeteksi sebagai seri yang sama.</string>
+	<string name="library_scan_confidence_high">Keyakinan tinggi</string>
+	<string name="library_scan_confidence_review">Perlu ditinjau</string>
+	<string name="library_scan_reason_primary">judul sama</string>
+	<string name="library_scan_reason_alternative">judul alternatif</string>
+	<string name="library_scan_reason_description">judul alternatif dalam deskripsi</string>
+	<string name="library_scan_reason_fuzzy">judul serupa</string>
+	<string name="library_scan_reason_author">penulis sama</string>
+	<string name="library_scan_link">Tautkan sumber</string>
+	<string name="library_scan_reject">Bukan seri yang sama</string>
+	<string name="library_scan_later">Nanti</string>
+	<string name="library_scan_conflict">Entri ini sudah berada di grup yang berbeda. Tinjau grup tersebut sebelum menautkannya.</string>
+	<string name="library_scan_summary_title">Pemindaian selesai</string>
 	<string name="library_scan_error">Gagal memindai judul serupa</string>
 
 	<string name="stats_chapters_read">Bab dibaca</string>
