@@ -12,11 +12,15 @@
   Baca • Simpan • Unduh • Nikmati ✨
 </p>
 
+<!-- RELEASE_STATS_START -->
 <p align="center">
-  <a href="https://github.com/Noirero/Miyorare/releases/latest"><img alt="Rilis terbaru" src="https://img.shields.io/github/v/release/Noirero/Miyorare?style=for-the-badge&logo=github&label=rilis"></a>
-  <a href="https://github.com/Noirero/Miyorare/releases"><img alt="Unduhan" src="https://img.shields.io/github/downloads/Noirero/Miyorare/total?style=for-the-badge&logo=github&label=unduhan"></a>
-  <a href="LICENSE"><img alt="GPLv3" src="https://img.shields.io/github/license/Noirero/Miyorare?style=for-the-badge"></a>
+  <a href="https://github.com/Noirero/Miyorare/releases/latest"><strong>Rilis terbaru: v1.4.4</strong></a>
+  &nbsp;•&nbsp;
+  <a href="https://github.com/Noirero/Miyorare/releases"><strong>Unduhan: 356</strong></a>
+  &nbsp;•&nbsp;
+  <a href="LICENSE"><strong>Lisensi: GPL-3.0</strong></a>
 </p>
+<!-- RELEASE_STATS_END -->
 
 <p align="center">
   <a href="https://github.com/Noirero/Miyorare/releases/latest"><strong>📦 Unduh Miyorare</strong></a>
@@ -112,11 +116,11 @@ Source Pack resmi Miyorare melalui proses kurasi, build, dan verifikasi sebelum 
 Bagian ini diperbarui otomatis setiap kali workflow rilis `main` berhasil.
 
 <!-- RELEASE_README_START -->
-- **Versi:** [v1.3.6](https://github.com/Noirero/Miyorare/releases/tag/v1.3.6)
-- **Commit:** [`7b314b681e56f85f6a2481b18d5d267135f0c7c4`](https://github.com/Noirero/Miyorare/commit/7b314b681e56f85f6a2481b18d5d267135f0c7c4)
-- **GitHub Actions:** [run 35324697769](https://github.com/Noirero/Miyorare/actions/runs/35324697769)
+- **Versi:** [v1.4.4](https://github.com/Noirero/Miyorare/releases/tag/v1.4.4)
+- **Commit:** [`a2db74e301b525da74bed5b2a96776f85c14c76a`](https://github.com/Noirero/Miyorare/commit/a2db74e301b525da74bed5b2a96776f85c14c76a)
+- **GitHub Actions:** [run 36069590611](https://github.com/Noirero/Miyorare/actions/runs/36069590611)
 - **APK dan SHA-256:**
-  - `Miyorare-v1.3.6.apk` — `6907cf0c3eba6f84bfe45e8ba84706976b348b70205f2fa9dc4a82c1dcdb2281`
+  - `Miyorare-v1.4.4.apk` — `9e4b84998107b9f7dda99d884c48c5125e5fb4273abe4596a3cc8d1477650a4e`
 <!-- RELEASE_README_END -->
 
 Detail signature dan informasi keamanan lainnya tersedia di [SECURITY.md](SECURITY.md).
