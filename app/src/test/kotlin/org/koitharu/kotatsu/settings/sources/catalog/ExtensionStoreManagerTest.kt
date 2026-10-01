@@ -20,6 +20,33 @@ class ExtensionStoreManagerTest {
 	}
 
 	@Test
+	fun `refresh type mismatch preserves previous catalog and reports unavailable`() {
+		val store = record("one", "Store")
+		val cached = listOf(entry("eu.kanade.tachiyomi.extension.en.cached"))
+		val previous = ExtensionStoreState(
+			store = store,
+			health = StoreHealth.AVAILABLE,
+			catalog = cached,
+			contentType = ExtensionStoreContentType.MANGA,
+		)
+		val error = ExtensionStoreContentTypeMismatchException(
+			selectedType = ExtensionStoreContentType.MANGA,
+			detectedTypes = setOf(ExtensionStoreContentType.ANIME),
+		)
+
+		val next = storeStateAfterRefresh(
+			store = store,
+			previous = previous,
+			result = Result.failure(error),
+			contentType = ExtensionStoreContentType.MANGA,
+		)
+
+		assertEquals(StoreHealth.UNAVAILABLE, next.health)
+		assertEquals(cached, next.catalog)
+		assertTrue(next.error is ExtensionStoreContentTypeMismatchException)
+	}
+
+	@Test
 	fun `first load after legacy migration bypasses the stale http cache`() {
 		assertTrue(shouldForceStoreRefresh(forceRefresh = false, migrationPerformed = true))
 	}
