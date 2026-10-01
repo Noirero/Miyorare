@@ -1017,4 +1017,5 @@
 	<string name="reader_journey_weekly_read_2_novels">2 chapter novel</string>
 	<string name="reader_journey_weekly_read_3_days">3 hari</string>
 	<string name="reader_journey_weekly_task">tugas</string>
+	<string name="reader_journey_share_failed">Gagal membuat kartu berbagi Reader Journey</string>
 </resources>
