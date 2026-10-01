@@ -233,6 +233,10 @@ class ExtensionStoreManager @Inject constructor(
 		val refreshed = validationResults.map { (store, fresh) ->
 			val contentType = registry.contentType(store.id)
 			val previous = previousById[store.id]
+			val checkedFresh = fresh.mapCatching { validated ->
+				validateExtensionStoreContentType(validated.catalog, contentType)
+				validated
+			}
 			val fallbackPrevious = if (fresh.isFailure) {
 				val cached = runCatching { repository.getCachedExtensions(store.indexUrl) }.getOrNull()
 				if (cached != null) {
@@ -248,12 +252,10 @@ class ExtensionStoreManager @Inject constructor(
 			} else {
 				previous
 			}
-			fresh.fold(
+			checkedFresh.fold(
 				onSuccess = { validated ->
 					// Network metadata can change, but the user's Manga/Novel/Anime assignment cannot.
-					// Re-validate on every refresh as well as Add/Edit: an upstream URL can change what
-					// media family it publishes after the user has already saved the store.
-					validateExtensionStoreContentType(validated.catalog, contentType)
+					// Refresh validation above prevents an upstream URL from silently switching families.
 					val refreshedStore = validated.store.copy(id = store.id)
 					registry.replace(refreshedStore)
 					ExtensionStoreState(
