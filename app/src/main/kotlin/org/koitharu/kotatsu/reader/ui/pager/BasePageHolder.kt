@@ -123,7 +123,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 			return
 		}
 		settings.applyBitmapConfig(ssiv)
-		ssiv.setImage(source)
+		ssiv.setImage(state.source)
 	}
 
 	fun bind(data: ReaderPage) {
@@ -272,7 +272,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 					animatedImageView.isGone = true
 					ssiv.isVisible = true
 					settings.applyBitmapConfig(ssiv)
-					ssiv.setImage(source)
+					ssiv.setImage(state.source)
 				}
 			}
 
