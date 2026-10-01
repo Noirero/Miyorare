@@ -31,6 +31,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
@@ -719,7 +720,7 @@ private fun NameplateAmbientOverlay(
 	secondary: Color,
 	strength: Float,
 ) {
-	val transition = rememberInfiniteTransition(label = "exclusive-nameplate-idle")
+	val transition = key(asset.drawableRes) { rememberInfiniteTransition(label = "exclusive-nameplate-idle") }
 	val phase by transition.animateFloat(
 		initialValue = 0f,
 		targetValue = 1f,
