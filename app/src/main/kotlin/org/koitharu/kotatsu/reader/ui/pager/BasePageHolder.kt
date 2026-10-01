@@ -101,7 +101,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 	protected open fun onConfigChanged(settings: ReaderSettings) {
 		settings.applyBackground(itemView)
 		val state = viewModel.state.value
-		if (state is PageState.Shown && state.isAnimatedGif) {
+		if (state is PageState.Shown && state.isAnimatedImage) {
 			// Animated pages are rendered by Coil, not SSIV. Do not run the static bitmap path too.
 			clearUpscale()
 		} else {
@@ -117,7 +117,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 
 	fun reloadImage() {
 		val state = viewModel.state.value as? PageState.Shown ?: return
-		if (state.isAnimatedGif) return
+		if (state.isAnimatedImage) return
 		settings.applyBitmapConfig(ssiv)
 		ssiv.setImage(state.source)
 	}
@@ -258,8 +258,8 @@ abstract class BasePageHolder<B : ViewBinding>(
 			is PageState.Loaded -> {
 				bindingInfo.textViewStatus.setText(R.string.preparing_)
 				bindingInfo.textViewStatus.isVisible = true
-				if (state.isAnimatedGif) {
-					showAnimatedGif(state)
+				if (state.isAnimatedImage) {
+					showAnimatedImage(state)
 				} else {
 					animatedLoadJob?.cancel()
 					(animatedImageView.drawable as? Animatable)?.stop()
@@ -284,7 +284,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 		}
 	}
 
-	private fun showAnimatedGif(state: PageState.Loaded) {
+	private fun showAnimatedImage(state: PageState.Loaded) {
 		val uri = (state.source as? ImageSource.Uri)?.uri ?: return
 		animatedLoadJob?.cancel()
 		ssiv.recycle()
@@ -292,7 +292,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 		animatedImageView.isVisible = true
 		animatedLoadJob = lifecycleScope.launch(Dispatchers.Main) {
 			try {
-				val drawable = loader.loadAnimatedDrawable(uri) ?: error("Cannot decode animated GIF")
+				val drawable = loader.loadAnimatedDrawable(uri) ?: error("Cannot decode animated image")
 				animatedImageView.setImageDrawable(drawable)
 				(drawable as? Animatable)?.start()
 				bindingInfo.textViewStatus.isVisible = false
