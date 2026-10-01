@@ -993,4 +993,28 @@
 
 	<string name="reader_journey_profile_verified_breakdown">Bacaan terverifikasi</string>
     <string name="developer_exclusive_theme_qa">QA Tema Eksklusif</string>
+	<string name="reader_journey_source_reading">Membaca</string>
+	<string name="reader_journey_source_reread">Baca ulang</string>
+	<string name="reader_journey_source_exploration">Eksplorasi</string>
+	<string name="reader_journey_source_exploration_new_title">Eksplorasi · judul baru</string>
+	<string name="reader_journey_source_exploration_diverse">Eksplorasi · 5 chapter / beberapa judul</string>
+	<string name="reader_journey_source_weekly">Mingguan · %1$s</string>
+	<string name="reader_journey_source_weekly_bonus">Bonus mingguan</string>
+	<string name="reader_journey_source_achievement">Pencapaian · %1$s</string>
+	<string name="reader_journey_source_milestone">tonggak</string>
+	<string name="reader_journey_source_rested">Istirahat</string>
+	<string name="reader_journey_source_welcome_back">Selamat datang kembali</string>
+	<string name="reader_journey_source_active_days">Hari aktif</string>
+	<string name="reader_journey_source_mixed_format">Manga + Novel</string>
+	<string name="reader_journey_source_journey">Journey</string>
+	<string name="reader_journey_weekly_read_3_chapters">3 chapter</string>
+	<string name="reader_journey_weekly_read_2_days">2 hari</string>
+	<string name="reader_journey_weekly_read_2_titles">2 judul</string>
+	<string name="reader_journey_weekly_read_1_novel">1 chapter novel</string>
+	<string name="reader_journey_weekly_read_5_chapters">5 chapter</string>
+	<string name="reader_journey_weekly_new_title">judul baru</string>
+	<string name="reader_journey_weekly_read_4_manga">4 chapter manga</string>
+	<string name="reader_journey_weekly_read_2_novels">2 chapter novel</string>
+	<string name="reader_journey_weekly_read_3_days">3 hari</string>
+	<string name="reader_journey_weekly_task">tugas</string>
 </resources>
