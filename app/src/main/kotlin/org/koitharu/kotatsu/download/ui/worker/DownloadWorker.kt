@@ -401,8 +401,8 @@ class DownloadWorker @AssistedInject constructor(
 					val chapterFinalized = output.flushChapter(chapter.value)
 					if (chapterFinalized) {
 						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
+						completedRequestedChapters++
 					}
-					completedRequestedChapters++
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 					publishState(
 						currentState.copy(
