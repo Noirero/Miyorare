@@ -85,7 +85,7 @@ class PageViewModel(
 	override fun onImageLoaded() {
 		state.update { currentState ->
 			if (currentState is PageState.Loaded) {
-				PageState.Shown(currentState.source, currentState.isConverted, currentState.isAnimatedGif)
+				PageState.Shown(currentState.source, currentState.isConverted, currentState.isAnimatedImage)
 			} else {
 				currentState
 			}
@@ -148,8 +148,9 @@ class PageViewModel(
 			val uri = task.await()
 			progressObserver.cancelAndJoin()
 			previewJob.cancel()
-			val isAnimatedGif = loader.isAnimatedGif(uri)
-			cachedBounds = if (!isAnimatedGif && settingsProducer.value.isPagesCropEnabled(isWebtoon)) {
+			val animatedDrawable = loader.loadAnimatedDrawable(uri)
+			val isAnimatedImage = animatedDrawable != null
+			cachedBounds = if (!isAnimatedImage && settingsProducer.value.isPagesCropEnabled(isWebtoon)) {
 				loader.getTrimmedBounds(uri)
 			} else {
 				null
@@ -157,7 +158,7 @@ class PageViewModel(
 			state.value = PageState.Loaded(
 				source = uri.toImageSource(cachedBounds),
 				isConverted = false,
-				isAnimatedGif = isAnimatedGif,
+				isAnimatedImage = isAnimatedImage,
 			)
 		} catch (e: CancellationException) {
 			throw e
