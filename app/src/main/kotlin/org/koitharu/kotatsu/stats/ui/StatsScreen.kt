@@ -173,6 +173,7 @@ fun StatsScreen(
 	var showProfileEditor by rememberSaveable { mutableStateOf(false) }
 	var showCosmeticsEditor by rememberSaveable { mutableStateOf(false) }
 	var customizerInitialThemeId by rememberSaveable { mutableStateOf<String?>(null) }
+	var showUnlockedAchievementsOnly by rememberSaveable { mutableStateOf(false) }
 
 	LaunchedEffect(stats.isJourneyEnabled) {
 		if (!stats.isJourneyEnabled && journeySection == ReaderJourneySection.COLLECTION) {
@@ -200,21 +201,9 @@ fun StatsScreen(
 
 		LazyColumn(
 			modifier = Modifier.fillMaxSize(),
-			contentPadding = PaddingValues(top = 10.dp, bottom = bottomInset + 36.dp),
+			contentPadding = PaddingValues(top = 10.dp, bottom = bottomInset + 64.dp),
 			verticalArrangement = Arrangement.spacedBy(16.dp),
 		) {
-			if (stats.isJourneyEnabled) {
-				item("profile") {
-					ReaderProfileCard(
-						stats = stats,
-						profile = profile,
-						onEdit = { showProfileEditor = true },
-						onShare = {
-							onShareReaderProfile(ReaderProfileShareModel.from(stats.lifetimeXp, profile.cosmetics))
-						},
-					)
-				}
-			}
 			item("journey-section") {
 				ReaderJourneySectionSelector(
 					selected = journeySection,
@@ -230,6 +219,16 @@ fun StatsScreen(
 			when (journeySection) {
 				ReaderJourneySection.OVERVIEW -> {
 					if (stats.isJourneyEnabled) {
+						item("profile-overview") {
+							ReaderProfileCard(
+								stats = stats,
+								profile = profile,
+								onEdit = { showProfileEditor = true },
+								onShare = {
+									onShareReaderProfile(ReaderProfileShareModel.from(stats.lifetimeXp, profile.cosmetics))
+								},
+							)
+						}
 						item("journey-overview-metrics") {
 							ReaderJourneyOverviewGrid(stats)
 						}
@@ -310,6 +309,7 @@ fun StatsScreen(
 							title = stringResource(R.string.stats_most_read_genres),
 							items = stats.topGenres,
 							icon = R.drawable.ic_grid,
+							hideLabels = matureMode == StatsMatureMode.PRIVATE,
 						)
 					}
 					if (stats.formatBreakdown.size > 1) {
@@ -353,8 +353,35 @@ fun StatsScreen(
 					item("achievement-summary") {
 						AchievementSummary(stats.achievements)
 					}
+					item("achievement-filter") {
+						Row(
+							modifier = Modifier
+								.fillMaxWidth()
+								.padding(horizontal = STATS_PADDING),
+							horizontalArrangement = Arrangement.End,
+						) {
+							FilterChip(
+								selected = showUnlockedAchievementsOnly,
+								onClick = { showUnlockedAchievementsOnly = !showUnlockedAchievementsOnly },
+								label = { Text("Hanya yang sudah terbuka") },
+								leadingIcon = if (showUnlockedAchievementsOnly) {
+									{
+										Icon(
+											painter = painterResource(R.drawable.ic_check),
+											contentDescription = null,
+											modifier = Modifier.size(FilterChipDefaults.IconSize),
+										)
+									}
+								} else null,
+							)
+						}
+					}
 					items(
-						items = stats.achievements,
+						items = if (showUnlockedAchievementsOnly) {
+							stats.achievements.filter { it.isUnlocked }
+						} else {
+							stats.achievements
+						},
 						key = { progress -> progress.id.name },
 					) { progress ->
 						AchievementCard(progress)
@@ -790,7 +817,7 @@ private fun ReaderJourneyOverviewMetric(
 				text = label,
 				style = MaterialTheme.typography.labelSmall,
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
-				maxLines = 1,
+				maxLines = 2,
 				overflow = TextOverflow.Ellipsis,
 			)
 			Text(
@@ -810,6 +837,9 @@ private fun WeeklyJourneyCard(
 	snapshot: ReaderJourneyWeeklySnapshot,
 	onReroll: (ReaderJourneyWeeklyTaskId) -> Unit,
 ) {
+	var showCompletedTasks by rememberSaveable { mutableStateOf(false) }
+	val activeTasks = snapshot.tasks.filterNot { it.awarded }
+	val completedTasks = snapshot.tasks.filter { it.awarded }
 	Surface(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -856,7 +886,8 @@ private fun WeeklyJourneyCard(
 					color = MaterialTheme.colorScheme.primary,
 				)
 			}
-			snapshot.tasks.forEach { task ->
+			val visibleTasks = if (showCompletedTasks) activeTasks + completedTasks else activeTasks
+			visibleTasks.forEach { task ->
 				Surface(
 					shape = RoundedCornerShape(16.dp),
 					color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f),
@@ -902,13 +933,31 @@ private fun WeeklyJourneyCard(
 								.clip(RoundedCornerShape(6.dp)),
 						)
 						if (!task.awarded && !task.isComplete && snapshot.rerollsRemaining > 0) {
-							TextButton(onClick = { onReroll(task.id) }) {
+							Column {
+								TextButton(onClick = { onReroll(task.id) }) {
+									Text(
+										"Reroll · " + snapshot.rerollsRemaining + " gratis tersisa",
+									)
+								}
 								Text(
-									"Reroll · " + snapshot.rerollsRemaining + " gratis tersisa",
+									text = "Reroll mengganti task ini dengan task mingguan lain. Progres task ini tidak dibawa ke task pengganti.",
+									style = MaterialTheme.typography.bodySmall,
+									color = MaterialTheme.colorScheme.onSurfaceVariant,
 								)
 							}
 						}
 					}
+				}
+			}
+			if (completedTasks.isNotEmpty()) {
+				TextButton(onClick = { showCompletedTasks = !showCompletedTasks }) {
+					Text(
+						if (showCompletedTasks) {
+							"Sembunyikan task selesai (" + completedTasks.size + ")"
+						} else {
+							"Lihat task selesai (" + completedTasks.size + ")"
+						},
+					)
 				}
 			}
 		}
@@ -1790,7 +1839,7 @@ private fun StatsFilterRow(
 		}
 		LazyRow(
 			modifier = Modifier.weight(1f),
-			contentPadding = PaddingValues(horizontal = 1.dp),
+			contentPadding = PaddingValues(horizontal = 8.dp),
 			horizontalArrangement = Arrangement.spacedBy(8.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
@@ -2507,6 +2556,7 @@ private fun InsightCard(
 	title: String,
 	items: List<StatsInsight>,
 	icon: Int,
+	hideLabels: Boolean = false,
 ) {
 	val max = items.maxOfOrNull { it.count }?.coerceAtLeast(1) ?: 1
 	val shape = RoundedCornerShape(26.dp)
@@ -2559,10 +2609,10 @@ private fun InsightCard(
 					if (index > 0) Spacer(Modifier.height(12.dp))
 					Row(verticalAlignment = Alignment.CenterVertically) {
 						Text(
-							text = insight.label,
+							text = if (hideLabels) "Hidden genre" else sanitizeStatsLabel(insight.label),
 							style = MaterialTheme.typography.bodyMedium,
 							fontWeight = FontWeight.SemiBold,
-							maxLines = 1,
+							maxLines = 2,
 							overflow = TextOverflow.Ellipsis,
 							modifier = Modifier.weight(1f),
 						)
@@ -2584,6 +2634,11 @@ private fun InsightCard(
 			}
 		}
 	}
+}
+
+private fun sanitizeStatsLabel(label: String): String {
+	val trimmed = label.trim()
+	return trimmed.removePrefix(">").removeSuffix("<").trim()
 }
 
 @Composable
