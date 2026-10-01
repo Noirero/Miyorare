@@ -20,11 +20,18 @@ class ReaderJourneyFinalVisualRegressionTest {
 			.substringBefore("ReaderJourneySection.STATISTICS->")
 
 		assertTrue(overview.contains("item(\"year-in-review\")"))
-		val profileBlock = screen
-			.substringBefore("item(\"journey-section\")")
-		assertTrue(profileBlock.contains("if(stats.isJourneyEnabled){"))
-		assertTrue(profileBlock.contains("item(\"profile\")"))
-		assertFalse(profileBlock.contains("YearInReviewCard("))
+		assertTrue(overview.contains("if(stats.isJourneyEnabled){"))
+		assertTrue(overview.contains("item(\"profile-overview\")"))
+		assertTrue(
+			overview.indexOf("item(\"profile-overview\")") <
+				overview.indexOf("item(\"year-in-review\")"),
+		)
+		assertFalse(
+			screen
+				.substringAfter("ReaderJourneySection.STATISTICS->{")
+				.substringBefore("ReaderJourneySection.COLLECTION->")
+				.contains("ReaderProfileCard("),
+		)
 	}
 
 	@Test
