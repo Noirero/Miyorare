@@ -96,13 +96,15 @@ class SourcesCatalogViewModel @Inject constructor(
 		storeManager.allStates,
 		activeStoreContentType,
 		isNsfwDisabled,
+		isPrivateMode,
 		refreshTrigger,
-	) { sources, allStoreStates, contentType, nsfwDisabled, _ ->
+	) { sources, allStoreStates, contentType, nsfwDisabled, privateMode, _ ->
 		val storeStates = allStoreStates.filter { it.contentType == contentType }
 		val activeStoreIds = storeStates.mapTo(HashSet()) { it.store.id }
 		val localeSet = LinkedHashSet<String?>()
+		val installMode = if (privateMode) ExtensionInstallMode.SANDBOX else ExtensionInstallMode.SYSTEM
 		sources.forEach { source ->
-			val ownerId = storeManager.owner(ExtensionInstallMode.SYSTEM, source.pkgName)?.id
+			val ownerId = storeManager.owner(installMode, source.pkgName)?.id
 			if (ownerId in activeStoreIds) localeSet.addCatalogLanguage(source.language)
 		}
 		for (state in storeStates) {
