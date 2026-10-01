@@ -123,7 +123,7 @@ class ExtensionStoreRegistry @Inject constructor(
 		settings.extensionStoreRegistryState = state.removeStore(storeId)
 	}
 
-	fun move(fromIndex: Int, toIndex: Int) = update { it.move(fromIndex, toIndex) }
+	fun move(fromIndex: Int, toIndex: Int) = update { orderStoresByContentType(it.move(fromIndex, toIndex)) }
 
 	fun setOwner(mode: ExtensionInstallMode, packageName: String, storeId: String) =
 		update { it.setOwner(mode, packageName, storeId) }
