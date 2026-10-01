@@ -60,7 +60,7 @@ class SourcesCatalogViewModel @Inject constructor(
 
 	private val searchQuery = MutableStateFlow<String?>(null)
 	private val activePageId = MutableStateFlow(ExtensionCatalogPage.Available.id)
-	private val activeStoreContentType = MutableStateFlow(ExtensionStoreContentType.MANGA)
+	val activeStoreContentType = MutableStateFlow(ExtensionStoreContentType.MANGA)
 	private val installingPackages = MutableStateFlow<Set<String>>(emptySet())
 	private val refreshTrigger = MutableStateFlow(0)
 	val isRefreshing = MutableStateFlow(false)
@@ -257,9 +257,7 @@ class SourcesCatalogViewModel @Inject constructor(
 			} else {
 				ExtensionInstallMode.SYSTEM
 			}
-			val statesById = storeManager.allStates.value
-				.filter { it.contentType == activeStoreContentType.value }
-				.associateBy { it.store.id }
+			val statesById = storeManager.allStates.value.associateBy { it.store.id }
 			val requests = mihonExtensionLoader.getInstalledExtensions(
 				appContext,
 				privateMode = mode == ExtensionInstallMode.SANDBOX,
@@ -509,7 +507,7 @@ class SourcesCatalogViewModel @Inject constructor(
 			// Novel plugins are shown only when their owning Novel repository is part of
 			// the currently selected media family.
 			val pluginOwnerId = source.plugin.storeId
-			if (pluginOwnerId == null || pluginOwnerId !in statesById) continue
+			if (pluginOwnerId != null && pluginOwnerId !in statesById) continue
 			val plugin = source.plugin
 			if (filter.locale != null && !extensionLanguageMatches(plugin.langCode, filter.locale)) continue
 			if (!matchesExtensionQuery(q, plugin.name, plugin.id)) continue
