@@ -238,7 +238,7 @@ class ReaderJourneyCollector @Inject constructor(
 					val after = ReaderJourneyRules.progress(finalTotalXp)
 					val breakdown = db.getReaderJourneyDao()
 						.getXpEventsAt(completedAt)
-						.filter { event -> event.source != ReaderJourneyXpSource.ACHIEVEMENT.name }
+						.filter { event -> event.xp > 0 && event.source != ReaderJourneyXpSource.ACHIEVEMENT.name }
 						.map { event ->
 							ReaderJourneyXpBreakdown(
 								source = event.source,
