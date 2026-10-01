@@ -453,8 +453,7 @@ fun FloatingNavBar(
 					.padding(
 						horizontal = if (isMiyorareModern) 6.dp else 8.dp,
 						vertical = if (isMiyorareModern) 6.dp else 8.dp,
-					)
-					,
+					),
 				horizontalArrangement = Arrangement.spacedBy(if (isMiyorareModern) 2.dp else 4.dp),
 				verticalAlignment = Alignment.CenterVertically,
 			) {
