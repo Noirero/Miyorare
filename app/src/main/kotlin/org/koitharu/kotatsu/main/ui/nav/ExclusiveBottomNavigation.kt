@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.BitmapFactory
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
@@ -18,7 +17,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -26,7 +24,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -53,6 +50,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,10 +62,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -87,7 +83,6 @@ import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.ExclusiveThemeComponentPalette
-import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationOrnamentRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationSpec
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeQaRuntime
@@ -224,7 +219,12 @@ internal fun ExclusiveBottomNavigationBar(
 	val glowBrush = remember(palette.glowStops) {
 		Brush.horizontalGradient(palette.glowStops)
 	}
-	val selectedIndex = items.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
+	var lastValidSelectedIndex by remember(items.map { it.id }) { mutableIntStateOf(0) }
+	val currentSelectedIndex = items.indexOfFirst { it.id == selectedId }
+	val selectedIndex = if (currentSelectedIndex >= 0) currentSelectedIndex else lastValidSelectedIndex.coerceIn(items.indices)
+	LaunchedEffect(currentSelectedIndex) {
+		if (currentSelectedIndex >= 0) lastValidSelectedIndex = currentSelectedIndex
+	}
 	val radiusDp = spec.cornerRadiusDp.dp
 	val navigationHeight = spec.heightDp.dp
 
