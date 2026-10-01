@@ -21,6 +21,7 @@ env:
 jobs:
   classify:
     name: Classify core Android runtime
+    if: github.event_name != 'pull_request' || github.event.pull_request.base.ref != 'main'
     runs-on: ubuntu-latest
     outputs:
       run_runtime: ${{ steps.classify.outputs.run_runtime }}
