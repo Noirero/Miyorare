@@ -169,10 +169,10 @@ internal fun ReaderJourneyExclusiveCollection(
 			when (filter) {
 				ReaderJourneyCollectionFilter.ALL -> collection
 				ReaderJourneyCollectionFilter.THEMES -> collection.filter { it.visualSpec.themeId != null }
-				ReaderJourneyCollectionFilter.FRAMES -> collection.filter { it.visualSpec.profileFrameId != null }
-				ReaderJourneyCollectionFilter.NAMEPLATES -> collection.filter { it.visualSpec.nameplateId != null }
-				ReaderJourneyCollectionFilter.BADGES -> collection.filter { it.visualSpec.badgeId != null }
-				ReaderJourneyCollectionFilter.WALLPAPERS -> collection.filter { it.visualSpec.wallpaperId != null }
+				ReaderJourneyCollectionFilter.FRAMES -> collection.filter { it.visualSpec.frameId.isNotBlank() }
+				ReaderJourneyCollectionFilter.NAMEPLATES -> collection.filter { it.visualSpec.nameplateId.isNotBlank() }
+				ReaderJourneyCollectionFilter.BADGES -> collection.filter { it.visualSpec.badgeId.isNotBlank() }
+				ReaderJourneyCollectionFilter.WALLPAPERS -> collection.filter { it.visualSpec.wallpaperId.isNotBlank() }
 			}
 		}
 		visibleCollection.forEach { entry ->
