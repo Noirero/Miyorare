@@ -59,7 +59,7 @@ jobs:
           PY
 
       - name: Pre-warm pinned JitPack artifact
-        run: .github/scripts/prewarm_jitpack.sh
+        run: bash .github/scripts/prewarm_jitpack.sh
 
       - name: Prove dependency graph resolves twice
         run: |
