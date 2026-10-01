@@ -251,6 +251,9 @@ class ExtensionStoreManager @Inject constructor(
 			fresh.fold(
 				onSuccess = { validated ->
 					// Network metadata can change, but the user's Manga/Novel/Anime assignment cannot.
+					// Re-validate on every refresh as well as Add/Edit: an upstream URL can change what
+					// media family it publishes after the user has already saved the store.
+					validateExtensionStoreContentType(validated.catalog, contentType)
 					val refreshedStore = validated.store.copy(id = store.id)
 					registry.replace(refreshedStore)
 					ExtensionStoreState(
