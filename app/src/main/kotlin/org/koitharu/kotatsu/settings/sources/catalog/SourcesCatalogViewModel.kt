@@ -550,7 +550,9 @@ class SourcesCatalogViewModel @Inject constructor(
 				// Makes the row open the novel's browse list and its settings, like a Mihon source.
 				sourceIconName = source.name,
 				sourceName = source.name,
-				storeId = plugin.storeId ?: lnCatalog.firstOrNull { it.packageName == plugin.id }?.let { catalogEntry ->\n\t\t\t\t\tstoreStates.firstOrNull { state -> state.catalog.any { it === catalogEntry } }?.store?.id\n\t\t\t\t},
+				storeId = plugin.storeId ?: lnCatalog.firstOrNull { it.packageName == plugin.id }?.let { catalogEntry ->
+					storeStates.firstOrNull { state -> state.catalog.any { it === catalogEntry } }?.store?.id
+				},
 				isHidden = plugin.id in settings.lnHiddenPlugins,
 			)
 		}
