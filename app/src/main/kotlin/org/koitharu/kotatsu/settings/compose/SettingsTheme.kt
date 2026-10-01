@@ -206,6 +206,7 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	)
 	val rankThemeReduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
 	val rankThemeMinimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
+	val rankThemeWallpaperEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, true)
 
 	val designStyle = MiyorareDesignStyle.entries.firstOrNull { it.name == designStyleValue }
 		?: MiyorareDesignStyle.CLASSIC
@@ -253,6 +254,8 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		isDark,
 		amoled,
 		rankThemeEnabled,
+		rankThemeWallpaperEnabled,
+		rankThemeMinimalCosmetics,
 	) {
 		if (rankThemeEnabled || journeyThemeRuntimeState.qaState.isActive) {
 			journeyThemeRuntimeState.resolveExclusiveTheme(
