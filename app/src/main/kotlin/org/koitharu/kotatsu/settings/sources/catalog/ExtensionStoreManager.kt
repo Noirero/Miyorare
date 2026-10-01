@@ -48,6 +48,9 @@ internal fun validateExtensionStoreContentType(
 	selectedType: ExtensionStoreContentType,
 ) {
 	val detectedTypes = catalog.detectedExtensionStoreContentTypes()
+	// Anime repositories commonly use ordinary package names. Their explicit store assignment is
+	// authoritative; the package-name heuristic is advisory and must not make a valid repo unavailable.
+	if (selectedType == ExtensionStoreContentType.ANIME) return
 	if (detectedTypes.isNotEmpty() && selectedType !in detectedTypes) {
 		throw ExtensionStoreContentTypeMismatchException(selectedType, detectedTypes)
 	}
@@ -333,9 +336,7 @@ internal fun List<ExternalExtensionRepoEntry>.forContentType(
 	ExtensionStoreContentType.NOVEL -> filter {
 		it.isNovelExtension && !it.packageName.contains(".animeextension.", ignoreCase = true)
 	}
-	ExtensionStoreContentType.ANIME -> filter {
-		it.packageName.contains(".animeextension.", ignoreCase = true)
-	}
+	ExtensionStoreContentType.ANIME -> filterNot { it.isNovelExtension }
 }
 
 /** Preserves the old three-argument helper contract while allowing typed callers. */
@@ -364,7 +365,7 @@ fun shouldForceStoreRefresh(forceRefresh: Boolean, migrationPerformed: Boolean):
 	forceRefresh || migrationPerformed
 
 fun extensionStoreDisplayLabels(stores: List<ExtensionStoreRecord>): Map<String, String> {
-	val duplicateNames = stores.groupingBy { it.displayName.lowercase() }.eachCount()
+	val duplicateNames = stores.groupingBy { it.displayName.lowercase(Locale.ROOT) }.eachCount()
 	return stores.associate { store ->
 		val label = if (duplicateNames.getValue(store.displayName.lowercase(Locale.ROOT)) > 1) {
 			val host = runCatching { URI(store.indexUrl).host }.getOrNull()
