@@ -1,0 +1,79 @@
+name: Dependency Reproducibility Evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/dependency-reproducibility.yml'
+      - '.github/scripts/prewarm_jitpack.sh'
+      - 'gradle/libs.versions.toml'
+      - 'settings.gradle'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-reproducibility-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  verify:
+    name: Verify pinned dependency resolution
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Validate centralized JitPack safety net
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/prewarm_jitpack.sh
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data=tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
+          version=str(data["versions"]["parsers"])
+          if len(version) < 7 or any(c not in "0123456789abcdefABCDEF" for c in version):
+              raise SystemExit("versions.parsers must remain pinned to a Git commit, not a moving tag/branch")
+          print("plugin-source pinned commit:", version)
+          PY
+
+      - name: Pre-warm pinned JitPack artifact
+        run: .github/scripts/prewarm_jitpack.sh
+
+      - name: Prove dependency graph resolves twice
+        run: |
+          set -euo pipefail
+          ./gradlew :app:dependencies --configuration debugRuntimeClasspath --no-daemon --stacktrace > dependency-pass-1.txt
+          ./gradlew :app:dependencies --configuration debugRuntimeClasspath --offline --no-daemon --stacktrace > dependency-pass-2-offline.txt
+
+      - name: Upload reproducibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-reproducibility-${{ github.sha }}
+          path: |
+            dependency-pass-1.txt
+            dependency-pass-2-offline.txt
+          if-no-files-found: warn
+          retention-days: 30
