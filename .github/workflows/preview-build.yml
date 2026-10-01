@@ -85,6 +85,36 @@ jobs:
             exit 1
           }
 
+      - name: Require validated beta HEAD
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA="$(git rev-parse HEAD)"
+          BRANCH_SHA="$(gh api repos/${GITHUB_REPOSITORY}/git/ref/heads/beta --jq '.object.sha')"
+          test "$HEAD_SHA" = "$BRANCH_SHA" || {
+            echo "::error::Beta APK must be built from the current beta HEAD."
+            exit 1
+          }
+
+          for check in verify-identity Fast Deep; do
+            conclusion="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100" \
+              --jq "[.check_runs[] | select(.name == \"$check\")] | sort_by(.completed_at) | last | .conclusion // \"\"")"
+            if [ "$conclusion" != "success" ]; then
+              echo "::error::Required beta validation '$check' is not successful for exact SHA $HEAD_SHA (got: ${conclusion:-missing})."
+              exit 1
+            fi
+          done
+
+          {
+            echo "### Proven beta candidate"
+            echo
+            echo "- Exact SHA: `$HEAD_SHA`"
+            echo "- Existing validation reused: `verify-identity`, `Fast`, `Deep`"
+            echo "- Validation rerun before APK build: none"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
