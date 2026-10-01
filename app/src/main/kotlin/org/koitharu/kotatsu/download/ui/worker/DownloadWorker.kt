@@ -289,14 +289,13 @@ class DownloadWorker @AssistedInject constructor(
 						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 						continue
 					}
-					val pages = runFailsafe {
+					val resolvedPages = runFailsafe {
 						repo.getPages(chapter.value)
 					} ?: continue
-					if (pages.isEmpty()) {
-						// A removed/empty source chapter must not pause the whole batch forever.
-						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
-						continue
+					if (resolvedPages.isEmpty()) {
+						throw IOException("Chapter contains no downloadable pages")
 					}
+					val pages = resolvedPages
 					val resumeDir = getResumeChapterDir(mangaDetails.id, chapter.value.id)
 					val downloadedPages = arrayOfNulls<DownloadedPage>(pages.size)
 					val pageCounter = AtomicInteger(0)
