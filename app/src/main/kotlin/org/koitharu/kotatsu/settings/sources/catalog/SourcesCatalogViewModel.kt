@@ -105,7 +105,16 @@ class SourcesCatalogViewModel @Inject constructor(
 		val installMode = if (privateMode) ExtensionInstallMode.SANDBOX else ExtensionInstallMode.SYSTEM
 		sources.forEach { source ->
 			val ownerId = storeManager.owner(installMode, source.pkgName)?.id
-			if (ownerId in activeStoreIds) localeSet.addCatalogLanguage(source.language)
+			val belongsToActiveFamily = when {
+				ownerId != null -> ownerId in activeStoreIds
+				storeStates.any { state -> state.catalog.any { it.packageName == source.pkgName } } -> true
+				contentType == ExtensionStoreContentType.ANIME ->
+					source.pkgName.contains(".animeextension.", ignoreCase = true)
+				contentType == ExtensionStoreContentType.MANGA ->
+					!source.pkgName.contains(".animeextension.", ignoreCase = true)
+				else -> false
+			}
+			if (belongsToActiveFamily) localeSet.addCatalogLanguage(source.language)
 		}
 		for (state in storeStates) {
 			for (entry in state.catalog) {
@@ -541,7 +550,7 @@ class SourcesCatalogViewModel @Inject constructor(
 				// Makes the row open the novel's browse list and its settings, like a Mihon source.
 				sourceIconName = source.name,
 				sourceName = source.name,
-				storeId = plugin.storeId,
+				storeId = plugin.storeId ?: storeState.store.id,
 				isHidden = plugin.id in settings.lnHiddenPlugins,
 			)
 		}
@@ -944,10 +953,11 @@ class SourcesCatalogViewModel @Inject constructor(
 			}.toMutableList()
 		for (source in lnPluginManager.getAll()) {
 			val plugin = source.plugin
-			if (plugin.storeId != storeState.store.id) continue
+			val entry = storeState.catalog.firstOrNull { it.packageName == plugin.id }
+			if (plugin.storeId != null && plugin.storeId != storeState.store.id) continue
+			if (plugin.storeId == null && entry == null) continue
 			if (filter.locale != null && !extensionLanguageMatches(plugin.langCode, filter.locale)) continue
 			if (!matchesExtensionQuery(query, plugin.name, plugin.id)) continue
-			val entry = storeState.catalog.firstOrNull { it.packageName == plugin.id }
 			items += SourceCatalogItem.Extension(
 				packageName = plugin.id,
 				title = plugin.name,
