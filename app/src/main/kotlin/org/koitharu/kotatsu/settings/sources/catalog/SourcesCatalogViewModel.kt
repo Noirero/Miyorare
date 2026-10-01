@@ -273,7 +273,7 @@ class SourcesCatalogViewModel @Inject constructor(
 				InstallRequest(
 					packageName = entry.packageName,
 					url = externalRepoRepository.resolveApkUrl(owner.indexUrl, entry.apkName),
-					storeId = owner?.id,
+					storeId = owner.id,
 					mode = mode,
 				)
 			} + collectNovelUpdateRequests(statesById, mode)
