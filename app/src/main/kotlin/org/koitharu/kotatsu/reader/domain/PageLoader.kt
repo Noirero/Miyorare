@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.reader.domain
 
 import android.content.Context
 import android.graphics.Rect
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import androidx.annotation.AnyThread
 import androidx.annotation.CheckResult
@@ -10,6 +11,7 @@ import androidx.collection.set
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import coil3.BitmapImage
+import coil3.asDrawable
 import coil3.Image
 import coil3.ImageLoader
 import coil3.request.ImageRequest
@@ -207,6 +209,25 @@ class PageLoader @Inject constructor(
 			}
 			uri
 		}
+	}
+
+	suspend fun isAnimatedGif(uri: Uri): Boolean = runInterruptible(Dispatchers.IO) {
+		if (!uri.isFileUri()) return@runInterruptible false
+		val file = uri.toFile()
+		if (!file.isFile || file.length() < GIF_SIGNATURE_SIZE) return@runInterruptible false
+		val signature = ByteArray(GIF_SIGNATURE_SIZE)
+		file.inputStream().buffered().use { input ->
+			if (input.read(signature) != GIF_SIGNATURE_SIZE) return@runInterruptible false
+		}
+		val header = signature.decodeToString()
+		header == GIF87A || header == GIF89A
+	}
+
+	suspend fun loadAnimatedDrawable(uri: Uri): Drawable? {
+		val request = ImageRequest.Builder(context)
+			.data(uri)
+			.build()
+		return coil.execute(request).image?.asDrawable(context.resources)
 	}
 
 	suspend fun getTrimmedBounds(uri: Uri): Rect? = runCatchingCancellable {
@@ -444,6 +465,9 @@ class PageLoader @Inject constructor(
 	companion object {
 
 		private const val PROGRESS_UNDEFINED = -1f
+		private const val GIF_SIGNATURE_SIZE = 6
+		private const val GIF87A = "GIF87a"
+		private const val GIF89A = "GIF89a"
 		private const val PREFETCH_MAX_PARALLELISM = 2
 		private const val PREFETCH_LIMIT_DEFAULT = 6
 		private const val PREFETCH_LIMIT_MEDIUM = 8
