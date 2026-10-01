@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.PowerManager
 import android.provider.Settings
@@ -132,12 +133,13 @@ internal fun ExclusiveBottomNavigationBar(
 	val ornamentBitmap = remember(context, ornament?.assetPath) {
 		ornament?.assetPath?.let { assetPath ->
 			runCatching {
-				context.assets.open(assetPath).use { input ->
-					BitmapFactory.decodeStream(input)?.asImageBitmap()
-				}
+				context.assets.open(assetPath).use(BitmapFactory::decodeStream)
 			}.getOrNull()
 		}
 	}
+	val usesResponsiveThreeSlice = spec.stableId == RankThemeId.FIRST_PAGE.stableId ||
+		spec.stableId == RankThemeId.IMPERIAL_AURORA.stableId ||
+		spec.stableId == RankThemeId.ETERNAL_LIBRARY.stableId
 	val qaState by ExclusiveThemeQaRuntime.state.collectAsState()
 	val reduceMotionPreference by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
 	val reduceMotion = qaState.effectiveReduceMotion(reduceMotionPreference)
@@ -295,15 +297,30 @@ internal fun ExclusiveBottomNavigationBar(
 			)
 			val iconSize = (activeDiameter * .68f).coerceIn(18.dp, 21.dp)
 
-			Image(
-				bitmap = ornamentBitmap,
-				contentDescription = null,
-				modifier = Modifier
-					.offset(x = ornamentStart, y = ornamentTop)
-					.requiredWidth(ornamentWidth)
-					.requiredHeight(ornamentHeight),
-				contentScale = ContentScale.Fit,
-			)
+			if (usesResponsiveThreeSlice) {
+				/*
+				 * 01/11/12 preserve the authored end ornaments without scaling the complete
+				 * 960x320 navbar as one bitmap. The outer slices keep their aspect ratio while
+				 * only the visually safe centre rail absorbs width changes.
+				 */
+				ResponsiveExclusiveOrnament(
+					bitmap = ornamentBitmap,
+					start = ornamentStart,
+					top = ornamentTop,
+					width = ornamentWidth,
+					height = ornamentHeight,
+				)
+			} else {
+				Image(
+					bitmap = ornamentBitmap.asImageBitmap(),
+					contentDescription = null,
+					modifier = Modifier
+						.offset(x = ornamentStart, y = ornamentTop)
+						.requiredWidth(ornamentWidth)
+						.requiredHeight(ornamentHeight),
+					contentScale = ContentScale.Fit,
+				)
+			}
 
 			Row(
 				modifier = Modifier
@@ -388,6 +405,61 @@ internal fun ExclusiveBottomNavigationBar(
 				)
 			}
 		}
+	}
+}
+
+@Composable
+private fun ResponsiveExclusiveOrnament(
+	bitmap: Bitmap,
+	start: Dp,
+	top: Dp,
+	width: Dp,
+	height: Dp,
+) {
+	val slices = remember(bitmap) {
+		val capWidth = (bitmap.width * .28f).toInt().coerceAtLeast(1)
+		val centerWidth = (bitmap.width - capWidth * 2).coerceAtLeast(1)
+		Triple(
+			Bitmap.createBitmap(bitmap, 0, 0, capWidth, bitmap.height).asImageBitmap(),
+			Bitmap.createBitmap(bitmap, capWidth, 0, centerWidth, bitmap.height).asImageBitmap(),
+			Bitmap.createBitmap(bitmap, bitmap.width - capWidth, 0, capWidth, bitmap.height).asImageBitmap(),
+		)
+	}
+	val capWidth = width * .28f
+	val centerWidth = (width - capWidth * 2f).coerceAtLeast(1.dp)
+	Box(
+		modifier = Modifier
+			.offset(x = start, y = top)
+			.requiredWidth(width)
+			.requiredHeight(height),
+	) {
+		Image(
+			bitmap = slices.first,
+			contentDescription = null,
+			modifier = Modifier
+				.align(Alignment.CenterStart)
+				.requiredWidth(capWidth)
+				.requiredHeight(height),
+			contentScale = ContentScale.FillBounds,
+		)
+		Image(
+			bitmap = slices.second,
+			contentDescription = null,
+			modifier = Modifier
+				.align(Alignment.Center)
+				.requiredWidth(centerWidth)
+				.requiredHeight(height),
+			contentScale = ContentScale.FillBounds,
+		)
+		Image(
+			bitmap = slices.third,
+			contentDescription = null,
+			modifier = Modifier
+				.align(Alignment.CenterEnd)
+				.requiredWidth(capWidth)
+				.requiredHeight(height),
+			contentScale = ContentScale.FillBounds,
+		)
 	}
 }
 
