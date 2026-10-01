@@ -97,4 +97,3 @@ jobs:
           python3 .github/scripts/test_release_version.py
           python3 .github/scripts/test_summarize_gradle_profile.py
           bash -n .github/scripts/prewarm_jitpack.sh
-
