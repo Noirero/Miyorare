@@ -1,10 +1,6 @@
 package org.koitharu.kotatsu.readerjourney.ui
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.PowerManager
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.annotation.DrawableRes
@@ -31,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -903,22 +900,7 @@ internal object ExclusiveNameplateRuntimeTestHooks {
 @Composable
 private fun rememberNameplatePowerSaveMode(): Boolean {
 	val context = LocalContext.current
-	val powerManager = remember(context) {
-		context.getSystemService(Context.POWER_SERVICE) as PowerManager
-	}
-	var powerSaveMode by remember(powerManager) { mutableStateOf(powerManager.isPowerSaveMode) }
-	DisposableEffect(context, powerManager) {
-		val receiver = object : BroadcastReceiver() {
-			override fun onReceive(context: Context?, intent: Intent?) {
-				powerSaveMode = powerManager.isPowerSaveMode
-			}
-		}
-		context.registerReceiver(receiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
-		onDispose { context.unregisterReceiver(receiver) }
-	}
-	return if (BuildConfig.DEBUG) {
-		ExclusiveNameplateRuntimeTestHooks.powerSaveModeOverride ?: powerSaveMode
-	} else {
-		powerSaveMode
-	}
+	ExclusivePowerSaveModeRuntime.ensureInitialized(context)
+	val powerSaveMode by ExclusivePowerSaveModeRuntime.state.collectAsState()
+	return if (BuildConfig.DEBUG) ExclusiveNameplateRuntimeTestHooks.powerSaveModeOverride ?: powerSaveMode else powerSaveMode
 }
