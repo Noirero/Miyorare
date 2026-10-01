@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import java.text.Normalizer
 import javax.inject.Inject
 import kotlin.math.max
+import java.util.Locale
 
 enum class LibraryScanConfidence {
 	HIGH,
@@ -186,7 +187,7 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 				return@mapNotNull null
 			}
 			val members = memberIds.mapNotNull { mangaById[it]?.manga }
-				.sortedWith(compareBy<Manga> { normalize(it.title).length }.thenBy { it.title.lowercase() })
+				.sortedWith(compareBy<Manga> { normalize(it.title).length }.thenBy { it.title.lowercase(Locale.ROOT) })
 			// Linked Sources is intentionally cross-source. Same-source title collisions stay as ordinary
 			// library entries and are not promoted into a source-alternative group.
 			if (members.map { it.source }.distinct().size < 2) return@mapNotNull null
@@ -203,7 +204,7 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 		}.sortedWith(
 			compareByDescending<LibraryScanCandidate> { it.confidence == LibraryScanConfidence.HIGH }
 				.thenByDescending { it.score }
-				.thenBy { it.title.lowercase() },
+				.thenBy { it.title.lowercase(Locale.ROOT) },
 		)
 	}
 
