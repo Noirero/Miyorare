@@ -34,6 +34,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.withResumed
 import androidx.recyclerview.widget.ItemTouchHelper
 import com.google.android.material.appbar.AppBarLayout
@@ -190,13 +191,15 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		updateAppBackground(navigationDelegate.primaryFragment)
 		applicationContext.readerJourneyThemeRuntimeOrNull()?.let { runtime ->
 			lifecycleScope.launch {
-				runtime.state.collect {
-					// Compose surfaces react to the StateFlow directly; the legacy/shared wallpaper owner
-					// must also be rebuilt when the selected Exclusive theme changes.
-					appBackgroundKey = null
-					updateAppBackground(navigationDelegate.primaryFragment)
-					if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
-						viewBinding.root.applyMiyorareSharedMainChrome()
+				repeatOnLifecycle(Lifecycle.State.STARTED) {
+					runtime.state.collect {
+						// Compose surfaces react to the StateFlow directly; the legacy/shared wallpaper owner
+						// must also be rebuilt when the selected Exclusive theme changes.
+						appBackgroundKey = null
+						updateAppBackground(navigationDelegate.primaryFragment)
+						if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+							viewBinding.root.applyMiyorareSharedMainChrome()
+						}
 					}
 				}
 			}
