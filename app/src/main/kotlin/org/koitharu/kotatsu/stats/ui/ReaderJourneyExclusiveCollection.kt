@@ -1125,7 +1125,11 @@ private fun ExclusiveThemeSourceSelector(
 	val selectorListState = rememberLazyListState()
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(title)
-		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+		LazyRow(
+			state = selectorListState,
+			flingBehavior = rememberSnapFlingBehavior(lazyListState = selectorListState),
+			horizontalArrangement = Arrangement.spacedBy(10.dp),
+		) {
 			if (allowFollowBase) {
 				item("follow-base-" + title) {
 					val selected = selectedThemeId == null
@@ -1226,7 +1230,11 @@ private fun ExclusiveFrameSelector(
 			}
 		}
 
-		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+		LazyRow(
+			state = selectorListState,
+			flingBehavior = rememberSnapFlingBehavior(lazyListState = selectorListState),
+			horizontalArrangement = Arrangement.spacedBy(10.dp),
+		) {
 			if (allowFollowBase) {
 				item("frame-follow-base") {
 					ExclusiveFollowBaseTile(
@@ -1322,6 +1330,8 @@ internal fun ExclusiveNameplateSelector(
 		}
 
 		LazyRow(
+			state = selectorListState,
+			flingBehavior = rememberSnapFlingBehavior(lazyListState = selectorListState),
 			horizontalArrangement = Arrangement.spacedBy(12.dp),
 			contentPadding = PaddingValues(horizontal = 3.dp, vertical = 3.dp),
 		) {
@@ -1392,7 +1402,11 @@ private fun ExclusiveWallpaperSelector(
 	val selectorListState = rememberLazyListState()
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_wallpaper))
-		LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+		LazyRow(
+			state = selectorListState,
+			flingBehavior = rememberSnapFlingBehavior(lazyListState = selectorListState),
+			horizontalArrangement = Arrangement.spacedBy(9.dp),
+		) {
 			if (allowFollowBase) {
 				item("wallpaper-follow-base") {
 					ExclusiveFollowBaseTile(
@@ -1472,7 +1486,11 @@ internal fun ExclusiveBadgeSelector(
 			}
 		}
 
-		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+		LazyRow(
+			state = selectorListState,
+			flingBehavior = rememberSnapFlingBehavior(lazyListState = selectorListState),
+			horizontalArrangement = Arrangement.spacedBy(10.dp),
+		) {
 			item("badge-follow-base") {
 				ExclusiveFollowBaseTile(
 					selected = selectedBadgeId == null,
@@ -1535,7 +1553,11 @@ private fun ExclusiveProgressStyleSelector(
 	val selectorListState = rememberLazyListState()
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_progress_style))
-		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+		LazyRow(
+			state = selectorListState,
+			flingBehavior = rememberSnapFlingBehavior(lazyListState = selectorListState),
+			horizontalArrangement = Arrangement.spacedBy(10.dp),
+		) {
 			item("progress-follow-base") {
 				ExclusiveFollowBaseTile(
 					selected = selectedProgressId == null,
