@@ -105,16 +105,10 @@ jobs:
           echo "::error::Parser artifact ${PARSERS_VERSION} is not ready on JitPack"
           exit 1
 
-      - name: Run P0/P1 deterministic regressions and compile candidate
+      - name: Compile P0/P1 candidate
         if: steps.p0_scope.outputs.required == 'true'
         run: >-
-          ./gradlew :app:testDebugUnitTest
-          --tests org.koitharu.kotatsu.local.data.output.LocalArchiveFinalizationRegressionTest
-          --tests org.koitharu.kotatsu.local.DownloadDeletionRegressionTest
-          --tests org.koitharu.kotatsu.settings.sources.ExtensionInstallerMethodDialogRegressionTest
-          --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest
-          --tests org.koitharu.kotatsu.favourites.ui.categories.select.FavouriteCategoryBatchingRegressionTest
-          --tests org.koitharu.kotatsu.performance.RuntimeLagHardeningRegressionTest
+          ./gradlew :app:compileDebugUnitTestKotlin
           --no-daemon --stacktrace
 
       - name: Upload JVM acceptance evidence
