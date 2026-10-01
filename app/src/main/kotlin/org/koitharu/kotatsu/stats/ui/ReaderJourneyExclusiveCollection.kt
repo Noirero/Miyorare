@@ -577,15 +577,6 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							onSelect = { tab = it },
 						)
 					}
-					if (!canApply) {
-						item("locked-selection") {
-							Text(
-								text = stringResource(R.string.reader_journey_unlock_at_level, requiredRank.minLevel),
-								style = MaterialTheme.typography.bodyMedium,
-								color = Color.White.copy(alpha = .82f),
-							)
-						}
-					}
 					when (tab) {
 						ReaderJourneyCustomizeTab.THEME_MIX -> {
 							item("mix-summary") {
@@ -1239,7 +1230,7 @@ private fun ExclusiveFrameSelector(
 				item("frame-follow-base") {
 					ExclusiveFollowBaseTile(
 						selected = selectedFrameId == null,
-						width = 88.dp,
+						width = 112.dp,
 						height = 60.dp,
 						onClick = { onSelect(null) },
 					)
@@ -1355,7 +1346,7 @@ internal fun ExclusiveNameplateSelector(
 				val pressed by interactionSource.collectIsPressedAsState()
 				Box(
 					modifier = Modifier
-						.width(154.dp)
+						.width(176.dp)
 						.height(56.dp)
 						.clickable(
 							interactionSource = interactionSource,
@@ -1375,6 +1366,23 @@ internal fun ExclusiveNameplateSelector(
 						pressed = pressed,
 						modifier = Modifier.fillMaxSize(),
 					)
+					// Unlock-level badge so the requirement is visible without tapping each title.
+					Box(
+						modifier = Modifier
+							.align(Alignment.TopStart)
+							.padding(4.dp)
+							.clip(RoundedCornerShape(12.dp))
+							.background(Color.Black.copy(alpha = .55f))
+							.padding(horizontal = 7.dp, vertical = 3.dp),
+						contentAlignment = Alignment.Center,
+					) {
+						Text(
+							text = "Lv.${spec.themeId.rank.minLevel}",
+							style = MaterialTheme.typography.labelSmall,
+							fontWeight = FontWeight.Bold,
+							color = Color.White,
+						)
+					}
 					if (selected) {
 						Box(
 							modifier = Modifier
@@ -1494,7 +1502,7 @@ internal fun ExclusiveBadgeSelector(
 			item("badge-follow-base") {
 				ExclusiveFollowBaseTile(
 					selected = selectedBadgeId == null,
-					width = 88.dp,
+					width = 112.dp,
 					height = 58.dp,
 					onClick = { onSelect(null) },
 				)
