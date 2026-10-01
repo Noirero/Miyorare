@@ -33,6 +33,8 @@ sealed class LocalMangaOutput(
 
 	abstract suspend fun flushChapter(chapter: MangaChapter): Boolean
 
+	open suspend fun discardChapter(chapter: MangaChapter) = Unit
+
 	abstract suspend fun finish()
 
 	abstract suspend fun cleanup()
