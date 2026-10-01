@@ -313,8 +313,12 @@ class ExtensionStoreManager @Inject constructor(
 private fun List<ExternalExtensionRepoEntry>.forContentType(
 	contentType: ExtensionStoreContentType,
 ): List<ExternalExtensionRepoEntry> = when (contentType) {
-	ExtensionStoreContentType.MANGA -> filterNot { it.isNovelExtension }
-	ExtensionStoreContentType.NOVEL -> filter { it.isNovelExtension }
+	ExtensionStoreContentType.MANGA -> filterNot {
+		it.isNovelExtension || it.packageName.contains(".animeextension.", ignoreCase = true)
+	}
+	ExtensionStoreContentType.NOVEL -> filter {
+		it.isNovelExtension && !it.packageName.contains(".animeextension.", ignoreCase = true)
+	}
 	// Anime extensions use a Mihon/Aniyomi-like package shape and have no reliable manga/novel flag.
 	// They stay visible in Manage stores but are excluded from the Manga/Novel catalogue as a whole.
 	ExtensionStoreContentType.ANIME -> this
