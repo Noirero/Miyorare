@@ -22,6 +22,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  non-promotion-gate:
+    name: Promotion Gate
+    if: github.event_name == 'pull_request' && github.head_ref != 'beta' && !startsWith(github.head_ref, 'release/main-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Accept non-promotion PR
+        run: |
+          echo "This PR is not a beta/release promotion."
+          echo "The expensive promotion validation is intentionally skipped; normal PR checks remain authoritative."
+
   verify:
     name: Verify beta is safe to promote
     if: github.event_name != 'pull_request' || github.head_ref == 'beta' || startsWith(github.head_ref, 'release/main-')
