@@ -167,16 +167,11 @@ class ExclusiveNavigationWiringRegressionTest {
 
 
 	@Test
-	fun `01 11 12 use responsive sliced artwork instead of one stretched navbar bitmap`() {
+	fun `all exclusive themes use native renderer baseline`() {
 		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(renderer.contains("valusesResponsiveThreeSlice=spec.stableId==RankThemeId.FIRST_PAGE.stableId"))
-		assertTrue(renderer.contains("spec.stableId==RankThemeId.IMPERIAL_AURORA.stableId"))
-		assertTrue(renderer.contains("spec.stableId==RankThemeId.ETERNAL_LIBRARY.stableId"))
-		assertTrue(renderer.contains("ResponsiveExclusiveOrnament(bitmap=ornamentBitmap"))
-		assertTrue(renderer.contains("Bitmap.createBitmap(bitmap,0,0,capWidth,bitmap.height)"))
-		assertTrue(renderer.contains("valornamentWidth=if(usesResponsiveThreeSlice){maxWidth}"))
+		assertTrue(renderer.contains("valornament:ExclusiveBottomNavigationOrnamentSpec?=remember(spec.stableId){null}"))
 		assertTrue(renderer.contains(".weight(1f).fillMaxHeight()"))
 	}
 
@@ -197,21 +192,14 @@ class ExclusiveNavigationWiringRegressionTest {
 
 
 	@Test
-	fun `foundation themes use responsive sliced artwork and full width host`() {
+	fun `exclusive native baseline keeps full width host`() {
 		val host = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
 			.replace(Regex("\\s+"), "")
 		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
 			.replace(Regex("\\s+"), "")
-		val registry = source("kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveBottomNavigationSpec.kt")
-			.replace(Regex("\\s+"), "")
 
 		assertTrue(host.contains("modifier=if(hasExclusiveNavigation)Modifier.fillMaxWidth()elseModifier.wrapContentWidth()"))
-		assertTrue(renderer.contains("valusesResponsiveThreeSlice=spec.stableId==RankThemeId.FIRST_PAGE.stableId"))
-		assertTrue(renderer.contains("spec.stableId==RankThemeId.IMPERIAL_AURORA.stableId"))
-		assertTrue(renderer.contains("spec.stableId==RankThemeId.ETERNAL_LIBRARY.stableId"))
-		assertTrue(registry.contains("ornament=ExclusiveNavigationOrnament.SILVER_CRYSTALS"))
-		assertTrue(renderer.contains("ResponsiveExclusiveOrnament(bitmap=ornamentBitmap"))
-		assertTrue(renderer.contains("valornamentWidth=if(usesResponsiveThreeSlice){maxWidth}"))
+		assertTrue(renderer.contains("valornament:ExclusiveBottomNavigationOrnamentSpec?=remember(spec.stableId){null}"))
 		assertTrue(renderer.contains(".weight(1f).fillMaxHeight()"))
 	}
 
