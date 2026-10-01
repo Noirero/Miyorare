@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.backup.local.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNames
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.bookmarks.data.BookmarkEntity
 import org.koitharu.kotatsu.core.db.entity.ChapterEntity
@@ -455,7 +456,9 @@ class ReaderJourneyWeeklyStateBackup(
 class ReaderJourneyProfileSelectionBackup(
 	@SerialName("selected_title") val selectedTitleId: String? = null,
 	@SerialName("cosmetic_loadout_v2") val cosmeticLoadoutV2: String? = null,
-	@SerialName("lifetime_xp_floor") val lifetimeXpFloor: Long = 0L,
+	@SerialName("lifetime_xp")
+	@JsonNames("lifetime_xp_floor")
+	val lifetimeXp: Long = 0L,
 )
 
 @Serializable
