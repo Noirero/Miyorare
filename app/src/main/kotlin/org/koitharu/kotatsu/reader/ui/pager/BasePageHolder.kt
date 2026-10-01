@@ -119,12 +119,11 @@ abstract class BasePageHolder<B : ViewBinding>(
 	fun reloadImage() {
 		val state = viewModel.state.value as? PageState.Shown ?: return
 		if (state.isAnimatedImage) {
-			val loaded = PageState.Loaded(state.source, isAnimatedImage = true)
-			showAnimatedImage(loaded)
+			showAnimatedImage(state.source)
 			return
 		}
 		settings.applyBitmapConfig(ssiv)
-		ssiv.setImage(state.source)
+		ssiv.setImage(source)
 	}
 
 	fun bind(data: ReaderPage) {
@@ -265,7 +264,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 				bindingInfo.textViewStatus.setText(R.string.preparing_)
 				bindingInfo.textViewStatus.isVisible = true
 				if (state.isAnimatedImage) {
-					showAnimatedImage(state)
+					showAnimatedImage(state.source)
 				} else {
 					animatedLoadJob?.cancel()
 					(animatedImageView.drawable as? Animatable)?.stop()
@@ -273,7 +272,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 					animatedImageView.isGone = true
 					ssiv.isVisible = true
 					settings.applyBitmapConfig(ssiv)
-					ssiv.setImage(state.source)
+					ssiv.setImage(source)
 				}
 			}
 
@@ -290,8 +289,8 @@ abstract class BasePageHolder<B : ViewBinding>(
 		}
 	}
 
-	private fun showAnimatedImage(state: PageState.Loaded) {
-		val uri = (state.source as? ImageSource.Uri)?.uri ?: return
+	private fun showAnimatedImage(source: ImageSource) {
+		val uri = (source as? ImageSource.Uri)?.uri ?: return
 		animatedLoadJob?.cancel()
 		ssiv.recycle()
 		ssiv.isGone = true
@@ -310,7 +309,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 				animatedImageView.isGone = true
 				ssiv.isVisible = true
 				settings.applyBitmapConfig(ssiv)
-				ssiv.setImage(state.source)
+				ssiv.setImage(source)
 				bindingInfo.textViewStatus.isVisible = false
 				viewModel.onImageLoaded()
 			}
