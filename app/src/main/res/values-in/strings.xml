@@ -783,7 +783,6 @@
     <string name="reader_journey_collection_filter_nameplates">Nameplate</string>
     <string name="reader_journey_collection_filter_badges">Badge</string>
     <string name="reader_journey_collection_filter_wallpapers">Wallpaper</string>
-    <string name="reader_journey_exclusive_theme_set">%1$s · Tema Exclusive</string>
     <string name="reader_journey_customize_title">Kustomisasi Tema Exclusive</string>
     <string name="reader_journey_customize_theme_mix">Campuran Tema</string>
     <string name="reader_journey_customize_profile_card">Kartu Profil</string>
@@ -812,7 +811,6 @@
     <string name="reader_journey_theme_collection_title">Koleksi Tema / Kosmetik</string>
     <string name="reader_journey_rank_journey">Perjalanan Rank</string>
     <string name="reader_journey_next_reward">Reward berikutnya</string>
-    <string name="reader_journey_next_reward_detail">%1$s · Terbuka di Lv.%2$d</string>
     <string name="reader_journey_unlock_at_level">Terbuka pada Level %1$d</string>
     <string name="reader_journey_unlocked_at_level">Sudah terbuka sejak Level %1$d</string>
     <string name="reader_journey_customize_selected">Dipilih</string>
