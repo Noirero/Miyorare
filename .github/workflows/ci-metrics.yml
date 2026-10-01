@@ -38,7 +38,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/ci-metrics
-          gh api --paginate             -H 'Accept: application/vnd.github+json'             '/repos/${{ github.repository }}/actions/runs?per_page=100'             | jq -s '{"workflow_runs": map(.workflow_runs[])[:300]}'             > build/ci-metrics/runs.json
+          for page in 1 2 3; do
+            gh api -H 'Accept: application/vnd.github+json' "/repos/${{ github.repository }}/actions/runs?per_page=100&page=$page"
+          done | jq -s '{"workflow_runs": map(.workflow_runs[])[:300]}' > build/ci-metrics/runs.json
 
       - name: Summarize metrics
         run: |
