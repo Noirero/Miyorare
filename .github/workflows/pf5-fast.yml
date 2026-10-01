@@ -29,17 +29,9 @@ jobs:
       - name: Diff sanity
         run: git diff --check HEAD^ HEAD
 
-      - name: Pre-warm parser dependency
+      - name: Pre-warm JitPack dependencies
         shell: bash
-        run: |
-          set -euo pipefail
-          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
-          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
-          for i in $(seq 1 8); do
-            [ "$(curl -s -o /dev/null -w '%{http_code}' "$POM_URL")" = "200" ] && exit 0
-            sleep 10
-          done
-          exit 1
+        run: bash .github/scripts/prewarm_jitpack.sh
 
       - name: Compile JVM source
         run: ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --stacktrace

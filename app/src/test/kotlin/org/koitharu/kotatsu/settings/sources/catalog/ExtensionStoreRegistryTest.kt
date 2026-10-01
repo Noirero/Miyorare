@@ -51,6 +51,30 @@ class ExtensionStoreRegistryTest {
 	}
 
 	@Test
+	fun `fingerprint fallback keeps manga novel and anime repositories isolated`() {
+		val manga = store(id = "manga", fingerprint = "shared")
+		val novel = store(id = "novel", fingerprint = "shared")
+		val anime = store(id = "anime", fingerprint = "shared")
+		val stores = listOf(manga, novel, anime)
+		val types = mapOf(
+			manga.id to ExtensionStoreContentType.MANGA,
+			novel.id to ExtensionStoreContentType.NOVEL,
+			anime.id to ExtensionStoreContentType.ANIME,
+		)
+
+		fun owner(packageName: String) = fingerprintOwnerCandidates(
+			stores = stores,
+			packageName = packageName,
+			signatures = listOf("SHARED"),
+			contentTypeOf = { types.getValue(it) },
+		).single().id
+
+		assertEquals("manga", owner("eu.kanade.tachiyomi.extension.en.example"))
+		assertEquals("novel", owner("eu.kanade.tachiyomi.novelextension.en.example"))
+		assertEquals("anime", owner("eu.kanade.tachiyomi.animeextension.en.example"))
+	}
+
+	@Test
 	fun `system and sandbox ownership stay independent for the same package`() {
 		val state = ExtensionStoreRegistryState(stores = listOf(store("one"), store("two")))
 			.setOwner(ExtensionInstallMode.SYSTEM, PACKAGE, "one")
