@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.backup.local.data.model
 
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNames
 import org.koitharu.kotatsu.BuildConfig
@@ -452,6 +453,7 @@ class ReaderJourneyWeeklyStateBackup(
 	)
 }
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 class ReaderJourneyProfileSelectionBackup(
 	@SerialName("selected_title") val selectedTitleId: String? = null,
