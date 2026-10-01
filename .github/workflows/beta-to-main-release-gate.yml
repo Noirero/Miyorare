@@ -1,12 +1,10 @@
 name: Beta to Main Release Gate
 
-# Release-flow policy:
-# - Freeze the accepted beta snapshot into release/main-* before promotion.
-# - Promote release/main-* -> main, never a moving beta branch -> main.
-# - Beta remains free for new feature work while the frozen release candidate is validated.
-# - Normal pushes/bugfix merges to beta intentionally do not run this gate.
-# Final Android backup/chapter/P0-P1 instrumentation is consolidated into the same Android 15
-# emulator session as the upgrade/runtime smoke, avoiding three duplicate emulator boots.
+# Phase 12 promotion policy:
+# - Beta pays the validation cost.
+# - Main only accepts a proven beta/release candidate.
+# - Do not repeat Gradle, APK, emulator, or instrumentation work during promotion.
+# - Freeze accepted beta into release/main-* when beta must keep moving during release prep.
 
 on:
   pull_request:
@@ -22,204 +20,85 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: Verify beta is safe to promote
-    if: github.event_name != 'pull_request' || github.head_ref == 'beta' || startsWith(github.head_ref, 'release/main-')
+  promotion-gate:
+    name: Promotion Gate
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    timeout-minutes: 5
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-provider: basic
-          # PR cache entries are scoped to refs/pull/*/merge and are not reusable
-          # after promotion. Beta push/manual runs remain writable cache producers.
-          cache-read-only: ${{ github.event_name == 'pull_request' || github.ref_name != 'beta' }}
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Pre-warm JitPack dependencies
-        shell: bash
-        run: bash .github/scripts/prewarm_jitpack.sh
-
-      - name: Test runtime-smoke path classifier
-        run: python3 .github/scripts/test_runtime_smoke_paths.py
-
-      - name: Run deep promotion gate
-        run: |
-          # testDebugUnitTest depends on compileDebugKotlin; keep one root task graph.
-          ./gradlew \
-            :app:testDebugUnitTest \
-            --no-daemon \
-            --stacktrace
-
-  classify-runtime-smoke:
-    name: Classify runtime smoke
-    if: github.event_name == 'pull_request' && (github.head_ref == 'beta' || startsWith(github.head_ref, 'release/main-'))
-    runs-on: ubuntu-latest
-    outputs:
-      run_smoke: ${{ steps.classify.outputs.run_smoke }}
-
-    steps:
-      - name: Checkout promotion head with history
+      - name: Checkout promotion candidate
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Classify promotion changes
-        id: classify
+      - name: Verify promotion source
+        if: github.event_name == 'pull_request'
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$HEAD_REF" != "beta" && "$HEAD_REF" != release/main-* ]]; then
+            echo "::error::Main accepts promotion only from beta or a frozen release/main-* candidate."
+            exit 1
+          fi
+
+      - name: Verify exact candidate ancestry
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          mkdir -p build
-          changed_file_list=build/runtime-smoke-changed-files.txt
-          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$changed_file_list"
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
 
-          echo "Changed files considered for runtime smoke:"
-          if [[ -s "$changed_file_list" ]]; then
-            sed 's/^/  - /' "$changed_file_list"
-          else
-            echo "  - <none>"
-          fi
-
-          run_smoke="$(python3 .github/scripts/runtime_smoke_paths.py --paths-file "$changed_file_list")"
-          [[ "$run_smoke" == "true" || "$run_smoke" == "false" ]] || {
-            echo "::error::Runtime smoke classifier returned an invalid decision: $run_smoke"
+          # A frozen release candidate must be a beta snapshot, not an unrelated branch.
+          git fetch --no-tags origin beta
+          git merge-base --is-ancestor "$HEAD_SHA" origin/beta || {
+            echo "::error::Promotion candidate is not contained in beta."
             exit 1
           }
 
-          echo "run_smoke=$run_smoke" >> "$GITHUB_OUTPUT"
-          {
-            echo "### Runtime smoke classification"
-            echo
-            echo "Decision: `$run_smoke`"
-            echo
-            if [[ "$run_smoke" == "true" ]]; then
-              echo "Android emulator smoke will run because the change set is runtime-sensitive, mixed, unknown, or empty."
-            else
-              echo "Android emulator smoke is skipped because every changed file is explicitly classified as non-runtime documentation/metadata."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  runtime-smoke:
-    name: Upgrade, runtime, and Android 15 acceptance
-    needs: classify-runtime-smoke
-    if: needs.classify-runtime-smoke.outputs.run_smoke == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 75
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
-    steps:
-      - name: Checkout promotion head with history
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-provider: basic
-          # PR cache entries are scoped to refs/pull/*/merge and are not reusable
-          # after promotion. Beta push/manual runs remain writable cache producers.
-          cache-read-only: ${{ github.event_name == 'pull_request' || github.ref_name != 'beta' }}
-
-      - name: Pre-warm JitPack dependencies
+      - name: Verify release-critical identity invariants
         shell: bash
-        run: bash .github/scripts/prewarm_jitpack.sh
-
-      - name: Build main and beta debug APKs with identical debug signing
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
 
-          patch_settings_export() {
-            python3 - <<'PY'
-          from pathlib import Path
-          p = Path('app/src/main/AndroidManifest.xml')
-          text = p.read_text(encoding='utf-8')
-          old = '''<activity\n\t\t\tandroid:name="org.koitharu.kotatsu.settings.SettingsActivity"\n\t\t\tandroid:exported="false"'''
-          new = '''<activity\n\t\t\tandroid:name="org.koitharu.kotatsu.settings.SettingsActivity"\n\t\t\tandroid:exported="true"'''
-          if old not in text:
-              raise SystemExit('SettingsActivity export marker not found')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
+          grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle || {
+            echo "::error::Main applicationId must remain org.noirero.miyorare."
+            exit 1
+          }
+          grep -Fq "variant.applicationId.set('org.noirero.miyorare.beta')" app/build.gradle || {
+            echo "::error::Beta preview applicationId must remain org.noirero.miyorare.beta."
+            exit 1
+          }
+          grep -Fq 'android:label="@string/app_name"' app/src/main/AndroidManifest.xml || {
+            echo "::error::Main manifest must use @string/app_name."
+            exit 1
+          }
+          grep -Fq '<string name="app_name" translatable="false">Miyorare</string>' app/src/release/res/values/app_name.xml || {
+            echo "::error::Main release label must remain Miyorare."
+            exit 1
+          }
+          grep -Fq 'android:label="@string/app_name_beta"' app/src/preview/AndroidManifest.xml || {
+            echo "::error::Beta preview manifest must override the app label."
+            exit 1
+          }
+          grep -Fq '<string name="app_name_beta" translatable="false">Miyorare Beta</string>' app/src/preview/res/values/strings.xml || {
+            echo "::error::Beta label must remain Miyorare Beta."
+            exit 1
           }
 
-          git checkout --force "$BASE_SHA"
-          patch_settings_export
-          chmod +x gradlew
-          rm -rf app/build/outputs/apk/debug
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
-          MAIN_APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
-          test -n "$MAIN_APK"
-          cp "$MAIN_APK" /tmp/miyorare-main-debug.apk
-
-          git checkout --force "$HEAD_SHA"
-          patch_settings_export
-          chmod +x gradlew
-          rm -rf app/build/outputs/apk/debug
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
-          BETA_APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
-          test -n "$BETA_APK"
-          cp "$BETA_APK" /tmp/miyorare-beta-debug.apk
-
-          echo "Main APK: $(du -h /tmp/miyorare-main-debug.apk | cut -f1)"
-          echo "Beta APK: $(du -h /tmp/miyorare-beta-debug.apk | cut -f1)"
-
-      - name: Enable KVM
+      - name: Record validate-once promotion evidence
         shell: bash
-        run: sudo chmod 666 /dev/kvm || true
-
-      - name: Run consolidated Android 15 release acceptance
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          disable-animations: true
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -eu
-            bash .github/scripts/beta-main-runtime-smoke.sh
-            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest
-
-      - name: Upload consolidated release evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: beta-main-release-gate-runtime
-          path: |
-            release-gate-runtime/
-            app/build/reports/androidTests/connected/
-            app/build/outputs/androidTest-results/connected/
-          if-no-files-found: warn
-          retention-days: 7
+        run: |
+          {
+            echo "### Promotion Gate"
+            echo
+            echo "- Candidate: \`$(git rev-parse HEAD)\`"
+            echo "- Source: \`${{ github.head_ref || github.ref_name }}\`"
+            echo "- Policy: beta validates; main verifies and promotes."
+            echo "- Repeated Gradle/Android validation: none."
+          } >> "$GITHUB_STEP_SUMMARY"
