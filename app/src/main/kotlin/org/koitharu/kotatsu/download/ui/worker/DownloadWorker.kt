@@ -380,15 +380,15 @@ class DownloadWorker @AssistedInject constructor(
 					if (downloadedPages.any { it == null }) {
 						continue
 					}
-					// Keep N/N visible during the short ZIP finalization phase. The previous reset to
-					// indeterminate 0/0 made Downloads abruptly change appearance exactly when transfer
-					// completed, even though every page had already succeeded.
+					// The page counter already represents pages materialized into the temporary CBZ.
+					// Keep N/N determinate while the chapter stream is closed/renamed instead of flashing
+					// a separate Processing state between every chapter.
 					publishState(
 						currentState.copy(
 							totalPages = pages.size,
 							currentPage = pages.size,
-							isIndeterminate = true,
-							isFinalizing = true,
+							isIndeterminate = false,
+							isFinalizing = false,
 							eta = -1L,
 							isStuck = false,
 						),
@@ -396,11 +396,6 @@ class DownloadWorker @AssistedInject constructor(
 					val chapterFinalized = output.flushChapter(chapter.value)
 					if (chapterFinalized) {
 						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
-						runCatchingCancellable {
-							val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
-							localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
-							localStorageChanges.emit(localManga)
-						}.onFailure(Throwable::printStackTraceDebug)
 					}
 					completedRequestedChapters++
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
