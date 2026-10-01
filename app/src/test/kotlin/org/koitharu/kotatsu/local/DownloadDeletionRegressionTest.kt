@@ -15,7 +15,7 @@ class DownloadDeletionRegressionTest {
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(output.contains("suppliedIds.containsAll(ids)"))
-		assertTrue(output.contains("check(chapterCanonical.exists())"))
+		assertTrue(output.contains("if(chapterCanonical.exists())"))
 		assertTrue(output.contains("check(chapterCanonical.deleteAwait()&&!chapterCanonical.exists())"))
 
 		val physicalDelete = output.indexOf("check(chapterCanonical.deleteAwait()&&!chapterCanonical.exists())")
