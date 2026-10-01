@@ -211,23 +211,12 @@ class PageLoader @Inject constructor(
 		}
 	}
 
-	suspend fun isAnimatedGif(uri: Uri): Boolean = runInterruptible(Dispatchers.IO) {
-		if (!uri.isFileUri()) return@runInterruptible false
-		val file = uri.toFile()
-		if (!file.isFile || file.length() < GIF_SIGNATURE_SIZE) return@runInterruptible false
-		val signature = ByteArray(GIF_SIGNATURE_SIZE)
-		file.inputStream().buffered().use { input ->
-			if (input.read(signature) != GIF_SIGNATURE_SIZE) return@runInterruptible false
-		}
-		val header = signature.decodeToString()
-		header == GIF87A || header == GIF89A
-	}
-
 	suspend fun loadAnimatedDrawable(uri: Uri): Drawable? {
 		val request = ImageRequest.Builder(context)
 			.data(uri)
 			.build()
-		return coil.execute(request).image?.asDrawable(context.resources)
+		val drawable = coil.execute(request).image?.asDrawable(context.resources)
+		return drawable?.takeIf { it is android.graphics.drawable.Animatable }
 	}
 
 	suspend fun getTrimmedBounds(uri: Uri): Rect? = runCatchingCancellable {
@@ -465,9 +454,6 @@ class PageLoader @Inject constructor(
 	companion object {
 
 		private const val PROGRESS_UNDEFINED = -1f
-		private const val GIF_SIGNATURE_SIZE = 6
-		private const val GIF87A = "GIF87a"
-		private const val GIF89A = "GIF89a"
 		private const val PREFETCH_MAX_PARALLELISM = 2
 		private const val PREFETCH_LIMIT_DEFAULT = 6
 		private const val PREFETCH_LIMIT_MEDIUM = 8
