@@ -128,10 +128,6 @@ jobs:
           python3 .github/scripts/test_release_version.py
           python3 .github/scripts/test_summarize_gradle_profile.py
 
-      - name: Compile JVM test source
-        if: steps.scope.outputs.required == 'true'
-        run: ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --stacktrace
-
       - name: Run targeted fast regression
         if: steps.scope.outputs.required == 'true'
         run: |
