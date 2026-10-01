@@ -36,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,7 +65,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -492,8 +495,10 @@ private fun ExclusiveNameplateCatalogThumbnail(
 	}
 	val context = LocalContext.current
 	val densityDpi = context.resources.displayMetrics.densityDpi
-	val thumbnailBitmap = remember(asset.thumbnailRes, densityDpi) {
-		NameplateCatalogBitmapCache.get(context, asset.thumbnailRes)
+	val thumbnailBitmap by produceState<ImageBitmap?>(null, asset.thumbnailRes, densityDpi) {
+		value = withContext(Dispatchers.IO) {
+			NameplateCatalogBitmapCache.get(context, asset.thumbnailRes)
+		}
 	}
 	Box(
 		modifier = modifier,
