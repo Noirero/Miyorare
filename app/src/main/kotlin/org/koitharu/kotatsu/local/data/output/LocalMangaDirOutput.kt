@@ -83,12 +83,13 @@ class LocalMangaDirOutput(
 		true
 	}
 
-	override suspend fun discardChapter(chapter: MangaChapter) = mutex.withLock {
+	override suspend fun discardChapter(chapter: MangaChapter) {\n\t\tmutex.withLock {
 		chaptersOutput.remove(chapter)?.let { output ->
 			output.closeQuietly()
 			output.file.deleteAwait()
 		}
 		index.removeChapter(chapter.id)
+		}
 	}
 
 	override suspend fun finish() = mutex.withLock {
