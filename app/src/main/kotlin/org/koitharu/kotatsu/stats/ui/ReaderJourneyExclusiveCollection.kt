@@ -1293,7 +1293,7 @@ private fun ExclusiveFrameSelector(
 @Composable
 internal fun ExclusiveNameplateSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
-	accessRank: ReaderRank = ReaderRank.LEGEND,
+	accessRank: ReaderRank,
 	selectedNameplateId: String?,
 	allowFollowBase: Boolean,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
