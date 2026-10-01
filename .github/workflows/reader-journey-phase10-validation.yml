@@ -112,6 +112,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Pre-warm JitPack dependencies
+        if: steps.phase10_scope.outputs.required == 'true'
         shell: bash
         run: bash .github/scripts/prewarm_jitpack.sh
 
