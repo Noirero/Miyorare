@@ -165,6 +165,22 @@ class ExclusiveNavigationWiringRegressionTest {
 		)
 	}
 
+
+	@Test
+	fun `01 11 12 use responsive sliced artwork instead of one stretched navbar bitmap`() {
+		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(renderer.contains("valusesResponsiveThreeSlice=spec.stableId==RankThemeId.FIRST_PAGE.stableId"))
+		assertTrue(renderer.contains("spec.stableId==RankThemeId.IMPERIAL_AURORA.stableId"))
+		assertTrue(renderer.contains("spec.stableId==RankThemeId.ETERNAL_LIBRARY.stableId"))
+		assertTrue(renderer.contains("ResponsiveExclusiveOrnament(bitmap=ornamentBitmap"))
+		assertTrue(renderer.contains("Bitmap.createBitmap(bitmap,0,0,capWidth,bitmap.height)"))
+		assertTrue(renderer.contains("valornamentWidth=if(usesResponsiveThreeSlice){maxWidth}"))
+		assertTrue(renderer.contains(".weight(1f).fillMaxHeight()"))
+	}
+
+
 	@Test
 	fun `body silhouette is real path geometry not ornament-only recolouring`() {
 		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
