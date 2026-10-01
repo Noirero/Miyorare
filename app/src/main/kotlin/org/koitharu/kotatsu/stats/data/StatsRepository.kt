@@ -70,7 +70,7 @@ class StatsRepository @Inject constructor(
 	private val progressionRepository: ReaderJourneyProgressionRepository,
 ) {
 
-	private val snapshotCache = LinkedHashMap<StatsSnapshotKey, ReadingStats>()
+	@Volatile private var cachedSnapshot: Pair<StatsSnapshotKey, ReadingStats>? = null
 	@Volatile private var cachedYearInReview: YearInReview? = null
 
 	fun getCachedStatsSnapshot(
@@ -78,8 +78,9 @@ class StatsRepository @Inject constructor(
 		categories: Set<Long>,
 		scope: StatsContentScope,
 		matureMode: StatsMatureMode,
-	): ReadingStats? = synchronized(snapshotCache) {
-		snapshotCache[StatsSnapshotKey(period, categories.toSet(), scope, matureMode)]
+	): ReadingStats? {
+		val key = StatsSnapshotKey(period, categories.toSet(), scope, matureMode)
+		return cachedSnapshot?.takeIf { it.first == key }?.second
 	}
 
 	fun getCachedYearInReview(year: Int): YearInReview? =
@@ -250,9 +251,7 @@ class StatsRepository @Inject constructor(
 			privateDuration = built.privateDuration,
 			privateTitles = built.privateTitles,
 		)
-		synchronized(snapshotCache) {
-			snapshotCache[StatsSnapshotKey(period, categories.toSet(), scope, matureMode)] = result
-		}
+		cachedSnapshot = StatsSnapshotKey(period, categories.toSet(), scope, matureMode) to result
 		return result
 	}
 
