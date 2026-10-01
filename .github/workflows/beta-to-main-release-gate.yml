@@ -1,10 +1,12 @@
 name: Beta to Main Release Gate
 
-# Phase 12 promotion policy:
-# - Beta pays the validation cost.
-# - Main only accepts a proven beta/release candidate.
-# - Do not repeat Gradle, APK, emulator, or instrumentation work during promotion.
-# - Freeze accepted beta into release/main-* when beta must keep moving during release prep.
+# Main has two protected entry paths:
+# 1. beta or release/main-* promotion: beta already paid the validation cost, so only
+#    exact-candidate/release invariants are verified here.
+# 2. hotfix/*: emergency fixes branch from current main and pay their own JVM/runtime
+#    validation cost before the same required status can succeed.
+#
+# The final job name is intentionally stable because the main ruleset requires it.
 
 on:
   pull_request:
@@ -16,89 +18,241 @@ permissions:
   contents: read
 
 concurrency:
-  group: beta-main-release-gate-${{ github.ref }}
+  group: beta-main-release-gate-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
-  promotion-gate:
-    name: Promotion Gate
+  classify:
+    name: Classify main candidate
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
+    outputs:
+      mode: ${{ steps.mode.outputs.mode }}
+      run_runtime: ${{ steps.runtime.outputs.run_runtime }}
     steps:
-      - name: Checkout promotion candidate
+      - name: Checkout exact candidate
         uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Verify promotion source
-        if: github.event_name == 'pull_request'
+      - name: Classify source
+        id: mode
         shell: bash
         env:
           HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          if [[ "$HEAD_REF" != "beta" && "$HEAD_REF" != release/main-* ]]; then
-            echo "::error::Main accepts promotion only from beta or a frozen release/main-* candidate."
-            exit 1
+
+          if [[ "${{ github.event_name }}" = "workflow_dispatch" ]]; then
+            echo "mode=promotion" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-      - name: Verify exact candidate ancestry
-        if: github.event_name == 'pull_request'
-        shell: bash
-        env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
           [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$HEAD_SHA"
 
-          # A frozen release candidate must be a beta snapshot, not an unrelated branch.
-          git fetch --no-tags origin beta
-          git merge-base --is-ancestor "$HEAD_SHA" origin/beta || {
-            echo "::error::Promotion candidate is not contained in beta."
+          if [[ "$HEAD_REF" = "beta" || "$HEAD_REF" = release/main-* ]]; then
+            git fetch --no-tags origin beta
+            git merge-base --is-ancestor "$HEAD_SHA" origin/beta || {
+              echo "::error::Promotion candidate is not contained in beta."
+              exit 1
+            }
+            echo "mode=promotion" >> "$GITHUB_OUTPUT"
+          elif [[ "$HEAD_REF" = hotfix/* ]]; then
+            # A direct-main hotfix must include the exact protected-main base it targets.
+            # This prevents an old/diverged branch from using the emergency path.
+            git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA" || {
+              echo "::error::hotfix/* must branch from or be updated onto the current main base."
+              exit 1
+            }
+            echo "mode=hotfix" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Main accepts only beta, release/main-*, or hotfix/* candidates."
             exit 1
-          }
+          fi
 
       - name: Verify release-critical identity invariants
         shell: bash
         run: |
           set -euo pipefail
+          grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle
+          grep -Fq "variant.applicationId.set('org.noirero.miyorare.beta')" app/build.gradle
+          grep -Fq 'android:label="@string/app_name"' app/src/main/AndroidManifest.xml
+          grep -Fq '<string name="app_name" translatable="false">Miyorare</string>' app/src/release/res/values/app_name.xml
+          grep -Fq 'android:label="@string/app_name_beta"' app/src/preview/AndroidManifest.xml
+          grep -Fq '<string name="app_name_beta" translatable="false">Miyorare Beta</string>' app/src/preview/res/values/strings.xml
 
-          grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle || {
-            echo "::error::Main applicationId must remain org.noirero.miyorare."
-            exit 1
-          }
-          grep -Fq "variant.applicationId.set('org.noirero.miyorare.beta')" app/build.gradle || {
-            echo "::error::Beta preview applicationId must remain org.noirero.miyorare.beta."
-            exit 1
-          }
-          grep -Fq 'android:label="@string/app_name"' app/src/main/AndroidManifest.xml || {
-            echo "::error::Main manifest must use @string/app_name."
-            exit 1
-          }
-          grep -Fq '<string name="app_name" translatable="false">Miyorare</string>' app/src/release/res/values/app_name.xml || {
-            echo "::error::Main release label must remain Miyorare."
-            exit 1
-          }
-          grep -Fq 'android:label="@string/app_name_beta"' app/src/preview/AndroidManifest.xml || {
-            echo "::error::Beta preview manifest must override the app label."
-            exit 1
-          }
-          grep -Fq '<string name="app_name_beta" translatable="false">Miyorare Beta</string>' app/src/preview/res/values/strings.xml || {
-            echo "::error::Beta label must remain Miyorare Beta."
-            exit 1
-          }
+      - name: Diff sanity
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
-      - name: Record validate-once promotion evidence
+      - name: Classify hotfix Android runtime risk
+        id: runtime
+        if: steps.mode.outputs.mode == 'hotfix'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test_android_runtime_paths.py
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > /tmp/hotfix-runtime-paths.txt
+          run_runtime="$(python3 .github/scripts/android_runtime_paths.py --paths-file /tmp/hotfix-runtime-paths.txt)"
+          echo "run_runtime=$run_runtime" >> "$GITHUB_OUTPUT"
+          echo "Hotfix Android runtime required: $run_runtime" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record promotion evidence
+        if: steps.mode.outputs.mode == 'promotion'
         shell: bash
         run: |
           {
-            echo "### Promotion Gate"
+            echo "### Beta promotion"
             echo
-            echo "- Candidate: \`$(git rev-parse HEAD)\`"
-            echo "- Source: \`${{ github.head_ref || github.ref_name }}\`"
+            echo "- Candidate: `$(git rev-parse HEAD)`"
+            echo "- Source: `${{ github.head_ref || github.ref_name }}`"
             echo "- Policy: beta validates; main verifies and promotes."
             echo "- Repeated Gradle/Android validation: none."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  hotfix-jvm:
+    name: Validate main hotfix JVM regression
+    needs: classify
+    if: needs.classify.outputs.mode == 'hotfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact hotfix head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact hotfix head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Run full JVM unit regression
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Upload hotfix unit-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-hotfix-unit-test-reports
+          path: app/build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 7
+
+  hotfix-runtime:
+    name: Validate main hotfix Android runtime
+    needs: classify
+    if: needs.classify.outputs.mode == 'hotfix' && needs.classify.outputs.run_runtime == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout exact hotfix head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact hotfix head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Enable KVM
+        shell: bash
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Run Android 15 persistence and migration acceptance
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest
+
+      - name: Upload hotfix runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-hotfix-android-runtime-evidence
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 7
+
+  required:
+    name: Verify beta is safe to promote
+    needs:
+      - classify
+      - hotfix-jvm
+      - hotfix-runtime
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify candidate validation result
+        shell: bash
+        env:
+          MODE: ${{ needs.classify.outputs.mode }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          JVM_RESULT: ${{ needs.hotfix-jvm.result }}
+          RUNTIME_RESULT: ${{ needs.hotfix-runtime.result }}
+          RUN_RUNTIME: ${{ needs.classify.outputs.run_runtime }}
+        run: |
+          set -euo pipefail
+
+          test "$CLASSIFY_RESULT" = "success"
+
+          if [[ "$MODE" = "promotion" ]]; then
+            test "$JVM_RESULT" = "skipped"
+            test "$RUNTIME_RESULT" = "skipped"
+            echo "Validated beta/release candidate is safe to promote."
+          elif [[ "$MODE" = "hotfix" ]]; then
+            test "$JVM_RESULT" = "success"
+            if [[ "$RUN_RUNTIME" = "true" ]]; then
+              test "$RUNTIME_RESULT" = "success"
+            else
+              test "$RUNTIME_RESULT" = "skipped"
+            fi
+            echo "Direct-main hotfix passed its required validation."
+          else
+            echo "::error::Unknown or rejected main candidate mode: $MODE"
+            exit 1
+          fi
