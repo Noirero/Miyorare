@@ -273,7 +273,8 @@ abstract class ReaderJourneyDao {
 	 */
 	@Transaction
 	open suspend fun rebuildProfileFromLedger() {
-		val adjustment = getProfile()?.xpFloorAdjustment ?: 0L
+		val currentProfile = getProfile()
+		val adjustment = currentProfile?.xpFloorAdjustment ?: 0L
 		val ledgerXp = sumAwardedXp() + sumBonusXp()
 		upsertProfile(
 			ReaderJourneyProfileEntity(
@@ -282,7 +283,7 @@ abstract class ReaderJourneyDao {
 				completedChapters = countCompletedChapters(),
 				mangaChapters = countMangaChapters(),
 				novelChapters = countNovelChapters(),
-				updatedAt = latestCompletionAt(),
+				updatedAt = maxOf(currentProfile?.updatedAt ?: 0L, latestCompletionAt()),
 			),
 		)
 	}
