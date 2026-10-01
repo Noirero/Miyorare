@@ -252,6 +252,7 @@ class ExtensionStoreManager @Inject constructor(
 				validateExtensionStoreContentType(validated.catalog, contentType)
 				validated
 			}
+			val safePrevious = if (checkedFresh.isFailure && fresh.isSuccess) previous else fallbackPrevious
 			checkedFresh.fold(
 				onSuccess = { validated ->
 					// Network metadata can change, but the user's Manga/Novel/Anime assignment cannot.
@@ -267,7 +268,7 @@ class ExtensionStoreManager @Inject constructor(
 				onFailure = { error ->
 					storeStateAfterRefresh(
 						store = store,
-						previous = fallbackPrevious,
+						previous = safePrevious,
 						result = Result.failure(error),
 						contentType = contentType,
 					)
