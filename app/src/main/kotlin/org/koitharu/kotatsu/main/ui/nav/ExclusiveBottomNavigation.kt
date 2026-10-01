@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.PowerManager
 import android.provider.Settings
@@ -126,20 +127,18 @@ internal fun ExclusiveBottomNavigationBar(
 	// Selection/press, one-shot accents and ambient decoration are independent channels.
 	// Accessibility/power policy only suppresses decorative loops; selection feedback remains.
 	val context = LocalContext.current
+	val authoredSlotArtwork = spec.stableId == RankThemeId.IMPERIAL_AURORA.stableId ||
+		spec.stableId == RankThemeId.ETERNAL_LIBRARY.stableId
 	val ornament = remember(spec.stableId) {
 		when (spec.stableId) {
-			RankThemeId.FIRST_PAGE.stableId,
-			RankThemeId.IMPERIAL_AURORA.stableId,
-			RankThemeId.ETERNAL_LIBRARY.stableId -> null
+			RankThemeId.FIRST_PAGE.stableId -> null
 			else -> ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId)
 		}
 	}
 	val ornamentBitmap = remember(context, ornament?.assetPath) {
 		ornament?.assetPath?.let { assetPath ->
 			runCatching {
-				context.assets.open(assetPath).use { input ->
-					BitmapFactory.decodeStream(input)?.asImageBitmap()
-				}
+				context.assets.open(assetPath).use { input -> BitmapFactory.decodeStream(input) }
 			}.getOrNull()
 		}
 	}
@@ -243,6 +242,26 @@ internal fun ExclusiveBottomNavigationBar(
 	val radiusDp = spec.cornerRadiusDp.dp
 	val navigationHeight = spec.heightDp.dp
 
+	if (ornamentBitmap != null && ornament != null && authoredSlotArtwork) {
+		AuthoredExclusiveSlotArtwork(
+			items = items,
+			selectedId = selectedId,
+			showLabels = showLabels,
+			spec = spec,
+			palette = palette,
+			bitmap = ornamentBitmap,
+			ambientPhase = ambientPhase,
+			selectionEventPhase = oneShotAccentEvent.value,
+			reduceMotion = reduceMotion,
+			reduceGlow = reduceGlow,
+			onItemSelected = onItemSelected,
+			onItemReselected = onItemReselected,
+			onItemLongClick = onItemLongClick,
+			modifier = modifier,
+		)
+		return
+	}
+
 	if (ornamentBitmap != null && ornament != null) {
 		/*
 		 * Keep native navigation geometry independent from the decorative 960x320 canvas.
@@ -301,7 +320,7 @@ internal fun ExclusiveBottomNavigationBar(
 			val iconSize = (activeDiameter * .68f).coerceIn(18.dp, 21.dp)
 
 			Image(
-				bitmap = ornamentBitmap,
+				bitmap = ornamentBitmap.asImageBitmap(),
 				contentDescription = null,
 				modifier = Modifier
 					.offset(x = ornamentStart, y = ornamentTop)
@@ -384,6 +403,116 @@ internal fun ExclusiveBottomNavigationBar(
 					iconSize = 23.dp,
 					ambientPhase = ambientPhase,
 					selectionEventPhase = if (item.id == selectedId) oneShotAccentEvent.value else 1f,
+					reduceMotion = reduceMotion,
+					reduceGlow = reduceGlow,
+					onClick = {
+						if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
+					},
+					onLongClick = { onItemLongClick(item.id) },
+				)
+			}
+		}
+	}
+}
+
+private data class AuthoredArtworkCrop(
+	val left: Float,
+	val top: Float,
+	val right: Float,
+	val bottom: Float,
+)
+
+@Composable
+private fun AuthoredExclusiveSlotArtwork(
+	items: List<FloatingNavBarItem>,
+	selectedId: Int,
+	showLabels: Boolean,
+	spec: ExclusiveBottomNavigationSpec,
+	palette: ExclusiveThemeComponentPalette,
+	bitmap: Bitmap,
+	ambientPhase: Float,
+	selectionEventPhase: Float,
+	reduceMotion: Boolean,
+	reduceGlow: Boolean,
+	onItemSelected: (Int) -> Unit,
+	onItemReselected: (Int) -> Unit,
+	onItemLongClick: (Int) -> Unit,
+	modifier: Modifier,
+) {
+	// Fractions come from the non-transparent master bounds. They describe decoration only:
+	// native slot geometry below remains the source of truth for interaction and accessibility.
+	val crop = when (spec.stableId) {
+		RankThemeId.IMPERIAL_AURORA.stableId -> AuthoredArtworkCrop(
+			left = .1125f, top = .121875f, right = .884375f, bottom = .76875f,
+		)
+		RankThemeId.ETERNAL_LIBRARY.stableId -> AuthoredArtworkCrop(
+			left = .117708f, top = .125f, right = .890625f, bottom = .878125f,
+		)
+		else -> return
+	}
+	val slotBitmaps = remember(bitmap, spec.stableId) {
+		val leftPx = (bitmap.width * crop.left).toInt().coerceIn(0, bitmap.width - 1)
+		val rightPx = (bitmap.width * crop.right).toInt().coerceIn(leftPx + 1, bitmap.width)
+		val topPx = (bitmap.height * crop.top).toInt().coerceIn(0, bitmap.height - 1)
+		val bottomPx = (bitmap.height * crop.bottom).toInt().coerceIn(topPx + 1, bitmap.height)
+		val sourceWidth = rightPx - leftPx
+		val sourceHeight = bottomPx - topPx
+		List(5) { index ->
+			val slotLeft = leftPx + sourceWidth * index / 5
+			val slotRight = leftPx + sourceWidth * (index + 1) / 5
+			Bitmap.createBitmap(
+				bitmap,
+				slotLeft,
+				topPx,
+				(slotRight - slotLeft).coerceAtLeast(1),
+				sourceHeight,
+			).asImageBitmap()
+		}
+	}
+	val cropAspect = (crop.right - crop.left) / (crop.bottom - crop.top)
+	BoxWithConstraints(modifier = modifier.height(spec.heightDp.dp)) {
+		val artworkWidth = maxWidth
+		val artworkHeight = artworkWidth / cropAspect
+		val artworkTop = (spec.heightDp.dp - artworkHeight) / 2f
+		val slotWidth = artworkWidth / 5f
+
+		// Five unique consecutive source bands: no repeated centre, no 9-patch and no stretched
+		// source region. Equal scaling keeps Prism separators and Celestial Infinity paths continuous.
+		Row(
+			modifier = Modifier
+				.offset(y = artworkTop)
+				.requiredWidth(artworkWidth)
+				.requiredHeight(artworkHeight),
+		) {
+			slotBitmaps.forEach { slotBitmap ->
+				Image(
+					bitmap = slotBitmap,
+					contentDescription = null,
+					modifier = Modifier
+						.requiredWidth(slotWidth)
+						.fillMaxHeight(),
+					contentScale = ContentScale.FillBounds,
+				)
+			}
+		}
+
+		Row(
+			modifier = Modifier
+				.fillMaxWidth()
+				.height(spec.heightDp.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			items.forEach { item ->
+				ExclusiveNavigationItem(
+					item = item,
+					selected = item.id == selectedId,
+					showLabel = showLabels,
+					spec = spec,
+					palette = palette,
+					activeDiameter = spec.activeDiameterDp.dp,
+					iconSize = 21.dp,
+					ambientPhase = ambientPhase,
+					selectionEventPhase = if (item.id == selectedId) selectionEventPhase else 1f,
 					reduceMotion = reduceMotion,
 					reduceGlow = reduceGlow,
 					onClick = {
