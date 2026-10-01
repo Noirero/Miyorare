@@ -36,7 +36,7 @@ automatic consequence of an ordinary commit.
 ## Green definitions
 
 ### FAST GREEN
-Relevant source compiles and cheap identity/config/static/targeted unit/contract checks pass.
+Cheap diff, identity/config/static and CI-helper checks pass. FAST is intentionally Gradle-free; JVM compilation/tests belong to DEEP so the same PR SHA is not compiled twice.
 No emulator and no release APK are required.
 
 ### DEEP GREEN
