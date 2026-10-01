@@ -215,10 +215,13 @@ internal fun fingerprintOwnerCandidates(
 	signatures: Collection<String>,
 	contentTypeOf: (String) -> ExtensionStoreContentType,
 ): List<ExtensionStoreRecord> {
-	val animePackage = packageName.contains(".animeextension.", ignoreCase = true)
+	val packageFamily = when {
+		packageName.contains(".animeextension.", ignoreCase = true) -> ExtensionStoreContentType.ANIME
+		packageName.contains(".novelextension.", ignoreCase = true) -> ExtensionStoreContentType.NOVEL
+		else -> ExtensionStoreContentType.MANGA
+	}
 	return stores.filter { store ->
-		val animeStore = contentTypeOf(store.id) == ExtensionStoreContentType.ANIME
-		val familyMatches = if (animePackage) animeStore else !animeStore
+		val familyMatches = contentTypeOf(store.id) == packageFamily
 		familyMatches && store.fingerprint?.let { fingerprint ->
 			signatures.any { it.equals(fingerprint, ignoreCase = true) }
 		} == true
