@@ -541,7 +541,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			.take(ReaderJourneyRules.WEEKLY_TASK_COUNT)
 
 	private fun startOfDayMillis(at: Long): Long {
-		val zone = ZoneId.systemDefault()
+		val zone = JOURNEY_ECONOMY_ZONE
 		return Instant.ofEpochMilli(at).atZone(zone).toLocalDate()
 			.atStartOfDay(zone).toInstant().toEpochMilli()
 	}
