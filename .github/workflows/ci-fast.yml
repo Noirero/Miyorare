@@ -90,10 +90,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile             .github/scripts/runtime_smoke_paths.py             .github/scripts/source_pack_readiness.py             .github/scripts/release_version.py             .github/scripts/summarize_gradle_profile.py
+          python3 -m py_compile             .github/scripts/runtime_smoke_paths.py             .github/scripts/source_pack_readiness.py             .github/scripts/release_version.py             .github/scripts/summarize_gradle_profile.py             .github/scripts/gradle_benchmark_summary.py             .github/scripts/ci_metrics.py
 
           python3 .github/scripts/test_runtime_smoke_paths.py
           python3 .github/scripts/test_source_pack_readiness.py
           python3 .github/scripts/test_release_version.py
           python3 .github/scripts/test_summarize_gradle_profile.py
+          python3 .github/scripts/test_gradle_benchmark_summary.py
+          python3 .github/scripts/test_ci_metrics.py
           bash -n .github/scripts/prewarm_jitpack.sh
