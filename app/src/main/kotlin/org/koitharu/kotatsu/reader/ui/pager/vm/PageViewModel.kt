@@ -148,8 +148,7 @@ class PageViewModel(
 			val uri = task.await()
 			progressObserver.cancelAndJoin()
 			previewJob.cancel()
-			val animatedDrawable = loader.loadAnimatedDrawable(uri)
-			val isAnimatedImage = animatedDrawable != null
+			val isAnimatedImage = loader.isAnimatedImage(uri)
 			cachedBounds = if (!isAnimatedImage && settingsProducer.value.isPagesCropEnabled(isWebtoon)) {
 				loader.getTrimmedBounds(uri)
 			} else {
