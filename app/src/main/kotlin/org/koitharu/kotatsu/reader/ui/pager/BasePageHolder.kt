@@ -21,6 +21,7 @@ import com.davemorrissey.labs.subscaleview.DefaultOnImageEventListener
 import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -297,6 +298,8 @@ abstract class BasePageHolder<B : ViewBinding>(
 				(drawable as? Animatable)?.start()
 				bindingInfo.textViewStatus.isVisible = false
 				viewModel.onImageLoaded()
+			} catch (e: CancellationException) {
+				throw e
 			} catch (e: Throwable) {
 				viewModel.onImageLoadError(e)
 			}
