@@ -109,23 +109,9 @@ jobs:
           strings.write_text(text.replace(old_name, new_name, 1))
           PY
 
-      - name: Pre-warm JitPack dependency
+      - name: Pre-warm JitPack dependencies
         shell: bash
-        run: |
-          set -euo pipefail
-          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
-          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
-          for i in $(seq 1 10); do
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$POM_URL")
-            if [ "$HTTP_STATUS" = "200" ]; then
-              echo "JitPack artifact is ready."
-              exit 0
-            fi
-            echo "Attempt $i: JitPack returned HTTP ${HTTP_STATUS}; retrying..."
-            sleep 15
-          done
-          echo "::error::JitPack dependency was not ready after 10 attempts."
-          exit 1
+        run: bash .github/scripts/prewarm_jitpack.sh
 
       - name: Build Experimental APK
         env:
