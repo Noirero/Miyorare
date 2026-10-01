@@ -93,10 +93,12 @@ class SourcesCatalogViewModel @Inject constructor(
 
 	val locales: StateFlow<Set<String?>> = combine(
 		allMihonSources,
-		storeManager.states,
+		storeManager.allStates,
+		activeStoreContentType,
 		isNsfwDisabled,
 		refreshTrigger,
-	) { sources, storeStates, nsfwDisabled, _ ->
+	) { sources, allStoreStates, contentType, nsfwDisabled, _ ->
+		val storeStates = allStoreStates.filter { it.contentType == contentType }
 		val localeSet = LinkedHashSet<String?>()
 		sources.forEach { localeSet.addCatalogLanguage(it.language) }
 		for (state in storeStates) {
@@ -247,7 +249,9 @@ class SourcesCatalogViewModel @Inject constructor(
 			} else {
 				ExtensionInstallMode.SYSTEM
 			}
-			val statesById = storeManager.states.value.associateBy { it.store.id }
+			val statesById = storeManager.allStates.value
+				.filter { it.contentType == activeStoreContentType.value }
+				.associateBy { it.store.id }
 			val requests = mihonExtensionLoader.getInstalledExtensions(
 				appContext,
 				privateMode = mode == ExtensionInstallMode.SANDBOX,
