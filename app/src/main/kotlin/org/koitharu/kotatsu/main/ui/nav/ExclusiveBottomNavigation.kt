@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.PowerManager
 import android.provider.Settings
@@ -128,18 +127,22 @@ internal fun ExclusiveBottomNavigationBar(
 	// Accessibility/power policy only suppresses decorative loops; selection feedback remains.
 	val context = LocalContext.current
 	val ornament = remember(spec.stableId) {
-		ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId)
+		when (spec.stableId) {
+			RankThemeId.FIRST_PAGE.stableId,
+			RankThemeId.IMPERIAL_AURORA.stableId,
+			RankThemeId.ETERNAL_LIBRARY.stableId -> null
+			else -> ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId)
+		}
 	}
 	val ornamentBitmap = remember(context, ornament?.assetPath) {
 		ornament?.assetPath?.let { assetPath ->
 			runCatching {
-				context.assets.open(assetPath).use { input -> BitmapFactory.decodeStream(input) }
+				context.assets.open(assetPath).use { input ->
+					BitmapFactory.decodeStream(input)?.asImageBitmap()
+				}
 			}.getOrNull()
 		}
 	}
-	val usesResponsiveThreeSlice = spec.stableId == RankThemeId.FIRST_PAGE.stableId ||
-		spec.stableId == RankThemeId.IMPERIAL_AURORA.stableId ||
-		spec.stableId == RankThemeId.ETERNAL_LIBRARY.stableId
 	val qaState by ExclusiveThemeQaRuntime.state.collectAsState()
 	val reduceMotionPreference by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
 	val reduceMotion = qaState.effectiveReduceMotion(reduceMotionPreference)
@@ -254,16 +257,12 @@ internal fun ExclusiveBottomNavigationBar(
 				maxWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
 			val maxOrnamentHeightWithoutCroppingVisibleArtwork =
 				navigationHeight / ornament.visibleHeightFraction
-			val ornamentHeight = if (usesResponsiveThreeSlice) {
-				maxOrnamentHeightWithoutCroppingVisibleArtwork
-			} else {
-				minOf(desiredOrnamentHeight, maxOrnamentHeightWithoutCroppingVisibleArtwork)
-			}
-			val ornamentWidth = if (usesResponsiveThreeSlice) {
-				maxWidth
-			} else {
+			val ornamentHeight = minOf(
+				desiredOrnamentHeight,
+				maxOrnamentHeightWithoutCroppingVisibleArtwork,
+			)
+			val ornamentWidth =
 				ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
-			}
 			val ornamentStart = (maxWidth - ornamentWidth) / 2f
 
 			val visibleCenterYFraction =
@@ -301,25 +300,15 @@ internal fun ExclusiveBottomNavigationBar(
 			)
 			val iconSize = (activeDiameter * .68f).coerceIn(18.dp, 21.dp)
 
-			if (usesResponsiveThreeSlice) {
-				ResponsiveExclusiveOrnament(
-					bitmap = ornamentBitmap,
-					start = ornamentStart,
-					top = ornamentTop,
-					width = ornamentWidth,
-					height = ornamentHeight,
-				)
-			} else {
-				Image(
-					bitmap = ornamentBitmap.asImageBitmap(),
-					contentDescription = null,
-					modifier = Modifier
-						.offset(x = ornamentStart, y = ornamentTop)
-						.requiredWidth(ornamentWidth)
-						.requiredHeight(ornamentHeight),
-					contentScale = ContentScale.Fit,
-				)
-			}
+			Image(
+				bitmap = ornamentBitmap,
+				contentDescription = null,
+				modifier = Modifier
+					.offset(x = ornamentStart, y = ornamentTop)
+					.requiredWidth(ornamentWidth)
+					.requiredHeight(ornamentHeight),
+				contentScale = ContentScale.Fit,
+			)
 
 			Row(
 				modifier = Modifier
@@ -404,38 +393,6 @@ internal fun ExclusiveBottomNavigationBar(
 				)
 			}
 		}
-	}
-}
-
-@Composable
-private fun ResponsiveExclusiveOrnament(
-	bitmap: Bitmap,
-	start: Dp,
-	top: Dp,
-	width: Dp,
-	height: Dp,
-) {
-	val slices = remember(bitmap) {
-		val capWidth = (bitmap.width * .28f).toInt().coerceAtLeast(1)
-		val centerWidth = (bitmap.width - capWidth * 2).coerceAtLeast(1)
-		Triple(
-			Bitmap.createBitmap(bitmap, 0, 0, capWidth, bitmap.height).asImageBitmap(),
-			Bitmap.createBitmap(bitmap, capWidth, 0, centerWidth, bitmap.height).asImageBitmap(),
-			Bitmap.createBitmap(bitmap, bitmap.width - capWidth, 0, capWidth, bitmap.height).asImageBitmap(),
-		)
-	}
-	val authoredCapWidth = height * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO * .28f
-	val capWidth = minOf(width * .28f, authoredCapWidth)
-	val centerWidth = (width - capWidth * 2f).coerceAtLeast(1.dp)
-	Box(
-		modifier = Modifier
-			.offset(x = start, y = top)
-			.requiredWidth(width)
-			.requiredHeight(height),
-	) {
-		Image(slices.first, null, Modifier.align(Alignment.CenterStart).requiredWidth(capWidth).requiredHeight(height), contentScale = ContentScale.FillBounds)
-		Image(slices.second, null, Modifier.align(Alignment.Center).requiredWidth(centerWidth).requiredHeight(height), contentScale = ContentScale.FillBounds)
-		Image(slices.third, null, Modifier.align(Alignment.CenterEnd).requiredWidth(capWidth).requiredHeight(height), contentScale = ContentScale.FillBounds)
 	}
 }
 
