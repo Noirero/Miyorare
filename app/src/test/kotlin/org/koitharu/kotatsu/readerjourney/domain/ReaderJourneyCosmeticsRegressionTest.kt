@@ -108,6 +108,7 @@ class ReaderJourneyCosmeticsRegressionTest {
 			),
 		)
 		assertTrue(collector.contains("ReaderJourneyCosmetics.newlyUnlocked(persisted.before.rank,persisted.after.rank)"))
+		assertTrue(collector.contains("unlockedAchievements=persisted.achievementResult.newlyUnlocked"))
 		assertTrue(collector.contains("breakdown=persisted.breakdown"))
 	}
 
@@ -117,12 +118,15 @@ class ReaderJourneyCosmeticsRegressionTest {
 			.replace(Regex("\\s+"), "")
 		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderActivity.kt")
 			.replace(Regex("\\s+"), "")
+		val queue = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/CelebrationQueue.kt")
+			.replace(Regex("\\s+"), "")
 
 		assertTrue(settings.contains("OFF,SUBTLE,FULL"))
-		assertTrue(reader.contains("if(mode==ReaderJourneyCelebrationMode.OFF)return"))
+		assertTrue(queue.contains("if(mode==ReaderJourneyCelebrationMode.OFF)continue"))
+		assertTrue(queue.contains("if(modeProvider()==ReaderJourneyCelebrationMode.OFF)return"))
 		assertTrue(reader.contains("if(mode==ReaderJourneyCelebrationMode.FULL)"))
 		assertTrue(reader.contains("if(event.isRankUp)"))
-		assertTrue(reader.contains("if(isAnimationsEnabled)"))
+		assertTrue(reader.contains("!item.reduceMotion"))
 	}
 
 	private fun source(relativePath: String): String {
