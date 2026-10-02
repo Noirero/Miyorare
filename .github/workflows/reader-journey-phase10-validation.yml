@@ -66,9 +66,29 @@ jobs:
           set -euo pipefail
           required=true
 
+          # Keep Phase 10 aligned with the repository-wide PR-origin policy:
+          # owner-request non-theme work normally skips emulator validation,
+          # while user issues/features, themes, conflicts, and explicit runtime
+          # overrides fail closed and keep the full validation.
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            labels='${{ join(github.event.pull_request.labels.*.name, ',') }}'
+            owner_request=false
+            user_issue=false
+            theme=false
+            runtime_required=false
+            case ",${labels,,}," in *",ci:owner-request,"*) owner_request=true ;; esac
+            case ",${labels,,}," in *",ci:user-issue,"*) user_issue=true ;; esac
+            case ",${labels,,}," in *",ci:theme,"*) theme=true ;; esac
+            case ",${labels,,}," in *",ci:runtime-required,"*) runtime_required=true ;; esac
+
+            if [ "$owner_request" = true ] && [ "$user_issue" = false ] && [ "$theme" = false ] && [ "$runtime_required" = false ]; then
+              required=false
+            fi
+          fi
+
           # Phase 10 is intentionally expensive. A synchronize commit that only repairs
           # Reader Journey regression tests or CI wiring can reuse the previous Phase 10 result.
-          if [ "$EVENT_NAME" = "pull_request" ] && [ "$EVENT_ACTION" = "synchronize" ] && [ -n "${BEFORE_SHA:-}" ]; then
+          if [ "$required" = "true" ] && [ "$EVENT_NAME" = "pull_request" ] && [ "$EVENT_ACTION" = "synchronize" ] && [ -n "${BEFORE_SHA:-}" ]; then
             mapfile -t changed < <(git diff --name-only "$BEFORE_SHA" "$HEAD_SHA")
             required=false
             for path in "${changed[@]}"; do
