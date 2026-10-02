@@ -280,6 +280,22 @@ class DownloadWorker @AssistedInject constructor(
 					}
 				}
 				val chapters = getChapters(mangaDetails, task)
+				// Resolve page lists before transferring images so the progress denominator is stable.
+				// The previous chapterCount * activeChapterPages formula changed max whenever chapter
+				// lengths differed, which made the bar jump and reach near-100% far too early.
+				val pagesByChapterId = chapters.mapNotNull { chapter ->
+					checkIsPaused()
+					if (chapter.value.id in chaptersToSkip) return@mapNotNull null
+					val pages = runFailsafe { repo.getPages(chapter.value) } ?: return@mapNotNull null
+					if (pages.isEmpty()) {
+						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
+						null
+					} else {
+						chapter.value.id to pages
+					}
+				}.toMap()
+				val overallTotalPages = pagesByChapterId.values.sumOf { it.size }
+				var completedProgressPages = 0
 				var completedRequestedChapters = 0
 				for ((chapterIndex, chapter) in chapters.withIndex()) {
 					checkIsPaused()
@@ -289,14 +305,7 @@ class DownloadWorker @AssistedInject constructor(
 						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 						continue
 					}
-					val resolvedPages = runFailsafe {
-						repo.getPages(chapter.value)
-					} ?: continue
-					if (resolvedPages.isEmpty()) {
-						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
-						continue
-					}
-					val pages = resolvedPages
+					val pages = pagesByChapterId[chapter.value.id] ?: continue
 					val resumeDir = getResumeChapterDir(mangaDetails.id, chapter.value.id)
 					val downloadedPages = arrayOfNulls<DownloadedPage>(pages.size)
 					val pageCounter = AtomicInteger(0)
@@ -307,6 +316,8 @@ class DownloadWorker @AssistedInject constructor(
 							totalChapters = chapters.size,
 							currentChapter = chapterIndex,
 							totalPages = pages.size,
+							overallTotalPages = overallTotalPages,
+							completedPagesBeforeChapter = completedProgressPages,
 							currentPage = 0,
 							isIndeterminate = false,
 							isFinalizing = false,
@@ -369,6 +380,8 @@ class DownloadWorker @AssistedInject constructor(
 								totalChapters = progress.totalChapters,
 								currentChapter = progress.currentChapter,
 								totalPages = progress.totalPages,
+								overallTotalPages = overallTotalPages,
+								completedPagesBeforeChapter = completedProgressPages,
 								currentPage = progress.currentPage,
 								isIndeterminate = false,
 								isFinalizing = false,
@@ -383,6 +396,7 @@ class DownloadWorker @AssistedInject constructor(
 						// the chapter so finish() can never publish a partial CBZ as complete.
 						output.discardChapter(chapter.value)
 						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
+						completedProgressPages += pages.size
 						continue
 					}
 					// The page counter already represents pages materialized into the temporary CBZ.
@@ -404,6 +418,7 @@ class DownloadWorker @AssistedInject constructor(
 						completedRequestedChapters++
 					}
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
+					completedProgressPages += pages.size
 					publishState(
 						currentState.copy(
 							downloadedChapters = if (chapterFinalized) currentState.downloadedChapters + 1 else currentState.downloadedChapters,
