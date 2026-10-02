@@ -240,6 +240,7 @@ fun StatsScreen(
 							ReaderProfileCard(
 								stats = stats,
 								profile = profile,
+								imageLoader = imageLoader,
 								onEdit = { showProfileEditor = true },
 								onAvatarClick = pickAvatar,
 								onShare = {
@@ -444,6 +445,7 @@ fun StatsScreen(
 private fun ReaderProfileCard(
 	stats: ReadingStats,
 	profile: ReaderProfileSettings,
+	imageLoader: ImageLoader,
 	onEdit: () -> Unit,
 	onAvatarClick: () -> Unit,
 	onShare: () -> Unit,
