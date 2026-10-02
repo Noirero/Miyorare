@@ -32,6 +32,7 @@ data class DownloadItemModel(
 	val isFinalizing: Boolean,
 	val phase: DownloadPhase,
 	val phaseChapter: Int,
+	val requestedChapters: Int,
 	val retryAttempt: Int,
 	val manga: Manga?,
 	val error: String?,
