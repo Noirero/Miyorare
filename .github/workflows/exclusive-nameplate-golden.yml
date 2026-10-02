@@ -113,7 +113,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: false
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048 -no-metrics
+          emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -memory 1536 -no-metrics
           script: |
             # Keep the headless Android 15 emulator alive through the screenshot-heavy suite.
             # The visual viewport, density, animation scales, tests, and evidence thresholds remain unchanged.
