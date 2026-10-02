@@ -509,12 +509,9 @@ fun downloadItemAD(
 				binding.progressBar.isVisible = false
 				binding.progressBar.isEnabled = true
 				binding.textViewPercent.isVisible = false
-				if (item.max > 0) {
-					binding.textViewDetails.text = "${item.progress.coerceAtLeast(0)} / ${item.max} ${context.getString(R.string.pages).lowercase()}"
-					binding.textViewDetails.isVisible = true
-				} else {
-					binding.textViewDetails.isVisible = false
-				}
+				// A cancelled job can legitimately hold N/N if cancellation arrived during finalization.
+				// Do not render the same completion-looking fraction used by successful downloads.
+				binding.textViewDetails.isVisible = false
 				binding.buttonCancel.isVisible = false
 				binding.buttonResume.isVisible = false
 				binding.buttonSkip.isVisible = false
