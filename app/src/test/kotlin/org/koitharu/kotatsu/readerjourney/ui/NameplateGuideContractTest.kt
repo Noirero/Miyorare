@@ -36,7 +36,9 @@ class NameplateGuideContractTest {
 		specs.forEach { (theme, spec) ->
 			assertTrue("$theme idle duration must follow the guide", spec.idleDurationMs in checkNotNull(expectedIdleRanges[theme]))
 			assertTrue("$theme one-shot accent must remain restrained", spec.oneShotDurationMs in 180..300)
-			assertTrue("$theme title safe area must remain inside the reference plate", spec.titleWidthFraction in 0.50f..0.55f)
+			assertTrue("$theme title safe area must remain inside the reference plate", spec.titleWidthFraction in 0.58f..0.68f)
+			assertTrue("$theme optical offset must stay restrained", spec.titleVerticalOffsetFraction in 0f..0.03f)
+			assertTrue("$theme title scrim must stay subtle", spec.titleScrimAlpha in 0.08f..0.22f)
 			assertNotEquals("$theme must use a dedicated catalog thumbnail", spec.drawableRes, spec.thumbnailRes)
 		}
 	}
@@ -128,7 +130,7 @@ class NameplateGuideContractTest {
 		assertTrue(renderer.contains("ContentScale.Fit"))
 		assertTrue(renderer.contains("0.97f+(0.03f*reveal.value)"))
 		assertTrue(renderer.contains("durationMillis=140"))
-		assertTrue(renderer.contains("translationY=if(normalMotion)(1f-textReveal.value)*textOffsetPxelse0f"))
+		assertTrue(renderer.contains("(size.height*asset.titleVerticalOffsetFraction)+(if(normalMotion)(1f-textReveal.value)*textOffsetPxelse0f)"))
 		assertTrue(renderer.contains("1f-(0.02f*pressProgress)"))
 		assertTrue(renderer.contains("0.045f*pressProgress"))
 		assertTrue(renderer.contains("setToSaturation(0.60f)"))
@@ -142,8 +144,9 @@ class NameplateGuideContractTest {
 		assertTrue("Celestial light must stay on separate outer lobes", renderer.contains("valleftLoop=phase<0.5f"))
 		assertTrue(renderer.contains("funExclusiveNameplateTitle("))
 		assertTrue(renderer.contains("FontFamily.Serif"))
-		assertTrue("Runtime title must use warm ivory instead of flat white", renderer.contains("Color(0xFFF6E8D0)"))
-		assertTrue("Runtime title must keep a subtle readability shadow", renderer.contains("blurRadius=3.6f"))
+		assertTrue("Runtime title must use warm ivory instead of flat white", renderer.contains("Color(0xFFFFF4E3)"))
+		assertTrue("Runtime title must keep a restrained readability shadow", renderer.contains("blurRadius=4.6f"))
+		assertTrue("Busy artwork must get a restrained center title scrim", renderer.contains("Color.Black.copy(alpha=asset.titleScrimAlpha)"))
 		assertTrue(
 			"Title fitting must shrink font before touching letter spacing",
 			renderer.indexOf("varfontSp=typography.preferredFontSp-0.5f") <
