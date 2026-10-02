@@ -35,11 +35,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -87,6 +89,7 @@ internal fun ModernDetailsHero(
 	actions: DetailsExpressiveActions,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
+	var sourceExpanded by rememberSaveable(manga.id) { mutableStateOf(false) }
 	val nsfwLabel = when (manga.contentRating) {
 		ContentRating.SUGGESTIVE -> "16+"
 		ContentRating.ADULT -> "18+"
@@ -129,6 +132,8 @@ internal fun ModernDetailsHero(
 							sourceTitle = sourceTitle,
 							imageLoader = imageLoader,
 							onSourceClick = { actions.onSourceClick(manga) },
+							onExpandClick = { sourceExpanded = !sourceExpanded },
+							expanded = sourceExpanded,
 							modifier = Modifier
 								.weight(if (manga.state != null) 0.50f else 1f)
 								.fillMaxHeight(),
@@ -188,8 +193,10 @@ internal fun ModernDetailsHero(
 								sourceTitle = sourceTitle,
 								imageLoader = imageLoader,
 								onSourceClick = { actions.onSourceClick(manga) },
+							onExpandClick = { sourceExpanded = !sourceExpanded },
+							expanded = sourceExpanded,
 								modifier = Modifier
-									.weight(if (manga.state != null) 0.68f else 1f)
+									.weight(if (manga.state != null) if (sourceExpanded) 0.68f else 0.42f else 1f)
 									.fillMaxHeight(),
 							)
 						}
@@ -199,7 +206,7 @@ internal fun ModernDetailsHero(
 								showActiveRelease = state.titleResId == R.string.state_ongoing,
 								accent = accent,
 								modifier = Modifier
-									.weight(if (!manga.isLocal) 0.32f else 1f)
+									.weight(if (!manga.isLocal) if (sourceExpanded) 0.32f else 0.58f else 1f)
 									.fillMaxHeight(),
 							)
 						}
@@ -217,6 +224,8 @@ private fun HeroSourceCard(
 	sourceTitle: String?,
 	imageLoader: ImageLoader,
 	onSourceClick: () -> Unit,
+	onExpandClick: () -> Unit,
+	expanded: Boolean,
 	modifier: Modifier = Modifier,
 ) {
 	val context = LocalContext.current
@@ -262,12 +271,19 @@ private fun HeroSourceCard(
 					overflow = TextOverflow.Ellipsis,
 					modifier = Modifier.weight(1f),
 				)
-				Icon(
-					painter = painterResource(R.drawable.ic_chevron_right),
-					contentDescription = null,
-					tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-					modifier = Modifier.size(if (palette.isModern) 14.dp else 12.dp),
-				)
+				IconButton(
+					onClick = onExpandClick,
+					modifier = Modifier.size(32.dp),
+				) {
+					Icon(
+						painter = painterResource(R.drawable.ic_chevron_right),
+						contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand),
+						tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier
+							.size(if (palette.isModern) 14.dp else 12.dp)
+							.rotate(if (expanded) 180f else 0f),
+					)
+				}
 			}
 		}
 	}
