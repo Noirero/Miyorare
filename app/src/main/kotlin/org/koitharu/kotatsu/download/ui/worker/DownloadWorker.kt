@@ -300,6 +300,7 @@ class DownloadWorker @AssistedInject constructor(
 							isFinalizing = false,
 							phase = DownloadPhase.RESOLVING,
 							phaseChapter = chapterIndex + 1,
+							requestedChapters = chapters.size,
 							retryAttempt = 0,
 							eta = -1L,
 							isStuck = false,
