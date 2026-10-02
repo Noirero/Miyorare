@@ -50,4 +50,3 @@ class DownloadStateRegressionTest {
 		assertEquals(0, DownloadState.getRetryAttempt(legacy))
 	}
 }
-
