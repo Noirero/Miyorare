@@ -2522,8 +2522,14 @@ private fun TopPickSection(
 @Composable
 private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 	val today = remember { LocalDate.now() }
+	val startDay = remember(today) { today.minusWeeks(19).minusDays(today.dayOfWeek.value.toLong() - 1L) }
 	val byDay = remember(days) { days.associateBy { it.epochDay } }
-	val todayStats = byDay[today.toEpochDay()]
+	var selectedEpochDay by rememberSaveable { mutableStateOf(today.toEpochDay()) }
+	val selectedDate = LocalDate.ofEpochDay(selectedEpochDay)
+	val selectedStats = byDay[selectedEpochDay]
+	val resources = LocalContext.current.resources
+	val dateFormatter = remember { DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.getDefault()) }
+	val monthFormatter = remember { DateTimeFormatter.ofPattern("MMM", Locale.getDefault()) }
 	Column {
 		StatsSectionHeader(title = stringResource(R.string.stats_reading_heatmap))
 		StatsCard {
@@ -2532,8 +2538,30 @@ private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 				style = MaterialTheme.typography.bodySmall,
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 			)
-			Spacer(Modifier.height(14.dp))
-			ReadingHeatmapGrid(days)
+			Spacer(Modifier.height(10.dp))
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.SpaceBetween,
+			) {
+				Text(startDay.format(monthFormatter), style = MaterialTheme.typography.labelSmall)
+				Text(today.format(monthFormatter), style = MaterialTheme.typography.labelSmall)
+			}
+			Spacer(Modifier.height(6.dp))
+			ReadingHeatmapGrid(
+				days = days,
+				selectedEpochDay = selectedEpochDay,
+				onDaySelected = { selectedEpochDay = it },
+			)
+			Spacer(Modifier.height(10.dp))
+			HeatmapLegend()
+			if (days.none { it.duration > 0L || it.sessions > 0 }) {
+				Spacer(Modifier.height(10.dp))
+				Text(
+					text = stringResource(R.string.stats_heatmap_empty_period),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+			}
 			Spacer(Modifier.height(14.dp))
 			Surface(
 				shape = RoundedCornerShape(18.dp),
@@ -2546,19 +2574,24 @@ private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 					verticalAlignment = Alignment.CenterVertically,
 				) {
 					Text(
-						text = today.format(DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.getDefault())),
+						text = selectedDate.format(dateFormatter),
 						style = MaterialTheme.typography.bodyMedium,
 						fontWeight = FontWeight.SemiBold,
 						modifier = Modifier.weight(1f),
 					)
 					Text(
-						text = if ((todayStats?.sessions ?: 0) == 0) {
+						text = if ((selectedStats?.sessions ?: 0) == 0 && (selectedStats?.duration ?: 0L) <= 0L) {
 							stringResource(R.string.stats_no_activity)
 						} else {
-							stringResource(R.string.stats_activity_count, todayStats?.sessions ?: 0)
+							stringResource(
+								R.string.stats_heatmap_activity_detail,
+								formatDurationShort(resources, selectedStats?.duration ?: 0L),
+								selectedStats?.sessions ?: 0,
+							)
 						},
 						style = MaterialTheme.typography.bodySmall,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
+						textAlign = TextAlign.End,
 					)
 				}
 			}
@@ -2567,17 +2600,82 @@ private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 }
 
 @Composable
-private fun ReadingHeatmapGrid(days: List<StatsHeatmapDay>) {
+private fun HeatmapLegend() {
+	val empty = MaterialTheme.colorScheme.surfaceContainerHighest
+	val active = MaterialTheme.colorScheme.primary
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.End,
+	) {
+		Text(
+			text = stringResource(R.string.stats_heatmap_less),
+			style = MaterialTheme.typography.labelSmall,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+		)
+		Spacer(Modifier.width(6.dp))
+		(0..4).forEach { level ->
+			val color = if (level == 0) empty.copy(alpha = 0.36f)
+			else lerp(active.copy(alpha = 0.22f), active, level / 4f)
+			Box(
+				Modifier
+					.padding(horizontal = 1.5.dp)
+					.size(12.dp)
+					.clip(RoundedCornerShape(3.dp))
+					.background(color),
+			)
+		}
+		Spacer(Modifier.width(6.dp))
+		Text(
+			text = stringResource(R.string.stats_heatmap_more),
+			style = MaterialTheme.typography.labelSmall,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+		)
+	}
+}
+
+@Composable
+private fun ReadingHeatmapGrid(
+	days: List<StatsHeatmapDay>,
+	selectedEpochDay: Long,
+	onDaySelected: (Long) -> Unit,
+) {
 	val today = remember { LocalDate.now() }
 	val start = remember(today) { today.minusWeeks(19).minusDays(today.dayOfWeek.value.toLong() - 1L) }
 	val values = remember(days) { days.associateBy { it.epochDay } }
 	val maxDuration = remember(days) { days.maxOfOrNull { it.duration }?.coerceAtLeast(1L) ?: 1L }
 	val empty = MaterialTheme.colorScheme.surfaceContainerHighest
 	val active = MaterialTheme.colorScheme.primary
+	val selection = MaterialTheme.colorScheme.onSurface
+	val accessibilityLabel = stringResource(R.string.stats_heatmap_accessibility)
 	Canvas(
 		modifier = Modifier
 			.fillMaxWidth()
-			.height(126.dp),
+			.height(126.dp)
+			.semantics { contentDescription = accessibilityLabel }
+			.pointerInput(start) {
+				detectTapGestures { offset ->
+					val columns = 20
+					val rows = 7
+					val gap = 3.5.dp.toPx()
+					val cell = minOf(
+						(size.width - gap * (columns - 1)) / columns,
+						(size.height - gap * (rows - 1)) / rows,
+					)
+					val gridWidth = cell * columns + gap * (columns - 1)
+					val left = (size.width - gridWidth) / 2f
+					val column = ((offset.x - left) / (cell + gap)).toInt()
+					val row = (offset.y / (cell + gap)).toInt()
+					if (column in 0 until columns && row in 0 until rows) {
+						val localX = offset.x - left - column * (cell + gap)
+						val localY = offset.y - row * (cell + gap)
+						if (localX in 0f..cell && localY in 0f..cell) {
+							val day = start.plusDays((column * rows + row).toLong())
+							if (!day.isAfter(today)) onDaySelected(day.toEpochDay())
+						}
+					}
+				}
+			},
 	) {
 		val columns = 20
 		val rows = 7
@@ -2593,20 +2691,34 @@ private fun ReadingHeatmapGrid(days: List<StatsHeatmapDay>) {
 				val day = start.plusDays((column * rows + row).toLong())
 				val value = values[day.toEpochDay()]?.duration ?: 0L
 				val ratio = (value.toFloat() / maxDuration).coerceIn(0f, 1f)
-				val color = if (value <= 0L) {
-					empty.copy(alpha = 0.36f)
-				} else {
-					lerp(active.copy(alpha = 0.22f), active, ratio.coerceAtLeast(0.2f))
+				val level = when {
+					value <= 0L -> 0
+					ratio <= 0.25f -> 1
+					ratio <= 0.50f -> 2
+					ratio <= 0.75f -> 3
+					else -> 4
 				}
+				val color = if (level == 0) empty.copy(alpha = 0.36f)
+				else lerp(active.copy(alpha = 0.22f), active, level / 4f)
+				val topLeft = Offset(
+					x = left + column * (cell + gap),
+					y = row * (cell + gap),
+				)
 				drawRoundRect(
 					color = color,
-					topLeft = Offset(
-						x = left + column * (cell + gap),
-						y = row * (cell + gap),
-					),
+					topLeft = topLeft,
 					size = Size(cell, cell),
 					cornerRadius = CornerRadius(cell * 0.24f, cell * 0.24f),
 				)
+				if (day.toEpochDay() == selectedEpochDay) {
+					drawRoundRect(
+						color = selection,
+						topLeft = topLeft,
+						size = Size(cell, cell),
+						cornerRadius = CornerRadius(cell * 0.24f, cell * 0.24f),
+						style = Stroke(width = 2.dp.toPx()),
+					)
+				}
 			}
 		}
 	}
