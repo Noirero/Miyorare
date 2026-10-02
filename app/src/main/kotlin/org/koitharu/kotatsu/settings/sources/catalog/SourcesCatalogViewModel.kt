@@ -717,7 +717,7 @@ class SourcesCatalogViewModel @Inject constructor(
 					SourceCatalogItem.Hint(
 						icon = R.drawable.ic_empty_feed,
 						title = R.string.nothing_found,
-						text = R.string.no_manga_sources_found,
+						text = R.string.no_extensions_found,
 					),
 				)
 			}
@@ -904,7 +904,7 @@ class SourcesCatalogViewModel @Inject constructor(
 				addAll(disabledItems)
 			}
 			if (isEmpty()) {
-				add(SourceCatalogItem.Hint(R.drawable.ic_empty_feed, R.string.nothing_found, R.string.no_manga_sources_found))
+				add(SourceCatalogItem.Hint(R.drawable.ic_empty_feed, R.string.nothing_found, R.string.no_extensions_found))
 			}
 		}
 	}
@@ -1184,7 +1184,7 @@ internal fun buildAvailablePageItems(
 		addAll(installed)
 	}
 	if (isEmpty()) {
-		add(SourceCatalogItem.Hint(R.drawable.ic_empty_feed, R.string.nothing_found, R.string.no_manga_sources_found))
+		add(SourceCatalogItem.Hint(R.drawable.ic_empty_feed, R.string.nothing_found, R.string.no_extensions_found))
 	}
 }
 
