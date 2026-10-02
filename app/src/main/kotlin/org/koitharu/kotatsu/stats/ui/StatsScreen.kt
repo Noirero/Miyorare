@@ -615,19 +615,14 @@ private fun ReaderProfileCard(
 			}
 		}
 
-		val titleText = selectedTitle?.let { stringResource(it.titleRes) }
-			?: stringResource(R.string.reader_journey_no_title)
-		Text(
-			text = stringResource(R.string.reader_journey_active_title_label),
-			style = MaterialTheme.typography.labelSmall,
-			fontWeight = FontWeight.SemiBold,
-			color = MaterialTheme.colorScheme.onSurfaceVariant,
-		)
+		// Achievement-derived Reader Titles remain part of profile data and the achievement
+		// collection, but no longer occupy the nameplate. The equipped nameplate carries its own
+		// rank title as part of the artwork.
 		if (nameplateSpec != null && nameplateTokens != null) {
 			ReferenceRankThemeNameplate(
 				spec = nameplateSpec,
 				tokens = nameplateTokens,
-				title = titleText,
+				title = stringResource(nameplateSpec.themeId.rank.titleRes),
 				state = NameplateState.EQUIPPED,
 				animate = !rankThemeMinimalCosmetics && !rankThemeReduceMotion,
 				qualityMode = when {
@@ -639,14 +634,6 @@ private fun ReaderProfileCard(
 				modifier = Modifier
 					.width(176.dp)
 					.height(62.dp),
-			)
-		} else {
-			Text(
-				text = titleText,
-				style = MaterialTheme.typography.labelLarge,
-				fontWeight = FontWeight.SemiBold,
-				color = MaterialTheme.colorScheme.onSurfaceVariant,
-				textAlign = TextAlign.Center,
 			)
 		}
 
