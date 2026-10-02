@@ -283,17 +283,17 @@ class DownloadWorker @AssistedInject constructor(
 				// Resolve page lists before transferring images so the progress denominator is stable.
 				// The previous chapterCount * activeChapterPages formula changed max whenever chapter
 				// lengths differed, which made the bar jump and reach near-100% far too early.
-				val pagesByChapterId = chapters.mapNotNull { chapter ->
+				val pagesByChapterId = LinkedHashMap<Long, List<MangaPage>>(chapters.size)
+				for (chapter in chapters) {
 					checkIsPaused()
-					if (chapter.value.id in chaptersToSkip) return@mapNotNull null
-					val pages = runFailsafe { repo.getPages(chapter.value) } ?: return@mapNotNull null
-					if (pages.isEmpty()) {
+					if (chapter.value.id in chaptersToSkip) continue
+					val resolvedPages = runFailsafe { repo.getPages(chapter.value) } ?: continue
+					if (resolvedPages.isEmpty()) {
 						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
-						null
-					} else {
-						chapter.value.id to pages
+						continue
 					}
-				}.toMap()
+					pagesByChapterId[chapter.value.id] = resolvedPages
+				}
 				val overallTotalPages = pagesByChapterId.values.sumOf { it.size }
 				var completedProgressPages = 0
 				var completedRequestedChapters = 0
