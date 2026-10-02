@@ -280,6 +280,18 @@ class DownloadWorker @AssistedInject constructor(
 					}
 				}
 				val chapters = getChapters(mangaDetails, task)
+				// Resolve page lists before image transfer so the WorkManager max is stable for the
+				// whole batch. Multiplying the active chapter size by chapter count makes max change
+				// whenever chapters have different page counts.
+				val resolvedPagesByChapter = LinkedHashMap<Long, List<MangaPage>>(chapters.size)
+				for (chapter in chapters) {
+					checkIsPaused()
+					if (chapter.value.id in chaptersToSkip) continue
+					val pages = runFailsafe { repo.getPages(chapter.value) } ?: continue
+					if (pages.isNotEmpty()) resolvedPagesByChapter[chapter.value.id] = pages
+				}
+				val totalBatchPages = resolvedPagesByChapter.values.sumOf { it.size }
+				var completedBatchPages = 0
 				var completedRequestedChapters = 0
 				for ((chapterIndex, chapter) in chapters.withIndex()) {
 					checkIsPaused()
@@ -289,14 +301,10 @@ class DownloadWorker @AssistedInject constructor(
 						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 						continue
 					}
-					val resolvedPages = runFailsafe {
-						repo.getPages(chapter.value)
-					} ?: continue
-					if (resolvedPages.isEmpty()) {
+					val pages = resolvedPagesByChapter[chapter.value.id] ?: run {
 						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 						continue
 					}
-					val pages = resolvedPages
 					val resumeDir = getResumeChapterDir(mangaDetails.id, chapter.value.id)
 					val downloadedPages = arrayOfNulls<DownloadedPage>(pages.size)
 					val pageCounter = AtomicInteger(0)
@@ -306,8 +314,8 @@ class DownloadWorker @AssistedInject constructor(
 						currentState.copy(
 							totalChapters = chapters.size,
 							currentChapter = chapterIndex,
-							totalPages = pages.size,
-							currentPage = 0,
+							totalPages = totalBatchPages,
+							currentPage = completedBatchPages,
 							isIndeterminate = false,
 							isFinalizing = false,
 							eta = -1L,
@@ -368,8 +376,8 @@ class DownloadWorker @AssistedInject constructor(
 							currentState.copy(
 								totalChapters = progress.totalChapters,
 								currentChapter = progress.currentChapter,
-								totalPages = progress.totalPages,
-								currentPage = progress.currentPage,
+								totalPages = totalBatchPages,
+								currentPage = completedBatchPages + progress.currentPage,
 								isIndeterminate = false,
 								isFinalizing = false,
 								eta = etaEstimator.getEta(),
@@ -378,6 +386,9 @@ class DownloadWorker @AssistedInject constructor(
 						)
 					}
 
+					// This chapter has been fully processed. Count it as consumed work even when the
+					// user skipped a failed page, so progress never moves backwards on the next chapter.
+					completedBatchPages += pages.size
 					if (downloadedPages.any { it == null }) {
 						// Successful pages may already be inside a temporary archive. Explicitly discard
 						// the chapter so finish() can never publish a partial CBZ as complete.
@@ -390,8 +401,8 @@ class DownloadWorker @AssistedInject constructor(
 					// a separate Processing state between every chapter.
 					publishState(
 						currentState.copy(
-							totalPages = pages.size,
-							currentPage = pages.size,
+							totalPages = totalBatchPages,
+							currentPage = completedBatchPages,
 							isIndeterminate = false,
 							isFinalizing = false,
 							eta = -1L,
