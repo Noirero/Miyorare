@@ -37,7 +37,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -1002,18 +1001,16 @@ private fun ExclusiveThemeHeroPreview(
 					modifier = Modifier.weight(1f),
 					verticalArrangement = Arrangement.spacedBy(6.dp),
 				) {
-					key(nameplateSpec.nameplateId) {
-						ReferenceRankThemeNameplate(
-							spec = nameplateSpec,
-							tokens = nameplateTokens,
-							title = stringResource(nameplateSpec.themeId.rank.titleRes),
-							state = NameplateState.PREVIEWING,
-							animate = true,
-							qualityMode = NameplateQualityMode.REDUCED,
-							usage = NameplateUsage.PREVIEW,
-							modifier = Modifier.fillMaxWidth().height(58.dp),
-						)
-					}
+					ReferenceRankThemeNameplate(
+						spec = nameplateSpec,
+						tokens = nameplateTokens,
+						title = stringResource(nameplateSpec.themeId.rank.titleRes),
+						state = NameplateState.PREVIEWING,
+						animate = false,
+						qualityMode = NameplateQualityMode.REDUCED,
+						usage = NameplateUsage.PREVIEW,
+						modifier = Modifier.fillMaxWidth().height(48.dp),
+					)
 					ReferenceRankThemeProgress(
 						spec = progressSpec,
 						tokens = progressTokens,

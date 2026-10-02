@@ -120,8 +120,6 @@ internal data class NameplateAssetSpec(
 	val glowAlpha: Float,
 	val revealDurationMs: Int = 230,
 	val titleWidthFraction: Float = 0.58f,
-	val titleVerticalOffsetFraction: Float = 0f,
-	val titleScrimAlpha: Float = 0.10f,
 )
 
 internal object NameplateAssetRegistry {
@@ -133,8 +131,7 @@ internal object NameplateAssetRegistry {
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 240,
 			glowAlpha = 0.075f,
-			titleWidthFraction = 0.58f,
-			titleScrimAlpha = 0.08f,
+			titleWidthFraction = 0.55f,
 		)
 		RankThemeId.FIRST_LIGHT -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_02_first_light_blue_base,
@@ -143,9 +140,7 @@ internal object NameplateAssetRegistry {
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 260,
 			glowAlpha = 0.085f,
-			titleWidthFraction = 0.60f,
-			titleVerticalOffsetFraction = 0.02f,
-			titleScrimAlpha = 0.10f,
+			titleWidthFraction = 0.55f,
 		)
 		RankThemeId.CYAN_CODEX -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_03_cyan_orbit_base,
@@ -154,8 +149,7 @@ internal object NameplateAssetRegistry {
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 250,
 			glowAlpha = 0.085f,
-			titleWidthFraction = 0.61f,
-			titleScrimAlpha = 0.12f,
+			titleWidthFraction = 0.55f,
 		)
 		RankThemeId.EMERALD_COMPASS -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_04_emerald_pulse_base,
@@ -164,9 +158,7 @@ internal object NameplateAssetRegistry {
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 300,
 			glowAlpha = 0.09f,
-			titleWidthFraction = 0.62f,
-			titleVerticalOffsetFraction = 0.025f,
-			titleScrimAlpha = 0.18f,
+			titleWidthFraction = 0.55f,
 		)
 		RankThemeId.VIOLET_VAULT -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_05_arcane_scholar_base,
@@ -175,8 +167,7 @@ internal object NameplateAssetRegistry {
 			idleDurationMs = 11_000,
 			oneShotDurationMs = 280,
 			glowAlpha = 0.085f,
-			titleWidthFraction = 0.60f,
-			titleScrimAlpha = 0.10f,
+			titleWidthFraction = 0.54f,
 		)
 		RankThemeId.ARCANE_SCHOLAR -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_06_violet_halo_base,
@@ -185,8 +176,7 @@ internal object NameplateAssetRegistry {
 			idleDurationMs = 11_000,
 			oneShotDurationMs = 280,
 			glowAlpha = 0.085f,
-			titleWidthFraction = 0.60f,
-			titleScrimAlpha = 0.11f,
+			titleWidthFraction = 0.54f,
 		)
 		RankThemeId.NEON_ARCHIVE -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_07_rose_nebula_base,
@@ -195,9 +185,7 @@ internal object NameplateAssetRegistry {
 			idleDurationMs = 14_000,
 			oneShotDurationMs = 280,
 			glowAlpha = 0.09f,
-			titleWidthFraction = 0.61f,
-			titleVerticalOffsetFraction = 0.03f,
-			titleScrimAlpha = 0.18f,
+			titleWidthFraction = 0.53f,
 		)
 		RankThemeId.CRIMSON_LIBRARY -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_08_crimson_ember_base,
@@ -206,9 +194,7 @@ internal object NameplateAssetRegistry {
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 300,
 			glowAlpha = 0.095f,
-			titleWidthFraction = 0.62f,
-			titleVerticalOffsetFraction = 0.02f,
-			titleScrimAlpha = 0.22f,
+			titleWidthFraction = 0.53f,
 		)
 		RankThemeId.EMBER_VETERAN -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_09_amber_manuscript_base,
@@ -217,8 +203,7 @@ internal object NameplateAssetRegistry {
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 300,
 			glowAlpha = 0.10f,
-			titleWidthFraction = 0.68f,
-			titleScrimAlpha = 0.16f,
+			titleWidthFraction = 0.50f,
 		)
 		RankThemeId.GOLDEN_MANUSCRIPT -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_10_golden_manuscript_deluxe_base,
@@ -227,8 +212,7 @@ internal object NameplateAssetRegistry {
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 300,
 			glowAlpha = 0.105f,
-			titleWidthFraction = 0.64f,
-			titleScrimAlpha = 0.12f,
+			titleWidthFraction = 0.52f,
 		)
 		RankThemeId.IMPERIAL_AURORA -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_11_eternal_library_prism_base,
@@ -238,8 +222,7 @@ internal object NameplateAssetRegistry {
 			oneShotDurationMs = 300,
 			glowAlpha = 0.10f,
 			revealDurationMs = 245,
-			titleWidthFraction = 0.64f,
-			titleScrimAlpha = 0.14f,
+			titleWidthFraction = 0.52f,
 		)
 		RankThemeId.ETERNAL_LIBRARY -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_12_celestial_infinity_base,
@@ -249,8 +232,7 @@ internal object NameplateAssetRegistry {
 			oneShotDurationMs = 300,
 			glowAlpha = 0.10f,
 			revealDurationMs = 255,
-			titleWidthFraction = 0.64f,
-			titleScrimAlpha = 0.14f,
+			titleWidthFraction = 0.52f,
 		)
 	}
 }
@@ -444,27 +426,10 @@ fun ExclusiveNameplate(
 				.fillMaxHeight(0.62f)
 				.graphicsLayer {
 					alpha = textReveal.value
-					translationY =
-						(size.height * asset.titleVerticalOffsetFraction) +
-						(if (normalMotion) (1f - textReveal.value) * textOffsetPx else 0f)
+					translationY = if (normalMotion) (1f - textReveal.value) * textOffsetPx else 0f
 				},
 			contentAlignment = Alignment.Center,
 		) {
-			Box(
-				modifier = Modifier
-					.fillMaxWidth()
-					.fillMaxHeight(0.72f)
-					.background(
-						Brush.horizontalGradient(
-							listOf(
-								Color.Transparent,
-								Color.Black.copy(alpha = asset.titleScrimAlpha),
-								Color.Black.copy(alpha = asset.titleScrimAlpha),
-								Color.Transparent,
-							),
-						),
-					),
-			)
 			content()
 		}
 
@@ -622,20 +587,20 @@ private fun nameplateTitleTypography(usage: NameplateUsage): NameplateTitleTypog
 	NameplateUsage.CATALOG -> NameplateTitleTypography(
 		preferredFontSp = 14.5f,
 		minimumFontSp = 10.5f,
-		preferredLetterSpacingSp = 0.30f,
-		minimumLetterSpacingSp = -0.15f,
+		preferredLetterSpacingSp = 0.10f,
+		minimumLetterSpacingSp = -0.30f,
 	)
 	NameplateUsage.PROFILE -> NameplateTitleTypography(
 		preferredFontSp = 17.5f,
 		minimumFontSp = 12f,
-		preferredLetterSpacingSp = 0.45f,
-		minimumLetterSpacingSp = -0.10f,
+		preferredLetterSpacingSp = 0.10f,
+		minimumLetterSpacingSp = -0.30f,
 	)
 	NameplateUsage.PREVIEW -> NameplateTitleTypography(
 		preferredFontSp = 22f,
 		minimumFontSp = 14f,
-		preferredLetterSpacingSp = 0.65f,
-		minimumLetterSpacingSp = -0.05f,
+		preferredLetterSpacingSp = 0.12f,
+		minimumLetterSpacingSp = -0.25f,
 	)
 }
 
@@ -671,14 +636,14 @@ fun ExclusiveNameplateTitle(
 			fun style(fontSp: Float, letterSpacingSp: Float) = TextStyle(
 				fontSize = fontSp.sp,
 				fontFamily = FontFamily.Serif,
-				fontWeight = FontWeight.Bold,
+				fontWeight = FontWeight.SemiBold,
 				letterSpacing = letterSpacingSp.sp,
-				color = Color(0xFFFFF4E3),
+				color = Color(0xFFF6E8D0),
 				textAlign = TextAlign.Center,
 				shadow = Shadow(
-					color = Color(0xD9070910),
-					offset = Offset(0f, 1.5f),
-					blurRadius = 4.6f,
+					color = Color(0x99070A10),
+					offset = Offset(0f, 1.2f),
+					blurRadius = 3.6f,
 				),
 			)
 

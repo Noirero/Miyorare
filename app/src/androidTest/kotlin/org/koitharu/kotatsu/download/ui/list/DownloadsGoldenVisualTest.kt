@@ -42,6 +42,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.ui.model.DateTimeAgo
+import org.koitharu.kotatsu.download.domain.DownloadPhase
 import org.koitharu.kotatsu.download.ui.list.chapters.DownloadChapter
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -160,6 +161,10 @@ class DownloadsGoldenVisualTest {
 				isIndeterminate = false,
 				isPaused = paused,
 				isFinalizing = false,
+				phase = DownloadPhase.DOWNLOADING,
+				phaseChapter = 0,
+				requestedChapters = 0,
+				retryAttempt = 0,
 				manga = manga(seed.hashCode().toLong(), title),
 				error = null,
 				max = max,

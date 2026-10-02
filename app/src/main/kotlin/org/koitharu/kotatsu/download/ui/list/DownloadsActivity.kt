@@ -147,7 +147,7 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	}
 
 	private fun setupModernDownloadsHeader() {
-		viewBinding.modernDownloadsSummary.isVisible = isModernDownloads
+		viewBinding.modernDownloadsSummary.isVisible = isModernDownloads && isGoldenVisualEvidence
 		if (!isModernDownloads) return
 		viewBinding.buttonPauseAll.setOnClickListener { viewModel.pauseAll() }
 		viewBinding.buttonResumeAll.setOnClickListener { viewModel.resumeAll() }
@@ -303,16 +303,23 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	}
 
 	private fun renderModernDownloadsHeader(models: List<ListModel>) {
+		if (models.any { it is org.koitharu.kotatsu.list.ui.model.LoadingState }) {
+			viewBinding.modernDownloadsSummary.isVisible = false
+			return
+		}
+		viewBinding.modernDownloadsSummary.isVisible = true
 		val downloads = models.filterIsInstance<DownloadItemModel>()
 		var active = 0
 		var paused = 0
 		var completed = 0
 		var cancelled = 0
+		var failed = 0
 		for (item in downloads) {
 			when (item.workState) {
 				WorkInfo.State.RUNNING -> if (item.isPaused) paused++ else active++
 				WorkInfo.State.SUCCEEDED -> completed++
 				WorkInfo.State.CANCELLED -> cancelled++
+				WorkInfo.State.FAILED -> failed++
 				else -> Unit
 			}
 		}
@@ -333,6 +340,10 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 			append(getString(R.string.canceled))
 			append(' ')
 			color(error) { bold { append(cancelled.toString()) } }
+			color(palette.onSurface) { append("  •  ") }
+			append(getString(R.string.failed))
+			append(' ')
+			color(error) { bold { append(failed.toString()) } }
 		}
 		viewBinding.modernDownloadsStatus.setTextColor(palette.onSurface)
 		viewBinding.modernDownloadsTotal.setTextColor(palette.onSurfaceVariant)

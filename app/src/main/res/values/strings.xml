@@ -47,6 +47,8 @@
     <string name="search_manga">Search manga</string>
     <string name="manga_downloading_">Downloading...</string>
     <string name="processing_">Processing...</string>
+    <string name="download_resolving_chapter">Resolving chapter %1$d of %2$d...</string>
+    <string name="download_retrying">Retrying... attempt %1$d of %2$d</string>
     <string name="download_complete">Downloaded</string>
     <string name="downloads">Downloads</string>
     <string name="by_name">Name</string>
@@ -1608,4 +1610,5 @@
 	<string name="reader_journey_weekly_read_3_days">3 days</string>
 	<string name="reader_journey_weekly_task">task</string>
 	<string name="reader_journey_share_failed">Couldn’t create the Reader Journey share card</string>
+	<string name="failed">Failed</string>
 </resources>

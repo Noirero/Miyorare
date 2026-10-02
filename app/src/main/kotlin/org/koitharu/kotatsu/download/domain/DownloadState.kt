@@ -11,6 +11,10 @@ data class DownloadState(
 	val isIndeterminate: Boolean,
 	val isPaused: Boolean = false,
 	val isFinalizing: Boolean = false,
+	val phase: DownloadPhase = DownloadPhase.DOWNLOADING,
+	val phaseChapter: Int = 0,
+	val requestedChapters: Int = 0,
+	val retryAttempt: Int = 0,
 	val isStopped: Boolean = false,
 	val error: Throwable? = null,
 	val errorMessage: String? = null,
@@ -18,6 +22,8 @@ data class DownloadState(
 	val currentChapter: Int = 0,
 	val totalPages: Int = 0,
 	val currentPage: Int = 0,
+	val overallTotalPages: Int = 0,
+	val completedPagesBeforeChapter: Int = 0,
 	val eta: Long = -1L,
 	val isStuck: Boolean = false,
 	val localManga: LocalManga? = null,
@@ -25,9 +31,13 @@ data class DownloadState(
 	val timestamp: Long = System.currentTimeMillis(),
 ) {
 
-	val max: Int = totalChapters * totalPages
+	val max: Int = overallTotalPages.takeIf { it > 0 } ?: (totalChapters * totalPages)
 
-	val progress: Int = calculateDownloadProgress(totalPages, currentChapter, currentPage)
+	val progress: Int = if (overallTotalPages > 0) {
+		(completedPagesBeforeChapter.coerceAtLeast(0) + currentPage.coerceAtLeast(0)).coerceAtMost(overallTotalPages)
+	} else {
+		calculateDownloadProgress(totalPages, currentChapter, currentPage)
+	}
 
 	val percent: Float = if (max > 0) progress.toFloat() / max else PROGRESS_NONE
 
@@ -49,6 +59,10 @@ data class DownloadState(
 		.putBoolean(DATA_INDETERMINATE, isIndeterminate)
 		.putBoolean(DATA_PAUSED, isPaused)
 		.putBoolean(DATA_FINALIZING, isFinalizing)
+		.putString(DATA_PHASE, phase.name)
+		.putInt(DATA_PHASE_CHAPTER, phaseChapter)
+		.putInt(DATA_REQUESTED_CHAPTERS, requestedChapters)
+		.putInt(DATA_RETRY_ATTEMPT, retryAttempt)
 		.build()
 
 	companion object {
@@ -64,6 +78,10 @@ data class DownloadState(
 		private const val DATA_INDETERMINATE = "indeterminate"
 		private const val DATA_PAUSED = "paused"
 		private const val DATA_FINALIZING = "finalizing"
+		private const val DATA_PHASE = "phase"
+		private const val DATA_PHASE_CHAPTER = "phase_chapter"
+		private const val DATA_REQUESTED_CHAPTERS = "requested_chapters"
+		private const val DATA_RETRY_ATTEMPT = "retry_attempt"
 
 		fun getMangaId(data: Data): Long = data.getLong(DATA_MANGA_ID, 0L)
 
@@ -72,6 +90,14 @@ data class DownloadState(
 		fun isPaused(data: Data): Boolean = data.getBoolean(DATA_PAUSED, false)
 
 		fun isFinalizing(data: Data): Boolean = data.getBoolean(DATA_FINALIZING, false)
+
+		fun getPhase(data: Data): DownloadPhase = data.getString(DATA_PHASE)?.let { runCatching { DownloadPhase.valueOf(it) }.getOrNull() } ?: DownloadPhase.DOWNLOADING
+
+		fun getPhaseChapter(data: Data): Int = data.getInt(DATA_PHASE_CHAPTER, 0)
+
+		fun getRequestedChapters(data: Data): Int = data.getInt(DATA_REQUESTED_CHAPTERS, 0)
+
+		fun getRetryAttempt(data: Data): Int = data.getInt(DATA_RETRY_ATTEMPT, 0)
 
 		fun getMax(data: Data): Int = data.getInt(DATA_MAX, 0)
 
@@ -91,3 +117,6 @@ data class DownloadState(
 
 internal fun calculateDownloadProgress(totalPages: Int, currentChapter: Int, currentPage: Int): Int =
 	(totalPages.coerceAtLeast(0) * currentChapter.coerceAtLeast(0) + currentPage.coerceAtLeast(0))
+
+
+enum class DownloadPhase { RESOLVING, RETRYING, DOWNLOADING, FINALIZING }

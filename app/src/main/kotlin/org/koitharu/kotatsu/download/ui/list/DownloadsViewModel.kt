@@ -442,6 +442,10 @@ class DownloadsViewModel @Inject constructor(
 				workState = state,
 				isIndeterminate = progressMembers.any { it.isIndeterminate },
 				isFinalizing = progressMembers.any { it.isFinalizing },
+				phase = representative.phase,
+				phaseChapter = representative.phaseChapter,
+				requestedChapters = representative.requestedChapters,
+				retryAttempt = progressMembers.maxOfOrNull { it.retryAttempt } ?: representative.retryAttempt,
 				isPaused = state == WorkInfo.State.RUNNING &&
 					stateMembers.isNotEmpty() &&
 					stateMembers.all { it.isPaused },
@@ -453,7 +457,9 @@ class DownloadsViewModel @Inject constructor(
 				isStuck = progressMembers.any { it.isStuck },
 				timestamp = latestTimestamp,
 				chaptersDownloaded = groupedChapterCount,
-				downloadSizeBytes = members.maxOfOrNull { it.downloadSizeBytes } ?: 0L,
+				// Size must come from the members that own the visible state. In particular, an
+				// active row must not borrow the directory size of an older completed sibling.
+				downloadSizeBytes = stateMembers.maxOfOrNull { it.downloadSizeBytes } ?: 0L,
 				isExpanded = representative.selectionId in expandedIds,
 				chapters = groupedChaptersFlow(manga, workIds),
 				uiAction = stateMembers.firstNotNullOfOrNull { it.uiAction },
@@ -547,6 +553,10 @@ class DownloadsViewModel @Inject constructor(
 			isIndeterminate = DownloadState.isIndeterminate(workData),
 			isPaused = paused,
 			isFinalizing = DownloadState.isFinalizing(workData),
+			phase = DownloadState.getPhase(workData),
+			phaseChapter = DownloadState.getPhaseChapter(workData),
+			requestedChapters = DownloadState.getRequestedChapters(workData),
+			retryAttempt = DownloadState.getRetryAttempt(workData),
 			max = DownloadState.getMax(workData),
 			progress = DownloadState.getProgress(workData),
 			eta = DownloadState.getEta(workData),
