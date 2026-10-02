@@ -82,6 +82,7 @@ import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.core.util.ext.withTicker
 import org.koitharu.kotatsu.core.util.ext.writeAllCancellable
 import org.koitharu.kotatsu.core.util.progress.RealtimeEtaEstimator
+import org.koitharu.kotatsu.download.domain.DownloadPhase
 import org.koitharu.kotatsu.download.domain.DownloadProgress
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
@@ -297,6 +298,9 @@ class DownloadWorker @AssistedInject constructor(
 							overallTotalPages = resolvedTotalPages,
 							isIndeterminate = resolvedTotalPages == 0,
 							isFinalizing = false,
+							phase = DownloadPhase.RESOLVING,
+							phaseChapter = chapterIndex + 1,
+							retryAttempt = 0,
 							eta = -1L,
 							isStuck = false,
 						),
@@ -321,6 +325,9 @@ class DownloadWorker @AssistedInject constructor(
 							currentPage = 0,
 							isIndeterminate = false,
 							isFinalizing = false,
+							phase = DownloadPhase.RESOLVING,
+							phaseChapter = chapterIndex + 1,
+							retryAttempt = 0,
 							eta = -1L,
 							isStuck = false,
 						),
@@ -353,6 +360,9 @@ class DownloadWorker @AssistedInject constructor(
 							currentPage = 0,
 							isIndeterminate = false,
 							isFinalizing = false,
+							phase = DownloadPhase.DOWNLOADING,
+							phaseChapter = chapterIndex + 1,
+							retryAttempt = 0,
 							eta = -1L,
 							isStuck = false,
 						),
@@ -461,7 +471,7 @@ class DownloadWorker @AssistedInject constructor(
 				check(completedRequestedChapters > 0) {
 					"No requested chapter produced a downloadable artifact"
 				}
-				publishState(currentState.copy(isIndeterminate = true, isFinalizing = true, eta = -1L, isStuck = false))
+				publishState(currentState.copy(isIndeterminate = true, isFinalizing = true, phase = DownloadPhase.FINALIZING, retryAttempt = 0, eta = -1L, isStuck = false))
 				output.mergeWithExisting()
 				output.finish()
 				recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
@@ -558,7 +568,18 @@ class DownloadWorker @AssistedInject constructor(
 				} else {
 					retriesRemaining--
 					if (e !is TooManyRequestExceptions) ordinaryRetryIndex++
+					val attempt = MAX_FAILSAFE_RETRIES - retriesRemaining
+					val previousPhase = currentState.phase
+					publishState(
+						currentState.copy(
+							phase = DownloadPhase.RETRYING,
+							retryAttempt = attempt,
+							eta = -1L,
+							isStuck = false,
+						),
+					)
 					delayPausable(retryDelay)
+					publishState(currentState.copy(phase = previousPhase, retryAttempt = 0, eta = -1L, isStuck = false))
 				}
 			}
 		}
