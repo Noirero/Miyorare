@@ -84,7 +84,6 @@ import org.koitharu.kotatsu.reader.domain.UpscaleEffect
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueue
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationPresentation
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueueItem
-import org.koitharu.kotatsu.readerjourney.domain.presentation
 import org.koitharu.kotatsu.readerjourney.domain.presentations
 import org.koitharu.kotatsu.readerjourney.ui.CelebrationDialogResult
 import org.koitharu.kotatsu.readerjourney.ui.showReaderJourneyCelebrationDialog
