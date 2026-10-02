@@ -27,4 +27,26 @@ class DownloadStateRegressionTest {
 		assertTrue(DownloadState.isFinalizing(finalizing))
 		assertFalse(DownloadState.isFinalizing(transferring))
 	}
+
+	@Test
+	fun `download phase and retry metadata survive WorkManager serialization`() {
+		val retrying = Data.Builder()
+			.putString("phase", DownloadPhase.RETRYING.name)
+			.putInt("phase_chapter", 2)
+			.putInt("requested_chapters", 4)
+			.putInt("retry_attempt", 2)
+			.build()
+
+		assertEquals(DownloadPhase.RETRYING, DownloadState.getPhase(retrying))
+		assertEquals(2, DownloadState.getPhaseChapter(retrying))
+		assertEquals(4, DownloadState.getRequestedChapters(retrying))
+		assertEquals(2, DownloadState.getRetryAttempt(retrying))
+	}
+
+	@Test
+	fun `legacy work data defaults to downloading phase without eta state corruption`() {
+		val legacy = Data.EMPTY
+		assertEquals(DownloadPhase.DOWNLOADING, DownloadState.getPhase(legacy))
+		assertEquals(0, DownloadState.getRetryAttempt(legacy))
+	}
 }

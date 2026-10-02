@@ -442,6 +442,10 @@ class DownloadsViewModel @Inject constructor(
 				workState = state,
 				isIndeterminate = progressMembers.any { it.isIndeterminate },
 				isFinalizing = progressMembers.any { it.isFinalizing },
+				phase = representative.phase,
+				phaseChapter = representative.phaseChapter,
+				requestedChapters = representative.requestedChapters,
+				retryAttempt = progressMembers.maxOfOrNull { it.retryAttempt } ?: representative.retryAttempt,
 				isPaused = state == WorkInfo.State.RUNNING &&
 					stateMembers.isNotEmpty() &&
 					stateMembers.all { it.isPaused },
@@ -549,6 +553,10 @@ class DownloadsViewModel @Inject constructor(
 			isIndeterminate = DownloadState.isIndeterminate(workData),
 			isPaused = paused,
 			isFinalizing = DownloadState.isFinalizing(workData),
+			phase = DownloadState.getPhase(workData),
+			phaseChapter = DownloadState.getPhaseChapter(workData),
+			requestedChapters = DownloadState.getRequestedChapters(workData),
+			retryAttempt = DownloadState.getRetryAttempt(workData),
 			max = DownloadState.getMax(workData),
 			progress = DownloadState.getProgress(workData),
 			eta = DownloadState.getEta(workData),

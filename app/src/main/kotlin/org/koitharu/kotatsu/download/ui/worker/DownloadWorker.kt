@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.hilt.work.HiltWorker
@@ -82,6 +83,7 @@ import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.core.util.ext.withTicker
 import org.koitharu.kotatsu.core.util.ext.writeAllCancellable
 import org.koitharu.kotatsu.core.util.progress.RealtimeEtaEstimator
+import org.koitharu.kotatsu.download.domain.DownloadPhase
 import org.koitharu.kotatsu.download.domain.DownloadProgress
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
@@ -284,17 +286,62 @@ class DownloadWorker @AssistedInject constructor(
 				// The previous chapterCount * activeChapterPages formula changed max whenever chapter
 				// lengths differed, which made the bar jump and reach near-100% far too early.
 				val pagesByChapterId = LinkedHashMap<Long, List<MangaPage>>(chapters.size)
-				for (chapter in chapters) {
+				var resolvedTotalPages = 0
+				val resolutionStartedAt = SystemClock.elapsedRealtime()
+				var resolutionBudgetExceeded = false
+				for ((chapterIndex, chapter) in chapters.withIndex()) {
+					if (resolvedTotalPages > 0 && SystemClock.elapsedRealtime() - resolutionStartedAt >= BATCH_RESOLUTION_BUDGET_MS) {
+						resolutionBudgetExceeded = true
+						break
+					}
 					checkIsPaused()
 					if (chapter.value.id in chaptersToSkip) continue
+					// Page-list resolution can be slow on remote sources. Publish the chapter being
+					// resolved with ETA disabled so a batch never looks frozen while runFailsafe retries.
+					publishState(
+						currentState.copy(
+							totalChapters = chapters.size,
+							currentChapter = chapterIndex,
+							overallTotalPages = resolvedTotalPages,
+							isIndeterminate = resolvedTotalPages == 0,
+							isFinalizing = false,
+							phase = DownloadPhase.RESOLVING,
+							phaseChapter = chapterIndex + 1,
+							requestedChapters = chapters.size,
+							retryAttempt = 0,
+							eta = -1L,
+							isStuck = false,
+						),
+					)
 					val resolvedPages = runFailsafe { repo.getPages(chapter.value) } ?: continue
 					if (resolvedPages.isEmpty()) {
 						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 						continue
 					}
 					pagesByChapterId[chapter.value.id] = resolvedPages
+					resolvedTotalPages += resolvedPages.size
+					// Expose a useful 0/N denominator immediately after every resolved chapter.
+					// N is refined monotonically as more chapters resolve; image transfer still uses
+					// the final total below, preserving #441's heterogeneous-chapter accounting.
+					publishState(
+						currentState.copy(
+							totalChapters = chapters.size,
+							currentChapter = chapterIndex,
+							totalPages = resolvedPages.size,
+							overallTotalPages = resolvedTotalPages,
+							completedPagesBeforeChapter = 0,
+							currentPage = 0,
+							isIndeterminate = false,
+							isFinalizing = false,
+							phase = DownloadPhase.RESOLVING,
+							phaseChapter = chapterIndex + 1,
+							retryAttempt = 0,
+							eta = -1L,
+							isStuck = false,
+						),
+					)
 				}
-				val overallTotalPages = pagesByChapterId.values.sumOf { it.size }
+				var overallTotalPages = resolvedTotalPages
 				var completedProgressPages = 0
 				var completedRequestedChapters = 0
 				for ((chapterIndex, chapter) in chapters.withIndex()) {
@@ -305,7 +352,29 @@ class DownloadWorker @AssistedInject constructor(
 						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 						continue
 					}
-					val pages = pagesByChapterId[chapter.value.id] ?: continue
+					var pages = pagesByChapterId[chapter.value.id]
+					if (pages == null && resolutionBudgetExceeded) {
+						// The eager resolution budget expired. Resume the old responsive behaviour:
+						// resolve the next chapter only when we reach it, then immediately transfer it.
+						publishState(
+							currentState.copy(
+								phase = DownloadPhase.RESOLVING,
+								phaseChapter = chapterIndex + 1,
+								requestedChapters = chapters.size,
+								retryAttempt = 0,
+								eta = -1L,
+								isStuck = false,
+							),
+						)
+						pages = runFailsafe { repo.getPages(chapter.value) } ?: continue
+						if (pages.isEmpty()) {
+							clearResumeChapterDir(mangaDetails.id, chapter.value.id)
+							continue
+						}
+						pagesByChapterId[chapter.value.id] = pages
+						overallTotalPages += pages.size
+					}
+					pages ?: continue
 					val resumeDir = getResumeChapterDir(mangaDetails.id, chapter.value.id)
 					val downloadedPages = arrayOfNulls<DownloadedPage>(pages.size)
 					val pageCounter = AtomicInteger(0)
@@ -321,6 +390,9 @@ class DownloadWorker @AssistedInject constructor(
 							currentPage = 0,
 							isIndeterminate = false,
 							isFinalizing = false,
+							phase = DownloadPhase.DOWNLOADING,
+							phaseChapter = chapterIndex + 1,
+							retryAttempt = 0,
 							eta = -1L,
 							isStuck = false,
 						),
@@ -429,7 +501,7 @@ class DownloadWorker @AssistedInject constructor(
 				check(completedRequestedChapters > 0) {
 					"No requested chapter produced a downloadable artifact"
 				}
-				publishState(currentState.copy(isIndeterminate = true, isFinalizing = true, eta = -1L, isStuck = false))
+				publishState(currentState.copy(isIndeterminate = true, isFinalizing = true, phase = DownloadPhase.FINALIZING, retryAttempt = 0, eta = -1L, isStuck = false))
 				output.mergeWithExisting()
 				output.finish()
 				recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
@@ -526,7 +598,18 @@ class DownloadWorker @AssistedInject constructor(
 				} else {
 					retriesRemaining--
 					if (e !is TooManyRequestExceptions) ordinaryRetryIndex++
+					val attempt = MAX_FAILSAFE_RETRIES - retriesRemaining
+					val previousPhase = currentState.phase
+					publishState(
+						currentState.copy(
+							phase = DownloadPhase.RETRYING,
+							retryAttempt = attempt,
+							eta = -1L,
+							isStuck = false,
+						),
+					)
 					delayPausable(retryDelay)
+					publishState(currentState.copy(phase = previousPhase, retryAttempt = 0, eta = -1L, isStuck = false))
 				}
 			}
 		}
@@ -872,6 +955,7 @@ class DownloadWorker @AssistedInject constructor(
 
 	private companion object {
 		const val MAX_FAILSAFE_RETRIES = 3
+		const val BATCH_RESOLUTION_BUDGET_MS = 10_000L
 		const val MAX_BACKOFF_SHIFT = 2
 		const val DOWNLOAD_ERROR_DELAY = 2_000L
 		const val MAX_RETRY_DELAY = 7_200_000L
