@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -275,10 +276,12 @@ private fun HeroSourceCard(
 					modifier = Modifier.size(32.dp),
 				) {
 					Icon(
-						painter = painterResource(if (expanded) R.drawable.ic_chevron_left else R.drawable.ic_chevron_right),
+						painter = painterResource(R.drawable.ic_chevron_right),
 						contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand),
 						tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-						modifier = Modifier.size(if (palette.isModern) 14.dp else 12.dp),
+						modifier = Modifier
+							.size(if (palette.isModern) 14.dp else 12.dp)
+							.rotate(if (expanded) 180f else 0f),
 					)
 				}
 			}
