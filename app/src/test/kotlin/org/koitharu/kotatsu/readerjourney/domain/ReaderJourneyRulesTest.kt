@@ -96,7 +96,7 @@ class ReaderJourneyRulesTest {
 			toLevel = 2,
 			fromRank = ReaderRank.NEWCOMER,
 			toRank = ReaderRank.NEWCOMER,
-			unlockedCosmetics = 0,
+			unlockedCosmetics = emptyList(),
 		)
 		assertTrue(levelOnly.isLevelUp)
 		assertTrue(!levelOnly.isRankUp)
@@ -105,11 +105,14 @@ class ReaderJourneyRulesTest {
 			fromLevel = 4,
 			toLevel = 5,
 			toRank = ReaderRank.READER,
-			unlockedCosmetics = ReaderJourneyCosmeticSlot.entries.size,
+			unlockedCosmetics = ReaderJourneyCosmetics.newlyUnlocked(
+				ReaderRank.NEWCOMER,
+				ReaderRank.READER,
+			),
 		)
 		assertTrue(rankUp.isLevelUp)
 		assertTrue(rankUp.isRankUp)
-		assertEquals(4, rankUp.unlockedCosmetics)
+		assertEquals(4, rankUp.unlockedCosmetics.size)
 	}
 
 	@Test
