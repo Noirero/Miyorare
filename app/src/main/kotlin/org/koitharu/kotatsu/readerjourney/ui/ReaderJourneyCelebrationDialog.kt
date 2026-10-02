@@ -36,6 +36,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.koitharu.kotatsu.R
@@ -62,6 +64,8 @@ suspend fun ComponentActivity.showReaderJourneyCelebrationDialog(
 	dialog.setCancelable(true)
 	dialog.setCanceledOnTouchOutside(true)
 	val compose = ComposeView(this).apply {
+		setViewTreeLifecycleOwner(this@showReaderJourneyCelebrationDialog)
+		setViewTreeSavedStateRegistryOwner(this@showReaderJourneyCelebrationDialog)
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
 		setContent {
 			MiyorareTheme {
