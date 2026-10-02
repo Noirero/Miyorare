@@ -1,8 +1,13 @@
 package org.koitharu.kotatsu.stats.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,9 +68,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -160,6 +169,8 @@ fun StatsScreen(
 	onCategoryToggle: (FavouriteCategory) -> Unit,
 	onCategoriesClear: () -> Unit,
 	onProfileUpdate: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
+	onAvatarSelected: (Uri) -> Unit,
+	onAvatarRemove: () -> Unit,
 	onCosmeticsUpdate: (ReaderJourneyCosmeticLoadout) -> Unit,
 	onWeeklyReroll: (ReaderJourneyWeeklyTaskId) -> Unit,
 	onShareReaderProfile: (ReaderProfileShareModel) -> Unit,
@@ -174,6 +185,12 @@ fun StatsScreen(
 	var showCosmeticsEditor by rememberSaveable { mutableStateOf(false) }
 	var customizerInitialThemeId by rememberSaveable { mutableStateOf<String?>(null) }
 	var showUnlockedAchievementsOnly by rememberSaveable { mutableStateOf(false) }
+	val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+		uri?.let(onAvatarSelected)
+	}
+	val pickAvatar = {
+		avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+	}
 
 	LaunchedEffect(stats.isJourneyEnabled) {
 		if (!stats.isJourneyEnabled && journeySection == ReaderJourneySection.COLLECTION) {
@@ -224,6 +241,7 @@ fun StatsScreen(
 								stats = stats,
 								profile = profile,
 								onEdit = { showProfileEditor = true },
+								onAvatarClick = pickAvatar,
 								onShare = {
 									onShareReaderProfile(ReaderProfileShareModel.from(stats.lifetimeXp, profile.cosmetics))
 								},
@@ -393,6 +411,8 @@ fun StatsScreen(
 				ReaderProfileEditorSheet(
 					profile = profile,
 					unlockedAchievements = stats.achievements.filter { it.isUnlocked }.map { it.id },
+					onPickAvatar = pickAvatar,
+					onRemoveAvatar = onAvatarRemove,
 					onDismiss = { showProfileEditor = false },
 					onSave = { displayName, title, showcase ->
 						onProfileUpdate(displayName, title, showcase)
@@ -425,6 +445,7 @@ private fun ReaderProfileCard(
 	stats: ReadingStats,
 	profile: ReaderProfileSettings,
 	onEdit: () -> Unit,
+	onAvatarClick: () -> Unit,
 	onShare: () -> Unit,
 ) {
 	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
@@ -535,35 +556,25 @@ private fun ReaderProfileCard(
 					modifier = Modifier.size(136.dp),
 				) {
 					Surface(
-						modifier = Modifier.fillMaxSize(),
+						modifier = Modifier
+							.fillMaxSize()
+							.clickable(onClick = onAvatarClick),
 						shape = CircleShape,
 						color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
 					) {
-						Box(contentAlignment = Alignment.Center) {
-							Text(
-								text = profile.initial,
-								style = MaterialTheme.typography.headlineMedium,
-								fontWeight = FontWeight.Bold,
-								color = Color(frameTokens.primaryAccent.toInt()),
-							)
-						}
+						ReaderAvatar(profile, imageLoader, Color(frameTokens.primaryAccent.toInt()))
 					}
 				}
 			} else {
 				Surface(
-					modifier = Modifier.size(94.dp),
+					modifier = Modifier
+						.size(94.dp)
+						.clickable(onClick = onAvatarClick),
 					shape = CircleShape,
 					color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
 					border = BorderStroke(1.dp, accent.copy(alpha = 0.42f)),
 				) {
-					Box(contentAlignment = Alignment.Center) {
-						Text(
-							text = profile.initial,
-							style = MaterialTheme.typography.headlineMedium,
-							fontWeight = FontWeight.Bold,
-							color = accent,
-						)
-					}
+					ReaderAvatar(profile, imageLoader, accent)
 				}
 			}
 			if (badgeSpec != null && badgeTokens != null && !rankThemeMinimalCosmetics) {
@@ -1326,11 +1337,46 @@ private fun ReaderCosmeticsEditorSheet(
 	)
 }
 
+@Composable
+private fun ReaderAvatar(
+	profile: ReaderProfileSettings,
+	imageLoader: ImageLoader,
+	fallbackColor: Color,
+) {
+	Box(
+		modifier = Modifier.fillMaxSize(),
+		contentAlignment = Alignment.Center,
+	) {
+		Text(
+			text = profile.initial,
+			style = MaterialTheme.typography.headlineMedium,
+			fontWeight = FontWeight.Bold,
+			color = fallbackColor,
+		)
+		profile.avatarPath?.let { avatarPath ->
+			AsyncImage(
+				model = ImageRequest.Builder(LocalContext.current)
+					.data(avatarPath)
+					.crossfade(true)
+					.build(),
+				imageLoader = imageLoader,
+				contentDescription = stringResource(R.string.reader_journey_avatar),
+				contentScale = ContentScale.Crop,
+				modifier = Modifier
+					.fillMaxSize()
+					.clip(CircleShape),
+			)
+		}
+	}
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReaderProfileEditorSheet(
 	profile: ReaderProfileSettings,
 	unlockedAchievements: List<ReaderAchievementId>,
+	onPickAvatar: () -> Unit,
+	onRemoveAvatar: () -> Unit,
 	onDismiss: () -> Unit,
 	onSave: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
 ) {
@@ -1356,6 +1402,21 @@ private fun ReaderProfileEditorSheet(
 					style = MaterialTheme.typography.headlineSmall,
 					fontWeight = FontWeight.Bold,
 				)
+			}
+			item("avatar-actions") {
+				Row(
+					modifier = Modifier.fillMaxWidth(),
+					horizontalArrangement = Arrangement.spacedBy(8.dp),
+				) {
+					TextButton(onClick = onPickAvatar) {
+						Text(stringResource(R.string.reader_journey_choose_avatar))
+					}
+					if (profile.avatarPath != null) {
+						TextButton(onClick = onRemoveAvatar) {
+							Text(stringResource(R.string.reader_journey_remove_avatar))
+						}
+					}
+				}
 			}
 			item("display-name") {
 				OutlinedTextField(
