@@ -281,8 +281,8 @@ class ReaderJourneyCollector @Inject constructor(
 						fromRank = persisted.before.rank,
 						toRank = persisted.after.rank,
 						unlockedCosmetics = ReaderJourneyCosmetics
-							.newlyUnlocked(persisted.before.rank, persisted.after.rank)
-							.size,
+							.newlyUnlocked(persisted.before.rank, persisted.after.rank),
+						unlockedAchievements = persisted.achievementResult.newlyUnlocked,
 						breakdown = persisted.breakdown,
 						progressMilestones = ReaderJourneyRules.progressMilestonesCrossed(
 							persisted.before,
