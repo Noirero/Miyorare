@@ -5,6 +5,7 @@ on:
     branches:
       - beta
       - main
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
   workflow_dispatch:
 
@@ -32,15 +33,16 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Test runtime path classifier
+      - name: Test runtime policy classifier
         run: python3 .github/scripts/test_android_runtime_paths.py
 
-      - name: Classify changed paths
+      - name: Classify changed paths and PR policy
         id: classify
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
@@ -48,9 +50,16 @@ jobs:
             exit 0
           fi
           git diff --name-only "$BASE_SHA...$HEAD_SHA" > /tmp/android-runtime-paths.txt
-          run_runtime="$(python3 .github/scripts/android_runtime_paths.py --paths-file /tmp/android-runtime-paths.txt)"
+          reason_file="$(mktemp)"
+          run_runtime="$(python3 .github/scripts/android_runtime_paths.py --paths-file /tmp/android-runtime-paths.txt --labels "$PR_LABELS" --explain 2>"$reason_file")"
+          reason="$(cat "$reason_file")"
           echo "run_runtime=$run_runtime" >> "$GITHUB_OUTPUT"
-          echo "Core Android runtime required: $run_runtime" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Android Runtime policy"
+            echo "- Emulator required: **$run_runtime**"
+            echo "- Reason: $reason"
+            echo "- PR labels: ${PR_LABELS:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   runtime:
     name: Android 15 runtime acceptance
@@ -95,7 +104,6 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
-
           emulator-build: 13823996
           target: google_apis
           arch: x86_64
