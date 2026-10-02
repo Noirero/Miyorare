@@ -122,8 +122,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          cores: 4
           disable-animations: false
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
           script: |
             adb shell wm size 864x1536
             adb shell wm density 320
