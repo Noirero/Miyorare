@@ -57,22 +57,43 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.ReaderJourneyCelebrationMode
+import org.koitharu.kotatsu.core.util.ext.isAnimationsEnabled
+import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueue
+import org.koitharu.kotatsu.readerjourney.ui.showReaderJourneyCelebrationDialog
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.main.ui.nav.DrawablePainter
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.groupItemShape
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class DeveloperToolsFragment : BaseComposeSettingsFragment(R.string.developer_testing_tools) {
 
 	private val viewModel by viewModels<DeveloperToolsViewModel>()
 	private val router by lazy { AppRouter(this) }
+
+	@Inject
+	lateinit var settings: AppSettings
+
+	private val celebrationPreviewQueue by lazy(LazyThreadSafetyMode.NONE) {
+		CelebrationQueue(
+			scope = viewLifecycleOwner.lifecycleScope,
+			modeProvider = { ReaderJourneyCelebrationMode.FULL },
+			reduceMotionProvider = {
+				!requireActivity().isAnimationsEnabled || settings.isRankThemeReduceMotion
+			},
+			presenter = { item -> requireActivity().showReaderJourneyCelebrationDialog(item) },
+		)
+	}
 
 	override fun onCreateView(
 		inflater: LayoutInflater,
@@ -94,6 +115,9 @@ class DeveloperToolsFragment : BaseComposeSettingsFragment(R.string.developer_te
 					},
 					onOpenThemeGallery = ::openThemeGallery,
 					onOpenExclusiveThemeQa = ::openExclusiveThemeQa,
+					onPreviewAchievement = { celebrationPreviewQueue.enqueue(viewModel.previewAchievement()) },
+					onPreviewCosmetic = { celebrationPreviewQueue.enqueue(viewModel.previewCosmeticUnlock()) },
+					onPreviewRankUp = { celebrationPreviewQueue.enqueue(viewModel.previewRankUp()) },
 				)
 			}
 		}
@@ -128,6 +152,9 @@ private fun DeveloperToolsScreen(
 	onOpenExtension: (String) -> Unit,
 	onOpenThemeGallery: () -> Unit,
 	onOpenExclusiveThemeQa: () -> Unit,
+	onPreviewAchievement: () -> Unit,
+	onPreviewCosmetic: () -> Unit,
+	onPreviewRankUp: () -> Unit,
 ) {
 	val results = state.results
 	val passed = results.count { it.status == DeveloperExtensionStatus.PASSED }
@@ -178,6 +205,17 @@ private fun DeveloperToolsScreen(
 				}
 
 				if (BuildConfig.DEBUG) {
+					Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+						Button(onClick = onPreviewAchievement, modifier = Modifier.fillMaxWidth()) {
+							Text(stringResource(R.string.developer_preview_journey_achievement))
+						}
+						Button(onClick = onPreviewCosmetic, modifier = Modifier.fillMaxWidth()) {
+							Text(stringResource(R.string.developer_preview_journey_cosmetic))
+						}
+						Button(onClick = onPreviewRankUp, modifier = Modifier.fillMaxWidth()) {
+							Text(stringResource(R.string.developer_preview_journey_rank_up))
+						}
+					}
 					Button(
 						onClick = onOpenThemeGallery,
 						modifier = Modifier
