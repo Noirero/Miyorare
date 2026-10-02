@@ -82,7 +82,11 @@ import org.koitharu.kotatsu.reader.data.TapGridSettings
 import org.koitharu.kotatsu.reader.domain.TapGridArea
 import org.koitharu.kotatsu.reader.domain.UpscaleEffect
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueue
+import org.koitharu.kotatsu.readerjourney.domain.CelebrationPresentation
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueueItem
+import org.koitharu.kotatsu.readerjourney.domain.presentation
+import org.koitharu.kotatsu.readerjourney.ui.CelebrationDialogResult
+import org.koitharu.kotatsu.readerjourney.ui.showReaderJourneyCelebrationDialog
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
 import org.koitharu.kotatsu.reader.ui.upscale.UpscalePreviewDialog
 import org.koitharu.kotatsu.reader.ui.config.ReaderConfigSheet
@@ -398,6 +402,12 @@ class ReaderActivity :
     }
 
     private suspend fun showReaderJourneyCelebration(item: CelebrationQueueItem) {
+        if (item.presentation() != CelebrationPresentation.SNACKBAR) {
+            if (showReaderJourneyCelebrationDialog(item) == CelebrationDialogResult.OPEN_COLLECTION) {
+                router.openStatistic()
+            }
+            return
+        }
         val event = item.event
         val mode = item.mode
 
