@@ -453,7 +453,13 @@ class DownloadsViewModel @Inject constructor(
 				isStuck = progressMembers.any { it.isStuck },
 				timestamp = latestTimestamp,
 				chaptersDownloaded = groupedChapterCount,
-				downloadSizeBytes = members.maxOfOrNull { it.downloadSizeBytes } ?: 0L,
+				downloadSizeBytes = if (state == WorkInfo.State.RUNNING) {
+					// Never borrow a completed sibling's directory size for an active card.
+					// Active work deliberately reports only its own hydrated size (paused work may have one).
+					stateMembers.maxOfOrNull { it.downloadSizeBytes } ?: 0L
+				} else {
+					stateMembers.maxOfOrNull { it.downloadSizeBytes } ?: 0L
+				},
 				isExpanded = representative.selectionId in expandedIds,
 				chapters = groupedChaptersFlow(manga, workIds),
 				uiAction = stateMembers.firstNotNullOfOrNull { it.uiAction },
