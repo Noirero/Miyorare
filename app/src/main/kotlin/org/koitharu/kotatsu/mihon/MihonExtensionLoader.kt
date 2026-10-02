@@ -534,8 +534,10 @@ class MihonExtensionLoader @Inject constructor(
 
 	private fun extractLanguage(packageName: String): String {
 		val parts = packageName.split('.')
-		// Novel extensions live under `…tachiyomi.novelextension.<lang>.<site>`.
-		val extIndex = parts.indexOfLast { it == "extension" || it == "novelextension" }
+		// Manga, novel, and Aniyomi anime extensions encode language immediately after their namespace.
+		val extIndex = parts.indexOfLast {
+			it == "extension" || it == "novelextension" || it == "animeextension"
+		}
 		return parts.getOrNull(extIndex + 1)
 			?.takeIf { it.isNotBlank() }
 			?: parts.lastOrNull()
