@@ -13,6 +13,7 @@ data class DownloadState(
 	val isFinalizing: Boolean = false,
 	val phase: DownloadPhase = DownloadPhase.DOWNLOADING,
 	val phaseChapter: Int = 0,
+	val requestedChapters: Int = 0,
 	val retryAttempt: Int = 0,
 	val isStopped: Boolean = false,
 	val error: Throwable? = null,
@@ -60,6 +61,7 @@ data class DownloadState(
 		.putBoolean(DATA_FINALIZING, isFinalizing)
 		.putString(DATA_PHASE, phase.name)
 		.putInt(DATA_PHASE_CHAPTER, phaseChapter)
+		.putInt(DATA_REQUESTED_CHAPTERS, requestedChapters)
 		.putInt(DATA_RETRY_ATTEMPT, retryAttempt)
 		.build()
 
@@ -78,6 +80,7 @@ data class DownloadState(
 		private const val DATA_FINALIZING = "finalizing"
 		private const val DATA_PHASE = "phase"
 		private const val DATA_PHASE_CHAPTER = "phase_chapter"
+		private const val DATA_REQUESTED_CHAPTERS = "requested_chapters"
 		private const val DATA_RETRY_ATTEMPT = "retry_attempt"
 
 		fun getMangaId(data: Data): Long = data.getLong(DATA_MANGA_ID, 0L)
@@ -91,6 +94,8 @@ data class DownloadState(
 		fun getPhase(data: Data): DownloadPhase = data.getString(DATA_PHASE)?.let { runCatching { DownloadPhase.valueOf(it) }.getOrNull() } ?: DownloadPhase.DOWNLOADING
 
 		fun getPhaseChapter(data: Data): Int = data.getInt(DATA_PHASE_CHAPTER, 0)
+
+		fun getRequestedChapters(data: Data): Int = data.getInt(DATA_REQUESTED_CHAPTERS, 0)
 
 		fun getRetryAttempt(data: Data): Int = data.getInt(DATA_RETRY_ATTEMPT, 0)
 
