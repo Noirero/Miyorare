@@ -28,6 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.preference.PreferenceManager
 import androidx.core.app.FrameMetricsAggregator
@@ -55,6 +57,7 @@ import org.koitharu.kotatsu.stats.ui.StatsActivity
 import java.io.OutputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -99,6 +102,7 @@ class ExclusiveNameplateGoldenVisualTest {
 	fun captureAllTwelveStaticAndPreviewNameplates() {
 		val activity = startActivity()
 		val renderCase = mutableStateOf(RenderCase(0, NameplateState.UNLOCKED, false, NameplateUsage.PREVIEW))
+		val nameplateSize = AtomicReference(IntSize.Zero)
 		val composeView = ComposeView(activity)
 
 		instrumentation.runOnMainSync {
@@ -118,7 +122,8 @@ class ExclusiveNameplateGoldenVisualTest {
 							animate = case.animate,
 							qualityMode = NameplateQualityMode.NORMAL,
 							usage = case.usage,
-							modifier = Modifier.size(width = 360.dp, height = 138.dp),
+							modifier = Modifier.size(width = 360.dp, height = 138.dp)
+								.onSizeChanged { nameplateSize.set(it) },
 						)
 					}
 				}
@@ -145,9 +150,11 @@ class ExclusiveNameplateGoldenVisualTest {
 				instrumentation.waitForIdleSync()
 				SystemClock.sleep(700)
 				val staticCrop = captureNameplate(composeView)
-				val artworkDelta = assertFinalArtworkPreserved(staticCrop, composeView, NameplateAssetRegistry.resolve(spec.themeId).drawableRes)
 				val staticName = "%02d-%s-static.png".format(index + 1, spec.themeId.stableId.lowercase())
 				writePng(staticName, staticCrop)
+				val artworkDelta = assertFinalArtworkPreserved(
+					staticCrop, nameplateSize.get(), NameplateAssetRegistry.resolve(spec.themeId).drawableRes,
+				)
 				// Contact sheets only need review-sized captures. Keep the full-resolution PNG on
 				// disk, but retain a half-size bitmap in memory so the 12-theme evidence pass does
 				// not exhaust the headless emulator graphics process.
@@ -678,20 +685,21 @@ class ExclusiveNameplateGoldenVisualTest {
 			val centerY = location[1] + view.height / 2
 			val left = (centerX - cropWidth / 2).coerceIn(0, screenshot.width - cropWidth)
 			val top = (centerY - cropHeight / 2).coerceIn(0, screenshot.height - cropHeight)
-			Bitmap.createBitmap(screenshot, left, top, cropWidth, cropHeight)
+			independentScreenshotCrop(screenshot, left, top, cropWidth, cropHeight)
 		} finally {
 			screenshot.recycle()
 		}
 	}
 
 
-	private fun assertFinalArtworkPreserved(actual: Bitmap, view: ComposeView, drawableRes: Int): Double {
+	private fun assertFinalArtworkPreserved(actual: Bitmap, renderedSize: IntSize, drawableRes: Int): Double {
 		val source = checkNotNull(BitmapFactory.decodeResource(context.resources, drawableRes))
 		val expected = Bitmap.createBitmap(actual.width, actual.height, Bitmap.Config.ARGB_8888)
 		try {
-			val density = context.resources.displayMetrics.density
-			val boxWidth = minOf(360f * density, view.width.toFloat())
-			val boxHeight = minOf(138f * density, view.height.toFloat())
+			// Use Compose's measured pixels: BaseActivity may override density for app UI scaling.
+			assertTrue("Nameplate must have a measured runtime size", renderedSize.width > 0 && renderedSize.height > 0)
+			val boxWidth = renderedSize.width.toFloat()
+			val boxHeight = renderedSize.height.toFloat()
 			val scale = minOf(boxWidth / source.width, boxHeight / source.height)
 			val width = (source.width * scale).toInt()
 			val height = (source.height * scale).toInt()
@@ -716,7 +724,8 @@ class ExclusiveNameplateGoldenVisualTest {
 			}
 			assertTrue("Final artwork comparison must include opaque rank-title pixels", pixels > 1_000L)
 			val delta = error.toDouble() / (pixels * 3.0 * 255.0)
-			assertTrue("Final artwork/title must render without a center text or scrim overlay: delta=$delta", delta < 0.015)
+			if (delta >= 0.015) writePng("failed-artwork-reference.png", expected)
+			assertTrue("Final artwork/title must render without a center text or scrim overlay: delta=$delta size=$renderedSize", delta < 0.015)
 			return delta
 		} finally {
 			source.recycle()
@@ -733,9 +742,20 @@ class ExclusiveNameplateGoldenVisualTest {
 			val top = location[1].coerceIn(0, screenshot.height - 1)
 			val width = minOf(view.width, screenshot.width - left).coerceAtLeast(1)
 			val height = minOf(view.height, screenshot.height - top).coerceAtLeast(1)
-			Bitmap.createBitmap(screenshot, left, top, width, height)
+			independentScreenshotCrop(screenshot, left, top, width, height)
 		} finally {
 			screenshot.recycle()
+		}
+	}
+
+	// createBitmap returns the input for a full-frame crop. The caller releases its screenshot;
+	// retain an independently owned bitmap so later PNG capture cannot use a recycled input.
+	private fun independentScreenshotCrop(screenshot: Bitmap, left: Int, top: Int, width: Int, height: Int): Bitmap {
+		val cropped = Bitmap.createBitmap(screenshot, left, top, width, height)
+		return if (cropped === screenshot) {
+			checkNotNull(cropped.copy(Bitmap.Config.ARGB_8888, false))
+		} else {
+			cropped
 		}
 	}
 
