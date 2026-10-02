@@ -60,7 +60,7 @@ class FavoriteDialogViewModel @Inject constructor(
 	private val restoredCategoryIds = MutableStateFlow<Set<Long>>(emptySet())
 
 	private val pendingChanges = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
-	val isSaving = MutableStateFlow(isSingleNormalFavourite)
+	val isSaving = MutableStateFlow(false)
 	val onSaved = MutableEventFlow<Boolean>()
 	private val savedContent = combine(
 		favouritesRepository.observeCategories(favouriteSpace),
