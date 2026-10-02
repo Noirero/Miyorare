@@ -1611,4 +1611,13 @@
 	<string name="reader_journey_weekly_task">task</string>
 	<string name="reader_journey_share_failed">Couldn’t create the Reader Journey share card</string>
 	<string name="failed">Failed</string>
+
+    <string name="reader_journey_celebration_achievement">Achievement unlocked</string>
+    <string name="reader_journey_celebration_cosmetic">Cosmetic unlocked</string>
+    <string name="reader_journey_celebration_rank_up">Rank up</string>
+    <string name="reader_journey_celebration_continue">Continue</string>
+    <string name="reader_journey_celebration_view_collection">View in collection</string>
+    <string name="developer_preview_journey_achievement">Preview achievement</string>
+    <string name="developer_preview_journey_cosmetic">Preview cosmetic unlock</string>
+    <string name="developer_preview_journey_rank_up">Preview rank-up</string>
 </resources>
