@@ -85,6 +85,7 @@ import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueue
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationPresentation
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueueItem
 import org.koitharu.kotatsu.readerjourney.domain.presentation
+import org.koitharu.kotatsu.readerjourney.domain.presentations
 import org.koitharu.kotatsu.readerjourney.ui.CelebrationDialogResult
 import org.koitharu.kotatsu.readerjourney.ui.showReaderJourneyCelebrationDialog
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
@@ -402,9 +403,16 @@ class ReaderActivity :
     }
 
     private suspend fun showReaderJourneyCelebration(item: CelebrationQueueItem) {
-        if (item.presentation() != CelebrationPresentation.SNACKBAR) {
-            if (showReaderJourneyCelebrationDialog(item) == CelebrationDialogResult.OPEN_COLLECTION) {
-                router.openStatistic()
+        val presentations = item.presentations()
+        if (presentations.first() != CelebrationPresentation.SNACKBAR) {
+            for (presentation in presentations) {
+                val result = showReaderJourneyCelebrationDialog(
+                    item.copy(presentationOverride = presentation),
+                )
+                if (result == CelebrationDialogResult.OPEN_COLLECTION) {
+                    router.openStatistic()
+                    break
+                }
             }
             return
         }
