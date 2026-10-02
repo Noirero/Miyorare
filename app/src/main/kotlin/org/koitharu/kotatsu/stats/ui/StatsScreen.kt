@@ -428,8 +428,6 @@ private fun ReaderProfileCard(
 	onShare: () -> Unit,
 ) {
 	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
-	val selectedTitle = profile.selectedTitle
-		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
 	val qaState by ExclusiveThemeQaRuntime.state.collectAsState()
 	val effectiveCosmetics = remember(profile.cosmetics, progress.rank, qaState) {
 		qaState.effectiveLoadout(
