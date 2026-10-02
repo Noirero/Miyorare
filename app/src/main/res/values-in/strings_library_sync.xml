@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_sync">Sinkronisasi pustaka</string>
+    <string name="library_sync_summary">Kelola layanan sinkronisasi pustaka</string>
+    <string name="library_sync_manga">Manga</string>
+    <string name="library_sync_novel">Novel</string>
+    <string name="library_sync_mangadex">Sinkronisasi MangaDex</string>
+    <string name="library_sync_mangaupdates">Sinkronisasi MangaUpdates</string>
+    <string name="library_sync_anilist">Sinkronisasi AniList</string>
+    <string name="library_sync_kitsu">Sinkronisasi Kitsu</string>
+    <string name="library_sync_novelupdates">Sinkronisasi NovelUpdates</string>
+    <string name="library_sync_ranobedb">Sinkronisasi RanobeDB</string>
+    <string name="library_sync_coming_soon">Segera hadir</string>
+</resources>

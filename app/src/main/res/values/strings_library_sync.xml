@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_sync">Library sync</string>
+    <string name="library_sync_summary">Manage library sync services</string>
+    <string name="library_sync_manga">Manga</string>
+    <string name="library_sync_novel">Novel</string>
+    <string name="library_sync_mangadex">MangaDex sync</string>
+    <string name="library_sync_mangaupdates">MangaUpdates sync</string>
+    <string name="library_sync_anilist">AniList sync</string>
+    <string name="library_sync_kitsu">Kitsu sync</string>
+    <string name="library_sync_novelupdates">NovelUpdates sync</string>
+    <string name="library_sync_ranobedb">RanobeDB sync</string>
+    <string name="library_sync_coming_soon">Coming soon</string>
+</resources>
