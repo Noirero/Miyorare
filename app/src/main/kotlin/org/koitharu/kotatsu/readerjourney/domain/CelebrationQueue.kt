@@ -7,18 +7,24 @@ import org.koitharu.kotatsu.core.prefs.ReaderJourneyCelebrationMode
 
 enum class CelebrationPresentation { SNACKBAR, ACHIEVEMENT, COSMETIC, RANK_UP }
 
-fun CelebrationQueueItem.presentation(): CelebrationPresentation = when {
-	mode != ReaderJourneyCelebrationMode.FULL -> CelebrationPresentation.SNACKBAR
-	event.unlockedAchievements.isNotEmpty() -> CelebrationPresentation.ACHIEVEMENT
-	event.isRankUp -> CelebrationPresentation.RANK_UP
-	event.unlockedCosmetics.isNotEmpty() -> CelebrationPresentation.COSMETIC
-	else -> CelebrationPresentation.SNACKBAR
+fun CelebrationQueueItem.presentations(): List<CelebrationPresentation> {
+	if (mode != ReaderJourneyCelebrationMode.FULL) return listOf(CelebrationPresentation.SNACKBAR)
+	val rich = buildList {
+		if (event.unlockedAchievements.isNotEmpty()) add(CelebrationPresentation.ACHIEVEMENT)
+		if (event.isRankUp) add(CelebrationPresentation.RANK_UP)
+		if (event.unlockedCosmetics.isNotEmpty()) add(CelebrationPresentation.COSMETIC)
+	}
+	return rich.ifEmpty { listOf(CelebrationPresentation.SNACKBAR) }
 }
+
+fun CelebrationQueueItem.presentation(): CelebrationPresentation =
+	presentationOverride ?: presentations().first()
 
 data class CelebrationQueueItem(
 	val event: ReaderJourneyCelebration,
 	val mode: ReaderJourneyCelebrationMode,
 	val reduceMotion: Boolean,
+	val presentationOverride: CelebrationPresentation? = null,
 )
 
 /**
