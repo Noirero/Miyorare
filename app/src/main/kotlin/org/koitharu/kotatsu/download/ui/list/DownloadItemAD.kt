@@ -415,7 +415,7 @@ fun downloadItemAD(
 					item.phase == DownloadPhase.RESOLVING -> binding.textViewStatus.text = context.getString(
 						R.string.download_resolving_chapter,
 						item.phaseChapter.coerceAtLeast(1),
-						item.workIds.size.coerceAtLeast(item.phaseChapter.coerceAtLeast(1)),
+						item.requestedChapters.coerceAtLeast(item.phaseChapter.coerceAtLeast(1)),
 					)
 					else -> binding.textViewStatus.setText(R.string.manga_downloading_)
 				}
