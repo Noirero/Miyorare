@@ -25,9 +25,11 @@ data class DownloadState(
 	val timestamp: Long = System.currentTimeMillis(),
 ) {
 
-	val max: Int = totalChapters * totalPages
+	// totalPages/currentPage are batch-wide page counts. Chapter counters remain available for
+	// chapter-specific UI, but must never be multiplied into page progress because chapter sizes vary.
+	val max: Int = totalPages.coerceAtLeast(0)
 
-	val progress: Int = calculateDownloadProgress(totalPages, currentChapter, currentPage)
+	val progress: Int = currentPage.coerceIn(0, max.coerceAtLeast(0))
 
 	val percent: Float = if (max > 0) progress.toFloat() / max else PROGRESS_NONE
 
@@ -89,5 +91,3 @@ data class DownloadState(
 	}
 }
 
-internal fun calculateDownloadProgress(totalPages: Int, currentChapter: Int, currentPage: Int): Int =
-	(totalPages.coerceAtLeast(0) * currentChapter.coerceAtLeast(0) + currentPage.coerceAtLeast(0))
