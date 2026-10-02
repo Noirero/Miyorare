@@ -453,13 +453,9 @@ class DownloadsViewModel @Inject constructor(
 				isStuck = progressMembers.any { it.isStuck },
 				timestamp = latestTimestamp,
 				chaptersDownloaded = groupedChapterCount,
-				downloadSizeBytes = if (state == WorkInfo.State.RUNNING) {
-					// Never borrow a completed sibling's directory size for an active card.
-					// Active work deliberately reports only its own hydrated size (paused work may have one).
-					stateMembers.maxOfOrNull { it.downloadSizeBytes } ?: 0L
-				} else {
-					stateMembers.maxOfOrNull { it.downloadSizeBytes } ?: 0L
-				},
+				// Size must come from the members that own the visible state. In particular, an
+				// active row must not borrow the directory size of an older completed sibling.
+				downloadSizeBytes = stateMembers.maxOfOrNull { it.downloadSizeBytes } ?: 0L,
 				isExpanded = representative.selectionId in expandedIds,
 				chapters = groupedChaptersFlow(manga, workIds),
 				uiAction = stateMembers.firstNotNullOfOrNull { it.uiAction },
