@@ -28,8 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.dp
 import androidx.preference.PreferenceManager
 import androidx.core.app.FrameMetricsAggregator
@@ -62,6 +62,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Runtime visual evidence for the final Miyorare_12_Nameplates_With_Rank_Titles.zip artwork.
@@ -102,7 +103,7 @@ class ExclusiveNameplateGoldenVisualTest {
 	fun captureAllTwelveStaticAndPreviewNameplates() {
 		val activity = startActivity()
 		val renderCase = mutableStateOf(RenderCase(0, NameplateState.UNLOCKED, false, NameplateUsage.PREVIEW))
-		val nameplateSize = AtomicReference(IntSize.Zero)
+		val nameplateBounds = AtomicReference(Rect())
 		val composeView = ComposeView(activity)
 
 		instrumentation.runOnMainSync {
@@ -123,7 +124,14 @@ class ExclusiveNameplateGoldenVisualTest {
 							qualityMode = NameplateQualityMode.NORMAL,
 							usage = case.usage,
 							modifier = Modifier.size(width = 360.dp, height = 138.dp)
-								.onSizeChanged { nameplateSize.set(it) },
+								.onGloballyPositioned { coordinates ->
+									val position = coordinates.positionInRoot()
+									val left = position.x.roundToInt()
+									val top = position.y.roundToInt()
+									nameplateBounds.set(Rect(
+										left, top, left + coordinates.size.width, top + coordinates.size.height,
+									))
+								},
 						)
 					}
 				}
@@ -153,7 +161,7 @@ class ExclusiveNameplateGoldenVisualTest {
 				val staticName = "%02d-%s-static.png".format(index + 1, spec.themeId.stableId.lowercase())
 				writePng(staticName, staticCrop)
 				val artworkDelta = assertFinalArtworkPreserved(
-					staticCrop, nameplateSize.get(), NameplateAssetRegistry.resolve(spec.themeId).drawableRes,
+					staticCrop, composeView, nameplateBounds.get(), NameplateAssetRegistry.resolve(spec.themeId).drawableRes,
 				)
 				// Contact sheets only need review-sized captures. Keep the full-resolution PNG on
 				// disk, but retain a half-size bitmap in memory so the 12-theme evidence pass does
@@ -692,19 +700,22 @@ class ExclusiveNameplateGoldenVisualTest {
 	}
 
 
-	private fun assertFinalArtworkPreserved(actual: Bitmap, renderedSize: IntSize, drawableRes: Int): Double {
+	private fun assertFinalArtworkPreserved(actual: Bitmap, view: ComposeView, renderedBounds: Rect, drawableRes: Int): Double {
 		val source = checkNotNull(BitmapFactory.decodeResource(context.resources, drawableRes))
 		val expected = Bitmap.createBitmap(actual.width, actual.height, Bitmap.Config.ARGB_8888)
 		try {
 			// Use Compose's measured pixels: BaseActivity may override density for app UI scaling.
-			assertTrue("Nameplate must have a measured runtime size", renderedSize.width > 0 && renderedSize.height > 0)
-			val boxWidth = renderedSize.width.toFloat()
-			val boxHeight = renderedSize.height.toFloat()
+			assertTrue("Nameplate must have a measured runtime size", renderedBounds.width() > 0 && renderedBounds.height() > 0)
+			val boxWidth = renderedBounds.width().toFloat()
+			val boxHeight = renderedBounds.height().toFloat()
 			val scale = minOf(boxWidth / source.width, boxHeight / source.height)
-			val width = (source.width * scale).toInt()
-			val height = (source.height * scale).toInt()
-			val left = (actual.width - width) / 2
-			val top = (actual.height - height) / 2
+			// BitmapPainter rounds its destination size; use actual root placement as well as size.
+			val width = (source.width * scale).roundToInt()
+			val height = (source.height * scale).roundToInt()
+			val cropLeftInRoot = view.width / 2 - actual.width / 2
+			val cropTopInRoot = view.height / 2 - actual.height / 2
+			val left = renderedBounds.left - cropLeftInRoot + ((boxWidth - width) / 2f).roundToInt()
+			val top = renderedBounds.top - cropTopInRoot + ((boxHeight - height) / 2f).roundToInt()
 			Canvas(expected).drawBitmap(
 				source, null, Rect(left, top, left + width, top + height),
 				Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
@@ -725,7 +736,7 @@ class ExclusiveNameplateGoldenVisualTest {
 			assertTrue("Final artwork comparison must include opaque rank-title pixels", pixels > 1_000L)
 			val delta = error.toDouble() / (pixels * 3.0 * 255.0)
 			if (delta >= 0.015) writePng("failed-artwork-reference.png", expected)
-			assertTrue("Final artwork/title must render without a center text or scrim overlay: delta=$delta size=$renderedSize", delta < 0.015)
+			assertTrue("Final artwork/title must render without a center text or scrim overlay: delta=$delta bounds=$renderedBounds", delta < 0.015)
 			return delta
 		} finally {
 			source.recycle()
