@@ -95,6 +95,14 @@ jobs:
           echo "::error::Parser artifact ${PARSERS_VERSION} is not ready on JitPack"
           exit 1
 
+      - name: Prebuild preview instrumentation APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assemblePreview :app:assemblePreviewAndroidTest --no-daemon --stacktrace \
+            -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
+            -PMIYORARE_VISUAL_TEST_SIGNING=true
+
       - name: Enable KVM
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
@@ -109,7 +117,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: false
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
           script: |
             set -eu
             adb shell wm density 320

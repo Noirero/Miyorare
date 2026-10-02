@@ -101,6 +101,14 @@ jobs:
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
             --tests org.koitharu.kotatsu.readerjourney.ui.NameplateGuideContractTest
 
+      - name: Prebuild preview instrumentation APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assemblePreview :app:assemblePreviewAndroidTest --no-daemon --stacktrace \
+            -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
+            -PMIYORARE_VISUAL_TEST_SIGNING=true
+
       - name: Enable KVM
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
@@ -114,11 +122,12 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          cores: 4
           disable-animations: false
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
           script: |
-            adb shell wm size 864x1536
-            adb shell wm density 320
+            adb shell wm size 720x1280
+            adb shell wm density 300
             adb shell settings put system font_scale 1.0
             adb shell cmd uimode night yes
             adb shell settings put global window_animation_scale 1

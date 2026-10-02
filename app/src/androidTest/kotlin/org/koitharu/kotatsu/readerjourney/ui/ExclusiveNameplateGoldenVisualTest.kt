@@ -148,7 +148,10 @@ class ExclusiveNameplateGoldenVisualTest {
 				val staticCrop = captureNameplate(composeView)
 				val staticName = "%02d-%s-static.png".format(index + 1, spec.themeId.stableId.lowercase())
 				writePng(staticName, staticCrop)
-				staticCaptures += spec.themeId.displayName to staticCrop
+				// Contact sheets only need review-sized captures. Keep the full-resolution PNG on
+				// disk, but retain a half-size bitmap in memory so the 12-theme evidence pass does
+				// not exhaust the headless emulator graphics process.
+				staticCaptures += spec.themeId.displayName to staticCrop.scaleForContactSheet()
 
 				instrumentation.runOnMainSync {
 					renderCase.value = RenderCase(index, NameplateState.PREVIEWING, true, NameplateUsage.PREVIEW)
@@ -158,7 +161,7 @@ class ExclusiveNameplateGoldenVisualTest {
 				val previewCrop = captureNameplate(composeView)
 				val previewName = "%02d-%s-preview.png".format(index + 1, spec.themeId.stableId.lowercase())
 				writePng(previewName, previewCrop)
-				previewCaptures += spec.themeId.displayName to previewCrop
+				previewCaptures += spec.themeId.displayName to previewCrop.scaleForContactSheet()
 
 				evidence.put(
 					JSONObject()
@@ -169,6 +172,8 @@ class ExclusiveNameplateGoldenVisualTest {
 				)
 			}
 
+			Runtime.getRuntime().gc()
+			SystemClock.sleep(150)
 			val staticSheet = buildContactSheet(staticCaptures)
 			val previewSheet = buildContactSheet(previewCaptures)
 			val goldenReference = loadGoldenReferenceContactSheet()
@@ -665,27 +670,41 @@ class ExclusiveNameplateGoldenVisualTest {
 
 	private fun captureNameplate(view: ComposeView): Bitmap {
 		val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-		val location = IntArray(2)
-		view.getLocationOnScreen(location)
-		val cropWidth = minOf(800, screenshot.width)
-		val cropHeight = minOf(360, screenshot.height)
-		val centerX = location[0] + view.width / 2
-		val centerY = location[1] + view.height / 2
-		val left = (centerX - cropWidth / 2).coerceIn(0, screenshot.width - cropWidth)
-		val top = (centerY - cropHeight / 2).coerceIn(0, screenshot.height - cropHeight)
-		return Bitmap.createBitmap(screenshot, left, top, cropWidth, cropHeight)
+		return try {
+			val location = IntArray(2)
+			view.getLocationOnScreen(location)
+			val cropWidth = minOf(800, screenshot.width)
+			val cropHeight = minOf(360, screenshot.height)
+			val centerX = location[0] + view.width / 2
+			val centerY = location[1] + view.height / 2
+			val left = (centerX - cropWidth / 2).coerceIn(0, screenshot.width - cropWidth)
+			val top = (centerY - cropHeight / 2).coerceIn(0, screenshot.height - cropHeight)
+			Bitmap.createBitmap(screenshot, left, top, cropWidth, cropHeight)
+		} finally {
+			screenshot.recycle()
+		}
 	}
 
 
 	private fun captureView(view: ComposeView): Bitmap {
 		val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-		val location = IntArray(2)
-		view.getLocationOnScreen(location)
-		val left = location[0].coerceIn(0, screenshot.width - 1)
-		val top = location[1].coerceIn(0, screenshot.height - 1)
-		val width = minOf(view.width, screenshot.width - left).coerceAtLeast(1)
-		val height = minOf(view.height, screenshot.height - top).coerceAtLeast(1)
-		return Bitmap.createBitmap(screenshot, left, top, width, height)
+		return try {
+			val location = IntArray(2)
+			view.getLocationOnScreen(location)
+			val left = location[0].coerceIn(0, screenshot.width - 1)
+			val top = location[1].coerceIn(0, screenshot.height - 1)
+			val width = minOf(view.width, screenshot.width - left).coerceAtLeast(1)
+			val height = minOf(view.height, screenshot.height - top).coerceAtLeast(1)
+			Bitmap.createBitmap(screenshot, left, top, width, height)
+		} finally {
+			screenshot.recycle()
+		}
+	}
+
+	private fun Bitmap.scaleForContactSheet(): Bitmap {
+		val targetWidth = (width / 2).coerceAtLeast(1)
+		val targetHeight = (height / 2).coerceAtLeast(1)
+		return Bitmap.createScaledBitmap(this, targetWidth, targetHeight, true)
 	}
 
 	private fun buildContactSheet(captures: List<Pair<String, Bitmap>>): Bitmap {
