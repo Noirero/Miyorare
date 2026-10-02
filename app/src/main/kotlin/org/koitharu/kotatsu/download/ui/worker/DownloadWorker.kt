@@ -284,17 +284,49 @@ class DownloadWorker @AssistedInject constructor(
 				// The previous chapterCount * activeChapterPages formula changed max whenever chapter
 				// lengths differed, which made the bar jump and reach near-100% far too early.
 				val pagesByChapterId = LinkedHashMap<Long, List<MangaPage>>(chapters.size)
-				for (chapter in chapters) {
+				var resolvedTotalPages = 0
+				for ((chapterIndex, chapter) in chapters.withIndex()) {
 					checkIsPaused()
 					if (chapter.value.id in chaptersToSkip) continue
+					// Page-list resolution can be slow on remote sources. Publish the chapter being
+					// resolved with ETA disabled so a batch never looks frozen while runFailsafe retries.
+					publishState(
+						currentState.copy(
+							totalChapters = chapters.size,
+							currentChapter = chapterIndex,
+							overallTotalPages = resolvedTotalPages,
+							isIndeterminate = resolvedTotalPages == 0,
+							isFinalizing = false,
+							eta = -1L,
+							isStuck = false,
+						),
+					)
 					val resolvedPages = runFailsafe { repo.getPages(chapter.value) } ?: continue
 					if (resolvedPages.isEmpty()) {
 						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 						continue
 					}
 					pagesByChapterId[chapter.value.id] = resolvedPages
+					resolvedTotalPages += resolvedPages.size
+					// Expose a useful 0/N denominator immediately after every resolved chapter.
+					// N is refined monotonically as more chapters resolve; image transfer still uses
+					// the final total below, preserving #441's heterogeneous-chapter accounting.
+					publishState(
+						currentState.copy(
+							totalChapters = chapters.size,
+							currentChapter = chapterIndex,
+							totalPages = resolvedPages.size,
+							overallTotalPages = resolvedTotalPages,
+							completedPagesBeforeChapter = 0,
+							currentPage = 0,
+							isIndeterminate = false,
+							isFinalizing = false,
+							eta = -1L,
+							isStuck = false,
+						),
+					)
 				}
-				val overallTotalPages = pagesByChapterId.values.sumOf { it.size }
+				val overallTotalPages = resolvedTotalPages
 				var completedProgressPages = 0
 				var completedRequestedChapters = 0
 				for ((chapterIndex, chapter) in chapters.withIndex()) {
