@@ -670,27 +670,35 @@ class ExclusiveNameplateGoldenVisualTest {
 
 	private fun captureNameplate(view: ComposeView): Bitmap {
 		val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-		val location = IntArray(2)
-		view.getLocationOnScreen(location)
-		val cropWidth = minOf(800, screenshot.width)
-		val cropHeight = minOf(360, screenshot.height)
-		val centerX = location[0] + view.width / 2
-		val centerY = location[1] + view.height / 2
-		val left = (centerX - cropWidth / 2).coerceIn(0, screenshot.width - cropWidth)
-		val top = (centerY - cropHeight / 2).coerceIn(0, screenshot.height - cropHeight)
-		return Bitmap.createBitmap(screenshot, left, top, cropWidth, cropHeight)
+		return try {
+			val location = IntArray(2)
+			view.getLocationOnScreen(location)
+			val cropWidth = minOf(800, screenshot.width)
+			val cropHeight = minOf(360, screenshot.height)
+			val centerX = location[0] + view.width / 2
+			val centerY = location[1] + view.height / 2
+			val left = (centerX - cropWidth / 2).coerceIn(0, screenshot.width - cropWidth)
+			val top = (centerY - cropHeight / 2).coerceIn(0, screenshot.height - cropHeight)
+			Bitmap.createBitmap(screenshot, left, top, cropWidth, cropHeight)
+		} finally {
+			screenshot.recycle()
+		}
 	}
 
 
 	private fun captureView(view: ComposeView): Bitmap {
 		val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-		val location = IntArray(2)
-		view.getLocationOnScreen(location)
-		val left = location[0].coerceIn(0, screenshot.width - 1)
-		val top = location[1].coerceIn(0, screenshot.height - 1)
-		val width = minOf(view.width, screenshot.width - left).coerceAtLeast(1)
-		val height = minOf(view.height, screenshot.height - top).coerceAtLeast(1)
-		return Bitmap.createBitmap(screenshot, left, top, width, height)
+		return try {
+			val location = IntArray(2)
+			view.getLocationOnScreen(location)
+			val left = location[0].coerceIn(0, screenshot.width - 1)
+			val top = location[1].coerceIn(0, screenshot.height - 1)
+			val width = minOf(view.width, screenshot.width - left).coerceAtLeast(1)
+			val height = minOf(view.height, screenshot.height - top).coerceAtLeast(1)
+			Bitmap.createBitmap(screenshot, left, top, width, height)
+		} finally {
+			screenshot.recycle()
+		}
 	}
 
 	private fun Bitmap.scaleForContactSheet(): Bitmap {
