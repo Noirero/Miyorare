@@ -52,7 +52,7 @@ import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
 import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
-import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
+import org.koitharu.kotatsu.sync.ui.LibrarySyncHubFragment
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -140,9 +140,9 @@ private enum class SettingsSection(
         BackupSettingsFragment::class.java,
     ),
     SYNC(
-        R.string.google_drive_sync, R.drawable.ic_cloud_sync, "sync",
-        intArrayOf(R.string.sync_sign_in_summary),
-        SyncSettingsFragment::class.java,
+        R.string.library_sync, R.drawable.ic_cloud_sync, "sync",
+        intArrayOf(R.string.library_sync_summary),
+        LibrarySyncHubFragment::class.java,
     ),
     PRIVACY_SECURITY(
         R.string.settings_privacy_security, R.drawable.ic_lock, "private",
