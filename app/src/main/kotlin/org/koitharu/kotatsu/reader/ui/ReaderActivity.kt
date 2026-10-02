@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
@@ -80,6 +81,8 @@ import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.data.TapGridSettings
 import org.koitharu.kotatsu.reader.domain.TapGridArea
 import org.koitharu.kotatsu.reader.domain.UpscaleEffect
+import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueue
+import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueueItem
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCelebration
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
 import org.koitharu.kotatsu.reader.ui.upscale.UpscalePreviewDialog
@@ -92,6 +95,7 @@ import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 import org.koitharu.kotatsu.reader.ui.tapgrid.TapGridDispatcher
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
 import javax.inject.Inject
 import androidx.appcompat.R as appcompatR
 
@@ -128,6 +132,14 @@ class ReaderActivity :
     private val idlingDetector = IdlingDetector(TimeUnit.SECONDS.toMillis(10), this)
 
     private val viewModel: ReaderViewModel by viewModels()
+    private val celebrationQueue by lazy(LazyThreadSafetyMode.NONE) {
+        CelebrationQueue(
+            scope = lifecycleScope,
+            modeProvider = { settings.readerJourneyCelebrationMode },
+            reduceMotionProvider = { !isAnimationsEnabled || settings.isRankThemeReduceMotion },
+            presenter = ::showReaderJourneyCelebration,
+        )
+    }
 
     override val readerMode: ReaderMode?
         get() = readerManager.currentMode
@@ -253,7 +265,7 @@ class ReaderActivity :
                 .setAnchorView(viewBinding.toolbarDocked)
                 .show()
         }
-        viewModel.onReaderJourneyProgressed.observeEvent(this, ::showReaderJourneyCelebration)
+        viewModel.onReaderJourneyProgressed.observeEvent(this, celebrationQueue::enqueue)
         viewModel.readerSettingsProducer.observe(this) {
             viewBinding.infoBar.applyColorScheme(isBlackOnWhite = it.background.isLight(this))
         }
@@ -386,9 +398,9 @@ class ReaderActivity :
         viewBinding.timerControl.onReaderModeChanged(mode)
     }
 
-    private fun showReaderJourneyCelebration(event: ReaderJourneyCelebration) {
-        val mode = settings.readerJourneyCelebrationMode
-        if (mode == ReaderJourneyCelebrationMode.OFF) return
+    private suspend fun showReaderJourneyCelebration(item: CelebrationQueueItem) {
+        val event = item.event
+        val mode = item.mode
 
         val headline = when {
             event.isRankUp -> getString(
@@ -418,12 +430,12 @@ class ReaderActivity :
             }
         val message = buildString {
             append(headline)
-            if (event.unlockedCosmetics > 0) {
+            if (event.unlockedCosmetics.isNotEmpty()) {
                 append(" · ")
                 append(
                     getString(
                         R.string.reader_journey_cosmetics_unlocked,
-                        event.unlockedCosmetics,
+                        event.unlockedCosmetics.size,
                     ),
                 )
             }
@@ -456,8 +468,7 @@ class ReaderActivity :
                     .setTextColor(getThemeColor(materialR.attr.colorOnPrimaryContainer))
             }
             if (
-                isAnimationsEnabled &&
-                !settings.isRankThemeReduceMotion &&
+                !item.reduceMotion &&
                 !settings.isRankThemeMinimalCosmetics
             ) {
                 snackbar.addCallback(object : Snackbar.Callback() {
@@ -477,7 +488,15 @@ class ReaderActivity :
                 })
             }
         }
-        snackbar.show()
+        suspendCancellableCoroutine { continuation ->
+            snackbar.addCallback(object : Snackbar.Callback() {
+                override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
+                    if (continuation.isActive) continuation.resume(Unit)
+                }
+            })
+            continuation.invokeOnCancellation { snackbar.dismiss() }
+            snackbar.show()
+        }
     }
 
     private fun readerJourneyXpSourceLabel(source: String, context: String?): String = when (source) {
