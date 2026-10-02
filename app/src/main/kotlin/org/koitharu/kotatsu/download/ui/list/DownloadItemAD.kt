@@ -509,12 +509,9 @@ fun downloadItemAD(
 				binding.progressBar.isVisible = false
 				binding.progressBar.isEnabled = true
 				binding.textViewPercent.isVisible = false
-				if (item.max > 0) {
-					binding.textViewDetails.text = "${item.progress.coerceAtLeast(0)} / ${item.max} ${context.getString(R.string.pages).lowercase()}"
-					binding.textViewDetails.isVisible = true
-				} else {
-					binding.textViewDetails.isVisible = false
-				}
+				// A cancelled job may have published N/N immediately before cancellation/finalization.
+				// Do not present the same completion-looking fraction as a successful download.
+				binding.textViewDetails.isVisible = false
 				binding.buttonCancel.isVisible = false
 				binding.buttonResume.isVisible = false
 				binding.buttonSkip.isVisible = false
@@ -592,11 +589,8 @@ fun downloadItemAD(
 				}
 
 				WorkInfo.State.CANCELLED -> {
-					val progressText = item.max.takeIf { it > 0 }?.let {
-						"${item.progress.coerceIn(0, it)} / $it $pagesLabel"
-					}
 					showModernMetadata(
-						primary = progressText,
+						primary = null,
 						secondary = sourceTitle,
 						tertiary = null,
 						secondaryIcon = R.drawable.ic_manga_source,

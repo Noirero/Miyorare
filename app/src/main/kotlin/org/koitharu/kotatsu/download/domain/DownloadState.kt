@@ -18,6 +18,8 @@ data class DownloadState(
 	val currentChapter: Int = 0,
 	val totalPages: Int = 0,
 	val currentPage: Int = 0,
+	val overallTotalPages: Int = 0,
+	val completedPagesBeforeChapter: Int = 0,
 	val eta: Long = -1L,
 	val isStuck: Boolean = false,
 	val localManga: LocalManga? = null,
@@ -25,9 +27,13 @@ data class DownloadState(
 	val timestamp: Long = System.currentTimeMillis(),
 ) {
 
-	val max: Int = totalChapters * totalPages
+	val max: Int = overallTotalPages.takeIf { it > 0 } ?: (totalChapters * totalPages)
 
-	val progress: Int = calculateDownloadProgress(totalPages, currentChapter, currentPage)
+	val progress: Int = if (overallTotalPages > 0) {
+		(completedPagesBeforeChapter.coerceAtLeast(0) + currentPage.coerceAtLeast(0)).coerceAtMost(overallTotalPages)
+	} else {
+		calculateDownloadProgress(totalPages, currentChapter, currentPage)
+	}
 
 	val percent: Float = if (max > 0) progress.toFloat() / max else PROGRESS_NONE
 

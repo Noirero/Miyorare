@@ -453,7 +453,9 @@ class DownloadsViewModel @Inject constructor(
 				isStuck = progressMembers.any { it.isStuck },
 				timestamp = latestTimestamp,
 				chaptersDownloaded = groupedChapterCount,
-				downloadSizeBytes = members.maxOfOrNull { it.downloadSizeBytes } ?: 0L,
+				// Size must come from the members that own the visible state. In particular, an
+				// active row must not borrow the directory size of an older completed sibling.
+				downloadSizeBytes = stateMembers.maxOfOrNull { it.downloadSizeBytes } ?: 0L,
 				isExpanded = representative.selectionId in expandedIds,
 				chapters = groupedChaptersFlow(manga, workIds),
 				uiAction = stateMembers.firstNotNullOfOrNull { it.uiAction },
