@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.mihon
 
+import android.os.Bundle
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -22,6 +24,24 @@ class MihonExtensionLoaderTest {
 			),
 			result,
 		)
+	}
+
+	@Test
+	fun `readSourceClassNames accepts forked anime metadata namespace`() {
+		val metadata = Bundle().apply {
+			putString("example.player.animeextension.class", ".ExampleAnimeSource")
+		}
+
+		assertEquals(".ExampleAnimeSource", MihonExtensionLoader.readSourceClassNames(metadata))
+	}
+
+	@Test
+	fun `readSourceClassNames ignores unrelated class metadata`() {
+		val metadata = Bundle().apply {
+			putString("example.unrelated.class", ".NotAnExtension")
+		}
+
+		assertEquals(null, MihonExtensionLoader.readSourceClassNames(metadata))
 	}
 
 	@Test
