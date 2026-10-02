@@ -61,7 +61,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
- * Runtime visual evidence for MIYORARE_12_NAMEPLATE_IMPLEMENTATION_GUIDE_UPDATED.
+ * Runtime visual evidence for the final Miyorare_12_Nameplates_With_Rank_Titles.zip artwork.
  *
  * Captures the exact production renderer for all 12 static and preview nameplates, profile state,
  * catalog-static behavior, Reduce Motion, Battery Saver, and tier 11/12 grayscale separation.
@@ -114,7 +114,6 @@ class ExclusiveNameplateGoldenVisualTest {
 						ReferenceRankThemeNameplate(
 							spec = spec,
 							tokens = tokens,
-							title = "Gelar Eksklusif",
 							state = case.state,
 							animate = case.animate,
 							qualityMode = NameplateQualityMode.NORMAL,
@@ -146,6 +145,7 @@ class ExclusiveNameplateGoldenVisualTest {
 				instrumentation.waitForIdleSync()
 				SystemClock.sleep(700)
 				val staticCrop = captureNameplate(composeView)
+				val artworkDelta = assertFinalArtworkPreserved(staticCrop, composeView, NameplateAssetRegistry.resolve(spec.themeId).drawableRes)
 				val staticName = "%02d-%s-static.png".format(index + 1, spec.themeId.stableId.lowercase())
 				writePng(staticName, staticCrop)
 				// Contact sheets only need review-sized captures. Keep the full-resolution PNG on
@@ -168,6 +168,7 @@ class ExclusiveNameplateGoldenVisualTest {
 						.put("index", index + 1)
 						.put("themeId", spec.themeId.stableId)
 						.put("static", staticName)
+						.put("opaqueArtworkDelta", artworkDelta)
 						.put("preview", previewName),
 				)
 			}
@@ -178,7 +179,7 @@ class ExclusiveNameplateGoldenVisualTest {
 			val previewSheet = buildContactSheet(previewCaptures)
 			val goldenReference = loadGoldenReferenceContactSheet()
 			// The poster remains a visual-review reference only. The production source of truth is
-			// the owner-approved Nameplate V2 runtime pack, whose exact bytes/dimensions are locked by
+			// the owner-approved final rank-title WebP pack, whose exact bytes/dimensions are locked by
 			// NameplateGuideContractTest. Keep the poster mismatch as evidence, but do not reject the
 			// approved runtime assets for intentionally differing from the old poster crop baseline.
 			val goldenReferenceMismatch = goldenReferenceMismatch(staticSheet, goldenReference)
@@ -209,7 +210,7 @@ class ExclusiveNameplateGoldenVisualTest {
 			writeJson(
 				"evidence.json",
 				JSONObject()
-					.put("goldenReference", "MIYORARE 12 Konsep Nameplate / Gaya Gelar Eksklusif poster supplied by project owner")
+					.put("goldenReference", "Miyorare_12_Nameplates_With_Rank_Titles.zip; prior poster retained for side-by-side review")
 					.put("nameplateCount", 12)
 					.put("previewSizeDp", "360x138")
 					.put("grayscalePrismCelestialDifference", grayscaleDifference)
@@ -394,7 +395,6 @@ class ExclusiveNameplateGoldenVisualTest {
 								ReferenceRankThemeNameplate(
 									spec = spec,
 									tokens = tokens,
-									title = "Gelar Eksklusif",
 									state = NameplateState.UNLOCKED,
 									animate = false,
 									qualityMode = NameplateQualityMode.NORMAL,
@@ -612,7 +612,6 @@ class ExclusiveNameplateGoldenVisualTest {
 						ReferenceRankThemeNameplate(
 							spec = spec,
 							tokens = tokens,
-							title = "Gelar Eksklusif",
 							state = state,
 							animate = animate,
 							qualityMode = qualityMode,
@@ -685,6 +684,45 @@ class ExclusiveNameplateGoldenVisualTest {
 		}
 	}
 
+
+	private fun assertFinalArtworkPreserved(actual: Bitmap, view: ComposeView, drawableRes: Int): Double {
+		val source = checkNotNull(BitmapFactory.decodeResource(context.resources, drawableRes))
+		val expected = Bitmap.createBitmap(actual.width, actual.height, Bitmap.Config.ARGB_8888)
+		try {
+			val density = context.resources.displayMetrics.density
+			val boxWidth = minOf(360f * density, view.width.toFloat())
+			val boxHeight = minOf(138f * density, view.height.toFloat())
+			val scale = minOf(boxWidth / source.width, boxHeight / source.height)
+			val width = (source.width * scale).toInt()
+			val height = (source.height * scale).toInt()
+			val left = (actual.width - width) / 2
+			val top = (actual.height - height) / 2
+			Canvas(expected).drawBitmap(
+				source, null, Rect(left, top, left + width, top + height),
+				Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+			)
+			var error = 0L
+			var pixels = 0L
+			for (y in 0 until actual.height) {
+				for (x in 0 until actual.width) {
+					val e = expected.getPixel(x, y)
+					if (AndroidColor.alpha(e) != 255) continue
+					val a = actual.getPixel(x, y)
+					error += abs(AndroidColor.red(a) - AndroidColor.red(e)) +
+						abs(AndroidColor.green(a) - AndroidColor.green(e)) +
+						abs(AndroidColor.blue(a) - AndroidColor.blue(e))
+					pixels++
+				}
+			}
+			assertTrue("Final artwork comparison must include opaque rank-title pixels", pixels > 1_000L)
+			val delta = error.toDouble() / (pixels * 3.0 * 255.0)
+			assertTrue("Final artwork/title must render without a center text or scrim overlay: delta=$delta", delta < 0.015)
+			return delta
+		} finally {
+			source.recycle()
+			expected.recycle()
+		}
+	}
 
 	private fun captureView(view: ComposeView): Bitmap {
 		val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
@@ -797,7 +835,7 @@ class ExclusiveNameplateGoldenVisualTest {
 			if (localY < 10) continue // labels are evidence metadata, not artwork
 			for (x in 0 until aa.width) {
 				val localX = x % cellWidth
-				// Runtime title text intentionally differs from the sample poster titles.
+				// Baked final rank titles intentionally differ from the prior sample poster titles.
 				if (localX in 34..91 && localY in 23..45) continue
 				val ac = aa.getPixel(x, y)
 				val gc = gg.getPixel(x, y)

@@ -422,7 +422,6 @@ private fun ExclusiveRewardPreview(
 			ReaderJourneyCollectionFilter.NAMEPLATES -> ReferenceRankThemeNameplate(
 				spec = spec,
 				tokens = tokens,
-				title = stringResource(spec.themeId.rank.titleRes),
 				state = if (unlocked) NameplateState.UNLOCKED else NameplateState.LOCKED,
 				animate = false,
 				qualityMode = NameplateQualityMode.REDUCED,
@@ -1006,7 +1005,6 @@ private fun ExclusiveThemeHeroPreview(
 						ReferenceRankThemeNameplate(
 							spec = nameplateSpec,
 							tokens = nameplateTokens,
-							title = stringResource(nameplateSpec.themeId.rank.titleRes),
 							state = NameplateState.PREVIEWING,
 							animate = true,
 							qualityMode = NameplateQualityMode.REDUCED,
@@ -1321,7 +1319,6 @@ internal fun ExclusiveNameplateSelector(
 				ReferenceRankThemeNameplate(
 					spec = selectedSpec,
 					tokens = previewTokens,
-					title = stringResource(selectedSpec.themeId.rank.titleRes),
 					state = NameplateState.PREVIEWING,
 					animate = true,
 					qualityMode = NameplateQualityMode.NORMAL,
@@ -1371,7 +1368,6 @@ internal fun ExclusiveNameplateSelector(
 					ReferenceRankThemeNameplate(
 						spec = spec,
 						tokens = tokens,
-						title = stringResource(spec.themeId.rank.titleRes),
 						state = if (unlocked) NameplateState.UNLOCKED else NameplateState.LOCKED,
 						animate = false,
 						qualityMode = NameplateQualityMode.NORMAL,

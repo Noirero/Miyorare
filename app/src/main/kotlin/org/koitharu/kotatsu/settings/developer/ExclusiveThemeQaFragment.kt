@@ -313,9 +313,7 @@ private fun ExclusiveThemeQaPreview(state: ExclusiveThemeQaState) {
 				modifier = Modifier
 					.fillMaxWidth()
 					.height(56.dp),
-			) {
-				Text(theme.displayName, fontWeight = FontWeight.Bold)
-			}
+			)
 		}
 	}
 }

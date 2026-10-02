@@ -18,24 +18,17 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -46,23 +39,13 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -113,144 +96,100 @@ internal enum class NameplateAmbient {
 
 internal data class NameplateAssetSpec(
 	@DrawableRes val drawableRes: Int,
-	@DrawableRes val thumbnailRes: Int,
 	val ambient: NameplateAmbient,
 	val idleDurationMs: Int,
 	val oneShotDurationMs: Int,
 	val glowAlpha: Float,
 	val revealDurationMs: Int = 230,
-	val titleWidthFraction: Float = 0.58f,
-	val titleVerticalOffsetFraction: Float = 0f,
-	val titleScrimAlpha: Float = 0.10f,
 )
 
 internal object NameplateAssetRegistry {
 	fun resolve(themeId: RankThemeId): NameplateAssetSpec = when (themeId) {
 		RankThemeId.FIRST_PAGE -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_01_first_page_silver_base,
-			thumbnailRes = R.drawable.nameplate_01_first_page_silver_thumb,
+			drawableRes = R.drawable.nameplate_01_newcomer,
 			ambient = NameplateAmbient.SILVER_GLINT,
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 240,
 			glowAlpha = 0.075f,
-			titleWidthFraction = 0.58f,
-			titleScrimAlpha = 0.08f,
 		)
 		RankThemeId.FIRST_LIGHT -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_02_first_light_blue_base,
-			thumbnailRes = R.drawable.nameplate_02_first_light_blue_thumb,
+			drawableRes = R.drawable.nameplate_02_reader,
 			ambient = NameplateAmbient.FIRST_LIGHT,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 260,
 			glowAlpha = 0.085f,
-			titleWidthFraction = 0.60f,
-			titleVerticalOffsetFraction = 0.02f,
-			titleScrimAlpha = 0.10f,
 		)
 		RankThemeId.CYAN_CODEX -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_03_cyan_orbit_base,
-			thumbnailRes = R.drawable.nameplate_03_cyan_orbit_thumb,
+			drawableRes = R.drawable.nameplate_03_bookworm,
 			ambient = NameplateAmbient.CYAN_ORBIT,
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 250,
 			glowAlpha = 0.085f,
-			titleWidthFraction = 0.61f,
-			titleScrimAlpha = 0.12f,
 		)
 		RankThemeId.EMERALD_COMPASS -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_04_emerald_pulse_base,
-			thumbnailRes = R.drawable.nameplate_04_emerald_pulse_thumb,
+			drawableRes = R.drawable.nameplate_04_explorer,
 			ambient = NameplateAmbient.EMERALD_PULSE,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 300,
 			glowAlpha = 0.09f,
-			titleWidthFraction = 0.62f,
-			titleVerticalOffsetFraction = 0.025f,
-			titleScrimAlpha = 0.18f,
 		)
 		RankThemeId.VIOLET_VAULT -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_05_arcane_scholar_base,
-			thumbnailRes = R.drawable.nameplate_05_arcane_scholar_thumb,
+			drawableRes = R.drawable.nameplate_05_collector,
 			ambient = NameplateAmbient.ARCANE_GLYPH,
 			idleDurationMs = 11_000,
 			oneShotDurationMs = 280,
 			glowAlpha = 0.085f,
-			titleWidthFraction = 0.60f,
-			titleScrimAlpha = 0.10f,
 		)
 		RankThemeId.ARCANE_SCHOLAR -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_06_violet_halo_base,
-			thumbnailRes = R.drawable.nameplate_06_violet_halo_thumb,
+			drawableRes = R.drawable.nameplate_06_scholar,
 			ambient = NameplateAmbient.VIOLET_HALO,
 			idleDurationMs = 11_000,
 			oneShotDurationMs = 280,
 			glowAlpha = 0.085f,
-			titleWidthFraction = 0.60f,
-			titleScrimAlpha = 0.11f,
 		)
 		RankThemeId.NEON_ARCHIVE -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_07_rose_nebula_base,
-			thumbnailRes = R.drawable.nameplate_07_rose_nebula_thumb,
+			drawableRes = R.drawable.nameplate_07_archivist,
 			ambient = NameplateAmbient.ROSE_NEBULA,
 			idleDurationMs = 14_000,
 			oneShotDurationMs = 280,
 			glowAlpha = 0.09f,
-			titleWidthFraction = 0.61f,
-			titleVerticalOffsetFraction = 0.03f,
-			titleScrimAlpha = 0.18f,
 		)
 		RankThemeId.CRIMSON_LIBRARY -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_08_crimson_ember_base,
-			thumbnailRes = R.drawable.nameplate_08_crimson_ember_thumb,
+			drawableRes = R.drawable.nameplate_08_bibliophile,
 			ambient = NameplateAmbient.CRIMSON_EMBER,
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 300,
 			glowAlpha = 0.095f,
-			titleWidthFraction = 0.62f,
-			titleVerticalOffsetFraction = 0.02f,
-			titleScrimAlpha = 0.22f,
 		)
 		RankThemeId.EMBER_VETERAN -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_09_amber_manuscript_base,
-			thumbnailRes = R.drawable.nameplate_09_amber_manuscript_thumb,
+			drawableRes = R.drawable.nameplate_09_veteran_reader,
 			ambient = NameplateAmbient.AMBER_MANUSCRIPT,
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 300,
 			glowAlpha = 0.10f,
-			titleWidthFraction = 0.68f,
-			titleScrimAlpha = 0.16f,
 		)
 		RankThemeId.GOLDEN_MANUSCRIPT -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_10_golden_manuscript_deluxe_base,
-			thumbnailRes = R.drawable.nameplate_10_golden_manuscript_deluxe_thumb,
+			drawableRes = R.drawable.nameplate_10_master_reader,
 			ambient = NameplateAmbient.ROYAL_GOLD,
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 300,
 			glowAlpha = 0.105f,
-			titleWidthFraction = 0.64f,
-			titleScrimAlpha = 0.12f,
 		)
 		RankThemeId.IMPERIAL_AURORA -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_11_eternal_library_prism_base,
-			thumbnailRes = R.drawable.nameplate_11_eternal_library_prism_thumb,
+			drawableRes = R.drawable.nameplate_11_grand_reader,
 			ambient = NameplateAmbient.PRISM,
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 300,
 			glowAlpha = 0.10f,
 			revealDurationMs = 245,
-			titleWidthFraction = 0.64f,
-			titleScrimAlpha = 0.14f,
 		)
 		RankThemeId.ETERNAL_LIBRARY -> NameplateAssetSpec(
-			drawableRes = R.drawable.nameplate_12_celestial_infinity_base,
-			thumbnailRes = R.drawable.nameplate_12_celestial_infinity_thumb,
+			drawableRes = R.drawable.nameplate_12_legend,
 			ambient = NameplateAmbient.CELESTIAL_INFINITY,
 			idleDurationMs = 16_000,
 			oneShotDurationMs = 300,
 			glowAlpha = 0.10f,
 			revealDurationMs = 255,
-			titleWidthFraction = 0.64f,
-			titleScrimAlpha = 0.14f,
 		)
 	}
 }
@@ -258,7 +197,8 @@ internal object NameplateAssetRegistry {
 /**
  * Asset-first renderer for the twelve Reader Journey Exclusive nameplates.
  *
- * The ornament/material lives in local transparent assets while title text remains runtime content.
+ * The complete artwork and rank title live in the owner-supplied transparent WebP assets.
+ * No text/content slot is exposed: Achievement titles remain separate UI content.
  * Only the selected/previewed/equipped item is allowed to run an ambient timeline. Reduce Motion
  * keeps a short alpha-only reveal; Android power saver disables ambient motion and uses the static
  * material asset as the visual fallback.
@@ -273,12 +213,12 @@ fun ExclusiveNameplate(
 	qualityMode: NameplateQualityMode = NameplateQualityMode.NORMAL,
 	usage: NameplateUsage = NameplateUsage.PROFILE,
 	pressed: Boolean = false,
-	content: @Composable () -> Unit,
 ) {
 	val asset = remember(spec.themeId) { NameplateAssetRegistry.resolve(spec.themeId) }
+	val rankDescription = stringResource(spec.themeId.rank.titleRes)
 
 	// Catalog rows are a scrolling surface, not a showcase surface. Render the already-authored
-	// static thumbnail directly and skip preference observers, power receivers, Animatable state,
+	// static artwork directly and skip preference observers, power receivers, Animatable state,
 	// reveal/equip effects and graphics layers entirely. Preview/profile keep the full renderer.
 	if (usage == NameplateUsage.CATALOG) {
 		ExclusiveNameplateCatalogThumbnail(
@@ -286,7 +226,7 @@ fun ExclusiveNameplate(
 			state = state,
 			pressed = pressed,
 			modifier = modifier,
-			content = content,
+			contentDescription = rankDescription,
 		)
 		return
 	}
@@ -297,7 +237,6 @@ fun ExclusiveNameplate(
 	val alphaOnlyMotion = animate && (reduceMotion || powerSaveMode)
 	val revealEligible = state == NameplateState.EQUIPPED || state == NameplateState.PREVIEWING
 	val reveal = remember(spec.themeId, state, animate, reduceMotion, powerSaveMode) { Animatable(1f) }
-	val textReveal = remember(spec.themeId, state, animate, reduceMotion, powerSaveMode) { Animatable(1f) }
 	val glowReveal = remember(spec.themeId, state, normalMotion) { Animatable(1f) }
 	val equipAccent = remember(spec.themeId, state, normalMotion) { Animatable(1f) }
 
@@ -315,20 +254,6 @@ fun ExclusiveNameplate(
 				reveal.animateTo(1f, tween(durationMillis = 140))
 			}
 			else -> reveal.snapTo(1f)
-		}
-	}
-	LaunchedEffect(spec.themeId, state, animate, reduceMotion, powerSaveMode) {
-		when {
-			revealEligible && normalMotion -> {
-				textReveal.snapTo(0f)
-				delay(36)
-				textReveal.animateTo(1f, tween(durationMillis = 180, easing = FastOutSlowInEasing))
-			}
-			revealEligible && alphaOnlyMotion -> {
-				textReveal.snapTo(0f)
-				textReveal.animateTo(1f, tween(durationMillis = 140))
-			}
-			else -> textReveal.snapTo(1f)
 		}
 	}
 	LaunchedEffect(spec.themeId, state, normalMotion) {
@@ -395,7 +320,6 @@ fun ExclusiveNameplate(
 		animationSpec = tween(durationMillis = if (pressed) 90 else 135),
 		label = "exclusive-nameplate-press",
 	)
-	val textOffsetPx = with(LocalDensity.current) { 2.dp.toPx() }
 	val imageRes = asset.drawableRes
 
 	Box(
@@ -430,43 +354,13 @@ fun ExclusiveNameplate(
 
 		Image(
 			painter = painterResource(imageRes),
-			contentDescription = null,
+			contentDescription = rankDescription,
 			contentScale = ContentScale.Fit,
 			colorFilter = lockedColorFilter,
 			modifier = Modifier
 				.fillMaxSize()
 				.graphicsLayer { alpha = if (locked) 0.62f else 1f },
 		)
-
-		Box(
-			modifier = Modifier
-				.fillMaxWidth(asset.titleWidthFraction)
-				.fillMaxHeight(0.62f)
-				.graphicsLayer {
-					alpha = textReveal.value
-					translationY =
-						(size.height * asset.titleVerticalOffsetFraction) +
-						(if (normalMotion) (1f - textReveal.value) * textOffsetPx else 0f)
-				},
-			contentAlignment = Alignment.Center,
-		) {
-			Box(
-				modifier = Modifier
-					.fillMaxWidth()
-					.fillMaxHeight(0.72f)
-					.background(
-						Brush.horizontalGradient(
-							listOf(
-								Color.Transparent,
-								Color.Black.copy(alpha = asset.titleScrimAlpha),
-								Color.Black.copy(alpha = asset.titleScrimAlpha),
-								Color.Transparent,
-							),
-						),
-					),
-			)
-			content()
-		}
 
 		if (idleEnabled) {
 			NameplateAmbientOverlay(
@@ -516,7 +410,7 @@ private fun ExclusiveNameplateCatalogThumbnail(
 	state: NameplateState,
 	pressed: Boolean,
 	modifier: Modifier,
-	content: @Composable () -> Unit,
+	contentDescription: String,
 ) {
 	val locked = state == NameplateState.LOCKED
 	val lockedColorFilter = remember(locked) {
@@ -528,9 +422,9 @@ private fun ExclusiveNameplateCatalogThumbnail(
 	}
 	val context = LocalContext.current
 	val densityDpi = context.resources.displayMetrics.densityDpi
-	val thumbnailBitmap by produceState<ImageBitmap?>(null, asset.thumbnailRes, densityDpi) {
+	val thumbnailBitmap by produceState<ImageBitmap?>(null, asset.drawableRes, densityDpi) {
 		value = withContext(Dispatchers.IO) {
-			NameplateCatalogBitmapCache.get(context, asset.thumbnailRes)
+			NameplateCatalogBitmapCache.get(context, asset.drawableRes)
 		}
 	}
 	Box(
@@ -541,30 +435,22 @@ private fun ExclusiveNameplateCatalogThumbnail(
 		if (loadedThumbnail != null) {
 			Image(
 				bitmap = loadedThumbnail,
-				contentDescription = null,
+				contentDescription = contentDescription,
 				contentScale = ContentScale.Fit,
 				colorFilter = lockedColorFilter,
 				alpha = if (locked) 0.62f else 1f,
 				modifier = Modifier.fillMaxSize(),
 			)
 		} else {
-			// Defensive fallback for non-bitmap drawables; approved V2 thumbnails are raster WebP.
+			// Defensive fallback for non-bitmap drawables; final nameplates are raster WebP.
 			Image(
-				painter = painterResource(asset.thumbnailRes),
-				contentDescription = null,
+				painter = painterResource(asset.drawableRes),
+				contentDescription = contentDescription,
 				contentScale = ContentScale.Fit,
 				colorFilter = lockedColorFilter,
 				alpha = if (locked) 0.62f else 1f,
 				modifier = Modifier.fillMaxSize(),
 			)
-		}
-		Box(
-			modifier = Modifier
-				.fillMaxWidth(asset.titleWidthFraction)
-				.fillMaxHeight(0.62f),
-			contentAlignment = Alignment.Center,
-		) {
-			content()
 		}
 		if (pressed) {
 			Box(
@@ -594,7 +480,7 @@ private fun ExclusiveNameplateCatalogThumbnail(
 }
 
 private object NameplateCatalogBitmapCache {
-	private const val MAX_ENTRIES = 24
+	private const val MAX_ENTRIES = 12
 	private val cache = LruCache<String, ImageBitmap>(MAX_ENTRIES)
 
 	fun get(context: Context, @DrawableRes resId: Int): ImageBitmap? {
@@ -608,144 +494,6 @@ private object NameplateCatalogBitmapCache {
 			cache.put(key, decoded)
 		}
 		return decoded
-	}
-}
-
-private data class NameplateTitleTypography(
-	val preferredFontSp: Float,
-	val minimumFontSp: Float,
-	val preferredLetterSpacingSp: Float,
-	val minimumLetterSpacingSp: Float,
-)
-
-private fun nameplateTitleTypography(usage: NameplateUsage): NameplateTitleTypography = when (usage) {
-	NameplateUsage.CATALOG -> NameplateTitleTypography(
-		preferredFontSp = 14.5f,
-		minimumFontSp = 10.5f,
-		preferredLetterSpacingSp = 0.30f,
-		minimumLetterSpacingSp = -0.15f,
-	)
-	NameplateUsage.PROFILE -> NameplateTitleTypography(
-		preferredFontSp = 17.5f,
-		minimumFontSp = 12f,
-		preferredLetterSpacingSp = 0.45f,
-		minimumLetterSpacingSp = -0.10f,
-	)
-	NameplateUsage.PREVIEW -> NameplateTitleTypography(
-		preferredFontSp = 22f,
-		minimumFontSp = 14f,
-		preferredLetterSpacingSp = 0.65f,
-		minimumLetterSpacingSp = -0.05f,
-	)
-}
-
-/**
- * Runtime-only title renderer shared by Journey active title, preview, catalog/selector and profile.
- *
- * Fitting order is deliberate: preferred size -> progressively smaller font -> slightly tighter
- * letter spacing -> ellipsis only as a final fallback. The surrounding renderer already constrains
- * this composable to each artwork's authored title-safe fraction.
- */
-private data class FittedNameplateTitle(
-	val style: TextStyle,
-	val ellipsisFallback: Boolean,
-)
-
-@Composable
-fun ExclusiveNameplateTitle(
-	title: String,
-	usage: NameplateUsage,
-) {
-	val typography = remember(usage) { nameplateTitleTypography(usage) }
-	val textMeasurer = rememberTextMeasurer(cacheSize = 32)
-	val density = LocalDensity.current
-
-	BoxWithConstraints(
-		modifier = Modifier.fillMaxWidth(),
-		contentAlignment = Alignment.Center,
-	) {
-		val availableWidthPx = with(density) { maxWidth.roundToPx() }
-		val fitted = remember(title, usage, availableWidthPx, typography) {
-			val constraints = Constraints(maxWidth = availableWidthPx.coerceAtLeast(1))
-
-			fun style(fontSp: Float, letterSpacingSp: Float) = TextStyle(
-				fontSize = fontSp.sp,
-				fontFamily = FontFamily.Serif,
-				fontWeight = FontWeight.Bold,
-				letterSpacing = letterSpacingSp.sp,
-				color = Color(0xFFFFF4E3),
-				textAlign = TextAlign.Center,
-				shadow = Shadow(
-					color = Color(0xD9070910),
-					offset = Offset(0f, 1.5f),
-					blurRadius = 4.6f,
-				),
-			)
-
-			fun fits(candidate: TextStyle): Boolean = !textMeasurer.measure(
-				text = title,
-				style = candidate,
-				maxLines = 1,
-				softWrap = false,
-				overflow = TextOverflow.Clip,
-				constraints = constraints,
-			).hasVisualOverflow
-
-			val preferred = style(
-				fontSp = typography.preferredFontSp,
-				letterSpacingSp = typography.preferredLetterSpacingSp,
-			)
-			if (fits(preferred)) {
-				FittedNameplateTitle(preferred, ellipsisFallback = false)
-			} else {
-				var fittedStyle: TextStyle? = null
-				var fontSp = typography.preferredFontSp - 0.5f
-				while (fontSp >= typography.minimumFontSp && fittedStyle == null) {
-					val candidate = style(
-						fontSp = fontSp,
-						letterSpacingSp = typography.preferredLetterSpacingSp,
-					)
-					if (fits(candidate)) fittedStyle = candidate
-					fontSp -= 0.5f
-				}
-
-				if (fittedStyle != null) {
-					FittedNameplateTitle(fittedStyle, ellipsisFallback = false)
-				} else {
-					var letterSpacingSp = typography.preferredLetterSpacingSp - 0.10f
-					while (
-						letterSpacingSp >= typography.minimumLetterSpacingSp &&
-						fittedStyle == null
-					) {
-						val candidate = style(
-							fontSp = typography.minimumFontSp,
-							letterSpacingSp = letterSpacingSp,
-						)
-						if (fits(candidate)) fittedStyle = candidate
-						letterSpacingSp -= 0.10f
-					}
-
-					val finalStyle = fittedStyle ?: style(
-						fontSp = typography.minimumFontSp,
-						letterSpacingSp = typography.minimumLetterSpacingSp,
-					)
-					FittedNameplateTitle(
-						style = finalStyle,
-						ellipsisFallback = fittedStyle == null,
-					)
-				}
-			}
-		}
-
-		Text(
-			text = title,
-			style = fitted.style,
-			textAlign = TextAlign.Center,
-			maxLines = 1,
-			softWrap = false,
-			overflow = if (fitted.ellipsisFallback) TextOverflow.Ellipsis else TextOverflow.Clip,
-			modifier = Modifier.fillMaxWidth(),
-		)
 	}
 }
 

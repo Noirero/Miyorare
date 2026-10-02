@@ -61,3 +61,50 @@ Any future replacement must beat the current candidate side-by-side at actual ap
 ## Packaging note
 
 Badge resources remain local-only with no network decode path. Grid/catalog is fully static (including the selected tile; selection is expressed by the tile border/press feedback). The dedicated 148dp preview uses the full intended visual with one restrained ambient renderer. The 34dp profile badge is static with reduced glow so the profile frame remains the hero. CI captures all 12 static and preview renders, a grayscale 09-12 sheet, Reduce Motion evidence and Battery Saver evidence before merge. Any future WebP/AVIF/hybrid replacement must be recorded here and measured by the same visual/performance gates.
+
+## Final rank-title Nameplates (October 2026)
+
+FEATURE / EXPECTED: Integrate the project-owner supplied
+`Miyorare_12_Nameplates_With_Rank_Titles.zip`. Rank titles are authored into the transparent
+artwork; catalog, selector, preview, profile and developer QA render the image without runtime
+Achievement/title text or a center scrim. The active Achievement title remains visible as separate
+profile text below the artwork, with the existing title selector and persistence intact.
+
+INVARIANTS: No redraw, regeneration, crop, re-encode or shape change. All twelve resources are exact
+uploaded WebP bytes (600x230 RGBA), rendered with `ContentScale.Fit`. Stable theme/nameplate IDs,
+rank thresholds, unlock/ownership, custom loadout, Achievement selection, backup, identity/signing,
+and existing selected-only motion / Reduce Motion / Battery Saver policies remain unchanged.
+
+| Rank | Stable theme | Final drawable |
+| --- | --- | --- |
+| Newcomer | First Page | `nameplate_01_newcomer` |
+| Reader | First Light | `nameplate_02_reader` |
+| Bookworm | Cyan Codex | `nameplate_03_bookworm` |
+| Explorer | Emerald Compass | `nameplate_04_explorer` |
+| Collector | Violet Vault | `nameplate_05_collector` |
+| Scholar | Arcane Scholar | `nameplate_06_scholar` |
+| Archivist | Neon Archive | `nameplate_07_archivist` |
+| Bibliophile | Crimson Library | `nameplate_08_bibliophile` |
+| Veteran Reader | Ember Veteran | `nameplate_09_veteran_reader` |
+| Master Reader | Golden Manuscript | `nameplate_10_master_reader` |
+| Grand Reader | Imperial Aurora | `nameplate_11_grand_reader` |
+| Legend | Eternal Library | `nameplate_12_legend` |
+
+PACKAGING / TRADE-OFF: One original image per rank serves every usage. The 24 previous base/thumb
+resources are removed, leaving exactly 12 local resources totaling 912,122 bytes. Catalog decoding
+remains off the main thread with a bounded 12-entry bitmap cache. The maximum raw RGBA cache is
+about 6.32 MiB (12 x 600 x 230 x 4); this preserves final artwork without duplicate packaged assets.
+Localized rank descriptions provide accessibility for the baked English title.
+
+EDGE CASES: Locked ranks retain their existing treatment/lock icon. Catalog remains static;
+preview/profile retain their existing restrained accents. Missing/unequipped artwork still leaves
+the selected Achievement title readable. Follow Base Theme and mixed-rank loadouts still resolve
+through the existing stable-ID policies. Changing Achievement must never paint over the rank title.
+
+ACCEPTANCE / TEST PLAN: NameplateGuideContractTest locks the exact filename set, SHA-256, dimensions,
+state/motion policy, absence of content/title overlays and separate Achievement text. CI Deep owns
+JVM regression. Exclusive Nameplate Golden Visual captures all 12 static/preview renders and compares
+opaque pixels (including baked title centers) to the final WebP, plus selector/profile, motion fallback
+and catalog performance evidence. Reader Journey Theme Size Baseline verifies exactly 12 installed
+WebP resources with identical source/APK hashes and records the actual APK-size delta. Existing
+Reader Journey Phase 10 and relevant area visual gates remain enabled.
