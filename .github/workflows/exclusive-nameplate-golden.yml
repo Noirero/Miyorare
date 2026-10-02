@@ -124,7 +124,7 @@ jobs:
           profile: pixel_2
           cores: 4
           disable-animations: false
-          emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -memory 4096
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
           script: |
             adb shell wm size 720x1280
             adb shell wm density 300
