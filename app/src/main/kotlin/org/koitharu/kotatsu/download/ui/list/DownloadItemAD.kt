@@ -32,6 +32,7 @@ import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.setContentDescriptionAndTooltip
 import org.koitharu.kotatsu.core.util.ext.textAndVisible
 import org.koitharu.kotatsu.databinding.ItemDownloadBinding
+import org.koitharu.kotatsu.download.domain.DownloadPhase
 import org.koitharu.kotatsu.download.ui.list.chapters.DownloadChapter
 import org.koitharu.kotatsu.download.ui.list.chapters.downloadChapterAD
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
@@ -402,13 +403,22 @@ fun downloadItemAD(
 			}
 
 			WorkInfo.State.RUNNING -> {
-				binding.textViewStatus.setText(
-					when {
-						item.isPaused -> R.string.paused
-						item.isFinalizing -> R.string.processing_
-						else -> R.string.manga_downloading_
-					},
-				)
+				when {
+					item.isPaused -> binding.textViewStatus.setText(R.string.paused)
+					item.isFinalizing || item.phase == DownloadPhase.FINALIZING ->
+						binding.textViewStatus.setText(R.string.processing_)
+					item.phase == DownloadPhase.RETRYING -> binding.textViewStatus.text = context.getString(
+						R.string.download_retrying,
+						item.retryAttempt.coerceAtLeast(1),
+						3,
+					)
+					item.phase == DownloadPhase.RESOLVING -> binding.textViewStatus.text = context.getString(
+						R.string.download_resolving_chapter,
+						item.phaseChapter.coerceAtLeast(1),
+						item.workIds.size.coerceAtLeast(item.phaseChapter.coerceAtLeast(1)),
+					)
+					else -> binding.textViewStatus.setText(R.string.manga_downloading_)
+				}
 				val hasKnownProgress = item.max > 0 && (!item.isIndeterminate || item.isFinalizing)
 				binding.progressBar.isIndeterminate = item.isIndeterminate && !item.isFinalizing
 				binding.progressBar.isVisible = true
