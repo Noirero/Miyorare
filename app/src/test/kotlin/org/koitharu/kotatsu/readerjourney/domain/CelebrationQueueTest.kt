@@ -76,6 +76,10 @@ class CelebrationQueueTest {
 		assertEquals(CelebrationPresentation.RANK_UP, item(rankUp).presentation())
 		assertEquals(CelebrationPresentation.SNACKBAR, item(event(10)).presentation())
 		assertEquals(
+			CelebrationPresentation.ACHIEVEMENT,
+			item(achievement).copy(reduceMotion = true).presentation(),
+		)
+		assertEquals(
 			CelebrationPresentation.SNACKBAR,
 			item(achievement, ReaderJourneyCelebrationMode.SUBTLE).presentation(),
 		)
