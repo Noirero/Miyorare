@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.hilt.work.HiltWorker
@@ -286,7 +287,13 @@ class DownloadWorker @AssistedInject constructor(
 				// lengths differed, which made the bar jump and reach near-100% far too early.
 				val pagesByChapterId = LinkedHashMap<Long, List<MangaPage>>(chapters.size)
 				var resolvedTotalPages = 0
+				val resolutionStartedAt = SystemClock.elapsedRealtime()
+				var resolutionBudgetExceeded = false
 				for ((chapterIndex, chapter) in chapters.withIndex()) {
+					if (resolvedTotalPages > 0 && SystemClock.elapsedRealtime() - resolutionStartedAt >= BATCH_RESOLUTION_BUDGET_MS) {
+						resolutionBudgetExceeded = true
+						break
+					}
 					checkIsPaused()
 					if (chapter.value.id in chaptersToSkip) continue
 					// Page-list resolution can be slow on remote sources. Publish the chapter being
@@ -334,7 +341,7 @@ class DownloadWorker @AssistedInject constructor(
 						),
 					)
 				}
-				val overallTotalPages = resolvedTotalPages
+				var overallTotalPages = resolvedTotalPages
 				var completedProgressPages = 0
 				var completedRequestedChapters = 0
 				for ((chapterIndex, chapter) in chapters.withIndex()) {
@@ -345,7 +352,29 @@ class DownloadWorker @AssistedInject constructor(
 						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 						continue
 					}
-					val pages = pagesByChapterId[chapter.value.id] ?: continue
+					var pages = pagesByChapterId[chapter.value.id]
+					if (pages == null && resolutionBudgetExceeded) {
+						// The eager resolution budget expired. Resume the old responsive behaviour:
+						// resolve the next chapter only when we reach it, then immediately transfer it.
+						publishState(
+							currentState.copy(
+								phase = DownloadPhase.RESOLVING,
+								phaseChapter = chapterIndex + 1,
+								requestedChapters = chapters.size,
+								retryAttempt = 0,
+								eta = -1L,
+								isStuck = false,
+							),
+						)
+						pages = runFailsafe { repo.getPages(chapter.value) } ?: continue
+						if (pages.isEmpty()) {
+							clearResumeChapterDir(mangaDetails.id, chapter.value.id)
+							continue
+						}
+						pagesByChapterId[chapter.value.id] = pages
+						overallTotalPages += pages.size
+					}
+					pages ?: continue
 					val resumeDir = getResumeChapterDir(mangaDetails.id, chapter.value.id)
 					val downloadedPages = arrayOfNulls<DownloadedPage>(pages.size)
 					val pageCounter = AtomicInteger(0)
@@ -926,6 +955,7 @@ class DownloadWorker @AssistedInject constructor(
 
 	private companion object {
 		const val MAX_FAILSAFE_RETRIES = 3
+		const val BATCH_RESOLUTION_BUDGET_MS = 10_000L
 		const val MAX_BACKOFF_SHIFT = 2
 		const val DOWNLOAD_ERROR_DELAY = 2_000L
 		const val MAX_RETRY_DELAY = 7_200_000L
