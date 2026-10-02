@@ -83,7 +83,6 @@ import org.koitharu.kotatsu.reader.domain.TapGridArea
 import org.koitharu.kotatsu.reader.domain.UpscaleEffect
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueue
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueueItem
-import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCelebration
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
 import org.koitharu.kotatsu.reader.ui.upscale.UpscalePreviewDialog
 import org.koitharu.kotatsu.reader.ui.config.ReaderConfigSheet
