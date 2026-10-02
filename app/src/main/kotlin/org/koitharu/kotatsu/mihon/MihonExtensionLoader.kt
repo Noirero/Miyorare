@@ -41,10 +41,19 @@ class MihonExtensionLoader @Inject constructor(
 		 * discovery is identical — the source itself declares `isNovelSource`.
 		 */
 		private const val EXTENSION_FEATURE_NOVEL = "tachiyomi.novelextension"
-		private val EXTENSION_FEATURES = setOf(EXTENSION_FEATURE, EXTENSION_FEATURE_NOVEL)
+		private const val EXTENSION_FEATURE_ANIME = "tachiyomi.animeextension"
+		private val EXTENSION_FEATURES = setOf(
+			EXTENSION_FEATURE,
+			EXTENSION_FEATURE_NOVEL,
+			EXTENSION_FEATURE_ANIME,
+		)
 
 		/** `<namespace>.class` / `.factory` / `.nsfw`, in the order they're tried. */
-		private val METADATA_NAMESPACES = listOf(EXTENSION_FEATURE, EXTENSION_FEATURE_NOVEL)
+		private val METADATA_NAMESPACES = listOf(
+			EXTENSION_FEATURE,
+			EXTENSION_FEATURE_NOVEL,
+			EXTENSION_FEATURE_ANIME,
+		)
 		private val METADATA_SOURCE_CLASS_KEYS = METADATA_NAMESPACES.map { "$it.class" }
 		private val METADATA_SOURCE_FACTORY_KEYS = METADATA_NAMESPACES.map { "$it.factory" }
 		private val METADATA_NSFW_KEYS = METADATA_NAMESPACES.map { "$it.nsfw" }
@@ -522,8 +531,10 @@ class MihonExtensionLoader @Inject constructor(
 
 	private fun extractLanguage(packageName: String): String {
 		val parts = packageName.split('.')
-		// Novel extensions live under `…tachiyomi.novelextension.<lang>.<site>`.
-		val extIndex = parts.indexOfLast { it == "extension" || it == "novelextension" }
+		// Manga, novel, and Aniyomi anime extensions encode language immediately after their namespace.
+		val extIndex = parts.indexOfLast {
+			it == "extension" || it == "novelextension" || it == "animeextension"
+		}
 		return parts.getOrNull(extIndex + 1)
 			?.takeIf { it.isNotBlank() }
 			?: parts.lastOrNull()
