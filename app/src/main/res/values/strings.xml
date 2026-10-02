@@ -1608,4 +1608,5 @@
 	<string name="reader_journey_weekly_read_3_days">3 days</string>
 	<string name="reader_journey_weekly_task">task</string>
 	<string name="reader_journey_share_failed">Couldn’t create the Reader Journey share card</string>
+	<string name="failed">Failed</string>
 </resources>
