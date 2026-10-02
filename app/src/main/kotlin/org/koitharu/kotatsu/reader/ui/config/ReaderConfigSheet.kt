@@ -1298,14 +1298,12 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = buildString {
-                                append(stringResource(R.string.brightness))
-                                append(": ")
-                                append(
-                                    if (screenBrightness < 5f) stringResource(R.string.epub_theme_system)
-                                    else "${screenBrightness.roundToInt()}%",
-                                )
-                            },
+                            text = "${stringResource(R.string.brightness)}: " +
+                                if (screenBrightness < 5f) {
+                                    stringResource(R.string.epub_theme_system)
+                                } else {
+                                    "${screenBrightness.roundToInt()}%"
+                                },
                             style = MaterialTheme.typography.labelLarge,
                         )
                         Slider(
