@@ -10,8 +10,8 @@ enum class CelebrationPresentation { SNACKBAR, ACHIEVEMENT, COSMETIC, RANK_UP }
 fun CelebrationQueueItem.presentation(): CelebrationPresentation = when {
 	mode != ReaderJourneyCelebrationMode.FULL -> CelebrationPresentation.SNACKBAR
 	event.unlockedAchievements.isNotEmpty() -> CelebrationPresentation.ACHIEVEMENT
-	event.unlockedCosmetics.isNotEmpty() -> CelebrationPresentation.COSMETIC
 	event.isRankUp -> CelebrationPresentation.RANK_UP
+	event.unlockedCosmetics.isNotEmpty() -> CelebrationPresentation.COSMETIC
 	else -> CelebrationPresentation.SNACKBAR
 }
 
