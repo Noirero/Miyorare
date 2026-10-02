@@ -25,6 +25,24 @@ class MihonExtensionLoaderTest {
 	}
 
 	@Test
+	fun `readSourceClassNames accepts forked anime metadata namespace`() {
+		val metadata = mapOf(
+			"example.player.animeextension.class" to ".ExampleAnimeSource",
+		)
+
+		assertEquals(".ExampleAnimeSource", MihonExtensionLoader.readSourceClassNames(metadata))
+	}
+
+	@Test
+	fun `readSourceClassNames ignores unrelated class metadata`() {
+		val metadata = mapOf(
+			"example.unrelated.class" to ".NotAnExtension",
+		)
+
+		assertEquals(null, MihonExtensionLoader.readSourceClassNames(metadata))
+	}
+
+	@Test
 	fun `parseNsfwFlag supports integer metadata`() {
 		assertTrue(MihonExtensionLoader.parseNsfwFlag(1))
 	}

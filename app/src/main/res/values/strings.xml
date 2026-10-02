@@ -702,6 +702,7 @@
     <string name="action_open">Open</string>
     <string name="available_to_install">Available to install</string>
     <string name="no_manga_sources_found">No available manga extensions found by your query</string>
+    <string name="no_extensions_found">No available extensions found by your query</string>
     <string name="manual">Manual</string>
     <string name="disable_nsfw_summary">Disable NSFW sources and hide adult manga from list if possible</string>
     <string name="state_paused">Paused</string>
