@@ -15,8 +15,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyFragment.kt'
       - 'app/src/main/res/values/strings.xml'
       - 'app/src/main/res/values-in/strings.xml'
-      - 'app/src/main/res/drawable-nodpi/nameplate_*_base.webp'
-      - 'app/src/main/res/drawable-nodpi/nameplate_*_thumb.webp'
+      - 'app/src/main/res/drawable-nodpi/nameplate_*.webp'
       - 'app/src/main/res/values/settings_developer_diagnostics.xml'
       - 'app/src/main/res/values-in/settings_developer_diagnostics.xml'
       - 'docs/reader-journey-theme-assets.md'
@@ -153,7 +152,7 @@ jobs:
         working-directory: head
         run: ./gradlew :app:assemblePreview --no-daemon --stacktrace
 
-      - name: Audit packaged Nameplate V2 resources
+      - name: Audit packaged final rank-title Nameplate resources
         if: steps.size_scope.outputs.required == 'true'
         shell: bash
         run: |
@@ -162,6 +161,7 @@ jobs:
           test -n "$HEAD_APK"
 
           python3 - "$HEAD_APK" <<'PY'
+          import hashlib
           import json
           import sys
           import zipfile
@@ -174,8 +174,11 @@ jobs:
                   if "/nameplate_" in info.filename and info.filename.endswith(".webp")
               ]
               names = [Path(info.filename).name for info in entries]
-              base = sorted(n for n in names if n.endswith("_base.webp"))
-              thumb = sorted(n for n in names if n.endswith("_thumb.webp"))
+              expected = {
+                  path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in Path("head/app/src/main/res/drawable-nodpi").glob("nameplate_*.webp")
+              }
+              actual = {Path(i.filename).name: hashlib.sha256(zf.read(i)).hexdigest() for i in entries}
               legacy = sorted(
                   info.filename for info in zf.infolist()
                   if "nameplate_" in info.filename and (
@@ -188,17 +191,16 @@ jobs:
               payload = {
                   "apk": apk.name,
                   "runtime_webp_entries": len(entries),
-                  "base_entries": len(base),
-                  "thumbnail_entries": len(thumb),
+                  "final_rank_title_entries": len(expected),
                   "duplicate_runtime_names": duplicate_names,
                   "legacy_packaged_entries": legacy,
                   "packaged_nameplate_uncompressed_bytes": sum(i.file_size for i in entries),
                   "packaged_nameplate_compressed_bytes": sum(i.compress_size for i in entries),
               }
 
-          assert len(base) == 12, payload
-          assert len(thumb) == 12, payload
-          assert len(entries) == 24, payload
+          assert len(expected) == 12, payload
+          assert len(entries) == 12, payload
+          assert actual == expected, "Installed artwork differs from exact final source bytes"
           assert not duplicate_names, payload
           assert not legacy, payload
           Path("nameplate-v2-packaging-audit.json").write_text(

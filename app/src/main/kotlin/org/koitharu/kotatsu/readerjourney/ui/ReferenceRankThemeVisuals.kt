@@ -95,7 +95,6 @@ fun ReferenceRankThemeFrame(
 fun ReferenceRankThemeNameplate(
 	spec: ReferenceRankThemeVisualSpec,
 	tokens: RankThemeTokens,
-	title: String,
 	modifier: Modifier = Modifier,
 	state: NameplateState = NameplateState.UNLOCKED,
 	animate: Boolean = false,
@@ -112,36 +111,6 @@ fun ReferenceRankThemeNameplate(
 		qualityMode = qualityMode,
 		usage = usage,
 		pressed = pressed,
-	) {
-		ExclusiveNameplateTitle(
-			title = title,
-			usage = usage,
-		)
-	}
-}
-
-@Composable
-fun ReferenceRankThemeNameplate(
-	spec: ReferenceRankThemeVisualSpec,
-	tokens: RankThemeTokens,
-	modifier: Modifier = Modifier,
-	state: NameplateState = NameplateState.UNLOCKED,
-	animate: Boolean = false,
-	qualityMode: NameplateQualityMode = NameplateQualityMode.NORMAL,
-	usage: NameplateUsage = NameplateUsage.PROFILE,
-	pressed: Boolean = false,
-	content: @Composable () -> Unit,
-) {
-	ExclusiveNameplate(
-		spec = spec,
-		tokens = tokens,
-		modifier = modifier,
-		state = state,
-		animate = animate,
-		qualityMode = qualityMode,
-		usage = usage,
-		pressed = pressed,
-		content = content,
 	)
 }
 
