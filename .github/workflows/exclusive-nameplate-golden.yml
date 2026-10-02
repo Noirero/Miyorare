@@ -126,8 +126,8 @@ jobs:
           disable-animations: false
           emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -memory 4096
           script: |
-            adb shell wm size 864x1536
-            adb shell wm density 320
+            adb shell wm size 720x1280
+            adb shell wm density 300
             adb shell settings put system font_scale 1.0
             adb shell cmd uimode night yes
             adb shell settings put global window_animation_scale 1
