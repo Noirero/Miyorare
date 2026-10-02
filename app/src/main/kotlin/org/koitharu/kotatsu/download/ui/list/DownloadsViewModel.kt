@@ -453,7 +453,10 @@ class DownloadsViewModel @Inject constructor(
 				isStuck = progressMembers.any { it.isStuck },
 				timestamp = latestTimestamp,
 				chaptersDownloaded = groupedChapterCount,
-				downloadSizeBytes = members.maxOfOrNull { it.downloadSizeBytes } ?: 0L,
+				downloadSizeBytes = when {
+					state == WorkInfo.State.RUNNING && stateMembers.any { !it.isPaused } -> 0L
+					else -> stateMembers.maxOfOrNull { it.downloadSizeBytes } ?: 0L
+				},
 				isExpanded = representative.selectionId in expandedIds,
 				chapters = groupedChaptersFlow(manga, workIds),
 				uiAction = stateMembers.firstNotNullOfOrNull { it.uiAction },
