@@ -211,7 +211,10 @@ class MihonExtensionLoader @Inject constructor(
 
 		internal fun isPackageAnExtensionStatic(pkgInfo: PackageInfo): Boolean {
 			val appInfo = pkgInfo.applicationInfo ?: return false
-			val hasFeature = pkgInfo.reqFeatures?.any { it.name in EXTENSION_FEATURES } == true
+			val hasFeature = pkgInfo.reqFeatures?.any { feature ->
+				val name = feature.name.orEmpty()
+				name in EXTENSION_FEATURES || name.endsWith(".animeextension", ignoreCase = true)
+			} == true
 			return hasFeature || readSourceClassNames(appInfo.metaData) != null
 		}
 
@@ -220,6 +223,14 @@ class MihonExtensionLoader @Inject constructor(
 			metaData ?: return null
 			return METADATA_SOURCE_CLASS_KEYS.firstNotNullOfOrNull { metaData.getString(it) }
 				?: METADATA_SOURCE_FACTORY_KEYS.firstNotNullOfOrNull { metaData.getString(it) }
+				?: metaData.keySet()
+					.asSequence()
+					.filter { key ->
+						key.endsWith(".animeextension.class", ignoreCase = true) ||
+							key.endsWith(".animeextension.factory", ignoreCase = true)
+					}
+					.mapNotNull(metaData::getString)
+					.firstOrNull()
 		}
 
 		internal fun normalizeSourceClassNames(pkgName: String, sourceClassNames: String): List<String> {
