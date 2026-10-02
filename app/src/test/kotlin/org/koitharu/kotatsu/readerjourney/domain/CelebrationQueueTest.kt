@@ -43,7 +43,7 @@ class CelebrationQueueTest {
 			scope = this,
 			modeProvider = { mode },
 			reduceMotionProvider = { reduceMotion },
-			presenter = presented::add,
+			presenter = { presented += it },
 		)
 
 		queue.enqueue(event(1))
