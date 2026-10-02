@@ -81,7 +81,7 @@ private fun org.koitharu.kotatsu.settings.compose.SettingsGroupScope.comingSoonI
 	item { pos ->
 		NavigationSettingsItem(
 			title = stringResource(titleRes),
-			subtitle = stringResource(R.string.coming_soon),
+			subtitle = stringResource(R.string.library_sync_coming_soon),
 			onClick = {},
 			shape = pos.shape,
 			enabled = false,
