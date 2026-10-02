@@ -486,6 +486,14 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getString(KEY_EPUB_THEME, "system") ?: "system"
 		set(value) = prefs.edit { putString(KEY_EPUB_THEME, value) }
 
+	/**
+	 * EPUB-only screen brightness. 0 follows the device setting; 5..100 applies an explicit
+	 * brightness while the novel reader is visible.
+	 */
+	var epubScreenBrightness: Int
+		get() = prefs.getInt(KEY_EPUB_SCREEN_BRIGHTNESS, 0).coerceIn(0, 100)
+		set(value) = prefs.edit { putInt(KEY_EPUB_SCREEN_BRIGHTNESS, value.coerceIn(0, 100)) }
+
 	var epubCustomBackgroundColor: Int
 		get() = prefs.getInt(KEY_EPUB_CUSTOM_BACKGROUND_COLOR, 0xFFFFFFFF.toInt())
 		set(value) = prefs.edit { putInt(KEY_EPUB_CUSTOM_BACKGROUND_COLOR, value) }
@@ -1422,6 +1430,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_EPUB_PUBLISHER_STYLE = "epub_publisher_style"
 		const val KEY_EPUB_BIONIC_READING = "epub_bionic_reading"
 		const val KEY_EPUB_THEME = "epub_theme"
+		const val KEY_EPUB_SCREEN_BRIGHTNESS = "epub_screen_brightness"
 		const val KEY_EPUB_CUSTOM_BACKGROUND_COLOR = "epub_custom_background_color"
 		const val KEY_EPUB_CUSTOM_TEXT_COLOR = "epub_custom_text_color"
 		const val KEY_EPUB_CUSTOM_HIGHLIGHT_COLOR = "epub_custom_highlight_color"
