@@ -233,7 +233,9 @@ class LibrarySyncDetailFragment : BaseComposeSettingsFragment(0) {
 										.appendQueryParameter("client_id", clientId)
 										.appendQueryParameter("response_type", "token")
 										.build()
-								startActivity(Intent(Intent.ACTION_VIEW, uri))
+								startActivity(
+									Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
+								)
 							},
 							onLogin = { credentials ->
 								viewModel.login(serviceId, credentials)

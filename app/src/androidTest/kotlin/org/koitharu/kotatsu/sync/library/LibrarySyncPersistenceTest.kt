@@ -26,7 +26,9 @@ class LibrarySyncPersistenceTest {
 		context.deleteDatabase(name)
 		fun open() = Room.databaseBuilder(context, MangaDatabase::class.java, name).build()
 		try {
-			open().use { db ->
+			val first = open()
+			try {
+				val db = first
 				val manga = SampleData.manga.toEntity()
 				db.getMangaDao().upsert(manga)
 				db.getLibrarySyncDao().put(LibrarySyncMappingEntity("ANILIST", "7", manga.id, 1000))
@@ -44,14 +46,20 @@ class LibrarySyncPersistenceTest {
 							)
 						)
 					)
+			} finally {
+				first.close()
 			}
-			open().use { db ->
+			val reopened = open()
+			try {
+				val db = reopened
 				assertEquals("7", db.getLibrarySyncDao().mappings("ANILIST").single().externalId)
 				assertNull(
 					db.getLibrarySyncDao().entries("ANILIST").single().toEntry().localMangaId
 				)
 				assertTrue(db.getFavouritesDao().findAll().isEmpty())
 				assertTrue(db.getLibrarySyncDao().mappings("KITSU").isEmpty())
+			} finally {
+				reopened.close()
 			}
 		} finally {
 			context.deleteDatabase(name)
