@@ -103,6 +103,9 @@ fun ReferenceRankThemeNameplate(
 	usage: NameplateUsage = NameplateUsage.PROFILE,
 	pressed: Boolean = false,
 ) {
+	// Rank text is authored directly into the nameplate artwork. Keep the title parameter for
+	// source/API compatibility and accessibility call sites, but do not render runtime text over
+	// the transparent center: doing so would duplicate or obscure the baked rank title.
 	ExclusiveNameplate(
 		spec = spec,
 		tokens = tokens,
@@ -112,12 +115,7 @@ fun ReferenceRankThemeNameplate(
 		qualityMode = qualityMode,
 		usage = usage,
 		pressed = pressed,
-	) {
-		ExclusiveNameplateTitle(
-			title = title,
-			usage = usage,
-		)
-	}
+	) {}
 }
 
 @Composable
