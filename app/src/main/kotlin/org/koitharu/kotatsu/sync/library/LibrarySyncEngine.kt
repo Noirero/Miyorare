@@ -33,19 +33,16 @@ constructor(
 	suspend fun login(id: LibrarySyncServiceId, credentials: LibrarySyncCredentials) =
 		withContext(Dispatchers.IO) {
 			exclusive(id) {
-				registry[id].login(credentials)
-				// A new login is an account boundary. Never send old-account mappings to a new
-				// account.
-				try {
-					db.withTransaction {
-						db.getLibrarySyncDao().clearMappings(id.name)
-						db.getLibrarySyncDao().clearEntries(id.name)
-					}
-				} catch (e: Exception) {
-					registry[id].logout()
-					throw e
+				// Clear the old account before saving a new session. A process death between
+				// credential storage and database cleanup must never expose old mappings to
+				// another account. A failed sign-in consequently leaves this service signed out.
+				registry[id].logout()
+				db.withTransaction {
+					db.getLibrarySyncDao().clearMappings(id.name)
+					db.getLibrarySyncDao().clearEntries(id.name)
 				}
 				state.clear(id)
+				registry[id].login(credentials)
 			}
 		}
 

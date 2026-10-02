@@ -93,7 +93,7 @@ class LibrarySyncDetailFragment : BaseComposeSettingsFragment(0) {
 							}
 							item {
 								Button(
-									enabled = !busy && !row.running,
+									enabled = !busy,
 									onClick = {
 										if (row.status == LibrarySyncConnectionStatus.DISCONNECTED)
 											showLogin = true

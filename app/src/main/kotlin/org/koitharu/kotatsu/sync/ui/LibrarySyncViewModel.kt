@@ -9,6 +9,7 @@ import java.time.Instant
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,6 +50,8 @@ constructor(
 	val suggestedExternalId = MutableStateFlow<String?>(null)
 	val lookupResult = MutableStateFlow<SyncEntry?>(null)
 	private val running = LibrarySyncServiceId.entries.associateWith { false }.toMutableMap()
+	private var searchJob: Job? = null
+	private var mappingJob: Job? = null
 
 	init {
 		LibrarySyncServiceId.entries.forEach { id ->
@@ -158,7 +161,8 @@ constructor(
 	}
 
 	fun search(query: String) {
-		viewModelScope.launch {
+		searchJob?.cancel()
+		searchJob = viewModelScope.launch {
 			val results =
 				withContext(Dispatchers.IO) {
 					db.getLibrarySyncDao().searchLocal("%${query.trim()}%")
@@ -168,8 +172,9 @@ constructor(
 	}
 
 	fun suggestTrackingMapping(id: LibrarySyncServiceId, localId: Long) {
+		mappingJob?.cancel()
 		suggestedExternalId.value = null
-		viewModelScope.launch {
+		mappingJob = viewModelScope.launch {
 			val scrobbler =
 				when (id) {
 					LibrarySyncServiceId.ANILIST ->
