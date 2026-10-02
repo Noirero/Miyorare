@@ -111,6 +111,8 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
+					onAvatarSelected = viewModel::updateReaderAvatar,
+					onAvatarRemove = viewModel::removeReaderAvatar,
 					onCosmeticsUpdate = { loadout ->
 						viewModel.updateReaderCosmetics(loadout)
 						viewBinding.root.post { activityRecreationHandle.recreateAll() }
