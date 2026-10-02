@@ -101,6 +101,14 @@ jobs:
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
             --tests org.koitharu.kotatsu.readerjourney.ui.NameplateGuideContractTest
 
+      - name: Prebuild preview instrumentation APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assemblePreview :app:assemblePreviewAndroidTest --no-daemon --stacktrace \
+            -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
+            -PMIYORARE_VISUAL_TEST_SIGNING=true
+
       - name: Enable KVM
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
