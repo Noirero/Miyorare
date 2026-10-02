@@ -418,6 +418,7 @@
     <string name="reader_optimize">Kurangi konsumsi memori</string>
     <string name="apply">Terapkan</string>
     <string name="no_manga_sources_found">Tidak ditemukan sumber manga berdasarkan kueri Anda</string>
+    <string name="no_extensions_found">Tidak ada ekstensi yang tersedia untuk pencarian Anda</string>
     <string name="genres_search_hint">Ketik nama genre</string>
     <string name="globally">Secara global</string>
     <string name="rating_adult">Dewasa</string>
