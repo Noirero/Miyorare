@@ -219,17 +219,20 @@ class MihonExtensionLoader @Inject constructor(
 		}
 
 		/** The `;`-separated source class list, from whichever namespace the APK declares it under. */
-		internal fun readSourceClassNames(metaData: Bundle?): String? {
-			metaData ?: return null
-			return METADATA_SOURCE_CLASS_KEYS.firstNotNullOfOrNull { metaData.getString(it) }
-				?: METADATA_SOURCE_FACTORY_KEYS.firstNotNullOfOrNull { metaData.getString(it) }
-				?: metaData.keySet()
-					.asSequence()
-					.filter { key ->
+		internal fun readSourceClassNames(metaData: Bundle?): String? =
+			metaData?.let { bundle ->
+				readSourceClassNames(bundle.keySet().associateWith(bundle::getString))
+			}
+
+		internal fun readSourceClassNames(metaData: Map<String, String?>): String? {
+			return METADATA_SOURCE_CLASS_KEYS.firstNotNullOfOrNull(metaData::get)
+				?: METADATA_SOURCE_FACTORY_KEYS.firstNotNullOfOrNull(metaData::get)
+				?: metaData.asSequence()
+					.filter { (key, _) ->
 						key.endsWith(".animeextension.class", ignoreCase = true) ||
 							key.endsWith(".animeextension.factory", ignoreCase = true)
 					}
-					.mapNotNull(metaData::getString)
+					.mapNotNull { it.value }
 					.firstOrNull()
 		}
 
