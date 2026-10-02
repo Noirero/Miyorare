@@ -301,7 +301,8 @@ class DownloadWorker @AssistedInject constructor(
 						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 						continue
 					}
-					val pages = resolvedPagesByChapter[chapter.value.id] ?: run {
+					val pages = resolvedPagesByChapter[chapter.value.id]
+					if (pages == null) {
 						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 						continue
 					}
