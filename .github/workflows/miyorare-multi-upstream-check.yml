@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: InvalidDavid/UMA
-          ref: a0ebc9ffc7de02b7b50cbcb620092d0a9263c785
+          ref: 52185ec4faada143f57dcfb41c6fa49aa346b4db
           path: _upstream/uma
 
       - name: Checkout pinned Keiyoushi

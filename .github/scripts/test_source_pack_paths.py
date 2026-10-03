@@ -32,7 +32,8 @@ PRESERVED = {('miyorare-global-source-pack-check.yml', 'Apply Miyorare Global pa
  ('miyorare-global-source-pack-check.yml', 'Verify ExHentai pagination regression contract'): 'da0f75786892df82656a5468e1d868917be783baa59a22a5f636e8c45625236a',
  ('miyorare-global-source-pack-check.yml', 'Verify Global ownership and complete E-Hentai family preset'): 'e7e8536c50758a6435fe2b2708332c6c6da6d937b1d750a848796383df11af44',
  ('miyorare-multi-upstream-check.yml', 'Checkout pinned Keiyoushi'): 'a8b009632b524c64cb3f9b56d3eeab911b178d16e5d4e6f466d99d605409ddc0',
- ('miyorare-multi-upstream-check.yml', 'Checkout pinned UMA'): '5e9cb85844b005e58a832aca09374bfbd6b6329f4af83ab61df20ab87549287a',
+ # Sole ref exception: approved Farm pin update in #79; see CI_SOURCE_PACK_STAGE5.md.
+ ('miyorare-multi-upstream-check.yml', 'Checkout pinned UMA'): '820963cdd4378e81080946a979bb5ba73114050863c36d57214ecccf403041a7',
  ('miyorare-multi-upstream-check.yml', 'Upload normalized intake metadata'): '7be4116c9df0066814d4036ec5280dd7c6c3f89e829423db49ab5ee6cf0aaae9',
  ('miyorare-multi-upstream-check.yml', 'Verify normalized multi-upstream aliases'): '2bf75438e7ba24ff5749595ca60e940ef7b577fb83e59ee780abec1e212a6436',
  ('miyorare-source-pack-check.yml', 'Apply Miyorare ID parser overlays'): '9bd46ae87d09793f7789754ece59700b0c20151005eb2f595e06f5b0c5ac8d95',

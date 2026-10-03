@@ -115,7 +115,8 @@ No artifact identity, path or retention changes:
 
 Skipped subsets do not upload nonexistent staging artifacts. Workflow/job names,
 IDs, permissions, original event/branch lifecycles, concurrency, matrix and
-default timeouts are preserved. External literal refs are unchanged. ID/EN still
+default timeouts are preserved. Routing preserves external literal refs; the
+provenance correction below updates only the stale UMA intake pin. ID/EN still
 resolve its two immutable provider SHAs from the exact candidate manifest.
 
 ## Identity/dependency audit
@@ -145,11 +146,35 @@ validation is requested on its exact head. Review actual jobs, external checkout
 steps, staging/intake artifacts and applicable app CI at that SHA. A local test
 is not a substitute for those external runs.
 
-Pre-existing issue found during audit: `packs.json` records UMA
+Pre-existing issue found during the initial audit: `packs.json` records UMA
 `52185ec4faada143f57dcfb41c6fa49aa346b4db`; Multi-Upstream's literal checkout and
 `multi-upstream.json` record `a0ebc9ffc7de02b7b50cbcb620092d0a9263c785`.
-`verify_multi_upstream.py` requires pack/intake pins to match, so this is an
-existing compatibility failure, not a classifier-safe skip. Stage 5 preserves
-the refs, manifests and assertion. A deterministic red external check must be
-reported as a completion blocker; production manifest edits or a weakened
-assertion to make cleanup green are outside scope.
+`verify_multi_upstream.py` requires pack/intake pins to match; the first Stage 5
+head correctly failed instead of skipping this existing compatibility error.
+
+### Authorized UMA pin provenance correction for PR #467
+
+Git history proves that `96949794d957aa9175dc645cd463bedd23e8a691` introduced
+the intake manifest/workflow with `a0ebc9f...` on September 12. Farm Sync PR #79,
+merged as `44582397c85170e35720b4faaebd75d4e7cd94b9` on September 18, changed
+only `packs.json`'s UMA pin to `52185ec4faada143f57dcfb41c6fa49aa346b4db`.
+The intake manifest retained its original pin; its workflow's UMA ref also
+retained that value. Those two configurations became stale after the approved
+Farm update, while `packs.json` remained the active ID/EN build input.
+
+The authoritative Compatibility Farm registry was checked at immutable commit
+`c392caeb97aa456b0e7b11c85c170ca03be5f931` in
+`Noirero/Miyorare-Source-Packs`, branch `compatibility-farm-foundation`.
+`compatibility/source-registry.json`'s `providerBaselines.uma` is also
+`52185ec4faada143f57dcfb41c6fa49aa346b4db`; the unchanged Farm sync engine
+materializes this field into `packs.json`'s `upstream.commit`. The UMA commit
+exists in InvalidDavid/UMA, and all six alias parser files at that revision
+retain the required runtime identity, language and quoted verified domain.
+
+The owner authorized only this pin correction: update the intake manifest and
+its literal UMA checkout ref to the already approved pin, leaving `packs.json`,
+Keiyoushi's pin, aliases, verifier assertions, routing and Farm automation
+unchanged. The regression fingerprint exception is limited to the
+`miyorare-multi-upstream-check.yml` / `Checkout pinned UMA` step, whose only
+semantic change is the ref. Every other baseline fingerprint stays identical.
+Actual external validation on the final PR head remains mandatory.
