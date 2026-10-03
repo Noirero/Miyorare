@@ -17,6 +17,8 @@ import org.koitharu.kotatsu.backup.local.data.model.BookmarkBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyWeeklyStateBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyXpEventBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceSettingsBackup
 import org.koitharu.kotatsu.backup.local.data.model.StatsBackup
@@ -186,6 +188,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 			val configResult = buildMergedConfig(remote?.config, enabled, now)
 			val merged = buildMergedSnapshot(remote, configResult.config, now)
+				.scrubPrivateOnly(privateOnlyIds)
 			Log.i(
 				TAG,
 				"merged: fav=${merged.favourites.size} hist=${merged.history.size} cat=${merged.categories.size} " +
@@ -302,6 +305,9 @@ class GoogleDriveSyncRepository @Inject constructor(
 			feed = snapshot.feed,
 			stats = snapshot.stats,
 			readerJourney = snapshot.readerJourney,
+			readerJourneyXpEvents = snapshot.readerJourneyXpEvents,
+			readerJourneyWeekly = snapshot.readerJourneyWeekly,
+			readerJourneyLifetimeXp = snapshot.readerJourneyLifetimeXp,
 			readerAchievements = snapshot.readerAchievements,
 			config = snapshot.config,
 		),
@@ -333,6 +339,9 @@ class GoogleDriveSyncRepository @Inject constructor(
 			feed = snapshot.feed,
 			stats = snapshot.stats,
 			readerJourney = snapshot.readerJourney,
+			readerJourneyXpEvents = snapshot.readerJourneyXpEvents,
+			readerJourneyWeekly = snapshot.readerJourneyWeekly,
+			readerJourneyLifetimeXp = snapshot.readerJourneyLifetimeXp,
 			readerAchievements = snapshot.readerAchievements,
 			config = snapshot.config,
 		)
@@ -403,6 +412,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 		val feed = feed.filterNot { it.mangaId in privateOnlyIds }
 		val stats = stats.filterNot { it.mangaId in privateOnlyIds }
 		val readerJourney = readerJourney.filterNot { it.mangaId in privateOnlyIds }
+		val readerJourneyXpEvents = readerJourneyXpEvents.filterNot { it.mangaId in privateOnlyIds }
 		val oldConfig = config
 		val mangaPrefs = oldConfig?.mangaPrefs?.filterNot { it.mangaId in privateOnlyIds }
 		val configChanged = oldConfig != null && mangaPrefs != null && mangaPrefs.size != oldConfig.mangaPrefs.size
@@ -425,6 +435,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			feed.size != this.feed.size ||
 			stats.size != this.stats.size ||
 			readerJourney.size != this.readerJourney.size ||
+			readerJourneyXpEvents.size != this.readerJourneyXpEvents.size ||
 			configChanged
 		if (!changed) return this
 		Log.i(
@@ -445,6 +456,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			feed = feed,
 			stats = stats,
 			readerJourney = readerJourney,
+			readerJourneyXpEvents = readerJourneyXpEvents,
 			config = newConfig,
 		)
 	}
@@ -521,6 +533,21 @@ class GoogleDriveSyncRepository @Inject constructor(
 		} else {
 			remote?.readerJourney.orEmpty()
 		}
+		val readerJourneyXpEvents = if (SyncContent.STATS in enabled) {
+			SyncMerger.mergeReaderJourneyXpEvents(localReaderJourneyXpEvents(), remote?.readerJourneyXpEvents.orEmpty())
+		} else {
+			remote?.readerJourneyXpEvents.orEmpty()
+		}
+		val readerJourneyWeekly = if (SyncContent.STATS in enabled) {
+			SyncMerger.mergeReaderJourneyWeekly(localReaderJourneyWeekly(), remote?.readerJourneyWeekly.orEmpty())
+		} else {
+			remote?.readerJourneyWeekly.orEmpty()
+		}
+		val readerJourneyLifetimeXp = if (SyncContent.STATS in enabled) {
+			maxOf(localReaderJourneyLifetimeXp(), remote?.readerJourneyLifetimeXp ?: 0L)
+		} else {
+			remote?.readerJourneyLifetimeXp ?: 0L
+		}
 		val readerAchievements = if (SyncContent.STATS in enabled) {
 			SyncMerger.mergeReaderAchievements(localReaderAchievements(), remote?.readerAchievements.orEmpty())
 		} else {
@@ -538,6 +565,9 @@ class GoogleDriveSyncRepository @Inject constructor(
 			feed = feed,
 			stats = stats,
 			readerJourney = readerJourney,
+			readerJourneyXpEvents = readerJourneyXpEvents,
+			readerJourneyWeekly = readerJourneyWeekly,
+			readerJourneyLifetimeXp = readerJourneyLifetimeXp,
 			readerAchievements = readerAchievements,
 			config = config,
 		)
@@ -745,9 +775,21 @@ class GoogleDriveSyncRepository @Inject constructor(
 			for (entry in merged.readerJourney) {
 				runCatchingCancellable { journeyDao.mergeChapterAward(entry.toEntity()) }
 			}
+			// Rested/Welcome Back windows may fork while devices are offline. The merged snapshot
+			// normalizes those forks to the canonical capped set. Demote local superseded bonus rows
+			// first; reconcileXpFloor below preserves Lifetime XP monotonically.
+			runCatchingCancellable { journeyDao.demoteComebackBonusEvents() }
+			runCatchingCancellable { journeyDao.clearComebackWindowEvents() }
+			for (entry in merged.readerJourneyXpEvents) {
+				runCatchingCancellable { journeyDao.mergeXpEvent(entry.toEntity()) }
+			}
+			for (entry in merged.readerJourneyWeekly) {
+				runCatchingCancellable { journeyDao.mergeWeeklyState(entry.toEntity()) }
+			}
 			for (entry in merged.readerAchievements) {
 				runCatchingCancellable { journeyDao.mergeAchievement(entry.toEntity()) }
 			}
+			runCatchingCancellable { journeyDao.reconcileXpFloor(merged.readerJourneyLifetimeXp) }
 			runCatchingCancellable { journeyDao.rebuildProfileFromLedger() }
 		}
 		// Apply config locally only when the remote bundle won the merge; otherwise local already holds
@@ -885,6 +927,15 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 	private suspend fun localReaderJourney(): List<ReaderJourneyBackup> =
 		database.getReaderJourneyDao().getAllChapterAwards().map(::ReaderJourneyBackup)
+
+	private suspend fun localReaderJourneyXpEvents(): List<ReaderJourneyXpEventBackup> =
+		database.getReaderJourneyDao().getAllXpEvents().map(::ReaderJourneyXpEventBackup)
+
+	private suspend fun localReaderJourneyWeekly(): List<ReaderJourneyWeeklyStateBackup> =
+		database.getReaderJourneyDao().getAllWeeklyStates().map(::ReaderJourneyWeeklyStateBackup)
+
+	private suspend fun localReaderJourneyLifetimeXp(): Long =
+		database.getReaderJourneyDao().getProfile()?.totalXp ?: 0L
 
 	private suspend fun localReaderAchievements(): List<ReaderAchievementBackup> =
 		database.getReaderJourneyDao().getAllAchievements().map(::ReaderAchievementBackup)

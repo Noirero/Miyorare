@@ -121,13 +121,13 @@ data class MangaDetails(
         val localMap = if (localChapters.isNotEmpty()) {
             localChapters.associateByTo(LinkedHashMap(localChapters.size)) { it.id }
         } else null
-        val result = ArrayList<MangaChapter>(chapters.size)
-        for (chapter in chapters) {
-            val local = localMap?.remove(chapter.id)
-            result += local ?: chapter
+        return chapters.map { chapter ->
+            // For an online title, the source remains authoritative for which chapters exist.
+            // Local storage only enriches a matching source chapter with its downloaded artifact.
+            // Appending unmatched filesystem chapters here made transient/local identities appear as
+            // extra source chapters, causing Details counts and rows to flicker (e.g. 180 -> 183 -> 180).
+            localMap?.get(chapter.id) ?: chapter
         }
-        if (!localMap.isNullOrEmpty()) result.addAll(localMap.values)
-        return result
     }
 
     private fun findAppropriateLocale(name: String?): Locale? {

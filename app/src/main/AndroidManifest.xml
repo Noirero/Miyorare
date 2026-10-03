@@ -100,7 +100,8 @@
 			android:exported="false" />
 		<activity
 			android:name="org.koitharu.kotatsu.details.ui.DetailsExpressiveActivity"
-			android:exported="true">
+			android:exported="true"
+			android:theme="@style/Theme.Kotatsu.Details">
 			<intent-filter>
 				<action android:name="${applicationId}.action.VIEW_MANGA" />
 			</intent-filter>

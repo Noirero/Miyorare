@@ -1,0 +1,179 @@
+name: Profile Frame Wave 2 Actual UI Smoke
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveProfileFrame.kt'
+      - 'app/src/main/res/drawable/profile_frame_01_*'
+      - 'app/src/main/res/drawable/profile_frame_02_*'
+      - 'app/src/main/res/drawable/profile_frame_03_*'
+      - 'app/src/main/res/drawable/profile_frame_04_*'
+      - 'app/src/main/res/drawable/profile_frame_05_*'
+      - 'app/src/main/res/drawable/profile_frame_06_*'
+      - 'app/src/main/res/drawable/profile_frame_08_*'
+      - 'app/src/main/res/drawable/profile_frame_11_*'
+      - 'app/src/main/res/drawable/profile_frame_12_*'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/ProfileFrameGuideContractTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/stats/ui/ProfileFrameWave1ActualUiSmokeTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/stats/ui/ProfileFrameWave2ActualUiSmokeTest.kt'
+      - '.github/workflows/profile-frame-wave2-actual-ui-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: profile-frame-wave2-actual-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Wave 2 static runtime proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact candidate head
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_HEAD"
+          echo "Profile Frame Wave 2 head: $actual"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data = tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
+          value = str(data.get("versions", {}).get("parsers", "")).strip()
+          if not value:
+              raise SystemExit("Missing versions.parsers in gradle/libs.versions.toml")
+          print(value)
+          PY
+          )"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 12); do
+            HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 "$POM_URL" || true)"
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "Parser artifact is ready (HTTP 200)"
+              exit 0
+            fi
+            echo "Attempt $i: parser artifact returned HTTP ${HTTP_STATUS:-000}"
+            sleep 20
+          done
+          echo "::error::Parser artifact ${PARSERS_VERSION} is not ready on JitPack"
+          exit 1
+
+      - name: Run Profile Frame contract test
+        run: >-
+          ./gradlew :app:testDebugUnitTest
+          --tests org.koitharu.kotatsu.readerjourney.ui.ProfileFrameGuideContractTest
+          --no-daemon --stacktrace
+
+      - name: Enable KVM
+        shell: bash
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Capture all 12 final WebP frames on actual Reader Journey profile
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+
+          emulator-build: 13823996
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb shell wm size 864x1536
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.0
+            adb shell cmd uimode night yes
+            adb shell settings put global hide_error_dialogs 1 || true
+            adb shell settings put global show_first_crash_dialog 0 || true
+            adb shell settings put global show_restart_in_crash_dialog 0 || true
+            adb shell settings put global anr_show_background 0 || true
+            adb shell rm -rf /sdcard/Download/miyorare-profile-frame-runtime-replacement
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.stats.ui.ProfileFrameWave2ActualUiSmokeTest
+            mkdir -p profile-frame-runtime-replacement-evidence
+            adb pull /sdcard/Download/miyorare-profile-frame-runtime-replacement/. profile-frame-runtime-replacement-evidence/
+            test -s profile-frame-runtime-replacement-evidence/frame-01-first-page-silver-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/frame-02-first-light-blue-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/frame-03-cyan-orbit-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/frame-04-emerald-pulse-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/frame-05-arcane-scholar-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/frame-06-violet-halo-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/frame-07-rose-nebula-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/frame-08-crimson-ember-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/frame-09-amber-manuscript-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/frame-10-golden-manuscript-deluxe-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/frame-11-eternal-library-prism-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/frame-12-celestial-infinity-runtime.png
+            test -s profile-frame-runtime-replacement-evidence/runtime-replacement-evidence.json
+
+      - name: Validate direct replacement runtime evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("profile-frame-runtime-replacement-evidence")
+          evidence = json.loads((root / "runtime-replacement-evidence.json").read_text())
+          assert evidence["finalWebpReplacement"] is True
+          assert evidence["staticOnly"] is True
+          assert evidence["animationTuning"] is False
+          assert evidence["frameCount"] == 12
+          frames = evidence["frames"]
+          assert len(frames) == 12
+          assert all(f["productionFrameDp"] == 136 for f in frames)
+          assert all(f["containerDp"] == 140 for f in frames)
+          assert all(f["reduceMotion"] is True for f in frames)
+          assert all((root / f["screen"]).is_file() for f in frames)
+          PY
+
+      - name: Upload Wave 2 runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-frame-runtime-replacement-evidence
+          path: |
+            profile-frame-runtime-replacement-evidence/
+            app/build/reports/tests/
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 14

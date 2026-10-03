@@ -1,5 +1,9 @@
 package org.koitharu.kotatsu.readerjourney.domain
 
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
+import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
+
 /**
  * Reader Journey is deliberately local-first: XP records verified reading completions rather than
  * time spent with the reader open. The level is one shared reader level for Manga and Novel.
@@ -41,16 +45,73 @@ enum class ReaderJourneyCosmeticSlot {
 	PROGRESS_BAR,
 }
 
+enum class ReaderJourneyCosmeticMode {
+	DEFAULT,
+	AUTO,
+	FULL_SET,
+	CUSTOM,
+}
+
 data class ReaderJourneyCosmeticUnlock(
 	val rank: ReaderRank,
 	val slot: ReaderJourneyCosmeticSlot,
-)
+) {
+	val theme: RankThemeId
+		get() = RankThemeId.forRank(rank)
 
+	val id: String
+		get() {
+			val spec = previewInfo
+			return when (slot) {
+				ReaderJourneyCosmeticSlot.FRAME -> spec.frameId
+				ReaderJourneyCosmeticSlot.GLOW -> theme.stableId + ":glow"
+				ReaderJourneyCosmeticSlot.BACKGROUND -> spec.wallpaperId
+				ReaderJourneyCosmeticSlot.PROGRESS_BAR -> spec.progressId
+			}
+		}
+
+	val name: String
+		get() = theme.displayName
+
+	val type: ReaderJourneyCosmeticSlot
+		get() = slot
+
+	val previewInfo: ReferenceRankThemeVisualSpec
+		get() = checkNotNull(RankThemeVisualRegistry.resolve(theme)) {
+			"Missing visual spec for ${theme.stableId}"
+		}
+}
+
+/**
+ * Atomic cosmetic selection snapshot.
+ *
+ * The four rank slots are retained for backwards compatibility with the existing cosmetic editor.
+ * New rank-theme identity is persisted by stable string ID rather than display name or rank ordinal.
+ * As new badge/wallpaper/card/progress IDs are introduced they belong in this same snapshot instead
+ * of being committed as independent preference writes.
+ */
 data class ReaderJourneyCosmeticLoadout(
+	val schemaVersion: Int = SCHEMA_VERSION,
+	val mode: ReaderJourneyCosmeticMode = ReaderJourneyCosmeticMode.AUTO,
+	/** Base/Foundation Exclusive Theme. CUSTOM overrides fall back to this when null. */
+	val selectedThemeId: String? = null,
+	/** CUSTOM-only theme-source overrides; null means Follow Base Theme. */
+	val navigationThemeId: String? = null,
+	val accentThemeId: String? = null,
+	val glowThemeId: String? = null,
+	val selectedBadgeId: String? = null,
+	val selectedWallpaperId: String? = null,
+	val selectedFrameId: String? = null,
+	val selectedNameplateId: String? = null,
+	/** Legacy reader-card identity retained for snapshot/backward compatibility. */
+	val selectedReaderCardId: String? = null,
+	val selectedProgressStyleId: String? = null,
 	val frame: ReaderRank? = null,
 	val glow: ReaderRank? = null,
 	val background: ReaderRank? = null,
 	val progressBar: ReaderRank? = null,
+	val favoriteThemeIds: Set<String> = emptySet(),
+	val autoEquipNewRankTheme: Boolean = false,
 ) {
 
 	fun selected(slot: ReaderJourneyCosmeticSlot): ReaderRank? = when (slot) {
@@ -65,6 +126,10 @@ data class ReaderJourneyCosmeticLoadout(
 		ReaderJourneyCosmeticSlot.GLOW -> copy(glow = rank)
 		ReaderJourneyCosmeticSlot.BACKGROUND -> copy(background = rank)
 		ReaderJourneyCosmeticSlot.PROGRESS_BAR -> copy(progressBar = rank)
+	}
+
+	companion object {
+		const val SCHEMA_VERSION = 3
 	}
 }
 
@@ -102,13 +167,22 @@ object ReaderJourneyCosmetics {
 	}
 }
 
+data class ReaderJourneyXpBreakdown(
+	val source: String,
+	val xp: Int,
+	val context: String? = null,
+)
+
 data class ReaderJourneyCelebration(
 	val xpEarned: Int,
 	val fromLevel: Int,
 	val toLevel: Int,
 	val fromRank: ReaderRank,
 	val toRank: ReaderRank,
-	val unlockedCosmetics: Int,
+	val unlockedCosmetics: List<ReaderJourneyCosmeticUnlock> = emptyList(),
+	val unlockedAchievements: List<ReaderAchievementId> = emptyList(),
+	val breakdown: List<ReaderJourneyXpBreakdown> = emptyList(),
+	val progressMilestones: List<Int> = emptyList(),
 ) {
 	val isLevelUp: Boolean
 		get() = toLevel > fromLevel
@@ -127,13 +201,61 @@ object ReaderJourneyRules {
 	const val MANGA_MIN_MS_PER_UNIQUE_PAGE = 250L
 	const val NOVEL_MIN_VALID_MS = 12_000L
 
+	// XP progression master-guide constants. Reading remains the foundation; these only accelerate it.
+	const val NEW_TITLE_EXPLORATION_XP = 5
+	const val DIVERSE_READING_XP = 10
+	const val MIXED_FORMAT_XP = 10
+	const val WEEKLY_TASK_COUNT = 6
+	const val WEEKLY_TASKS_FOR_BONUS = 3
+	const val WEEKLY_COMPLETION_BONUS_XP = 50
+	const val WEEKLY_REROLL_LIMIT = 2
+	// Keep the immediately previous week reconcilable throughout the next week so delayed sync
+	// cannot drop already-verified completions at the reset boundary.
+	const val WEEKLY_GRACE_MS = 24L * 60L * 60L * 1000L
+	const val ACTIVE_READING_DAYS_TARGET = 3
+	const val ACTIVE_READING_DAYS_XP = 30
+	const val SOFT_DAILY_READING_XP = 350
+	const val SOFT_DAILY_READING_PERCENT = 60
+	const val RESTED_BONUS_PERCENT = 25
+	const val WELCOME_BACK_BONUS_PERCENT = 25
+	const val RESTED_MAX_COMPLETIONS = 5
+	const val WELCOME_BACK_MAX_COMPLETIONS = 3
+	const val RESTED_AFTER_MS = 3L * 24L * 60L * 60L * 1000L
+	const val WELCOME_BACK_AFTER_MS = 7L * 24L * 60L * 60L * 1000L
+	const val RESTED_WINDOW_MS = 7L * 24L * 60L * 60L * 1000L
+	const val WELCOME_BACK_WINDOW_MS = 3L * 24L * 60L * 60L * 1000L
+
+	fun applySoftDailyReadingReturn(baseXp: Int, readingXpToday: Long): Int {
+		if (baseXp <= 0) return 0
+		if (readingXpToday < SOFT_DAILY_READING_XP) return baseXp
+		return ((baseXp * SOFT_DAILY_READING_PERCENT + 99) / 100).coerceAtLeast(1)
+	}
+
+	fun percentageBonus(baseXp: Int, percent: Int): Int {
+		if (baseXp <= 0 || percent <= 0) return 0
+		return ((baseXp * percent + 99) / 100).coerceAtLeast(1)
+	}
+
+	fun progressMilestonesCrossed(
+		before: ReaderJourneyProgress,
+		after: ReaderJourneyProgress,
+	): List<Int> {
+		if (after.lifetimeXp <= before.lifetimeXp) return emptyList()
+		if (after.level > before.level) return listOf(100)
+		if (after.level >= MAX_LEVEL) return emptyList()
+		val beforePercent = (before.levelFraction * 100f).toInt()
+		val afterPercent = (after.levelFraction * 100f).toInt()
+		return listOf(25, 50, 75, 100).filter { milestone ->
+			milestone > beforePercent && milestone <= afterPercent
+		}
+	}
+
 	fun novelCompletionXp(readingUnits: Int): Int = when {
 		readingUnits < 1_500 -> 8
 		readingUnits < 4_000 -> 12
 		readingUnits < 8_000 -> 15
 		else -> 20
 	}
-
 
 	fun requiredMangaPages(totalPages: Int): Int {
 		if (totalPages <= 0) return 0

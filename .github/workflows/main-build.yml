@@ -55,6 +55,7 @@ jobs:
           echo "::error::Miyorare final applicationId is missing."
           exit 1
         }
+        python3 .github/scripts/release_build_config_guard.py app/build.gradle
         grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || {
           echo "::error::Miyorare update repository guard failed."
           exit 1

@@ -26,6 +26,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Verify Main and Beta application IDs
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -41,6 +42,7 @@ jobs:
           }
 
       - name: Verify Main and Beta labels
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -64,6 +66,7 @@ jobs:
           }
 
       - name: Verify launcher resources and isolation
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -126,6 +129,17 @@ jobs:
             echo "::error::Beta launcher mapping must not fall back to Main foreground artwork."
             exit 1
           fi
+
+
+      - name: Verify PR identity coverage ownership
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # CI Fast owns the actual PR identity/launcher checks. Keep this legacy status context
+          # without repeating the same filesystem work against the same candidate SHA.
+          grep -Fq 'Verify application identity and labels' .github/workflows/ci-fast.yml
+          grep -Fq 'Verify launcher isolation' .github/workflows/ci-fast.yml
 
       - name: Publish exact-head required identity status
         if: github.event_name == 'workflow_dispatch'

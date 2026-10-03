@@ -1,0 +1,152 @@
+{
+  "sourceZip": "miyorare_badge_v2_runtime_1mb.zip",
+  "sourceZipSha256": "6ebda7b8d327a7de2ce0967d25c5ccd29b197a1b296db7691a67c338afd79d0e",
+  "assets": [
+    {
+      "name": "badge_01_first_page_silver_base.webp",
+      "size": 53132,
+      "sha256": "b920662ebce5b4a3ec7937d4297fa3b8b12aea9de3ccd53a2e6a86e1b7b3eb5a",
+      "git_blob_sha": "a06124141d9820d6ba712c82bc80896bd6591434"
+    },
+    {
+      "name": "badge_02_first_light_blue_base.webp",
+      "size": 51330,
+      "sha256": "c0de19b3361975e982ad82b93a9dee3eb179bce0320ffe56083dc9f32fd75785",
+      "git_blob_sha": "7463e4b7b5a55dd9150a54e87eb8c599ec4e9b86"
+    },
+    {
+      "name": "badge_03_cyan_orbit_base.webp",
+      "size": 55308,
+      "sha256": "868f9983a9f178e9faad8707633c3c5e5b574b9669639b1ed551dc0498675c1d",
+      "git_blob_sha": "abea0948bc6b50624c7c0edd14e72a2cb519ccc3"
+    },
+    {
+      "name": "badge_04_emerald_pulse_base.webp",
+      "size": 53998,
+      "sha256": "e264394fadff205cc4757a119db26a0bd037c8485718af41ab22fbea6a0720a6",
+      "git_blob_sha": "3a023b752e1d008c127d62dc7cc3f1002c6a09d2"
+    },
+    {
+      "name": "badge_05_arcane_scholar_base.webp",
+      "size": 62638,
+      "sha256": "d2527413a424054bb938bacc542a99eb42bb0d1414ad27bdc68d36025c18a17d",
+      "git_blob_sha": "81ba3557ceac06917e18e634762de066bc06db59"
+    },
+    {
+      "name": "badge_06_violet_halo_base.webp",
+      "size": 52294,
+      "sha256": "27158b91ed5470c80af232d7775037bc485a5e4e6bf8db359def4710aed7cec3",
+      "git_blob_sha": "8d2998472bfee3a68bf5635e1c52add6fc4baf2e"
+    },
+    {
+      "name": "badge_07_rose_nebula_base.webp",
+      "size": 58168,
+      "sha256": "214bd7971c1c7cc5c78c4acf00b9c627b0ec478360fc0cc6bfe889cc03d81fa9",
+      "git_blob_sha": "93a9a2110bac42aad7fce1262b3fc2437f6be4f1"
+    },
+    {
+      "name": "badge_08_crimson_ember_base.webp",
+      "size": 52174,
+      "sha256": "8ae59b23efddc19c58894b6c34c3c5eb88b7b1556c7ee5b032dd71bac1120497",
+      "git_blob_sha": "3a044953fcd99fd71b63f2f75e418ff3ce3f5d6d"
+    },
+    {
+      "name": "badge_09_amber_manuscript_base.webp",
+      "size": 47742,
+      "sha256": "319573d04b3663f1973d0ab3981120de594712dbc8719477bc7feb4b530ccc52",
+      "git_blob_sha": "11f1be7342347ebddd978a0c7b41f62971f12d47"
+    },
+    {
+      "name": "badge_10_golden_manuscript_deluxe_base.webp",
+      "size": 57022,
+      "sha256": "f0f150cd0496376405cb60c9b93685477e14b2c2cb534d804c9ea5e727d1f729",
+      "git_blob_sha": "35b3b7c6da8139455fa46e369407fa93579dd25a"
+    },
+    {
+      "name": "badge_11_eternal_library_prism_base.webp",
+      "size": 52340,
+      "sha256": "9a7e68d9dcbbca8a40b6e484c747d50b6fcf126f09cbf13405aeef05842c0713",
+      "git_blob_sha": "6eb2dfb86f143581e8b1b3e346dd116dcb81a596"
+    },
+    {
+      "name": "badge_12_celestial_infinity_base.webp",
+      "size": 58232,
+      "sha256": "639c62ebc41adf734056300c8906774146da167d93c8475f75797a03772dac1f",
+      "git_blob_sha": "7dfa112a57d7779c4254776cd34f3639517a62d0"
+    },
+    {
+      "name": "badge_01_first_page_silver_thumb.webp",
+      "size": 9960,
+      "sha256": "e7b56fa60712d1bf324fe827f9b58c1949aff0f34a576d50fa658e6711ae2a33",
+      "git_blob_sha": "f4ec48e1539583d92d0fc5dfa62b2673da86bc09"
+    },
+    {
+      "name": "badge_02_first_light_blue_thumb.webp",
+      "size": 9766,
+      "sha256": "0e7911b0454c52cbb669d0e46756f65ba26a86ba8eaf8137c34f66d393ed75a3",
+      "git_blob_sha": "a2b13201f77ff8d2960ad7cc5bc2d057f6d3f2ec"
+    },
+    {
+      "name": "badge_03_cyan_orbit_thumb.webp",
+      "size": 10350,
+      "sha256": "5b10588a0ec64d793382084fd1d9c0ce70ad8014dc221c9c55366215214aa507",
+      "git_blob_sha": "ab31a716cb82b3b613d824a00f923adf3939c78d"
+    },
+    {
+      "name": "badge_04_emerald_pulse_thumb.webp",
+      "size": 9344,
+      "sha256": "d4182aae2cc0110edb40b1d871b7846735c3b851173bfb3bfd842b1162c64844",
+      "git_blob_sha": "504b83d319dd3b9f836c7f1cb859fc33531a33ed"
+    },
+    {
+      "name": "badge_05_arcane_scholar_thumb.webp",
+      "size": 11436,
+      "sha256": "3ffed5dbaf07a659922700957e9e605a6a31869d10a377f09d9255312916ec9e",
+      "git_blob_sha": "0c6daf085abb6abd19da404ee759da7d3b4bc194"
+    },
+    {
+      "name": "badge_06_violet_halo_thumb.webp",
+      "size": 9686,
+      "sha256": "6c7ec917a39da5935503db771a22d879b650b1b4c0c2201cfbbf6ac6e1684c7f",
+      "git_blob_sha": "dd79f630fe106c0a19a341630679a0a93cc438f1"
+    },
+    {
+      "name": "badge_07_rose_nebula_thumb.webp",
+      "size": 10348,
+      "sha256": "3da336d205f2b7633789f844abc89105fcda1b235692e9d4fecac7eca45dfd93",
+      "git_blob_sha": "915c22544c299b2c3265d192fd1a0147afe3bfce"
+    },
+    {
+      "name": "badge_08_crimson_ember_thumb.webp",
+      "size": 9874,
+      "sha256": "0157e44bf11f19c7916cb6deb2b6fe3cf2b29057cb8072d98252705b94cbb7b8",
+      "git_blob_sha": "71600ddcf5ed868f8ce9bc173694fc3818a588ea"
+    },
+    {
+      "name": "badge_09_amber_manuscript_thumb.webp",
+      "size": 8836,
+      "sha256": "b33eaa7637ad75a69df5c2bbce70accd8b110c2461a3fe76af7a216468e3aee1",
+      "git_blob_sha": "7bf20055aac758da74907d296ec785fae45a07b1"
+    },
+    {
+      "name": "badge_10_golden_manuscript_deluxe_thumb.webp",
+      "size": 9674,
+      "sha256": "48958577326a4797cd555f97c8740012c03c61ffdc781e52ba34a727f33aeb78",
+      "git_blob_sha": "b961f1dfe4b7170f6efdf692f619aec3122d527e"
+    },
+    {
+      "name": "badge_11_eternal_library_prism_thumb.webp",
+      "size": 9650,
+      "sha256": "84da9b98f9e07623ab441efd8772c2cef97359ef9c19ba453a5243b7a0d87e8d",
+      "git_blob_sha": "c89a5e8fd490f473b4fc2be9a5bd730f7faca1bb"
+    },
+    {
+      "name": "badge_12_celestial_infinity_thumb.webp",
+      "size": 10380,
+      "sha256": "4f44967cdb330cf48724a5be064214c380ca616fb0c817e5d32787358a3b65ce",
+      "git_blob_sha": "7d75a006a1fd254d73ed5888325f4b790e275fce"
+    }
+  ],
+  "goldenReferenceSha256": "00f6e34e831cb24a60b0918822957ac54700e884e9ff94c5697eeb6e8cecb776",
+  "goldenReferenceUsage": "androidTestAssets only; never a production badge bitmap"
+}

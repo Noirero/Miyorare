@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_sync">Library sync</string>
+    <string name="library_sync_summary">Manage library sync services</string>
+    <string name="library_sync_manga">Manga</string>
+    <string name="library_sync_novel">Novel</string>
+    <string name="library_sync_mangadex">MangaDex sync</string>
+    <string name="library_sync_mangaupdates">MangaUpdates sync</string>
+    <string name="library_sync_anilist">AniList sync</string>
+    <string name="library_sync_kitsu">Kitsu sync</string>
+    <string name="library_sync_novelupdates">NovelUpdates sync</string>
+    <string name="library_sync_ranobedb">RanobeDB sync</string>
+    <string name="library_sync_coming_soon">Coming soon</string>
+	<string name="library_sync_blocked">Integration unavailable</string>
+	<string name="library_sync_loading">Loading…</string>
+	<string name="library_sync_connected">Connected</string>
+	<string name="library_sync_disconnected">Not connected</string>
+	<string name="library_sync_running">Sync queued or running</string>
+	<string name="library_sync_error">Connection or sync error</string>
+	<string name="library_sync_status">Connection: %1$s</string>
+	<string name="library_sync_last">Last sync: %1$s</string>
+	<string name="library_sync_never">Never</string>
+	<string name="library_sync_login">Sign in</string>
+	<string name="library_sync_logout">Sign out</string>
+	<string name="library_sync_pull">Pull library</string>
+	<string name="library_sync_push">Push library</string>
+	<string name="library_sync_now">Sync now</string>
+	<string name="library_sync_periodic_hint">Automatic sync every 6 hours while connected. Push reads remote timestamps before writing. New favourites always require confirmation. Private favourites and incognito reading are excluded.</string>
+	<string name="library_sync_mappings">Linked manga</string>
+	<string name="library_sync_link">Link a favourite for sync</string>
+	<string name="library_sync_edit">Edit progress and status</string>
+	<string name="library_sync_unlink">Unlink</string>
+	<string name="library_sync_inbox">Waiting for confirmation: %1$d</string>
+	<string name="library_sync_import_hint">Select the exact source manga and destination category, then confirm adding it to favourites. If no source manga is cached, open its details from Search first. Matching is never automatic.</string>
+	<string name="library_sync_confirm_import">Confirm import and favourite</string>
+	<string name="library_sync_anilist_auth_hint">Create an AniList application at anilist.co/settings/developer with redirect URL https://anilist.co/api/v2/oauth/pin. Enter its public Client ID, authorize, and paste the access token. No client secret is required.</string>
+	<string name="library_sync_authorize">Authorize in browser</string>
+	<string name="library_sync_username">Email or username</string>
+	<string name="library_sync_password">Password</string>
+	<string name="library_sync_search_local">Find local source manga</string>
+	<string name="library_sync_category">Destination category</string>
+	<string name="library_sync_lookup">Verify external ID</string>
+	<string name="library_sync_link_hint">Confirm only if the verified remote title and selected local manga are the same work. Sync uses this persistent service-specific mapping.</string>
+	<string name="library_sync_progress">Chapter progress</string>
+	<string name="library_sync_reuse_mapping">Use existing Tracking mapping: %1$s</string>
+</resources>

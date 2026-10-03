@@ -3,6 +3,12 @@ name: Source Pack Compatibility Contract
 on:
   pull_request:
     paths:
+      - '.github/actions/source-pack-*/**'
+      - '.github/scripts/source_pack*.py'
+      - '.github/scripts/test_source_pack*.py'
+      - 'extensions/miyorare-sources/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/MiyorareSourcePackDetailSettingsFragment.kt'
+      - 'compatibility/miyorare-source-pack*'
       - 'compatibility/miyorare-source-pack-contract.v1.json'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - '.github/workflows/source-pack-contract.yml'
@@ -21,6 +27,12 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/actions/source-pack-*/**'
+      - '.github/scripts/source_pack*.py'
+      - '.github/scripts/test_source_pack*.py'
+      - 'extensions/miyorare-sources/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/MiyorareSourcePackDetailSettingsFragment.kt'
+      - 'compatibility/miyorare-source-pack*'
       - 'compatibility/miyorare-source-pack-contract.v1.json'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - '.github/workflows/source-pack-contract.yml'
@@ -43,29 +55,38 @@ permissions:
 
 jobs:
   contract:
-    if: >-
-      github.event_name != 'pull_request' || (!startsWith(github.head_ref, 'fix/') && !startsWith(github.head_ref, 'bugfix/') && !startsWith(github.head_ref, 'hotfix/'))
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Miyorare
+      - name: Checkout Miyorare exact candidate
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Route Source Pack coverage
+        id: routing
+        uses: ./.github/actions/source-pack-routing
 
       - name: Test stable Source Pack readiness gate
+        if: ${{ steps.routing.outputs.run_contract != 'false' }}
         run: |
           python3 -m py_compile .github/scripts/source_pack_readiness.py
           python3 .github/scripts/test_source_pack_readiness.py
 
       - name: Test stable release version resolver
+        if: ${{ steps.routing.outputs.run_contract != 'false' }}
         run: |
           python3 -m py_compile .github/scripts/release_version.py
           python3 .github/scripts/test_release_version.py
 
       - name: Test Compatibility Farm membership sync engine
+        if: ${{ steps.routing.outputs.run_contract != 'false' }}
         run: |
           python3 -m py_compile extensions/miyorare-sources/tools/sync_approved_farm_sources.py
           python3 extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py
 
       - name: Checkout Source Packs contract
+        if: ${{ steps.routing.outputs.run_mirror != 'false' }}
         uses: actions/checkout@v5
         with:
           repository: Noirero/Miyorare-Source-Packs
@@ -75,7 +96,8 @@ jobs:
             compatibility/miyorare-source-pack-contract.v1.json
           sparse-checkout-cone-mode: false
 
-      - name: Validate identical contract and runtime enforcement
+      - name: Validate identical external contract
+        if: ${{ steps.routing.outputs.run_mirror != 'false' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -87,6 +109,11 @@ jobs:
             exit 1
           }
 
+      - name: Validate local contract and runtime enforcement
+        if: ${{ steps.routing.outputs.run_contract != 'false' }}
+        shell: bash
+        run: |
+          set -euo pipefail
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -196,3 +223,10 @@ jobs:
           assert 'automation/farm-pack-sync-${FARM_SHA:0:12}-$GITHUB_RUN_ID-a$GITHUB_RUN_ATTEMPT' in sync
           assert 'raw.githubusercontent.com/$FARM_REPOSITORY/$sha/compatibility/source-registry.json' in sync
           PY
+
+      - name: Require passing routing regression tests
+        if: ${{ always() && steps.routing.outputs.tests_passed == 'false' }}
+        shell: bash
+        run: |
+          echo '::error::Routing regression tests failed; full validation was requested.'
+          exit 1

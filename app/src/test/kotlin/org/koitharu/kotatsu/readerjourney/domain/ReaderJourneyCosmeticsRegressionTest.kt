@@ -21,31 +21,95 @@ class ReaderJourneyCosmeticsRegressionTest {
 	}
 
 	@Test
-	fun `profile cosmetics persist locally and profile edits preserve the loadout`() {
+	fun `profile cosmetics use one atomic snapshot and preserve legacy migration`() {
 		val store = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderProfileStore.kt")
 			.replace(Regex("\\s+"), "")
+		val codec = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCosmeticSnapshotCodec.kt")
+			.replace(Regex("\\s+"), "")
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+		val exclusive = source("kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt")
+			.replace(Regex("\\s+"), "")
+		val viewModel = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val policy = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCosmeticPolicy.kt")
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(store.contains("funupdateCosmetics(loadout:ReaderJourneyCosmeticLoadout)"))
 		assertTrue(store.contains("cosmetics=_profile.value.cosmetics"))
+		assertTrue(store.contains("KEY_COSMETIC_LOADOUT_V2"))
+		assertTrue(store.contains("putString(KEY_COSMETIC_LOADOUT_V2"))
+		assertTrue(store.contains(".commit()"))
+		assertTrue(store.contains("migrateLegacyCosmeticsIfNeeded()"))
 		assertTrue(store.contains("KEY_COSMETIC_FRAME"))
 		assertTrue(store.contains("KEY_COSMETIC_GLOW"))
 		assertTrue(store.contains("KEY_COSMETIC_BACKGROUND"))
 		assertTrue(store.contains("KEY_COSMETIC_PROGRESS"))
+		assertTrue(codec.contains("SCHEMA_VERSION"))
+		assertTrue(codec.contains("RankThemeId.fromStableId"))
 		assertTrue(screen.contains("ReaderCosmeticsEditorSheet("))
-		assertTrue(screen.contains("ReaderJourneyCosmetics.unlockedRanks(currentRank)"))
-		assertFalse(screen.contains("ReaderRank.entries.forEach{rank->onSelect(rank)}"))
+		assertTrue(screen.contains("ReaderJourneyThemeCard("))
+		assertTrue(screen.contains("ReaderJourneyExclusiveCollection("))
+		assertTrue(screen.contains("ReaderJourneyExclusiveCustomizerDialog("))
+		assertTrue(exclusive.contains("ReaderJourneyRewardAccess.cosmeticAccessRank(currentRank)"))
+		assertTrue(exclusive.contains("ReaderJourneyCosmeticPolicy.collection(accessRank)"))
+		assertTrue(exclusive.contains("onApply(ReaderJourneyCosmeticPolicy.sanitizeForRank(draft,accessRank))"))
+		assertTrue(exclusive.contains("KEY_RANK_THEME_ENABLED"))
+		assertTrue(exclusive.contains("selectedThemeId=selected.stableId"))
+		assertTrue(exclusive.contains("navigationThemeId=selected?.stableId"))
+		assertTrue(exclusive.contains("accentThemeId=selected?.stableId"))
+		assertTrue(exclusive.contains("glowThemeId=selected?.stableId"))
+		assertTrue(exclusive.contains("selectedFrameId=spec?.frameId"))
+		assertTrue(exclusive.contains("selectedNameplateId=spec?.nameplateId"))
+		assertTrue(exclusive.contains("selectedWallpaperId=spec?.wallpaperId"))
+		assertTrue(exclusive.contains("selectedProgressStyleId=spec?.progressId"))
+		assertTrue(exclusive.contains("ReaderJourneyCosmeticPolicy.equipFullSet("))
+		assertFalse(exclusive.contains("ReaderRank.entries.forEach{rank->onSelect(rank)}"))
+		assertTrue(viewModel.contains("ReaderJourneyRewardAccess.cosmeticAccessRank(currentRank)"))
+		assertTrue(viewModel.contains("ReaderJourneyCosmeticPolicy.sanitizeForRank(loadout,cosmeticAccessRank)"))
+		assertTrue(policy.contains("valsanitized=loadout.copy("))
+		assertTrue(policy.contains("selectedThemeId=selectedTheme?.stableId"))
+		assertTrue(policy.contains("navigationThemeId=sanitizeThemeSource(loadout.navigationThemeId)"))
+		assertTrue(policy.contains("accentThemeId=sanitizeThemeSource(loadout.accentThemeId)"))
+		assertTrue(policy.contains("glowThemeId=sanitizeThemeSource(loadout.glowThemeId)"))
+		assertTrue(policy.contains("selectedBadgeId=loadout.selectedBadgeId?.takeIf"))
+		assertTrue(policy.contains("selectedWallpaperId=loadout.selectedWallpaperId?.takeIf"))
+		assertTrue(policy.contains("selectedFrameId=loadout.selectedFrameId?.takeIf"))
+		assertTrue(policy.contains("selectedNameplateId=loadout.selectedNameplateId?.takeIf"))
+		assertTrue(policy.contains("selectedReaderCardId=loadout.selectedReaderCardId?.takeIf"))
+		assertTrue(policy.contains("selectedProgressStyleId=loadout.selectedProgressStyleId?.takeIf"))
+		assertTrue(policy.contains("favoriteThemeIds=loadout.favoriteThemeIds.filterTo"))
+		assertFalse(viewModel.contains("ReaderJourneyCosmeticLoadout("))
 	}
 
 	@Test
-	fun `celebration is emitted only for a real level transition`() {
+	fun `rank theme foundation uses stable ids and one resolver`() {
+		val theme = source("kotlin/org/koitharu/kotatsu/readerjourney/theme/RankTheme.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(theme.contains("ARCHIVIST_NEON_ARCHIVE"))
+		assertTrue(theme.contains("objectRankThemeSourceResolver"))
+		assertTrue(theme.contains("objectRankThemeRegistry"))
+		assertTrue(theme.contains("LIGHT,DARK,OLED"))
+		assertTrue(theme.contains("errorColor"))
+		assertTrue(theme.contains("destructiveColor"))
+		assertFalse(theme.contains("rank.ordinal"))
+	}
+
+	@Test
+	fun `journey feedback covers valid XP while cosmetic auto equip stays rank gated`() {
 		val collector = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCollector.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(collector.contains("if(after.level>before.level){"))
 		assertTrue(collector.contains("onJourneyProgressed.call("))
-		assertTrue(collector.contains("ReaderJourneyCosmetics.newlyUnlocked(before.rank,after.rank)"))
+		assertTrue(
+			collector.contains(
+				"if(persisted.after.level>persisted.before.level&&persisted.after.rank.minLevel>persisted.before.rank.minLevel){",
+			),
+		)
+		assertTrue(collector.contains("ReaderJourneyCosmetics.newlyUnlocked(persisted.before.rank,persisted.after.rank)"))
+		assertTrue(collector.contains("unlockedAchievements=persisted.achievementResult.newlyUnlocked"))
+		assertTrue(collector.contains("breakdown=persisted.breakdown"))
 	}
 
 	@Test
@@ -54,12 +118,15 @@ class ReaderJourneyCosmeticsRegressionTest {
 			.replace(Regex("\\s+"), "")
 		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderActivity.kt")
 			.replace(Regex("\\s+"), "")
+		val queue = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/CelebrationQueue.kt")
+			.replace(Regex("\\s+"), "")
 
 		assertTrue(settings.contains("OFF,SUBTLE,FULL"))
-		assertTrue(reader.contains("if(mode==ReaderJourneyCelebrationMode.OFF)return"))
+		assertTrue(queue.contains("if(mode==ReaderJourneyCelebrationMode.OFF)continue"))
+		assertTrue(queue.contains("if(modeProvider()==ReaderJourneyCelebrationMode.OFF)return"))
 		assertTrue(reader.contains("if(mode==ReaderJourneyCelebrationMode.FULL)"))
 		assertTrue(reader.contains("if(event.isRankUp)"))
-		assertTrue(reader.contains("if(isAnimationsEnabled)"))
+		assertTrue(reader.contains("!item.reduceMotion"))
 	}
 
 	private fun source(relativePath: String): String {

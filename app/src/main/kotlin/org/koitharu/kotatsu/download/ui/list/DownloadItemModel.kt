@@ -9,6 +9,7 @@ import androidx.core.text.color
 import androidx.work.WorkInfo
 import kotlinx.coroutines.flow.StateFlow
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
+import org.koitharu.kotatsu.download.domain.DownloadPhase
 import org.koitharu.kotatsu.download.ui.list.chapters.DownloadChapter
 import org.koitharu.kotatsu.list.ui.ListModelDiffCallback
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -28,6 +29,11 @@ data class DownloadItemModel(
 	val workState: WorkInfo.State,
 	val isIndeterminate: Boolean,
 	val isPaused: Boolean,
+	val isFinalizing: Boolean,
+	val phase: DownloadPhase,
+	val phaseChapter: Int,
+	val requestedChapters: Int,
+	val retryAttempt: Int,
 	val manga: Manga?,
 	val error: String?,
 	val max: Int,
@@ -36,19 +42,26 @@ data class DownloadItemModel(
 	val isStuck: Boolean,
 	val timestamp: Instant,
 	val chaptersDownloaded: Int,
+	val downloadSizeBytes: Long,
 	val isExpanded: Boolean,
 	val chapters: StateFlow<List<DownloadChapter>?>,
 	val uiAction: DownloadUiAction? = null,
+	/** All WorkManager rows represented by this visible manga/source card. */
+	val workIds: Set<UUID> = setOf(id),
 ) : ListModel, Comparable<DownloadItemModel> {
+
+	/** Stable selection/expansion identity even when a newer chapter becomes the representative work. */
+	val selectionId: Long
+		get() = manga?.id ?: id.mostSignificantBits
 
 	val percent: Float
 		get() = if (max > 0) progress / max.toFloat() else 0f
 
 	val hasEta: Boolean
-		get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && eta > 0L
+		get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && !isFinalizing && phase == DownloadPhase.DOWNLOADING && !isIndeterminate && eta > 0L
 
 	val canPause: Boolean
-		get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && error == null
+		get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && !isFinalizing && error == null
 
 	val canResume: Boolean
 		get() = uiAction == null && workState == WorkInfo.State.RUNNING && isPaused
@@ -83,11 +96,12 @@ data class DownloadItemModel(
 	}
 
 	override fun areItemsTheSame(other: ListModel): Boolean {
-		return other is DownloadItemModel && other.id == id
+		return other is DownloadItemModel && other.selectionId == selectionId
 	}
 
 	override fun getChangePayload(previousState: ListModel): Any? = when {
 		previousState !is DownloadItemModel -> super.getChangePayload(previousState)
+		workIds != previousState.workIds || chapters !== previousState.chapters -> null
 		workState != previousState.workState -> null
 		isExpanded != previousState.isExpanded -> ListModelDiffCallback.PAYLOAD_CHECKED_CHANGED
 		else -> ListModelDiffCallback.PAYLOAD_ANYTHING_CHANGED

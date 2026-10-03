@@ -186,6 +186,11 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 			MiyorareCustomBackgroundIntensity.BALANCED,
 		)
 		putString(VisualEffectPreferences.KEY_LEVEL, VisualEffectLevel.BALANCED.name)
+		putBoolean(KEY_RANK_THEME_ENABLED, false)
+		putBoolean(KEY_RANK_THEME_REDUCE_MOTION, false)
+		putBoolean(KEY_RANK_THEME_REDUCE_GLOW, false)
+		putBoolean(KEY_RANK_THEME_MINIMAL_COSMETICS, false)
+		putBoolean(KEY_RANK_THEME_WALLPAPER_ENABLED, true)
 		putString(KEY_THEME, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM.toString())
 		putEnumValue(KEY_COLOR_THEME, ColorScheme.default)
 		putBoolean(KEY_THEME_AMOLED, false)
@@ -375,6 +380,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getBoolean(KEY_DISABLE_NSFW, false)
 		set(value) = prefs.edit { putBoolean(KEY_DISABLE_NSFW, value) }
 
+	var isAnimeExtensionStoreVisible: Boolean
+		get() = prefs.getBoolean(KEY_EXTENSION_STORE_ANIME_VISIBLE, true)
+		set(value) = prefs.edit { putBoolean(KEY_EXTENSION_STORE_ANIME_VISIBLE, value) }
+
 	var appLocales: LocaleListCompat
 		get() {
 			val raw = prefs.getString(KEY_APP_LOCALE, null)
@@ -476,6 +485,14 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	var epubTheme: String
 		get() = prefs.getString(KEY_EPUB_THEME, "system") ?: "system"
 		set(value) = prefs.edit { putString(KEY_EPUB_THEME, value) }
+
+	/**
+	 * EPUB-only screen brightness. 0 follows the device setting; 5..100 applies an explicit
+	 * brightness while the novel reader is visible.
+	 */
+	var epubScreenBrightness: Int
+		get() = prefs.getInt(KEY_EPUB_SCREEN_BRIGHTNESS, 0).coerceIn(0, 100)
+		set(value) = prefs.edit { putInt(KEY_EPUB_SCREEN_BRIGHTNESS, value.coerceIn(0, 100)) }
 
 	var epubCustomBackgroundColor: Int
 		get() = prefs.getInt(KEY_EPUB_CUSTOM_BACKGROUND_COLOR, 0xFFFFFFFF.toInt())
@@ -1161,6 +1178,21 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val readerJourneyCelebrationMode: ReaderJourneyCelebrationMode
 		get() = prefs.getEnumValue(KEY_READER_JOURNEY_CELEBRATION, ReaderJourneyCelebrationMode.SUBTLE)
 
+	val isRankThemeEnabled: Boolean
+		get() = prefs.getBoolean(KEY_RANK_THEME_ENABLED, false)
+
+	val isRankThemeReduceMotion: Boolean
+		get() = prefs.getBoolean(KEY_RANK_THEME_REDUCE_MOTION, false)
+
+	val isRankThemeReduceGlow: Boolean
+		get() = prefs.getBoolean(KEY_RANK_THEME_REDUCE_GLOW, false)
+
+	val isRankThemeMinimalCosmetics: Boolean
+		get() = prefs.getBoolean(KEY_RANK_THEME_MINIMAL_COSMETICS, false)
+
+	val isRankThemeWallpaperEnabled: Boolean
+		get() = prefs.getBoolean(KEY_RANK_THEME_WALLPAPER_ENABLED, true)
+
 	var statsMatureMode: String
 		get() = prefs.getString(KEY_STATS_MATURE_MODE, "PRIVATE") ?: "PRIVATE"
 		set(value) = prefs.edit { putString(KEY_STATS_MATURE_MODE, value) }
@@ -1398,6 +1430,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_EPUB_PUBLISHER_STYLE = "epub_publisher_style"
 		const val KEY_EPUB_BIONIC_READING = "epub_bionic_reading"
 		const val KEY_EPUB_THEME = "epub_theme"
+		const val KEY_EPUB_SCREEN_BRIGHTNESS = "epub_screen_brightness"
 		const val KEY_EPUB_CUSTOM_BACKGROUND_COLOR = "epub_custom_background_color"
 		const val KEY_EPUB_CUSTOM_TEXT_COLOR = "epub_custom_text_color"
 		const val KEY_EPUB_CUSTOM_HIGHLIGHT_COLOR = "epub_custom_highlight_color"
@@ -1473,6 +1506,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_IMAGES_PROXY = "images_proxy_2"
 		const val KEY_LOCAL_MANGA_DIRS = "local_manga_dirs"
 		const val KEY_DISABLE_NSFW = "no_nsfw"
+		const val KEY_EXTENSION_STORE_ANIME_VISIBLE = "extension_store_anime_visible"
 		const val KEY_RELATED_MANGA = "related_manga"
 		const val KEY_SCROBBLING_PROGRESS_SYNC = "scrobbling_progress_sync"
 		const val KEY_NAV_MAIN = "nav_main"
@@ -1509,6 +1543,11 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_STATS_ENABLED = "stats_on"
 		const val KEY_READER_JOURNEY_ENABLED = "reader_journey_enabled"
 		const val KEY_READER_JOURNEY_CELEBRATION = "reader_journey_celebration"
+		const val KEY_RANK_THEME_ENABLED = "rank_theme_enabled"
+		const val KEY_RANK_THEME_REDUCE_MOTION = "rank_theme_reduce_motion"
+		const val KEY_RANK_THEME_REDUCE_GLOW = "rank_theme_reduce_glow"
+		const val KEY_RANK_THEME_MINIMAL_COSMETICS = "rank_theme_minimal_cosmetics"
+		const val KEY_RANK_THEME_WALLPAPER_ENABLED = "rank_theme_wallpaper_enabled"
 		const val KEY_STATS_MATURE_MODE = "stats_mature_mode"
 		const val KEY_SEARCH_SUGGESTION_TYPES = "search_suggest_types"
 		const val KEY_QUICK_FILTER = "quick_filter"

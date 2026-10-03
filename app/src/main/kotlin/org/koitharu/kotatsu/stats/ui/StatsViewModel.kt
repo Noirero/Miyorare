@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.stats.ui
 
+import android.net.Uri
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,9 @@ import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRewardAccess
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyWeeklyTaskId
 import org.koitharu.kotatsu.stats.data.StatsRepository
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
@@ -42,12 +46,18 @@ class StatsViewModel @Inject constructor(
 	val scope = MutableStateFlow(StatsContentScope.OVERVIEW)
 	val matureMode = MutableStateFlow(StatsMatureMode.fromPreference(settings.statsMatureMode))
 	val selectedCategories = MutableStateFlow<Set<Long>>(emptySet())
+	val hasLoadedStats = MutableStateFlow(false)
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 	val favoriteCategories = favouritesRepository.observeCategories()
 	val readerProfile = profileStore.profile
 
 	val stats = MutableStateFlow(
-		ReadingStats(
+		repository.getCachedStatsSnapshot(
+			period = period.value,
+			categories = selectedCategories.value,
+			scope = scope.value,
+			matureMode = matureMode.value,
+		) ?: ReadingStats(
 			period = period.value,
 			scope = scope.value,
 			matureMode = matureMode.value,
@@ -55,7 +65,8 @@ class StatsViewModel @Inject constructor(
 	)
 
 	val yearInReview = MutableStateFlow(
-		YearInReview(year = LocalDate.now().year),
+		repository.getCachedYearInReview(LocalDate.now().year)
+			?: YearInReview(year = LocalDate.now().year),
 	)
 
 	private val membershipChanges = merge(
@@ -88,6 +99,7 @@ class StatsViewModel @Inject constructor(
 						matureMode = query.matureMode,
 					)
 				}
+				hasLoadedStats.value = true
 			}
 		}
 		launchJob(Dispatchers.Default) {
@@ -132,15 +144,37 @@ class StatsViewModel @Inject constructor(
 		)
 	}
 
+
+	fun updateReaderAvatar(uri: Uri) {
+		launchJob(Dispatchers.IO) {
+			profileStore.importAvatar(uri)
+		}
+	}
+
+	fun removeReaderAvatar() {
+		launchJob(Dispatchers.IO) {
+			profileStore.removeAvatar()
+		}
+	}
+
 	fun updateReaderCosmetics(loadout: ReaderJourneyCosmeticLoadout) {
 		val currentRank = ReaderJourneyRules.progress(stats.value.lifetimeXp).rank
-		val sanitized = ReaderJourneyCosmeticLoadout(
-			frame = loadout.frame?.takeIf { it.minLevel <= currentRank.minLevel },
-			glow = loadout.glow?.takeIf { it.minLevel <= currentRank.minLevel },
-			background = loadout.background?.takeIf { it.minLevel <= currentRank.minLevel },
-			progressBar = loadout.progressBar?.takeIf { it.minLevel <= currentRank.minLevel },
+		val cosmeticAccessRank = ReaderJourneyRewardAccess.cosmeticAccessRank(currentRank)
+		profileStore.updateCosmetics(
+			ReaderJourneyCosmeticPolicy.sanitizeForRank(loadout, cosmeticAccessRank),
 		)
-		profileStore.updateCosmetics(sanitized)
+	}
+
+	fun rerollWeeklyTask(taskId: ReaderJourneyWeeklyTaskId) {
+		launchJob(Dispatchers.Default) {
+			if (!repository.rerollWeeklyTask(taskId)) return@launchJob
+			stats.value = repository.getStatsSnapshot(
+				period = period.value,
+				categories = selectedCategories.value,
+				scope = scope.value,
+				matureMode = matureMode.value,
+			)
+		}
 	}
 
 	fun clearStats() {

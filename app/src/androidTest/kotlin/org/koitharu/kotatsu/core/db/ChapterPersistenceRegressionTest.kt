@@ -29,12 +29,20 @@ import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.migrations.Migration45To46
 import org.koitharu.kotatsu.core.db.migrations.Migration46To47
+import org.koitharu.kotatsu.core.db.migrations.Migration48To49
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyChapterEntity
+import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementRepository
+import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyAchievementEntity
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyWeeklyTaskId
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyProgressionRepository
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyXpEventEntity
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
@@ -45,6 +53,9 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaLinkResolver
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
@@ -142,6 +153,665 @@ class ChapterPersistenceRegressionTest {
 			assertEquals(0L, profiles)
 		} finally {
 			helper.close()
+		}
+	}
+
+	@Test
+	fun migration48To49PreservesReaderJourneyXpAndAddsProgressionLedgers() {
+		val helper = FrameworkSQLiteOpenHelperFactory().create(
+			SupportSQLiteOpenHelper.Configuration.builder(context)
+				.name(MIGRATION_DB_NAME)
+				.callback(object : SupportSQLiteOpenHelper.Callback(48) {
+					override fun onCreate(db: SupportSQLiteDatabase) {
+						db.execSQL(
+							"""
+							CREATE TABLE reader_journey_profile (
+								id INTEGER NOT NULL PRIMARY KEY,
+								total_xp INTEGER NOT NULL,
+								completed_chapters INTEGER NOT NULL,
+								manga_chapters INTEGER NOT NULL,
+								novel_chapters INTEGER NOT NULL,
+								updated_at INTEGER NOT NULL
+							)
+							""".trimIndent(),
+						)
+						db.execSQL(
+							"""
+							CREATE TABLE reader_journey_chapters (
+								manga_id INTEGER NOT NULL,
+								chapter_id INTEGER NOT NULL,
+								is_novel INTEGER NOT NULL,
+								reading_units INTEGER NOT NULL,
+								completion_count INTEGER NOT NULL,
+								awarded_xp INTEGER NOT NULL,
+								first_completed_at INTEGER NOT NULL,
+								last_completed_at INTEGER NOT NULL,
+								PRIMARY KEY(manga_id, chapter_id)
+							)
+							""".trimIndent(),
+						)
+						db.execSQL(
+							"INSERT INTO reader_journey_profile VALUES (0, 96101, 1234, 1000, 234, 999)",
+						)
+						db.execSQL(
+							"INSERT INTO reader_journey_chapters VALUES (1, 1, 0, 0, 1, 96000, 100, 100)",
+						)
+					}
+
+					override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+				})
+				.build(),
+		)
+		try {
+			val db = helper.writableDatabase
+			Migration48To49().migrate(db)
+
+			db.query("SELECT total_xp, xp_floor FROM reader_journey_profile WHERE id = 0").use { cursor ->
+				assertTrue(cursor.moveToFirst())
+				assertEquals(96_101L, cursor.getLong(0))
+				assertEquals(101L, cursor.getLong(1))
+			}
+			db.query("SELECT COUNT(*) FROM reader_journey_xp_events").use { cursor ->
+				assertTrue(cursor.moveToFirst())
+				assertEquals(0L, cursor.getLong(0))
+			}
+			db.query("SELECT COUNT(*) FROM reader_journey_weekly_state").use { cursor ->
+				assertTrue(cursor.moveToFirst())
+				assertEquals(0L, cursor.getLong(0))
+			}
+		} finally {
+			helper.close()
+		}
+	}
+
+	@Test
+	fun weeklyThreeTasksAwardsCompletionBonusExactlyOnce() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val monday = Instant.parse("2026-09-21T00:00:00Z").toEpochMilli()
+			dao.awardCompletion(
+				mangaId = 88L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = monday - 24L * 60L * 60L * 1000L,
+			)
+			val currentWeek = listOf(
+				monday + 1_000L,
+				monday + 2_000L,
+				monday + 24L * 60L * 60L * 1000L + 1_000L,
+				monday + 24L * 60L * 60L * 1000L + 2_000L,
+			)
+			currentWeek.forEachIndexed { index, at ->
+				dao.awardCompletion(
+					mangaId = 88L,
+					chapterId = 2L + index,
+					isNovel = false,
+					readingUnits = 0,
+					baseXp = 10,
+					completedAt = at,
+				)
+			}
+
+			val at = currentWeek.last() + 1_000L
+			repository.reconcile(at)
+			val first = repository.snapshot(at).weekly
+			assertEquals(3, first.completedTaskCount)
+			assertTrue(first.completionBonusAwarded)
+			assertEquals(50, dao.getXpEvent("weekly-bonus:2026-09-21")?.xp)
+			val totalAfterFirst = dao.getProfile()?.totalXp
+
+			repository.reconcile(at)
+			assertEquals(totalAfterFirst, dao.getProfile()?.totalXp)
+			assertEquals(50, dao.getXpEvent("weekly-bonus:2026-09-21")?.xp)
+
+			val fifthAt = at + 1_000L
+			dao.awardCompletion(
+				mangaId = 88L,
+				chapterId = 6L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = fifthAt,
+			)
+			repository.reconcile(fifthAt)
+			assertEquals(35, dao.getXpEvent("weekly:2026-09-21:slot:4")?.xp)
+			assertEquals(50, dao.getXpEvent("weekly-bonus:2026-09-21")?.xp)
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
+	fun weeklyGraceUsesCompletionTimestampAcrossResetBoundary() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val reset = Instant.parse("2026-09-28T00:00:00Z").toEpochMilli()
+			val before = listOf(
+				reset - 3_000L,
+				reset - 2_000L,
+				reset - 1_000L,
+			)
+			before.forEachIndexed { index, at ->
+				dao.awardCompletion(
+					mangaId = 77L,
+					chapterId = 1L + index,
+					isNovel = false,
+					readingUnits = 0,
+					baseXp = 10,
+					completedAt = at,
+				)
+			}
+			dao.awardCompletion(
+				mangaId = 77L,
+				chapterId = 4L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = reset + 1_000L,
+			)
+
+			repository.reconcile(reset + 60L * 60L * 1000L)
+
+			assertEquals(25, dao.getXpEvent("weekly:2026-09-21:slot:0")?.xp)
+			assertNull(dao.getXpEvent("weekly:2026-09-21:slot:3"))
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
+	fun firstVerifiedCompletionAfterResetAutomaticallyReconcilesPreviousWeek() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val reset = Instant.parse("2026-09-28T00:00:00Z").toEpochMilli()
+			val previousWeek = listOf(
+				reset - 2L * 24L * 60L * 60L * 1000L,
+				reset - 2L * 24L * 60L * 60L * 1000L + 1_000L,
+				reset - 24L * 60L * 60L * 1000L,
+			)
+			previousWeek.forEachIndexed { index, at ->
+				dao.awardCompletion(
+					mangaId = 501L,
+					chapterId = 1L + index,
+					isNovel = false,
+					readingUnits = 0,
+					baseXp = 10,
+					completedAt = at,
+				)
+			}
+			assertNull(dao.getXpEvent("weekly-bonus:2026-09-21"))
+
+			val currentAt = reset + 1_000L
+			val currentAward = dao.awardCompletion(
+				mangaId = 501L,
+				chapterId = 4L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = currentAt,
+			)
+			repository.onVerifiedCompletion(
+				award = currentAward,
+				mangaId = 501L,
+				chapterId = 4L,
+				completedAt = currentAt,
+			)
+
+			assertEquals(50, dao.getXpEvent("weekly-bonus:2026-09-21")?.xp)
+			assertEquals(currentAt, dao.getXpEvent("weekly-bonus:2026-09-21")?.occurredAt)
+			assertTrue(
+				dao.getXpEventsAt(currentAt).any {
+					it.eventKey == "weekly-bonus:2026-09-21" && it.source == "WEEKLY_BONUS"
+				},
+			)
+			val totalAfter = dao.getProfile()?.totalXp
+			repository.reconcile(currentAt)
+			assertEquals(totalAfter, dao.getProfile()?.totalXp)
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
+	fun rereadXpStopsAfterThreeRewardedRereads() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val first = dao.awardCompletion(
+				mangaId = 650L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = 1_000L,
+			)
+			assertEquals(10, first.xp)
+
+			val rereadXp = (1..5).map { index ->
+				dao.awardCompletion(
+					mangaId = 650L,
+					chapterId = 1L,
+					isNovel = false,
+					readingUnits = 0,
+					baseXp = 10,
+					completedAt = 1_000L + index,
+				).xp
+			}
+			assertEquals(listOf(1, 1, 1, 0, 0), rereadXp)
+			assertEquals(4, dao.getAllChapterAwards().single().completionCount)
+			assertEquals(13L, dao.getProfile()?.totalXp)
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
+	fun verifiedRereadDaysCountAsActiveDaysWithoutFarmingChapterTasks() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val monday = Instant.parse("2026-09-21T00:00:00Z").toEpochMilli()
+
+			val first = dao.awardCompletion(
+				mangaId = 700L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = monday + 1_000L,
+			)
+			repository.onVerifiedCompletion(first, 700L, 1L, monday + 1_000L)
+
+			val rereadDay2At = monday + 24L * 60L * 60L * 1000L + 1_000L
+			val rereadDay2 = dao.awardCompletion(
+				mangaId = 700L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = rereadDay2At,
+			)
+			repository.onVerifiedCompletion(rereadDay2, 700L, 1L, rereadDay2At)
+			assertEquals(20, dao.getXpEvent("weekly:2026-09-21:slot:1")?.xp)
+			assertNull(dao.getXpEvent("weekly:2026-09-21:slot:0"))
+
+			val rereadDay3At = monday + 2L * 24L * 60L * 60L * 1000L + 1_000L
+			val rereadDay3 = dao.awardCompletion(
+				mangaId = 700L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = rereadDay3At,
+			)
+			repository.onVerifiedCompletion(rereadDay3, 700L, 1L, rereadDay3At)
+
+			assertEquals(30, dao.getXpEvent("active-days:2026-09-21")?.xp)
+			assertNull(dao.getXpEvent("weekly:2026-09-21:slot:0"))
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
+	fun restedAndWelcomeBackCapsHoldAcrossMultipleVerifiedCompletions() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val firstAt = 1_000L
+			dao.awardCompletion(
+				mangaId = 10L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = firstAt,
+			)
+
+			val comebackAt = firstAt + 8L * 24L * 60L * 60L * 1000L
+			repeat(6) { index ->
+				val at = comebackAt + index * 1_000L
+				val award = dao.awardCompletion(
+					mangaId = 10L,
+					chapterId = 2L + index,
+					isNovel = false,
+					readingUnits = 0,
+					baseXp = 10,
+					completedAt = at,
+				)
+				repository.onVerifiedCompletion(
+					award = award,
+					mangaId = 10L,
+					chapterId = 2L + index,
+					completedAt = at,
+				)
+			}
+
+			assertEquals(5, dao.countXpEventsByKeyPrefix("rested:" + firstAt + ":slot:"))
+			assertEquals(3, dao.countXpEventsByKeyPrefix("welcome:" + firstAt + ":slot:"))
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
+	fun rereadComebackPreservesRestedAndWelcomeEligibilityForNextFirstCompletion() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val firstAt = 1_000L
+			val first = dao.awardCompletion(
+				mangaId = 11L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = firstAt,
+			)
+			repository.onVerifiedCompletion(first, 11L, 1L, firstAt)
+
+			val rereadAt = firstAt + 8L * 24L * 60L * 60L * 1000L
+			val reread = dao.awardCompletion(
+				mangaId = 11L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = rereadAt,
+			)
+			repository.onVerifiedCompletion(reread, 11L, 1L, rereadAt)
+
+			assertNotNull(dao.getXpEvent("rested-window:" + firstAt))
+			assertNotNull(dao.getXpEvent("welcome-window:" + firstAt))
+			assertEquals(0, dao.countXpEventsByKeyPrefix("rested:" + firstAt + ":slot:"))
+			assertEquals(0, dao.countXpEventsByKeyPrefix("welcome:" + firstAt + ":slot:"))
+
+			val nextAt = rereadAt + 1_000L
+			val next = dao.awardCompletion(
+				mangaId = 11L,
+				chapterId = 2L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = nextAt,
+			)
+			repository.onVerifiedCompletion(next, 11L, 2L, nextAt)
+
+			assertEquals(1, dao.countXpEventsByKeyPrefix("rested:" + firstAt + ":slot:"))
+			assertEquals(1, dao.countXpEventsByKeyPrefix("welcome:" + firstAt + ":slot:"))
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
+	fun achievementBackfillWaitsWhileReaderJourneyProgressionIsDisabled() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			dao.mergeAchievement(
+				ReaderJourneyAchievementEntity(
+					achievementId = ReaderAchievementId.FIRST_CHAPTER.name,
+					unlockedAt = 100L,
+				),
+			)
+			val repository = ReaderAchievementRepository(database)
+
+			val disabled = repository.refreshWithResult(
+				unlockedAt = 200L,
+				allowUnlock = false,
+				allowXpAward = false,
+			)
+			assertTrue(disabled.xpAwards.isEmpty())
+			assertNull(dao.getXpEvent("achievement:FIRST_CHAPTER"))
+			assertEquals(0L, dao.getProfile()?.totalXp ?: 0L)
+
+			val enabled = repository.refreshWithResult(
+				unlockedAt = 300L,
+				allowUnlock = false,
+				allowXpAward = true,
+			)
+			assertEquals(25, enabled.xpAwards.single().xp)
+			assertEquals(25L, dao.getProfile()?.totalXp)
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
+	fun existingAchievementBackfillAwardsXpExactlyOnce() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			dao.mergeAchievement(
+				ReaderJourneyAchievementEntity(
+					achievementId = ReaderAchievementId.FIRST_CHAPTER.name,
+					unlockedAt = 100L,
+				),
+			)
+			val repository = ReaderAchievementRepository(database)
+
+			val first = repository.refreshWithResult(unlockedAt = 200L, allowUnlock = false)
+			assertEquals(25, first.xpAwards.single().xp)
+			assertEquals(ReaderAchievementId.FIRST_CHAPTER.name, first.xpAwards.single().context)
+			assertEquals(200L, dao.getXpEvent("achievement:FIRST_CHAPTER")?.occurredAt)
+			assertEquals(100L, dao.getAllAchievements().single().unlockedAt)
+			assertEquals(25L, dao.getProfile()?.totalXp)
+
+			val second = repository.refreshWithResult(unlockedAt = 300L, allowUnlock = false)
+			assertTrue(second.xpAwards.isEmpty())
+			assertEquals(25L, dao.getProfile()?.totalXp)
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
+	fun weeklyRerollLedgerEnforcesGlobalTwoRerollCapAfterSync() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val at = LocalDate.of(2026, 9, 23)
+				.atStartOfDay(ZoneId.systemDefault())
+				.toInstant()
+				.toEpochMilli()
+			dao.insertXpEvent(
+				ReaderJourneyXpEventEntity(
+					eventKey = "weekly-reroll:2026-09-21:slot:0",
+					source = "WEEKLY_REROLL",
+					xp = 0,
+					occurredAt = at - 2_000L,
+					context = ReaderJourneyWeeklyTaskId.READ_3_DAYS.name,
+					profileDelta = false,
+				),
+			)
+			dao.insertXpEvent(
+				ReaderJourneyXpEventEntity(
+					eventKey = "weekly-reroll:2026-09-21:slot:1",
+					source = "WEEKLY_REROLL",
+					xp = 0,
+					occurredAt = at - 1_000L,
+					context = ReaderJourneyWeeklyTaskId.READ_4_MANGA.name,
+					profileDelta = false,
+				),
+			)
+
+			val repository = ReaderJourneyProgressionRepository(database)
+			val snapshot = repository.snapshot(at).weekly
+			assertEquals(0, snapshot.rerollsRemaining)
+			assertEquals(ReaderJourneyWeeklyTaskId.READ_3_DAYS, snapshot.tasks[0].id)
+			assertEquals(ReaderJourneyWeeklyTaskId.READ_4_MANGA, snapshot.tasks[1].id)
+			assertTrue(!repository.rerollWeeklyTask(ReaderJourneyWeeklyTaskId.READ_2_TITLES, at))
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
+	fun canonicalComebackMergeKeepsLifetimeXpWhileDemotingForkedBonuses() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			dao.insertXpEvent(
+				ReaderJourneyXpEventEntity(
+					eventKey = "rested-window:1000",
+					source = "RESTED_WINDOW",
+					xp = 0,
+					occurredAt = 90L,
+					context = "1000",
+					profileDelta = false,
+				),
+			)
+			dao.insertXpEvent(
+				ReaderJourneyXpEventEntity(
+					eventKey = "rested-window:2000",
+					source = "RESTED_WINDOW",
+					xp = 0,
+					occurredAt = 190L,
+					context = "2000",
+					profileDelta = false,
+				),
+			)
+			repeat(5) { slot ->
+				dao.awardBonusEvent(
+					ReaderJourneyXpEventEntity(
+						eventKey = "rested:1000:slot:" + slot,
+						source = "RESTED",
+						xp = 3,
+						occurredAt = 100L + slot,
+						mangaId = 1L,
+						chapterId = 10L + slot,
+						context = "1000",
+						profileDelta = true,
+					),
+				)
+				dao.awardBonusEvent(
+					ReaderJourneyXpEventEntity(
+						eventKey = "rested:2000:slot:" + slot,
+						source = "RESTED",
+						xp = 3,
+						occurredAt = 200L + slot,
+						mangaId = 2L,
+						chapterId = 20L + slot,
+						context = "2000",
+						profileDelta = true,
+					),
+				)
+			}
+			assertEquals(30L, dao.getProfile()?.totalXp)
+
+			dao.demoteComebackBonusEvents()
+			dao.clearComebackWindowEvents()
+			dao.mergeXpEvent(
+				ReaderJourneyXpEventEntity(
+					eventKey = "rested-window:1000",
+					source = "RESTED_WINDOW",
+					xp = 0,
+					occurredAt = 90L,
+					context = "1000",
+					profileDelta = false,
+				),
+			)
+			repeat(5) { slot ->
+				dao.mergeXpEvent(
+					ReaderJourneyXpEventEntity(
+						eventKey = "rested:1000:slot:" + slot,
+						source = "RESTED",
+						xp = 3,
+						occurredAt = 100L + slot,
+						mangaId = 1L,
+						chapterId = 10L + slot,
+						context = "1000",
+						profileDelta = true,
+					),
+				)
+			}
+			dao.reconcileXpFloor(30L)
+			dao.rebuildProfileFromLedger()
+
+			assertEquals(30L, dao.getProfile()?.totalXp)
+			assertEquals(15L, dao.getProfile()?.xpFloorAdjustment)
+			assertEquals(5, dao.getRecentXpEvents(20).count { it.source == "RESTED" })
+			assertEquals("1000", dao.latestXpEventBySource("RESTED_WINDOW")?.context)
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
+	fun readerJourneyXpFloorPreservesNewXpAndShrinksAsLedgerCatchesUp() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			dao.reconcileXpFloor(1_000L)
+			assertEquals(1_000L, dao.getProfile()?.totalXp)
+
+			dao.awardCompletion(
+				mangaId = 1L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = 100L,
+			)
+			dao.rebuildProfileFromLedger()
+			assertEquals(1_010L, dao.getProfile()?.totalXp)
+			assertEquals(1_000L, dao.getProfile()?.xpFloorAdjustment)
+
+			dao.mergeChapterAward(
+				ReaderJourneyChapterEntity(
+					mangaId = 2L,
+					chapterId = 2L,
+					isNovel = false,
+					readingUnits = 0,
+					completionCount = 1,
+					awardedXp = 500L,
+					firstCompletedAt = 50L,
+					lastCompletedAt = 50L,
+				),
+			)
+			dao.reconcileXpFloor(1_010L)
+			dao.rebuildProfileFromLedger()
+
+			assertEquals(1_010L, dao.getProfile()?.totalXp)
+			assertEquals(500L, dao.getProfile()?.xpFloorAdjustment)
+		} finally {
+			database.close()
 		}
 	}
 

@@ -173,6 +173,11 @@
 	<!--== Default Theme ==-->
 	<style name="Theme.Kotatsu" parent="Base.Theme.Kotatsu" />
 
+	<!-- Details gets an opaque themed first frame before the XML/Compose hierarchy is ready. -->
+	<style name="Theme.Kotatsu.Details" parent="Theme.Kotatsu">
+		<item name="android:windowBackground">@color/kotatsu_background</item>
+	</style>
+
 	<!-- Empty translucent host for activities that only show a Compose dialog -->
 	<style name="Theme.Kotatsu.Transparent" parent="Theme.Kotatsu">
 		<item name="android:windowBackground">@android:color/transparent</item>

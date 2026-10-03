@@ -1,7 +1,13 @@
 package org.koitharu.kotatsu.stats.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -37,10 +44,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,16 +59,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -74,6 +89,7 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -81,14 +97,40 @@ import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementProgress
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementRarity
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
-import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticSlot
-import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmetics
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticMode
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyTaskDifficulty
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyWeeklySnapshot
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyWeeklyTaskId
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyXpHistoryItem
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyXpSource
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileSettings
 import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonality
 import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeQaRuntime
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
+import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
+import org.koitharu.kotatsu.readerjourney.ui.BadgeQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.BadgeState
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
+import org.koitharu.kotatsu.readerjourney.ui.ProfileFrameQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.NameplateQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.NameplateState
+import org.koitharu.kotatsu.readerjourney.ui.NameplateUsage
+import org.koitharu.kotatsu.readerjourney.ui.ProfileFrameState
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeNameplate
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeWallpaper
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
+import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 import org.koitharu.kotatsu.stats.domain.ReadingStats
+import org.koitharu.kotatsu.stats.domain.ReaderProfileShareModel
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
 import org.koitharu.kotatsu.stats.domain.StatsHeatmapDay
 import org.koitharu.kotatsu.stats.domain.StatsInsight
@@ -96,7 +138,9 @@ import org.koitharu.kotatsu.stats.domain.StatsMatureMode
 import org.koitharu.kotatsu.stats.domain.StatsPeriod
 import org.koitharu.kotatsu.stats.domain.StatsRecord
 import org.koitharu.kotatsu.stats.domain.YearInReview
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -110,6 +154,7 @@ import java.util.Locale
 fun StatsScreen(
 	stats: ReadingStats,
 	isLoading: Boolean,
+	hasLoadedStats: Boolean,
 	period: StatsPeriod,
 	scope: StatsContentScope,
 	matureMode: StatsMatureMode,
@@ -125,7 +170,11 @@ fun StatsScreen(
 	onCategoryToggle: (FavouriteCategory) -> Unit,
 	onCategoriesClear: () -> Unit,
 	onProfileUpdate: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
+	onAvatarSelected: (Uri) -> Unit = {},
+	onAvatarRemove: () -> Unit = {},
 	onCosmeticsUpdate: (ReaderJourneyCosmeticLoadout) -> Unit,
+	onWeeklyReroll: (ReaderJourneyWeeklyTaskId) -> Unit,
+	onShareReaderProfile: (ReaderProfileShareModel) -> Unit,
 	onShareYearInReview: (YearInReview) -> Unit,
 	onMangaClick: (Manga) -> Unit,
 ) {
@@ -135,9 +184,17 @@ fun StatsScreen(
 	var journeySection by rememberSaveable { mutableStateOf(ReaderJourneySection.OVERVIEW) }
 	var showProfileEditor by rememberSaveable { mutableStateOf(false) }
 	var showCosmeticsEditor by rememberSaveable { mutableStateOf(false) }
+	var customizerInitialThemeId by rememberSaveable { mutableStateOf<String?>(null) }
+	var showUnlockedAchievementsOnly by rememberSaveable { mutableStateOf(false) }
+	val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+		uri?.let(onAvatarSelected)
+	}
+	val pickAvatar = {
+		avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+	}
 
 	LaunchedEffect(stats.isJourneyEnabled) {
-		if (!stats.isJourneyEnabled && journeySection == ReaderJourneySection.ACHIEVEMENTS) {
+		if (!stats.isJourneyEnabled && journeySection == ReaderJourneySection.COLLECTION) {
 			journeySection = ReaderJourneySection.OVERVIEW
 		}
 	}
@@ -162,13 +219,13 @@ fun StatsScreen(
 
 		LazyColumn(
 			modifier = Modifier.fillMaxSize(),
-			contentPadding = PaddingValues(top = 10.dp, bottom = bottomInset + 36.dp),
+			contentPadding = PaddingValues(top = 10.dp, bottom = bottomInset + 64.dp),
 			verticalArrangement = Arrangement.spacedBy(16.dp),
 		) {
 			item("journey-section") {
 				ReaderJourneySectionSelector(
 					selected = journeySection,
-					showAchievements = stats.isJourneyEnabled,
+					showCollection = stats.isJourneyEnabled,
 					onSelect = { next ->
 						journeySection = next
 						if (next != ReaderJourneySection.STATISTICS) {
@@ -180,13 +237,43 @@ fun StatsScreen(
 			when (journeySection) {
 				ReaderJourneySection.OVERVIEW -> {
 					if (stats.isJourneyEnabled) {
-						item("profile") {
-							ReaderProfileCard(
-								stats = stats,
-								profile = profile,
-								onEdit = { showProfileEditor = true },
-								onEditCosmetics = { showCosmeticsEditor = true },
-							)
+						if (!hasLoadedStats && isLoading) {
+							item("profile-overview-loading") {
+								ReaderJourneyProfileLoadingSkeleton()
+							}
+						} else {
+							item("profile-overview") {
+								ReaderProfileCard(
+									stats = stats,
+									profile = profile,
+									imageLoader = imageLoader,
+									onEdit = { showProfileEditor = true },
+									onAvatarClick = { showProfileEditor = true },
+									onShare = {
+										onShareReaderProfile(ReaderProfileShareModel.from(stats.lifetimeXp, profile.cosmetics))
+									},
+								)
+							}
+							item("journey-overview-metrics") {
+								ReaderJourneyOverviewGrid(stats)
+							}
+						}
+						stats.journeyProgression?.let { progression ->
+							item("journey-weekly") {
+								WeeklyJourneyCard(
+									snapshot = progression.weekly,
+									onReroll = onWeeklyReroll,
+								)
+							}
+							item("journey-history") {
+								JourneyXpHistoryCard(
+									items = progression.recentHistory,
+									preservedXp = progression.preservedXp,
+								)
+							}
+						}
+						item("journey-xp-guide") {
+							ReaderJourneyXpGuideCard()
 						}
 					}
 					item("year-in-review") {
@@ -195,7 +282,6 @@ fun StatsScreen(
 							onShare = { onShareYearInReview(yearInReview) },
 						)
 					}
-					item("metrics") { MetricsGrid(stats) }
 					if (stats.isEmpty) {
 						item("empty") { StatsEmptyState() }
 					}
@@ -203,6 +289,18 @@ fun StatsScreen(
 						TopPickSection(stats = stats, imageLoader = imageLoader, onMangaClick = onMangaClick)
 					}
 					item("heatmap") { ReadingHeatmapCard(stats.heatmapDays) }
+					if (stats.isJourneyEnabled) {
+						item("journey-current-theme") {
+							ReaderJourneyThemeCard(
+								stats = stats,
+								profile = profile,
+								onCustomize = {
+									customizerInitialThemeId = null
+									showCosmeticsEditor = true
+								},
+							)
+						}
+					}
 				}
 
 				ReaderJourneySection.STATISTICS -> {
@@ -237,6 +335,7 @@ fun StatsScreen(
 							title = stringResource(R.string.stats_most_read_genres),
 							items = stats.topGenres,
 							icon = R.drawable.ic_grid,
+							hideLabels = matureMode == StatsMatureMode.PRIVATE,
 						)
 					}
 					if (stats.formatBreakdown.size > 1) {
@@ -261,15 +360,54 @@ fun StatsScreen(
 					}
 				}
 
-				ReaderJourneySection.ACHIEVEMENTS -> {
+				ReaderJourneySection.COLLECTION -> {
 					if (stats.isJourneyEnabled) {
-						item("journey") { ReaderJourneyHero(stats) }
+						item("exclusive-collection") {
+							ReaderJourneyExclusiveCollection(
+								currentRank = ReaderJourneyRules.progress(stats.lifetimeXp).rank,
+								loadout = profile.cosmetics,
+								onOpenTheme = { themeId ->
+									customizerInitialThemeId = themeId
+									showCosmeticsEditor = true
+								},
+							)
+						}
+					}
+					item("milestones-header") {
+						StatsSectionHeader(title = stringResource(R.string.reader_journey_achievements))
 					}
 					item("achievement-summary") {
 						AchievementSummary(stats.achievements)
 					}
+					item("achievement-filter") {
+						Row(
+							modifier = Modifier
+								.fillMaxWidth()
+								.padding(horizontal = STATS_PADDING),
+							horizontalArrangement = Arrangement.End,
+						) {
+							FilterChip(
+								selected = showUnlockedAchievementsOnly,
+								onClick = { showUnlockedAchievementsOnly = !showUnlockedAchievementsOnly },
+								label = { Text("Hanya yang sudah terbuka") },
+								leadingIcon = if (showUnlockedAchievementsOnly) {
+									{
+										Icon(
+											painter = painterResource(R.drawable.ic_check),
+											contentDescription = null,
+											modifier = Modifier.size(FilterChipDefaults.IconSize),
+										)
+									}
+								} else null,
+							)
+						}
+					}
 					items(
-						items = stats.achievements,
+						items = if (showUnlockedAchievementsOnly) {
+							stats.achievements.filter { it.isUnlocked }
+						} else {
+							stats.achievements
+						},
 						key = { progress -> progress.id.name },
 					) { progress ->
 						AchievementCard(progress)
@@ -281,6 +419,8 @@ fun StatsScreen(
 				ReaderProfileEditorSheet(
 					profile = profile,
 					unlockedAchievements = stats.achievements.filter { it.isUnlocked }.map { it.id },
+					onPickAvatar = pickAvatar,
+					onRemoveAvatar = onAvatarRemove,
 					onDismiss = { showProfileEditor = false },
 					onSave = { displayName, title, showcase ->
 						onProfileUpdate(displayName, title, showcase)
@@ -292,12 +432,83 @@ fun StatsScreen(
 				ReaderCosmeticsEditorSheet(
 					currentRank = ReaderJourneyRules.progress(stats.lifetimeXp).rank,
 					loadout = profile.cosmetics,
-					onDismiss = { showCosmeticsEditor = false },
+					initialThemeId = customizerInitialThemeId,
+					onDismiss = {
+						showCosmeticsEditor = false
+						customizerInitialThemeId = null
+					},
 					onSave = { loadout ->
 						onCosmeticsUpdate(loadout)
 						showCosmeticsEditor = false
+						customizerInitialThemeId = null
 					},
 				)
+			}
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyProfileLoadingSkeleton() {
+	Column(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		verticalArrangement = Arrangement.spacedBy(12.dp),
+	) {
+		Surface(
+			modifier = Modifier
+				.fillMaxWidth()
+				.height(214.dp),
+			shape = RoundedCornerShape(28.dp),
+			color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f),
+		) {
+			Column(
+				modifier = Modifier.padding(18.dp),
+				horizontalAlignment = Alignment.CenterHorizontally,
+				verticalArrangement = Arrangement.spacedBy(12.dp),
+			) {
+				Box(
+					Modifier
+						.size(72.dp)
+						.clip(CircleShape)
+						.background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)),
+				)
+				Box(
+					Modifier
+						.width(144.dp)
+						.height(18.dp)
+						.clip(RoundedCornerShape(9.dp))
+						.background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)),
+				)
+				Box(
+					Modifier
+						.width(104.dp)
+						.height(12.dp)
+						.clip(RoundedCornerShape(6.dp))
+						.background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+				)
+				Spacer(Modifier.height(4.dp))
+				Box(
+					Modifier
+						.fillMaxWidth()
+						.height(54.dp)
+						.clip(RoundedCornerShape(18.dp))
+						.background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+				)
+			}
+		}
+		repeat(3) {
+			Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+				repeat(2) {
+					Box(
+						Modifier
+							.weight(1f)
+							.height(78.dp)
+							.clip(RoundedCornerShape(18.dp))
+							.background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f)),
+					)
+				}
 			}
 		}
 	}
@@ -307,377 +518,930 @@ fun StatsScreen(
 private fun ReaderProfileCard(
 	stats: ReadingStats,
 	profile: ReaderProfileSettings,
+	imageLoader: ImageLoader,
 	onEdit: () -> Unit,
-	onEditCosmetics: () -> Unit,
+	onAvatarClick: () -> Unit,
+	onShare: () -> Unit,
 ) {
-	val context = LocalContext.current
-	val progress = ReaderJourneyRules.progress(stats.lifetimeXp)
+	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
 	val selectedTitle = profile.selectedTitle
 		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
-	val frameRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.frame, progress.rank)
-	val glowRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.glow, progress.rank)
-	val backgroundRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.background, progress.rank)
-	val progressRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.progressBar, progress.rank)
-	val frameStage = frameRank.cosmeticStage
-	val glowStage = glowRank.cosmeticStage
-	val backgroundStage = backgroundRank.cosmeticStage
-	val progressStage = progressRank.cosmeticStage
-	val frameAccent = lerp(
-		MaterialTheme.colorScheme.primary,
-		MaterialTheme.colorScheme.tertiary,
-		frameStage * 0.72f,
-	)
-	val backgroundAccent = lerp(
-		MaterialTheme.colorScheme.primaryContainer,
-		MaterialTheme.colorScheme.tertiaryContainer,
-		backgroundStage * 0.68f,
-	)
-	val progressAccent = lerp(
-		MaterialTheme.colorScheme.primary,
-		MaterialTheme.colorScheme.tertiary,
-		progressStage * 0.82f,
-	)
-	val shape = RoundedCornerShape(28.dp)
-	val frameWidth = (1f + frameStage * 1.35f).dp
-	val glowElevation = (1f + glowStage * 8f).dp
+	val qaState by ExclusiveThemeQaRuntime.state.collectAsState()
+	val effectiveCosmetics = remember(profile.cosmetics, progress.rank, qaState) {
+		qaState.effectiveLoadout(
+			production = profile.cosmetics,
+			fallbackTheme = RankThemeId.forRank(progress.rank),
+		)
+	}
+	val rankThemeWallpaperEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, true)
+	val rankThemeReduceMotionPreference by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
+	val rankThemeReduceMotion = qaState.effectiveReduceMotion(rankThemeReduceMotionPreference)
+	val rankThemeReduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
+	val rankThemeMinimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
+	val activeTheme = when (effectiveCosmetics.mode) {
+		ReaderJourneyCosmeticMode.DEFAULT -> null
+		ReaderJourneyCosmeticMode.AUTO -> RankThemeId.forRank(progress.rank)
+		ReaderJourneyCosmeticMode.FULL_SET,
+		ReaderJourneyCosmeticMode.CUSTOM -> RankThemeId.fromStableId(effectiveCosmetics.selectedThemeId)
+			?: RankThemeId.forRank(progress.rank)
+	}
+	val activeSpec = activeTheme?.let(RankThemeVisualRegistry::resolve)
+	val wallpaperSpec = effectiveCosmetics.selectedWallpaperId?.let { wallpaperId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.wallpaperId == wallpaperId }
+	} ?: activeSpec
+	val frameSpec = effectiveCosmetics.selectedFrameId?.let { frameId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.frameId == frameId }
+	} ?: effectiveCosmetics.frame?.let { frameRank ->
+		RankThemeVisualRegistry.all.firstOrNull { it.themeId.rank == frameRank }
+	} ?: activeSpec
+	val nameplateSpec = effectiveCosmetics.selectedNameplateId?.let { nameplateId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.nameplateId == nameplateId }
+	} ?: effectiveCosmetics.selectedReaderCardId?.let { cardId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.cardId == cardId }
+	} ?: activeSpec
+	val badgeSpec = effectiveCosmetics.selectedBadgeId?.let { badgeId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.badgeId == badgeId }
+	} ?: activeSpec
+	val progressSpec = effectiveCosmetics.selectedProgressStyleId?.let { progressId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.progressId == progressId }
+	} ?: activeSpec
+	val foundationTokens = activeTheme?.let { theme ->
+		RankThemeRegistry.resolveOrDefault(theme.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val wallpaperTokens = wallpaperSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val frameTokens = frameSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val nameplateTokens = nameplateSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val badgeTokens = badgeSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val progressTokens = progressSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val wallpaperAlpha = if (rankThemeReduceGlow) 0.12f else 0.20f
+	val accent = MaterialTheme.colorScheme.primary
+	val surfaceShape = RoundedCornerShape(28.dp)
 
 	Box(
 		modifier = Modifier
 			.fillMaxWidth()
 			.padding(horizontal = STATS_PADDING)
-			.shadow(
-				elevation = glowElevation,
-				shape = shape,
-				clip = false,
-			)
-			.clip(shape)
-			.background(
-				Brush.linearGradient(
-					listOf(
-						backgroundAccent.copy(alpha = 0.64f + backgroundStage * 0.12f),
-						MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.90f),
-						MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.34f + backgroundStage * 0.18f),
-					),
-				),
-			)
-			.border(
-				width = frameWidth,
-				color = frameAccent.copy(alpha = 0.24f + frameStage * 0.28f),
-				shape = shape,
-			)
-			.padding(18.dp),
+			.clip(surfaceShape),
 	) {
-		Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-			Row(
-				modifier = Modifier.fillMaxWidth(),
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(14.dp),
-			) {
-				Box(
-					modifier = Modifier
-						.size(58.dp)
-						.clip(CircleShape)
-						.background(backgroundAccent.copy(alpha = 0.15f + backgroundStage * 0.08f))
-						.border(
-							width = frameWidth,
-							color = frameAccent.copy(alpha = 0.30f + frameStage * 0.24f),
-							shape = CircleShape,
-						),
-					contentAlignment = Alignment.Center,
+		if (
+			rankThemeWallpaperEnabled && !rankThemeMinimalCosmetics &&
+			wallpaperSpec != null && wallpaperTokens != null
+		) {
+			ReferenceRankThemeWallpaper(
+				spec = wallpaperSpec,
+				tokens = wallpaperTokens,
+				modifier = Modifier
+					.fillMaxSize()
+					.alpha(wallpaperAlpha),
+			)
+		}
+		Column(
+			modifier = Modifier
+				.fillMaxWidth()
+				.padding(horizontal = 10.dp, vertical = 8.dp),
+			horizontalAlignment = Alignment.CenterHorizontally,
+			verticalArrangement = Arrangement.spacedBy(10.dp),
+		) {
+		Box(
+			modifier = Modifier.size(140.dp),
+			contentAlignment = Alignment.Center,
+		) {
+			if (frameSpec != null && frameTokens != null) {
+				ReferenceRankThemeFrame(
+					spec = frameSpec,
+					tokens = frameTokens,
+					levelText = stringResource(R.string.reader_journey_level, progress.level),
+					state = ProfileFrameState.EQUIPPED,
+					animate = !rankThemeMinimalCosmetics && !rankThemeReduceMotion,
+					qualityMode = when {
+						rankThemeMinimalCosmetics -> ProfileFrameQualityMode.BATTERY_SAVER
+						rankThemeReduceGlow -> ProfileFrameQualityMode.REDUCED
+						else -> ProfileFrameQualityMode.NORMAL
+					},
+					modifier = Modifier.size(136.dp),
 				) {
-					Text(
-						text = profile.initial,
-						style = MaterialTheme.typography.headlineSmall,
-						fontWeight = FontWeight.Bold,
-						color = frameAccent,
+					Surface(
+						modifier = Modifier
+							.fillMaxSize()
+							.clickable(onClick = onAvatarClick),
+						shape = CircleShape,
+						color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
+					) {
+						ReaderAvatar(profile, imageLoader, Color(frameTokens.primaryAccent.toInt()))
+					}
+				}
+			} else {
+				Surface(
+					modifier = Modifier
+						.size(94.dp)
+						.clickable(onClick = onAvatarClick),
+					shape = CircleShape,
+					color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
+					border = BorderStroke(1.dp, accent.copy(alpha = 0.42f)),
+				) {
+					ReaderAvatar(profile, imageLoader, accent)
+				}
+			}
+			if (badgeSpec != null && badgeTokens != null && !rankThemeMinimalCosmetics) {
+				ReferenceRankThemeBadge(
+					spec = badgeSpec,
+					tokens = badgeTokens,
+					state = BadgeState.EQUIPPED,
+					// Mini profile badge: keep crisp baked material, but no idle loop so the
+					// profile frame remains the hero when frame + badge + nameplate are combined.
+					animate = false,
+					qualityMode = when {
+						rankThemeMinimalCosmetics -> BadgeQualityMode.BATTERY_SAVER
+						rankThemeReduceGlow -> BadgeQualityMode.REDUCED
+						else -> BadgeQualityMode.REDUCED
+					},
+					useThumbnail = true,
+					profileMode = true,
+					modifier = Modifier
+						.align(Alignment.TopEnd)
+						.size(34.dp),
+				)
+			}
+		}
+
+		Row(
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
+		) {
+			Text(
+				text = profile.displayName.ifBlank { stringResource(R.string.reader_journey_default_profile_name) },
+				style = MaterialTheme.typography.headlineSmall,
+				fontWeight = FontWeight.Bold,
+				maxLines = 1,
+				overflow = TextOverflow.Ellipsis,
+			)
+			Box(
+				modifier = Modifier
+					.size(30.dp)
+					.clip(CircleShape)
+					.clickable(onClick = onEdit),
+				contentAlignment = Alignment.Center,
+			) {
+				Icon(
+					painter = painterResource(R.drawable.ic_edit),
+					contentDescription = stringResource(R.string.reader_journey_edit_profile),
+					tint = MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier.size(17.dp),
+				)
+			}
+		}
+
+		val titleText = selectedTitle?.let { stringResource(it.titleRes) }
+			?: stringResource(R.string.reader_journey_no_title)
+		if (nameplateSpec != null && nameplateTokens != null) {
+			ReferenceRankThemeNameplate(
+				spec = nameplateSpec,
+				tokens = nameplateTokens,
+				state = NameplateState.EQUIPPED,
+				animate = !rankThemeMinimalCosmetics && !rankThemeReduceMotion,
+				qualityMode = when {
+					rankThemeMinimalCosmetics -> NameplateQualityMode.BATTERY_SAVER
+					rankThemeReduceGlow -> NameplateQualityMode.REDUCED
+					else -> NameplateQualityMode.NORMAL
+				},
+				usage = NameplateUsage.PROFILE,
+				modifier = Modifier
+					.width(176.dp)
+					.height(62.dp),
+			)
+		}
+		Text(
+			text = stringResource(R.string.reader_journey_active_title_label),
+			style = MaterialTheme.typography.labelSmall,
+			fontWeight = FontWeight.SemiBold,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+		)
+		Text(
+			text = titleText,
+			style = MaterialTheme.typography.labelLarge,
+			fontWeight = FontWeight.SemiBold,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+			textAlign = TextAlign.Center,
+		)
+
+		Surface(
+			modifier = Modifier.fillMaxWidth(),
+			shape = surfaceShape,
+			color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.86f),
+			border = BorderStroke(1.dp, accent.copy(alpha = 0.28f)),
+		) {
+			Column(
+				modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+				horizontalAlignment = Alignment.CenterHorizontally,
+				verticalArrangement = Arrangement.spacedBy(7.dp),
+			) {
+				Text(
+					text = stringResource(progress.rank.titleRes),
+					style = MaterialTheme.typography.titleMedium,
+					fontWeight = FontWeight.Bold,
+					color = accent,
+				)
+				Text(
+					text = progress.xpForNextLevel?.let { next ->
+						"${formatJourneyNumber(progress.xpIntoLevel)} / ${formatJourneyNumber(next)} XP"
+					} ?: stringResource(R.string.reader_journey_lifetime_xp, progress.lifetimeXp),
+					style = MaterialTheme.typography.labelMedium,
+					fontWeight = FontWeight.SemiBold,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+				if (progressSpec != null && progressTokens != null) {
+					ReferenceRankThemeProgress(
+						spec = progressSpec,
+						tokens = progressTokens,
+						progress = progress.levelFraction,
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(9.dp),
+					)
+				} else {
+					LinearProgressIndicator(
+						progress = { progress.levelFraction },
+						color = accent,
+						trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.78f),
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(8.dp)
+							.clip(RoundedCornerShape(8.dp)),
 					)
 				}
+				if (progress.xpForNextLevel != null) {
+					ReaderJourneyProgressMilestones(progress.levelFraction)
+				}
+			}
+		}
+
+			TextButton(onClick = onShare) {
+				Text(
+					text = stringResource(R.string.reader_journey_share_profile_card),
+					style = MaterialTheme.typography.labelMedium,
+				)
+			}
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyProgressMilestones(fraction: Float) {
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		listOf(0.25f to "25%", 0.50f to "50%", 0.75f to "75%", 1f to "100%").forEach { (target, label) ->
+			Text(
+				text = label,
+				style = MaterialTheme.typography.labelSmall,
+				fontWeight = if (fraction >= target) FontWeight.Bold else FontWeight.Normal,
+				color = if (fraction >= target) {
+					MaterialTheme.colorScheme.primary
+				} else {
+					MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
+				},
+			)
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyOverviewGrid(stats: ReadingStats) {
+	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
+	val remainingXp = progress.xpForNextLevel?.let { next ->
+		(next - progress.xpIntoLevel).coerceAtLeast(0L)
+	}
+
+	Column(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		verticalArrangement = Arrangement.spacedBy(10.dp),
+	) {
+		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_verified_titles),
+				value = formatJourneyNumber(stats.journeyTitleCount),
+				modifier = Modifier.weight(1f),
+			)
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_verified_chapters),
+				value = formatJourneyNumber(stats.journeyCompletedChapters),
+				modifier = Modifier.weight(1f),
+			)
+		}
+		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_verified_breakdown),
+				value = stringResource(
+					R.string.reader_journey_profile_manga_novel,
+					stats.journeyMangaChapters,
+					stats.journeyNovelChapters,
+				),
+				modifier = Modifier.weight(1f),
+			)
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_lifetime_xp),
+				value = formatJourneyNumber(stats.lifetimeXp),
+				modifier = Modifier.weight(1f),
+			)
+		}
+		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_rank),
+				value = stringResource(progress.rank.titleRes),
+				modifier = Modifier.weight(1f),
+			)
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_next_level),
+				value = remainingXp?.let {
+					stringResource(
+						R.string.reader_journey_profile_xp_to_level,
+						formatJourneyNumber(it),
+						progress.level + 1,
+					)
+				} ?: stringResource(R.string.reader_journey_profile_max_level),
+				modifier = Modifier.weight(1f),
+			)
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyOverviewMetric(
+	label: String,
+	value: String,
+	modifier: Modifier = Modifier,
+) {
+	Surface(
+		modifier = modifier.heightIn(min = 78.dp),
+		shape = RoundedCornerShape(18.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.80f),
+		border = BorderStroke(
+			width = 1.dp,
+			color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
+		),
+	) {
+		Column(
+			modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+			verticalArrangement = Arrangement.spacedBy(5.dp),
+		) {
+			Text(
+				text = label,
+				style = MaterialTheme.typography.labelSmall,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+				maxLines = 2,
+				overflow = TextOverflow.Ellipsis,
+			)
+			Text(
+				text = value,
+				style = MaterialTheme.typography.titleMedium,
+				fontWeight = FontWeight.Bold,
+				color = MaterialTheme.colorScheme.onSurface,
+				maxLines = 1,
+				overflow = TextOverflow.Ellipsis,
+			)
+		}
+	}
+}
+
+@Composable
+private fun WeeklyJourneyCard(
+	snapshot: ReaderJourneyWeeklySnapshot,
+	onReroll: (ReaderJourneyWeeklyTaskId) -> Unit,
+) {
+	var showCompletedTasks by rememberSaveable { mutableStateOf(false) }
+	val activeTasks = snapshot.tasks.filterNot { it.awarded }
+	val completedTasks = snapshot.tasks.filter { it.awarded }
+	Surface(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		shape = RoundedCornerShape(22.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
+		border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)),
+	) {
+		Column(
+			modifier = Modifier.padding(14.dp),
+			verticalArrangement = Arrangement.spacedBy(10.dp),
+		) {
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(10.dp),
+			) {
 				Column(modifier = Modifier.weight(1f)) {
 					Text(
-						text = profile.displayName.ifBlank { stringResource(R.string.reader_journey_default_profile_name) },
-						style = MaterialTheme.typography.titleLarge,
+						text = "Weekly Journey",
+						style = MaterialTheme.typography.titleMedium,
 						fontWeight = FontWeight.Bold,
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
 					)
 					Text(
-						text = selectedTitle?.let { stringResource(it.titleRes) }
-							?: stringResource(R.string.reader_journey_no_title),
-						style = MaterialTheme.typography.bodyMedium,
-						color = frameAccent,
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
-					)
-					Text(
-						text = stringResource(progress.rank.titleRes),
+						text = "Selesaikan 3 task apa saja untuk +" +
+							ReaderJourneyRules.WEEKLY_COMPLETION_BONUS_XP +
+							" XP. Progress tercatat otomatis.",
 						style = MaterialTheme.typography.bodySmall,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 					)
 				}
-				TextButton(onClick = onEdit) {
-					Text(stringResource(R.string.reader_journey_edit_profile))
-				}
-			}
-
-			Row(
-				modifier = Modifier.fillMaxWidth(),
-				horizontalArrangement = Arrangement.spacedBy(12.dp),
-			) {
-				ProfileFact(
-					label = stringResource(R.string.reader_journey_profile_level),
-					value = "Lv." + progress.level,
-					modifier = Modifier.weight(1f),
-				)
-				ProfileFact(
-					label = stringResource(R.string.reader_journey_profile_lifetime_xp),
-					value = stats.lifetimeXp.toString() + " XP",
-					modifier = Modifier.weight(1f),
+				Text(
+					text = snapshot.completedTaskCount
+						.coerceAtMost(ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS)
+						.toString() + "/" + ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS,
+					style = MaterialTheme.typography.titleMedium,
+					fontWeight = FontWeight.Bold,
+					color = MaterialTheme.colorScheme.primary,
 				)
 			}
-			Row(
-				modifier = Modifier.fillMaxWidth(),
-				horizontalArrangement = Arrangement.spacedBy(12.dp),
-			) {
-				ProfileFact(
-					label = stringResource(R.string.reader_journey_profile_verified_chapters),
-					value = stats.journeyCompletedChapters.toString(),
-					modifier = Modifier.weight(1f),
-				)
-				ProfileFact(
-					label = stringResource(R.string.reader_journey_profile_verified_titles),
-					value = stats.journeyTitleCount.toString(),
-					modifier = Modifier.weight(1f),
+			if (snapshot.completionBonusAwarded) {
+				Text(
+					text = "Bonus mingguan sudah diperoleh. Journey berlanjut kapan pun kamu kembali.",
+					style = MaterialTheme.typography.labelMedium,
+					color = MaterialTheme.colorScheme.primary,
 				)
 			}
-
-			Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-				Row(
-					modifier = Modifier.fillMaxWidth(),
-					verticalAlignment = Alignment.CenterVertically,
+			val visibleTasks = if (showCompletedTasks) activeTasks + completedTasks else activeTasks
+			visibleTasks.forEach { task ->
+				Surface(
+					shape = RoundedCornerShape(16.dp),
+					color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f),
 				) {
-					Text(
-						text = stringResource(R.string.stats_level_progress),
-						style = MaterialTheme.typography.labelMedium,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-						modifier = Modifier.weight(1f),
-					)
-					Text(
-						text = progress.xpForNextLevel?.let { next ->
-							"${progress.xpIntoLevel} / $next XP"
-						} ?: stringResource(R.string.reader_journey_lifetime_xp, progress.lifetimeXp),
-						style = MaterialTheme.typography.labelMedium,
-						fontWeight = FontWeight.SemiBold,
-						color = progressAccent,
-					)
-				}
-				LinearProgressIndicator(
-					progress = { progress.levelFraction },
-					color = progressAccent,
-					trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
-					modifier = Modifier
-						.fillMaxWidth()
-						.height(8.dp)
-						.clip(RoundedCornerShape(8.dp)),
-				)
-			}
-
-			Surface(
-				shape = RoundedCornerShape(18.dp),
-				color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f),
-			) {
-				Column(
-					modifier = Modifier
-						.fillMaxWidth()
-						.padding(horizontal = 14.dp, vertical = 11.dp),
-					verticalArrangement = Arrangement.spacedBy(3.dp),
-				) {
-					Text(
-						text = stringResource(stats.readingPersonality.titleRes),
-						style = MaterialTheme.typography.labelLarge,
-						fontWeight = FontWeight.SemiBold,
-						color = frameAccent,
-					)
-					Text(
-						text = stringResource(
-							R.string.reader_journey_profile_manga_novel,
-							stats.journeyMangaChapters,
-							stats.journeyNovelChapters,
-						),
-						style = MaterialTheme.typography.bodySmall,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
-				}
-			}
-
-			val showcased = profile.showcase.mapNotNull { id ->
-				stats.achievements.firstOrNull { it.id == id && it.isUnlocked }?.id
-			}
-			if (showcased.isNotEmpty()) {
-				Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-					Text(
-						text = stringResource(R.string.reader_journey_showcase),
-						style = MaterialTheme.typography.labelLarge,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
-					Text(
-						text = showcased.joinToString(" • ") { id -> context.getString(id.titleRes) },
-						style = MaterialTheme.typography.bodyMedium,
-					)
+					Column(
+						modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+						verticalArrangement = Arrangement.spacedBy(7.dp),
+					) {
+						Row(verticalAlignment = Alignment.CenterVertically) {
+							Column(modifier = Modifier.weight(1f)) {
+								Text(
+									text = weeklyTaskTitle(task.id),
+									style = MaterialTheme.typography.labelLarge,
+									fontWeight = FontWeight.SemiBold,
+								)
+								Text(
+									text = weeklyDifficultyLabel(task.id.difficulty) +
+										" · +" + task.id.rewardXp + " XP",
+									style = MaterialTheme.typography.bodySmall,
+									color = MaterialTheme.colorScheme.onSurfaceVariant,
+								)
+							}
+							Text(
+								text = if (task.awarded) {
+									"Selesai"
+								} else {
+									task.progress.toString() + "/" + task.id.target
+								},
+								style = MaterialTheme.typography.labelMedium,
+								fontWeight = FontWeight.Bold,
+								color = if (task.awarded) {
+									MaterialTheme.colorScheme.primary
+								} else {
+									MaterialTheme.colorScheme.onSurfaceVariant
+								},
+							)
+						}
+						LinearProgressIndicator(
+							progress = { task.fraction },
+							modifier = Modifier
+								.fillMaxWidth()
+								.height(6.dp)
+								.clip(RoundedCornerShape(6.dp)),
+						)
+						if (!task.awarded && !task.isComplete && snapshot.rerollsRemaining > 0) {
+							Column {
+								TextButton(onClick = { onReroll(task.id) }) {
+									Text(
+										"Reroll · " + snapshot.rerollsRemaining + " gratis tersisa",
+									)
+								}
+								Text(
+									text = "Reroll mengganti task ini dengan task mingguan lain. Progres task ini tidak dibawa ke task pengganti.",
+									style = MaterialTheme.typography.bodySmall,
+									color = MaterialTheme.colorScheme.onSurfaceVariant,
+								)
+							}
+						}
+					}
 				}
 			}
-
-			Row(
-				modifier = Modifier.fillMaxWidth(),
-				horizontalArrangement = Arrangement.End,
-			) {
-				TextButton(onClick = onEditCosmetics) {
-					Text(stringResource(R.string.reader_journey_cosmetics_customize))
+			if (completedTasks.isNotEmpty()) {
+				TextButton(onClick = { showCompletedTasks = !showCompletedTasks }) {
+					Text(
+						if (showCompletedTasks) {
+							"Sembunyikan task selesai (" + completedTasks.size + ")"
+						} else {
+							"Lihat task selesai (" + completedTasks.size + ")"
+						},
+					)
 				}
 			}
 		}
 	}
 }
 
-private val ReaderRank.cosmeticStage: Float
-	get() = if (ReaderRank.entries.size <= 1) 0f else ordinal.toFloat() / ReaderRank.entries.lastIndex.toFloat()
+@Composable
+private fun JourneyXpHistoryCard(
+	items: List<ReaderJourneyXpHistoryItem>,
+	preservedXp: Long,
+) {
+	Surface(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		shape = RoundedCornerShape(22.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
+		border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)),
+	) {
+		Column(
+			modifier = Modifier.padding(14.dp),
+			verticalArrangement = Arrangement.spacedBy(9.dp),
+		) {
+			Text(
+				text = "Riwayat XP",
+				style = MaterialTheme.typography.titleMedium,
+				fontWeight = FontWeight.Bold,
+			)
+			Text(
+				text = "Rincian privat tentang dari mana XP Journey terbaru diperoleh.",
+				style = MaterialTheme.typography.bodySmall,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+			)
+			if (preservedXp > 0L) {
+				Surface(
+					shape = RoundedCornerShape(14.dp),
+					color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
+				) {
+					Column(
+						modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+						verticalArrangement = Arrangement.spacedBy(2.dp),
+					) {
+						Text(
+							text = "Progres dipertahankan · +" + formatJourneyNumber(preservedXp) + " XP",
+							style = MaterialTheme.typography.labelLarge,
+							fontWeight = FontWeight.SemiBold,
+						)
+						Text(
+							text = "XP lama / hasil sinkronisasi privat yang dipertahankan agar progres dan rank tidak turun. Ini bukan XP baru.",
+							style = MaterialTheme.typography.bodySmall,
+							color = MaterialTheme.colorScheme.onSurfaceVariant,
+						)
+					}
+				}
+			}
+			if (items.isEmpty()) {
+				Text(
+					text = "Belum ada event XP. Baca seperti biasa dan progres akan muncul di sini.",
+					style = MaterialTheme.typography.bodyMedium,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+			} else {
+				items.take(8).forEach { item ->
+					Row(
+						modifier = Modifier.fillMaxWidth(),
+						verticalAlignment = Alignment.CenterVertically,
+						horizontalArrangement = Arrangement.spacedBy(10.dp),
+					) {
+						Column(modifier = Modifier.weight(1f)) {
+							Text(
+								text = xpHistoryLabel(item),
+								style = MaterialTheme.typography.labelLarge,
+								fontWeight = FontWeight.SemiBold,
+							)
+							Text(
+								text = formatJourneyEventTime(item.occurredAt),
+								style = MaterialTheme.typography.bodySmall,
+								color = MaterialTheme.colorScheme.onSurfaceVariant,
+							)
+						}
+						Text(
+							text = "+" + item.xp + " XP",
+							style = MaterialTheme.typography.labelLarge,
+							fontWeight = FontWeight.Bold,
+							color = MaterialTheme.colorScheme.primary,
+						)
+					}
+				}
+			}
+		}
+	}
+}
 
-@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun xpHistoryLabel(item: ReaderJourneyXpHistoryItem): String = when (item.source) {
+	ReaderJourneyXpSource.EXPLORATION -> when (item.context) {
+		"NEW_TITLE" -> "Eksplorasi judul baru"
+		"DIVERSE_5" -> "5 chapter · beberapa judul"
+		else -> xpSourceLabel(item.source)
+	}
+	ReaderJourneyXpSource.WEEKLY_TASK -> {
+		val task = item.context?.let { context ->
+			ReaderJourneyWeeklyTaskId.entries.find { it.name == context }
+		}
+		if (task == null) xpSourceLabel(item.source) else "Weekly · " + weeklyTaskTitle(task)
+	}
+	ReaderJourneyXpSource.ACHIEVEMENT -> {
+		val achievement = item.context?.let { context ->
+			ReaderAchievementId.entries.find { it.name == context }
+		}
+		if (achievement == null) xpSourceLabel(item.source)
+		else "Achievement · " + stringResource(achievement.titleRes)
+	}
+	else -> xpSourceLabel(item.source)
+}
+
+private fun weeklyDifficultyLabel(difficulty: ReaderJourneyTaskDifficulty): String = when (difficulty) {
+	ReaderJourneyTaskDifficulty.EASY -> "Easy"
+	ReaderJourneyTaskDifficulty.STANDARD -> "Standard"
+	ReaderJourneyTaskDifficulty.STRETCH -> "Stretch · opsional"
+}
+
+private fun weeklyTaskTitle(id: ReaderJourneyWeeklyTaskId): String = when (id) {
+	ReaderJourneyWeeklyTaskId.READ_3_CHAPTERS -> "Selesaikan 3 chapter"
+	ReaderJourneyWeeklyTaskId.READ_2_DAYS -> "Baca pada 2 hari berbeda"
+	ReaderJourneyWeeklyTaskId.READ_2_TITLES -> "Baca 2 judul berbeda"
+	ReaderJourneyWeeklyTaskId.READ_1_NOVEL -> "Selesaikan 1 chapter novel"
+	ReaderJourneyWeeklyTaskId.READ_5_CHAPTERS -> "Selesaikan 5 chapter"
+	ReaderJourneyWeeklyTaskId.TRY_NEW_TITLE -> "Coba 1 judul yang belum pernah dibaca"
+	ReaderJourneyWeeklyTaskId.READ_4_MANGA -> "Selesaikan 4 chapter manga"
+	ReaderJourneyWeeklyTaskId.READ_2_NOVELS -> "Selesaikan 2 chapter novel"
+	ReaderJourneyWeeklyTaskId.READ_3_DAYS -> "Baca pada 3 hari berbeda"
+}
+
+private fun xpSourceLabel(source: ReaderJourneyXpSource): String = when (source) {
+	ReaderJourneyXpSource.READING_COMPLETION -> "Chapter terverifikasi"
+	ReaderJourneyXpSource.REREAD -> "Reread"
+	ReaderJourneyXpSource.EXPLORATION -> "Eksplorasi judul baru"
+	ReaderJourneyXpSource.WEEKLY_TASK -> "Weekly Journey"
+	ReaderJourneyXpSource.WEEKLY_BONUS -> "Bonus Weekly Journey"
+	ReaderJourneyXpSource.ACHIEVEMENT -> "Achievement"
+	ReaderJourneyXpSource.RESTED -> "Rested XP"
+	ReaderJourneyXpSource.WELCOME_BACK -> "Welcome Back"
+	ReaderJourneyXpSource.ACTIVE_DAYS -> "Active Reading Days"
+	ReaderJourneyXpSource.MIXED_FORMAT -> "Bonus Manga + Novel"
+}
+
+private fun formatJourneyEventTime(timestamp: Long): String =
+	Instant.ofEpochMilli(timestamp)
+		.atZone(ZoneId.systemDefault())
+		.format(DateTimeFormatter.ofPattern("MMM d · HH:mm", Locale.getDefault()))
+
+@Composable
+private fun ReaderJourneyXpGuideCard() {
+	val mangaXp = ReaderJourneyRules.MANGA_COMPLETION_XP
+	val novelMinXp = ReaderJourneyRules.novelCompletionXp(0)
+	val novelMaxXp = ReaderJourneyRules.novelCompletionXp(Int.MAX_VALUE)
+	val rereadXp = ReaderJourneyRules.REREAD_XP
+	val maxRereads = ReaderJourneyRules.MAX_REREAD_AWARDS
+
+	Surface(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		shape = RoundedCornerShape(22.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
+		border = BorderStroke(
+			width = 1.dp,
+			color = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+		),
+	) {
+		Column(
+			modifier = Modifier.padding(14.dp),
+			verticalArrangement = Arrangement.spacedBy(10.dp),
+		) {
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(10.dp),
+			) {
+				Icon(
+					painter = painterResource(R.drawable.ic_info_outline),
+					contentDescription = null,
+					tint = MaterialTheme.colorScheme.primary,
+					modifier = Modifier.size(20.dp),
+				)
+				Column(modifier = Modifier.weight(1f)) {
+					Text(
+						text = stringResource(R.string.reader_journey_xp_guide_title),
+						style = MaterialTheme.typography.titleMedium,
+						fontWeight = FontWeight.Bold,
+					)
+					Text(
+						text = stringResource(R.string.reader_journey_xp_guide_subtitle),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+			}
+			ReaderJourneyXpRuleRow(
+				label = stringResource(R.string.reader_journey_xp_manga_completion),
+				value = stringResource(R.string.reader_journey_xp_value, mangaXp),
+			)
+			ReaderJourneyXpRuleRow(
+				label = stringResource(R.string.reader_journey_xp_novel_completion),
+				value = stringResource(R.string.reader_journey_xp_range, novelMinXp, novelMaxXp),
+			)
+			ReaderJourneyXpRuleRow(
+				label = stringResource(R.string.reader_journey_xp_reread),
+				value = stringResource(R.string.reader_journey_xp_reread_value, rereadXp, maxRereads),
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Weekly Journey",
+				value = "6 task · selesaikan 3 · +" + ReaderJourneyRules.WEEKLY_COMPLETION_BONUS_XP + " XP",
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Achievement",
+				value = "Bonus XP satu kali, tidak dapat diklaim ulang",
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Rested / Welcome Back",
+				value = "Bonus comeback terbatas; tidak ada penalti saat istirahat",
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Marathon reading",
+				value = "Setelah " + ReaderJourneyRules.SOFT_DAILY_READING_XP +
+					" XP reading/hari, reward tetap ada dengan diminishing return",
+			)
+			Text(
+				text = stringResource(R.string.reader_journey_xp_exclusions),
+				style = MaterialTheme.typography.bodySmall,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+			)
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyXpRuleRow(
+	label: String,
+	value: String,
+) {
+	Surface(
+		shape = RoundedCornerShape(14.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f),
+	) {
+		Column(
+			modifier = Modifier
+				.fillMaxWidth()
+				.padding(horizontal = 12.dp, vertical = 9.dp),
+			verticalArrangement = Arrangement.spacedBy(3.dp),
+		) {
+			Text(
+				text = label,
+				style = MaterialTheme.typography.labelMedium,
+				fontWeight = FontWeight.SemiBold,
+				color = MaterialTheme.colorScheme.onSurface,
+			)
+			Text(
+				text = value,
+				style = MaterialTheme.typography.bodySmall,
+				fontWeight = FontWeight.Medium,
+				color = MaterialTheme.colorScheme.primary,
+			)
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyThemeCard(
+	stats: ReadingStats,
+	profile: ReaderProfileSettings,
+	onCustomize: () -> Unit,
+) {
+	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
+	val currentThemeName = when (profile.cosmetics.mode) {
+		ReaderJourneyCosmeticMode.DEFAULT ->
+			stringResource(R.string.reader_journey_share_profile_theme_default)
+		ReaderJourneyCosmeticMode.AUTO ->
+			RankThemeId.forRank(progress.rank).displayName
+		ReaderJourneyCosmeticMode.FULL_SET,
+		ReaderJourneyCosmeticMode.CUSTOM ->
+			RankThemeId.fromStableId(profile.cosmetics.selectedThemeId)?.displayName
+				?: RankThemeId.forRank(progress.rank).displayName
+	}
+	val shape = RoundedCornerShape(22.dp)
+
+	Surface(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		shape = shape,
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.84f),
+		border = BorderStroke(
+			width = 1.dp,
+			color = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
+		),
+	) {
+		Column(
+			modifier = Modifier.padding(14.dp),
+			verticalArrangement = Arrangement.spacedBy(12.dp),
+		) {
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(12.dp),
+			) {
+				Column(modifier = Modifier.weight(1f)) {
+					Text(
+						text = stringResource(R.string.reader_journey_profile_current_theme),
+						style = MaterialTheme.typography.labelMedium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+					Text(
+						text = currentThemeName,
+						style = MaterialTheme.typography.titleMedium,
+						fontWeight = FontWeight.Bold,
+						color = MaterialTheme.colorScheme.onSurface,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
+					)
+				}
+				Box(
+					modifier = Modifier
+						.size(width = 96.dp, height = 58.dp)
+						.clip(RoundedCornerShape(14.dp))
+						.background(
+							Brush.linearGradient(
+								listOf(
+									MaterialTheme.colorScheme.primaryContainer,
+									MaterialTheme.colorScheme.tertiaryContainer,
+								),
+							),
+						)
+						.border(
+							1.dp,
+							MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+							RoundedCornerShape(14.dp),
+						),
+				)
+			}
+			Button(
+				onClick = onCustomize,
+				modifier = Modifier.fillMaxWidth(),
+			) {
+				Text(stringResource(R.string.reader_journey_theme_customize_action))
+			}
+		}
+	}
+}
+
+private fun formatJourneyNumber(value: Long): String =
+	java.text.NumberFormat.getIntegerInstance(Locale.getDefault()).format(value)
+
 @Composable
 private fun ReaderCosmeticsEditorSheet(
 	currentRank: ReaderRank,
 	loadout: ReaderJourneyCosmeticLoadout,
+	initialThemeId: String?,
 	onDismiss: () -> Unit,
 	onSave: (ReaderJourneyCosmeticLoadout) -> Unit,
 ) {
-	val unlockedRanks = remember(currentRank) { ReaderJourneyCosmetics.unlockedRanks(currentRank) }
-	var draft by remember(loadout) { mutableStateOf(loadout) }
-
-	ModalBottomSheet(
-		onDismissRequest = onDismiss,
-		sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-	) {
-		LazyColumn(
-			modifier = Modifier
-				.fillMaxWidth()
-				.heightIn(max = 650.dp),
-			contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
-			verticalArrangement = Arrangement.spacedBy(14.dp),
-		) {
-			item("cosmetic-title") {
-				Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-					Text(
-						text = stringResource(R.string.reader_journey_cosmetics_title),
-						style = MaterialTheme.typography.headlineSmall,
-						fontWeight = FontWeight.Bold,
-					)
-					Text(
-						text = stringResource(
-							R.string.reader_journey_cosmetics_summary,
-							unlockedRanks.size,
-							ReaderRank.entries.size,
-						),
-						style = MaterialTheme.typography.bodyMedium,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
-					Text(
-						text = stringResource(R.string.reader_journey_cosmetics_auto_summary),
-						style = MaterialTheme.typography.bodySmall,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
-				}
-			}
-			items(
-				items = ReaderJourneyCosmeticSlot.entries,
-				key = { slot -> slot.name },
-			) { slot ->
-				CosmeticSlotPicker(
-					slot = slot,
-					currentRank = currentRank,
-					unlockedRanks = unlockedRanks,
-					selectedRank = draft.selected(slot),
-					onSelect = { rank -> draft = draft.withSelection(slot, rank) },
-				)
-			}
-			item("cosmetic-save") {
-				Row(
-					modifier = Modifier.fillMaxWidth(),
-					horizontalArrangement = Arrangement.End,
-				) {
-					TextButton(onClick = onDismiss) {
-						Text(stringResource(android.R.string.cancel))
-					}
-					Button(onClick = { onSave(draft) }) {
-						Text(stringResource(R.string.save))
-					}
-				}
-			}
-		}
-	}
+	ReaderJourneyExclusiveCustomizerDialog(
+		currentRank = currentRank,
+		loadout = loadout,
+		initialThemeId = initialThemeId,
+		onDismiss = onDismiss,
+		onApply = onSave,
+	)
 }
 
 @Composable
-private fun CosmeticSlotPicker(
-	slot: ReaderJourneyCosmeticSlot,
-	currentRank: ReaderRank,
-	unlockedRanks: List<ReaderRank>,
-	selectedRank: ReaderRank?,
-	onSelect: (ReaderRank?) -> Unit,
+private fun ReaderAvatar(
+	profile: ReaderProfileSettings,
+	imageLoader: ImageLoader,
+	fallbackColor: Color,
 ) {
-	Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+	Box(
+		modifier = Modifier.fillMaxSize(),
+		contentAlignment = Alignment.Center,
+	) {
 		Text(
-			text = stringResource(slot.titleRes),
-			style = MaterialTheme.typography.titleMedium,
-			fontWeight = FontWeight.SemiBold,
+			text = profile.initial,
+			style = MaterialTheme.typography.headlineMedium,
+			fontWeight = FontWeight.Bold,
+			color = fallbackColor,
 		)
-		LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-			item("auto") {
-				FilterChip(
-					selected = selectedRank == null,
-					onClick = { onSelect(null) },
-					label = {
-						Text(
-							stringResource(
-								R.string.reader_journey_cosmetics_auto_rank,
-								stringResource(currentRank.titleRes),
-							),
-						)
-					},
-				)
-			}
-			items(unlockedRanks, key = { rank -> rank.name }) { rank ->
-				FilterChip(
-					selected = selectedRank == rank,
-					onClick = { onSelect(rank) },
-					label = { Text(stringResource(rank.titleRes)) },
-				)
-			}
+		profile.avatarPath?.let { avatarPath ->
+			AsyncImage(
+				model = ImageRequest.Builder(LocalContext.current)
+					.data(avatarPath)
+					.crossfade(true)
+					.build(),
+				imageLoader = imageLoader,
+				contentDescription = stringResource(R.string.reader_journey_avatar),
+				contentScale = ContentScale.Crop,
+				modifier = Modifier
+					.fillMaxSize()
+					.clip(CircleShape),
+			)
 		}
-	}
-}
-
-private val ReaderJourneyCosmeticSlot.titleRes: Int
-	@StringRes get() = when (this) {
-		ReaderJourneyCosmeticSlot.FRAME -> R.string.reader_journey_cosmetic_frame
-		ReaderJourneyCosmeticSlot.GLOW -> R.string.reader_journey_cosmetic_glow
-		ReaderJourneyCosmeticSlot.BACKGROUND -> R.string.reader_journey_cosmetic_background
-		ReaderJourneyCosmeticSlot.PROGRESS_BAR -> R.string.reader_journey_cosmetic_progress
-	}
-
-@Composable
-private fun ProfileFact(label: String, value: String, modifier: Modifier = Modifier) {
-	Column(modifier = modifier, horizontalAlignment = Alignment.Start) {
-		Text(
-			text = label,
-			style = MaterialTheme.typography.labelSmall,
-			color = MaterialTheme.colorScheme.onSurfaceVariant,
-		)
-		Text(
-			text = value,
-			style = MaterialTheme.typography.labelLarge,
-			fontWeight = FontWeight.SemiBold,
-			maxLines = 1,
-			overflow = TextOverflow.Ellipsis,
-		)
 	}
 }
 
@@ -686,12 +1450,14 @@ private fun ProfileFact(label: String, value: String, modifier: Modifier = Modif
 private fun ReaderProfileEditorSheet(
 	profile: ReaderProfileSettings,
 	unlockedAchievements: List<ReaderAchievementId>,
+	onPickAvatar: () -> Unit,
+	onRemoveAvatar: () -> Unit,
 	onDismiss: () -> Unit,
 	onSave: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
 ) {
-	var displayName by remember(profile) { mutableStateOf(profile.displayName) }
-	var selectedTitle by remember(profile) { mutableStateOf(profile.selectedTitle?.takeIf { it in unlockedAchievements }) }
-	var showcase by remember(profile) {
+	var displayName by remember { mutableStateOf(profile.displayName) }
+	var selectedTitle by remember { mutableStateOf(profile.selectedTitle?.takeIf { it in unlockedAchievements }) }
+	var showcase by remember {
 		mutableStateOf(profile.showcase.filter { it in unlockedAchievements }.take(3))
 	}
 	ModalBottomSheet(
@@ -711,6 +1477,21 @@ private fun ReaderProfileEditorSheet(
 					style = MaterialTheme.typography.headlineSmall,
 					fontWeight = FontWeight.Bold,
 				)
+			}
+			item("avatar-actions") {
+				Row(
+					modifier = Modifier.fillMaxWidth(),
+					horizontalArrangement = Arrangement.spacedBy(8.dp),
+				) {
+					TextButton(onClick = onPickAvatar) {
+						Text(stringResource(R.string.reader_journey_choose_avatar))
+					}
+					if (profile.avatarPath != null) {
+						TextButton(onClick = onRemoveAvatar) {
+							Text(stringResource(R.string.reader_journey_remove_avatar))
+						}
+					}
+				}
 			}
 			item("display-name") {
 				OutlinedTextField(
@@ -794,13 +1575,13 @@ private val ReadingPersonality.titleRes: Int
 private enum class ReaderJourneySection {
 	OVERVIEW,
 	STATISTICS,
-	ACHIEVEMENTS,
+	COLLECTION,
 }
 
 @Composable
 private fun ReaderJourneySectionSelector(
 	selected: ReaderJourneySection,
-	showAchievements: Boolean,
+	showCollection: Boolean,
 	onSelect: (ReaderJourneySection) -> Unit,
 ) {
 	val shape = RoundedCornerShape(22.dp)
@@ -815,7 +1596,7 @@ private fun ReaderJourneySectionSelector(
 		horizontalArrangement = Arrangement.spacedBy(4.dp),
 	) {
 		val visibleEntries = ReaderJourneySection.entries.filter {
-			showAchievements || it != ReaderJourneySection.ACHIEVEMENTS
+			showCollection || it != ReaderJourneySection.COLLECTION
 		}
 		visibleEntries.forEach { entry ->
 			val active = entry == selected
@@ -854,7 +1635,7 @@ private val ReaderJourneySection.titleRes: Int
 	@StringRes get() = when (this) {
 		ReaderJourneySection.OVERVIEW -> R.string.reader_journey_overview
 		ReaderJourneySection.STATISTICS -> R.string.reader_journey_statistics
-		ReaderJourneySection.ACHIEVEMENTS -> R.string.reader_journey_achievements
+		ReaderJourneySection.COLLECTION -> R.string.reader_journey_collection
 	}
 
 @Composable
@@ -1192,7 +1973,7 @@ private fun StatsFilterRow(
 		}
 		LazyRow(
 			modifier = Modifier.weight(1f),
-			contentPadding = PaddingValues(horizontal = 1.dp),
+			contentPadding = PaddingValues(horizontal = 8.dp),
 			horizontalArrangement = Arrangement.spacedBy(8.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
@@ -1489,6 +2270,12 @@ private fun YearInReviewCard(
 				}
 				Column(modifier = Modifier.weight(1f)) {
 					Text(
+						text = stringResource(R.string.reader_journey_year_statistics_label),
+						style = MaterialTheme.typography.labelSmall,
+						fontWeight = FontWeight.SemiBold,
+						color = MaterialTheme.colorScheme.tertiary,
+					)
+					Text(
 						text = stringResource(R.string.reader_journey_year_in_review, review.year),
 						style = MaterialTheme.typography.titleLarge,
 						fontWeight = FontWeight.Bold,
@@ -1509,21 +2296,21 @@ private fun YearInReviewCard(
 				)
 			} else {
 				YearReviewMetricRow(
-					firstLabel = stringResource(R.string.stats_read_time),
+					firstLabel = stringResource(R.string.reader_journey_year_read_time),
 					firstValue = formatDurationShort(resources, review.totalDuration),
-					secondLabel = stringResource(R.string.stats_chapters),
+					secondLabel = stringResource(R.string.reader_journey_year_chapters),
 					secondValue = review.chapters.toString(),
 				)
 				YearReviewMetricRow(
-					firstLabel = stringResource(R.string.stats_days),
+					firstLabel = stringResource(R.string.reader_journey_year_active_days),
 					firstValue = review.activeDays.toString(),
-					secondLabel = stringResource(R.string.stats_titles_read),
+					secondLabel = stringResource(R.string.reader_journey_year_titles),
 					secondValue = review.titleCount.toString(),
 				)
 				YearReviewMetricRow(
-					firstLabel = stringResource(R.string.stats_scope_manga),
+					firstLabel = stringResource(R.string.reader_journey_year_manga_chapters),
 					firstValue = review.mangaChapters.toString(),
-					secondLabel = stringResource(R.string.stats_scope_novel),
+					secondLabel = stringResource(R.string.reader_journey_year_novel_chapters),
 					secondValue = review.novelChapters.toString(),
 				)
 				Text(
@@ -1808,8 +2595,14 @@ private fun TopPickSection(
 @Composable
 private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 	val today = remember { LocalDate.now() }
+	val startDay = remember(today) { today.minusWeeks(19).minusDays(today.dayOfWeek.value.toLong() - 1L) }
 	val byDay = remember(days) { days.associateBy { it.epochDay } }
-	val todayStats = byDay[today.toEpochDay()]
+	var selectedEpochDay by rememberSaveable { mutableStateOf(today.toEpochDay()) }
+	val selectedDate = LocalDate.ofEpochDay(selectedEpochDay)
+	val selectedStats = byDay[selectedEpochDay]
+	val resources = LocalContext.current.resources
+	val dateFormatter = remember { DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.getDefault()) }
+	val monthFormatter = remember { DateTimeFormatter.ofPattern("MMM", Locale.getDefault()) }
 	Column {
 		StatsSectionHeader(title = stringResource(R.string.stats_reading_heatmap))
 		StatsCard {
@@ -1818,8 +2611,30 @@ private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 				style = MaterialTheme.typography.bodySmall,
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 			)
-			Spacer(Modifier.height(14.dp))
-			ReadingHeatmapGrid(days)
+			Spacer(Modifier.height(10.dp))
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.SpaceBetween,
+			) {
+				Text(startDay.format(monthFormatter), style = MaterialTheme.typography.labelSmall)
+				Text(today.format(monthFormatter), style = MaterialTheme.typography.labelSmall)
+			}
+			Spacer(Modifier.height(6.dp))
+			ReadingHeatmapGrid(
+				days = days,
+				selectedEpochDay = selectedEpochDay,
+				onDaySelected = { selectedEpochDay = it },
+			)
+			Spacer(Modifier.height(10.dp))
+			HeatmapLegend()
+			if (days.none { it.duration > 0L || it.sessions > 0 }) {
+				Spacer(Modifier.height(10.dp))
+				Text(
+					text = stringResource(R.string.stats_heatmap_empty_period),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+			}
 			Spacer(Modifier.height(14.dp))
 			Surface(
 				shape = RoundedCornerShape(18.dp),
@@ -1832,19 +2647,24 @@ private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 					verticalAlignment = Alignment.CenterVertically,
 				) {
 					Text(
-						text = today.format(DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.getDefault())),
+						text = selectedDate.format(dateFormatter),
 						style = MaterialTheme.typography.bodyMedium,
 						fontWeight = FontWeight.SemiBold,
 						modifier = Modifier.weight(1f),
 					)
 					Text(
-						text = if ((todayStats?.sessions ?: 0) == 0) {
+						text = if ((selectedStats?.sessions ?: 0) == 0 && (selectedStats?.duration ?: 0L) <= 0L) {
 							stringResource(R.string.stats_no_activity)
 						} else {
-							stringResource(R.string.stats_activity_count, todayStats?.sessions ?: 0)
+							stringResource(
+								R.string.stats_heatmap_activity_detail,
+								formatDurationShort(resources, selectedStats?.duration ?: 0L),
+								selectedStats?.sessions ?: 0,
+							)
 						},
 						style = MaterialTheme.typography.bodySmall,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
+						textAlign = TextAlign.End,
 					)
 				}
 			}
@@ -1853,17 +2673,82 @@ private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 }
 
 @Composable
-private fun ReadingHeatmapGrid(days: List<StatsHeatmapDay>) {
+private fun HeatmapLegend() {
+	val empty = MaterialTheme.colorScheme.surfaceContainerHighest
+	val active = MaterialTheme.colorScheme.primary
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.End,
+	) {
+		Text(
+			text = stringResource(R.string.stats_heatmap_less),
+			style = MaterialTheme.typography.labelSmall,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+		)
+		Spacer(Modifier.width(6.dp))
+		(0..4).forEach { level ->
+			val color = if (level == 0) empty.copy(alpha = 0.36f)
+			else lerp(active.copy(alpha = 0.22f), active, level / 4f)
+			Box(
+				Modifier
+					.padding(horizontal = 1.5.dp)
+					.size(12.dp)
+					.clip(RoundedCornerShape(3.dp))
+					.background(color),
+			)
+		}
+		Spacer(Modifier.width(6.dp))
+		Text(
+			text = stringResource(R.string.stats_heatmap_more),
+			style = MaterialTheme.typography.labelSmall,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+		)
+	}
+}
+
+@Composable
+private fun ReadingHeatmapGrid(
+	days: List<StatsHeatmapDay>,
+	selectedEpochDay: Long,
+	onDaySelected: (Long) -> Unit,
+) {
 	val today = remember { LocalDate.now() }
 	val start = remember(today) { today.minusWeeks(19).minusDays(today.dayOfWeek.value.toLong() - 1L) }
 	val values = remember(days) { days.associateBy { it.epochDay } }
 	val maxDuration = remember(days) { days.maxOfOrNull { it.duration }?.coerceAtLeast(1L) ?: 1L }
 	val empty = MaterialTheme.colorScheme.surfaceContainerHighest
 	val active = MaterialTheme.colorScheme.primary
+	val selection = MaterialTheme.colorScheme.onSurface
+	val accessibilityLabel = stringResource(R.string.stats_heatmap_accessibility)
 	Canvas(
 		modifier = Modifier
 			.fillMaxWidth()
-			.height(126.dp),
+			.height(126.dp)
+			.semantics { contentDescription = accessibilityLabel }
+			.pointerInput(start) {
+				detectTapGestures { offset ->
+					val columns = 20
+					val rows = 7
+					val gap = 3.5.dp.toPx()
+					val cell = minOf(
+						(size.width - gap * (columns - 1)) / columns,
+						(size.height - gap * (rows - 1)) / rows,
+					)
+					val gridWidth = cell * columns + gap * (columns - 1)
+					val left = (size.width - gridWidth) / 2f
+					val column = ((offset.x - left) / (cell + gap)).toInt()
+					val row = (offset.y / (cell + gap)).toInt()
+					if (column in 0 until columns && row in 0 until rows) {
+						val localX = offset.x - left - column * (cell + gap)
+						val localY = offset.y - row * (cell + gap)
+						if (localX in 0f..cell && localY in 0f..cell) {
+							val day = start.plusDays((column * rows + row).toLong())
+							if (!day.isAfter(today)) onDaySelected(day.toEpochDay())
+						}
+					}
+				}
+			},
 	) {
 		val columns = 20
 		val rows = 7
@@ -1879,20 +2764,34 @@ private fun ReadingHeatmapGrid(days: List<StatsHeatmapDay>) {
 				val day = start.plusDays((column * rows + row).toLong())
 				val value = values[day.toEpochDay()]?.duration ?: 0L
 				val ratio = (value.toFloat() / maxDuration).coerceIn(0f, 1f)
-				val color = if (value <= 0L) {
-					empty.copy(alpha = 0.36f)
-				} else {
-					lerp(active.copy(alpha = 0.22f), active, ratio.coerceAtLeast(0.2f))
+				val level = when {
+					value <= 0L -> 0
+					ratio <= 0.25f -> 1
+					ratio <= 0.50f -> 2
+					ratio <= 0.75f -> 3
+					else -> 4
 				}
+				val color = if (level == 0) empty.copy(alpha = 0.36f)
+				else lerp(active.copy(alpha = 0.22f), active, level / 4f)
+				val topLeft = Offset(
+					x = left + column * (cell + gap),
+					y = row * (cell + gap),
+				)
 				drawRoundRect(
 					color = color,
-					topLeft = Offset(
-						x = left + column * (cell + gap),
-						y = row * (cell + gap),
-					),
+					topLeft = topLeft,
 					size = Size(cell, cell),
 					cornerRadius = CornerRadius(cell * 0.24f, cell * 0.24f),
 				)
+				if (day.toEpochDay() == selectedEpochDay) {
+					drawRoundRect(
+						color = selection,
+						topLeft = topLeft,
+						size = Size(cell, cell),
+						cornerRadius = CornerRadius(cell * 0.24f, cell * 0.24f),
+						style = Stroke(width = 2.dp.toPx()),
+					)
+				}
 			}
 		}
 	}
@@ -1903,6 +2802,7 @@ private fun InsightCard(
 	title: String,
 	items: List<StatsInsight>,
 	icon: Int,
+	hideLabels: Boolean = false,
 ) {
 	val max = items.maxOfOrNull { it.count }?.coerceAtLeast(1) ?: 1
 	val shape = RoundedCornerShape(26.dp)
@@ -1955,10 +2855,10 @@ private fun InsightCard(
 					if (index > 0) Spacer(Modifier.height(12.dp))
 					Row(verticalAlignment = Alignment.CenterVertically) {
 						Text(
-							text = insight.label,
+							text = if (hideLabels) "Hidden genre" else sanitizeStatsLabel(insight.label),
 							style = MaterialTheme.typography.bodyMedium,
 							fontWeight = FontWeight.SemiBold,
-							maxLines = 1,
+							maxLines = 2,
 							overflow = TextOverflow.Ellipsis,
 							modifier = Modifier.weight(1f),
 						)
@@ -1980,6 +2880,11 @@ private fun InsightCard(
 			}
 		}
 	}
+}
+
+private fun sanitizeStatsLabel(label: String): String {
+	val trimmed = label.trim()
+	return trimmed.removePrefix(">").removeSuffix("<").trim()
 }
 
 @Composable

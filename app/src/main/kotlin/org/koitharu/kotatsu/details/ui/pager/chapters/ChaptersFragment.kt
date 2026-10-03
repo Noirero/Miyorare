@@ -98,7 +98,12 @@ class ChaptersFragment :
 			onDeleteClick = { item ->
 				val manga = viewModel.getMangaOrNull()
 				if (manga != null) {
-					LocalChaptersRemoveService.start(requireContext(), manga, setOf(item.chapter.id))
+					LocalChaptersRemoveService.start(
+						requireContext(),
+						manga,
+						setOf(item.chapter.id),
+						viewModel.favouriteSpace,
+					)
 				}
 			},
 		)
@@ -384,6 +389,7 @@ class ChaptersFragment :
 					requireContext(),
 					manga,
 					downloaded.mapTo(LinkedHashSet()) { it.chapter.id },
+					viewModel.favouriteSpace,
 				)
 			}
 			.setNegativeButton(android.R.string.cancel, null)

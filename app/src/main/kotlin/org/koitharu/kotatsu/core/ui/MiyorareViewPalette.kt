@@ -18,6 +18,32 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeRuntimeState
+import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
+
+data class MiyorareViewExclusiveThemeComponent(
+	val containerStops: List<Int>,
+	val borderStops: List<Int>,
+	val cardBorderStops: List<Int>,
+	val selectedStops: List<Int>,
+	val glowStops: List<Int>,
+	val iconStops: List<Int>,
+	val content: Int,
+	val mutedContent: Int,
+	val interactiveText: Int,
+	val containerMix: Float,
+	val selectedMix: Float,
+	val iconMix: Float,
+)
+
+data class MiyorareViewExclusiveTheme(
+	val stableId: String,
+	val shared: MiyorareViewExclusiveThemeComponent,
+	val navigation: MiyorareViewExclusiveThemeComponent,
+	val favourites: MiyorareViewExclusiveThemeComponent,
+	val settings: MiyorareViewExclusiveThemeComponent,
+	val details: MiyorareViewExclusiveThemeComponent,
+)
 
 /** Android View bridge for the same semantic Modern palette used by Compose. */
 data class MiyorareViewPalette(
@@ -50,6 +76,8 @@ data class MiyorareViewPalette(
 	val surfaceGradientEnd: Int,
 	val activeGradientStart: Int,
 	val activeGradientEnd: Int,
+	val exclusiveTheme: MiyorareViewExclusiveTheme? = null,
+	val rankThemeId: String? = exclusiveTheme?.stableId,
 	val customBackgroundPath: String? = null,
 	val customBackgroundBlurPath: String? = null,
 	val customBackgroundRevision: Int = 0,
@@ -80,6 +108,9 @@ fun Context.miyorareViewPalette(
 		customBackgroundPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.sharpPathOrNull(this) else null,
 		customBackgroundBlurPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.blurPathOrNull(this) else null,
 		customBackgroundRevision = if (customBackgroundActive) settings.miyorareCustomBackgroundRevision else 0,
+		rankThemeState = readerJourneyThemeRuntimeOrNull()?.state?.value,
+		allowRankTheme = privateSpec == null && (settings.isRankThemeEnabled || readerJourneyThemeRuntimeOrNull()?.state?.value?.qaState?.isActive == true),
+		reduceRankThemeEffects = settings.isRankThemeReduceGlow || settings.isRankThemeMinimalCosmetics,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
@@ -113,6 +144,9 @@ fun Context.miyorareViewPaletteFromPreferences(
 	val effectLevel = prefs.getString(VisualEffectPreferences.KEY_LEVEL, null)
 		?.let { value -> VisualEffectLevel.entries.firstOrNull { it.name == value } }
 		?: VisualEffectLevel.BALANCED
+	val reduceRankThemeEffects =
+		prefs.getBoolean(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false) ||
+			prefs.getBoolean(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
 	val customBackgroundActive = !privateFavourites &&
 		preset == MiyorareThemePreset.CUSTOM &&
 		MiyorareCustomBackgroundStore.hasBackground(this)
@@ -145,6 +179,9 @@ fun Context.miyorareViewPaletteFromPreferences(
 		} else {
 			0
 		},
+		rankThemeState = readerJourneyThemeRuntimeOrNull()?.state?.value,
+		allowRankTheme = privateSpec == null && (prefs.getBoolean(AppSettings.KEY_RANK_THEME_ENABLED, false) || readerJourneyThemeRuntimeOrNull()?.state?.value?.qaState?.isActive == true),
+		reduceRankThemeEffects = reduceRankThemeEffects,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
@@ -167,16 +204,35 @@ private fun Context.buildMiyorareViewPalette(
 	customBackgroundPath: String?,
 	customBackgroundBlurPath: String?,
 	customBackgroundRevision: Int,
+	rankThemeState: ReaderJourneyThemeRuntimeState?,
+	allowRankTheme: Boolean,
+	reduceRankThemeEffects: Boolean,
 ): MiyorareViewPalette {
 	val darkTheme = forceDark || (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
+	val resolvedExclusiveTheme = if (allowRankTheme) {
+		rankThemeState?.resolveExclusiveTheme(
+			explicitCustomAppearance = preset == MiyorareThemePreset.CUSTOM,
+			darkTheme = darkTheme,
+			amoled = amoled,
+		)
+	} else {
+		null
+	}
+	val rankThemeId = resolvedExclusiveTheme?.id?.stableId
+	val effectiveEffectLevel = if (resolvedExclusiveTheme != null && reduceRankThemeEffects) {
+		VisualEffectLevel.LIGHT
+	} else {
+		effectLevel
+	}
 	val colors = miyorareThemeColors(
 		preset = preset,
 		customAccent = customAccent,
 		adaptivePalette = adaptivePalette,
 		darkTheme = darkTheme,
 		amoled = amoled,
-		effectLevel = effectLevel,
+		effectLevel = effectiveEffectLevel,
+		exclusiveTheme = resolvedExclusiveTheme,
 	)
 	val scheme = colors.colorScheme
 	val palette = colors.visualPalette
@@ -210,8 +266,36 @@ private fun Context.buildMiyorareViewPalette(
 		surfaceGradientEnd = palette.surfaceGradientEnd.toArgb(),
 		activeGradientStart = palette.activeGradientStart.toArgb(),
 		activeGradientEnd = palette.activeGradientEnd.toArgb(),
+		exclusiveTheme = palette.exclusiveTheme?.toViewPalette(),
+		rankThemeId = rankThemeId,
 		customBackgroundPath = customBackgroundPath,
 		customBackgroundBlurPath = customBackgroundBlurPath,
 		customBackgroundRevision = customBackgroundRevision,
 	)
 }
+
+private fun ExclusiveThemeComponentPalette.toViewPalette(): MiyorareViewExclusiveThemeComponent =
+	MiyorareViewExclusiveThemeComponent(
+		containerStops = containerStops.map { it.toArgb() },
+		borderStops = borderStops.map { it.toArgb() },
+		cardBorderStops = cardBorderStops.map { it.toArgb() },
+		selectedStops = selectedStops.map { it.toArgb() },
+		glowStops = glowStops.map { it.toArgb() },
+		iconStops = iconStops.map { it.toArgb() },
+		content = content.toArgb(),
+		mutedContent = mutedContent.toArgb(),
+		interactiveText = interactiveText.toArgb(),
+		containerMix = containerMix,
+		selectedMix = selectedMix,
+		iconMix = iconMix,
+	)
+
+private fun ResolvedExclusiveThemePalette.toViewPalette(): MiyorareViewExclusiveTheme =
+	MiyorareViewExclusiveTheme(
+		stableId = stableId,
+		shared = shared.toViewPalette(),
+		navigation = navigation.toViewPalette(),
+		favourites = favourites.toViewPalette(),
+		settings = settings.toViewPalette(),
+		details = details.toViewPalette(),
+	)

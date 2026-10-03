@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
@@ -76,6 +77,9 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 				val navColors by navColorsState.collectAsState()
 				val showContinue by continueVisibleState.collectAsState()
 				val useLegacy by legacyNavigationState.collectAsState()
+				val visualPalette = LocalMiyorareVisualPalette.current
+				val hasExclusiveNavigation =
+					visualPalette.isModern && visualPalette.exclusiveTheme?.navigation != null
 				// Normal navigation keeps the approved Favourites glass/geometry on every destination.
 				// selectedId still moves the active indicator; only the container style remains stable.
 				val emphasizeFavourites = !privateFavouritesHost
@@ -83,20 +87,23 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 					modifier = Modifier
 						.fillMaxWidth()
 						.padding(
-							horizontal = if (emphasizeFavourites) {
-								MiyorareFavouritesVisualSpec.BOTTOM_NAV_HORIZONTAL_MARGIN_DP.dp
-							} else {
-								12.dp
+							horizontal = when {
+								hasExclusiveNavigation -> 8.dp
+								emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_HORIZONTAL_MARGIN_DP.dp
+								else -> 12.dp
 							},
-							vertical = if (emphasizeFavourites) {
-								MiyorareFavouritesVisualSpec.BOTTOM_NAV_VERTICAL_MARGIN_DP.dp
-							} else {
-								8.dp
+							vertical = when {
+								hasExclusiveNavigation -> 4.dp
+								emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_VERTICAL_MARGIN_DP.dp
+								else -> 8.dp
 							},
 						),
 					contentAlignment = Alignment.Center,
 				) {
-					if (useLegacy) {
+					// Exclusive navigation has one renderer regardless of the legacy-navigation
+					// preference. Falling into LegacyGlowNavBar here would preserve only palette
+					// colours and discard the authored silhouette/active-state/ornament identity.
+					if (useLegacy && !hasExclusiveNavigation) {
 						LegacyGlowNavBar(
 							items = items,
 							selectedId = selectedId,
@@ -121,7 +128,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 								menu.findItem(id)?.let { reselectedListener?.invoke(it) }
 							},
 							onItemLongClick = ::dispatchItemLongClick,
-							modifier = Modifier.wrapContentWidth(),
+							modifier = if (hasExclusiveNavigation) Modifier.fillMaxWidth() else Modifier.wrapContentWidth(),
 							showContinue = showContinue,
 							emphasizeFavourites = emphasizeFavourites,
 							onContinueClick = { continueClickListener?.invoke() },

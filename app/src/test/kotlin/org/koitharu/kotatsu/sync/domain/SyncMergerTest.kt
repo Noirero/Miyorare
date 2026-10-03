@@ -3,12 +3,15 @@ package org.koitharu.kotatsu.sync.domain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertSame
 import org.junit.Test
 import kotlinx.serialization.json.Json
 import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyWeeklyStateBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyXpEventBackup
 import org.koitharu.kotatsu.sync.data.model.SyncCategory
 import org.koitharu.kotatsu.sync.data.model.SyncFavourite
 import org.koitharu.kotatsu.sync.data.model.SyncFeedEntry
@@ -193,6 +196,287 @@ class SyncMergerTest {
 
 
 	@Test
+	fun `Reader Journey XP event merge is idempotent and monotonic`() {
+		val local = ReaderJourneyXpEventBackup(
+			eventKey = "weekly:2026-09-21:slot:0",
+			source = "WEEKLY_TASK",
+			xp = 25,
+			occurredAt = 200L,
+			context = "READ_3_CHAPTERS",
+		)
+		val remote = ReaderJourneyXpEventBackup(
+			eventKey = local.eventKey,
+			source = "WEEKLY_TASK",
+			xp = 20,
+			occurredAt = 100L,
+			context = "READ_2_DAYS",
+		)
+
+		val result = SyncMerger.mergeReaderJourneyXpEvents(listOf(local), listOf(remote))
+
+		assertEquals(1, result.size)
+		assertEquals(25, result.single().xp)
+		assertEquals(100L, result.single().occurredAt)
+		assertEquals("READ_3_CHAPTERS", result.single().context)
+	}
+
+	@Test
+	fun `Reader Journey reroll divergence cannot award the same weekly slot twice`() {
+		val local = ReaderJourneyXpEventBackup(
+			eventKey = "weekly:2026-09-21:slot:4",
+			source = "WEEKLY_TASK",
+			xp = 35,
+			occurredAt = 200L,
+			context = "READ_5_CHAPTERS",
+		)
+		val remote = ReaderJourneyXpEventBackup(
+			eventKey = "weekly:2026-09-21:slot:4",
+			source = "WEEKLY_TASK",
+			xp = 30,
+			occurredAt = 300L,
+			context = "READ_2_NOVELS",
+		)
+
+		val result = SyncMerger.mergeReaderJourneyXpEvents(listOf(local), listOf(remote))
+
+		assertEquals(1, result.size)
+		assertEquals(35, result.single().xp)
+		assertEquals("READ_5_CHAPTERS", result.single().context)
+	}
+
+	@Test
+	fun `Rested bonus slot from two devices merges once and keeps stronger reward`() {
+		val manga = ReaderJourneyXpEventBackup(
+			eventKey = "rested:1000:slot:0",
+			source = "RESTED",
+			xp = 3,
+			occurredAt = 2_000L,
+			mangaId = 1L,
+			chapterId = 10L,
+			context = "1000",
+			profileDelta = true,
+		)
+		val novel = ReaderJourneyXpEventBackup(
+			eventKey = manga.eventKey,
+			source = "RESTED",
+			xp = 5,
+			occurredAt = 2_100L,
+			mangaId = 2L,
+			chapterId = 20L,
+			context = "1000",
+			profileDelta = true,
+		)
+
+		val result = SyncMerger.mergeReaderJourneyXpEvents(listOf(manga), listOf(novel)).single()
+
+		assertEquals(5, result.xp)
+		assertEquals(2L, result.mangaId)
+		assertEquals(20L, result.chapterId)
+	}
+
+	@Test
+	fun `forked offline Rested windows converge to one capped comeback set`() {
+		val local = buildList {
+			add(
+				ReaderJourneyXpEventBackup(
+					eventKey = "rested-window:1000",
+					source = "RESTED_WINDOW",
+					xp = 0,
+					occurredAt = 10_000L,
+					context = "1000",
+					profileDelta = false,
+				),
+			)
+			repeat(5) { slot ->
+				add(
+					ReaderJourneyXpEventBackup(
+						eventKey = "rested:1000:slot:" + slot,
+						source = "RESTED",
+						xp = 3,
+						occurredAt = 10_100L + slot,
+						mangaId = 1L,
+						chapterId = 10L + slot,
+						context = "1000",
+						profileDelta = true,
+					),
+				)
+			}
+		}
+		val remote = buildList {
+			add(
+				ReaderJourneyXpEventBackup(
+					eventKey = "rested-window:2000",
+					source = "RESTED_WINDOW",
+					xp = 0,
+					occurredAt = 11_000L,
+					context = "2000",
+					profileDelta = false,
+				),
+			)
+			repeat(5) { slot ->
+				add(
+					ReaderJourneyXpEventBackup(
+						eventKey = "rested:2000:slot:" + slot,
+						source = "RESTED",
+						xp = 5,
+						occurredAt = 11_100L + slot,
+						mangaId = 2L,
+						chapterId = 20L + slot,
+						context = "2000",
+						profileDelta = true,
+					),
+				)
+			}
+		}
+
+		val result = SyncMerger.mergeReaderJourneyXpEvents(local, remote)
+		val rested = result.filter { it.source == "RESTED" }
+
+		assertEquals(1, result.count { it.source == "RESTED_WINDOW" })
+		assertEquals(5, rested.size)
+		assertEquals(25, rested.sumOf { it.xp })
+		assertTrue(rested.all { it.context == "1000" })
+		assertEquals(
+			(0 until 5).map { "rested:1000:slot:" + it }.toSet(),
+			rested.mapTo(HashSet()) { it.eventKey },
+		)
+	}
+
+	@Test
+	fun `forked offline Welcome Back windows converge to three rewards`() {
+		val local = listOf(
+			ReaderJourneyXpEventBackup(
+				eventKey = "welcome-window:1000",
+				source = "WELCOME_BACK_WINDOW",
+				xp = 0,
+				occurredAt = 20_000L,
+				context = "1000",
+				profileDelta = false,
+			),
+		) + (0 until 3).map { slot ->
+			ReaderJourneyXpEventBackup(
+				eventKey = "welcome:1000:slot:" + slot,
+				source = "WELCOME_BACK",
+				xp = 3,
+				occurredAt = 20_100L + slot,
+				mangaId = 1L,
+				chapterId = 30L + slot,
+				context = "1000",
+				profileDelta = true,
+			)
+		}
+		val remote = listOf(
+			ReaderJourneyXpEventBackup(
+				eventKey = "welcome-window:2000",
+				source = "WELCOME_BACK_WINDOW",
+				xp = 0,
+				occurredAt = 21_000L,
+				context = "2000",
+				profileDelta = false,
+			),
+		) + (0 until 3).map { slot ->
+			ReaderJourneyXpEventBackup(
+				eventKey = "welcome:2000:slot:" + slot,
+				source = "WELCOME_BACK",
+				xp = 5,
+				occurredAt = 21_100L + slot,
+				mangaId = 2L,
+				chapterId = 40L + slot,
+				context = "2000",
+				profileDelta = true,
+			)
+		}
+
+		val result = SyncMerger.mergeReaderJourneyXpEvents(local, remote)
+		assertEquals(1, result.count { it.source == "WELCOME_BACK_WINDOW" })
+		assertEquals(3, result.count { it.source == "WELCOME_BACK" })
+		assertEquals(15, result.filter { it.source == "WELCOME_BACK" }.sumOf { it.xp })
+	}
+
+	@Test
+	fun `equal XP weekly reroll events converge independent of local device`() {
+		val earlier = ReaderJourneyXpEventBackup(
+			eventKey = "weekly-reroll:2026-09-21:slot:2",
+			source = "WEEKLY_REROLL",
+			xp = 0,
+			occurredAt = 100L,
+			context = "READ_2_TITLES",
+			profileDelta = false,
+		)
+		val later = ReaderJourneyXpEventBackup(
+			eventKey = earlier.eventKey,
+			source = earlier.source,
+			xp = earlier.xp,
+			occurredAt = 200L,
+			mangaId = earlier.mangaId,
+			chapterId = earlier.chapterId,
+			context = "READ_1_NOVEL",
+			profileDelta = earlier.profileDelta,
+		)
+
+		val a = SyncMerger.mergeReaderJourneyXpEvents(listOf(earlier), listOf(later)).single()
+		val b = SyncMerger.mergeReaderJourneyXpEvents(listOf(later), listOf(earlier)).single()
+
+		assertEquals(a.eventKey, b.eventKey)
+		assertEquals(a.source, b.source)
+		assertEquals(a.xp, b.xp)
+		assertEquals(a.occurredAt, b.occurredAt)
+		assertEquals(a.mangaId, b.mangaId)
+		assertEquals(a.chapterId, b.chapterId)
+		assertEquals(a.context, b.context)
+		assertEquals(a.profileDelta, b.profileDelta)
+		assertEquals("READ_2_TITLES", a.context)
+		assertEquals(100L, a.occurredAt)
+	}
+
+	@Test
+	fun `equal timestamp adaptive weekly plans converge independent of merge direction`() {
+		val mangaPlan = ReaderJourneyWeeklyStateBackup(
+			weekKey = "2026-09-21",
+			taskIds = "READ_3_CHAPTERS,READ_2_DAYS,READ_2_TITLES,READ_4_MANGA,READ_5_CHAPTERS,TRY_NEW_TITLE",
+			rerollsUsed = 0,
+			updatedAt = 100L,
+		)
+		val genericPlan = ReaderJourneyWeeklyStateBackup(
+			weekKey = "2026-09-21",
+			taskIds = "READ_3_CHAPTERS,READ_2_DAYS,READ_2_TITLES,READ_1_NOVEL,READ_5_CHAPTERS,TRY_NEW_TITLE",
+			rerollsUsed = 0,
+			updatedAt = 100L,
+		)
+
+		val a = SyncMerger.mergeReaderJourneyWeekly(listOf(mangaPlan), listOf(genericPlan)).single()
+		val b = SyncMerger.mergeReaderJourneyWeekly(listOf(genericPlan), listOf(mangaPlan)).single()
+
+		assertEquals(a.weekKey, b.weekKey)
+		assertEquals(a.taskIds, b.taskIds)
+		assertEquals(a.rerollsUsed, b.rerollsUsed)
+		assertEquals(a.updatedAt, b.updatedAt)
+		assertEquals(minOf(mangaPlan.taskIds, genericPlan.taskIds), a.taskIds)
+	}
+
+	@Test
+	fun `Reader Journey weekly merge never restores rerolls`() {
+		val local = ReaderJourneyWeeklyStateBackup(
+			weekKey = "2026-09-21",
+			taskIds = "A,B,C,D,E,F",
+			rerollsUsed = 2,
+			updatedAt = 200L,
+		)
+		val remote = ReaderJourneyWeeklyStateBackup(
+			weekKey = "2026-09-21",
+			taskIds = "A,B,C,D,E,G",
+			rerollsUsed = 1,
+			updatedAt = 300L,
+		)
+
+		val result = SyncMerger.mergeReaderJourneyWeekly(listOf(local), listOf(remote)).single()
+
+		assertEquals(2, result.rerollsUsed)
+		assertEquals(remote.taskIds, result.taskIds)
+		assertEquals(300L, result.updatedAt)
+	}
+
+	@Test
 	fun `Reader achievement merge keeps earliest unlock and never duplicates`() {
 		val local = ReaderAchievementBackup("CHAPTERS_100", 300L)
 		val remote = ReaderAchievementBackup("CHAPTERS_100", 200L)
@@ -212,6 +496,18 @@ class SyncMergerTest {
 		)
 
 		assertEquals(setOf("FIRST_CHAPTER", "FIRST_NOVEL"), result.mapTo(HashSet()) { it.achievementId })
+	}
+
+	@Test
+	fun `Reader Journey Lifetime XP floor merges monotonically without identity`() {
+		val result = SyncMerger.combine(
+			listOf(
+				SyncSnapshot(readerJourneyLifetimeXp = 1_000L),
+				SyncSnapshot(readerJourneyLifetimeXp = 1_500L),
+			),
+		)
+
+		assertEquals(1_500L, result?.readerJourneyLifetimeXp)
 	}
 
 	@Test
@@ -235,6 +531,9 @@ class SyncMergerTest {
 		assertEquals(1, snapshot.schemaVersion)
 		assertEquals(emptyList<SyncFeedEntry>(), snapshot.feed)
 		assertEquals(emptyList<ReaderJourneyBackup>(), snapshot.readerJourney)
+		assertEquals(emptyList<ReaderJourneyXpEventBackup>(), snapshot.readerJourneyXpEvents)
+		assertEquals(emptyList<ReaderJourneyWeeklyStateBackup>(), snapshot.readerJourneyWeekly)
+		assertEquals(0L, snapshot.readerJourneyLifetimeXp)
 		assertEquals(emptyList<ReaderAchievementBackup>(), snapshot.readerAchievements)
 		assertNull(prefs.coverData)
 	}

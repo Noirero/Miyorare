@@ -27,6 +27,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
 import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
@@ -38,7 +39,9 @@ import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.start
 import org.koitharu.kotatsu.databinding.ActivityStatsBinding
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.stats.domain.ReaderProfileShareModel
 import org.koitharu.kotatsu.stats.domain.YearInReview
+import org.koitharu.kotatsu.stats.share.ReaderProfileShareCard
 import org.koitharu.kotatsu.stats.share.YearInReviewShareCard
 import javax.inject.Inject
 
@@ -58,6 +61,9 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 
 	@Inject
 	lateinit var visualEffectPreferences: VisualEffectPreferences
+
+	@Inject
+	lateinit var activityRecreationHandle: ActivityRecreationHandle
 
 	private val viewModel: StatsViewModel by viewModels()
 
@@ -79,6 +85,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 				val density = LocalDensity.current
 				val stats by viewModel.stats.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
+				val hasLoadedStats by viewModel.hasLoadedStats.collectAsState()
 				val period by viewModel.period.collectAsState()
 				val scope by viewModel.scope.collectAsState()
 				val matureMode by viewModel.matureMode.collectAsState()
@@ -90,6 +97,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 				StatsScreen(
 					stats = stats,
 					isLoading = isLoading,
+					hasLoadedStats = hasLoadedStats,
 					period = period,
 					scope = scope,
 					matureMode = matureMode,
@@ -105,7 +113,14 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
-					onCosmeticsUpdate = viewModel::updateReaderCosmetics,
+					onAvatarSelected = viewModel::updateReaderAvatar,
+					onAvatarRemove = viewModel::removeReaderAvatar,
+					onCosmeticsUpdate = { loadout ->
+						viewModel.updateReaderCosmetics(loadout)
+						viewBinding.root.post { activityRecreationHandle.recreateAll() }
+					},
+					onWeeklyReroll = viewModel::rerollWeeklyTask,
+					onShareReaderProfile = ::shareReaderProfile,
 					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },
 				)
@@ -114,6 +129,15 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 		viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.composeView))
 	}
 
+
+	private fun shareReaderProfile(model: ReaderProfileShareModel) {
+		lifecycleScope.launch {
+			val uri = withContext(Dispatchers.Default) {
+				ReaderProfileShareCard.renderToShareUri(this@StatsActivity, model)
+			}
+			ShareHelper(this@StatsActivity).shareImage(uri)
+		}
+	}
 
 	private fun shareYearInReview(review: YearInReview) {
 		lifecycleScope.launch {

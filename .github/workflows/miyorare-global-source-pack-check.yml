@@ -5,12 +5,18 @@ on:
     branches:
       - beta
     paths:
+      - '.github/actions/source-pack-*/**'
+      - '.github/scripts/source_pack*.py'
+      - '.github/scripts/test_source_pack*.py'
       - 'extensions/miyorare-sources/**'
       - '.github/workflows/miyorare-global-source-pack-check.yml'
   pull_request:
     branches:
       - beta
     paths:
+      - '.github/actions/source-pack-*/**'
+      - '.github/scripts/source_pack*.py'
+      - '.github/scripts/test_source_pack*.py'
       - 'extensions/miyorare-sources/**'
       - '.github/workflows/miyorare-global-source-pack-check.yml'
   workflow_dispatch:
@@ -28,10 +34,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Miyorare
+      - name: Checkout Miyorare exact candidate
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Route Source Pack coverage
+        id: routing
+        uses: ./.github/actions/source-pack-routing
 
       - name: Checkout pinned Gekkoushi source
+        if: ${{ steps.routing.outputs.run_global != 'false' }}
         uses: actions/checkout@v5
         with:
           repository: Gekkoushi/plugin-source
@@ -39,23 +53,12 @@ jobs:
           path: _upstream/gekkoushi
           fetch-depth: 1
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: '8.14.3'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
+      - name: Set up Source Pack build toolchain
+        if: ${{ steps.routing.outputs.run_global != 'false' }}
+        uses: ./.github/actions/source-pack-toolchain
 
       - name: Apply Miyorare Global parser overlays
+        if: ${{ steps.routing.outputs.run_global != 'false' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -75,6 +78,7 @@ jobs:
           PY
 
       - name: Verify ExHentai pagination regression contract
+        if: ${{ steps.routing.outputs.run_global != 'false' }}
         run: |
           python3 -m py_compile \
             extensions/miyorare-sources/tools/prepare_global_gekkoushi_shard.py \
@@ -83,6 +87,7 @@ jobs:
           python3 extensions/miyorare-sources/tools/test_exhentai_pagination.py
 
       - name: Prepare global Gekkoushi shard
+        if: ${{ steps.routing.outputs.run_global != 'false' }}
         run: |
           python3 extensions/miyorare-sources/tools/prepare_global_gekkoushi_shard.py \
             --manifest extensions/miyorare-sources/packs.json \
@@ -90,6 +95,7 @@ jobs:
             --pack global
 
       - name: Build global Gekkoushi shard
+        if: ${{ steps.routing.outputs.run_global != 'false' }}
         working-directory: _upstream/gekkoushi
         run: |
           set -o pipefail
@@ -99,6 +105,7 @@ jobs:
             tee ../../build/miyorare-source-packs/logs/global-gekkoushi-gradle.log
 
       - name: Finalize global Gekkoushi shard
+        if: ${{ steps.routing.outputs.run_global != 'false' }}
         run: |
           python3 extensions/miyorare-sources/tools/finalize_global_shard.py \
             --manifest extensions/miyorare-sources/packs.json \
@@ -106,6 +113,7 @@ jobs:
             --output build/miyorare-source-packs/global
 
       - name: Finalize logical global pack
+        if: ${{ steps.routing.outputs.run_global != 'false' }}
         run: |
           python3 extensions/miyorare-sources/tools/finalize_global_pack.py \
             --manifest extensions/miyorare-sources/packs.json \
@@ -114,6 +122,7 @@ jobs:
             --output build/miyorare-source-packs/global
 
       - name: Verify Global ownership and complete E-Hentai family preset
+        if: ${{ steps.routing.outputs.run_global != 'false' }}
         run: |
           python3 - <<'PY'
           import json
@@ -142,7 +151,7 @@ jobs:
           PY
 
       - name: Upload Gradle diagnostics on failure
-        if: failure()
+        if: ${{ failure() && steps.routing.outputs.run_global != 'false' }}
         uses: actions/upload-artifact@v4
         with:
           name: miyorare-global-gradle-diagnostics
@@ -151,9 +160,17 @@ jobs:
           retention-days: 1
 
       - name: Upload staging pack
+        if: ${{ steps.routing.outputs.run_global != 'false' }}
         uses: actions/upload-artifact@v4
         with:
           name: miyorare-global-staging
           path: build/miyorare-source-packs/global/
           if-no-files-found: error
           retention-days: 7
+
+      - name: Require passing routing regression tests
+        if: ${{ always() && steps.routing.outputs.tests_passed == 'false' }}
+        shell: bash
+        run: |
+          echo '::error::Routing regression tests failed; full validation was requested.'
+          exit 1

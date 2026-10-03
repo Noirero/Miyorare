@@ -1,0 +1,80 @@
+name: Source Pack routing
+description: Verify the exact candidate and classify its entire local diff without build/network work
+outputs:
+  run_id:
+    description: Build and validate the complete ID logical pack
+    value: ${{ steps.route.outputs.run_id }}
+  run_en:
+    description: Build and validate the complete EN logical pack
+    value: ${{ steps.route.outputs.run_en }}
+  run_global:
+    description: Build and validate the complete Global pack
+    value: ${{ steps.route.outputs.run_global }}
+  run_multi:
+    description: Validate actual UMA and Keiyoushi intake checkouts
+    value: ${{ steps.route.outputs.run_multi }}
+  run_contract:
+    description: Run local contract assertions and existing helper unit tests
+    value: ${{ steps.route.outputs.run_contract }}
+  run_mirror:
+    description: Checkout and compare the external main contract
+    value: ${{ steps.route.outputs.run_mirror }}
+  tests_passed:
+    description: Whether the cheap routing and workflow contract regression suite passed
+    value: ${{ steps.route.outputs.tests_passed }}
+runs:
+  using: composite
+  steps:
+    - name: Verify exact candidate identity
+      shell: bash
+      env:
+        CANDIDATE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$CANDIDATE"
+        echo "Source Pack validation candidate: $CANDIDATE"
+    - name: Test and classify Source Pack inputs
+      id: route
+      shell: bash
+      env:
+        EVENT: ${{ github.event_name }}
+        BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        CANDIDATE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -euo pipefail
+        result="$RUNNER_TEMP/source-pack-route.json"
+        export ROUTE_RESULT="$result"
+        tests_passed=false
+        if python3 -B .github/scripts/test_source_pack_paths.py; then
+          tests_passed=true
+        fi
+        echo "tests_passed=$tests_passed" >> "$GITHUB_OUTPUT"
+        if [[ "$tests_passed" == true ]] && python3 -B .github/scripts/source_pack_paths.py \
+          --event "$EVENT" --base "$BASE" --head "$CANDIDATE" > "$result"; then
+          :
+        else
+          echo '{}' > "$result"
+          echo '::warning::Source Pack routing/tests failed; requesting full validation.'
+        fi
+        python3 - <<'PY'
+        import json
+        import os
+        from pathlib import Path
+        keys = ('run_id', 'run_en', 'run_global', 'run_multi', 'run_contract', 'run_mirror')
+        try:
+            result = json.loads(Path(os.environ['ROUTE_RESULT']).read_text())
+            if set(result) != {*keys, 'reason'} or any(type(result[k]) is not bool for k in keys):
+                raise ValueError('incomplete or malformed classifier output')
+            if not isinstance(result['reason'], str):
+                raise ValueError('invalid classifier reason')
+        except (OSError, ValueError, TypeError):
+            result = {**dict.fromkeys(keys, True), 'reason': 'classifier failure; full validation'}
+        print(json.dumps(result, sort_keys=True))
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+            for key in keys:
+                output.write(f'{key}={str(result[key]).lower()}\n')
+        with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+            summary.write('Source Pack candidate: `' + os.environ['CANDIDATE'] + '`\n\n')
+            summary.write('Base: `' + os.environ.get('BASE', '') + '`; event: ' + os.environ['EVENT'] + '\n\n')
+            summary.write('```json\n' + json.dumps(result, indent=2, sort_keys=True) + '\n```\n')
+        PY
