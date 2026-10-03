@@ -30,10 +30,9 @@ class CelebrationQueueTest {
 		assertEquals(listOf(1), presented)
 
 		firstDismissed.complete(Unit)
-		runCurrent()
+		advanceUntilIdle()
 		assertEquals(listOf(1, 2), presented)
 		queue.close()
-		advanceUntilIdle()
 	}
 
 	@Test
@@ -52,14 +51,13 @@ class CelebrationQueueTest {
 		mode = ReaderJourneyCelebrationMode.SUBTLE
 		reduceMotion = true
 		queue.enqueue(event(2))
-		runCurrent()
+		advanceUntilIdle()
 
 		assertEquals(1, presented.size)
 		assertEquals(2, presented.single().event.xpEarned)
 		assertEquals(ReaderJourneyCelebrationMode.SUBTLE, presented.single().mode)
 		assertTrue(presented.single().reduceMotion)
 		queue.close()
-		advanceUntilIdle()
 	}
 
 	@Test
