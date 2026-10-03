@@ -117,7 +117,7 @@ def strings_requires_size(before: str | None, after: str | None, protected: set[
             result = {}
             for element in root:
                 name = element.get('name')
-                if element.tag != 'string' or not name or name in result:
+                if not name or name in result:
                     raise ValueError('unsupported/duplicate string resource')
                 result[name] = element
             return result
@@ -128,6 +128,8 @@ def strings_requires_size(before: str | None, after: str | None, protected: set[
             other = new[name]
             if ET.tostring(element) == ET.tostring(other):
                 continue
+            if element.tag != 'string' or other.tag != 'string':
+                return True  # unchanged plurals/other entries are kept; changed ones are unknown
             if name in protected or RESOURCE_NAME.search(name):
                 return True
             if element.attrib != other.attrib or len(element) or len(other):

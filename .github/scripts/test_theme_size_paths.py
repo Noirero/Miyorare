@@ -134,6 +134,16 @@ class SizeRoutingTest(unittest.TestCase):
         new = old.replace('Rank Theme Gallery</string>', 'Theme Gallery</string>')
         self.assertTrue(router.requires_size([diagnostics], {diagnostics: (old, new)}))
 
+    def test_actual_shared_english_strings_keep_unchanged_plurals(self):
+        path = 'app/src/main/res/values/strings.xml'
+        old = (ROOT / path).read_text()
+        new = old.replace('>Bookmarks</string>', '>Saved bookmarks</string>', 1)
+        self.assertNotEqual(old, new)
+        self.assertFalse(router.requires_size([path], {path: (old, new)}))
+        before = '<resources><string name="label">Label</string><plurals name="count"><item quantity="other">Items</item></plurals></resources>'
+        after = before.replace('>Items</item>', '>Other items</item>')
+        self.assertTrue(router.requires_size([path], {path: (before, after)}, set()))
+
     def test_original_coverage_is_retained_or_replaced_by_audited_gate(self):
         # Every original non-doc path continues to receive an event and defaults
         # to full validation when source/content proof is unavailable.
