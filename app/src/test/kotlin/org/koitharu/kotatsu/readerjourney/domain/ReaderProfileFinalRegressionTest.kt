@@ -75,6 +75,21 @@ class ReaderProfileFinalRegressionTest {
 	}
 
 	@Test
+	fun `profile editing keeps one entry flow and preserves drafts while avatar changes`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(screen.contains("onAvatarClick={showProfileEditor=true}"))
+		assertTrue(screen.contains("varshowProfileEditorbyrememberSaveable{mutableStateOf(false)}"))
+		assertTrue(screen.contains("vardisplayNamebyremember{mutableStateOf(profile.displayName)}"))
+		assertTrue(screen.contains("varselectedTitlebyremember{mutableStateOf(profile.selectedTitle?.takeIf{itinunlockedAchievements})}"))
+		assertTrue(screen.contains("varshowcasebyremember{mutableStateOf(profile.showcase.filter{itinunlockedAchievements}.take(3))}"))
+		assertFalse(screen.contains("vardisplayNamebyremember(profile)"))
+		assertFalse(screen.contains("varselectedTitlebyremember(profile)"))
+		assertFalse(screen.contains("varshowcasebyremember(profile)"))
+	}
+
+	@Test
 	fun `reading heatmap exposes legend selection and real activity detail`() {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
