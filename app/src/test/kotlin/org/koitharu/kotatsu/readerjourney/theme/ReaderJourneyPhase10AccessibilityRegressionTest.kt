@@ -55,9 +55,9 @@ class ReaderJourneyPhase10AccessibilityRegressionTest {
 	fun `Reduce Motion suppresses Reader Journey celebration animation`() {
 		val source = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderActivity.kt")
 			.replace(Regex("\\s+"), "")
-		assertTrue(source.contains("!settings.isRankThemeReduceMotion"))
+		assertTrue(source.contains("reduceMotionProvider={!isAnimationsEnabled||settings.isRankThemeReduceMotion}"))
+		assertTrue(source.contains("!item.reduceMotion"))
 		assertTrue(source.contains("!settings.isRankThemeMinimalCosmetics"))
-		assertTrue(source.contains("isAnimationsEnabled"))
 	}
 
 	@Test
