@@ -60,7 +60,7 @@ class ReaderJourneyPhase10AccessibilityRegressionTest {
 		assertTrue(reader.contains("reduceMotionProvider={!isAnimationsEnabled||settings.isRankThemeReduceMotion}"))
 		assertTrue(reader.contains("!settings.isRankThemeMinimalCosmetics"))
 		assertTrue(dialog.contains("if(!item.reduceMotion)ConfettiCanvas("))
-		assertTrue(dialog.contains("animate=!item.reduceMotion"))
+		assertTrue(dialog.contains("!item.reduceMotion,onOpenCollection"))
 	}
 
 	@Test
