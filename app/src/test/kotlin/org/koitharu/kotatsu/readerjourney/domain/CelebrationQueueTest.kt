@@ -77,6 +77,10 @@ class CelebrationQueueTest {
 
 		assertEquals(CelebrationPresentation.ACHIEVEMENT, item(achievement).presentation())
 		assertEquals(CelebrationPresentation.COSMETIC, item(cosmetic).presentation())
+		assertEquals(
+			listOf(CelebrationPresentation.COSMETIC),
+			item(cosmetic).presentations(),
+		)
 		assertEquals(CelebrationPresentation.RANK_UP, item(rankUp).presentation())
 		assertEquals(
 			listOf(CelebrationPresentation.RANK_UP, CelebrationPresentation.COSMETIC),
