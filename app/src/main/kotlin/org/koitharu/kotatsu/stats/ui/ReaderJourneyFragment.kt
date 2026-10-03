@@ -102,6 +102,8 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
+					onAvatarSelected = viewModel::updateReaderAvatar,
+					onAvatarRemove = viewModel::removeReaderAvatar,
 					onCosmeticsUpdate = { loadout ->
 						viewModel.updateReaderCosmetics(loadout)
 						view?.post { activityRecreationHandle.recreateAll() }

@@ -1,8 +1,13 @@
 package org.koitharu.kotatsu.stats.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,9 +68,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -160,6 +169,8 @@ fun StatsScreen(
 	onCategoryToggle: (FavouriteCategory) -> Unit,
 	onCategoriesClear: () -> Unit,
 	onProfileUpdate: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
+	onAvatarSelected: (Uri) -> Unit = {},
+	onAvatarRemove: () -> Unit = {},
 	onCosmeticsUpdate: (ReaderJourneyCosmeticLoadout) -> Unit,
 	onWeeklyReroll: (ReaderJourneyWeeklyTaskId) -> Unit,
 	onShareReaderProfile: (ReaderProfileShareModel) -> Unit,
@@ -174,6 +185,12 @@ fun StatsScreen(
 	var showCosmeticsEditor by rememberSaveable { mutableStateOf(false) }
 	var customizerInitialThemeId by rememberSaveable { mutableStateOf<String?>(null) }
 	var showUnlockedAchievementsOnly by rememberSaveable { mutableStateOf(false) }
+	val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+		uri?.let(onAvatarSelected)
+	}
+	val pickAvatar = {
+		avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+	}
 
 	LaunchedEffect(stats.isJourneyEnabled) {
 		if (!stats.isJourneyEnabled && journeySection == ReaderJourneySection.COLLECTION) {
@@ -223,7 +240,9 @@ fun StatsScreen(
 							ReaderProfileCard(
 								stats = stats,
 								profile = profile,
+								imageLoader = imageLoader,
 								onEdit = { showProfileEditor = true },
+								onAvatarClick = pickAvatar,
 								onShare = {
 									onShareReaderProfile(ReaderProfileShareModel.from(stats.lifetimeXp, profile.cosmetics))
 								},
@@ -393,6 +412,8 @@ fun StatsScreen(
 				ReaderProfileEditorSheet(
 					profile = profile,
 					unlockedAchievements = stats.achievements.filter { it.isUnlocked }.map { it.id },
+					onPickAvatar = pickAvatar,
+					onRemoveAvatar = onAvatarRemove,
 					onDismiss = { showProfileEditor = false },
 					onSave = { displayName, title, showcase ->
 						onProfileUpdate(displayName, title, showcase)
@@ -424,7 +445,9 @@ fun StatsScreen(
 private fun ReaderProfileCard(
 	stats: ReadingStats,
 	profile: ReaderProfileSettings,
+	imageLoader: ImageLoader,
 	onEdit: () -> Unit,
+	onAvatarClick: () -> Unit,
 	onShare: () -> Unit,
 ) {
 	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
@@ -535,35 +558,25 @@ private fun ReaderProfileCard(
 					modifier = Modifier.size(136.dp),
 				) {
 					Surface(
-						modifier = Modifier.fillMaxSize(),
+						modifier = Modifier
+							.fillMaxSize()
+							.clickable(onClick = onAvatarClick),
 						shape = CircleShape,
 						color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
 					) {
-						Box(contentAlignment = Alignment.Center) {
-							Text(
-								text = profile.initial,
-								style = MaterialTheme.typography.headlineMedium,
-								fontWeight = FontWeight.Bold,
-								color = Color(frameTokens.primaryAccent.toInt()),
-							)
-						}
+						ReaderAvatar(profile, imageLoader, Color(frameTokens.primaryAccent.toInt()))
 					}
 				}
 			} else {
 				Surface(
-					modifier = Modifier.size(94.dp),
+					modifier = Modifier
+						.size(94.dp)
+						.clickable(onClick = onAvatarClick),
 					shape = CircleShape,
 					color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
 					border = BorderStroke(1.dp, accent.copy(alpha = 0.42f)),
 				) {
-					Box(contentAlignment = Alignment.Center) {
-						Text(
-							text = profile.initial,
-							style = MaterialTheme.typography.headlineMedium,
-							fontWeight = FontWeight.Bold,
-							color = accent,
-						)
-					}
+					ReaderAvatar(profile, imageLoader, accent)
 				}
 			}
 			if (badgeSpec != null && badgeTokens != null && !rankThemeMinimalCosmetics) {
@@ -1326,11 +1339,46 @@ private fun ReaderCosmeticsEditorSheet(
 	)
 }
 
+@Composable
+private fun ReaderAvatar(
+	profile: ReaderProfileSettings,
+	imageLoader: ImageLoader,
+	fallbackColor: Color,
+) {
+	Box(
+		modifier = Modifier.fillMaxSize(),
+		contentAlignment = Alignment.Center,
+	) {
+		Text(
+			text = profile.initial,
+			style = MaterialTheme.typography.headlineMedium,
+			fontWeight = FontWeight.Bold,
+			color = fallbackColor,
+		)
+		profile.avatarPath?.let { avatarPath ->
+			AsyncImage(
+				model = ImageRequest.Builder(LocalContext.current)
+					.data(avatarPath)
+					.crossfade(true)
+					.build(),
+				imageLoader = imageLoader,
+				contentDescription = stringResource(R.string.reader_journey_avatar),
+				contentScale = ContentScale.Crop,
+				modifier = Modifier
+					.fillMaxSize()
+					.clip(CircleShape),
+			)
+		}
+	}
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReaderProfileEditorSheet(
 	profile: ReaderProfileSettings,
 	unlockedAchievements: List<ReaderAchievementId>,
+	onPickAvatar: () -> Unit,
+	onRemoveAvatar: () -> Unit,
 	onDismiss: () -> Unit,
 	onSave: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
 ) {
@@ -1356,6 +1404,21 @@ private fun ReaderProfileEditorSheet(
 					style = MaterialTheme.typography.headlineSmall,
 					fontWeight = FontWeight.Bold,
 				)
+			}
+			item("avatar-actions") {
+				Row(
+					modifier = Modifier.fillMaxWidth(),
+					horizontalArrangement = Arrangement.spacedBy(8.dp),
+				) {
+					TextButton(onClick = onPickAvatar) {
+						Text(stringResource(R.string.reader_journey_choose_avatar))
+					}
+					if (profile.avatarPath != null) {
+						TextButton(onClick = onRemoveAvatar) {
+							Text(stringResource(R.string.reader_journey_remove_avatar))
+						}
+					}
+				}
 			}
 			item("display-name") {
 				OutlinedTextField(
@@ -2459,8 +2522,14 @@ private fun TopPickSection(
 @Composable
 private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 	val today = remember { LocalDate.now() }
+	val startDay = remember(today) { today.minusWeeks(19).minusDays(today.dayOfWeek.value.toLong() - 1L) }
 	val byDay = remember(days) { days.associateBy { it.epochDay } }
-	val todayStats = byDay[today.toEpochDay()]
+	var selectedEpochDay by rememberSaveable { mutableStateOf(today.toEpochDay()) }
+	val selectedDate = LocalDate.ofEpochDay(selectedEpochDay)
+	val selectedStats = byDay[selectedEpochDay]
+	val resources = LocalContext.current.resources
+	val dateFormatter = remember { DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.getDefault()) }
+	val monthFormatter = remember { DateTimeFormatter.ofPattern("MMM", Locale.getDefault()) }
 	Column {
 		StatsSectionHeader(title = stringResource(R.string.stats_reading_heatmap))
 		StatsCard {
@@ -2469,8 +2538,30 @@ private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 				style = MaterialTheme.typography.bodySmall,
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 			)
-			Spacer(Modifier.height(14.dp))
-			ReadingHeatmapGrid(days)
+			Spacer(Modifier.height(10.dp))
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.SpaceBetween,
+			) {
+				Text(startDay.format(monthFormatter), style = MaterialTheme.typography.labelSmall)
+				Text(today.format(monthFormatter), style = MaterialTheme.typography.labelSmall)
+			}
+			Spacer(Modifier.height(6.dp))
+			ReadingHeatmapGrid(
+				days = days,
+				selectedEpochDay = selectedEpochDay,
+				onDaySelected = { selectedEpochDay = it },
+			)
+			Spacer(Modifier.height(10.dp))
+			HeatmapLegend()
+			if (days.none { it.duration > 0L || it.sessions > 0 }) {
+				Spacer(Modifier.height(10.dp))
+				Text(
+					text = stringResource(R.string.stats_heatmap_empty_period),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+			}
 			Spacer(Modifier.height(14.dp))
 			Surface(
 				shape = RoundedCornerShape(18.dp),
@@ -2483,19 +2574,24 @@ private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 					verticalAlignment = Alignment.CenterVertically,
 				) {
 					Text(
-						text = today.format(DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.getDefault())),
+						text = selectedDate.format(dateFormatter),
 						style = MaterialTheme.typography.bodyMedium,
 						fontWeight = FontWeight.SemiBold,
 						modifier = Modifier.weight(1f),
 					)
 					Text(
-						text = if ((todayStats?.sessions ?: 0) == 0) {
+						text = if ((selectedStats?.sessions ?: 0) == 0 && (selectedStats?.duration ?: 0L) <= 0L) {
 							stringResource(R.string.stats_no_activity)
 						} else {
-							stringResource(R.string.stats_activity_count, todayStats?.sessions ?: 0)
+							stringResource(
+								R.string.stats_heatmap_activity_detail,
+								formatDurationShort(resources, selectedStats?.duration ?: 0L),
+								selectedStats?.sessions ?: 0,
+							)
 						},
 						style = MaterialTheme.typography.bodySmall,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
+						textAlign = TextAlign.End,
 					)
 				}
 			}
@@ -2504,17 +2600,82 @@ private fun ReadingHeatmapCard(days: List<StatsHeatmapDay>) {
 }
 
 @Composable
-private fun ReadingHeatmapGrid(days: List<StatsHeatmapDay>) {
+private fun HeatmapLegend() {
+	val empty = MaterialTheme.colorScheme.surfaceContainerHighest
+	val active = MaterialTheme.colorScheme.primary
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.End,
+	) {
+		Text(
+			text = stringResource(R.string.stats_heatmap_less),
+			style = MaterialTheme.typography.labelSmall,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+		)
+		Spacer(Modifier.width(6.dp))
+		(0..4).forEach { level ->
+			val color = if (level == 0) empty.copy(alpha = 0.36f)
+			else lerp(active.copy(alpha = 0.22f), active, level / 4f)
+			Box(
+				Modifier
+					.padding(horizontal = 1.5.dp)
+					.size(12.dp)
+					.clip(RoundedCornerShape(3.dp))
+					.background(color),
+			)
+		}
+		Spacer(Modifier.width(6.dp))
+		Text(
+			text = stringResource(R.string.stats_heatmap_more),
+			style = MaterialTheme.typography.labelSmall,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+		)
+	}
+}
+
+@Composable
+private fun ReadingHeatmapGrid(
+	days: List<StatsHeatmapDay>,
+	selectedEpochDay: Long,
+	onDaySelected: (Long) -> Unit,
+) {
 	val today = remember { LocalDate.now() }
 	val start = remember(today) { today.minusWeeks(19).minusDays(today.dayOfWeek.value.toLong() - 1L) }
 	val values = remember(days) { days.associateBy { it.epochDay } }
 	val maxDuration = remember(days) { days.maxOfOrNull { it.duration }?.coerceAtLeast(1L) ?: 1L }
 	val empty = MaterialTheme.colorScheme.surfaceContainerHighest
 	val active = MaterialTheme.colorScheme.primary
+	val selection = MaterialTheme.colorScheme.onSurface
+	val accessibilityLabel = stringResource(R.string.stats_heatmap_accessibility)
 	Canvas(
 		modifier = Modifier
 			.fillMaxWidth()
-			.height(126.dp),
+			.height(126.dp)
+			.semantics { contentDescription = accessibilityLabel }
+			.pointerInput(start) {
+				detectTapGestures { offset ->
+					val columns = 20
+					val rows = 7
+					val gap = 3.5.dp.toPx()
+					val cell = minOf(
+						(size.width - gap * (columns - 1)) / columns,
+						(size.height - gap * (rows - 1)) / rows,
+					)
+					val gridWidth = cell * columns + gap * (columns - 1)
+					val left = (size.width - gridWidth) / 2f
+					val column = ((offset.x - left) / (cell + gap)).toInt()
+					val row = (offset.y / (cell + gap)).toInt()
+					if (column in 0 until columns && row in 0 until rows) {
+						val localX = offset.x - left - column * (cell + gap)
+						val localY = offset.y - row * (cell + gap)
+						if (localX in 0f..cell && localY in 0f..cell) {
+							val day = start.plusDays((column * rows + row).toLong())
+							if (!day.isAfter(today)) onDaySelected(day.toEpochDay())
+						}
+					}
+				}
+			},
 	) {
 		val columns = 20
 		val rows = 7
@@ -2530,20 +2691,34 @@ private fun ReadingHeatmapGrid(days: List<StatsHeatmapDay>) {
 				val day = start.plusDays((column * rows + row).toLong())
 				val value = values[day.toEpochDay()]?.duration ?: 0L
 				val ratio = (value.toFloat() / maxDuration).coerceIn(0f, 1f)
-				val color = if (value <= 0L) {
-					empty.copy(alpha = 0.36f)
-				} else {
-					lerp(active.copy(alpha = 0.22f), active, ratio.coerceAtLeast(0.2f))
+				val level = when {
+					value <= 0L -> 0
+					ratio <= 0.25f -> 1
+					ratio <= 0.50f -> 2
+					ratio <= 0.75f -> 3
+					else -> 4
 				}
+				val color = if (level == 0) empty.copy(alpha = 0.36f)
+				else lerp(active.copy(alpha = 0.22f), active, level / 4f)
+				val topLeft = Offset(
+					x = left + column * (cell + gap),
+					y = row * (cell + gap),
+				)
 				drawRoundRect(
 					color = color,
-					topLeft = Offset(
-						x = left + column * (cell + gap),
-						y = row * (cell + gap),
-					),
+					topLeft = topLeft,
 					size = Size(cell, cell),
 					cornerRadius = CornerRadius(cell * 0.24f, cell * 0.24f),
 				)
+				if (day.toEpochDay() == selectedEpochDay) {
+					drawRoundRect(
+						color = selection,
+						topLeft = topLeft,
+						size = Size(cell, cell),
+						cornerRadius = CornerRadius(cell * 0.24f, cell * 0.24f),
+						style = Stroke(width = 2.dp.toPx()),
+					)
+				}
 			}
 		}
 	}

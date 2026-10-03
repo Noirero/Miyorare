@@ -1,6 +1,9 @@
 package org.koitharu.kotatsu.readerjourney.domain
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -8,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
+import java.io.File
 
 /**
  * Device-local Reader Profile preferences.
@@ -21,6 +25,7 @@ class ReaderProfileStore @Inject constructor(
 	@ApplicationContext context: Context,
 ) {
 
+	private val context = context.applicationContext
 	private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 	private val _profile = MutableStateFlow(load())
 	val profile: StateFlow<ReaderProfileSettings> = _profile.asStateFlow()
@@ -38,6 +43,7 @@ class ReaderProfileStore @Inject constructor(
 		val safeShowcase = showcase.distinct().take(MAX_SHOWCASE)
 		val updated = ReaderProfileSettings(
 			displayName = safeName,
+			avatarPath = _profile.value.avatarPath,
 			selectedTitle = selectedTitle,
 			showcase = safeShowcase,
 			cosmetics = _profile.value.cosmetics,
@@ -53,6 +59,61 @@ class ReaderProfileStore @Inject constructor(
 			putStringSet(KEY_SHOWCASE, updated.showcase.mapTo(LinkedHashSet()) { it.name })
 		}
 		_profile.value = updated
+	}
+
+
+	fun importAvatar(uri: Uri): Boolean {
+		val resolver = context.contentResolver
+		val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+		resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return false
+		if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+		var sampleSize = 1
+		while (bounds.outWidth / sampleSize > AVATAR_MAX_EDGE * 2 || bounds.outHeight / sampleSize > AVATAR_MAX_EDGE * 2) {
+			sampleSize *= 2
+		}
+		val bitmap = resolver.openInputStream(uri)?.use {
+			BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sampleSize })
+		} ?: return false
+		val scale = minOf(1f, AVATAR_MAX_EDGE.toFloat() / maxOf(bitmap.width, bitmap.height))
+		val output = if (scale < 1f) {
+			Bitmap.createScaledBitmap(
+				bitmap,
+				(bitmap.width * scale).toInt().coerceAtLeast(1),
+				(bitmap.height * scale).toInt().coerceAtLeast(1),
+				true,
+			)
+		} else bitmap
+		return try {
+			val directory = File(context.filesDir, AVATAR_DIRECTORY).apply { mkdirs() }
+			val target = File(directory, AVATAR_FILE)
+			val temporary = File(directory, "$AVATAR_FILE.tmp")
+			temporary.outputStream().buffered().use { stream ->
+				check(output.compress(Bitmap.CompressFormat.JPEG, AVATAR_JPEG_QUALITY, stream))
+			}
+			if (target.exists()) target.delete()
+			check(temporary.renameTo(target))
+			setAvatarPath(target.absolutePath)
+			true
+		} catch (_: Throwable) {
+			false
+		} finally {
+			if (output !== bitmap) output.recycle()
+			bitmap.recycle()
+		}
+	}
+
+	fun removeAvatar() {
+		_profile.value.avatarPath?.let(::File)?.delete()
+		setAvatarPath(null)
+	}
+
+	private fun setAvatarPath(path: String?) {
+		val current = _profile.value
+		if (current.avatarPath == path) return
+		prefs.edit {
+			if (path == null) remove(KEY_AVATAR_PATH) else putString(KEY_AVATAR_PATH, path)
+		}
+		_profile.value = current.copy(avatarPath = path)
 	}
 
 	fun updateCosmetics(loadout: ReaderJourneyCosmeticLoadout) {
@@ -159,6 +220,7 @@ class ReaderProfileStore @Inject constructor(
 		val showcase = ReaderAchievementId.entries.filter { it.name in showcaseNames }.take(MAX_SHOWCASE)
 		return ReaderProfileSettings(
 			displayName = prefs.getString(KEY_DISPLAY_NAME, "").orEmpty().trim().take(MAX_DISPLAY_NAME_LENGTH),
+			avatarPath = prefs.getString(KEY_AVATAR_PATH, null)?.takeIf { File(it).isFile },
 			selectedTitle = selectedTitle,
 			showcase = showcase,
 			cosmetics = loadCosmetics(),
@@ -168,6 +230,7 @@ class ReaderProfileStore @Inject constructor(
 	private companion object {
 		const val PREFS_NAME = "reader_journey_profile"
 		const val KEY_DISPLAY_NAME = "display_name"
+		const val KEY_AVATAR_PATH = "avatar_path"
 		const val KEY_SELECTED_TITLE = "selected_title"
 		const val KEY_SHOWCASE = "showcase"
 		const val KEY_COSMETIC_LOADOUT_V2 = "cosmetic_loadout_v2"
@@ -176,6 +239,11 @@ class ReaderProfileStore @Inject constructor(
 		const val KEY_COSMETIC_GLOW = "cosmetic_glow"
 		const val KEY_COSMETIC_BACKGROUND = "cosmetic_background"
 		const val KEY_COSMETIC_PROGRESS = "cosmetic_progress"
+
+		const val AVATAR_DIRECTORY = "reader_journey"
+		const val AVATAR_FILE = "avatar.jpg"
+		const val AVATAR_MAX_EDGE = 512
+		const val AVATAR_JPEG_QUALITY = 88
 
 		const val MAX_DISPLAY_NAME_LENGTH = 40
 		const val MAX_SHOWCASE = 3
