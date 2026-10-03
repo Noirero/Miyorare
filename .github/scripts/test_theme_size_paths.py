@@ -43,6 +43,12 @@ class SizeRoutingTest(unittest.TestCase):
         before = self.sources[router.STATS][1]
         self.assertFalse(router.requires_size([router.STATS], {router.STATS: (before, before.replace('height(214.dp)', 'height(215.dp)'))}))
 
+    def test_generic_helper_text_payloads_fail_closed(self):
+        before = 'fun StatsScreen() {}\nprivate fun ReaderProfileCard() {}\nprivate fun MetricsGrid() { Text("stats") }\n'
+        for literal in ['"' + 'x' * 300 + '"', '"""payload"""', '"@drawable/nameplate_payload"', '"${loadPayload()}"']:
+            after = before.replace('"stats"', literal)
+            self.assertTrue(router.requires_size([router.STATS], {router.STATS: (before, after)}))
+
     def test_theme_profile_import_new_reference_and_unknown_helpers_run(self):
         before = self.sources[router.STATS][1]
         for after in [before.replace('size(34.dp)', 'size(35.dp)', 1),
@@ -100,6 +106,7 @@ class SizeRoutingTest(unittest.TestCase):
             router.PREFIX + 'stats/domain/ReaderProfileShareModel.kt',
             router.PREFIX + 'stats/share/ReaderProfileShareCard.kt',
             router.PREFIX + 'core/prefs/AppSettings.kt',
+            router.PREFIX + 'settings/compose/SettingsTheme.kt',
         ]
         for path in paths:
             with self.subTest(path=path):
@@ -115,6 +122,7 @@ class SizeRoutingTest(unittest.TestCase):
         for after in [before.replace('Newcomer</string>', 'Reader</string>'),
                       before.replace('</resources>', '<string name="new_label">New</string></resources>'),
                       before.replace('Download</string>', '@string/other</string>'),
+                      before.replace('Download</string>', 'x' * 600 + '</string>'),
                       before.replace('name="download_label"', 'name="download_label" formatted="false"'),
                       before.replace('Download</string>', '<b>Download</b></string>'),
                       '<resources>', None]:

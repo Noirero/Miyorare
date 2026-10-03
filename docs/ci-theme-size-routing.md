@@ -39,7 +39,7 @@ Paths below are relative to `app/src/main/`; Kotlin prefixes shorten `org/koitha
 | `kotlin/…/stats/share/ReaderProfileShareCard.kt` | Retain | Compiled theme/profile renderer and localized feature resource references. |
 | `kotlin/…/stats/ui/StatsScreen.kt` | Keep event; classify cheaply | Profile/cosmetic renderer references, imports and host bindings stay protected. Only the audited #462 loading wrapper/skeleton and existing generic helper plain labels/numbers may skip. |
 | `kotlin/…/stats/ui/StatsActivity.kt`, `ReaderJourneyFragment.kt` | Keep event; classify cheaply | Actual shared hosts. Normalize only the #462 collection/binding of `hasLoadedStats`; every other token remains protected, including theme/resource/dependency references. |
-| `res/values/strings.xml`, `res/values-in/strings.xml` | Keep event; classify cheaply | Existing unrelated plain text may skip. Protect actual `R.string` references from feature/host/QA sources, plus Journey/rank/theme/cosmetic names. Add/remove IDs, attribute changes, markup, aliases, duplicate IDs, DTDs and malformed XML run. |
+| `res/values/strings.xml`, `res/values-in/strings.xml` | Keep event; classify cheaply | Existing unrelated plain text may skip. Protect actual `R.string` references from feature/host/QA sources, plus Journey/rank/theme/cosmetic names. Large text, add/remove IDs, attribute changes, markup, aliases, duplicate IDs, DTDs and malformed XML run. |
 | `res/values*/settings_developer_diagnostics.xml` | Keep event; classify cheaply | Gallery/theme strings remain protected; an existing extension-stage plain-text label may skip. Extension-only source references are excluded from the theme string reference scan. |
 | `res/drawable-nodpi/nameplate_*.webp` | Retain and broaden | Direct bytes under packaging/hash acceptance. Include all main resources and qualifiers so new/legacy/unknown payloads cannot bypass the audit. |
 | `docs/reader-journey-theme-assets.md` | Remove event | Provenance documentation is not a Gradle input or packaged resource. Docs edits do not create APK work. Asset/code changes described by the document still route through their own paths. |
@@ -59,7 +59,7 @@ Paths below are relative to `app/src/main/`; Kotlin prefixes shorten `org/koitha
 - App/root/module Gradle scripts, properties, lockfiles, version catalog, wrapper,
   dependency verification, `buildSrc`/`build-logic` and ProGuard inputs request validation.
   ProGuard is release-only today, but keep the packaging policy conservative if configuration changes.
-- Collection/profile hosts, `StatsComponents`, `AppSettings`, `SettingsState` are added as
+- Collection/profile hosts, `StatsComponents`, `AppSettings`, `SettingsState`, `SettingsTheme` (the actual `MiyorareTheme` wrapper) are added as
   feature selection/compiled shared dependencies. Unknown changes here run.
 - New size classifier/tests and the existing shared visual parser request full validation.
   The shared parser is reused **without editing** stage 2 scripts, tests or golden workflows.
@@ -78,6 +78,10 @@ standard-library Python regression tests, and compares **the two complete trees 
 built** with rename detection disabled and NUL-delimited paths. It does not use `event.before`,
 a previous-head incremental diff, a moving head ref, or unverified earlier artifacts. An asset
 commit followed by a docs-only commit therefore still requires full validation for that PR.
+
+New Kotlin labels above 256 UTF-8 bytes, raw/interpolated/resource-like literals, or more than
+512 bytes of added literal text run conservatively; unrelated XML text above 512 bytes also runs.
+These are limits of the proven small-label routing case, not APK acceptance thresholds.
 
 There is no JDK/SDK setup, Gradle invocation, APK build or emulator in the classifier job.
 Only an explicit `false` can skip the heavy job. Script/process failure, invalid output or

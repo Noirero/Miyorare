@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import ast
 import re
 import subprocess
@@ -70,6 +71,17 @@ def source_requires_size(path: str, before: str | None, after: str | None) -> bo
     if before is None or after is None:
         return True
     try:
+        # A visual-safe helper edit can still hide a large embedded text payload.
+        # Only small plain labels qualify for the size exception (routing bound,
+        # not an APK acceptance budget). Unknown/raw/resource-like text runs.
+        old_literals = Counter(v for v, _, _ in visual.tokens(before) if v.startswith('"'))
+        new_literals = Counter(v for v, _, _ in visual.tokens(after) if v.startswith('"'))
+        changed_literals = list((new_literals - old_literals).elements())
+        if any(len(v.encode('utf-8')) > 256 or v.startswith('"""') or '@' in v or '$' in v
+               for v in changed_literals):
+            return True
+        if sum(len(v.encode('utf-8')) for v in changed_literals) > 512:
+            return True
         fingerprint = visual.visual_fingerprint if path == STATS else host_fingerprint
         return fingerprint(before) != fingerprint(after)
     except (ValueError, IndexError, StopIteration):
@@ -120,7 +132,8 @@ def strings_requires_size(before: str | None, after: str | None, protected: set[
                 return True
             if element.attrib != other.attrib or len(element) or len(other):
                 return True
-            if any('@' in text or '?' in text for text in (element.text or '', other.text or '')):
+            if any(len(text.encode('utf-8')) > 512 or '@' in text or '?' in text
+                   for text in (element.text or '', other.text or '')):
                 return True
         return False
     except (ET.ParseError, ValueError):

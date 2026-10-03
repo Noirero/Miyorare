@@ -33,6 +33,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsComponents.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsState.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsTheme.kt'
       - '*.gradle'
       - '*.gradle.kts'
       - 'gradle.properties'
