@@ -206,7 +206,7 @@ esac
             self.assertEqual('', output)
 
     def test_readme_delete_mode_change_and_empty_diff_are_not_maintenance(self):
-        result, _ = self.classify('automation/readme-release-stats')
+        result, _ = self.classify('automation/release-readme-v1.0-123-a1')
         self.assertNotEqual(0, result.returncode)
         (self.repo / 'README.md').unlink()
         self.git('commit', '-qam', 'delete README')
