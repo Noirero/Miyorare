@@ -1,6 +1,26 @@
 name: Signed Release Candidate Build
 
 on:
+  workflow_call:
+    inputs:
+      expected_candidate_sha:
+        required: true
+        type: string
+      version_name:
+        required: true
+        type: string
+      version_code:
+        required: true
+        type: string
+    secrets:
+      KEYSTORE_BASE64:
+        required: true
+      RELEASE_STORE_PASSWORD:
+        required: true
+      RELEASE_KEY_ALIAS:
+        required: true
+      RELEASE_KEY_PASSWORD:
+        required: true
   workflow_dispatch:
     inputs:
       expected_candidate_sha:
