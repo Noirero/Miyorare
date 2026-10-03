@@ -106,14 +106,14 @@ jobs:
           mkdir -p app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance
           cp /tmp/SignedUpgradeAcceptanceHarnessTest.kt app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance/
           chmod +x gradlew
-          ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=release
-          find app/build/outputs/apk/androidTest -type f -name '*.apk' -print -quit | xargs -I{} cp {} /tmp/stable-test.apk
+          ./gradlew :app:assembleDebugAndroidTest --no-daemon --stacktrace
+          find app/build/outputs/apk/androidTest -type f -name '*debug*androidTest*.apk' -print -quit | xargs -I{} cp {} /tmp/stable-test.apk
 
           git checkout --force "$CANDIDATE_SHA"
           mkdir -p app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance
           cp /tmp/SignedUpgradeAcceptanceHarnessTest.kt app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance/
-          ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=release
-          find app/build/outputs/apk/androidTest -type f -name '*.apk' -print -quit | xargs -I{} cp {} /tmp/candidate-test.apk
+          ./gradlew :app:assembleDebugAndroidTest --no-daemon --stacktrace
+          find app/build/outputs/apk/androidTest -type f -name '*debug*androidTest*.apk' -print -quit | xargs -I{} cp {} /tmp/candidate-test.apk
 
           git checkout --force "$CANDIDATE_SHA"
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
