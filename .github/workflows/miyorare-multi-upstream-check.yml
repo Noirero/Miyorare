@@ -5,6 +5,10 @@ on:
     branches:
       - beta
     paths:
+      - '.github/actions/source-pack-*/**'
+      - '.github/scripts/source_pack*.py'
+      - '.github/scripts/test_source_pack*.py'
+      - 'extensions/miyorare-sources/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/sources/compat/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/**'
       - 'extensions/miyorare-sources/multi-upstream.json'
@@ -29,10 +33,18 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: Checkout Miyorare
+      - name: Checkout Miyorare exact candidate
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Route Source Pack coverage
+        id: routing
+        uses: ./.github/actions/source-pack-routing
 
       - name: Checkout pinned UMA
+        if: ${{ steps.routing.outputs.run_multi != 'false' }}
         uses: actions/checkout@v5
         with:
           repository: InvalidDavid/UMA
@@ -40,6 +52,7 @@ jobs:
           path: _upstream/uma
 
       - name: Checkout pinned Keiyoushi
+        if: ${{ steps.routing.outputs.run_multi != 'false' }}
         uses: actions/checkout@v5
         with:
           repository: keiyoushi/extensions-source
@@ -47,6 +60,7 @@ jobs:
           path: _upstream/keiyoushi
 
       - name: Verify normalized multi-upstream aliases
+        if: ${{ steps.routing.outputs.run_multi != 'false' }}
         run: |
           python3 extensions/miyorare-sources/tools/verify_multi_upstream.py \
             --manifest extensions/miyorare-sources/multi-upstream.json \
@@ -56,8 +70,16 @@ jobs:
             --output build/miyorare-multi-upstream/intake.json
 
       - name: Upload normalized intake metadata
+        if: ${{ steps.routing.outputs.run_multi != 'false' }}
         uses: actions/upload-artifact@v4
         with:
           name: miyorare-multi-upstream-intake
           path: build/miyorare-multi-upstream/intake.json
           if-no-files-found: error
+
+      - name: Require passing routing regression tests
+        if: ${{ always() && steps.routing.outputs.tests_passed == 'false' }}
+        shell: bash
+        run: |
+          echo '::error::Routing regression tests failed; full validation was requested.'
+          exit 1
