@@ -6,6 +6,7 @@ on:
     - cron: '23 3 * * 1'
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -106,14 +107,69 @@ jobs:
           git switch -c "$branch"
           git add README.md
           git commit -m "Update README release stats"
-          git push --force-with-lease origin "HEAD:$branch"
+          # Bind the existing update intent to the observed remote branch tip.
+          previous_sha="$(git ls-remote --heads origin "refs/heads/$branch" | awk '{print $1}')"
+          git push --force-with-lease="refs/heads/$branch:$previous_sha" origin "HEAD:$branch"
+          head_sha="$(git rev-parse HEAD)"
 
           existing="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$branch" --state open --json number --jq '.[0].number // empty')"
           if [[ -z "$existing" ]]; then
-            gh pr create \
+            url="$(gh pr create \
               --repo "$GITHUB_REPOSITORY" \
               --base main \
               --head "$branch" \
               --title "Update README release stats" \
-              --body "Automated lightweight refresh of the native README release version and total GitHub Release asset downloads. No application code is changed."
+              --body "Automated lightweight refresh of the native README release version and total GitHub Release asset downloads. No application code is changed.")"
+            pr_number="$(gh pr view "$url" --repo "$GITHUB_REPOSITORY" --json number --jq '.number')"
+          else
+            pr_number="$existing"
           fi
+
+          # Exact-head required main checks; token-created PRs cannot assume automatic runs.
+          HEAD_BRANCH="$branch"
+          HEAD_SHA="$head_sha"
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          main_base_sha="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json baseRefOid --jq '.baseRefOid')"
+          [[ "$main_base_sha" =~ ^[0-9a-f]{40}$ ]]
+          test "$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')" = "$HEAD_SHA"
+          dispatch_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run identity-guard.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_BRANCH"
+          gh workflow run beta-to-main-release-gate.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_BRANCH" \
+            --field maintenance_pr="$pr_number" --field candidate_sha="$HEAD_SHA" --field main_base_sha="$main_base_sha"
+
+          find_run() {
+            local workflow="$1"
+            local id=""
+            for attempt in $(seq 1 60); do
+              id="$(gh run list \
+                --repo "$GITHUB_REPOSITORY" \
+                --workflow "$workflow" \
+                --branch "$HEAD_BRANCH" \
+                --event workflow_dispatch \
+                --limit 20 \
+                --json databaseId,headSha,createdAt \
+                --jq "[.[] | select(.headSha == \"$HEAD_SHA\" and .createdAt >= \"$dispatch_since\")] | first | .databaseId // empty")" || return 1
+              if [[ -n "$id" ]]; then
+                [[ "$id" =~ ^[1-9][0-9]*$ ]] || return 1
+                printf '%s\n' "$id"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "Could not resolve workflow_dispatch run for $workflow at $HEAD_SHA" >&2
+            return 1
+          }
+
+          identity_run="$(find_run identity-guard.yml)"
+          promotion_run="$(find_run beta-to-main-release-gate.yml)"
+          for RUN_ID in "$identity_run" "$promotion_run"; do
+            set -euo pipefail
+            [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+            gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
+            test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --json status,conclusion,headSha \
+              --jq "if .status == \"completed\" and .conclusion == \"success\" and .headSha == \"$HEAD_SHA\" then \"success\" else \"rejected\" end")" = success
+          done
+          live_sha="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
+          [[ "$live_sha" == "$HEAD_SHA" ]]
+          echo "README stats PR #$pr_number validated on $HEAD_SHA; left open for review."

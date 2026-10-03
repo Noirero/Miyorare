@@ -1,10 +1,12 @@
 name: Beta to Main Release Gate
 
-# Main has two protected entry paths:
+# Main has three protected entry paths:
 # 1. beta or release/main-* promotion: beta already paid the validation cost, so only
 #    exact-candidate/release invariants are verified here.
 # 2. hotfix/*: emergency fixes branch from current main and pay their own JVM/runtime
 #    validation cost before the same required status can succeed.
+# 3. Owned README automation: strict current-main, open-PR, exact-head, README-only
+#    maintenance; no Gradle/emulator and no generic automation/docs bypass.
 #
 # The final job name is intentionally stable because the main ruleset requires it.
 
@@ -13,9 +15,23 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      maintenance_pr:
+        description: Open main README automation PR number (required for maintenance).
+        required: false
+        type: string
+      candidate_sha:
+        description: Exact README PR head SHA, which must also equal this dispatch run SHA.
+        required: false
+        type: string
+      main_base_sha:
+        description: Exact protected-main PR base SHA (required for maintenance).
+        required: false
+        type: string
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: beta-main-release-gate-${{ github.event.pull_request.number || github.ref }}
@@ -38,7 +54,7 @@ jobs:
       - name: Checkout exact candidate
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || inputs.candidate_sha || github.sha }}
           fetch-depth: 0
 
       - name: Classify source
@@ -46,13 +62,21 @@ jobs:
         shell: bash
         env:
           HEAD_REF: ${{ github.head_ref || github.ref_name }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.main_base_sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.maintenance_pr }}
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
           [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          if [[ "${{ github.event_name }}" = workflow_dispatch ]]; then
+            # Required checks attach to the dispatch SHA, not checkout's override.
+            test "$GITHUB_SHA" = "$HEAD_SHA"
+          fi
 
           if [[ "$HEAD_REF" = "beta" || "$HEAD_REF" = release/main-* ]]; then
             git fetch --no-tags origin beta
@@ -70,8 +94,48 @@ jobs:
               exit 1
             }
             echo "mode=hotfix" >> "$GITHUB_OUTPUT"
+          elif [[ "$HEAD_REF" = automation/release-readme-* || "$HEAD_REF" = automation/readme-release-stats ]]; then
+            [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            if [[ "${{ github.event_name }}" = pull_request ]]; then
+              test "$BASE_REF" = main
+            elif [[ "${{ github.event_name }}" = workflow_dispatch ]]; then
+              test "$REQUESTED_SHA" = "$HEAD_SHA"
+            else
+              echo "::error::README maintenance requires a main PR or explicit PR-bound dispatch."
+              exit 1
+            fi
+
+            git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+            test "$(git rev-parse origin/main)" = "$BASE_SHA"
+            git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > /tmp/main-maintenance-pr.json
+            python3 - <<'PY_MAINTENANCE'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          pr = json.loads(Path('/tmp/main-maintenance-pr.json').read_text())
+          repo, head, base = (os.environ[k] for k in ('GITHUB_REPOSITORY', 'HEAD_SHA', 'BASE_SHA'))
+          if not (pr['state'] == 'open' and pr['base']['ref'] == 'main'
+                  and pr['base']['sha'] == base and pr['head']['sha'] == head
+                  and pr['head']['ref'] == os.environ['HEAD_REF']
+                  and pr['base']['repo']['full_name'] == repo
+                  and pr['head']['repo']['full_name'] == repo):
+              raise SystemExit('README maintenance PR metadata does not match the exact candidate/main base')
+          diff = subprocess.check_output(['git', 'diff', '--name-status', '-z', '--no-renames', base, head])
+          if diff.split(b'\0') != [b'M', b'README.md', b'']:
+              raise SystemExit('README maintenance must modify only the existing README.md')
+          for sha in (base, head):
+              entry = subprocess.check_output(['git', 'ls-tree', sha, '--', 'README.md'])
+              if not entry.startswith(b'100644 blob '):
+                  raise SystemExit('README maintenance must preserve README.md regular-file mode')
+          PY_MAINTENANCE
+            git diff --check "$BASE_SHA" "$HEAD_SHA"
+            echo "mode=maintenance" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::Main accepts only beta, release/main-*, or hotfix/* candidates."
+            echo "::error::Main accepts beta/release promotion, hotfix PRs, or strictly validated owned README maintenance."
             exit 1
           fi
 
@@ -308,6 +372,10 @@ jobs:
             test "$JVM_RESULT" = "skipped"
             test "$RUNTIME_RESULT" = "skipped"
             echo "Validated beta/release candidate is safe to promote."
+          elif [[ "$MODE" = "maintenance" ]]; then
+            test "$JVM_RESULT" = "skipped"
+            test "$RUNTIME_RESULT" = "skipped"
+            echo "Owned README-only exact-head maintenance passed main invariants."
           elif [[ "$MODE" = "hotfix" ]]; then
             test "$JVM_RESULT" = "success"
             if [[ "$RUN_RUNTIME" = "true" ]]; then

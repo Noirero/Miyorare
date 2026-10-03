@@ -2,8 +2,10 @@
 
 This document defines the development and release contract. The
 [Stage 7 baseline](CI_FINAL_BASELINE.md) contains the current 29-workflow inventory,
-ownership/routing proof and unresolved closure blockers. CI restructuring is not
-yet declared operationally closed. This document does not
+ownership/routing proof and verified closure routes.
+**CLOSED — architecture verified; no further restructuring required.**
+Production automation adopts the baseline only after normal beta→main promotion
+carries the gate, callers, tests and core CI definitions together. This document does not
 authorize changing application behavior, persistence, signing, application IDs, versioning, or
 source-pack contracts.
 
@@ -159,8 +161,14 @@ cheaply; unique Favourites canonical visual capture remains manual.
   a docs audit.
 - **Maintenance:** scheduled metrics/stats and separate Farm synchronization use
   their established lifecycles/permissions. Main's older control plane has not
-  yet adopted beta; README-main routing and Farm required-check dispatch gaps
-  are explicitly unresolved in the Stage 7 baseline.
+  yet adopted beta. README maintenance accepts only the owned release/stats
+  automation branches, an open exact-head/current-main PR, and README.md-only
+  changes; both required main workflows are explicitly dispatched and awaited.
+  Stats remains validated/open; post-release retains guarded auto-merge. Farm
+  waits Identity, Fast, Deep and Source Pack on its exact head before merging.
+  The gate and callers must reach default main together through normal promotion;
+  existing beta Fast/Deep definitions must also be present on default main for
+  dispatch. No production cutover is implied by green beta CI.
 
 Do not create a workflow merely because there is a new bug or feature. First
 choose Fast, Deep, Android Runtime, an existing visual owner or an existing
