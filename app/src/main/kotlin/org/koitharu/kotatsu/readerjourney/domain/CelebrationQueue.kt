@@ -62,4 +62,8 @@ class CelebrationQueue(
 		if (modeProvider() == ReaderJourneyCelebrationMode.OFF) return
 		events.trySend(event)
 	}
+
+	fun close() {
+		events.close()
+	}
 }
