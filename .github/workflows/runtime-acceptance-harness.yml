@@ -35,8 +35,28 @@ jobs:
     timeout-minutes: 75
     env:
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      HARNESS_TOOLS: ${{ runner.temp }}/runtime-harness
+      ACCEPTANCE_EVIDENCE: ${{ runner.temp }}/library-sync-evidence
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
+      - name: Checkout harness
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Preserve harness tools and check shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HARNESS_TOOLS" "$ACCEPTANCE_EVIDENCE"
+          cp .github/acceptance/*.sh .github/acceptance/runtime-probe.init.gradle .github/acceptance/SignedUpgradeAcceptanceHarnessTest.kt "$HARNESS_TOOLS/"
+          cp .github/scripts/runtime_acceptance_evidence.py "$HARNESS_TOOLS/"
+          for script in "$HARNESS_TOOLS"/*.sh; do
+            bash -n "$script"
+            printf 'PASS bash -n %s\n' "$(basename "$script")" >> "$ACCEPTANCE_EVIDENCE/shell-checks.txt"
+          done
+          python3 -m py_compile "$HARNESS_TOOLS/runtime_acceptance_evidence.py"
+          printf 'harness_sha=%s\ncandidate_sha=%s\nshell_syntax=pass\n' "$GITHUB_SHA" "$CANDIDATE_SHA" > "$ACCEPTANCE_EVIDENCE/run-identity.txt"
       - name: Checkout exact candidate source
         uses: actions/checkout@v5
         with:
@@ -70,18 +90,19 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -euo pipefail
-            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace \
-              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.sync.library.LibrarySyncPersistenceTest
+          script: bash "$HARNESS_TOOLS/library-sync.sh"
+      - name: Record sync job status even without JUnit
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$ACCEPTANCE_EVIDENCE"
+          printf 'job_status=%s\n' '${{ job.status }}' > "$ACCEPTANCE_EVIDENCE/job-status.txt"
       - name: Upload LibrarySyncPersistenceTest evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: library-sync-persistence-${{ inputs.candidate_sha }}
-          path: |
-            app/build/reports/androidTests/connected/
-            app/build/outputs/androidTest-results/connected/
+          path: ${{ env.ACCEPTANCE_EVIDENCE }}
           if-no-files-found: warn
           retention-days: 14
 
@@ -98,6 +119,8 @@ jobs:
       STABLE_TAG: v1.4.4
       STABLE_COMMIT: a2db74e301b525da74bed5b2a96776f85c14c76a
       PACKAGE: org.noirero.miyorare
+      HARNESS_TOOLS: ${{ runner.temp }}/runtime-harness
+      ACCEPTANCE_EVIDENCE: ${{ runner.temp }}/runtime-acceptance
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
@@ -117,8 +140,19 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Preserve harness probe
-        run: cp .github/acceptance/SignedUpgradeAcceptanceHarnessTest.kt /tmp/SignedUpgradeAcceptanceHarnessTest.kt
+      - name: Preserve harness tools and check shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HARNESS_TOOLS" "$ACCEPTANCE_EVIDENCE"
+          cp .github/acceptance/*.sh .github/acceptance/runtime-probe.init.gradle .github/acceptance/SignedUpgradeAcceptanceHarnessTest.kt "$HARNESS_TOOLS/"
+          cp .github/scripts/runtime_acceptance_evidence.py "$HARNESS_TOOLS/"
+          for script in "$HARNESS_TOOLS"/*.sh; do
+            bash -n "$script"
+            printf 'PASS bash -n %s\n' "$(basename "$script")" >> "$ACCEPTANCE_EVIDENCE/shell-checks.txt"
+          done
+          python3 -m py_compile "$HARNESS_TOOLS/runtime_acceptance_evidence.py"
+          printf 'harness_sha=%s\ncandidate_sha=%s\nshell_syntax=pass\n' "$GITHUB_SHA" "$CANDIDATE_SHA" > "$ACCEPTANCE_EVIDENCE/run-identity.txt"
 
       - name: Download exact signed candidate artifact
         uses: actions/download-artifact@v5
@@ -163,54 +197,25 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
-      - name: Prepare test-only release signing and R8 classpath
+      - name: Prepare test-only release signing outside evidence
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           test -n "$KEYSTORE_BASE64"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/release.keystore"
-          cat > /tmp/runtime-probe.init.gradle <<'GRADLE'
-          allprojects {
-              if (path == ':app') {
-                  afterEvaluate {
-                      dependencies.add('androidTestImplementation', 'androidx.concurrent:concurrent-futures-ktx:1.3.0')
-                      dependencies.add('androidTestImplementation', 'com.google.auto.value:auto-value-annotations:1.11.0')
-                  }
-              }
-          }
-          GRADLE
+          mkdir -p "$RUNNER_TEMP/runtime-probe-signing"
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/runtime-probe-signing/release.keystore"
+          echo "RELEASE_STORE_FILE=$RUNNER_TEMP/runtime-probe-signing/release.keystore" >> "$GITHUB_ENV"
 
-      - name: Build stable and candidate instrumentation probes without rebuilding tested APKs
+      - name: Build and verify both isolated Release probe classpaths
         shell: bash
         env:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          build_probe() {
-            local source_sha="$1" output_apk="$2"
-            git checkout --force "$source_sha"
-            test "$(git rev-parse HEAD)" = "$source_sha"
-            mkdir -p app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance
-            cp /tmp/SignedUpgradeAcceptanceHarnessTest.kt app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance/
-            chmod +x gradlew
-            ./gradlew -I /tmp/runtime-probe.init.gradle :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
-              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=release \
-              -PRELEASE_STORE_FILE=../release.keystore \
-              -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
-              -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
-              -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
-            test_apk="$(find app/build/outputs/apk/androidTest -type f -name '*.apk' -print -quit)"
-            test -n "$test_apk"
-            cp "$test_apk" "$output_apk"
-          }
-          build_probe "$STABLE_COMMIT" /tmp/stable-test.apk
-          build_probe "$CANDIDATE_SHA" /tmp/candidate-test.apk
-          git checkout --force "$CANDIDATE_SHA"
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+        run: bash "$HARNESS_TOOLS/build-probes.sh"
 
       - name: Verify probe signatures and Release target compatibility
         shell: bash
@@ -221,20 +226,28 @@ jobs:
           test -x "$APKSIGNER"
           test -x "$AAPT"
           cert_digest() {
-            "$APKSIGNER" verify --verbose --print-certs "$1" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1
+            local label="$1" apk="$2"
+            "$APKSIGNER" verify --verbose --print-certs "$apk" > "$ACCEPTANCE_EVIDENCE/$label-signature.txt" 2>&1 || return "$?"
+            sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$ACCEPTANCE_EVIDENCE/$label-signature.txt"
           }
-          stable_cert="$(cert_digest /tmp/stable.apk)"
-          candidate_cert="$(cert_digest /tmp/candidate.apk)"
-          stable_test_cert="$(cert_digest /tmp/stable-test.apk)"
-          candidate_test_cert="$(cert_digest /tmp/candidate-test.apk)"
+          stable_cert="$(cert_digest stable /tmp/stable.apk)"
+          candidate_cert="$(cert_digest candidate /tmp/candidate.apk)"
+          stable_test_cert="$(cert_digest stable-probe /tmp/stable-test.apk)"
+          candidate_test_cert="$(cert_digest candidate-probe /tmp/candidate-test.apk)"
           test -n "$stable_cert"
           test "$candidate_cert" = "$stable_cert"
           test "$stable_test_cert" = "$stable_cert"
           test "$candidate_test_cert" = "$stable_cert"
-          "$AAPT" dump xmltree /tmp/stable-test.apk AndroidManifest.xml | grep -Fq "$PACKAGE"
-          "$AAPT" dump xmltree /tmp/candidate-test.apk AndroidManifest.xml | grep -Fq "$PACKAGE"
-          mkdir -p runtime-acceptance
-          printf '%s\n' "stable=$stable_cert" "candidate=$candidate_cert" "stable_probe=$stable_test_cert" "candidate_probe=$candidate_test_cert" > runtime-acceptance/probe-certificates.txt
+          for label in stable candidate; do
+            "$AAPT" dump xmltree "/tmp/$label-test.apk" AndroidManifest.xml > "$ACCEPTANCE_EVIDENCE/$label-probe-manifest.txt"
+            python3 "$HARNESS_TOOLS/runtime_acceptance_evidence.py" manifest \
+              --file "$ACCEPTANCE_EVIDENCE/$label-probe-manifest.txt" \
+              --package "$PACKAGE" --runner org.koitharu.kotatsu.HiltTestRunner
+            "$AAPT" dump badging "/tmp/$label.apk" > "$ACCEPTANCE_EVIDENCE/$label-package.txt"
+            package_id="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$ACCEPTANCE_EVIDENCE/$label-package.txt")"
+            test "$package_id" = "$PACKAGE"
+          done
+          printf '%s\n' "stable=$stable_cert" "candidate=$candidate_cert" "stable_probe=$stable_test_cert" "candidate_probe=$candidate_test_cert" > "$ACCEPTANCE_EVIDENCE/probe-certificates.txt"
 
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm || true
@@ -249,71 +262,35 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -euo pipefail
-            mkdir -p runtime-acceptance
-            adb shell settings put system screen_off_timeout 1800000
-            adb shell settings put system accelerometer_rotation 0
+          script: bash "$HARNESS_TOOLS/upgrade-release.sh"
 
-            echo '=== stable v1.4.4 install and representative state seed ==='
-            adb uninstall "$PACKAGE" >/dev/null 2>&1 || true
-            adb install /tmp/stable.apk
-            adb install /tmp/stable-test.apk
-            adb shell am instrument -w -r               -e class org.koitharu.kotatsu.acceptance.SignedUpgradeAcceptanceHarnessTest#seedStableRepresentativeState               "$PACKAGE.test/org.koitharu.kotatsu.HiltTestRunner" | tee runtime-acceptance/stable-seed.txt
-            grep -q 'OK (1 test)' runtime-acceptance/stable-seed.txt
-            adb pull "/sdcard/Android/data/$PACKAGE/files/runtime-acceptance-baseline.txt" runtime-acceptance/
-
-            echo '=== immutable signed candidate in-place update: no uninstall, no clear, no downgrade ==='
-            adb uninstall "$PACKAGE.test" >/dev/null 2>&1 || true
-            adb install -r /tmp/candidate.apk | tee runtime-acceptance/update-install.txt
-            grep -q 'Success' runtime-acceptance/update-install.txt
-            adb install /tmp/candidate-test.apk
-            adb shell am instrument -w -r               -e class org.koitharu.kotatsu.acceptance.SignedUpgradeAcceptanceHarnessTest#verifyCandidateMigrationAndPreservation               "$PACKAGE.test/org.koitharu.kotatsu.HiltTestRunner" | tee runtime-acceptance/candidate-verify.txt
-            grep -q 'OK (1 test)' runtime-acceptance/candidate-verify.txt
-            adb pull "/sdcard/Android/data/$PACKAGE/files/runtime-acceptance-candidate.txt" runtime-acceptance/
-
-            echo '=== signed Release cold-start / force-stop / reopen / offline smoke ==='
-            adb logcat -c
-            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee runtime-acceptance/launch.txt
-            sleep 5
-            adb shell pidof "$PACKAGE"
-            adb exec-out screencap -p > runtime-acceptance/release-launch.png
-            adb shell am force-stop "$PACKAGE"
-            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
-            sleep 5
-            adb shell pidof "$PACKAGE"
-            adb shell svc wifi disable || true
-            adb shell svc data disable || true
-            adb shell am force-stop "$PACKAGE"
-            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
-            sleep 5
-            adb shell pidof "$PACKAGE"
-            adb exec-out screencap -p > runtime-acceptance/release-offline.png
-            adb logcat -d > runtime-acceptance/release-logcat.txt
-            if grep -A4 -B2 'FATAL EXCEPTION' runtime-acceptance/release-logcat.txt | grep -q "Process: $PACKAGE"; then
-              echo '::error::Signed Release crashed during smoke'
-              exit 1
-            fi
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/runtime-probe-signing"
 
       - name: Record APK hashes and package metadata
         if: always()
         shell: bash
         run: |
-          mkdir -p runtime-acceptance
-          sha256sum /tmp/stable.apk /tmp/candidate.apk > runtime-acceptance/apk-sha256.txt
+          mkdir -p "$ACCEPTANCE_EVIDENCE"
+          for apk in /tmp/stable.apk /tmp/candidate.apk; do
+            if test -f "$apk"; then sha256sum "$apk"; else echo "missing=$apk"; fi
+          done > "$ACCEPTANCE_EVIDENCE/apk-sha256.txt"
           {
-            echo "harness_sha=$HARNESS_SHA"
+            echo "harness_sha=${HARNESS_SHA:-$GITHUB_SHA}"
             echo "candidate_sha=$CANDIDATE_SHA"
             echo "signed_build_run_id=$SIGNED_BUILD_RUN_ID"
             echo "signed_artifact_id=$SIGNED_ARTIFACT_ID"
             echo "api_level=35"
-          } > runtime-acceptance/run-identity.txt
+            echo "job_status=${{ job.status }}"
+          } > "$ACCEPTANCE_EVIDENCE/run-identity.txt"
 
       - name: Upload runtime acceptance evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: runtime-acceptance-v3-${{ inputs.candidate_sha }}
-          path: runtime-acceptance/
+          path: ${{ env.ACCEPTANCE_EVIDENCE }}
           if-no-files-found: warn
           retention-days: 14
