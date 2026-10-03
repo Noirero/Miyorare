@@ -203,8 +203,8 @@ constructor(
 					old?.createdAt ?: entry.updatedAt.toEpochMilli(),
 					entry.updatedAt.toEpochMilli(),
 					target.chapterId,
-					old?.page?.takeIf { old.chapterId == target.chapterId } ?: 0,
-					old?.scroll?.takeIf { old.chapterId == target.chapterId } ?: 0f,
+					syncedReaderPosition(old?.chapterId, target.chapterId, old?.page ?: 0, old?.scroll ?: 0f).first,
+					syncedReaderPosition(old?.chapterId, target.chapterId, old?.page ?: 0, old?.scroll ?: 0f).second,
 					if (entry.progress == 0) 0f else (index + 1f) / chapters.size,
 					0L,
 					chapters.size,
@@ -278,4 +278,16 @@ constructor(
 		fun plannedStatus(id: LibrarySyncServiceId): String =
 			if (id == LibrarySyncServiceId.ANILIST) "PLANNING" else "planned"
 	}
+}
+
+
+internal fun syncedReaderPosition(
+	oldChapterId: Long?,
+	targetChapterId: Long,
+	oldPage: Int,
+	oldScroll: Float,
+): Pair<Int, Float> = if (oldChapterId == targetChapterId) {
+	oldPage to oldScroll
+} else {
+	0 to 0f
 }
