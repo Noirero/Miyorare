@@ -18,7 +18,40 @@ on:
       - 'app/src/main/res/drawable-nodpi/nameplate_*.webp'
       - 'app/src/main/res/values/settings_developer_diagnostics.xml'
       - 'app/src/main/res/values-in/settings_developer_diagnostics.xml'
-      - 'docs/reader-journey-theme-assets.md'
+      # Preview contains all main resources and explicitly includes release resources.
+      # Unknown payload/resources stay conservative; audited shared strings are gated cheaply.
+      - 'app/src/main/res/**'
+      - 'app/src/main/assets/**'
+      - 'app/src/main/resources/**'
+      - 'app/src/main/jniLibs/**'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/src/preview/**'
+      - 'app/src/release/**'
+      - 'app/src/main/badge-assets/**'
+      - 'tools/regenerate_badge_v2_payload.py'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsComponents.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsState.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsTheme.kt'
+      - '*.gradle'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle.lockfile'
+      - '**/*.gradle'
+      - '**/*.gradle.kts'
+      - '**/gradle.properties'
+      - '**/gradle.lockfile'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'buildSrc/**'
+      - 'build-logic/**'
+      - 'app/proguard-rules.pro'
+      - '.github/scripts/theme_size_paths.py'
+      - '.github/scripts/test_theme_size_paths.py'
+      # Shared parser is reused without changing stage 2 behavior.
+      - '.github/scripts/exclusive_visual_paths.py'
       - '.github/workflows/reader-journey-theme-size-baseline.yml'
   workflow_dispatch:
 
@@ -30,9 +63,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  classify:
+    name: Classify Theme Size inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_size: ${{ steps.classify.outputs.run_size }}
+      base_sha: ${{ steps.candidate.outputs.base_sha }}
+      head_sha: ${{ steps.candidate.outputs.head_sha }}
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Pin size comparison candidates
+        id: candidate
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            git fetch --no-tags origin beta
+            BASE_SHA="$(git rev-parse FETCH_HEAD)"
+          fi
+          git cat-file -e "${BASE_SHA}^{commit}" || git fetch --no-tags origin "$BASE_SHA"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Verify size routing policy
+        run: python3 .github/scripts/test_theme_size_paths.py
+
+      - name: Classify size changes
+        id: classify
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ steps.candidate.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.candidate.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          run_size=true
+          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            # Script errors/missing output must never silently bypass APK validation.
+            decision="$(python3 .github/scripts/theme_size_paths.py --base "$BASE_SHA" --head "$HEAD_SHA")" || decision=true
+            if [ "$decision" = "false" ]; then run_size=false; fi
+          fi
+          echo "run_size=$run_size" >> "$GITHUB_OUTPUT"
+          {
+            echo "Theme Size full Preview APK baseline required: $run_size"
+            echo "Base: $BASE_SHA; exact candidate: $HEAD_SHA"
+            if [ "$run_size" = "false" ]; then
+              echo "Audited generic loading/statistics/text or metadata changes; no JDK, Gradle or APK work."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   preview-apk-size:
     name: Preview APK before vs after
-    if: github.event_name == 'pull_request'
+    needs: classify
+    # Failed/uncertain classification runs the full audit. Cancellation stays cancelled.
+    if: always() && !cancelled() && needs.classify.outputs.run_size != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -42,80 +137,49 @@ jobs:
       - name: Checkout base beta candidate
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.classify.outputs.base_sha || github.event.pull_request.base.sha || 'beta' }}
           path: base
           fetch-depth: 1
 
       - name: Checkout exact feature head
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ needs.classify.outputs.head_sha || github.event.pull_request.head.sha || github.sha }}
           path: head
           fetch-depth: 0
 
-
-      - name: Decide whether APK size rebuild is required
-        id: size_scope
+      - name: Verify and record exact build candidates
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_ACTION: ${{ github.event.action }}
-          BEFORE_SHA: ${{ github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE: ${{ needs.classify.outputs.base_sha || github.event.pull_request.base.sha }}
+          EXPECTED_HEAD: ${{ needs.classify.outputs.head_sha || github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          required=true
-
-          # Size evidence is still automatic for real production changes. A follow-up commit that
-          # only repairs Reader Journey tests/CI reuses the already-recorded size evidence instead
-          # of rebuilding two identical Preview APKs.
-          if [ "$EVENT_NAME" = "pull_request" ] && [ "$EVENT_ACTION" = "synchronize" ] && [ -n "${BEFORE_SHA:-}" ]; then
-            mapfile -t changed < <(git -C head diff --name-only "$BEFORE_SHA" "$HEAD_SHA")
-            required=false
-            for path in "${changed[@]}"; do
-              case "$path" in
-                app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/*|\
-                .github/workflows/reader-journey-theme-regression.yml|\
-                .github/workflows/reader-journey-phase10-validation.yml|\
-                .github/workflows/p0-p1-acceptance.yml)
-                  ;;
-                *)
-                  required=true
-                  break
-                  ;;
-              esac
-            done
-          fi
-
-          echo "required=$required" >> "$GITHUB_OUTPUT"
-          if [ "$required" = "true" ]; then
-            echo "Preview APK size comparison will run."
-          else
-            echo "Only Reader Journey regression/CI files changed since the previous PR head; skipping duplicate Preview APK builds."
-          fi
+          base_sha="$(git -C base rev-parse HEAD)"
+          head_sha="$(git -C head rev-parse HEAD)"
+          if [ -n "$EXPECTED_BASE" ]; then test "$base_sha" = "$EXPECTED_BASE"; fi
+          test "$head_sha" = "$EXPECTED_HEAD"
+          echo "BASE_SHA=$base_sha" >> "$GITHUB_ENV"
+          echo "HEAD_SHA=$head_sha" >> "$GITHUB_ENV"
 
       - name: Set up JDK
-        if: steps.size_scope.outputs.required == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
-        if: steps.size_scope.outputs.required == 'true'
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
           cache-read-only: true
 
       - name: Grant execute permission
-        if: steps.size_scope.outputs.required == 'true'
         run: |
           chmod +x base/gradlew
           chmod +x head/gradlew
 
       - name: Pre-warm parser dependency
-        if: steps.size_scope.outputs.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -143,17 +207,14 @@ jobs:
           exit 1
 
       - name: Build base Preview APK
-        if: steps.size_scope.outputs.required == 'true'
         working-directory: base
         run: ./gradlew :app:assemblePreview --no-daemon --stacktrace || ./gradlew :app:assemblePreview --no-daemon --stacktrace --refresh-dependencies
 
       - name: Build feature Preview APK
-        if: steps.size_scope.outputs.required == 'true'
         working-directory: head
         run: ./gradlew :app:assemblePreview --no-daemon --stacktrace
 
       - name: Audit packaged final rank-title Nameplate resources
-        if: steps.size_scope.outputs.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -211,11 +272,7 @@ jobs:
           PY
 
       - name: Record consistent APK size baseline
-        if: steps.size_scope.outputs.required == 'true'
         shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           BASE_APK="$(find base/app/build/outputs/apk/preview -type f -name '*.apk' | sort | head -n1)"
@@ -272,7 +329,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload size evidence
-        if: steps.size_scope.outputs.required == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: reader-journey-theme-preview-size
@@ -283,7 +339,6 @@ jobs:
           retention-days: 14
 
       - name: Upload Nameplate V2 Preview candidate
-        if: steps.size_scope.outputs.required == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: nameplate-v2-preview-candidate
