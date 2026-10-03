@@ -111,4 +111,5 @@ jobs:
           python3 .github/scripts/test_gradle_benchmark_summary.py
           python3 .github/scripts/test_ci_metrics.py
           python3 .github/scripts/test_ci_deep_paths.py
+          python3 .github/scripts/test_exclusive_visual_paths.py
           bash -n .github/scripts/prewarm_jitpack.sh
