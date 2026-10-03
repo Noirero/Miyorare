@@ -84,9 +84,8 @@ import org.koitharu.kotatsu.reader.domain.UpscaleEffect
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueue
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationPresentation
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueueItem
-import org.koitharu.kotatsu.readerjourney.domain.presentations
-import org.koitharu.kotatsu.readerjourney.ui.CelebrationDialogResult
-import org.koitharu.kotatsu.readerjourney.ui.showReaderJourneyCelebrationDialog
+import org.koitharu.kotatsu.readerjourney.domain.presentation
+import org.koitharu.kotatsu.readerjourney.ui.presentCelebration
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
 import org.koitharu.kotatsu.reader.ui.upscale.UpscalePreviewDialog
 import org.koitharu.kotatsu.reader.ui.config.ReaderConfigSheet
@@ -402,17 +401,8 @@ class ReaderActivity :
     }
 
     private suspend fun showReaderJourneyCelebration(item: CelebrationQueueItem) {
-        val presentations = item.presentations()
-        if (presentations.first() != CelebrationPresentation.SNACKBAR) {
-            for (presentation in presentations) {
-                val result = showReaderJourneyCelebrationDialog(
-                    item.copy(presentationOverride = presentation),
-                )
-                if (result == CelebrationDialogResult.OPEN_COLLECTION) {
-                    router.openStatistic()
-                    break
-                }
-            }
+        if (item.presentation() != CelebrationPresentation.SNACKBAR) {
+            presentCelebration(item, router::openStatistic)
             return
         }
         val event = item.event
