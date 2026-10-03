@@ -2,7 +2,7 @@ import importlib.util
 import pathlib
 import unittest
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parent
 
 def load(name, filename):
     spec = importlib.util.spec_from_file_location(name, ROOT / filename)
