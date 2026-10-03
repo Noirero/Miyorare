@@ -24,10 +24,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
+      - name: Checkout exact candidate head
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+
+      - name: Verify exact candidate head
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          echo "Fast validation head: $EXPECTED_HEAD"
 
       - name: Diff sanity
         if: github.event_name == 'pull_request'
@@ -99,4 +110,5 @@ jobs:
           python3 .github/scripts/test_summarize_gradle_profile.py
           python3 .github/scripts/test_gradle_benchmark_summary.py
           python3 .github/scripts/test_ci_metrics.py
+          python3 .github/scripts/test_ci_deep_paths.py
           bash -n .github/scripts/prewarm_jitpack.sh

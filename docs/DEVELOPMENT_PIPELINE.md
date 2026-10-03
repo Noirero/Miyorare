@@ -43,6 +43,12 @@ No emulator and no release APK are required.
 Full applicable regression, integration, persistence-logic, source compatibility, and cross-subsystem
 contract tests pass.
 
+Relevant Android changes also compile the complete Debug instrumentation test source set (Kotlin
+and Java) in the same Gradle invocation as the JVM suite. Variant/build/unknown changes additionally
+compile Preview instrumentation sources in a separately routed invocation. This is compile-only validation: no
+emulator, APK assembly, instrumentation execution, or signing credentials are required. See
+[Android test compile protection](ci-android-test-compile.md) for routing and variant boundaries.
+
 ### RUNTIME GREEN
 Required emulator/instrumentation/UI/golden evidence passes for runtime-sensitive changes.
 Runtime CI is not required merely because a change exists.

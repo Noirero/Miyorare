@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       run_deep: ${{ steps.classify.outputs.run_deep }}
+      run_android_test_compile: ${{ steps.classify.outputs.run_android_test_compile }}
+      run_preview_android_test_compile: ${{ steps.classify.outputs.run_preview_android_test_compile }}
     steps:
       - name: Checkout exact candidate head
         uses: actions/checkout@v5
@@ -44,13 +46,21 @@ jobs:
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             run_deep=true
+            run_android_test_compile=true
+            run_preview_android_test_compile=true
           else
             git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed-paths.txt
             cat changed-paths.txt
             run_deep="$(python3 .github/scripts/ci_deep_paths.py --paths-file changed-paths.txt)"
+            run_android_test_compile="$(python3 .github/scripts/ci_deep_paths.py --paths-file changed-paths.txt --gate android-test-compile)"
+            run_preview_android_test_compile="$(python3 .github/scripts/ci_deep_paths.py --paths-file changed-paths.txt --gate preview-android-test-compile)"
           fi
           echo "run_deep=$run_deep" >> "$GITHUB_OUTPUT"
+          echo "run_android_test_compile=$run_android_test_compile" >> "$GITHUB_OUTPUT"
+          echo "run_preview_android_test_compile=$run_preview_android_test_compile" >> "$GITHUB_OUTPUT"
           echo "Full JVM regression required: $run_deep"
+          echo "Compile-only Debug Android tests required: $run_android_test_compile"
+          echo "Additional Preview Android test compilation required: $run_preview_android_test_compile"
 
   deep:
     name: Deep
@@ -88,8 +98,18 @@ jobs:
           cache-provider: basic
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      - name: Run full JVM unit regression
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+      # One invocation shares Gradle configuration/dependencies with the JVM suite.
+      # Debug reuses application compilation from the JVM suite. No signing,
+      # APK assembly, test execution, or emulator is needed to compile Kotlin/Java.
+      - name: Run full JVM regression and routed Android test compilation
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace ${{ needs.classify.outputs.run_android_test_compile == 'true' && ':app:compileDebugAndroidTestKotlin :app:compileDebugAndroidTestJavaWithJavac' || '' }}
+
+      # AGP exposes only testBuildType's unit-test tasks. Switching to Preview in
+      # the invocation above removes testDebugUnitTest, so variant/build changes
+      # need a separate compile-only invocation without repeating JVM tests.
+      - name: Compile Preview Android tests for variant and build inputs
+        if: needs.classify.outputs.run_preview_android_test_compile == 'true'
+        run: ./gradlew :app:compilePreviewAndroidTestKotlin :app:compilePreviewAndroidTestJavaWithJavac -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview --no-daemon --stacktrace
 
       - name: Upload unit-test evidence
         if: always()
