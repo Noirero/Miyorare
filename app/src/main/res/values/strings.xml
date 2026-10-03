@@ -1344,6 +1344,11 @@
     <string name="stats_spent">%s spent</string>
     <string name="stats_reading_heatmap">Reading Heatmap</string>
     <string name="stats_heatmap_subtitle">Your reading rhythm over time</string>
+    <string name="stats_heatmap_less">Less</string>
+    <string name="stats_heatmap_more">More</string>
+    <string name="stats_heatmap_empty_period">No reading activity in this period yet.</string>
+    <string name="stats_heatmap_activity_detail">%1$s · %2$d activities</string>
+    <string name="stats_heatmap_accessibility">Reading activity heatmap. Tap a day to inspect its activity.</string>
     <string name="stats_activity_count">%d activities</string>
     <string name="stats_reading_insights">Reading Insights</string>
     <string name="stats_most_read_genres">Top Genres</string>
@@ -1362,6 +1367,9 @@
 
 
     <!-- Reader Journey -->
+    <string name="reader_journey_avatar">Reader profile avatar</string>
+    <string name="reader_journey_choose_avatar">Choose photo</string>
+    <string name="reader_journey_remove_avatar">Remove photo</string>
     <string name="reader_journey">Reader Journey</string>
     <string name="reader_journey_nav">Journey</string>
     <string name="reader_journey_summary">Level, rank, and milestones from verified reading progress</string>

@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.stats.ui
 
+import android.net.Uri
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -139,6 +140,19 @@ class StatsViewModel @Inject constructor(
 			selectedTitle = selectedTitle?.takeIf { it in unlocked },
 			showcase = showcase.filter { it in unlocked },
 		)
+	}
+
+
+	fun updateReaderAvatar(uri: Uri) {
+		launchJob(Dispatchers.IO) {
+			profileStore.importAvatar(uri)
+		}
+	}
+
+	fun removeReaderAvatar() {
+		launchJob(Dispatchers.IO) {
+			profileStore.removeAvatar()
+		}
 	}
 
 	fun updateReaderCosmetics(loadout: ReaderJourneyCosmeticLoadout) {
