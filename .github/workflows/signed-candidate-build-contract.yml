@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/signed-release-candidate-build.yml'
+      - '.github/workflows/beta-to-main-release-gate.yml'
       - '.github/workflows/signed-candidate-build-contract.yml'
       - '.github/scripts/apply_candidate_version.py'
       - '.github/scripts/test_apply_candidate_version.py'
