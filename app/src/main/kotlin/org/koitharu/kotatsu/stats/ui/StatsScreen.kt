@@ -154,6 +154,7 @@ import java.util.Locale
 fun StatsScreen(
 	stats: ReadingStats,
 	isLoading: Boolean,
+	hasLoadedStats: Boolean,
 	period: StatsPeriod,
 	scope: StatsContentScope,
 	matureMode: StatsMatureMode,
@@ -236,20 +237,26 @@ fun StatsScreen(
 			when (journeySection) {
 				ReaderJourneySection.OVERVIEW -> {
 					if (stats.isJourneyEnabled) {
-						item("profile-overview") {
-							ReaderProfileCard(
-								stats = stats,
-								profile = profile,
-								imageLoader = imageLoader,
-								onEdit = { showProfileEditor = true },
-								onAvatarClick = { showProfileEditor = true },
-								onShare = {
-									onShareReaderProfile(ReaderProfileShareModel.from(stats.lifetimeXp, profile.cosmetics))
-								},
-							)
-						}
-						item("journey-overview-metrics") {
-							ReaderJourneyOverviewGrid(stats)
+						if (!hasLoadedStats && isLoading) {
+							item("profile-overview-loading") {
+								ReaderJourneyProfileLoadingSkeleton()
+							}
+						} else {
+							item("profile-overview") {
+								ReaderProfileCard(
+									stats = stats,
+									profile = profile,
+									imageLoader = imageLoader,
+									onEdit = { showProfileEditor = true },
+									onAvatarClick = { showProfileEditor = true },
+									onShare = {
+										onShareReaderProfile(ReaderProfileShareModel.from(stats.lifetimeXp, profile.cosmetics))
+									},
+								)
+							}
+							item("journey-overview-metrics") {
+								ReaderJourneyOverviewGrid(stats)
+							}
 						}
 						stats.journeyProgression?.let { progression ->
 							item("journey-weekly") {
@@ -436,6 +443,72 @@ fun StatsScreen(
 						customizerInitialThemeId = null
 					},
 				)
+			}
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyProfileLoadingSkeleton() {
+	Column(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		verticalArrangement = Arrangement.spacedBy(12.dp),
+	) {
+		Surface(
+			modifier = Modifier
+				.fillMaxWidth()
+				.height(214.dp),
+			shape = RoundedCornerShape(28.dp),
+			color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f),
+		) {
+			Column(
+				modifier = Modifier.padding(18.dp),
+				horizontalAlignment = Alignment.CenterHorizontally,
+				verticalArrangement = Arrangement.spacedBy(12.dp),
+			) {
+				Box(
+					Modifier
+						.size(72.dp)
+						.clip(CircleShape)
+						.background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)),
+				)
+				Box(
+					Modifier
+						.width(144.dp)
+						.height(18.dp)
+						.clip(RoundedCornerShape(9.dp))
+						.background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)),
+				)
+				Box(
+					Modifier
+						.width(104.dp)
+						.height(12.dp)
+						.clip(RoundedCornerShape(6.dp))
+						.background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+				)
+				Spacer(Modifier.height(4.dp))
+				Box(
+					Modifier
+						.fillMaxWidth()
+						.height(54.dp)
+						.clip(RoundedCornerShape(18.dp))
+						.background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+				)
+			}
+		}
+		repeat(3) {
+			Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+				repeat(2) {
+					Box(
+						Modifier
+							.weight(1f)
+							.height(78.dp)
+							.clip(RoundedCornerShape(18.dp))
+							.background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f)),
+					)
+				}
 			}
 		}
 	}

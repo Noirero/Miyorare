@@ -85,6 +85,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 				val density = LocalDensity.current
 				val stats by viewModel.stats.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
+				val hasLoadedStats by viewModel.hasLoadedStats.collectAsState()
 				val period by viewModel.period.collectAsState()
 				val scope by viewModel.scope.collectAsState()
 				val matureMode by viewModel.matureMode.collectAsState()
@@ -96,6 +97,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 				StatsScreen(
 					stats = stats,
 					isLoading = isLoading,
+					hasLoadedStats = hasLoadedStats,
 					period = period,
 					scope = scope,
 					matureMode = matureMode,

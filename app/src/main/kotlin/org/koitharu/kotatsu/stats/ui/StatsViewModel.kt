@@ -46,6 +46,7 @@ class StatsViewModel @Inject constructor(
 	val scope = MutableStateFlow(StatsContentScope.OVERVIEW)
 	val matureMode = MutableStateFlow(StatsMatureMode.fromPreference(settings.statsMatureMode))
 	val selectedCategories = MutableStateFlow<Set<Long>>(emptySet())
+	val hasLoadedStats = MutableStateFlow(false)
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 	val favoriteCategories = favouritesRepository.observeCategories()
 	val readerProfile = profileStore.profile
@@ -98,6 +99,7 @@ class StatsViewModel @Inject constructor(
 						matureMode = query.matureMode,
 					)
 				}
+				hasLoadedStats.value = true
 			}
 		}
 		launchJob(Dispatchers.Default) {
