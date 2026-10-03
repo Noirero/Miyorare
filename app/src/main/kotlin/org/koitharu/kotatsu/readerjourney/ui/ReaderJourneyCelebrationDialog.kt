@@ -48,12 +48,29 @@ import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueueItem
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticUnlock
 import org.koitharu.kotatsu.readerjourney.domain.presentation
+import org.koitharu.kotatsu.readerjourney.domain.presentations
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import kotlin.coroutines.resume
 
 enum class CelebrationDialogResult { DISMISSED, OPEN_COLLECTION }
+
+suspend fun ComponentActivity.presentCelebration(
+	item: CelebrationQueueItem,
+	onOpenCollection: () -> Unit,
+) {
+	for (presentation in item.presentations()) {
+		if (presentation == CelebrationPresentation.SNACKBAR) return
+		val result = showReaderJourneyCelebrationDialog(
+			item.copy(presentationOverride = presentation),
+		)
+		if (result == CelebrationDialogResult.OPEN_COLLECTION) {
+			onOpenCollection()
+			break
+		}
+	}
+}
 
 suspend fun ComponentActivity.showReaderJourneyCelebrationDialog(
 	item: CelebrationQueueItem,
