@@ -485,15 +485,17 @@ class DownloadWorker @AssistedInject constructor(
 						),
 					)
 					val chapterFinalized = output.flushChapter(chapter.value)
+					// Completion means every requested page is staged. SINGLE_CBZ/EPUB intentionally
+					// return false until finish(), so flushChapter() is not a success/failure signal.
+					completedRequestedChapters++
 					if (chapterFinalized) {
 						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
-						completedRequestedChapters++
 					}
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 					completedProgressPages += pages.size
 					publishState(
 						currentState.copy(
-							downloadedChapters = if (chapterFinalized) currentState.downloadedChapters + 1 else currentState.downloadedChapters,
+							downloadedChapters = currentState.downloadedChapters + 1,
 							isFinalizing = false,
 						),
 					)
