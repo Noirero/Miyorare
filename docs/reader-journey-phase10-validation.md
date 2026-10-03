@@ -166,8 +166,12 @@ No original non-document path is removed. Broad `readerjourney/**`, `core/ui/**`
 their JVM tests, both persistence classes and Reader Journey androidTests still admit events.
 The old Phase 10 documentation path remains a cheap-only event. Additional event paths protect
 actual previously omitted inputs: Stats hosts/domain/data, Room, profile settings, MangaDataRepository,
-application/DI, shared UI utilities and MainActivity startup, resources/assets, Gradle/build/variant
+application/BaseApp/DI, shared UI utilities and MainActivity startup, resources and UI assets, Gradle/build/variant
 configuration, manifest, runner/shared test fixtures, classifier/parser and delegation contracts.
+Asset event rules include `navigation/**` and `miyorare/**` used by navigation/app headers.
+`lnreader-host.js` and `lnreader-libs.js` are excluded: JsHost reads these on demand when a novel plugin
+is evaluated; none of the Phase 10 fixtures installs/evaluates such a plugin. This is new event-scope
+selection, not removal of any legacy trigger. Future fixture expansion must re-audit its dependencies.
 These are dependencies of the actual persistence and rendered fixtures, not an assertion that every
 Reader Journey Kotlin edit requires an emulator.
 

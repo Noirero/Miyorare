@@ -74,8 +74,14 @@ class RoutingTest(unittest.TestCase):
         for path in ('stats/ui/StatsScreen.kt', 'stats/ui/StatsActivity.kt', 'stats/ui/ReaderJourneyFragment.kt'):
             route = policy.route_paths([policy.PREFIX + path])
             self.assertEqual(policy.Route(render=True), route)
-        for path in ('app/src/main/assets/nameplates/themes/new.webp', 'app/src/main/res/values/strings.xml'):
+        for path in ('app/src/main/assets/navigation/themes/new.webp', 'app/src/main/res/values/strings.xml'):
             self.assertEqual(policy.Route(render=True), policy.route_paths([path]))
+
+    def test_unvisited_novel_plugin_assets_do_not_start_phase10(self):
+        for path in ('app/src/main/assets/lnreader-host.js', 'app/src/main/assets/lnreader-libs.js'):
+            self.assertEqual(policy.Route(), policy.route_paths([path]))
+        route = policy.route_paths([policy.PREFIX + 'core/BaseApp.kt'])
+        self.assertTrue(route.state and route.render)
 
     def test_phase10_tests_keep_corresponding_unique_coverage(self):
         self.assertEqual(policy.Route(state=True, backup=True), policy.route_paths([policy.STATE_TEST]))
@@ -301,7 +307,7 @@ class WorkflowContractTest(unittest.TestCase):
         for path in (policy.STATE_TEST, policy.RENDER_TEST, policy.QUEUE,
                      policy.PREFIX + 'core/ui/New.kt', policy.PREFIX + 'settings/New.kt',
                      policy.PREFIX + 'stats/ui/StatsScreen.kt', policy.PREFIX + 'core/prefs/AppSettings.kt',
-                     'app/src/main/res/values/strings.xml', 'app/src/main/assets/nameplates/themes/new.webp',
+                     'app/src/main/res/values/strings.xml', 'app/src/main/assets/navigation/themes/new.webp',
                      *policy.SELF, *policy.DEEP_CONTRACT, *policy.RUNTIME_CONTRACT):
             self.assertTrue(any(policy.kotlin.matches(path, rule) for rule in rules), path)
         self.assertFalse(any(policy.kotlin.matches('docs/unrelated.md', rule) for rule in rules))
