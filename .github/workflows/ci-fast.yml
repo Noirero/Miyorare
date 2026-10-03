@@ -102,7 +102,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile             .github/scripts/runtime_smoke_paths.py             .github/scripts/source_pack_readiness.py             .github/scripts/release_version.py             .github/scripts/summarize_gradle_profile.py             .github/scripts/gradle_benchmark_summary.py             .github/scripts/ci_metrics.py
+          python3 -m py_compile             .github/scripts/runtime_smoke_paths.py             .github/scripts/source_pack_readiness.py             .github/scripts/release_version.py             .github/scripts/summarize_gradle_profile.py             .github/scripts/gradle_benchmark_summary.py             .github/scripts/ci_metrics.py             .github/scripts/release_build_config_guard.py             .github/scripts/promotion_evidence.py
 
           python3 .github/scripts/test_runtime_smoke_paths.py
           python3 .github/scripts/test_source_pack_readiness.py
@@ -111,6 +111,7 @@ jobs:
           python3 .github/scripts/test_gradle_benchmark_summary.py
           python3 .github/scripts/test_ci_metrics.py
           python3 .github/scripts/test_main_candidate_contract.py
+          python3 .github/scripts/test_pre_main_audit_regressions.py
           python3 .github/scripts/test_ci_deep_paths.py
           python3 .github/scripts/test_exclusive_visual_paths.py
           bash -n .github/scripts/prewarm_jitpack.sh

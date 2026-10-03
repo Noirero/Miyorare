@@ -71,9 +71,21 @@ class MainCandidateContractTest(unittest.TestCase):
         bin_dir = Path(self.tmp.name) / 'bin'
         bin_dir.mkdir(exist_ok=True)
         gh = bin_dir / 'gh'
-        gh.write_text('#!/bin/sh\n[ "$1" = api ] || exit 1\ncat "$FIXTURE_PR"\n')
+        gh.write_text("""#!/bin/sh
+[ "$1" = api ] || exit 1
+case "$2" in
+  *"/commits/"*"/check-runs"*)
+    printf '%s\\n' '{"check_runs":[{"name":"verify-identity","conclusion":"success"},{"name":"Fast","conclusion":"success"},{"name":"Deep","conclusion":"success"}]}'
+    ;;
+  *) cat "$FIXTURE_PR" ;;
+esac
+""")
         gh.chmod(0o755)
         command = script('Classify source').replace('${{ github.event_name }}', event)
+        command = command.replace(
+            'python3 .github/scripts/promotion_evidence.py',
+            'python3 ' + str(ROOT / '.github/scripts/promotion_evidence.py'),
+        )
         result = subprocess.run(['bash', '-c', command], cwd=self.repo, text=True,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 env={**os.environ, 'HEAD_REF': ref, 'HEAD_SHA': head,
@@ -273,6 +285,7 @@ class MainCandidateContractTest(unittest.TestCase):
     def test_promotion_summary_records_literal_exact_sha_and_branch(self):
         command = script('Record promotion evidence')
         command = command.replace('${{ github.head_ref || github.ref_name }}', 'beta')
+        command = command.replace('${{ steps.mode.outputs.evidence_sha }}', self.base)
         summary = Path(self.tmp.name) / 'summary'
         result = subprocess.run(['bash', '-c', command], cwd=self.repo,
                                 env={**os.environ, 'GITHUB_STEP_SUMMARY': str(summary), 'HEAD_REF': 'beta'},
