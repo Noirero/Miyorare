@@ -49,7 +49,7 @@ jobs:
           assert ':app:assembleRelease' in workflow
           assert 'RELEASE_STORE_FILE=../release.keystore' in workflow
           assert 'KEYSTORE_BASE64:' in workflow
-          assert workflow.count('secrets.') == 7
+          assert workflow.count('secrets.') == 8
           assert 'actions/upload-artifact@v4' in workflow
           assert 'sha256sum "$APK_PATH"' in workflow
           assert 'release.keystore' not in workflow.split('Upload signed candidate APK', 1)[1]
