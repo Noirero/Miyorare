@@ -84,6 +84,20 @@ jobs:
               echo "::error::Promotion candidate is not contained in beta."
               exit 1
             }
+            evidence_sha="$HEAD_SHA"
+            checks_json="$(gh api --repo "$GITHUB_REPOSITORY" "repos/{owner}/{repo}/commits/$evidence_sha/check-runs?per_page=100")"
+            if ! printf '%s' "$checks_json" | python3 .github/scripts/promotion_evidence.py >/dev/null 2>&1; then
+              # A beta merge commit can reuse the exact PR-head evidence only when its tree is identical.
+              read -r -a parents <<< "$(git show -s --format=%P "$HEAD_SHA")"
+              test "${#parents[@]}" -ge 2 || { echo "::error::Promotion candidate has no exact required-check evidence."; exit 1; }
+              evidence_sha="${parents[1]}"
+              test "$(git rev-parse "$HEAD_SHA^{tree}")" = "$(git rev-parse "$evidence_sha^{tree}")" || {
+                echo "::error::Validated PR head is not tree-equivalent to the promotion candidate."; exit 1;
+              }
+              checks_json="$(gh api --repo "$GITHUB_REPOSITORY" "repos/{owner}/{repo}/commits/$evidence_sha/check-runs?per_page=100")"
+            fi
+            printf '%s' "$checks_json" | python3 .github/scripts/promotion_evidence.py
+            echo "evidence_sha=$evidence_sha" >> "$GITHUB_OUTPUT"
             echo "mode=promotion" >> "$GITHUB_OUTPUT"
           elif [[ "$HEAD_REF" = hotfix/* && "${{ github.event_name }}" = "pull_request" ]]; then
             [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -241,6 +255,8 @@ jobs:
             echo
             printf '%s`%s`\n' '- Candidate: ' "$(git rev-parse HEAD)"
             printf '%s`%s`\n' '- Source: ' "$HEAD_REF"
+            printf '%s`%s`\n' '- Validated evidence SHA: ' "${{ steps.mode.outputs.evidence_sha }}"
+            echo "- Evidence: required beta checks passed on the candidate itself or an identical-tree PR head."
             echo "- Policy: beta validates; main verifies and promotes."
             echo "- Repeated Gradle/Android validation: none."
           } >> "$GITHUB_STEP_SUMMARY"
