@@ -261,13 +261,6 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			if (searchSessionActive.value) {
 				enterInlineSearch()
 			}
-			for (page in childFragmentManager.fragments) {
-				val recyclerView = (page as? RecyclerViewOwner)?.recyclerView ?: continue
-				when (val lm = recyclerView.layoutManager) {
-					is LinearLayoutManager -> lm.scrollToPositionWithOffset(0, 0)
-					else -> recyclerView.scrollToPosition(0)
-				}
-			}
 		}
 	}
 

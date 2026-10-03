@@ -112,6 +112,7 @@ class BadgeV2ActualUiSmokeTest {
 									isJourneyEnabled = true,
 								),
 								isLoading = false,
+						hasLoadedStats = true,
 								period = StatsPeriod.ALL,
 								scope = StatsContentScope.OVERVIEW,
 								matureMode = StatsMatureMode.PRIVATE,

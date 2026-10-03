@@ -76,6 +76,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 				val bottomClearance = maxOf(systemBottomInset.intValue, bottomNavHeight.intValue)
 				val stats by viewModel.stats.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
+				val hasLoadedStats by viewModel.hasLoadedStats.collectAsState()
 				val period by viewModel.period.collectAsState()
 				val scope by viewModel.scope.collectAsState()
 				val matureMode by viewModel.matureMode.collectAsState()
@@ -87,6 +88,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 				StatsScreen(
 					stats = stats,
 					isLoading = isLoading,
+					hasLoadedStats = hasLoadedStats,
 					period = period,
 					scope = scope,
 					matureMode = matureMode,
