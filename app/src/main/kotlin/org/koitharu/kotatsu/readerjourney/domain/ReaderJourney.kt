@@ -1,5 +1,9 @@
 package org.koitharu.kotatsu.readerjourney.domain
 
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
+import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
+
 /**
  * Reader Journey is deliberately local-first: XP records verified reading completions rather than
  * time spent with the reader open. The level is one shared reader level for Manga and Novel.
@@ -51,7 +55,32 @@ enum class ReaderJourneyCosmeticMode {
 data class ReaderJourneyCosmeticUnlock(
 	val rank: ReaderRank,
 	val slot: ReaderJourneyCosmeticSlot,
-)
+) {
+	val theme: RankThemeId
+		get() = RankThemeId.forRank(rank)
+
+	val id: String
+		get() {
+			val spec = previewInfo
+			return when (slot) {
+				ReaderJourneyCosmeticSlot.FRAME -> spec.frameId
+				ReaderJourneyCosmeticSlot.GLOW -> theme.stableId + ":glow"
+				ReaderJourneyCosmeticSlot.BACKGROUND -> spec.wallpaperId
+				ReaderJourneyCosmeticSlot.PROGRESS_BAR -> spec.progressId
+			}
+		}
+
+	val name: String
+		get() = theme.displayName
+
+	val type: ReaderJourneyCosmeticSlot
+		get() = slot
+
+	val previewInfo: ReferenceRankThemeVisualSpec
+		get() = checkNotNull(RankThemeVisualRegistry.resolve(theme)) {
+			"Missing visual spec for ${theme.stableId}"
+		}
+}
 
 /**
  * Atomic cosmetic selection snapshot.
@@ -150,7 +179,8 @@ data class ReaderJourneyCelebration(
 	val toLevel: Int,
 	val fromRank: ReaderRank,
 	val toRank: ReaderRank,
-	val unlockedCosmetics: Int,
+	val unlockedCosmetics: List<ReaderJourneyCosmeticUnlock> = emptyList(),
+	val unlockedAchievements: List<ReaderAchievementId> = emptyList(),
 	val breakdown: List<ReaderJourneyXpBreakdown> = emptyList(),
 	val progressMilestones: List<Int> = emptyList(),
 ) {
