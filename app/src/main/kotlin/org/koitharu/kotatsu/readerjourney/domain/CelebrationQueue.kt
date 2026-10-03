@@ -41,9 +41,7 @@ class CelebrationQueue(
 	private val presenter: suspend (CelebrationQueueItem) -> Unit,
 ) {
 	private val events = Channel<ReaderJourneyCelebration>(capacity = Channel.UNLIMITED)
-
-	init {
-		scope.launch {
+	private val consumerJob = scope.launch {
 			for (event in events) {
 				val mode = modeProvider()
 				if (mode == ReaderJourneyCelebrationMode.OFF) continue
@@ -55,7 +53,6 @@ class CelebrationQueue(
 					),
 				)
 			}
-		}
 	}
 
 	fun enqueue(event: ReaderJourneyCelebration) {
@@ -65,5 +62,6 @@ class CelebrationQueue(
 
 	fun close() {
 		events.close()
+		consumerJob.cancel()
 	}
 }
