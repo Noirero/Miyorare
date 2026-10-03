@@ -14,6 +14,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
+import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCelebration
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmetics
+import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -43,6 +47,33 @@ class DeveloperToolsViewModel @Inject constructor(
 	fun runOne(packageName: String) = controller.runOne(packageName)
 
 	fun cancelOne(packageName: String) = controller.cancelOne(packageName)
+
+	fun previewAchievement() = ReaderJourneyCelebration(
+		xpEarned = ReaderAchievementId.FIRST_CHAPTER.xpReward,
+		fromLevel = 1,
+		toLevel = 1,
+		fromRank = ReaderRank.NEWCOMER,
+		toRank = ReaderRank.NEWCOMER,
+		unlockedAchievements = listOf(ReaderAchievementId.FIRST_CHAPTER),
+	)
+
+	fun previewCosmeticUnlock() = ReaderJourneyCelebration(
+		xpEarned = 0,
+		fromLevel = 10,
+		toLevel = 10,
+		fromRank = ReaderRank.READER,
+		toRank = ReaderRank.READER,
+		unlockedCosmetics = ReaderJourneyCosmetics.newlyUnlocked(ReaderRank.NEWCOMER, ReaderRank.READER),
+	)
+
+	fun previewRankUp() = ReaderJourneyCelebration(
+		xpEarned = 100,
+		fromLevel = 19,
+		toLevel = 20,
+		fromRank = ReaderRank.READER,
+		toRank = ReaderRank.BOOKWORM,
+		unlockedCosmetics = ReaderJourneyCosmetics.newlyUnlocked(ReaderRank.READER, ReaderRank.BOOKWORM),
+	)
 }
 
 @Singleton

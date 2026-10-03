@@ -1028,4 +1028,13 @@
 	<string name="reader_journey_weekly_task">tugas</string>
 	<string name="reader_journey_share_failed">Gagal membuat kartu berbagi Reader Journey</string>
 	<string name="failed">Gagal</string>
+
+    <string name="reader_journey_celebration_achievement">Achievement terbuka</string>
+    <string name="reader_journey_celebration_cosmetic">Kosmetik terbuka</string>
+    <string name="reader_journey_celebration_rank_up">Rank naik</string>
+    <string name="reader_journey_celebration_continue">Lanjut</string>
+    <string name="reader_journey_celebration_view_collection">Lihat di koleksi</string>
+    <string name="developer_preview_journey_achievement">Preview achievement</string>
+    <string name="developer_preview_journey_cosmetic">Preview cosmetic unlock</string>
+    <string name="developer_preview_journey_rank_up">Preview rank-up</string>
 </resources>

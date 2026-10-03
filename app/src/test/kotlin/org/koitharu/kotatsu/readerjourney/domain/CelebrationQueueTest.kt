@@ -60,6 +60,46 @@ class CelebrationQueueTest {
 		queue.close()
 	}
 
+	@Test
+	fun `full mode routes rich events while subtle stays snackbar`() {
+		val achievement = event(25).copy(unlockedAchievements = listOf(ReaderAchievementId.FIRST_CHAPTER))
+		val cosmetics = ReaderJourneyCosmetics.newlyUnlocked(ReaderRank.NEWCOMER, ReaderRank.READER)
+		val cosmetic = event(0).copy(unlockedCosmetics = cosmetics)
+		val rankUp = event(100).copy(
+			fromLevel = 9,
+			toLevel = 10,
+			fromRank = ReaderRank.NEWCOMER,
+			toRank = ReaderRank.READER,
+			unlockedCosmetics = cosmetics,
+		)
+
+		assertEquals(CelebrationPresentation.ACHIEVEMENT, item(achievement).presentation())
+		assertEquals(CelebrationPresentation.COSMETIC, item(cosmetic).presentation())
+		assertEquals(
+			listOf(CelebrationPresentation.COSMETIC),
+			item(cosmetic).presentations(),
+		)
+		assertEquals(CelebrationPresentation.RANK_UP, item(rankUp).presentation())
+		assertEquals(
+			listOf(CelebrationPresentation.RANK_UP, CelebrationPresentation.COSMETIC),
+			item(rankUp).presentations(),
+		)
+		assertEquals(CelebrationPresentation.SNACKBAR, item(event(10)).presentation())
+		assertEquals(
+			CelebrationPresentation.ACHIEVEMENT,
+			item(achievement).copy(reduceMotion = true).presentation(),
+		)
+		assertEquals(
+			CelebrationPresentation.SNACKBAR,
+			item(achievement, ReaderJourneyCelebrationMode.SUBTLE).presentation(),
+		)
+	}
+
+	private fun item(
+		event: ReaderJourneyCelebration,
+		mode: ReaderJourneyCelebrationMode = ReaderJourneyCelebrationMode.FULL,
+	) = CelebrationQueueItem(event, mode, reduceMotion = false)
+
 	private fun event(xp: Int) = ReaderJourneyCelebration(
 		xpEarned = xp,
 		fromLevel = 1,
