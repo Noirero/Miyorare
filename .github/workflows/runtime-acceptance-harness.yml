@@ -15,11 +15,76 @@ on:
       candidate_apk_sha256:
         required: true
         type: string
+    secrets:
+      KEYSTORE_BASE64:
+        required: true
+      RELEASE_STORE_PASSWORD:
+        required: true
+      RELEASE_KEY_ALIAS:
+        required: true
+      RELEASE_KEY_PASSWORD:
+        required: true
 
 permissions:
   contents: read
 
 jobs:
+  library-sync-persistence:
+    name: Exact-candidate LibrarySyncPersistenceTest
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Verify exact candidate source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$CANDIDATE_SHA" = "8be228346e0bb0127a938b21e90bf54af50e8aa3"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm || true
+      - name: Run LibrarySyncPersistenceTest on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          emulator-build: 13823996
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -euo pipefail
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace \
+              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.sync.library.LibrarySyncPersistenceTest
+      - name: Upload LibrarySyncPersistenceTest evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: library-sync-persistence-${{ inputs.candidate_sha }}
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 14
+
   acceptance:
     name: Signed v1.4.4 to candidate runtime acceptance
     runs-on: ubuntu-latest
@@ -98,25 +163,78 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
+      - name: Prepare test-only release signing and R8 classpath
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/release.keystore"
+          cat > /tmp/runtime-probe.init.gradle <<'GRADLE'
+          allprojects {
+              if (path == ':app') {
+                  afterEvaluate {
+                      dependencies.add('androidTestImplementation', 'androidx.concurrent:concurrent-futures-ktx:1.3.0')
+                      dependencies.add('androidTestImplementation', 'com.google.auto.value:auto-value-annotations:1.11.0')
+                  }
+              }
+          }
+          GRADLE
+
       - name: Build stable and candidate instrumentation probes without rebuilding tested APKs
+        shell: bash
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          build_probe() {
+            local source_sha="$1" output_apk="$2"
+            git checkout --force "$source_sha"
+            test "$(git rev-parse HEAD)" = "$source_sha"
+            mkdir -p app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance
+            cp /tmp/SignedUpgradeAcceptanceHarnessTest.kt app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance/
+            chmod +x gradlew
+            ./gradlew -I /tmp/runtime-probe.init.gradle :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
+              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=release \
+              -PRELEASE_STORE_FILE=../release.keystore \
+              -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+              -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+              -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+            test_apk="$(find app/build/outputs/apk/androidTest -type f -name '*.apk' -print -quit)"
+            test -n "$test_apk"
+            cp "$test_apk" "$output_apk"
+          }
+          build_probe "$STABLE_COMMIT" /tmp/stable-test.apk
+          build_probe "$CANDIDATE_SHA" /tmp/candidate-test.apk
+          git checkout --force "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+
+      - name: Verify probe signatures and Release target compatibility
         shell: bash
         run: |
           set -euo pipefail
-          git checkout --force "$STABLE_COMMIT"
-          mkdir -p app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance
-          cp /tmp/SignedUpgradeAcceptanceHarnessTest.kt app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance/
-          chmod +x gradlew
-          ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=release
-          find app/build/outputs/apk/androidTest -type f -name '*.apk' -print -quit | xargs -I{} cp {} /tmp/stable-test.apk
-
-          git checkout --force "$CANDIDATE_SHA"
-          mkdir -p app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance
-          cp /tmp/SignedUpgradeAcceptanceHarnessTest.kt app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance/
-          ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=release
-          find app/build/outputs/apk/androidTest -type f -name '*.apk' -print -quit | xargs -I{} cp {} /tmp/candidate-test.apk
-
-          git checkout --force "$CANDIDATE_SHA"
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          cert_digest() {
+            "$APKSIGNER" verify --verbose --print-certs "$1" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1
+          }
+          stable_cert="$(cert_digest /tmp/stable.apk)"
+          candidate_cert="$(cert_digest /tmp/candidate.apk)"
+          stable_test_cert="$(cert_digest /tmp/stable-test.apk)"
+          candidate_test_cert="$(cert_digest /tmp/candidate-test.apk)"
+          test -n "$stable_cert"
+          test "$candidate_cert" = "$stable_cert"
+          test "$stable_test_cert" = "$stable_cert"
+          test "$candidate_test_cert" = "$stable_cert"
+          "$AAPT" dump xmltree /tmp/stable-test.apk AndroidManifest.xml | grep -Fq "$PACKAGE"
+          "$AAPT" dump xmltree /tmp/candidate-test.apk AndroidManifest.xml | grep -Fq "$PACKAGE"
+          mkdir -p runtime-acceptance
+          printf '%s\n' "stable=$stable_cert" "candidate=$candidate_cert" "stable_probe=$stable_test_cert" "candidate_probe=$candidate_test_cert" > runtime-acceptance/probe-certificates.txt
 
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm || true
@@ -136,11 +254,6 @@ jobs:
             mkdir -p runtime-acceptance
             adb shell settings put system screen_off_timeout 1800000
             adb shell settings put system accelerometer_rotation 0
-
-            echo '=== exact-candidate LibrarySyncPersistenceTest (Debug instrumentation) ==='
-            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace               -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.sync.library.LibrarySyncPersistenceTest
-            cp -R app/build/outputs/androidTest-results/connected runtime-acceptance/library-sync-results
-            cp -R app/build/reports/androidTests/connected runtime-acceptance/library-sync-report
 
             echo '=== stable v1.4.4 install and representative state seed ==='
             adb uninstall "$PACKAGE" >/dev/null 2>&1 || true

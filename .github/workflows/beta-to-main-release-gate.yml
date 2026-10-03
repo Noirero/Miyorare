@@ -78,6 +78,7 @@ jobs:
       signed_build_run_id: '37136536606'
       signed_artifact_id: '11278218884'
       candidate_apk_sha256: 'da08a003472f39cd649eb7cc4d1247c6d9e10c6fb4b468151c98ce4916e5b5e7'
+    secrets: inherit
 
   classify:
     name: Classify main candidate
