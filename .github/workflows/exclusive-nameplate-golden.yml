@@ -6,17 +6,37 @@ on:
       - beta
     paths:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ReferenceRankThemeVisuals.kt'
-      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveNameplate.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveNameplate*.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ReferenceRankThemeVisuals.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
+      # Shared host: the classify job gates profile changes before any Gradle/emulator work.
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt'
-      - 'app/src/main/res/drawable/nameplate_*'
-      - 'app/src/main/res/drawable-nodpi/nameplate_*'
-      - 'app/src/main/res/raw/nameplate_*'
+      - 'app/src/main/res/drawable*/nameplate_*'
+      - 'app/src/main/res/raw*/nameplate_*'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/NameplateGuideContractTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveNameplateGoldenVisualTest.kt'
       - 'app/src/androidTest/assets/nameplate_golden_reference_contact_sheet.jpg'
+      - 'app/build.gradle'
       - '.github/workflows/exclusive-nameplate-golden.yml'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/RankTheme.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveThemeQa.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusivePowerSaveModeRuntime.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCosmetic*.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderProfile.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourney.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyRewardAccess.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsComponents.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsState.kt'
+      - 'app/src/main/res/drawable*/ic_lock.*'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/scripts/exclusive_visual_paths.py'
+      - '.github/scripts/test_exclusive_visual_paths.py'
   workflow_dispatch:
 
 permissions:
@@ -27,7 +47,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  classify:
+    name: Classify Nameplate visual inputs
+    runs-on: ubuntu-latest
+    outputs:
+      run_visual: ${{ steps.classify.outputs.run_visual }}
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify visual routing policy
+        run: python3 .github/scripts/test_exclusive_visual_paths.py
+
+      - name: Classify visual changes
+        id: classify
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_visual=true
+          else
+            run_visual="$(python3 .github/scripts/exclusive_visual_paths.py --kind nameplate --base "$BASE_SHA" --head "$HEAD_SHA")"
+          fi
+          echo "run_visual=$run_visual" >> "$GITHUB_OUTPUT"
+          echo "Nameplate golden emulator required: $run_visual" >> "$GITHUB_STEP_SUMMARY"
+
   golden:
+    needs: classify
+    if: needs.classify.outputs.run_visual == 'true'
     name: 12-nameplate runtime visual evidence
     runs-on: ubuntu-latest
     timeout-minutes: 90

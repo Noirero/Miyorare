@@ -6,11 +6,14 @@ on:
       - beta
     paths:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ReferenceRankThemeVisuals.kt'
-      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadge.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadge*.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveProfileFrame.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ReferenceRankThemeVisuals.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
+      # Shared host: the classify job gates profile changes before any Gradle/emulator work.
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt'
-      - 'app/src/main/res/drawable/badge_*'
+      - 'app/src/main/res/drawable*/badge_*'
+      - 'app/src/main/res/raw*/badge_*'
       - 'app/src/main/badge-assets/**'
       - 'tools/regenerate_badge_v2_payload.py'
       - 'app/build.gradle'
@@ -19,6 +22,25 @@ on:
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeBatterySaverTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/stats/ui/BadgeV2ActualUiSmokeTest.kt'
       - '.github/workflows/exclusive-badge-golden.yml'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/RankTheme.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveThemeQa.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusivePowerSaveModeRuntime.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCosmetic*.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderProfile.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourney.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyRewardAccess.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsComponents.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsState.kt'
+      - 'app/src/main/res/drawable*/ic_lock.*'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/scripts/exclusive_visual_paths.py'
+      - '.github/scripts/test_exclusive_visual_paths.py'
   workflow_dispatch:
 
 permissions:
@@ -29,7 +51,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  classify:
+    name: Classify Badge visual inputs
+    runs-on: ubuntu-latest
+    outputs:
+      run_visual: ${{ steps.classify.outputs.run_visual }}
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify visual routing policy
+        run: python3 .github/scripts/test_exclusive_visual_paths.py
+
+      - name: Classify visual changes
+        id: classify
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_visual=true
+          else
+            run_visual="$(python3 .github/scripts/exclusive_visual_paths.py --kind badge --base "$BASE_SHA" --head "$HEAD_SHA")"
+          fi
+          echo "run_visual=$run_visual" >> "$GITHUB_OUTPUT"
+          echo "Badge golden emulator required: $run_visual" >> "$GITHUB_STEP_SUMMARY"
+
   payload:
+    needs: classify
+    if: needs.classify.outputs.run_visual == 'true'
     name: Verify V2 payload provenance
     runs-on: ubuntu-latest
     permissions:
