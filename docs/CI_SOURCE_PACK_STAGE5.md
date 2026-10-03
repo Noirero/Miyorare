@@ -1,5 +1,9 @@
 # Stage 5 — Source Pack validation family
 
+> Stage-specific audit history: original routing/ref columns below precede the
+> implementation and UMA correction. The [Stage 7 baseline](CI_FINAL_BASELINE.md)
+> is the current workflow inventory and records unresolved automation dependencies.
+
 Audit baseline: `beta` commit `bd1d189973661ddc96d60b8fd591144d3904c595`.
 Result: **partial consolidation**. Keep four workflow/check identities and their
 distinct lifecycles. Share the local classifier and the identical build toolchain;
