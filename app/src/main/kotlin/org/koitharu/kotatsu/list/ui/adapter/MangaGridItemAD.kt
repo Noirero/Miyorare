@@ -326,7 +326,7 @@ fun mangaGridItemAD(
 		val isModernFavouritesGrid = currentIsModernFavouritesGrid()
 		val appearanceKey = GridAppearanceKey(
 			isModern = isModernFavouritesGrid,
-			palette = context.miyorareViewPaletteFromPreferences().takeIf { isModernFavouritesGrid },
+			palette = if (isModernFavouritesGrid) context.miyorareViewPaletteFromPreferences() else null,
 		)
 		if (lastAppearanceKey != appearanceKey) {
 			applyGridAppearance(appearanceKey)
