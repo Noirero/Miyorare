@@ -1,0 +1,60 @@
+name: Signed Candidate Build Contract
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/signed-release-candidate-build.yml'
+      - '.github/workflows/signed-candidate-build-contract.yml'
+      - '.github/scripts/apply_candidate_version.py'
+      - '.github/scripts/test_apply_candidate_version.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Test candidate version applicator
+        run: |
+          python3 -m py_compile .github/scripts/apply_candidate_version.py
+          python3 .github/scripts/test_apply_candidate_version.py
+      - name: Validate nonpublishing signed build contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          workflow = Path('.github/workflows/signed-release-candidate-build.yml').read_text(encoding='utf-8')
+          assert '  workflow_dispatch:' in workflow
+          assert '  pull_request:' not in workflow
+          assert 'contents: read' in workflow
+          assert 'contents: write' not in workflow
+          assert 'expected_candidate_sha:' in workflow
+          lock = workflow.index('Lock source before signing access')
+          signing = workflow.index('Require stable release signing key')
+          decode = workflow.index('Decode keystore')
+          build = workflow.index('Build signed Release APK')
+          assert lock < signing < decode < build
+          assert '[[ "$GITHUB_REF_NAME" == "beta" ]]' in workflow
+          assert '"$ACTUAL_SHA" == "$EXPECTED_CANDIDATE_SHA"' in workflow
+          assert '.github/scripts/release_build_config_guard.py' in workflow
+          assert '.github/scripts/apply_candidate_version.py' in workflow
+          assert "STABLE_VERSION_CODE: '212453408'" in workflow
+          assert ':app:assembleRelease' in workflow
+          assert 'RELEASE_STORE_FILE=../release.keystore' in workflow
+          assert 'KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}' in workflow
+          assert 'actions/upload-artifact@v4' in workflow
+          assert 'sha256sum "$APK_PATH"' in workflow
+          assert 'release.keystore' not in workflow.split('Upload signed candidate APK', 1)[1]
+          for forbidden in ('gh release create', 'git push', 'contents: write', 'create-release', 'deployment', 'deploy'):
+              assert forbidden not in workflow.lower()
+          profile = Path('.github/workflows/release-build-profile.yml').read_text(encoding='utf-8')
+          for secret in ('KEYSTORE_BASE64', 'RELEASE_STORE_PASSWORD', 'RELEASE_KEY_ALIAS', 'RELEASE_KEY_PASSWORD'):
+              assert secret not in profile
+          PY
