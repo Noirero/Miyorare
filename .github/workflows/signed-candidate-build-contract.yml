@@ -31,6 +31,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           workflow = Path('.github/workflows/signed-release-candidate-build.yml').read_text(encoding='utf-8')
+          assert '  workflow_call:' in workflow
           assert '  workflow_dispatch:' in workflow
           assert '  pull_request:' not in workflow
           assert 'contents: read' in workflow
@@ -56,6 +57,17 @@ jobs:
           assert 'release.keystore' not in workflow.split('Upload signed candidate APK', 1)[1]
           for forbidden in ('gh release create', 'git push', 'contents: write', 'create-release', 'deployment', 'deploy'):
               assert forbidden not in workflow.lower()
+          entry = Path('.github/workflows/beta-to-main-release-gate.yml').read_text(encoding='utf-8')
+          assert '  workflow_dispatch:' in entry
+          assert 'signed_candidate_build:' in entry
+          assert 'candidate_version_name:' in entry
+          assert 'candidate_version_code:' in entry
+          assert 'uses: ./.github/workflows/signed-release-candidate-build.yml' in entry
+          assert 'expected_candidate_sha: ${{ inputs.candidate_sha }}' in entry
+          assert 'secrets: inherit' in entry
+          for secret in ('KEYSTORE_BASE64', 'RELEASE_STORE_PASSWORD', 'RELEASE_KEY_ALIAS', 'RELEASE_KEY_PASSWORD'):
+              assert secret not in entry
+
           profile = Path('.github/workflows/release-build-profile.yml').read_text(encoding='utf-8')
           for secret in ('KEYSTORE_BASE64', 'RELEASE_STORE_PASSWORD', 'RELEASE_KEY_ALIAS', 'RELEASE_KEY_PASSWORD'):
               assert secret not in profile
