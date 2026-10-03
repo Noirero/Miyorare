@@ -1,0 +1,24 @@
+name: Miyorare Audio Pack Check
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/miyorare-audio/**'
+      - '.github/workflows/miyorare-audio-pack-check.yml'
+  push:
+    branches:
+      - beta
+    paths:
+      - 'extensions/miyorare-audio/**'
+      - '.github/workflows/miyorare-audio-pack-check.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate audio pack
+        run: python3 extensions/miyorare-audio/tools/validate_pack.py extensions/miyorare-audio/pack.json
+      - name: Run audio pack tests
+        run: python3 -m unittest discover -s extensions/miyorare-audio/tests -p 'test_*.py'
