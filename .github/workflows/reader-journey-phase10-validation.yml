@@ -15,6 +15,40 @@ on:
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/backup/local/LocalBackupIdentityTest.kt'
       - 'docs/reader-journey-phase10-validation.md'
+      # Direct state/render/build dependencies omitted by the legacy area filter.
+      - '.github/scripts/phase10_paths.py'
+      - '.github/scripts/test_phase10_paths.py'
+      - '.github/scripts/exclusive_visual_paths.py'
+      - '.github/workflows/ci-deep.yml'
+      - '.github/scripts/ci_deep_paths.py'
+      - '.github/workflows/android-runtime.yml'
+      - '.github/scripts/android_runtime_paths.py'
+      - 'app/build.gradle'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'gradle/**'
+      - 'buildSrc/**'
+      - 'build-logic/**'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/src/main/res/**'
+      - 'app/src/main/assets/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/parser/MangaDataRepository.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/AppModule.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/util/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/main/ui/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/KotatsuApp.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/HiltTestRunner.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/SampleData.kt'
+      - 'app/src/testFixtures/**'
+      - 'app/src/debug/**'
+      - 'app/src/preview/**'
+      - 'app/src/androidTest/AndroidManifest.xml'
       - '.github/workflows/reader-journey-phase10-validation.yml'
   workflow_dispatch:
 
@@ -27,9 +61,11 @@ concurrency:
 
 jobs:
   deterministic-validation:
-    name: Phase 10 deterministic matrix
+    name: Phase 10 routing / deterministic fallback
     outputs:
-      required: ${{ steps.phase10_scope.outputs.required }}
+      run_state: ${{ steps.phase10_scope.outputs.run_state }}
+      run_render: ${{ steps.phase10_scope.outputs.run_render }}
+      state_classes: ${{ steps.phase10_scope.outputs.state_classes }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -54,85 +90,59 @@ jobs:
           echo "Phase 10 head: $actual"
 
 
-      - name: Decide whether Phase 10 rerun is required
+      - name: Test Phase 10 routing and coverage contracts
+        run: python3 .github/scripts/test_phase10_paths.py
+
+      - name: Route exact base to candidate head
         id: phase10_scope
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_ACTION: ${{ github.event.action }}
-          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          required=true
-
-          # Keep Phase 10 aligned with the repository-wide PR-origin policy:
-          # owner-request non-theme work normally skips emulator validation,
-          # while user issues/features, themes, conflicts, and explicit runtime
-          # overrides fail closed and keep the full validation.
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            labels='${{ join(github.event.pull_request.labels.*.name, ',') }}'
-            owner_request=false
-            user_issue=false
-            theme=false
-            runtime_required=false
-            case ",${labels,,}," in *",ci:owner-request,"*) owner_request=true ;; esac
-            case ",${labels,,}," in *",ci:user-issue,"*) user_issue=true ;; esac
-            case ",${labels,,}," in *",ci:theme,"*) theme=true ;; esac
-            case ",${labels,,}," in *",ci:runtime-required,"*) runtime_required=true ;; esac
-
-            if [ "$owner_request" = true ] && [ "$user_issue" = false ] && [ "$theme" = false ] && [ "$runtime_required" = false ]; then
-              required=false
-            fi
+          route_file="$(mktemp)"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            python3 .github/scripts/phase10_paths.py --manual > "$route_file"
+          elif ! python3 .github/scripts/phase10_paths.py --base "$BASE_SHA" --head "$HEAD_SHA" > "$route_file"; then
+            # Import/parser/process failure cannot silently remove any coverage.
+            cat > "$route_file" <<'ROUTE'
+          run_jvm=true
+          run_state=true
+          run_render=true
+          state_classes=org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10StateRestorationTest,org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest
+          ROUTE
           fi
-
-          # Phase 10 is intentionally expensive. A synchronize commit that only repairs
-          # Reader Journey regression tests or CI wiring can reuse the previous Phase 10 result.
-          if [ "$required" = "true" ] && [ "$EVENT_NAME" = "pull_request" ] && [ "$EVENT_ACTION" = "synchronize" ] && [ -n "${BEFORE_SHA:-}" ]; then
-            mapfile -t changed < <(git diff --name-only "$BEFORE_SHA" "$HEAD_SHA")
-            required=false
-            for path in "${changed[@]}"; do
-              case "$path" in
-                app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/*|\
-                .github/workflows/reader-journey-theme-regression.yml|\
-                .github/workflows/reader-journey-theme-size-baseline.yml|\
-                .github/workflows/p0-p1-acceptance.yml)
-                  ;;
-                *)
-                  required=true
-                  break
-                  ;;
-              esac
-            done
-          fi
-
-          echo "required=$required" >> "$GITHUB_OUTPUT"
-          if [ "$required" = "true" ]; then
-            echo "Phase 10 full validation will run."
-          else
-            echo "Only Reader Journey regression/CI files changed since the previous PR head; skipping duplicate Phase 10 Gradle/emulator validation."
-          fi
+          cat "$route_file" >> "$GITHUB_OUTPUT"
+          {
+            echo "Phase 10 exact candidate: $HEAD_SHA (base $BASE_SHA)"
+            cat "$route_file"
+            echo "Delegated JVM evidence: CI Deep / ci-deep-unit-test-reports at this candidate."
+            echo "Delegated backup evidence, when routed: Android Runtime / android-runtime-evidence at this candidate."
+            echo "Delegation is a coverage contract, not reuse of a previous-head result. Both applicable gates must pass."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up JDK
-        if: steps.phase10_scope.outputs.required == 'true'
+        if: steps.phase10_scope.outputs.run_jvm == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
-        if: steps.phase10_scope.outputs.required == 'true'
+        if: steps.phase10_scope.outputs.run_jvm == 'true'
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: Grant execute permission for gradlew
-        if: steps.phase10_scope.outputs.required == 'true'
+        if: steps.phase10_scope.outputs.run_jvm == 'true'
         run: chmod +x gradlew
 
       - name: Pre-warm parser dependency
-        if: steps.phase10_scope.outputs.required == 'true'
+        if: steps.phase10_scope.outputs.run_jvm == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -160,7 +170,7 @@ jobs:
           exit 1
 
       - name: Run Phase 10 Reader Journey validation suite
-        if: steps.phase10_scope.outputs.required == 'true'
+        if: steps.phase10_scope.outputs.run_jvm == 'true'
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10ValidationTest
@@ -179,7 +189,7 @@ jobs:
           --no-daemon --stacktrace
 
       - name: Upload deterministic evidence
-        if: ${{ always() && steps.phase10_scope.outputs.required == 'true' }}
+        if: ${{ always() && steps.phase10_scope.outputs.run_jvm == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: reader-journey-phase10-deterministic
@@ -187,12 +197,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # Master-conformance gate: this job also executes Reader Journey persistence and native backup
-  # round-trip instrumentation so a green PR proves behavior, not only source/compile contracts.
+  # Keep the unique profile boundary and timed chapter probes on their original
+  # 4-core/4-GB device. Functional backup runs here only without durable Runtime coverage.
   android-state-restoration:
     name: Phase 10 Android state restoration
     needs: deterministic-validation
-    if: needs.deterministic-validation.outputs.required == 'true'
+    if: needs.deterministic-validation.outputs.run_state == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
@@ -276,7 +286,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
           script: >-
             ./gradlew :app:connectedDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10StateRestorationTest,org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest
+            -Pandroid.testInstrumentationRunnerArguments.class=${{ needs.deterministic-validation.outputs.state_classes }}
             --no-daemon --stacktrace
 
       - name: Upload Android evidence
@@ -284,7 +294,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: reader-journey-phase10-android
-          path:
+          path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
           if-no-files-found: warn
@@ -294,7 +304,7 @@ jobs:
   rendered-device-matrix:
     name: Phase 10 rendered / ${{ matrix.scenario }}
     needs: deterministic-validation
-    if: needs.deterministic-validation.outputs.required == 'true'
+    if: needs.deterministic-validation.outputs.run_render == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
