@@ -29,6 +29,7 @@ jobs:
     timeout-minutes: 45
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      STABLE_VERSION_NAME: '1.4.4'
       STABLE_VERSION_CODE: '212453408'
     steps:
       - name: Checkout exact dispatch SHA
@@ -63,7 +64,7 @@ jobs:
           VERSION_CODE: ${{ inputs.version_code }}
         run: |
           set -euo pipefail
-          python3 .github/scripts/apply_candidate_version.py --build-gradle app/build.gradle --version-name "$VERSION_NAME" --version-code "$VERSION_CODE" --stable-version-code "$STABLE_VERSION_CODE"
+          python3 .github/scripts/apply_candidate_version.py --build-gradle app/build.gradle --version-name "$VERSION_NAME" --version-code "$VERSION_CODE" --stable-version-name "$STABLE_VERSION_NAME" --stable-version-code "$STABLE_VERSION_CODE"
           grep -Fq "versionName = '$VERSION_NAME'" app/build.gradle
           grep -Fq "versionCode = $VERSION_CODE" app/build.gradle
           git diff -- app/build.gradle
