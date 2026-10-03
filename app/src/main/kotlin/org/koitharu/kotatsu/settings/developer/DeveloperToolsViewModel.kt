@@ -59,9 +59,9 @@ class DeveloperToolsViewModel @Inject constructor(
 
 	fun previewCosmeticUnlock() = ReaderJourneyCelebration(
 		xpEarned = 0,
-		fromLevel = 9,
+		fromLevel = 10,
 		toLevel = 10,
-		fromRank = ReaderRank.NEWCOMER,
+		fromRank = ReaderRank.READER,
 		toRank = ReaderRank.READER,
 		unlockedCosmetics = ReaderJourneyCosmetics.newlyUnlocked(ReaderRank.NEWCOMER, ReaderRank.READER),
 	)
