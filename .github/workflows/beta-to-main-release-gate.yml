@@ -41,6 +41,11 @@ on:
         description: 'Build-only candidate versionCode; must be newer than stable.'
         required: false
         type: string
+      runtime_acceptance:
+        description: 'Acceptance-only: run immutable v1.4.4 -> signed candidate runtime harness.'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -63,6 +68,16 @@ jobs:
       version_name: ${{ inputs.candidate_version_name }}
       version_code: ${{ inputs.candidate_version_code }}
     secrets: inherit
+
+  runtime-acceptance:
+    name: Run immutable signed candidate runtime acceptance
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime_acceptance }}
+    uses: ./.github/workflows/runtime-acceptance-harness.yml
+    with:
+      candidate_sha: ${{ inputs.candidate_sha }}
+      signed_build_run_id: '37136536606'
+      signed_artifact_id: '11278218884'
+      candidate_apk_sha256: 'da08a003472f39cd649eb7cc4d1247c6d9e10c6fb4b468151c98ce4916e5b5e7'
 
   classify:
     name: Classify main candidate
