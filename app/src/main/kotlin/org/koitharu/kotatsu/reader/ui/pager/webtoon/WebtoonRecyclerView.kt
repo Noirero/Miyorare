@@ -93,9 +93,12 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 				val child = getChildAt(0) as WebtoonFrameLayout
 				val ssiv = child.target
 				if (child.top < 0) {
-					val expected = (-child.top).coerceIn(0, ssiv.getScrollRange())
-					if (ssiv.getScroll() < expected) {
-						// Enable SubsamplingScaleImageView debug overlay to verify scrollPos / scrollRange.
+					// Total scrolled = inner scroll + (-child.top) [RecyclerView movement].
+					// The image window must reflect both, otherwise the next page visibly lags.
+					// No-op when synced: top == 0 changes nothing; inner already at max clamps to max.
+					// To verify: enable the SubsamplingScaleImageView debug overlay to watch scrollPos / scrollRange.
+					val expected = (ssiv.getScroll() + (-child.top)).coerceIn(0, ssiv.getScrollRange())
+					if (ssiv.getScroll() != expected) {
 						ssiv.scrollTo(expected)
 					}
 				}
@@ -116,10 +119,11 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 			dy < 0 -> {
 				val child = getChildAt(childCount - 1) as WebtoonFrameLayout
 				val ssiv = child.target
-				val expected = (-child.top).coerceIn(0, ssiv.getScrollRange())
-				if (ssiv.getScroll() != expected) {
-					// Mirror the item geometry before routing upward scroll into the image window.
-					ssiv.scrollTo(expected)
+				// Only resync an item that hasn't reached the viewport top yet (top > 0):
+				// its window must show the image top. Never touch an entered item
+				// (top <= 0) — its inner scroll is legitimate user scroll state.
+				if (child.top > 0 && ssiv.getScroll() != 0) {
+					ssiv.scrollTo(0)
 				}
 				var consumedByChild = child.dispatchVerticalScroll(dy)
 				if (consumedByChild > dy) {
