@@ -85,6 +85,12 @@ jobs:
           python3 -m py_compile .github/scripts/release_version.py
           python3 .github/scripts/test_release_version.py
 
+      - name: Test signed candidate version applicator
+        if: ${{ steps.routing.outputs.run_contract != 'false' }}
+        run: |
+          python3 -m py_compile .github/scripts/apply_candidate_version.py
+          python3 .github/scripts/test_apply_candidate_version.py
+
       - name: Test Compatibility Farm membership sync engine
         if: ${{ steps.routing.outputs.run_contract != 'false' }}
         run: |
