@@ -973,6 +973,14 @@
 	<string name="stats_top_pick">Pilihan Teratas</string>
 	<string name="stats_reading_heatmap">Peta Aktivitas Membaca</string>
 	<string name="stats_heatmap_subtitle">Ritme membaca Anda dari waktu ke waktu</string>
+	<string name="stats_heatmap_less">Lebih sedikit</string>
+	<string name="stats_heatmap_more">Lebih banyak</string>
+	<string name="stats_heatmap_empty_period">Belum ada aktivitas membaca pada periode ini.</string>
+	<string name="stats_heatmap_activity_detail">%1$s · %2$d aktivitas</string>
+	<string name="stats_heatmap_accessibility">Peta aktivitas membaca. Ketuk hari untuk melihat aktivitasnya.</string>
+	<string name="reader_journey_avatar">Avatar profil pembaca</string>
+	<string name="reader_journey_choose_avatar">Pilih foto</string>
+	<string name="reader_journey_remove_avatar">Hapus foto</string>
 	<string name="reader_journey_active_title_label">Gelar Aktif</string>
 	<string name="reader_journey_profile_xp_to_level">%1$s XP lagi ke Lv.%2$d</string>
 	<string name="reader_journey_xp_guide_title">Cara mendapatkan XP</string>
