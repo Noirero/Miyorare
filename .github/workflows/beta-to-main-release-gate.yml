@@ -85,7 +85,7 @@ jobs:
               exit 1
             }
             evidence_sha="$HEAD_SHA"
-            checks_json="$(gh api --repo "$GITHUB_REPOSITORY" "repos/{owner}/{repo}/commits/$evidence_sha/check-runs?per_page=100")"
+            checks_json="$(gh api "repos/$GITHUB_REPOSITORY/commits/$evidence_sha/check-runs?per_page=100")"
             if ! printf '%s' "$checks_json" | python3 .github/scripts/promotion_evidence.py >/dev/null 2>&1; then
               # A beta merge commit can reuse the exact PR-head evidence only when its tree is identical.
               read -r -a parents <<< "$(git show -s --format=%P "$HEAD_SHA")"
@@ -94,7 +94,7 @@ jobs:
               test "$(git rev-parse "$HEAD_SHA^{tree}")" = "$(git rev-parse "$evidence_sha^{tree}")" || {
                 echo "::error::Validated PR head is not tree-equivalent to the promotion candidate."; exit 1;
               }
-              checks_json="$(gh api --repo "$GITHUB_REPOSITORY" "repos/{owner}/{repo}/commits/$evidence_sha/check-runs?per_page=100")"
+              checks_json="$(gh api "repos/$GITHUB_REPOSITORY/commits/$evidence_sha/check-runs?per_page=100")"
             fi
             printf '%s' "$checks_json" | python3 .github/scripts/promotion_evidence.py
             echo "evidence_sha=$evidence_sha" >> "$GITHUB_OUTPUT"
