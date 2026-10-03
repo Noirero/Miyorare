@@ -18,7 +18,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   acceptance:
@@ -57,14 +56,17 @@ jobs:
         run: cp .github/acceptance/SignedUpgradeAcceptanceHarnessTest.kt /tmp/SignedUpgradeAcceptanceHarnessTest.kt
 
       - name: Download exact signed candidate artifact
+        uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.signed_build_run_id }}
+          path: /tmp/candidate
+
+      - name: Verify exact signed candidate artifact
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p /tmp/candidate
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$SIGNED_ARTIFACT_ID/zip" > /tmp/candidate.zip
-          unzip -q /tmp/candidate.zip -d /tmp/candidate
           CANDIDATE_APK="$(find /tmp/candidate -type f -path '*/release/*.apk' -print -quit)"
           test -n "$CANDIDATE_APK"
           cp "$CANDIDATE_APK" /tmp/candidate.apk
