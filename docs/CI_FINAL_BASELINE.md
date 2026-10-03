@@ -7,9 +7,13 @@ Fetched `main` control plane: `33a9d10138e5032318dd3b24fa3af43271cbad20`.
 This describes the **beta architecture plus the narrow Stage 7 fixes**, not an
 assertion that those workflows are already deployed to main.
 
-**Closure: BLOCKED — closure-fix exact-head PR integration validation is pending.**
-The two operational blockers now have tested, fail-closed paths described below.
-Closure is not declared from local tests alone. No Stage 8 is proposed.
+**CLOSED — architecture verified; no further restructuring required**
+
+Both operational blockers have proven fail-closed routes. The closure-fix code
+head passed all applicable exact-head Actions before this status was recorded;
+final documentation-head checks are tracked on [PR #470](https://github.com/Noirero/Miyorare/pull/470).
+Production control-plane adoption still requires the normal beta→main cutover
+below. No Stage 8 is proposed.
 
 ## Recount and audit method
 
@@ -334,7 +338,10 @@ Before promotion, scheduled/release automation does **not** use these fixes;
 old README/Farm required-check gaps can still stall protected merges. A green
 beta PR is not deployment. Normal protected beta→main promotion must carry the
 updated gate, both README callers, Farm caller and associated cheap tests
-**together**; no partial gate/caller rollout. After that promotion, the next
+**together**, along with the existing beta CI Fast/Deep definitions (both filenames
+are absent on the fetched old main). GitHub requires dispatchable workflows to
+exist on the default branch; a partial caller rollout cannot satisfy this. No
+partial gate/caller rollout. After that promotion, the next
 scheduled/release/manual invocation uses the new default-branch control plane,
 and README branches inherit the new dispatch input contract. This task performs
 neither promotion nor production README/Farm mutation. Deterministic local
@@ -366,6 +373,33 @@ candidate tests cover all three lanes, strict whole-diff/base/PR binding and
 required-result logic. Source Pack engine/tooling tests and unchanged Stage 1–6
 provider contracts pass without updating any provider fingerprint.
 
+
+### Closure-fix actual integration evidence
+
+Implementation head **`66e4123b22e215ce739ff7efade805119d35f572`**, PR #470:
+all **seven runs across six applicable workflows** completed successfully;
+all **11 checks** completed (eight successes, three designed skips), including
+required `verify-identity`, `Fast`, `Deep`. This evidence predates the
+closure-only documentation commit; final exact-head status must also be green
+on the same PR before completion is reported.
+
+| Actual workflow | Run / evidence |
+| --- | --- |
+| CI Fast | [37118577293](https://github.com/Noirero/Miyorare/actions/runs/37118577293): success; actual main/orchestration entry point passed **27 tests**, including strict maintenance and four-workflow Farm dispatch/wait/merge behavior. |
+| CI Deep | [37118577294](https://github.com/Noirero/Miyorare/actions/runs/37118577294): success; full JVM + Debug instrumentation compilation and separate Preview instrumentation compilation succeeded. |
+| Identity Guard | [37118577284](https://github.com/Noirero/Miyorare/actions/runs/37118577284): required `verify-identity` success. |
+| Android Runtime | [37118577304](https://github.com/Noirero/Miyorare/actions/runs/37118577304), label reevaluation [37118586944](https://github.com/Noirero/Miyorare/actions/runs/37118586944): classifiers succeeded; device job appropriately skipped. |
+| P0/P1 | [37118577286](https://github.com/Noirero/Miyorare/actions/runs/37118577286): unchanged provider ownership contract succeeded; manual Favourites device evidence skipped. |
+| Source Pack Compatibility Contract | [37118577285](https://github.com/Noirero/Miyorare/actions/runs/37118577285): readiness, release version, Farm engine and local enforcement succeeded; unrelated external mirror was appropriately skipped. |
+
+No production app/test/asset/Gradle/identity/signing/source-pack manifest or pin
+diff. No Stage 1–6 provider or fingerprint changed, no workflow deleted/renamed,
+and all 29 remain owned. Required contexts/rulesets/label definitions are
+unchanged. The README and Farm mutation workflows themselves were **not** run
+against protected branches; their actual embedded orchestration was executed
+with local Git/API fixtures in Fast. No release/main promotion, manual emulator
+or production mutation is claimed.
+
 For future changes:
 
 1. Identify risk, actual inputs, test/configuration and evidence needed; consult
@@ -396,4 +430,6 @@ Historical [initial audit](CI_AUDIT.md),
 [Stage 4](reader-journey-phase10-validation.md),
 [Stage 5](CI_SOURCE_PACK_STAGE5.md),
 [Stage 6](CI_P0_P1_ACCEPTANCE_AUDIT.md) retain provenance. This is the current
-inventory/ownership baseline; closure status above is conditional on exact-head CI.
+inventory/ownership baseline. Closure covers the verified architecture and
+protected automation paths; production adopts this baseline only after the
+documented default-main cutover.

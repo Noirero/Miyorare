@@ -2,8 +2,10 @@
 
 This document defines the development and release contract. The
 [Stage 7 baseline](CI_FINAL_BASELINE.md) contains the current 29-workflow inventory,
-ownership/routing proof and closure-fix validation status. The two automation
-blockers have tested exact-head routes; operational closure awaits final PR CI. This document does not
+ownership/routing proof and verified closure routes.
+**CLOSED — architecture verified; no further restructuring required.**
+Production automation adopts the baseline only after normal beta→main promotion
+carries the gate, callers, tests and core CI definitions together. This document does not
 authorize changing application behavior, persistence, signing, application IDs, versioning, or
 source-pack contracts.
 
@@ -165,7 +167,8 @@ cheaply; unique Favourites canonical visual capture remains manual.
   Stats remains validated/open; post-release retains guarded auto-merge. Farm
   waits Identity, Fast, Deep and Source Pack on its exact head before merging.
   The gate and callers must reach default main together through normal promotion;
-  no production cutover is implied by green beta CI.
+  existing beta Fast/Deep definitions must also be present on default main for
+  dispatch. No production cutover is implied by green beta CI.
 
 Do not create a workflow merely because there is a new bug or feature. First
 choose Fast, Deep, Android Runtime, an existing visual owner or an existing
