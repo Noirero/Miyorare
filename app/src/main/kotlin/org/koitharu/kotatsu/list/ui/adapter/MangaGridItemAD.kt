@@ -277,14 +277,16 @@ fun mangaGridItemAD(
 
 	binding.viewScrim.background = classicScrim
 
-	fun applyGridSizing(margin: Int) {
-		itemView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-			if (
-				leftMargin != margin ||
-				topMargin != margin ||
-				rightMargin != margin ||
-				bottomMargin != margin
-			) {
+	fun applyGridSizing(margin: Int, isNormalModernFavourites: Boolean) {
+		val layoutParams = itemView.layoutParams as? ViewGroup.MarginLayoutParams
+		if (
+			layoutParams == null ||
+			layoutParams.leftMargin != margin ||
+			layoutParams.topMargin != margin ||
+			layoutParams.rightMargin != margin ||
+			layoutParams.bottomMargin != margin
+		) {
+			itemView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
 				setMargins(margin, margin, margin, margin)
 			}
 		}
@@ -309,7 +311,13 @@ fun mangaGridItemAD(
 		}
 	}
 
-	if (context.miyorareViewPaletteFromPreferences() != null && !isPrivateFavouritesHost) {
+	binding.imageViewCover.crossfadeDurationFactor = 0f
+	val initialNormalGlass = if (currentIsModernFavouritesGrid() && !isPrivateFavouritesHost) {
+		context.miyorareViewPaletteFromPreferences()?.neonGlass()
+	} else {
+		null
+	}
+	if (initialNormalGlass != null) {
 		binding.layoutIndicators.bringToFront()
 	}
 
