@@ -1,14 +1,15 @@
 # Stage 7 — final CI architecture audit and routing baseline
 
 Audit date: **2026-10-03**. Audited latest `beta`:
-`bf86cf007a8a0d137e60dfd0e5a242e9d82e6d68` (merge of #468).
+`b689bbc9cf5a1e55ab45596be04bcaac6fe9bc41` (merge of #469).
+Closure fix audited the current required contexts again read-only.
 Fetched `main` control plane: `33a9d10138e5032318dd3b24fa3af43271cbad20`.
 This describes the **beta architecture plus the narrow Stage 7 fixes**, not an
 assertion that those workflows are already deployed to main.
 
-**Closure: BLOCKED — protected-branch automation has unresolved required-check
-and promotion-policy dependencies.** These are detailed below. Passing the
-Stage 7 PR's applicable CI does not resolve them. No Stage 8 is proposed.
+**Closure: BLOCKED — closure-fix exact-head PR integration validation is pending.**
+The two operational blockers now have tested, fail-closed paths described below.
+Closure is not declared from local tests alone. No Stage 8 is proposed.
 
 ## Recount and audit method
 
@@ -16,8 +17,10 @@ There are **29 workflow files with event definitions**, all `.yml`; no `.yaml`.
 The count comes from the fetched beta tree, not GitHub search on an old commit,
 old run names, or the historical audit's count. **0 workflows are deleted in
 Stage 7.** No existing job/check identity is renamed. None of the Stage 1–6
-providers, source-pack assertions/pins, Farm sync, production files or test
-sources is changed. CI Fast gains only a cheap regression invocation.
+providers, source-pack assertions/pins, production files or app test
+sources is changed. The closure fix changes only README/main and Farm required-check
+orchestration. Fast retains the existing main-candidate test entry point, which now
+also executes the automation orchestration suite; Fast/Deep workflow bytes are unchanged.
 
 The [machine-readable inventory](ci/stage7-workflow-inventory.json) records every
 workflow's display name, category, exact events/branches/path filters,
@@ -36,7 +39,7 @@ before columns are not current workflow inventories.
 
 Stage ancestry is present in beta: #463 (instrumentation compile), #464
 (Badge/Nameplate routing), #465 (theme size), #466 (Phase 10), #467 (Source Pack
-and UMA correction), #468 (P0/P1 ownership). Each merged commit is an ancestor
+and UMA correction), #468 (P0/P1 ownership), #469 (final audit). Each merged commit is an ancestor
 of the exact audited beta SHA.
 
 ## Active workflow inventory
@@ -77,13 +80,13 @@ beta PRs do not run branch-build/release workflows.
 
 | Filename / display name | Lifecycle | Coverage / external dependency / mutation |
 | --- | --- | --- |
-| `beta-to-main-release-gate.yml` — Beta to Main Release Gate | PR main and manual promotion; ancestry-based lanes | Stable required `Verify beta is safe to promote`; promotion is cheap ancestry/identity/launcher verification; hotfix pays JVM + routed instrumentation compile/runtime. Read-only; hotfix Gradle/dependencies and conditional API-35 emulator evidence. |
+| `beta-to-main-release-gate.yml` — Beta to Main Release Gate | PR main, manual promotion or PR-bound README maintenance; ancestry-based lanes | Stable required `Verify beta is safe to promote`; promotion is cheap ancestry/identity/launcher verification; README maintenance is exact-head/current-main/README-only; hotfix pays JVM + routed instrumentation compile/runtime. Read-only; hotfix Gradle/dependencies and conditional API-35 emulator evidence. |
 | `preview-build.yml` — Beta Build | Manual, beta-only | Signed Preview APK/identity/hash evidence (30 days), permanent keystore secrets; Gradle/JitPack; no remote release mutation. |
 | `main-build.yml` — Miyorare Main Build | Manual, main-only; outside-main notice job | Source Pack readiness before signing/build, monotonic version, signed Release **APK** (not AAB); GitHub/Maven/JitPack and immutable source markers; creates release/tag/assets with contents write. Artifact 14 days. |
 | `experimental-build.yml` — Experimental Build | Manual; checks out moving experimental branch | Signed Preview APK with established build-only experimental identity/version overrides; secrets, Gradle/JitPack; artifact 14 days; no remote release mutation. Kept distinct from production builds. |
 | `pf5-build.yml` — PF5 Build | Manual, pf5-only | Signed Preview APK, secrets/Gradle/JitPack, hashes and 14-day artifact; no remote mutation. |
 | `pf5-fast.yml` — PF5 Fast Gate | Push pf5, app/** | Branch-specific Debug unit compilation and Private/screenshot/TTS tracking selectors, JDK/Gradle/JitPack; no APK/emulator; permissions unspecified; read-only commands. Not a beta-PR duplicate. |
-| `post-release-readme.yml` — Post Release README | Published stable release | Verifies actual released APK hashes and originating Main Build run/SHA; creates README-only main PR, dispatches Identity Guard, waits, then attempts merge; contents/PR/actions write. **Cutover blocker below.** No Gradle/emulator. |
+| `post-release-readme.yml` — Post Release README | Published stable release | Verifies actual released APK hashes and originating Main Build run/SHA; creates README-only main PR, dispatches Identity Guard + main gate, resolves/waits exact runs, then head-matched merge; contents/PR/actions write. Production adopts this only after main cutover. No Gradle/emulator. |
 | `release-build-profile.yml` — Release Build Profile | Manual, beta-only diagnostic | Unsigned assembleRelease profile/time/RSS/task evidence, workers=4; Gradle/JitPack; 14-day artifact, no signing/release mutation. Also observability, not an official release. |
 
 ### Maintenance / observability — 5
@@ -93,8 +96,8 @@ beta PRs do not run branch-build/release workflows.
 | `ci-metrics.yml` — CI Metrics | PR β P, manual, Monday 03:17 UTC | Cheap helper tests + Actions API last-300-run health JSON/Markdown, 90-day artifact; actions read; no build/mutation. |
 | `gradle-benchmark.yml` — Gradle Benchmark | Manual | Four worker/heap alternatives; controlled cold/warm JVM + Preview assemble/compile/time/RSS; Gradle/dependencies, 30-day artifact; deliberately repeated cost measurement, no release. |
 | `dependency-reproducibility.yml` — Dependency Reproducibility Evidence | PR β P, manual | Pinned parser/dependency checks, online then offline debugRuntimeClasspath resolution, Gradle/JitPack, 30-day reports; no emulator/mutation. Reports are resolution evidence, not byte-for-byte reproducible APK proof. |
-| `miyorare-farm-pack-membership-sync.yml` — Miyorare Farm Pack Membership Sync | Manual, cron minute 4/34 every hour | Main control plane, beta target, real Source-Packs compatibility-farm-foundation snapshot; only approved ID/EN packs.json materialization, automation PR, manual Identity/pack checks and attempted auto-merge; contents/actions/PR write, 180-minute timeout, 14-day evidence. **Separate mutation/synchronization**, unchanged. Required-check gap below. |
-| `readme-release-stats.yml` — README Release Stats | Manual, Monday 03:23 UTC | Stable release download counts from API; README-only automation PR to main; contents/PR write; no Gradle/emulator. Does not auto-merge. **Cutover blocker below.** |
+| `miyorare-farm-pack-membership-sync.yml` — Miyorare Farm Pack Membership Sync | Manual, cron minute 4/34 every hour | Main control plane, beta target, real Source-Packs compatibility-farm-foundation snapshot; only approved ID/EN packs.json materialization, automation PR, manual Identity/Fast/Deep/pack checks and exact-head auto-merge; contents/actions/PR write, 180-minute timeout, 14-day evidence. **Separate mutation/synchronization**; engine/registry/materialization semantics unchanged. Production cutover below. |
+| `readme-release-stats.yml` — README Release Stats | Manual, Monday 03:23 UTC | Stable release download counts from API; README-only automation PR to main; contents/PR/actions write; explicit Identity + main gate validation; no Gradle/emulator. Validated PR remains open, preserving existing intent. |
 
 All Gradle builds require external artifact repositories/tool downloads. Emulator
 jobs also require system images. No app AAB release is produced by these
@@ -125,7 +128,7 @@ names are in the inventory. No task requires a new signing secret.
 | Farm approved membership | Farm sync engine tests + separate sync workflow | Engine validation is read-only; scheduled/manual sync actually mutates via PR; not consolidated. |
 | beta → main | Verify beta is safe to promote | Cheap ancestry + identity; trusts protected beta's validation, does not query/re-run every historical beta check. |
 | Direct-main hotfix | main candidate + hotfix JVM/compile + routed hotfix runtime → stable required gate | Beta core jobs skip main; this lane must own its own compile/runtime proof. |
-| Stable release | Main Build / readiness/sign/build/hash/provenance + Post Release README | Release readiness validates external stable Source Packs before signing/build; README downstream dependency is blocked as noted below. |
+| Stable release | Main Build / readiness/sign/build/hash/provenance + Post Release README | Release readiness validates external stable Source Packs before signing/build; README downstream uses the protected maintenance lane after default-main cutover. |
 | Metrics/benchmark/dependency/build profiling | CI Metrics, Gradle Benchmark, Dependency Reproducibility, Release Build Profile | Diagnostic evidence, not PR runtime/pixel/device substitutes. |
 
 No previously-owned test source or unique validation is deleted/delegated in
@@ -162,7 +165,7 @@ mutation permissions justify retaining these workflows.
   and checkout. `packs.json UMA pin does not match multi-upstream manifest`
   remains a fatal assertion, as do external HEAD equality assertions. #467's
   correction follows the approved Farm pin update, not an arbitrary CI pin.
-  Farm sync is separate and byte-unchanged.
+  Farm sync is separate; only its required-check dispatch/wait/merge guard changes in this closure fix.
 - **Stage 6:** P0/P1 PR execution is cheap; six historical JVM classes belong to
   Deep, four persistence classes to Runtime; seven provider fingerprints and
   enabled/package/class checks reject drift. Unique Favourites Preview capture
@@ -215,7 +218,9 @@ beta containment, identity/launcher and diff sanity. Its stable final check
 requires successful classification with hotfix jobs skipped: no repeated Gradle
 or emulator for normal promotion. An ancestry failure, rejected source branch,
 failed classification or cancelled/failed required hotfix job cannot pass.
-Manual dispatch is promotion-only, with the same ref/SHA/ancestry checks.
+Manual promotion retains the same ref/SHA/ancestry checks. README maintenance
+dispatch additionally requires the open main PR number, exact candidate SHA and
+protected-main base SHA; the run context SHA must equal the checked-out candidate.
 
 `hotfix/* → main` must include exact protected-main base. Since Fast/Deep/Runtime
 skip automatic main PR work, existing hotfix JVM runs the full Debug suite and
@@ -278,36 +283,63 @@ integration permissions, so additional legacy protection cannot be inferred.
 Workflow collection API was unavailable; repository beta workflow definitions
 are the inventory source. Manual/scheduled/release control-plane execution uses
 the default branch; main has not yet adopted the beta tree. This matters for the
-following unresolved dependencies.
+default-branch cutover described below.
 
-## Closure blockers and limitations
+## Resolved closure blockers and default-main cutover
 
-1. **Main README automation cutover conflicts with accepted candidate policy.**
-   `post-release-readme.yml` creates `automation/release-readme-* → main`, dispatches
-   only Identity Guard and attempts merge. `readme-release-stats.yml` creates
-   `automation/readme-release-stats → main`. The beta main gate rejects both,
-   because only beta/release/main/hotfix candidates are accepted. PR creation with
-   GITHUB_TOKEN also suppresses ordinary PR-triggered Actions; neither workflow
-   pays the required promotion check. The fetched main currently has the **older**
-   non-promotion wrapper, so this is an impending beta→main policy/caller mismatch,
-   not evidence that a new gate has already run there. No permissive README lane,
-   release branch rewrite or release automation mutation is invented here.
-   **Resolution requires an explicit maintenance-main policy/route within the
-   existing gate and compatible exact-head dispatch, or an approved change to
-   where README updates enter main.** Required check must remain protected.
-2. **Farm auto-merge does not dispatch beta's full required contexts.** Main and
-   beta Farm definitions dispatch Identity Guard and Source Pack Check only.
-   Its GITHUB_TOKEN-created PR cannot rely on automatic Fast/Deep runs. Active
-   beta ruleset also requires Fast and Deep, so changed membership can stall
-   safely at merge. This is a concrete dependency gap, not permission to bypass
-   those checks. Farm behavior is left unchanged. Resolution needs explicit
-   exact-head required-check dispatch/wait ownership in that automation.
+| Operational blocker | Narrow replacement path | Evidence / intent preserved |
+| --- | --- | --- |
+| README automation created main PRs rejected by the candidate gate and did not explicitly obtain the required promotion check | Existing main gate has a third `maintenance` mode; both callers explicitly dispatch Identity Guard and the same main gate on the automation branch, with PR number, exact head SHA and main base SHA | Actual embedded gate/orchestration tests; no generic automation bypass; post-release still merges, stats still leaves its validated PR open. Stable release/tag/commit/Main Build/source SHA/APK/hash assertions are byte-unchanged. |
+| Farm dispatched only Identity/Source Pack, omitting protected beta's Fast/Deep | Existing Farm dispatches Identity Guard, CI Fast, CI Deep and Source Pack Check, waits all four exact runs, then rereads PR head before head-matched merge | Actual embedded dispatch/wait/merge tests; no fake statuses, classifier exception, direct beta push or registry/membership/pin/consumer change. |
 
-These are **fail-closed liveness/cutover defects**, not removed app coverage, but
-prevent declaring the complete CI architecture operationally CLOSED. No
-scheduled sync/release/merge was executed to test mutation. Local workflow
-contracts and readable ruleset metadata establish the conflict; this is not a
-claim of a newly observed production automation failure.
+Maintenance permits **only** `automation/release-readme-*` and exact
+`automation/readme-release-stats`. Arbitrary `automation/foo`, docs, feature and
+fix branches remain rejected. The same contract applies on main PR events and
+explicit dispatch: live same-repository **open PR to main**, full exact SHA,
+checkout HEAD = PR head = dispatch context SHA (for manual runs), exact PR base
+= current fetched protected main, and base ancestry. The entire base→head diff
+must be exactly a modification to existing regular-file **README.md**, retaining
+mode 100644. Empty, deleted, renamed, symlink/executable, mixed or non-README
+changes fail the gate. A stale/diverged main base fails; rebuild the automation
+candidate from current main rather than bypassing this invariant.
+
+Required `Verify beta is safe to promote` explicitly distinguishes promotion,
+hotfix and maintenance; unknown mode fails. Maintenance requires successful
+classification and skipped hotfix JVM/runtime jobs. It adds no Gradle, emulator,
+APK or visual work. `verify-identity` remains required and is obtained by actual
+Identity Guard dispatch. Automation uses its existing token; successful automatic
+PR checks cannot be assumed (token-created PR runs may require approval or not
+execute), so explicit dispatch owns the required evidence.
+
+All three callers bind run lookup to **workflow filename + branch +
+workflow_dispatch event + exact head SHA**, and a creation time at or after
+dispatch. Bounded lookup fails on missing/API-invalid runs; watch and explicit
+completed/success/SHA checks reject cancelled/failed/wrong-head results. Auto-merge
+requires all intended validations and a fresh matching PR head, then
+`--match-head-commit` makes the head condition atomic at merge. No admin/ruleset
+bypass is used. Stats dispatches/waits the same checks but does **not** merge.
+Its existing branch-update intent uses an explicit lease against the observed
+remote tip. Post-release's PR step now has its own token environment; stats gains
+only the Actions write permission needed for dispatch.
+
+Fast/Deep dispatch support and coverage remain byte-unchanged. Existing manual
+Deep asks for full JVM + Debug/Preview instrumentation **compile**; the ordinary
+PR classifier already asks for all three for Farm's actual `packs.json` diff.
+This is the same coverage on that input, not an emulator/APK/visual request.
+Stage 5 ID/EN routing still decides its own actual upstream builds.
+
+**Control-plane cutover:** fetched default `main` at
+`33a9d10138e5032318dd3b24fa3af43271cbad20` still has the older automation/gate.
+Before promotion, scheduled/release automation does **not** use these fixes;
+old README/Farm required-check gaps can still stall protected merges. A green
+beta PR is not deployment. Normal protected beta→main promotion must carry the
+updated gate, both README callers, Farm caller and associated cheap tests
+**together**; no partial gate/caller rollout. After that promotion, the next
+scheduled/release/manual invocation uses the new default-branch control plane,
+and README branches inherit the new dispatch input contract. This task performs
+neither promotion nor production README/Farm mutation. Deterministic local
+orchestration plus actual beta PR CI are its evidence, not a claim that scheduled
+production mutations were executed.
 
 Other limitations: external moving-main contract comparisons test upstream at
 execution time; network/Maven/JitPack/system-image availability can fail a valid
@@ -319,15 +351,20 @@ historical. None of these facts is silently promoted to exact Stage 7 evidence.
 
 ## Validation and future change procedure
 
-Stage 7 cheap suite: **172 unittest tests passed**, plus each executable
+Closure-fix cheap suite: **189 unittest tests passed**, plus each executable
 `test_*.py` entry point and local Source Pack tooling tests. All 29 YAML documents
 parse; jobs/needs/local actions are checked; shell blocks are syntax-checked;
 `git diff --check` passes. The new gate's scripts are tested in real local Git
 fixtures; no local Gradle/emulator is used to classify routes. Stage 7's changes
 to CI code properly select actual Deep JVM and Debug/Preview compile work on
 beta. Final PR description/report records **exact final head** and actual Actions
-results; it must not claim CLOSED while those checks remain pending/red or while
-the blockers above are unresolved.
+results; it must not claim CLOSED while those checks remain pending/red.
+The main entry point additionally runs ten actual orchestration test methods
+covering all four Farm dispatches, both README routes, missing/old/wrong-SHA runs,
+failed/cancelled results, changed heads and atomic merge races. Seventeen main
+candidate tests cover all three lanes, strict whole-diff/base/PR binding and
+required-result logic. Source Pack engine/tooling tests and unchanged Stage 1–6
+provider contracts pass without updating any provider fingerprint.
 
 For future changes:
 
@@ -359,4 +396,4 @@ Historical [initial audit](CI_AUDIT.md),
 [Stage 4](reader-journey-phase10-validation.md),
 [Stage 5](CI_SOURCE_PACK_STAGE5.md),
 [Stage 6](CI_P0_P1_ACCEPTANCE_AUDIT.md) retain provenance. This is the current
-inventory/ownership baseline, with explicit unresolved closure status.
+inventory/ownership baseline; closure status above is conditional on exact-head CI.

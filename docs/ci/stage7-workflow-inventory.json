@@ -1,8 +1,8 @@
 {
   "audit_date": "2026-10-03",
-  "beta_baseline_sha": "bf86cf007a8a0d137e60dfd0e5a242e9d82e6d68",
+  "beta_baseline_sha": "b689bbc9cf5a1e55ab45596be04bcaac6fe9bc41",
   "main_control_plane_sha": "33a9d10138e5032318dd3b24fa3af43271cbad20",
-  "scope": "Repository workflows with event definitions on the audited beta tree, including the Stage 7 main-gate fixes. Not a claim that main has adopted this tree.",
+  "scope": "Final beta CI architecture including Stage 7 closure fix; default-main cutover pending promotion",
   "workflow_count": 29,
   "workflows": [
     {
@@ -180,17 +180,36 @@
       "filename": ".github/workflows/beta-to-main-release-gate.yml",
       "display_name": "Beta to Main Release Gate",
       "category": "build-release",
-      "sha256": "b5b46e7e729d57d87b5d6b35a6fd16e11460f7665f1601edf7907bf568230154",
+      "sha256": "3e79de59406bb938fbab5fd42f6f8ebbbd3038dca145f7b3e42c4b8c4e8b81ba",
       "events": {
         "pull_request": {
           "branches": [
             "main"
           ]
         },
-        "workflow_dispatch": ""
+        "workflow_dispatch": {
+          "inputs": {
+            "maintenance_pr": {
+              "description": "Open main README automation PR number (required for maintenance).",
+              "required": "false",
+              "type": "string"
+            },
+            "candidate_sha": {
+              "description": "Exact README PR head SHA, which must also equal this dispatch run SHA.",
+              "required": "false",
+              "type": "string"
+            },
+            "main_base_sha": {
+              "description": "Exact protected-main PR base SHA (required for maintenance).",
+              "required": "false",
+              "type": "string"
+            }
+          }
+        }
       },
       "permissions": {
-        "contents": "read"
+        "contents": "read",
+        "pull-requests": "read"
       },
       "concurrency": {
         "group": "beta-main-release-gate-${{ github.event.pull_request.number || github.ref }}",
@@ -209,7 +228,8 @@
           "timeout_minutes": "5",
           "runs_on": "ubuntu-latest",
           "permissions": {
-            "contents": "read"
+            "contents": "read",
+            "pull-requests": "read"
           },
           "strategy": null,
           "env": null,
@@ -218,7 +238,7 @@
               "name": "Checkout exact candidate",
               "uses": "actions/checkout@v5",
               "with": {
-                "ref": "${{ github.event.pull_request.head.sha || github.sha }}",
+                "ref": "${{ github.event.pull_request.head.sha || inputs.candidate_sha || github.sha }}",
                 "fetch-depth": "0"
               }
             }
@@ -233,11 +253,17 @@
               "if": null,
               "env": {
                 "HEAD_REF": "${{ github.head_ref || github.ref_name }}",
-                "HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
-                "BASE_SHA": "${{ github.event.pull_request.base.sha }}"
+                "HEAD_SHA": "${{ github.event.pull_request.head.sha || inputs.candidate_sha || github.sha }}",
+                "BASE_SHA": "${{ github.event.pull_request.base.sha || inputs.main_base_sha }}",
+                "BASE_REF": "${{ github.event.pull_request.base.ref }}",
+                "PR_NUMBER": "${{ github.event.pull_request.number || inputs.maintenance_pr }}",
+                "REQUESTED_SHA": "${{ inputs.candidate_sha }}",
+                "GH_TOKEN": "${{ github.token }}"
               },
               "invocations": [
-                "git fetch --no-tags origin beta"
+                "git fetch --no-tags origin beta",
+                "git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main",
+                "python3 - <<'PY_MAINTENANCE'"
               ]
             },
             {
@@ -300,7 +326,8 @@
           "timeout_minutes": "45",
           "runs_on": "ubuntu-latest",
           "permissions": {
-            "contents": "read"
+            "contents": "read",
+            "pull-requests": "read"
           },
           "strategy": null,
           "env": null,
@@ -380,7 +407,8 @@
           "timeout_minutes": "75",
           "runs_on": "ubuntu-latest",
           "permissions": {
-            "contents": "read"
+            "contents": "read",
+            "pull-requests": "read"
           },
           "strategy": null,
           "env": null,
@@ -468,7 +496,8 @@
           "timeout_minutes": "5",
           "runs_on": "ubuntu-latest",
           "permissions": {
-            "contents": "read"
+            "contents": "read",
+            "pull-requests": "read"
           },
           "strategy": null,
           "env": null,
@@ -2368,7 +2397,7 @@
       "filename": ".github/workflows/miyorare-farm-pack-membership-sync.yml",
       "display_name": "Miyorare Farm Pack Membership Sync",
       "category": "maintenance",
-      "sha256": "b64c2608484d97078ca88df6cb6bde35600bbe1fab4df3d9d3116ba57a7160a4",
+      "sha256": "44f75541a4cd503cd0159ff900b5762cc52097e22cf79f18160ff659ff9b9f5d",
       "events": {
         "workflow_dispatch": {
           "inputs": {
@@ -2535,8 +2564,10 @@
                 "HEAD_SHA": "${{ steps.commit.outputs.head_sha }}"
               },
               "invocations": [
-                "gh workflow run identity-guard.yml \\",
-                "gh workflow run miyorare-source-pack-check.yml \\"
+                "gh workflow run identity-guard.yml --repo \"$GITHUB_REPOSITORY\" --ref \"$HEAD_BRANCH\"",
+                "gh workflow run ci-fast.yml --repo \"$GITHUB_REPOSITORY\" --ref \"$HEAD_BRANCH\"",
+                "gh workflow run ci-deep.yml --repo \"$GITHUB_REPOSITORY\" --ref \"$HEAD_BRANCH\"",
+                "gh workflow run miyorare-source-pack-check.yml --repo \"$GITHUB_REPOSITORY\" --ref \"$HEAD_BRANCH\""
               ]
             },
             {
@@ -2544,7 +2575,28 @@
               "if": "steps.materialize.outputs.changed == 'true'",
               "env": {
                 "GH_TOKEN": "${{ github.token }}",
-                "RUN_ID": "${{ steps.validations.outputs.identity_run }}"
+                "RUN_ID": "${{ steps.validations.outputs.identity_run }}",
+                "HEAD_SHA": "${{ steps.commit.outputs.head_sha }}"
+              },
+              "invocations": []
+            },
+            {
+              "name": "Wait for CI Fast",
+              "if": "steps.materialize.outputs.changed == 'true'",
+              "env": {
+                "GH_TOKEN": "${{ github.token }}",
+                "RUN_ID": "${{ steps.validations.outputs.fast_run }}",
+                "HEAD_SHA": "${{ steps.commit.outputs.head_sha }}"
+              },
+              "invocations": []
+            },
+            {
+              "name": "Wait for CI Deep",
+              "if": "steps.materialize.outputs.changed == 'true'",
+              "env": {
+                "GH_TOKEN": "${{ github.token }}",
+                "RUN_ID": "${{ steps.validations.outputs.deep_run }}",
+                "HEAD_SHA": "${{ steps.commit.outputs.head_sha }}"
               },
               "invocations": []
             },
@@ -2553,7 +2605,8 @@
               "if": "steps.materialize.outputs.changed == 'true'",
               "env": {
                 "GH_TOKEN": "${{ github.token }}",
-                "RUN_ID": "${{ steps.validations.outputs.pack_run }}"
+                "RUN_ID": "${{ steps.validations.outputs.pack_run }}",
+                "HEAD_SHA": "${{ steps.commit.outputs.head_sha }}"
               },
               "invocations": []
             },
@@ -3505,7 +3558,7 @@
       "filename": ".github/workflows/post-release-readme.yml",
       "display_name": "Post Release README",
       "category": "build-release",
-      "sha256": "4adb674e44df85b9ebb7945ac435b3eae1a4ece9739cb9bf25e73e8a9ddf1b74",
+      "sha256": "aaeee8b7c327625d179cee7d66bf879dca870b67e12d8c3a5d6fa34d3dba5197",
       "events": {
         "release": {
           "types": [
@@ -3573,6 +3626,7 @@
               "name": "Update README from published APKs",
               "if": null,
               "env": {
+                "GH_TOKEN": "${{ github.token }}",
                 "VERSION_NAME": "${{ steps.release.outputs.version_name }}",
                 "RELEASE_COMMIT": "${{ steps.release.outputs.release_commit }}",
                 "SOURCE_RUN_ID": "${{ steps.release.outputs.source_run_id }}"
@@ -3585,9 +3639,12 @@
                 "git push origin \"HEAD:$branch\"",
                 "url=\"$(gh pr create             --repo \"$GITHUB_REPOSITORY\"             --base main             --head \"$branch\"             --title \"Update README for v${VERSION_NAME}\"             --body \"Automated post-release verification metadata for v${VERSION_NAME}. Release commit ${RELEASE_COMMIT}; originating Main Build run ${SOURCE_RUN_ID}.\")\"",
                 "pr_number=\"$(gh pr view \"$url\" --repo \"$GITHUB_REPOSITORY\" --json number --jq '.number')\"",
-                "gh workflow run identity-guard.yml             --repo \"$GITHUB_REPOSITORY\"             --ref \"$branch\"",
+                "main_base_sha=\"$(gh pr view \"$pr_number\" --repo \"$GITHUB_REPOSITORY\" --json baseRefOid --jq '.baseRefOid')\"",
+                "test \"$(gh pr view \"$pr_number\" --repo \"$GITHUB_REPOSITORY\" --json headRefOid --jq '.headRefOid')\" = \"$HEAD_SHA\"",
+                "gh workflow run identity-guard.yml --repo \"$GITHUB_REPOSITORY\" --ref \"$HEAD_BRANCH\"",
+                "gh workflow run beta-to-main-release-gate.yml --repo \"$GITHUB_REPOSITORY\" --ref \"$HEAD_BRANCH\" \\",
                 "live_sha=\"$(gh pr view \"$pr_number\" --repo \"$GITHUB_REPOSITORY\" --json headRefOid --jq '.headRefOid')\"",
-                "gh pr merge \"$pr_number\"             --repo \"$GITHUB_REPOSITORY\"             --squash             --delete-branch",
+                "gh pr merge \"$pr_number\"             --repo \"$GITHUB_REPOSITORY\"             --match-head-commit \"$HEAD_SHA\"             --squash             --delete-branch",
                 "merged=\"$(gh pr view \"$pr_number\" --repo \"$GITHUB_REPOSITORY\" --json mergedAt --jq '.mergedAt')\""
               ]
             }
@@ -4602,7 +4659,7 @@
       "filename": ".github/workflows/readme-release-stats.yml",
       "display_name": "README Release Stats",
       "category": "maintenance",
-      "sha256": "5207e6ec7b6efa31902794c0dd0ff43fb68e45d79b8e87e08da3b591963d4c4e",
+      "sha256": "42839fd0814f6e23450547a1dc9400974b0ec230202564f02a93bf10de055d59",
       "events": {
         "workflow_dispatch": "",
         "schedule": [
@@ -4612,6 +4669,7 @@
         ]
       },
       "permissions": {
+        "actions": "write",
         "contents": "write",
         "pull-requests": "write"
       },
@@ -4630,6 +4688,7 @@
           "timeout_minutes": "GitHub default",
           "runs_on": "ubuntu-latest",
           "permissions": {
+            "actions": "write",
             "contents": "write",
             "pull-requests": "write"
           },
@@ -4664,9 +4723,15 @@
               "if": null,
               "env": null,
               "invocations": [
-                "git push --force-with-lease origin \"HEAD:$branch\"",
+                "git push --force-with-lease=\"refs/heads/$branch:$previous_sha\" origin \"HEAD:$branch\"",
                 "existing=\"$(gh pr list --repo \"$GITHUB_REPOSITORY\" --base main --head \"$branch\" --state open --json number --jq '.[0].number // empty')\"",
-                "gh pr create \\"
+                "url=\"$(gh pr create \\",
+                "pr_number=\"$(gh pr view \"$url\" --repo \"$GITHUB_REPOSITORY\" --json number --jq '.number')\"",
+                "main_base_sha=\"$(gh pr view \"$pr_number\" --repo \"$GITHUB_REPOSITORY\" --json baseRefOid --jq '.baseRefOid')\"",
+                "test \"$(gh pr view \"$pr_number\" --repo \"$GITHUB_REPOSITORY\" --json headRefOid --jq '.headRefOid')\" = \"$HEAD_SHA\"",
+                "gh workflow run identity-guard.yml --repo \"$GITHUB_REPOSITORY\" --ref \"$HEAD_BRANCH\"",
+                "gh workflow run beta-to-main-release-gate.yml --repo \"$GITHUB_REPOSITORY\" --ref \"$HEAD_BRANCH\" \\",
+                "live_sha=\"$(gh pr view \"$pr_number\" --repo \"$GITHUB_REPOSITORY\" --json headRefOid --jq '.headRefOid')\""
               ]
             }
           ]
@@ -4957,5 +5022,7 @@
         }
       ]
     }
-  ]
+  ],
+  "closure_audit_beta_sha": "b689bbc9cf5a1e55ab45596be04bcaac6fe9bc41",
+  "original_stage7_beta_sha": "bf86cf007a8a0d137e60dfd0e5a242e9d82e6d68"
 }

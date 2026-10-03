@@ -96,6 +96,7 @@ jobs:
 
       - name: Update README from published APKs
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION_NAME: ${{ steps.release.outputs.version_name }}
           RELEASE_COMMIT: ${{ steps.release.outputs.release_commit }}
           SOURCE_RUN_ID: ${{ steps.release.outputs.source_run_id }}
@@ -170,26 +171,54 @@ jobs:
           url="$(gh pr create             --repo "$GITHUB_REPOSITORY"             --base main             --head "$branch"             --title "Update README for v${VERSION_NAME}"             --body "Automated post-release verification metadata for v${VERSION_NAME}. Release commit ${RELEASE_COMMIT}; originating Main Build run ${SOURCE_RUN_ID}.")"
           pr_number="$(gh pr view "$url" --repo "$GITHUB_REPOSITORY" --json number --jq '.number')"
 
-          gh workflow run identity-guard.yml             --repo "$GITHUB_REPOSITORY"             --ref "$branch"
+          # Exact-head required main checks; token-created PRs cannot assume automatic runs.
+          HEAD_BRANCH="$branch"
+          HEAD_SHA="$head_sha"
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          main_base_sha="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json baseRefOid --jq '.baseRefOid')"
+          [[ "$main_base_sha" =~ ^[0-9a-f]{40}$ ]]
+          test "$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')" = "$HEAD_SHA"
+          dispatch_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run identity-guard.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_BRANCH"
+          gh workflow run beta-to-main-release-gate.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_BRANCH" \
+            --field maintenance_pr="$pr_number" --field candidate_sha="$HEAD_SHA" --field main_base_sha="$main_base_sha"
 
-          identity_run=""
-          for attempt in $(seq 1 60); do
-            identity_run="$(gh run list               --repo "$GITHUB_REPOSITORY"               --workflow identity-guard.yml               --branch "$branch"               --event workflow_dispatch               --limit 20               --json databaseId,headSha               --jq ".[] | select(.headSha == \"$head_sha\") | .databaseId"               | head -n 1)"
-            if [[ -n "$identity_run" ]]; then
-              break
-            fi
-            sleep 2
+          find_run() {
+            local workflow="$1"
+            local id=""
+            for attempt in $(seq 1 60); do
+              id="$(gh run list \
+                --repo "$GITHUB_REPOSITORY" \
+                --workflow "$workflow" \
+                --branch "$HEAD_BRANCH" \
+                --event workflow_dispatch \
+                --limit 20 \
+                --json databaseId,headSha,createdAt \
+                --jq "[.[] | select(.headSha == \"$HEAD_SHA\" and .createdAt >= \"$dispatch_since\")] | first | .databaseId // empty")" || return 1
+              if [[ -n "$id" ]]; then
+                [[ "$id" =~ ^[1-9][0-9]*$ ]] || return 1
+                printf '%s\n' "$id"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "Could not resolve workflow_dispatch run for $workflow at $HEAD_SHA" >&2
+            return 1
+          }
+
+          identity_run="$(find_run identity-guard.yml)"
+          promotion_run="$(find_run beta-to-main-release-gate.yml)"
+          for RUN_ID in "$identity_run" "$promotion_run"; do
+            set -euo pipefail
+            [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+            gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
+            test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --json status,conclusion,headSha \
+              --jq "if .status == \"completed\" and .conclusion == \"success\" and .headSha == \"$HEAD_SHA\" then \"success\" else \"rejected\" end")" = success
           done
-          if [[ -z "$identity_run" ]]; then
-            echo "::error::Could not resolve Identity Guard for README PR head $head_sha."
-            exit 1
-          fi
-
-          gh run watch "$identity_run"             --repo "$GITHUB_REPOSITORY"             --exit-status             --interval 10
-
           live_sha="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
-          [[ "$live_sha" == "$head_sha" ]]
-          gh pr merge "$pr_number"             --repo "$GITHUB_REPOSITORY"             --squash             --delete-branch
+          [[ "$live_sha" == "$HEAD_SHA" ]]
+          gh pr merge "$pr_number"             --repo "$GITHUB_REPOSITORY"             --match-head-commit "$HEAD_SHA"             --squash             --delete-branch
           merged="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json mergedAt --jq '.mergedAt')"
           [[ -n "$merged" && "$merged" != "null" ]]
 
