@@ -29,35 +29,35 @@ jobs:
           fetch-depth: 0
 
       - name: Verify exact candidate head
-        if: github.event_name == 'pull_request'
         shell: bash
         env:
-          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_HEAD"
           echo "Acceptance head: $actual"
 
+      - name: Test P0/P1 ownership contract
+        run: python3 .github/scripts/test_p0_p1_contract.py
 
       - name: Verify P0/P1 coverage ownership
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           set -euo pipefail
-          # PR JVM regressions are owned by CI Deep so this compatibility/status gate does not
-          # repeat Gradle compilation or tests against the same candidate SHA.
-          grep -Fq 'run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace' .github/workflows/ci-deep.yml
-          grep -Fq 'branches:' .github/workflows/ci-deep.yml
-          grep -Fq '      - beta' .github/workflows/ci-deep.yml
-
-
+          python3 .github/scripts/p0_p1_contract.py \
+            --event "$EVENT_NAME" --base "$BASE_SHA" --head "$HEAD_SHA" --labels "$PR_LABELS"
 
   # Core Android persistence/migration instrumentation is consolidated in android-runtime.yml.
-  # Manual P0/P1 dispatch keeps the deterministic JVM gate and the unique Favourites visual evidence below.
-
-
+  # This status gate verifies ownership; it does not execute the delegated suites.
+  # Manual dispatch keeps the complete unique Favourites visual evidence below.
   # Expensive final-only visual verification. During UI editing this job stays dormant:
-  # PR pushes run the lightweight JVM gate, while emulator/golden capture is manual.
+  # PR pushes run the local ownership contract, while emulator/golden capture is manual.
   favourites-golden-evidence:
     name: Favourites canonical visual evidence
     if: github.event_name == 'workflow_dispatch'
@@ -75,10 +75,9 @@ jobs:
           fetch-depth: 0
 
       - name: Verify exact candidate head
-        if: github.event_name == 'pull_request'
         shell: bash
         env:
-          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
