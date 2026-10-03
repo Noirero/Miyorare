@@ -13,7 +13,6 @@ import unittest
 from test_main_candidate_contract import ROOT, script, step
 
 POST = ROOT / '.github/workflows/post-release-readme.yml'
-STATS = ROOT / '.github/workflows/readme-release-stats.yml'
 FARM = ROOT / '.github/workflows/miyorare-farm-pack-membership-sync.yml'
 WORKFLOWS = {'identity-guard.yml': 101, 'ci-fast.yml': 102, 'ci-deep.yml': 103,
              'miyorare-source-pack-check.yml': 104, 'beta-to-main-release-gate.yml': 105}
@@ -165,22 +164,6 @@ class AutomationDispatchTest(unittest.TestCase):
         self.assertIn(hashlib.sha256(b'local published artifact fixture').hexdigest(), (self.repo / 'README.md').read_text())
         self.assertIn('GH_TOKEN: ${{ github.token }}', step('Update README from published APKs', POST))
 
-    def test_stats_validates_and_keeps_existing_open_pr_intent(self):
-        result = self.readme(STATS)
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assert_readme_dispatch()
-        self.assertFalse(self.merged.exists())
-        self.assertFalse(any(c[:2] == ['pr', 'merge'] for c in self.calls()))
-        # Updating the same automation ref preserves the original lease intent.
-        self.git('checkout', '-q', self.base)
-        self.git('branch', '-D', 'automation/readme-release-stats')
-        (self.repo / 'README.md').write_text('new stats update\n')
-        self.log.unlink()
-        result = self.execute(script('Open update PR when stats changed', STATS), {'EXISTING_PR': '1'})
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertFalse(any(c[:2] == ['pr', 'create'] for c in self.calls()))
-        self.assert_readme_dispatch()
-
     def test_readme_wrong_sha_or_old_run_never_satisfies_resolver(self):
         result = self.readme(POST, {'MISSING_RUN': 'beta-to-main-release-gate.yml'})
         self.assertNotEqual(0, result.returncode)
@@ -242,7 +225,6 @@ class AutomationDispatchTest(unittest.TestCase):
         baseline = 'b689bbc9cf5a1e55ab45596be04bcaac6fe9bc41'
         for workflow, names in [
             (POST, ['Resolve published release provenance and exact APK assets']),
-            (STATS, ['Refresh native README release stats']),
             (FARM, ['Resolve immutable Compatibility Farm snapshot', 'Test pack membership sync engine',
                     'Materialize ACTIVE Farm membership into beta manifest',
                     'Commit synchronized beta manifest to automation branch', 'Open protected beta sync pull request']),
@@ -253,8 +235,6 @@ class AutomationDispatchTest(unittest.TestCase):
                 old = next(b for b in re.split(r'(?=^      - name: )', original, flags=re.M)
                            if b.startswith('      - name: ' + name + '\n'))
                 self.assertEqual(old, step(name, workflow), name)
-        self.assertNotIn('gh pr merge', STATS.read_text())
-        self.assertIn('actions: write', STATS.read_text())
 
     def test_farm_manifest_uses_unchanged_existing_deep_dispatch_contract(self):
         from ci_deep_paths import requires_deep, requires_android_test_compile, requires_preview_android_test_compile

@@ -62,7 +62,7 @@ class MainCandidateContractTest(unittest.TestCase):
         output.write_text('')
         head = self.git('rev-parse', 'HEAD') if head is None else head
         base = self.base if base is None else base
-        maintenance = ref == 'automation/readme-release-stats' or ref.startswith('automation/release-readme-')
+        maintenance = ref.startswith('automation/release-readme-')
         pr = Path(self.tmp.name) / 'pr.json'
         pr.write_text(json.dumps(pr_data or {
             'state': 'open', 'base': {'ref': base_ref, 'sha': base, 'repo': {'full_name': 'Noirero/Miyorare'}},
@@ -139,7 +139,7 @@ esac
 
     def test_allowed_readme_branches_use_maintenance_for_pr_and_dispatch(self):
         self.readme_commit()
-        for ref in ('automation/release-readme-v1.0-123-a1', 'automation/readme-release-stats'):
+        for ref in ('automation/release-readme-v1.0-123-a1', 'automation/release-readme-v1.0-456-b2'):
             for event in ('pull_request', 'workflow_dispatch'):
                 result, output = self.classify(ref, event)
                 self.assertEqual(0, result.returncode, result.stderr)
@@ -162,7 +162,7 @@ esac
             self.git('commit', '-qm', 'earlier non README change')
             (self.repo / 'README.md').write_text('last commit README only\n' + path)
             self.git('commit', '-qam', 'last commit README')
-            result, output = self.classify('automation/readme-release-stats')
+            result, output = self.classify('automation/release-readme-v1.0-123-a1')
             self.assertNotEqual(0, result.returncode, path)
             self.assertEqual('', output)
             self.git('reset', '--hard', self.base)
@@ -171,7 +171,7 @@ esac
     def test_stale_or_diverged_main_base_and_wrong_target_fail(self):
         self.readme_commit()
         for base, base_ref in [(self.git('rev-parse', 'HEAD'), 'main'), ('e' * 40, 'main'), (self.base, 'beta')]:
-            result, _ = self.classify('automation/readme-release-stats', base=base, base_ref=base_ref)
+            result, _ = self.classify('automation/release-readme-v1.0-123-a1', base=base, base_ref=base_ref)
             self.assertNotEqual(0, result.returncode)
         old_head = self.git('rev-parse', 'HEAD')
         self.git('checkout', '-q', self.base)
@@ -179,20 +179,20 @@ esac
         self.git('commit', '-qam', 'new protected main')
         self.git('push', '-q', 'origin', 'HEAD:refs/heads/main')
         self.git('checkout', '-q', old_head)
-        result, _ = self.classify('automation/readme-release-stats')
+        result, _ = self.classify('automation/release-readme-v1.0-123-a1')
         self.assertNotEqual(0, result.returncode)
 
     def test_dispatch_requires_explicit_sha_pr_and_run_context_match(self):
         self.readme_commit()
         for args in ({'pr_number': ''}, {'requested_sha': ''}, {'context_sha': 'f' * 40}, {'head': 'f' * 40}, {'base': ''}):
-            result, output = self.classify('automation/readme-release-stats', 'workflow_dispatch', **args)
+            result, output = self.classify('automation/release-readme-v1.0-123-a1', 'workflow_dispatch', **args)
             self.assertNotEqual(0, result.returncode, args)
             self.assertEqual('', output)
 
     def test_live_pr_metadata_must_match_open_same_repo_exact_head_and_base(self):
         self.readme_commit()
         good = {'state': 'open', 'base': {'ref': 'main', 'sha': self.base, 'repo': {'full_name': 'Noirero/Miyorare'}},
-                'head': {'ref': 'automation/readme-release-stats', 'sha': self.git('rev-parse', 'HEAD'),
+                'head': {'ref': 'automation/release-readme-v1.0-123-a1', 'sha': self.git('rev-parse', 'HEAD'),
                          'repo': {'full_name': 'Noirero/Miyorare'}}}
         for field, value in [('state', 'closed'), ('head.sha', 'f' * 40), ('head.ref', 'automation/foo'),
                              ('base.sha', 'f' * 40), ('base.ref', 'beta'), ('head.repo.full_name', 'fork/Miyorare')]:
@@ -201,21 +201,21 @@ esac
             parts = field.split('.')
             for part in parts[:-1]: target = target[part]
             target[parts[-1]] = value
-            result, output = self.classify('automation/readme-release-stats', pr_data=candidate)
+            result, output = self.classify('automation/release-readme-v1.0-123-a1', pr_data=candidate)
             self.assertNotEqual(0, result.returncode, field)
             self.assertEqual('', output)
 
     def test_readme_delete_mode_change_and_empty_diff_are_not_maintenance(self):
-        result, _ = self.classify('automation/readme-release-stats')
+        result, _ = self.classify('automation/release-readme-v1.0-123-a1')
         self.assertNotEqual(0, result.returncode)
         (self.repo / 'README.md').unlink()
         self.git('commit', '-qam', 'delete README')
-        result, _ = self.classify('automation/readme-release-stats')
+        result, _ = self.classify('automation/release-readme-v1.0-123-a1')
         self.assertNotEqual(0, result.returncode)
         self.git('reset', '--hard', self.base)
         (self.repo / 'README.md').chmod(0o755)
         self.git('commit', '-qam', 'change mode')
-        result, _ = self.classify('automation/readme-release-stats')
+        result, _ = self.classify('automation/release-readme-v1.0-123-a1')
         self.assertNotEqual(0, result.returncode)
 
     def test_hotfix_compiles_instrumentation_using_existing_deep_policy(self):
