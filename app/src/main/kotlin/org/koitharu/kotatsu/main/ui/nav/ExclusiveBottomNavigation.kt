@@ -1555,4 +1555,3 @@ private fun rememberAppLifecycleResumed(): Boolean {
 	}
 	return resumed
 }
-
