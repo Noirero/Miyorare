@@ -45,6 +45,7 @@ jobs:
           assert '"$ACTUAL_SHA" == "$EXPECTED_CANDIDATE_SHA"' in workflow
           assert '.github/scripts/release_build_config_guard.py' in workflow
           assert '.github/scripts/apply_candidate_version.py' in workflow
+          assert "STABLE_VERSION_NAME: '1.4.4'" in workflow
           assert "STABLE_VERSION_CODE: '212453408'" in workflow
           assert ':app:assembleRelease' in workflow
           assert 'RELEASE_STORE_FILE=../release.keystore' in workflow
