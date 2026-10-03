@@ -66,7 +66,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ReaderJourneyCelebrationMode
 import org.koitharu.kotatsu.core.util.ext.isAnimationsEnabled
 import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueue
-import org.koitharu.kotatsu.readerjourney.ui.showReaderJourneyCelebrationDialog
+import org.koitharu.kotatsu.readerjourney.ui.presentCelebration
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.main.ui.nav.DrawablePainter
 import org.koitharu.kotatsu.settings.SettingsActivity
@@ -91,7 +91,7 @@ class DeveloperToolsFragment : BaseComposeSettingsFragment(R.string.developer_te
 			reduceMotionProvider = {
 				!requireActivity().isAnimationsEnabled || settings.isRankThemeReduceMotion
 			},
-			presenter = { item -> requireActivity().showReaderJourneyCelebrationDialog(item) },
+			presenter = { item -> requireActivity().presentCelebration(item, router::openStatistic) },
 		)
 	}
 
