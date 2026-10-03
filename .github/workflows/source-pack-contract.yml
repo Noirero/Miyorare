@@ -15,6 +15,9 @@ on:
       - '.github/workflows/main-build.yml'
       - '.github/workflows/post-release-readme.yml'
       - '.github/workflows/release-build-profile.yml'
+      - '.github/workflows/signed-release-candidate-build.yml'
+      - '.github/scripts/apply_candidate_version.py'
+      - '.github/scripts/test_apply_candidate_version.py'
       - '.github/scripts/summarize_gradle_profile.py'
       - '.github/scripts/test_summarize_gradle_profile.py'
       - '.github/scripts/source_pack_readiness.py'
@@ -39,6 +42,9 @@ on:
       - '.github/workflows/main-build.yml'
       - '.github/workflows/post-release-readme.yml'
       - '.github/workflows/release-build-profile.yml'
+      - '.github/workflows/signed-release-candidate-build.yml'
+      - '.github/scripts/apply_candidate_version.py'
+      - '.github/scripts/test_apply_candidate_version.py'
       - '.github/scripts/summarize_gradle_profile.py'
       - '.github/scripts/test_summarize_gradle_profile.py'
       - '.github/scripts/source_pack_readiness.py'
@@ -192,6 +198,30 @@ jobs:
           assert 'RELEASE_STORE_PASSWORD' not in profile
           assert 'RELEASE_KEY_ALIAS' not in profile
           assert 'RELEASE_KEY_PASSWORD' not in profile
+
+          candidate = Path('.github/workflows/signed-release-candidate-build.yml').read_text(encoding='utf-8')
+          assert '  workflow_dispatch:' in candidate
+          assert '  pull_request:' not in candidate
+          assert 'contents: read' in candidate
+          assert 'contents: write' not in candidate
+          assert 'expected_candidate_sha:' in candidate
+          lock = candidate.index('Lock source before signing access')
+          signing = candidate.index('Require stable release signing key')
+          build = candidate.index('Build signed Release APK')
+          assert lock < signing < build
+          assert '[[ "$GITHUB_REF_NAME" == "beta" ]]' in candidate
+          assert '"$ACTUAL_SHA" == "$EXPECTED_CANDIDATE_SHA"' in candidate
+          assert '.github/scripts/release_build_config_guard.py' in candidate
+          assert '.github/scripts/apply_candidate_version.py' in candidate
+          assert 'STABLE_VERSION_CODE' in candidate
+          assert ':app:assembleRelease' in candidate
+          assert 'RELEASE_STORE_FILE=../release.keystore' in candidate
+          assert 'actions/upload-artifact@v4' in candidate
+          assert 'sha256sum "$APK_PATH"' in candidate
+          assert 'gh release create' not in candidate
+          assert 'git push' not in candidate
+          assert 'create-release' not in candidate.lower()
+          assert 'deploy' not in candidate.lower()
 
           profile_summary = Path('.github/scripts/summarize_gradle_profile.py').read_text(encoding='utf-8')
           profile_summary_test = Path('.github/scripts/test_summarize_gradle_profile.py').read_text(encoding='utf-8')
