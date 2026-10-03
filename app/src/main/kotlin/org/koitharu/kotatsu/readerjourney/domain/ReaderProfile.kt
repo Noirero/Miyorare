@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.readerjourney.domain
 
 data class ReaderProfileSettings(
 	val displayName: String = "",
+	val avatarPath: String? = null,
 	val selectedTitle: ReaderAchievementId? = null,
 	val showcase: List<ReaderAchievementId> = emptyList(),
 	val cosmetics: ReaderJourneyCosmeticLoadout = ReaderJourneyCosmeticLoadout(),
