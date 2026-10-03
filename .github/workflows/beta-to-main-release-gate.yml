@@ -32,6 +32,8 @@ jobs:
     outputs:
       mode: ${{ steps.mode.outputs.mode }}
       run_runtime: ${{ steps.runtime.outputs.run_runtime }}
+      run_android_test_compile: ${{ steps.compile.outputs.run_android_test_compile }}
+      run_preview_android_test_compile: ${{ steps.compile.outputs.run_preview_android_test_compile }}
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v5
@@ -43,16 +45,11 @@ jobs:
         id: mode
         shell: bash
         env:
-          HEAD_REF: ${{ github.head_ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-
-          if [[ "${{ github.event_name }}" = "workflow_dispatch" ]]; then
-            echo "mode=promotion" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
           [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$HEAD_SHA"
@@ -64,7 +61,8 @@ jobs:
               exit 1
             }
             echo "mode=promotion" >> "$GITHUB_OUTPUT"
-          elif [[ "$HEAD_REF" = hotfix/* ]]; then
+          elif [[ "$HEAD_REF" = hotfix/* && "${{ github.event_name }}" = "pull_request" ]]; then
+            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
             # A direct-main hotfix must include the exact protected-main base it targets.
             # This prevents an old/diverged branch from using the emergency path.
             git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA" || {
@@ -88,10 +86,70 @@ jobs:
           grep -Fq 'android:label="@string/app_name_beta"' app/src/preview/AndroidManifest.xml
           grep -Fq '<string name="app_name_beta" translatable="false">Miyorare Beta</string>' app/src/preview/res/values/strings.xml
 
+      - name: Verify launcher isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            for name in ic_launcher ic_launcher_round; do
+              main_icon="app/src/main/res/mipmap-${density}/${name}.webp"
+              beta_icon="app/src/preview/res/mipmap-${density}/${name}.webp"
+              test -f "$main_icon"
+              test -f "$beta_icon"
+              if cmp -s "$main_icon" "$beta_icon"; then
+                echo "::error::Main and Beta launcher artwork must remain visually isolated: $name ($density)."
+                exit 1
+              fi
+            done
+          done
+
+          for adaptive in ic_launcher.xml ic_launcher_round.xml; do
+            main_adaptive="app/src/main/res/mipmap-anydpi-v26/$adaptive"
+            beta_adaptive="app/src/preview/res/mipmap-anydpi-v26/$adaptive"
+            test -f "$main_adaptive"
+            test -f "$beta_adaptive"
+            grep -Fq '@drawable/ic_launcher_foreground' "$main_adaptive"
+            grep -Fq '@drawable/ic_launcher_beta_foreground' "$beta_adaptive"
+          done
+
+          grep -Fq '@drawable/ic_launcher_main_foreground' app/src/main/res/drawable/ic_launcher_foreground.xml
+
+          if grep -R -Fq '@drawable/ic_launcher_beta_foreground' app/src/main/res/mipmap-anydpi-v26; then
+            echo "::error::Main launcher mapping must not reference Beta artwork."
+            exit 1
+          fi
+
+          if grep -R -Fq '@drawable/ic_launcher_foreground' app/src/preview/res/mipmap-anydpi-v26; then
+            echo "::error::Beta launcher mapping must not fall back to Main foreground artwork."
+            exit 1
+          fi
+
       - name: Diff sanity
         if: github.event_name == 'pull_request'
         shell: bash
         run: git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+
+      - name: Classify hotfix instrumentation compile risk
+        id: compile
+        if: steps.mode.outputs.mode == 'hotfix'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test_ci_deep_paths.py
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/hotfix-compile-paths.txt
+          for gate in android-test-compile preview-android-test-compile; do
+            value="$(python3 .github/scripts/ci_deep_paths.py --paths-file /tmp/hotfix-compile-paths.txt --gate "$gate")"
+            [[ "$value" = true || "$value" = false ]]
+            if [[ "$gate" = android-test-compile ]]; then
+              echo "run_android_test_compile=$value" >> "$GITHUB_OUTPUT"
+            else
+              echo "run_preview_android_test_compile=$value" >> "$GITHUB_OUTPUT"
+            fi
+          done
 
       - name: Classify hotfix Android runtime risk
         id: runtime
@@ -111,12 +169,14 @@ jobs:
       - name: Record promotion evidence
         if: steps.mode.outputs.mode == 'promotion'
         shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
         run: |
           {
             echo "### Beta promotion"
             echo
-            echo "- Candidate: `$(git rev-parse HEAD)`"
-            echo "- Source: `${{ github.head_ref || github.ref_name }}`"
+            printf '%s`%s`\n' '- Candidate: ' "$(git rev-parse HEAD)"
+            printf '%s`%s`\n' '- Source: ' "$HEAD_REF"
             echo "- Policy: beta validates; main verifies and promotes."
             echo "- Repeated Gradle/Android validation: none."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -151,7 +211,11 @@ jobs:
           cache-read-only: true
 
       - name: Run full JVM unit regression
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+        run: ./gradlew :app:testDebugUnitTest ${{ needs.classify.outputs.run_android_test_compile == 'true' && ':app:compileDebugAndroidTestKotlin :app:compileDebugAndroidTestJavaWithJavac' || '' }} --no-daemon --stacktrace
+
+      - name: Compile Preview instrumentation source when variant/build risk requires it
+        if: needs.classify.outputs.run_preview_android_test_compile == 'true'
+        run: ./gradlew :app:compilePreviewAndroidTestKotlin :app:compilePreviewAndroidTestJavaWithJavac -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview --no-daemon --stacktrace
 
       - name: Upload hotfix unit-test evidence
         if: always()

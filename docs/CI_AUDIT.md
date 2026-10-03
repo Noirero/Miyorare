@@ -1,5 +1,9 @@
-# Miyorare CI Audit
+# Miyorare CI Audit — historical 2026-09-30 baseline
 
+> **Historical:** counts, workflow names and migration recommendations below describe
+> the pre-cleanup baseline, not the active CI system. See
+> [Stage 7 current inventory, routing and closure status](CI_FINAL_BASELINE.md).
+>
 > Baseline: `beta` on 2026-09-30.
 >
 > Scope: CI/build infrastructure only. No application behavior, persistence, signing identity,

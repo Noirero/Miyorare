@@ -1,6 +1,9 @@
 # Miyorare Development Pipeline
 
-This document defines the development and release contract while CI is consolidated. It does not
+This document defines the development and release contract. The
+[Stage 7 baseline](CI_FINAL_BASELINE.md) contains the current 29-workflow inventory,
+ownership/routing proof and unresolved closure blockers. CI restructuring is not
+yet declared operationally closed. This document does not
 authorize changing application behavior, persistence, signing, application IDs, versioning, or
 source-pack contracts.
 
@@ -50,7 +53,8 @@ emulator, APK assembly, instrumentation execution, or signing credentials are re
 [Android test compile protection](ci-android-test-compile.md) for routing and variant boundaries.
 
 ### RUNTIME GREEN
-Required emulator/instrumentation/UI/golden evidence passes for runtime-sensitive changes.
+Android Runtime's four persistence/migration/backup classes pass when required.
+Specialized visual/Reader Journey owners provide their own distinct device evidence.
 Runtime CI is not required merely because a change exists.
 
 ### RELEASE GREEN
@@ -112,33 +116,58 @@ reproducible. Do not remove existing safety nets until an equivalent determinist
 
 ## Migration safety
 
-During CI consolidation, migrate one coverage family at a time. First add the replacement, run it,
+When changing coverage ownership, migrate one coverage family at a time. First add the replacement, run it,
 compare its coverage/evidence with the predecessor, then remove the old mechanism in a later proven
 step. Never improve CI speed by disabling a failing test.
 
 ## Risk-proportional pull request routing
 
-Pull requests use conservative change classification so validation cost follows change risk without reducing coverage. Documentation-only and explicitly allowlisted repository metadata changes keep cheap structural/identity checks but skip Gradle-heavy Deep/P0-P1 work and Android emulator runtime acceptance. Code, tests, Android resources, build configuration, persistence/migration areas, mixed changes, unknown paths, and empty classifications fail closed into the broader relevant gates. Manual validation remains available when a full gate is required explicitly.
+Beta PRs run Fast and cheap classifiers/ownership contracts. Deep owns full Debug
+JVM regression plus routed Kotlin/Java instrumentation compilation. docs/** and
+allowlisted root documentation skip Deep; other repository metadata may still
+run the existing JVM gate while adding no instrumentation compile. Unknown input
+is conservative in its applicable owner. Mixed PRs evaluate the whole base SHA
+through exact candidate head; the last commit alone never determines risk.
 
-Release candidates are separate from ordinary pull-request routing: promotion and official build/release workflows retain their dedicated release checks, signing policy, identity guards, and runtime acceptance.
+Android Runtime gives precedence to ci:runtime-required, theme label/path,
+critical persistence/build/gate inputs, conflicting origin labels and
+ci:user-issue. ci:owner-request skips only non-theme/non-critical core Runtime;
+it does not suppress Deep or relevant specialized evidence. Labels alone do not
+activate every path-filtered visual workflow.
 
-## Final CI architecture
+Badge/Nameplate and theme-size classifiers can prove that generic Stats/loading
+changes do not need their expensive evidence. Phase 10 retains unique
+state/render scenarios and fails closed on delegation-provider drift. Source
+Pack independently selects ID, EN, Global, actual Multi-Upstream intake and
+local/external compatibility contract. P0/P1 automatically verifies ownership
+cheaply; unique Favourites canonical visual capture remains manual.
 
-The consolidated pipeline is intentionally layered rather than workflow-per-bug:
+## Current CI architecture
 
-```text
-PR beta/main
-  -> CI Fast
-  -> CI Deep when change risk requires broad JVM regression
-  -> Android Runtime when Android/runtime/persistence risk requires emulator proof
-  -> relevant area-specific visual/source checks only when their paths apply
+- **Beta PR:** Fast → relevant Deep/Runtime/domain owners. Independent jobs can
+  run concurrently; this is an ownership list, not a serial mega-pipeline.
+- **Normal main promotion:** beta or frozen release/main-* candidate must be
+  contained in protected beta; existing required **Verify beta is safe to
+  promote** checks exact identity/ancestry cheaply. Core beta jobs skip main.
+- **Direct-main hotfix:** hotfix/* must contain protected-main base and pay full
+  JVM plus routed Debug/Preview instrumentation compile and required persistence
+  runtime in the existing main gate. No owner-label shortcut in this lane.
+- **Build/release:** beta Preview and main stable release are manual with their
+  existing identity/signing/readiness guards. Experimental/PF5 remain separate.
+- **Manual evidence/observability:** Favourites, visual diagnostics, build
+  profiling and benchmarks remain available; no manual device run is implied by
+  a docs audit.
+- **Maintenance:** scheduled metrics/stats and separate Farm synchronization use
+  their established lifecycles/permissions. Main's older control plane has not
+  yet adopted beta; README-main routing and Farm required-check dispatch gaps
+  are explicitly unresolved in the Stage 7 baseline.
 
-release candidate -> Beta to Main Release Gate -> main
-beta -> manual Beta Build
-main -> manual Stable Release
-scheduled/external work -> maintenance/source-pack workflows
-```
+Do not create a workflow merely because there is a new bug or feature. First
+choose Fast, Deep, Android Runtime, an existing visual owner or an existing
+domain-specific owner. A new workflow needs a genuinely uncovered failure domain
+that these pipelines cannot represent, with an evidence/lifecycle rationale.
+Never reduce coverage, remove test source or weaken fail-closed contracts for
+speed. Audit active callers and required-check identity before any migration.
 
-Historical targeted JVM workflows must not be reintroduced merely to rerun tests already owned by CI Deep. A new specialized workflow is justified only when it provides a distinct execution environment, external-system contract, artifact, branch operation, or runtime/visual evidence that cannot be represented by the existing layered gates.
-
-The final architecture preserves application behavior: CI consolidation does not authorize changing production UI/features, persistence semantics, application IDs, signing, release identity, or Source Pack compatibility behavior.
+CI changes do not authorize production behavior, persistence, application ID,
+signing, version/release semantics or Source Pack functionality changes.
