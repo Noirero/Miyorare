@@ -1,0 +1,138 @@
+name: Signed Release Candidate Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_candidate_sha:
+        description: 'Exact frozen candidate commit SHA. The beta dispatch SHA must match.'
+        required: true
+        type: string
+      version_name:
+        description: 'Explicit candidate version name (three-part numeric).'
+        required: true
+        type: string
+      version_code:
+        description: 'Explicit Android versionCode, greater than stable v1.4.4.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signed-release-candidate-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      STABLE_VERSION_CODE: '212453408'
+    steps:
+      - name: Checkout exact dispatch SHA
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Lock source before signing access
+        shell: bash
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ inputs.expected_candidate_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_NAME" == "beta" ]] || { echo "::error::Dispatch from beta only."; exit 1; }
+          [[ "$EXPECTED_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Expected candidate SHA must be full-length."; exit 1; }
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          [[ "$ACTUAL_SHA" == "$GITHUB_SHA" ]] || { echo "::error::Checkout differs from dispatch SHA."; exit 1; }
+          [[ "$ACTUAL_SHA" == "$EXPECTED_CANDIDATE_SHA" ]] || { echo "::error::Dispatch SHA differs from frozen candidate."; exit 1; }
+          echo "Validated source SHA: $ACTUAL_SHA"
+          echo "Validated source tree: $(git rev-parse HEAD^{tree})"
+      - name: Require final identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle
+          python3 .github/scripts/release_build_config_guard.py app/build.gradle
+          grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml
+      - name: Validate and apply build-only version
+        shell: bash
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/apply_candidate_version.py --build-gradle app/build.gradle --version-name "$VERSION_NAME" --version-code "$VERSION_CODE" --stable-version-code "$STABLE_VERSION_CODE"
+          grep -Fq "versionName = '$VERSION_NAME'" app/build.gradle
+          grep -Fq "versionCode = $VERSION_CODE" app/build.gradle
+          git diff -- app/build.gradle
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Require stable release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then echo "::error::Missing required repository secret: $name"; missing=1; fi
+          done
+          test "$missing" -eq 0
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+      - name: Build signed Release APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleRelease --max-workers=4 --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE=../release.keystore \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+      - name: Record candidate provenance and checksum
+        shell: bash
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/candidate-evidence
+          APK_PATH="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK_PATH"
+          sha256sum "$APK_PATH" | tee build/candidate-evidence/release-apk.sha256
+          {
+            echo "source_sha=$GITHUB_SHA"
+            echo "source_tree=$(git rev-parse HEAD^{tree})"
+            echo "version_name=$VERSION_NAME"
+            echo "version_code=$VERSION_CODE"
+          } > build/candidate-evidence/provenance.txt
+      - name: Upload signed candidate APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-release-candidate-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/release/*.apk
+            build/candidate-evidence/
+          if-no-files-found: error
+          retention-days: 14
