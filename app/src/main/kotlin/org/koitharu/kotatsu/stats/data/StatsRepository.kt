@@ -15,6 +15,8 @@ import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonalityRules
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementRepository
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyProgressionRepository
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyWeeklyTaskId
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsBucket
 import org.koitharu.kotatsu.stats.domain.StatsBucketUnit
@@ -36,12 +38,52 @@ import java.util.NavigableMap
 import java.util.TreeMap
 import java.util.TreeSet
 import javax.inject.Inject
+import javax.inject.Singleton
 
+internal fun calculateLongestVerifiedReadingStreak(
+	completedAt: Iterable<Long>,
+	zone: ZoneId,
+): Int {
+	val days = completedAt
+		.asSequence()
+		.filter { it > 0L }
+		.map { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
+		.toSortedSet()
+	if (days.isEmpty()) return 0
+	var longest = 0
+	var run = 0
+	var previous: LocalDate? = null
+	for (day in days) {
+		run = if (previous != null && previous.plusDays(1) == day) run + 1 else 1
+		longest = maxOf(longest, run)
+		previous = day
+	}
+	return longest
+}
+
+@Singleton
 class StatsRepository @Inject constructor(
 	private val settings: AppSettings,
 	private val db: MangaDatabase,
 	private val achievementRepository: ReaderAchievementRepository,
+	private val progressionRepository: ReaderJourneyProgressionRepository,
 ) {
+
+	@Volatile private var cachedSnapshot: Pair<StatsSnapshotKey, ReadingStats>? = null
+	@Volatile private var cachedYearInReview: YearInReview? = null
+
+	fun getCachedStatsSnapshot(
+		period: StatsPeriod,
+		categories: Set<Long>,
+		scope: StatsContentScope,
+		matureMode: StatsMatureMode,
+	): ReadingStats? {
+		val key = StatsSnapshotKey(period, categories.toSet(), scope, matureMode)
+		return cachedSnapshot?.takeIf { it.first == key }?.second
+	}
+
+	fun getCachedYearInReview(year: Int): YearInReview? =
+		cachedYearInReview?.takeIf { it.year == year }
 
 	/**
 	 * Build the entire dashboard from one coherent set of local sessions.
@@ -142,34 +184,34 @@ class StatsRepository @Inject constructor(
 		val journeyDao = db.getReaderJourneyDao()
 		val journeyAwards = journeyDao.getAllChapterAwards()
 		val journeyProfile = journeyDao.getProfile()
-		val lifetimeXp = journeyProfile?.totalXp ?: 0L
 		val journeyTitleCount = journeyDao.countDistinctCompletedTitles()
-		val journeyStartedDay = journeyAwards
-			.asSequence()
-			.map { it.firstCompletedAt }
-			.filter { it > 0L }
-			.minOrNull()
-			?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
-		val achievementStreak = if (journeyStartedDay == null) {
-			0
-		} else {
-			val journeySessions = db.getStatsDao().getSessions(0L, emptySet()).filter { session ->
-				!Instant.ofEpochMilli(session.startedAt).atZone(zone).toLocalDate().isBefore(journeyStartedDay)
-			}
-			calculateStreaks(journeySessions, zone).second
-		}
+		val achievementStreak = calculateLongestVerifiedReadingStreak(
+			completedAt = journeyAwards.map { it.firstCompletedAt },
+			zone = zone,
+		)
 		val achievements = achievementRepository.refresh(
 			longestStreak = achievementStreak,
 			allowUnlock = settings.isReaderJourneyEnabled,
+			allowXpAward = settings.isReaderJourneyEnabled,
 		)
+		if (settings.isReaderJourneyEnabled) {
+			progressionRepository.reconcile()
+		}
+		val refreshedJourneyProfile = journeyDao.getProfile() ?: journeyProfile
+		val lifetimeXp = refreshedJourneyProfile?.totalXp ?: 0L
+		val progression = if (settings.isReaderJourneyEnabled) {
+			progressionRepository.snapshot()
+		} else {
+			null
+		}
 		val readingPersonality = ReadingPersonalityRules.resolve(
-			mangaChapters = journeyProfile?.mangaChapters ?: 0L,
-			novelChapters = journeyProfile?.novelChapters ?: 0L,
+			mangaChapters = refreshedJourneyProfile?.mangaChapters ?: 0L,
+			novelChapters = refreshedJourneyProfile?.novelChapters ?: 0L,
 			uniqueTitles = journeyTitleCount,
 			longestStreak = achievementStreak,
 		)
 
-		return ReadingStats(
+		val result = ReadingStats(
 			period = period,
 			scope = scope,
 			matureMode = matureMode,
@@ -198,15 +240,18 @@ class StatsRepository @Inject constructor(
 			longestStreak = longestStreak,
 			lifetimeXp = lifetimeXp,
 			achievements = achievements,
-			journeyCompletedChapters = journeyProfile?.completedChapters ?: 0L,
-			journeyMangaChapters = journeyProfile?.mangaChapters ?: 0L,
-			journeyNovelChapters = journeyProfile?.novelChapters ?: 0L,
+			journeyProgression = progression,
+			journeyCompletedChapters = refreshedJourneyProfile?.completedChapters ?: 0L,
+			journeyMangaChapters = refreshedJourneyProfile?.mangaChapters ?: 0L,
+			journeyNovelChapters = refreshedJourneyProfile?.novelChapters ?: 0L,
 			journeyTitleCount = journeyTitleCount,
 			readingPersonality = readingPersonality,
 			isJourneyEnabled = settings.isReaderJourneyEnabled,
 			privateDuration = built.privateDuration,
 			privateTitles = built.privateTitles,
 		)
+		cachedSnapshot = StatsSnapshotKey(period, categories.toSet(), scope, matureMode) to result
+		return result
 	}
 
 	private fun buildRecords(
@@ -402,7 +447,7 @@ class StatsRepository @Inject constructor(
 			.getSessions(start, emptySet())
 			.filter { it.startedAt < end }
 
-		if (sessions.isEmpty()) return YearInReview(year = year)
+		if (sessions.isEmpty()) return YearInReview(year = year).also { cachedYearInReview = it }
 
 		val ids = sessions.mapTo(LinkedHashSet()) { it.mangaId }
 		val isNovelById = db.getMangaDao()
@@ -435,7 +480,7 @@ class StatsRepository @Inject constructor(
 			longestStreak = calculateStreaks(sessions, zone).second,
 			mangaChapters = mangaChapters,
 			novelChapters = novelChapters,
-		)
+		).also { cachedYearInReview = it }
 	}
 
 	suspend fun getChapterReadingStats(): ChapterReadingStats = db.withTransaction {
@@ -457,7 +502,12 @@ class StatsRepository @Inject constructor(
 
 	suspend fun clearStats() {
 		db.getStatsDao().clear()
+		cachedSnapshot = null
+		cachedYearInReview = null
 	}
+
+	suspend fun rerollWeeklyTask(taskId: ReaderJourneyWeeklyTaskId): Boolean =
+		progressionRepository.rerollWeeklyTask(taskId)
 
 	/**
 	 * Emits whenever the Reader Journey profile cache changes. A verified completion updates this
@@ -477,6 +527,13 @@ class StatsRepository @Inject constructor(
 		}
 	}.distinctUntilChanged()
 }
+
+private data class StatsSnapshotKey(
+	val period: StatsPeriod,
+	val categories: Set<Long>,
+	val scope: StatsContentScope,
+	val matureMode: StatsMatureMode,
+)
 
 private data class StatsTitleMeta(
 	val stored: MangaWithTags,

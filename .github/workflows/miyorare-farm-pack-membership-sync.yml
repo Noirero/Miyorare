@@ -210,12 +210,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh workflow run identity-guard.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref "$HEAD_BRANCH"
-          gh workflow run miyorare-source-pack-check.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref "$HEAD_BRANCH"
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          dispatch_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run identity-guard.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_BRANCH"
+          gh workflow run ci-fast.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_BRANCH"
+          gh workflow run ci-deep.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_BRANCH"
+          gh workflow run miyorare-source-pack-check.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_BRANCH"
 
           find_run() {
             local workflow="$1"
@@ -227,10 +227,10 @@ jobs:
                 --branch "$HEAD_BRANCH" \
                 --event workflow_dispatch \
                 --limit 20 \
-                --json databaseId,headSha \
-                --jq ".[] | select(.headSha == \"$HEAD_SHA\") | .databaseId" \
-                | head -n 1)"
+                --json databaseId,headSha,createdAt \
+                --jq "[.[] | select(.headSha == \"$HEAD_SHA\" and .createdAt >= \"$dispatch_since\")] | first | .databaseId // empty")" || return 1
               if [[ -n "$id" ]]; then
+                [[ "$id" =~ ^[1-9][0-9]*$ ]] || return 1
                 printf '%s\n' "$id"
                 return 0
               fi
@@ -241,8 +241,12 @@ jobs:
           }
 
           identity_run="$(find_run identity-guard.yml)"
+          fast_run="$(find_run ci-fast.yml)"
+          deep_run="$(find_run ci-deep.yml)"
           pack_run="$(find_run miyorare-source-pack-check.yml)"
           echo "identity_run=$identity_run" >> "$GITHUB_OUTPUT"
+          echo "fast_run=$fast_run" >> "$GITHUB_OUTPUT"
+          echo "deep_run=$deep_run" >> "$GITHUB_OUTPUT"
           echo "pack_run=$pack_run" >> "$GITHUB_OUTPUT"
 
       - name: Wait for Identity Guard
@@ -250,20 +254,60 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.validations.outputs.identity_run }}
+          HEAD_SHA: ${{ steps.commit.outputs.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
           gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --json status,conclusion,headSha \
+            --jq "if .status == \"completed\" and .conclusion == \"success\" and .headSha == \"$HEAD_SHA\" then \"success\" else \"rejected\" end")" = success
+
+      - name: Wait for CI Fast
+        if: steps.materialize.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.validations.outputs.fast_run }}
+          HEAD_SHA: ${{ steps.commit.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --json status,conclusion,headSha \
+            --jq "if .status == \"completed\" and .conclusion == \"success\" and .headSha == \"$HEAD_SHA\" then \"success\" else \"rejected\" end")" = success
+
+      - name: Wait for CI Deep
+        if: steps.materialize.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.validations.outputs.deep_run }}
+          HEAD_SHA: ${{ steps.commit.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --json status,conclusion,headSha \
+            --jq "if .status == \"completed\" and .conclusion == \"success\" and .headSha == \"$HEAD_SHA\" then \"success\" else \"rejected\" end")" = success
 
       - name: Wait for Source Pack Check
         if: steps.materialize.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.validations.outputs.pack_run }}
+          HEAD_SHA: ${{ steps.commit.outputs.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 15
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
+          test "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --json status,conclusion,headSha \
+            --jq "if .status == \"completed\" and .conclusion == \"success\" and .headSha == \"$HEAD_SHA\" then \"success\" else \"rejected\" end")" = success
 
       - name: Merge validated beta manifest automatically
         if: steps.materialize.outputs.changed == 'true'
@@ -278,6 +322,7 @@ jobs:
           [[ "$live_sha" == "$HEAD_SHA" ]]
           gh pr merge "$PR_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
+            --match-head-commit "$HEAD_SHA" \
             --squash \
             --delete-branch
           merged="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json mergedAt --jq '.mergedAt')"

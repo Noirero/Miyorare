@@ -1,0 +1,55 @@
+name: CI Metrics
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/ci-metrics.yml'
+      - '.github/scripts/ci_metrics.py'
+      - '.github/scripts/test_ci_metrics.py'
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ci-metrics
+  cancel-in-progress: true
+
+jobs:
+  metrics:
+    name: Measure CI health
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Test metrics helper
+        run: python3 .github/scripts/test_ci_metrics.py
+
+      - name: Fetch representative workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/ci-metrics
+          for page in 1 2 3; do
+            gh api -H 'Accept: application/vnd.github+json' "/repos/${{ github.repository }}/actions/runs?per_page=100&page=$page"
+          done | jq -s '{"workflow_runs": map(.workflow_runs[])[:300]}' > build/ci-metrics/runs.json
+
+      - name: Summarize metrics
+        run: |
+          python3 .github/scripts/ci_metrics.py             --input build/ci-metrics/runs.json             --json-output build/ci-metrics/summary.json             --md-output build/ci-metrics/summary.md
+          cat build/ci-metrics/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload metrics evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-metrics-${{ github.run_id }}
+          path: build/ci-metrics/
+          retention-days: 90

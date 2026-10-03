@@ -60,7 +60,7 @@ class FavoriteDialogViewModel @Inject constructor(
 	private val restoredCategoryIds = MutableStateFlow<Set<Long>>(emptySet())
 
 	private val pendingChanges = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
-	val isSaving = MutableStateFlow(isSingleNormalFavourite)
+	val isSaving = MutableStateFlow(false)
 	val onSaved = MutableEventFlow<Boolean>()
 	private val savedContent = combine(
 		favouritesRepository.observeCategories(favouriteSpace),
@@ -88,23 +88,6 @@ class FavoriteDialogViewModel @Inject constructor(
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
-	init {
-		if (isSingleNormalFavourite) {
-			launchJob(Dispatchers.Default) {
-				try {
-					val mangaId = manga.single().id
-					val activeCategories = favouritesRepository.getCategoriesIds(mangaId, FavouriteSpace.NORMAL)
-					if (activeCategories.isNotEmpty()) {
-						rememberCategories(mangaId, activeCategories)
-						favouritesRepository.removeFromFavourites(listOf(mangaId), FavouriteSpace.NORMAL)
-						onSaved.call(false)
-					}
-				} finally {
-					isSaving.value = false
-				}
-			}
-		}
-	}
 
 	fun setChecked(categoryId: Long, isChecked: Boolean) {
 		if (isSaving.value) return

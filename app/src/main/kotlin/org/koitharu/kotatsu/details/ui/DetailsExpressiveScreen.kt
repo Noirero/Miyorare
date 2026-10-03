@@ -140,7 +140,8 @@ fun DetailsExpressiveScreen(
 		val scheme = MaterialTheme.colorScheme
 		val palette = LocalMiyorareVisualPalette.current
 		val lightMode = scheme.background.luminance() >= 0.5f
-		val accentColor = if (palette.isModern && palette.adaptiveCustomBackground) {
+		val accentColor = palette.exclusiveTheme?.details?.interactiveText
+			?: if (palette.isModern && palette.adaptiveCustomBackground) {
 			// Custom wallpaper colors should be unmistakable on Details without sacrificing contrast.
 			if (lightMode) {
 				when (palette.effectLevel) {

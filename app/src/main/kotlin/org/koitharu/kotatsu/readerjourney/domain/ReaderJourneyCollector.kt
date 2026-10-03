@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.readerjourney.domain
 
+import androidx.room.withTransaction
 import dagger.hilt.android.ViewModelLifecycle
 import dagger.hilt.android.scopes.ViewModelScoped
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,7 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import javax.inject.Inject
 
 /**
@@ -22,10 +24,35 @@ import javax.inject.Inject
  * never award XP.
  */
 @ViewModelScoped
+internal fun isValidMangaJourneyCompletion(
+	uniquePageCount: Int,
+	totalPages: Int,
+	elapsedMs: Long,
+): Boolean {
+	if (totalPages <= 0) return false
+	if (uniquePageCount < ReaderJourneyRules.requiredMangaPages(totalPages)) return false
+	return elapsedMs >= ReaderJourneyRules.mangaMinimumValidDurationMs(totalPages)
+}
+
+internal fun isValidNovelJourneyCompletion(
+	maxProgress: Int,
+	initialProgress: Int,
+	elapsedMs: Long,
+	positionSampleCount: Int,
+	sawProgressBelowThreshold: Boolean,
+): Boolean {
+	if (maxProgress < ReaderJourneyRules.COMPLETION_PERMILLE) return false
+	if (elapsedMs < ReaderJourneyRules.NOVEL_MIN_VALID_MS) return false
+	if (positionSampleCount < 3) return false
+	return sawProgressBelowThreshold || maxProgress - initialProgress >= 100
+}
+
 class ReaderJourneyCollector @Inject constructor(
 	private val db: MangaDatabase,
 	private val settings: AppSettings,
 	private val achievementRepository: ReaderAchievementRepository,
+	private val progressionRepository: ReaderJourneyProgressionRepository,
+	private val profileStore: ReaderProfileStore,
 	lifecycle: ViewModelLifecycle,
 ) {
 
@@ -147,16 +174,19 @@ class ReaderJourneyCollector @Inject constructor(
 	private fun isValidCompletion(entry: Entry, now: Long): Boolean {
 		val elapsed = now - entry.startedAt
 		return if (entry.isNovel) {
-			if (entry.maxProgress < ReaderJourneyRules.COMPLETION_PERMILLE) return false
-			if (elapsed < ReaderJourneyRules.NOVEL_MIN_VALID_MS) return false
-			if (entry.novelPositionBuckets.size < NOVEL_REQUIRED_POSITION_SAMPLES) return false
-			entry.sawProgressBelowThreshold ||
-				entry.maxProgress - entry.initialProgress >= MIN_ABOVE_THRESHOLD_ADVANCE
+			isValidNovelJourneyCompletion(
+				maxProgress = entry.maxProgress,
+				initialProgress = entry.initialProgress,
+				elapsedMs = elapsed,
+				positionSampleCount = entry.novelPositionBuckets.size,
+				sawProgressBelowThreshold = entry.sawProgressBelowThreshold,
+			)
 		} else {
-			if (entry.totalPages <= 0) return false
-			val requiredPages = ReaderJourneyRules.requiredMangaPages(entry.totalPages)
-			if (entry.uniquePages.size < requiredPages) return false
-			elapsed >= ReaderJourneyRules.mangaMinimumValidDurationMs(entry.totalPages)
+			isValidMangaJourneyCompletion(
+				uniquePageCount = entry.uniquePages.size,
+				totalPages = entry.totalPages,
+				elapsedMs = elapsed,
+			)
 		}
 	}
 
@@ -170,52 +200,118 @@ class ReaderJourneyCollector @Inject constructor(
 	private fun award(entry: Entry) {
 		if (entry.awarded || !settings.isReaderJourneyEnabled) return
 		entry.awarded = true
-		val baseXp = if (entry.isNovel) {
+		// Capture the verified completion time before dispatching persistence work so an async queue
+		// crossing midnight/weekly reset cannot move an already-valid completion into a later period.
+		val completedAt = System.currentTimeMillis()
+		val nominalBaseXp = if (entry.isNovel) {
 			ReaderJourneyRules.novelCompletionXp(entry.readingUnits)
 		} else {
 			ReaderJourneyRules.MANGA_COMPLETION_XP
 		}
 		scope.launch(Dispatchers.IO) {
+			var persistenceCommitted = false
 			runCatchingCancellable {
 				// The setting can change after the UI signal that completed the chapter but before
 				// this coroutine reaches persistent storage. Opt-out wins that race.
 				if (!settings.isReaderJourneyEnabled) return@runCatchingCancellable
-				val completedAt = System.currentTimeMillis()
-				val award = db.getReaderJourneyDao().awardCompletion(
-					mangaId = entry.key.mangaId,
-					chapterId = entry.key.chapterId,
-					isNovel = entry.isNovel,
-					readingUnits = entry.readingUnits,
-					baseXp = baseXp,
-					completedAt = completedAt,
-				)
-				if (award.xp > 0) {
+				val persisted = db.withTransaction {
+					val effectiveBaseXp = progressionRepository.effectiveReadingXp(nominalBaseXp, completedAt)
+					val award = db.getReaderJourneyDao().awardCompletion(
+						mangaId = entry.key.mangaId,
+						chapterId = entry.key.chapterId,
+						isNovel = entry.isNovel,
+						readingUnits = entry.readingUnits,
+						baseXp = effectiveBaseXp,
+						completedAt = completedAt,
+					)
+					if (award.xp <= 0) return@withTransaction null
+
+					val progressionAward = progressionRepository.onVerifiedCompletion(
+						award = award,
+						mangaId = entry.key.mangaId,
+						chapterId = entry.key.chapterId,
+						completedAt = completedAt,
+					)
+					val achievementResult = achievementRepository.refreshWithResult(unlockedAt = completedAt)
+					val finalTotalXp = db.getReaderJourneyDao().getProfile()?.totalXp ?: progressionAward.totalXp
 					val before = ReaderJourneyRules.progress(award.previousTotalXp)
-					val after = ReaderJourneyRules.progress(award.totalXp)
-					if (after.level > before.level) {
-						onJourneyProgressed.call(
-							ReaderJourneyCelebration(
-								xpEarned = award.xp,
-								fromLevel = before.level,
-								toLevel = after.level,
-								fromRank = before.rank,
-								toRank = after.rank,
-								unlockedCosmetics = ReaderJourneyCosmetics
-									.newlyUnlocked(before.rank, after.rank)
-									.size,
+					val after = ReaderJourneyRules.progress(finalTotalXp)
+					val breakdown = db.getReaderJourneyDao()
+						.getXpEventsAt(completedAt)
+						.filter { event -> event.xp > 0 && event.source != ReaderJourneyXpSource.ACHIEVEMENT.name }
+						.map { event ->
+							ReaderJourneyXpBreakdown(
+								source = event.source,
+								xp = event.xp,
+								context = event.context,
+							)
+						} + achievementResult.xpAwards
+					PersistedJourneyResult(
+						award = award,
+						achievementResult = achievementResult,
+						finalTotalXp = finalTotalXp,
+						before = before,
+						after = after,
+						breakdown = breakdown,
+					)
+				} ?: return@runCatchingCancellable
+				persistenceCommitted = true
+
+				if (persisted.after.level > persisted.before.level &&
+					persisted.after.rank.minLevel > persisted.before.rank.minLevel
+				) {
+					val loadout = profileStore.profile.value.cosmetics
+					if (loadout.autoEquipNewRankTheme) {
+						profileStore.updateCosmetics(
+							ReaderJourneyCosmeticPolicy.equipFullSet(
+								loadout = loadout,
+								theme = RankThemeId.forRank(persisted.after.rank),
+								currentRank = persisted.after.rank,
 							),
 						)
 					}
-					val achievementResult = achievementRepository.refreshWithResult(unlockedAt = completedAt)
-					if (achievementResult.newlyUnlocked.isNotEmpty()) {
-						onMilestoneUnlocked.call(achievementResult.newlyUnlocked.size)
-					}
+				}
+				onJourneyProgressed.call(
+					ReaderJourneyCelebration(
+						xpEarned = (persisted.finalTotalXp - persisted.award.previousTotalXp)
+							.coerceIn(0L, Int.MAX_VALUE.toLong())
+							.toInt(),
+						fromLevel = persisted.before.level,
+						toLevel = persisted.after.level,
+						fromRank = persisted.before.rank,
+						toRank = persisted.after.rank,
+						unlockedCosmetics = ReaderJourneyCosmetics
+							.newlyUnlocked(persisted.before.rank, persisted.after.rank),
+						unlockedAchievements = persisted.achievementResult.newlyUnlocked,
+						breakdown = persisted.breakdown,
+						progressMilestones = ReaderJourneyRules.progressMilestonesCrossed(
+							persisted.before,
+							persisted.after,
+						),
+					),
+				)
+				if (persisted.achievementResult.newlyUnlocked.isNotEmpty()) {
+					onMilestoneUnlocked.call(persisted.achievementResult.newlyUnlocked.size)
 				}
 			}.onFailure { error ->
+				if (!persistenceCommitted) {
+					synchronized(this@ReaderJourneyCollector) {
+						entry.awarded = false
+					}
+				}
 				error.printStackTraceDebug()
 			}
 		}
 	}
+
+	private data class PersistedJourneyResult(
+		val award: org.koitharu.kotatsu.readerjourney.data.ReaderJourneyAward,
+		val achievementResult: ReaderAchievementRefreshResult,
+		val finalTotalXp: Long,
+		val before: ReaderJourneyProgress,
+		val after: ReaderJourneyProgress,
+		val breakdown: List<ReaderJourneyXpBreakdown>,
+	)
 
 	private data class Key(
 		val mangaId: Long,

@@ -3,7 +3,14 @@ package org.koitharu.kotatsu.core.ui
 import android.content.Context
 import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorFilter
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
@@ -185,6 +192,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val controlRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
 		val strokeWidth = dp(1f).coerceAtLeast(1)
 		val glass = if (privateFavourites) null else palette.neonGlass()
+		val exclusiveFavourites = if (privateFavourites) null else palette.exclusiveTheme?.favourites
+		val signatureBorderStops = exclusiveFavourites?.borderStops?.toIntArray()
+		val signatureSelectedStops = exclusiveFavourites?.selectedStops?.toIntArray()
 		val isNightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
 			Configuration.UI_MODE_NIGHT_YES
 		// Normal Favourites uses authored hero artwork that remains dark even when the app is in light
@@ -271,6 +281,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				palette = palette,
 				glass = checkNotNull(glass),
 				density = density,
+				signatureBorderStops = signatureBorderStops,
+				signatureSelectedStops = signatureSelectedStops,
 			)
 		}
 
@@ -295,6 +307,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					radius = surfaceRadius,
 					density = density,
 					selected = false,
+					signatureBorderStops = signatureBorderStops,
+					signatureSelectedStops = signatureSelectedStops,
 				)
 			}
 			val states = arrayOf(
@@ -337,6 +351,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 							glass = glass!!,
 							radius = controlRadius.toFloat(),
 							density = density,
+							signatureBorderStops = signatureBorderStops,
+							signatureSelectedStops = signatureSelectedStops,
 						)
 						iconTint = text
 						this.strokeWidth = 0
@@ -403,6 +419,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		palette: MiyorareViewPalette,
 		glass: MiyorareNeonGlassColors,
 		density: Float,
+		signatureBorderStops: IntArray?,
+		signatureSelectedStops: IntArray?,
 	) {
 		fun dp(value: Float) = (value * density).roundToInt()
 		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.apply {
@@ -469,6 +487,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density,
 				density = density,
 				selected = false,
+				signatureBorderStops = signatureBorderStops,
+				signatureSelectedStops = signatureSelectedStops,
 			)
 			setPadding(
 				dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_INSET_DP),
@@ -492,6 +512,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		glass: MiyorareNeonGlassColors,
 		radius: Float,
 		density: Float,
+		signatureBorderStops: IntArray? = null,
 	): Drawable {
 		val outerGlowStroke = (12f * density).roundToInt().coerceAtLeast(1)
 		val midGlowStroke = (6.5f * density).roundToInt().coerceAtLeast(1)
@@ -522,10 +543,19 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.44f).roundToInt()),
 			)
 		}
-		val edgeLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = (radius - density).coerceAtLeast(0f)
-			setStroke(edgeStroke, glass.borderStrong)
+		val edgeLayer: Drawable = if (signatureBorderStops != null && signatureBorderStops.size >= 2) {
+			PrismStrokeDrawable(
+				colors = signatureBorderStops,
+				cornerRadius = (radius - density).coerceAtLeast(0f),
+				strokeWidth = edgeStroke.toFloat(),
+				alphaScale = 0.88f,
+			)
+		} else {
+			GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = (radius - density).coerceAtLeast(0f)
+				setStroke(edgeStroke, glass.borderStrong)
+			}
 		}
 		return LayerDrawable(
 			arrayOf(
@@ -541,6 +571,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		glass: MiyorareNeonGlassColors,
 		radius: Float,
 		density: Float,
+		signatureBorderStops: IntArray? = null,
+		signatureSelectedStops: IntArray? = null,
 	): Drawable {
 		val idle = GradientDrawable().apply {
 			setColor(Color.TRANSPARENT)
@@ -554,6 +586,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					radius = radius,
 					density = density,
 					selected = true,
+					signatureBorderStops = signatureBorderStops,
+					signatureSelectedStops = signatureSelectedStops,
 				),
 			)
 			addState(intArrayOf(), idle)
@@ -570,6 +604,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		radius: Float,
 		density: Float,
 		selected: Boolean,
+		signatureBorderStops: IntArray? = null,
+		signatureSelectedStops: IntArray? = null,
 	): Drawable {
 		val activeGlow = if (selected) glass.selectedGlow else glass.glow
 		val outerGlowStroke = ((if (selected) 12f else 11f) * density).roundToInt().coerceAtLeast(1)
@@ -604,33 +640,52 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * nearFactor).roundToInt()),
 			)
 		}
-		val fillLayer = GradientDrawable(
-			GradientDrawable.Orientation.LEFT_RIGHT,
-			if (selected) {
-				intArrayOf(
-					glass.selectedSurface,
-					ColorUtils.blendARGB(glass.selectedSurface, glass.innerHighlight, 0.66f),
-					glass.selectedSurface,
+		val authoredFillStops = if (selected) signatureSelectedStops else signatureBorderStops
+		val fillColors = if (authoredFillStops != null && authoredFillStops.size >= 2) {
+			authoredFillStops.map { stop ->
+				ColorUtils.blendARGB(
+					if (selected) glass.selectedSurface else glass.railSurface,
+					stop,
+					if (selected) 0.58f else 0.18f,
 				)
-			} else {
-				intArrayOf(
-					glass.railSurface,
-					ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.26f),
-					glass.railSurface,
-				)
-			},
-		).apply {
-			cornerRadius = (radius - density).coerceAtLeast(0f)
-			setStroke(edgeStroke, if (selected) glass.selectedBorder else glass.borderStrong)
+			}.toIntArray()
+		} else if (selected) {
+			intArrayOf(
+				glass.selectedSurface,
+				ColorUtils.blendARGB(glass.selectedSurface, glass.innerHighlight, 0.66f),
+				glass.selectedSurface,
+			)
+		} else {
+			intArrayOf(
+				glass.railSurface,
+				ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.26f),
+				glass.railSurface,
+			)
 		}
-		return LayerDrawable(
-			arrayOf(
-				outerGlowLayer,
-				midGlowLayer,
-				nearGlowLayer,
-				InsetDrawable(fillLayer, inset),
-			),
+		val fillLayer = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, fillColors).apply {
+			cornerRadius = (radius - density).coerceAtLeast(0f)
+			if (signatureBorderStops == null || signatureBorderStops.size < 2) {
+				setStroke(edgeStroke, if (selected) glass.selectedBorder else glass.borderStrong)
+			}
+		}
+		val layers = mutableListOf<Drawable>(
+			outerGlowLayer,
+			midGlowLayer,
+			nearGlowLayer,
+			InsetDrawable(fillLayer, inset),
 		)
+		if (signatureBorderStops != null && signatureBorderStops.size >= 2) {
+			layers += InsetDrawable(
+				PrismStrokeDrawable(
+					colors = signatureBorderStops,
+					cornerRadius = (radius - density).coerceAtLeast(0f),
+					strokeWidth = edgeStroke.toFloat(),
+					alphaScale = if (selected) 0.96f else 0.72f,
+				),
+				inset,
+			)
+		}
+		return LayerDrawable(layers.toTypedArray())
 	}
 
 	private fun createFavouritesHeaderDrawable(
@@ -740,6 +795,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val density = resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()
 		val glass = palette.neonGlass()
+		val signatureBorderStops = palette.exclusiveTheme?.favourites?.borderStops?.toIntArray()
 		val headerGlassFill = ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.12f)
 		val sideControlSize = dp(MiyorareFavouritesVisualSpec.SEARCH_SIDE_BUTTON_DP)
 		searchRow?.takeIf { it.childCount >= 3 }?.apply {
@@ -782,6 +838,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				glass = glass,
 				radius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP).toFloat(),
 				density = density,
+				signatureBorderStops = signatureBorderStops,
 			)
 			elevation = 0f
 		}
@@ -804,6 +861,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					glass = glass,
 					radius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP).toFloat(),
 					density = density,
+					signatureBorderStops = signatureBorderStops,
 				)
 				elevation = 0f
 			}
@@ -881,6 +939,57 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		originalSearchGeometry = null
 		originalSearchRowGeometry = null
 	}
+}
+
+/**
+ * Static multi-stop outline used by Eternal Library on legacy/View-backed favourites chrome.
+ */
+private class PrismStrokeDrawable(
+	private val colors: IntArray,
+	private val cornerRadius: Float,
+	private val strokeWidth: Float,
+	private val alphaScale: Float = 1f,
+) : Drawable() {
+	private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+		style = Paint.Style.STROKE
+		this.strokeWidth = this@PrismStrokeDrawable.strokeWidth
+	}
+	private val rect = RectF()
+	private var drawableAlpha = 255
+
+	override fun onBoundsChange(bounds: android.graphics.Rect) {
+		super.onBoundsChange(bounds)
+		paint.shader = LinearGradient(
+			bounds.left.toFloat(),
+			bounds.top.toFloat(),
+			bounds.right.toFloat(),
+			bounds.bottom.toFloat(),
+			colors,
+			null,
+			Shader.TileMode.CLAMP,
+		)
+	}
+
+	override fun draw(canvas: Canvas) {
+		val half = strokeWidth / 2f
+		rect.set(bounds.left + half, bounds.top + half, bounds.right - half, bounds.bottom - half)
+		paint.alpha = (drawableAlpha * alphaScale).roundToInt().coerceIn(0, 255)
+		val radius = (cornerRadius - half).coerceAtLeast(0f)
+		canvas.drawRoundRect(rect, radius, radius, paint)
+	}
+
+	override fun setAlpha(alpha: Int) {
+		drawableAlpha = alpha.coerceIn(0, 255)
+		invalidateSelf()
+	}
+
+	override fun setColorFilter(colorFilter: ColorFilter?) {
+		paint.colorFilter = colorFilter
+		invalidateSelf()
+	}
+
+	@Deprecated("Deprecated in Android")
+	override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 }
 
 /** Preset-aware Semi Decorative top chrome for the Compose manga-details hero. */

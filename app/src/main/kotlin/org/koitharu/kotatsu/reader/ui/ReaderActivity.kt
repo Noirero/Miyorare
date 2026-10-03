@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
@@ -80,7 +81,11 @@ import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.data.TapGridSettings
 import org.koitharu.kotatsu.reader.domain.TapGridArea
 import org.koitharu.kotatsu.reader.domain.UpscaleEffect
-import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCelebration
+import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueue
+import org.koitharu.kotatsu.readerjourney.domain.CelebrationPresentation
+import org.koitharu.kotatsu.readerjourney.domain.CelebrationQueueItem
+import org.koitharu.kotatsu.readerjourney.domain.presentation
+import org.koitharu.kotatsu.readerjourney.ui.presentCelebration
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
 import org.koitharu.kotatsu.reader.ui.upscale.UpscalePreviewDialog
 import org.koitharu.kotatsu.reader.ui.config.ReaderConfigSheet
@@ -92,6 +97,7 @@ import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 import org.koitharu.kotatsu.reader.ui.tapgrid.TapGridDispatcher
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
 import javax.inject.Inject
 import androidx.appcompat.R as appcompatR
 
@@ -128,6 +134,14 @@ class ReaderActivity :
     private val idlingDetector = IdlingDetector(TimeUnit.SECONDS.toMillis(10), this)
 
     private val viewModel: ReaderViewModel by viewModels()
+    private val celebrationQueue by lazy(LazyThreadSafetyMode.NONE) {
+        CelebrationQueue(
+            scope = lifecycleScope,
+            modeProvider = { settings.readerJourneyCelebrationMode },
+            reduceMotionProvider = { !isAnimationsEnabled || settings.isRankThemeReduceMotion },
+            presenter = ::showReaderJourneyCelebration,
+        )
+    }
 
     override val readerMode: ReaderMode?
         get() = readerManager.currentMode
@@ -253,7 +267,7 @@ class ReaderActivity :
                 .setAnchorView(viewBinding.toolbarDocked)
                 .show()
         }
-        viewModel.onReaderJourneyProgressed.observeEvent(this, ::showReaderJourneyCelebration)
+        viewModel.onReaderJourneyProgressed.observeEvent(this, celebrationQueue::enqueue)
         viewModel.readerSettingsProducer.observe(this) {
             viewBinding.infoBar.applyColorScheme(isBlackOnWhite = it.background.isLight(this))
         }
@@ -386,25 +400,59 @@ class ReaderActivity :
         viewBinding.timerControl.onReaderModeChanged(mode)
     }
 
-    private fun showReaderJourneyCelebration(event: ReaderJourneyCelebration) {
-        val mode = settings.readerJourneyCelebrationMode
-        if (mode == ReaderJourneyCelebrationMode.OFF) return
+    private suspend fun showReaderJourneyCelebration(item: CelebrationQueueItem) {
+        if (item.presentation() != CelebrationPresentation.SNACKBAR) {
+            presentCelebration(item, router::openStatistic)
+            return
+        }
+        val event = item.event
+        val mode = item.mode
 
-        val headline = if (event.isRankUp) {
-            getString(
+        val headline = when {
+            event.isRankUp -> getString(
                 R.string.reader_journey_rank_up,
                 getString(event.toRank.titleRes),
             )
-        } else {
-            getString(R.string.reader_journey_level_up, event.toLevel)
+            event.isLevelUp -> getString(R.string.reader_journey_level_up, event.toLevel)
+            else -> "+" + event.xpEarned + " XP"
         }
-        val message = if (event.unlockedCosmetics > 0) {
-            headline + " · " + getString(
-                R.string.reader_journey_cosmetics_unlocked,
-                event.unlockedCosmetics,
-            )
-        } else {
-            headline
+        val knownBreakdownXp = event.breakdown.sumOf { it.xp }
+        val breakdownParts = event.breakdown
+            .filter { it.xp > 0 }
+            .groupBy { it.source to it.context }
+            .map { (key, items) ->
+                readerJourneyXpSourceLabel(key.first, key.second) + " +" + items.sumOf { it.xp }
+            }
+            .toMutableList()
+        val otherXp = (event.xpEarned - knownBreakdownXp).coerceAtLeast(0)
+        if (otherXp > 0) {
+            breakdownParts += "Milestone +" + otherXp
+        }
+        val detail = breakdownParts.joinToString(" · ")
+        val progressMilestoneDetail = event.progressMilestones
+            .takeIf { it.isNotEmpty() }
+            ?.let { milestones ->
+                "Progress " + milestones.joinToString("/") { milestone -> milestone.toString() + "%" }
+            }
+        val message = buildString {
+            append(headline)
+            if (event.unlockedCosmetics.isNotEmpty()) {
+                append(" · ")
+                append(
+                    getString(
+                        R.string.reader_journey_cosmetics_unlocked,
+                        event.unlockedCosmetics.size,
+                    ),
+                )
+            }
+            if (detail.isNotBlank()) {
+                append(" · ")
+                append(detail)
+            }
+            if (!progressMilestoneDetail.isNullOrBlank()) {
+                append(" · ")
+                append(progressMilestoneDetail)
+            }
         }
 
         val snackbar = Snackbar.make(
@@ -413,13 +461,22 @@ class ReaderActivity :
             if (mode == ReaderJourneyCelebrationMode.FULL) Snackbar.LENGTH_LONG else Snackbar.LENGTH_SHORT,
         ).setAnchorView(viewBinding.toolbarDocked)
 
+        if (event.isRankUp) {
+            snackbar.setAction(R.string.reader_journey_preview) {
+                router.openStatistic()
+            }
+        }
+
         if (mode == ReaderJourneyCelebrationMode.FULL) {
             if (event.isRankUp) {
                 snackbar
                     .setBackgroundTint(getThemeColor(materialR.attr.colorPrimaryContainer))
                     .setTextColor(getThemeColor(materialR.attr.colorOnPrimaryContainer))
             }
-            if (isAnimationsEnabled) {
+            if (
+                !item.reduceMotion &&
+                !settings.isRankThemeMinimalCosmetics
+            ) {
                 snackbar.addCallback(object : Snackbar.Callback() {
                     override fun onShown(sb: Snackbar?) {
                         val view = sb?.view ?: return
@@ -437,8 +494,54 @@ class ReaderActivity :
                 })
             }
         }
-        snackbar.show()
+        suspendCancellableCoroutine { continuation ->
+            snackbar.addCallback(object : Snackbar.Callback() {
+                override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
+                    if (continuation.isActive) continuation.resume(Unit)
+                }
+            })
+            continuation.invokeOnCancellation { snackbar.dismiss() }
+            snackbar.show()
+        }
     }
+
+    private fun readerJourneyXpSourceLabel(source: String, context: String?): String = when (source) {
+        "READING_COMPLETION" -> getString(R.string.reader_journey_source_reading)
+        "REREAD" -> getString(R.string.reader_journey_source_reread)
+        "EXPLORATION" -> getString(
+            when (context) {
+                "NEW_TITLE" -> R.string.reader_journey_source_exploration_new_title
+                "DIVERSE_5" -> R.string.reader_journey_source_exploration_diverse
+                else -> R.string.reader_journey_source_exploration
+            },
+        )
+        "WEEKLY_TASK" -> getString(R.string.reader_journey_source_weekly, weeklyJourneyContextLabel(context))
+        "WEEKLY_BONUS" -> getString(R.string.reader_journey_source_weekly_bonus)
+        "ACHIEVEMENT" -> getString(
+            R.string.reader_journey_source_achievement,
+            context?.replace('_', ' ') ?: getString(R.string.reader_journey_source_milestone),
+        )
+        "RESTED" -> getString(R.string.reader_journey_source_rested)
+        "WELCOME_BACK" -> getString(R.string.reader_journey_source_welcome_back)
+        "ACTIVE_DAYS" -> getString(R.string.reader_journey_source_active_days)
+        "MIXED_FORMAT" -> getString(R.string.reader_journey_source_mixed_format)
+        else -> getString(R.string.reader_journey_source_journey)
+    }
+
+    private fun weeklyJourneyContextLabel(context: String?): String = getString(
+        when (context) {
+            "READ_3_CHAPTERS" -> R.string.reader_journey_weekly_read_3_chapters
+            "READ_2_DAYS" -> R.string.reader_journey_weekly_read_2_days
+            "READ_2_TITLES" -> R.string.reader_journey_weekly_read_2_titles
+            "READ_1_NOVEL" -> R.string.reader_journey_weekly_read_1_novel
+            "READ_5_CHAPTERS" -> R.string.reader_journey_weekly_read_5_chapters
+            "TRY_NEW_TITLE" -> R.string.reader_journey_weekly_new_title
+            "READ_4_MANGA" -> R.string.reader_journey_weekly_read_4_manga
+            "READ_2_NOVELS" -> R.string.reader_journey_weekly_read_2_novels
+            "READ_3_DAYS" -> R.string.reader_journey_weekly_read_3_days
+            else -> R.string.reader_journey_weekly_task
+        },
+    )
 
     private fun onLoadingStateChanged(value: Pair<Boolean, Boolean>) {
         val (isLoading, hasPages) = value

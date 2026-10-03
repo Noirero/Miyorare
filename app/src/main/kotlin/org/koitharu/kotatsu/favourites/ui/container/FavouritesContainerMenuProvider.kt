@@ -15,6 +15,8 @@ class FavouritesContainerMenuProvider(
 	private val totalTitle: () -> String,
 	private val onGoToTop: () -> Unit,
 	private val onGoToBottom: () -> Unit,
+	private val isSimilarTitleScanVisible: () -> Boolean,
+	private val onScanSimilarTitles: () -> Unit,
 ) : MenuProvider {
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
@@ -29,6 +31,7 @@ class FavouritesContainerMenuProvider(
 		}
 		menu.findItem(R.id.action_favourites_to_top)?.isVisible = visible
 		menu.findItem(R.id.action_favourites_to_bottom)?.isVisible = visible
+		menu.findItem(R.id.action_scan_similar_titles)?.isVisible = isSimilarTitleScanVisible()
 		menu.findItem(R.id.action_manage)?.setTitle(
 			if (favouriteSpace == FavouriteSpace.PRIVATE) {
 				R.string.edit_category
@@ -45,6 +48,8 @@ class FavouritesContainerMenuProvider(
 			R.id.action_manage -> {
 				router.openFavoriteCategories(favouriteSpace)
 			}
+
+			R.id.action_scan_similar_titles -> onScanSimilarTitles()
 
 			else -> return false
 		}

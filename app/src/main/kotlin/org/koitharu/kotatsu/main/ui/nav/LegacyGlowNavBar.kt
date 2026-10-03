@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.ColorUtils
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.ExclusiveThemeComponentPalette
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.normalFavouritesLuminousAccent
 
@@ -71,8 +73,14 @@ fun LegacyGlowNavBar(
 	if (visibleItems.isEmpty()) return
 
 	val accent = MaterialTheme.colorScheme.primary
+	val palette = LocalMiyorareVisualPalette.current
+	val exclusiveNavigation = palette.exclusiveTheme?.navigation
+	val authoredPrism = exclusiveNavigation?.borderStops.orEmpty()
+	val authoredGlow = exclusiveNavigation?.glowStops.orEmpty()
 	val lightMode = MaterialTheme.colorScheme.background.luminance() >= 0.5f
-	val luminousAccent = if (emphasizeFavourites) {
+	val luminousAccent = if (emphasizeFavourites && exclusiveNavigation != null) {
+		exclusiveNavigation.interactiveText
+	} else if (emphasizeFavourites) {
 		Color(
 			normalFavouritesLuminousAccent(
 				accent.toArgb(),
@@ -106,36 +114,51 @@ fun LegacyGlowNavBar(
 			ColorUtils.blendARGB(colors.container, accent.toArgb(), BAR_ACCENT_MIX)
 		},
 	)
-	val favouritesGlass = if (emphasizeFavourites) {
+	val favouritesGlass = if (emphasizeFavourites && exclusiveNavigation != null) {
+		Brush.horizontalGradient(
+			exclusiveNavigation.containerStops.map { stop ->
+				Color(
+					ColorUtils.setAlphaComponent(
+						ColorUtils.blendARGB(
+							darkNavyBase,
+							stop.toArgb(),
+							exclusiveNavigation.containerMix,
+						),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA,
+					),
+				)
+			},
+		)
+	} else if (emphasizeFavourites) {
 		Brush.linearGradient(
 			listOf(
 				Color(
 					ColorUtils.setAlphaComponent(
 						ColorUtils.blendARGB(
-						darkNavyBase,
-						luminousAccent.toArgb(),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
-					),
+							darkNavyBase,
+							luminousAccent.toArgb(),
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
+						),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ALPHA,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
 						ColorUtils.blendARGB(
-						darkNavyBase,
-						luminousAccent.toArgb(),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
-					),
+							darkNavyBase,
+							luminousAccent.toArgb(),
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
+						),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ALPHA,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
 						ColorUtils.blendARGB(
-						darkNavyBase,
-						luminousAccent.toArgb(),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
-					),
+							darkNavyBase,
+							luminousAccent.toArgb(),
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
+						),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ALPHA,
 					),
 				),
@@ -156,21 +179,43 @@ fun LegacyGlowNavBar(
 				if (emphasizeFavourites) {
 					Modifier.drawBehind {
 						val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp.toPx()
-						drawRoundRect(
-							color = luminousAccent.copy(alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
-							cornerRadius = CornerRadius(radius, radius),
-							style = Stroke(width = 12.dp.toPx()),
-						)
-						drawRoundRect(
-							color = luminousAccent.copy(alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
-							cornerRadius = CornerRadius(radius, radius),
-							style = Stroke(width = 6.5.dp.toPx()),
-						)
-						drawRoundRect(
-							color = luminousAccent.copy(alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
-							cornerRadius = CornerRadius(radius, radius),
-							style = Stroke(width = 2.dp.toPx()),
-						)
+						if (authoredGlow.size >= 2) {
+							val prism = Brush.horizontalGradient(authoredGlow)
+							drawRoundRect(
+								brush = prism,
+								alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA,
+								cornerRadius = CornerRadius(radius, radius),
+								style = Stroke(width = 12.dp.toPx()),
+							)
+							drawRoundRect(
+								brush = prism,
+								alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA,
+								cornerRadius = CornerRadius(radius, radius),
+								style = Stroke(width = 6.5.dp.toPx()),
+							)
+							drawRoundRect(
+								brush = prism,
+								alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA,
+								cornerRadius = CornerRadius(radius, radius),
+								style = Stroke(width = 2.dp.toPx()),
+							)
+						} else {
+							drawRoundRect(
+								color = luminousAccent.copy(alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
+								cornerRadius = CornerRadius(radius, radius),
+								style = Stroke(width = 12.dp.toPx()),
+							)
+							drawRoundRect(
+								color = luminousAccent.copy(alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
+								cornerRadius = CornerRadius(radius, radius),
+								style = Stroke(width = 6.5.dp.toPx()),
+							)
+							drawRoundRect(
+								color = luminousAccent.copy(alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
+								cornerRadius = CornerRadius(radius, radius),
+								style = Stroke(width = 2.dp.toPx()),
+							)
+						}
 					}
 				} else {
 					Modifier.background(accent.copy(alpha = BAR_GLOW_ALPHA), barShape)
@@ -183,16 +228,25 @@ fun LegacyGlowNavBar(
 			shape = barShape,
 			color = if (favouritesGlass != null) Color.Transparent else barContainer,
 			contentColor = MaterialTheme.colorScheme.onSurface,
-			border = BorderStroke(
-				1.dp,
-				barCore.copy(
-					alpha = when {
-						emphasizeFavourites && lightMode -> LIGHT_NAV_BORDER_ALPHA
-						emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
-						else -> BAR_BORDER_ALPHA
-					},
-				),
-			),
+			border = if (emphasizeFavourites && authoredPrism.size >= 2) {
+				BorderStroke(
+					1.dp,
+					Brush.horizontalGradient(
+						authoredPrism.map { it.copy(alpha = if (lightMode) 0.62f else 0.78f) },
+					),
+				)
+			} else {
+				BorderStroke(
+					1.dp,
+					barCore.copy(
+						alpha = when {
+							emphasizeFavourites && lightMode -> LIGHT_NAV_BORDER_ALPHA
+							emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
+							else -> BAR_BORDER_ALPHA
+						},
+					),
+				)
+			},
 			shadowElevation = 0.dp,
 		) {
 			Row(
@@ -220,6 +274,7 @@ fun LegacyGlowNavBar(
 						showLabel = showLabels,
 						colors = colors,
 						accent = luminousAccent,
+						exclusiveNavigation = exclusiveNavigation,
 						emphasizeFavourites = emphasizeFavourites,
 						lightMode = lightMode,
 						compactLabel = visibleItems.size >= MAX_LEGACY_ITEMS,
@@ -243,6 +298,7 @@ private fun LegacyGlowNavItem(
 	showLabel: Boolean,
 	colors: FloatingNavBarColors,
 	accent: Color,
+	exclusiveNavigation: ExclusiveThemeComponentPalette?,
 	emphasizeFavourites: Boolean,
 	lightMode: Boolean,
 	compactLabel: Boolean,
@@ -290,6 +346,7 @@ private fun LegacyGlowNavItem(
 		)
 	}
 	val content = when {
+		selected && emphasizeFavourites && exclusiveNavigation != null -> exclusiveNavigation.content
 		selected && emphasizeFavourites && lightMode -> accent
 		selected && emphasizeFavourites -> Color.White
 		selected -> accent
@@ -325,7 +382,20 @@ private fun LegacyGlowNavItem(
 			.padding(3.dp),
 		contentAlignment = Alignment.Center,
 	) {
-		val selectedBrush = if (selected && emphasizeFavourites) {
+		val selectedBrush = if (
+			selected && emphasizeFavourites &&
+			exclusiveNavigation?.selectedStops?.size?.let { it >= 2 } == true
+		) {
+			Brush.horizontalGradient(
+				exclusiveNavigation.selectedStops.map { stop ->
+					androidx.compose.ui.graphics.lerp(
+						selectedContainer,
+						stop,
+						exclusiveNavigation.selectedMix,
+					).copy(alpha = 0.90f)
+				},
+			)
+		} else if (selected && emphasizeFavourites) {
 			Brush.horizontalGradient(
 				listOf(
 					selectedContainer,
@@ -345,6 +415,28 @@ private fun LegacyGlowNavItem(
 						Modifier
 							.drawBehind {
 								val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
+								if (exclusiveNavigation?.borderStops?.size?.let { it >= 2 } == true) {
+									val prism = Brush.horizontalGradient(exclusiveNavigation.borderStops)
+									drawRoundRect(
+										brush = prism,
+										alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA,
+										cornerRadius = CornerRadius(radius, radius),
+										style = Stroke(width = 12.dp.toPx()),
+									)
+									drawRoundRect(
+										brush = prism,
+										alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_MID_HALO_ALPHA,
+										cornerRadius = CornerRadius(radius, radius),
+										style = Stroke(width = 6.5.dp.toPx()),
+									)
+									drawRoundRect(
+										brush = prism,
+										alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA,
+										cornerRadius = CornerRadius(radius, radius),
+										style = Stroke(width = 1.dp.toPx()),
+									)
+									return@drawBehind
+								}
 								drawRoundRect(
 									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA),
 									cornerRadius = CornerRadius(radius, radius),

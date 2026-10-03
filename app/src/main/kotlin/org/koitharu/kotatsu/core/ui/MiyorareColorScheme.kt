@@ -4,13 +4,43 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.readerjourney.theme.ResolvedExclusiveTheme
+import org.koitharu.kotatsu.readerjourney.theme.ResolvedExclusiveThemeComponent
+
+data class ExclusiveThemeComponentPalette(
+	val containerStops: List<Color>,
+	val borderStops: List<Color>,
+	val cardBorderStops: List<Color>,
+	val selectedStops: List<Color>,
+	val glowStops: List<Color>,
+	val iconStops: List<Color>,
+	val content: Color,
+	val mutedContent: Color,
+	val interactiveText: Color,
+	val containerMix: Float,
+	val selectedMix: Float,
+	val iconMix: Float,
+)
+
+data class ResolvedExclusiveThemePalette(
+	val stableId: String,
+	/** Effective navigation preset identity; CUSTOM navigation may differ from [stableId]. */
+	val navigationStableId: String,
+	val shared: ExclusiveThemeComponentPalette,
+	val navigation: ExclusiveThemeComponentPalette,
+	val favourites: ExclusiveThemeComponentPalette,
+	val settings: ExclusiveThemeComponentPalette,
+	val details: ExclusiveThemeComponentPalette,
+)
 
 /** Reusable semantic colors for Modern components; screens never derive their own palette. */
 data class MiyorareVisualPalette(
@@ -40,13 +70,100 @@ data class MiyorareVisualPalette(
 	val activeGradientStart: Color,
 	val activeGradientEnd: Color,
 	val gradientStrength: Float,
+	val error: Color,
+	val warning: Color,
+	val success: Color,
+	val destructive: Color,
+	val disabled: Color,
+	val focusIndicator: Color,
 	val adaptiveCustomBackground: Boolean = false,
+	val exclusiveTheme: ResolvedExclusiveThemePalette? = null,
+	// Compatibility aliases. New consumers must read [exclusiveTheme] roles instead.
+	val rankThemeId: String? = exclusiveTheme?.stableId,
+	val rankBorderGradient: List<Color> = exclusiveTheme?.shared?.borderStops.orEmpty(),
+	val rankSelectedGradient: List<Color> = exclusiveTheme?.shared?.selectedStops.orEmpty(),
 )
 
 data class MiyorareThemeColors(
 	val colorScheme: ColorScheme,
 	val visualPalette: MiyorareVisualPalette,
 )
+
+/**
+ * Component-scoped Exclusive Theme brushes. Consumers select their semantic role (details,
+ * navigation, favourites, settings, shared); fallback colour math stays generic.
+ */
+fun ExclusiveThemeComponentPalette?.themeBorderBrush(
+	fallback: Color,
+	alpha: Float = 1f,
+): Brush {
+	val safeAlpha = alpha.coerceIn(0f, 1f)
+	val stops = this?.borderStops.orEmpty()
+	return if (stops.size >= 2) {
+		Brush.horizontalGradient(stops.map { it.copy(alpha = it.alpha * safeAlpha) })
+	} else {
+		SolidColor(fallback.copy(alpha = fallback.alpha * safeAlpha))
+	}
+}
+
+fun ExclusiveThemeComponentPalette?.themeSelectedBrush(
+	fallbackStart: Color,
+	fallbackEnd: Color,
+	alpha: Float = 1f,
+): Brush {
+	val safeAlpha = alpha.coerceIn(0f, 1f)
+	val stops = this?.selectedStops.orEmpty()
+	return if (stops.size >= 2) {
+		Brush.horizontalGradient(stops.map { it.copy(alpha = it.alpha * safeAlpha) })
+	} else {
+		Brush.horizontalGradient(
+			listOf(
+				fallbackStart.copy(alpha = fallbackStart.alpha * safeAlpha),
+				fallbackEnd.copy(alpha = fallbackEnd.alpha * safeAlpha),
+			),
+		)
+	}
+}
+
+fun MiyorareVisualPalette.detailsBorderBrush(
+	fallback: Color = borderHighlight,
+	alpha: Float = 1f,
+): Brush = exclusiveTheme?.details.themeBorderBrush(fallback = fallback, alpha = alpha)
+
+fun MiyorareVisualPalette.detailsSelectedBrush(
+	fallbackStart: Color = activeGradientStart,
+	fallbackEnd: Color = activeGradientEnd,
+	alpha: Float = 1f,
+): Brush = exclusiveTheme?.details.themeSelectedBrush(
+	fallbackStart = fallbackStart,
+	fallbackEnd = fallbackEnd,
+	alpha = alpha,
+)
+
+/** Compatibility brushes. New screen code should select a component role explicitly. */
+fun MiyorareVisualPalette.signatureBorderBrush(
+	fallback: Color = borderHighlight,
+	alpha: Float = 1f,
+): Brush = if (rankBorderGradient.size >= 2) {
+	Brush.horizontalGradient(rankBorderGradient.map { it.copy(alpha = it.alpha * alpha.coerceIn(0f, 1f)) })
+} else {
+	SolidColor(fallback.copy(alpha = fallback.alpha * alpha.coerceIn(0f, 1f)))
+}
+
+fun MiyorareVisualPalette.signatureSelectedBrush(
+	fallbackStart: Color = activeGradientStart,
+	fallbackEnd: Color = activeGradientEnd,
+	alpha: Float = 1f,
+): Brush = if (rankSelectedGradient.size >= 2) {
+	Brush.horizontalGradient(rankSelectedGradient.map { it.copy(alpha = it.alpha * alpha.coerceIn(0f, 1f)) })
+} else {
+	Brush.horizontalGradient(
+		listOf(
+			fallbackStart.copy(alpha = fallbackStart.alpha * alpha.coerceIn(0f, 1f)),
+			fallbackEnd.copy(alpha = fallbackEnd.alpha * alpha.coerceIn(0f, 1f)),
+		),
+	)
+}
 
 val LocalMiyorareVisualPalette = staticCompositionLocalOf {
 	MiyorareVisualPalette(
@@ -76,6 +193,12 @@ val LocalMiyorareVisualPalette = staticCompositionLocalOf {
 		activeGradientStart = Color.Unspecified,
 		activeGradientEnd = Color.Unspecified,
 		gradientStrength = 0f,
+		error = Color(0xFFBA1A1A),
+		warning = Color(0xFFF9A825),
+		success = Color(0xFF2E7D32),
+		destructive = Color(0xFFB3261E),
+		disabled = Color(0xFF7A7A7A),
+		focusIndicator = Color(0xFF0066CC),
 	)
 }
 
@@ -100,8 +223,17 @@ fun miyorareThemeColors(
 	darkTheme: Boolean,
 	amoled: Boolean,
 	effectLevel: VisualEffectLevel,
+	exclusiveTheme: ResolvedExclusiveTheme? = null,
 ): MiyorareThemeColors {
-	val rawSeeds = if (preset == MiyorareThemePreset.CUSTOM) {
+	val rankThemeTokens = exclusiveTheme?.tokens
+	val rankThemeId = exclusiveTheme?.id?.stableId
+	val rawSeeds = if (rankThemeTokens != null) {
+		PaletteSeeds(
+			primary = rankThemeTokens.primaryAccent.toComposeColor(),
+			secondary = rankThemeTokens.secondaryAccent.toComposeColor(),
+			accent = rankThemeTokens.iconAccent.toComposeColor(),
+		)
+	} else if (preset == MiyorareThemePreset.CUSTOM) {
 		adaptivePalette?.let { palette ->
 			PaletteSeeds(
 				primary = Color(palette.primaryArgb),
@@ -124,8 +256,13 @@ fun miyorareThemeColors(
 	}
 
 	val useAmoled = darkTheme && amoled
+	val authoredBackground = rankThemeTokens?.background?.toComposeColor()
+	val authoredSurface = rankThemeTokens?.surface?.toComposeColor()
+	val authoredSurfaceVariant = rankThemeTokens?.surfaceVariant?.toComposeColor()
+	val authoredContainer = rankThemeTokens?.container?.toComposeColor()
 	val contrastSurface = when {
 		useAmoled -> Color.Black
+		authoredSurface != null -> authoredSurface
 		darkTheme -> Color(0xFF121218)
 		else -> Color.White
 	}
@@ -154,12 +291,17 @@ fun miyorareThemeColors(
 	val border: Color
 	val chip: Color
 	if (darkTheme) {
-		val background = if (useAmoled) Color.Black else lerp(Color(0xFF0B0B10), primary, tint * 0.10f)
-		val surface = if (useAmoled) Color.Black else lerp(Color(0xFF121218), primary, tint * 0.14f)
-		val surfaceVariant = lerp(Color(0xFF202028), secondary, tint * 0.18f)
-		selectedSurface = lerp(Color(0xFF24212A), primary, 0.25f + tint * 0.20f)
-		chip = lerp(Color(0xFF18181F), secondary, 0.09f + tint * 0.17f)
-		border = lerp(Color(0xFF6E6A74), primary, tint * 0.25f)
+		val background = if (useAmoled) Color.Black else authoredBackground
+			?: lerp(Color(0xFF0B0B10), primary, tint * 0.10f)
+		val surface = if (useAmoled) Color.Black else authoredSurface
+			?: lerp(Color(0xFF121218), primary, tint * 0.14f)
+		val surfaceVariant = authoredSurfaceVariant ?: lerp(Color(0xFF202028), secondary, tint * 0.18f)
+		selectedSurface = rankThemeTokens?.selectedStateColor?.toComposeColor()?.let {
+			lerp(surface, it, 0.24f + tint * 0.16f)
+		} ?: lerp(Color(0xFF24212A), primary, 0.25f + tint * 0.20f)
+		chip = lerp(authoredContainer ?: Color(0xFF18181F), secondary, 0.09f + tint * 0.17f)
+		border = rankThemeTokens?.borderEmphasis?.toComposeColor()
+			?: lerp(Color(0xFF6E6A74), primary, tint * 0.25f)
 		colorScheme = darkColorScheme(
 			primary = primary,
 			onPrimary = bestContentColor(primary),
@@ -178,17 +320,24 @@ fun miyorareThemeColors(
 			surfaceVariant = surfaceVariant,
 			onSurfaceVariant = Color(0xFFCEC9D1),
 			outline = border,
-			outlineVariant = lerp(Color(0xFF38343D), primary, tint * 0.13f),
-			surfaceContainer = if (useAmoled) Color.Black else lerp(Color(0xFF16151B), primary, tint * 0.12f),
-			surfaceContainerHigh = if (useAmoled) Color(0xFF080808) else lerp(Color(0xFF1D1B22), secondary, tint * 0.16f),
+			outlineVariant = rankThemeTokens?.borderSubtle?.toComposeColor()
+				?: lerp(Color(0xFF38343D), primary, tint * 0.13f),
+			surfaceContainer = if (useAmoled) Color.Black else authoredContainer
+				?: lerp(Color(0xFF16151B), primary, tint * 0.12f),
+			surfaceContainerHigh = if (useAmoled) Color(0xFF080808) else authoredSurfaceVariant
+				?: lerp(Color(0xFF1D1B22), secondary, tint * 0.16f),
+			error = rankThemeTokens?.errorColor?.toComposeColor() ?: Color(0xFFFFB4AB),
 		)
 	} else {
-		val background = lerp(Color(0xFFFAF9FC), primary, tint * 0.045f)
-		val surface = lerp(Color.White, primary, tint * 0.035f)
-		val surfaceVariant = lerp(Color(0xFFEEEAF0), secondary, tint * 0.10f)
-		selectedSurface = lerp(Color(0xFFF1EDF3), primary, 0.11f + tint * 0.16f)
-		chip = lerp(Color(0xFFF3F1F5), secondary, 0.065f + tint * 0.12f)
-		border = lerp(Color(0xFF817C86), primary, tint * 0.16f)
+		val background = authoredBackground ?: lerp(Color(0xFFFAF9FC), primary, tint * 0.045f)
+		val surface = authoredSurface ?: lerp(Color.White, primary, tint * 0.035f)
+		val surfaceVariant = authoredSurfaceVariant ?: lerp(Color(0xFFEEEAF0), secondary, tint * 0.10f)
+		selectedSurface = rankThemeTokens?.selectedStateColor?.toComposeColor()?.let {
+			lerp(surface, it, 0.13f + tint * 0.10f)
+		} ?: lerp(Color(0xFFF1EDF3), primary, 0.11f + tint * 0.16f)
+		chip = lerp(authoredContainer ?: Color(0xFFF3F1F5), secondary, 0.065f + tint * 0.12f)
+		border = rankThemeTokens?.borderEmphasis?.toComposeColor()
+			?: lerp(Color(0xFF817C86), primary, tint * 0.16f)
 		colorScheme = lightColorScheme(
 			primary = primary,
 			onPrimary = bestContentColor(primary),
@@ -207,9 +356,11 @@ fun miyorareThemeColors(
 			surfaceVariant = surfaceVariant,
 			onSurfaceVariant = Color(0xFF625F68),
 			outline = border,
-			outlineVariant = lerp(Color(0xFFD8D3DB), primary, tint * 0.10f),
-			surfaceContainer = lerp(Color(0xFFF5F2F6), primary, tint * 0.07f),
-			surfaceContainerHigh = lerp(Color(0xFFEDE9EF), secondary, tint * 0.11f),
+			outlineVariant = rankThemeTokens?.borderSubtle?.toComposeColor()
+				?: lerp(Color(0xFFD8D3DB), primary, tint * 0.10f),
+			surfaceContainer = authoredContainer ?: lerp(Color(0xFFF5F2F6), primary, tint * 0.07f),
+			surfaceContainerHigh = authoredSurfaceVariant ?: lerp(Color(0xFFEDE9EF), secondary, tint * 0.11f),
+			error = rankThemeTokens?.errorColor?.toComposeColor() ?: Color(0xFFBA1A1A),
 		)
 	}
 
@@ -220,22 +371,26 @@ fun miyorareThemeColors(
 		backgroundGradientStart = Color.Black
 		backgroundGradientMiddle = Color.Black
 		backgroundGradientEnd = Color.Black
+	} else if (rankThemeTokens?.backgroundGradientStart != null) {
+		backgroundGradientStart = checkNotNull(rankThemeTokens.backgroundGradientStart).toComposeColor()
+		backgroundGradientMiddle = checkNotNull(rankThemeTokens.backgroundGradientMiddle).toComposeColor()
+		backgroundGradientEnd = checkNotNull(rankThemeTokens.backgroundGradientEnd).toComposeColor()
 	} else {
 		backgroundGradientStart = lerp(colorScheme.background, primary, gradientStrength * 0.22f)
 		backgroundGradientMiddle = lerp(colorScheme.background, secondary, gradientStrength * 0.12f)
 		backgroundGradientEnd = lerp(colorScheme.background, accent, gradientStrength * 0.18f)
 	}
-	val surfaceGradientStart = lerp(
+	val surfaceGradientStart = rankThemeTokens?.surfaceGradientStart?.toComposeColor() ?: lerp(
 		colorScheme.surfaceContainer,
 		primary,
 		gradientStrength * MiyorareVisualTokens.SURFACE_GRADIENT_MIX,
 	)
-	val surfaceGradientMiddle = lerp(
+	val surfaceGradientMiddle = rankThemeTokens?.surfaceGradientMiddle?.toComposeColor() ?: lerp(
 		colorScheme.surfaceContainerHigh,
 		accent,
 		gradientStrength * 0.10f,
 	)
-	val surfaceGradientEnd = lerp(
+	val surfaceGradientEnd = rankThemeTokens?.surfaceGradientEnd?.toComposeColor() ?: lerp(
 		colorScheme.surfaceContainerHigh,
 		secondary,
 		gradientStrength * 0.32f,
@@ -252,10 +407,16 @@ fun miyorareThemeColors(
 	)
 	val accentGradientMiddle = lerp(primary, secondary, 0.34f + gradientStrength * 0.32f)
 	val accentGradientEnd = lerp(secondary, accent, 0.12f + gradientStrength * 0.40f)
-	val activeGradientStart = lerp(primary, secondary, gradientStrength * MiyorareVisualTokens.ACTIVE_GRADIENT_MIX)
-	val activeGradientEnd = lerp(secondary, accent, 0.08f + gradientStrength * 0.44f)
+	val activeGradientStart = rankThemeTokens?.activeGradientStart?.toComposeColor()
+		?: lerp(primary, secondary, gradientStrength * MiyorareVisualTokens.ACTIVE_GRADIENT_MIX)
+	val activeGradientEnd = rankThemeTokens?.activeGradientEnd?.toComposeColor()
+		?: lerp(secondary, accent, 0.08f + gradientStrength * 0.44f)
 	val borderHighlight = lerp(border, secondary, 0.22f + gradientStrength * 0.26f).copy(alpha = borderAlpha)
 	val glow = lerp(primary, secondary, 0.34f).copy(alpha = glowAlpha)
+
+	val exclusiveThemePalette = exclusiveTheme?.toVisualPalette()
+	val rankBorderGradient = exclusiveThemePalette?.shared?.borderStops.orEmpty()
+	val rankSelectedGradient = exclusiveThemePalette?.shared?.selectedStops.orEmpty()
 
 	return MiyorareThemeColors(
 		colorScheme = colorScheme,
@@ -286,7 +447,18 @@ fun miyorareThemeColors(
 			activeGradientStart = activeGradientStart,
 			activeGradientEnd = activeGradientEnd,
 			gradientStrength = gradientStrength,
-			adaptiveCustomBackground = adaptivePalette != null,
+			error = rankThemeTokens?.errorColor?.toComposeColor() ?: colorScheme.error,
+			warning = rankThemeTokens?.warningColor?.toComposeColor() ?: Color(0xFFF9A825),
+			success = rankThemeTokens?.successColor?.toComposeColor() ?: Color(0xFF2E7D32),
+			destructive = rankThemeTokens?.destructiveColor?.toComposeColor() ?: colorScheme.error,
+			disabled = rankThemeTokens?.disabledColor?.toComposeColor()
+				?: colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+			focusIndicator = rankThemeTokens?.focusIndicatorColor?.toComposeColor() ?: colorScheme.primary,
+			adaptiveCustomBackground = adaptivePalette != null && rankThemeTokens == null,
+			exclusiveTheme = exclusiveThemePalette,
+			rankThemeId = rankThemeId,
+			rankBorderGradient = rankBorderGradient,
+			rankSelectedGradient = rankSelectedGradient,
 		),
 	)
 }
@@ -321,7 +493,42 @@ fun classicMiyorareVisualPalette(
 	activeGradientStart = colorScheme.primary,
 	activeGradientEnd = colorScheme.primary,
 	gradientStrength = 0f,
+	error = colorScheme.error,
+	warning = Color(0xFFF9A825),
+	success = Color(0xFF2E7D32),
+	destructive = colorScheme.error,
+	disabled = colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+	focusIndicator = colorScheme.primary,
 )
+
+private fun ResolvedExclusiveThemeComponent.toVisualPalette(): ExclusiveThemeComponentPalette =
+	ExclusiveThemeComponentPalette(
+		containerStops = containerStops.map { it.toComposeColor() },
+		borderStops = borderStops.map { it.toComposeColor() },
+		cardBorderStops = cardBorderStops.map { it.toComposeColor() },
+		selectedStops = selectedStops.map { it.toComposeColor() },
+		glowStops = glowStops.map { it.toComposeColor() },
+		iconStops = iconStops.map { it.toComposeColor() },
+		content = content.toComposeColor(),
+		mutedContent = mutedContent.toComposeColor(),
+		interactiveText = interactiveText.toComposeColor(),
+		containerMix = containerMix,
+		selectedMix = selectedMix,
+		iconMix = iconMix,
+	)
+
+private fun ResolvedExclusiveTheme.toVisualPalette(): ResolvedExclusiveThemePalette =
+	ResolvedExclusiveThemePalette(
+		stableId = id.stableId,
+		navigationStableId = navigationId.stableId,
+		shared = shared.toVisualPalette(),
+		navigation = navigation.toVisualPalette(),
+		favourites = favourites.toVisualPalette(),
+		settings = settings.toVisualPalette(),
+		details = details.toVisualPalette(),
+	)
+
+private fun Long.toComposeColor(): Color = Color(toInt())
 
 private fun deriveCustomPaletteSeeds(primary: Color): PaletteSeeds {
 	val hsl = primary.toHsl()

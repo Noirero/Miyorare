@@ -116,7 +116,7 @@ class AppBackupAgentTest {
 				MihonBackupCategory(name = "Default", id = 1, order = 0),
 				MihonBackupCategory(name = "Read later", id = 2, order = 1),
 			),
-			mangaCategoryIds = listOf(0, 1),
+			mangaCategoryOrders = listOf(0, 1),
 		)
 		val report = backupManager.restoreBackup(writeFixture(fixture))
 
@@ -127,9 +127,31 @@ class AppBackupAgentTest {
 			.filter { it.categoryId.toLong() in categoryIds }
 			.map { it.title }
 			.toSet()
+		val sortKeys = database.getFavouriteCategoriesDao().findAll()
+			.filter { it.title in setOf("Default", "Read later") }
+			.associate { it.title to it.sortKey }
 
+		assertTrue(sortKeys.getValue("Default") < sortKeys.getValue("Read later"))
 		assertEquals(setOf("Default", "Read later"), restoredTitles)
 		assertEquals(1, report.restoredMangaCount)
+	}
+
+
+	@Test
+	fun restoreMihonFixture_dropsUnreferencedCategories() = runTest {
+		val fixture = createFixture(
+			trackerItems = emptyList(),
+			categories = listOf(
+				MihonBackupCategory(name = "Default", id = 1, order = 0),
+				MihonBackupCategory(name = "Orphan", id = 2, order = 1),
+			),
+			mangaCategoryOrders = listOf(0),
+		)
+		backupManager.restoreBackup(writeFixture(fixture))
+
+		val titles = database.getFavouriteCategoriesDao().findAll().map { it.title }.toSet()
+		assertTrue("Default" in titles)
+		assertTrue("Orphan" !in titles)
 	}
 
 	@Test
@@ -281,7 +303,7 @@ class AppBackupAgentTest {
 	private fun createFixture(
 		trackerItems: List<Pair<Int, Int>>,
 		categories: List<MihonBackupCategory> = listOf(MihonBackupCategory(name = "Default", id = 1, order = 0)),
-		mangaCategoryIds: List<Long> = listOf(1),
+		mangaCategoryOrders: List<Long> = listOf(1),
 		chapters: List<MihonBackupChapter>? = null,
 		history: List<MihonBackupHistory> = emptyList(),
 	): MihonBackup {
@@ -294,7 +316,7 @@ class AppBackupAgentTest {
 					title = "Fixture Manga",
 					thumbnailUrl = "https://fixture.example/cover.jpg",
 					favorite = true,
-					categories = mangaCategoryIds,
+					categories = mangaCategoryOrders,
 					chapters = chapters ?: listOf(
 						MihonBackupChapter(
 							url = "$mangaUrl/chapter-1",

@@ -6,6 +6,7 @@
 	android:id="@+id/root"
 	android:layout_width="match_parent"
 	android:layout_height="match_parent"
+	android:background="@color/kotatsu_background"
 	android:fitsSystemWindows="false">
 
 	<org.koitharu.kotatsu.core.ui.widgets.LoadingIndicatorSwipeRefreshLayout

@@ -119,7 +119,11 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
             MiyorareAppearance.KEY_CUSTOM_ACCENT,
             MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC,
             MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
-            VisualEffectPreferences.KEY_LEVEL -> activityRecreationHandle.recreateAll()
+            VisualEffectPreferences.KEY_LEVEL,
+            AppSettings.KEY_RANK_THEME_REDUCE_MOTION,
+            AppSettings.KEY_RANK_THEME_REDUCE_GLOW,
+            AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS,
+            AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED -> activityRecreationHandle.recreateAll()
             AppSettings.KEY_APP_LOCALE -> AppCompatDelegate.setApplicationLocales(settings.appLocales)
         }
     }
@@ -238,6 +242,10 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
             MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC,
             MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
             VisualEffectPreferences.KEY_LEVEL,
+            AppSettings.KEY_RANK_THEME_REDUCE_MOTION,
+            AppSettings.KEY_RANK_THEME_REDUCE_GLOW,
+            AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS,
+            AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED,
         )
     }
 }
@@ -292,6 +300,10 @@ private fun AppearanceScreen(
     var theme by rememberStringPref(AppSettings.KEY_THEME, "-1")
     var amoled by rememberBooleanPref(AppSettings.KEY_THEME_AMOLED, false)
     var visualEffects by rememberStringPref(VisualEffectPreferences.KEY_LEVEL, VisualEffectLevel.BALANCED.name)
+    var rankThemeReduceMotion by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
+    var rankThemeReduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
+    var rankThemeMinimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
+    var rankThemeWallpaperEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, true)
     var designStyle by rememberStringPref(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC.name)
     var modernTheme by rememberStringPref(MiyorareAppearance.KEY_THEME_PRESET, MiyorareThemePreset.MIYORARE.name)
     var customAccent by rememberStringPref(MiyorareAppearance.KEY_CUSTOM_ACCENT, MiyorareAppearance.DEFAULT_CUSTOM_ACCENT)
@@ -479,6 +491,47 @@ private fun AppearanceScreen(
                             selectedValue = visualEffects,
                             onValueChange = { visualEffects = it },
                             icon = R.drawable.ic_appearance,
+                            shape = pos.shape,
+                        )
+                    }
+                    item { pos ->
+                        SwitchSettingsItem(
+                            title = stringResource(R.string.rank_theme_reduce_motion),
+                            subtitle = stringResource(R.string.rank_theme_reduce_motion_summary),
+                            checked = rankThemeReduceMotion,
+                            onCheckedChange = { rankThemeReduceMotion = it },
+                            icon = R.drawable.ic_visibility_off,
+                            shape = pos.shape,
+                        )
+                    }
+                    item { pos ->
+                        SwitchSettingsItem(
+                            title = stringResource(R.string.rank_theme_reduce_glow),
+                            subtitle = stringResource(R.string.rank_theme_reduce_glow_summary),
+                            checked = rankThemeReduceGlow,
+                            onCheckedChange = { rankThemeReduceGlow = it },
+                            icon = R.drawable.ic_eye_off,
+                            shape = pos.shape,
+                        )
+                    }
+                    item { pos ->
+                        SwitchSettingsItem(
+                            title = stringResource(R.string.rank_theme_minimal_cosmetics),
+                            subtitle = stringResource(R.string.rank_theme_minimal_cosmetics_summary),
+                            checked = rankThemeMinimalCosmetics,
+                            onCheckedChange = { rankThemeMinimalCosmetics = it },
+                            icon = R.drawable.ic_sparkles,
+                            shape = pos.shape,
+                        )
+                    }
+                    item { pos ->
+                        SwitchSettingsItem(
+                            title = stringResource(R.string.rank_theme_wallpaper),
+                            subtitle = stringResource(R.string.rank_theme_wallpaper_summary),
+                            checked = rankThemeWallpaperEnabled && !rankThemeMinimalCosmetics,
+                            onCheckedChange = { rankThemeWallpaperEnabled = it },
+                            icon = R.drawable.ic_images,
+                            enabled = !rankThemeMinimalCosmetics,
                             shape = pos.shape,
                         )
                     }

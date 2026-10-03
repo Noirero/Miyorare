@@ -1,184 +1,324 @@
 name: Beta to Main Release Gate
 
-# Release-flow policy:
-# - Freeze the accepted beta snapshot into release/main-* before promotion.
-# - Promote release/main-* -> main, never a moving beta branch -> main.
-# - Beta remains free for new feature work while the frozen release candidate is validated.
-# - Normal pushes/bugfix merges to beta intentionally do not run this gate.
-# Final Android backup/chapter/P0-P1 instrumentation is consolidated into the same Android 15
-# emulator session as the upgrade/runtime smoke, avoiding three duplicate emulator boots.
+# Main has three protected entry paths:
+# 1. beta or release/main-* promotion: beta already paid the validation cost, so only
+#    exact-candidate/release invariants are verified here.
+# 2. hotfix/*: emergency fixes branch from current main and pay their own JVM/runtime
+#    validation cost before the same required status can succeed.
+# 3. Owned README automation: strict current-main, open-PR, exact-head, README-only
+#    maintenance; no Gradle/emulator and no generic automation/docs bypass.
+#
+# The final job name is intentionally stable because the main ruleset requires it.
 
 on:
   pull_request:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      maintenance_pr:
+        description: Open main README automation PR number (required for maintenance).
+        required: false
+        type: string
+      candidate_sha:
+        description: Exact README PR head SHA, which must also equal this dispatch run SHA.
+        required: false
+        type: string
+      main_base_sha:
+        description: Exact protected-main PR base SHA (required for maintenance).
+        required: false
+        type: string
+      signed_candidate_build:
+        description: 'Build-only: invoke the signed candidate builder on this exact beta SHA.'
+        required: false
+        default: false
+        type: boolean
+      candidate_version_name:
+        description: 'Build-only candidate versionName; must be newer than stable.'
+        required: false
+        type: string
+      candidate_version_code:
+        description: 'Build-only candidate versionCode; must be newer than stable.'
+        required: false
+        type: string
+      runtime_acceptance:
+        description: 'Acceptance-only: run immutable v1.4.4 -> signed candidate runtime harness.'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
-  group: beta-main-release-gate-${{ github.ref }}
+  group: beta-main-release-gate-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
-  non-promotion-gate:
-    name: Promotion Gate
-    if: github.event_name == 'pull_request' && github.head_ref != 'beta' && !startsWith(github.head_ref, 'release/main-')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Accept non-promotion PR
-        run: |
-          echo "This PR is not a beta/release promotion."
-          echo "The expensive promotion validation is intentionally skipped; normal PR checks remain authoritative."
+  signed-candidate-build:
+    name: Build signed candidate without publishing
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.signed_candidate_build }}
+    uses: ./.github/workflows/signed-release-candidate-build.yml
+    with:
+      expected_candidate_sha: ${{ inputs.candidate_sha }}
+      version_name: ${{ inputs.candidate_version_name }}
+      version_code: ${{ inputs.candidate_version_code }}
+    secrets: inherit
 
-  verify:
-    name: Verify beta is safe to promote
-    if: github.event_name != 'pull_request' || github.head_ref == 'beta' || startsWith(github.head_ref, 'release/main-')
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  runtime-acceptance:
+    name: Run immutable signed candidate runtime acceptance
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime_acceptance }}
+    uses: ./.github/workflows/runtime-acceptance-harness.yml
+    with:
+      candidate_sha: ${{ inputs.candidate_sha }}
+      signed_build_run_id: '37136536606'
+      signed_artifact_id: '11278218884'
+      candidate_apk_sha256: 'da08a003472f39cd649eb7cc4d1247c6d9e10c6fb4b468151c98ce4916e5b5e7'
+    secrets: inherit
 
+  classify:
+    name: Classify main candidate
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.runtime_acceptance) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.mode.outputs.mode }}
+      run_runtime: ${{ steps.runtime.outputs.run_runtime }}
+      run_android_test_compile: ${{ steps.compile.outputs.run_android_test_compile }}
+      run_preview_android_test_compile: ${{ steps.compile.outputs.run_preview_android_test_compile }}
     steps:
-      - name: Checkout code
+      - name: Checkout exact candidate
         uses: actions/checkout@v5
-
-      - name: Set up JDK
-        uses: actions/setup-java@v5
         with:
-          distribution: temurin
-          java-version: '17'
+          ref: ${{ github.event.pull_request.head.sha || inputs.candidate_sha || github.sha }}
+          fetch-depth: 0
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-provider: basic
-          # PR cache entries are scoped to refs/pull/*/merge and are not reusable
-          # after promotion. Beta push/manual runs remain writable cache producers.
-          cache-read-only: ${{ github.event_name == 'pull_request' || github.ref_name != 'beta' }}
+      - name: Classify source
+        id: mode
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.main_base_sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.maintenance_pr }}
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          if [[ "${{ github.event_name }}" = workflow_dispatch ]]; then
+            # Required checks attach to the dispatch SHA, not checkout's override.
+            test "$GITHUB_SHA" = "$HEAD_SHA"
+          fi
 
-      - name: Pre-warm JitPack dependencies
+          if [[ "$HEAD_REF" = "beta" || "$HEAD_REF" = release/main-* ]]; then
+            git fetch --no-tags origin beta
+            git merge-base --is-ancestor "$HEAD_SHA" origin/beta || {
+              echo "::error::Promotion candidate is not contained in beta."
+              exit 1
+            }
+            evidence_sha="$HEAD_SHA"
+            checks_json="$(gh api "repos/$GITHUB_REPOSITORY/commits/$evidence_sha/check-runs?per_page=100")"
+            if ! printf '%s' "$checks_json" | python3 .github/scripts/promotion_evidence.py >/dev/null 2>&1; then
+              # A beta merge commit can reuse the exact PR-head evidence only when its tree is identical.
+              read -r -a parents <<< "$(git show -s --format=%P "$HEAD_SHA")"
+              test "${#parents[@]}" -ge 2 || { echo "::error::Promotion candidate has no exact required-check evidence."; exit 1; }
+              evidence_sha="${parents[1]}"
+              test "$(git rev-parse "$HEAD_SHA^{tree}")" = "$(git rev-parse "$evidence_sha^{tree}")" || {
+                echo "::error::Validated PR head is not tree-equivalent to the promotion candidate."; exit 1;
+              }
+              checks_json="$(gh api "repos/$GITHUB_REPOSITORY/commits/$evidence_sha/check-runs?per_page=100")"
+            fi
+            printf '%s' "$checks_json" | python3 .github/scripts/promotion_evidence.py
+            echo "evidence_sha=$evidence_sha" >> "$GITHUB_OUTPUT"
+            echo "mode=promotion" >> "$GITHUB_OUTPUT"
+          elif [[ "$HEAD_REF" = hotfix/* && "${{ github.event_name }}" = "pull_request" ]]; then
+            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            # A direct-main hotfix must include the exact protected-main base it targets.
+            # This prevents an old/diverged branch from using the emergency path.
+            git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA" || {
+              echo "::error::hotfix/* must branch from or be updated onto the current main base."
+              exit 1
+            }
+            echo "mode=hotfix" >> "$GITHUB_OUTPUT"
+          elif [[ "$HEAD_REF" = automation/release-readme-* ]]; then
+            [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            if [[ "${{ github.event_name }}" = pull_request ]]; then
+              test "$BASE_REF" = main
+            elif [[ "${{ github.event_name }}" = workflow_dispatch ]]; then
+              test "$REQUESTED_SHA" = "$HEAD_SHA"
+            else
+              echo "::error::README maintenance requires a main PR or explicit PR-bound dispatch."
+              exit 1
+            fi
+
+            git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+            test "$(git rev-parse origin/main)" = "$BASE_SHA"
+            git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > /tmp/main-maintenance-pr.json
+            python3 - <<'PY_MAINTENANCE'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          pr = json.loads(Path('/tmp/main-maintenance-pr.json').read_text())
+          repo, head, base = (os.environ[k] for k in ('GITHUB_REPOSITORY', 'HEAD_SHA', 'BASE_SHA'))
+          if not (pr['state'] == 'open' and pr['base']['ref'] == 'main'
+                  and pr['base']['sha'] == base and pr['head']['sha'] == head
+                  and pr['head']['ref'] == os.environ['HEAD_REF']
+                  and pr['base']['repo']['full_name'] == repo
+                  and pr['head']['repo']['full_name'] == repo):
+              raise SystemExit('README maintenance PR metadata does not match the exact candidate/main base')
+          diff = subprocess.check_output(['git', 'diff', '--name-status', '-z', '--no-renames', base, head])
+          if diff.split(b'\0') != [b'M', b'README.md', b'']:
+              raise SystemExit('README maintenance must modify only the existing README.md')
+          for sha in (base, head):
+              entry = subprocess.check_output(['git', 'ls-tree', sha, '--', 'README.md'])
+              if not entry.startswith(b'100644 blob '):
+                  raise SystemExit('README maintenance must preserve README.md regular-file mode')
+          PY_MAINTENANCE
+            git diff --check "$BASE_SHA" "$HEAD_SHA"
+            echo "mode=maintenance" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Main accepts beta/release promotion, hotfix PRs, or strictly validated owned README maintenance."
+            exit 1
+          fi
+
+      - name: Verify release-critical identity invariants
         shell: bash
         run: |
           set -euo pipefail
-          PARSERS_VERSION="$(python3 - <<'PY'
-          import tomllib
-          from pathlib import Path
+          grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle
+          grep -Fq "variant.applicationId.set('org.noirero.miyorare.beta')" app/build.gradle
+          grep -Fq 'android:label="@string/app_name"' app/src/main/AndroidManifest.xml
+          grep -Fq '<string name="app_name" translatable="false">Miyorare</string>' app/src/release/res/values/app_name.xml
+          grep -Fq 'android:label="@string/app_name_beta"' app/src/preview/AndroidManifest.xml
+          grep -Fq '<string name="app_name_beta" translatable="false">Miyorare Beta</string>' app/src/preview/res/values/strings.xml
 
-          data = tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
-          value = str(data.get("versions", {}).get("parsers", "")).strip()
-          if not value:
-              raise SystemExit("Missing versions.parsers in gradle/libs.versions.toml")
-          print(value)
-          PY
-          )"
-          CACHE_DIR="$HOME/.gradle/caches/modules-2/files-2.1/com.github.Gekkoushi/plugin-source/${PARSERS_VERSION}"
+      - name: Verify launcher isolation
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          CACHED_JAR="$(find "$CACHE_DIR" -type f -name '*.jar' -print -quit 2>/dev/null || true)"
-          CACHED_METADATA="$(find "$CACHE_DIR" -type f \( -name '*.pom' -o -name '*.module' \) -print -quit 2>/dev/null || true)"
-          if [[ -n "$CACHED_JAR" && -n "$CACHED_METADATA" ]]; then
-            echo "kotatsu-parsers:${PARSERS_VERSION} artifact and metadata are restored in the Gradle cache; skipping JitPack pre-warm."
-            exit 0
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            for name in ic_launcher ic_launcher_round; do
+              main_icon="app/src/main/res/mipmap-${density}/${name}.webp"
+              beta_icon="app/src/preview/res/mipmap-${density}/${name}.webp"
+              test -f "$main_icon"
+              test -f "$beta_icon"
+              if cmp -s "$main_icon" "$beta_icon"; then
+                echo "::error::Main and Beta launcher artwork must remain visually isolated: $name ($density)."
+                exit 1
+              fi
+            done
+          done
+
+          for adaptive in ic_launcher.xml ic_launcher_round.xml; do
+            main_adaptive="app/src/main/res/mipmap-anydpi-v26/$adaptive"
+            beta_adaptive="app/src/preview/res/mipmap-anydpi-v26/$adaptive"
+            test -f "$main_adaptive"
+            test -f "$beta_adaptive"
+            grep -Fq '@drawable/ic_launcher_foreground' "$main_adaptive"
+            grep -Fq '@drawable/ic_launcher_beta_foreground' "$beta_adaptive"
+          done
+
+          grep -Fq '@drawable/ic_launcher_main_foreground' app/src/main/res/drawable/ic_launcher_foreground.xml
+
+          if grep -R -Fq '@drawable/ic_launcher_beta_foreground' app/src/main/res/mipmap-anydpi-v26; then
+            echo "::error::Main launcher mapping must not reference Beta artwork."
+            exit 1
           fi
 
-          echo "Pre-warming JitPack for kotatsu-parsers:${PARSERS_VERSION}"
-          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
-          for i in $(seq 1 10); do
-            HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$POM_URL" || true)"
-            if [ "$HTTP_STATUS" = "200" ]; then
-              echo "JitPack artifact is ready (HTTP 200)"
-              exit 0
-            fi
-            echo "Attempt $i: JitPack returned HTTP ${HTTP_STATUS:-000}, waiting 30s..."
-            sleep 30
-          done
-          echo "::error::JitPack artifact for kotatsu-parsers:${PARSERS_VERSION} not available after 10 attempts"
-          exit 1
+          if grep -R -Fq '@drawable/ic_launcher_foreground' app/src/preview/res/mipmap-anydpi-v26; then
+            echo "::error::Beta launcher mapping must not fall back to Main foreground artwork."
+            exit 1
+          fi
 
-      - name: Test runtime-smoke path classifier
-        run: python3 .github/scripts/test_runtime_smoke_paths.py
+      - name: Diff sanity
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
-      - name: Run deep promotion gate
-        run: |
-          # testDebugUnitTest depends on compileDebugKotlin; keep one root task graph.
-          ./gradlew \
-            :app:testDebugUnitTest \
-            --no-daemon \
-            --stacktrace
-
-  classify-runtime-smoke:
-    name: Classify runtime smoke
-    if: github.event_name == 'pull_request' && (github.head_ref == 'beta' || startsWith(github.head_ref, 'release/main-'))
-    runs-on: ubuntu-latest
-    outputs:
-      run_smoke: ${{ steps.classify.outputs.run_smoke }}
-
-    steps:
-      - name: Checkout promotion head with history
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Classify promotion changes
-        id: classify
+      - name: Classify hotfix instrumentation compile risk
+        id: compile
+        if: steps.mode.outputs.mode == 'hotfix'
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          mkdir -p build
-          changed_file_list=build/runtime-smoke-changed-files.txt
-          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$changed_file_list"
-
-          echo "Changed files considered for runtime smoke:"
-          if [[ -s "$changed_file_list" ]]; then
-            sed 's/^/  - /' "$changed_file_list"
-          else
-            echo "  - <none>"
-          fi
-
-          run_smoke="$(python3 .github/scripts/runtime_smoke_paths.py --paths-file "$changed_file_list")"
-          [[ "$run_smoke" == "true" || "$run_smoke" == "false" ]] || {
-            echo "::error::Runtime smoke classifier returned an invalid decision: $run_smoke"
-            exit 1
-          }
-
-          echo "run_smoke=$run_smoke" >> "$GITHUB_OUTPUT"
-          {
-            echo "### Runtime smoke classification"
-            echo
-            echo "Decision: `$run_smoke`"
-            echo
-            if [[ "$run_smoke" == "true" ]]; then
-              echo "Android emulator smoke will run because the change set is runtime-sensitive, mixed, unknown, or empty."
+          python3 .github/scripts/test_ci_deep_paths.py
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/hotfix-compile-paths.txt
+          for gate in android-test-compile preview-android-test-compile; do
+            value="$(python3 .github/scripts/ci_deep_paths.py --paths-file /tmp/hotfix-compile-paths.txt --gate "$gate")"
+            [[ "$value" = true || "$value" = false ]]
+            if [[ "$gate" = android-test-compile ]]; then
+              echo "run_android_test_compile=$value" >> "$GITHUB_OUTPUT"
             else
-              echo "Android emulator smoke is skipped because every changed file is explicitly classified as non-runtime documentation/metadata."
+              echo "run_preview_android_test_compile=$value" >> "$GITHUB_OUTPUT"
             fi
+          done
+
+      - name: Classify hotfix Android runtime risk
+        id: runtime
+        if: steps.mode.outputs.mode == 'hotfix'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test_android_runtime_paths.py
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > /tmp/hotfix-runtime-paths.txt
+          run_runtime="$(python3 .github/scripts/android_runtime_paths.py --paths-file /tmp/hotfix-runtime-paths.txt)"
+          echo "run_runtime=$run_runtime" >> "$GITHUB_OUTPUT"
+          echo "Hotfix Android runtime required: $run_runtime" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record promotion evidence
+        if: steps.mode.outputs.mode == 'promotion'
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          {
+            echo "### Beta promotion"
+            echo
+            printf '%s`%s`\n' '- Candidate: ' "$(git rev-parse HEAD)"
+            printf '%s`%s`\n' '- Source: ' "$HEAD_REF"
+            printf '%s`%s`\n' '- Validated evidence SHA: ' "${{ steps.mode.outputs.evidence_sha }}"
+            echo "- Evidence: required beta checks passed on the candidate itself or an identical-tree PR head."
+            echo "- Policy: beta validates; main verifies and promotes."
+            echo "- Repeated Gradle/Android validation: none."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  runtime-smoke:
-    name: Upgrade, runtime, and Android 15 acceptance
-    needs: classify-runtime-smoke
-    if: needs.classify-runtime-smoke.outputs.run_smoke == 'true'
+  hotfix-jvm:
+    name: Validate main hotfix JVM regression
+    needs: classify
+    if: needs.classify.outputs.mode == 'hotfix'
     runs-on: ubuntu-latest
-    timeout-minutes: 75
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
+    timeout-minutes: 45
     steps:
-      - name: Checkout promotion head with history
+      - name: Checkout exact hotfix head
         uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK
+      - name: Verify exact hotfix head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+
+      - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -188,95 +328,58 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
-          # PR cache entries are scoped to refs/pull/*/merge and are not reusable
-          # after promotion. Beta push/manual runs remain writable cache producers.
-          cache-read-only: ${{ github.event_name == 'pull_request' || github.ref_name != 'beta' }}
+          cache-read-only: true
 
-      - name: Pre-warm JitPack dependencies
+      - name: Run full JVM unit regression
+        run: ./gradlew :app:testDebugUnitTest ${{ needs.classify.outputs.run_android_test_compile == 'true' && ':app:compileDebugAndroidTestKotlin :app:compileDebugAndroidTestJavaWithJavac' || '' }} --no-daemon --stacktrace
+
+      - name: Compile Preview instrumentation source when variant/build risk requires it
+        if: needs.classify.outputs.run_preview_android_test_compile == 'true'
+        run: ./gradlew :app:compilePreviewAndroidTestKotlin :app:compilePreviewAndroidTestJavaWithJavac -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview --no-daemon --stacktrace
+
+      - name: Upload hotfix unit-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-hotfix-unit-test-reports
+          path: app/build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 7
+
+  hotfix-runtime:
+    name: Validate main hotfix Android runtime
+    needs: classify
+    if: needs.classify.outputs.mode == 'hotfix' && needs.classify.outputs.run_runtime == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout exact hotfix head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact hotfix head
         shell: bash
-        run: |
-          set -euo pipefail
-          PARSERS_VERSION="$(python3 - <<'PY'
-          import tomllib
-          from pathlib import Path
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
 
-          data = tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
-          value = str(data.get("versions", {}).get("parsers", "")).strip()
-          if not value:
-              raise SystemExit("Missing versions.parsers in gradle/libs.versions.toml")
-          print(value)
-          PY
-          )"
-          CACHE_DIR="$HOME/.gradle/caches/modules-2/files-2.1/com.github.Gekkoushi/plugin-source/${PARSERS_VERSION}"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
 
-          CACHED_JAR="$(find "$CACHE_DIR" -type f -name '*.jar' -print -quit 2>/dev/null || true)"
-          CACHED_METADATA="$(find "$CACHE_DIR" -type f \( -name '*.pom' -o -name '*.module' \) -print -quit 2>/dev/null || true)"
-          if [[ -n "$CACHED_JAR" && -n "$CACHED_METADATA" ]]; then
-            echo "kotatsu-parsers:${PARSERS_VERSION} artifact and metadata are restored in the Gradle cache; skipping JitPack pre-warm."
-            exit 0
-          fi
-
-          echo "Pre-warming JitPack for kotatsu-parsers:${PARSERS_VERSION}"
-          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
-          for i in $(seq 1 10); do
-            HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$POM_URL" || true)"
-            if [ "$HTTP_STATUS" = "200" ]; then
-              echo "JitPack artifact is ready (HTTP 200)"
-              exit 0
-            fi
-            echo "Attempt $i: JitPack returned HTTP ${HTTP_STATUS:-000}, waiting 30s..."
-            sleep 30
-          done
-          echo "::error::JitPack artifact for kotatsu-parsers:${PARSERS_VERSION} not available after 10 attempts"
-          exit 1
-
-      - name: Build main and beta debug APKs with identical debug signing
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-
-          patch_settings_export() {
-            python3 - <<'PY'
-          from pathlib import Path
-          p = Path('app/src/main/AndroidManifest.xml')
-          text = p.read_text(encoding='utf-8')
-          old = '''<activity\n\t\t\tandroid:name="org.koitharu.kotatsu.settings.SettingsActivity"\n\t\t\tandroid:exported="false"'''
-          new = '''<activity\n\t\t\tandroid:name="org.koitharu.kotatsu.settings.SettingsActivity"\n\t\t\tandroid:exported="true"'''
-          if old not in text:
-              raise SystemExit('SettingsActivity export marker not found')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-          }
-
-          git checkout --force "$BASE_SHA"
-          patch_settings_export
-          chmod +x gradlew
-          rm -rf app/build/outputs/apk/debug
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
-          MAIN_APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
-          test -n "$MAIN_APK"
-          cp "$MAIN_APK" /tmp/miyorare-main-debug.apk
-
-          git checkout --force "$HEAD_SHA"
-          patch_settings_export
-          chmod +x gradlew
-          rm -rf app/build/outputs/apk/debug
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
-          BETA_APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
-          test -n "$BETA_APK"
-          cp "$BETA_APK" /tmp/miyorare-beta-debug.apk
-
-          echo "Main APK: $(du -h /tmp/miyorare-main-debug.apk | cut -f1)"
-          echo "Beta APK: $(du -h /tmp/miyorare-beta-debug.apk | cut -f1)"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
 
       - name: Enable KVM
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
 
-      - name: Run consolidated Android 15 release acceptance
+      - name: Run Android 15 persistence and migration acceptance
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -285,19 +388,59 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -eu
-            bash .github/scripts/beta-main-runtime-smoke.sh
-            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest
+          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest
 
-      - name: Upload consolidated release evidence
+      - name: Upload hotfix runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: beta-main-release-gate-runtime
+          name: main-hotfix-android-runtime-evidence
           path: |
-            release-gate-runtime/
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
           retention-days: 7
+
+  required:
+    name: Verify beta is safe to promote
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.runtime_acceptance) && always() }}
+    needs:
+      - classify
+      - hotfix-jvm
+      - hotfix-runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify candidate validation result
+        shell: bash
+        env:
+          MODE: ${{ needs.classify.outputs.mode }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          JVM_RESULT: ${{ needs.hotfix-jvm.result }}
+          RUNTIME_RESULT: ${{ needs.hotfix-runtime.result }}
+          RUN_RUNTIME: ${{ needs.classify.outputs.run_runtime }}
+        run: |
+          set -euo pipefail
+
+          test "$CLASSIFY_RESULT" = "success"
+
+          if [[ "$MODE" = "promotion" ]]; then
+            test "$JVM_RESULT" = "skipped"
+            test "$RUNTIME_RESULT" = "skipped"
+            echo "Validated beta/release candidate is safe to promote."
+          elif [[ "$MODE" = "maintenance" ]]; then
+            test "$JVM_RESULT" = "skipped"
+            test "$RUNTIME_RESULT" = "skipped"
+            echo "Owned README-only exact-head maintenance passed main invariants."
+          elif [[ "$MODE" = "hotfix" ]]; then
+            test "$JVM_RESULT" = "success"
+            if [[ "$RUN_RUNTIME" = "true" ]]; then
+              test "$RUNTIME_RESULT" = "success"
+            else
+              test "$RUNTIME_RESULT" = "skipped"
+            fi
+            echo "Direct-main hotfix passed its required validation."
+          else
+            echo "::error::Unknown or rejected main candidate mode: $MODE"
+            exit 1
+          fi

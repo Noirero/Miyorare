@@ -9,27 +9,36 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.unit.dp
 import androidx.core.view.MenuProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import coil3.ImageLoader
+import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
+import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
+import org.koitharu.kotatsu.main.ui.owners.BottomNavOwner
 import org.koitharu.kotatsu.core.util.ShareHelper
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.stats.domain.ReaderProfileShareModel
 import org.koitharu.kotatsu.stats.domain.YearInReview
+import org.koitharu.kotatsu.stats.share.ReaderProfileShareCard
 import org.koitharu.kotatsu.stats.share.YearInReviewShareCard
 import javax.inject.Inject
 
@@ -46,7 +55,14 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 	@Inject
 	lateinit var imageLoader: ImageLoader
 
+	@Inject
+	lateinit var activityRecreationHandle: ActivityRecreationHandle
+
 	private val viewModel by viewModels<StatsViewModel>()
+	private val systemBottomInset = mutableIntStateOf(0)
+	private val bottomNavHeight = mutableIntStateOf(0)
+	private var observedBottomNav: View? = null
+	private var bottomNavLayoutListener: View.OnLayoutChangeListener? = null
 
 	override fun onCreateView(
 		inflater: LayoutInflater,
@@ -56,8 +72,11 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
 			MiyorareTheme {
+				val density = LocalDensity.current
+				val bottomClearance = maxOf(systemBottomInset.intValue, bottomNavHeight.intValue)
 				val stats by viewModel.stats.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
+				val hasLoadedStats by viewModel.hasLoadedStats.collectAsState()
 				val period by viewModel.period.collectAsState()
 				val scope by viewModel.scope.collectAsState()
 				val matureMode by viewModel.matureMode.collectAsState()
@@ -69,6 +88,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 				StatsScreen(
 					stats = stats,
 					isLoading = isLoading,
+					hasLoadedStats = hasLoadedStats,
 					period = period,
 					scope = scope,
 					matureMode = matureMode,
@@ -77,14 +97,21 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 					imageLoader = imageLoader,
 					profile = readerProfile,
 					yearInReview = yearInReview,
-					bottomInset = 0.dp,
+					bottomInset = with(density) { bottomClearance.toDp() },
 					onPeriodChange = { viewModel.period.value = it },
 					onScopeChange = { viewModel.scope.value = it },
 					onMatureModeChange = viewModel::setMatureMode,
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
-					onCosmeticsUpdate = viewModel::updateReaderCosmetics,
+					onAvatarSelected = viewModel::updateReaderAvatar,
+					onAvatarRemove = viewModel::removeReaderAvatar,
+					onCosmeticsUpdate = { loadout ->
+						viewModel.updateReaderCosmetics(loadout)
+						view?.post { activityRecreationHandle.recreateAll() }
+					},
+					onWeeklyReroll = viewModel::rerollWeeklyTask,
+					onShareReaderProfile = ::shareReaderProfile,
 					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },
 				)
@@ -94,11 +121,53 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
+		ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
+			systemBottomInset.intValue = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+			insets
+		}
+		ViewCompat.requestApplyInsets(view)
+		(requireActivity() as? BottomNavOwner)?.bottomNav?.let { bottomNav ->
+			observedBottomNav = bottomNav
+			bottomNavHeight.intValue = bottomNav.height
+			val listener = View.OnLayoutChangeListener { nav, _, _, _, _, _, _, _, _ ->
+				bottomNavHeight.intValue = nav.height
+			}
+			bottomNavLayoutListener = listener
+			bottomNav.addOnLayoutChangeListener(listener)
+			bottomNav.post { bottomNavHeight.intValue = bottomNav.height }
+		}
 		requireActivity().addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
 		viewModel.onActionDone.observeEvent(
 			viewLifecycleOwner,
 			ReversibleActionObserver(view),
 		)
+	}
+
+	override fun onDestroyView() {
+		bottomNavLayoutListener?.let { listener ->
+			observedBottomNav?.removeOnLayoutChangeListener(listener)
+		}
+		bottomNavLayoutListener = null
+		observedBottomNav = null
+		bottomNavHeight.intValue = 0
+		systemBottomInset.intValue = 0
+		super.onDestroyView()
+	}
+
+	private fun shareReaderProfile(model: ReaderProfileShareModel) {
+		viewLifecycleOwner.lifecycleScope.launch {
+			val context = requireContext()
+			try {
+				val uri = withContext(Dispatchers.Default) {
+					ReaderProfileShareCard.renderToShareUri(context, model)
+				}
+				ShareHelper(context).shareImage(uri)
+			} catch (e: CancellationException) {
+				throw e
+			} catch (_: Throwable) {
+				view?.let { Snackbar.make(it, R.string.reader_journey_share_failed, Snackbar.LENGTH_LONG).show() }
+			}
+		}
 	}
 
 	private fun shareYearInReview(review: YearInReview) {

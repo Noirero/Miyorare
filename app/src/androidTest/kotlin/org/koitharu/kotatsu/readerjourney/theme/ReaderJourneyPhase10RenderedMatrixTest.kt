@@ -1,0 +1,605 @@
+package org.koitharu.kotatsu.readerjourney.theme
+
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Activity
+import android.app.LocaleManager
+import android.content.ContentValues
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Rect
+import android.os.LocaleList
+import android.os.SystemClock
+import android.provider.MediaStore
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.appcompat.widget.SearchView
+import androidx.appcompat.widget.Toolbar
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.preference.PreferenceManager
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.work.Configuration
+import androidx.work.WorkManager
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
+import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyChapterEntity
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
+import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
+import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
+import org.koitharu.kotatsu.settings.AppearanceSettingsFragment
+import org.koitharu.kotatsu.settings.SettingsActivity
+import org.koitharu.kotatsu.stats.ui.StatsActivity
+import java.io.OutputStream
+import javax.inject.Inject
+
+@HiltAndroidTest
+@RunWith(AndroidJUnit4::class)
+class ReaderJourneyPhase10RenderedMatrixTest {
+
+    @get:Rule
+    val hiltRule = HiltAndroidRule(this)
+
+    @Inject
+    lateinit var settings: AppSettings
+
+    @Inject
+    lateinit var database: MangaDatabase
+
+    @Inject
+    lateinit var profileStore: ReaderProfileStore
+
+    @Inject
+    lateinit var themeRuntime: ReaderJourneyThemeRuntime
+
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val context get() = instrumentation.targetContext
+    private val arguments get() = InstrumentationRegistry.getArguments()
+    private val scenario: String get() = arguments.getString(ARG_SCENARIO) ?: "unknown"
+    private val themeMode: String get() = arguments.getString(ARG_THEME) ?: "dark"
+
+    @Before
+    fun setUp() {
+        hiltRule.inject()
+        val uiAutomation = instrumentation.uiAutomation
+        uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply {
+            flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        }
+        runBlocking { database.clearAllTables() }
+        profileStore.updateCosmetics(ReaderJourneyCosmeticLoadout())
+        runCatching { WorkManager.getInstance(context) }.getOrElse {
+            WorkManager.initialize(context, Configuration.Builder().build())
+            WorkManager.getInstance(context)
+        }
+
+        settings.isOnboardingCompleted = true
+        settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+        settings.setMiyorareThemePreset(MiyorareThemePreset.MIYORARE)
+        settings.setTheme(
+            if (themeMode == "light") AppCompatDelegate.MODE_NIGHT_NO else AppCompatDelegate.MODE_NIGHT_YES,
+        )
+        settings.setAmoledTheme(themeMode == "oled")
+
+        val minimal = scenario.contains("minimal")
+        val reduced = scenario.contains("reduced") || minimal
+        PreferenceManager.getDefaultSharedPreferences(context).edit()
+            .putBoolean(AppSettings.KEY_READER_JOURNEY_ENABLED, true)
+            .putBoolean(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, reduced)
+            .putBoolean(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, reduced)
+            .putBoolean(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, minimal)
+            .putBoolean(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, !minimal)
+            .commit()
+
+        context.getSystemService(LocaleManager::class.java)
+            .applicationLocales = LocaleList.forLanguageTags("id-ID")
+    }
+
+    @After
+    fun tearDown() {
+        context.getSystemService(LocaleManager::class.java).applicationLocales = LocaleList.getEmptyLocaleList()
+    }
+
+    @Test
+    fun readerJourneyFitsRenderedViewportAndCapturesEvidence() {
+        val activity = instrumentation.startActivitySync(
+            Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ) as StatsActivity
+        try {
+            waitForAccessibleContent(activity, minTextNodes = 6)
+            assertEquals("id", activity.resources.configuration.locales[0].language)
+            assertEquals("Perjalanan Pembaca", activity.getString(R.string.reader_journey))
+            val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
+            assertNoHorizontalOverflow("Reader Journey", evidence)
+            assertTrue(
+                "Reader Journey title must be exposed to accessibility in Indonesian locale",
+                evidence.labels.any { it.contains(activity.getString(R.string.reader_journey), ignoreCase = true) },
+            )
+            captureEvidence(
+                fileStem = "reader-journey",
+                evidence = evidence,
+                extra = JSONObject()
+                    .put("theme", themeMode)
+                    .put("fontScale", activity.resources.configuration.fontScale)
+                    .put("density", activity.resources.displayMetrics.density)
+                    .put("widthPx", activity.resources.displayMetrics.widthPixels)
+                    .put("heightPx", activity.resources.displayMetrics.heightPixels),
+            )
+        } finally {
+            instrumentation.runOnMainSync { activity.finish() }
+        }
+    }
+
+    @Test
+    fun representativeGoldenThemesRenderForCurrentLightDarkOrOledVariant() = runBlocking {
+        val dao = database.getReaderJourneyDao()
+        dao.mergeChapterAward(
+            ReaderJourneyChapterEntity(
+                mangaId = 9_900_001L,
+                chapterId = 1L,
+                isNovel = false,
+                readingUnits = 1,
+                completionCount = 1,
+                awardedXp = 1_000_000L,
+                firstCompletedAt = 1L,
+                lastCompletedAt = 1L,
+            ),
+        )
+        dao.rebuildProfileFromLedger()
+
+        val themes = listOf(
+            RankThemeId.FIRST_PAGE,
+            RankThemeId.NEON_ARCHIVE,
+            RankThemeId.GOLDEN_MANUSCRIPT,
+            RankThemeId.ETERNAL_LIBRARY,
+        )
+        for (theme in themes) {
+            profileStore.updateCosmetics(
+                ReaderJourneyCosmeticPolicy.equipFullSet(
+                    loadout = ReaderJourneyCosmeticLoadout(),
+                    theme = theme,
+                    currentRank = ReaderRank.LEGEND,
+                ),
+            )
+            withTimeout(THEME_RUNTIME_TIMEOUT_MS) {
+                themeRuntime.state.first { state ->
+                    state.ledgerReady &&
+                        state.lifetimeXp >= 1_000_000L &&
+                        state.loadout.selectedThemeId == theme.stableId
+                }
+            }
+
+            val activity = instrumentation.startActivitySync(
+                Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            ) as StatsActivity
+            try {
+                waitForAccessibleContent(activity, minTextNodes = 6)
+                val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
+                assertNoHorizontalOverflow("Rank Theme ${theme.stableId}", evidence)
+                captureEvidence(
+                    fileStem = "theme-${theme.stableId.lowercase()}",
+                    evidence = evidence,
+                    extra = JSONObject()
+                        .put("themeMode", themeMode)
+                        .put("rankThemeId", theme.stableId)
+                        .put("fontScale", activity.resources.configuration.fontScale),
+                )
+            } finally {
+                instrumentation.runOnMainSync { activity.finish() }
+            }
+        }
+    }
+
+    @Test
+    fun settingsSearchImeTransitionKeepsRenderedContentInsideViewport() {
+        val activity = instrumentation.startActivitySync(
+            Intent(context, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ) as SettingsActivity
+        var searchView: SearchView? = null
+        try {
+            waitForAccessibleContent(activity, minTextNodes = 6)
+            instrumentation.runOnMainSync {
+                val toolbar = checkNotNull(activity.findViewById<Toolbar>(R.id.toolbar))
+                val searchItem = checkNotNull(toolbar.menu.findItem(R.id.action_search)) {
+                    "Settings search menu item is missing"
+                }
+                check(searchItem.expandActionView()) { "Settings search action did not expand" }
+                val expanded = checkNotNull(searchItem.actionView as? SearchView)
+                expanded.isIconified = false
+                val editText = checkNotNull(
+                    expanded.findViewById<EditText>(androidx.appcompat.R.id.search_src_text),
+                )
+                expanded.requestFocus()
+                editText.requestFocus()
+                activity.getSystemService(InputMethodManager::class.java)
+                    .showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
+                searchView = expanded
+            }
+
+            waitForImeVisibility(activity, visible = true)
+            val insets = checkNotNull(ViewCompat.getRootWindowInsets(activity.window.decorView))
+            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            assertTrue("IME must contribute a positive bottom inset", imeInsets.bottom > 0)
+
+            val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
+            assertNoHorizontalOverflow("Settings search with IME", evidence)
+            captureEvidence(
+                fileStem = "settings-ime",
+                evidence = evidence,
+                extra = JSONObject()
+                    .put("theme", themeMode)
+                    .put("fontScale", activity.resources.configuration.fontScale)
+                    .put("imeBottomPx", imeInsets.bottom)
+                    .put("systemBarsTopPx", systemBars.top)
+                    .put("systemBarsBottomPx", systemBars.bottom),
+            )
+        } finally {
+            instrumentation.runOnMainSync {
+                val expanded = searchView
+                val editText = expanded?.findViewById<EditText>(androidx.appcompat.R.id.search_src_text)
+                if (editText != null) {
+                    activity.getSystemService(InputMethodManager::class.java)
+                        .hideSoftInputFromWindow(editText.windowToken, 0)
+                }
+                expanded?.clearFocus()
+                activity.finish()
+            }
+        }
+    }
+
+    @Test
+    fun appearanceSettingsControlsFitLargeTextAndRemainReachable() {
+        val activity = instrumentation.startActivitySync(
+            Intent(context, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ) as SettingsActivity
+
+        val expectedLabels = linkedSetOf(
+            activity.getString(R.string.rank_theme_reduce_motion),
+            activity.getString(R.string.rank_theme_reduce_glow),
+            activity.getString(R.string.rank_theme_minimal_cosmetics),
+        ).apply {
+            // In the dedicated minimal-cosmetics matrix the wallpaper option is intentionally
+            // disabled by product behavior. The dark/OLED matrices keep minimal cosmetics off
+            // and continue to verify that the wallpaper control is rendered and reachable.
+            if (!scenario.contains("minimal")) {
+                add(activity.getString(R.string.rank_theme_wallpaper))
+            }
+        }
+        val foundLabels = linkedSetOf<String>()
+        val allOverflows = ArrayList<String>()
+        var lastEvidence: WindowEvidence? = null
+
+        try {
+            instrumentation.runOnMainSync {
+                activity.openFragment(
+                    fragmentClass = AppearanceSettingsFragment::class.java,
+                    args = null,
+                    isFromRoot = false,
+                )
+            }
+            waitForAccessibleContent(activity, minTextNodes = 6)
+            assertEquals("id", activity.resources.configuration.locales[0].language)
+
+            repeat(MAX_SETTINGS_SWIPES + 1) { pass ->
+                val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
+                lastEvidence = evidence
+                allOverflows += evidence.horizontalOverflows.map { "pass=$pass $it" }
+                for (label in expectedLabels) {
+                    if (evidence.labels.any { it.equals(label, ignoreCase = true) }) {
+                        foundLabels += label
+                    }
+                }
+                if (!foundLabels.containsAll(expectedLabels)) {
+                    swipeSettingsUp(
+                        activity.resources.displayMetrics.widthPixels,
+                        activity.resources.displayMetrics.heightPixels,
+                    )
+                    SystemClock.sleep(350)
+                    instrumentation.waitForIdleSync()
+                }
+            }
+
+            assertTrue(
+                "Appearance text/control semantics overflowed horizontally: $allOverflows",
+                allOverflows.isEmpty(),
+            )
+            assertTrue(
+                "Phase 10 Rank Theme controls are not all reachable. Missing: ${expectedLabels - foundLabels}",
+                foundLabels.containsAll(expectedLabels),
+            )
+
+            captureEvidence(
+                fileStem = "appearance-settings",
+                evidence = checkNotNull(lastEvidence),
+                extra = JSONObject()
+                    .put("theme", themeMode)
+                    .put("fontScale", activity.resources.configuration.fontScale)
+                    .put("foundRankThemeControls", JSONArray(foundLabels.toList()))
+                    .put("expectedRankThemeControls", JSONArray(expectedLabels.toList())),
+            )
+        } finally {
+            instrumentation.runOnMainSync { activity.finish() }
+        }
+    }
+
+    private fun waitForImeVisibility(activity: SettingsActivity, visible: Boolean) {
+        val deadline = SystemClock.elapsedRealtime() + IME_TIMEOUT_MS
+        var actual = false
+        while (SystemClock.elapsedRealtime() < deadline) {
+            instrumentation.waitForIdleSync()
+            actual = ViewCompat.getRootWindowInsets(activity.window.decorView)
+                ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+            if (actual == visible) return
+            SystemClock.sleep(120)
+        }
+        assertEquals("IME visibility did not reach requested state", visible, actual)
+    }
+
+    private fun swipeSettingsUp(width: Int, height: Int) {
+        // Compose's merged accessibility tree can report ACTION_SCROLL_FORWARD as handled
+        // without moving the outer LazyColumn. Drive the viewport with the same physical
+        // gesture a user performs so every lazily composed settings row becomes observable.
+        val x = width / 2
+        val isCompactViewport = height <= 1_600
+        val startY = (height * if (isCompactViewport) 0.84f else 0.76f).toInt()
+        val endY = (height * if (isCompactViewport) 0.24f else 0.48f).toInt()
+        val downTime = SystemClock.uptimeMillis()
+        val durationMs = 320L
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(
+                downTime,
+                downTime,
+                MotionEvent.ACTION_DOWN,
+                x.toFloat(),
+                startY.toFloat(),
+                0,
+            ).apply { source = InputDevice.SOURCE_TOUCHSCREEN },
+            true,
+        )
+        for (step in 1..8) {
+            val eventTime = downTime + durationMs * step / 8
+            val fraction = step / 8f
+            instrumentation.uiAutomation.injectInputEvent(
+                MotionEvent.obtain(
+                    downTime,
+                    eventTime,
+                    MotionEvent.ACTION_MOVE,
+                    x.toFloat(),
+                    startY + (endY - startY) * fraction,
+                    0,
+                ).apply { source = InputDevice.SOURCE_TOUCHSCREEN },
+                true,
+            )
+        }
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(
+                downTime,
+                downTime + durationMs,
+                MotionEvent.ACTION_UP,
+                x.toFloat(),
+                endY.toFloat(),
+                0,
+            ).apply { source = InputDevice.SOURCE_TOUCHSCREEN },
+            true,
+        )
+    }
+
+    private fun findScrollableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        // Compose lazy containers may expose ACTION_SCROLL_FORWARD without setting isScrollable
+        // consistently on Android 15. Prefer a node that advertises the action itself, then fall
+        // back to the legacy isScrollable signal.
+        var scrollableFallback: AccessibilityNodeInfo? = null
+        fun search(current: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+            if (current.isVisibleToUser) {
+                if (current.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD }) {
+                    return current
+                }
+                if (scrollableFallback == null && current.isScrollable) {
+                    scrollableFallback = current
+                }
+            }
+            for (index in 0 until current.childCount) {
+                val child = current.getChild(index) ?: continue
+                search(child)?.let { return it }
+            }
+            return null
+        }
+        return search(node) ?: scrollableFallback
+    }
+
+    private fun waitForAccessibleContent(activity: Activity, minTextNodes: Int) {
+        val uiAutomation = instrumentation.uiAutomation
+        // Android 15 occasionally reconnects UiAutomation after a long Gradle build without the
+        // interactive-window flag. Re-assert it at the point of use so windows/rootInActiveWindow
+        // cannot transiently stay empty for an otherwise visible foreground Activity.
+        uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply {
+            flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        }
+
+        val deadline = SystemClock.elapsedRealtime() + ACCESSIBILITY_TIMEOUT_MS
+        var count = 0
+        var lastPackages = emptyList<String>()
+        var decorAttached = false
+        var decorFocused = false
+        var recoveryIssued = false
+        while (SystemClock.elapsedRealtime() < deadline) {
+            instrumentation.waitForIdleSync()
+            val decor = activity.window.decorView
+            decorAttached = decor.isAttachedToWindow && decor.isShown
+            decorFocused = decor.hasWindowFocus()
+
+            runCatching { uiAutomation.waitForIdle(100, 1_000) }
+            val root = findTargetApplicationRoot()
+            count = root?.let(::collectVisibleLabels)?.size ?: 0
+            lastPackages = uiAutomation.windows
+                .mapNotNull { it.root?.packageName?.toString() }
+                .distinct()
+            if (count >= minTextNodes) return
+
+            // The workflow already keeps the emulator awake, but a one-shot recovery here covers
+            // the Android 15 race where the instrumentation starts while the window manager still
+            // reports no active accessibility window. Validation remains strict after recovery.
+            if (!recoveryIssued && SystemClock.elapsedRealtime() + 2_000L < deadline) {
+                runCatching { uiAutomation.executeShellCommand("input keyevent KEYCODE_WAKEUP").close() }
+                runCatching { uiAutomation.executeShellCommand("wm dismiss-keyguard").close() }
+                // If SystemUI won the focus race, explicitly resume the Activity that this test
+                // already launched instead of waiting for an accessibility window that cannot
+                // become active on its own.
+                if (decorAttached && !decorFocused) {
+                    instrumentation.runOnMainSync {
+                        activity.window.decorView.requestFocus()
+                    }
+                    runCatching {
+                        val intent = Intent(context, activity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        context.startActivity(intent)
+                    }
+                }
+                recoveryIssued = true
+            }
+            SystemClock.sleep(150)
+        }
+        assertTrue(
+            "Rendered Miyorare window exposed only $count text/control accessibility nodes; " +
+                "visiblePackages=$lastPackages decorAttached=$decorAttached decorFocused=$decorFocused",
+            count >= minTextNodes,
+        )
+    }
+
+    private fun inspectCurrentWindow(viewportWidth: Int): WindowEvidence {
+        val root = checkNotNull(findTargetApplicationRoot()) {
+            "No Miyorare application accessibility window; visiblePackages=" +
+                instrumentation.uiAutomation.windows
+                    .mapNotNull { it.root?.packageName?.toString() }
+                    .distinct()
+        }
+        val labels = ArrayList<String>()
+        val overflows = ArrayList<String>()
+        walk(root) { node ->
+            if (!node.isVisibleToUser) return@walk
+            val label = node.text?.toString()?.trim().takeUnless { it.isNullOrEmpty() }
+                ?: node.contentDescription?.toString()?.trim().takeUnless { it.isNullOrEmpty() }
+                ?: return@walk
+            labels += label
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            if (
+                bounds.width() > 0 &&
+                (bounds.left < -HORIZONTAL_TOLERANCE_PX || bounds.right > viewportWidth + HORIZONTAL_TOLERANCE_PX)
+            ) {
+                overflows += "$label @ [${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}] viewport=$viewportWidth"
+            }
+        }
+        return WindowEvidence(labels = labels.distinct(), horizontalOverflows = overflows.distinct())
+    }
+
+    private fun findTargetApplicationRoot(): AccessibilityNodeInfo? {
+        val packageName = context.packageName
+        val windows = instrumentation.uiAutomation.windows
+        val applicationRoot = windows.asSequence()
+            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+            .mapNotNull { it.root }
+            .firstOrNull { it.packageName?.toString() == packageName }
+        if (applicationRoot != null) return applicationRoot
+
+        return instrumentation.uiAutomation.rootInActiveWindow
+            ?.takeIf { it.packageName?.toString() == packageName }
+    }
+
+    private fun assertNoHorizontalOverflow(surface: String, evidence: WindowEvidence) {
+        assertTrue(
+            "$surface has horizontally clipped accessibility text/controls: ${evidence.horizontalOverflows}",
+            evidence.horizontalOverflows.isEmpty(),
+        )
+    }
+
+    private fun collectVisibleLabels(root: AccessibilityNodeInfo): List<String> {
+        val labels = ArrayList<String>()
+        walk(root) { node ->
+            if (!node.isVisibleToUser) return@walk
+            node.text?.toString()?.trim()?.takeIf(String::isNotEmpty)?.let(labels::add)
+            node.contentDescription?.toString()?.trim()?.takeIf(String::isNotEmpty)?.let(labels::add)
+        }
+        return labels
+    }
+
+    private fun walk(node: AccessibilityNodeInfo, block: (AccessibilityNodeInfo) -> Unit) {
+        block(node)
+        for (index in 0 until node.childCount) {
+            node.getChild(index)?.let { child -> walk(child, block) }
+        }
+    }
+
+    private fun captureEvidence(fileStem: String, evidence: WindowEvidence, extra: JSONObject) {
+        val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+        val json = JSONObject()
+            .put("scenario", scenario)
+            .put("surface", fileStem)
+            .put("labels", JSONArray(evidence.labels))
+            .put("horizontalOverflows", JSONArray(evidence.horizontalOverflows))
+            .put("extra", extra)
+            .toString(2)
+
+        replaceDownload("$fileStem.png", "image/png") { output ->
+            assertTrue(screenshot.compress(Bitmap.CompressFormat.PNG, 100, output))
+        }
+        replaceDownload("$fileStem.json", "application/json") { output ->
+            output.write(json.toByteArray())
+        }
+    }
+
+    private fun replaceDownload(name: String, mimeType: String, write: (OutputStream) -> Unit) {
+        val resolver = context.contentResolver
+        val relativePath = "Download/miyorare-phase10-rendered/$scenario/"
+        resolver.delete(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME}=?",
+            arrayOf(relativePath, name),
+        )
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+        }
+        val uri = checkNotNull(resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values))
+        resolver.openOutputStream(uri, "w").use { output -> write(checkNotNull(output)) }
+    }
+
+    private data class WindowEvidence(
+        val labels: List<String>,
+        val horizontalOverflows: List<String>,
+    )
+
+    private companion object {
+        const val ARG_SCENARIO = "phase10_scenario"
+        const val ARG_THEME = "phase10_theme"
+        const val MAX_SETTINGS_SWIPES = 40
+        const val ACCESSIBILITY_TIMEOUT_MS = 20_000L
+        const val THEME_RUNTIME_TIMEOUT_MS = 8_000L
+        const val IME_TIMEOUT_MS = 8_000L
+        const val HORIZONTAL_TOLERANCE_PX = 3
+    }
+}

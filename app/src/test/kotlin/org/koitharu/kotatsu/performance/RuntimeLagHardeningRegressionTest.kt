@@ -304,7 +304,8 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(host.contains("valemphasizeFavourites=!privateFavouritesHost"))
 		assertFalse(host.contains("emphasizeFavourites=!privateFavouritesHost&&selectedId==R.id.nav_favorites"))
 		assertTrue(legacy.contains("emphasizeFavourites:Boolean=false"))
-		assertTrue(legacy.contains("valfavouritesGlass=if(emphasizeFavourites)"))
+		assertTrue(legacy.contains("valfavouritesGlass=if(emphasizeFavourites&&exclusiveNavigation!=null)"))
+		assertTrue(legacy.contains("elseif(emphasizeFavourites)"))
 		assertFalse(
 			"Normal legacy bar must not fall back to an always-opaque single-color container",
 			legacy.contains("color=barContainer,contentColor="),
@@ -626,17 +627,21 @@ class RuntimeLagHardeningRegressionTest {
 
 
 	@Test
-	fun `root settings exposes Google Drive login and keeps existing sync implementation wired`() {
+	fun `root settings exposes Library sync hub and keeps existing Google Drive sync wired`() {
 		val root = source("kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt")
+			.replace(Regex("\\s+"), "")
+		val hub = source("kotlin/org/koitharu/kotatsu/sync/ui/LibrarySyncHubFragment.kt")
 			.replace(Regex("\\s+"), "")
 		val activity = source("kotlin/org/koitharu/kotatsu/settings/SettingsActivity.kt")
 			.replace(Regex("\\s+"), "")
 		val sync = source("kotlin/org/koitharu/kotatsu/sync/ui/SyncSettingsFragment.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(root.contains("SYNC(R.string.google_drive_sync,R.drawable.ic_cloud_sync,\"sync\""))
-		assertTrue(root.contains("SyncSettingsFragment::class.java"))
+		assertTrue(root.contains("SYNC(R.string.library_sync,R.drawable.ic_cloud_sync,\"sync\""))
+		assertTrue(root.contains("LibrarySyncHubFragment::class.java"))
 		assertTrue(root.contains("sections=listOf(SettingsSection.SYNC,SettingsSection.STORAGE,SettingsSection.BACKUP)"))
+		assertTrue(hub.contains("title=stringResource(R.string.google_drive_sync)"))
+		assertTrue(hub.contains("SyncSettingsFragment::class.java"))
 		assertTrue(activity.contains("AppRouter.ACTION_SYNC->SyncSettingsFragment()"))
 		assertTrue(sync.contains("title=stringResource(R.string.sync_sign_in)"))
 		assertTrue(sync.contains("onClick=onSignIn"))
@@ -774,6 +779,82 @@ class RuntimeLagHardeningRegressionTest {
 			reader.contains("pager.setCurrentItem(position+added.size,false)"),
 		)
 	}
+
+
+	@Test
+	fun `Downloads golden reference keeps structure separate from live data and legacy presentation`() {
+		val activity = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadsActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val item = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadItemAD.kt")
+			.replace(Regex("\\s+"), "")
+		val viewModel = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadsViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val activityLayout = source("res/layout/activity_downloads.xml")
+			.replace(Regex("\\s+"), "")
+		val itemLayout = source("res/layout/item_download.xml")
+			.replace(Regex("\\s+"), "")
+		val styles = source("res/values/downloads_golden_styles.xml")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(activityLayout.contains("app:titleEnabled=\"false\""))
+		assertTrue(activityLayout.contains("@+id/modernDownloadsIconRing"))
+		assertTrue(activityLayout.contains("@+id/buttonResumeAll"))
+		assertTrue(activity.contains("buttonResumeAll.isVisible=true"))
+		assertTrue(activity.contains("buttonResumeAll.isEnabled=paused>0"))
+
+		assertTrue(itemLayout.contains("@+id/textView_progressPercent"))
+		assertTrue(itemLayout.contains("@+id/download_metadata_row"))
+		assertTrue(itemLayout.contains("@+id/download_local_glow"))
+		assertFalse(
+			"Modern chapter expansion must not resurrect the old black Chapter panel",
+			itemLayout.contains("android:background=\"@drawable/bg_card\""),
+		)
+		assertTrue(item.contains("downloadSizeBytes"))
+		assertTrue(item.contains("FileSize.BYTES.format(context,it)"))
+		assertTrue(
+			"Paused state must retain paused semantics even if an error message exists",
+			item.indexOf("item.workState==WorkInfo.State.RUNNING&&item.isPaused->modernPrimary") <
+				item.indexOf("item.workState==WorkInfo.State.RUNNING&&hasError->modernError"),
+		)
+
+		assertTrue(viewModel.contains("WorkInfo.State.RUNNING,WorkInfo.State.BLOCKED,WorkInfo.State.ENQUEUED->inProgress+=item"))
+		assertFalse("Modern queue must not create a separate visual section", viewModel.contains("ListHeader(R.string.queued"))
+		assertTrue(styles.contains("android:fontFamily\">sans-serif<"))
+		assertTrue(styles.contains("android:fontFamily\">sans-serif-medium<"))
+	}
+
+
+	@Test
+	fun `Downloads opens before disk-size enrichment and exposes transfer progress immediately`() {
+		val viewModel = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadsViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val worker = source("kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadWorker.kt")
+			.replace(Regex("\\s+"), "")
+		val layout = source("res/layout/activity_downloads.xml")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(viewModel.contains("requestDownloadSizeHydration("))
+		assertTrue(viewModel.contains("hydratedDownloadSizes"))
+		assertTrue(viewModel.contains("viewModelScope.launch(Dispatchers.IO)"))
+		assertFalse(
+			"Artifact size traversal must not block WorkInfo -> first UI model conversion",
+			viewModel.contains("withContext(Dispatchers.IO){DiskUtil.getDirectorySize"),
+		)
+
+		val initialProgress = worker.indexOf("currentPage=0,isIndeterminate=false")
+		val pageFanOut = worker.indexOf("channelFlow{")
+		assertTrue("0/N progress must be published before page fan-out", initialProgress in 0 until pageFanOut)
+		assertTrue(worker.contains("currentPage=pageCounter.incrementAndGet()"))
+		assertTrue(
+			"Resume-cache pruning must run after the user-visible transfer instead of before it",
+			worker.indexOf("clearResumeMangaDir(manga.id)") < worker.indexOf("pruneResumeCache()"),
+		)
+
+		assertTrue(layout.contains("android:id=\"@+id/buttonResumeAll\""))
+		assertTrue(layout.contains("android:layout_width=\"136dp\""))
+		assertTrue(layout.contains("app:iconPadding=\"6dp\""))
+	}
+
 
 	private fun source(relativePath: String): String {
 		return sequenceOf(

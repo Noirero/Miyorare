@@ -2,7 +2,15 @@ package org.koitharu.kotatsu.list.ui.adapter
 
 import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorFilter
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
@@ -120,7 +128,11 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 	val onSurface = context.getThemeColor(materialR.attr.colorOnSurface, Color.WHITE)
 	val onSurfaceVariant = context.getThemeColor(materialR.attr.colorOnSurfaceVariant, onSurface)
 	val outline = context.getThemeColor(materialR.attr.colorOutlineVariant, primary)
-	val glass = if (normalNeon) context.miyorareViewPaletteFromPreferences()?.neonGlass() else null
+	val normalPalette = if (normalNeon) context.miyorareViewPaletteFromPreferences() else null
+	val glass = normalPalette?.neonGlass()
+	val exclusiveFavourites = normalPalette?.exclusiveTheme?.favourites
+	val celestialBorderStops = exclusiveFavourites?.borderStops?.toIntArray()
+	val celestialSelectedStops = exclusiveFavourites?.selectedStops?.toIntArray()
 	val darkTheme = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
 	val controlHeight = (if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_HEIGHT_DP else 32f) * density
@@ -215,6 +227,8 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 				density = density,
 				selected = selected,
 				darkTheme = darkTheme,
+				signatureBorderStops = celestialBorderStops,
+				signatureSelectedStops = celestialSelectedStops,
 			)
 		} else {
 			chip.chipStrokeWidth = density * if (selected) 0.75f else 0.6f
@@ -246,6 +260,8 @@ private fun createMiyorareFavouritesActionChrome(
 	density: Float,
 	selected: Boolean,
 	darkTheme: Boolean,
+	signatureBorderStops: IntArray? = null,
+	signatureSelectedStops: IntArray? = null,
 ): LayerDrawable {
 	// One soft halo + one crisp edge. This removes the previous outer/mid/near stack that
 	// looked like multiple nested pills on bright backgrounds while preserving the neon identity.
@@ -281,16 +297,26 @@ private fun createMiyorareFavouritesActionChrome(
 			),
 		)
 	}
-	val edge = GradientDrawable().apply {
-		setColor(Color.TRANSPARENT)
-		cornerRadius = (radius - density).coerceAtLeast(0f)
-		setStroke(
-			density.roundToInt().coerceAtLeast(1),
-			ColorUtils.setAlphaComponent(
-				edgeBase,
-				(Color.alpha(edgeBase) * edgeAlphaFactor).roundToInt(),
-			),
+	val authoredStops = if (selected) signatureSelectedStops ?: signatureBorderStops else signatureBorderStops
+	val edge: Drawable = if (authoredStops != null && authoredStops.size >= 2) {
+		QuickFilterPrismStrokeDrawable(
+			colors = authoredStops,
+			cornerRadius = (radius - density).coerceAtLeast(0f),
+			strokeWidth = density.roundToInt().coerceAtLeast(1).toFloat(),
+			alphaScale = edgeAlphaFactor,
 		)
+	} else {
+		GradientDrawable().apply {
+			setColor(Color.TRANSPARENT)
+			cornerRadius = (radius - density).coerceAtLeast(0f)
+			setStroke(
+				density.roundToInt().coerceAtLeast(1),
+				ColorUtils.setAlphaComponent(
+					edgeBase,
+					(Color.alpha(edgeBase) * edgeAlphaFactor).roundToInt(),
+				),
+			)
+		}
 	}
 	return LayerDrawable(
 		arrayOf(
@@ -298,6 +324,54 @@ private fun createMiyorareFavouritesActionChrome(
 			InsetDrawable(edge, density.roundToInt().coerceAtLeast(1)),
 		),
 	)
+}
+
+private class QuickFilterPrismStrokeDrawable(
+	private val colors: IntArray,
+	private val cornerRadius: Float,
+	private val strokeWidth: Float,
+	private val alphaScale: Float,
+) : Drawable() {
+	private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+		style = Paint.Style.STROKE
+		this.strokeWidth = this@QuickFilterPrismStrokeDrawable.strokeWidth
+	}
+	private val rect = RectF()
+	private var drawableAlpha = 255
+
+	override fun onBoundsChange(bounds: android.graphics.Rect) {
+		super.onBoundsChange(bounds)
+		paint.shader = LinearGradient(
+			bounds.left.toFloat(),
+			bounds.top.toFloat(),
+			bounds.right.toFloat(),
+			bounds.bottom.toFloat(),
+			colors,
+			null,
+			Shader.TileMode.CLAMP,
+		)
+	}
+
+	override fun draw(canvas: Canvas) {
+		val half = strokeWidth / 2f
+		rect.set(bounds.left + half, bounds.top + half, bounds.right - half, bounds.bottom - half)
+		paint.alpha = (drawableAlpha * alphaScale).roundToInt().coerceIn(0, 255)
+		val radius = (cornerRadius - half).coerceAtLeast(0f)
+		canvas.drawRoundRect(rect, radius, radius, paint)
+	}
+
+	override fun setAlpha(alpha: Int) {
+		drawableAlpha = alpha.coerceIn(0, 255)
+		invalidateSelf()
+	}
+
+	override fun setColorFilter(colorFilter: ColorFilter?) {
+		paint.colorFilter = colorFilter
+		invalidateSelf()
+	}
+
+	@Deprecated("Deprecated in Android")
+	override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 }
 
 /** ChipsView renders counters with an explicit ForegroundColorSpan, which overrides setTextColor(). */

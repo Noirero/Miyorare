@@ -34,6 +34,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.withResumed
 import androidx.recyclerview.widget.ItemTouchHelper
 import com.google.android.material.appbar.AppBarLayout
@@ -96,6 +97,7 @@ import org.koitharu.kotatsu.main.ui.owners.BottomNavOwner
 import org.koitharu.kotatsu.main.ui.welcome.OnboardingActivity
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.remotelist.ui.MangaSearchMenuProvider
+import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
 import org.koitharu.kotatsu.search.ui.suggestion.SearchSuggestionItemCallback
 import org.koitharu.kotatsu.search.ui.suggestion.SearchSuggestionListenerImpl
 import org.koitharu.kotatsu.search.ui.suggestion.SearchSuggestionMenuProvider
@@ -187,6 +189,21 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		}
 		navigationDelegate.onCreate(this, savedInstanceState)
 		updateAppBackground(navigationDelegate.primaryFragment)
+		applicationContext.readerJourneyThemeRuntimeOrNull()?.let { runtime ->
+			lifecycleScope.launch {
+				repeatOnLifecycle(Lifecycle.State.STARTED) {
+					runtime.state.collect {
+						// Compose surfaces react to the StateFlow directly; the legacy/shared wallpaper owner
+						// must also be rebuilt when the selected Exclusive theme changes.
+						appBackgroundKey = null
+						updateAppBackground(navigationDelegate.primaryFragment)
+						if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+							viewBinding.root.applyMiyorareSharedMainChrome()
+						}
+					}
+				}
+			}
+		}
 		viewBinding.textViewTitle?.let { tv ->
 			navigationDelegate.observeTitle().observe(this) { tv.text = it }
 		}
@@ -567,6 +584,8 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			append(palette.primary)
 			append(':')
 			append(palette.accent)
+			append(':')
+			append(palette.rankThemeId ?: "base")
 			append(':')
 			append(palette.customBackgroundRevision)
 		}

@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.stats.domain
 
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementProgress
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyProgressionSnapshot
 import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonality
 import java.util.concurrent.TimeUnit
 
@@ -44,6 +45,7 @@ data class ReadingStats(
 	val longestStreak: Int = 0,
 	val lifetimeXp: Long = 0L,
 	val achievements: List<ReaderAchievementProgress> = emptyList(),
+	val journeyProgression: ReaderJourneyProgressionSnapshot? = null,
 	val journeyCompletedChapters: Long = 0L,
 	val journeyMangaChapters: Long = 0L,
 	val journeyNovelChapters: Long = 0L,

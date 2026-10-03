@@ -1,0 +1,121 @@
+name: CI Deep
+
+on:
+  pull_request:
+    branches:
+      - beta
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-deep-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  classify:
+    name: Classify deep regression risk
+    if: github.event_name != 'pull_request' || github.event.pull_request.base.ref != 'main'
+    runs-on: ubuntu-latest
+    outputs:
+      run_deep: ${{ steps.classify.outputs.run_deep }}
+      run_android_test_compile: ${{ steps.classify.outputs.run_android_test_compile }}
+      run_preview_android_test_compile: ${{ steps.classify.outputs.run_preview_android_test_compile }}
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify classifier policy
+        run: python3 .github/scripts/test_ci_deep_paths.py
+
+      - name: Classify changed paths
+        id: classify
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            run_deep=true
+            run_android_test_compile=true
+            run_preview_android_test_compile=true
+          else
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed-paths.txt
+            cat changed-paths.txt
+            run_deep="$(python3 .github/scripts/ci_deep_paths.py --paths-file changed-paths.txt)"
+            run_android_test_compile="$(python3 .github/scripts/ci_deep_paths.py --paths-file changed-paths.txt --gate android-test-compile)"
+            run_preview_android_test_compile="$(python3 .github/scripts/ci_deep_paths.py --paths-file changed-paths.txt --gate preview-android-test-compile)"
+          fi
+          echo "run_deep=$run_deep" >> "$GITHUB_OUTPUT"
+          echo "run_android_test_compile=$run_android_test_compile" >> "$GITHUB_OUTPUT"
+          echo "run_preview_android_test_compile=$run_preview_android_test_compile" >> "$GITHUB_OUTPUT"
+          echo "Full JVM regression required: $run_deep"
+          echo "Compile-only Debug Android tests required: $run_android_test_compile"
+          echo "Additional Preview Android test compilation required: $run_preview_android_test_compile"
+
+  deep:
+    name: Deep
+    needs: classify
+    if: needs.classify.outputs.run_deep == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact candidate head
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_HEAD"
+          echo "Deep validation head: $actual"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      # One invocation shares Gradle configuration/dependencies with the JVM suite.
+      # Debug reuses application compilation from the JVM suite. No signing,
+      # APK assembly, test execution, or emulator is needed to compile Kotlin/Java.
+      - name: Run full JVM regression and routed Android test compilation
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace ${{ needs.classify.outputs.run_android_test_compile == 'true' && ':app:compileDebugAndroidTestKotlin :app:compileDebugAndroidTestJavaWithJavac' || '' }}
+
+      # AGP exposes only testBuildType's unit-test tasks. Switching to Preview in
+      # the invocation above removes testDebugUnitTest, so variant/build changes
+      # need a separate compile-only invocation without repeating JVM tests.
+      - name: Compile Preview Android tests for variant and build inputs
+        if: needs.classify.outputs.run_preview_android_test_compile == 'true'
+        run: ./gradlew :app:compilePreviewAndroidTestKotlin :app:compilePreviewAndroidTestJavaWithJavac -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview --no-daemon --stacktrace
+
+      - name: Upload unit-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-deep-unit-test-reports
+          path: app/build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 7

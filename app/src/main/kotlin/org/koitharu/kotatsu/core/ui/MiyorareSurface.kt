@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.ui.Modifier
@@ -20,6 +21,7 @@ fun Modifier.miyorareSurface(
 	drawBorder: Boolean = true,
 ): Modifier {
 	if (!palette.isModern) return this
+	val exclusiveShared = palette.exclusiveTheme?.shared
 	val selected = selectedFraction.coerceIn(0f, 1f)
 	val start = lerp(palette.surfaceGradientStart, palette.accentGradientStart, selected)
 	val middle = lerp(palette.surfaceGradientMiddle, palette.accentGradientMiddle, selected)
@@ -39,7 +41,19 @@ fun Modifier.miyorareSurface(
 		} else {
 			border
 		}
-		result = result.border(1.dp, resolvedBorder, shape)
+		result = if (exclusiveShared?.borderStops?.size?.let { it >= 2 } == true) {
+			result.border(
+				BorderStroke(
+					1.dp,
+					Brush.horizontalGradient(
+						exclusiveShared.borderStops.map { it.copy(alpha = it.alpha * resolvedBorder.alpha) },
+					),
+				),
+				shape,
+			)
+		} else {
+			result.border(1.dp, resolvedBorder, shape)
+		}
 	}
 	return result
 }
@@ -51,22 +65,38 @@ fun Modifier.miyorareAccentSurface(
 	alpha: Float = 1f,
 ): Modifier {
 	if (!palette.isModern) return this
+	val exclusiveShared = palette.exclusiveTheme?.shared
 	val safeAlpha = alpha.coerceIn(0f, 1f)
-	return background(
-		brush = Brush.horizontalGradient(
+	val accentBrush = if (exclusiveShared?.selectedStops?.size?.let { it >= 2 } == true) {
+		Brush.horizontalGradient(exclusiveShared.selectedStops.map { it.copy(alpha = it.alpha * safeAlpha) })
+	} else {
+		Brush.horizontalGradient(
 			listOf(
 				palette.accentGradientStart.copy(alpha = safeAlpha),
 				palette.accentGradientMiddle.copy(alpha = safeAlpha),
 				palette.accentGradientEnd.copy(alpha = safeAlpha),
 			),
-		),
-		shape = shape,
-	).border(
-		width = 1.dp,
-		color = lerp(palette.borderHighlight, palette.glow, 0.58f)
-			.copy(alpha = (palette.borderHighlight.alpha + palette.glow.alpha).coerceAtMost(1f) * safeAlpha),
+		)
+	}
+	val accentBorder = lerp(palette.borderHighlight, palette.glow, 0.58f)
+		.copy(alpha = (palette.borderHighlight.alpha + palette.glow.alpha).coerceAtMost(1f) * safeAlpha)
+	val decorated = background(
+		brush = accentBrush,
 		shape = shape,
 	)
+	return if (exclusiveShared?.borderStops?.size?.let { it >= 2 } == true) {
+		decorated.border(
+			BorderStroke(
+				1.dp,
+				Brush.horizontalGradient(
+					exclusiveShared.borderStops.map { it.copy(alpha = it.alpha * accentBorder.alpha) },
+				),
+			),
+			shape,
+		)
+	} else {
+		decorated.border(1.dp, accentBorder, shape)
+	}
 }
 
 /** Small inset surface used by icons so every Modern screen shares one premium icon language. */
@@ -76,21 +106,45 @@ fun Modifier.miyorareIconSurface(
 	alpha: Float = 1f,
 ): Modifier {
 	if (!palette.isModern) return this
+	val exclusiveShared = palette.exclusiveTheme?.shared
 	val safeAlpha = alpha.coerceIn(0f, 1f)
-	return background(
-		brush = Brush.linearGradient(
+	val iconBrush = if (exclusiveShared?.iconStops?.size?.let { it >= 2 } == true) {
+		Brush.linearGradient(
+			exclusiveShared.iconStops.map { signature ->
+				lerp(
+					palette.selectedSurface,
+					signature,
+					exclusiveShared.iconMix,
+				).copy(alpha = safeAlpha)
+			},
+		)
+	} else {
+		Brush.linearGradient(
 			listOf(
 				palette.iconGradientStart.copy(alpha = safeAlpha),
 				palette.selectedSurface.copy(alpha = safeAlpha),
 				palette.iconGradientEnd.copy(alpha = safeAlpha),
 			),
-		),
-		shape = shape,
-	).border(
-		width = 1.dp,
-		color = palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * safeAlpha),
+		)
+	}
+	val iconBorder = palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * safeAlpha)
+	val decorated = background(
+		brush = iconBrush,
 		shape = shape,
 	)
+	return if (exclusiveShared?.borderStops?.size?.let { it >= 2 } == true) {
+		decorated.border(
+			BorderStroke(
+				1.dp,
+				Brush.horizontalGradient(
+					exclusiveShared.borderStops.map { it.copy(alpha = it.alpha * iconBorder.alpha * 0.86f) },
+				),
+			),
+			shape,
+		)
+	} else {
+		decorated.border(1.dp, iconBorder, shape)
+	}
 }
 
 
