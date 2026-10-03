@@ -32,6 +32,7 @@ class CelebrationQueueTest {
 		firstDismissed.complete(Unit)
 		advanceUntilIdle()
 		assertEquals(listOf(1, 2), presented)
+		queue.close()
 	}
 
 	@Test
@@ -56,6 +57,7 @@ class CelebrationQueueTest {
 		assertEquals(2, presented.single().event.xpEarned)
 		assertEquals(ReaderJourneyCelebrationMode.SUBTLE, presented.single().mode)
 		assertTrue(presented.single().reduceMotion)
+		queue.close()
 	}
 
 	private fun event(xp: Int) = ReaderJourneyCelebration(
