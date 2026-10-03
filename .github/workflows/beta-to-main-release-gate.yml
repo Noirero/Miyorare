@@ -108,7 +108,7 @@ jobs:
               exit 1
             }
             echo "mode=hotfix" >> "$GITHUB_OUTPUT"
-          elif [[ "$HEAD_REF" = automation/release-readme-* || "$HEAD_REF" = automation/readme-release-stats ]]; then
+          elif [[ "$HEAD_REF" = automation/release-readme-* ]]; then
             [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
             [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
             if [[ "${{ github.event_name }}" = pull_request ]]; then
