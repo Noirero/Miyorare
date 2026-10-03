@@ -242,7 +242,7 @@ fun StatsScreen(
 								profile = profile,
 								imageLoader = imageLoader,
 								onEdit = { showProfileEditor = true },
-								onAvatarClick = pickAvatar,
+								onAvatarClick = { showProfileEditor = true },
 								onShare = {
 									onShareReaderProfile(ReaderProfileShareModel.from(stats.lifetimeXp, profile.cosmetics))
 								},
@@ -1382,9 +1382,9 @@ private fun ReaderProfileEditorSheet(
 	onDismiss: () -> Unit,
 	onSave: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
 ) {
-	var displayName by remember(profile) { mutableStateOf(profile.displayName) }
-	var selectedTitle by remember(profile) { mutableStateOf(profile.selectedTitle?.takeIf { it in unlockedAchievements }) }
-	var showcase by remember(profile) {
+	var displayName by remember { mutableStateOf(profile.displayName) }
+	var selectedTitle by remember { mutableStateOf(profile.selectedTitle?.takeIf { it in unlockedAchievements }) }
+	var showcase by remember {
 		mutableStateOf(profile.showcase.filter { it in unlockedAchievements }.take(3))
 	}
 	ModalBottomSheet(
