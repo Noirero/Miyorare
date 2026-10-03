@@ -91,6 +91,14 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 		when {
 			dy > 0 -> {
 				val child = getChildAt(0) as WebtoonFrameLayout
+				val ssiv = child.target
+				if (child.top < 0) {
+					val expected = (-child.top).coerceIn(0, ssiv.getScrollRange())
+					if (ssiv.getScroll() < expected) {
+						// Enable SubsamplingScaleImageView debug overlay to verify scrollPos / scrollRange.
+						ssiv.scrollTo(expected)
+					}
+				}
 				var consumedByChild = child.dispatchVerticalScroll(dy)
 				if (consumedByChild < dy) {
 					if (childCount > 1) {
@@ -107,6 +115,12 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 
 			dy < 0 -> {
 				val child = getChildAt(childCount - 1) as WebtoonFrameLayout
+				val ssiv = child.target
+				val expected = (-child.top).coerceIn(0, ssiv.getScrollRange())
+				if (ssiv.getScroll() != expected) {
+					// Mirror the item geometry before routing upward scroll into the image window.
+					ssiv.scrollTo(expected)
+				}
 				var consumedByChild = child.dispatchVerticalScroll(dy)
 				if (consumedByChild > dy) {
 					if (childCount > 1) {
