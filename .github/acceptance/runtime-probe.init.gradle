@@ -1,0 +1,89 @@
+// Loaded only by the immutable acceptance harness, never by a production build.
+// SuspendToFutureAdapter was added in concurrent-futures-ktx 1.2.0:
+// https://developer.android.com/jetpack/androidx/releases/concurrent#1.2.0
+// The stable app resolves 1.1.0. Keep that graph unchanged and resolve ONLY the
+// probe's compile/runtime classpaths independently. No force, global constraint
+// switch, production dependency, or R8 suppression is used.
+import org.gradle.api.artifacts.result.ResolvedDependencyResult
+import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
+
+gradle.projectsEvaluated {
+    def app = rootProject.project(':app')
+    def evidence = new File(app.property('runtimeProbeEvidenceDir').toString())
+    def production = app.configurations.getByName('releaseRuntimeClasspath')
+    def graph = { configuration ->
+        def result = configuration.incoming.resolutionResult
+        def lines = result.allComponents.collect { "component ${it.id.displayName}" }
+        result.allDependencies.each { dependency ->
+            if (!(dependency instanceof ResolvedDependencyResult)) {
+                throw new GradleException("Unresolved dependency: ${dependency.requested}", dependency.failure)
+            }
+            lines.add("edge ${dependency.from.id.displayName} -> ${dependency.selected.id.displayName} (${dependency.requested.displayName})")
+        }
+        lines.sort().join('\n') + '\n'
+    }
+    def baseline = app.findProperty('runtimeProbeBaseline') == 'true'
+    if (baseline) {
+        app.tasks.register('recordRuntimeProbeProductionGraph') {
+            doLast {
+                evidence.mkdirs()
+                new File(evidence, 'production-before.txt').text = graph(production)
+            }
+        }
+    } else {
+        // Public Gradle API, scoped to the two resolvable AndroidTest configurations:
+        // https://docs.gradle.org/current/kotlin-dsl/gradle/org.gradle.api.artifacts/-configuration/disable-consistent-resolution.html
+        def probes = ['releaseAndroidTestCompileClasspath', 'releaseAndroidTestRuntimeClasspath'].collect {
+            def configuration = app.configurations.getByName(it)
+            if (!configuration.canBeResolved) throw new GradleException("Probe classpath is not resolvable: $it")
+            configuration.disableConsistentResolution()
+            configuration
+        }
+        app.dependencies.add('androidTestImplementation', 'androidx.concurrent:concurrent-futures-ktx:1.2.0')
+        app.dependencies.add('androidTestImplementation', 'com.google.auto.value:auto-value-annotations:1.11.0')
+
+        def containsClass = { File artifact, String entry ->
+            if (!(artifact.name.endsWith('.jar') || artifact.name.endsWith('.aar'))) return false
+            def zip = new ZipFile(artifact)
+            try {
+                if (zip.getEntry(entry) != null) return true
+                def classes = zip.getEntry('classes.jar')
+                if (classes == null) return false
+                def nested = new ZipInputStream(zip.getInputStream(classes))
+                try {
+                    def item
+                    while ((item = nested.nextEntry) != null) {
+                        if (item.name == entry) return true
+                    }
+                    return false
+                } finally { nested.close() }
+            } finally { zip.close() }
+        }
+        app.tasks.register('verifyRuntimeProbeClasspaths') {
+            doLast {
+                evidence.mkdirs()
+                def before = new File(evidence, 'production-before.txt')
+                if (!before.isFile()) throw new GradleException('Missing baseline production dependency graph')
+                def after = graph(production)
+                new File(evidence, 'production-after.txt').text = after
+                if (before.text != after) throw new GradleException('Harness changed the production runtime dependency graph')
+                probes.each { configuration ->
+                    new File(evidence, "${configuration.name}.txt").text = graph(configuration)
+                    def artifacts = configuration.resolvedConfiguration.resolvedArtifacts
+                    def files = artifacts.collect { it.file }
+                    ['androidx/concurrent/futures/SuspendToFutureAdapter.class',
+                     'com/google/auto/value/AutoValue.class'].each { entry ->
+                        if (!files.any { containsClass(it, entry) }) {
+                            throw new GradleException("Required probe class absent from ${configuration.name}: $entry")
+                        }
+                    }
+                    new File(evidence, "${configuration.name}-artifacts.txt").text = artifacts.collect {
+                        "${it.moduleVersion.id} ${it.file.name}"
+                    }.sort().join('\n') + '\n'
+                }
+                new File(evidence, 'classpath-verification.txt').text = 'production graph unchanged; required probe classes present\n'
+            }
+        }
+    }
+}
