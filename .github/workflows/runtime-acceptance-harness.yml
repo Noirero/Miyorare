@@ -72,7 +72,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             set -euo pipefail
-            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace \\
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace \
               -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.sync.library.LibrarySyncPersistenceTest
       - name: Upload LibrarySyncPersistenceTest evidence
         if: always()
@@ -197,11 +197,11 @@ jobs:
             mkdir -p app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance
             cp /tmp/SignedUpgradeAcceptanceHarnessTest.kt app/src/androidTest/kotlin/org/koitharu/kotatsu/acceptance/
             chmod +x gradlew
-            ./gradlew -I /tmp/runtime-probe.init.gradle :app:assembleReleaseAndroidTest --no-daemon --stacktrace \\
-              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=release \\
-              -PRELEASE_STORE_FILE=../release.keystore \\
-              -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \\
-              -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \\
+            ./gradlew -I /tmp/runtime-probe.init.gradle :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
+              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=release \
+              -PRELEASE_STORE_FILE=../release.keystore \
+              -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+              -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
               -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
             test_apk="$(find app/build/outputs/apk/androidTest -type f -name '*.apk' -print -quit)"
             test -n "$test_apk"
