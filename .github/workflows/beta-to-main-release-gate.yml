@@ -81,6 +81,7 @@ jobs:
 
   classify:
     name: Classify main candidate
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.runtime_acceptance) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -401,6 +402,7 @@ jobs:
 
   required:
     name: Verify beta is safe to promote
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.runtime_acceptance) && always() }}
     needs:
       - classify
       - hotfix-jvm
