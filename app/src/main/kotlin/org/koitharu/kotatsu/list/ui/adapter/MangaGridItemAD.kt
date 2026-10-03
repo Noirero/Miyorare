@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
+import org.koitharu.kotatsu.core.ui.MiyorareViewPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
@@ -91,7 +92,7 @@ fun mangaGridItemAD(
 			.coerceIn(0, 255),
 	)
 	val modernCoverRadius = MiyorareVisualTokens.RADIUS_COVER_DP * density
-	val isModernFavouritesGrid = gridVisualScaleProvider != null && appearancePreferences.getEnumValue(
+	fun currentIsModernFavouritesGrid() = gridVisualScaleProvider != null && appearancePreferences.getEnumValue(
 		MiyorareAppearance.KEY_DESIGN_STYLE,
 		MiyorareDesignStyle.CLASSIC,
 	) == MiyorareDesignStyle.MODERN
@@ -99,33 +100,13 @@ fun mangaGridItemAD(
 		EXTRA_FAVOURITE_SPACE,
 		FavouriteSpace.NORMAL.dbValue,
 	) == FavouriteSpace.PRIVATE.dbValue
-	// Geometry must follow the Modern Normal-Favourites spec independently from whether a palette
-	// bridge is available at this exact bind moment. Palette lookup only controls colour/glass data;
-	// falling back to the legacy 2dp grid margin here made canonical cards ~130.5dp wide.
-	val isNormalModernFavourites = isModernFavouritesGrid && !isPrivateFavouritesHost
-	val normalPalette = if (isNormalModernFavourites) {
-		context.miyorareViewPaletteFromPreferences()
-	} else {
-		null
-	}
-	val normalGlass = normalPalette?.neonGlass()
-	val finalRankBorder = normalPalette
-		?.exclusiveTheme
-		?.favourites
-		?.cardBorderStops
-		?.takeIf { it.size >= 2 }
-		?.toIntArray()
-	val modernBorderTint = ColorStateList.valueOf(modernBorder)
-	val normalBorderTint = ColorStateList.valueOf(normalGlass?.borderStrong ?: modernBorder)
-	val normalBadgeTint = ColorStateList.valueOf(normalGlass?.surfaceStrong ?: modernBadge)
-	val normalLanguageTint = ColorStateList.valueOf(normalGlass?.railSurface ?: modernBadge)
-	val normalIndicatorTint = ColorStateList.valueOf(normalGlass?.surface ?: modernIndicator)
-	val modernBadgeTint = ColorStateList.valueOf(modernBadge)
-	val modernIndicatorTint = ColorStateList.valueOf(modernIndicator)
-	val onSurfaceVariantTint = ColorStateList.valueOf(onSurfaceVariant)
-	val normalContentTint = ColorStateList.valueOf(normalGlass?.content ?: onSurface)
-	val normalMutedTint = ColorStateList.valueOf(normalGlass?.contentMuted ?: onSurfaceVariant)
-	val primaryTint = ColorStateList.valueOf(primary)
+
+	data class GridAppearanceKey(
+		val isModern: Boolean,
+		val palette: MiyorareViewPalette?,
+	)
+	var lastAppearanceKey: GridAppearanceKey? = null
+	var lastAppliedGridMargin: Int? = null
 
 	val defaultCoverShape = binding.imageViewCover.shapeAppearanceModel
 	val defaultCoverStrokeColor = binding.imageViewCover.strokeColor
@@ -177,7 +158,28 @@ fun mangaGridItemAD(
 		.setAllCornerSizes(modernCoverRadius)
 		.build()
 
-	fun applyGridAppearance(isModern: Boolean) {
+	fun applyGridAppearance(key: GridAppearanceKey) {
+		val isModern = key.isModern
+		val normalPalette = key.palette.takeIf { isModern && !isPrivateFavouritesHost }
+		val normalGlass = normalPalette?.neonGlass()
+		val isNormalModernFavourites = isModern && !isPrivateFavouritesHost
+		val finalRankBorder = normalPalette
+			?.exclusiveTheme
+			?.favourites
+			?.cardBorderStops
+			?.takeIf { it.size >= 2 }
+			?.toIntArray()
+		val modernBorderTint = ColorStateList.valueOf(modernBorder)
+		val normalBorderTint = ColorStateList.valueOf(normalGlass?.borderStrong ?: modernBorder)
+		val normalBadgeTint = ColorStateList.valueOf(normalGlass?.surfaceStrong ?: modernBadge)
+		val normalLanguageTint = ColorStateList.valueOf(normalGlass?.railSurface ?: modernBadge)
+		val normalIndicatorTint = ColorStateList.valueOf(normalGlass?.surface ?: modernIndicator)
+		val modernBadgeTint = ColorStateList.valueOf(modernBadge)
+		val modernIndicatorTint = ColorStateList.valueOf(modernIndicator)
+		val onSurfaceVariantTint = ColorStateList.valueOf(onSurfaceVariant)
+		val normalContentTint = ColorStateList.valueOf(normalGlass?.content ?: onSurface)
+		val normalMutedTint = ColorStateList.valueOf(normalGlass?.contentMuted ?: onSurfaceVariant)
+		val primaryTint = ColorStateList.valueOf(primary)
 		binding.imageViewCover.setAspectRatioOverride(
 			MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO.takeIf { isNormalModernFavourites },
 		)
@@ -307,9 +309,22 @@ fun mangaGridItemAD(
 		}
 	}
 
+	if (context.miyorareViewPaletteFromPreferences() != null && !isPrivateFavouritesHost) {
+		binding.layoutIndicators.bringToFront()
+	}
+
 	bind { payloads ->
 		itemView.setTooltipCompat(item.getSummary(context))
-		applyGridAppearance(isModernFavouritesGrid)
+		val isModernFavouritesGrid = currentIsModernFavouritesGrid()
+		val appearanceKey = GridAppearanceKey(
+			isModern = isModernFavouritesGrid,
+			palette = context.miyorareViewPaletteFromPreferences().takeIf { isModernFavouritesGrid },
+		)
+		if (lastAppearanceKey != appearanceKey) {
+			applyGridAppearance(appearanceKey)
+			lastAppearanceKey = appearanceKey
+		}
+		val isNormalModernFavourites = isModernFavouritesGrid && !isPrivateFavouritesHost
 		val baseMargin = if (item.isGridSpacingIncreased) gridMarginIncreased else gridMargin
 		val styledBaseMargin = if (isNormalModernFavourites) {
 			val marginDp = if (item.isGridSpacingIncreased) {
@@ -325,14 +340,17 @@ fun mangaGridItemAD(
 		val initialMargin = visualScaleProvider?.invoke()?.let { scale ->
 			resolveFixedGridMargin(itemView, styledBaseMargin, scale)
 		} ?: styledBaseMargin
-		applyGridSizing(initialMargin)
+		applyGridSizing(initialMargin, isNormalModernFavourites)
+		lastAppliedGridMargin = initialMargin
 		if (visualScaleProvider != null) {
 			val boundId = item.id
 			itemView.doOnLayout {
 				if (item.id != boundId) return@doOnLayout
-				applyGridSizing(
-					resolveFixedGridMargin(itemView, styledBaseMargin, visualScaleProvider.invoke()),
-				)
+				val resolvedMargin = resolveFixedGridMargin(itemView, styledBaseMargin, visualScaleProvider.invoke())
+				if (lastAppliedGridMargin != resolvedMargin) {
+					applyGridSizing(resolvedMargin, isNormalModernFavourites)
+					lastAppliedGridMargin = resolvedMargin
+				}
 			}
 		}
 
@@ -346,11 +364,6 @@ fun mangaGridItemAD(
 		binding.imageViewPin.isVisible = item.isPinned
 		binding.textViewLanguage.text = item.languageLabel
 		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank()
-		if (normalGlass != null) {
-			// Keep enabled language badges above the cover/scrim stack. Visibility still follows the
-			// existing user preference via item.languageLabel; this is presentation-only.
-			binding.layoutIndicators.bringToFront()
-		}
 		binding.imageViewContinue.isVisible = item.showContinueReading
 		if (item.showContinueReading) {
 			binding.imageViewContinue.setOnClickListener { view ->
