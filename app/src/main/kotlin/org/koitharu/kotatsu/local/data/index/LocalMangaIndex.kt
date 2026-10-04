@@ -532,8 +532,9 @@ class LocalMangaIndex @Inject constructor(
 		private const val KEY_VERSION = "ver"
 		private const val KEY_ALIAS_PREFIX = "download_alias_"
 		private const val INDEX_QUERY_CHUNK_SIZE = 500
-		// Scanner semantics changed to recognize standalone PDF files as local manga.
-		// Bump the persisted index version so existing installs rebuild once and pick them up.
-		private const val VERSION = 3
+		// Scanner semantics changed: Favorites/Local now requires a complete physical shelf snapshot, including
+		// sidecar-free supported containers. Rebuild existing installs once so stale v3 indexes cannot make
+		// opening Details the accidental discovery trigger.
+		private const val VERSION = 4
 	}
 }
