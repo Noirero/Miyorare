@@ -370,6 +370,9 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 				if (collection == activeCollection) return@setOnMenuItemClickListener true
 				if (activeCollection == LibraryCollection.FAVOURITES) rememberCurrentCategory()
 				activeCollection = collection
+				if (collection == LibraryCollection.FAVOURITES) {
+					pendingCategoryRestore = contentTypeStore.selectedType.value
+				}
 				updateCollectionSelector()
 				viewLifecycleOwner.lifecycleScope.launch {
 					pagerAdapter?.emit(categoriesForCollection(allCategories))
