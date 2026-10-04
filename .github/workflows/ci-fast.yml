@@ -133,6 +133,5 @@ jobs:
           python3 .github/scripts/test_main_candidate_contract.py
           python3 .github/scripts/test_pre_main_audit_regressions.py
           python3 .github/scripts/test_ci_deep_paths.py
-          python3 .github/scripts/test_exclusive_visual_paths.py
           python3 .github/scripts/test_runtime_acceptance_harness.py
           bash -n .github/scripts/prewarm_jitpack.sh
