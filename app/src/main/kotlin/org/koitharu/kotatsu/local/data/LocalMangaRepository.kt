@@ -170,6 +170,10 @@ class LocalMangaRepository @Inject constructor(
 		return list
 	}
 
+	/** Exact Local identity lookup for navigation compatibility. Never title-matches or scans storage. */
+	suspend fun findLocalMangaById(mangaId: Long, withDetails: Boolean): LocalManga? =
+		localMangaIndex.get(mangaId, withDetails)
+
 	override suspend fun getDetails(manga: Manga): Manga = when {
 		!manga.isLocal -> requireNotNull(findSavedManga(manga, withDetails = true)?.manga) { "Manga is not local or saved" }
 		else -> LocalMangaParser(manga.url.toUri()).getManga(withDetails = true).manga
