@@ -33,7 +33,10 @@ import com.google.android.material.search.SearchBar
 import com.google.android.material.search.SearchView
 import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -94,6 +97,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var isActionModeActive = false
 	private var displayedContentType: FavouriteContentType? = null
 	private var pendingCategoryRestore: FavouriteContentType? = null
+	private var activeCollection = LibraryCollection.FAVOURITES
+	private var allCategories: List<FavouriteTabModel> = emptyList()
 
 	private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
 		override fun onPageSelected(position: Int) {
@@ -145,6 +150,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			),
 		).attach()
 		binding.buttonCategoryPicker.setOnClickListener { showCategoryPicker() }
+		binding.buttonCollectionSelector.setOnClickListener { showCollectionSelector() }
 		setupPrivateHub(binding)
 		binding.stubEmpty.setOnInflateListener(this)
 		binding.toggleContentType.addOnButtonCheckedListener { _, checkedId, isChecked ->
@@ -164,7 +170,10 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			installFavouriteSearchHandler()
 		}
 		actionModeDelegate.addListener(this)
-		viewModel.categories.observe(viewLifecycleOwner, adapter)
+		viewModel.categories.observe(viewLifecycleOwner, FlowCollector { value ->
+			allCategories = value
+			adapter.emit(categoriesForCollection(value))
+		})
 		viewModel.isEmpty.observe(viewLifecycleOwner, ::onEmptyStateChanged)
 		contentTypeStore.selectedType.observe(viewLifecycleOwner, ::onContentTypeChanged)
 		displayPreferences.state.observe(viewLifecycleOwner) {
@@ -227,6 +236,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		searchBackCallback = null
 		pagerAdapter = null
 		categories = emptyList()
+		allCategories = emptyList()
 		isActionModeActive = false
 		searchScopeActive.value = false
 		detachTabsFromAppBar()
@@ -321,7 +331,61 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		if (!isHidden) {
 			activity?.findViewById<SearchBar>(R.id.search_bar)?.hint = hint
 		}
+		if (type != FavouriteContentType.MANGA && activeCollection != LibraryCollection.FAVOURITES) {
+			activeCollection = LibraryCollection.FAVOURITES
+			viewLifecycleOwner.lifecycleScope.launch { pagerAdapter?.emit(categoriesForCollection(allCategories)) }
+		}
+		updateCollectionSelector()
 		applyCategoryNavigation(displayPreferences.current(type))
+	}
+
+	private fun categoriesForCollection(items: List<FavouriteTabModel>): List<FavouriteTabModel> {
+		if (viewModel.favouriteSpace != FavouriteSpace.NORMAL ||
+			contentTypeStore.selectedType.value != FavouriteContentType.MANGA
+		) return items
+		return when (activeCollection) {
+			LibraryCollection.FAVOURITES -> items.filterNot {
+				it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID || it.id == LOCAL_FAVOURITES_CATEGORY_ID
+			}
+			LibraryCollection.DOWNLOADED -> items.filter { it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID }
+			LibraryCollection.LOCAL -> items.filter { it.id == LOCAL_FAVOURITES_CATEGORY_ID }
+		}
+	}
+
+	private fun showCollectionSelector() {
+		if (viewModel.favouriteSpace != FavouriteSpace.NORMAL ||
+			contentTypeStore.selectedType.value != FavouriteContentType.MANGA
+		) return
+		val binding = viewBinding ?: return
+		PopupMenu(requireContext(), binding.buttonCollectionSelector).apply {
+			LibraryCollection.entries.forEachIndexed { index, collection ->
+				menu.add(Menu.NONE, MENU_COLLECTION_ID_OFFSET + index, index, collection.titleRes).apply {
+					isCheckable = true
+					isChecked = collection == activeCollection
+				}
+			}
+			setOnMenuItemClickListener { item ->
+				val collection = LibraryCollection.entries.getOrNull(item.itemId - MENU_COLLECTION_ID_OFFSET)
+					?: return@setOnMenuItemClickListener false
+				if (collection == activeCollection) return@setOnMenuItemClickListener true
+				if (activeCollection == LibraryCollection.FAVOURITES) rememberCurrentCategory()
+				activeCollection = collection
+				updateCollectionSelector()
+				viewLifecycleOwner.lifecycleScope.launch {
+					pagerAdapter?.emit(categoriesForCollection(allCategories))
+				}
+				true
+			}
+			show()
+		}
+	}
+
+	private fun updateCollectionSelector() {
+		val binding = viewBinding ?: return
+		val available = viewModel.favouriteSpace == FavouriteSpace.NORMAL &&
+			contentTypeStore.selectedType.value == FavouriteContentType.MANGA
+		binding.buttonCollectionSelector.isVisible = available
+		if (available) binding.buttonCollectionSelector.setText(activeCollection.titleRes)
 	}
 
 	private fun onCategoriesCommitted(value: List<FavouriteTabModel>) {
@@ -367,8 +431,9 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		val hasMultipleCategories = categories.size > 1
 		// Category navigation is a shared Favourites capability. Private obeys the same user preference
 		// as Normal; only the data source and privacy boundary differ.
-		binding.tabs.isVisible = hasMultipleCategories && !isEmptyState && options.showCategoryTabs
-		binding.buttonCategoryPicker.isVisible = !isEmptyState && hasCategories && !options.showCategoryTabs
+		val favouritesCollection = activeCollection == LibraryCollection.FAVOURITES || viewModel.favouriteSpace != FavouriteSpace.NORMAL
+		binding.tabs.isVisible = favouritesCollection && hasMultipleCategories && !isEmptyState && options.showCategoryTabs
+		binding.buttonCategoryPicker.isVisible = favouritesCollection && !isEmptyState && hasCategories && !options.showCategoryTabs
 		for (index in 0 until binding.tabs.tabCount) {
 			val item = categories.getOrNull(index) ?: continue
 			val tab = binding.tabs.getTabAt(index) ?: continue
@@ -851,6 +916,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		private const val STATE_SEARCH_QUERY = "favourites_search_query"
 		private const val MAX_CATEGORY_BADGE_COUNT = 99_999
 		private const val MENU_CATEGORY_ID_OFFSET = 1
+		private const val MENU_COLLECTION_ID_OFFSET = 10_000
 		private const val DEFAULT_APP_BAR_SCROLL_FLAGS = AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL or
 			AppBarLayout.LayoutParams.SCROLL_FLAG_ENTER_ALWAYS or AppBarLayout.LayoutParams.SCROLL_FLAG_SNAP
 		internal val searchScopeActive = MutableStateFlow(false)
