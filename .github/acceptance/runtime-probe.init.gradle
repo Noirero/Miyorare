@@ -117,7 +117,7 @@ gradle.projectsEvaluated {
                     sdkEvidence.append("${artifact.absolutePath}\n")
                     ['FingerprintManager', 'FingerprintManager$AuthenticationCallback',
                      'FingerprintManager$AuthenticationResult', 'FingerprintManager$CryptoObject'].each { name ->
-                        def entry = "android/hardware/fingerprint/$name.class"
+                        def entry = "android/hardware/fingerprint/${name}.class"
                         sdkEvidence.append("  $entry ${containsClass(artifact, entry) ? 'PRESENT' : 'ABSENT'}\n")
                     }
                 }
