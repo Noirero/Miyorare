@@ -75,7 +75,16 @@ class DetailsLoadUseCase @Inject constructor(
 		val resolvedIntentManga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
 			"Cannot resolve intent $intent"
 		}
-		val manga = downloadedMangaResolver.resolveCanonicalManga(resolvedIntentManga)
+		// A legacy Favorite may carry a stale/non-Local source even though the same id is backed by a
+		// physical Local container. Resolve that exact Local identity before canonicalizing downloads;
+		// otherwise Details can route the stale source through EmptyMangaRepository and report
+		// "This manga source is not supported" despite the Local manga still existing.
+		val localIdentity = localMangaRepository.findSavedMangaById(resolvedIntentManga.id, withDetails = true)
+		val manga = if (localIdentity != null && localIdentity.manga.isLocal) {
+			localIdentity.manga
+		} else {
+			downloadedMangaResolver.resolveCanonicalManga(resolvedIntentManga)
+		}
 		val override = mangaDataRepository.getOverride(manga.id)
 		if (manga.isLocal) {
 			// Local is authoritative. Do not replace a filesystem-backed title with its historical
