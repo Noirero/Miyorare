@@ -123,12 +123,12 @@ class LocalFavouritesListViewModel @Inject constructor(
 				EmptyState(
 					icon = R.drawable.ic_empty_favourites,
 					textPrimary = if (query.isBlank()) {
-						R.string.text_empty_holder_primary
+						R.string.local_collection_empty_title
 					} else {
 						R.string.nothing_found
 					},
 					textSecondary = if (query.isBlank()) {
-						R.string.favourites_category_empty
+						R.string.local_collection_empty_message
 					} else {
 						R.string.text_empty_holder_secondary_filtered
 					},
