@@ -70,6 +70,44 @@ class RoutingTest(unittest.TestCase):
             self.assertTrue(route.state and route.render and route.backup, path)
             self.assertFalse(route.jvm, path)
 
+    def test_unrelated_library_sync_strings_skip_render_matrix(self):
+        fixtures = {
+            'app/src/main/res/values/strings_library_sync.xml': (
+                '<resources><string name="library_sync_manga">Manga</string><string name="library_sync_blocked">Integration unavailable</string></resources>',
+                '<resources><string name="library_sync_manga">Manga (Beta)</string><string name="library_sync_blocked">In development</string></resources>',
+            ),
+            'app/src/main/res/values-in/strings_library_sync.xml': (
+                '<resources><string name="library_sync_manga">Manga</string><string name="library_sync_blocked">Integrasi belum tersedia</string></resources>',
+                '<resources><string name="library_sync_manga">Manga (Beta)</string><string name="library_sync_blocked">Dalam pengembangan</string></resources>',
+            ),
+        }
+        self.assertEqual(policy.Route(), policy.route_paths(list(fixtures), fixtures))
+
+    def test_referenced_or_uncertain_resources_keep_render_matrix(self):
+        path = 'app/src/main/res/values/strings.xml'
+        before = '<resources><string name="phase10_probe">Before</string></resources>'
+        after = '<resources><string name="phase10_probe">After</string></resources>'
+        consumer = ROOT / 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/Phase10ResourceRoutingProbe.kt'
+        consumer.write_text('val probe = R.string.phase10_probe\n')
+        try:
+            self.assertTrue(policy.route_paths([path], {path: (before, after)}).render)
+        finally:
+            consumer.unlink()
+        for bad_after in (
+            '<resources><color name="phase10_color">#ffffff</color></resources>',
+            '<resources><string name="broken">',
+        ):
+            self.assertTrue(policy.route_paths([path], {path: (before, bad_after)}).render)
+
+    def test_mixed_library_strings_cannot_hide_real_render_input(self):
+        path = 'app/src/main/res/values/strings_library_sync.xml'
+        sources = {path: (
+            '<resources><string name="library_sync_manga">Manga</string></resources>',
+            '<resources><string name="library_sync_manga">Manga (Beta)</string></resources>',
+        )}
+        route = policy.route_paths([path, policy.PREFIX + 'stats/ui/StatsScreen.kt'], sources)
+        self.assertTrue(route.render)
+
     def test_render_host_and_assets_keep_all_matrix_cases(self):
         for path in ('stats/ui/StatsScreen.kt', 'stats/ui/StatsActivity.kt', 'stats/ui/ReaderJourneyFragment.kt'):
             route = policy.route_paths([policy.PREFIX + path])
