@@ -410,7 +410,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private fun isCategoryListForType(
 		items: List<FavouriteTabModel>,
 		type: FavouriteContentType,
-	): Boolean = items.any { it.id == LOCAL_FAVOURITES_CATEGORY_ID } == (type == FavouriteContentType.MANGA)
+	): Boolean = type == contentTypeStore.selectedType.value && items.isNotEmpty()
 
 	private fun onEmptyStateChanged(isEmpty: Boolean) {
 		isEmptyState = isEmpty
@@ -736,6 +736,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	private fun rememberCurrentCategory() {
+		if (viewModel.favouriteSpace == FavouriteSpace.NORMAL && activeCollection != LibraryCollection.FAVOURITES) return
 		val type = displayedContentType ?: return
 		val category = currentCategory() ?: return
 		contentTypeStore.setLastCategoryId(type, category.id)
