@@ -1212,12 +1212,20 @@ class FavouritesListViewModel @Inject constructor(
 			actionStringRes = R.string.reset_filter,
 		)
 	} else {
-		EmptyState(
-			icon = R.drawable.ic_empty_favourites,
-			textPrimary = R.string.text_empty_holder_primary,
-			textSecondary = if (categoryId == NO_ID) R.string.you_have_not_favourites_yet else R.string.favourites_category_empty,
-			actionStringRes = 0,
-		)
+		when (categoryId) {
+			DOWNLOADED_FAVOURITES_CATEGORY_ID -> EmptyState(
+				icon = R.drawable.ic_empty_favourites,
+				textPrimary = R.string.downloads_collection_empty_title,
+				textSecondary = R.string.downloads_collection_empty_message,
+				actionStringRes = 0,
+			)
+			else -> EmptyState(
+				icon = R.drawable.ic_empty_favourites,
+				textPrimary = R.string.text_empty_holder_primary,
+				textSecondary = if (categoryId == NO_ID) R.string.you_have_not_favourites_yet else R.string.favourites_category_empty,
+				actionStringRes = 0,
+			)
+		}
 	}
 
 	private data class SimilarTitleScanState(
