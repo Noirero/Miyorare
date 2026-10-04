@@ -75,9 +75,10 @@ abstract class MangaListViewModel(
 		merge(
 			mangaDataRepository.observeOverridesTrigger(emitInitialState = true),
 			mangaDataRepository.observeFavoritesTrigger(emitInitialState = true),
-			// A concrete item is handled by Details/Downloaded observers. Only broad invalidations
-			// need to remap every generic list.
-			localStorageChanges.filter { it == null }.onStart { emit(null) },
+			// Completed downloads emit a concrete LocalManga. Generic grids also need that event so
+			// downloaded badges on already-visible covers are remapped immediately; otherwise the badge
+			// can remain stale until opening Details causes another state refresh.
+			localStorageChanges.onStart { emit(null) },
 		),
 		settings.observeChanges().filter { key ->
 			key == AppSettings.KEY_PROGRESS_INDICATORS
