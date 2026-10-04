@@ -63,7 +63,7 @@ fun MangaDetails.mapChapters(
 				isCurrent = isCurrent,
 				isUnread = readOverride?.not() ?: (isUnread && !isCurrent),
 				isNew = !isCurrent && isUnread && result.size >= newFrom,
-				isDownloaded = local != null,
+				isDownloaded = isLocal || local != null,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
 			)
@@ -79,7 +79,7 @@ fun MangaDetails.mapChapters(
 				isCurrent = isCurrent,
 				isUnread = readOverrides[chapter.id]?.not() ?: (isUnread && !isCurrent),
 				isNew = false,
-				isDownloaded = !isLocal,
+				isDownloaded = true,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
 			)

@@ -72,6 +72,7 @@ class LocalMangaRepository @Inject constructor(
 	private val favouritesRepository: FavouritesRepository,
 	private val downloadDestinationStore: DownloadDestinationStore,
 	private val favouriteDownloadOwnershipIndex: FavouriteDownloadOwnershipIndex,
+	private val smartLocalLibrary: org.koitharu.kotatsu.local.library.SmartLocalLibrary,
 ) : MangaRepository {
 
 	@Volatile
@@ -102,9 +103,7 @@ class LocalMangaRepository @Inject constructor(
 		}
 
 	override suspend fun getFilterOptions() = MangaListFilterOptions(
-		availableTags = localMangaIndex.getAvailableTags(
-			skipNsfw = settings.isNsfwContentDisabled,
-		).mapToSet { MangaTag(title = it, key = it, source = source) },
+		availableTags = emptySet(),
 		availableContentRating = if (!settings.isNsfwContentDisabled) {
 			EnumSet.of(ContentRating.SAFE, ContentRating.ADULT)
 		} else {
@@ -171,15 +170,21 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	/** Exact Local identity lookup for navigation compatibility. Never title-matches or scans storage. */
-	suspend fun findLocalMangaById(mangaId: Long, withDetails: Boolean): LocalManga? =
-		localMangaIndex.get(mangaId, withDetails)
+	suspend fun findLocalMangaById(mangaId: Long, withDetails: Boolean): Manga? =
+        smartLocalLibrary.book(mangaId)?.toManga(smartLocalLibrary.showExtensions, withDetails)
+            ?: localMangaIndex.get(mangaId, withDetails)?.manga
 
 	override suspend fun getDetails(manga: Manga): Manga = when {
+        manga.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME ->
+            requireNotNull(smartLocalLibrary.details(manga.id)) { "Local manga is no longer indexed" }
 		!manga.isLocal -> requireNotNull(findSavedManga(manga, withDetails = true)?.manga) { "Manga is not local or saved" }
 		else -> LocalMangaParser(manga.url.toUri()).getManga(withDetails = true).manga
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+        if (chapter.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME) {
+            return smartLocalLibrary.pages(chapter)
+        }
 		val componentUrls = LegacySplitChapterCompat.componentUrls(chapter.url)
 		if (componentUrls != null) {
 			val pages = ArrayList<MangaPage>()
@@ -192,7 +197,16 @@ class LocalMangaRepository @Inject constructor(
 		return LocalMangaParser(chapter.url.toUri()).getPages(chapter)
 	}
 
+    override suspend fun getChapterHtml(chapter: MangaChapter): String? =
+        if (chapter.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME) smartLocalLibrary.chapterHtml(chapter) else null
+
+    suspend fun getLocalChapterImage(url: String, image: String): ByteArray? = smartLocalLibrary.chapterImage(url, image)
+
+
 	suspend fun delete(manga: Manga): Boolean {
+        if (manga.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME) {
+            smartLocalLibrary.deleteFromDevice(setOf(manga.id)); return true
+        }
 		val file = manga.url.toUri().toFile()
 		val result = file.deleteAwait()
 		if (result) {
@@ -206,6 +220,10 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	suspend fun deleteChapters(manga: Manga, ids: Set<Long>) = lock.withLock(manga) {
+        if (manga.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME) {
+            smartLocalLibrary.deleteChapters(manga.id, ids)
+            return@withLock
+        }
 		val subject = if (manga.isLocal) manga else checkNotNull(findSavedManga(manga, withDetails = true)) {
 			"Manga is not stored on local storage"
 		}.manga
@@ -250,6 +268,7 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	suspend fun getRemoteManga(localManga: Manga): Manga? = runCatchingCancellable {
+        if (localManga.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME) return@runCatchingCancellable null
 		LocalMangaParser(localManga.url.toUri()).getMangaInfo()?.takeUnless { it.isLocal }
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 

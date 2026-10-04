@@ -25,6 +25,11 @@ class DeleteLocalMangaUseCase @Inject constructor(
 ) {
 
 	suspend operator fun invoke(manga: Manga) {
+        if (manga.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME) {
+            localMangaRepository.delete(manga) || throw IOException("Unable to delete local documents")
+            historyRepository.deleteOrSwap(manga, null)
+            return
+        }
 		val victim = if (manga.isLocal) manga else localMangaRepository.findSavedManga(manga)?.manga
 		checkNotNull(victim) { "Cannot find saved manga for ${manga.title}" }
 		val victimFile = victim.url.toUri().toFile()
@@ -51,8 +56,11 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	 */
 	suspend operator fun invoke(ids: Set<Long>): Int {
 		if (ids.isEmpty()) return 0
-		val targets = localMangaIndex.getDeleteTargets(ids)
+		val managed = ids.mapNotNull { id -> localMangaRepository.findLocalMangaById(id, false)
+            ?.takeIf { it.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME } }
+        val targets = localMangaIndex.getDeleteTargets(ids - managed.mapTo(HashSet()) { it.id })
 		var removed = 0
+        for (manga in managed) { invoke(manga); removed++ }
 		for (target in targets) {
 			invoke(target.manga)
 			removed++

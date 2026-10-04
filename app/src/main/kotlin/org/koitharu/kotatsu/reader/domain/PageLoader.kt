@@ -383,6 +383,11 @@ class PageLoader @Inject constructor(
 				}
 			}
 
+            uri.scheme == android.content.ContentResolver.SCHEME_CONTENT -> runInterruptible(Dispatchers.IO) {
+                val stream = context.contentResolver.openInputStream(uri) ?: error("Local image is unavailable")
+                stream.use { cache.set(pageUrl, it.source(), null) }.toUri()
+            }
+
 			else -> {
 				if (isPrefetch) {
 					downloadSlowdownDispatcher.delay(page.source)

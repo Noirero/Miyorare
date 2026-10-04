@@ -917,7 +917,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			archives.values.forEach(ZipFile::close)
 			throw error
 		}
-		val repository = if (manga.source.isNovelSource) mangaRepositoryFactory.create(manga.source) else null
+		val repository = if (manga.source.isNovelSource || manga.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME)
+            mangaRepositoryFactory.create(manga.source) else null
 		return PreparedBook(items, HybridContentSource(archives, repository, source))
 	}
 
@@ -2182,7 +2183,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		private val repository: MangaRepository?,
 		chapters: List<MangaChapter>,
 	) : ChapterContent {
-		val hasRemote: Boolean get() = repository != null
+		val hasRemote: Boolean get() = repository?.source?.isNovelSource == true
 		private val lock = Any()
 		private val byUrl = chapters.associateBy { it.url }
 		override fun loadHtml(url: String): String {
@@ -2214,6 +2215,9 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				}
 			}
 			if (repository == null) return null
+            if (repository is org.koitharu.kotatsu.local.data.LocalMangaRepository) {
+                return runBlocking { repository.getLocalChapterImage(chapterUrl, source) }
+            }
 			return when (val novelSource = repository.source.unwrap()) {
 				is LnMangaSource -> novelSource.absoluteUrl(source)
 				is MihonMangaSource -> (novelSource.catalogueSource as? HttpSource)?.let { resolveAgainst(it.baseUrl, source) }

@@ -28,7 +28,8 @@
 		android:id="@+id/action_directories"
 		android:icon="@drawable/ic_folder_file"
 		android:orderInCategory="80"
-		android:title="@string/directories"
+		android:title="@string/smart_local_add_folder"
 		app:showAsAction="never" />
 
+<item android:id="@+id/action_smart_local_restore" android:title="@string/smart_local_restore" app:showAsAction="never" />
 </menu>
