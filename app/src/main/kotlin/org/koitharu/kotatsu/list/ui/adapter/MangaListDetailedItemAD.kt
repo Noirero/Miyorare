@@ -32,6 +32,7 @@ fun mangaListDetailedItemAD(
 		val secondary = buildList {
 			item.manga.authors.joinToString(", ").takeIf { it.isNotBlank() }?.let(::add)
 			item.languageLabel?.let(::add)
+			if (item.isAvailableInLocal) add(context.getString(R.string.available_in_local))
 			if (item.isLocalSource) add(context.getString(R.string.local_storage))
 		}
 		binding.textViewAuthor.textAndVisible = secondary.joinToString(" • ")

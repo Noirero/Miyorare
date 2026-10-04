@@ -24,6 +24,7 @@ import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
@@ -35,8 +36,9 @@ import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableStateFlow
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -99,6 +101,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var pendingCategoryRestore: FavouriteContentType? = null
 	private var activeCollection = LibraryCollection.FAVOURITES
 	private var allCategories: List<FavouriteTabModel> = emptyList()
+	private val categoryRenderMutex = Mutex()
 
 	private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
 		override fun onPageSelected(position: Int) {
@@ -123,6 +126,9 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		val shouldRestoreInlineSearch = savedInstanceState?.getBoolean(STATE_INLINE_SEARCH_ACTIVE)
 			?: searchSessionActive.value
 		savedInstanceState?.getString(STATE_SEARCH_QUERY)?.let { searchQuery.value = it }
+		savedInstanceState?.getString(STATE_COLLECTION)?.let { name ->
+			activeCollection = LibraryCollection.entries.firstOrNull { it.name == name } ?: LibraryCollection.FAVOURITES
+		}
 		searchScopeActive.value = !isHidden
 		val adapter = FavouritesContainerAdapter(
 			fragment = this,
@@ -172,9 +178,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		actionModeDelegate.addListener(this)
 		viewModel.categories.observe(viewLifecycleOwner, FlowCollector { value ->
 			allCategories = value
-			adapter.emit(categoriesForCollection(value))
+			renderCategories()
 		})
-		viewModel.isEmpty.observe(viewLifecycleOwner, ::onEmptyStateChanged)
 		contentTypeStore.selectedType.observe(viewLifecycleOwner, ::onContentTypeChanged)
 		displayPreferences.state.observe(viewLifecycleOwner) {
 			applyCategoryNavigation(displayPreferences.current(contentTypeStore.selectedType.value))
@@ -221,6 +226,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	override fun onSaveInstanceState(outState: Bundle) {
+		outState.putString(STATE_COLLECTION, activeCollection.name)
 		outState.putBoolean(STATE_INLINE_SEARCH_ACTIVE, searchSessionActive.value)
 		outState.putString(STATE_SEARCH_QUERY, searchQuery.value)
 		super.onSaveInstanceState(outState)
@@ -278,6 +284,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		isActionModeActive = true
 		applyCategoryInteraction()
 		viewBinding?.run {
+			buttonCollectionSelector.isEnabled = false
 			buttonContentManga.isEnabled = false
 			buttonContentNovel.isEnabled = false
 		}
@@ -287,6 +294,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		isActionModeActive = false
 		applyCategoryInteraction()
 		viewBinding?.run {
+			buttonCollectionSelector.isEnabled = true
 			buttonContentManga.isEnabled = true
 			buttonContentNovel.isEnabled = true
 		}
@@ -333,23 +341,22 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		}
 		if (type != FavouriteContentType.MANGA && activeCollection != LibraryCollection.FAVOURITES) {
 			activeCollection = LibraryCollection.FAVOURITES
-			viewLifecycleOwner.lifecycleScope.launch { pagerAdapter?.emit(categoriesForCollection(allCategories)) }
 		}
 		updateCollectionSelector()
 		applyCategoryNavigation(displayPreferences.current(type))
+	}
+
+	private suspend fun renderCategories() = categoryRenderMutex.withLock {
+		if (isCategoryListForType(allCategories, contentTypeStore.selectedType.value)) {
+			pagerAdapter?.emit(categoriesForCollection(allCategories))
+		}
 	}
 
 	private fun categoriesForCollection(items: List<FavouriteTabModel>): List<FavouriteTabModel> {
 		if (viewModel.favouriteSpace != FavouriteSpace.NORMAL ||
 			contentTypeStore.selectedType.value != FavouriteContentType.MANGA
 		) return items
-		return when (activeCollection) {
-			LibraryCollection.FAVOURITES -> items.filterNot {
-				it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID || it.id == LOCAL_FAVOURITES_CATEGORY_ID
-			}
-			LibraryCollection.DOWNLOADED -> items.filter { it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID }
-			LibraryCollection.LOCAL -> items.filter { it.id == LOCAL_FAVOURITES_CATEGORY_ID }
-		}
+		return activeCollection.categories(items)
 	}
 
 	private fun showCollectionSelector() {
@@ -375,7 +382,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 				}
 				updateCollectionSelector()
 				viewLifecycleOwner.lifecycleScope.launch {
-					pagerAdapter?.emit(categoriesForCollection(allCategories))
+					renderCategories()
 				}
 				true
 			}
@@ -392,11 +399,19 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	private fun onCategoriesCommitted(value: List<FavouriteTabModel>) {
+		// A collection/content-type switch can happen while DiffUtil commits the previous list.
+		// Only the currently requested structure may restore or persist the Favourite subtab.
+		if (!isCategoryListForType(allCategories, contentTypeStore.selectedType.value) ||
+			value.map { it.id } != categoriesForCollection(allCategories).map { it.id }
+		) return
 		categories = value
 		activity?.invalidateOptionsMenu()
 		val binding = viewBinding ?: return
 		val restoreType = pendingCategoryRestore
-		if (restoreType != null && isCategoryListForType(value, restoreType)) {
+		if (restoreType != null &&
+			(viewModel.favouriteSpace != FavouriteSpace.NORMAL || activeCollection == LibraryCollection.FAVOURITES) &&
+			isCategoryListForType(allCategories, restoreType)
+		) {
 			val categoryId = contentTypeStore.getLastCategoryId(restoreType)
 			val target = value.indexOfFirst { it.id == categoryId }.takeIf { it >= 0 } ?: 0
 			if (value.isNotEmpty()) {
@@ -407,13 +422,15 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		} else if (restoreType == null && value.isNotEmpty() && binding.pager.currentItem >= value.size) {
 			binding.pager.setCurrentItem(0, false)
 		}
-		applyCategoryNavigation(displayPreferences.current(contentTypeStore.selectedType.value))
+		onEmptyStateChanged(value.isEmpty())
 	}
 
 	private fun isCategoryListForType(
 		items: List<FavouriteTabModel>,
 		type: FavouriteContentType,
-	): Boolean = type == contentTypeStore.selectedType.value && items.isNotEmpty()
+	): Boolean = type == contentTypeStore.selectedType.value &&
+		(items.isEmpty() || viewModel.favouriteSpace != FavouriteSpace.NORMAL ||
+			(items.any { it.id == LOCAL_FAVOURITES_CATEGORY_ID } == (type == FavouriteContentType.MANGA)))
 
 	private fun onEmptyStateChanged(isEmpty: Boolean) {
 		isEmptyState = isEmpty
@@ -914,14 +931,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		(header.parent as? ViewGroup)?.removeView(header)
 		binding.layoutContent.addView(header, 0)
 	}
-
-	private enum class LibraryCollection(val titleRes: Int) {
-		FAVOURITES(R.string.favourites),
-		DOWNLOADED(R.string.downloaded),
-		LOCAL(R.string.local_storage),
-	}
-
 	companion object {
+		private const val STATE_COLLECTION = "library_collection"
 		private const val STATE_INLINE_SEARCH_ACTIVE = "favourites_inline_search_active"
 		private const val STATE_SEARCH_QUERY = "favourites_search_query"
 		private const val MAX_CATEGORY_BADGE_COUNT = 99_999

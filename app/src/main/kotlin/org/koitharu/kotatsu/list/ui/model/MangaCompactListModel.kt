@@ -12,5 +12,6 @@ data class MangaCompactListModel(
 	val isSaved: Boolean = false,
 	val isLocalSource: Boolean = false,
 	val languageLabel: String? = null,
+	val isAvailableInLocal: Boolean = false,
 	val showContinueReading: Boolean = false,
 ) : MangaListModel()

@@ -370,12 +370,9 @@ fun mangaGridItemAD(
 		binding.textViewTitle.isVisible = !item.isTitleHidden && !isTitleOverCover
 		binding.progressView.setProgress(item.progress, PAYLOAD_PROGRESS_CHANGED in payloads)
 		binding.imageViewPin.isVisible = item.isPinned
-		binding.textViewLanguage.text = if (item.isAvailableInLocal) {
-			context.getString(R.string.available_in_local)
-		} else {
-			item.languageLabel
-		}
-		binding.textViewLanguage.isVisible = item.isAvailableInLocal || !item.languageLabel.isNullOrBlank()
+		binding.textViewLanguage.text = item.languageLabel
+		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank()
+		binding.textViewLocalAvailability.isVisible = item.isAvailableInLocal
 		binding.imageViewContinue.isVisible = item.showContinueReading
 		if (item.showContinueReading) {
 			binding.imageViewContinue.setOnClickListener { view ->

@@ -633,9 +633,9 @@ class FavouritesListViewModel @Inject constructor(
 		val filters = systemShelfFilters(effectiveFilters.combineWithSettings().first())
 		val queryFilters = scopeDownloadStatusFilters(filters)
 		val allItems = when (categoryId) {
-			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeAll(
+			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeDownloaded(
 				order = order,
-				filterOptions = queryFilters,
+				filterOptions = filters,
 				limit = Int.MAX_VALUE,
 				space = favouriteSpace,
 			).first()
@@ -1094,9 +1094,9 @@ class FavouritesListViewModel @Inject constructor(
 		val effectivePinned = if (bottom) emptyList() else pinned.takeIfDefaultState(categoryFilters)
 		val queryOrder = if (bottom) order.type.toSortOrder(!order.isAscending) else order
 		when (categoryId) {
-			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeAll(
+			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeDownloaded(
 				queryOrder,
-				queryFilters,
+				categoryFilters,
 				effectiveLimit,
 				effectivePinned,
 				favouriteSpace,

@@ -22,6 +22,7 @@ import org.koitharu.kotatsu.list.ui.model.MangaDetailedListModel
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
+import org.koitharu.kotatsu.local.domain.LocalAvailabilityRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.tracker.domain.TrackingRepository
@@ -39,7 +40,10 @@ class MangaListMapper @Inject constructor(
 	private val localMangaIndex: LocalMangaIndex,
 	private val dataRepository: MangaDataRepository,
 	private val db: MangaDatabase,
+	private val localAvailabilityRepository: LocalAvailabilityRepository,
 ) {
+
+	fun observeLocalTitleKeys() = localAvailabilityRepository.titleKeys()
 
 	private val dict by lazy { readTagsDict(context) }
 

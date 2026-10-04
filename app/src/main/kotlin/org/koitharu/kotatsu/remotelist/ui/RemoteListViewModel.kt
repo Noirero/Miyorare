@@ -44,6 +44,7 @@ import org.koitharu.kotatsu.list.ui.model.toErrorFooter
 import org.koitharu.kotatsu.list.ui.model.toErrorState
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.local.domain.withLocalAvailability
 import org.koitharu.kotatsu.mihon.MihonFilterMapper
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.sizeOrZero
@@ -78,12 +79,17 @@ open class RemoteListViewModel @Inject constructor(
 	private var loadingJob: Job? = null
 	private var randomJob: Job? = null
 
+	private val localTitleKeys = mangaListMapper.observeLocalTitleKeys().stateIn(
+		viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptySet(),
+	)
+
 	override val content = combine(
 		mangaList.map { it?.skipNsfwIfNeeded() },
 		observeListModeWithTriggers(),
 		listError,
 		hasNextPage,
-	) { list, mode, error, hasNext ->
+		localTitleKeys,
+	) { list, mode, error, hasNext, _ ->
 		buildList(list?.size?.plus(2) ?: 2) {
 			when {
 				list.isNullOrEmpty() && error != null -> add(
@@ -194,7 +200,14 @@ open class RemoteListViewModel @Inject constructor(
 		destination: MutableCollection<in ListModel>,
 		manga: Collection<Manga>,
 		mode: ListMode
-	) = mangaListMapper.toListModelList(destination, manga, mode)
+	) {
+		val keys = if (filterCoordinator.snapshot().listFilter.query.isNullOrBlank()) {
+			emptySet()
+		} else {
+			localTitleKeys.value
+		}
+		mangaListMapper.toListModelList(manga, mode).mapTo(destination) { it.withLocalAvailability(keys) }
+	}
 
 	protected open fun getFooter(): ButtonFooter? {
 		val filter = filterCoordinator.snapshot().listFilter
