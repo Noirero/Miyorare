@@ -2,8 +2,8 @@
 <resources>
     <string name="library_sync">Library sync</string>
     <string name="library_sync_summary">Manage library sync services</string>
-    <string name="library_sync_manga">Manga</string>
-    <string name="library_sync_novel">Novel</string>
+    <string name="library_sync_manga">Manga (Beta)</string>
+    <string name="library_sync_novel">Novel (Beta)</string>
     <string name="library_sync_mangadex">MangaDex sync</string>
     <string name="library_sync_mangaupdates">MangaUpdates sync</string>
     <string name="library_sync_anilist">AniList sync</string>
@@ -11,7 +11,7 @@
     <string name="library_sync_novelupdates">NovelUpdates sync</string>
     <string name="library_sync_ranobedb">RanobeDB sync</string>
     <string name="library_sync_coming_soon">Coming soon</string>
-	<string name="library_sync_blocked">Integration unavailable</string>
+	<string name="library_sync_blocked">In development</string>
 	<string name="library_sync_loading">Loading…</string>
 	<string name="library_sync_connected">Connected</string>
 	<string name="library_sync_disconnected">Not connected</string>
