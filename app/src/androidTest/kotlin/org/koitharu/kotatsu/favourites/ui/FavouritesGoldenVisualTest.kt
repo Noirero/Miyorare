@@ -6,8 +6,9 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
-import android.view.accessibility.AccessibilityNodeInfo
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.fragment.app.Fragment
@@ -387,9 +388,24 @@ class FavouritesGoldenVisualTest {
 		instrumentation.waitForIdleSync()
 		val title = activity.getString(titleRes)
 		val nodes = instrumentation.uiAutomation.rootInActiveWindow.findAccessibilityNodeInfosByText(title)
-		val node = checkNotNull(nodes.firstOrNull { it.text?.toString() == title }) { "Missing collection option: $title" }
-		val target = if (node.isClickable) node else checkNotNull(node.parent)
-		assertTrue("Cannot select $title", target.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+		val node = checkNotNull(nodes.firstOrNull { it.isVisibleToUser && it.text?.toString() == title }) {
+			"Missing collection option: $title"
+		}
+		val bounds = Rect().also(node::getBoundsInScreen)
+		assertFalse("Empty collection option bounds: $title", bounds.isEmpty)
+		// AppCompat popup rows dispatch selection through their ListView; the text node and its
+		// immediate parent need not implement ACTION_CLICK. Tap the observed option instead.
+		val downTime = SystemClock.uptimeMillis()
+		for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+			val event = MotionEvent.obtain(
+				downTime, SystemClock.uptimeMillis(), action, bounds.exactCenterX(), bounds.exactCenterY(), 0,
+			).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+			try {
+				assertTrue("Cannot tap $title", instrumentation.uiAutomation.injectInputEvent(event, true))
+			} finally {
+				event.recycle()
+			}
+		}
 		instrumentation.waitForIdleSync()
 	}
 
