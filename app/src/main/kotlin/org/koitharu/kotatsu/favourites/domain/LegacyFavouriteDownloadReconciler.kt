@@ -44,7 +44,7 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 		if (localSnapshot.isEmpty()) return
 		val localTitles = localSnapshot.asSequence()
 			.flatMap { sequenceOf(it.manga.title) + it.manga.altTitles.asSequence() }
-			.map(String::legacyTitleKey)
+			.map { it.legacyTitleKey() }
 			.filter(String::isNotEmpty)
 			.toHashSet()
 		if (localTitles.isEmpty()) {
