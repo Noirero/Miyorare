@@ -41,10 +41,7 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 		if (prefs.getBoolean(KEY_COMPLETE, false)) return
 
 		val localSnapshot = localMangaIndex.getPersistedSnapshot()
-		if (localSnapshot.isEmpty()) {
-			prefs.edit { putBoolean(KEY_COMPLETE, true) }
-			return
-		}
+		if (localSnapshot.isEmpty()) return
 		val localTitles = localSnapshot.asSequence()
 			.flatMap { sequenceOf(it.manga.title) + it.manga.altTitles.asSequence() }
 			.map(String::legacyTitleKey)
@@ -56,6 +53,7 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 		}
 
 		val roots = localStorageManager.getReadableDirs()
+		if (roots.isEmpty()) return
 		for (candidate in favouritesRepository.getAllManga(FavouriteSpace.NORMAL)) {
 			if (candidate.isLocal || !candidate.hasLegacyTitleCandidate(localTitles)) continue
 			val remote = mangaDataRepository.findMangaById(candidate.id, withChapters = true) ?: continue
