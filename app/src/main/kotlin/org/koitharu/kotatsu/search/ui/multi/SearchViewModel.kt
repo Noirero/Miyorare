@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.dropWhile
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
@@ -32,6 +33,7 @@ import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.MangaListMapper
@@ -39,6 +41,8 @@ import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingFooter
 import org.koitharu.kotatsu.list.ui.model.LoadingState
+import org.koitharu.kotatsu.list.ui.model.MangaGridModel
+import org.koitharu.kotatsu.local.data.LocalFavouritesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.levenshteinDistance
@@ -66,6 +70,7 @@ class SearchViewModel @Inject constructor(
 	private val sourcesRepository: MangaSourcesRepository,
 	private val historyRepository: HistoryRepository,
 	private val favouritesRepository: FavouritesRepository,
+	private val localFavouritesRepository: LocalFavouritesRepository,
 	private val settings: AppSettings,
 	private val searchPreferences: SearchSourcePreferences,
 ) : BaseViewModel() {
@@ -264,6 +269,13 @@ class SearchViewModel @Inject constructor(
 			val preferred = preferredLanguagesState.value
 			val popularOrder = historyRepository.getPopularSources(POPULAR_SOURCE_LIMIT)
 				.withIndex().associate { (index, source) -> source to index }
+			localFavouritesRepository.ensureInitialized(FavouriteSpace.NORMAL)
+			val localTitleKeys = localFavouritesRepository.items(FavouriteSpace.NORMAL).first()
+				.asSequence()
+				.flatMap { manga -> sequenceOf(manga.title).plus(manga.altTitles.asSequence()) }
+				.map { it.normalizedTitleKey() }
+				.filter { it.isNotEmpty() }
+				.toHashSet()
 			val libraryIds = if (hideLibraryState.value) {
 				favouritesRepository.getAllManga().mapTo(HashSet()) { it.id }
 			} else {
@@ -306,7 +318,7 @@ class SearchViewModel @Inject constructor(
 					try {
 						semaphore.withPermit {
 							upsertResult(
-								searchSource(source, index, pinned, preferred, popularOrder, libraryIds),
+								searchSource(source, index, pinned, preferred, popularOrder, libraryIds, localTitleKeys),
 							)
 						}
 					} finally {
@@ -327,6 +339,7 @@ class SearchViewModel @Inject constructor(
 		preferred: Set<String>,
 		popularOrder: Map<MangaSource, Int>,
 		libraryIds: Set<Long>,
+		localTitleKeys: Set<String>,
 	): SearchResultsListModel = runCatchingCancellable {
 		searchHelperFactory.create(source)(query, kind)
 	}.fold(
@@ -338,6 +351,13 @@ class SearchViewModel @Inject constructor(
 				?.toList()
 				.orEmpty()
 			val list = mangaListMapper.toListModelList(manga = uniqueManga, mode = ListMode.GRID)
+				.map { model ->
+					if (model is MangaGridModel && model.manga.matchesLocalTitle(localTitleKeys)) {
+						model.copy(isAvailableInLocal = true)
+					} else {
+						model
+					}
+				}
 			SearchResultsListModel(
 				titleResId = 0,
 				source = source,
@@ -467,6 +487,14 @@ class SearchViewModel @Inject constructor(
 			if (index == -1) current + item else current.toMutableList().also { it[index] = item }
 		}
 	}
+
+	private fun Manga.matchesLocalTitle(localTitleKeys: Set<String>): Boolean =
+		title.normalizedTitleKey() in localTitleKeys ||
+			altTitles.any { it.normalizedTitleKey() in localTitleKeys }
+
+	private fun String.normalizedTitleKey(): String = trim()
+		.lowercase()
+		.replace(Regex("\\s+"), " ")
 
 	private fun Manga.dedupeKey(): Pair<Long, String> = id to title.trim().lowercase()
 }
