@@ -159,14 +159,14 @@ class LocalListViewModel @Inject constructor(
             result += ListHeader(R.string.smart_local_add_folder, R.string.add, LocalLibraryAction.AddFolder)
         }
         result += ListHeader(context.getString(R.string.smart_local_statistics, snapshot.books.size,
-            snapshot.books.sumOf { it.chapters.size }, histories.values.count { it.percent < .99f }, snapshot.books.count { it.newChapters > 0 }))
+            snapshot.books.sumOf { it.chapters.size }, histories.values.count { !org.koitharu.kotatsu.list.domain.ReadingProgress.isCompleted(it.percent) }, snapshot.books.count { it.newChapters > 0 }))
         result += ListHeader(R.string.smart_local_search_hint, R.string.filter, LocalLibraryAction.Filters)
         if (snapshot.excludedCount > 0) result += ListHeader(context.getString(R.string.smart_local_hidden_count, snapshot.excludedCount),
             R.string.smart_local_restore, LocalLibraryAction.Restore)
         if (snapshot.diagnoses.isNotEmpty()) result += ListHeader(context.getString(R.string.smart_local_review_count, snapshot.diagnoses.size),
             R.string.smart_local_inspect, snapshot.diagnoses)
         if (query.isNullOrBlank()) {
-            val reading = snapshot.books.filter { b -> histories[b.id]?.let { it.lastReaderActivityAt > 0 && it.percent < .99f } == true }
+            val reading = snapshot.books.filter { b -> histories[b.id]?.let { it.lastReaderActivityAt > 0 && !org.koitharu.kotatsu.list.domain.ReadingProgress.isCompleted(it.percent) } == true }
                 .sortedByDescending { histories[it.id]?.lastReaderActivityAt }.take(3)
             if (reading.isNotEmpty()) {
                 result += ListHeader(R.string.smart_local_continue)

@@ -141,6 +141,10 @@ public final class LocalTreeScanner {
             if (meaningful == 1 && dirs.stream().anyMatch(d -> d.kind == Kind.MANGA) && dirs.stream().noneMatch(d -> d.explicitBoundary)) t.kind = Kind.REVIEW;
             else t.kind = Kind.CONTAINER;
         }
+        // The existing Reader chooses an image or text renderer for a whole title. An
+        // unapproved mixture of EPUB and image chapters must not silently lose content.
+        long textChapters = t.chapters.stream().filter(c -> extension(c.node.name).equals("epub")).count();
+        if (textChapters > 0 && textChapters < t.chapters.size() && t.kind == Kind.MANGA) t.kind = Kind.REVIEW;
         t.explicitBoundary |= dirs.stream().anyMatch(d -> d.explicitBoundary);
         t.chapters.sort((a, b) -> NATURAL.compare(a.node.name, b.node.name));
     }
