@@ -1037,4 +1037,9 @@
     <string name="developer_preview_journey_achievement">Preview achievement</string>
     <string name="developer_preview_journey_cosmetic">Preview cosmetic unlock</string>
     <string name="developer_preview_journey_rank_up">Preview rank-up</string>
+	<string name="downloads_collection_empty_title">Belum ada manga yang diunduh</string>
+	<string name="downloads_collection_empty_message">Manga yang memiliki chapter tersimpan akan muncul di sini.</string>
+	<string name="local_collection_empty_title">Belum ada manga lokal</string>
+	<string name="local_collection_empty_message">Manga yang ditambahkan dari penyimpanan akan muncul di sini.</string>
+	<string name="available_in_local">Tersedia di Lokal</string>
 </resources>

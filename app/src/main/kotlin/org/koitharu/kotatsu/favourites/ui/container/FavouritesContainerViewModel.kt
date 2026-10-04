@@ -136,9 +136,12 @@ class FavouritesContainerViewModel @Inject constructor(
 				if (type == FavouriteContentType.NOVEL) isNovel else !isNovel
 			},
 			showAll = showAll,
-			includeDownloaded = DOWNLOADED_FAVOURITES_CATEGORY_ID !in hiddenVirtualCategoryIds,
+			// Normal manga collections are always reachable through the selector. Legacy tab-hide
+			// preferences still apply to Private/Novel tabs, but must not remove a collection page.
+			includeDownloaded = (favouriteSpace == FavouriteSpace.NORMAL && type == FavouriteContentType.MANGA) ||
+				DOWNLOADED_FAVOURITES_CATEGORY_ID !in hiddenVirtualCategoryIds,
 			includeLocal = type != FavouriteContentType.NOVEL &&
-				LOCAL_FAVOURITES_CATEGORY_ID !in hiddenVirtualCategoryIds,
+				(favouriteSpace == FavouriteSpace.NORMAL || LOCAL_FAVOURITES_CATEGORY_ID !in hiddenVirtualCategoryIds),
 			includePrivateInProgress = favouriteSpace == FavouriteSpace.PRIVATE &&
 				PRIVATE_IN_PROGRESS_CATEGORY_ID !in hiddenVirtualCategoryIds,
 			includePrivateCompleted = favouriteSpace == FavouriteSpace.PRIVATE &&

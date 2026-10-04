@@ -116,23 +116,45 @@
 
 			</LinearLayout>
 
-			<com.google.android.material.tabs.TabLayout
-				android:id="@+id/tabs"
+			<LinearLayout
+				android:id="@+id/layout_collection_tabs"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
 				android:layout_marginTop="4dp"
 				android:layout_marginBottom="2dp"
-				android:background="@null"
-				android:overScrollMode="never"
-				android:scrollbars="none"
-				app:tabGravity="start"
-				app:tabIndicatorAnimationDuration="0"
-				app:tabIndicatorColor="@android:color/transparent"
-				app:tabIndicatorHeight="0dp"
-				app:tabMode="scrollable"
-				app:tabRippleColor="?attr/colorPrimaryContainer"
-				app:tabSelectedTextColor="?attr/colorPrimary"
-				app:tabTextColor="?attr/colorOnSurfaceVariant" />
+				android:gravity="center_vertical"
+				android:orientation="horizontal">
+
+				<com.google.android.material.button.MaterialButton
+					android:id="@+id/button_collection_selector"
+					style="?attr/materialButtonOutlinedStyle"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:layout_marginStart="12dp"
+					android:minHeight="40dp"
+					android:text="@string/favourites"
+					android:textAllCaps="false"
+					app:icon="@drawable/ic_expand_more"
+					app:iconGravity="textEnd" />
+
+				<com.google.android.material.tabs.TabLayout
+					android:id="@+id/tabs"
+					android:layout_width="0dp"
+					android:layout_height="wrap_content"
+					android:layout_weight="1"
+					android:background="@null"
+					android:overScrollMode="never"
+					android:scrollbars="none"
+					app:tabGravity="start"
+					app:tabIndicatorAnimationDuration="0"
+					app:tabIndicatorColor="@android:color/transparent"
+					app:tabIndicatorHeight="0dp"
+					app:tabMode="scrollable"
+					app:tabRippleColor="?attr/colorPrimaryContainer"
+					app:tabSelectedTextColor="?attr/colorPrimary"
+					app:tabTextColor="?attr/colorOnSurfaceVariant" />
+
+			</LinearLayout>
 
 			<com.google.android.material.button.MaterialButton
 				android:id="@+id/button_category_picker"

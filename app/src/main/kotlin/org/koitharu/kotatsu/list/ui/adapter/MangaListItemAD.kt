@@ -32,6 +32,7 @@ fun mangaListItemAD(
 		val info = buildList {
 			item.subtitle.takeIf { it.isNotBlank() }?.let(::add)
 			item.languageLabel?.let(::add)
+			if (item.isAvailableInLocal) add(context.getString(R.string.available_in_local))
 			if (item.isLocalSource) add(context.getString(R.string.local_storage))
 			if (item.isSaved) add(context.getString(R.string.favourites_show_downloaded))
 		}

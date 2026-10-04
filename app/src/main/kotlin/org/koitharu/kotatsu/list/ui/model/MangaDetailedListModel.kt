@@ -19,6 +19,7 @@ data class MangaDetailedListModel(
 	val isPinned: Boolean = false,
 	val isLocalSource: Boolean = false,
 	val languageLabel: String? = null,
+	val isAvailableInLocal: Boolean = false,
 	val showContinueReading: Boolean = false,
 ) : MangaListModel() {
 
@@ -31,6 +32,7 @@ data class MangaDetailedListModel(
 			previousState.isPinned != isPinned ||
 			previousState.isLocalSource != isLocalSource ||
 			previousState.languageLabel != languageLabel ||
+			previousState.isAvailableInLocal != isAvailableInLocal ||
 			previousState.showContinueReading != showContinueReading -> PAYLOAD_ANYTHING_CHANGED
 
 		else -> super.getChangePayload(previousState)

@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
@@ -39,6 +40,7 @@ import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingFooter
 import org.koitharu.kotatsu.list.ui.model.LoadingState
+import org.koitharu.kotatsu.local.domain.withLocalAvailability
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.levenshteinDistance
@@ -111,8 +113,18 @@ class SearchViewModel @Inject constructor(
 		mode != SearchSourceMode.ALL_SOURCES || local || !hasResults || flat || hideLibrary
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
+	private val decoratedResults = combine(results, mangaListMapper.observeLocalTitleKeys()) { groups, keys ->
+		groups.map { group ->
+			if (group.titleResId == 0 && !group.source.isLocal) {
+				group.copy(list = group.list.map { it.withLocalAvailability(keys) })
+			} else {
+				group
+			}
+		}
+	}
+
 	val list: StateFlow<List<ListModel>> = combine(
-		results,
+		decoratedResults,
 		isLoading.dropWhile { !it },
 		hasResultsOnlyState,
 		flatViewState,

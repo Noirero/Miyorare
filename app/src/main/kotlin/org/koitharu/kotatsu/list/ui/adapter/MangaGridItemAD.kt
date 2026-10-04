@@ -372,6 +372,7 @@ fun mangaGridItemAD(
 		binding.imageViewPin.isVisible = item.isPinned
 		binding.textViewLanguage.text = item.languageLabel
 		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank()
+		binding.textViewLocalAvailability.isVisible = item.isAvailableInLocal
 		binding.imageViewContinue.isVisible = item.showContinueReading
 		if (item.showContinueReading) {
 			binding.imageViewContinue.setOnClickListener { view ->

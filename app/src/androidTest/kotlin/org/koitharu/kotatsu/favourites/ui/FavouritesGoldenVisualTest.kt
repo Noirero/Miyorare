@@ -6,20 +6,36 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.inspector.WindowInspector
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
+import androidx.fragment.app.Fragment
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import com.google.android.material.tabs.TabLayout
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import javax.inject.Inject
+import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -28,25 +44,43 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.MangaEntity
+import org.koitharu.kotatsu.core.db.entity.toManga
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.DownloadFormat
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
+import org.koitharu.kotatsu.core.util.ext.MimeType
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
-import org.koitharu.kotatsu.main.ui.MainActivity
+import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
+import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
+import org.koitharu.kotatsu.history.data.HistoryRepository
+import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
+import org.koitharu.kotatsu.list.ui.model.EmptyState
+import org.koitharu.kotatsu.list.ui.model.ListModel
+import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.model.TIP_UI_SCALING
-import java.io.File
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
-import javax.inject.Inject
-import kotlin.math.abs
+import org.koitharu.kotatsu.local.data.LocalFavouritesRepository
+import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
+import org.koitharu.kotatsu.local.data.input.LocalMangaParser
+import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
+import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.main.ui.MainActivity
+import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaChapter
 
 /**
  * Canonical visual-evidence capture for the Normal Disukai screen.
@@ -73,6 +107,16 @@ class FavouritesGoldenVisualTest {
 
 	@Inject
 	lateinit var contentTypeStore: FavouriteContentTypeStore
+
+	@Inject lateinit var favouritesRepository: FavouritesRepository
+	@Inject lateinit var localFavouritesRepository: LocalFavouritesRepository
+	@Inject lateinit var localRepository: LocalMangaRepository
+	@Inject lateinit var localIndex: LocalMangaIndex
+	@Inject lateinit var ownershipIndex: FavouriteDownloadOwnershipIndex
+	@Inject lateinit var destinations: DownloadDestinationStore
+	@Inject lateinit var historyRepository: HistoryRepository
+
+	private var goldenCategoryId = 0L
 
 	private val instrumentation = InstrumentationRegistry.getInstrumentation()
 	private val context get() = instrumentation.targetContext
@@ -139,6 +183,7 @@ class FavouritesGoldenVisualTest {
 				space = FavouriteSpace.NORMAL.dbValue,
 			),
 		)
+		goldenCategoryId = categoryId
 
 		GOLDEN_TITLES.forEachIndexed { index, title ->
 			val id = 10_000L + index
@@ -212,6 +257,213 @@ class FavouritesGoldenVisualTest {
 			instrumentation.runOnMainSync { activity.finish() }
 			AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
 		}
+	}
+
+	/** Exercises the actual selector and physical chapter deletion, including a non-Favourite
+	 * download and an identically titled Local manga. Runs in the existing final visual workflow.
+	 */
+	@Test
+	fun collectionsKeepMembershipFilesAndReaderProgressIndependent() = runBlocking {
+		val root = File(context.filesDir, "collection-acceptance").apply {
+			deleteRecursively()
+			check(mkdirs())
+		}
+		val previousRoot = destinations.configuredRoot(FavouriteSpace.NORMAL)
+		val previousFolders = settings.userSpecifiedMangaDirectories.toSet()
+		val hidden = displayPreferences.currentHiddenVirtualCategoryIds(FavouriteSpace.NORMAL, FavouriteContentType.MANGA)
+		var activity: MainActivity? = null
+		try {
+			destinations.setRoot(FavouriteSpace.NORMAL, root)
+			val page = File(root, "fixture.png")
+			page.outputStream().use {
+				val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+				check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+				bitmap.recycle()
+			}
+			val remote = checkNotNull(database.getMangaDao().find(10_000L)).toManga()
+			val downloadedFavourite = createDownload(root, remote, page)
+			val nonFavourite = remote.copy(id = 12_001L, title = "Offline Non-Favourite", url = "/fixture/12001")
+			val template = checkNotNull(database.getMangaDao().find(remote.id)).manga
+			database.getMangaDao().upsert(template.copy(id = nonFavourite.id, title = nonFavourite.title, url = nonFavourite.url), emptyList())
+			val downloadedNonFavourite = createDownload(root, nonFavourite, page)
+			val localFolder = File(root, "local/${remote.title}").apply { check(mkdirs()) }
+			ZipOutputStream(File(localFolder, "Chapter 1.cbz").outputStream()).use {
+				it.putNextEntry(ZipEntry("001.png"))
+				page.inputStream().use { input -> input.copyTo(it) }
+				it.closeEntry()
+			}
+			val local = LocalMangaParser(localFolder).getManga(withDetails = true)
+			localIndex.put(local)
+			// A legacy Local membership must be excluded from every ordinary Favourite category.
+			database.getFavouritesDao().upsert(FavouriteEntity(local.manga.id, goldenCategoryId, 100, false, 1L, 0L))
+			localFavouritesRepository.refresh(FavouriteSpace.NORMAL)
+			val localChapter = checkNotNull(local.manga.chapters).single()
+			assertEquals(1, localRepository.getPages(localChapter).size)
+			historyRepository.addOrUpdate(local.manga, localChapter.id, 0, 25, 0.5f, force = true)
+			val progress = checkNotNull(historyRepository.getOne(local.manga))
+			assertFalse(favouritesRepository.isFavorite(nonFavourite.id))
+			assertTrue(local.manga.id != remote.id)
+
+			// Old virtual-tab visibility settings must not remove the new collections.
+			for (id in listOf(DOWNLOADED_FAVOURITES_CATEGORY_ID, LOCAL_FAVOURITES_CATEGORY_ID)) {
+				displayPreferences.setVirtualCategoryVisible(FavouriteSpace.NORMAL, FavouriteContentType.MANGA, id, false)
+			}
+			val screen = instrumentation.startActivitySync(
+				Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+			) as MainActivity
+			activity = screen
+			waitUntilGoldenScreenReady(screen)
+			instrumentation.runOnMainSync {
+				val tabs = screen.findViewById<TabLayout>(R.id.tabs)
+				val golden = (0 until tabs.tabCount).mapNotNull(tabs::getTabAt).first { it.text?.startsWith("Golden") == true }
+				tabs.selectTab(golden)
+			}
+			waitForCollection(screen, "Favourite subtab", setOf(remote.id), setOf(local.manga.id, nonFavourite.id))
+			assertEquals(goldenCategoryId, contentTypeStore.getLastCategoryId(FavouriteContentType.MANGA))
+
+			selectCollection(screen, R.string.downloaded)
+			waitForCollection(screen, "Downloaded", setOf(remote.id, nonFavourite.id), setOf(local.manga.id))
+			instrumentation.runOnMainSync { assertEquals(View.GONE, screen.findViewById<View>(R.id.tabs).visibility) }
+			val undo = favouritesRepository.removeFromFavourites(listOf(remote.id))
+			assertFalse(favouritesRepository.isFavorite(remote.id))
+			assertTrue(downloadedFavourite.file.exists())
+			waitForCollection(screen, "Unfavourite retains download", setOf(remote.id, nonFavourite.id), setOf(local.manga.id))
+			undo.reverse()
+			localRepository.deleteChapters(downloadedFavourite.manga, checkNotNull(downloadedFavourite.manga.chapters).mapTo(HashSet()) { it.id })
+			assertFalse(downloadedFavourite.file.exists())
+			assertTrue(favouritesRepository.isFavorite(remote.id))
+			waitForCollection(screen, "Last chapter removes only download", setOf(nonFavourite.id), setOf(remote.id))
+			localRepository.deleteChapters(downloadedNonFavourite.manga, checkNotNull(downloadedNonFavourite.manga.chapters).mapTo(HashSet()) { it.id })
+			waitForEmptyCollection(screen, R.string.downloads_collection_empty_title)
+
+			selectCollection(screen, R.string.local_storage)
+			waitForCollection(screen, "Local shelf", setOf(local.manga.id), setOf(remote.id, nonFavourite.id))
+			assertEquals(progress, historyRepository.getOne(local.manga))
+			assertEquals(1, localRepository.getPages(localChapter).size)
+			selectCollection(screen, R.string.favourites)
+			waitForCollection(screen, "Restored Favourite subtab", setOf(remote.id), setOf(local.manga.id, nonFavourite.id))
+			assertEquals(goldenCategoryId, contentTypeStore.getLastCategoryId(FavouriteContentType.MANGA))
+			assertEquals(progress, historyRepository.getOne(local.manga))
+			selectCollection(screen, R.string.local_storage)
+			assertTrue(localRepository.delete(local.manga))
+			localFavouritesRepository.refresh(FavouriteSpace.NORMAL)
+			waitForEmptyCollection(screen, R.string.local_collection_empty_title)
+			println("COLLECTION_ACCEPTANCE: non-Favourite download, unfavourite, last-chapter deletion, Local identity, reader pages/history, hidden legacy tabs, subtab restore and empty states passed")
+		} finally {
+			activity?.let { instrumentation.runOnMainSync { it.finish() } }
+			for (id in listOf(DOWNLOADED_FAVOURITES_CATEGORY_ID, LOCAL_FAVOURITES_CATEGORY_ID)) {
+				displayPreferences.setVirtualCategoryVisible(FavouriteSpace.NORMAL, FavouriteContentType.MANGA, id, id !in hidden)
+			}
+			destinations.setRoot(FavouriteSpace.NORMAL, previousRoot)
+			destinations.forgetRoot(root)
+			settings.userSpecifiedMangaDirectories = previousFolders
+			root.deleteRecursively()
+		}
+	}
+
+	private suspend fun createDownload(root: File, manga: Manga, page: File): LocalManga {
+		val chapter = MangaChapter(
+			id = manga.id * 10, title = "Chapter 1", number = 1f, volume = 0,
+			url = "/chapter/${manga.id}", scanlator = null, uploadDate = 1L, branch = null, source = manga.source,
+		)
+		val output = LocalMangaOutput.getOrCreate(root, manga, DownloadFormat.MULTIPLE_CBZ)
+		try {
+			output.addPage(IndexedValue(0, chapter), page, 0, MimeType("image/png"))
+			check(output.flushChapter(chapter))
+			output.finish()
+		} finally {
+			output.close()
+		}
+		return LocalMangaParser(output.rootFile).getManga(withDetails = true).also {
+			localIndex.put(it)
+			// Match DownloadWorker: sidecar-free folders have a filesystem Local id, while physical
+			// ownership and the reconnect alias preserve the independent source manga identity.
+			database.getFavouriteDownloadIndexDao().upsert(listOf(FavouriteDownloadIndexEntity(
+				manga.id, FavouriteSpace.NORMAL.dbValue, it.file.canonicalPath,
+			)))
+			localRepository.rememberDownloadedIdentity(manga, it)
+			ownershipIndex.emit(it)
+		}
+	}
+
+	private fun selectCollection(activity: MainActivity, titleRes: Int) {
+		instrumentation.runOnMainSync { activity.findViewById<View>(R.id.button_collection_selector).performClick() }
+		instrumentation.waitForIdleSync()
+		val title = activity.getString(titleRes)
+		val bounds = Rect()
+		val deadline = SystemClock.elapsedRealtime() + 20_000L
+		fun findOption(view: View): TextView? {
+			if (view is TextView && view.isShown && view.text.toString() == title) return view
+			if (view is ViewGroup) {
+				for (index in 0 until view.childCount) findOption(view.getChildAt(index))?.let { return it }
+			}
+			return null
+		}
+		while (SystemClock.elapsedRealtime() < deadline) {
+			instrumentation.runOnMainSync {
+				// This canonical Android 15 test can inspect its own popup roots. UiAutomation's
+				// active accessibility window is sometimes null for an AppCompat popup on CI.
+				for (root in WindowInspector.getGlobalWindowViews()) {
+					if (root === activity.window.decorView) continue
+					val option = findOption(root) ?: continue
+					if (option.width <= 0 || option.height <= 0) continue
+					val location = IntArray(2).also(option::getLocationOnScreen)
+					bounds.set(location[0], location[1], location[0] + option.width, location[1] + option.height)
+					break
+				}
+			}
+			if (!bounds.isEmpty) break
+			SystemClock.sleep(100)
+		}
+		assertFalse("Collection popup did not expose $title", bounds.isEmpty)
+		// AppCompat popup rows dispatch selection through their ListView; the text node and its
+		// immediate parent need not implement ACTION_CLICK. Tap the observed option instead.
+		val downTime = SystemClock.uptimeMillis()
+		for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+			val event = MotionEvent.obtain(
+				downTime, SystemClock.uptimeMillis(), action, bounds.exactCenterX(), bounds.exactCenterY(), 0,
+			).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+			try {
+				assertTrue("Cannot tap $title", instrumentation.uiAutomation.injectInputEvent(event, true))
+			} finally {
+				event.recycle()
+			}
+		}
+		instrumentation.waitForIdleSync()
+	}
+
+	private fun currentItems(activity: MainActivity): List<ListModel> {
+		fun find(fragments: List<Fragment>): FavouritesContainerFragment? {
+			for (fragment in fragments) {
+				if (fragment is FavouritesContainerFragment && fragment.isVisible) return fragment
+				find(fragment.childFragmentManager.fragments)?.let { return it }
+			}
+			return null
+		}
+		return (find(activity.supportFragmentManager.fragments)?.recyclerView?.adapter as? MangaListAdapter)?.items.orEmpty()
+	}
+
+	private fun waitForCollection(activity: MainActivity, label: String, included: Set<Long>, excluded: Set<Long>) =
+		waitForItems(activity, label) { items ->
+			val ids = items.filterIsInstance<MangaListModel>().mapTo(HashSet()) { it.id }
+			ids.containsAll(included) && ids.none { it in excluded }
+		}
+
+	private fun waitForEmptyCollection(activity: MainActivity, title: Int) =
+		waitForItems(activity, "Empty collection: ${activity.getString(title)}") { items ->
+			items.any { it is EmptyState && it.textPrimary == title }
+		}
+
+	private fun waitForItems(activity: MainActivity, label: String, matches: (List<ListModel>) -> Boolean) {
+		val deadline = SystemClock.elapsedRealtime() + 20_000L
+		var items = emptyList<ListModel>()
+		while (SystemClock.elapsedRealtime() < deadline) {
+			instrumentation.waitForIdleSync()
+			instrumentation.runOnMainSync { items = currentItems(activity).toList() }
+			if (matches(items)) return
+			SystemClock.sleep(100)
+		}
+		assertTrue("$label did not settle: $items", matches(items))
 	}
 
 	private fun writeFinalEvidenceToDownloads(screenshot: Bitmap, geometryJson: String) {
