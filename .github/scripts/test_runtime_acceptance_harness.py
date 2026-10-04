@@ -17,6 +17,23 @@ PACKAGE = 'org.noirero.miyorare'
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_probe_filters_external_artifacts_before_resolution(self):
+        # Structural regression guard only; actual Gradle/AGP builds remain required.
+        script = (TOOLS / 'runtime-probe.init.gradle').read_text()
+        self.assertNotIn('resolvedConfiguration', script)
+        graph = script.index('text = graph(configuration)')
+        view = script.index('configuration.incoming.artifactView {', graph)
+        predicate = script.index('componentFilter { it instanceof ModuleComponentIdentifier }', view)
+        strict = script.index('lenient = false', predicate)
+        resolution = script.index('externalArtifacts.artifacts.artifacts', strict)
+        guard = script.index('if (providers.isEmpty())', resolution)
+        self.assertLess(graph, view)
+        self.assertLess(predicate, resolution)
+        self.assertIn('containsClass(it.file, entry)', script[resolution:guard])
+        self.assertIn('throw new GradleException', script[guard:])
+        self.assertIn('${configuration.name}-class-presence.txt', script[resolution:guard])
+        self.assertIn('${it.id.componentIdentifier.displayName} ${it.file.name}', script[resolution:])
+
     def test_reports_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
