@@ -18,16 +18,16 @@ class IconsView @JvmOverloads constructor(
 
 	private var iconSize = LayoutParams.WRAP_CONTENT
 	private var iconSpacing = 0
+	private var nextIconIndex = 0
 
 	val iconsCount: Int
 		get() {
-			var count = 0
-			repeat(childCount) { i ->
-				if (getChildAt(i).isVisible) {
-					count++
-				}
+			// clearIcons() starts a new binding pass without hiding the old children immediately.
+			// Commit the final count here so icons that remain present never flash off/on during a rebind.
+			for (i in nextIconIndex until childCount) {
+				getChildAt(i).isVisible = false
 			}
-			return count
+			return nextIconIndex
 		}
 
 	init {
@@ -38,30 +38,33 @@ class IconsView @JvmOverloads constructor(
 	}
 
 	fun clearIcons() {
-		repeat(childCount) { i ->
-			getChildAt(i).isVisible = false
-		}
+		// Treat clear + addIcon calls as one update. RecyclerView rebinds can happen several times while
+		// async card metadata settles; eagerly hiding every child here made unchanged status icons blink
+		// and caused avoidable visibility/layout churn on the first Favourites render.
+		nextIconIndex = 0
 	}
 
 	fun addIcon(drawable: Drawable) {
 		val imageView = getNextImageView()
 		imageView.setImageDrawable(drawable)
+		imageView.tag = null
 		imageView.isVisible = true
+		nextIconIndex++
 	}
 
 	fun addIcon(@DrawableRes resId: Int) {
 		val imageView = getNextImageView()
-		imageView.setImageResource(resId)
+		if (imageView.tag != resId) {
+			imageView.setImageResource(resId)
+			imageView.tag = resId
+		}
 		imageView.isVisible = true
+		nextIconIndex++
 	}
 
 	private fun getNextImageView(): ImageView {
-		repeat(childCount) { i ->
-			val child = getChildAt(i)
-			if (child is ImageView && !child.isVisible) {
-				return child
-			}
-		}
+		val existing = getChildAt(nextIconIndex)
+		if (existing is ImageView) return existing
 		return addImageView()
 	}
 
