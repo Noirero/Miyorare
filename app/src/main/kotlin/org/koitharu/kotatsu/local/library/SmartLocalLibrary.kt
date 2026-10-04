@@ -21,7 +21,6 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.model.LocalManga
-import org.koitharu.kotatsu.list.domain.ReadingProgress
 import org.koitharu.kotatsu.local.library.LocalTreeScanner.Node
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
@@ -317,12 +316,11 @@ class SmartLocalLibrary @Inject constructor(
         val histories = snapshot.map { it.id }.chunked(500).flatMap { db.getHistoryDao().findByIds(it) }.associateBy { it.mangaId }
         val filtered = snapshot.filter { b ->
             val history = histories[b.id]
-            val percent = history?.percent ?: 0f
             val matches = when (readingFilter) {
                 LocalReadingFilter.ALL -> true
                 LocalReadingFilter.UNREAD -> history == null
-                LocalReadingFilter.READING -> history != null && !ReadingProgress.isCompleted(percent)
-                LocalReadingFilter.COMPLETED -> ReadingProgress.isCompleted(percent)
+                LocalReadingFilter.READING -> history != null && !b.isCompleted(history)
+                LocalReadingFilter.COMPLETED -> b.isCompleted(history)
             }
             matches && (query.isNullOrBlank() || b.toManga(showExtensions).title.contains(query, true) || b.authors.any { it.contains(query, true) })
         }

@@ -12,6 +12,9 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModelProvider
+import androidx.work.WorkManager
+import androidx.work.Configuration
+import androidx.hilt.work.HiltWorkerFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.EntryPoint
@@ -66,6 +69,7 @@ class SmartLocalLibraryRuntimeTest {
     @Inject lateinit var dataRepository: MangaDataRepository
     @Inject lateinit var database: MangaDatabase
     @Inject lateinit var cleanup: DeleteReadChaptersUseCase
+    @Inject lateinit var workerFactory: HiltWorkerFactory
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
     private lateinit var fixture: File
@@ -77,6 +81,10 @@ class SmartLocalLibraryRuntimeTest {
         File(context.filesDir, "smart-local-index.json.bak").delete()
         fixture = File(context.cacheDir, "smart-local-test-${System.nanoTime()}").also { check(it.mkdirs()) }
         hiltRule.inject()
+        // The production Application provides this configuration. HiltTestApplication does not.
+        if (runCatching { WorkManager.getInstance(context) }.isFailure) {
+            WorkManager.initialize(context, Configuration.Builder().setWorkerFactory(workerFactory).build())
+        }
     }
 
     @After fun tearDown(): Unit = runBlocking {
@@ -236,10 +244,14 @@ class SmartLocalLibraryRuntimeTest {
         assertEquals(last.id, library.details(previous.id)?.chapters?.last()?.id)
         assertEquals(last.id, restart().details(previous.id)?.chapters?.last()?.id)
         openReader(previous.id, last.id, text = false, resumePage = 1)
+        database.getHistoryDao().find(previous.id)?.let { database.getHistoryDao().upsert(it.copy(percent = 1f, chaptersCount = 2)) }
         library.acknowledgeDiscoveries()
         archive(File(legacy, "Chapter 3.cbz")); library.scan()
         assertEquals(1, library.book(previous.id)?.newChapters)
         assertEquals(last.id, library.details(previous.id)?.chapters?.get(1)?.id)
+        library.setDisplayOptions(false, LocalReadingFilter.COMPLETED)
+        assertFalse(library.list(null).any { it.id == previous.id })
+        library.setDisplayOptions(false, LocalReadingFilter.ALL)
 
         // An already-read EPUB keeps its old spine boundary and exact chapter ID.
         val textFile = File(root, "Old novel.epub"); epub(textFile)

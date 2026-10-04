@@ -49,6 +49,10 @@ data class LocalLibrarySnapshot(
 enum class LocalReadingFilter { ALL, UNREAD, READING, COMPLETED }
 enum class LocalLibrarySort { LAST_READ, ADDED, TITLE_ASC, TITLE_DESC, CHAPTER_UPDATED }
 
+internal fun LocalBook.isCompleted(history: org.koitharu.kotatsu.history.data.HistoryEntity?): Boolean =
+    history != null && history.chaptersCount >= chapters.size &&
+        org.koitharu.kotatsu.list.domain.ReadingProgress.isCompleted(history.percent)
+
 internal fun Node.mangaIdentity(): Long {
     val uri = android.net.Uri.parse(this.uri)
     return (if (uri.scheme == "file") requireNotNull(uri.path) else key).longHashCode()
