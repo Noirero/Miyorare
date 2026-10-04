@@ -50,6 +50,14 @@ class SourcesCatalogPagesAdapter(
 		}
 	}
 
+	fun clearContent() {
+		dispatchUpdate {
+			content.clear()
+			normalContent.clear()
+			notifyItemRangeChanged(0, itemCount, PAYLOAD_CONTENT)
+		}
+	}
+
 	fun submitContent(pageId: String, value: List<ListModel>) {
 		dispatchUpdate {
 			content[pageId] = value
