@@ -79,7 +79,7 @@ class SourcesCatalogViewModel @Inject constructor(
 	val onShowMessage = MutableEventFlow<Int>()
 
 	/** Source name of a freshly installed extension, so the caller can offer to open it. */
-	val onExtensionInstalled = MutableEventFlow<String>()
+	val onExtensionInstalled = MutableEventFlow<String?>()
 	val pages: StateFlow<List<ExtensionCatalogPage>> = combine(
 		storeManager.allStates,
 		activeStoreContentType,
@@ -156,11 +156,11 @@ class SourcesCatalogViewModel @Inject constructor(
 		val mode = if (privateMode) ExtensionInstallMode.SANDBOX else ExtensionInstallMode.SYSTEM
 		val result = buildPage(pageId, storeStates, mode, f, q)
 		isRefreshing.value = false
-		CatalogPageContent(pageId, result)
+		CatalogPageContent(contentType, pageId, result)
 	}.stateIn(
 		viewModelScope + Dispatchers.Default,
 		SharingStarted.Eagerly,
-		CatalogPageContent(ExtensionCatalogPage.Available.id, listOf(LoadingState)),
+		CatalogPageContent(ExtensionStoreContentType.MANGA, ExtensionCatalogPage.Available.id, listOf(LoadingState)),
 	)
 
 	val hasUpdates = content.map { page ->
@@ -384,7 +384,7 @@ class SourcesCatalogViewModel @Inject constructor(
 					.firstOrNull { it.pkgName == packageName }
 					?.name
 			}
-			onExtensionInstalled.call(sourceName ?: return@launchJob)
+			onExtensionInstalled.call(sourceName)
 		}
 	}
 
@@ -1084,6 +1084,7 @@ class SourcesCatalogViewModel @Inject constructor(
 	)
 
 	data class CatalogPageContent(
+		val contentType: ExtensionStoreContentType,
 		val pageId: String,
 		val items: List<ListModel>,
 	)
