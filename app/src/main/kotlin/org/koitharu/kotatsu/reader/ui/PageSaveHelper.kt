@@ -43,8 +43,6 @@ import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.domain.PageSaveDestinationStore
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
 import javax.inject.Provider
 import kotlin.coroutines.resume
 
@@ -58,22 +56,16 @@ class PageSaveHelper @AssistedInject constructor(
 
 	private val savePageRequest = activityResultCaller.registerForActivityResult(PageSaveContract(), this)
 	private val pickDirectoryRequest = OpenDocumentTreeHelper(activityResultCaller, this)
-
 	private var continuation: CancellableContinuation<Uri>? = null
 
 	override fun onActivityResult(result: Uri?) {
 		continuation?.also { cont ->
-			if (result != null) {
-				cont.resume(result)
-			} else {
-				cont.cancel()
-			}
+			if (result != null) cont.resume(result) else cont.cancel()
 		}
 	}
 
 	suspend fun save(tasks: Collection<Task>): Collection<Uri> = when (tasks.size) {
 		0 -> emptySet()
-		1 -> setOf(saveImpl(tasks.first()))
 		else -> saveImpl(tasks)
 	}
 
@@ -81,31 +73,16 @@ class PageSaveHelper @AssistedInject constructor(
 		val pageLoader = getPageLoader()
 		val pageUrl = pageLoader.getPageUrl(task.page).toUri()
 		val pageUri = pageLoader.loadPage(task.page, force = false)
-		val proposedName = task.getFileBaseName() + "." + getPageExtension(pageUrl, pageUri)
+		val proposedName = task.getPageFileName(getPageExtension(pageUrl, pageUri))
 		val destination = File(checkNotNull(context.getExternalFilesDir(TEMP_DIR)), proposedName)
 		copyImpl(pageUri, destination.toUri())
-		return destination
-	}
-
-	private suspend fun saveImpl(task: Task): Uri {
-		val pageLoader = getPageLoader()
-		val pageUrl = pageLoader.getPageUrl(task.page).toUri()
-		val pageUri = pageLoader.loadPage(task.page, force = false)
-		val proposedName = task.getFileBaseName() + "." + getPageExtension(pageUrl, pageUri)
-		val favouriteSpace = resolveFavouriteSpace()
-		val destination = getDefaultFileUri(proposedName, favouriteSpace)?.uri ?: run {
-			val defaultUri = pageSaveDestinationStore.getDirectory(favouriteSpace)?.uri
-				?.buildUpon()?.appendPath(proposedName)?.toString()
-			savePageRequest.launchAndAwait(defaultUri ?: proposedName)
-		}
-		copyImpl(pageUri, destination)
 		return destination
 	}
 
 	private suspend fun saveImpl(tasks: Collection<Task>): Collection<Uri> {
 		val pageLoader = getPageLoader()
 		val favouriteSpace = resolveFavouriteSpace()
-		val destinationDir = getDefaultFileUri(null, favouriteSpace) ?: run {
+		val destinationRoot = getDefaultFileUri(null, favouriteSpace) ?: run {
 			val defaultUri = pageSaveDestinationStore.getDirectory(favouriteSpace)?.uri
 			DocumentFile.fromTreeUri(context, pickDirectoryRequest.launchAndAwait(defaultUri))
 		} ?: throw IOException("Cannot get destination directory")
@@ -114,25 +91,30 @@ class PageSaveHelper @AssistedInject constructor(
 		for (task in tasks) {
 			val pageUrl = pageLoader.getPageUrl(task.page).toUri()
 			val pageUri = pageLoader.loadPage(task.page, force = false)
-			val proposedName = task.getFileBaseName()
 			val ext = getPageExtension(pageUrl, pageUri)
 			val mime = requireNotNull(MimeTypes.getMimeTypeFromExtension("_.$ext")) {
-				"Unknown type of $proposedName"
+				"Unknown image type for page ${task.pageNumber}"
 			}
-			val destination = destinationDir.createFile(mime.toString(), proposedName)
+			val chapterDir = destinationRoot
+				.findOrCreateDirectory(task.getMangaFolderName())
+				.findOrCreateDirectory(task.getChapterFolderName())
+			val destination = chapterDir.createFile(mime.toString(), task.getPageFileName(ext))
 			copyImpl(pageUri, destination?.uri ?: throw IOException("Cannot create destination file"))
 			result.add(destination.uri)
 		}
 		return result
 	}
 
+	private fun DocumentFile.findOrCreateDirectory(name: String): DocumentFile {
+		val safeName = name.toFileNameSafe().ifBlank { FALLBACK_FOLDER_NAME }
+		return findFile(safeName)?.takeIf { it.isDirectory }
+			?: createDirectory(safeName)
+			?: throw IOException("Cannot create directory: $safeName")
+	}
+
 	private suspend fun getPageExtension(url: Uri, fileUri: Uri): String {
 		val name = requireNotNull(
-			if (url.isZipUri()) {
-				url.fragment?.substringAfterLast(File.separatorChar)
-			} else {
-				url.lastPathSegment
-			},
+			if (url.isZipUri()) url.fragment?.substringAfterLast(File.separatorChar) else url.lastPathSegment,
 		) { "Invalid page url: $url" }
 		var extension = name.substringAfterLast('.', "")
 		if (extension.length !in 2..4) {
@@ -155,21 +137,14 @@ class PageSaveHelper @AssistedInject constructor(
 		}
 	}
 
-	private suspend fun getPageLoader() = withContext(Dispatchers.Main.immediate) {
-		pageLoaderProvider.get()
-	}
+	private suspend fun getPageLoader() = withContext(Dispatchers.Main.immediate) { pageLoaderProvider.get() }
 
 	private fun getDefaultFileUri(proposedName: String?, favouriteSpace: FavouriteSpace): DocumentFile? {
-		if (settings.isPagesSavingAskEnabled) {
-			return null
-		}
+		if (settings.isPagesSavingAskEnabled) return null
 		val dir = pageSaveDestinationStore.getDirectory(favouriteSpace) ?: return null
-		if (proposedName == null) {
-			return dir
-		} else {
-			val mime = MimeTypes.getMimeTypeFromExtension(proposedName)?.toString() ?: return null
-			return dir.createFile(mime, proposedName.substringBeforeLast('.'))
-		}
+		if (proposedName == null) return dir
+		val mime = MimeTypes.getMimeTypeFromExtension(proposedName)?.toString() ?: return null
+		return dir.createFile(mime, proposedName.substringBeforeLast('.'))
 	}
 
 	private fun resolveFavouriteSpace(): FavouriteSpace {
@@ -178,10 +153,8 @@ class PageSaveHelper @AssistedInject constructor(
 			is Fragment -> caller.activity
 			else -> null
 		}
-		val value = activity?.intent?.getIntExtra(
-			EXTRA_FAVOURITE_SPACE,
-			FavouriteSpace.NORMAL.dbValue,
-		) ?: FavouriteSpace.NORMAL.dbValue
+		val value = activity?.intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue)
+			?: FavouriteSpace.NORMAL.dbValue
 		return FavouriteSpace.fromArgument(value)
 	}
 
@@ -189,7 +162,6 @@ class PageSaveHelper @AssistedInject constructor(
 		uri.isFileUri() -> uri.toFile().source()
 		uri.isZipUri() -> FileSystem.SYSTEM.openZip(uri.schemeSpecificPart.toPath())
 			.source(requireNotNull(uri.fragment).toPath())
-
 		else -> throw IllegalArgumentException("Bad uri $uri: unsupported scheme")
 	}
 
@@ -197,9 +169,7 @@ class PageSaveHelper @AssistedInject constructor(
 		runInterruptible {
 			context.contentResolver.openOutputStream(destination) ?: throw IOException("Output stream is null")
 		}.sink().buffer().use { sink ->
-			getSource(source).use { input ->
-				sink.writeAllCancellable(input)
-			}
+			getSource(source).use { input -> sink.writeAllCancellable(input) }
 		}
 	}
 
@@ -213,30 +183,29 @@ class PageSaveHelper @AssistedInject constructor(
 		val pageNumber: Int,
 		val page: MangaPage,
 	) {
+		fun getMangaFolderName(): String = manga.title.toFileNameSafe().take(MAX_FOLDER_NAME_LENGTH)
 
-		fun getFileBaseName() = buildString {
-			append(manga.title.toFileNameSafe().take(MAX_BASENAME_LENGTH))
-			manga.findChapterById(chapterId)?.let { chapter ->
-				append('-')
-				append(chapter.number)
-			}
-			append('-')
-			append(pageNumber)
-			append('_')
-			append(SimpleDateFormat("yyyy-MM-dd_HHmm").format(Date()))
+		fun getChapterFolderName(): String {
+			val chapter = manga.findChapterById(chapterId)
+			return chapter?.name?.toFileNameSafe()?.take(MAX_FOLDER_NAME_LENGTH)?.takeIf { it.isNotBlank() }
+				?: chapter?.number?.let { "Chapter $it" }
+				?: "Chapter"
 		}
+
+		fun getPageFileName(extension: String): String =
+			"Page ${pageNumber.toString().padStart(PAGE_NUMBER_WIDTH, '0')}.$extension"
 	}
 
 	@AssistedFactory
 	interface Factory {
-
 		fun create(activityResultCaller: ActivityResultCaller): PageSaveHelper
 	}
 
 	private companion object {
-
-		private const val MAX_BASENAME_LENGTH = 12
+		private const val MAX_FOLDER_NAME_LENGTH = 80
+		private const val PAGE_NUMBER_WIDTH = 3
 		private const val EXTENSION_FALLBACK = "png"
 		private const val TEMP_DIR = "pages"
+		private const val FALLBACK_FOLDER_NAME = "Unknown"
 	}
 }
