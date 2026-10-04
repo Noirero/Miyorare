@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
+import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.ui.ReaderActivity
@@ -183,20 +184,66 @@ class SmartLocalLibraryRuntimeTest {
         assertTrue(restart().state.value.diagnoses.any { it.reason == "unavailable" })
     }
 
+    @Test fun optionalMetadataCoversDiscoveriesAndLegacyResume() = runBlocking {
+        val root = dir("selected")
+        val metadata = File(root, "Metadata").also { it.mkdirs() }
+        File(metadata, "ComicInfo.xml").writeText("<ComicInfo><Series>Enriched title</Series><Writer>Author</Writer><Cover>poster.png</Cover></ComicInfo>")
+        File(metadata, "poster.png").writeBytes(png(24))
+        File(metadata, "cover.png").writeText("corrupt explicit cover")
+        archive(File(metadata, "1.cbz"))
+        val legacy = File(root, "Legacy").also { it.mkdirs() }
+        archive(File(legacy, "Chapter 1.cbz")); archive(File(legacy, "Chapter 2.zip"))
+        val previous = LocalMangaParser(legacy).getManga(true).manga
+        dataRepository.storeManga(previous, replaceExisting = true)
+        val last = requireNotNull(previous.chapters).last()
+        val now = System.currentTimeMillis()
+        database.getHistoryDao().upsert(HistoryEntity(previous.id, now, now, last.id, 1, 0f, .5f, 0, 2, now))
+        touched += previous.id
+        library.addRoot(root.toUri())
+        val enriched = library.state.value.books.single { it.node.name == "Metadata" }
+        assertEquals("Enriched title", library.details(enriched.id)?.title)
+        assertEquals(setOf("Author"), library.details(enriched.id)?.authors)
+        val cover = requireNotNull(library.cover(enriched.id))
+        assertEquals(24, BitmapFactory.decodeByteArray(cover, 0, cover.size)?.width)
+        assertEquals(last.id, library.details(previous.id)?.chapters?.last()?.id)
+        assertEquals(last.id, restart().details(previous.id)?.chapters?.last()?.id)
+        openReader(previous.id, last.id, text = false, resumePage = 1)
+        library.acknowledgeDiscoveries()
+        archive(File(legacy, "Chapter 3.cbz")); library.scan()
+        assertEquals(1, library.book(previous.id)?.newChapters)
+        assertEquals(last.id, library.details(previous.id)?.chapters?.get(1)?.id)
+
+        // An already-read EPUB keeps its old spine boundary and exact chapter ID.
+        val textFile = File(root, "Old novel.epub"); epub(textFile)
+        val oldNovel = LocalMangaParser(textFile).getManga(true).manga
+        dataRepository.storeManga(oldNovel, replaceExisting = true)
+        val oldSection = requireNotNull(oldNovel.chapters).last()
+        database.getHistoryDao().upsert(HistoryEntity(oldNovel.id, now, now, oldSection.id, 0, 0f, .5f, 0, 2, now))
+        touched += oldNovel.id
+        library.scan()
+        val retained = requireNotNull(library.details(oldNovel.id)?.chapters).last()
+        assertEquals(oldSection.id, retained.id)
+        val html = requireNotNull(repository.getChapterHtml(retained))
+        assertTrue(html.contains("Second section")); assertFalse(html.contains("First section"))
+        openReader(oldNovel.id, retained.id, text = true, resumePage = 0)
+    }
+
     private suspend fun restart() = SmartLocalLibrary(context, documents, contentReader, dataRepository, database,
         MutableSharedFlow<LocalManga?>(extraBufferCapacity = 1)).also { it.initialize() }
 
-    private suspend fun openReader(id: Long, chapterId: Long, text: Boolean) {
+    private suspend fun openReader(id: Long, chapterId: Long, text: Boolean, resumePage: Int? = null) {
         touched += id
         val manga = requireNotNull(library.details(id))
-        val intent = ReaderIntent.Builder(context).manga(manga).incognito(false)
-            .state(ReaderState(chapterId, 0, 0)).build().intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val builder = ReaderIntent.Builder(context).manga(manga).incognito(false)
+        if (resumePage == null) builder.state(ReaderState(chapterId, 0, 0))
+        val intent = builder.build().intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val activity = instrumentation.startActivitySync(intent) as ReaderActivity
         try {
             lateinit var model: ReaderViewModel
             instrumentation.runOnMainSync { model = ViewModelProvider(activity)[ReaderViewModel::class.java] }
             val loaded = withTimeout(30_000) { model.content.first { it.state?.chapterId == chapterId && it.pages.isNotEmpty() } }
             assertEquals(chapterId, loaded.pages.first().chapterId)
+            if (resumePage != null) assertEquals(resumePage, loaded.state?.page)
             if (!text) {
                 val loader = EntryPointAccessors.fromActivity(activity, ReaderDependencies::class.java).pageLoader()
                 val image = loader.loadPage(loaded.pages.first().toMangaPage(), force = false)
@@ -208,8 +255,8 @@ class SmartLocalLibraryRuntimeTest {
     }
 
     private fun dir(name: String) = File(fixture, name).also { check(it.mkdirs()) }
-    private fun png(): ByteArray {
-        val bitmap = Bitmap.createBitmap(16, 32, Bitmap.Config.ARGB_8888)
+    private fun png(width: Int = 16): ByteArray {
+        val bitmap = Bitmap.createBitmap(width, 32, Bitmap.Config.ARGB_8888)
         return ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); bitmap.recycle(); stream.toByteArray() }
     }
     private fun archive(file: File) = zip(file, mapOf("10.png" to png(), "2.png" to png(), "../outside.png" to png()))
@@ -219,11 +266,12 @@ class SmartLocalLibraryRuntimeTest {
         } }
     }
     private fun pdf(file: File) {
-        PdfDocument().use { doc ->
+        val doc = PdfDocument()
+        try {
             val page = doc.startPage(PdfDocument.PageInfo.Builder(64, 96, 1).create())
             page.canvas.drawColor(android.graphics.Color.WHITE); doc.finishPage(page)
             file.outputStream().use { doc.writeTo(it) }
-        }
+        } finally { doc.close() }
     }
     private fun epub(file: File) = zip(file, mapOf(
         "mimetype" to "application/epub+zip".toByteArray(),

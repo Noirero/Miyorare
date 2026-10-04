@@ -21,7 +21,7 @@ AUDITED_FILES = {
     ".github/workflows/ci-deep.yml": "0ffceba96f7aa7276d5ba11940ea9501077322028656f2ced07a4f8c7881355c",
     ".github/scripts/ci_deep_paths.py": "1de72ee76ca96630aff882223ad75dea2a4a601aca7bed230b8a2102601e5bc7",
     ".github/scripts/test_ci_deep_paths.py": "15768c9aa2af127aabbdb731384ceb965c473d423f03dd79cd4dfde13e4fe362",
-    ".github/workflows/android-runtime.yml": "4d20eb3d0ef7e406678e455ed968d4cdc8f16c01d55128b9a9c05bb333278aee",
+    ".github/workflows/android-runtime.yml": "25776987e55cf6212a122a792868ef953dbe13343ea7d9914699b3ced064e2e3",
     ".github/scripts/android_runtime_paths.py": "3d938f2c572b78dc4ae7b041d7bbd539c0da3439b4b2bb0ad93a13efef4b4d6c",
     ".github/scripts/test_android_runtime_paths.py": "fb649cc8982ac37c439f9ba09b83a7627c1edf9cef61142d465bb3d0e78df934",
     ".github/workflows/p0-p1-acceptance.yml": "e032d8cb9dc28a43d625b2ed59384288daa434bfd80e3d77717ced70b5f5e57f",
@@ -41,6 +41,7 @@ RUNTIME_CLASSES = (
     "org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest",
     "org.koitharu.kotatsu.settings.backup.AppBackupAgentTest",
 )
+LOCAL_LIBRARY_CLASS = "org.koitharu.kotatsu.local.library.SmartLocalLibraryRuntimeTest"
 FAVOURITES_CLASS = "org.koitharu.kotatsu.favourites.ui.FavouritesGoldenVisualTest"
 
 
@@ -53,7 +54,7 @@ def verify_contract(root: Path = ROOT) -> None:
         actual = hashlib.sha256((root / relative).read_bytes()).hexdigest()
         if actual != expected:
             raise ContractError(f"Ownership contract changed: {relative}; re-audit coverage before updating its fingerprint")
-    for source_set, classes in (("test", JVM_CLASSES), ("androidTest", (*RUNTIME_CLASSES, FAVOURITES_CLASS))):
+    for source_set, classes in (("test", JVM_CLASSES), ("androidTest", (*RUNTIME_CLASSES, LOCAL_LIBRARY_CLASS, FAVOURITES_CLASS))):
         for class_name in classes:
             source = root / f"app/src/{source_set}/kotlin/{class_name.replace('.', '/')}.kt"
             text = source.read_text(encoding="utf-8")

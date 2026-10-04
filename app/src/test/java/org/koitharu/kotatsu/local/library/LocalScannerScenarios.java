@@ -101,7 +101,9 @@ public final class LocalScannerScenarios {
         epubs.file("/selected/Overlord/Volume 02.epub"); epubs.file("/selected/Overlord/Volume 01.epub");
         check(epubs.scan().entries.size() == 1 && epubs.scan().entries.get(0).chapters.size() == 2, "EPUB volumes form a collection");
         check(epubs.scan().entries.get(0).chapters.get(0).node.name.equals("Volume 01.epub"), "EPUB volumes naturally sorted");
-        check(t.scan().entries.size() + epubs.scan().entries.size() == 2, "Independent roots combine without scanning ancestors");
+        epubs.file("/selected/Overlord/Chapter 3.cbz");
+        check(epubs.scan().entries.isEmpty() && epubs.scan().issues.get(0).reason.equals("review"), "Conflicting text/image structure fails safe");
+        check(t.scan().entries.size() + books.scan().entries.size() == 5, "Independent roots combine without scanning ancestors");
         try {
             new LocalTreeScanner().scan(n("/selected/book.cbz", false), t, Collections.emptySet(), Collections.emptySet());
             throw new AssertionError("A file is not a selected root");

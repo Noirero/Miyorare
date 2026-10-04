@@ -143,7 +143,9 @@ class LocalContentReader @Inject constructor(
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
             return bytes.takeIf { options.outWidth > 0 && options.outHeight > 0 }
         }
-        book.cover?.let { uri ->
+        val candidates = (listOfNotNull(book.cover) + book.sidecars.filter { LocalTreeScanner.isImage(it.name) }
+            .sortedByDescending { LocalTreeScanner.isSidecar(it.name) }.map { it.uri }).distinct()
+        for (uri in candidates) {
             val node = (book.sidecars + book.chapters.flatMap { it.pages }).firstOrNull { it.uri == uri }
             if (node != null && documents.contains(root, node)) {
                 runCatchingCancellable { valid(documents.input(node).use { it.readBytesLimited(32 * 1024 * 1024) }) }

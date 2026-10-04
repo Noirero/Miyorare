@@ -132,7 +132,7 @@ class SmartLocalLibrary @Inject constructor(
                 for (entry in scanned.entries) {
                     currentCoroutineContext().ensureActive()
                     val old = previousByKey[entry.node.key]
-                    val metadata = entry.sidecars.filter { it.name.endsWith(".xml", true) || it.name == "index.json" }
+                    val metadata = entry.sidecars.filter { it.name.endsWith(".xml", true) || it.name.equals("index.json", true) }
                         .map { LocalMetadata.read(it, documents) }
                     val explicitCover = entry.sidecars.firstOrNull { LocalTreeScanner.isImage(it.name) && LocalTreeScanner.isSidecar(it.name) }?.uri
                     val metadataCover = metadata.firstNotNullOfOrNull { it.coverName }?.let { name ->
@@ -218,7 +218,7 @@ class SmartLocalLibrary @Inject constructor(
 
     suspend fun deleteFromDevice(ids: Set<Long>) = withContext(Dispatchers.IO) {
         initialize()
-        mutex.withLock {
+        try { mutex.withLock {
             val targets = state.value.books.filter { it.id in ids }
             for (book in targets) {
                 val root = documents.root(book.rootUri)
@@ -236,7 +236,7 @@ class SmartLocalLibrary @Inject constructor(
                 for (file in files) if (documents.exists(root, file)) documents.delete(root, file)
                 for (folder in (book.chapters.map { it.node }.filter { it.directory } + listOf(book.node).filter { it.directory })
                     .distinctBy { it.key }) {
-                    if (folder.key != root.key && documents.exists(root, folder) && documents.children(root, folder).isEmpty()) {
+                    if (folder.uri.toUri().scheme == "file" && folder.key != root.key && documents.exists(root, folder) && documents.children(root, folder).isEmpty()) {
                         documents.delete(root, folder)
                     }
                 }
@@ -247,23 +247,35 @@ class SmartLocalLibrary @Inject constructor(
                 publishLocked(state.value.copy(books = state.value.books.filterNot { it.id == book.id }, excludedCount = exclusions.size))
             }
         }
+        } catch (error: Exception) {
+            runCatchingCancellable { scan() }
+            throw error
+        }
         storageChanges.emit(null)
     }
 
     suspend fun deleteChapters(mangaId: Long, ids: Set<Long>) = withContext(Dispatchers.IO) {
         initialize()
-        mutex.withLock {
+        try { mutex.withLock {
             val book = state.value.books.firstOrNull { it.id == mangaId } ?: error("Local manga is unavailable")
             val root = documents.root(book.rootUri)
             val chapters = book.chapters.filter { it.id in ids }
             for (chapter in chapters) {
                 val owned = if (chapter.node.directory) chapter.pages else listOf(chapter.node)
+                val others = state.value.books.flatMap { otherBook -> otherBook.chapters
+                    .filter { otherBook.id != mangaId || it.id !in ids }
+                    .flatMap { c -> if (c.node.directory) c.pages else listOf(c.node) } }.mapTo(HashSet()) { it.key }
+                check(owned.none { it.key in others }) { "A document is shared by another chapter" }
                 check(owned.all { !it.directory && it.key != root.key && documents.contains(root, it) })
                 for (page in owned) if (documents.exists(root, page)) documents.delete(root, page)
-                if (chapter.node.directory && chapter.node.key != root.key && documents.children(root, chapter.node).isEmpty()) {
+                if (chapter.node.directory && chapter.node.uri.toUri().scheme == "file" && chapter.node.key != root.key && documents.children(root, chapter.node).isEmpty()) {
                     documents.delete(root, chapter.node)
                 }
             }
+        }
+        } catch (error: Exception) {
+            runCatchingCancellable { scan() }
+            throw error
         }
         scan()
     }

@@ -83,6 +83,9 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
         check(root.key != node.key && contains(root, node)) { "Refusing to delete a root or unrelated document" }
         val uri = node.uri.toUri()
         // Directory deletion is never recursive. Unknown files/new external additions are retained.
+        check(!node.directory || uri.scheme == ContentResolver.SCHEME_FILE) {
+            "A SAF provider cannot guarantee non-recursive directory deletion"
+        }
         if (node.directory && children(root, node).isNotEmpty()) throw IOException("Folder is not empty: ${node.name}")
         val deleted = if (uri.scheme == ContentResolver.SCHEME_FILE) uri.toFile().delete()
         else DocumentsContract.deleteDocument(resolver, uri)
