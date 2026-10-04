@@ -80,6 +80,8 @@ class FavouritesContainerViewModel @Inject constructor(
 			// be opened first while keeping filesystem work off the UI thread.
 			localFavouritesRepository.ensureSnapshotInitialized(favouriteSpace)
 			localFavouritesRepository.ensureInitialized(favouriteSpace)
+			localMangaIndex.rebuildIfRequired()
+			localFavouritesRepository.refresh(favouriteSpace)
 		}
 	}
 
