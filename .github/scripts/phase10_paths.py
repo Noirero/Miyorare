@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 
 import exclusive_visual_paths as kotlin
 
@@ -144,6 +145,53 @@ def source_is_jvm_only(path: str, before: str | None, after: str | None) -> bool
         return False
 
 
+
+def isolated_value_resource_change(path: str, before: str | None, after: str | None) -> bool:
+    """Prove a values XML edit cannot affect the Phase 10 rendered surfaces."""
+    if before is None or after is None or not re.fullmatch(r'app/src/main/res/values(?:-[^/]+)?/[^/]+\.xml', path):
+        return False
+    try:
+        def values(source: str) -> dict[tuple[str, str], bytes]:
+            root = ET.fromstring(source)
+            if root.tag != 'resources':
+                raise ValueError('not Android values XML')
+            result = {}
+            for child in root:
+                name = child.attrib.get('name', '')
+                if child.tag not in {'string', 'plurals', 'string-array'} or not name or not re.fullmatch(r'[A-Za-z0-9_]+', name):
+                    raise ValueError('unsupported value resource')
+                result[(child.tag, name)] = ET.tostring(child, encoding='utf-8')
+            return result
+
+        old, new = values(before), values(after)
+        changed = {key for key in old.keys() | new.keys() if old.get(key) != new.get(key)}
+        if not changed:
+            return True
+        # Only plain text-family values are eligible. Any reference from a rendered
+        # Phase 10 host/dependency keeps the matrix. Unknown/unreadable consumers
+        # fail closed rather than silently dropping visual evidence.
+        needles = {f'R.{kind}.{name}' for kind, name in changed} | {
+            f'@{kind}/{name}' for kind, name in changed
+        }
+        roots = [
+            ROOT / 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney',
+            ROOT / 'app/src/main/kotlin/org/koitharu/kotatsu/stats',
+            ROOT / 'app/src/main/kotlin/org/koitharu/kotatsu/core/ui',
+            ROOT / 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney',
+        ]
+        for root in roots:
+            if not root.exists():
+                return False
+            for consumer in root.rglob('*'):
+                if consumer.is_file() and consumer.suffix in {'.kt', '.java', '.xml'}:
+                    text = consumer.read_text(encoding='utf-8')
+                    if any(needle in text for needle in needles):
+                        return False
+        return True
+    except (ET.ParseError, ValueError, OSError, UnicodeError):
+        return False
+
+
 def route_paths(paths: list[str], sources: dict[str, tuple[str | None, str | None]] | None = None,
                 *, deep_covers: bool = True, runtime_covers_backup: bool = False) -> Route:
     if not paths:
@@ -171,7 +219,10 @@ def route_paths(paths: list[str], sources: dict[str, tuple[str | None, str | Non
             state = True
         elif path == RENDER_TEST:
             render = True
-        elif path in {PREFIX + 'stats/ui/' + name for name in ('StatsScreen.kt', 'StatsActivity.kt', 'ReaderJourneyFragment.kt')} or path.startswith(('app/src/main/res/', 'app/src/main/assets/')):
+        elif path.startswith('app/src/main/res/'):
+            if not isolated_value_resource_change(path, *sources.get(path, (None, None))):
+                render = True
+        elif path in {PREFIX + 'stats/ui/' + name for name in ('StatsScreen.kt', 'StatsActivity.kt', 'ReaderJourneyFragment.kt')} or path.startswith('app/src/main/assets/'):
             render = True
         else:
             # Reader Journey domain/data/theme, persistence, application/DI and
@@ -230,7 +281,8 @@ def classify(base: str, head: str, *, manual: bool = False) -> Route:
                    PREFIX + 'reader/ui/ReaderActivity.kt', PREFIX + 'settings/developer/DeveloperToolsFragment.kt'}
         queue_safe = consumers == allowed
         sources = {p: (git_source(base, p), git_source(head, p)) for p in paths
-                   if p.endswith('.kt') and not p.startswith('app/src/test/') and (p != QUEUE or queue_safe)}
+                   if ((p.endswith('.kt') and not p.startswith('app/src/test/') and (p != QUEUE or queue_safe))
+                       or p.startswith('app/src/main/res/'))}
         return route_paths(paths, sources, deep_covers=deep_covers, runtime_covers_backup=runtime_covers)
     except (subprocess.CalledProcessError, ValueError, IndexError, OSError, UnicodeError, ImportError) as error:
         print(f'Phase 10 routing uncertain; run full validation: {error}', file=sys.stderr)
