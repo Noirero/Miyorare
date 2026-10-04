@@ -395,7 +395,9 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		val available = viewModel.favouriteSpace == FavouriteSpace.NORMAL &&
 			contentTypeStore.selectedType.value == FavouriteContentType.MANGA
 		binding.buttonCollectionSelector.isVisible = available
-		if (available) binding.buttonCollectionSelector.setText(activeCollection.titleRes)
+		if (available) {
+			binding.buttonCollectionSelector.contentDescription = getString(activeCollection.titleRes)
+		}
 	}
 
 	private fun onCategoriesCommitted(value: List<FavouriteTabModel>) {
