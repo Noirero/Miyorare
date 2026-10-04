@@ -77,6 +77,18 @@ class ChaptersSelectionCallback(
 			R.id.action_delete -> {
 				val ids = controller.peekCheckedIds()
 				val manga = viewModel.getMangaOrNull()
+                if (manga?.url?.startsWith("smart-local:") == true && ids.isNotEmpty()) {
+                    if (ids.size == manga.chapters?.size) {
+                        org.koitharu.kotatsu.local.ui.showLocalLibraryDeletionDialog(recyclerView.context,
+                            { viewModel.hideLocal(); mode?.finish() }, { viewModel.deleteLocal(); mode?.finish() })
+                    } else com.google.android.material.dialog.MaterialAlertDialogBuilder(recyclerView.context)
+                        .setTitle(R.string.smart_local_delete_device).setMessage(R.string.smart_local_delete_device_message)
+                        .setPositiveButton(R.string.delete) { _, _ ->
+                            LocalChaptersRemoveService.start(recyclerView.context, manga, ids.toSet(), viewModel.favouriteSpace)
+                            mode?.finish()
+                        }.setNegativeButton(android.R.string.cancel, null).show()
+                    return true
+                }
 				when {
 					ids.isEmpty() || manga == null -> Unit
 					ids.size == manga.chapters?.size -> viewModel.deleteLocal()

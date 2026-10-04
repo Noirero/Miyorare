@@ -104,6 +104,7 @@ interface AppModule {
 			faviconFetcherFactory: FaviconFetcher.Factory,
 			imageProxyInterceptor: ImageProxyInterceptor,
 			pageFetcherFactory: MangaPageFetcher.Factory,
+            localCoverFetcherFactory: org.koitharu.kotatsu.local.library.LocalCoverFetcher.Factory,
 			coverRestoreInterceptor: CoverRestoreInterceptor,
 			networkStateProvider: Provider<NetworkState>,
 			webViewExecutorProvider: Provider<WebViewExecutor>,
@@ -157,6 +158,7 @@ interface AppModule {
 					}
 					add(SvgDecoder.Factory())
 					add(CbzFetcher.Factory())
+                    add(localCoverFetcherFactory)
 					add(AvifImageDecoder.Factory())
 					add(faviconFetcherFactory)
 					add(MangaPageKeyer())

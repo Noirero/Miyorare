@@ -95,8 +95,8 @@ class LocalStackSafetyRegressionTest {
 			manifest.contains("LocalIndexUpdateService"),
 		)
 		assertTrue(
-			"Explicit Local refresh must retain the full discovery path",
-			localViewModel.contains("localMangaIndex.update()"),
+			"Explicit Local refresh must retain selected-root discovery without scanning download storage",
+			localViewModel.contains("library.scan()"),
 		)
 	}
 

@@ -47,6 +47,7 @@ class LocalFavouritesRepository @Inject constructor(
 	private val favouritesRepository: FavouritesRepository,
 	private val downloadDestinationStore: DownloadDestinationStore,
 	private val localMangaIndex: LocalMangaIndex,
+    private val smartLocalLibrary: org.koitharu.kotatsu.local.library.SmartLocalLibrary,
 ) {
 
 	private val mutex = Mutex()
@@ -54,23 +55,19 @@ class LocalFavouritesRepository @Inject constructor(
 	private val snapshotInitializedSpaces = HashSet<FavouriteSpace>()
 	private val initializedSpaces = HashSet<FavouriteSpace>()
 
-	fun items(space: FavouriteSpace): Flow<List<Manga>> {
-		val raw = rawItems.getValue(space)
-		if (space == FavouriteSpace.PRIVATE) return raw
-		return combine(
-			raw,
-			favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
-			favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
-		) { localManga, _, _ ->
-			if (localManga.isEmpty()) return@combine localManga
-			val privateIds = favouritesRepository.getMemberships(FavouriteSpace.PRIVATE)
-				.mapTo(HashSet()) { it.mangaId }
-			if (privateIds.isEmpty()) return@combine localManga
-			val normalIds = favouritesRepository.getMemberships(FavouriteSpace.NORMAL)
-				.mapTo(HashSet()) { it.mangaId }
-			localManga.filterNot { manga -> manga.id in privateIds && manga.id !in normalIds }
-		}.distinctUntilChanged()
-	}
+    fun items(space: FavouriteSpace): Flow<List<Manga>> = combine(
+        rawItems.getValue(space), smartLocalLibrary.state,
+        favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
+        favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
+    ) { legacy, snapshot, _, _ ->
+        val privateIds = favouritesRepository.getMemberships(FavouriteSpace.PRIVATE).mapTo(HashSet()) { it.mangaId }
+        val normalIds = favouritesRepository.getMemberships(FavouriteSpace.NORMAL).mapTo(HashSet()) { it.mangaId }
+        val active = snapshot.books.map { it.toManga(smartLocalLibrary.showExtensions) }.filterNot { it.isNovelContent }
+        val managed = if (space == FavouriteSpace.PRIVATE) active.filter { it.id in privateIds } else active
+        val combined = legacy.filterNot { it.url.startsWith("smart-local:") } + managed
+        val visible = if (space == FavouriteSpace.NORMAL) combined.filterNot { it.id in privateIds && it.id !in normalIds } else combined
+        visible.distinctBy { it.id }.sortedWith(compareBy(AlphanumComparator()) { it.title })
+    }.distinctUntilChanged()
 
 	/**
 	 * Cold-start fast path used by the ordinary Favourites container. It reads only durable Room state
@@ -78,6 +75,7 @@ class LocalFavouritesRepository @Inject constructor(
 	 * the user actually opens the Local shelf or explicitly refreshes it.
 	 */
 	suspend fun ensureSnapshotInitialized(space: FavouriteSpace) = mutex.withLock {
+        smartLocalLibrary.initialize()
 		if (space !in snapshotInitializedSpaces) {
 			publishPersistedSnapshotLocked(space)
 			snapshotInitializedSpaces += space
@@ -85,6 +83,7 @@ class LocalFavouritesRepository @Inject constructor(
 	}
 
 	suspend fun ensureInitialized(space: FavouriteSpace) = mutex.withLock {
+        smartLocalLibrary.initialize()
 		if (space !in initializedSpaces) refreshLocked(space)
 	}
 

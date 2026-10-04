@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.local.domain
 
 import kotlinx.coroutines.Dispatchers
+import androidx.core.net.toUri
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.fold
@@ -32,6 +33,9 @@ class DeleteReadChaptersUseCase @Inject constructor(
 ) {
 
 	suspend operator fun invoke(manga: Manga): Int {
+        // Selected Local Folders are user-owned collections. Download cleanup must never
+        // turn reading a selected book into implicit deletion of the user's originals.
+        if (manga.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME) return 0
 		val localManga = if (manga.isLocal) {
 			LocalManga(manga)
 		} else {

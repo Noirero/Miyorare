@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.widget.TextViewCompat
+import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
@@ -42,6 +43,15 @@ class LocalInfoDialog : AlertDialogFragment<DialogLocalInfoBinding>(), View.OnCl
 			binding.textViewPath.text = it
 		}
 		binding.chipCleanup.setOnClickListener(this)
+        if (viewModel.isSmartLocal) {
+            binding.chipCleanup.isVisible = false
+            binding.barView.isVisible = false
+            binding.labelAvailable.isVisible = false
+            viewModel.size.observe(viewLifecycleOwner) { bytes ->
+                if (bytes >= 0) binding.labelUsed.text = getString(R.string.memory_usage_pattern,
+                    getString(R.string.this_manga), FileSize.BYTES.format(requireContext(), bytes))
+            }
+        }
 		combine(viewModel.size, viewModel.availableSize, ::Pair).observe(viewLifecycleOwner) {
 			if (it.first >= 0 && it.second >= 0) {
 				setSegments(it.first, it.second)

@@ -80,8 +80,8 @@ class DetailsLoadUseCase @Inject constructor(
 		// otherwise Details can route the stale source through EmptyMangaRepository and report
 		// "This manga source is not supported" despite the Local manga still existing.
 		val localIdentity = localMangaRepository.findLocalMangaById(resolvedIntentManga.id, withDetails = true)
-		val manga = if (localIdentity != null && localIdentity.manga.isLocal) {
-			localIdentity.manga
+		val manga = if (localIdentity != null && localIdentity.isLocal) {
+			localIdentity
 		} else {
 			downloadedMangaResolver.resolveCanonicalManga(resolvedIntentManga)
 		}

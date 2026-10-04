@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="smart_local_roots_summary">Local Folders (%1$d) • %2$d manga</string>
+    <string name="smart_local_expand">▼ Expand</string>
+    <string name="smart_local_collapse">▲ Collapse</string>
+    <string name="smart_local_root_counts">%1$s\n%2$d manga • %3$d chapters</string>
+    <string name="smart_local_more">⋮ Manage</string>
+    <string name="smart_local_add_folder">Add Local Folder</string>
+    <string name="smart_local_statistics">%1$d manga • %2$d chapters\n%3$d reading • %4$d new</string>
+    <string name="smart_local_search_hint">Search local collection…</string>
+    <string name="smart_local_hidden_count">%d hidden manga</string>
+    <string name="smart_local_restore">Restore hidden manga</string>
+    <string name="smart_local_review_count">%d items need attention</string>
+    <string name="smart_local_inspect">Inspect</string>
+    <string name="smart_local_continue">Continue Reading</string>
+    <string name="smart_local_discovered">Newly Discovered</string>
+    <string name="smart_local_mark_seen">Mark seen</string>
+    <string name="smart_local_new_chapters">%1$s • +%2$d chapters</string>
+    <string name="smart_local_open">Open</string>
+    <string name="smart_local_collection">Local Collection</string>
+    <string name="smart_local_book_counts">%1$d chapters • %2$d unread</string>
+    <string name="smart_local_imported">Imported Files</string>
+    <string name="smart_local_empty">Choose a Local Folder to discover your collection. Downloads are managed separately.</string>
+    <string name="smart_local_information">Local Information</string>
+    <string name="smart_local_detach">Detach Local Folder</string>
+    <string name="smart_local_detach_message">Remove this folder from Miyorare? All files on your device will remain.</string>
+    <string name="smart_local_hide">Remove from Miyorare</string>
+    <string name="smart_local_delete_device">Remove from Miyorare &amp; device</string>
+    <string name="smart_local_delete_device_message">Permanently delete the selected manga files from this device? This cannot be undone. Other files and manga will remain.</string>
+    <string name="smart_local_reading_filter">Reading status</string>
+    <string name="smart_local_extensions">Show file extensions</string>
+    <string name="smart_local_extension_off">OFF — hide extensions</string>
+    <string name="smart_local_extension_on">ON — show extensions</string>
+    <string name="smart_local_needs_review">Needs review</string>
+    <string name="smart_local_unavailable">Folder unavailable</string>
+    <string name="smart_local_unreadable">Chapter cannot be read</string>
+    <string name="smart_local_unsupported">Unsupported or empty</string>
+    <string name="smart_local_diagnosis">Local Diagnosis</string>
+    <string name="smart_local_confirm_boundary">Choose the manga folder</string>
+    <string name="smart_local_confirm_boundary_message">Use “%s” as the manga folder and group its recognized chapters? Original files will remain unchanged.</string>
+    <string name="smart_local_diagnosis_message">Location: %s\n\nCheck the folder permission and content. Ambiguous structures are left for review instead of being guessed. To restore access, select the same folder again.</string>
+    <string name="smart_local_information_message">%1$s\n\n%2$d chapters\n%3$s\nLast scanned: %4$s\n%5$d ignored files</string>
+    <string-array name="smart_local_reading_filters">
+        <item>All</item>
+        <item>Unread</item>
+        <item>Reading</item>
+        <item>Completed</item>
+    </string-array>
+    <string-array name="smart_local_sorts">
+        <item>Last read</item>
+        <item>Recently added</item>
+        <item>Title A–Z</item>
+        <item>Title Z–A</item>
+        <item>Latest chapter</item>
+    </string-array>
+    <item name="action_smart_local_info" type="id" />
+</resources>

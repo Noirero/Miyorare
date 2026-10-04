@@ -12,6 +12,9 @@ class LocalListMenuProvider(
 	private val fragment: Fragment,
 	private val onImportClick: Function0<Unit>,
 	private val onRefreshClick: Function0<Unit>,
+	private val onFoldersClick: () -> Unit,
+	private val onFiltersClick: () -> Unit,
+	private val onRestoreClick: () -> Unit,
 ) : MenuProvider {
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
@@ -20,7 +23,7 @@ class LocalListMenuProvider(
 
 	override fun onPrepareMenu(menu: Menu) {
 		super.onPrepareMenu(menu)
-		menu.findItem(R.id.action_filter)?.isVisible = fragment.router.isFilterSupported()
+		menu.findItem(R.id.action_filter)?.isVisible = true
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
@@ -36,12 +39,17 @@ class LocalListMenuProvider(
 			}
 
 			R.id.action_directories -> {
-				fragment.router.openDirectoriesSettings()
+				onFoldersClick()
+				true
+			}
+
+			R.id.action_smart_local_restore -> {
+				onRestoreClick()
 				true
 			}
 
 			R.id.action_filter -> {
-				fragment.router.showFilterSheet()
+				onFiltersClick()
 				true
 			}
 

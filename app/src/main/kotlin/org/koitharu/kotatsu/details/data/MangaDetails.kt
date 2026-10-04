@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.details.data
 
 import org.koitharu.kotatsu.core.model.getLocale
+import androidx.core.net.toUri
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.withMergedBranches
 import org.koitharu.kotatsu.core.model.withOverride
@@ -52,7 +53,7 @@ data class MangaDetails(
         get() = manga.isLocal
 
     val local: LocalManga?
-        get() = localManga ?: if (manga.isLocal) LocalManga(manga) else null
+        get() = localManga ?: if (manga.isLocal && manga.url.toUri().scheme == "file") LocalManga(manga) else null
 
     val coverUrl: String?
         get() = override?.coverUrl

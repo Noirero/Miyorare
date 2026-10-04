@@ -24,6 +24,7 @@ import dagger.hilt.android.scopes.ActivityRetainedScoped
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -382,6 +383,11 @@ class PageLoader @Inject constructor(
 					uri
 				}
 			}
+
+            uri.scheme == android.content.ContentResolver.SCHEME_CONTENT -> withContext(Dispatchers.IO) {
+                val stream = context.contentResolver.openInputStream(uri) ?: error("Local image is unavailable")
+                stream.use { cache.set(pageUrl, it.source(), null) }.toUri()
+            }
 
 			else -> {
 				if (isPrefetch) {

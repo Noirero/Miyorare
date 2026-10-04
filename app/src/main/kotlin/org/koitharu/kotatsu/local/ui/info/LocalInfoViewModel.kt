@@ -24,9 +24,11 @@ class LocalInfoViewModel @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
 	private val storageManager: LocalStorageManager,
 	private val deleteReadChaptersUseCase: DeleteReadChaptersUseCase,
+    private val library: org.koitharu.kotatsu.local.library.SmartLocalLibrary,
 ) : BaseViewModel() {
 
 	private val manga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
+    val isSmartLocal = manga.url.startsWith("smart-local:")
 
 	val isCleaningUp = MutableStateFlow(false)
 	val onCleanedUp = MutableEventFlow<Pair<Int, Long>>()
@@ -55,6 +57,12 @@ class LocalInfoViewModel @Inject constructor(
 	}
 
 	private fun computeSize() = launchLoadingJob(Dispatchers.Default) {
+        if (isSmartLocal) {
+            val book = requireNotNull(library.book(manga.id)) { "Local manga is no longer indexed" }
+            path.value = book.node.uri
+            size.value = book.size
+            return@launchLoadingJob
+        }
 		val file = manga.url.toUri().toFileOrNull() ?: localMangaRepository.findSavedManga(manga)?.file
 		requireNotNull(file)
 		path.value = file.path

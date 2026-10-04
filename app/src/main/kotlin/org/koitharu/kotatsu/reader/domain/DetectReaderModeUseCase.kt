@@ -34,6 +34,7 @@ class DetectReaderModeUseCase @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	@MangaHttpClient private val okHttpClient: OkHttpClient,
 	private val imageProxyInterceptor: ImageProxyInterceptor,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) {
 
 	suspend operator fun invoke(manga: Manga, state: ReaderState?): ReaderMode {
@@ -134,6 +135,9 @@ class DetectReaderModeUseCase @Inject constructor(
 			uri.isFileUri() -> runInterruptible(Dispatchers.IO) {
 				uri.toFile().inputStream().use { getBitmapSize(it) }
 			}
+            uri.scheme == android.content.ContentResolver.SCHEME_CONTENT -> runInterruptible(Dispatchers.IO) {
+                requireNotNull(context.contentResolver.openInputStream(uri)).use { getBitmapSize(it) }
+            }
 			else -> {
 				// Prefer the extension's getImage() (handles relative imageUrls like MangaDex
 				// "/data/...", decryption, and per-source headers); fall back to a direct request.
