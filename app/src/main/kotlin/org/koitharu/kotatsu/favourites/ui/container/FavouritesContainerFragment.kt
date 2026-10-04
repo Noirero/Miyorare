@@ -915,6 +915,12 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		binding.layoutContent.addView(header, 0)
 	}
 
+	private enum class LibraryCollection(val titleRes: Int) {
+		FAVOURITES(R.string.favourites),
+		DOWNLOADED(R.string.downloaded),
+		LOCAL(R.string.local_storage),
+	}
+
 	companion object {
 		private const val STATE_INLINE_SEARCH_ACTIVE = "favourites_inline_search_active"
 		private const val STATE_SEARCH_QUERY = "favourites_search_query"
