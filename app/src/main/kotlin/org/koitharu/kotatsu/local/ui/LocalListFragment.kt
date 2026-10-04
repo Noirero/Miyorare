@@ -63,7 +63,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
             LocalLibraryAction.Acknowledge -> viewModel.acknowledgeDiscoveries()
             is LocalLibraryAction.Folder -> showFolderActions(action.root)
             is LocalLibraryAction.Diagnosis -> showDiagnosis(action.issue)
-            is LocalLibraryAction.Open -> router.openMangaDetails(action.manga, view)
+            is LocalLibraryAction.Open -> router.openDetails(action.manga)
             is List<*> -> {
                 val diagnoses = action.filterIsInstance<LocalDiagnosis>()
                 MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_diagnosis)
