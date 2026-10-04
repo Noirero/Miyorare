@@ -5,18 +5,63 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import textwrap
 import unittest
 
-from runtime_acceptance_evidence import junit_summary, require_junit, require_probe_manifest
+from runtime_acceptance_evidence import certificate_digest, junit_summary, require_junit, require_probe_manifest
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / '.github/acceptance'
 CLASS = 'org.koitharu.kotatsu.sync.library.LibrarySyncPersistenceTest'
 RUNNER = 'org.koitharu.kotatsu.HiltTestRunner'
 PACKAGE = 'org.noirero.miyorare'
+# Certificate/public-key lines from all four reports in run 37176971890.
+CERTIFICATE = 'a441d24e9619ac8553f1d47181c193f713d8494e414478a13d1e40fe5562f465'
+ACTUAL_SIGNATURE = ('Verifies\nNumber of signers: 1\n'
+                    f'V2 Signer: certificate SHA-256 digest: {CERTIFICATE}\n'
+                    'V2 Signer: public key SHA-256 digest: '
+                    'd233f2e8a790df59a7adf31297f840db0eba3304cc2dc0580c89fd8c2e328779\n')
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_certificate_formats_and_consistent_scheme_repetition(self):
+        for prefix in ('Signer #1', 'V2 Signer:'):
+            report = ACTUAL_SIGNATURE.replace('V2 Signer:', prefix)
+            self.assertEqual(certificate_digest(report), CERTIFICATE)
+        repeated = ACTUAL_SIGNATURE + f'Signer #1 certificate SHA-256 digest: {CERTIFICATE.upper()}\n'
+        repeated += f'V3.1 Signer: certificate SHA-256 digest: {CERTIFICATE}\n'
+        self.assertEqual(certificate_digest(repeated), CERTIFICATE)
+
+    def test_certificate_rejects_missing_malformed_ambiguous_or_multiple_signers(self):
+        invalid = [
+            '', ACTUAL_SIGNATURE.replace('Verifies\n', ''),
+            ACTUAL_SIGNATURE.replace('Number of signers: 1\n', ''),
+            ACTUAL_SIGNATURE.replace('Number of signers: 1', 'Number of signers: 2'),
+            ACTUAL_SIGNATURE + 'Number of signers: 1\n',
+            ACTUAL_SIGNATURE.replace(CERTIFICATE, ''),
+            ACTUAL_SIGNATURE.replace(CERTIFICATE, 'a' * 63),
+            ACTUAL_SIGNATURE.replace(CERTIFICATE, 'g' * 64),
+            ACTUAL_SIGNATURE.replace('V2 Signer: certificate SHA-256 digest', 'Unknown certificate SHA-256 digest'),
+            ACTUAL_SIGNATURE.replace('V2 Signer: certificate SHA-256', 'V2 Signer: public key SHA-256'),
+            ACTUAL_SIGNATURE + f'Signer #2 certificate SHA-256 digest: {CERTIFICATE}\n',
+            ACTUAL_SIGNATURE + 'Signer #2 certificate DN: other\n',
+            ACTUAL_SIGNATURE + f'V3 Signer: certificate SHA-256 digest: {"b" * 64}\n',
+        ]
+        for report in invalid:
+            with self.subTest(report=report), self.assertRaises(ValueError):
+                certificate_digest(report)
+
+    def test_certificate_cli_retains_invalid_report_summary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            report, output = path / 'signature.txt', path / 'summary.json'
+            report.write_text('Verifies\nNumber of signers: 1\n')
+            result = subprocess.run(['python3', str(ROOT / '.github/scripts/runtime_acceptance_evidence.py'),
+                                     'certificate', '--file', str(report), '--output', str(output)], capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, b'')
+            self.assertEqual(json.loads(output.read_text())['status'], 'fail')
+
     def test_alignment_uses_production_baseline_only_for_probe_classpaths(self):
         # Structural check; resolving both Gradle/AGP probe graphs is still required.
         script = (TOOLS / 'runtime-probe.init.gradle').read_text()
@@ -123,6 +168,73 @@ class ShellTests(unittest.TestCase):
         path = self.work / 'app/build/outputs/androidTest-results/connected'
         path.mkdir(parents=True)
         (path / 'TEST-sync.xml').write_text('<testsuite>' + ''.join(f'<testcase classname="{CLASS}" name="test{i}"/>' for i in range(3)) + '</testsuite>')
+
+    def signature_guard(self):
+        tools = self.work / 'sdk/build-tools/36.0.0'
+        tools.mkdir(parents=True)
+        self.env['ANDROID_HOME'] = str(self.work / 'sdk')
+        self.write_executable(tools / 'apksigner', f'''#!/usr/bin/env python3
+import os, sys
+if sys.argv[1] == 'version':
+    print('fixture-apksigner')
+    raise SystemExit(0)
+report = {ACTUAL_SIGNATURE!r}
+if sys.argv[-1] == '/tmp/candidate.apk':
+    if os.environ.get('MOCK_VERIFY_FAILURE'):
+        print('signature verification failed')
+        raise SystemExit(27)
+    if os.environ.get('MOCK_CERT_MISMATCH'):
+        report = report.replace({CERTIFICATE!r}, 'b' * 64)
+    if os.environ.get('MOCK_INVALID_REPORT'):
+        report = 'Verifies\\nNumber of signers: 1\\n'
+print(report, end='')
+''')
+        manifest = (f'  E: instrumentation (line=1)\n'
+                    f'    A: android:name(0x01010003)="{RUNNER}"\n'
+                    f'    A: android:targetPackage(0x01010021)="{PACKAGE}"\n')
+        self.write_executable(tools / 'aapt', f'''#!/usr/bin/env python3
+import pathlib, sys
+pathlib.Path('.aapt-called').touch()
+print({manifest!r} if sys.argv[2] == 'xmltree' else "package: name='{PACKAGE}'")
+''')
+        workflow = (ROOT / '.github/workflows/runtime-acceptance-harness.yml').read_text()
+        block = workflow.split('      - name: Verify probe signatures and Release target compatibility\n', 1)[1]
+        block = block.split('\n      - name:', 1)[0].split('        run: |\n', 1)[1]
+        return subprocess.run(['bash', '-c', textwrap.dedent(block)], cwd=self.work, env=self.env,
+                              text=True, capture_output=True)
+
+    def test_signature_guard_accepts_actual_format_for_all_four_apks(self):
+        result = self.signature_guard()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for label in ('stable', 'candidate', 'stable-probe', 'candidate-probe'):
+            summary = json.loads((self.evidence / f'{label}-certificate-summary.json').read_text())
+            self.assertEqual(summary['sha256'], CERTIFICATE)
+            self.assertEqual(summary['signers'], 1)
+        self.assertTrue((self.work / '.aapt-called').exists())
+        self.assertIn('fixture-apksigner', (self.evidence / 'apksigner-tool.txt').read_text())
+        self.assertEqual(len((self.evidence / 'probe-certificates.txt').read_text().splitlines()), 4)
+
+    def test_signature_guard_rejects_certificate_mismatch_before_manifest(self):
+        self.env['MOCK_CERT_MISMATCH'] = '1'
+        result = self.signature_guard()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.work / '.aapt-called').exists())
+        self.assertTrue((self.evidence / 'candidate-probe-signature.txt').exists())
+
+    def test_signature_guard_preserves_apksigner_failure_before_manifest(self):
+        self.env['MOCK_VERIFY_FAILURE'] = '1'
+        result = self.signature_guard()
+        self.assertEqual(result.returncode, 27, result.stdout + result.stderr)
+        self.assertFalse((self.work / '.aapt-called').exists())
+        self.assertIn('signature verification failed', (self.evidence / 'candidate-signature.txt').read_text())
+        self.assertFalse((self.evidence / 'candidate-certificate-summary.json').exists())
+
+    def test_signature_guard_stops_on_invalid_parser_report(self):
+        self.env['MOCK_INVALID_REPORT'] = '1'
+        result = self.signature_guard()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.work / '.aapt-called').exists())
+        self.assertEqual(json.loads((self.evidence / 'candidate-certificate-summary.json').read_text())['status'], 'fail')
 
     def test_both_emulator_shells_syntax(self):
         for name in ('library-sync.sh', 'upgrade-release.sh', 'build-probes.sh'):

@@ -243,10 +243,14 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -x "$APKSIGNER"
           test -x "$AAPT"
+          printf 'path=%s\n' "$APKSIGNER" > "$ACCEPTANCE_EVIDENCE/apksigner-tool.txt"
+          "$APKSIGNER" version >> "$ACCEPTANCE_EVIDENCE/apksigner-tool.txt" 2>&1
           cert_digest() {
             local label="$1" apk="$2"
             "$APKSIGNER" verify --verbose --print-certs "$apk" > "$ACCEPTANCE_EVIDENCE/$label-signature.txt" 2>&1 || return "$?"
-            sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$ACCEPTANCE_EVIDENCE/$label-signature.txt"
+            python3 "$HARNESS_TOOLS/runtime_acceptance_evidence.py" certificate \
+              --file "$ACCEPTANCE_EVIDENCE/$label-signature.txt" \
+              --output "$ACCEPTANCE_EVIDENCE/$label-certificate-summary.json"
           }
           stable_cert="$(cert_digest stable /tmp/stable.apk)"
           candidate_cert="$(cert_digest candidate /tmp/candidate.apk)"
