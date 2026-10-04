@@ -52,14 +52,14 @@ creation/advance policy, scrobbling side effects, and library membership remain 
 | `ChaptersPagesViewModel.markChapterAsCurrent` | Existing force-progress mutation; chosen chapter remains current without claiming Reader activity. Opening Reader and saving afterward creates provenance. |
 | `ProgressUpdateUseCase` | Recalculates chapter mapping/percent through progress-only DAO update; markers are preserved. |
 | `HistoryRepository.recoverIfNeeded` | Repairs missing chapter pointer through progress-only DAO update; markers are preserved. |
-| Native ZIP restore: `LocalBackupRepository` -> `HistoryBackup.toEntity` -> `upsert` | Imported progress has markers zero; existing local markers are retained by update. Restore time is never used as Reader time. |
+| Native ZIP restore: `LocalBackupRepository` -> `HistoryBackup.toEntity` -> `upsert` | Imported progress has markers zero; active local markers are retained by update. Reviving a tombstone through progress does not revive its deleted Reader evidence. Restore time is never used as Reader time. |
 | Mihon restore: `MihonBackupManager` | Existing imported progress/history handling remains; imported `lastRead` is not assumed to prove a local Reader session. Existing local markers survive DAO updates. |
-| Google Drive sync: `SyncHistory.toEntity` -> `upsertForSync` | Both local markers are preserved even when replacing progress/tombstone fields. New remote rows have zero local markers. |
+| Google Drive sync: `SyncHistory.toEntity` -> `upsertForSync` | Active local markers survive replacing progress/tombstone fields. New remote rows and non-reader revival of deleted progress have zero local markers. |
 | Service Library Sync: `LibrarySyncEngine` | Existing direct history upsert remains progress-only, preserving local markers. |
 | `MigrateUseCase` (alternative/source identity translation) | Copies original marker times through `upsertForMangaMigration`; merges with an existing destination using max, never migration time. |
 | `KotatsuMangaMigrator` (local source identity conversion) | Same historical marker transfer; no new reading time is fabricated. |
-| DAO `update`, `upsert`, iterable `upsert`, direct `insert` | Progress updates do not overwrite either marker. Audited production inserts use defaults except explicit local identity translations. |
-| Delete, recover, clear, delete-after, delete-not-favourite, GC/source cleanup | Existing soft/hard deletion semantics remain; queries exclude deleted rows; recovery does not create a new Reader timestamp. |
+| DAO `update`, `upsert`, iterable `upsert`, direct `insert` | Progress updates preserve active markers; administrative resurrection clears deleted markers. Audited production inserts use defaults except explicit local identity translations. |
+| Delete, recover, clear, delete-after, delete-not-favourite, GC/source cleanup | Existing soft/hard deletion semantics remain; queries exclude deleted rows. Explicit deletion undo/recovery restores original evidence without a new timestamp; administrative/import/sync resurrection does not revive it. |
 | Historical schema migrations | Old history creation/copy/default migrations have no Reader provenance; v51 snapshots their final old ordering once. |
 | Backup-agent audit | No production Android `BackupAgent`/`onRestore` history writer was found; the existing `AppBackupAgentTest` exercises Mihon restore. |
 
@@ -93,7 +93,7 @@ New tests are added to the already-routed `LocalBackupIdentityTest` and
   Feed-created history is removed on undo; a later Reader session survives stale undo.
 - Completed/read and current-position mutations preserve progress without stealing resume.
 - Previously tracking/Feed/manual-only manga becomes resumable after actual Reader save.
-- Incognito, private isolation enabled/disabled, and deletion are exercised on real Room data.
+- Incognito, private isolation enabled/disabled, deletion/explicit undo, and non-reader tombstone resurrection are exercised on real Room data.
 - Native backup ZIP round-trip and cloud DAO replacement cannot create local Reader evidence
   or erase local markers; local identity translation preserves historical timestamps.
 - Same-clock and clock-rollback Reader saves have deterministic order.

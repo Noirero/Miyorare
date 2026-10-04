@@ -316,6 +316,33 @@ class LocalBackupIdentityTest {
 		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
 	}
 
+
+	@Test
+	fun nonReaderResurrectionDoesNotReviveDeletedReaderIdentity() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		saveReader(a)
+		saveReader(b)
+		val oldReaderHistory = database.getHistoryDao().find(b.id)!!
+		historyRepository.delete(b)
+		assertFalse(historyRepository.advanceFromTracking(b, checkNotNull(b.chapters), 2))
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+		setManualProgress(b, 2)
+		assertEquals(0L, database.getHistoryDao().find(b.id)?.lastReaderActivityAt)
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+		saveReader(b)
+		historyRepository.delete(b)
+		database.getHistoryDao().upsertForSync(oldReaderHistory)
+		assertEquals(0L, database.getHistoryDao().find(b.id)?.lastReaderActivityAt)
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+		saveReader(b)
+		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
+		val deletedUndo = historyRepository.delete(setOf(b.id))
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+		deletedUndo.reverse() // explicit history deletion undo still restores the original reading entry
+		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
+	}
+
 	private fun resumeManga(id: Long): Manga = SampleData.mangaDetails.copy(id = id, isNsfw = false, source = org.koitharu.kotatsu.parsers.model.MangaSource("TEST_CONTINUE_READING"))
 
 	private suspend fun saveReader(manga: Manga, index: Int = 0) {

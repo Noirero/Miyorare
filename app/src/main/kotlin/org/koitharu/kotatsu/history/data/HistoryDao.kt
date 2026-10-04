@@ -332,9 +332,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	@Transaction
 	open suspend fun upsertForSync(entity: HistoryEntity) {
 		val local = findIncludingDeleted(entity.mangaId)
+		val revivesDeletedProgress = local?.deletedAt?.let { it != 0L } == true && entity.deletedAt == 0L
 		replaceForSync(entity.copy(
-			lastReaderActivityAt = local?.lastReaderActivityAt ?: 0L,
-			legacyResumeUpdatedAt = local?.legacyResumeUpdatedAt ?: 0L,
+			lastReaderActivityAt = if (revivesDeletedProgress) 0L else local?.lastReaderActivityAt ?: 0L,
+			legacyResumeUpdatedAt = if (revivesDeletedProgress) 0L else local?.legacyResumeUpdatedAt ?: 0L,
 		))
 	}
 
@@ -371,9 +372,9 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		if (previous == null) delete(mangaId) else upsert(previous)
 	}
 
-	// Progress-only update: Reader and legacy resume markers deliberately remain untouched.
+	// Progress-only update preserves active markers. Non-reader resurrection must not revive deleted evidence.
 	@Query(
-		"UPDATE history SET page = :page, chapter_id = :chapterId, scroll = :scroll, percent = :percent, updated_at = :updatedAt, chapters = :chapters, deleted_at = 0 WHERE manga_id = :mangaId",
+		"UPDATE history SET page = :page, chapter_id = :chapterId, scroll = :scroll, percent = :percent, updated_at = :updatedAt, chapters = :chapters, last_reader_activity_at = CASE WHEN deleted_at = 0 THEN last_reader_activity_at ELSE 0 END, legacy_resume_updated_at = CASE WHEN deleted_at = 0 THEN legacy_resume_updated_at ELSE 0 END, deleted_at = 0 WHERE manga_id = :mangaId",
 	)
 	abstract suspend fun update(
 		mangaId: Long,
