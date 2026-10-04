@@ -2,9 +2,14 @@ package org.koitharu.kotatsu.local.library
 
 import android.content.Context
 import android.content.Intent
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfDocument
+import android.provider.MediaStore
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +24,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.delay
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -28,6 +34,10 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
+import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.ui.mapChapters
+import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
@@ -67,12 +77,13 @@ class SmartLocalLibraryRuntimeTest {
         hiltRule.inject()
     }
 
-    @After fun tearDown() = runBlocking {
+    @After fun tearDown(): Unit = runBlocking {
         if (::library.isInitialized) library.state.value.books.forEach { touched += it.id }
         touched.forEach { database.getHistoryDao().delete(it) }
         fixture.deleteRecursively() // Test-owned fixtures only, never a production deletion helper.
         context.getSharedPreferences("smart_local_library", Context.MODE_PRIVATE).edit().clear().commit()
         File(context.filesDir, "smart-local-index.json").delete()
+        Unit
     }
 
     @Test fun selectedRootsFormatsReaderProgressAndDisplay() = runBlocking {
@@ -95,6 +106,7 @@ class SmartLocalLibraryRuntimeTest {
         val book = library.state.value.books.single { it.node.name == "Mixed" }
         val manga = repository.getDetails(book.toManga(false))
         val chapters = requireNotNull(manga.chapters)
+        assertTrue(MangaDetails(manga).mapChapters(0L, 0, null, emptyList(), false, false).all { it.isDownloaded })
         assertEquals(listOf("Chapter 1", "Chapter 2", "Chapter 10"), chapters.map { it.title })
         assertTrue(chapters.all { repository.getPages(it).isNotEmpty() })
         assertTrue(repository.getPages(chapters[1]).first().url.endsWith("2.png"))
@@ -250,8 +262,34 @@ class SmartLocalLibraryRuntimeTest {
                 val file = File(requireNotNull(image.path))
                 val readable = if (LocalPdfCache.isPdfPage(file)) LocalPdfCache.materializePage(file) else file
                 assertNotNull("Actual Reader page must decode", BitmapFactory.decodeFile(readable.path)?.also { it.recycle() })
-            } else assertTrue(requireNotNull(model.getMangaOrNull()).url.endsWith(".epub"))
+                // Exercise the actual content:// PageLoader path used for SAF image pages.
+                val media = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, "smart-local-test-${System.nanoTime()}.png")
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/MiyorareAcceptance")
+                })!!
+                try {
+                    context.contentResolver.openOutputStream(media)!!.use { it.write(png()) }
+                    val cached = loader.loadPage(MangaPage(System.nanoTime(), media.toString(), null, LocalMangaSource), false)
+                    assertNotNull(BitmapFactory.decodeFile(cached.path)?.also { it.recycle() })
+                } finally { context.contentResolver.delete(media, null, null) }
+            } else {
+                assertTrue(requireNotNull(model.getMangaOrNull()).url.endsWith(".epub"))
+                withTimeout(15_000) {
+                    while (true) {
+                        var rendered = false
+                        instrumentation.runOnMainSync { rendered = hasSectionText(activity.window.decorView) }
+                        if (rendered) break
+                        delay(100)
+                    }
+                }
+            }
         } finally { instrumentation.runOnMainSync { activity.finish() }; instrumentation.waitForIdleSync() }
+    }
+
+    private fun hasSectionText(view: View): Boolean {
+        if (view is TextView && view.text.contains("section")) return true
+        return view is ViewGroup && (0 until view.childCount).any { hasSectionText(view.getChildAt(it)) }
     }
 
     private fun dir(name: String) = File(fixture, name).also { check(it.mkdirs()) }

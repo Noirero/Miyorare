@@ -175,7 +175,7 @@ class LocalListViewModel @Inject constructor(
                     val model = mangaListMapper.toListModel(manga, ListMode.LIST, MangaListMapper.NO_SAVED)
                     val chapter = book.chapters.firstOrNull { it.id == histories[book.id]?.chapterId }
                     result += if (model is MangaCompactListModel) model.copy(showContinueReading = true,
-                        subtitle = chapter?.node?.name?.let { LocalTreeScanner.displayName(it, library.showExtensions, chapter.node.directory) }.orEmpty()) else model
+                        subtitle = chapter?.metadataTitle ?: chapter?.node?.name?.let { LocalTreeScanner.displayName(it, library.showExtensions, chapter.node.directory) }.orEmpty()) else model
                 }
             }
             val discovered = snapshot.books.filter { it.newChapters > 0 }

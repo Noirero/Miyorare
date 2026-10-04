@@ -15,12 +15,16 @@ internal data class LocalMetadata(
         fun read(node: Node, documents: LocalDocuments): LocalMetadata = runCatching {
             documents.input(node).use { input ->
                 if (node.name.equals("index.json", true)) {
-                    val index = MangaIndex(readBounded(input))
-                    val manga = index.getMangaInfo()
-                    LocalMetadata(manga?.title, manga?.authors.orEmpty(), manga?.description, index.getCoverEntry())
+                    readJson(input)
                 } else readXml(input)
             }
         }.getOrDefault(LocalMetadata())
+
+        fun readJson(input: InputStream): LocalMetadata {
+            val index = MangaIndex(readBounded(input))
+            val manga = index.getMangaInfo()
+            return LocalMetadata(manga?.title, manga?.authors.orEmpty(), manga?.description, index.getCoverEntry())
+        }
 
         fun readXml(input: InputStream): LocalMetadata {
             val text = readBounded(input)

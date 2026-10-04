@@ -33,6 +33,7 @@
     <string name="smart_local_extension_on">ON — show extensions</string>
     <string name="smart_local_needs_review">Needs review</string>
     <string name="smart_local_unavailable">Folder unavailable</string>
+    <string name="smart_local_unreadable">Chapter cannot be read</string>
     <string name="smart_local_unsupported">Unsupported or empty</string>
     <string name="smart_local_diagnosis">Local Diagnosis</string>
     <string name="smart_local_confirm_boundary">Choose the manga folder</string>

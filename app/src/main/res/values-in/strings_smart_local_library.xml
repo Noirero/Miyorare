@@ -33,6 +33,7 @@
     <string name="smart_local_extension_on">ON — tampilkan extension</string>
     <string name="smart_local_needs_review">Perlu diperiksa</string>
     <string name="smart_local_unavailable">Folder tidak tersedia</string>
+    <string name="smart_local_unreadable">Chapter tidak dapat dibaca</string>
     <string name="smart_local_unsupported">Tidak didukung atau kosong</string>
     <string name="smart_local_diagnosis">Diagnosis Lokal</string>
     <string name="smart_local_confirm_boundary">Pilih folder manga</string>

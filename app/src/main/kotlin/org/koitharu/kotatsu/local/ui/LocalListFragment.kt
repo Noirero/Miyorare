@@ -7,6 +7,9 @@ import android.view.MenuItem
 import android.view.View
 import androidx.appcompat.view.ActionMode
 import androidx.fragment.app.viewModels
+import androidx.core.net.toUri
+import androidx.core.net.toFile
+import org.koitharu.kotatsu.core.util.ShareHelper
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import org.koitharu.kotatsu.R
@@ -76,11 +79,21 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
     override fun onCreateActionMode(controller: ListSelectionController, menuInflater: MenuInflater, menu: Menu): Boolean {
         menuInflater.inflate(R.menu.mode_local, menu)
         menu.add(Menu.NONE, R.id.action_smart_local_info, 90, R.string.smart_local_information)
-        menu.findItem(R.id.action_share)?.isVisible = false // SAF documents are not java.io.File links.
         return super.onCreateActionMode(controller, menuInflater, menu)
+    }
+    override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode?, menu: Menu): Boolean {
+        val result = super.onPrepareActionMode(controller, mode, menu)
+        menu.findItem(R.id.action_share)?.isVisible = selectedItems.isNotEmpty() && selectedItems.all { it.url.toUri().scheme == "file" }
+        menu.findItem(R.id.action_smart_local_info)?.isVisible = selectedItemsIds.size == 1
+        return result
     }
     override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean = when (item.itemId) {
         R.id.action_remove -> { showDeletionChoices(selectedItemsIds, mode); true }
+        R.id.action_share -> {
+            val files = selectedItems.distinctBy { it.id }.filter { it.url.toUri().scheme == "file" }.map { it.url.toUri().toFile() }
+            if (files.isNotEmpty()) ShareHelper(requireContext()).shareCbz(files)
+            mode?.finish(); true
+        }
         R.id.action_smart_local_info -> {
             val book = viewModel.library.state.value.books.firstOrNull { it.id in selectedItemsIds }
             if (book != null) showInformation(book)
@@ -138,6 +151,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
         val status = when (issue.reason) {
             "review" -> R.string.smart_local_needs_review
             "unavailable" -> R.string.smart_local_unavailable
+            "unreadable" -> R.string.smart_local_unreadable
             else -> R.string.smart_local_unsupported
         }
         return "${issue.node?.name ?: viewModel.library.state.value.roots.firstOrNull { it.uri == issue.rootUri }?.name.orEmpty()} • ${getString(status)}"

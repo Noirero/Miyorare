@@ -38,6 +38,7 @@ class LocalContentReader @Inject constructor(
     // Returned archive URIs remain in Reader state. Pin them for this process so cache
     // maintenance cannot invalidate a still-open/previous chapter. Budget is deliberately soft.
     private val activeFiles = HashSet<String>()
+    private val metadataCache = android.util.LruCache<String, LocalMetadata>(32)
     private val cacheDir get() = File(context.cacheDir, "smart-local-content").also { it.mkdirs() }
 
     suspend fun materialize(root: Node, node: Node): File = withContext(Dispatchers.IO) {
@@ -100,6 +101,26 @@ class LocalContentReader @Inject constructor(
             urls.mapIndexed { i, url -> MangaPage(id = "${original.id}:$i".longHashCode(), url = url,
                 preview = null, source = LocalMangaSource) }
         }
+    }
+
+    /** Enrich only when a title is opened. Scanning thousands of archives never copies/opens each book. */
+    internal suspend fun metadata(root: Node, chapter: LocalChapter): LocalMetadata = withContext(Dispatchers.IO) {
+        val key = "${chapter.node.key}:${chapter.node.modified}:${chapter.node.size}"
+        metadataCache.get(key)?.let { return@withContext it }
+        val ext = LocalTreeScanner.extension(chapter.node.name)
+        val metadata = when (ext) {
+            "epub" -> EpubParser.parse(materialize(root, chapter.node)).let { LocalMetadata(it.title, it.authors, it.description) }
+            "cbz", "zip" -> ZipFile(materialize(root, chapter.node)).use { zip ->
+                val entry = zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("index.json", true) }
+                    ?: zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("ComicInfo.xml", true) }
+                entry?.let { zip.getInputStream(it).use { input ->
+                    if (it.name.equals("index.json", true)) LocalMetadata.readJson(input) else LocalMetadata.readXml(input)
+                } } ?: LocalMetadata()
+            }
+            else -> LocalMetadata()
+        }
+        metadataCache.put(key, metadata)
+        metadata
     }
 
     suspend fun epubHtml(root: Node, chapter: LocalChapter): String = withContext(Dispatchers.IO) {

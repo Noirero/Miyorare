@@ -146,8 +146,9 @@ class SmartLocalLibrary @Inject constructor(
                     val oldKeys = old?.chapters?.mapTo(HashSet()) { it.node.key }.orEmpty()
                     val discovered = if (old == null) discoveredChapters.size else discoveredChapters.count { it.node.key !in oldKeys }
                     val book = LocalBook(root.uri, entry.node, chapters, entry.sidecars,
-                        metadata.firstNotNullOfOrNull { it.title }, metadata.flatMapTo(LinkedHashSet()) { it.authors },
-                        metadata.firstNotNullOfOrNull { it.description }, explicitCover ?: metadataCover ?: chapters.firstOrNull()?.pages?.firstOrNull()?.uri,
+                        metadata.firstNotNullOfOrNull { it.title } ?: old?.takeIf { it.node.modified == entry.node.modified && it.node.size == entry.node.size }?.title,
+                        metadata.flatMapTo(LinkedHashSet()) { it.authors }.ifEmpty { old?.authors.orEmpty() },
+                        metadata.firstNotNullOfOrNull { it.description } ?: old?.description, explicitCover ?: metadataCover ?: chapters.firstOrNull()?.pages?.firstOrNull()?.uri,
                         entry.ignored, old?.addedAt ?: System.currentTimeMillis(), System.currentTimeMillis(),
                         if (discovered > 0) discovered else old?.newChapters ?: 0)
                     books.putIfAbsent(book.node.key, book)
@@ -290,7 +291,26 @@ class SmartLocalLibrary @Inject constructor(
         }
 
     suspend fun book(id: Long): LocalBook? { initialize(); return state.value.books.firstOrNull { it.id == id } }
-    suspend fun details(id: Long): Manga? = book(id)?.toManga(showExtensions, true)
+    suspend fun details(id: Long): Manga? = withContext(Dispatchers.IO) {
+        var book = book(id) ?: return@withContext null
+        if (book.chapters.size == 1 && !book.chapters.single().node.directory) {
+            val metadata = runCatchingCancellable { contentReader.metadata(documents.root(book.rootUri), book.chapters.single()) }.getOrNull()
+            if (metadata != null) {
+                val enriched = book.copy(title = book.title ?: metadata.title,
+                    authors = book.authors.ifEmpty { metadata.authors }, description = book.description ?: metadata.description)
+                if (enriched != book) mutex.withLock {
+                    // Detach/hide/rescan may have completed while the file was being prepared.
+                    val current = state.value.books.firstOrNull { it.id == id }
+                    if (current == book) {
+                        dataRepository.storeManga(enriched.toManga(showExtensions, true), replaceExisting = true)
+                        publishLocked(state.value.copy(books = state.value.books.map { if (it.id == id) enriched else it }))
+                        book = enriched
+                    }
+                }
+            }
+        }
+        book.toManga(showExtensions, true)
+    }
     suspend fun list(query: String?): List<Manga> = withContext(Dispatchers.IO) {
         initialize()
         val snapshot = state.value.books
@@ -318,12 +338,12 @@ class SmartLocalLibrary @Inject constructor(
 
     suspend fun pages(chapter: MangaChapter): List<MangaPage> = withContext(Dispatchers.IO) {
         val (book, localChapter) = requireChapter(chapter.url)
-        return@withContext contentReader.pages(documents.root(book.rootUri), localChapter, chapter)
+        readWithDiagnosis(book, localChapter) { contentReader.pages(documents.root(book.rootUri), localChapter, chapter) }
     }
     suspend fun chapterHtml(chapter: MangaChapter): String = withContext(Dispatchers.IO) {
         val (book, localChapter) = requireChapter(chapter.url)
         check(LocalTreeScanner.extension(localChapter.node.name) == "epub")
-        return@withContext contentReader.epubHtml(documents.root(book.rootUri), localChapter)
+        readWithDiagnosis(book, localChapter) { contentReader.epubHtml(documents.root(book.rootUri), localChapter) }
     }
     suspend fun chapterImage(url: String, source: String): ByteArray? = withContext(Dispatchers.IO) {
         val (book, chapter) = requireChapter(url)
@@ -338,6 +358,16 @@ class SmartLocalLibrary @Inject constructor(
         val id = url.toUri().pathSegments.firstOrNull()?.toLongOrNull() ?: error("Invalid local chapter")
         for (book in state.value.books) book.chapters.firstOrNull { it.id == id }?.let { return book to it }
         error("Local chapter is no longer indexed")
+    }
+
+    private suspend fun <T> readWithDiagnosis(book: LocalBook, chapter: LocalChapter, read: suspend () -> T): T {
+        val result = runCatchingCancellable { read() }
+        if (result.isFailure) mutex.withLock {
+            val issue = LocalDiagnosis(book.rootUri, chapter.node, "unreadable")
+            val existing = state.value.diagnoses.filterNot { it.rootUri == issue.rootUri && it.node?.key == issue.node?.key }
+            publishLocked(state.value.copy(diagnoses = existing + issue))
+        }
+        return result.getOrThrow()
     }
 
     /** Adoption only: preserve an existing file-based Reader state without recursively parsing a folder. */
