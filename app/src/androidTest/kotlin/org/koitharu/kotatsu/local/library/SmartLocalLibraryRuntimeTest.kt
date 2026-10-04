@@ -24,6 +24,7 @@ import dagger.hilt.android.components.ActivityComponent
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -290,10 +291,20 @@ class SmartLocalLibraryRuntimeTest {
         try {
             lateinit var model: ReaderViewModel
             instrumentation.runOnMainSync { model = ViewModelProvider(activity)[ReaderViewModel::class.java] }
-            val loaded = withTimeout(30_000) { model.content.first { it.state?.chapterId == chapterId && it.pages.any { page -> page.chapterId == chapterId } } }
+            // ReaderContent.state is a transient pager command: prefetch deliberately clears it.
+            // The actual reading position lives in readingState and must be checked separately.
+            val loaded = try {
+                withTimeout(30_000) {
+                    combine(model.content, model.readingState) { content, state -> content to state }
+                        .first { (content, state) -> state?.chapterId == chapterId && content.pages.any { it.chapterId == chapterId } }
+                        .first
+                }
+            } catch (failure: kotlinx.coroutines.TimeoutCancellationException) {
+                throw AssertionError("Reader did not load chapter $chapterId: state=${model.getCurrentState()}, pages=${model.content.value.pages.map { it.chapterId }}, manga=${model.getMangaOrNull()?.url}", failure)
+            }
             val currentPage = loaded.pages.first { it.chapterId == chapterId }
-            assertEquals(chapterId, loaded.state?.chapterId)
-            if (resumePage != null) assertEquals(resumePage, loaded.state?.page)
+            assertEquals(chapterId, model.getCurrentState()?.chapterId)
+            if (resumePage != null) assertEquals(resumePage, model.getCurrentState()?.page)
             if (!text) {
                 val loader = EntryPointAccessors.fromActivity(activity, ReaderDependencies::class.java).pageLoader()
                 val image = loader.loadPage(currentPage.toMangaPage(), force = false)
