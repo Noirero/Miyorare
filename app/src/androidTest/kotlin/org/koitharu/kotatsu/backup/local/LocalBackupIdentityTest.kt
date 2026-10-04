@@ -28,6 +28,8 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.core.model.MissingMangaSource
+import org.koitharu.kotatsu.tracker.data.TrackEntity
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.history.data.HistoryRepository
@@ -143,13 +145,17 @@ class LocalBackupIdentityTest {
 			mangaId = b.id, chapters = "Feed chapter", chapterIds = b.chapters!![2].id.toString(),
 			createdAt = 1L, isUnread = true,
 		))
+		database.getTracksDao().upsert(TrackEntity.create(b.id))
+		database.getTracksDao().setCounter(b.id, 3)
 		val logsUndo = trackingRepository.markLogsRead(b.id)
+		assertEquals(0, database.getTracksDao().findNewChapters(b.id))
 		setManualProgress(b, 2)
 		assertTrue(database.getTrackLogsDao().findUnreadByManga(b.id).isEmpty())
 		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
 		database.getHistoryDao().undoFeedProgress(b.id, previous)
 		logsUndo.reverse()
 		assertEquals(1, database.getTrackLogsDao().findUnreadByManga(b.id).size)
+		assertEquals(3, database.getTracksDao().findNewChapters(b.id))
 		assertEquals(previous, database.getHistoryDao().find(b.id))
 		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
 		val c = resumeManga(903L)
@@ -166,11 +172,15 @@ class LocalBackupIdentityTest {
 		database.getTrackLogsDao().insert(org.koitharu.kotatsu.tracker.data.TrackLogEntity(
 			mangaId = b.id, chapters = "Feed chapter", createdAt = 1L, isUnread = true,
 		))
+		database.getTracksDao().upsert(TrackEntity.create(b.id))
+		database.getTracksDao().setCounter(b.id, 3)
 		val logsUndo = trackingRepository.markLogsRead(b.id)
+		assertEquals(0, database.getTracksDao().findNewChapters(b.id))
 		saveReader(b)
 		val restored = database.getHistoryDao().undoFeedProgress(b.id, null)
 		if (restored) logsUndo.reverse()
 		assertFalse(restored)
+		assertEquals(0, database.getTracksDao().findNewChapters(b.id))
 		assertTrue(database.getTrackLogsDao().findUnreadByManga(b.id).isEmpty())
 		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
 		val previous = database.getHistoryDao().find(b.id)!!
@@ -350,7 +360,11 @@ class LocalBackupIdentityTest {
 		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
 	}
 
-	private fun resumeManga(id: Long): Manga = SampleData.mangaDetails.copy(id = id, contentRating = null, source = org.koitharu.kotatsu.parsers.model.MangaSource("TEST_CONTINUE_READING"))
+	private fun resumeManga(id: Long): Manga = SampleData.mangaDetails.copy(
+		id = id,
+		contentRating = null,
+		source = MissingMangaSource("TEST_CONTINUE_READING"),
+	)
 
 	private suspend fun saveReader(manga: Manga, index: Int = 0) {
 		HistoryUpdateUseCase(historyRepository)(manga, ReaderState(manga.chapters!![index].id, 1, 0), 0.1f)
