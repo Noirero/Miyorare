@@ -387,12 +387,18 @@ class FavouritesGoldenVisualTest {
 		instrumentation.runOnMainSync { activity.findViewById<View>(R.id.button_collection_selector).performClick() }
 		instrumentation.waitForIdleSync()
 		val title = activity.getString(titleRes)
-		val nodes = instrumentation.uiAutomation.rootInActiveWindow.findAccessibilityNodeInfosByText(title)
-		val node = checkNotNull(nodes.firstOrNull { it.isVisibleToUser && it.text?.toString() == title }) {
-			"Missing collection option: $title"
+		val bounds = Rect()
+		val deadline = SystemClock.elapsedRealtime() + 20_000L
+		while (SystemClock.elapsedRealtime() < deadline) {
+			val root = instrumentation.uiAutomation.rootInActiveWindow
+			val option = root?.findAccessibilityNodeInfosByText(title)?.firstOrNull {
+				it.isVisibleToUser && it.text?.toString() == title
+			}
+			option?.getBoundsInScreen(bounds)
+			if (!bounds.isEmpty) break
+			SystemClock.sleep(100)
 		}
-		val bounds = Rect().also(node::getBoundsInScreen)
-		assertFalse("Empty collection option bounds: $title", bounds.isEmpty)
+		assertFalse("Collection popup did not expose $title", bounds.isEmpty)
 		// AppCompat popup rows dispatch selection through their ListView; the text node and its
 		// immediate parent need not implement ACTION_CLICK. Tap the observed option instead.
 		val downTime = SystemClock.uptimeMillis()
