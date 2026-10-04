@@ -350,7 +350,7 @@ class LocalBackupIdentityTest {
 		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
 	}
 
-	private fun resumeManga(id: Long): Manga = SampleData.mangaDetails.copy(id = id, isNsfw = false, source = org.koitharu.kotatsu.parsers.model.MangaSource("TEST_CONTINUE_READING"))
+	private fun resumeManga(id: Long): Manga = SampleData.mangaDetails.copy(id = id, contentRating = null, source = org.koitharu.kotatsu.parsers.model.MangaSource("TEST_CONTINUE_READING"))
 
 	private suspend fun saveReader(manga: Manga, index: Int = 0) {
 		HistoryUpdateUseCase(historyRepository)(manga, ReaderState(manga.chapters!![index].id, 1, 0), 0.1f)
