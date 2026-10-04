@@ -64,6 +64,8 @@
 	<string name="extension_install_error_generic">Android reported: %1$s\n\nTry Update again. If it fails repeatedly, make sure Shizuku is running with permission or switch to System Installer to get Android’s detailed installer message.</string>
 	<string name="extension_install_error_unknown_detail">Unknown installation error</string>
 
+	<string name="extension_install_failed">Extension installation failed. Try Update again. If it keeps failing, switch installer method to see Android’s detailed result.</string>
+
 	<string name="extension_update_all_success">%1$d extensions updated successfully.</string>
 	<string name="extension_update_all_partial">%1$d extensions updated, %2$d failed.</string>
 </resources>
