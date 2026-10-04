@@ -1,7 +1,7 @@
 # Smart Local Library — implementation audit
 
 Base: `0d44abe9ab4f27e9205341749163f0121c733eca` (`beta`, PR #493).
-Latest beta integrated during implementation: `393a8b4797d5f90fe65c06974729f81669a3ea1a` (PR #494). Its Favorites discovery, chapter-offline status and layout fixes are retained.
+Latest beta integrated during implementation: `3f4bad52f38121039005fad74fd0287e4e2925b0` (PR #497). The earlier PR #494 Favorites discovery, chapter-offline status and layout fixes, and PR #497 reconciliation across all favorite spaces, are retained.
 Source of truth: `MIYORARE_SMART_LOCAL_LIBRARY_SPEC_2026-10-04.txt`, all 37 sections read.
 
 | Existing component | Reuse / gap |

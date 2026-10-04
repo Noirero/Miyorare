@@ -211,6 +211,15 @@ class SmartLocalLibraryRuntimeTest {
         assertNotNull(library.book(preserved))
         assertTrue(library.state.value.diagnoses.any { it.reason == "unavailable" })
         assertTrue(restart().state.value.diagnoses.any { it.reason == "unavailable" })
+
+        // Android rejects traversal entries before ZIP enumeration; keep them out of valid books.
+        val unsafeRoot = dir("unsafe-archive")
+        zip(File(unsafeRoot, "Unsafe.cbz"), mapOf("../outside.png" to png()))
+        library.addRoot(unsafeRoot.toUri())
+        val unsafe = library.state.value.books.single { it.node.name == "Unsafe.cbz" }
+        val unsafeChapter = requireNotNull(library.details(unsafe.id)?.chapters).single()
+        assertTrue(runCatching { repository.getPages(unsafeChapter) }.isFailure)
+        assertTrue(library.state.value.diagnoses.any { it.node?.key == unsafe.node.key && it.reason == "unreadable" })
     }
 
     @Test fun optionalMetadataCoversDiscoveriesAndLegacyResume() = runBlocking {
@@ -326,7 +335,7 @@ class SmartLocalLibraryRuntimeTest {
         val bitmap = Bitmap.createBitmap(width, 32, Bitmap.Config.ARGB_8888)
         return ByteArrayOutputStream().use { stream -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); bitmap.recycle(); stream.toByteArray() }
     }
-    private fun archive(file: File) = zip(file, mapOf("10.png" to png(), "2.png" to png(), "../outside.png" to png()))
+    private fun archive(file: File) = zip(file, mapOf("10.png" to png(), "2.png" to png()))
     private fun zip(file: File, entries: Map<String, ByteArray>) {
         ZipOutputStream(file.outputStream()).use { output -> entries.forEach { (name, data) ->
             output.putNextEntry(ZipEntry(name)); output.write(data); output.closeEntry()
