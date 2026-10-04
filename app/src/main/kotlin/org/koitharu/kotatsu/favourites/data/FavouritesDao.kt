@@ -30,9 +30,10 @@ import org.koitharu.kotatsu.list.domain.toOrderBy
 // favourite_download_index; legacy indexed archives can keep it directly in local_index. Space/path
 // ownership is verified by DownloadedContentClassifier after this coarse query.
 private const val DOWNLOADED_CANDIDATE_CONDITION =
-	"(EXISTS(SELECT 1 FROM local_index li WHERE li.manga_id = manga.manga_id " +
+	"(manga.manga_id IN (SELECT manga_id FROM local_index UNION SELECT manga_id FROM favourite_download_index) " +
+		"AND (EXISTS(SELECT 1 FROM local_index li WHERE li.manga_id = manga.manga_id " +
 		"AND (manga.source != 'LOCAL' OR li.path LIKE '%/downloads/%')) " +
-		"OR EXISTS(SELECT 1 FROM favourite_download_index fdi WHERE fdi.manga_id = manga.manga_id))"
+		"OR EXISTS(SELECT 1 FROM favourite_download_index fdi WHERE fdi.manga_id = manga.manga_id)))"
 
 @Dao
 abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
