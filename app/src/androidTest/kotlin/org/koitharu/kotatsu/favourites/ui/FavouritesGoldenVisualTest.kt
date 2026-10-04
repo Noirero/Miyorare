@@ -9,6 +9,9 @@ import android.provider.MediaStore
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.view.inspector.WindowInspector
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.fragment.app.Fragment
@@ -389,12 +392,26 @@ class FavouritesGoldenVisualTest {
 		val title = activity.getString(titleRes)
 		val bounds = Rect()
 		val deadline = SystemClock.elapsedRealtime() + 20_000L
-		while (SystemClock.elapsedRealtime() < deadline) {
-			val root = instrumentation.uiAutomation.rootInActiveWindow
-			val option = root?.findAccessibilityNodeInfosByText(title)?.firstOrNull {
-				it.isVisibleToUser && it.text?.toString() == title
+		fun findOption(view: View): TextView? {
+			if (view is TextView && view.isShown && view.text.toString() == title) return view
+			if (view is ViewGroup) {
+				for (index in 0 until view.childCount) findOption(view.getChildAt(index))?.let { return it }
 			}
-			option?.getBoundsInScreen(bounds)
+			return null
+		}
+		while (SystemClock.elapsedRealtime() < deadline) {
+			instrumentation.runOnMainSync {
+				// This canonical Android 15 test can inspect its own popup roots. UiAutomation's
+				// active accessibility window is sometimes null for an AppCompat popup on CI.
+				for (root in WindowInspector.getGlobalWindowViews()) {
+					if (root === activity.window.decorView) continue
+					val option = findOption(root) ?: continue
+					if (option.width <= 0 || option.height <= 0) continue
+					val location = IntArray(2).also(option::getLocationOnScreen)
+					bounds.set(location[0], location[1], location[0] + option.width, location[1] + option.height)
+					break
+				}
+			}
 			if (!bounds.isEmpty) break
 			SystemClock.sleep(100)
 		}
