@@ -54,13 +54,15 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 
 		val roots = localStorageManager.getReadableDirs()
 		if (roots.isEmpty()) return
-		for (candidate in favouritesRepository.getAllManga(FavouriteSpace.NORMAL)) {
-			if (candidate.isLocal || !candidate.hasLegacyTitleCandidate(localTitles)) continue
-			val remote = mangaDataRepository.findMangaById(candidate.id, withChapters = true) ?: continue
-			val linked = localMangaRepository.findSavedMangaIndexedByTitle(remote, roots) ?: continue
-			// Publish the verified remote identity through the normal storage pipeline so both the Local
-			// index and favourite_download_index update and active Favorites screens invalidate naturally.
-			localStorageChanges.emit(linked)
+		for (space in FavouriteSpace.entries) {
+			for (candidate in favouritesRepository.getAllManga(space)) {
+				if (candidate.isLocal || !candidate.hasLegacyTitleCandidate(localTitles)) continue
+				val remote = mangaDataRepository.findMangaById(candidate.id, withChapters = true) ?: continue
+				val linked = localMangaRepository.findSavedMangaIndexedByTitle(remote, roots) ?: continue
+				// Publish the verified remote identity through the normal storage pipeline so both the Local
+				// index and favourite_download_index update and active Favorites screens invalidate naturally.
+				localStorageChanges.emit(linked)
+			}
 		}
 		prefs.edit { putBoolean(KEY_COMPLETE, true) }
 	}
@@ -73,7 +75,7 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 
 	private companion object {
 		const val PREFS_NAME = "legacy_favourite_download_reconcile"
-		const val KEY_COMPLETE = "v1_complete"
+		const val KEY_COMPLETE = "v2_all_spaces_complete"
 		val WHITESPACE = Regex("\\s+")
 	}
 }
