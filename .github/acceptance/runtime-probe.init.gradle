@@ -5,6 +5,7 @@
 // probe's compile/runtime classpaths independently. No force, global constraint
 // switch, production dependency, or R8 suppression is used.
 import org.gradle.api.artifacts.result.ResolvedDependencyResult
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
@@ -70,17 +71,29 @@ gradle.projectsEvaluated {
                 if (before.text != after) throw new GradleException('Harness changed the production runtime dependency graph')
                 probes.each { configuration ->
                     new File(evidence, "${configuration.name}.txt").text = graph(configuration)
-                    def artifacts = configuration.resolvedConfiguration.resolvedArtifacts
-                    def files = artifacts.collect { it.file }
+                    // Filter before artifact selection: :app exposes multiple AGP artifact types.
+                    // The full graph above remains unfiltered; only external class providers are read.
+                    def externalArtifacts = configuration.incoming.artifactView {
+                        componentFilter { it instanceof ModuleComponentIdentifier }
+                        lenient = false
+                    }
+                    def artifacts = externalArtifacts.artifacts.artifacts
+                    new File(evidence, "${configuration.name}-artifacts.txt").text = artifacts.collect {
+                        "${it.id.componentIdentifier.displayName} ${it.file.name}"
+                    }.sort().join('\n') + '\n'
+                    def classPresence = new File(evidence, "${configuration.name}-class-presence.txt")
+                    classPresence.text = ''
                     ['androidx/concurrent/futures/SuspendToFutureAdapter.class',
                      'com/google/auto/value/AutoValue.class'].each { entry ->
-                        if (!files.any { containsClass(it, entry) }) {
+                        def providers = artifacts.findAll { containsClass(it.file, entry) }
+                        classPresence.append("${entry} ${providers.isEmpty() ? 'MISSING' : 'PRESENT'}\n")
+                        if (providers.isEmpty()) {
                             throw new GradleException("Required probe class absent from ${configuration.name}: $entry")
                         }
+                        classPresence.append(providers.collect {
+                            "  ${it.id.componentIdentifier.displayName} ${it.file.name}"
+                        }.sort().join('\n') + '\n')
                     }
-                    new File(evidence, "${configuration.name}-artifacts.txt").text = artifacts.collect {
-                        "${it.moduleVersion.id} ${it.file.name}"
-                    }.sort().join('\n') + '\n'
                 }
                 new File(evidence, 'classpath-verification.txt').text = 'production graph unchanged; required probe classes present\n'
             }
