@@ -27,6 +27,7 @@ import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.list.ui.model.MangaDetailedListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingState
+import org.koitharu.kotatsu.list.ui.model.SmartLocalPanelModel
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
@@ -66,6 +67,7 @@ class LocalListViewModel @Inject constructor(
     val onMangaRemoved = MutableEventFlow<Unit>()
     val exclusions = MutableEventFlow<Map<String, String>>()
     private val revision = MutableStateFlow(0)
+    private val localQuery = MutableStateFlow("")
     private var refreshJob: Job? = null
     private var legacyImports = emptyList<Manga>()
 
@@ -76,8 +78,8 @@ class LocalListViewModel @Inject constructor(
             if (library.state.value.roots.isNotEmpty() && library.state.value.books.isEmpty()) library.scan()
         }
         launchJob(Dispatchers.Default) {
-            combine(library.state, observeListModeWithTriggers(), filterCoordinator.observe(), revision) { snapshot, mode, filter, _ ->
-                Triple(snapshot, mode, filter.listFilter.query)
+            combine(library.state, observeListModeWithTriggers(), localQuery, revision) { snapshot, mode, query, _ ->
+                Triple(snapshot, mode, query)
             }.collect { (snapshot, mode, query) ->
                 content.value = buildContent(snapshot, mode, query)
             }
@@ -100,6 +102,9 @@ class LocalListViewModel @Inject constructor(
     }
     override fun onRetry() = onRefresh()
     fun loadNextPage() = Unit // Local index is already bounded by selected roots; RecyclerView virtualizes rendering.
+    fun setLocalQuery(query: String) {
+        localQuery.value = query
+    }
     fun toggleFolders() {
         savedStateHandle["folders_expanded"] = !foldersExpanded(library.state.value)
         revision.value++
@@ -158,9 +163,13 @@ class LocalListViewModel @Inject constructor(
             }
             result += ListHeader(R.string.smart_local_add_folder, R.string.add, LocalLibraryAction.AddFolder)
         }
-        result += ListHeader(context.getString(R.string.smart_local_statistics, snapshot.books.size,
-            snapshot.books.sumOf { it.chapters.size }, snapshot.books.count { histories[it.id] != null && !it.isCompleted(histories[it.id]) }, snapshot.books.count { it.newChapters > 0 }))
-        result += ListHeader(R.string.smart_local_search_hint, R.string.filter, LocalLibraryAction.Filters)
+        result += SmartLocalPanelModel(
+            mangaCount = snapshot.books.size,
+            chapterCount = snapshot.books.sumOf { it.chapters.size },
+            readingCount = snapshot.books.count { histories[it.id] != null && !it.isCompleted(histories[it.id]) },
+            newCount = snapshot.books.count { it.newChapters > 0 },
+            query = query.orEmpty(),
+        )
         if (snapshot.excludedCount > 0) result += ListHeader(context.getString(R.string.smart_local_hidden_count, snapshot.excludedCount),
             R.string.smart_local_restore, LocalLibraryAction.Restore)
         if (snapshot.diagnoses.isNotEmpty()) result += ListHeader(context.getString(R.string.smart_local_review_count, snapshot.diagnoses.size),
