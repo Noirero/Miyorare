@@ -174,9 +174,10 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 
 	private val packageInstallerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
 		val wasBatch = activeInstallerPackage?.let { updateBatch?.pendingPackages?.contains(it) == true } == true
+		val installSucceeded = result.resultCode == Activity.RESULT_OK || isActiveSystemInstallApplied()
 		finishActiveInstaller(
 			refresh = !wasBatch,
-			installSucceeded = result.resultCode == Activity.RESULT_OK,
+			installSucceeded = installSucceeded,
 		)
 		processDownloadedInstallerQueue()
 	}
@@ -264,7 +265,10 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		viewBinding.tabsMedia.addOnTabSelectedListener(object :
 			com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
 			override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
-				mediaTypes.getOrNull(tab.position)?.let(viewModel::selectStoreContentType)
+				mediaTypes.getOrNull(tab.position)?.let { contentType ->
+					if (viewModel.activeStoreContentType.value != contentType) pagesAdapter.clearContent()
+					viewModel.selectStoreContentType(contentType)
+				}
 				selectedPageId = ExtensionCatalogPage.Available.id
 			}
 
@@ -309,7 +313,9 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			invalidateOptionsMenu()
 		}
 		viewModel.content.observe(this) { page ->
-			pagesAdapter.submitContent(page.pageId, page.items)
+			if (page.contentType == viewModel.activeStoreContentType.value) {
+				pagesAdapter.submitContent(page.pageId, page.items)
+			}
 		}
 		viewModel.hasUpdates.observe(this) { hasUpdates ->
 			if (hasUpdates && installerPreferences.hasUserSelection && settings.isAutoUpdateExtensionsEnabled) {
@@ -360,10 +366,12 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
 		}
 		viewModel.onExtensionInstalled.observeEvent(this) { sourceName ->
-			val source = MangaSource(sourceName)
-			Snackbar.make(viewBinding.pager, R.string.extension_installed, Snackbar.LENGTH_LONG)
-				.setAction(R.string.action_open) { router.openList(source, null, null) }
-				.show()
+			val snackbar = Snackbar.make(viewBinding.pager, R.string.extension_installed, Snackbar.LENGTH_LONG)
+			if (sourceName != null) {
+				val source = MangaSource(sourceName)
+				snackbar.setAction(R.string.action_open) { router.openList(source, null, null) }
+			}
+			snackbar.show()
 		}
 		combine(
 			viewModel.appliedFilter,
@@ -1218,6 +1226,19 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			}?.activityInfo?.packageName
 	}
 
+	private fun isActiveSystemInstallApplied(): Boolean {
+		val packageName = activeInstallerPackage ?: return false
+		val apkFile = getDownloadedApkFile(activeInstallerFileName) ?: return false
+		val archive = getArchivePackageInfo(apkFile) ?: return false
+		if (archive.packageName != packageName) return false
+		val expectedVersion = PackageInfoCompat.getLongVersionCode(archive)
+		val installed = runCatching {
+			@Suppress("DEPRECATION")
+			packageManager.getPackageInfo(packageName, 0)
+		}.getOrNull() ?: return false
+		return PackageInfoCompat.getLongVersionCode(installed) >= expectedVersion
+	}
+
 	private fun finishActiveInstaller(
 		packageName: String? = activeInstallerPackage,
 		downloadId: Long = activeInstallerDownloadId,
@@ -1244,6 +1265,9 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			activeInstallerMode = null
 		}
 		if (packageName != null) recordBatchResult(packageName, installSucceeded)
+		if (!installSucceeded && packageName != null && !wasBatch) {
+			Toast.makeText(this, R.string.extension_install_failed, Toast.LENGTH_LONG).show()
+		}
 		if (refresh && !wasBatch) viewModel.refresh()
 	}
 
