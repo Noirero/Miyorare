@@ -82,12 +82,10 @@ import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.model.TIP_UI_SCALING
 import org.koitharu.kotatsu.list.ui.model.toErrorState
 import org.koitharu.kotatsu.list.ui.model.uiScalingTip
-import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
@@ -128,7 +126,6 @@ class FavouritesListViewModel @Inject constructor(
 	private val contentTypeStore: FavouriteContentTypeStore,
 	private val displayPreferences: FavouriteDisplayPreferences,
 	private val localMangaIndex: LocalMangaIndex,
-	private val localMangaRepository: LocalMangaRepository,
 	private val downloadedContentClassifier: DownloadedContentClassifier,
 	private val unreadCounter: FavouriteUnreadCounter,
 	private val sourceFilterStore: FavouriteSourceFilterStore,
@@ -162,10 +159,6 @@ class FavouritesListViewModel @Inject constructor(
 	private val sourceFilterState = sourceFilterStore.state(favouriteSpace)
 	private val refreshTrigger = MutableStateFlow(Any())
 	private val similarTitleScanState = MutableStateFlow<SimilarTitleScanState?>(null)
-	// Legacy downloads can predate the durable remote-id ownership/index rows. Recover each visible
-	// remote id at most once per ViewModel so Favorites does not require opening Details to learn that
-	// an existing chapter is already on disk.
-	private val legacyDownloadReconcileAttemptedIds = ConcurrentHashMap.newKeySet<Long>()
 	private val limit = MutableStateFlow(PAGE_SIZE)
 	private val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)
 	private val loadingMode = settings.observeAsFlow(AppSettings.KEY_FAVOURITES_LIST_LOADING_MODE) { favouritesListLoadingMode }.stateIn(
@@ -866,7 +859,7 @@ class FavouritesListViewModel @Inject constructor(
 				)
 				val snapshot = previous?.snapshot?.merge(deltaSnapshot) ?: deltaSnapshot
 				val deltaDownloadedIds = if (key.includeDownloaded) {
-					reconcileLegacyDownloadState(deltaIds)
+					downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, deltaIds)
 				} else {
 					null
 				}
@@ -882,26 +875,6 @@ class FavouritesListViewModel @Inject constructor(
 				if (pendingCardEnrichmentKey == key) pendingCardEnrichmentKey = null
 			}
 		}
-	}
-
-	private suspend fun reconcileLegacyDownloadState(mangaIds: List<Long>): Set<Long> {
-		if (mangaIds.isEmpty()) return emptySet()
-		val known = downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, mangaIds)
-		val unresolved = mangaIds.filter { id ->
-			id !in known && legacyDownloadReconcileAttemptedIds.add(id)
-		}
-		if (unresolved.isEmpty()) return known
-
-		// This is a bounded compatibility repair for the currently rendered page, not a storage scan.
-		// findSavedManga() first uses deterministic paths/persisted indexes; its legacy title fallback
-		// requires concrete chapter evidence before it persists the remote -> local alias.
-		for (mangaId in unresolved) {
-			val manga = mangaDataRepository.findMangaById(mangaId, withChapters = true) ?: continue
-			if (!manga.isLocal) {
-				localMangaRepository.findSavedManga(manga, withDetails = false)
-			}
-		}
-		return downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, mangaIds)
 	}
 
 	private fun invalidateCardEnrichment() {
