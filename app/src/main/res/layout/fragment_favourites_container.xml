@@ -127,15 +127,12 @@
 
 				<com.google.android.material.button.MaterialButton
 					android:id="@+id/button_collection_selector"
-					style="?attr/materialButtonOutlinedStyle"
-					android:layout_width="wrap_content"
-					android:layout_height="wrap_content"
+					style="?attr/materialIconButtonOutlinedStyle"
+					android:layout_width="48dp"
+					android:layout_height="48dp"
 					android:layout_marginStart="12dp"
-					android:minHeight="40dp"
-					android:text="@string/favourites"
-					android:textAllCaps="false"
-					app:icon="@drawable/ic_expand_more"
-					app:iconGravity="textEnd" />
+					android:contentDescription="@string/favourites"
+					app:icon="@drawable/ic_more_vert" />
 
 				<com.google.android.material.tabs.TabLayout
 					android:id="@+id/tabs"
