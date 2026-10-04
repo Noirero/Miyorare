@@ -162,7 +162,7 @@ private fun org.koitharu.kotatsu.settings.compose.SettingsGroupScope.serviceItem
 			title = stringResource(serviceTitle(id)),
 			subtitle =
 				if (blocked)
-					stringResource(R.string.library_sync_blocked) + " · " + state?.reason.orEmpty()
+					stringResource(R.string.library_sync_blocked)
 				else
 					state?.let {
 						statusText(it.status, it.running) +

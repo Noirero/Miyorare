@@ -2,8 +2,8 @@
 <resources>
     <string name="library_sync">Sinkronisasi pustaka</string>
     <string name="library_sync_summary">Kelola layanan sinkronisasi pustaka</string>
-    <string name="library_sync_manga">Manga</string>
-    <string name="library_sync_novel">Novel</string>
+    <string name="library_sync_manga">Manga (Beta)</string>
+    <string name="library_sync_novel">Novel (Beta)</string>
     <string name="library_sync_mangadex">Sinkronisasi MangaDex</string>
     <string name="library_sync_mangaupdates">Sinkronisasi MangaUpdates</string>
     <string name="library_sync_anilist">Sinkronisasi AniList</string>
@@ -11,7 +11,7 @@
     <string name="library_sync_novelupdates">Sinkronisasi NovelUpdates</string>
     <string name="library_sync_ranobedb">Sinkronisasi RanobeDB</string>
     <string name="library_sync_coming_soon">Segera hadir</string>
-	<string name="library_sync_blocked">Integrasi belum tersedia</string>
+	<string name="library_sync_blocked">Dalam pengembangan</string>
 	<string name="library_sync_loading">Memuat…</string>
 	<string name="library_sync_connected">Terhubung</string>
 	<string name="library_sync_disconnected">Belum terhubung</string>
