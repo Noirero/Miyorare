@@ -366,10 +366,11 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 
 	/** Feed undo restores progress, never the Reader clock; a subsequent Reader save wins. */
 	@Transaction
-	open suspend fun undoFeedProgress(mangaId: Long, previous: HistoryEntity?) {
-		val current = find(mangaId) ?: return
-		if (current.lastReaderActivityAt != (previous?.lastReaderActivityAt ?: 0L)) return
+	open suspend fun undoFeedProgress(mangaId: Long, previous: HistoryEntity?): Boolean {
+		val current = find(mangaId) ?: return false
+		if (current.lastReaderActivityAt != (previous?.lastReaderActivityAt ?: 0L)) return false
 		if (previous == null) delete(mangaId) else upsert(previous)
+		return true
 	}
 
 	// Progress-only update preserves active markers. Non-reader resurrection must not revive deleted evidence.

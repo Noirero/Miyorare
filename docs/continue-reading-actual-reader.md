@@ -47,7 +47,7 @@ creation/advance policy, scrobbling side effects, and library membership remain 
 | `HistoryUpdateUseCase` from actual Reader state | Calls `addOrUpdateFromReader`; saves progress and records Reader activity atomically; incognito skips both. Network/source checks remain outside the transaction. |
 | `SyncProgressFromScrobblersUseCase` -> `advanceFromTracking` | May create/advance progress; never sets Reader/fallback marker, never resurrects tracking-deleted rows. |
 | `FeedViewModel.markAsReadImpl` | Existing force-progress mutation remains; does not set Reader marker. |
-| Feed undo | `HistoryDao.undoFeedProgress` restores prior progress or deletes Feed-created history. Existing Reader/fallback marker is preserved. A subsequent Reader save wins over stale undo; unread-log/counter undo remains through the existing reversible handle. |
+| Feed undo | `HistoryDao.undoFeedProgress` restores prior progress or deletes Feed-created history. Existing Reader/fallback marker is preserved. A subsequent Reader save wins over stale undo; unread-log/counter undo remains through the existing reversible handle when progress undo applies. Stale undo after a subsequent Reader save skips both progress and log/counter rollback. |
 | `MarkAsReadUseCase` (Favourites/History completed/read) | Existing force-progress mutation; completed position/page/percent and remote side effects remain, without Reader provenance. |
 | `ChaptersPagesViewModel.markChapterAsCurrent` | Existing force-progress mutation; chosen chapter remains current without claiming Reader activity. Opening Reader and saving afterward creates provenance. |
 | `ProgressUpdateUseCase` | Recalculates chapter mapping/percent through progress-only DAO update; markers are preserved. |

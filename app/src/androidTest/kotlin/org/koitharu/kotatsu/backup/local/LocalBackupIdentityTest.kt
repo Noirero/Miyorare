@@ -163,8 +163,15 @@ class LocalBackupIdentityTest {
 	fun feedUndoDoesNotEraseSubsequentReaderActivity() = runTest {
 		val b = resumeManga(902L)
 		setManualProgress(b, 2)
+		database.getTrackLogsDao().insert(org.koitharu.kotatsu.tracker.data.TrackLogEntity(
+			mangaId = b.id, chapters = "Feed chapter", createdAt = 1L, isUnread = true,
+		))
+		val logsUndo = trackingRepository.markLogsRead(b.id)
 		saveReader(b)
-		database.getHistoryDao().undoFeedProgress(b.id, null)
+		val restored = database.getHistoryDao().undoFeedProgress(b.id, null)
+		if (restored) logsUndo.reverse()
+		assertFalse(restored)
+		assertTrue(database.getTrackLogsDao().findUnreadByManga(b.id).isEmpty())
 		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
 		val previous = database.getHistoryDao().find(b.id)!!
 		setManualProgress(b, 2)
