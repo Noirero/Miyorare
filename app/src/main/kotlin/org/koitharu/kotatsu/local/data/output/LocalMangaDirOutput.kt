@@ -85,11 +85,11 @@ class LocalMangaDirOutput(
 
 	override suspend fun discardChapter(chapter: MangaChapter) {
 		mutex.withLock {
-		chaptersOutput.remove(chapter)?.let { output ->
-			output.closeQuietly()
-			output.file.deleteAwait()
-		}
-		index.removeChapter(chapter.id)
+			chaptersOutput.remove(chapter)?.let { output ->
+				output.closeQuietly()
+				output.file.deleteAwait()
+			}
+			index.removeChapter(chapter.id)
 		}
 	}
 
@@ -170,12 +170,14 @@ class LocalMangaDirOutput(
 
 	private suspend fun ZipOutput.flushAndFinish() = runInterruptible(Dispatchers.IO) {
 		val e: Throwable? = try {
-			finish()
+			// ZipOutput.close() already closes ZipOutputStream, whose close() finalizes the central
+			// directory. Calling finish() immediately before close() performs the same terminal work
+			// twice on some Android/JDK implementations and can leave Downloads sitting at N/N while
+			// the chapter artifact is already complete. Finalize exactly once through close().
+			close()
 			null
 		} catch (e: Throwable) {
 			e
-		} finally {
-			close()
 		}
 		if (e == null) {
 			val resFile = File(file.absolutePath.removeSuffix(SUFFIX_TMP))
