@@ -30,6 +30,9 @@ class EvidenceTests(unittest.TestCase):
         self.assertIn('Probe compile/runtime version drift:', script)
         self.assertNotIn('production.extendsFrom', script)
         self.assertNotIn('resolutionStrategy.force', script)
+        self.assertIn("getByName('androidComponents').sdkComponents", script)
+        self.assertIn('sdkComponents.bootClasspath.get()', script)
+        self.assertNotIn('android.compileSdkVersion', script)
 
     def test_probe_filters_external_artifacts_before_resolution(self):
         # Structural regression guard only; actual Gradle/AGP builds remain required.

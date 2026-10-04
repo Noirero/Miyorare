@@ -110,10 +110,11 @@ gradle.projectsEvaluated {
                 def after = graph(production)
                 new File(evidence, 'production-after.txt').text = after
                 if (before.text != after) throw new GradleException('Harness changed the production runtime dependency graph')
-                def android = app.extensions.getByName('android')
+                def sdkComponents = app.extensions.getByName('androidComponents').sdkComponents
                 def sdkEvidence = new File(evidence, 'sdk-bootclasspath.txt')
-                sdkEvidence.text = "compileSdk=${android.compileSdkVersion}\n"
-                android.bootClasspath.each { File artifact ->
+                sdkEvidence.text = 'Android SDK bootclasspath (AGP public SDK components API)\n'
+                sdkComponents.bootClasspath.get().each { sdkFile ->
+                    File artifact = sdkFile.asFile
                     sdkEvidence.append("${artifact.absolutePath}\n")
                     ['FingerprintManager', 'FingerprintManager$AuthenticationCallback',
                      'FingerprintManager$AuthenticationResult', 'FingerprintManager$CryptoObject'].each { name ->
