@@ -79,7 +79,9 @@ fun MangaDetails.mapChapters(
 				isCurrent = isCurrent,
 				isUnread = readOverrides[chapter.id]?.not() ?: (isUnread && !isCurrent),
 				isNew = false,
-				isDownloaded = !isLocal,
+				// Every remaining chapter here is backed by a physical Local artifact. This includes
+				// sidecar-free Local files whose IDs cannot be paired with a remote chapter.
+				isDownloaded = true,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
 			)
