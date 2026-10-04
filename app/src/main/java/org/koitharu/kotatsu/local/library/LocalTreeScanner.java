@@ -56,6 +56,7 @@ public final class LocalTreeScanner {
         List<Node> sidecars = new ArrayList<>();
         int ignored;
         boolean explicitBoundary;
+        boolean excluded;
         Set<String> metadataCovers = Collections.emptySet();
         Tree(Node node) { this.node = node; }
     }
@@ -68,6 +69,7 @@ public final class LocalTreeScanner {
         Set<String> visited = new HashSet<>();
         visited.add(root.key); pending.add(top);
         Result result = new Result();
+        if (excluded.contains(root.key)) return result;
         while (!pending.isEmpty()) {
             access.checkCancelled();
             Tree t = pending.removeLast(); order.add(t);
@@ -78,7 +80,15 @@ public final class LocalTreeScanner {
                 if (n.name.startsWith(".")) continue;
                 if (!access.contains(root, n)) throw new IOException("Document outside selected root: " + n.name);
                 if (!visited.add(n.key)) throw new IOException("Duplicate or cyclic document: " + n.name);
-                if (excluded.contains(n.key)) continue;
+                if (excluded.contains(n.key)) {
+                    // Exclusions refer to previously recognized title boundaries. Preserve that
+                    // structural evidence so hiding one title cannot reclassify its siblings.
+                    if (n.directory) {
+                        Tree hidden = new Tree(n); hidden.excluded = true;
+                        hidden.kind = Kind.MANGA; hidden.explicitBoundary = true; t.children.add(hidden);
+                    }
+                    continue;
+                }
                 Tree child = new Tree(n); t.children.add(child);
                 if (n.directory) pending.add(child);
             }
@@ -172,6 +182,7 @@ public final class LocalTreeScanner {
         ArrayDeque<Tree> pending = new ArrayDeque<>(); pending.add(start);
         while (!pending.isEmpty()) {
             Tree t = pending.removeFirst();
+            if (t.excluded) continue;
             if (!t.node.directory) {
                 if (isBook(t.node.name)) result.entries.add(new Entry(t.node,
                     Collections.singletonList(new Chapter(t.node, Collections.emptyList())), Collections.emptyList(), 0));

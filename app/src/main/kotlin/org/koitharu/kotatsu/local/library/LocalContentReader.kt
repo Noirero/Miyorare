@@ -189,11 +189,13 @@ class LocalContentReader @Inject constructor(
                         "pdf" -> LocalPdfCache.renderCover(file)?.readBytes()
                         else -> ZipFile(file).use { zip ->
                             val preferred = if (LocalTreeScanner.extension(chapter.node.name) == "epub")
-                                EpubParser.parse(file).coverHref?.takeIf(::safeEntry) else null
+                                EpubParser.parse(file).coverHref?.takeIf(::safeEntry)
+                            else runCatchingCancellable { metadata(root, chapter).coverName?.takeIf(::safeEntry) }.getOrNull()
                             val images = zip.entries().asSequence()
                                 .filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
                                 .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name }).toList()
-                            for (entry in (listOfNotNull(preferred?.let { zip.getEntry(it) }) + images).distinctBy { it.name }) {
+                            val explicit = images.filter { LocalTreeScanner.isSidecar(it.name.substringAfterLast('/')) }
+                            for (entry in (explicit + listOfNotNull(preferred?.let { zip.getEntry(it) }) + images).distinctBy { it.name }) {
                                 runCatchingCancellable { valid(zip.getInputStream(entry).use { it.readBytesLimited(32 * 1024 * 1024) }) }
                                     .getOrNull()?.let { return@use it }
                             }

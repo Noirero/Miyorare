@@ -489,7 +489,8 @@ abstract class ChaptersPagesViewModel(
 	}
 
 	fun deleteLocal() {
-		val m = mangaDetails.value?.local?.manga
+        val current = mangaDetails.value
+        val m = if (current?.toManga()?.url?.startsWith("smart-local:") == true) current.toManga() else current?.local?.manga
 		if (m == null) {
 			errorEvent.call(FileNotFoundException())
 			return
@@ -499,6 +500,14 @@ abstract class ChaptersPagesViewModel(
 			onMangaRemoved.call(m)
 		}
 	}
+
+    fun hideLocal() {
+        val manga = mangaDetails.value?.toManga() ?: return
+        launchLoadingJob(Dispatchers.IO) {
+            deleteLocalMangaUseCase.hide(manga)
+            onMangaRemoved.call(manga)
+        }
+    }
 
 	private fun List<ChapterListItem>.applyChapterOptions(options: ChapterListOptions): List<ChapterListItem> {
 		if (isEmpty()) return this

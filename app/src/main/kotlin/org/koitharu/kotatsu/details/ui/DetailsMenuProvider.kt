@@ -106,6 +106,10 @@ class DetailsMenuProvider(
 			}
 
 			R.id.action_delete -> {
+                if (manga.url.startsWith("smart-local:")) {
+                    org.koitharu.kotatsu.local.ui.showLocalLibraryDeletionDialog(activity, viewModel::hideLocal, viewModel::deleteLocal)
+                    return true
+                }
 				buildAlertDialog(activity) {
 					setTitle(R.string.delete_manga)
 					setMessage(activity.getString(R.string.text_delete_local_manga, manga.title))

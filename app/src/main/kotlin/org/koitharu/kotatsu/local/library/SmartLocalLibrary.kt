@@ -373,7 +373,7 @@ class SmartLocalLibrary @Inject constructor(
     /** Adoption only: preserve an existing file-based Reader state without recursively parsing a folder. */
     private suspend fun migrateLegacyChapters(rootUri: String, node: Node, chapters: List<LocalChapter>): List<LocalChapter> {
         if (node.uri.toUri().scheme != "file") return chapters
-        val history = db.getHistoryDao().find(node.key.longHashCode()) ?: return chapters
+        val history = db.getHistoryDao().find(node.mangaIdentity()) ?: return chapters
         val mapped = runCatchingCancellable {
             if (chapters.all { LocalTreeScanner.extension(it.node.name) == "epub" }) {
                 val root = documents.root(rootUri)

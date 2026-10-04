@@ -22,8 +22,9 @@ data class LocalBook(
     val title: String?, val authors: Set<String>, val description: String?, val cover: String?,
     val ignored: Int, val addedAt: Long, val scannedAt: Long, val newChapters: Int,
 ) {
-    // File-backed identity is compatible with LocalMangaParser. SAF identity ignores tree-URI wrappers.
-    val id get() = node.key.longHashCode()
+    // Legacy File identity uses the actual URI path, not a canonical alias (Android /data/user/0
+    // and /data/data can differ). Canonical keys still enforce ownership/root deduplication.
+    val id get() = node.mangaIdentity()
     val size get() = chapters.sumOf { c -> if (c.node.directory) c.pages.sumOf { it.size } else c.node.size } + sidecars.sumOf { it.size }
     val latestChapterAt get() = chapters.maxOfOrNull { it.node.modified } ?: 0L
     fun toManga(showExtensions: Boolean, withDetails: Boolean = false): Manga {
@@ -47,6 +48,11 @@ data class LocalLibrarySnapshot(
 )
 enum class LocalReadingFilter { ALL, UNREAD, READING, COMPLETED }
 enum class LocalLibrarySort { LAST_READ, ADDED, TITLE_ASC, TITLE_DESC, CHAPTER_UPDATED }
+
+internal fun Node.mangaIdentity(): Long {
+    val uri = android.net.Uri.parse(this.uri)
+    return (if (uri.scheme == "file") requireNotNull(uri.path) else key).longHashCode()
+}
 
 internal fun Node.toJson() = JSONObject().put("key", key).put("uri", uri).put("name", name)
     .put("directory", directory).put("size", size).put("modified", modified)

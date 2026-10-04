@@ -202,6 +202,11 @@ class LocalMangaRepository @Inject constructor(
 
     suspend fun getLocalChapterImage(url: String, image: String): ByteArray? = smartLocalLibrary.chapterImage(url, image)
 
+    suspend fun hideFromLibrary(manga: Manga) {
+        check(manga.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME)
+        smartLocalLibrary.hide(setOf(manga.id))
+    }
+
 
 	suspend fun delete(manga: Manga): Boolean {
         if (manga.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME) {

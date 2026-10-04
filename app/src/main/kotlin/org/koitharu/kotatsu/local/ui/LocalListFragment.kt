@@ -116,14 +116,9 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
             }.setNegativeButton(android.R.string.cancel, null).show()
     }
     private fun showDeletionChoices(ids: Set<Long>, mode: ActionMode?) {
-        MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.delete_manga)
-            .setItems(arrayOf(getString(R.string.smart_local_hide), getString(R.string.smart_local_delete_device))) { _, index ->
-                if (index == 0) { viewModel.delete(ids, false); mode?.finish() }
-                else MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_delete_device)
-                    .setMessage(R.string.smart_local_delete_device_message)
-                    .setPositiveButton(R.string.delete) { _, _ -> viewModel.delete(ids, true); mode?.finish() }
-                    .setNegativeButton(android.R.string.cancel, null).show()
-            }.setNegativeButton(android.R.string.cancel, null).show()
+        showLocalLibraryDeletionDialog(requireContext(),
+            { viewModel.delete(ids, false); mode?.finish() },
+            { viewModel.delete(ids, true); mode?.finish() })
     }
     private fun showFilters() {
         val options = arrayOf(getString(R.string.smart_local_reading_filter), getString(R.string.sort_order),

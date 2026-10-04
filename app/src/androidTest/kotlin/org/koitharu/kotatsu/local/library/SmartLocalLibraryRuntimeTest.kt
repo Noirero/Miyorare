@@ -42,6 +42,7 @@ import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
+import org.koitharu.kotatsu.local.domain.DeleteReadChaptersUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.ui.ReaderActivity
@@ -64,6 +65,7 @@ class SmartLocalLibraryRuntimeTest {
     @Inject lateinit var contentReader: LocalContentReader
     @Inject lateinit var dataRepository: MangaDataRepository
     @Inject lateinit var database: MangaDatabase
+    @Inject lateinit var cleanup: DeleteReadChaptersUseCase
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
     private lateinit var fixture: File
@@ -115,6 +117,8 @@ class SmartLocalLibraryRuntimeTest {
         assertEquals(ids, library.details(book.id)?.chapters?.map { it.id })
         assertEquals("Chapter 1.cbz", library.details(book.id)?.chapters?.first()?.title)
         assertTrue(File(mixed, "Chapter 1.cbz").exists())
+        assertEquals(0, cleanup(manga))
+        assertTrue(File(mixed, "Chapter 1.cbz").exists())
 
         // The Activity's production PageLoader decodes actual archive, folder and PDF pages.
         openReader(book.id, chapters[0].id, text = false)
@@ -136,6 +140,11 @@ class SmartLocalLibraryRuntimeTest {
         val restarted = restart()
         assertEquals(chapters[1].id, restarted.details(book.id)?.chapters?.get(1)?.id)
         assertEquals(1, database.getHistoryDao().find(book.id)?.page)
+        val beta = restarted.state.value.books.single { it.node.name == "Beta" }
+        restarted.hide(setOf(beta.id)); restarted.scan()
+        assertNotNull(restarted.state.value.books.singleOrNull { it.node.name == "Alpha" })
+        assertNull(restarted.book(beta.id))
+        restarted.restore(beta.node.key)
         restarted.setDisplayOptions(false, LocalReadingFilter.READING, LocalLibrarySort.LAST_READ)
         assertTrue(restarted.list(null).any { it.id == book.id })
         restarted.setDisplayOptions(false, LocalReadingFilter.UNREAD)
@@ -203,6 +212,9 @@ class SmartLocalLibraryRuntimeTest {
         File(metadata, "poster.png").writeBytes(png(24))
         File(metadata, "cover.png").writeText("corrupt explicit cover")
         archive(File(metadata, "1.cbz"))
+        val archiveWithMetadata = File(root, "Embedded.cbz")
+        zip(archiveWithMetadata, mapOf("1.png" to png(), "poster.png" to png(24),
+            "ComicInfo.xml" to "<ComicInfo><Series>Embedded title</Series><Writer>Embedded author</Writer><Cover>poster.png</Cover></ComicInfo>".toByteArray()))
         val legacy = File(root, "Legacy").also { it.mkdirs() }
         archive(File(legacy, "Chapter 1.cbz")); archive(File(legacy, "Chapter 2.zip"))
         val previous = LocalMangaParser(legacy).getManga(true).manga
@@ -213,6 +225,10 @@ class SmartLocalLibraryRuntimeTest {
         touched += previous.id
         library.addRoot(root.toUri())
         val enriched = library.state.value.books.single { it.node.name == "Metadata" }
+        val embedded = library.state.value.books.single { it.node.name == "Embedded.cbz" }
+        assertEquals("Embedded title", repository.getDetails(embedded.toManga(false)).title)
+        val embeddedCover = requireNotNull(library.cover(embedded.id))
+        assertEquals(24, BitmapFactory.decodeByteArray(embeddedCover, 0, embeddedCover.size)?.width)
         assertEquals("Enriched title", library.details(enriched.id)?.title)
         assertEquals(setOf("Author"), library.details(enriched.id)?.authors)
         val cover = requireNotNull(library.cover(enriched.id))
@@ -253,12 +269,13 @@ class SmartLocalLibraryRuntimeTest {
         try {
             lateinit var model: ReaderViewModel
             instrumentation.runOnMainSync { model = ViewModelProvider(activity)[ReaderViewModel::class.java] }
-            val loaded = withTimeout(30_000) { model.content.first { it.state?.chapterId == chapterId && it.pages.isNotEmpty() } }
-            assertEquals(chapterId, loaded.pages.first().chapterId)
+            val loaded = withTimeout(30_000) { model.content.first { it.state?.chapterId == chapterId && it.pages.any { page -> page.chapterId == chapterId } } }
+            val currentPage = loaded.pages.first { it.chapterId == chapterId }
+            assertEquals(chapterId, loaded.state?.chapterId)
             if (resumePage != null) assertEquals(resumePage, loaded.state?.page)
             if (!text) {
                 val loader = EntryPointAccessors.fromActivity(activity, ReaderDependencies::class.java).pageLoader()
-                val image = loader.loadPage(loaded.pages.first().toMangaPage(), force = false)
+                val image = loader.loadPage(currentPage.toMangaPage(), force = false)
                 val file = File(requireNotNull(image.path))
                 val readable = if (LocalPdfCache.isPdfPage(file)) LocalPdfCache.materializePage(file) else file
                 assertNotNull("Actual Reader page must decode", BitmapFactory.decodeFile(readable.path)?.also { it.recycle() })

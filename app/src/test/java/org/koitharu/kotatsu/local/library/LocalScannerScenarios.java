@@ -55,6 +55,11 @@ public final class LocalScannerScenarios {
         Result container = nested.scan();
         check(container.entries.size() == 2, "Multiple-title container skipped by structure, no source names");
         check(container.entries.stream().noneMatch(e -> e.node.name.equals("AnySource")), "Container is never a manga");
+        nested.visited.clear();
+        Result hiddenSibling = nested.scan(Collections.emptySet(), Collections.singleton("/selected/AnySource/Berserk"));
+        check(hiddenSibling.entries.size() == 1 && hiddenSibling.entries.get(0).node.name.equals("One Piece"), "Hiding a title cannot reclassify its remaining sibling");
+        check(!nested.visited.contains("/selected/AnySource/Berserk"), "Excluded title is not walked");
+        check(nested.scan().entries.size() == 2, "Restoring a nested exclusion restores both titles");
 
         MemoryTree chain = new MemoryTree();
         chain.dir("/selected/Collection"); chain.dir("/selected/Collection/Language"); chain.dir("/selected/Collection/Language/One Piece");

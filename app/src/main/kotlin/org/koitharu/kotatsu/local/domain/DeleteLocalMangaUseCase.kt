@@ -45,6 +45,8 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		}
 	}
 
+    suspend fun hide(manga: Manga) = localMangaRepository.hideFromLibrary(manga)
+
 	/**
 	 * Deletes only local/downloaded copies whose ids are requested. Missing downloads are ignored:
 	 * callers may pass a whole favourites selection where only a subset is actually downloaded.

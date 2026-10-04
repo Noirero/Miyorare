@@ -47,9 +47,9 @@ Source of truth: `MIYORARE_SMART_LOCAL_LIBRARY_SPEC_2026-10-04.txt`, all 37 sect
 
 ## Identity and storage trade-offs
 
-New SAF identities derive from authority/document ID, independent of tree-URI wrappers; file identities derive from canonical paths. Chapter IDs survive extension preference changes, scan ordering changes, rescan and reconstruction of the index. A moved file with a new provider ID/path is treated as a newly discovered identity; the scanner does not guess a history match by title.
+New SAF identities derive from authority/document ID, independent of tree-URI wrappers; file manga identities retain the original URI path used by LocalMangaParser, while canonical paths enforce containment and deduplication. Chapter IDs survive extension preference changes, scan ordering changes, rescan and reconstruction of the index. A moved file with a new provider ID/path is treated as a newly discovered identity; the scanner does not guess a history match by title.
 
-When an already-read, ordinary file-backed folder/PDF/single-chapter archive is adopted, its legacy chapter IDs are retained only if the current history chapter can be proven. Previously read EPUBs retain their old spine sections and IDs, preserving the old chapter/page/scroll boundary. Existing imported/downloaded records remain on their original infrastructure. An unusual legacy archive with multiple internal chapter directories has no automatic title-boundary migration; no approximate progress is invented.
+When an already-read, ordinary file-backed folder/PDF/single-chapter archive is adopted, its legacy chapter IDs are retained only if the current history chapter can be proven. Previously read EPUBs retain their old spine sections and IDs, preserving the old chapter/page/scroll boundary. Existing imported/downloaded records remain on their original infrastructure. Automatic download chapter cleanup does not apply to selected user-owned roots; physical removal requires the explicit Local manga/chapter action. An unusual legacy archive with multiple internal chapter directories has no automatic title-boundary migration; no approximate progress is invented.
 
 SAF archives/PDF/EPUB need a seekable cache copy on first open. Image-folder pages remain independent document streams. The 512 MiB cache budget is soft: archives already handed to an active Reader are pinned for the process lifetime to avoid invalidating its page URIs. Old, unpinned copies are reclaimed on subsequent use; large active volumes can exceed that budget and need free cache space.
 
@@ -63,7 +63,7 @@ Local Gradle invocation was attempted: wrapper download failed with `Network is 
 
 Executed locally:
 
-- JDK compilation of the production Java scanner and executable fixtures, followed by **35 passing assertions**: selected-root boundaries, outside-edge rejection, cycles, 1,500 nested levels, metadata-free manga, image chapters, mixed image/archive representations, PDF/EPUB/single files, container classification, confirmation, exclusions/restore, natural sorting and non-mutating extension display.
+- JDK compilation of the production Java scanner and executable fixtures, followed by **38 passing assertions**: selected-root boundaries, outside-edge rejection, cycles, 1,500 nested levels, metadata-free manga, image chapters, mixed image/archive representations, PDF/EPUB/single files, container classification, confirmation, exclusions/restore, natural sorting and non-mutating extension display.
 - `git diff --check`: passed.
 - Smart Local resources XML parsing: passed.
 - `test_p0_p1_contract.py`: 16 tests passed.
