@@ -60,7 +60,7 @@ class MangaPrefetchService : CoroutineIntentService() {
 	}
 
 	private suspend fun prefetchLast() {
-		val last = historyRepository.getLastOrNull() ?: return
+		val last = historyRepository.getLastReadOrNull() ?: return
 		if (last.isLocal || last.source.isNovelContentSource) return
 		val repo = mangaRepositoryFactory.create(last.source)
 		val details = runCatchingCancellable { repo.getDetails(last) }.getOrNull() ?: return

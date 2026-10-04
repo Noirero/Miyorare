@@ -190,7 +190,7 @@ class KotatsuMangaMigrator @Inject constructor(
 			// history — percent preserved and chapter pointer translated to the Mihon identity
 			val historyDao = database.getHistoryDao()
 			historyDao.find(oldId)?.let { h ->
-				historyDao.upsert(
+				historyDao.upsertForMangaMigration(
 					HistoryEntity(
 						mangaId = newId,
 						createdAt = h.createdAt,
@@ -201,6 +201,8 @@ class KotatsuMangaMigrator @Inject constructor(
 						percent = h.percent,
 						deletedAt = 0L,
 						chaptersCount = h.chaptersCount,
+						lastReaderActivityAt = h.lastReaderActivityAt,
+						legacyResumeUpdatedAt = h.legacyResumeUpdatedAt,
 					),
 				)
 			}

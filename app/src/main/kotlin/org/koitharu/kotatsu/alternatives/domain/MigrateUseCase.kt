@@ -117,7 +117,7 @@ class MigrateUseCase @Inject constructor(
 			val newHistory = if (oldHistory != null) {
 				val migrated = makeNewHistory(oldDetails, newDetails, oldHistory)
 				historyDao.delete(oldDetails.id)
-				historyDao.upsert(migrated)
+				historyDao.upsertForMangaMigration(migrated)
 				migrated
 			} else {
 				null
@@ -258,6 +258,8 @@ class MigrateUseCase @Inject constructor(
 				percent = history.percent,
 				deletedAt = 0,
 				chaptersCount = chapters.count { it.branch == currentChapter.branch },
+				lastReaderActivityAt = history.lastReaderActivityAt,
+				legacyResumeUpdatedAt = history.legacyResumeUpdatedAt,
 			)
 		}
 		val branch = oldManga.getPreferredBranch(history.toMangaHistory())
@@ -287,6 +289,8 @@ class MigrateUseCase @Inject constructor(
 			percent = history.percent,
 			deletedAt = 0,
 			chaptersCount = checkNotNull(newChapters[newBranch]).size,
+			lastReaderActivityAt = history.lastReaderActivityAt,
+			legacyResumeUpdatedAt = history.legacyResumeUpdatedAt,
 		)
 	}
 

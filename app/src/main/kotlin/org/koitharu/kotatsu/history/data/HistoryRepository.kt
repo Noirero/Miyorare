@@ -72,6 +72,11 @@ class HistoryRepository @Inject constructor(
 		return entity.toManga()
 	}
 
+	/** Resume identity is independent of progress ordering and normal-library membership. */
+	suspend fun getLastReadOrNull(): Manga? = db.getHistoryDao().findLastRead()?.toManga()
+
+	fun observeLastRead(): Flow<Manga?> = db.getHistoryDao().observeLastRead().map { it?.toManga() }
+
 	fun observeLast(): Flow<Manga?> {
 		return db.getHistoryDao().observeAll(1).map {
 			val first = it.firstOrNull()
@@ -120,14 +125,26 @@ class HistoryRepository @Inject constructor(
 		}
 	}
 
+	/** Administrative progress mutation. Does not claim that the Reader was opened. */
 	suspend fun addOrUpdate(manga: Manga, chapterId: Long, page: Int, scroll: Int, percent: Float, force: Boolean) {
+		updateProgress(manga, chapterId, page, scroll, percent, force, fromReader = false)
+	}
+
+	/** Authoritative entry point for a saved actual Reader state; respects incognito policy. */
+	suspend fun addOrUpdateFromReader(manga: Manga, chapterId: Long, page: Int, scroll: Int, percent: Float) {
+		updateProgress(manga, chapterId, page, scroll, percent, force = false, fromReader = true)
+	}
+
+	private suspend fun updateProgress(
+		manga: Manga, chapterId: Long, page: Int, scroll: Int, percent: Float, force: Boolean, fromReader: Boolean,
+	) {
 		if (!force && shouldSkip(manga)) return
 		assert(manga.chapters != null)
 		db.withTransaction {
 			addOrUpdateLocalLocked(manga, chapterId, page, scroll, percent)
+			if (fromReader) db.getHistoryDao().recordReaderActivity(manga.id, System.currentTimeMillis())
 		}
-		// Source checks and tracker requests can involve network I/O. Keeping them outside Room's
-		// transaction prevents a slow source/tracker from holding the database writer and stalling UI.
+		// Network/source I/O stays outside the Room transaction.
 		newChaptersUseCaseProvider.get()(manga, chapterId)
 		if (!isPrivateOnly(manga.id)) {
 			scrobblers.forEach { it.tryScrobble(manga, chapterId) }

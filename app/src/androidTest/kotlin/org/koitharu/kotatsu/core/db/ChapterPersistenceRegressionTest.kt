@@ -29,6 +29,8 @@ import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.migrations.Migration45To46
 import org.koitharu.kotatsu.core.db.migrations.Migration46To47
+import org.koitharu.kotatsu.core.db.migrations.Migration50To51
+import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.core.db.migrations.Migration48To49
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
@@ -86,6 +88,60 @@ class ChapterPersistenceRegressionTest {
 	fun tearDown() {
 		context.deleteDatabase(DB_NAME)
 		context.deleteDatabase(MIGRATION_DB_NAME)
+	}
+
+
+	@Test
+	fun migration50To51FreezesLegacyResumeAndValidatesRoomSchema() = runTest {
+		// Start with the real full schema, remove only v51's additions to produce a v50 database.
+		// Room then executes the registered migration and validates every table/column/default.
+		val name = MIGRATION_DB_NAME
+		val before = Room.databaseBuilder(context, MangaDatabase::class.java, name).build()
+		try {
+			for (id in listOf(901L, 902L)) {
+				before.getMangaDao().upsert(SampleData.mangaDetails.copy(id = id).toEntity(), emptyList())
+				before.getHistoryDao().upsert(HistoryEntity(id, 1L, 100L, 1L, 0, 0f, 0.1f, 0L, 3))
+			}
+		} finally {
+			before.close()
+		}
+		android.database.sqlite.SQLiteDatabase.openDatabase(
+			context.getDatabasePath(name).absolutePath, null, android.database.sqlite.SQLiteDatabase.OPEN_READWRITE,
+		).use { legacy ->
+			legacy.execSQL("DROP INDEX index_history_last_reader_activity_at_legacy_resume_updated_at")
+			legacy.execSQL("DROP INDEX index_history_legacy_resume_updated_at")
+			legacy.execSQL("ALTER TABLE history DROP COLUMN last_reader_activity_at")
+			legacy.execSQL("ALTER TABLE history DROP COLUMN legacy_resume_updated_at")
+			legacy.execSQL("DROP TABLE room_master_table")
+			legacy.version = 50
+		}
+		val migrated = Room.databaseBuilder(context, MangaDatabase::class.java, name)
+			.addMigrations(Migration50To51()).build()
+		try {
+			val dao = migrated.getHistoryDao()
+			assertEquals(901L, dao.findLastRead()?.history?.mangaId) // deterministic tied timestamp
+			assertEquals(0L, dao.find(901L)?.lastReaderActivityAt) // never invent actual reading
+			assertEquals(100L, dao.find(902L)?.legacyResumeUpdatedAt)
+			dao.upsert(dao.find(902L)!!.copy(updatedAt = 1_000L))
+			assertEquals(901L, dao.findLastRead()?.history?.mangaId)
+			dao.upsertForSync(dao.find(902L)!!.copy(updatedAt = 2_000L))
+			assertEquals(901L, dao.findLastRead()?.history?.mangaId)
+			dao.recordReaderActivity(902L, 200L)
+			assertEquals(902L, dao.findLastRead()?.history?.mangaId)
+			assertEquals(0L, dao.find(901L)?.legacyResumeUpdatedAt)
+			dao.delete(902L)
+			dao.gc(Long.MAX_VALUE)
+			assertNull(dao.findLastRead()) // legacy must never reappear after Reader deletion/GC
+		} finally {
+			migrated.close()
+		}
+		val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, name).build()
+		try {
+			assertNull(reopened.getHistoryDao().findLastRead())
+			assertEquals(100L, reopened.getHistoryDao().find(901L)?.updatedAt)
+		} finally {
+			reopened.close()
+		}
 	}
 
 	@Test

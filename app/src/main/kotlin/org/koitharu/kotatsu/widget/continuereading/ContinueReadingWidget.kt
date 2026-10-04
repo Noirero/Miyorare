@@ -31,7 +31,7 @@ class ContinueReadingWidget : AppWidgetProvider() {
 	) {
 		runAsync(context, TAG) { appContext ->
 			val entryPoint = appContext.widgetEntryPoint()
-			val manga = entryPoint.historyRepository.getLastOrNull()
+			val manga = entryPoint.historyRepository.getLastReadOrNull()
 			val history = manga?.let { entryPoint.historyRepository.getOne(it) }
 
 			// Pass 1: render text-only state immediately so the widget never sits blank.

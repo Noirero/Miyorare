@@ -5,9 +5,12 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -24,6 +27,13 @@ import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
+import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.core.db.entity.toEntity
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.history.data.HistoryRepository
+import org.koitharu.kotatsu.history.domain.HistoryUpdateUseCase
+import org.koitharu.kotatsu.reader.ui.ReaderState
+import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyAchievementEntity
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyWeeklyStateEntity
@@ -49,11 +59,271 @@ class LocalBackupIdentityTest {
 	@Inject
 	lateinit var privateSecurity: PrivateFavouritesSecurityStore
 
+	@Inject
+	lateinit var historyRepository: HistoryRepository
+
+	@Inject
+	lateinit var appSettings: AppSettings
+
+	@Inject
+	lateinit var trackingRepository: org.koitharu.kotatsu.tracker.domain.TrackingRepository
+
+	private var previousIncognito = false
+
+	@After
+	fun restoreIncognito() {
+		appSettings.isIncognitoModeEnabled = previousIncognito
+	}
+
 	@Before
 	fun setUp() {
 		hiltRule.inject()
+		previousIncognito = appSettings.isIncognitoModeEnabled
+		appSettings.isIncognitoModeEnabled = false
 		database.clearAllTables()
 		privateSecurity.includePrivateInBackup = false
+	}
+
+
+	// These repository/database regressions run in the existing Android Runtime suite.
+	// Fixtures contain chapters and no favourites/accounts: no live source/tracker requests are needed.
+	@Test
+	fun actualReaderActivityResumesLatestMangaWithoutFavouriteMembership() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		saveReader(a)
+		saveReader(b)
+		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
+		assertEquals(b.id, historyRepository.observeLastRead().first()?.id)
+		assertTrue(database.getFavouritesDao().findCategoriesIds(a.id).isEmpty())
+		assertTrue(database.getFavouritesDao().findCategoriesIds(b.id).isEmpty())
+	}
+
+	@Test
+	fun trackingCreatesProgressWithoutStealingReaderIdentity() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		saveReader(a)
+		assertTrue(historyRepository.advanceFromTracking(b, checkNotNull(b.chapters), 1))
+		assertEquals(b.chapters!![1].id, database.getHistoryDao().find(b.id)?.chapterId)
+		assertEquals(0L, database.getHistoryDao().find(b.id)?.lastReaderActivityAt)
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+	}
+
+	@Test
+	fun trackingAdvancesExistingProgressAndPreservesItsReaderClock() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		saveReader(b)
+		val bClock = database.getHistoryDao().find(b.id)!!.lastReaderActivityAt
+		saveReader(a)
+		assertTrue(historyRepository.advanceFromTracking(b, checkNotNull(b.chapters), 2))
+		assertEquals(b.chapters!![2].id, database.getHistoryDao().find(b.id)?.chapterId)
+		assertEquals(bClock, database.getHistoryDao().find(b.id)?.lastReaderActivityAt)
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+	}
+
+	@Test
+	fun trackingOnlyHistoryHasExplicitEmptyResumeState() = runTest {
+		val b = resumeManga(902L)
+		assertTrue(historyRepository.advanceFromTracking(b, checkNotNull(b.chapters), 1))
+		assertNull(historyRepository.getLastReadOrNull())
+		assertNull(historyRepository.observeLastRead().first())
+		assertEquals(b.id, historyRepository.getLastOrNull()?.id) // History still sees progress.
+	}
+
+	@Test
+	fun feedMarkReadAndUndoRestoreProgressWithoutStealingResume() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		saveReader(a)
+		setManualProgress(b, 0)
+		val previous = database.getHistoryDao().find(b.id)!!
+		database.getTrackLogsDao().insert(org.koitharu.kotatsu.tracker.data.TrackLogEntity(
+			mangaId = b.id, chapters = "Feed chapter", chapterIds = b.chapters!![2].id.toString(),
+			createdAt = 1L, isUnread = true,
+		))
+		val logsUndo = trackingRepository.markLogsRead(b.id)
+		setManualProgress(b, 2)
+		assertTrue(database.getTrackLogsDao().findUnreadByManga(b.id).isEmpty())
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+		database.getHistoryDao().undoFeedProgress(b.id, previous)
+		logsUndo.reverse()
+		assertEquals(1, database.getTrackLogsDao().findUnreadByManga(b.id).size)
+		assertEquals(previous, database.getHistoryDao().find(b.id))
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+		val c = resumeManga(903L)
+		setManualProgress(c, 2)
+		database.getHistoryDao().undoFeedProgress(c.id, null)
+		assertNull(database.getHistoryDao().find(c.id))
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+	}
+
+	@Test
+	fun feedUndoDoesNotEraseSubsequentReaderActivity() = runTest {
+		val b = resumeManga(902L)
+		setManualProgress(b, 2)
+		saveReader(b)
+		database.getHistoryDao().undoFeedProgress(b.id, null)
+		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
+		val previous = database.getHistoryDao().find(b.id)!!
+		setManualProgress(b, 2)
+		saveReader(b)
+		val afterReading = database.getHistoryDao().find(b.id)!!
+		database.getHistoryDao().undoFeedProgress(b.id, previous)
+		assertEquals(afterReading, database.getHistoryDao().find(b.id))
+	}
+
+	@Test
+	fun markCompletedKeepsCompletedProgressWithoutClaimingReaderActivity() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		saveReader(a)
+		historyRepository.addOrUpdate(b, b.chapters!!.last().id, 9, 0, 1f, force = true)
+		assertEquals(1f, database.getHistoryDao().find(b.id)!!.percent, 0f)
+		assertEquals(9, database.getHistoryDao().find(b.id)?.page)
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+	}
+
+	@Test
+	fun markCurrentKeepsSelectedPositionUntilReaderActuallySaves() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		saveReader(a)
+		setManualProgress(b, 1)
+		assertEquals(b.chapters!![1].id, database.getHistoryDao().find(b.id)?.chapterId)
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+		saveReader(b, 1)
+		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
+	}
+
+	@Test
+	fun readerCanPromoteMangaPreviouslyChangedByTrackingOrFeed() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		val c = resumeManga(903L)
+		saveReader(a)
+		assertTrue(historyRepository.advanceFromTracking(b, checkNotNull(b.chapters), 1))
+		setManualProgress(c, 2)
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+		saveReader(b)
+		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
+		saveReader(c)
+		assertEquals(c.id, historyRepository.getLastReadOrNull()?.id)
+	}
+
+	@Test
+	fun deletedAndPrivateResumeEntriesRespectExistingIsolation() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		saveReader(a)
+		saveReader(b)
+		val categoryId = database.getFavouriteCategoriesDao().insert(category("Private resume", 1, FavouriteSpace.PRIVATE))
+		database.getPrivateFavouritesDao().upsert(PrivateFavouriteEntity(b.id, categoryId, 0, false, 1L, 0L))
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+		org.koitharu.kotatsu.favourites.vault.PrivateFavouritesIsolation.setDisabled(database, true)
+		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
+		org.koitharu.kotatsu.favourites.vault.PrivateFavouritesIsolation.setDisabled(database, false)
+		historyRepository.delete(a)
+		assertNull(historyRepository.getLastReadOrNull())
+	}
+
+	@Test
+	fun incognitoReaderAndTrackingDoNotCreateResumeEvidence() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		saveReader(a)
+		appSettings.isIncognitoModeEnabled = true
+		saveReader(b)
+		assertFalse(historyRepository.advanceFromTracking(b, checkNotNull(b.chapters), 1))
+		assertNull(database.getHistoryDao().find(b.id))
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+		// Existing explicit manual force policy still allows progress; it never claims a Reader save.
+		setManualProgress(b, 1)
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+	}
+
+	@Test
+	fun restoreAndCloudProgressPreserveDeviceLocalResumeMarkers() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		saveReader(a)
+		val original = database.getHistoryDao().find(a.id)!!
+		val dao = database.getHistoryDao()
+		// Native/Mihon import uses progress-only upsert; cloud sync uses upsertForSync.
+		dao.upsert(original.copy(updatedAt = original.updatedAt + 100, lastReaderActivityAt = 0L))
+		dao.upsertForSync(original.copy(updatedAt = original.updatedAt + 200, lastReaderActivityAt = 0L))
+		assertEquals(original.lastReaderActivityAt, dao.find(a.id)?.lastReaderActivityAt)
+		database.getMangaDao().upsert(b.toEntity(), emptyList())
+		dao.upsertForSync(original.copy(mangaId = b.id, updatedAt = Long.MAX_VALUE))
+		assertEquals(0L, dao.find(b.id)?.lastReaderActivityAt)
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+	}
+
+
+	@Test
+	fun mangaIdentityMigrationPreservesEvidenceWithoutMintingNewReadingTime() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		saveReader(b)
+		saveReader(a)
+		val source = database.getHistoryDao().find(a.id)!!
+		database.getHistoryDao().upsertForMangaMigration(source.copy(mangaId = b.id))
+		database.getHistoryDao().delete(a.id)
+		assertEquals(source.lastReaderActivityAt, database.getHistoryDao().find(b.id)?.lastReaderActivityAt)
+		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
+	}
+
+	@Test
+	fun portableBackupRestoresProgressWithoutClaimingNewDeviceReading() = runTest {
+		val a = resumeManga(901L)
+		saveReader(a)
+		val savedClock = database.getHistoryDao().find(a.id)!!.lastReaderActivityAt
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val file = File.createTempFile("resume_backup_", ".zip", context.cacheDir)
+		try {
+			ZipOutputStream(file.outputStream()).use { repository.createBackup(it, progress = null) }
+			ZipInputStream(file.inputStream()).use {
+				assertTrue(repository.restoreBackup(it, setOf(BackupSection.HISTORY), progress = null).isAllSuccess)
+			}
+			assertEquals(savedClock, database.getHistoryDao().find(a.id)?.lastReaderActivityAt)
+			database.clearAllTables()
+			ZipInputStream(file.inputStream()).use {
+				assertTrue(repository.restoreBackup(it, setOf(BackupSection.HISTORY), progress = null).isAllSuccess)
+			}
+			assertEquals(0L, database.getHistoryDao().find(a.id)?.lastReaderActivityAt)
+			assertNull(historyRepository.getLastReadOrNull())
+			assertEquals(a.id, historyRepository.getLastOrNull()?.id)
+		} finally {
+			file.delete()
+		}
+	}
+
+
+	@Test
+	fun readerSavesHaveDeterministicOrderAcrossClockTiesAndRollback() = runTest {
+		val a = resumeManga(901L)
+		val b = resumeManga(902L)
+		setManualProgress(a, 0)
+		setManualProgress(b, 0)
+		val dao = database.getHistoryDao()
+		dao.recordReaderActivity(a.id, 100L)
+		dao.recordReaderActivity(b.id, 100L)
+		assertEquals(101L, dao.find(b.id)?.lastReaderActivityAt)
+		assertEquals(b.id, historyRepository.getLastReadOrNull()?.id)
+		dao.recordReaderActivity(a.id, 90L)
+		assertEquals(102L, dao.find(a.id)?.lastReaderActivityAt)
+		assertEquals(a.id, historyRepository.getLastReadOrNull()?.id)
+	}
+
+	private fun resumeManga(id: Long): Manga = SampleData.mangaDetails.copy(id = id, isNsfw = false, source = org.koitharu.kotatsu.parsers.model.MangaSource("TEST_CONTINUE_READING"))
+
+	private suspend fun saveReader(manga: Manga, index: Int = 0) {
+		HistoryUpdateUseCase(historyRepository)(manga, ReaderState(manga.chapters!![index].id, 1, 0), 0.1f)
+	}
+
+	private suspend fun setManualProgress(manga: Manga, index: Int) {
+		historyRepository.addOrUpdate(manga, manga.chapters!![index].id, 0, 0, (index + 1f) / manga.chapters!!.size, force = true)
 	}
 
 	@Test
