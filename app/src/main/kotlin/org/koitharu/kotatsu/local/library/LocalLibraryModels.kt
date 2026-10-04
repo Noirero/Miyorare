@@ -12,8 +12,9 @@ const val LOCAL_LIBRARY_SCHEME = "smart-local"
 
 data class LocalFolder(val uri: String, val name: String)
 data class LocalDiagnosis(val rootUri: String, val node: Node?, val reason: String, val candidates: List<Node> = emptyList())
-data class LocalChapter(val node: Node, val pages: List<Node>, val metadataTitle: String? = null) {
-    val id get() = "local-chapter:${node.key}".longHashCode()
+data class LocalChapter(val node: Node, val pages: List<Node>, val metadataTitle: String? = null,
+    val preservedId: Long? = null, val epubSection: String? = null) {
+    val id get() = preservedId ?: "local-chapter:${node.key}".longHashCode()
     val url get() = "$LOCAL_LIBRARY_SCHEME://chapter/$id/${android.net.Uri.encode(node.name)}"
 }
 data class LocalBook(
@@ -30,7 +31,7 @@ data class LocalBook(
         val url = "$LOCAL_LIBRARY_SCHEME://manga/$id/${if (isText) "book.epub" else "book"}"
         return Manga(id = id, title = title ?: LocalTreeScanner.displayName(node.name, showExtensions, node.directory),
             altTitles = emptySet(), url = url, publicUrl = url, source = LocalMangaSource,
-            coverUrl = cover ?: "$LOCAL_LIBRARY_SCHEME://cover/$id", largeCoverUrl = null, rating = -1f,
+            coverUrl = "$LOCAL_LIBRARY_SCHEME://cover/$id", largeCoverUrl = null, rating = -1f,
             contentRating = null, tags = emptySet(), state = null, authors = authors, description = description,
             chapters = if (withDetails) chapters.mapIndexed { index, c ->
                 MangaChapter(id = c.id, title = c.metadataTitle ?: LocalTreeScanner.displayName(c.node.name, showExtensions, c.node.directory),
@@ -53,13 +54,15 @@ internal fun JSONObject.toNode() = Node(getString("key"), getString("uri"), getS
     getBoolean("directory"), optLong("size"), optLong("modified"))
 internal fun LocalBook.toJson() = JSONObject().put("root", rootUri).put("node", node.toJson())
     .put("chapters", JSONArray(chapters.map { c -> JSONObject().put("node", c.node.toJson())
-        .put("pages", JSONArray(c.pages.map { it.toJson() })).put("title", c.metadataTitle) }))
+        .put("pages", JSONArray(c.pages.map { it.toJson() })).put("title", c.metadataTitle)
+        .put("preservedId", c.preservedId).put("epubSection", c.epubSection) }))
     .put("sidecars", JSONArray(sidecars.map { it.toJson() })).put("title", title).put("authors", JSONArray(authors))
     .put("description", description).put("cover", cover).put("ignored", ignored).put("added", addedAt)
     .put("scanned", scannedAt).put("new", newChapters)
 internal fun JSONObject.toLocalBook() = LocalBook(getString("root"), getJSONObject("node").toNode(),
     getJSONArray("chapters").objects().map { c -> LocalChapter(c.getJSONObject("node").toNode(),
-        c.getJSONArray("pages").objects().map { it.toNode() }, c.stringOrNull("title")) },
+        c.getJSONArray("pages").objects().map { it.toNode() }, c.stringOrNull("title"),
+        if (c.isNull("preservedId")) null else c.getLong("preservedId"), c.stringOrNull("epubSection")) },
     getJSONArray("sidecars").objects().map { it.toNode() }, stringOrNull("title"),
     optJSONArray("authors")?.let { a -> (0 until a.length()).mapTo(LinkedHashSet()) { a.getString(it) } }.orEmpty(),
     stringOrNull("description"), stringOrNull("cover"), optInt("ignored"), optLong("added"), optLong("scanned"), optInt("new"))

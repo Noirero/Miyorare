@@ -27,6 +27,11 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.parsers.util.longHashCode
+import org.koitharu.kotatsu.core.util.AlphanumComparator
+import org.koitharu.kotatsu.core.util.ext.toZipUri
+import org.koitharu.kotatsu.local.data.input.EpubParser
+import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -129,13 +134,17 @@ class SmartLocalLibrary @Inject constructor(
                     val old = previousByKey[entry.node.key]
                     val metadata = entry.sidecars.filter { it.name.endsWith(".xml", true) || it.name == "index.json" }
                         .map { LocalMetadata.read(it, documents) }
-                    val explicitCover = entry.sidecars.firstOrNull { LocalTreeScanner.isImage(it.name) }?.uri
+                    val explicitCover = entry.sidecars.firstOrNull { LocalTreeScanner.isImage(it.name) && LocalTreeScanner.isSidecar(it.name) }?.uri
                     val metadataCover = metadata.firstNotNullOfOrNull { it.coverName }?.let { name ->
                         entry.sidecars.firstOrNull { it.name == name }?.uri
                     }
-                    val chapters = entry.chapters.map { c -> LocalChapter(c.node, c.pages) }
+                    val discoveredChapters = entry.chapters.map { c -> LocalChapter(c.node, c.pages) }
+                    val preserved = old?.chapters?.groupBy { it.node.key }.orEmpty()
+                    val chapters = if (old != null) discoveredChapters.flatMap { chapter ->
+                        preserved[chapter.node.key]?.map { it.copy(node = chapter.node, pages = chapter.pages) } ?: listOf(chapter)
+                    } else migrateLegacyChapters(root.uri, entry.node, discoveredChapters)
                     val oldKeys = old?.chapters?.mapTo(HashSet()) { it.node.key }.orEmpty()
-                    val discovered = if (old == null) chapters.size else chapters.count { it.node.key !in oldKeys }
+                    val discovered = if (old == null) discoveredChapters.size else discoveredChapters.count { it.node.key !in oldKeys }
                     val book = LocalBook(root.uri, entry.node, chapters, entry.sidecars,
                         metadata.firstNotNullOfOrNull { it.title }, metadata.flatMapTo(LinkedHashSet()) { it.authors },
                         metadata.firstNotNullOfOrNull { it.description }, explicitCover ?: metadataCover ?: chapters.firstOrNull()?.pages?.firstOrNull()?.uri,
@@ -317,6 +326,33 @@ class SmartLocalLibrary @Inject constructor(
         val id = url.toUri().pathSegments.firstOrNull()?.toLongOrNull() ?: error("Invalid local chapter")
         for (book in state.value.books) book.chapters.firstOrNull { it.id == id }?.let { return book to it }
         error("Local chapter is no longer indexed")
+    }
+
+    /** Adoption only: preserve an existing file-based Reader state without recursively parsing a folder. */
+    private suspend fun migrateLegacyChapters(rootUri: String, node: Node, chapters: List<LocalChapter>): List<LocalChapter> {
+        if (node.uri.toUri().scheme != "file") return chapters
+        val history = db.getHistoryDao().find(node.key.longHashCode()) ?: return chapters
+        val mapped = runCatchingCancellable {
+            if (chapters.all { LocalTreeScanner.extension(it.node.name) == "epub" }) {
+                val root = documents.root(rootUri)
+                chapters.flatMap { c ->
+                    val file = contentReader.materialize(root, c.node)
+                    EpubParser.parse(file).spine.map { section -> c.copy(metadataTitle = section.title,
+                        preservedId = file.toZipUri(section.href).toString().longHashCode(), epubSection = section.href) }
+                }
+            } else if (!node.directory) {
+                // Archive/PDF only, never the old parser's unbounded directory traversal.
+                val file = contentReader.materialize(documents.root(rootUri), node)
+                val legacy = LocalMangaParser(file).getManga(true).manga.chapters.orEmpty()
+                if (legacy.size == 1) listOf(chapters.single().copy(preservedId = legacy.single().id)) else chapters
+            } else {
+                val byKey = chapters.sortedWith(compareBy(AlphanumComparator()) { it.node.key })
+                    .mapIndexed { index, c -> c.node.key to "$index${c.node.key.removePrefix(node.key + "/")}".longHashCode() }.toMap()
+                chapters.map { it.copy(preservedId = byKey[it.node.key]) }
+            }
+        }.getOrNull() ?: return chapters
+        // Never guess a mapping if the previously read chapter cannot be proven.
+        return mapped.takeIf { list -> list.any { it.id == history.chapterId } } ?: chapters
     }
 
     private fun readRoots() = JSONArray(prefs.getString("roots", "[]")).objects().map { LocalFolder(it.getString("uri"), it.getString("name")) }

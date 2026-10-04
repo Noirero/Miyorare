@@ -10,6 +10,7 @@ public final class LocalTreeScanner {
         List<Node> children(Node directory) throws IOException;
         boolean contains(Node root, Node child) throws IOException;
         void checkCancelled() throws IOException;
+        default Set<String> metadataCoverNames(List<Node> children) throws IOException { return Collections.emptySet(); }
     }
     public static final class Node {
         public final String key, uri, name;
@@ -55,6 +56,7 @@ public final class LocalTreeScanner {
         List<Node> sidecars = new ArrayList<>();
         int ignored;
         boolean explicitBoundary;
+        Set<String> metadataCovers = Collections.emptySet();
         Tree(Node node) { this.node = node; }
     }
 
@@ -80,6 +82,7 @@ public final class LocalTreeScanner {
                 Tree child = new Tree(n); t.children.add(child);
                 if (n.directory) pending.add(child);
             }
+            t.metadataCovers = access.metadataCoverNames(t.children.stream().map(c -> c.node).collect(java.util.stream.Collectors.toList()));
         }
         for (int i = order.size() - 1; i >= 0; i--) {
             access.checkCancelled();
@@ -103,7 +106,7 @@ public final class LocalTreeScanner {
         List<Chapter> direct = new ArrayList<>();
         for (Tree c : t.children) {
             if (c.node.directory) dirs.add(c);
-            else if (isSidecar(c.node.name)) t.sidecars.add(c.node);
+            else if (isSidecar(c.node.name) || t.metadataCovers.contains(c.node.name)) t.sidecars.add(c.node);
             else if (isImage(c.node.name)) images.add(c.node);
             else if (isBook(c.node.name)) direct.add(new Chapter(c.node, Collections.emptyList()));
             else t.ignored++;

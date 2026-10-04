@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.local.library
 
 import android.content.ContentResolver
 import android.content.Context
+import android.graphics.BitmapFactory
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -20,6 +21,7 @@ import org.koitharu.kotatsu.local.library.LocalTreeScanner.Node
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.util.longHashCode
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -33,7 +35,9 @@ class LocalContentReader @Inject constructor(
     @ApplicationContext private val context: Context, private val documents: LocalDocuments,
 ) {
     private val cacheMutex = Mutex()
-    private val recentFiles = ArrayDeque<String>()
+    // Returned archive URIs remain in Reader state. Pin them for this process so cache
+    // maintenance cannot invalidate a still-open/previous chapter. Budget is deliberately soft.
+    private val activeFiles = HashSet<String>()
     private val cacheDir get() = File(context.cacheDir, "smart-local-content").also { it.mkdirs() }
 
     suspend fun materialize(root: Node, node: Node): File = withContext(Dispatchers.IO) {
@@ -62,12 +66,11 @@ class LocalContentReader @Inject constructor(
                 } finally { temporary.delete() }
             }
             target.setLastModified(System.currentTimeMillis())
-            recentFiles.remove(target.name); recentFiles.addLast(target.name)
-            while (recentFiles.size > 4) recentFiles.removeFirst()
+            activeFiles.add(target.name)
             var total = cacheDir.listFiles().orEmpty().sumOf { it.length() }
             for (old in cacheDir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
                 if (total <= 512L * 1024 * 1024) break
-                if (old.name in recentFiles) continue
+                if (old.name in activeFiles) continue
                 val size = old.length()
                 if (old.delete()) total -= size
             }
@@ -106,7 +109,7 @@ class LocalContentReader @Inject constructor(
         ZipFile(file).use { zip ->
             buildString {
                 append("<html><body>")
-                for (item in book.spine) {
+                for (item in book.spine.filter { chapter.epubSection == null || it.href == chapter.epubSection }) {
                     currentCoroutineContext().ensureActive()
                     val entry = zip.getEntry(item.href) ?: throw IOException("Missing EPUB section: ${item.href}")
                     val html = zip.getInputStream(entry).use { it.readBytesLimited(16 * 1024 * 1024).toString(Charsets.UTF_8) }
@@ -134,28 +137,51 @@ class LocalContentReader @Inject constructor(
     }
 
     suspend fun cover(root: Node, book: LocalBook): ByteArray? = withContext(Dispatchers.IO) {
-        val chapter = book.chapters.firstOrNull() ?: return@withContext null
-        if (chapter.pages.isNotEmpty()) {
-            val page = chapter.pages.first()
-            check(documents.contains(root, page))
-            return@withContext documents.input(page).use { it.readBytesLimited(32 * 1024 * 1024) }
+        fun valid(bytes: ByteArray?): ByteArray? {
+            if (bytes == null) return null
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            return bytes.takeIf { options.outWidth > 0 && options.outHeight > 0 }
         }
-        val file = materialize(root, chapter.node)
-        when (LocalTreeScanner.extension(chapter.node.name)) {
-            "pdf" -> LocalPdfCache.renderCover(file)?.readBytes()
-            "epub" -> ZipFile(file).use { zip ->
-                val cover = EpubParser.parse(file).coverHref?.takeIf(::safeEntry)
-                    ?.let { zip.getEntry(it) }
-                    ?: zip.entries().asSequence().filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
-                        .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name }).firstOrNull()
-                cover?.let { zip.getInputStream(it).use { input -> input.readBytesLimited(32 * 1024 * 1024) } }
-            }
-            else -> ZipFile(file).use { zip ->
-                val image = zip.entries().asSequence().filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
-                    .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name }).firstOrNull()
-                image?.let { zip.getInputStream(it).use { input -> input.readBytesLimited(32 * 1024 * 1024) } }
+        book.cover?.let { uri ->
+            val node = (book.sidecars + book.chapters.flatMap { it.pages }).firstOrNull { it.uri == uri }
+            if (node != null && documents.contains(root, node)) {
+                runCatchingCancellable { valid(documents.input(node).use { it.readBytesLimited(32 * 1024 * 1024) }) }
+                    .getOrNull()?.let { return@withContext it }
             }
         }
+        for (chapter in book.chapters) {
+            currentCoroutineContext().ensureActive()
+            val bytes = runCatchingCancellable {
+                if (chapter.pages.isNotEmpty()) {
+                    for (page in chapter.pages) {
+                        check(documents.contains(root, page))
+                        runCatchingCancellable { valid(documents.input(page).use { it.readBytesLimited(32 * 1024 * 1024) }) }
+                            .getOrNull()?.let { return@runCatchingCancellable it }
+                    }
+                    null
+                } else {
+                    val file = materialize(root, chapter.node)
+                    when (LocalTreeScanner.extension(chapter.node.name)) {
+                        "pdf" -> LocalPdfCache.renderCover(file)?.readBytes()
+                        else -> ZipFile(file).use { zip ->
+                            val preferred = if (LocalTreeScanner.extension(chapter.node.name) == "epub")
+                                EpubParser.parse(file).coverHref?.takeIf(::safeEntry) else null
+                            val images = zip.entries().asSequence()
+                                .filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
+                                .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name }).toList()
+                            for (entry in (listOfNotNull(preferred?.let { zip.getEntry(it) }) + images).distinctBy { it.name }) {
+                                runCatchingCancellable { valid(zip.getInputStream(entry).use { it.readBytesLimited(32 * 1024 * 1024) }) }
+                                    .getOrNull()?.let { return@use it }
+                            }
+                            null
+                        }
+                    }
+                }
+            }.getOrNull()
+            valid(bytes)?.let { return@withContext it }
+        }
+        null // Existing Coil/UI default artwork handles wholly unreadable/missing covers.
     }
 
     private fun safeEntry(path: String) = path.isNotBlank() && !path.startsWith('/') && '\\' !in path &&

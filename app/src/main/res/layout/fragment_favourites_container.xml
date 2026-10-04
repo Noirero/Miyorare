@@ -128,9 +128,10 @@
 				<com.google.android.material.button.MaterialButton
 					android:id="@+id/button_collection_selector"
 					style="?attr/materialIconButtonOutlinedStyle"
-					android:layout_width="48dp"
+					android:layout_width="40dp"
 					android:layout_height="48dp"
-					android:layout_marginStart="12dp"
+					android:layout_marginStart="4dp"
+					android:layout_marginEnd="-4dp"
 					android:contentDescription="@string/favourites"
 					app:icon="@drawable/ic_more_vert" />
 

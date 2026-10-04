@@ -38,6 +38,11 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
         override fun children(directory: Node): MutableList<Node> = children(root, directory).toMutableList()
         override fun contains(selectedRoot: Node, child: Node): Boolean = this@LocalDocuments.contains(selectedRoot, child)
         override fun checkCancelled() = cancelled()
+        override fun metadataCoverNames(children: MutableList<Node>): MutableSet<String> = children
+            .filter { !it.directory && (it.name.endsWith(".xml", true) || it.name.equals("index.json", true)) }
+            .mapNotNull { node -> cancelled(); LocalMetadata.read(node, this@LocalDocuments).coverName }
+            .filter { it.isNotBlank() && '/' !in it && '\\' !in it && it != ".." }
+            .toMutableSet()
     }
 
     fun children(root: Node, directory: Node): List<Node> {
