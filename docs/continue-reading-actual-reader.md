@@ -83,7 +83,7 @@ disabled FAB, and widget-empty UX, respectively.
 ## Behavioral regression coverage
 
 New tests are added to the already-routed `LocalBackupIdentityTest` and
-`ChapterPersistenceRegressionTest`; no workflow changes or new workflows are required.
+`ChapterPersistenceRegressionTest`; no workflow changes or new workflows are required. Phase 10 pins the full backup instrumentation fixture: its existing SHA-256 pin is refreshed after verifying that Android Runtime still executes the full `LocalBackupIdentityTest` selector on exact PR HEAD, with the same variant, runner, labels, and critical persistence override. Routing behavior and selectors are unchanged.
 
 - Actual `HistoryUpdateUseCase` saves select the latest manga without favourites membership;
   observable and one-shot resume queries agree.
