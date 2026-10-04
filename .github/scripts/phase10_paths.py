@@ -158,7 +158,7 @@ def isolated_value_resource_change(path: str, before: str | None, after: str | N
             result = {}
             for child in root:
                 name = child.attrib.get('name', '')
-                if child.tag not in {'string', 'plurals', 'string-array'} or not name or not re.fullmatch(r'[A-Za-z0-9_]+', name):
+                if child.tag != 'string' or not name or not re.fullmatch(r'[A-Za-z0-9_]+', name):
                     raise ValueError('unsupported value resource')
                 result[(child.tag, name)] = ET.tostring(child, encoding='utf-8')
             return result
@@ -177,6 +177,7 @@ def isolated_value_resource_change(path: str, before: str | None, after: str | N
             ROOT / 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney',
             ROOT / 'app/src/main/kotlin/org/koitharu/kotatsu/stats',
             ROOT / 'app/src/main/kotlin/org/koitharu/kotatsu/core/ui',
+            ROOT / 'app/src/main/kotlin/org/koitharu/kotatsu/settings',
             ROOT / 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney',
         ]
         for root in roots:
