@@ -35,10 +35,19 @@ jobs:
     timeout-minutes: 75
     env:
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-      HARNESS_TOOLS: ${{ runner.temp }}/runtime-harness
-      ACCEPTANCE_EVIDENCE: ${{ runner.temp }}/library-sync-evidence
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
+      - name: Initialize harness paths outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          harness_tools="$RUNNER_TEMP/runtime-harness"
+          acceptance_evidence="$RUNNER_TEMP/library-sync-evidence"
+          mkdir -p "$harness_tools" "$acceptance_evidence"
+          {
+            printf 'HARNESS_TOOLS=%s\n' "$harness_tools"
+            printf 'ACCEPTANCE_EVIDENCE=%s\n' "$acceptance_evidence"
+          } >> "$GITHUB_ENV"
       - name: Checkout harness
         uses: actions/checkout@v5
         with:
@@ -119,11 +128,20 @@ jobs:
       STABLE_TAG: v1.4.4
       STABLE_COMMIT: a2db74e301b525da74bed5b2a96776f85c14c76a
       PACKAGE: org.noirero.miyorare
-      HARNESS_TOOLS: ${{ runner.temp }}/runtime-harness
-      ACCEPTANCE_EVIDENCE: ${{ runner.temp }}/runtime-acceptance
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
+      - name: Initialize harness paths outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          harness_tools="$RUNNER_TEMP/runtime-harness"
+          acceptance_evidence="$RUNNER_TEMP/runtime-acceptance"
+          mkdir -p "$harness_tools" "$acceptance_evidence"
+          {
+            printf 'HARNESS_TOOLS=%s\n' "$harness_tools"
+            printf 'ACCEPTANCE_EVIDENCE=%s\n' "$acceptance_evidence"
+          } >> "$GITHUB_ENV"
       - name: Capture harness and verify immutable candidate
         shell: bash
         run: |
