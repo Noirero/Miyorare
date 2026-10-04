@@ -1628,4 +1628,9 @@
     <string name="developer_preview_journey_achievement">Preview achievement</string>
     <string name="developer_preview_journey_cosmetic">Preview cosmetic unlock</string>
     <string name="developer_preview_journey_rank_up">Preview rank-up</string>
+	<string name="downloads_collection_empty_title">No downloaded manga</string>
+	<string name="downloads_collection_empty_message">Manga with at least one saved chapter will appear here.</string>
+	<string name="local_collection_empty_title">No local manga</string>
+	<string name="local_collection_empty_message">Manga added from local storage will appear here.</string>
+	<string name="available_in_local">Available in Local</string>
 </resources>
