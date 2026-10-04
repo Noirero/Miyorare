@@ -17,6 +17,20 @@ PACKAGE = 'org.noirero.miyorare'
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_alignment_uses_production_baseline_only_for_probe_classpaths(self):
+        # Structural check; resolving both Gradle/AGP probe graphs is still required.
+        script = (TOOLS / 'runtime-probe.init.gradle').read_text()
+        self.assertIn("before.eachLine { line ->", script)
+        self.assertIn('def alignedVersions = productionVersions + testOnlyVersions', script)
+        self.assertIn('version { strictly(selectedVersion) }', script)
+        self.assertIn('configuration.extendsFrom(alignment)', script)
+        self.assertIn("['releaseAndroidTestCompileClasspath', 'releaseAndroidTestRuntimeClasspath']", script)
+        self.assertEqual(script.count('extendsFrom(alignment)'), 1)
+        self.assertIn('Probe version drift in', script)
+        self.assertIn('Probe compile/runtime version drift:', script)
+        self.assertNotIn('production.extendsFrom', script)
+        self.assertNotIn('resolutionStrategy.force', script)
+
     def test_probe_filters_external_artifacts_before_resolution(self):
         # Structural regression guard only; actual Gradle/AGP builds remain required.
         script = (TOOLS / 'runtime-probe.init.gradle').read_text()
@@ -143,6 +157,27 @@ class ShellTests(unittest.TestCase):
         self.assertNotIn('fake-secret', log)
         self.assertIn('failure *** ***', log)
         self.assertFalse((self.evidence / 'probe-candidate').exists())
+
+    def test_probe_r8_failure_retains_allowlisted_diagnostics_without_secrets(self):
+        self.write_executable(self.work / 'gradlew', '''#!/bin/bash
+if [[ "$*" == *assembleReleaseAndroidTest* ]]; then
+  mkdir -p app/build/outputs/mapping/releaseAndroidTest
+  printf 'missing fingerprint\\n' > app/build/outputs/mapping/releaseAndroidTest/missing_rules.txt
+  printf 'config fake-secret-password fake-secret-alias fake-secret-key /not-a-real-keystore\\n' > app/build/outputs/mapping/releaseAndroidTest/configuration.txt
+  printf 'private signing bytes\\n' > app/build/outputs/mapping/releaseAndroidTest/release.keystore
+  exit 26
+fi
+exit 0
+''')
+        result = self.invoke('build-probes.sh')
+        self.assertEqual(result.returncode, 26, result.stdout + result.stderr)
+        self.assertEqual((self.evidence / 'probe-build-exit-status.txt').read_text(), 'exit_code=26\n')
+        diagnostics = self.evidence / 'probe-stable/r8/releaseAndroidTest'
+        self.assertEqual((diagnostics / 'missing_rules.txt').read_text(), 'missing fingerprint\n')
+        self.assertEqual((diagnostics / 'configuration.txt').read_text(), 'config *** *** *** ***\n')
+        self.assertFalse((diagnostics / 'release.keystore').exists())
+        for classpath in ('releaseAndroidTestCompileClasspath', 'releaseAndroidTestRuntimeClasspath'):
+            self.assertTrue((self.evidence / f'probe-stable/dependency-insight-{classpath}.log').is_file())
 
 
 if __name__ == '__main__':
