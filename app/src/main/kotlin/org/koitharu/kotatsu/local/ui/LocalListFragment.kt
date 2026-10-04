@@ -55,6 +55,8 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
     }
     override fun onEmptyActionClick() = addFolder()
     override fun onFilterClick(view: View?) = showFilters()
+    override fun onSmartLocalQueryChanged(query: String) = viewModel.setLocalQuery(query)
+    override fun onSmartLocalFilterClick(view: View?) = showFilters()
     override fun onScrolledToEnd() = Unit
 
     override fun onListHeaderClick(item: ListHeader, view: View) {
