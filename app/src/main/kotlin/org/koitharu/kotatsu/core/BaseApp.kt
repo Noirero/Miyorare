@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.dialog.CrashDialogActivity
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
+import org.koitharu.kotatsu.favourites.domain.LegacyFavouriteDownloadReconciler
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -74,6 +75,9 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	@Inject
 	lateinit var favouriteDownloadOwnershipIndexProvider: Provider<FavouriteDownloadOwnershipIndex>
+
+	@Inject
+	lateinit var legacyFavouriteDownloadReconcilerProvider: Provider<LegacyFavouriteDownloadReconciler>
 
 	@Inject
 	@LocalStorageChanges
@@ -127,6 +131,11 @@ open class BaseApp : Application(), Configuration.Provider {
 		processLifecycleScope.launch(Dispatchers.Default) {
 			// Incremental only: this records emitted download paths and never scans storage at startup.
 			localStorageChanges.collect(favouriteDownloadOwnershipIndexProvider.get())
+		}
+		processLifecycleScope.launch(Dispatchers.IO) {
+			// One-shot indexed compatibility repair. This never blocks Favorites rendering or walks storage.
+			runCatching { legacyFavouriteDownloadReconcilerProvider.get().reconcileOnce() }
+				.onFailure(Throwable::printStackTraceDebug)
 		}
 		workScheduleManager.init()
 	}
