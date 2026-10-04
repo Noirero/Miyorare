@@ -7,6 +7,10 @@
     <string name="smart_local_more">⋮ Manage</string>
     <string name="smart_local_add_folder">Add Local Folder</string>
     <string name="smart_local_statistics">%1$d manga • %2$d chapters\n%3$d reading • %4$d new</string>
+    <string name="smart_local_stat_manga">%d\nManga</string>
+    <string name="smart_local_stat_chapters">%d\nChapters</string>
+    <string name="smart_local_stat_reading">%d\nReading</string>
+    <string name="smart_local_stat_new">%d\nNew</string>
     <string name="smart_local_search_hint">Search local collection…</string>
     <string name="smart_local_hidden_count">%d hidden manga</string>
     <string name="smart_local_restore">Restore hidden manga</string>

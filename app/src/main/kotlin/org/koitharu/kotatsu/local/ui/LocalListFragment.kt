@@ -25,7 +25,6 @@ import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.list.ui.MangaListFragment
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.local.library.*
-import org.koitharu.kotatsu.remotelist.ui.MangaSearchMenuProvider
 import org.koitharu.kotatsu.remotelist.ui.RemoteListFragment
 
 class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
@@ -42,7 +41,6 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
         super.onViewBindingCreated(binding, savedInstanceState)
         addMenuProvider(LocalListMenuProvider(this, { router.showImportDialog() }, viewModel::onRefresh,
             ::addFolder, ::showFilters, viewModel::requestExclusions))
-        addMenuProvider(MangaSearchMenuProvider(filterCoordinator, viewModel, activity))
         viewModel.onMangaRemoved.observeEvent(viewLifecycleOwner) {
             Snackbar.make(binding.recyclerView, R.string.removal_completed, Snackbar.LENGTH_SHORT).show()
         }
@@ -55,6 +53,8 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
     }
     override fun onEmptyActionClick() = addFolder()
     override fun onFilterClick(view: View?) = showFilters()
+    override fun onSmartLocalQueryChanged(query: String) = viewModel.setLocalQuery(query)
+    override fun onSmartLocalFilterClick(view: View?) = showFilters()
     override fun onScrolledToEnd() = Unit
 
     override fun onListHeaderClick(item: ListHeader, view: View) {

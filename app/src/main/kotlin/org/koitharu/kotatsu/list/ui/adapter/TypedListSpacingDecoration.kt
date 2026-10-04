@@ -48,6 +48,7 @@ class TypedListSpacingDecoration(
 			ListItemType.LIBRARY_GROUP,
 				-> outRect.set(0)
 
+			ListItemType.SMART_LOCAL_PANEL,
 			ListItemType.DOWNLOAD,
 			ListItemType.HINT_EMPTY,
 			ListItemType.MANGA_LIST_DETAILED,
