@@ -28,7 +28,6 @@ import org.koitharu.kotatsu.list.domain.toOrderBy
 
 @Dao
 abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
-
 	@Transaction
 	@Query(
 		"""
@@ -54,12 +53,42 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
 			)
+		AND (last_reader_activity_at > 0 OR legacy_resume_updated_at > 0)
+		ORDER BY last_reader_activity_at DESC, legacy_resume_updated_at DESC, manga_id ASC LIMIT 1
+		""",
+	)
+	abstract suspend fun findLastRead(): HistoryWithManga?
+
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM history
+		WHERE deleted_at = 0
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		AND (last_reader_activity_at > 0 OR legacy_resume_updated_at > 0)
+		ORDER BY last_reader_activity_at DESC, legacy_resume_updated_at DESC, manga_id ASC LIMIT 1
+		""",
+	)
+	abstract fun observeLastRead(): Flow<HistoryWithManga?>
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM history
+		WHERE deleted_at = 0
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
 		ORDER BY manga_id
 		LIMIT :limit
 		""",
 	)
 	abstract suspend fun findFirstForBackup(limit: Int): List<HistoryWithManga>
-
 	@Transaction
 	@Query(
 		"""
@@ -76,7 +105,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		""",
 	)
 	abstract suspend fun findAllForBackup(afterMangaId: Long, limit: Int): List<HistoryWithManga>
-
 	@Transaction
 	@Query(
 		"""
@@ -91,7 +119,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		""",
 	)
 	abstract suspend fun searchByTitle(query: String, limit: Int): List<MangaWithTags>
-
 	@Transaction
 	@Query(
 		"""
@@ -106,7 +133,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		""",
 	)
 	abstract suspend fun searchByAuthor(query: String, limit: Int): List<MangaWithTags>
-
 	@Transaction
 	@Query(
 		"""
@@ -122,7 +148,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		""",
 	)
 	abstract suspend fun searchByTag(query: String, limit: Int): List<MangaWithTags>
-
 	@Transaction
 	@Query(
 		"""
@@ -137,7 +162,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		""",
 	)
 	abstract fun observeAll(): Flow<List<HistoryWithManga>>
-
 	@Transaction
 	@Query(
 		"""
@@ -302,10 +326,56 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findAllForSync(): List<HistoryEntity>
 
 	@Upsert
-	abstract suspend fun upsertForSync(entity: HistoryEntity)
+	protected abstract suspend fun replaceForSync(entity: HistoryEntity)
 
+	/** Cloud progress has no device-local Reader provenance. Preserve both local resume markers. */
+	@Transaction
+	open suspend fun upsertForSync(entity: HistoryEntity) {
+		val local = findIncludingDeleted(entity.mangaId)
+		val revivesDeletedProgress = local?.deletedAt?.let { it != 0L } == true && entity.deletedAt == 0L
+		replaceForSync(entity.copy(
+			lastReaderActivityAt = if (revivesDeletedProgress) 0L else local?.lastReaderActivityAt ?: 0L,
+			legacyResumeUpdatedAt = if (revivesDeletedProgress) 0L else local?.legacyResumeUpdatedAt ?: 0L,
+		))
+	}
+
+	/** Identity translation preserves historical local evidence, including an existing destination. */
+	@Transaction
+	open suspend fun upsertForMangaMigration(entity: HistoryEntity) {
+		upsert(entity)
+		mergeLocalResumeMarkers(entity.mangaId, entity.lastReaderActivityAt, entity.legacyResumeUpdatedAt)
+	}
+
+	@Query("UPDATE history SET last_reader_activity_at = MAX(last_reader_activity_at, :readerAt), legacy_resume_updated_at = MAX(legacy_resume_updated_at, :legacyAt) WHERE manga_id = :mangaId")
+	protected abstract suspend fun mergeLocalResumeMarkers(mangaId: Long, readerAt: Long, legacyAt: Long)
+
+	/** Called only in the transaction that saves actual Reader progress. */
+	@Transaction
+	open suspend fun recordReaderActivity(mangaId: Long, at: Long) {
+		check(setReaderActivity(mangaId, at) == 1) { "Reader history must exist before recording activity" }
+		// Clear all rows, including tombstones/private history: deletion/GC must not revive fallback.
+		retireLegacyResume()
+	}
+
+	// Monotonic local clock also orders saves in the same millisecond or after wall-clock rollback.
+	@Query("UPDATE history SET last_reader_activity_at = MAX(:at, (SELECT COALESCE(MAX(last_reader_activity_at), 0) + 1 FROM history)) WHERE manga_id = :mangaId")
+	protected abstract suspend fun setReaderActivity(mangaId: Long, at: Long): Int
+
+	@Query("UPDATE history SET legacy_resume_updated_at = 0 WHERE legacy_resume_updated_at > 0 OR legacy_resume_updated_at < 0")
+	protected abstract suspend fun retireLegacyResume()
+
+	/** Feed undo restores progress, never the Reader clock; a subsequent Reader save wins. */
+	@Transaction
+	open suspend fun undoFeedProgress(mangaId: Long, previous: HistoryEntity?): Boolean {
+		val current = find(mangaId) ?: return false
+		if (current.lastReaderActivityAt != (previous?.lastReaderActivityAt ?: 0L)) return false
+		if (previous == null) delete(mangaId) else upsert(previous)
+		return true
+	}
+
+	// Progress-only update preserves active markers. Non-reader resurrection must not revive deleted evidence.
 	@Query(
-		"UPDATE history SET page = :page, chapter_id = :chapterId, scroll = :scroll, percent = :percent, updated_at = :updatedAt, chapters = :chapters, deleted_at = 0 WHERE manga_id = :mangaId",
+		"UPDATE history SET page = :page, chapter_id = :chapterId, scroll = :scroll, percent = :percent, updated_at = :updatedAt, chapters = :chapters, last_reader_activity_at = CASE WHEN deleted_at = 0 THEN last_reader_activity_at ELSE 0 END, legacy_resume_updated_at = CASE WHEN deleted_at = 0 THEN legacy_resume_updated_at ELSE 0 END, deleted_at = 0 WHERE manga_id = :mangaId",
 	)
 	abstract suspend fun update(
 		mangaId: Long,
@@ -339,7 +409,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		chapters = entity.chaptersCount,
 		updatedAt = entity.updatedAt,
 	)
-
 	@Transaction
 	open suspend fun upsert(entity: HistoryEntity): Boolean {
 		return if (update(entity) == 0) {
@@ -347,7 +416,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 			true
 		} else false
 	}
-
 	@Transaction
 	open suspend fun upsert(entities: Iterable<HistoryEntity>) {
 		for (e in entities) {
@@ -370,7 +438,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		""",
 	)
 	protected abstract suspend fun setDeletedAtNotFavorite(deletedAt: Long)
-
 	@Transaction
 	@RawQuery(
 		observedEntities = [

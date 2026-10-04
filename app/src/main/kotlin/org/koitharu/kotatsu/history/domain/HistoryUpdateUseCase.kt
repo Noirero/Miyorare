@@ -19,13 +19,12 @@ class HistoryUpdateUseCase @Inject constructor(
 ) {
 
 	suspend operator fun invoke(manga: Manga, readerState: ReaderState, percent: Float) {
-		historyRepository.addOrUpdate(
+		historyRepository.addOrUpdateFromReader(
 			manga = manga,
 			chapterId = readerState.chapterId,
 			page = readerState.page,
 			scroll = readerState.scroll,
 			percent = percent,
-			force = false,
 		)
 	}
 

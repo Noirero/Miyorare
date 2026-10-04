@@ -32,7 +32,7 @@ class ReadingResumeEnabledUseCase @Inject constructor(
 			}
 		}
 
-	private fun observeCanResume() = combine(networkState, historyRepository.observeLast()) { isOnline, last ->
+	private fun observeCanResume() = combine(networkState, historyRepository.observeLastRead()) { isOnline, last ->
 		last != null && (isOnline || last.isLocal)
 	}.distinctUntilChanged()
 }

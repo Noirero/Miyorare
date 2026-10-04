@@ -205,12 +205,9 @@ class FeedViewModel @Inject constructor(
 		return ReversibleHandle {
 			// Restore the reading position first: the feed dot derives per-chapter "new" state
 			// from history, so restoring the unread flags alone leaves the row looking read.
-			if (priorHistory != null) {
-				db.getHistoryDao().upsert(priorHistory)
-			} else {
-				db.getHistoryDao().delete(item.manga.id)
+			if (db.getHistoryDao().undoFeedProgress(item.manga.id, priorHistory)) {
+				logsHandle.reverse()
 			}
-			logsHandle.reverse()
 		}
 	}
 
