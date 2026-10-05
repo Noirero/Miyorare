@@ -57,6 +57,29 @@ class LocalBackupIdentityTest {
 	}
 
 	@Test
+	fun nativeHistoryBackupRestoresProgressAndKeepsExistingSchema51Markers() = runTest {
+		val entry = manga(id = 901L, title = "Restore compatibility", url = "/manga/901")
+		database.getMangaDao().upsert(entry, emptyList())
+		val saved = HistoryEntity(901L, 100L, 200L, 1L, 4, 0.25f, 0.5f, 0L, 3,
+			lastReaderActivityAt = 300L, legacyResumeUpdatedAt = 200L)
+		val dao = database.getHistoryDao()
+		dao.insert(saved)
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val file = File.createTempFile("schema51_history_backup_", ".zip", context.cacheDir)
+		try {
+			ZipOutputStream(file.outputStream()).use { repository.createBackup(it, progress = null) }
+			dao.upsert(saved.copy(page = 9, updatedAt = 400L))
+			val result = ZipInputStream(file.inputStream()).use {
+				repository.restoreBackup(it, setOf(BackupSection.HISTORY), progress = null)
+			}
+			assertTrue("History restore reported failures: ${result.failures}", result.isAllSuccess)
+			assertEquals(saved, dao.find(901L))
+		} finally {
+			file.delete()
+		}
+	}
+
+	@Test
 	fun nativeBackupRestoreKeepsExactCategoryMangaMembership() = runTest {
 		val categoriesDao = database.getFavouriteCategoriesDao()
 		val categoryA = categoriesDao.insert(category(title = "Category A", sortKey = 1))
