@@ -1,0 +1,105 @@
+name: Amain2 APK Build
+run-name: Amain2 Staging APK · ${{ github.ref_name }}
+
+# Permanent pre-main staging build. Registered on main after this PR merges,
+# but intentionally allowed to build only the Amain2 branch.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: amain2-staging-build
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    if: github.ref_name != 'Amain2'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject non-Amain2 build
+        run: |
+          echo "::error::This workflow may only be run with branch Amain2 selected."
+          exit 1
+
+  build:
+    if: github.ref_name == 'Amain2'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Amain2 candidate
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
+      - name: Apply staging identity for build only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          gradle = Path('app/build.gradle')
+          text = gradle.read_text()
+          text, count = re.subn(
+              r"applicationId\s*=\s*'org\.noirero\.miyorare'",
+              "applicationId = 'org.noirero.miyorare.amain2'",
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit('Could not replace Miyorare applicationId exactly once')
+          gradle.write_text(text)
+
+          strings = Path('app/src/main/res/values/strings.xml')
+          if strings.exists():
+              value = strings.read_text()
+              value, changed = re.subn(
+                  r'(<string\s+name="app_name"[^>]*>)(.*?)(</string>)',
+                  r'\1Miyorare Amain2\3',
+                  value,
+                  count=1,
+                  flags=re.S,
+              )
+              if changed == 1:
+                  strings.write_text(value)
+          PY
+
+          grep -F "applicationId = 'org.noirero.miyorare.amain2'" app/build.gradle
+
+      - name: Build Amain2 staging APK
+        run: ./gradlew assembleDebug --max-workers=4 --no-daemon --stacktrace
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/debug/*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "::error::No debug APK produced"
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            cp "$apk" "artifact/Miyorare-Amain2-$(basename "$apk")"
+          done
+
+      - name: Upload Amain2 staging APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Miyorare-Amain2-APK
+          path: artifact/*.apk
+          if-no-files-found: error
+          retention-days: 14
