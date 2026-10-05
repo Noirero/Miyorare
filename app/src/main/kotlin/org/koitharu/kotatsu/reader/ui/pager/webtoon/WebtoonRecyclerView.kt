@@ -275,6 +275,7 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 				} else {
 					super.createEdgeEffect(view, direction)
 				}
+			}
 		}
 	}
 
