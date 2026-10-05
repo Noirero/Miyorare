@@ -1,0 +1,90 @@
+name: Amain2 APK Build
+run-name: Amain2 APK Build · ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    if: github.ref_name == 'Amain2'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Amain2
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
+      - name: Isolate Amain2 application identity for this build only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          gradle = Path('app/build.gradle')
+          text = gradle.read_text()
+          text, count = re.subn(
+              r"applicationId\s*=\s*'org\.noirero\.miyorare'",
+              "applicationId = 'org.noirero.miyorare.amain2'",
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit('Could not replace Miyorare applicationId exactly once')
+          gradle.write_text(text)
+
+          strings = Path('app/src/main/res/values/strings.xml')
+          if strings.exists():
+              s = strings.read_text()
+              s, n = re.subn(
+                  r'(<string\s+name="app_name"[^>]*>)(.*?)(</string>)',
+                  r'\1Miyorare Amain2\3',
+                  s,
+                  count=1,
+                  flags=re.S,
+              )
+              if n == 1:
+                  strings.write_text(s)
+          PY
+
+          grep -F "applicationId = 'org.noirero.miyorare.amain2'" app/build.gradle
+
+      - name: Build installable Amain2 APK
+        run: ./gradlew assembleDebug --max-workers=4 --no-daemon --stacktrace
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/debug/*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo '::error::No debug APK produced'
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            cp "$apk" "artifact/Miyorare-Amain2-$(basename "$apk")"
+          done
+
+      - name: Upload Amain2 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Miyorare-Amain2-APK
+          path: artifact/*.apk
+          if-no-files-found: error
+          retention-days: 14
