@@ -74,6 +74,7 @@ import org.koitharu.kotatsu.list.ui.MangaListFragment
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
 import org.koitharu.kotatsu.list.ui.config.ListConfigSection
+import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
@@ -122,6 +123,9 @@ class FavouritesListFragment : MangaListFragment() {
 
 	val categoryId
 		get() = viewModel.categoryId
+
+	val isSimilarTitleScanAvailable: Boolean
+		get() = viewModel.isSimilarTitleScanAvailable
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
@@ -363,12 +367,55 @@ class FavouritesListFragment : MangaListFragment() {
 		return true
 	}
 
-	override fun onScrolledToEnd() = viewModel.requestMoreItems()
+	override fun onScrolledToEnd() {
+		if (!viewModel.isSimilarTitleScanActive) viewModel.requestMoreItems()
+	}
 
-	override fun onEmptyActionClick() = viewModel.clearFilter()
+	override fun onEmptyActionClick() {
+		if (viewModel.isSimilarTitleScanActive) {
+			viewModel.exitSimilarTitleScanMode()
+		} else {
+			viewModel.clearFilter()
+		}
+	}
+
+	override fun onListHeaderClick(item: ListHeader, view: View) {
+		if (item.payload === SimilarTitleScanHeaderPayload) {
+			viewModel.exitSimilarTitleScanMode()
+			viewBinding?.recyclerView?.scrollToPosition(0)
+		} else {
+			super.onListHeaderClick(item, view)
+		}
+	}
 
 	override fun onFilterClick(view: View?) {
 		router.showListSortSheet(ListConfigSection.Favorites(categoryId))
+	}
+
+	fun showSimilarTitleScanner() {
+		if (!viewModel.isSimilarTitleScanAvailable || !isAdded) return
+		val progress = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.library_scan_similar_titles)
+			.setMessage(R.string.library_scan_scanning)
+			.setCancelable(false)
+			.create()
+		progress.show()
+		viewLifecycleScope.launch {
+			val result = runCatchingCancellable { viewModel.enterSimilarTitleScanMode() }
+			if (progress.isShowing) progress.dismiss()
+			if (!isAdded) return@launch
+			result.onSuccess {
+				viewBinding?.recyclerView?.post {
+					viewBinding?.recyclerView?.scrollToPosition(0)
+				}
+			}.onFailure { error ->
+				Toast.makeText(
+					requireContext(),
+					error.message?.takeIf { it.isNotBlank() } ?: getString(R.string.library_scan_error),
+					Toast.LENGTH_LONG,
+				).show()
+			}
+		}
 	}
 
 	fun scrollToTop() {
@@ -806,7 +853,7 @@ class FavouritesListFragment : MangaListFragment() {
 		viewLifecycleScope.launch {
 			val result = runCatchingCancellable {
 				withContext(NonCancellable) {
-					val removedDownloads = deleteLocalMangaUseCase(ids)
+					val removedDownloads = deleteLocalMangaUseCase(ids, viewModel.favouriteSpace)
 					if (removeWholeNormal) {
 						transferFavouritesToPrivateUseCase.removeFromNormal(ids)
 					} else {
