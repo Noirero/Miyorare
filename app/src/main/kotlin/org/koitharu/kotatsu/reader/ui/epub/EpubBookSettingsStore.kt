@@ -169,6 +169,10 @@ class EpubBookSettingsStore @Inject constructor(
 			get() = if (enabled) prefs.getString(key("theme"), global.epubTheme) ?: global.epubTheme else global.epubTheme
 			set(value) = writeReaderString("theme", value) { global.epubTheme = it }
 
+		var screenBrightness: Int
+			get() = if (enabled) prefs.getInt(key("screen_brightness"), global.epubScreenBrightness).coerceIn(0, 100) else global.epubScreenBrightness
+			set(value) = writeReaderInt("screen_brightness", value.coerceIn(0, 100)) { global.epubScreenBrightness = it }
+
 		var customBackgroundColor: Int
 			get() = if (enabled) prefs.getInt(key("custom_background"), global.epubCustomBackgroundColor) else global.epubCustomBackgroundColor
 			set(value) = writeReaderInt("custom_background", value) { global.epubCustomBackgroundColor = it }
@@ -219,6 +223,7 @@ class EpubBookSettingsStore @Inject constructor(
 				putBoolean(key("publisher_style"), global.isEpubPublisherStyleEnabled)
 				putBoolean(key("bionic_reading"), global.isEpubBionicReadingEnabled)
 				putString(key("theme"), global.epubTheme)
+				putInt(key("screen_brightness"), global.epubScreenBrightness)
 				putInt(key("custom_background"), global.epubCustomBackgroundColor)
 				putInt(key("custom_text"), global.epubCustomTextColor)
 				putInt(key("custom_highlight"), global.epubCustomHighlightColor)
