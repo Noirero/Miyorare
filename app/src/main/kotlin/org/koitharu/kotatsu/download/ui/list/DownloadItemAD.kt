@@ -1,8 +1,11 @@
 package org.koitharu.kotatsu.download.ui.list
 
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.view.ViewGroup
+import android.util.TypedValue
 import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.isGone
@@ -18,15 +21,22 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.util.FileSize
+import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getQuantityStringSafe
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.setContentDescriptionAndTooltip
 import org.koitharu.kotatsu.core.util.ext.textAndVisible
 import org.koitharu.kotatsu.databinding.ItemDownloadBinding
+import org.koitharu.kotatsu.download.domain.DownloadPhase
 import org.koitharu.kotatsu.download.ui.list.chapters.DownloadChapter
 import org.koitharu.kotatsu.download.ui.list.chapters.downloadChapterAD
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.ui.ListModelDiffCallback
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -41,19 +51,38 @@ fun downloadItemAD(
 	listener: DownloadItemListener,
 	isModernDownloads: Boolean,
 ) = adapterDelegateViewBinding<DownloadItemModel, ListModel, ItemDownloadBinding>(
-	{ inflater, parent -> ItemDownloadBinding.inflate(inflater, parent, false) },
+	{ inflater, parent ->
+		val layoutRes = if (isModernDownloads) R.layout.item_download else R.layout.item_download_legacy
+		ItemDownloadBinding.bind(inflater.inflate(layoutRes, parent, false))
+	},
 ) {
 
 	val percentPattern = context.resources.getString(R.string.percent_string_pattern)
 	val density = context.resources.displayMetrics.density
 	val modernStrokeWidth = density.roundToInt().coerceAtLeast(1)
-	val modernControlRadius = (MiyorareVisualTokens.RADIUS_CONTROL_DP * density).roundToInt()
-	val modernCardRadius = MiyorareVisualTokens.RADIUS_CARD_DP * density
-	val modernSurface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
-	val modernPrimary = context.getThemeColor(appcompatR.attr.colorPrimary, modernSurface)
-	val modernTertiary = context.getThemeColor(materialR.attr.colorTertiary, modernPrimary)
+	val modernControlRadius = (24f * density).roundToInt()
+	val modernCardRadius = 26f * density
+	val privateDownloads = context.findActivity()?.intent?.getIntExtra(
+		EXTRA_FAVOURITE_SPACE,
+		FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE.dbValue
+	val modernPalette = context.miyorareViewPaletteFromPreferences(privateFavourites = privateDownloads)
+	val modernSurface = modernPalette?.surfaceContainerHigh
+		?: context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
+	val modernPrimary = modernPalette?.primary
+		?: context.getThemeColor(appcompatR.attr.colorPrimary, modernSurface)
+	val modernSecondary = modernPalette?.secondary
+		?: context.getThemeColor(materialR.attr.colorSecondary, modernPrimary)
+	val modernAccent = modernPalette?.accent
+		?: context.getThemeColor(materialR.attr.colorTertiary, modernSecondary)
 	val modernError = context.getThemeColor(android.R.attr.colorError, Color.RED)
-	val modernOnSurfaceVariant = context.getThemeColor(materialR.attr.colorOnSurfaceVariant, modernPrimary)
+	val modernOnSurface = modernPalette?.onSurface
+		?: context.getThemeColor(materialR.attr.colorOnSurface, modernPrimary)
+	val modernOnSurfaceVariant = modernPalette?.onSurfaceVariant
+		?: context.getThemeColor(materialR.attr.colorOnSurfaceVariant, modernOnSurface)
+	val modernOutline = modernPalette?.outlineVariant
+		?: context.getThemeColor(materialR.attr.colorOutlineVariant, modernOnSurfaceVariant)
+	val modernButton = modernPalette?.button ?: modernPrimary
 	var chaptersJob: Job? = null
 	// Tracks the last bound expanded state for THIS view holder so we only animate a real
 	// user toggle, not the initial bind or a recycle.
@@ -66,15 +95,73 @@ fun downloadItemAD(
 	if (isModernDownloads) {
 		binding.root.radius = modernCardRadius
 		binding.root.strokeWidth = modernStrokeWidth
+		binding.textViewTitle.setTextColor(modernOnSurface)
+		binding.textViewDetails.setTextColor(modernOnSurfaceVariant)
+		binding.buttonExpand.imageTintList = ColorStateList.valueOf(modernAccent)
 		binding.buttonPause.cornerRadius = modernControlRadius
 		binding.buttonResume.cornerRadius = modernControlRadius
 		binding.buttonSkip.cornerRadius = modernControlRadius
 		binding.buttonSkipAll.cornerRadius = modernControlRadius
 		binding.buttonCancel.cornerRadius = modernControlRadius
+		val primarySurface = ColorUtils.blendARGB(
+			ColorUtils.setAlphaComponent(modernSurface, 224),
+			modernButton,
+			0.18f,
+		)
+		for (button in arrayOf(binding.buttonPause, binding.buttonResume)) {
+			button.backgroundTintList = ColorStateList.valueOf(primarySurface)
+			button.strokeWidth = modernStrokeWidth
+			button.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(modernButton, 184))
+			button.setTextColor(modernButton)
+			button.iconTint = ColorStateList.valueOf(modernButton)
+		}
+		for (button in arrayOf(binding.buttonSkip, binding.buttonSkipAll, binding.buttonCancel)) {
+			button.backgroundTintList = ColorStateList.valueOf(ColorUtils.setAlphaComponent(modernSurface, 214))
+			button.strokeWidth = modernStrokeWidth
+			button.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(modernOutline, 154))
+			button.setTextColor(modernOnSurface)
+			button.iconTint = ColorStateList.valueOf(modernOnSurface)
+		}
 	}
-
 	fun alphaColor(color: Int, alpha: Float): Int =
 		ColorUtils.setAlphaComponent(color, (255f * alpha).roundToInt().coerceIn(0, 255))
+
+	fun applyModernGeometry(item: DownloadItemModel) {
+		if (!isModernDownloads) return
+		val hero = item.workState == WorkInfo.State.RUNNING
+		val widthDp = if (hero) 92 else 82
+		val heightDp = if (hero) 146 else 78
+		binding.constraintLayout.minimumHeight = ((if (hero) 202 else 94) * density).roundToInt()
+		binding.constraintLayout.setPadding(
+			binding.constraintLayout.paddingLeft,
+			binding.constraintLayout.paddingTop,
+			binding.constraintLayout.paddingRight,
+			((if (hero) 12f else 6f) * density).roundToInt(),
+		)
+		binding.imageViewCover.layoutParams = binding.imageViewCover.layoutParams.apply {
+			width = (widthDp * density).roundToInt()
+			height = (heightDp * density).roundToInt()
+			if (this is androidx.constraintlayout.widget.ConstraintLayout.LayoutParams) {
+				topMargin = ((if (hero) 12f else 8f) * density).roundToInt()
+				bottomMargin = ((if (hero) 12f else 8f) * density).roundToInt()
+			}
+		}
+		(binding.textViewTitle.layoutParams as? androidx.constraintlayout.widget.ConstraintLayout.LayoutParams)?.let {
+			it.topMargin = ((if (hero) 13f else 8f) * density).roundToInt()
+			binding.textViewTitle.layoutParams = it
+		}
+		(binding.textViewStatus.layoutParams as? androidx.constraintlayout.widget.ConstraintLayout.LayoutParams)?.let {
+			it.topMargin = ((if (hero) 8f else 4f) * density).roundToInt()
+			it.height = ((if (hero) 30f else 28f) * density).roundToInt()
+			binding.textViewStatus.layoutParams = it
+		}
+		(binding.downloadMetadataRow.layoutParams as? androidx.constraintlayout.widget.ConstraintLayout.LayoutParams)?.let {
+			it.topMargin = ((if (hero) 11f else 5f) * density).roundToInt()
+			binding.downloadMetadataRow.layoutParams = it
+		}
+		binding.textViewTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (hero) 21f else 17f)
+		binding.textViewStatus.compoundDrawablePadding = (6f * density).roundToInt()
+	}
 
 	fun applyModernStateVisuals(item: DownloadItemModel) {
 		if (!isModernDownloads) return
@@ -92,39 +179,93 @@ fun downloadItemAD(
 		lastModernVisualPaused = item.isPaused
 		lastModernVisualHasError = hasError
 
+		// Download state owns the main semantic colour. A paused job stays paused-coloured even when
+		// an error message is present; the error is rendered separately instead of replacing state.
 		val stateColor = when {
+			item.workState == WorkInfo.State.RUNNING && item.isPaused -> modernPrimary
 			item.workState == WorkInfo.State.RUNNING && hasError -> modernError
-			item.workState == WorkInfo.State.RUNNING && item.isPaused -> modernTertiary
-			item.workState == WorkInfo.State.RUNNING -> modernPrimary
-			item.workState == WorkInfo.State.SUCCEEDED -> modernTertiary
-			item.workState == WorkInfo.State.FAILED -> modernError
+			item.workState == WorkInfo.State.RUNNING -> modernSecondary
+			item.workState == WorkInfo.State.SUCCEEDED -> modernSecondary
+			item.workState == WorkInfo.State.FAILED || item.workState == WorkInfo.State.CANCELLED -> modernError
 			else -> modernOnSurfaceVariant
 		}
-		val strokeAlpha = when {
-			item.workState == WorkInfo.State.FAILED || hasError -> 0.52f
-			item.workState == WorkInfo.State.RUNNING && !item.isPaused -> 0.42f
-			item.workState == WorkInfo.State.RUNNING && item.isPaused -> 0.34f
-			item.workState == WorkInfo.State.SUCCEEDED -> 0.24f
-			else -> 0.18f
+		val hero = item.workState == WorkInfo.State.RUNNING
+		val cardBase = ColorUtils.setAlphaComponent(modernSurface, if (hero) 226 else 214)
+		val ambient = if (hero) {
+			ColorUtils.blendARGB(modernPrimary, modernSecondary, 0.48f)
+		} else {
+			modernAccent
 		}
-		val surfaceMix = when {
-			item.workState == WorkInfo.State.RUNNING && !item.isPaused -> 0.08f
-			item.workState == WorkInfo.State.RUNNING || item.workState == WorkInfo.State.FAILED -> 0.06f
-			item.workState == WorkInfo.State.SUCCEEDED -> 0.04f
-			else -> 0.02f
+		binding.root.strokeColor = alphaColor(modernOutline, if (hero) 0.58f else 0.34f)
+		binding.root.setCardBackgroundColor(ColorUtils.blendARGB(cardBase, ambient, if (hero) 0.045f else 0.018f))
+		binding.downloadLocalGlow.background = GradientDrawable().apply {
+			shape = GradientDrawable.OVAL
+			gradientType = GradientDrawable.RADIAL_GRADIENT
+			colors = intArrayOf(alphaColor(stateColor, if (hero) 0.18f else 0.09f), Color.TRANSPARENT)
+			gradientRadius = 112f * density
+			setGradientCenter(0.78f, 0.20f)
 		}
-		binding.root.strokeColor = alphaColor(stateColor, strokeAlpha)
-		binding.root.setCardBackgroundColor(ColorUtils.blendARGB(modernSurface, stateColor, surfaceMix))
+		binding.textViewTitle.setTextColor(modernOnSurface)
 		binding.textViewStatus.setTextColor(stateColor)
-		binding.textViewPercent.setTextColor(
-			if (item.workState == WorkInfo.State.RUNNING && !item.isPaused) modernPrimary else stateColor,
+		binding.textViewStatus.backgroundTintList = ColorStateList.valueOf(alphaColor(stateColor, 0.15f))
+		binding.textViewDetails.setTextColor(if (hasError) modernError else modernOnSurfaceVariant)
+		binding.textViewPercent.setTextColor(if (hero) modernSecondary else stateColor)
+		binding.textViewPercent.backgroundTintList = ColorStateList.valueOf(
+			alphaColor(if (hero) modernSecondary else stateColor, 0.12f),
 		)
+		binding.textViewProgressPercent.setTextColor(modernOnSurface)
+		for (meta in arrayOf(binding.textViewMetaPrimary, binding.textViewMetaSecondary, binding.textViewMetaTertiary)) {
+			meta.setTextColor(modernOnSurfaceVariant)
+			meta.compoundDrawableTintList = ColorStateList.valueOf(modernOnSurfaceVariant)
+		}
+		binding.downloadDivider.setBackgroundColor(alphaColor(modernOutline, 0.34f))
+		binding.textViewStatus.compoundDrawableTintList = ColorStateList.valueOf(stateColor)
+		val statusIcon = when {
+			item.workState == WorkInfo.State.RUNNING && item.isPaused -> R.drawable.ic_action_pause
+			item.workState == WorkInfo.State.RUNNING -> R.drawable.ic_downloading
+			item.workState == WorkInfo.State.SUCCEEDED -> R.drawable.ic_check
+			item.workState == WorkInfo.State.FAILED || item.workState == WorkInfo.State.CANCELLED -> R.drawable.ic_cancel_multiple
+			else -> R.drawable.ic_downloading
+		}
+		binding.textViewStatus.setCompoundDrawablesRelativeWithIntrinsicBounds(statusIcon, 0, 0, 0)
 		if (binding.progressBar.isVisible) {
-			binding.progressBar.setIndicatorColor(stateColor)
-			binding.progressBar.trackColor = alphaColor(modernOnSurfaceVariant, 0.12f)
+			binding.progressBar.setIndicatorColor(modernSecondary)
+			binding.progressBar.trackColor = alphaColor(modernOutline, 0.18f)
 		}
 	}
 
+	fun resetModernMetadata() {
+		if (!isModernDownloads) return
+		binding.downloadMetadataRow.isVisible = false
+		binding.textViewMetaPrimary.isVisible = false
+		binding.textViewMetaSecondary.isVisible = false
+		binding.textViewMetaTertiary.isVisible = false
+		binding.downloadMetadataSeparator1.isVisible = false
+		binding.downloadMetadataSeparator2.isVisible = false
+		binding.textViewProgressPercent.isVisible = false
+		binding.downloadDivider.isVisible = false
+		binding.textViewDetails.isVisible = false
+	}
+
+	fun showModernMetadata(
+		primary: CharSequence?,
+		secondary: CharSequence?,
+		tertiary: CharSequence?,
+		tertiaryIcon: Int = R.drawable.ic_timer,
+		primaryIcon: Int = R.drawable.ic_book_page,
+		secondaryIcon: Int = R.drawable.ic_chapter_stack,
+	) {
+		if (!isModernDownloads) return
+		binding.textViewMetaPrimary.textAndVisible = primary
+		binding.textViewMetaSecondary.textAndVisible = secondary
+		binding.textViewMetaTertiary.textAndVisible = tertiary
+		binding.textViewMetaPrimary.setCompoundDrawablesRelativeWithIntrinsicBounds(primaryIcon, 0, 0, 0)
+		binding.textViewMetaSecondary.setCompoundDrawablesRelativeWithIntrinsicBounds(secondaryIcon, 0, 0, 0)
+		binding.textViewMetaTertiary.setCompoundDrawablesRelativeWithIntrinsicBounds(tertiaryIcon, 0, 0, 0)
+		binding.downloadMetadataSeparator1.isVisible = primary != null && secondary != null
+		binding.downloadMetadataSeparator2.isVisible = secondary != null && tertiary != null
+		binding.downloadMetadataRow.isVisible = primary != null || secondary != null || tertiary != null
+	}
 	fun renderPendingAction(statusRes: Int) {
 		binding.textViewStatus.setText(statusRes)
 		binding.progressBar.isEnabled = false
@@ -192,7 +333,13 @@ fun downloadItemAD(
 		// stable title for every worker update.
 		if (payloads.isEmpty()) {
 			binding.textViewTitle.text = item.manga?.title ?: getString(R.string.unknown)
-			binding.imageViewCover.setImageAsync(item.manga?.coverUrl, item.manga)
+			val coverUrl = item.manga?.coverUrl
+			if (coverUrl.isNullOrBlank()) {
+				binding.imageViewCover.disposeImage()
+				binding.imageViewCover.setImageDrawable(binding.imageViewCover.fallbackDrawable)
+			} else {
+				binding.imageViewCover.setImageAsync(coverUrl, item.manga)
+			}
 		}
 		// Every Download item represents one or more chapters, so the expand affordance can be
 		// rendered without resolving chapter metadata. Only subscribe to the expensive chapter flow
@@ -238,6 +385,7 @@ fun downloadItemAD(
 		}
 		lastExpanded = item.isExpanded
 		binding.recyclerViewChapters.isVisible = item.isExpanded
+		resetModernMetadata()
 		when (item.workState) {
 			WorkInfo.State.ENQUEUED,
 			WorkInfo.State.BLOCKED -> {
@@ -255,11 +403,24 @@ fun downloadItemAD(
 			}
 
 			WorkInfo.State.RUNNING -> {
-				binding.textViewStatus.setText(
-					if (item.isPaused) R.string.paused else R.string.manga_downloading_,
-				)
-				val hasKnownProgress = !item.isIndeterminate && item.max > 0
-				binding.progressBar.isIndeterminate = item.isIndeterminate
+				when {
+					item.isPaused -> binding.textViewStatus.setText(R.string.paused)
+					item.isFinalizing || item.phase == DownloadPhase.FINALIZING ->
+						binding.textViewStatus.setText(R.string.processing_)
+					item.phase == DownloadPhase.RETRYING -> binding.textViewStatus.text = context.getString(
+						R.string.download_retrying,
+						item.retryAttempt.coerceAtLeast(1),
+						3,
+					)
+					item.phase == DownloadPhase.RESOLVING -> binding.textViewStatus.text = context.getString(
+						R.string.download_resolving_chapter,
+						item.phaseChapter.coerceAtLeast(1),
+						item.requestedChapters.coerceAtLeast(item.phaseChapter.coerceAtLeast(1)),
+					)
+					else -> binding.textViewStatus.setText(R.string.manga_downloading_)
+				}
+				val hasKnownProgress = item.max > 0 && (!item.isIndeterminate || item.isFinalizing)
+				binding.progressBar.isIndeterminate = item.isIndeterminate && !item.isFinalizing
 				binding.progressBar.isVisible = true
 				val safeMax = item.max.coerceAtLeast(1)
 				val safeProgress = item.progress.coerceIn(0, safeMax)
@@ -275,11 +436,20 @@ fun downloadItemAD(
 						percentPattern.format((safePercent * 100f).format(1))
 					}
 				}
-				binding.textViewDetails.textAndVisible = when {
-					item.isPaused -> item.getErrorMessage(context)
-					item.isStuck -> context.getString(R.string.stuck)
-					else -> item.getEtaString()
+				val detailsParts = ArrayList<CharSequence>(3)
+				if (hasKnownProgress) {
+					val pages = context.getString(R.string.pages).lowercase()
+					detailsParts += "$safeProgress $pages"
+					detailsParts += "$safeMax $pages"
 				}
+				when {
+					item.isPaused && item.error != null -> item.getErrorMessage(context)?.let(detailsParts::add)
+					item.isStuck -> detailsParts += context.getString(R.string.stuck)
+					else -> item.getEtaString()?.let(detailsParts::add)
+				}
+				binding.textViewDetails.textAndVisible = detailsParts
+					.takeIf { it.isNotEmpty() }
+					?.joinToString("   •   ")
 				binding.buttonCancel.isVisible = true
 				binding.buttonResume.isVisible = item.isPaused
 				binding.buttonResume.setText(if (item.error == null) R.string.resume else R.string.retry)
@@ -294,12 +464,17 @@ fun downloadItemAD(
 				binding.progressBar.isVisible = false
 				binding.progressBar.isEnabled = true
 				binding.textViewPercent.isVisible = false
-				if (item.chaptersDownloaded > 0) {
-					binding.textViewDetails.text = context.resources.getQuantityStringSafe(
-						R.plurals.chapters,
-						item.chaptersDownloaded,
-						item.chaptersDownloaded,
-					)
+				if (item.chaptersDownloaded > 0 || item.max > 0) {
+					val parts = ArrayList<CharSequence>(2)
+					if (item.chaptersDownloaded > 0) {
+						parts += context.resources.getQuantityStringSafe(
+							R.plurals.chapters,
+							item.chaptersDownloaded,
+							item.chaptersDownloaded,
+						)
+					}
+					if (item.max > 0) parts += "${item.max} ${context.getString(R.string.pages).lowercase()}"
+					binding.textViewDetails.text = parts.joinToString("   •   ")
 					binding.textViewDetails.isVisible = true
 				} else {
 					binding.textViewDetails.isVisible = false
@@ -317,7 +492,20 @@ fun downloadItemAD(
 				binding.progressBar.isVisible = false
 				binding.progressBar.isEnabled = true
 				binding.textViewPercent.isVisible = false
-				binding.textViewDetails.textAndVisible = item.getErrorMessage(context)
+				val failureMeta = buildString {
+					if (item.max > 0) {
+						append(item.progress.coerceAtLeast(0))
+						append(" / ")
+						append(item.max)
+						append(' ')
+						append(context.getString(R.string.pages).lowercase())
+					}
+					item.getErrorMessage(context)?.let { error ->
+						if (isNotEmpty()) append("   •   ")
+						append(error)
+					}
+				}
+				binding.textViewDetails.textAndVisible = failureMeta.takeIf { it.isNotEmpty() }
 				binding.buttonCancel.isVisible = false
 				binding.buttonResume.isVisible = false
 				binding.buttonSkip.isVisible = false
@@ -331,6 +519,8 @@ fun downloadItemAD(
 				binding.progressBar.isVisible = false
 				binding.progressBar.isEnabled = true
 				binding.textViewPercent.isVisible = false
+				// A cancelled job may have published N/N immediately before cancellation/finalization.
+				// Do not present the same completion-looking fraction as a successful download.
 				binding.textViewDetails.isVisible = false
 				binding.buttonCancel.isVisible = false
 				binding.buttonResume.isVisible = false
@@ -339,12 +529,117 @@ fun downloadItemAD(
 				binding.buttonPause.isVisible = false
 			}
 		}
+		if (isModernDownloads) {
+			val pagesLabel = context.getString(R.string.pages).lowercase()
+			val sourceTitle = item.manga?.source?.getTitle(context)
+			when (item.workState) {
+				WorkInfo.State.RUNNING -> {
+					val hasKnownProgress = item.max > 0 && (!item.isIndeterminate || item.isFinalizing)
+					if (hasKnownProgress) {
+						val safeMax = item.max.coerceAtLeast(1)
+						val safeProgress = item.progress.coerceIn(0, safeMax)
+						val percent = ((safeProgress * 100f) / safeMax).roundToInt().coerceIn(0, 100)
+						binding.textViewProgressPercent.text = percentPattern.format(percent.toString())
+						binding.textViewProgressPercent.isVisible = true
+						val sizeText = item.downloadSizeBytes.takeIf { it > 0L }?.let {
+							FileSize.BYTES.format(context, it)
+						}
+						val tertiary = sizeText ?: when {
+							item.isStuck -> context.getString(R.string.stuck)
+							else -> item.getEtaString()
+						}
+						showModernMetadata(
+							primary = "$safeProgress $pagesLabel",
+							secondary = sourceTitle,
+							tertiary = tertiary,
+							tertiaryIcon = if (sizeText != null) R.drawable.ic_storage else R.drawable.ic_timer,
+							secondaryIcon = R.drawable.ic_manga_source,
+						)
+					} else {
+						val sizeText = item.downloadSizeBytes.takeIf { it > 0L }?.let {
+							FileSize.BYTES.format(context, it)
+						}
+						showModernMetadata(
+							primary = sourceTitle,
+							secondary = null,
+							tertiary = sizeText ?: item.getEtaString(),
+							tertiaryIcon = if (sizeText != null) R.drawable.ic_storage else R.drawable.ic_timer,
+							primaryIcon = R.drawable.ic_manga_source,
+						)
+					}
+					binding.textViewDetails.textAndVisible = if (item.error != null) {
+						item.getErrorMessage(context)
+					} else {
+						null
+					}
+					binding.downloadDivider.isVisible =
+						binding.buttonPause.isVisible ||
+						binding.buttonResume.isVisible ||
+						binding.buttonCancel.isVisible ||
+						binding.buttonSkip.isVisible ||
+						binding.buttonSkipAll.isVisible
+				}
+
+				WorkInfo.State.SUCCEEDED -> {
+					val chapterText = item.chaptersDownloaded.takeIf { it > 0 }?.let { count ->
+						context.resources.getQuantityStringSafe(R.plurals.chapters, count, count)
+					}
+					val sizeText = item.downloadSizeBytes.takeIf { it > 0L }?.let {
+						FileSize.BYTES.format(context, it)
+					}
+					showModernMetadata(
+						primary = chapterText,
+						secondary = sourceTitle,
+						tertiary = sizeText,
+						tertiaryIcon = R.drawable.ic_storage,
+						primaryIcon = R.drawable.ic_chapter_stack,
+						secondaryIcon = R.drawable.ic_manga_source,
+					)
+					binding.textViewDetails.isVisible = false
+				}
+
+				WorkInfo.State.CANCELLED -> {
+					showModernMetadata(
+						primary = null,
+						secondary = sourceTitle,
+						tertiary = null,
+						secondaryIcon = R.drawable.ic_manga_source,
+					)
+					binding.textViewDetails.isVisible = false
+				}
+
+				WorkInfo.State.FAILED -> {
+					val progressText = item.max.takeIf { it > 0 }?.let {
+						"${item.progress.coerceIn(0, it)} / $it $pagesLabel"
+					}
+					showModernMetadata(
+						primary = progressText,
+						secondary = sourceTitle,
+						tertiary = null,
+						secondaryIcon = R.drawable.ic_manga_source,
+					)
+					binding.textViewDetails.textAndVisible = item.getErrorMessage(context)
+				}
+
+				WorkInfo.State.ENQUEUED,
+				WorkInfo.State.BLOCKED -> {
+					showModernMetadata(
+						primary = sourceTitle,
+						secondary = null,
+						tertiary = null,
+						primaryIcon = R.drawable.ic_manga_source,
+					)
+					binding.textViewDetails.isVisible = false
+				}
+			}
+		}
 		when (item.uiAction) {
 			DownloadUiAction.PAUSING -> renderPendingAction(R.string.download_pausing)
 			DownloadUiAction.RESUMING -> renderPendingAction(R.string.download_resuming)
 			DownloadUiAction.CANCELLING -> renderPendingAction(R.string.download_cancelling)
 			null -> Unit
 		}
+		applyModernGeometry(item)
 		applyModernStateVisuals(item)
 	}
 }
