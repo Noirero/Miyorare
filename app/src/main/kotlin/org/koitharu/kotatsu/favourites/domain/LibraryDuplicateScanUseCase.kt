@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.text.Normalizer
+import java.util.Locale
 import javax.inject.Inject
 import kotlin.math.max
 
@@ -25,9 +26,7 @@ data class LibraryScanCandidate(
 	val reasons: Set<LibraryScanReason>,
 	internal val matchedPairKeys: Set<String>,
 	val existingGroupIds: Set<Long>,
-) {
-	val canLink: Boolean get() = existingGroupIds.size <= 1
-}
+) { val canLink: Boolean get() = existingGroupIds.size <= 1 }
 
 sealed class LibraryScanLinkResult {
 	data class Created(val groupId: Long) : LibraryScanLinkResult()
@@ -71,12 +70,7 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 					left.kind == AliasKind.DESCRIPTION || right.kind == AliasKind.DESCRIPTION -> LibraryScanReason.DESCRIPTION_ALTERNATIVE_TITLE
 					else -> LibraryScanReason.ALTERNATIVE_TITLE
 				}
-				var score = when (reason) {
-					LibraryScanReason.PRIMARY_TITLE -> 1f
-					LibraryScanReason.ALTERNATIVE_TITLE -> 0.95f
-					LibraryScanReason.DESCRIPTION_ALTERNATIVE_TITLE -> 0.91f
-					else -> 0.9f
-				}
+				var score = when (reason) { LibraryScanReason.PRIMARY_TITLE -> 1f; LibraryScanReason.ALTERNATIVE_TITLE -> 0.95f; LibraryScanReason.DESCRIPTION_ALTERNATIVE_TITLE -> 0.91f; else -> 0.9f }
 				val reasons = linkedSetOf(reason)
 				if (authorsMatch(left.item, right.item)) { score = (score + 0.03f).coerceAtMost(1f); reasons += LibraryScanReason.AUTHOR_MATCH }
 				putBest(matches, PairMatch(key, left.item, right.item, score, reasons))
@@ -105,19 +99,30 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 			if(pairMatches.isEmpty()) return@mapNotNull null
 			val groupIds=memberIds.mapNotNullTo(LinkedHashSet()){groupByManga[it]}
 			if(groupIds.size==1 && memberIds.all{groupByManga[it]==groupIds.first()}) return@mapNotNull null
-			val members=memberIds.mapNotNull{mangaById[it]?.manga}.sortedWith(compareBy<Manga>{normalize(it.title).length}.thenBy{it.title.lowercase()})
+			val members=memberIds.mapNotNull{mangaById[it]?.manga}.sortedWith(compareBy<Manga>{normalize(it.title).length}.thenBy{it.title.lowercase(Locale.ROOT)})
 			if(members.map{it.source}.distinct().size<2) return@mapNotNull null
 			val minScore=pairMatches.minOf{it.score}
 			LibraryScanCandidate(members.first().title,members,if(minScore>=HIGH_CONFIDENCE) LibraryScanConfidence.HIGH else LibraryScanConfidence.REVIEW,minScore,pairMatches.flatMapTo(LinkedHashSet()){it.reasons},pairMatches.mapTo(LinkedHashSet()){it.key},groupIds)
-		}.sortedWith(compareByDescending<LibraryScanCandidate>{it.confidence==LibraryScanConfidence.HIGH}.thenByDescending{it.score}.thenBy{it.title.lowercase()})
+		}.sortedWith(compareByDescending<LibraryScanCandidate>{it.confidence==LibraryScanConfidence.HIGH}.thenByDescending{it.score}.thenBy{it.title.lowercase(Locale.ROOT)})
 	}
 
 	suspend fun link(candidate: LibraryScanCandidate, categoryId: Long, space: FavouriteSpace): LibraryScanLinkResult {
 		val activeGroups=groupsRepository.observeGroups(space).first(); val memberIds=candidate.mangas.map{it.id}; val groups=activeGroups.filter{g->g.memberIds.any{it in memberIds}}
 		if(groups.size>1) return LibraryScanLinkResult.Conflict
 		val existing=groups.singleOrNull()
-		if(existing!=null){ val missing=memberIds.filterNot{it in existing.memberIds}; if(missing.isEmpty()) return LibraryScanLinkResult.AlreadyLinked; val result=groupsRepository.addMembers(existing.id,missing,false,space); return LibraryScanLinkResult.Added(existing.id,result.addedCount) }
-		return LibraryScanLinkResult.Created(groupsRepository.createGroup(candidate.title,memberIds,if(categoryId>0L) listOf(categoryId) else emptyList(),space))
+		if(existing!=null){
+			val missing=memberIds.filterNot{it in existing.memberIds}
+			if(missing.isEmpty()) return LibraryScanLinkResult.AlreadyLinked
+			val result=groupsRepository.addMembers(groupId=existing.id,mangaIds=missing,moveFromExistingGroups=false,space=space)
+			return LibraryScanLinkResult.Added(existing.id,result.addedCount)
+		}
+		val groupId=groupsRepository.createGroup(
+			title=candidate.title,
+			mangaIds=memberIds,
+			categoryIds=if(categoryId>0L) listOf(categoryId) else emptyList(),
+			space=space,
+		)
+		return LibraryScanLinkResult.Created(groupId)
 	}
 	fun reject(candidate: LibraryScanCandidate, space: FavouriteSpace) { if(candidate.matchedPairKeys.isEmpty()) return; val values=ignoredPairs(space).toMutableSet(); values+=candidate.matchedPairKeys; prefs.edit{putStringSet(ignoredKey(space),values)} }
 	private fun ignoredPairs(space: FavouriteSpace)=prefs.getStringSet(ignoredKey(space),emptySet()).orEmpty().toSet()
@@ -127,7 +132,7 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 	private fun extractDescriptionTitles(description:String?):List<String>{if(description.isNullOrBlank())return emptyList();val values=ArrayList<String>();for(match in ALT_TITLE_LINE.findAll(description)){match.groupValues[1].split(';','|','/','／').forEach{v->v.trim().removePrefix("-").trim().takeIf{it.length in 3..160}?.let(values::add)}};return values.distinct().take(MAX_DESCRIPTION_ALIASES)}
 	private fun authorsMatch(left:IndexedManga,right:IndexedManga)=left.authors.isNotEmpty()&&right.authors.isNotEmpty()&&left.authors.any{it in right.authors}
 	private fun putBest(target:MutableMap<String,PairMatch>,value:PairMatch){val old=target[value.key];if(old==null||value.score>old.score)target[value.key]=value else if(value.score==old.score)target[value.key]=old.copy(reasons=old.reasons+value.reasons)}
-	private fun normalize(value:String):String{val n=Normalizer.normalize(value,Normalizer.Form.NFKC).lowercase();return buildString(n.length){for(c in n)if(c.isLetterOrDigit())append(c)}}
+	private fun normalize(value:String):String{val n=Normalizer.normalize(value,Normalizer.Form.NFKC).lowercase(Locale.ROOT);return buildString(n.length){for(c in n)if(c.isLetterOrDigit())append(c)}}
 	private fun pairKey(a:Long,b:Long)=if(a<b)"$a:$b" else "$b:$a"
 	private fun titleSimilarity(a:String,b:String):Float{if(a==b)return 1f;if(a.isEmpty()||b.isEmpty())return 0f;val previous=IntArray(b.length+1){it};val current=IntArray(b.length+1);for(i in a.indices){current[0]=i+1;for(j in b.indices){val cost=if(a[i]==b[j])0 else 1;current[j+1]=minOf(current[j]+1,previous[j+1]+1,previous[j]+cost)};for(j in previous.indices)previous[j]=current[j]};return 1f-previous[b.length].toFloat()/max(a.length,b.length).toFloat()}
 	private data class IndexedManga(val manga:Manga,val primary:String,val aliases:List<Alias>,val authors:Set<String>)
