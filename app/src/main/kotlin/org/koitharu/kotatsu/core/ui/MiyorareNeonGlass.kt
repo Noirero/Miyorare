@@ -3,7 +3,6 @@ package org.koitharu.kotatsu.core.ui
 import android.graphics.Color
 import androidx.core.graphics.ColorUtils
 
-
 /**
  * Preserve the active theme hue while lifting saturation/value to the luminous range used by
  * the approved Favourites reference. This is pure color math; no blur, shader or animation.
@@ -83,24 +82,33 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	fun alpha(light: Int, full: Int): Int =
 		(light + ((full - light) * strength)).toInt().coerceIn(0, 255)
 
-	// Surface and light are deliberately separated. Surface stays dark/translucent while the
-	// luminous family keeps the active theme hue but restores saturation/value lost in Material
-	// container blending. This is what lets blue/pink/green/etc. stay adaptive without becoming gray.
+	// Exclusive Themes arrive here as fully-resolved Favourites roles. This helper may adjust
+	// luminance/alpha for glass readability, but it must never infer rank identity or rebuild a palette.
+	val authored = exclusiveTheme?.favourites
 	val luminousPrimary = luminousThemeColor(primary)
-	val luminousAccent = normalFavouritesLuminousAccent(primary, secondary)
-	val luminousEdge = luminousAccent
-	// The target reads as a near-white cyan hot core over a darker blue-cyan bloom, not a thick
-	// saturated outline. Keep those two jobs separate so increasing luminance does not flatten glass.
-	val hotEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.42f)
-	val selectedEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.62f)
+	val authoredBorder = authored?.borderStops.orEmpty()
+	val authoredSelected = authored?.selectedStops.orEmpty()
+	val authoredGlow = authored?.glowStops.orEmpty()
+	val luminousAccent = authored?.interactiveText ?: normalFavouritesLuminousAccent(primary, secondary)
+	val luminousEdge = authoredBorder.firstOrNull() ?: luminousAccent
+	val hotEdge = authoredBorder.getOrNull(authoredBorder.size / 2)
+		?: ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.42f)
+	val selectedEdge = authoredBorder.lastOrNull()
+		?: authoredSelected.lastOrNull()
+		?: ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.62f)
 
 	// Keep glass dark enough for wallpaper contrast, but let more theme light live inside the
-	// material. The previous pass concentrated too much energy in the perimeter and read as a
-	// neon outline rather than illuminated glass.
+	// material. Component identity already comes from the Theme Engine above.
 	val glassBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.30f)
 	val strongBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.40f)
 	val railBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.34f)
 	val selectedBase = ColorUtils.blendARGB(luminousAccent, Color.WHITE, 0.22f)
+
+	val signatureGlow = authoredGlow.firstOrNull() ?: luminousAccent
+	val signatureSelectedGlow = authoredGlow.lastOrNull() ?: luminousAccent
+	val signatureCardGlow = authoredGlow.getOrNull(1) ?: luminousEdge
+	val authoredContent = authored?.content ?: Color.WHITE
+	val authoredMutedContent = authored?.mutedContent ?: ColorUtils.setAlphaComponent(Color.WHITE, 234)
 
 	return MiyorareNeonGlassColors(
 		// Full mode targets the supplied golden reference. Lower effect levels reduce alpha/halo,
@@ -113,10 +121,10 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(146, 176)),
 		selectedBorder = ColorUtils.setAlphaComponent(selectedEdge, alpha(246, 255)),
 		innerHighlight = ColorUtils.setAlphaComponent(selectedEdge, alpha(214, 250)),
-		glow = ColorUtils.setAlphaComponent(luminousAccent, alpha(118, 176)),
-		selectedGlow = ColorUtils.setAlphaComponent(luminousAccent, alpha(178, 228)),
-		cardGlow = ColorUtils.setAlphaComponent(luminousEdge, alpha(66, 104)),
-		content = Color.WHITE,
-		contentMuted = ColorUtils.setAlphaComponent(Color.WHITE, 234),
+		glow = ColorUtils.setAlphaComponent(signatureGlow, alpha(118, 176)),
+		selectedGlow = ColorUtils.setAlphaComponent(signatureSelectedGlow, alpha(178, 228)),
+		cardGlow = ColorUtils.setAlphaComponent(signatureCardGlow, alpha(66, 104)),
+		content = authoredContent,
+		contentMuted = authoredMutedContent,
 	)
 }
