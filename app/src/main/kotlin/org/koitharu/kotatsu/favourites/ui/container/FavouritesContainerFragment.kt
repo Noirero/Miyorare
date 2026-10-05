@@ -184,6 +184,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 				},
 				onGoToTop = { currentFavouritesList()?.scrollToTop() },
 				onGoToBottom = { currentFavouritesList()?.scrollToBottom() },
+				isSimilarTitleScanVisible = ::isSimilarTitleScanVisible,
+				onScanSimilarTitles = ::launchSimilarTitleScanner,
 			),
 		)
 		viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.pager))
@@ -258,13 +260,6 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			onContentTypeChanged(contentTypeStore.selectedType.value)
 			if (searchSessionActive.value) {
 				enterInlineSearch()
-			}
-			for (page in childFragmentManager.fragments) {
-				val recyclerView = (page as? RecyclerViewOwner)?.recyclerView ?: continue
-				when (val lm = recyclerView.layoutManager) {
-					is LinearLayoutManager -> lm.scrollToPositionWithOffset(0, 0)
-					else -> recyclerView.scrollToPosition(0)
-				}
 			}
 		}
 	}
@@ -653,6 +648,26 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private fun currentCategory(): FavouriteTabModel? {
 		val position = viewBinding?.pager?.currentItem ?: return null
 		return categories.getOrNull(position)
+	}
+
+	private fun isSimilarTitleScanVisible(): Boolean {
+		val category = currentCategory() ?: return false
+		return contentTypeStore.selectedType.value == FavouriteContentType.MANGA &&
+			(category.id == FavouritesListFragment.NO_ID || category.id > 0L) &&
+			category.count >= 2
+	}
+
+	private fun launchSimilarTitleScanner() {
+		currentFavouritesList()?.let {
+			it.showSimilarTitleScanner()
+			return
+		}
+		// Menu preparation can happen before ViewPager2 attaches the selected page. The menu's
+		// visibility no longer depends on that timing; if the user taps immediately, retry after
+		// the pager has completed its pending fragment transaction.
+		viewBinding?.pager?.post {
+			currentFavouritesList()?.showSimilarTitleScanner()
+		}
 	}
 
 	private fun rememberCurrentCategory() {
