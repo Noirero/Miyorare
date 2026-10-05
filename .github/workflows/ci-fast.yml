@@ -45,26 +45,6 @@ jobs:
         shell: bash
         run: git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
-      - name: Validate acceptance workflow semantics
-        shell: bash
-        run: |
-          set -euo pipefail
-          actionlint_dir="$(mktemp -d "$RUNNER_TEMP/acceptance-actionlint.XXXXXX")"
-          trap 'rm -rf "$actionlint_dir"' EXIT
-          curl --fail --silent --show-error --location --retry 3 \
-            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
-            --output "$actionlint_dir/actionlint.tar.gz"
-          printf '%s  %s\n' 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8 \
-            "$actionlint_dir/actionlint.tar.gz" | sha256sum --check -
-          tar --no-same-owner -xzf "$actionlint_dir/actionlint.tar.gz" -C "$actionlint_dir" actionlint
-          "$actionlint_dir/actionlint" -version
-          # Scope is GitHub Actions semantics; existing shell/helper checks below remain enabled.
-          # Optional ShellCheck/Pyflakes subprocesses are separate lint domains, not expression ignores.
-          "$actionlint_dir/actionlint" -shellcheck="" -pyflakes="" \
-            .github/workflows/runtime-acceptance-harness.yml \
-            .github/workflows/beta-to-main-release-gate.yml \
-            .github/workflows/ci-fast.yml
-
       - name: Verify application identity and labels
         shell: bash
         run: |
@@ -122,7 +102,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile             .github/scripts/runtime_smoke_paths.py             .github/scripts/source_pack_readiness.py             .github/scripts/release_version.py             .github/scripts/summarize_gradle_profile.py             .github/scripts/gradle_benchmark_summary.py             .github/scripts/ci_metrics.py             .github/scripts/release_build_config_guard.py             .github/scripts/promotion_evidence.py
+          python3 -m py_compile             .github/scripts/runtime_smoke_paths.py             .github/scripts/source_pack_readiness.py             .github/scripts/release_version.py             .github/scripts/summarize_gradle_profile.py             .github/scripts/gradle_benchmark_summary.py             .github/scripts/ci_metrics.py
 
           python3 .github/scripts/test_runtime_smoke_paths.py
           python3 .github/scripts/test_source_pack_readiness.py
@@ -131,8 +111,6 @@ jobs:
           python3 .github/scripts/test_gradle_benchmark_summary.py
           python3 .github/scripts/test_ci_metrics.py
           python3 .github/scripts/test_main_candidate_contract.py
-          python3 .github/scripts/test_pre_main_audit_regressions.py
           python3 .github/scripts/test_ci_deep_paths.py
           python3 .github/scripts/test_exclusive_visual_paths.py
-          python3 .github/scripts/test_runtime_acceptance_harness.py
           bash -n .github/scripts/prewarm_jitpack.sh

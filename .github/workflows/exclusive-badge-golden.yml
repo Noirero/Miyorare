@@ -274,3 +274,4 @@ jobs:
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
           retention-days: 14
+

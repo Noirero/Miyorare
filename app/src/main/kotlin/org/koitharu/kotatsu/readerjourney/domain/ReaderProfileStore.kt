@@ -65,9 +65,7 @@ class ReaderProfileStore @Inject constructor(
 	fun importAvatar(uri: Uri): Boolean {
 		val resolver = context.contentResolver
 		val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-		val boundsStream = resolver.openInputStream(uri) ?: return false
-		boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
-		// inJustDecodeBounds deliberately returns null; dimensions carry the validation result.
+		resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return false
 		if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
 		var sampleSize = 1
 		while (bounds.outWidth / sampleSize > AVATAR_MAX_EDGE * 2 || bounds.outHeight / sampleSize > AVATAR_MAX_EDGE * 2) {

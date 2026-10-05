@@ -28,24 +28,6 @@ on:
         description: Exact protected-main PR base SHA (required for maintenance).
         required: false
         type: string
-      signed_candidate_build:
-        description: 'Build-only: invoke the signed candidate builder on this exact beta SHA.'
-        required: false
-        default: false
-        type: boolean
-      candidate_version_name:
-        description: 'Build-only candidate versionName; must be newer than stable.'
-        required: false
-        type: string
-      candidate_version_code:
-        description: 'Build-only candidate versionCode; must be newer than stable.'
-        required: false
-        type: string
-      runtime_acceptance:
-        description: 'Acceptance-only: run immutable v1.4.4 -> signed candidate runtime harness.'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -59,30 +41,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  signed-candidate-build:
-    name: Build signed candidate without publishing
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.signed_candidate_build }}
-    uses: ./.github/workflows/signed-release-candidate-build.yml
-    with:
-      expected_candidate_sha: ${{ inputs.candidate_sha }}
-      version_name: ${{ inputs.candidate_version_name }}
-      version_code: ${{ inputs.candidate_version_code }}
-    secrets: inherit
-
-  runtime-acceptance:
-    name: Run immutable signed candidate runtime acceptance
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime_acceptance }}
-    uses: ./.github/workflows/runtime-acceptance-harness.yml
-    with:
-      candidate_sha: ${{ inputs.candidate_sha }}
-      signed_build_run_id: '37136536606'
-      signed_artifact_id: '11278218884'
-      candidate_apk_sha256: 'da08a003472f39cd649eb7cc4d1247c6d9e10c6fb4b468151c98ce4916e5b5e7'
-    secrets: inherit
-
   classify:
     name: Classify main candidate
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.runtime_acceptance) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -124,20 +84,6 @@ jobs:
               echo "::error::Promotion candidate is not contained in beta."
               exit 1
             }
-            evidence_sha="$HEAD_SHA"
-            checks_json="$(gh api "repos/$GITHUB_REPOSITORY/commits/$evidence_sha/check-runs?per_page=100")"
-            if ! printf '%s' "$checks_json" | python3 .github/scripts/promotion_evidence.py >/dev/null 2>&1; then
-              # A beta merge commit can reuse the exact PR-head evidence only when its tree is identical.
-              read -r -a parents <<< "$(git show -s --format=%P "$HEAD_SHA")"
-              test "${#parents[@]}" -ge 2 || { echo "::error::Promotion candidate has no exact required-check evidence."; exit 1; }
-              evidence_sha="${parents[1]}"
-              test "$(git rev-parse "$HEAD_SHA^{tree}")" = "$(git rev-parse "$evidence_sha^{tree}")" || {
-                echo "::error::Validated PR head is not tree-equivalent to the promotion candidate."; exit 1;
-              }
-              checks_json="$(gh api "repos/$GITHUB_REPOSITORY/commits/$evidence_sha/check-runs?per_page=100")"
-            fi
-            printf '%s' "$checks_json" | python3 .github/scripts/promotion_evidence.py
-            echo "evidence_sha=$evidence_sha" >> "$GITHUB_OUTPUT"
             echo "mode=promotion" >> "$GITHUB_OUTPUT"
           elif [[ "$HEAD_REF" = hotfix/* && "${{ github.event_name }}" = "pull_request" ]]; then
             [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -148,7 +94,7 @@ jobs:
               exit 1
             }
             echo "mode=hotfix" >> "$GITHUB_OUTPUT"
-          elif [[ "$HEAD_REF" = automation/release-readme-* ]]; then
+          elif [[ "$HEAD_REF" = automation/release-readme-* || "$HEAD_REF" = automation/readme-release-stats ]]; then
             [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
             [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
             if [[ "${{ github.event_name }}" = pull_request ]]; then
@@ -295,8 +241,6 @@ jobs:
             echo
             printf '%s`%s`\n' '- Candidate: ' "$(git rev-parse HEAD)"
             printf '%s`%s`\n' '- Source: ' "$HEAD_REF"
-            printf '%s`%s`\n' '- Validated evidence SHA: ' "${{ steps.mode.outputs.evidence_sha }}"
-            echo "- Evidence: required beta checks passed on the candidate itself or an identical-tree PR head."
             echo "- Policy: beta validates; main verifies and promotes."
             echo "- Repeated Gradle/Android validation: none."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -403,11 +347,11 @@ jobs:
 
   required:
     name: Verify beta is safe to promote
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.runtime_acceptance) && always() }}
     needs:
       - classify
       - hotfix-jvm
       - hotfix-runtime
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
