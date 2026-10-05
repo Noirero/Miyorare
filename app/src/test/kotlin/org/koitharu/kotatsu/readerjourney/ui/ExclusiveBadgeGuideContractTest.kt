@@ -189,4 +189,3 @@ class ExclusiveBadgeGuideContractTest {
 			?: File("app/src/main", relativePath)
 	}
 }
-

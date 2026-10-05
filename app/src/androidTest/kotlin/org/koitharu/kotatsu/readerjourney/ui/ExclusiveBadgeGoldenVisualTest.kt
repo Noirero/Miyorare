@@ -595,4 +595,3 @@ class ExclusiveBadgeGoldenVisualTest {
 		)
 	}
 }
-
