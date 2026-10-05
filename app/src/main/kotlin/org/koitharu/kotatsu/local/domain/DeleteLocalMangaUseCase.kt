@@ -3,7 +3,9 @@ package org.koitharu.kotatsu.local.domain
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
@@ -16,6 +18,8 @@ import javax.inject.Inject
 class DeleteLocalMangaUseCase @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
 	private val localMangaIndex: LocalMangaIndex,
+	private val mangaDataRepository: MangaDataRepository,
+	private val downloadedMangaResolver: DownloadedMangaResolver,
 	private val historyRepository: HistoryRepository,
 	private val favouriteDownloadOwnershipIndex: FavouriteDownloadOwnershipIndex,
 ) {
@@ -51,6 +55,29 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		var removed = 0
 		for (target in targets) {
 			invoke(target.manga)
+			removed++
+		}
+		return removed
+	}
+
+	/**
+	 * Delete downloaded copies only from the favourites space that initiated the action.
+	 *
+	 * A remote manga may have independent Normal and Private containers. The global Local index can
+	 * point at either one, so favourites must resolve through the same space-aware ownership boundary
+	 * used by Details before deleting any physical file.
+	 */
+	suspend operator fun invoke(ids: Set<Long>, favouriteSpace: FavouriteSpace): Int {
+		if (ids.isEmpty()) return 0
+		var removed = 0
+		for (mangaId in ids) {
+			val manga = mangaDataRepository.findMangaById(mangaId, withChapters = true) ?: continue
+			val target = if (manga.isLocal) {
+				manga
+			} else {
+				downloadedMangaResolver.findSavedManga(manga, favouriteSpace)?.manga ?: continue
+			}
+			invoke(target)
 			removed++
 		}
 		return removed
