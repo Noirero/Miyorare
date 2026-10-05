@@ -22,7 +22,11 @@ import javax.inject.Singleton
 
 private const val MAX_PARALLEL_STORE_REFRESH = 4
 
-enum class StoreHealth { CHECKING, AVAILABLE, UNAVAILABLE }
+enum class StoreHealth {
+	CHECKING,
+	AVAILABLE,
+	UNAVAILABLE,
+}
 
 data class ExtensionStoreState(
 	val store: ExtensionStoreRecord,
@@ -35,9 +39,14 @@ data class ExtensionStoreState(
 class ExtensionStoreContentTypeMismatchException(
 	val selectedType: ExtensionStoreContentType,
 	val detectedTypes: Set<ExtensionStoreContentType>,
-) : IllegalArgumentException("Repository type mismatch: selected $selectedType, detected ${detectedTypes.joinToString()}")
+) : IllegalArgumentException(
+	"Repository type mismatch: selected $selectedType, detected ${detectedTypes.joinToString()}",
+)
 
-internal fun validateExtensionStoreContentType(catalog: List<ExternalExtensionRepoEntry>, selectedType: ExtensionStoreContentType) {
+internal fun validateExtensionStoreContentType(
+	catalog: List<ExternalExtensionRepoEntry>,
+	selectedType: ExtensionStoreContentType,
+) {
 	val detectedTypes = catalog.detectedExtensionStoreContentTypes()
 	// Anime repositories commonly use ordinary package names. Their explicit store assignment is
 	// authoritative; the package-name heuristic is advisory and must not make a valid repo unavailable.
@@ -47,15 +56,19 @@ internal fun validateExtensionStoreContentType(catalog: List<ExternalExtensionRe
 	}
 }
 
-internal fun List<ExternalExtensionRepoEntry>.detectedExtensionStoreContentTypes(): Set<ExtensionStoreContentType> = buildSet {
-	for (entry in this@detectedExtensionStoreContentTypes) {
-		add(when {
-			entry.packageName.contains(".animeextension.", ignoreCase = true) -> ExtensionStoreContentType.ANIME
-			entry.isNovelExtension -> ExtensionStoreContentType.NOVEL
-			else -> ExtensionStoreContentType.MANGA
-		})
+internal fun List<ExternalExtensionRepoEntry>.detectedExtensionStoreContentTypes(): Set<ExtensionStoreContentType> =
+	buildSet {
+		for (entry in this@detectedExtensionStoreContentTypes) {
+			add(
+				when {
+					entry.packageName.contains(".animeextension.", ignoreCase = true) ->
+						ExtensionStoreContentType.ANIME
+					entry.isNovelExtension -> ExtensionStoreContentType.NOVEL
+					else -> ExtensionStoreContentType.MANGA
+				},
+			)
+		}
 	}
-}
 
 @Singleton
 class ExtensionStoreManager @Inject constructor(
@@ -64,60 +77,254 @@ class ExtensionStoreManager @Inject constructor(
 	private val repository: ExternalExtensionRepoRepository,
 	private val extensionLoader: MihonExtensionLoader,
 ) {
+
 	private val mutex = Mutex()
 	private val mutableAllStates = MutableStateFlow<List<ExtensionStoreState>>(emptyList())
 	private val mutableCatalogStates = MutableStateFlow<List<ExtensionStoreState>>(emptyList())
 	private var initialized = false
+
+	/** Manga/Novel stores consumed by the extension catalogue and updater. Anime is isolated. */
 	val states: StateFlow<List<ExtensionStoreState>> = mutableCatalogStates.asStateFlow()
+
+	/** Every configured store, including optional Anime stores, for Manage stores. */
 	val allStates: StateFlow<List<ExtensionStoreState>> = mutableAllStates.asStateFlow()
 
-	suspend fun initialize(forceRefresh: Boolean = false) = mutex.withLock { withContext(Dispatchers.IO) {
-		val migrationPerformed = ensureMigrated()
-		if (!initialized || forceRefresh || migrationPerformed) { refreshLocked(shouldForceStoreRefresh(forceRefresh, migrationPerformed)); initialized = true }
-	} }
-	suspend fun refresh(forceRefresh: Boolean = true) = mutex.withLock { withContext(Dispatchers.IO) {
-		val migrationPerformed = ensureMigrated(); refreshLocked(shouldForceStoreRefresh(forceRefresh, migrationPerformed)); initialized = true
-	} }
-	suspend fun validateAndAdd(indexUrl: String): Result<ExtensionStoreRecord> = validateAndAdd(indexUrl, ExtensionStoreContentType.MANGA)
-	suspend fun validateAndAdd(indexUrl: String, contentType: ExtensionStoreContentType): Result<ExtensionStoreRecord> = mutex.withLock { withContext(Dispatchers.IO) { runCatching {
-		val validated = repository.validateStore(indexUrl); validateExtensionStoreContentType(validated.catalog, contentType)
-		val added = validated.store.copy(id = stableExtensionStoreId(validated.store.indexUrl)); registry.add(added, contentType).getOrThrow()
-		publishState(ExtensionStoreState(added, StoreHealth.AVAILABLE, validated.catalog.forContentType(contentType), contentType = contentType)); added
-	} } }
-	suspend fun editStore(storeId: String, indexUrl: String): Result<ExtensionStoreRecord> = editStore(storeId, indexUrl, registry.contentType(storeId))
-	suspend fun editStore(storeId: String, indexUrl: String, contentType: ExtensionStoreContentType): Result<ExtensionStoreRecord> = mutex.withLock { withContext(Dispatchers.IO) { runCatching {
-		val current = registry.findStore(storeId) ?: error("Store not found"); val validated = repository.validateStore(indexUrl); validateExtensionStoreContentType(validated.catalog, contentType)
-		val replacement = registry.edit(current.id, validated.store, contentType).getOrThrow(); publishState(ExtensionStoreState(replacement, StoreHealth.AVAILABLE, validated.catalog.forContentType(contentType), contentType = contentType)); replacement
-	} } }
-	fun removeStore(storeId: String) { registry.removeStore(storeId); syncRecords() }
-	fun moveStore(fromIndex: Int, toIndex: Int) { val items = mutableAllStates.value; val from = items.getOrNull(fromIndex) ?: return; val to = items.getOrNull(toIndex) ?: return; if (from.contentType != to.contentType) return; registry.move(fromIndex, toIndex); syncRecords() }
-	fun stores() = registry.state.stores
-	fun containsStoreUrl(indexUrl: String) = registry.containsStoreUrl(indexUrl)
-	fun contentType(storeId: String) = registry.contentType(storeId)
-	fun state(storeId: String) = mutableAllStates.value.firstOrNull { it.store.id == storeId }
-	fun owner(mode: ExtensionInstallMode, extension: MihonExtensionInfo) = registry.owner(mode, extension.pkgName, extension.signatures)
-	fun owner(mode: ExtensionInstallMode, packageName: String) = registry.owner(mode, packageName)
-	fun setOwner(mode: ExtensionInstallMode, packageName: String, storeId: String) = registry.setOwner(mode, packageName, storeId)
-	fun removeOwner(mode: ExtensionInstallMode, packageName: String) { registry.removeOwner(mode, packageName); syncRecords() }
-	private fun ensureMigrated(): Boolean { val system = extensionLoader.getInstalledExtensions(context, false).mapTo(HashSet()) { it.pkgName }; val sandbox = extensionLoader.getInstalledExtensions(context, true).mapTo(HashSet()) { it.pkgName }; val migrated = registry.ensureMigrated(system, sandbox); registry.reconcileOwnerships(system, sandbox); return migrated }
+	suspend fun initialize(forceRefresh: Boolean = false) = mutex.withLock {
+		withContext(Dispatchers.IO) {
+			val migrationPerformed = ensureMigrated()
+			if (!initialized || forceRefresh || migrationPerformed) {
+				refreshLocked(shouldForceStoreRefresh(forceRefresh, migrationPerformed))
+				initialized = true
+			}
+		}
+	}
+
+	suspend fun refresh(forceRefresh: Boolean = true) = mutex.withLock {
+		withContext(Dispatchers.IO) {
+			val migrationPerformed = ensureMigrated()
+			refreshLocked(shouldForceStoreRefresh(forceRefresh, migrationPerformed))
+			initialized = true
+		}
+	}
+
+	/** Legacy callers keep Manga as their old default; the Manage stores UI always passes a type. */
+	suspend fun validateAndAdd(indexUrl: String): Result<ExtensionStoreRecord> =
+		validateAndAdd(indexUrl, ExtensionStoreContentType.MANGA)
+
+	suspend fun validateAndAdd(
+		indexUrl: String,
+		contentType: ExtensionStoreContentType,
+	): Result<ExtensionStoreRecord> = mutex.withLock {
+		withContext(Dispatchers.IO) {
+			runCatching {
+				val validated = repository.validateStore(indexUrl)
+				validateExtensionStoreContentType(validated.catalog, contentType)
+				val added = validated.store.copy(id = stableExtensionStoreId(validated.store.indexUrl))
+				registry.add(added, contentType).getOrThrow()
+				publishState(
+					ExtensionStoreState(
+						store = added,
+						health = StoreHealth.AVAILABLE,
+						catalog = validated.catalog.forContentType(contentType),
+						contentType = contentType,
+					),
+				)
+				added
+			}
+		}
+	}
+
+	/** Editing through an old caller keeps the repository's existing explicit media family. */
+	suspend fun editStore(storeId: String, indexUrl: String): Result<ExtensionStoreRecord> =
+		editStore(storeId, indexUrl, registry.contentType(storeId))
+
+	suspend fun editStore(
+		storeId: String,
+		indexUrl: String,
+		contentType: ExtensionStoreContentType,
+	): Result<ExtensionStoreRecord> = mutex.withLock {
+		withContext(Dispatchers.IO) {
+			runCatching {
+				val current = registry.findStore(storeId) ?: error("Store not found")
+				val validated = repository.validateStore(indexUrl)
+				validateExtensionStoreContentType(validated.catalog, contentType)
+				val replacement = registry.edit(current.id, validated.store, contentType).getOrThrow()
+				publishState(
+					ExtensionStoreState(
+						store = replacement,
+						health = StoreHealth.AVAILABLE,
+						catalog = validated.catalog.forContentType(contentType),
+						contentType = contentType,
+					),
+				)
+				replacement
+			}
+		}
+	}
+
+	fun removeStore(storeId: String) {
+		registry.removeStore(storeId)
+		syncRecords()
+	}
+
+	fun moveStore(fromIndex: Int, toIndex: Int) {
+		val items = mutableAllStates.value
+		val from = items.getOrNull(fromIndex) ?: return
+		val to = items.getOrNull(toIndex) ?: return
+		// Section boundaries are intentional. Reordering is allowed inside a section only.
+		if (from.contentType != to.contentType) return
+		registry.move(fromIndex, toIndex)
+		syncRecords()
+	}
+
+	fun stores(): List<ExtensionStoreRecord> = registry.state.stores
+
+	fun containsStoreUrl(indexUrl: String): Boolean = registry.containsStoreUrl(indexUrl)
+
+	fun contentType(storeId: String): ExtensionStoreContentType = registry.contentType(storeId)
+
+	fun state(storeId: String): ExtensionStoreState? =
+		mutableAllStates.value.firstOrNull { it.store.id == storeId }
+
+	fun owner(
+		mode: ExtensionInstallMode,
+		extension: MihonExtensionInfo,
+	): ExtensionStoreRecord? = registry.owner(mode, extension.pkgName, extension.signatures)
+
+	fun owner(mode: ExtensionInstallMode, packageName: String): ExtensionStoreRecord? =
+		registry.owner(mode, packageName)
+
+	fun setOwner(mode: ExtensionInstallMode, packageName: String, storeId: String) =
+		registry.setOwner(mode, packageName, storeId)
+
+	fun removeOwner(mode: ExtensionInstallMode, packageName: String) {
+		registry.removeOwner(mode, packageName)
+		syncRecords()
+	}
+
+	private fun ensureMigrated(): Boolean {
+		val systemPackages = extensionLoader.getInstalledExtensions(context, privateMode = false)
+			.mapTo(HashSet()) { it.pkgName }
+		val sandboxPackages = extensionLoader.getInstalledExtensions(context, privateMode = true)
+			.mapTo(HashSet()) { it.pkgName }
+		val migrated = registry.ensureMigrated(systemPackages, sandboxPackages)
+		registry.reconcileOwnerships(systemPackages, sandboxPackages)
+		return migrated
+	}
 
 	private suspend fun refreshLocked(forceRefresh: Boolean) {
-		val previousById = mutableAllStates.value.associateBy { it.store.id }; val stores = registry.state.stores
-		val cachedById = coroutineScope { stores.map { store -> async(Dispatchers.IO) { store.id to runCatchingCancellable { repository.getCachedExtensions(store.indexUrl) }.getOrDefault(emptyList()) } }.awaitAll().toMap() }
-		setStates(stores.map { store -> val type = registry.contentType(store.id); val previous = previousById[store.id]; ExtensionStoreState(store, StoreHealth.CHECKING, previous?.catalog?.takeIf { it.isNotEmpty() } ?: cachedById[store.id].orEmpty().forContentType(type), contentType = type) })
-		val dispatcher = Dispatchers.IO.limitedParallelism(MAX_PARALLEL_STORE_REFRESH)
-		val results = coroutineScope { stores.map { store -> async(dispatcher) { store to runCatchingCancellable { repository.validateStore(store.indexUrl, forceRefresh) } } }.awaitAll() }
-		val refreshed = results.map { (store, fresh) ->
-			val type = registry.contentType(store.id); val previous = previousById[store.id]
-			val fallback = if (fresh.isFailure) runCatching { repository.getCachedExtensions(store.indexUrl) }.getOrNull()?.let { ExtensionStoreState(store, StoreHealth.AVAILABLE, it.forContentType(type), contentType = type) } ?: previous else previous
-			val checked = fresh.mapCatching { validated -> validateExtensionStoreContentType(validated.catalog, type); validated }
-			val safePrevious = if (checked.isFailure && fresh.isSuccess) previous else fallback
-			checked.fold(onSuccess = { validated -> val updated = validated.store.copy(id = store.id); registry.replace(updated); ExtensionStoreState(updated, StoreHealth.AVAILABLE, validated.catalog.forContentType(type), contentType = type) }, onFailure = { error -> storeStateAfterRefresh(store, safePrevious, Result.failure(error), type) })
-		}; setStates(refreshed)
+		val previousById = mutableAllStates.value.associateBy { it.store.id }
+		val stores = registry.state.stores
+		val cachedById = coroutineScope {
+			stores.map { store ->
+				async(Dispatchers.IO) {
+					store.id to runCatchingCancellable {
+						repository.getCachedExtensions(store.indexUrl)
+					}.getOrDefault(emptyList())
+				}
+			}.awaitAll().toMap()
+		}
+		setStates(
+			stores.map { store ->
+				val contentType = registry.contentType(store.id)
+				val previous = previousById[store.id]
+				ExtensionStoreState(
+					store = store,
+					health = StoreHealth.CHECKING,
+					catalog = previous?.catalog
+						?.takeIf { it.isNotEmpty() }
+						?: cachedById[store.id].orEmpty().forContentType(contentType),
+					error = null,
+					contentType = contentType,
+				)
+			},
+		)
+		val refreshDispatcher = Dispatchers.IO.limitedParallelism(MAX_PARALLEL_STORE_REFRESH)
+		val validationResults = coroutineScope {
+			stores.map { store ->
+				async(refreshDispatcher) {
+					store to runCatchingCancellable { repository.validateStore(store.indexUrl, forceRefresh) }
+				}
+			}.awaitAll()
+		}
+		val refreshed = validationResults.map { (store, fresh) ->
+			val contentType = registry.contentType(store.id)
+			val previous = previousById[store.id]
+			val fallbackPrevious = if (fresh.isFailure) {
+				val cached = runCatching { repository.getCachedExtensions(store.indexUrl) }.getOrNull()
+				if (cached != null) {
+					ExtensionStoreState(
+						store = store,
+						health = StoreHealth.AVAILABLE,
+						catalog = cached.forContentType(contentType),
+						contentType = contentType,
+					)
+				} else {
+					previous
+				}
+			} else {
+				previous
+			}
+			val checkedFresh = fresh.mapCatching { validated ->
+				validateExtensionStoreContentType(validated.catalog, contentType)
+				validated
+			}
+			val safePrevious = if (checkedFresh.isFailure && fresh.isSuccess) previous else fallbackPrevious
+			checkedFresh.fold(
+				onSuccess = { validated ->
+					// Network metadata can change, but the user's Manga/Novel/Anime assignment cannot.
+					val refreshedStore = validated.store.copy(id = store.id)
+					registry.replace(refreshedStore)
+					ExtensionStoreState(
+						store = refreshedStore,
+						health = StoreHealth.AVAILABLE,
+						catalog = validated.catalog.forContentType(contentType),
+						contentType = contentType,
+					)
+				},
+				onFailure = { error ->
+					storeStateAfterRefresh(
+						store = store,
+						previous = safePrevious,
+						result = Result.failure(error),
+						contentType = contentType,
+					)
+				},
+			)
+		}
+		setStates(refreshed)
 	}
-	private fun publishState(state: ExtensionStoreState) { val byId = mutableAllStates.value.associateByTo(LinkedHashMap()) { it.store.id }; byId[state.store.id] = state; setStates(registry.state.stores.mapNotNull { byId[it.id] }) }
-	private fun syncRecords() { val previous = mutableAllStates.value.associateBy { it.store.id }; setStates(registry.state.stores.map { record -> val type = registry.contentType(record.id); previous[record.id]?.copy(store = record, catalog = previous[record.id]?.catalog.orEmpty().forContentType(type), contentType = type) ?: ExtensionStoreState(record, StoreHealth.CHECKING, contentType = type) }) }
-	private fun setStates(value: List<ExtensionStoreState>) { mutableAllStates.value = value; mutableCatalogStates.value = value.filter { it.contentType != ExtensionStoreContentType.ANIME } }
+
+	private fun publishState(state: ExtensionStoreState) {
+		val byId = mutableAllStates.value.associateByTo(LinkedHashMap()) { it.store.id }
+		byId[state.store.id] = state
+		val order = registry.state.stores.map { it.id }
+		setStates(order.mapNotNull(byId::get))
+	}
+
+	private fun syncRecords() {
+		val previous = mutableAllStates.value.associateBy { it.store.id }
+		setStates(
+			registry.state.stores.map { record ->
+				val contentType = registry.contentType(record.id)
+				previous[record.id]?.copy(
+					store = record,
+					health = previous[record.id]?.health ?: StoreHealth.CHECKING,
+					catalog = previous[record.id]?.catalog.orEmpty().forContentType(contentType),
+					contentType = contentType,
+				) ?: ExtensionStoreState(
+					store = record,
+					health = StoreHealth.CHECKING,
+					contentType = contentType,
+				)
+			},
+		)
+	}
+
+	private fun setStates(value: List<ExtensionStoreState>) {
+		mutableAllStates.value = value
+		mutableCatalogStates.value = value.filter { it.contentType != ExtensionStoreContentType.ANIME }
+	}
 }
 
 private fun ExternalExtensionRepoEntry.explicitContentType(): ExtensionStoreContentType? = when {
@@ -126,7 +333,48 @@ private fun ExternalExtensionRepoEntry.explicitContentType(): ExtensionStoreCont
 	packageName.contains(".extension.", ignoreCase = true) -> ExtensionStoreContentType.MANGA
 	else -> null
 }
-internal fun List<ExternalExtensionRepoEntry>.forContentType(contentType: ExtensionStoreContentType): List<ExternalExtensionRepoEntry> = filter { it.explicitContentType().let { explicit -> explicit == null || explicit == contentType } }
-fun storeStateAfterRefresh(store: ExtensionStoreRecord, previous: ExtensionStoreState?, result: Result<List<ExternalExtensionRepoEntry>>, contentType: ExtensionStoreContentType = ExtensionStoreContentType.MANGA): ExtensionStoreState = if (result.isSuccess) ExtensionStoreState(store, StoreHealth.AVAILABLE, result.getOrThrow().forContentType(contentType), contentType = contentType) else ExtensionStoreState(store, StoreHealth.UNAVAILABLE, previous?.catalog.orEmpty().forContentType(contentType), result.exceptionOrNull(), contentType)
-fun shouldForceStoreRefresh(forceRefresh: Boolean, migrationPerformed: Boolean) = forceRefresh || migrationPerformed
-fun extensionStoreDisplayLabels(stores: List<ExtensionStoreRecord>): Map<String, String> { val duplicates = stores.groupingBy { it.displayName.lowercase(Locale.ROOT) }.eachCount(); return stores.associate { store -> val label = if (duplicates.getValue(store.displayName.lowercase(Locale.ROOT)) > 1) runCatching { URI(store.indexUrl).host }.getOrNull()?.let { "${store.displayName} · $it" } ?: store.displayName else store.displayName; store.id to label } }
+
+internal fun List<ExternalExtensionRepoEntry>.forContentType(
+	contentType: ExtensionStoreContentType,
+): List<ExternalExtensionRepoEntry> = filter { entry ->
+	val explicitType = entry.explicitContentType()
+	explicitType == null || explicitType == contentType
+}
+
+/** Preserves the old three-argument helper contract while allowing typed callers. */
+fun storeStateAfterRefresh(
+	store: ExtensionStoreRecord,
+	previous: ExtensionStoreState?,
+	result: Result<List<ExternalExtensionRepoEntry>>,
+	contentType: ExtensionStoreContentType = ExtensionStoreContentType.MANGA,
+): ExtensionStoreState = when {
+	result.isSuccess -> ExtensionStoreState(
+		store = store,
+		health = StoreHealth.AVAILABLE,
+		catalog = result.getOrThrow().forContentType(contentType),
+		contentType = contentType,
+	)
+	else -> ExtensionStoreState(
+		store = store,
+		health = StoreHealth.UNAVAILABLE,
+		catalog = previous?.catalog.orEmpty().forContentType(contentType),
+		error = result.exceptionOrNull(),
+		contentType = contentType,
+	)
+}
+
+fun shouldForceStoreRefresh(forceRefresh: Boolean, migrationPerformed: Boolean): Boolean =
+	forceRefresh || migrationPerformed
+
+fun extensionStoreDisplayLabels(stores: List<ExtensionStoreRecord>): Map<String, String> {
+	val duplicateNames = stores.groupingBy { it.displayName.lowercase(Locale.ROOT) }.eachCount()
+	return stores.associate { store ->
+		val label = if (duplicateNames.getValue(store.displayName.lowercase(Locale.ROOT)) > 1) {
+			val host = runCatching { URI(store.indexUrl).host }.getOrNull()
+			host?.let { "${store.displayName} · $it" } ?: store.displayName
+		} else {
+			store.displayName
+		}
+		store.id to label
+	}
+}
