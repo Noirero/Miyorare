@@ -25,13 +25,14 @@ class NovelReaderFinishingRegressionTest {
 	fun `novel appearance includes reader-only brightness with system fallback`() {
 		val config = source("org/koitharu/kotatsu/reader/ui/config/ReaderConfigSheet.kt")
 		val reader = source("org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt")
-		val prefs = source("org/koitharu/kotatsu/core/prefs/AppSettings.kt")
+		val brightness = source("org/koitharu/kotatsu/reader/ui/epub/EpubBrightnessSettings.kt")
 		val bookSettings = source("org/koitharu/kotatsu/reader/ui/epub/EpubBookSettingsStore.kt")
 
 		assertTrue(config.contains("epubSettings.screenBrightness"))
 		assertTrue(reader.contains("applyScreenBrightness()"))
 		assertTrue(reader.contains("BRIGHTNESS_OVERRIDE_NONE"))
-		assertTrue(prefs.contains("KEY_EPUB_SCREEN_BRIGHTNESS"))
+		assertTrue(brightness.contains("KEY_EPUB_SCREEN_BRIGHTNESS"))
+		assertTrue(brightness.contains("epubScreenBrightness"))
 		assertTrue(bookSettings.contains("screenBrightness"))
 	}
 
