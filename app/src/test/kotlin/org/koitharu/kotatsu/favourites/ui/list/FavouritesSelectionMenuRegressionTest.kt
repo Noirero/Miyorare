@@ -55,8 +55,7 @@ class FavouritesSelectionMenuRegressionTest {
 	@Test
 	fun `similar title rejection preferences stay scoped by favourite space`() {
 		val scanner = source("org/koitharu/kotatsu/favourites/domain/LibraryDuplicateScanUseCase.kt")
-		assertTrue(scanner.contains("library_scan_ignored_pairs_"))
-		assertTrue(scanner.contains("space.dbValue"))
+		assertTrue(scanner.contains("privatefunignoredKey(space:FavouriteSpace)=\"library_scan_ignored_pairs_${'$'}{space.dbValue}\""))
 	}
 
 	private fun source(relativePath: String): String {
