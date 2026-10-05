@@ -1190,6 +1190,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             }
         }
         var theme by remember { mutableStateOf(canonicalEpubTheme(epubSettings.theme)) }
+        var screenBrightness by remember { mutableFloatStateOf(epubSettings.screenBrightness.toFloat()) }
         var background by remember { mutableIntStateOf(epubSettings.customBackgroundColor) }
         var foreground by remember { mutableIntStateOf(epubSettings.customTextColor) }
         var highlighter by remember { mutableIntStateOf(epubSettings.customHighlightColor) }
@@ -1295,6 +1296,28 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                             }
                         }
                     }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "${stringResource(R.string.brightness)}: " +
+                                if (screenBrightness < 5f) {
+                                    stringResource(R.string.epub_theme_system)
+                                } else {
+                                    "${screenBrightness.roundToInt()}%"
+                                },
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Slider(
+                            value = screenBrightness,
+                            onValueChange = { value ->
+                                screenBrightness = value
+                                epubSettings.screenBrightness = if (value < 5f) 0 else value.roundToInt()
+                            },
+                            valueRange = 0f..100f,
+                            steps = 19,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+
                     Surface(
                         onClick = {
                             theme = EPUB_THEME_CUSTOM
