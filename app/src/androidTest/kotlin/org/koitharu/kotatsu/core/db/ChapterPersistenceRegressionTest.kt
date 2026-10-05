@@ -30,6 +30,8 @@ import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.migrations.Migration45To46
 import org.koitharu.kotatsu.core.db.migrations.Migration46To47
 import org.koitharu.kotatsu.core.db.migrations.Migration48To49
+import org.koitharu.kotatsu.core.db.migrations.Migration50To51
+import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
@@ -86,6 +88,105 @@ class ChapterPersistenceRegressionTest {
 	fun tearDown() {
 		context.deleteDatabase(DB_NAME)
 		context.deleteDatabase(MIGRATION_DB_NAME)
+	}
+
+	@Test
+	fun schema50UpgradesTo51WithoutLosingHistoryAndReopens() = runTest {
+		createSchema50Fixture()
+		val migrated = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME)
+			.addMigrations(*getDatabaseMigrations(context)).build()
+		val expected = compatibilityHistory().copy(legacyResumeUpdatedAt = 200L)
+		try {
+			assertEquals(expected, migrated.getHistoryDao().find(901L))
+			assertNotNull(migrated.getMangaDao().find(901L))
+			assertEquals(51, migrated.openHelper.writableDatabase.version)
+		} finally {
+			migrated.close()
+		}
+		val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
+		try {
+			assertEquals(expected, reopened.getHistoryDao().find(901L))
+		} finally {
+			reopened.close()
+		}
+	}
+
+	@Test
+	fun alreadyInstalledSchema51OpensAndPreservesLocalHistoryMarkers() = runTest {
+		createSchema50Fixture()
+		// Reproduce the already-shipped v51 structure using its original migration, independently
+		// of the new Room-generated create SQL. No Room identity row remains in this fixture,
+		// so opening it must validate every table/index rather than trusting a cached identity.
+		val helper = FrameworkSQLiteOpenHelperFactory().create(
+			SupportSQLiteOpenHelper.Configuration.builder(context)
+				.name(MIGRATION_DB_NAME)
+				.callback(object : SupportSQLiteOpenHelper.Callback(51) {
+					override fun onCreate(db: SupportSQLiteDatabase) = error("Schema 50 fixture must exist")
+					override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
+						assertEquals(50, oldVersion)
+						assertEquals(51, newVersion)
+						Migration50To51().migrate(db)
+					}
+				})
+				.build(),
+		)
+		try {
+			helper.writableDatabase.execSQL(
+				"UPDATE history SET last_reader_activity_at = 300, legacy_resume_updated_at = 200 WHERE manga_id = 901",
+			)
+		} finally {
+			helper.close()
+		}
+		val expected = compatibilityHistory().copy(lastReaderActivityAt = 300L, legacyResumeUpdatedAt = 200L)
+		val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
+		try {
+			val dao = reopened.getHistoryDao()
+			assertEquals(expected, dao.find(901L))
+			// Both native progress restore and cloud replacement must retain the existing markers.
+			dao.upsert(compatibilityHistory().copy(page = 5, updatedAt = 400L))
+			assertEquals(expected.copy(page = 5, updatedAt = 400L), dao.find(901L))
+			dao.upsertForSync(compatibilityHistory().copy(page = 6, updatedAt = 500L, deletedAt = 600L))
+			assertEquals(expected.copy(page = 6, updatedAt = 500L, deletedAt = 600L), dao.findIncludingDeleted(901L))
+			assertEquals(51, reopened.openHelper.writableDatabase.version)
+		} finally {
+			reopened.close()
+		}
+	}
+
+	private fun compatibilityHistory() = HistoryEntity(901L, 100L, 200L, 1L, 4, 0.25f, 0.5f, 0L, 3)
+
+	private suspend fun createSchema50Fixture() {
+		val current = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
+		try {
+			current.getMangaDao().upsert(SampleData.mangaDetails.copy(id = 901L).toEntity(), emptyList())
+			current.getHistoryDao().upsert(compatibilityHistory())
+		} finally {
+			current.close()
+		}
+		android.database.sqlite.SQLiteDatabase.openDatabase(
+			context.getDatabasePath(MIGRATION_DB_NAME).absolutePath, null,
+			android.database.sqlite.SQLiteDatabase.OPEN_READWRITE,
+		).use { legacy ->
+			legacy.beginTransaction()
+			try {
+				legacy.execSQL("""
+					CREATE TABLE history_v50 (
+						manga_id INTEGER NOT NULL PRIMARY KEY, created_at INTEGER NOT NULL,
+						updated_at INTEGER NOT NULL, chapter_id INTEGER NOT NULL, page INTEGER NOT NULL,
+						scroll REAL NOT NULL, percent REAL NOT NULL, deleted_at INTEGER NOT NULL, chapters INTEGER NOT NULL,
+						FOREIGN KEY(manga_id) REFERENCES manga(manga_id) ON UPDATE NO ACTION ON DELETE CASCADE
+					)
+				""".trimIndent())
+				legacy.execSQL("INSERT INTO history_v50 SELECT manga_id, created_at, updated_at, chapter_id, page, scroll, percent, deleted_at, chapters FROM history")
+				legacy.execSQL("DROP TABLE history")
+				legacy.execSQL("ALTER TABLE history_v50 RENAME TO history")
+				legacy.execSQL("DROP TABLE room_master_table")
+				legacy.version = 50
+				legacy.setTransactionSuccessful()
+			} finally {
+				legacy.endTransaction()
+			}
+		}
 	}
 
 	@Test

@@ -39,7 +39,7 @@ DEEP_CONTRACT = {
 RUNTIME_CONTRACT = {
     '.github/workflows/android-runtime.yml': '4d20eb3d0ef7e406678e455ed968d4cdc8f16c01d55128b9a9c05bb333278aee',
     '.github/scripts/android_runtime_paths.py': '3d938f2c572b78dc4ae7b041d7bbd539c0da3439b4b2bb0ad93a13efef4b4d6c',
-    BACKUP_TEST: '3b983acb952a805e3838d6f3302f6da1a32ea7dcc0f646c4e89836e5c6747cc0',
+    BACKUP_TEST: '986d321fa987d14ab95b2839ef15d98fa4b6a5b519752f282970b4bc26f41367',
 }
 SELF = {WORKFLOW, '.github/scripts/phase10_paths.py', '.github/scripts/test_phase10_paths.py',
         '.github/scripts/exclusive_visual_paths.py'}

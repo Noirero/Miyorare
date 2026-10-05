@@ -302,7 +302,17 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findAllForSync(): List<HistoryEntity>
 
 	@Upsert
-	abstract suspend fun upsertForSync(entity: HistoryEntity)
+	protected abstract suspend fun replaceForSync(entity: HistoryEntity)
+
+	/** Remote progress must not erase the device-local markers in an existing v51 database. */
+	@Transaction
+	open suspend fun upsertForSync(entity: HistoryEntity) {
+		val local = findIncludingDeleted(entity.mangaId)
+		replaceForSync(entity.copy(
+			lastReaderActivityAt = local?.lastReaderActivityAt ?: 0L,
+			legacyResumeUpdatedAt = local?.legacyResumeUpdatedAt ?: 0L,
+		))
+	}
 
 	@Query(
 		"UPDATE history SET page = :page, chapter_id = :chapterId, scroll = :scroll, percent = :percent, updated_at = :updatedAt, chapters = :chapters, deleted_at = 0 WHERE manga_id = :mangaId",
