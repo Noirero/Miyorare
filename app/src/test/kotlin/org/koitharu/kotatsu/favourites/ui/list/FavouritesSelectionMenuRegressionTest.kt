@@ -31,6 +31,15 @@ class FavouritesSelectionMenuRegressionTest {
 		assertFalse(source.contains("deleteLocalMangaUseCase(ids)"))
 	}
 
+	@Test
+	fun `similar title scan uses result mode instead of legacy review dialogs`() {
+		val source = source("org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt")
+
+		assertTrue(source.contains("viewModel.enterSimilarTitleScanMode()"))
+		assertTrue(source.contains("SimilarTitleScanHeaderPayload"))
+		assertFalse(source.contains("showLibraryScanCandidate("))
+	}
+
 	private fun source(relativePath: String): String {
 		return (
 			sequenceOf(
@@ -38,7 +47,7 @@ class FavouritesSelectionMenuRegressionTest {
 				File("app/src/main/kotlin", relativePath),
 			).firstOrNull(File::isFile)?.readText()
 				?: error("Cannot find production source: $relativePath")
-			)
+		)
 			.replace(Regex("""//[^\r\n]*"""), "")
 			.replace(Regex("""\s+"""), "")
 	}
