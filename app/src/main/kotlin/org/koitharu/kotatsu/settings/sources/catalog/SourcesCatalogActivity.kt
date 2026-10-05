@@ -66,7 +66,6 @@ import org.koitharu.kotatsu.extensions.install.SHIZUKU_PACKAGE_NAME
 import org.koitharu.kotatsu.extensions.install.ShizukuExtensionInstaller
 import org.koitharu.kotatsu.extensions.install.ShizukuInstallerStatus
 import org.koitharu.kotatsu.extensions.install.currentStatus
-import org.koitharu.kotatsu.extensions.install.extensionInstallerChoiceLabel
 import org.koitharu.kotatsu.extensions.install.extensionInstallerMethodSummary
 import org.koitharu.kotatsu.extensions.install.extensionInstallerMethodTitle
 import org.koitharu.kotatsu.extensions.install.shizukuInstallerStatusText
@@ -75,6 +74,7 @@ import org.koitharu.kotatsu.list.ui.adapter.ListHeaderClickListener
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
+import org.koitharu.kotatsu.settings.sources.showExtensionInstallerMethodPicker
 import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.parsers.model.ContentType
 import rikka.shizuku.Shizuku
@@ -211,6 +211,11 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		viewModel.refresh()
 	}
 
+	fun toggleAnimeExtensionStoreVisibility() {
+		settings.isAnimeExtensionStoreVisible = !settings.isAnimeExtensionStoreVisible
+		recreate()
+	}
+
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		clearOldApks()
@@ -231,6 +236,41 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		)
 		viewBinding.pager.adapter = pagesAdapter
 		viewBinding.pager.offscreenPageLimit = 1
+
+		fun visibleMediaTypes(): List<ExtensionStoreContentType> =
+			ExtensionStoreContentType.entries.filter {
+				it != ExtensionStoreContentType.ANIME || settings.isAnimeExtensionStoreVisible
+			}
+		var mediaTypes = visibleMediaTypes()
+		mediaTypes.forEach { type ->
+			viewBinding.tabsMedia.addTab(
+				viewBinding.tabsMedia.newTab().setText(
+					when (type) {
+						ExtensionStoreContentType.MANGA -> R.string.store_kind_manga
+						ExtensionStoreContentType.NOVEL -> R.string.store_kind_novel
+						ExtensionStoreContentType.ANIME -> R.string.store_kind_anime
+					},
+				),
+			)
+		}
+		viewModel.activeStoreContentType.observe(this) { activeType ->
+			val position = mediaTypes.indexOf(activeType)
+			if (position < 0) {
+				viewModel.selectStoreContentType(mediaTypes.first())
+			} else if (viewBinding.tabsMedia.selectedTabPosition != position) {
+				viewBinding.tabsMedia.getTabAt(position)?.select()
+			}
+		}
+		viewBinding.tabsMedia.addOnTabSelectedListener(object :
+			com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
+			override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
+				mediaTypes.getOrNull(tab.position)?.let(viewModel::selectStoreContentType)
+				selectedPageId = ExtensionCatalogPage.Available.id
+			}
+
+			override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+			override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+		})
 		viewBinding.pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
 			override fun onPageSelected(position: Int) {
 				val page = pagesAdapter.pageAt(position) ?: return
@@ -533,17 +573,11 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		onCancel: (() -> Unit)? = null,
 		verifyShizukuAfterSelection: Boolean = false,
 	) {
-		val status = shizukuInstaller.currentStatus()
-		val methods = listOf(
-			ExtensionInstallerMethod.SHIZUKU,
-			ExtensionInstallerMethod.SYSTEM,
-			ExtensionInstallerMethod.PRIVATE,
-		)
-		val labels = methods.map { extensionInstallerChoiceLabel(it, status) }.toTypedArray()
-		MaterialAlertDialogBuilder(this)
-			.setTitle(R.string.extension_installer_choose_title)
-			.setItems(labels) { _, which ->
-				val method = methods.getOrNull(which) ?: return@setItems
+		showExtensionInstallerMethodPicker(
+			context = this,
+			initialMethod = installerPreferences.method,
+			shizukuStatus = shizukuInstaller.currentStatus(),
+			onSelected = { method ->
 				val hadSelection = installerPreferences.hasUserSelection
 				val previous = installerPreferences.method
 				installerPreferences.select(method)
@@ -563,9 +597,9 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 				} else {
 					onSelected?.invoke()
 				}
-			}
-			.setOnCancelListener { onCancel?.invoke() }
-			.show()
+			},
+			onCancel = onCancel,
+		)
 	}
 
 	private fun ensureInstallerMethodReady(
