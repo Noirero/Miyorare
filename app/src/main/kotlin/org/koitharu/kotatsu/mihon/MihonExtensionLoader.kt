@@ -41,10 +41,19 @@ class MihonExtensionLoader @Inject constructor(
 		 * discovery is identical — the source itself declares `isNovelSource`.
 		 */
 		private const val EXTENSION_FEATURE_NOVEL = "tachiyomi.novelextension"
-		private val EXTENSION_FEATURES = setOf(EXTENSION_FEATURE, EXTENSION_FEATURE_NOVEL)
+		private const val EXTENSION_FEATURE_ANIME = "tachiyomi.animeextension"
+		private val EXTENSION_FEATURES = setOf(
+			EXTENSION_FEATURE,
+			EXTENSION_FEATURE_NOVEL,
+			EXTENSION_FEATURE_ANIME,
+		)
 
 		/** `<namespace>.class` / `.factory` / `.nsfw`, in the order they're tried. */
-		private val METADATA_NAMESPACES = listOf(EXTENSION_FEATURE, EXTENSION_FEATURE_NOVEL)
+		private val METADATA_NAMESPACES = listOf(
+			EXTENSION_FEATURE,
+			EXTENSION_FEATURE_NOVEL,
+			EXTENSION_FEATURE_ANIME,
+		)
 		private val METADATA_SOURCE_CLASS_KEYS = METADATA_NAMESPACES.map { "$it.class" }
 		private val METADATA_SOURCE_FACTORY_KEYS = METADATA_NAMESPACES.map { "$it.factory" }
 		private val METADATA_NSFW_KEYS = METADATA_NAMESPACES.map { "$it.nsfw" }
@@ -202,15 +211,29 @@ class MihonExtensionLoader @Inject constructor(
 
 		internal fun isPackageAnExtensionStatic(pkgInfo: PackageInfo): Boolean {
 			val appInfo = pkgInfo.applicationInfo ?: return false
-			val hasFeature = pkgInfo.reqFeatures?.any { it.name in EXTENSION_FEATURES } == true
+			val hasFeature = pkgInfo.reqFeatures?.any { feature ->
+				val name = feature.name.orEmpty()
+				name in EXTENSION_FEATURES || name.endsWith(".animeextension", ignoreCase = true)
+			} == true
 			return hasFeature || readSourceClassNames(appInfo.metaData) != null
 		}
 
 		/** The `;`-separated source class list, from whichever namespace the APK declares it under. */
-		internal fun readSourceClassNames(metaData: Bundle?): String? {
-			metaData ?: return null
-			return METADATA_SOURCE_CLASS_KEYS.firstNotNullOfOrNull { metaData.getString(it) }
-				?: METADATA_SOURCE_FACTORY_KEYS.firstNotNullOfOrNull { metaData.getString(it) }
+		internal fun readSourceClassNames(metaData: Bundle?): String? =
+			metaData?.let { bundle ->
+				readSourceClassNames(bundle.keySet().associateWith(bundle::getString))
+			}
+
+		internal fun readSourceClassNames(metaData: Map<String, String?>): String? {
+			return METADATA_SOURCE_CLASS_KEYS.firstNotNullOfOrNull(metaData::get)
+				?: METADATA_SOURCE_FACTORY_KEYS.firstNotNullOfOrNull(metaData::get)
+				?: metaData.asSequence()
+					.filter { (key, _) ->
+						key.endsWith(".animeextension.class", ignoreCase = true) ||
+							key.endsWith(".animeextension.factory", ignoreCase = true)
+					}
+					.mapNotNull { it.value }
+					.firstOrNull()
 		}
 
 		internal fun normalizeSourceClassNames(pkgName: String, sourceClassNames: String): List<String> {
@@ -522,8 +545,10 @@ class MihonExtensionLoader @Inject constructor(
 
 	private fun extractLanguage(packageName: String): String {
 		val parts = packageName.split('.')
-		// Novel extensions live under `…tachiyomi.novelextension.<lang>.<site>`.
-		val extIndex = parts.indexOfLast { it == "extension" || it == "novelextension" }
+		// Manga, novel, and Aniyomi anime extensions encode language immediately after their namespace.
+		val extIndex = parts.indexOfLast {
+			it == "extension" || it == "novelextension" || it == "animeextension"
+		}
 		return parts.getOrNull(extIndex + 1)
 			?.takeIf { it.isNotBlank() }
 			?: parts.lastOrNull()
