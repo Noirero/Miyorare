@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="wrap_content" app:cardElevation="0dp">
+	<androidx.constraintlayout.widget.ConstraintLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="88dp" android:padding="12dp">
+		<org.koitharu.kotatsu.image.ui.CoverImageView android:id="@+id/imageView_cover" android:layout_width="64dp" android:layout_height="64dp" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+		<TextView android:id="@+id/textView_title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="16dp" android:singleLine="true" app:layout_constraintStart_toEndOf="@id/imageView_cover" app:layout_constraintEnd_toStartOf="@id/button_expand" app:layout_constraintTop_toTopOf="parent" />
+		<org.koitharu.kotatsu.core.ui.widgets.CheckableImageButton android:id="@+id/button_expand" android:layout_width="48dp" android:layout_height="48dp" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toTopOf="parent" />
+		<TextView android:id="@+id/textView_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="16dp" app:layout_constraintStart_toEndOf="@id/imageView_cover" app:layout_constraintTop_toBottomOf="@id/textView_title" />
+		<TextView android:id="@+id/textView_percent" android:layout_width="wrap_content" android:layout_height="wrap_content" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toBottomOf="@id/textView_title" />
+		<TextView android:id="@+id/textView_details" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="16dp" app:layout_constraintStart_toEndOf="@id/imageView_cover" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toBottomOf="@id/textView_status" />
+		<com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/progressBar" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="16dp" android:layout_marginTop="8dp" app:layout_constraintStart_toEndOf="@id/imageView_cover" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toBottomOf="@id/textView_details" />
+		<LinearLayout android:id="@+id/layout_buttons" android:layout_width="0dp" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="end" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toBottomOf="@id/progressBar">
+			<com.google.android.material.button.MaterialButton android:id="@+id/button_pause" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/pause" />
+			<com.google.android.material.button.MaterialButton android:id="@+id/button_resume" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/resume" />
+			<com.google.android.material.button.MaterialButton android:id="@+id/button_skip" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/skip" />
+			<com.google.android.material.button.MaterialButton android:id="@+id/button_skip_all" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/skip_all" />
+			<com.google.android.material.button.MaterialButton android:id="@+id/button_cancel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/cancel" />
+		</LinearLayout>
+		<androidx.recyclerview.widget.RecyclerView android:id="@+id/recyclerView_chapters" android:layout_width="0dp" android:layout_height="wrap_content" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toBottomOf="@id/layout_buttons" />
+	</androidx.constraintlayout.widget.ConstraintLayout>
+</com.google.android.material.card.MaterialCardView>
