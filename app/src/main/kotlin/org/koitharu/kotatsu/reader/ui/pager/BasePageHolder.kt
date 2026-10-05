@@ -148,9 +148,6 @@ abstract class BasePageHolder<B : ViewBinding>(
 	override fun onResume() {
 		super.onResume()
 		ssiv.applyDownSampling(isForeground = true)
-		if (viewModel.state.value is PageState.Shown) {
-			(animatedImageView.drawable as? Animatable)?.start()
-		}
 		if (viewModel.state.value is PageState.Error && !viewModel.isLoading()) {
 			boundData?.let { viewModel.retry(it.toMangaPage(), isFromUser = false) }
 		}

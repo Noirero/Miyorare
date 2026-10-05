@@ -85,24 +85,6 @@ jobs:
             cat build/ci-profile/resource-usage.txt
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Record release APK checksum
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK_PATH="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
-          test -n "$APK_PATH"
-          sha256sum "$APK_PATH" | tee build/ci-profile/release-apk.sha256
-
-      - name: Upload release APK
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk-${{ github.sha }}
-          path: app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Upload profiling evidence
         if: always()
         uses: actions/upload-artifact@v4
