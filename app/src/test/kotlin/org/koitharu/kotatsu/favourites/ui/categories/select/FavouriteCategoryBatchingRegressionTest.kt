@@ -8,6 +8,17 @@ import java.io.File
 class FavouriteCategoryBatchingRegressionTest {
 
 	@Test
+	fun `single favourite picker starts interactive without destructive reopen flow`() {
+		val source = source(
+			"org/koitharu/kotatsu/favourites/ui/categories/select/FavoriteDialogViewModel.kt",
+		)
+
+		assertTrue(source.contains("valisSaving=MutableStateFlow(false)"))
+		assertFalse(source.contains("MutableStateFlow(isSingleNormalFavourite)"))
+		assertFalse(source.contains("favouritesRepository.removeFromFavourites("))
+	}
+
+	@Test
 	fun `category picker saves all membership changes through one batch API`() {
 		val source = source(
 			"org/koitharu/kotatsu/favourites/ui/categories/select/FavoriteDialogViewModel.kt",

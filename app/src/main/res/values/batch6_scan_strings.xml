@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_scan_results_title">Similar-title scan results</string>
+    <string name="library_scan_back_to_favourites">Back to Favourites</string>
+</resources>
