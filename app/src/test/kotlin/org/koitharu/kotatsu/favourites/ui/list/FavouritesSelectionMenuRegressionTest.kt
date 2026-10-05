@@ -60,6 +60,15 @@ class FavouritesSelectionMenuRegressionTest {
 		assertTrue(keyBlock.contains("space.dbValue"))
 	}
 
+	@Test
+	fun `scanner does not probe local filesystem or remote details`() {
+		val scanner = source("org/koitharu/kotatsu/favourites/domain/LibraryDuplicateScanUseCase.kt")
+		assertFalse(scanner.contains("listFiles("))
+		assertFalse(scanner.contains("File("))
+		assertFalse(scanner.contains("getDetails("))
+		assertFalse(scanner.contains("getPages("))
+	}
+
 	private fun source(relativePath: String): String {
 		return (sequenceOf(File("src/main/kotlin", relativePath), File("app/src/main/kotlin", relativePath))
 			.firstOrNull(File::isFile)?.readText() ?: error("Cannot find production source: $relativePath"))
