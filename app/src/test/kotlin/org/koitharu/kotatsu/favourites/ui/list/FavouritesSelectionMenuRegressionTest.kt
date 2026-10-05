@@ -40,6 +40,20 @@ class FavouritesSelectionMenuRegressionTest {
 		assertFalse(source.contains("showLibraryScanCandidate("))
 	}
 
+	@Test
+	fun `ordinary favourites tab return does not force recycler to top`() {
+		val source = source("org/koitharu/kotatsu/favourites/ui/container/FavouritesContainerFragment.kt")
+		val hiddenBlock = source
+			.substringAfter("overridefunonHiddenChanged(hidden:Boolean){")
+			.substringBefore("overridefunonActionModeStarted")
+
+		assertTrue(hiddenBlock.contains("attachTabsToAppBar()"))
+		assertTrue(hiddenBlock.contains("installFavouriteSearchHandler()"))
+		assertTrue(hiddenBlock.contains("onContentTypeChanged(contentTypeStore.selectedType.value)"))
+		assertFalse(hiddenBlock.contains("scrollToPositionWithOffset(0,0)"))
+		assertFalse(hiddenBlock.contains("scrollToPosition(0)"))
+	}
+
 	private fun source(relativePath: String): String {
 		return (
 			sequenceOf(
@@ -47,7 +61,7 @@ class FavouritesSelectionMenuRegressionTest {
 				File("app/src/main/kotlin", relativePath),
 			).firstOrNull(File::isFile)?.readText()
 				?: error("Cannot find production source: $relativePath")
-		)
+			)
 			.replace(Regex("""//[^\r\n]*"""), "")
 			.replace(Regex("""\s+"""), "")
 	}
