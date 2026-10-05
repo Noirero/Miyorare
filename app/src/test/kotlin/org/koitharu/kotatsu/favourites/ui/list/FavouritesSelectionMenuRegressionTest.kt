@@ -10,7 +10,6 @@ class FavouritesSelectionMenuRegressionTest {
 	@Test
 	fun `modern selection More item uses a valid AppCompat menu category`() {
 		val source = source("org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt")
-
 		assertTrue(source.contains("MODERN_SELECTION_MORE_ORDER=0xFFFF"))
 		assertTrue(source.contains("menu.add(Menu.NONE,MODERN_SELECTION_MORE_ID,MODERN_SELECTION_MORE_ORDER,R.string.more)"))
 		assertFalse(source.contains("menu.add(Menu.NONE,MODERN_SELECTION_MORE_ID,Int.MAX_VALUE,R.string.more)"))
@@ -46,7 +45,8 @@ class FavouritesSelectionMenuRegressionTest {
 	fun `favourites source metadata enrichment never blocks first render`() {
 		val quickFilter = source("org/koitharu/kotatsu/favourites/domain/FavoritesListQuickFilter.kt")
 		val viewModel = source("org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt")
-		val sourceOptions = quickFilter.substringAfter("privatesuspendfungetSourceOptions()").substringBefore("@AssistedFactory")
+		val sourceOptions = quickFilter.substringAfter("privatesuspendfungetSourceOptions():List<ListFilterOption.Source>{").substringBefore("@AssistedFactory")
+		assertTrue(sourceOptions.isNotEmpty())
 		assertFalse(sourceOptions.contains("mihonExtensionManager.ensureReady()"))
 		assertTrue(sourceOptions.contains("getMihonMangaSources()"))
 		assertTrue(viewModel.contains("quickFilter.sourceMetadataReady"))
