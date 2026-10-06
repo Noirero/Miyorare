@@ -585,8 +585,16 @@ abstract class ChaptersPagesViewModel(
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		val current = mangaDetails.value ?: return
 		val expectedRoots = downloadDestinationStore.readableRoots(favouriteSpace)
-		if (downloadedManga != null && expectedRoots.isNotEmpty() && expectedRoots.none { downloadedManga.file.isInside(it) }) {
-			return
+		if (downloadedManga != null) {
+			val matchingRoot = expectedRoots.filter { downloadedManga.file.isInside(it) }
+				.maxByOrNull { runCatching { it.canonicalPath }.getOrDefault(it.absolutePath).length } ?: return
+			val otherSpace = if (favouriteSpace == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+			val otherRoot = downloadDestinationStore.effectiveRoot(otherSpace)
+			// A dedicated destination nested under this space's root owns its subtree. Equal/shared
+			// roots and this space's more specific legacy roots retain their existing semantics.
+			if (otherRoot != null && downloadedManga.file.isInside(otherRoot) &&
+				otherRoot.isInside(matchingRoot) && !matchingRoot.isInside(otherRoot)
+			) return
 		}
 		if (downloadedManga == null) {
 			val local = current.local ?: return
@@ -612,14 +620,11 @@ abstract class ChaptersPagesViewModel(
 			return
 		}
 
-		val local = current.local
-		val isCurrentManga = current.id == downloadedManga.manga.id ||
-			local?.manga?.id == downloadedManga.manga.id ||
-			local?.file == downloadedManga.file
-		if (!isCurrentManga) {
-			return
-		}
-		mangaDetails.value = interactor.updateLocal(current, downloadedManga) ?: current
+		// Space/root validation belongs here; direct/indexed manga identity belongs to the interactor.
+		// Do not pre-filter by Local id: sidecar-free downloads can have a different physical Local id.
+		val updated = interactor.updateLocal(current, downloadedManga) ?: return
+		if (updated === current) return
+		mangaDetails.value = if (isScanlatorsMerged.value) updated.withMergedBranches() else updated
 		// A normal download only enriches a remote title with an on-device copy. Updating Details is
 		// enough; reloading Reader would blank the current content and refetch the chapter. Local-source
 		// file changes still reload because their chapter/page URLs can genuinely have changed.
