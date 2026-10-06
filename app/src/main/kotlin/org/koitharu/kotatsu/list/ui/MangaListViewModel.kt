@@ -75,9 +75,8 @@ abstract class MangaListViewModel(
 		merge(
 			mangaDataRepository.observeOverridesTrigger(emitInitialState = true),
 			mangaDataRepository.observeFavoritesTrigger(emitInitialState = true),
-			// A concrete item is handled by Details/Downloaded observers. Only broad invalidations
-			// need to remap every generic list.
-			localStorageChanges.filter { it == null }.onStart { emit(null) },
+			// Completion emits a concrete LocalManga; remap covers as well as broad invalidations.
+			localStorageChanges.onStart { emit(null) },
 		),
 		settings.observeChanges().filter { key ->
 			key == AppSettings.KEY_PROGRESS_INDICATORS

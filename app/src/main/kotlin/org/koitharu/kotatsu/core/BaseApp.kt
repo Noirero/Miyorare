@@ -1,8 +1,8 @@
 package org.koitharu.kotatsu.core
 
 import android.app.Application
-import android.content.Context
 import android.content.ComponentName
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Environment
 import androidx.annotation.WorkerThread
@@ -12,6 +12,9 @@ import androidx.preference.PreferenceManager
 import androidx.room.InvalidationTracker
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
+import javax.inject.Provider
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
@@ -29,18 +32,19 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.dialog.CrashDialogActivity
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
+import org.koitharu.kotatsu.favourites.domain.LegacyFavouriteDownloadReconciler
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.parsers.util.suspendlazy.getOrNull
 import org.koitharu.kotatsu.settings.sources.catalog.EXTENSION_APK_PREFIX
 import org.koitharu.kotatsu.settings.work.WorkScheduleManager
 import org.koitharu.kotatsu.tsuki.EhentaiSessionManager
 import org.koitharu.kotatsu.widget.common.WidgetThemeWatcher
-import javax.inject.Inject
-import javax.inject.Provider
 
 @HiltAndroidApp
 open class BaseApp : Application(), Configuration.Provider {
@@ -74,6 +78,9 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	@Inject
 	lateinit var favouriteDownloadOwnershipIndexProvider: Provider<FavouriteDownloadOwnershipIndex>
+
+	@Inject
+	lateinit var legacyFavouriteDownloadReconcilerProvider: Provider<LegacyFavouriteDownloadReconciler>
 
 	@Inject
 	@LocalStorageChanges
@@ -121,12 +128,17 @@ open class BaseApp : Application(), Configuration.Provider {
 		processLifecycleScope.launch(Dispatchers.Default) {
 			setupDatabaseObservers()
 		}
-		processLifecycleScope.launch(Dispatchers.Default) {
+		processLifecycleScope.launch(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
 			localStorageChanges.collect(localMangaIndexProvider.get())
 		}
-		processLifecycleScope.launch(Dispatchers.Default) {
+		processLifecycleScope.launch(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
 			// Incremental only: this records emitted download paths and never scans storage at startup.
 			localStorageChanges.collect(favouriteDownloadOwnershipIndexProvider.get())
+		}
+		processLifecycleScope.launch(Dispatchers.IO) {
+			// One-shot indexed compatibility repair; ordinary Favourites never scans storage.
+			runCatchingCancellable { legacyFavouriteDownloadReconcilerProvider.get().reconcileOnce() }
+				.onFailure(Throwable::printStackTraceDebug)
 		}
 		workScheduleManager.init()
 	}

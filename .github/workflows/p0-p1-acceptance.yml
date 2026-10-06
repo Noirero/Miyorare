@@ -1,6 +1,10 @@
 name: P0 P1 Acceptance Gate
 
 on:
+  # Batch 11 staging validation runs on the pushed branch SHA, before integration.
+  push:
+    branches:
+      - amain2-batch11-downloaded-local-r2
   pull_request:
     branches:
       - beta
@@ -89,6 +93,7 @@ jobs:
           --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest
           --tests org.koitharu.kotatsu.favourites.ui.categories.select.FavouriteCategoryBatchingRegressionTest
           --tests org.koitharu.kotatsu.performance.RuntimeLagHardeningRegressionTest
+          --tests org.koitharu.kotatsu.favourites.domain.DownloadedLocalPipelineRegressionTest
           --no-daemon --stacktrace
 
       - name: Upload JVM acceptance evidence
@@ -102,7 +107,7 @@ jobs:
 
   android-acceptance:
     name: P0/P1 Android 15 acceptance
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'amain2-batch11-downloaded-local-r2'
     needs: jvm-acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -185,7 +190,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >
             ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
-            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest,org.koitharu.kotatsu.favourites.domain.DownloadedLocalStateTest
 
       - name: Upload Android acceptance evidence
         if: always()
@@ -195,6 +200,7 @@ jobs:
           path: |
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
+            app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
           retention-days: 14
 
