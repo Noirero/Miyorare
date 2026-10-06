@@ -20,7 +20,9 @@ import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.AlphanumComparator
+import org.koitharu.kotatsu.core.util.MimeTypes
 import org.koitharu.kotatsu.core.util.ext.deleteAwait
+import org.koitharu.kotatsu.core.util.ext.isImage
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.takeIfWriteable
 import org.koitharu.kotatsu.core.util.ext.withChildren
@@ -192,13 +194,15 @@ class LocalMangaRepository @Inject constructor(
 		val file = manga.url.toUri().toFile()
 		val result = file.deleteAwait()
 		if (result) {
-			localMangaIndex.delete(manga.id)
-			// Direct repository deletions include chapter cleanup when the last artifact disappears.
-			// Clear physical ownership here so Downloaded/Not Downloaded cannot retain a stale row.
-			favouriteDownloadOwnershipIndex.removePath(file)
-			localStorageChanges.emit(null)
+			clearDeletedMangaState(manga, file)
 		}
 		return result
+	}
+
+	private suspend fun clearDeletedMangaState(manga: Manga, file: File) {
+		localMangaIndex.delete(manga.id)
+		favouriteDownloadOwnershipIndex.removePath(file)
+		localStorageChanges.emit(null)
 	}
 
 	suspend fun deleteChapters(manga: Manga, ids: Set<Long>) = lock.withLock(manga) {
@@ -225,24 +229,65 @@ class LocalMangaRepository @Inject constructor(
 		if (regularIds.isNotEmpty()) {
 			LocalMangaUtil(subject).deleteChapters(regularIds)
 		}
-		// The service already resolves a complete local chapter snapshot before deletion. Re-parsing the
-		// whole CBZ/directory here made a single-chapter delete scale with every remaining artifact and
-		// delayed the storage-change event that clears the downloaded badge in Details.
-		val suppliedChapters = subject.chapters
-		val updated = if (suppliedChapters != null) {
-			subject.copy(chapters = suppliedChapters.filterNot { it.id in ids })
-		} else {
-			getDetails(subject)
+		val root = subject.url.toUri().toFile()
+		val updated = withContext(Dispatchers.IO) {
+			when {
+				!root.exists() -> subject.copy(chapters = emptyList())
+				root.isDirectory -> {
+					// Cached ids are candidates only: aliases can share a physical artifact. Check the
+					// exact local paths after deletion without opening every remaining CBZ/EPUB.
+					val remaining = remainingDirectoryChapters(subject, root)
+					if (remaining != null) subject.copy(chapters = remaining) else getDetails(subject).copy(id = subject.id)
+				}
+				// Chapters inside a shared archive require its updated contents, not root existence.
+				else -> getDetails(subject).copy(id = subject.id)
+			}
 		}
 		if (updated.chapters.isNullOrEmpty()) {
-			// The old fallback cleared Local index/UI state when the final directory deletion failed.
-			// That produced a false "not downloaded" state while the CBZ/folder was still on disk.
-			check(delete(updated)) {
+			// A stale sidecar must not make an unrepresented physical chapter disappear with the root.
+			if (root.isDirectory) {
+				val coverEntry = MangaIndex.read(
+					FileSystem.SYSTEM, File(root, LocalMangaOutput.ENTRY_NAME_INDEX).toOkioPath(),
+				)?.getCoverEntry()
+				check(root.listFiles()?.none {
+					it.isDirectory || it.isSupportedDownloadArtifact() ||
+						(it.name != coverEntry && MimeTypes.getMimeTypeFromExtension(it.name)?.isImage == true)
+				} == true) {
+					"Chapter artifacts remain in manga container: $root"
+				}
+			}
+			// Lower layers may already have removed the last artifact and its empty container.
+			check(!root.exists() || root.deleteAwait() || !root.exists()) {
 				"Cannot delete empty manga container: ${updated.url}"
 			}
+			clearDeletedMangaState(updated, root)
 		} else {
 			localStorageChanges.emit(LocalManga(updated))
 		}
+	}
+
+	private fun remainingDirectoryChapters(subject: Manga, root: File): List<MangaChapter>? {
+		val chapters = subject.chapters ?: return null
+		val remaining = ArrayList<MangaChapter>(chapters.size)
+		for (chapter in chapters) {
+			if (chapter.source != LocalMangaSource) return null
+			val files = LegacySplitChapterCompat.componentFiles(chapter.url) ?: run {
+				val uri = chapter.url.toUri()
+				if (uri.scheme != "file") return null
+				val base = File(uri.path ?: return null)
+				listOf(if (base.isDirectory) base.resolve(uri.fragment.orEmpty()) else base)
+			}
+			if (files.any { it.canonicalFile == root.canonicalFile || !it.isInsideAny(listOf(root)) }) return null
+			val existingCount = files.count { it.exists() }
+			when (existingCount) {
+				files.size -> remaining += chapter
+				0 -> Unit
+				// Keep surviving split parts discoverable via the existing parser/compatibility bridge.
+				else -> return null
+			}
+		}
+		// An empty candidate list alone cannot prove that the container has no other chapters.
+		return remaining.takeIf { it.isNotEmpty() }
 	}
 
 	suspend fun getRemoteManga(localManga: Manga): Manga? = runCatchingCancellable {
@@ -471,14 +516,16 @@ class LocalMangaRepository @Inject constructor(
 		for (chapter in remoteManga.chapters.orEmpty()) {
 			remoteIds += chapter.id
 			val fileName = index.getChapterFileName(chapter.id) ?: continue
-			linked += chapter.copy(url = File(root, fileName).toUri().toString(), source = LocalMangaSource)
+			val file = File(root, fileName).takeIf { it.exists() } ?: continue
+			linked += chapter.copy(url = file.toUri().toString(), source = LocalMangaSource)
 		}
 		// Preserve downloaded chapters no longer present in the refreshed source list. This matches the
 		// full parser's behaviour and prevents a fast path from making an offline-only chapter vanish.
 		for (chapter in indexedInfo.chapters.orEmpty()) {
 			if (chapter.id in remoteIds) continue
 			val fileName = index.getChapterFileName(chapter.id) ?: continue
-			linked += chapter.copy(url = File(root, fileName).toUri().toString(), source = LocalMangaSource)
+			val file = File(root, fileName).takeIf { it.exists() } ?: continue
+			linked += chapter.copy(url = file.toUri().toString(), source = LocalMangaSource)
 		}
 		if (linked.isEmpty()) return null
 		val rootUri = root.toUri().toString()
