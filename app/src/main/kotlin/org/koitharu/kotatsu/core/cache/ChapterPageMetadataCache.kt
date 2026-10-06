@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -35,53 +36,114 @@ class ChapterPageMetadataCache @Inject constructor(
 		else -> "native:${BuildConfig.VERSION_CODE}"
 	}
 
-	suspend fun get(source: MangaSource, chapter: MangaChapter, sourceVersion: String = sourceFingerprint(source), now: Long = System.currentTimeMillis()): List<MangaPage>? = withContext(Dispatchers.IO) {
+	suspend fun get(
+		source: MangaSource,
+		chapter: MangaChapter,
+		sourceVersion: String = sourceFingerprint(source),
+		now: Long = System.currentTimeMillis(),
+	): List<MangaPage>? = withContext(Dispatchers.IO) {
 		synchronized(lock) {
 			val file = entryFile(source, chapter, sourceVersion)
 			if (!file.isFile) return@synchronized null
 			val entry = runCatching { JSONObject(file.readText()) }.getOrElse { error ->
-				file.delete(); logMiss("Corrupt page metadata cache entry", error); return@synchronized null
+				file.delete()
+				logMiss("Corrupt page metadata cache entry", error)
+				return@synchronized null
 			}
-			if (entry.optInt(KEY_SCHEMA, -1) != SCHEMA_VERSION) { file.delete(); return@synchronized null }
+			if (entry.optInt(KEY_SCHEMA, -1) != SCHEMA_VERSION) {
+				file.delete()
+				return@synchronized null
+			}
 			val cachedAt = entry.optLong(KEY_CACHED_AT, -1L)
-			if (cachedAt < 0L || now - cachedAt > TTL_MILLIS) { file.delete(); return@synchronized null }
-			val pagesJson = entry.optJSONArray(KEY_PAGES) ?: run { file.delete(); return@synchronized null }
+			if (cachedAt < 0L || now - cachedAt > TTL_MILLIS) {
+				file.delete()
+				return@synchronized null
+			}
+			val pagesJson = entry.optJSONArray(KEY_PAGES) ?: run {
+				file.delete()
+				return@synchronized null
+			}
 			val pages = runCatching {
 				List(pagesJson.length()) { index ->
 					val page = pagesJson.getJSONObject(index)
-					MangaPage(page.getLong(KEY_ID), page.getString(KEY_URL), page.optString(KEY_PREVIEW).takeUnless { page.isNull(KEY_PREVIEW) }, source)
+					MangaPage(
+						id = page.getLong(KEY_ID),
+						url = page.getString(KEY_URL),
+						preview = if (page.isNull(KEY_PREVIEW)) null else page.getString(KEY_PREVIEW),
+						source = source,
+					)
 				}
-			}.getOrElse { error -> file.delete(); logMiss("Invalid page metadata cache payload", error); return@synchronized null }
+			}.getOrElse { error ->
+				file.delete()
+				logMiss("Invalid page metadata cache payload", error)
+				return@synchronized null
+			}
 			file.setLastModified(now)
 			pages
 		}
 	}
 
-	suspend fun put(source: MangaSource, chapter: MangaChapter, pages: List<MangaPage>, sourceVersion: String = sourceFingerprint(source), now: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) {
+	/** Cache persistence is an optimization. A disk failure must never fail a successful source request. */
+	suspend fun put(
+		source: MangaSource,
+		chapter: MangaChapter,
+		pages: List<MangaPage>,
+		sourceVersion: String = sourceFingerprint(source),
+		now: Long = System.currentTimeMillis(),
+	) = withContext(Dispatchers.IO) {
 		synchronized(lock) {
-			directory.mkdirs()
-			val pageArray = JSONArray()
-			pages.forEach { page -> pageArray.put(JSONObject().put(KEY_ID, page.id).put(KEY_URL, page.url).put(KEY_PREVIEW, page.preview ?: JSONObject.NULL)) }
-			val payload = JSONObject().put(KEY_SCHEMA, SCHEMA_VERSION).put(KEY_CACHED_AT, now).put(KEY_PAGES, pageArray)
-			val atomicFile = AtomicFile(entryFile(source, chapter, sourceVersion))
-			val output = atomicFile.startWrite()
 			try {
-				output.write(payload.toString().toByteArray(Charsets.UTF_8)); atomicFile.finishWrite(output)
-			} catch (error: Throwable) {
-				atomicFile.failWrite(output); throw error
+				if (!directory.exists() && !directory.mkdirs()) return@synchronized
+				val pageArray = JSONArray()
+				pages.forEach { page ->
+					pageArray.put(
+						JSONObject()
+							.put(KEY_ID, page.id)
+							.put(KEY_URL, page.url)
+							.put(KEY_PREVIEW, page.preview ?: JSONObject.NULL),
+					)
+				}
+				val payload = JSONObject()
+					.put(KEY_SCHEMA, SCHEMA_VERSION)
+					.put(KEY_CACHED_AT, now)
+					.put(KEY_PAGES, pageArray)
+				val atomicFile = AtomicFile(entryFile(source, chapter, sourceVersion))
+				val output = atomicFile.startWrite()
+				try {
+					output.write(payload.toString().toByteArray(Charsets.UTF_8))
+					atomicFile.finishWrite(output)
+				} catch (error: IOException) {
+					atomicFile.failWrite(output)
+					throw error
+				}
+				trimLocked()
+			} catch (error: IOException) {
+				logMiss("Unable to persist page metadata cache entry", error)
+			} catch (error: SecurityException) {
+				logMiss("Unable to access page metadata cache", error)
 			}
-			trimLocked()
 		}
 	}
 
-	suspend fun invalidate(source: MangaSource, chapter: MangaChapter, sourceVersion: String = sourceFingerprint(source)) = withContext(Dispatchers.IO) {
-		synchronized(lock) { entryFile(source, chapter, sourceVersion).delete() }
+	suspend fun invalidate(
+		source: MangaSource,
+		chapter: MangaChapter,
+		sourceVersion: String = sourceFingerprint(source),
+	) = withContext(Dispatchers.IO) {
+		synchronized(lock) {
+			runCatching { entryFile(source, chapter, sourceVersion).delete() }
+				.onFailure { error -> logMiss("Unable to invalidate page metadata cache entry", error) }
+		}
 	}
 
 	@Suppress("DEPRECATION")
 	private fun mihonPackageVersion(packageName: String): String = runCatching {
 		val info = application.packageManager.getPackageInfo(packageName, 0)
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) "${info.versionName.orEmpty()}:${info.longVersionCode}" else "${info.versionName.orEmpty()}:${info.versionCode}"
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+			"${info.versionName.orEmpty()}:${info.longVersionCode}"
+		} else {
+			"${info.versionName.orEmpty()}:${info.versionCode}"
+		}
 	}.getOrElse { "package:$packageName" }
 
 	private fun entryFile(source: MangaSource, chapter: MangaChapter, sourceVersion: String): File {
@@ -92,10 +154,16 @@ class ChapterPageMetadataCache @Inject constructor(
 
 	private fun trimLocked() {
 		val files = directory.listFiles()?.filter(File::isFile).orEmpty()
-		if (files.size > MAX_ENTRIES) files.sortedBy(File::lastModified).take(files.size - MAX_ENTRIES).forEach(File::delete)
+		if (files.size > MAX_ENTRIES) {
+			files.sortedBy(File::lastModified)
+				.take(files.size - MAX_ENTRIES)
+				.forEach(File::delete)
+		}
 	}
 
-	private fun logMiss(message: String, error: Throwable) { if (BuildConfig.DEBUG) Log.d(TAG, message, error) }
+	private fun logMiss(message: String, error: Throwable) {
+		if (BuildConfig.DEBUG) Log.d(TAG, message, error)
+	}
 
 	private companion object {
 		const val TAG = "ChapterPageMetadata"
