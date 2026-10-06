@@ -69,23 +69,30 @@ class DetailsInteractor @Inject constructor(
 
 	suspend fun updateLocal(subject: MangaDetails?, localManga: LocalManga): MangaDetails? {
 		subject ?: return null
-		return if (subject.id == localManga.manga.id) {
-			if (subject.isLocal) {
-				subject.copy(
-					manga = localManga.manga,
-				)
-			} else {
-				subject.copy(
-					localManga = runCatchingCancellable {
-						localManga.copy(
-							manga = localMangaRepository.getDetails(localManga.manga),
-						)
-					}.getOrNull() ?: subject.local,
-				)
-			}
-		} else {
-			subject
+		if (subject.isLocal) {
+			val isSameLocal = subject.id == localManga.manga.id || subject.local?.file == localManga.file
+			return if (isSameLocal) subject.copy(manga = localManga.manga) else subject
 		}
+
+		val isDirectMatch = subject.id == localManga.manga.id || subject.local?.file == localManga.file
+		val isIndexedMatch = if (isDirectMatch) {
+			true
+		} else {
+			// DownloadWorker registers the remote -> physical Local alias before publishing the storage
+			// event. Resolve only that indexed identity here: no filesystem scan and no title matching.
+			localMangaRepository.findSavedMangaIndexed(subject.sourceManga)?.file == localManga.file
+		}
+		if (!isIndexedMatch) {
+			return subject
+		}
+
+		return subject.copy(
+			localManga = runCatchingCancellable {
+				localManga.copy(
+					manga = localMangaRepository.getDetails(localManga.manga),
+				)
+			}.getOrNull() ?: subject.local,
+		)
 	}
 
 	suspend fun findRemote(seed: Manga) = localMangaRepository.getRemoteManga(seed)
