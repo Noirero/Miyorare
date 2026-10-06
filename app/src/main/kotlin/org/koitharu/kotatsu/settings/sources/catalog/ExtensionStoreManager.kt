@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.mihon.model.MihonExtensionInfo
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.net.URI
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -47,6 +48,9 @@ internal fun validateExtensionStoreContentType(
 	selectedType: ExtensionStoreContentType,
 ) {
 	val detectedTypes = catalog.detectedExtensionStoreContentTypes()
+	// Anime repositories commonly use ordinary package names. Their explicit store assignment is
+	// authoritative; the package-name heuristic is advisory and must not make a valid repo unavailable.
+	if (selectedType == ExtensionStoreContentType.ANIME) return
 	if (detectedTypes.isNotEmpty() && selectedType !in detectedTypes) {
 		throw ExtensionStoreContentTypeMismatchException(selectedType, detectedTypes)
 	}
@@ -210,18 +214,31 @@ class ExtensionStoreManager @Inject constructor(
 
 	private suspend fun refreshLocked(forceRefresh: Boolean) {
 		val previousById = mutableAllStates.value.associateBy { it.store.id }
+		val stores = registry.state.stores
+		val cachedById = coroutineScope {
+			stores.map { store ->
+				async(Dispatchers.IO) {
+					store.id to runCatchingCancellable {
+						repository.getCachedExtensions(store.indexUrl)
+					}.getOrDefault(emptyList())
+				}
+			}.awaitAll().toMap()
+		}
 		setStates(
-			registry.state.stores.map { store ->
+			stores.map { store ->
 				val contentType = registry.contentType(store.id)
-				previousById[store.id]?.copy(
+				val previous = previousById[store.id]
+				ExtensionStoreState(
 					store = store,
 					health = StoreHealth.CHECKING,
-					contentType = contentType,
+					catalog = previous?.catalog
+						?.takeIf { it.isNotEmpty() }
+						?: cachedById[store.id].orEmpty().forContentType(contentType),
 					error = null,
-				) ?: ExtensionStoreState(store, StoreHealth.CHECKING, contentType = contentType)
+					contentType = contentType,
+				)
 			},
 		)
-		val stores = registry.state.stores
 		val refreshDispatcher = Dispatchers.IO.limitedParallelism(MAX_PARALLEL_STORE_REFRESH)
 		val validationResults = coroutineScope {
 			stores.map { store ->
@@ -248,7 +265,12 @@ class ExtensionStoreManager @Inject constructor(
 			} else {
 				previous
 			}
-			fresh.fold(
+			val checkedFresh = fresh.mapCatching { validated ->
+				validateExtensionStoreContentType(validated.catalog, contentType)
+				validated
+			}
+			val safePrevious = if (checkedFresh.isFailure && fresh.isSuccess) previous else fallbackPrevious
+			checkedFresh.fold(
 				onSuccess = { validated ->
 					// Network metadata can change, but the user's Manga/Novel/Anime assignment cannot.
 					val refreshedStore = validated.store.copy(id = store.id)
@@ -263,7 +285,7 @@ class ExtensionStoreManager @Inject constructor(
 				onFailure = { error ->
 					storeStateAfterRefresh(
 						store = store,
-						previous = fallbackPrevious,
+						previous = safePrevious,
 						result = Result.failure(error),
 						contentType = contentType,
 					)
@@ -305,14 +327,18 @@ class ExtensionStoreManager @Inject constructor(
 	}
 }
 
-private fun List<ExternalExtensionRepoEntry>.forContentType(
+private fun ExternalExtensionRepoEntry.explicitContentType(): ExtensionStoreContentType? = when {
+	packageName.contains(".animeextension.", ignoreCase = true) -> ExtensionStoreContentType.ANIME
+	isNovelExtension -> ExtensionStoreContentType.NOVEL
+	packageName.contains(".extension.", ignoreCase = true) -> ExtensionStoreContentType.MANGA
+	else -> null
+}
+
+internal fun List<ExternalExtensionRepoEntry>.forContentType(
 	contentType: ExtensionStoreContentType,
-): List<ExternalExtensionRepoEntry> = when (contentType) {
-	ExtensionStoreContentType.MANGA -> filterNot { it.isNovelExtension }
-	ExtensionStoreContentType.NOVEL -> filter { it.isNovelExtension }
-	// Anime extensions use a Mihon/Aniyomi-like package shape and have no reliable manga/novel flag.
-	// They stay visible in Manage stores but are excluded from the Manga/Novel catalogue as a whole.
-	ExtensionStoreContentType.ANIME -> this
+): List<ExternalExtensionRepoEntry> = filter { entry ->
+	val explicitType = entry.explicitContentType()
+	explicitType == null || explicitType == contentType
 }
 
 /** Preserves the old three-argument helper contract while allowing typed callers. */
@@ -341,9 +367,9 @@ fun shouldForceStoreRefresh(forceRefresh: Boolean, migrationPerformed: Boolean):
 	forceRefresh || migrationPerformed
 
 fun extensionStoreDisplayLabels(stores: List<ExtensionStoreRecord>): Map<String, String> {
-	val duplicateNames = stores.groupingBy { it.displayName.lowercase() }.eachCount()
+	val duplicateNames = stores.groupingBy { it.displayName.lowercase(Locale.ROOT) }.eachCount()
 	return stores.associate { store ->
-		val label = if (duplicateNames.getValue(store.displayName.lowercase()) > 1) {
+		val label = if (duplicateNames.getValue(store.displayName.lowercase(Locale.ROOT)) > 1) {
 			val host = runCatching { URI(store.indexUrl).host }.getOrNull()
 			host?.let { "${store.displayName} · $it" } ?: store.displayName
 		} else {
