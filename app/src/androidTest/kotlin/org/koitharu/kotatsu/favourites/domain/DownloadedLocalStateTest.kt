@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -150,8 +151,9 @@ class DownloadedLocalStateTest {
 		val notDownloaded = remote(810_016L)
 		favourite(remote)
 		favourite(notDownloaded)
+		assertEquals(setOf(remote.id, notDownloaded.id), repository.getAllManga().map { it.id }.toSet())
 		val vm = favouritesViewModel()
-		withTimeout(10_000) { vm.content.first { it.grid(remote.id)?.isSaved == false } }
+		vm.awaitContent("initial non-downloaded favourites") { it.grid(remote.id)?.isSaved == false }
 		val indexJob = launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) { events.collect(index) }
 		val ownershipJob = launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) { events.collect(ownership) }
 		try {
@@ -160,13 +162,13 @@ class DownloadedLocalStateTest {
 			db.getFavouriteDownloadIndexDao().upsert(listOf(FavouriteDownloadIndexEntity(remote.id, 0, copy.file.canonicalPath)))
 			local.rememberDownloadedIdentity(remote, copy)
 			events.emit(copy)
-			withTimeout(10_000) { vm.content.first { it.grid(remote.id)?.isSaved == true } }
+			vm.awaitContent("completed download badge") { it.grid(remote.id)?.isSaved == true }
 			vm.setFilterOption(ListFilterOption.Downloaded, true)
-			withTimeout(10_000) { vm.content.first { it.grid(remote.id)?.isSaved == true && it.grid(notDownloaded.id) == null } }
+			vm.awaitContent("Downloaded filter") { it.grid(remote.id)?.isSaved == true && it.grid(notDownloaded.id) == null }
 			vm.setFilterOption(ListFilterOption.NOT_DOWNLOADED, true)
-			withTimeout(10_000) { vm.content.first { it.grid(remote.id) == null && it.grid(notDownloaded.id)?.isSaved == false } }
+			vm.awaitContent("Not Downloaded filter") { it.grid(remote.id) == null && it.grid(notDownloaded.id)?.isSaved == false }
 			vm.setFilterOption(ListFilterOption.NOT_DOWNLOADED, false)
-			withTimeout(10_000) { vm.content.first { it.grid(remote.id)?.isSaved == true && it.grid(notDownloaded.id)?.isSaved == false } }
+			vm.awaitContent("inactive download filter") { it.grid(remote.id)?.isSaved == true && it.grid(notDownloaded.id)?.isSaved == false }
 
 			// Repeated concrete events need a fresh lookup without publishing a transient false badge.
 			var missingBadge = false
@@ -212,6 +214,9 @@ class DownloadedLocalStateTest {
 		val parent = checkNotNull(normalCopy.file.parentFile)
 		index.put(normalCopy.copy(file = File(parent, "../${parent.name}/${normalCopy.file.name}")))
 		index.put(privateCopy)
+		assertEquals(setOf(normal.title, privateManga.title), index.getPersistedSnapshot().map { it.manga.title }.toSet())
+		assertEquals(normal.chapters, data.findMangaById(normal.id, withChapters = true)?.chapters)
+		assertEquals(privateManga.chapters, data.findMangaById(privateManga.id, withChapters = true)?.chapters)
 		val titleOnly = normal.copy(id = 810_015L, chapters = emptyList())
 		favourite(titleOnly)
 		assertTrue(classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(normal.id)).isEmpty())
@@ -219,9 +224,6 @@ class DownloadedLocalStateTest {
 		val ownershipJob = launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) { events.collect(ownership) }
 		try {
 			reconciler.reconcileOnce()
-			withTimeout(10_000) {
-				while (classifier.getDownloadedIds(FavouriteSpace.PRIVATE, listOf(privateManga.id)).isEmpty()) delay(20)
-			}
 			assertEquals(setOf(normal.id), classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(normal.id, privateManga.id, titleOnly.id)))
 			assertEquals(setOf(privateManga.id), classifier.getDownloadedIds(FavouriteSpace.PRIVATE, listOf(normal.id, privateManga.id)))
 			assertFalse(titleOnly.id in index)
@@ -311,6 +313,13 @@ class DownloadedLocalStateTest {
 	}
 
 	private fun List<ListModel>.grid(id: Long) = filterIsInstance<MangaGridModel>().find { it.id == id }
+
+	private suspend fun FavouritesListViewModel.awaitContent(
+		stage: String, predicate: (List<ListModel>) -> Boolean,
+	) {
+		val result = withTimeoutOrNull(10_000) { content.first(predicate) }
+		assertNotNull("$stage: content=${content.value}; downloaded=${classifier.getDownloadedIds(FavouriteSpace.NORMAL)}; roots=${destinations.readableRoots(FavouriteSpace.NORMAL)}", result)
+	}
 
 	private class GenericList(
 		settings: AppSettings, data: MangaDataRepository, events: MutableSharedFlow<LocalManga?>,
