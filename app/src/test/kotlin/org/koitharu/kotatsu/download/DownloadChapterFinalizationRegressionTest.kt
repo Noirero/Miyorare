@@ -1,37 +1,37 @@
 package org.koitharu.kotatsu.download
 
-import java.nio.file.Files
-import java.util.zip.ZipFile
-import java.util.zip.ZipOutputStream
-import kotlin.io.path.outputStream
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
-import org.koitharu.kotatsu.download.ui.worker.accountStagedChapter
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.File
 
 class DownloadChapterFinalizationRegressionTest {
 
 	@Test
-	fun `staged chapter counts as completed even before durable artifact exists`() {
-		val accounting = accountStagedChapter(flushCreatedArtifact = false)
-		assertTrue(accounting.requestedChapterCompleted)
-		assertTrue(!accounting.durableArtifactAvailable)
-	}
+	fun `multiple cbz chapter finalization closes archive only once`() {
+		val source = File(
+			"src/main/kotlin/org/koitharu/kotatsu/local/data/output/LocalMangaDirOutput.kt",
+		).readText()
 
-	@Test
-	fun `zip output close finalizes archive exactly once`() {
-		val path = Files.createTempFile("miyorare-finalize-", ".zip")
-		try {
-			ZipOutputStream(path.outputStream()).use { zip ->
-				zip.putNextEntry(java.util.zip.ZipEntry("chapter.txt"))
-				zip.write("ok".toByteArray())
-				zip.closeEntry()
-			}
-			ZipFile(path.toFile()).use { zip ->
-				assertEquals("ok", zip.getInputStream(zip.getEntry("chapter.txt")).bufferedReader().readText())
-			}
-		} finally {
-			Files.deleteIfExists(path)
-		}
+		val finalizer = source.substringAfter("private suspend fun ZipOutput.flushAndFinish()")
+			.substringBefore("private fun chapterFileName")
+		val executable = finalizer
+			.lineSequence()
+			.map { it.substringBefore("//") }
+			.joinToString("")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(
+			"Closing ZipOutput must be the single terminal operation for a completed chapter",
+			executable.contains("try{close()null}"),
+		)
+		assertFalse(
+			"Do not finish and then close the same ZipOutput; close already finalizes ZipOutputStream",
+			executable.contains("finish()"),
+		)
+		assertTrue(
+			"A chapter is complete only after its final CBZ exists and is non-empty",
+			executable.contains("check(resFile.isFile&&resFile.length()>0L)"),
+		)
 	}
 }
