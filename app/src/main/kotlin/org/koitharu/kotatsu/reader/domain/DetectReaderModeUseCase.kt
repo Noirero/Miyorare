@@ -58,7 +58,10 @@ class DetectReaderModeUseCase @Inject constructor(
 		val chapter = state?.let { manga.findChapterById(it.chapterId) }
 			?: manga.chapters?.firstOrNull()
 			?: error("There are no chapters in this manga")
-		val repo = mangaRepositoryFactory.create(manga.source)
+		// Details can retain the remote manga identity while a downloaded chapter is LocalMangaSource.
+		// Mode detection must follow that selected chapter source instead of sending its local file URL
+		// back through the remote parser before Reader can display an already-downloaded chapter.
+		val repo = mangaRepositoryFactory.create(chapter.source)
 		val pages = repo.getPages(chapter)
 		return runCatchingCancellable {
 			val isWebtoon = guessMangaIsWebtoon(repo, pages)
