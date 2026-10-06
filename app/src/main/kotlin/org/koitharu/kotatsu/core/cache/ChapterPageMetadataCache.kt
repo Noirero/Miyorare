@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.core.cache
 
 import android.app.Application
+import android.os.Build
 import android.util.AtomicFile
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -8,9 +9,12 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.BuildConfig
+import org.koitharu.kotatsu.lnreader.model.LnMangaSource
+import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
@@ -25,15 +29,22 @@ import javax.inject.Singleton
  */
 @Singleton
 class ChapterPageMetadataCache @Inject constructor(
-	application: Application,
+	private val application: Application,
 ) {
 	private val directory = File(application.cacheDir, DIRECTORY_NAME)
 	private val lock = Any()
 
+	fun sourceFingerprint(source: MangaSource): String = when (source) {
+		is LnMangaSource -> "ln:${source.plugin.version}"
+		is TsukiMangaSource -> "tsuki:${source.plugin.version}:${source.plugin.sha256}"
+		is MihonMangaSource -> "mihon:${mihonPackageVersion(source.pkgName)}"
+		else -> "native:${BuildConfig.VERSION_CODE}"
+	}
+
 	suspend fun get(
 		source: MangaSource,
 		chapter: MangaChapter,
-		sourceVersion: String,
+		sourceVersion: String = sourceFingerprint(source),
 		now: Long = System.currentTimeMillis(),
 	): List<MangaPage>? = withContext(Dispatchers.IO) {
 		synchronized(lock) {
@@ -80,8 +91,8 @@ class ChapterPageMetadataCache @Inject constructor(
 	suspend fun put(
 		source: MangaSource,
 		chapter: MangaChapter,
-		sourceVersion: String,
 		pages: List<MangaPage>,
+		sourceVersion: String = sourceFingerprint(source),
 		now: Long = System.currentTimeMillis(),
 	) = withContext(Dispatchers.IO) {
 		synchronized(lock) {
@@ -112,12 +123,30 @@ class ChapterPageMetadataCache @Inject constructor(
 		}
 	}
 
-	suspend fun invalidate(source: MangaSource, chapter: MangaChapter, sourceVersion: String) =
-		withContext(Dispatchers.IO) {
-			synchronized(lock) {
-				entryFile(source, chapter, sourceVersion).delete()
-			}
+	suspend fun invalidate(
+		source: MangaSource,
+		chapter: MangaChapter,
+		sourceVersion: String = sourceFingerprint(source),
+	) = withContext(Dispatchers.IO) {
+		synchronized(lock) {
+			entryFile(source, chapter, sourceVersion).delete()
 		}
+	}
+
+	private fun mihonPackageVersion(packageName: String): String = runCatching {
+		val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+			application.packageManager.getPackageInfo(packageName, 0L)
+		} else {
+			@Suppress("DEPRECATION")
+			application.packageManager.getPackageInfo(packageName, 0)
+		}
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+			"${info.versionName.orEmpty()}:${info.longVersionCode}"
+		} else {
+			@Suppress("DEPRECATION")
+			"${info.versionName.orEmpty()}:${info.versionCode}"
+		}
+	}.getOrElse { "package:$packageName" }
 
 	private fun entryFile(source: MangaSource, chapter: MangaChapter, sourceVersion: String): File {
 		val identity = "${source.name}|$sourceVersion|${chapter.id}|${chapter.url}"
