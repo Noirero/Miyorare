@@ -116,7 +116,9 @@ class DownloadedLocalStateTest {
 		}
 		hiltRule.inject()
 		db.clearAllTables()
-		root = File(context.cacheDir, "batch11-${System.nanoTime()}").apply { check(mkdirs()) }
+		// The cache directory can use Android's /data/user/0 alias, while ownership persists canonical
+		// physical paths. Use one physical root for the fixture and its configured destination.
+		root = File(context.cacheDir, "batch11-${System.nanoTime()}").canonicalFile.apply { check(mkdirs()) }
 		privateRoot = File(root, "private").apply { check(mkdirs()) }
 		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 		savedPrefs = prefs.all.toMap()
@@ -161,6 +163,7 @@ class DownloadedLocalStateTest {
 			// Match the already-authoritative DownloadWorker: durable ownership and alias precede completion.
 			db.getFavouriteDownloadIndexDao().upsert(listOf(FavouriteDownloadIndexEntity(remote.id, 0, copy.file.canonicalPath)))
 			local.rememberDownloadedIdentity(remote, copy)
+			assertEquals(setOf(remote.id), classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(remote.id)))
 			events.emit(copy)
 			vm.awaitContent("completed download badge") { it.grid(remote.id)?.isSaved == true }
 			vm.setFilterOption(ListFilterOption.Downloaded, true)
