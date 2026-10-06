@@ -6,6 +6,16 @@
 	android:layout_height="wrap_content"
 	android:defaultFocusHighlightEnabled="false">
 
+	<ImageView
+		android:id="@+id/animated_image"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:adjustViewBounds="true"
+		android:contentDescription="@null"
+		android:minHeight="1dp"
+		android:scaleType="fitCenter"
+		android:visibility="gone" />
+
 	<org.koitharu.kotatsu.reader.ui.pager.webtoon.WebtoonImageView
 		android:id="@+id/ssiv"
 		android:layout_width="match_parent"
