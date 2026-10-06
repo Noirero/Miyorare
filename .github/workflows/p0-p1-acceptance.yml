@@ -89,6 +89,7 @@ jobs:
           --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest
           --tests org.koitharu.kotatsu.favourites.ui.categories.select.FavouriteCategoryBatchingRegressionTest
           --tests org.koitharu.kotatsu.performance.RuntimeLagHardeningRegressionTest
+          --tests org.koitharu.kotatsu.favourites.domain.DownloadedLocalPipelineRegressionTest
           --no-daemon --stacktrace
 
       - name: Upload JVM acceptance evidence
@@ -185,7 +186,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >
             ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
-            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest,org.koitharu.kotatsu.favourites.domain.DownloadedLocalStateTest
 
       - name: Upload Android acceptance evidence
         if: always()
@@ -195,6 +196,7 @@ jobs:
           path: |
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
+            app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
           retention-days: 14
 

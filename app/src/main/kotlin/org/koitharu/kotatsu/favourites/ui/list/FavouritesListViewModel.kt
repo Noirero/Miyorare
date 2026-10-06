@@ -3,6 +3,9 @@ package org.koitharu.kotatsu.favourites.ui.list
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +19,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -43,17 +47,17 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.DownloadedContentClassifier
 import org.koitharu.kotatsu.favourites.domain.DownloadedFavouritesSortPreferences
+import org.koitharu.kotatsu.favourites.domain.FavoritesListQuickFilter
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
-import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
+import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode
 import org.koitharu.kotatsu.favourites.domain.FavouriteSourceFilterStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteUnreadCounter
-import org.koitharu.kotatsu.favourites.domain.FavoritesListQuickFilter
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchMatcher
-import org.koitharu.kotatsu.favourites.domain.LibraryDuplicateScanUseCase
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.LibraryDuplicateScanUseCase
 import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.debounceFavouritesSearch
@@ -86,8 +90,6 @@ import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
-import java.util.concurrent.atomic.AtomicBoolean
-import javax.inject.Inject
 
 // Keep the first render light, then grow in larger chunks as the user moves through a large library.
 // RecyclerView still virtualizes rows; these values only control how many list models/query rows are
@@ -177,6 +179,7 @@ class FavouritesListViewModel @Inject constructor(
 	private var lastSearchQuery = FavouritesContainerFragment.searchQuery.value.trim()
 	private val emptyCardSnapshot = FavouriteUnreadCounter.Snapshot(emptyMap(), emptyMap())
 	private val cardEnrichment = MutableStateFlow<CardEnrichment?>(null)
+	private val cardEnrichmentRevision = AtomicLong()
 	private var pendingCardEnrichmentKey: CardEnrichmentKey? = null
 	private var cardEnrichmentJob: Job? = null
 
@@ -190,18 +193,14 @@ class FavouritesListViewModel @Inject constructor(
 		viewModelScope.launch(Dispatchers.Default) {
 			libraryGroupsRepository.repairInvalidGroups(favouriteSpace)
 		}
-		if (usesSpaceScopedDownloadStatus) {
-			viewModelScope.launch(Dispatchers.Default) {
-				repository.observeDownloadedChanges().collect {
-					// Rebuild the scoped SQL query and the batch badge snapshot as soon as local_index changes.
-					invalidateCardEnrichment()
-					refreshTrigger.value = Any()
-				}
-			}
-		}
 		viewModelScope.launch(Dispatchers.Default) {
-			LocalMangaIndex.rebuildEvents.collect {
-				// Re-render from the durable indexes only; a rebuild never enables per-card storage probing.
+			merge(
+				repository.observeDownloadedChanges(),
+				localStorageChanges,
+				LocalMangaIndex.rebuildEvents,
+			).collect {
+				// Concrete events can update an existing artifact without changing an index row.
+				// Requery card state as well as the filter, retaining the previous badge until it settles.
 				invalidateCardEnrichment()
 				refreshTrigger.value = Any()
 			}
@@ -362,6 +361,7 @@ class FavouritesListViewModel @Inject constructor(
 				searchMatcher.filter(scanState.mangas, display.query)
 			}
 			val enrichmentKey = CardEnrichmentKey(
+				revision = cardEnrichmentRevision.get(),
 				ids = scanned.map { it.id },
 				includeUnread = display.options.showUnread,
 				includeDownloaded = usesSpaceScopedDownloadStatus && display.options.showDownloaded,
@@ -450,6 +450,7 @@ class FavouritesListViewModel @Inject constructor(
 		)
 		val visible = searched.take(display.limit)
 		val enrichmentKey = CardEnrichmentKey(
+			revision = cardEnrichmentRevision.get(),
 			ids = visible.map { it.id },
 			includeUnread = display.options.showUnread,
 			includeDownloaded = usesSpaceScopedDownloadStatus &&
@@ -838,7 +839,8 @@ class FavouritesListViewModel @Inject constructor(
 		if (cardEnrichment.value?.key == key || pendingCardEnrichmentKey == key) return
 
 		val previous = cardEnrichment.value?.takeIf { cached ->
-			cached.key.includeUnread == key.includeUnread &&
+			cached.key.revision == key.revision &&
+				cached.key.includeUnread == key.includeUnread &&
 				cached.key.includeDownloaded == key.includeDownloaded &&
 				key.ids.size >= cached.key.ids.size &&
 				key.ids.subList(0, cached.key.ids.size) == cached.key.ids
@@ -867,7 +869,9 @@ class FavouritesListViewModel @Inject constructor(
 				}
 				// Details only needs the tiny history handoff. Reuse old metadata and query only the page delta.
 				detailsNavigationCache.updateHistory(key.ids.takeLast(16), snapshot::getHistory)
-				cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
+				if (key.revision == cardEnrichmentRevision.get()) {
+					cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
+				}
 			} finally {
 				if (pendingCardEnrichmentKey == key) pendingCardEnrichmentKey = null
 			}
@@ -875,10 +879,10 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	private fun invalidateCardEnrichment() {
+		cardEnrichmentRevision.incrementAndGet()
 		cardEnrichmentJob?.cancel()
 		cardEnrichmentJob = null
 		pendingCardEnrichmentKey = null
-		cardEnrichment.value = null
 	}
 
 	private suspend fun List<Manga>.mapList(
@@ -1231,6 +1235,7 @@ class FavouritesListViewModel @Inject constructor(
 	)
 
 	private data class CardEnrichmentKey(
+		val revision: Long,
 		val ids: List<Long>,
 		val includeUnread: Boolean,
 		val includeDownloaded: Boolean,

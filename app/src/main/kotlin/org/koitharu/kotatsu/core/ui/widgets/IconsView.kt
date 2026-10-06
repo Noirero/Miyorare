@@ -18,16 +18,16 @@ class IconsView @JvmOverloads constructor(
 
 	private var iconSize = LayoutParams.WRAP_CONTENT
 	private var iconSpacing = 0
+	private var nextIconIndex = 0
 
 	val iconsCount: Int
 		get() {
-			var count = 0
-			repeat(childCount) { i ->
-				if (getChildAt(i).isVisible) {
-					count++
-				}
+			// Commit the binding pass: only icons removed from the final set are hidden.
+			for (i in nextIconIndex until childCount) {
+				val child = getChildAt(i)
+				if (child.isVisible) child.isVisible = false
 			}
-			return count
+			return nextIconIndex
 		}
 
 	init {
@@ -38,31 +38,31 @@ class IconsView @JvmOverloads constructor(
 	}
 
 	fun clearIcons() {
-		repeat(childCount) { i ->
-			getChildAt(i).isVisible = false
-		}
+		// Start a binding pass without temporarily hiding icons that will be reused.
+		nextIconIndex = 0
 	}
 
 	fun addIcon(drawable: Drawable) {
 		val imageView = getNextImageView()
-		imageView.setImageDrawable(drawable)
-		imageView.isVisible = true
+		if (imageView.drawable !== drawable) imageView.setImageDrawable(drawable)
+		imageView.tag = null
+		if (!imageView.isVisible) imageView.isVisible = true
+		nextIconIndex++
 	}
 
 	fun addIcon(@DrawableRes resId: Int) {
 		val imageView = getNextImageView()
-		imageView.setImageResource(resId)
-		imageView.isVisible = true
+		if (imageView.tag != resId) {
+			imageView.setImageResource(resId)
+			imageView.tag = resId
+		}
+		if (!imageView.isVisible) imageView.isVisible = true
+		nextIconIndex++
 	}
 
 	private fun getNextImageView(): ImageView {
-		repeat(childCount) { i ->
-			val child = getChildAt(i)
-			if (child is ImageView && !child.isVisible) {
-				return child
-			}
-		}
-		return addImageView()
+		val existing = getChildAt(nextIconIndex)
+		return if (existing is ImageView) existing else addImageView()
 	}
 
 	private fun addImageView() = ImageView(context).also {
