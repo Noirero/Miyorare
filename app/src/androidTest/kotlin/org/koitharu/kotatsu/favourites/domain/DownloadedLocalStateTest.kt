@@ -201,11 +201,11 @@ class DownloadedLocalStateTest {
 
 	@Test fun legacyRepairRequiresChapterEvidenceAndPreservesSpaceOwnership() = runBlocking {
 		val normal = remote(810_013L)
-		val private = remote(810_014L)
+		val privateManga = remote(810_014L)
 		favourite(normal)
-		favourite(private, FavouriteSpace.PRIVATE)
+		favourite(privateManga, FavouriteSpace.PRIVATE)
 		val normalCopy = download(root, normal)
-		val privateCopy = download(privateRoot, private)
+		val privateCopy = download(privateRoot, privateManga)
 		index.put(normalCopy); index.put(privateCopy)
 		val titleOnly = normal.copy(id = 810_015L, chapters = emptyList())
 		favourite(titleOnly)
@@ -215,10 +215,10 @@ class DownloadedLocalStateTest {
 		try {
 			reconciler.reconcileOnce()
 			withTimeout(10_000) {
-				while (classifier.getDownloadedIds(FavouriteSpace.PRIVATE, listOf(private.id)).isEmpty()) delay(20)
+				while (classifier.getDownloadedIds(FavouriteSpace.PRIVATE, listOf(privateManga.id)).isEmpty()) delay(20)
 			}
-			assertEquals(setOf(normal.id), classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(normal.id, private.id, titleOnly.id)))
-			assertEquals(setOf(private.id), classifier.getDownloadedIds(FavouriteSpace.PRIVATE, listOf(normal.id, private.id)))
+			assertEquals(setOf(normal.id), classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(normal.id, privateManga.id, titleOnly.id)))
+			assertEquals(setOf(privateManga.id), classifier.getDownloadedIds(FavouriteSpace.PRIVATE, listOf(normal.id, privateManga.id)))
 			assertFalse(titleOnly.id in index)
 			assertTrue(normalCopy.file.exists() && privateCopy.file.exists())
 		} finally {
@@ -271,6 +271,7 @@ class DownloadedLocalStateTest {
 		val source = MissingMangaSource("BATCH11_FIXTURE")
 		return SampleData.manga.copy(
 			id = id, title = "Batch 11 $id", altTitles = emptySet(), source = source, url = "/batch11/$id",
+			contentRating = null, tags = emptySet(), coverUrl = null, largeCoverUrl = null,
 			chapters = listOf(SampleData.chapter.copy(id = id * 10, title = "Chapter 1", number = 1f, scanlator = null, source = source)),
 		)
 	}
