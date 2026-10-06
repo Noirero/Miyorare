@@ -1,10 +1,6 @@
 name: P0 P1 Acceptance Gate
 
 on:
-  # Batch 11 staging validation runs on the pushed branch SHA, before integration.
-  push:
-    branches:
-      - amain2-batch11-downloaded-local-r2
   pull_request:
     branches:
       - beta
@@ -107,7 +103,7 @@ jobs:
 
   android-acceptance:
     name: P0/P1 Android 15 acceptance
-    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'amain2-batch11-downloaded-local-r2'
+    if: github.event_name == 'workflow_dispatch'
     needs: jvm-acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 75
