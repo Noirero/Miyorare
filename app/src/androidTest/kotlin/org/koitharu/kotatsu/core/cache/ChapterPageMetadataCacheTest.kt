@@ -8,9 +8,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaPage
-import org.koitharu.kotatsu.parsers.model.MangaSource
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -18,7 +18,7 @@ class ChapterPageMetadataCacheTest {
 
 	private lateinit var application: Application
 	private lateinit var cache: ChapterPageMetadataCache
-	private val source = MangaSource("TEST_PAGE_METADATA")
+	private val source = LocalMangaSource
 	private val chapter = MangaChapter(
 		id = 101L,
 		title = "Chapter 1",
