@@ -208,7 +208,10 @@ class DownloadedLocalStateTest {
 		favourite(privateManga, FavouriteSpace.PRIVATE)
 		val normalCopy = download(root, normal)
 		val privateCopy = download(privateRoot, privateManga)
-		index.put(normalCopy); index.put(privateCopy)
+		// A persisted path can be lexically different from its canonical reconnect alias.
+		val parent = checkNotNull(normalCopy.file.parentFile)
+		index.put(normalCopy.copy(file = File(parent, "../${parent.name}/${normalCopy.file.name}")))
+		index.put(privateCopy)
 		val titleOnly = normal.copy(id = 810_015L, chapters = emptyList())
 		favourite(titleOnly)
 		assertTrue(classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(normal.id)).isEmpty())
@@ -222,6 +225,7 @@ class DownloadedLocalStateTest {
 			assertEquals(setOf(normal.id), classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(normal.id, privateManga.id, titleOnly.id)))
 			assertEquals(setOf(privateManga.id), classifier.getDownloadedIds(FavouriteSpace.PRIVATE, listOf(normal.id, privateManga.id)))
 			assertFalse(titleOnly.id in index)
+			assertEquals(normal.source.name, data.findMangaById(normal.id, withChapters = false)?.source?.name)
 			assertTrue(normalCopy.file.exists() && privateCopy.file.exists())
 		} finally {
 			indexJob.cancel(); ownershipJob.cancel()

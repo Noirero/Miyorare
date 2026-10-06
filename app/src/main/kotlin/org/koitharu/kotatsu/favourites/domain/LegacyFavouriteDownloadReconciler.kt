@@ -80,7 +80,8 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 				))
 				// Publish the verified remote identity through the normal storage pipeline so both the Local
 				// index and favourite_download_index update and active Favorites screens invalidate naturally.
-				localStorageChanges.emit(linked)
+				// Match the canonical alias path so the Local index cannot overwrite remote metadata.
+				localStorageChanges.emit(linked.copy(file = linked.file.canonicalFile))
 			}
 		}
 		// Unavailable storage must not make a one-shot repair permanently forget its candidates.
