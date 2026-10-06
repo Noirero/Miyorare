@@ -14,6 +14,7 @@ import org.koitharu.kotatsu.core.prefs.TriStateOption
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
+import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -95,12 +96,19 @@ class DetailsInteractor @Inject constructor(
 		}
 
 		val updatedLocal = if (localManga.manga.chapters != null) {
-			// Partial deletion already publishes a verified, remote-keyed Local snapshot. Preserve it
-			// instead of reparsing sidecar-free files into new filesystem-only chapter ids.
-			localManga.copy(manga = localManga.manga.copy(chapters = localManga.manga.chapters?.toList()))
+			// Concrete live snapshots can come from two producers: partial deletion already carries the
+			// surviving physical chapter list, while DownloadWorker parses the freshly finished artifact
+			// and can therefore carry filesystem-derived chapter ids. Canonicalize that in-memory snapshot
+			// against the remote manga before exposing it to MangaDetails. This keeps the verified event
+			// path/snapshot, avoids a second filesystem parse, and makes Reader select LocalMangaSource
+			// immediately instead of falling back to the network until Details is refreshed.
+			LegacyChapterDownloadCompat.linkToRemote(
+				subject.sourceManga,
+				localManga.copy(manga = localManga.manga.copy(chapters = localManga.manga.chapters?.toList())),
+			)
 		} else {
-			// Download completion events omit chapters. Hydrate only the verified event path and keep
-			// the repository's existing chapter/legacy compatibility mapping to the remote snapshot.
+			// Download completion events without chapter details are hydrated only from the verified event
+			// path and keep the repository's existing chapter/legacy compatibility mapping.
 			localMangaRepository.findSavedMangaAtPath(subject.sourceManga, localManga.file, rememberIdentity = false)
 		} ?: return subject
 		return subject.copy(localManga = updatedLocal)
