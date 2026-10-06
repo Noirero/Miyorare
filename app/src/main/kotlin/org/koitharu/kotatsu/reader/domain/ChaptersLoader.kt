@@ -91,7 +91,7 @@ class ChaptersLoader @Inject constructor(
 	@CheckResult
 	suspend fun refreshChapterPages(chapterId: Long): Boolean {
 		val chapter = checkNotNull(chapters[chapterId]) { "Requested chapter not found" }
-		val sourceChapter = if (chapter.source == LocalMangaSource) sourceChapters[chapterId] else chapter
+		val sourceChapter = (if (chapter.source == LocalMangaSource) sourceChapters[chapterId] else chapter)
 			?: return false
 		if (sourceChapter.source == LocalMangaSource) return false
 		val repository = mangaRepositoryFactory.create(sourceChapter.source)
