@@ -6,6 +6,14 @@
 	android:layout_width="match_parent"
 	android:layout_height="match_parent">
 
+	<ImageView
+		android:id="@+id/animated_image"
+		android:layout_width="match_parent"
+		android:layout_height="match_parent"
+		android:contentDescription="@null"
+		android:scaleType="fitCenter"
+		android:visibility="gone" />
+
 	<com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 		android:id="@+id/ssiv"
 		android:layout_width="match_parent"
