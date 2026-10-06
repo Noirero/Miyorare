@@ -43,12 +43,14 @@ data class DownloadItemModel(
 	val chapters: StateFlow<List<DownloadChapter>?>,
 	val uiAction: DownloadUiAction? = null,
 	val workIds: Set<UUID> = setOf(id),
+	val groupCanPause: Boolean? = null,
+	val groupCanResume: Boolean? = null,
 ) : ListModel, Comparable<DownloadItemModel> {
 	val selectionId: Long get() = manga?.id ?: id.mostSignificantBits
 	val percent: Float get() = if (max > 0) progress / max.toFloat() else 0f
 	val hasEta: Boolean get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && !isFinalizing && phase == DownloadPhase.DOWNLOADING && !isIndeterminate && eta > 0L
-	val canPause: Boolean get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && !isFinalizing && error == null
-	val canResume: Boolean get() = uiAction == null && workState == WorkInfo.State.RUNNING && isPaused
+	val canPause: Boolean get() = groupCanPause ?: (uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && !isFinalizing && error == null)
+	val canResume: Boolean get() = groupCanResume ?: (uiAction == null && workState == WorkInfo.State.RUNNING && isPaused)
 	val canCancel: Boolean get() = uiAction != DownloadUiAction.CANCELLING && !workState.isFinished
 	fun getEtaString(): CharSequence? = if (hasEta) DateUtils.getRelativeTimeSpanString(eta, System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS) else null
 	fun getErrorMessage(context: Context): CharSequence? = if (error != null) buildSpannedString { bold { color(context.getThemeColor(appcompatR.attr.colorError, Color.RED)) { append(error) } } } else null
@@ -62,3 +64,17 @@ data class DownloadItemModel(
 		else -> ListModelDiffCallback.PAYLOAD_ANYTHING_CHANGED
 	}
 }
+
+/** Historical progress contributes totals, while only members of the visible state own live flags. */
+internal fun DownloadItemModel.withGroupRuntimeState(
+	stateMembers: List<DownloadItemModel>,
+	members: List<DownloadItemModel>,
+): DownloadItemModel = copy(
+	isIndeterminate = stateMembers.any { it.isIndeterminate },
+	isFinalizing = stateMembers.any { it.isFinalizing },
+	retryAttempt = stateMembers.maxOfOrNull { it.retryAttempt } ?: retryAttempt,
+	eta = stateMembers.map { it.eta }.filter { it > 0L }.maxOrNull() ?: -1L,
+	isStuck = stateMembers.any { it.isStuck },
+	groupCanPause = members.any { it.canPause },
+	groupCanResume = members.any { it.canResume },
+)

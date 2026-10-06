@@ -451,10 +451,10 @@ fun downloadItemAD(
 					.takeIf { it.isNotEmpty() }
 					?.joinToString("   •   ")
 				binding.buttonCancel.isVisible = true
-				binding.buttonResume.isVisible = item.isPaused
+				binding.buttonResume.isVisible = item.canResume
 				binding.buttonResume.setText(if (item.error == null) R.string.resume else R.string.retry)
-				binding.buttonSkip.isVisible = item.isPaused && item.error != null
-				binding.buttonSkipAll.isVisible = item.isPaused && item.error != null
+				binding.buttonSkip.isVisible = item.canResume && item.error != null
+				binding.buttonSkipAll.isVisible = item.canResume && item.error != null
 				binding.buttonPause.isVisible = item.canPause
 			}
 
