@@ -147,7 +147,9 @@ class DownloadedLocalStateTest {
 
 	@Test fun completionUpdatesBadgeAndBothNativeFiltersWithoutDetails() = runBlocking {
 		val remote = remote(810_011L)
+		val notDownloaded = remote(810_016L)
 		favourite(remote)
+		favourite(notDownloaded)
 		val vm = favouritesViewModel()
 		withTimeout(10_000) { vm.content.first { it.grid(remote.id)?.isSaved == false } }
 		val indexJob = launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) { events.collect(index) }
@@ -160,11 +162,11 @@ class DownloadedLocalStateTest {
 			events.emit(copy)
 			withTimeout(10_000) { vm.content.first { it.grid(remote.id)?.isSaved == true } }
 			vm.setFilterOption(ListFilterOption.Downloaded, true)
-			withTimeout(10_000) { vm.content.first { it.grid(remote.id)?.isSaved == true } }
+			withTimeout(10_000) { vm.content.first { it.grid(remote.id)?.isSaved == true && it.grid(notDownloaded.id) == null } }
 			vm.setFilterOption(ListFilterOption.NOT_DOWNLOADED, true)
-			withTimeout(10_000) { vm.content.first { it.grid(remote.id) == null } }
+			withTimeout(10_000) { vm.content.first { it.grid(remote.id) == null && it.grid(notDownloaded.id)?.isSaved == false } }
 			vm.setFilterOption(ListFilterOption.NOT_DOWNLOADED, false)
-			withTimeout(10_000) { vm.content.first { it.grid(remote.id)?.isSaved == true } }
+			withTimeout(10_000) { vm.content.first { it.grid(remote.id)?.isSaved == true && it.grid(notDownloaded.id)?.isSaved == false } }
 
 			// Repeated concrete events need a fresh lookup without publishing a transient false badge.
 			var missingBadge = false

@@ -7,9 +7,11 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableSharedFlow
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
@@ -31,6 +33,7 @@ import org.koitharu.kotatsu.parsers.model.Manga
 class LegacyFavouriteDownloadReconciler @Inject constructor(
 	@ApplicationContext context: Context,
 	private val favouritesRepository: FavouritesRepository,
+	private val database: MangaDatabase,
 	private val mangaDataRepository: MangaDataRepository,
 	private val localMangaIndex: LocalMangaIndex,
 	private val localMangaRepository: LocalMangaRepository,
@@ -66,6 +69,11 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 				if (candidate.isLocal || !candidate.hasLegacyTitleCandidate(localTitles)) continue
 				val remote = mangaDataRepository.findMangaById(candidate.id, withChapters = true) ?: continue
 				val linked = localMangaRepository.findSavedMangaIndexedByTitle(remote, roots) ?: continue
+				// Persist verified ownership before publishing/marking completion, as DownloadWorker does.
+				// SharedFlow delivery alone does not guarantee its asynchronous index collector has committed.
+				database.getFavouriteDownloadIndexDao().upsert(listOf(
+					FavouriteDownloadIndexEntity(remote.id, space.dbValue, linked.file.canonicalPath),
+				))
 				// Publish the verified remote identity through the normal storage pipeline so both the Local
 				// index and favourite_download_index update and active Favorites screens invalidate naturally.
 				localStorageChanges.emit(linked)
