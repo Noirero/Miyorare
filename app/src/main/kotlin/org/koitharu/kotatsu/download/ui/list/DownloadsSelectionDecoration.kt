@@ -43,7 +43,7 @@ class DownloadsSelectionDecoration(context: Context) : AbstractSelectionItemDeco
 	override fun getItemId(parent: RecyclerView, child: View): Long {
 		val holder = parent.getChildViewHolder(child) ?: return NO_ID
 		val item = holder.getItem(DownloadItemModel::class.java) ?: return NO_ID
-		return item.id.mostSignificantBits
+		return item.selectionId
 	}
 
 	override fun onDrawForeground(
