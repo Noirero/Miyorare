@@ -89,6 +89,7 @@ jobs:
           --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest
           --tests org.koitharu.kotatsu.favourites.ui.categories.select.FavouriteCategoryBatchingRegressionTest
           --tests org.koitharu.kotatsu.performance.RuntimeLagHardeningRegressionTest
+          --tests org.koitharu.kotatsu.download.ui.list.DownloadGroupRuntimeStateTest
           --no-daemon --stacktrace
 
       - name: Upload JVM acceptance evidence

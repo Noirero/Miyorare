@@ -648,11 +648,12 @@ class DownloadsViewModel @Inject constructor(
 		}
 		// Resolve chapter metadata once for the whole manga/source group.
 		val chapters = manga.chapters ?: tryLoad(manga)?.chapters ?: return@flow
+		val chapterManga = manga.copy(chapters = chapters)
 
 		suspend fun mapChapters(): List<DownloadChapter> {
 			val localChapterIds = LinkedHashSet<Long>()
 			for (root in roots) {
-				localMangaRepository.findSavedMangaInRoot(manga, root)?.manga?.chapters
+				localMangaRepository.findSavedMangaInRoot(chapterManga, root)?.manga?.chapters
 					?.mapTo(localChapterIds) { it.id }
 			}
 			val size = chapterIds?.size ?: chapters.size
