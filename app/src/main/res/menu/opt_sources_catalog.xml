@@ -17,6 +17,11 @@
 		app:showAsAction="ifRoom" />
 
 	<item
+		android:id="@+id/action_toggle_anime"
+		android:title="@string/hide_anime_tab"
+		app:showAsAction="never" />
+
+	<item
 		android:id="@+id/action_install_method"
 		android:title="@string/extension_installer_method"
 		app:showAsAction="never" />

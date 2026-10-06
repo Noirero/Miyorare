@@ -60,6 +60,7 @@ class SourcesCatalogViewModel @Inject constructor(
 
 	private val searchQuery = MutableStateFlow<String?>(null)
 	private val activePageId = MutableStateFlow(ExtensionCatalogPage.Available.id)
+	val activeStoreContentType = MutableStateFlow(ExtensionStoreContentType.MANGA)
 	private val installingPackages = MutableStateFlow<Set<String>>(emptySet())
 	private val refreshTrigger = MutableStateFlow(0)
 	val isRefreshing = MutableStateFlow(false)
@@ -79,8 +80,11 @@ class SourcesCatalogViewModel @Inject constructor(
 
 	/** Source name of a freshly installed extension, so the caller can offer to open it. */
 	val onExtensionInstalled = MutableEventFlow<String>()
-	val pages: StateFlow<List<ExtensionCatalogPage>> = storeManager.states.map { states ->
-		buildExtensionCatalogPages(states.map { it.store })
+	val pages: StateFlow<List<ExtensionCatalogPage>> = combine(
+		storeManager.allStates,
+		activeStoreContentType,
+	) { states, contentType ->
+		buildExtensionCatalogPages(states.filter { it.contentType == contentType }.map { it.store })
 	}.stateIn(
 		viewModelScope + Dispatchers.Default,
 		SharingStarted.Eagerly,
@@ -89,12 +93,29 @@ class SourcesCatalogViewModel @Inject constructor(
 
 	val locales: StateFlow<Set<String?>> = combine(
 		allMihonSources,
-		storeManager.states,
-		isNsfwDisabled,
+		storeManager.allStates,
+		activeStoreContentType,
+		combine(isNsfwDisabled, isPrivateMode) { nsfwDisabled, privateMode -> nsfwDisabled to privateMode },
 		refreshTrigger,
-	) { sources, storeStates, nsfwDisabled, _ ->
+	) { sources, allStoreStates, contentType, privacyFlags, _ ->
+		val (nsfwDisabled, privateMode) = privacyFlags
+		val storeStates = allStoreStates.filter { it.contentType == contentType }
+		val activeStoreIds = storeStates.mapTo(HashSet()) { it.store.id }
 		val localeSet = LinkedHashSet<String?>()
-		sources.forEach { localeSet.addCatalogLanguage(it.language) }
+		val installMode = if (privateMode) ExtensionInstallMode.SANDBOX else ExtensionInstallMode.SYSTEM
+		sources.forEach { source ->
+			val ownerId = storeManager.owner(installMode, source.pkgName)?.id
+			val belongsToActiveFamily = when {
+				ownerId != null -> ownerId in activeStoreIds
+				storeStates.any { state -> state.catalog.any { it.packageName == source.pkgName } } -> true
+				contentType == ExtensionStoreContentType.ANIME ->
+					source.pkgName.contains(".animeextension.", ignoreCase = true)
+				contentType == ExtensionStoreContentType.MANGA ->
+					!source.pkgName.contains(".animeextension.", ignoreCase = true)
+				else -> false
+			}
+			if (belongsToActiveFamily) localeSet.addCatalogLanguage(source.language)
+		}
 		for (state in storeStates) {
 			for (entry in state.catalog) {
 				if (nsfwDisabled && entry.isNsfw != 0) continue
@@ -102,7 +123,9 @@ class SourcesCatalogViewModel @Inject constructor(
 				entry.sources.forEach { localeSet.addCatalogLanguage(it.lang) }
 			}
 		}
-		lnPluginManager.getAll().forEach { localeSet.addCatalogLanguage(it.plugin.langCode) }
+		if (contentType == ExtensionStoreContentType.NOVEL) {
+			lnPluginManager.getAll().forEach { localeSet.addCatalogLanguage(it.plugin.langCode) }
+		}
 		localeSet.add(null)
 		localeSet
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, defaultLocales)
@@ -119,14 +142,17 @@ class SourcesCatalogViewModel @Inject constructor(
 		settings.observeAsFlow(AppSettings.KEY_MIHON_HIDDEN_PACKAGES) { mihonHiddenPackages },
 		isPrivateMode,
 		activePageId,
-		storeManager.states,
+		storeManager.allStates,
+		activeStoreContentType,
 	) { args ->
 		val q = args[0] as String?
 		val f = args[1] as SourcesCatalogFilter
 		val privateMode = args[7] as Boolean
 		val pageId = args[8] as String
 		@Suppress("UNCHECKED_CAST")
-		val storeStates = args[9] as List<ExtensionStoreState>
+		val allStoreStates = args[9] as List<ExtensionStoreState>
+		val contentType = args[10] as ExtensionStoreContentType
+		val storeStates = allStoreStates.filter { it.contentType == contentType }
 		val mode = if (privateMode) ExtensionInstallMode.SANDBOX else ExtensionInstallMode.SYSTEM
 		val result = buildPage(pageId, storeStates, mode, f, q)
 		isRefreshing.value = false
@@ -149,6 +175,12 @@ class SourcesCatalogViewModel @Inject constructor(
 
 	fun selectPage(pageId: String) {
 		activePageId.value = pageId
+	}
+
+	fun selectStoreContentType(contentType: ExtensionStoreContentType) {
+		if (activeStoreContentType.value == contentType) return
+		activeStoreContentType.value = contentType
+		activePageId.value = ExtensionCatalogPage.Available.id
 	}
 
 	fun performSearch(query: String?) {
@@ -234,7 +266,7 @@ class SourcesCatalogViewModel @Inject constructor(
 			} else {
 				ExtensionInstallMode.SYSTEM
 			}
-			val statesById = storeManager.states.value.associateBy { it.store.id }
+			val statesById = storeManager.allStates.value.associateBy { it.store.id }
 			val requests = mihonExtensionLoader.getInstalledExtensions(
 				appContext,
 				privateMode = mode == ExtensionInstallMode.SANDBOX,
@@ -379,6 +411,12 @@ class SourcesCatalogViewModel @Inject constructor(
 		onOpenPackageInstaller.call(requests)
 	}
 
+	private fun extensionPackageContentType(packageName: String): ExtensionStoreContentType = when {
+		packageName.contains(".animeextension.", ignoreCase = true) -> ExtensionStoreContentType.ANIME
+		packageName.contains(".novelextension.", ignoreCase = true) -> ExtensionStoreContentType.NOVEL
+		else -> ExtensionStoreContentType.MANGA
+	}
+
 	private fun buildAvailablePage(
 		storeStates: List<ExtensionStoreState>,
 		mode: ExtensionInstallMode,
@@ -398,6 +436,15 @@ class SourcesCatalogViewModel @Inject constructor(
 		for (local in installed) {
 			val packageSources = installedSourcesByPackage[local.pkgName]
 			val owner = storeManager.owner(mode, local)
+			val packageContentType = extensionPackageContentType(local.pkgName)
+			// Installed extensions remain visible in their package family even when an older/manual
+			// install has no persisted repository owner. A known owner from another family still wins,
+			// preventing Manga/Novel/Anime entries from leaking across tabs.
+			if (owner != null) {
+				if (owner.id !in statesById) continue
+			} else if (packageContentType != activeStoreContentType.value) {
+				continue
+			}
 			val state = owner?.let { statesById[it.id] }
 			val entry = state
 				?.takeIf { canUseStoreCatalogForUpdates(it.health) }
@@ -422,7 +469,9 @@ class SourcesCatalogViewModel @Inject constructor(
 					},
 					action = SourceCatalogItem.Extension.Action.UPDATE,
 					isInProgress = entry.packageName in inProgress,
-					iconUrl = entry.iconUrl ?: externalRepoRepository.resolveIconUrl(owner.indexUrl, entry.packageName),
+					iconUrl = entry.iconUrl ?: owner?.let {
+						externalRepoRepository.resolveIconUrl(it.indexUrl, entry.packageName)
+					},
 					sourceIconName = source?.name,
 					sourceName = source?.name,
 					storeId = owner.id,
@@ -464,6 +513,10 @@ class SourcesCatalogViewModel @Inject constructor(
 		// rather than through the PackageManager-shaped path above.
 		val lnCatalog = storeStates.flatMap { it.catalog }.filter { it.isLnPlugin }
 		for (source in lnPluginManager.getAll()) {
+			// Novel plugins are shown only when their owning Novel repository is part of
+			// the currently selected media family.
+			val pluginOwnerId = source.plugin.storeId
+			if (pluginOwnerId != null && pluginOwnerId !in statesById) continue
 			val plugin = source.plugin
 			if (filter.locale != null && !extensionLanguageMatches(plugin.langCode, filter.locale)) continue
 			if (!matchesExtensionQuery(q, plugin.name, plugin.id)) continue
@@ -497,7 +550,9 @@ class SourcesCatalogViewModel @Inject constructor(
 				// Makes the row open the novel's browse list and its settings, like a Mihon source.
 				sourceIconName = source.name,
 				sourceName = source.name,
-				storeId = plugin.storeId,
+				storeId = plugin.storeId ?: lnCatalog.firstOrNull { it.packageName == plugin.id }?.let { catalogEntry ->
+					storeStates.firstOrNull { state -> state.catalog.any { it === catalogEntry } }?.store?.id
+				},
 				isHidden = plugin.id in settings.lnHiddenPlugins,
 			)
 		}
@@ -662,7 +717,7 @@ class SourcesCatalogViewModel @Inject constructor(
 					SourceCatalogItem.Hint(
 						icon = R.drawable.ic_empty_feed,
 						title = R.string.nothing_found,
-						text = R.string.no_manga_sources_found,
+						text = R.string.no_extensions_found,
 					),
 				)
 			}
@@ -849,7 +904,7 @@ class SourcesCatalogViewModel @Inject constructor(
 				addAll(disabledItems)
 			}
 			if (isEmpty()) {
-				add(SourceCatalogItem.Hint(R.drawable.ic_empty_feed, R.string.nothing_found, R.string.no_manga_sources_found))
+				add(SourceCatalogItem.Hint(R.drawable.ic_empty_feed, R.string.nothing_found, R.string.no_extensions_found))
 			}
 		}
 	}
@@ -900,10 +955,11 @@ class SourcesCatalogViewModel @Inject constructor(
 			}.toMutableList()
 		for (source in lnPluginManager.getAll()) {
 			val plugin = source.plugin
-			if (plugin.storeId != storeState.store.id) continue
+			val entry = storeState.catalog.firstOrNull { it.packageName == plugin.id }
+			if (plugin.storeId != null && plugin.storeId != storeState.store.id) continue
+			if (plugin.storeId == null && entry == null) continue
 			if (filter.locale != null && !extensionLanguageMatches(plugin.langCode, filter.locale)) continue
 			if (!matchesExtensionQuery(query, plugin.name, plugin.id)) continue
-			val entry = storeState.catalog.firstOrNull { it.packageName == plugin.id }
 			items += SourceCatalogItem.Extension(
 				packageName = plugin.id,
 				title = plugin.name,
@@ -1128,7 +1184,7 @@ internal fun buildAvailablePageItems(
 		addAll(installed)
 	}
 	if (isEmpty()) {
-		add(SourceCatalogItem.Hint(R.drawable.ic_empty_feed, R.string.nothing_found, R.string.no_manga_sources_found))
+		add(SourceCatalogItem.Hint(R.drawable.ic_empty_feed, R.string.nothing_found, R.string.no_extensions_found))
 	}
 }
 

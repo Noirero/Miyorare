@@ -32,6 +32,10 @@ class SourcesCatalogMenuProvider(
 			(activity as? SourcesCatalogActivity)?.onManageRepoRequested()
 			true
 		}
+		R.id.action_toggle_anime -> {
+			(activity as? SourcesCatalogActivity)?.toggleAnimeExtensionStoreVisibility()
+			true
+		}
 		R.id.action_install_method -> {
 			(activity as? SourcesCatalogActivity)?.onInstallationMethodRequested()
 			true
@@ -43,6 +47,16 @@ class SourcesCatalogMenuProvider(
 		menu.findItem(R.id.action_repo).apply {
 			isVisible = true
 			icon = ContextCompat.getDrawable(activity, R.drawable.ic_edit)
+		}
+		menu.findItem(R.id.action_toggle_anime).apply {
+			isVisible = true
+			title = activity.getString(
+				if ((activity as? SourcesCatalogActivity)?.settings?.isAnimeExtensionStoreVisible == true) {
+					R.string.hide_anime_tab
+				} else {
+					R.string.show_anime_tab
+				},
+			)
 		}
 		menu.findItem(R.id.action_install_method).isVisible = true
 	}
