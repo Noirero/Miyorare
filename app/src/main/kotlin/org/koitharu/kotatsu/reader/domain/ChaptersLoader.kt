@@ -6,6 +6,7 @@ import dagger.hilt.android.scopes.ViewModelScoped
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.core.parser.FreshChapterPagesRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.parsers.model.MangaChapter
@@ -80,6 +81,26 @@ class ChaptersLoader @Inject constructor(
 			chapterPages.clear()
 			chapterPages.addLast(chapterId, pages)
 			true
+		}
+	}
+
+	/**
+	 * Force-resolve one already loaded remote chapter and atomically replace only its page snapshot.
+	 * Neighbouring chapters stay intact, so stale metadata recovery cannot silently rebuild Reader state.
+	 */
+	@CheckResult
+	suspend fun refreshChapterPages(chapterId: Long): Boolean {
+		val chapter = checkNotNull(chapters[chapterId]) { "Requested chapter not found" }
+		val sourceChapter = if (chapter.source == LocalMangaSource) sourceChapters[chapterId] else chapter
+			?: return false
+		if (sourceChapter.source == LocalMangaSource) return false
+		val repository = mangaRepositoryFactory.create(sourceChapter.source)
+		val freshRepository = repository as? FreshChapterPagesRepository ?: return false
+		val pages = freshRepository.getFreshPages(sourceChapter)
+		if (pages.isEmpty()) return false
+		val readerPages = pages.mapIndexed { index, page -> ReaderPage(page, index, chapterId) }
+		return mutex.withLock {
+			chapterPages.replace(chapterId, readerPages)
 		}
 	}
 
