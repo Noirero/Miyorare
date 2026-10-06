@@ -95,4 +95,3 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 		val WHITESPACE = Regex("\\s+")
 	}
 }
-
