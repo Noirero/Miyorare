@@ -39,7 +39,6 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.calculateTimeAgo
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.isEmpty
-import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.download.ui.list.chapters.DownloadChapter
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
@@ -76,7 +75,6 @@ class DownloadsViewModel @Inject constructor(
 	@LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
 	private val localMangaRepository: LocalMangaRepository,
 	private val favouritesRepository: FavouritesRepository,
-	private val downloadDestinationStore: DownloadDestinationStore,
 ) : BaseViewModel() {
 
 	private val favouriteSpace = FavouriteSpace.fromArgument(
@@ -90,7 +88,6 @@ class DownloadsViewModel @Inject constructor(
 	private val pendingUiActions = MutableStateFlow<Map<UUID, DownloadUiAction>>(emptyMap())
 	private val hydratedDownloadSizes = MutableStateFlow<Map<UUID, Long>>(emptyMap())
 	private val downloadSizeRequests = HashSet<UUID>()
-	private val downloadSizeInvalidations = MutableStateFlow(0L)
 
 	/**
 	 * Downloads can be opened either as the public/Normal queue or as an authenticated Private queue.
@@ -129,8 +126,7 @@ class DownloadsViewModel @Inject constructor(
 	private val baseWorks = combine(
 		workScheduler.observeWorks(),
 		membershipVisibility,
-		downloadSizeInvalidations,
-	) { list, visibility, _ ->
+	) { list, visibility ->
 		list.toDownloadsList(visibility)
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
@@ -170,7 +166,6 @@ class DownloadsViewModel @Inject constructor(
 			localStorageChanges.collect {
 				hydratedDownloadSizes.value = emptyMap()
 				synchronized(downloadSizeRequests) { downloadSizeRequests.clear() }
-				downloadSizeInvalidations.update { it + 1L }
 			}
 		}
 	}
@@ -580,22 +575,15 @@ class DownloadsViewModel @Inject constructor(
 			downloadSizeRequests.add(workId)
 		}
 		if (!shouldLaunch) return
-		val generation = downloadSizeInvalidations.value
 		viewModelScope.launch(Dispatchers.IO) {
 			val size = runCatchingCancellable {
-				// An explicit job destination is authoritative; absence there must not borrow another
-				// space's indexed copy. Legacy jobs use only this space's readable roots. Chapter
-				// parsing is unnecessary for a presentation-only size.
-				val roots = task?.destination?.let { listOf(it) }
-					?: downloadDestinationStore.readableRoots(favouriteSpace)
-				val local = roots.firstNotNullOfOrNull { root ->
-					localMangaRepository.findSavedMangaInRoot(manga, root, withDetails = false)
-				}
+				val local = task?.destination?.let { root ->
+					localMangaRepository.findSavedMangaInRoot(manga, root)
+				} ?: localMangaRepository.findSavedManga(manga, withDetails = false)
 				local?.file?.let { file -> DiskUtil.getDirectorySize(file) }?.coerceAtLeast(0L) ?: 0L
 			}.getOrDefault(0L)
 			hydratedDownloadSizes.update { current ->
-				if (generation != downloadSizeInvalidations.value || current[workId] == size) current
-				else current + (workId to size)
+				if (current[workId] == size) current else current + (workId to size)
 			}
 		}
 	}
@@ -641,20 +629,24 @@ class DownloadsViewModel @Inject constructor(
 				}
 			}
 		}
-		val roots = tasks.flatMap { task ->
-			task.destination?.let { listOf(it) } ?: downloadDestinationStore.readableRoots(task.favouriteSpace)
-		}.ifEmpty { downloadDestinationStore.readableRoots(favouriteSpace) }.distinctBy { root ->
+		val roots = tasks.mapNotNull { it.destination }.distinctBy { root ->
 			runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
 		}
 		// Resolve chapter metadata once for the whole manga/source group.
 		val chapters = manga.chapters ?: tryLoad(manga)?.chapters ?: return@flow
+		// The existing compatibility matcher needs these chapters before comparing remote ids.
 		val chapterManga = manga.copy(chapters = chapters)
 
 		suspend fun mapChapters(): List<DownloadChapter> {
 			val localChapterIds = LinkedHashSet<Long>()
-			for (root in roots) {
-				localMangaRepository.findSavedMangaInRoot(chapterManga, root)?.manga?.chapters
+			if (roots.isEmpty()) {
+				localMangaRepository.findSavedManga(chapterManga)?.manga?.chapters
 					?.mapTo(localChapterIds) { it.id }
+			} else {
+				for (root in roots) {
+					localMangaRepository.findSavedMangaInRoot(chapterManga, root)?.manga?.chapters
+						?.mapTo(localChapterIds) { it.id }
+				}
 			}
 			val size = chapterIds?.size ?: chapters.size
 			return chapters.mapNotNullTo(ArrayList(size)) {
@@ -671,11 +663,10 @@ class DownloadsViewModel @Inject constructor(
 		}
 		emit(mapChapters())
 		localStorageChanges.collect { changed ->
-			// Storage events invalidate the expanded row; they never supply its identity or state.
-			// Re-read this manga through the scoped Batch 7 repository, including physical-id events
-			// and null whole-container removals. Unrelated events cannot import another manga snapshot.
-			if (changed == null || roots.any { changed.file.isInside(it) }) {
-				emit(mapChapters())
+			if (changed?.manga?.id == manga.id) {
+				if (roots.isEmpty() || roots.any { changed.file.isInside(it) }) {
+					emit(mapChapters())
+				}
 			}
 		}
 	}.stateIn(
