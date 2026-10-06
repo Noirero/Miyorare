@@ -48,6 +48,11 @@ class ChapterPageMetadataCacheTest {
 	}
 
 	@Test
+	fun missingEntryIsCacheMiss() = runTest {
+		assertNull(cache.get(source, chapter, sourceVersion = "v1", now = 1_000L))
+	}
+
+	@Test
 	fun roundTripPreservesPageList() = runTest {
 		cache.put(source, chapter, pages, sourceVersion = "v1", now = 1_000L)
 
