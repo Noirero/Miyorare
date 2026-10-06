@@ -1,8 +1,6 @@
 name: Amain2 APK Build
 run-name: Amain2 Staging APK · ${{ github.ref_name }}
 
-# Permanent pre-main staging build. Registered on main after this PR merges,
-# but intentionally allowed to build only the Amain2 branch.
 on:
   workflow_dispatch:
 
@@ -11,15 +9,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  guard:
-    if: github.ref_name != 'Amain2'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Reject non-Amain2 build
-        run: |
-          echo "::error::This workflow may only be run with branch Amain2 selected."
-          exit 1
-
   build:
     if: github.ref_name == 'Amain2'
     runs-on: ubuntu-latest
@@ -42,24 +31,64 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      - name: Apply staging identity for build only
+      - name: Require permanent signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required repository secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Decode permanent keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+      - name: Apply Amain2 staging identity and monotonic version
         shell: bash
         run: |
           set -euo pipefail
+          VERSION_CODE=$(( $(date -u +%s) - 1577836800 ))
+          if [ "$VERSION_CODE" -gt 2100000000 ]; then
+            echo "::error::Generated Android versionCode is too large"
+            exit 1
+          fi
+          export VERSION_CODE
+
           python3 - <<'PY'
           from pathlib import Path
+          import os
           import re
 
           gradle = Path('app/build.gradle')
           text = gradle.read_text()
-          text, count = re.subn(
+          text, app_count = re.subn(
               r"applicationId\s*=\s*'org\.noirero\.miyorare'",
               "applicationId = 'org.noirero.miyorare.amain2'",
               text,
               count=1,
           )
-          if count != 1:
-              raise SystemExit('Could not replace Miyorare applicationId exactly once')
+          text, version_count = re.subn(
+              r'versionCode\s*=\s*\d+',
+              f"versionCode = {os.environ['VERSION_CODE']}",
+              text,
+              count=1,
+          )
+          if app_count != 1 or version_count != 1:
+              raise SystemExit('Could not apply Amain2 applicationId/versionCode exactly once')
           gradle.write_text(text)
 
           strings = Path('app/src/main/res/values/strings.xml')
@@ -76,10 +105,21 @@ jobs:
                   strings.write_text(value)
           PY
 
+          echo "Amain2 versionCode: $VERSION_CODE"
           grep -F "applicationId = 'org.noirero.miyorare.amain2'" app/build.gradle
 
-      - name: Build Amain2 staging APK
-        run: ./gradlew assembleDebug --max-workers=4 --no-daemon --stacktrace
+      - name: Build permanently signed Amain2 APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./gradlew assembleRelease --max-workers=4 --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE=../release.keystore \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
 
       - name: Collect APK
         shell: bash
@@ -87,9 +127,9 @@ jobs:
           set -euo pipefail
           mkdir -p artifact
           shopt -s nullglob
-          apks=(app/build/outputs/apk/debug/*.apk)
+          apks=(app/build/outputs/apk/release/*.apk)
           if [ ${#apks[@]} -eq 0 ]; then
-            echo "::error::No debug APK produced"
+            echo "::error::No release APK produced"
             exit 1
           fi
           for apk in "${apks[@]}"; do

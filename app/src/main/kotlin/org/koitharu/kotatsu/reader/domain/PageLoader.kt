@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.reader.domain
 
 import android.content.Context
 import android.graphics.Rect
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.Animatable
 import android.net.Uri
 import androidx.annotation.AnyThread
 import androidx.annotation.CheckResult
@@ -10,6 +12,7 @@ import androidx.collection.set
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import coil3.BitmapImage
+import coil3.asDrawable
 import coil3.Image
 import coil3.ImageLoader
 import coil3.request.ImageRequest
@@ -207,6 +210,34 @@ class PageLoader @Inject constructor(
 			}
 			uri
 		}
+	}
+
+	suspend fun isAnimatedImage(uri: Uri): Boolean = runInterruptible(Dispatchers.IO) {
+		val header = ByteArray(96)
+		val read = when {
+			uri.isZipUri() -> ZipFile(uri.schemeSpecificPart).use { zip ->
+				val entry = zip.getEntry(uri.fragment) ?: return@use -1
+				zip.getInputStream(entry).use { it.read(header) }
+			}
+			uri.isFileUri() -> uri.toFile().inputStream().use { it.read(header) }
+			else -> context.contentResolver.openInputStream(uri)?.use { it.read(header) } ?: -1
+		}
+		if (read < 6) return@runInterruptible false
+		val ascii = header.copyOf(read.coerceAtMost(header.size)).toString(Charsets.ISO_8859_1)
+		when {
+			ascii.startsWith("GIF87a") || ascii.startsWith("GIF89a") -> true
+			read >= 16 && ascii.startsWith("RIFF") && ascii.substring(8, 12) == "WEBP" ->
+				ascii.contains("ANIM") || (read > 20 && ascii.substring(12, 16) == "VP8X" &&
+					(header[20].toInt() and 0x02) != 0)
+			else -> false
+		}
+	}
+
+	suspend fun loadAnimatedDrawable(uri: Uri): Drawable? {
+		val request = ImageRequest.Builder(context)
+			.data(uri)
+			.build()
+		return coil.execute(request).image?.asDrawable(context.resources)?.takeIf { it is Animatable }
 	}
 
 	suspend fun getTrimmedBounds(uri: Uri): Rect? = runCatchingCancellable {

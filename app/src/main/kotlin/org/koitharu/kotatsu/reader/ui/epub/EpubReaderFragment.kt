@@ -49,6 +49,7 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.ArrayAdapter
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -747,6 +748,11 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	}
 
 	override fun onDestroyView() {
+		activity?.window?.let { window ->
+			val attributes = window.attributes
+			attributes.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+			window.attributes = attributes
+		}
 		ttsHighlightHost = null
 		viewBinding?.root?.removeCallbacks(rebuildRunnable)
 		viewBinding?.root?.removeCallbacks(persistProgressRunnable)
@@ -867,10 +873,24 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				cachedCustomTypeface = null
 				cachedCustomTypefaceStamp = Long.MIN_VALUE
 				viewBinding?.root?.requestApplyInsets()
+				applyScreenBrightness()
 				animateColors()
 				refreshHighlightColors()
 				switchReadingMode()
 			}
+		}
+	}
+
+	private fun applyScreenBrightness() {
+		val brightness = bookSettings?.screenBrightness ?: settings.epubScreenBrightness
+		activity?.window?.let { window ->
+			val attributes = window.attributes
+			attributes.screenBrightness = if (brightness <= 0) {
+				WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+			} else {
+				(brightness / 100f).coerceIn(0.05f, 1f)
+			}
+			window.attributes = attributes
 		}
 	}
 

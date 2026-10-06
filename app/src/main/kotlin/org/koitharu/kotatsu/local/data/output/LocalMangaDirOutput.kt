@@ -21,7 +21,7 @@ import java.util.zip.Deflater
 
 class LocalMangaDirOutput(
 	rootFile: File,
-	manga: Manga,
+	private val manga: Manga,
 	prepareForDownload: Boolean = false,
 ) : LocalMangaOutput(rootFile) {
 
@@ -83,6 +83,16 @@ class LocalMangaDirOutput(
 		true
 	}
 
+	override suspend fun discardChapter(chapter: MangaChapter) {
+		mutex.withLock {
+			chaptersOutput.remove(chapter)?.let { output ->
+				output.closeQuietly()
+				output.file.deleteAwait()
+			}
+			index.removeChapter(chapter.id)
+		}
+	}
+
 	override suspend fun finish() = mutex.withLock {
 		for (output in chaptersOutput.values) {
 			output.flushAndFinish()
@@ -94,6 +104,12 @@ class LocalMangaDirOutput(
 		for (output in chaptersOutput.values) {
 			output.file.deleteAwait()
 		}
+		// A new directory-style download creates the title folder before any chapter is finalized.
+		// If the worker fails or every requested chapter resolves to no pages, do not leave an empty
+		// shell behind that can later be mistaken for a completed download.
+		if (rootFile.isDirectory && rootFile.list()?.isEmpty() == true) {
+			rootFile.deleteAwait()
+		}
 	}
 
 	override fun close() {
@@ -103,8 +119,19 @@ class LocalMangaDirOutput(
 	}
 
 	suspend fun deleteChapters(ids: Set<Long>) = mutex.withLock {
+		// Details/Reader may carry a space-scoped Local copy whose chapter ids were re-keyed to the
+		// remote ids while keeping the exact physical CBZ URLs. Prefer that snapshot when it covers
+		// the requested ids; reparsing a sidecar-free directory would recreate filesystem-only ids and
+		// make the delete action target nothing.
+		val suppliedChapters = manga.chapters
+		val suppliedIds = suppliedChapters?.mapTo(HashSet()) { it.id }.orEmpty()
 		val chapters = checkNotNull(
-			(index.getMangaInfo() ?: LocalMangaParser(rootFile).getManga(withDetails = true).manga).chapters,
+			if (suppliedChapters != null && suppliedIds.containsAll(ids)) {
+				suppliedChapters
+			} else {
+				index.getMangaInfo()?.chapters
+					?: LocalMangaParser(rootFile).getManga(withDetails = true).manga.chapters
+			},
 		) {
 			"No chapters found"
 		}.withIndex()
@@ -128,7 +155,12 @@ class LocalMangaDirOutput(
 			check(chapterCanonical.parentFile == rootCanonical) {
 				"Refusing to delete non-chapter path: $chapterCanonical"
 			}
-			chapterCanonical.deleteAwait()
+			if (chapterCanonical.exists()) {
+				check(chapterCanonical.deleteAwait() && !chapterCanonical.exists()) {
+					"Cannot delete chapter artifact: $chapterCanonical"
+				}
+			}
+			// Manual filesystem cleanup may have removed the artifact already; keep the index truthful.
 			index.removeChapter(chapter.value.id)
 		}
 		check(victimsIds.isEmpty()) {
@@ -138,12 +170,14 @@ class LocalMangaDirOutput(
 
 	private suspend fun ZipOutput.flushAndFinish() = runInterruptible(Dispatchers.IO) {
 		val e: Throwable? = try {
-			finish()
+			// ZipOutput.close() already closes ZipOutputStream, whose close() finalizes the central
+			// directory. Calling finish() immediately before close() performs the same terminal work
+			// twice on some Android/JDK implementations and can leave Downloads sitting at N/N while
+			// the chapter artifact is already complete. Finalize exactly once through close().
+			close()
 			null
 		} catch (e: Throwable) {
 			e
-		} finally {
-			close()
 		}
 		if (e == null) {
 			val resFile = File(file.absolutePath.removeSuffix(SUFFIX_TMP))
