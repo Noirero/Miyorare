@@ -34,6 +34,7 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 	@ApplicationContext context: Context,
 	private val favouritesRepository: FavouritesRepository,
 	private val database: MangaDatabase,
+	private val downloadedContentClassifier: DownloadedContentClassifier,
 	private val mangaDataRepository: MangaDataRepository,
 	private val localMangaIndex: LocalMangaIndex,
 	private val localMangaRepository: LocalMangaRepository,
@@ -65,8 +66,11 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 			if (readable.size != configured.size || readable.isEmpty()) allRootsReadable = false
 			val roots = readable.map { File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME) }
 			if (roots.isEmpty()) continue
-			for (candidate in favouritesRepository.getAllManga(space)) {
-				if (candidate.isLocal || !candidate.hasLegacyTitleCandidate(localTitles)) continue
+			val candidates = favouritesRepository.getAllManga(space)
+			val knownIds = downloadedContentClassifier.getKnownDownloadedIds(space, candidates.map { it.id })
+			for (candidate in candidates) {
+				// Current downloads already have authoritative ownership; never parse them during repair.
+				if (candidate.id in knownIds || candidate.isLocal || !candidate.hasLegacyTitleCandidate(localTitles)) continue
 				val remote = mangaDataRepository.findMangaById(candidate.id, withChapters = true) ?: continue
 				val linked = localMangaRepository.findSavedMangaIndexedByTitle(remote, roots) ?: continue
 				// Persist verified ownership before publishing/marking completion, as DownloadWorker does.
