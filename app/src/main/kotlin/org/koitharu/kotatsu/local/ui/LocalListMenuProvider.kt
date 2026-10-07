@@ -16,6 +16,7 @@ class LocalListMenuProvider(
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
 		menuInflater.inflate(R.menu.opt_local, menu)
+		menu.add(Menu.NONE, R.id.action_smart_local_restore, 70, R.string.smart_local_restore)
 	}
 
 	override fun onPrepareMenu(menu: Menu) {
