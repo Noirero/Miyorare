@@ -113,7 +113,9 @@ class ChapterPageMetadataCache @Inject constructor(
 					output.write(payload.toString().toByteArray(Charsets.UTF_8))
 					atomicFile.finishWrite(output)
 				} catch (error: IOException) {
-					atomicFile.failWrite(output)
+					// AtomicFile rollback is best-effort too. Never let a secondary rollback failure turn
+					// this disposable optimization into a Reader/Downloader failure.
+					runCatching { atomicFile.failWrite(output) }
 					throw error
 				}
 				trimLocked()
