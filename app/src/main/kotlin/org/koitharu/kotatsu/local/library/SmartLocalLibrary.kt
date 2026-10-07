@@ -103,7 +103,6 @@ class SmartLocalLibrary @Inject constructor(
             saveRoots(roots)
             publishLocked(state.value.copy(roots = roots, books = state.value.books.filterNot { it.rootUri == uri },
                 diagnoses = state.value.diagnoses.filterNot { it.rootUri == uri }))
-            // No document/file deletion, and no release of a grant potentially shared by another flow.
         }
         storageChanges.emit(null)
     }
@@ -134,9 +133,7 @@ class SmartLocalLibrary @Inject constructor(
                     val metadata = entry.sidecars.filter { it.name.endsWith(".xml", true) || it.name.equals("index.json", true) }
                         .map { LocalMetadata.read(it, documents) }
                     val explicitCover = entry.sidecars.firstOrNull { LocalTreeScanner.isImage(it.name) && LocalTreeScanner.isSidecar(it.name) }?.uri
-                    val metadataCover = metadata.firstNotNullOfOrNull { it.coverName }?.let { name ->
-                        entry.sidecars.firstOrNull { it.name == name }?.uri
-                    }
+                    val metadataCover = metadata.firstNotNullOfOrNull { it.coverName }?.let { name -> entry.sidecars.firstOrNull { it.name == name }?.uri }
                     val discoveredChapters = entry.chapters.map { c -> LocalChapter(c.node, c.pages) }
                     val preserved = old?.chapters?.groupBy { it.node.key }.orEmpty()
                     val chapters = if (old != null) discoveredChapters.flatMap { chapter ->
@@ -155,8 +152,6 @@ class SmartLocalLibrary @Inject constructor(
                 scanned.issues.forEach { diagnoses += LocalDiagnosis(root.uri, it.node, it.reason, it.candidates) }
             }
             val snapshot = previous.copy(books = books.values.toList(), diagnoses = diagnoses, excludedCount = exclusions.size)
-            // Store canonical identity/chapters for Details, Reader, history and bookmarks. Filesystem
-            // work is complete before bounded Room transactions; a large scan never nests Room locks.
             for (book in snapshot.books) dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
             publishLocked(snapshot)
         }
@@ -186,20 +181,6 @@ class SmartLocalLibrary @Inject constructor(
         storageChanges.emit(null)
     }
 
-    suspend fun hideLegacy(manga: List<Manga>) = withContext(Dispatchers.IO) {
-        initialize()
-        mutex.withLock {
-            val exclusions = readExclusions().toMutableMap()
-            for (item in manga) {
-                val uri = item.url.toUri()
-                check(uri.scheme == "file")
-                exclusions[File(requireNotNull(uri.path)).canonicalPath] = item.title
-            }
-            saveExclusions(exclusions)
-            publishLocked(state.value.copy(excludedCount = exclusions.size))
-        }
-        storageChanges.emit(null)
-    }
     suspend fun acknowledgeDiscoveries() = withContext(Dispatchers.IO) {
         initialize()
         mutex.withLock { publishLocked(state.value.copy(books = state.value.books.map { it.copy(newChapters = 0) })) }
@@ -222,10 +203,7 @@ class SmartLocalLibrary @Inject constructor(
             val targets = state.value.books.filter { it.id in ids }
             for (book in targets) {
                 val root = documents.root(book.rootUri)
-                // Delete only explicitly indexed ownership. Never recursively delete a manga folder:
-                // a sibling, unknown file or externally added file is not owned by this snapshot.
-                val files = (book.chapters.flatMap { c -> if (c.node.directory) c.pages else listOf(c.node) } + book.sidecars)
-                    .distinctBy { it.key }
+                val files = (book.chapters.flatMap { c -> if (c.node.directory) c.pages else listOf(c.node) } + book.sidecars).distinctBy { it.key }
                 val otherOwned = state.value.books.filter { it.id != book.id }
                     .flatMap { b -> b.chapters.flatMap { c -> c.pages + c.node } + b.sidecars }.mapTo(HashSet()) { it.key }
                 check(files.none { it.key in otherOwned }) { "A document belongs to another manga" }
@@ -234,20 +212,14 @@ class SmartLocalLibrary @Inject constructor(
                     check(!node.directory && node.key != root.key && documents.contains(root, node)) { "Unsafe deletion target" }
                 }
                 for (file in files) if (documents.exists(root, file)) documents.delete(root, file)
-                for (folder in (book.chapters.map { it.node }.filter { it.directory } + listOf(book.node).filter { it.directory })
-                    .distinctBy { it.key }) {
-                    if (folder.uri.toUri().scheme == "file" && folder.key != root.key && documents.exists(root, folder) && documents.children(root, folder).isEmpty()) {
-                        documents.delete(root, folder)
-                    }
+                for (folder in (book.chapters.map { it.node }.filter { it.directory } + listOf(book.node).filter { it.directory }).distinctBy { it.key }) {
+                    if (folder.uri.toUri().scheme == "file" && folder.key != root.key && documents.exists(root, folder) && documents.children(root, folder).isEmpty()) documents.delete(root, folder)
                 }
-                // OS rejection above leaves the entry available for diagnosis/retry. Never report
-                // success or commit an exclusion before every owned file deletion has succeeded.
                 val exclusions = readExclusions().toMutableMap().also { it[book.node.key] = book.node.name }
                 saveExclusions(exclusions)
                 publishLocked(state.value.copy(books = state.value.books.filterNot { it.id == book.id }, excludedCount = exclusions.size))
             }
-        }
-        } catch (error: Exception) {
+        } } catch (error: Exception) {
             runCatchingCancellable { scan() }
             throw error
         }
@@ -268,26 +240,21 @@ class SmartLocalLibrary @Inject constructor(
                 check(owned.none { it.key in others }) { "A document is shared by another chapter" }
                 check(owned.all { !it.directory && it.key != root.key && documents.contains(root, it) })
                 for (page in owned) if (documents.exists(root, page)) documents.delete(root, page)
-                if (chapter.node.directory && chapter.node.uri.toUri().scheme == "file" && chapter.node.key != root.key && documents.children(root, chapter.node).isEmpty()) {
-                    documents.delete(root, chapter.node)
-                }
+                if (chapter.node.directory && chapter.node.uri.toUri().scheme == "file" && chapter.node.key != root.key && documents.children(root, chapter.node).isEmpty()) documents.delete(root, chapter.node)
             }
-        }
-        } catch (error: Exception) {
+        } } catch (error: Exception) {
             runCatchingCancellable { scan() }
             throw error
         }
         scan()
     }
 
-    suspend fun setDisplayOptions(extensions: Boolean, filter: LocalReadingFilter = readingFilter, order: LocalLibrarySort = sort) =
-        withContext(Dispatchers.IO) {
-            check(prefs.edit().putBoolean("extensions", extensions).putString("filter", filter.name).putString("sort", order.name).commit())
-            // Existing Reader chapter/page IDs and original document names remain identical.
-            for (book in state.value.books) dataRepository.storeManga(book.toManga(extensions, true), replaceExisting = true)
-            mutex.withLock { publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1)) }
-            storageChanges.emit(null)
-        }
+    suspend fun setDisplayOptions(extensions: Boolean, filter: LocalReadingFilter = readingFilter, order: LocalLibrarySort = sort) = withContext(Dispatchers.IO) {
+        check(prefs.edit().putBoolean("extensions", extensions).putString("filter", filter.name).putString("sort", order.name).commit())
+        for (book in state.value.books) dataRepository.storeManga(book.toManga(extensions, true), replaceExisting = true)
+        mutex.withLock { publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1)) }
+        storageChanges.emit(null)
+    }
 
     suspend fun book(id: Long): LocalBook? { initialize(); return state.value.books.firstOrNull { it.id == id } }
     suspend fun details(id: Long): Manga? = withContext(Dispatchers.IO) {
@@ -295,10 +262,8 @@ class SmartLocalLibrary @Inject constructor(
         if (book.chapters.size == 1 && !book.chapters.single().node.directory) {
             val metadata = runCatchingCancellable { contentReader.metadata(documents.root(book.rootUri), book.chapters.single()) }.getOrNull()
             if (metadata != null) {
-                val enriched = book.copy(title = book.title ?: metadata.title,
-                    authors = book.authors.ifEmpty { metadata.authors }, description = book.description ?: metadata.description)
+                val enriched = book.copy(title = book.title ?: metadata.title, authors = book.authors.ifEmpty { metadata.authors }, description = book.description ?: metadata.description)
                 if (enriched != book) mutex.withLock {
-                    // Detach/hide/rescan may have completed while the file was being prepared.
                     val current = state.value.books.firstOrNull { it.id == id }
                     if (current == book) {
                         dataRepository.storeManga(enriched.toManga(showExtensions, true), replaceExisting = true)
@@ -310,6 +275,7 @@ class SmartLocalLibrary @Inject constructor(
         }
         book.toManga(showExtensions, true)
     }
+
     suspend fun list(query: String?): List<Manga> = withContext(Dispatchers.IO) {
         initialize()
         val snapshot = state.value.books
@@ -368,7 +334,6 @@ class SmartLocalLibrary @Inject constructor(
         return result.getOrThrow()
     }
 
-    /** Adoption only: preserve an existing file-based Reader state without recursively parsing a folder. */
     private suspend fun migrateLegacyChapters(rootUri: String, node: Node, chapters: List<LocalChapter>): List<LocalChapter> {
         if (node.uri.toUri().scheme != "file") return chapters
         val history = db.getHistoryDao().find(node.mangaIdentity()) ?: return chapters
@@ -377,11 +342,9 @@ class SmartLocalLibrary @Inject constructor(
                 val root = documents.root(rootUri)
                 chapters.flatMap { c ->
                     val file = contentReader.materialize(root, c.node)
-                    EpubParser.parse(file).spine.map { section -> c.copy(metadataTitle = section.title,
-                        preservedId = file.toZipUri(section.href).toString().longHashCode(), epubSection = section.href) }
+                    EpubParser.parse(file).spine.map { section -> c.copy(metadataTitle = section.title, preservedId = file.toZipUri(section.href).toString().longHashCode(), epubSection = section.href) }
                 }
             } else if (!node.directory) {
-                // Archive/PDF only, never the old parser's unbounded directory traversal.
                 val file = contentReader.materialize(documents.root(rootUri), node)
                 val legacy = LocalMangaParser(file).getManga(true).manga.chapters.orEmpty()
                 if (legacy.size == 1) listOf(chapters.single().copy(preservedId = legacy.single().id)) else chapters
@@ -391,7 +354,6 @@ class SmartLocalLibrary @Inject constructor(
                 chapters.map { it.copy(preservedId = byKey[it.node.key]) }
             }
         }.getOrNull() ?: return chapters
-        // Never guess a mapping if the previously read chapter cannot be proven.
         return mapped.takeIf { list -> list.any { it.id == history.chapterId } } ?: chapters
     }
 
@@ -406,8 +368,7 @@ class SmartLocalLibrary @Inject constructor(
     private fun saveExclusions(exclusions: Map<String, String>) { check(prefs.edit().putString("exclusions", JSONObject(exclusions).toString()).commit()) }
     private fun publishLocked(snapshot: LocalLibrarySnapshot) {
         val json = JSONObject().put("version", 1).put("books", JSONArray(snapshot.books.map { it.toJson() }))
-            .put("diagnoses", JSONArray(snapshot.diagnoses.map { d -> JSONObject().put("root", d.rootUri)
-                .put("node", d.node?.toJson()).put("reason", d.reason).put("candidates", JSONArray(d.candidates.map { it.toJson() })) }))
+            .put("diagnoses", JSONArray(snapshot.diagnoses.map { d -> JSONObject().put("root", d.rootUri).put("node", d.node?.toJson()).put("reason", d.reason).put("candidates", JSONArray(d.candidates.map { it.toJson() })) }))
         val file = indexFile
         val output = file.startWrite()
         try {
@@ -415,6 +376,5 @@ class SmartLocalLibrary @Inject constructor(
         } catch (e: Throwable) { file.failWrite(output); throw e }
         mutableState.value = snapshot
     }
-    private inline fun <reified T : Enum<T>> enumValue(value: String?, default: T): T =
-        enumValues<T>().firstOrNull { it.name == value } ?: default
+    private inline fun <reified T : Enum<T>> enumValue(value: String?, default: T): T = enumValues<T>().firstOrNull { it.name == value } ?: default
 }
