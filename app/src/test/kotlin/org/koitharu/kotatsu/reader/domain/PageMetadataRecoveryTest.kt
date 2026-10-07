@@ -41,7 +41,7 @@ class PageMetadataRecoveryTest {
 	}
 
 	@Test
-	fun preserveStateClampsRemovedPageAndIgnoresNeighbours() {
+	fun preserveStateClampsRemovedPageAndResetsScroll() {
 		val state = ReaderState(chapterId = 7L, page = 4, scroll = 9)
 		val fresh = listOf(
 			page(id = 1L, chapterId = 6L, index = 0),
@@ -49,7 +49,10 @@ class PageMetadataRecoveryTest {
 			page(id = 3L, chapterId = 7L, index = 1),
 			page(id = 4L, chapterId = 8L, index = 0),
 		)
-		assertEquals(state.copy(page = 1), PageMetadataRecovery.preserveState(state, oldPageId = 99L, freshPages = fresh))
+		assertEquals(
+			state.copy(page = 1, scroll = 0),
+			PageMetadataRecovery.preserveState(state, oldPageId = 99L, freshPages = fresh),
+		)
 	}
 
 	private fun page(
