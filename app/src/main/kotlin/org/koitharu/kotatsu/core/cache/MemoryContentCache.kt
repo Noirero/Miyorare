@@ -92,7 +92,8 @@ class MemoryContentCache @Inject constructor(
 
 	/**
 	 * Detach future callers from the current page-list generation without cancelling existing
-	 * consumers. This lets an explicit refresh start one new generation safely.
+	 * consumers. This is retained for explicit invalidation paths that do not immediately resolve a
+	 * replacement generation.
 	 */
 	suspend fun invalidatePages(source: MangaSource, chapter: MangaChapter) {
 		pagesCache.remove(Key(source, chapter.url))
@@ -115,13 +116,39 @@ class MemoryContentCache @Inject constructor(
 		pagesRequestMutex.lock()
 		return try {
 			inFlightPages[key] ?: create().also { request ->
-				inFlightPages[key] = request
-				request.invokeOnCompletion {
-					inFlightPages.remove(key, request)
-				}
+				registerPagesRequest(key, request)
 			}
 		} finally {
 			pagesRequestMutex.unlock()
+		}
+	}
+
+	/**
+	 * Atomically detach the old generation and install one fresh generation. Existing consumers keep
+	 * their old SafeDeferred, while callers arriving after this operation join the new request instead
+	 * of racing between invalidation and getOrCreateInFlightPages().
+	 */
+	suspend fun createFreshInFlightPages(
+		source: MangaSource,
+		chapter: MangaChapter,
+		create: suspend () -> SafeDeferred<List<MangaPage>>,
+	): SafeDeferred<List<MangaPage>> {
+		val key = PagesRequestKey(source.name, chapter.id, chapter.url)
+		pagesRequestMutex.lock()
+		return try {
+			pagesCache.remove(Key(source, chapter.url))
+			pageMetadataCache.invalidate(source, chapter)
+			inFlightPages[key]?.let { request -> inFlightPages.remove(key, request) }
+			create().also { request -> registerPagesRequest(key, request) }
+		} finally {
+			pagesRequestMutex.unlock()
+		}
+	}
+
+	private fun registerPagesRequest(key: PagesRequestKey, request: SafeDeferred<List<MangaPage>>) {
+		inFlightPages[key] = request
+		request.invokeOnCompletion {
+			inFlightPages.remove(key, request)
 		}
 	}
 
