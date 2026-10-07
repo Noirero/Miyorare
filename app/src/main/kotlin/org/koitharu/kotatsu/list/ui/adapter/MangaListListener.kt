@@ -7,4 +7,8 @@ interface MangaListListener : MangaDetailsClickListener, ListStateHolderListener
 	TipView.OnButtonClickListener, QuickFilterClickListener {
 
 	fun onFilterClick(view: View?)
+
+	fun onSmartLocalQueryChanged(query: String) = Unit
+
+	fun onSmartLocalFilterClick(view: View) = Unit
 }
