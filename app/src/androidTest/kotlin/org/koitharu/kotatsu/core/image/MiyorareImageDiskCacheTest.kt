@@ -1,0 +1,95 @@
+package org.koitharu.kotatsu.core.image
+
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import org.junit.After
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import java.io.File
+
+class MiyorareImageDiskCacheTest {
+
+	private lateinit var context: Context
+	private var cache: MiyorareImageDiskCache? = null
+
+	@Before
+	fun setUp() {
+		context = ApplicationProvider.getApplicationContext()
+		deleteTestStorage()
+	}
+
+	@After
+	fun tearDown() {
+		cache?.shutdown()
+		cache = null
+		deleteTestStorage()
+	}
+
+	@Test
+	fun coverSurvivesAndroidCacheDirectoryRemoval() {
+		val first = MiyorareImageDiskCache(context).also { cache = it }
+		write(first, COVER_KEY, "cover")
+		write(first, VOLATILE_KEY, "temporary")
+		first.shutdown()
+		cache = null
+
+		volatileRoot().deleteRecursively()
+
+		val reopened = MiyorareImageDiskCache(context).also { cache = it }
+		assertNotNull(reopened.openSnapshot(COVER_KEY)?.also { it.close() })
+		assertNull(reopened.openSnapshot(VOLATILE_KEY))
+	}
+
+	@Test
+	fun scopedClearDoesNotCrossStorageOwnership() {
+		val routed = MiyorareImageDiskCache(context).also { cache = it }
+		write(routed, COVER_KEY, "cover")
+		write(routed, VOLATILE_KEY, "temporary")
+
+		routed.clearVolatile()
+		assertNotNull(routed.openSnapshot(COVER_KEY)?.also { it.close() })
+		assertNull(routed.openSnapshot(VOLATILE_KEY))
+
+		write(routed, VOLATILE_KEY, "temporary")
+		routed.clearCovers()
+		assertNull(routed.openSnapshot(COVER_KEY))
+		assertNotNull(routed.openSnapshot(VOLATILE_KEY)?.also { it.close() })
+	}
+
+	@Test
+	fun coverSizeTracksOnlyPersistentCoverEntries() {
+		val routed = MiyorareImageDiskCache(context).also { cache = it }
+		write(routed, VOLATILE_KEY, "temporary")
+		val beforeCover = routed.coverSize
+		write(routed, COVER_KEY, "cover-payload")
+
+		assertTrue(routed.coverSize > beforeCover)
+		routed.clearCovers()
+		assertTrue(routed.coverSize <= beforeCover)
+		assertNotNull(routed.openSnapshot(VOLATILE_KEY)?.also { it.close() })
+	}
+
+	private fun write(cache: MiyorareImageDiskCache, key: String, value: String) {
+		val editor = checkNotNull(cache.openEditor(key))
+		cache.fileSystem.write(editor.metadata) { writeUtf8("metadata") }
+		cache.fileSystem.write(editor.data) { writeUtf8(value) }
+		editor.commit()
+	}
+
+	private fun deleteTestStorage() {
+		volatileRoot().deleteRecursively()
+		coverRoot().deleteRecursively()
+	}
+
+	private fun volatileRoot(): File = (context.externalCacheDir ?: context.cacheDir).resolve("image_cache")
+
+	private fun coverRoot(): File = (context.getExternalFilesDir("covers") ?: File(context.filesDir, "covers"))
+
+	private companion object {
+		const val COVER_KEY = "cover:123"
+		const val VOLATILE_KEY = "https://example.test/not-a-cover.jpg"
+	}
+}
