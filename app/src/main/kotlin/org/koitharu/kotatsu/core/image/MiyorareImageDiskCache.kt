@@ -26,6 +26,11 @@ class MiyorareImageDiskCache @Inject constructor(
 
 	private val volatileCache = DiskCache.Builder()
 		.directory((context.externalCacheDir ?: context.cacheDir).resolve(VOLATILE_DIR))
+		// Preserve the pre-existing shared-cache retention for non-cover entries. Moving covers must
+		// not silently change the lifetime of unrelated thumbnails/bookmark images.
+		.maxSizePercent(0.10)
+		.minimumMaxSizeBytes(256L * 1024L * 1024L)
+		.maximumMaxSizeBytes(2L * 1024L * 1024L * 1024L)
 		.build()
 
 	private val coverCache = DiskCache.Builder()
