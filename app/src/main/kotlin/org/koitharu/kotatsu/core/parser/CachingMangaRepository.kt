@@ -37,16 +37,11 @@ abstract class CachingMangaRepository(
 		getPages(chapter, forceRefresh = true)
 
 	private suspend fun getPages(chapter: MangaChapter, forceRefresh: Boolean): List<MangaPage> {
-		if (forceRefresh) {
-			cache.invalidatePages(source, chapter)
-		} else {
+		if (!forceRefresh) {
 			cache.getPages(source, chapter.url)?.let { return it }
 		}
 
-		// The singleton cache owns both the persistent lookup and any source request. Reader,
-		// Downloader and recreated repository wrappers therefore cannot race independent disk reads
-		// followed by duplicate getPageList calls for the same chapter.
-		val pages = cache.getOrCreateInFlightPages(source, chapter) {
+		val createRequest: suspend () -> SafeDeferred<List<MangaPage>> = {
 			asyncSafe {
 				if (!forceRefresh) {
 					cache.getPersistentPages(source, chapter)?.let { return@asyncSafe it }
@@ -55,6 +50,14 @@ abstract class CachingMangaRepository(
 					cache.putPersistentPages(source, chapter, resolved)
 				}
 			}
+		}
+		// Normal callers share the current generation, including its persistent lookup. A forced
+		// refresh atomically detaches that generation and installs one fresh request; consumers already
+		// holding the old SafeDeferred can finish, while all later callers join the fresh generation.
+		val pages = if (forceRefresh) {
+			cache.createFreshInFlightPages(source, chapter, createRequest)
+		} else {
+			cache.getOrCreateInFlightPages(source, chapter, createRequest)
 		}
 		// Promote persistent hits as well as fresh resolutions into the existing short-lived memory
 		// cache. This preserves the old fast path after the shared request completes.
