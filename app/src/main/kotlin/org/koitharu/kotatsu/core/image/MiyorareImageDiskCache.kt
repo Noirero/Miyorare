@@ -76,7 +76,9 @@ class MiyorareImageDiskCache(
 	 */
 	fun clearCovers() {
 		coverCache.clear()
-		migrationPreferences.edit().putBoolean(KEY_LEGACY_MIGRATION_ENABLED, false).apply()
+		// clearCoverCache runs on Dispatchers.IO, so commit synchronously: after this method returns,
+		// a process restart must not be able to resurrect an unmigrated legacy cover.
+		migrationPreferences.edit().putBoolean(KEY_LEGACY_MIGRATION_ENABLED, false).commit()
 	}
 
 	fun clearVolatile() = volatileCache.clear()
