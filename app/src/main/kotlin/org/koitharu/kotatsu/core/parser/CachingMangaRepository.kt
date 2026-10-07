@@ -41,13 +41,13 @@ abstract class CachingMangaRepository(
 			cache.getPages(source, chapter.url)?.let { return it }
 		}
 
-		val createRequest: suspend () -> SafeDeferred<List<MangaPage>> = {
+		val createRequest: suspend (generation: Long) -> SafeDeferred<List<MangaPage>> = { generation ->
 			asyncSafe {
 				if (!forceRefresh) {
 					cache.getPersistentPages(source, chapter)?.let { return@asyncSafe it }
 				}
 				getPagesImpl(chapter).distinctById().also { resolved ->
-					cache.putPersistentPages(source, chapter, resolved)
+					cache.putPersistentPagesIfCurrent(source, chapter, generation, resolved)
 				}
 			}
 		}
