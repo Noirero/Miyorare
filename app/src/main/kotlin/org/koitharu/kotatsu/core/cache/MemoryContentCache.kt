@@ -37,6 +37,7 @@ class MemoryContentCache @Inject constructor(
 	// repository wrappers must share one source request instead of racing independent getPageList calls.
 	private val pagesRequestMutex = Mutex()
 	private val inFlightPages = ConcurrentHashMap<PagesRequestKey, SafeDeferred<List<MangaPage>>>()
+	private val pageGenerations = ConcurrentHashMap<PagesRequestKey, Long>()
 
 	init {
 		application.registerComponentCallbacks(this)
@@ -86,8 +87,21 @@ class MemoryContentCache @Inject constructor(
 		return pageMetadataCache.get(source, chapter)
 	}
 
-	suspend fun putPersistentPages(source: MangaSource, chapter: MangaChapter, pages: List<MangaPage>) {
-		pageMetadataCache.put(source, chapter, pages)
+	suspend fun putPersistentPagesIfCurrent(
+		source: MangaSource,
+		chapter: MangaChapter,
+		generation: Long,
+		pages: List<MangaPage>,
+	) {
+		val key = PagesRequestKey(source.name, chapter.id, chapter.url)
+		pagesRequestMutex.lock()
+		try {
+			if (pageGenerations[key] ?: 0L == generation) {
+				pageMetadataCache.put(source, chapter, pages)
+			}
+		} finally {
+			pagesRequestMutex.unlock()
+		}
 	}
 
 	/**
@@ -96,11 +110,12 @@ class MemoryContentCache @Inject constructor(
 	 * replacement generation.
 	 */
 	suspend fun invalidatePages(source: MangaSource, chapter: MangaChapter) {
-		pagesCache.remove(Key(source, chapter.url))
-		pageMetadataCache.invalidate(source, chapter)
 		val key = PagesRequestKey(source.name, chapter.id, chapter.url)
 		pagesRequestMutex.lock()
 		try {
+			pagesCache.remove(Key(source, chapter.url))
+			pageGenerations[key] = (pageGenerations[key] ?: 0L) + 1L
+			pageMetadataCache.invalidate(source, chapter)
 			inFlightPages[key]?.let { request -> inFlightPages.remove(key, request) }
 		} finally {
 			pagesRequestMutex.unlock()
@@ -110,12 +125,12 @@ class MemoryContentCache @Inject constructor(
 	suspend fun getOrCreateInFlightPages(
 		source: MangaSource,
 		chapter: MangaChapter,
-		create: suspend () -> SafeDeferred<List<MangaPage>>,
+		create: suspend (generation: Long) -> SafeDeferred<List<MangaPage>>,
 	): SafeDeferred<List<MangaPage>> {
 		val key = PagesRequestKey(source.name, chapter.id, chapter.url)
 		pagesRequestMutex.lock()
 		return try {
-			inFlightPages[key] ?: create().also { request ->
+			inFlightPages[key] ?: create(pageGenerations[key] ?: 0L).also { request ->
 				registerPagesRequest(key, request)
 			}
 		} finally {
@@ -126,20 +141,23 @@ class MemoryContentCache @Inject constructor(
 	/**
 	 * Atomically detach the old generation and install one fresh generation. Existing consumers keep
 	 * their old SafeDeferred, while callers arriving after this operation join the new request instead
-	 * of racing between invalidation and getOrCreateInFlightPages().
+	 * of racing between invalidation and getOrCreateInFlightPages(). The generation also prevents the
+	 * detached request from writing stale metadata after this invalidation.
 	 */
 	suspend fun createFreshInFlightPages(
 		source: MangaSource,
 		chapter: MangaChapter,
-		create: suspend () -> SafeDeferred<List<MangaPage>>,
+		create: suspend (generation: Long) -> SafeDeferred<List<MangaPage>>,
 	): SafeDeferred<List<MangaPage>> {
 		val key = PagesRequestKey(source.name, chapter.id, chapter.url)
 		pagesRequestMutex.lock()
 		return try {
 			pagesCache.remove(Key(source, chapter.url))
+			val generation = (pageGenerations[key] ?: 0L) + 1L
+			pageGenerations[key] = generation
 			pageMetadataCache.invalidate(source, chapter)
 			inFlightPages[key]?.let { request -> inFlightPages.remove(key, request) }
-			create().also { request -> registerPagesRequest(key, request) }
+			create(generation).also { request -> registerPagesRequest(key, request) }
 		} finally {
 			pagesRequestMutex.unlock()
 		}
@@ -172,6 +190,9 @@ class MemoryContentCache @Inject constructor(
 		}
 		for ((key, request) in inFlightPages) {
 			if (key.sourceName == source.name) inFlightPages.remove(key, request)
+		}
+		for (key in pageGenerations.keys) {
+			if (key.sourceName == source.name) pageGenerations.remove(key)
 		}
 	}
 
