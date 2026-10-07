@@ -37,6 +37,7 @@ import org.koitharu.kotatsu.core.image.AvifImageDecoder
 import org.koitharu.kotatsu.core.image.CbzFetcher
 import org.koitharu.kotatsu.core.image.MangaSourceHeaderInterceptor
 import org.koitharu.kotatsu.core.image.MihonImageFetcher
+import org.koitharu.kotatsu.core.image.MiyorareImageDiskCache
 import org.koitharu.kotatsu.core.image.TsukiImageFetcher
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.network.imageproxy.ImageProxyInterceptor
@@ -80,25 +81,24 @@ interface AppModule {
 
 		@Provides
 		@LocalizedAppContext
-		fun provideLocalizedContext(
-			@ApplicationContext context: Context,
-		): Context = ContextCompat.getContextForLanguage(context)
+		fun provideLocalizedContext(@ApplicationContext context: Context): Context = ContextCompat.getContextForLanguage(context)
 
-		@Provides
-		@Singleton
-		fun provideNetworkState(
-			@ApplicationContext context: Context,
-			settings: AppSettings,
-		) = NetworkState(context.connectivityManager, settings)
+		@Provides @Singleton
+		fun provideNetworkState(@ApplicationContext context: Context, settings: AppSettings) = NetworkState(context.connectivityManager, settings)
 
-		@Provides
-		@Singleton
-		fun provideMangaDatabase(
-			@ApplicationContext context: Context,
-		): MangaDatabase = MangaDatabase(context)
+		@Provides @Singleton
+		fun provideMangaDatabase(@ApplicationContext context: Context): MangaDatabase = MangaDatabase(context)
 
-		@Provides
-		@Singleton
+		@Provides @Singleton
+		fun provideImageDiskCache(@ApplicationContext context: Context): MiyorareImageDiskCache {
+			val rootDir = context.externalCacheDir ?: context.cacheDir
+			val volatileCache = DiskCache.Builder().directory(rootDir.resolve(CacheDir.THUMBS.dir))
+				.maxSizePercent(0.10).minimumMaxSizeBytes(256L * 1024L * 1024L)
+				.maximumMaxSizeBytes(2L * 1024L * 1024L * 1024L).build()
+			return MiyorareImageDiskCache(context, volatileCache)
+		}
+
+		@Provides @Singleton
 		fun provideCoil(
 			@LocalizedAppContext context: Context,
 			@MangaHttpClient okHttpClientProvider: Provider<OkHttpClient>,
@@ -107,45 +107,25 @@ interface AppModule {
 			pageFetcherFactory: MangaPageFetcher.Factory,
 			localCoverFetcherFactory: LocalCoverFetcher.Factory,
 			coverRestoreInterceptor: CoverRestoreInterceptor,
+			imageDiskCache: MiyorareImageDiskCache,
 			networkStateProvider: Provider<NetworkState>,
 			webViewExecutorProvider: Provider<WebViewExecutor>,
 			tsukiRuntimeProvider: Provider<TsukiPluginRuntime>,
 			captchaHandler: CaptchaHandler,
 		): ImageLoader {
-			val diskCacheFactory = {
-				val rootDir = context.externalCacheDir ?: context.cacheDir
-				DiskCache.Builder()
-					.directory(rootDir.resolve(CacheDir.THUMBS.dir))
-					.maxSizePercent(0.10)
-					.minimumMaxSizeBytes(256L * 1024L * 1024L)
-					.maximumMaxSizeBytes(2L * 1024L * 1024L * 1024L)
-					.build()
-			}
-			val okHttpClientLazy = lazy {
-				okHttpClientProvider.get().newBuilder().cache(null).build()
-			}
+			val okHttpClientLazy = lazy { okHttpClientProvider.get().newBuilder().cache(null).build() }
 			return ImageLoader.Builder(context)
 				.interceptorCoroutineContext(Dispatchers.Default)
 				.fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(8))
 				.decoderCoroutineContext(Dispatchers.IO.limitedParallelism(3))
-				.diskCache(diskCacheFactory)
+				.diskCache { imageDiskCache }
 				.logger(if (BuildConfig.DEBUG) DebugLogger() else null)
-				.allowRgb565(context.isLowRamDevice())
-				.eventListener(captchaHandler)
+				.allowRgb565(context.isLowRamDevice()).eventListener(captchaHandler)
 				.components {
 					add(MihonImageFetcher.Factory())
 					add(TsukiImageFetcher.Factory(tsukiRuntimeProvider))
-					add(
-						OkHttpNetworkFetcherFactory(
-							callFactory = okHttpClientLazy::value,
-							connectivityChecker = { networkStateProvider.get() },
-						),
-					)
-					if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-						add(AnimatedImageDecoder.Factory())
-					} else {
-						add(GifDecoder.Factory())
-					}
+					add(OkHttpNetworkFetcherFactory(callFactory = okHttpClientLazy::value, connectivityChecker = { networkStateProvider.get() }))
+					if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) add(AnimatedImageDecoder.Factory()) else add(GifDecoder.Factory())
 					add(SvgDecoder.Factory())
 					add(CbzFetcher.Factory())
 					add(localCoverFetcherFactory)
@@ -160,72 +140,39 @@ interface AppModule {
 		}
 
 		@Provides
-		fun provideSearchSuggestions(
-			@ApplicationContext context: Context,
-		): SearchRecentSuggestions = MangaSuggestionsProvider.createSuggestions(context)
+		fun provideSearchSuggestions(@ApplicationContext context: Context): SearchRecentSuggestions = MangaSuggestionsProvider.createSuggestions(context)
 
-		@Provides
-		@ElementsIntoSet
-		fun provideDatabaseObservers(
-			appShortcutManager: AppShortcutManager,
-			widgetRefreshObserver: org.koitharu.kotatsu.widget.common.WidgetRefreshObserver,
-		): Set<@JvmSuppressWildcards InvalidationTracker.Observer> = arraySetOf(
-			appShortcutManager,
-			widgetRefreshObserver,
-		)
+		@Provides @ElementsIntoSet
+		fun provideDatabaseObservers(appShortcutManager: AppShortcutManager, widgetRefreshObserver: org.koitharu.kotatsu.widget.common.WidgetRefreshObserver): Set<@JvmSuppressWildcards InvalidationTracker.Observer> = arraySetOf(appShortcutManager, widgetRefreshObserver)
 
-		@Provides
-		@ElementsIntoSet
+		@Provides @ElementsIntoSet
 		fun provideActivityLifecycleCallbacks(
 			appProtectHelper: AppProtectHelper,
 			activityRecreationHandle: ActivityRecreationHandle,
 			acraScreenLogger: AcraScreenLogger,
 			screenshotPolicyHelper: ScreenshotPolicyHelper,
 			foregroundActivityHolder: ForegroundActivityHolder,
-		): Set<@JvmSuppressWildcards Application.ActivityLifecycleCallbacks> = arraySetOf(
-			appProtectHelper,
-			activityRecreationHandle,
-			acraScreenLogger,
-			screenshotPolicyHelper,
-			foregroundActivityHolder,
-		)
+		): Set<@JvmSuppressWildcards Application.ActivityLifecycleCallbacks> = arraySetOf(appProtectHelper, activityRecreationHandle, acraScreenLogger, screenshotPolicyHelper, foregroundActivityHolder)
 
-		@Provides
-		@Singleton
-		@LocalStorageChanges
+		@Provides @Singleton @LocalStorageChanges
 		fun provideMutableLocalStorageChangesFlow(): MutableSharedFlow<LocalManga?> = MutableSharedFlow()
 
-		@Provides
-		@LocalStorageChanges
-		fun provideLocalStorageChangesFlow(
-			@LocalStorageChanges flow: MutableSharedFlow<LocalManga?>,
-		): SharedFlow<LocalManga?> = flow.asSharedFlow()
+		@Provides @LocalStorageChanges
+		fun provideLocalStorageChangesFlow(@LocalStorageChanges flow: MutableSharedFlow<LocalManga?>): SharedFlow<LocalManga?> = flow.asSharedFlow()
 
 		@Provides
-		fun provideWorkManager(
-			@ApplicationContext context: Context,
-		): WorkManager = WorkManager.getInstance(context)
+		fun provideWorkManager(@ApplicationContext context: Context): WorkManager = WorkManager.getInstance(context)
 
-		@Provides
-		@Singleton
-		@PageCache
-		fun providePageCache(
-			@ApplicationContext context: Context,
-		) = LocalStorageCache(
-			context = context,
-			dir = CacheDir.PAGES,
+		@Provides @Singleton @PageCache
+		fun providePageCache(@ApplicationContext context: Context) = LocalStorageCache(
+			context = context, dir = CacheDir.PAGES,
 			defaultSize = FileSize.MEGABYTES.convert(200, FileSize.BYTES),
 			minSize = FileSize.MEGABYTES.convert(20, FileSize.BYTES),
 		)
 
-		@Provides
-		@Singleton
-		@FaviconCache
-		fun provideFaviconCache(
-			@ApplicationContext context: Context,
-		) = LocalStorageCache(
-			context = context,
-			dir = CacheDir.FAVICONS,
+		@Provides @Singleton @FaviconCache
+		fun provideFaviconCache(@ApplicationContext context: Context) = LocalStorageCache(
+			context = context, dir = CacheDir.FAVICONS,
 			defaultSize = FileSize.MEGABYTES.convert(8, FileSize.BYTES),
 			minSize = FileSize.MEGABYTES.convert(2, FileSize.BYTES),
 		)
