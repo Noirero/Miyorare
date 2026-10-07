@@ -60,6 +60,8 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	override fun onFilterClick(view: View?) = showFilters()
 	override fun onSmartLocalQueryChanged(query: String) = viewModel.setLocalQuery(query)
 	override fun onSmartLocalFilterClick(view: View) = showFilters()
+	override fun onSmartLocalTypeChanged(type: LocalContentType?) = viewModel.setContentType(type)
+	override fun onSmartLocalManageFoldersClick(view: View) = showFolderManager()
 	override fun onScrolledToEnd() = Unit
 
 	override fun onListHeaderClick(item: ListHeader, view: View) {
@@ -105,6 +107,15 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
 	private fun addFolder() {
 		if (!folderPicker.tryLaunch(null)) Snackbar.make(requireView(), R.string.operation_not_supported, Snackbar.LENGTH_LONG).show()
+	}
+
+	private fun showFolderManager() {
+		val roots = viewModel.library.state.value.roots
+		val labels = roots.map { it.name } + getString(R.string.smart_local_add_folder)
+		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_manage_folders)
+			.setItems(labels.toTypedArray()) { _, index ->
+				if (index == roots.size) addFolder() else showFolderActions(roots[index])
+			}.setNegativeButton(android.R.string.cancel, null).show()
 	}
 
 	private fun showFolderActions(root: LocalFolder) {
