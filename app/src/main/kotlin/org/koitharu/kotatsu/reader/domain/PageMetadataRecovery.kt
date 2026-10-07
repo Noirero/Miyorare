@@ -1,16 +1,12 @@
 package org.koitharu.kotatsu.reader.domain
 
-import org.jsoup.HttpStatusException
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
-import java.net.HttpURLConnection
 
 internal object PageMetadataRecovery {
 
-	fun isNotFound(error: Throwable): Boolean {
-		return error is HttpStatusException && error.statusCode == HttpURLConnection.HTTP_NOT_FOUND
-	}
+	fun isNotFound(error: Throwable): Boolean = error.isPageNotFoundFailure()
 
 	fun findReaderPage(pages: List<ReaderPage>, failedPage: MangaPage): ReaderPage? {
 		return pages.firstOrNull { page ->
