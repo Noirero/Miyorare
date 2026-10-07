@@ -72,9 +72,13 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.parsers.util.sizeOrZero
 import org.koitharu.kotatsu.reader.domain.ChaptersLoader
 import org.koitharu.kotatsu.reader.domain.DetectReaderModeUseCase
+import org.koitharu.kotatsu.reader.domain.PageLoadFailureEvents
 import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.reader.domain.PageMetadataRecovery
+import org.koitharu.kotatsu.reader.domain.PageMetadataRecoverySession
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCollector
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
+import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordRpc
 import org.koitharu.kotatsu.stats.domain.StatsCollector
@@ -125,6 +129,7 @@ class ReaderViewModel @Inject constructor(
     mangaRepositoryFactory = mangaRepositoryFactory,
 ) {
     private val intent = MangaIntent(savedStateHandle)
+    private val pageMetadataRecoverySession = PageMetadataRecoverySession()
 
     private var loadingJob: Job? = null
     private var pageSaveJob: Job? = null
@@ -227,6 +232,7 @@ class ReaderViewModel @Inject constructor(
 
     init {
         initIncognitoMode()
+        observePageMetadataFailures()
         loadImpl()
         launchJob(Dispatchers.Default) {
             val mangaId = manga.filterNotNull().first().id
@@ -470,6 +476,50 @@ class ReaderViewModel @Inject constructor(
         }
         if (dontAskAgain) {
             settings.incognitoModeForNsfw = if (value) TriStateOption.ENABLED else TriStateOption.DISABLED
+        }
+    }
+
+    private fun observePageMetadataFailures() {
+        launchJob(Dispatchers.Default) {
+            PageLoadFailureEvents.events.collect { failure ->
+                val failedPage = pageMetadataRecoverySession.record(content.value.pages, failure)
+                    ?: return@collect
+                recoverPageMetadata(failedPage)
+            }
+        }
+    }
+
+    private suspend fun recoverPageMetadata(failedPage: ReaderPage) {
+        val stateBeforeRefresh = readingState.value
+        val oldPageId = stateBeforeRefresh
+            ?.takeIf { it.chapterId == failedPage.chapterId }
+            ?.let { state ->
+                content.value.pages.firstOrNull {
+                    it.chapterId == state.chapterId && it.index == state.page
+                }?.id
+            }
+        if (!chaptersLoader.refreshChapterPages(failedPage.chapterId)) {
+            return
+        }
+        val freshPages = chaptersLoader.snapshot()
+        val currentState = readingState.value
+        val preservedState = if (
+            stateBeforeRefresh != null &&
+            currentState == stateBeforeRefresh &&
+            stateBeforeRefresh.chapterId == failedPage.chapterId
+        ) {
+            PageMetadataRecovery.preserveState(stateBeforeRefresh, oldPageId, freshPages)
+        } else {
+            currentState
+        }
+        if (currentState == stateBeforeRefresh && preservedState != null) {
+            // Metadata recovery is not a reading action: update in-memory position only. In
+            // particular, do not call saveCurrentState() or create a history/progress mutation.
+            readingState.value = preservedState
+        }
+        content.value = ReaderContent(freshPages, preservedState)
+        if (preservedState != null) {
+            notifyStateChanged()
         }
     }
 

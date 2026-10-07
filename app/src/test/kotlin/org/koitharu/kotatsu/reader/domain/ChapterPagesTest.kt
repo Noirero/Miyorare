@@ -40,6 +40,40 @@ class ChapterPagesTest {
 	}
 
 	@Test
+	fun replaceKeepsNeighbouringChapterIndices() {
+		val pages = ChapterPages()
+		pages.addLast(1L, List(2) { page(1L) })
+		pages.addLast(2L, List(3) { page(2L) })
+		pages.addLast(3L, List(2) { page(3L) })
+
+		assertTrue(pages.replace(2L, List(5) { page(2L) }))
+
+		assertEquals(2, pages.size(1L))
+		assertEquals(5, pages.size(2L))
+		assertEquals(2, pages.size(3L))
+		assertTrue(pages.subList(1L).all { it.chapterId == 1L })
+		assertTrue(pages.subList(2L).all { it.chapterId == 2L })
+		assertTrue(pages.subList(3L).all { it.chapterId == 3L })
+	}
+
+	@Test
+	fun replaceSupportsShrinkingChapterWithoutTouchingNeighbours() {
+		val pages = ChapterPages()
+		pages.addLast(1L, List(2) { page(1L) })
+		pages.addLast(2L, List(5) { page(2L) })
+		pages.addLast(3L, List(2) { page(3L) })
+
+		assertTrue(pages.replace(2L, List(2) { page(2L) }))
+
+		assertEquals(2, pages.size(1L))
+		assertEquals(2, pages.size(2L))
+		assertEquals(2, pages.size(3L))
+		assertTrue(pages.subList(1L).all { it.chapterId == 1L })
+		assertTrue(pages.subList(2L).all { it.chapterId == 2L })
+		assertTrue(pages.subList(3L).all { it.chapterId == 3L })
+	}
+
+	@Test
 	fun clear() {
 		val pages = ChapterPages()
 		pages.addLast(1L, List(12) { page(1L) })

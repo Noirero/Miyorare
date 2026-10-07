@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.throttle
 import org.koitharu.kotatsu.parsers.model.MangaPage
+import org.koitharu.kotatsu.reader.domain.PageLoadFailureEvents
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 
@@ -163,6 +164,7 @@ class PageViewModel(
 			throw e
 		} catch (e: Throwable) {
 			e.printStackTraceDebug()
+			PageLoadFailureEvents.report(data, e)
 			state.value = PageState.Error(e)
 			if (e is IOException && !networkState.value) {
 				networkState.awaitForConnection()
@@ -180,8 +182,8 @@ class PageViewModel(
 					currentState.copy(progress = progressValue)
 				} else {
 					currentState
-				}
 			}
+		}
 		}.launchIn(scope)
 
 	private fun Uri.toImageSource(bounds: Rect?): ImageSource {
