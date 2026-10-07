@@ -41,16 +41,44 @@ enum class ReaderJourneyCosmeticSlot {
 	PROGRESS_BAR,
 }
 
+enum class ReaderJourneyCosmeticMode {
+	DEFAULT,
+	AUTO,
+	FULL_SET,
+	CUSTOM,
+}
+
 data class ReaderJourneyCosmeticUnlock(
 	val rank: ReaderRank,
 	val slot: ReaderJourneyCosmeticSlot,
 )
 
+/**
+ * Atomic cosmetic selection snapshot. Stable IDs are persisted for the Exclusive Theme engine;
+ * legacy rank slots remain only for backwards compatibility with older cosmetic selections.
+ */
 data class ReaderJourneyCosmeticLoadout(
+	val schemaVersion: Int = SCHEMA_VERSION,
+	val mode: ReaderJourneyCosmeticMode = ReaderJourneyCosmeticMode.AUTO,
+	/** Base/Foundation Exclusive Theme. CUSTOM overrides fall back to this when null. */
+	val selectedThemeId: String? = null,
+	/** CUSTOM-only theme-source overrides; null means Follow Base Theme. */
+	val navigationThemeId: String? = null,
+	val accentThemeId: String? = null,
+	val glowThemeId: String? = null,
+	val selectedBadgeId: String? = null,
+	val selectedWallpaperId: String? = null,
+	val selectedFrameId: String? = null,
+	val selectedNameplateId: String? = null,
+	/** Legacy reader-card identity retained for snapshot/backward compatibility. */
+	val selectedReaderCardId: String? = null,
+	val selectedProgressStyleId: String? = null,
 	val frame: ReaderRank? = null,
 	val glow: ReaderRank? = null,
 	val background: ReaderRank? = null,
 	val progressBar: ReaderRank? = null,
+	val favoriteThemeIds: Set<String> = emptySet(),
+	val autoEquipNewRankTheme: Boolean = false,
 ) {
 
 	fun selected(slot: ReaderJourneyCosmeticSlot): ReaderRank? = when (slot) {
@@ -66,12 +94,14 @@ data class ReaderJourneyCosmeticLoadout(
 		ReaderJourneyCosmeticSlot.BACKGROUND -> copy(background = rank)
 		ReaderJourneyCosmeticSlot.PROGRESS_BAR -> copy(progressBar = rank)
 	}
+
+	companion object {
+		const val SCHEMA_VERSION = 3
+	}
 }
 
 /**
  * Cosmetic ownership is derived from monotonic Lifetime XP rather than stored independently.
- * That keeps unlocks deterministic, backup/sync-safe and impossible to lose through preference
- * resets. Every rank owns one complete cosmetic set; selection/apply UI can be layered on later.
  */
 object ReaderJourneyCosmetics {
 
@@ -110,11 +140,8 @@ data class ReaderJourneyCelebration(
 	val toRank: ReaderRank,
 	val unlockedCosmetics: Int,
 ) {
-	val isLevelUp: Boolean
-		get() = toLevel > fromLevel
-
-	val isRankUp: Boolean
-		get() = toRank.minLevel > fromRank.minLevel
+	val isLevelUp: Boolean get() = toLevel > fromLevel
+	val isRankUp: Boolean get() = toRank.minLevel > fromRank.minLevel
 }
 
 object ReaderJourneyRules {
@@ -134,45 +161,24 @@ object ReaderJourneyRules {
 		else -> 20
 	}
 
-
 	fun requiredMangaPages(totalPages: Int): Int {
 		if (totalPages <= 0) return 0
-		return ((totalPages.toLong() * COMPLETION_PERMILLE + 999L) / 1000L)
-			.coerceAtMost(totalPages.toLong())
-			.toInt()
+		return ((totalPages.toLong() * COMPLETION_PERMILLE + 999L) / 1000L).coerceAtMost(totalPages.toLong()).toInt()
 	}
 
 	fun mangaCoveragePermille(uniquePages: Int, totalPages: Int): Int {
 		if (totalPages <= 0 || uniquePages <= 0) return 0
-		return ((uniquePages.coerceAtMost(totalPages).toLong() * 1000L) / totalPages)
-			.toInt()
-			.coerceIn(0, 1000)
+		return ((uniquePages.coerceAtMost(totalPages).toLong() * 1000L) / totalPages).toInt().coerceIn(0, 1000)
 	}
 
-	fun mangaMinimumValidDurationMs(totalPages: Int): Long {
-		val requiredPages = requiredMangaPages(totalPages)
-		return maxOf(
-			MANGA_MIN_VALID_MS,
-			requiredPages.toLong() * MANGA_MIN_MS_PER_UNIQUE_PAGE,
-		)
-	}
+	fun mangaMinimumValidDurationMs(totalPages: Int): Long = maxOf(
+		MANGA_MIN_VALID_MS,
+		requiredMangaPages(totalPages).toLong() * MANGA_MIN_MS_PER_UNIQUE_PAGE,
+	)
 
-	/**
-	 * Moderate non-linear curve. Early levels arrive quickly, while later levels become meaningful
-	 * without turning Lv.100 into an RPG grind wall.
-	 */
 	fun xpRequiredForNextLevel(level: Int): Long {
 		if (level >= MAX_LEVEL) return 0L
-		val anchors = arrayOf(
-			1 to 100L,
-			5 to 180L,
-			10 to 300L,
-			20 to 500L,
-			40 to 800L,
-			60 to 1_100L,
-			80 to 1_400L,
-			99 to 2_000L,
-		)
+		val anchors = arrayOf(1 to 100L, 5 to 180L, 10 to 300L, 20 to 500L, 40 to 800L, 60 to 1_100L, 80 to 1_400L, 99 to 2_000L)
 		val lower = anchors.last { level >= it.first }
 		val upper = anchors.firstOrNull { level <= it.first && it.first > lower.first } ?: lower
 		if (upper.first == lower.first) return lower.second
@@ -191,12 +197,6 @@ object ReaderJourneyRules {
 			level++
 		}
 		val next = if (level >= MAX_LEVEL) null else xpRequiredForNextLevel(level)
-		return ReaderJourneyProgress(
-			lifetimeXp = safeXp,
-			level = level,
-			xpIntoLevel = safeXp - consumed,
-			xpForNextLevel = next,
-			rank = ReaderRank.forLevel(level),
-		)
+		return ReaderJourneyProgress(safeXp, level, safeXp - consumed, next, ReaderRank.forLevel(level))
 	}
 }
