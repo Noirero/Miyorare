@@ -1,19 +1,12 @@
-This release focuses on improving downloads, reading, local library handling, favorites, and extension management.
+This update improves loading efficiency and cache reliability.
 
 ### ✨ Improvements
 
-- Redesigned **Downloads UI** with clearer progress and status handling.
-- Improved download reliability and chapter finalization.
-- Improved **Manga and Webtoon Reader** page loading and behavior.
-- Added **EPUB Reader brightness control** and improved reader settings persistence.
-- Improved **Local Library** manga/chapter detection and state updates.
-- Improved **Favorites**, including duplicate library scanning and category/selection handling.
-- Improved **Extension installation and Extension Stores** management.
-- Improved **Mihon extension compatibility**.
-- Improved download/local chapter status updates in **Details**.
-- Various stability fixes and internal improvements.
+- Added **page metadata caching** to reduce repeated requests and improve page loading.
+- Added **persistent manga cover caching**, allowing covers to remain available after Android's regular cache is cleared.
+- Added a dedicated option to view and clear the cover cache.
 
-### 🐞 Fixed
+### 🐞 Fixes
 
-- Fixed cases where a chapter reached the final downloaded page but remained stuck instead of being marked as completed.
-- Includes the fix/improvements for [GitHub Issue #360](https://github.com/Noirero/Miyorare/issues/360).
+- Improved recovery when outdated page data causes loading errors, including **404 errors from Mihon-based sources**.
+- Improved cache cleanup, migration, and overall reliability.
