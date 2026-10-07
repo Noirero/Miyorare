@@ -41,18 +41,23 @@ abstract class CachingMangaRepository(
 			cache.invalidatePages(source, chapter)
 		} else {
 			cache.getPages(source, chapter.url)?.let { return it }
-			cache.getPersistentPages(source, chapter)?.let { return it }
 		}
 
-		// The singleton cache owns active page-list work, so Reader/Downloader/recreated wrappers
-		// resolving the same chapter share one source request. Completed content remains disposable.
+		// The singleton cache owns both the persistent lookup and any source request. Reader,
+		// Downloader and recreated repository wrappers therefore cannot race independent disk reads
+		// followed by duplicate getPageList calls for the same chapter.
 		val pages = cache.getOrCreateInFlightPages(source, chapter) {
 			asyncSafe {
+				if (!forceRefresh) {
+					cache.getPersistentPages(source, chapter)?.let { return@asyncSafe it }
+				}
 				getPagesImpl(chapter).distinctById().also { resolved ->
 					cache.putPersistentPages(source, chapter, resolved)
 				}
 			}
 		}
+		// Promote persistent hits as well as fresh resolutions into the existing short-lived memory
+		// cache. This preserves the old fast path after the shared request completes.
 		cache.putPages(source, chapter.url, pages)
 		return pages.await()
 	}
