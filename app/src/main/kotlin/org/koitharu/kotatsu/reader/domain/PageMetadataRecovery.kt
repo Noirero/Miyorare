@@ -16,7 +16,8 @@ internal object PageMetadataRecovery {
 
 	/**
 	 * Keep the logical page when a refreshed list only moved it. If the source removed that page,
-	 * preserve the old index as closely as possible and clamp it to the refreshed chapter bounds.
+	 * preserve the old index as closely as possible, reset its page-local scroll, and clamp it to the
+	 * refreshed chapter bounds.
 	 */
 	fun preserveState(
 		state: ReaderState,
@@ -26,11 +27,10 @@ internal object PageMetadataRecovery {
 		val chapterPages = freshPages.filter { it.chapterId == state.chapterId }
 		if (chapterPages.isEmpty()) return state
 		val matchingIndex = oldPageId?.let { id -> chapterPages.indexOfFirst { it.id == id } }
-		val pageIndex = if (matchingIndex != null && matchingIndex >= 0) {
-			chapterPages[matchingIndex].index
+		return if (matchingIndex != null && matchingIndex >= 0) {
+			state.copy(page = chapterPages[matchingIndex].index)
 		} else {
-			state.page.coerceIn(0, chapterPages.lastIndex)
+			state.copy(page = state.page.coerceIn(0, chapterPages.lastIndex), scroll = 0)
 		}
-		return state.copy(page = pageIndex)
 	}
 }
