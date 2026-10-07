@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,6 +39,7 @@ class MemoryContentCache @Inject constructor(
 	private val pagesRequestMutex = Mutex()
 	private val inFlightPages = ConcurrentHashMap<PagesRequestKey, SafeDeferred<List<MangaPage>>>()
 	private val pageGenerations = ConcurrentHashMap<PagesRequestKey, Long>()
+	private val pageGenerationCounter = AtomicLong()
 
 	init {
 		application.registerComponentCallbacks(this)
@@ -96,7 +98,7 @@ class MemoryContentCache @Inject constructor(
 		val key = PagesRequestKey(source.name, chapter.id, chapter.url)
 		pagesRequestMutex.lock()
 		try {
-			if (pageGenerations[key] ?: 0L == generation) {
+			if (pageGenerations[key] == generation) {
 				pageMetadataCache.put(source, chapter, pages)
 			}
 		} finally {
@@ -114,7 +116,7 @@ class MemoryContentCache @Inject constructor(
 		pagesRequestMutex.lock()
 		try {
 			pagesCache.remove(Key(source, chapter.url))
-			pageGenerations[key] = (pageGenerations[key] ?: 0L) + 1L
+			pageGenerations[key] = nextPageGeneration()
 			pageMetadataCache.invalidate(source, chapter)
 			inFlightPages[key]?.let { request -> inFlightPages.remove(key, request) }
 		} finally {
@@ -130,8 +132,10 @@ class MemoryContentCache @Inject constructor(
 		val key = PagesRequestKey(source.name, chapter.id, chapter.url)
 		pagesRequestMutex.lock()
 		return try {
-			inFlightPages[key] ?: create(pageGenerations[key] ?: 0L).also { request ->
-				registerPagesRequest(key, request)
+			inFlightPages[key] ?: run {
+				val generation = nextPageGeneration()
+				pageGenerations[key] = generation
+				create(generation).also { request -> registerPagesRequest(key, request) }
 			}
 		} finally {
 			pagesRequestMutex.unlock()
@@ -153,7 +157,7 @@ class MemoryContentCache @Inject constructor(
 		pagesRequestMutex.lock()
 		return try {
 			pagesCache.remove(Key(source, chapter.url))
-			val generation = (pageGenerations[key] ?: 0L) + 1L
+			val generation = nextPageGeneration()
 			pageGenerations[key] = generation
 			pageMetadataCache.invalidate(source, chapter)
 			inFlightPages[key]?.let { request -> inFlightPages.remove(key, request) }
@@ -162,6 +166,8 @@ class MemoryContentCache @Inject constructor(
 			pagesRequestMutex.unlock()
 		}
 	}
+
+	private fun nextPageGeneration(): Long = pageGenerationCounter.incrementAndGet()
 
 	private fun registerPagesRequest(key: PagesRequestKey, request: SafeDeferred<List<MangaPage>>) {
 		inFlightPages[key] = request
@@ -184,7 +190,8 @@ class MemoryContentCache @Inject constructor(
 		clearCache(relatedMangaCache, source)
 		// Invalidation detaches future callers from the old generation. The process-scoped request is
 		// deliberately not cancelled: an existing caller may still consume its result, while a later
-		// request is free to start a new generation.
+		// request is free to start a new generation. Generation tokens are never reused, so removing a
+		// source cannot make a detached request current again when the next request is created.
 		for ((key, request) in inFlightDetails) {
 			if (key.sourceName == source.name) inFlightDetails.remove(key, request)
 		}
