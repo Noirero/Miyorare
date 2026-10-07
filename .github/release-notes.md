@@ -1,19 +1,16 @@
-This release focuses on improving downloads, reading, local library handling, favorites, and extension management.
+This release focuses on faster page loading, more reliable stale-page recovery, and persistent manga cover caching.
 
 ### ✨ Improvements
 
-- Redesigned **Downloads UI** with clearer progress and status handling.
-- Improved download reliability and chapter finalization.
-- Improved **Manga and Webtoon Reader** page loading and behavior.
-- Added **EPUB Reader brightness control** and improved reader settings persistence.
-- Improved **Local Library** manga/chapter detection and state updates.
-- Improved **Favorites**, including duplicate library scanning and category/selection handling.
-- Improved **Extension installation and Extension Stores** management.
-- Improved **Mihon extension compatibility**.
-- Improved download/local chapter status updates in **Details**.
-- Various stability fixes and internal improvements.
+- Added a **Chapter/Page Metadata Cache** to reduce repeated page metadata requests and improve loading efficiency.
+- Page metadata can be reused for up to **48 hours**, with bounded storage and automatic cleanup of older entries.
+- Added **Persistent Cover Cache** so manga covers can remain available even after Android's regular app cache is cleared.
+- Added bounded persistent cover storage to prevent cover cache growth without limits.
+- Added a dedicated **Clear cover cache** option with cache size information.
+- Improved safe migration from the previous temporary cover cache.
 
 ### 🐞 Fixed
 
-- Fixed cases where a chapter reached the final downloaded page but remained stuck instead of being marked as completed.
-- Includes the fix/improvements for [GitHub Issue #360](https://github.com/Noirero/Miyorare/issues/360).
+- Improved recovery when cached page metadata becomes stale and a page returns **404**, including Mihon-based sources.
+- Stale chapter page metadata can now be refreshed without unnecessarily affecting Reader progress or reading history.
+- Various cache reliability and stability improvements.
