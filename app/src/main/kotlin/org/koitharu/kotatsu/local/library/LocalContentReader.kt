@@ -26,6 +26,7 @@ import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -184,29 +185,43 @@ class LocalContentReader @Inject constructor(
                     }
                     null
                 } else {
-                    val file = materialize(root, chapter.node)
+                    check(documents.contains(root, chapter.node))
                     when (LocalTreeScanner.extension(chapter.node.name)) {
-                        "pdf" -> LocalPdfCache.renderCover(file)?.readBytes()
-                        else -> ZipFile(file).use { zip ->
-                            val preferred = if (LocalTreeScanner.extension(chapter.node.name) == "epub")
-                                EpubParser.parse(file).coverHref?.takeIf(::safeEntry)
-                            else runCatchingCancellable { metadata(root, chapter).coverName?.takeIf(::safeEntry) }.getOrNull()
-                            val images = zip.entries().asSequence()
-                                .filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
-                                .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name }).toList()
-                            val explicit = images.filter { LocalTreeScanner.isSidecar(it.name.substringAfterLast('/')) }
-                            for (entry in (explicit + listOfNotNull(preferred?.let { zip.getEntry(it) }) + images).distinctBy { it.name }) {
-                                runCatchingCancellable { valid(zip.getInputStream(entry).use { it.readBytesLimited(32 * 1024 * 1024) }) }
-                                    .getOrNull()?.let { return@use it }
-                            }
-                            null
-                        }
+                        // Cover browsing is sequential and bounded: do not create a seekable copy of
+                        // every SAF archive merely because its card became visible. Reader paths still
+                        // use materialize() when random access is actually required.
+                        "cbz", "zip", "epub" -> streamArchiveCover(chapter.node, ::valid)
+                        "pdf" -> LocalPdfCache.renderCover(materialize(root, chapter.node))?.readBytes()
+                        else -> null
                     }
                 }
             }.getOrNull()
             valid(bytes)?.let { return@withContext it }
         }
-        null // Existing Coil/UI default artwork handles wholly unreadable/missing covers.
+        null
+    }
+
+    private suspend fun streamArchiveCover(node: Node, valid: (ByteArray?) -> ByteArray?): ByteArray? {
+        documents.input(node).use { input ->
+            ZipInputStream(input.buffered()).use { zip ->
+                var fallback: ByteArray? = null
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    currentCoroutineContext().ensureActive()
+                    if (!entry.isDirectory && safeEntry(entry.name) && LocalTreeScanner.isImage(entry.name)) {
+                        val bytes = runCatchingCancellable { zip.readBytesLimited(32 * 1024 * 1024) }.getOrNull()
+                        val image = valid(bytes)
+                        if (image != null) {
+                            if (LocalTreeScanner.isSidecar(entry.name.substringAfterLast('/'))) return image
+                            if (fallback == null) fallback = image
+                        }
+                    }
+                    zip.closeEntry()
+                    entry = zip.nextEntry
+                }
+                return fallback
+            }
+        }
     }
 
     private fun safeEntry(path: String) = path.isNotBlank() && !path.startsWith('/') && '\\' !in path &&

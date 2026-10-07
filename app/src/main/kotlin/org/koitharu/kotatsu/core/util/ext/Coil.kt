@@ -59,25 +59,19 @@ fun ImageRequest.Builder.mangaExtra(manga: Manga?): ImageRequest.Builder = apply
 
 /**
  * Pins a cover's disk-cache entry to a stable key derived from the manga id instead of the
- * (possibly rotating) source cover URL. Many sources serve covers from signed/CDN URLs that
- * change between sessions; without a stable key Coil would treat each new URL as a cache miss
- * and re-download every cover on launch, showing the loading placeholder ("greyed out" covers).
+ * (possibly rotating) source cover URL. Remote source covers and Smart Local covers both need the
+ * same stable identity: remote URLs can rotate, while Smart Local uses a routing URL whose bytes
+ * are produced lazily by LocalCoverFetcher. In both cases `cover:<mangaId>` is the authority used
+ * by MiyorareImageDiskCache for the bounded persistent cover tier.
  *
- * With a stable key the cover is fetched once and then served from disk on every subsequent
- * launch — instantly, with no network round-trip — exactly like a local/custom cover.
- *
- * Only applied to remote (http) covers; local/custom `file://` covers are already stable.
- * A fresh copy is pulled from the source only when the manga is opened (see the details screen),
- * which overwrites this entry.
- *
- * Skipped for user-set cover overrides (a URL that differs from the source cover): those are already
- * stable and must keep their own cache key, otherwise they'd collide with the source cover cached
- * under `cover:$mangaId` and the override would never show in lists.
+ * Skipped for user-set remote cover overrides (a URL that differs from the source cover): those are
+ * already stable and must keep their own cache key, otherwise they'd collide with the source cover.
  */
 fun ImageRequest.Builder.stableMangaCoverKey(manga: Manga?, coverUrl: String?): ImageRequest.Builder = apply {
-	if (manga != null && isRemoteCoverUrl(coverUrl) &&
-		(coverUrl == manga.coverUrl || coverUrl == manga.largeCoverUrl)
-	) {
+	if (manga == null || coverUrl == null) return@apply
+	val sourceCover = coverUrl == manga.coverUrl || coverUrl == manga.largeCoverUrl
+	val smartLocalCover = coverUrl.startsWith("smart-local://cover/", ignoreCase = true)
+	if (smartLocalCover || (sourceCover && isRemoteCoverUrl(coverUrl))) {
 		diskCacheKey(mangaCoverDiskCacheKey(manga.id))
 	}
 }
