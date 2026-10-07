@@ -21,8 +21,12 @@ class MiyorareImageDiskCache(
 	private val volatileCache: DiskCache = createVolatileCache(context),
 ) : DiskCache {
 
+	private val migrationPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
 	private val coverCache = DiskCache.Builder()
 		.directory((context.getExternalFilesDir(COVER_DIR) ?: File(context.filesDir, COVER_DIR)).resolve(COIL_DIR))
+		// This cache contains covers only. Keep it bounded independently instead of carrying the
+		// shared volatile cache's 256 MiB-2 GiB retention policy into persistent app files.
 		.maxSizePercent(0.02)
 		.minimumMaxSizeBytes(10L * 1024L * 1024L)
 		.maximumMaxSizeBytes(250L * 1024L * 1024L)
@@ -34,6 +38,7 @@ class MiyorareImageDiskCache(
 	override val maxSize: Long
 		get() = volatileCache.maxSize + coverCache.maxSize
 
+	// Coil uses one FileSystem for an ImageLoader. Both delegates use the default system FileSystem.
 	override val directory: Path
 		get() = volatileCache.directory
 
@@ -46,6 +51,7 @@ class MiyorareImageDiskCache(
 	override fun openSnapshot(key: String): DiskCache.Snapshot? {
 		if (!isCoverKey(key)) return volatileCache.openSnapshot(key)
 		coverCache.openSnapshot(key)?.let { return it }
+		if (!migrationPreferences.getBoolean(KEY_LEGACY_MIGRATION_ENABLED, true)) return null
 		return migrateLegacyCover(key)
 	}
 
@@ -53,6 +59,7 @@ class MiyorareImageDiskCache(
 
 	override fun remove(key: String): Boolean = cacheFor(key).remove(key)
 
+	/** Coil-level clear means clear the complete image cache. Settings uses the scoped methods below. */
 	override fun clear() {
 		volatileCache.clear()
 		coverCache.clear()
@@ -63,7 +70,14 @@ class MiyorareImageDiskCache(
 		coverCache.shutdown()
 	}
 
-	fun clearCovers() = coverCache.clear()
+	/**
+	 * Explicit user clear must also end legacy migration. Otherwise an old cover that has not yet
+	 * migrated could be copied back into persistent storage the next time that manga is opened.
+	 */
+	fun clearCovers() {
+		coverCache.clear()
+		migrationPreferences.edit().putBoolean(KEY_LEGACY_MIGRATION_ENABLED, false).apply()
+	}
 
 	fun clearVolatile() = volatileCache.clear()
 
@@ -98,6 +112,8 @@ class MiyorareImageDiskCache(
 		const val COVER_DIR = "covers"
 		const val COIL_DIR = "coil"
 		const val VOLATILE_DIR = "image_cache"
+		const val PREFS_NAME = "persistent_cover_cache"
+		const val KEY_LEGACY_MIGRATION_ENABLED = "legacy_migration_enabled"
 
 		fun createVolatileCache(context: Context): DiskCache = DiskCache.Builder()
 			.directory((context.externalCacheDir ?: context.cacheDir).resolve(VOLATILE_DIR))
