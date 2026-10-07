@@ -10,6 +10,8 @@ import androidx.core.content.ContextCompat
 import androidx.room.InvalidationTracker
 import androidx.work.WorkManager
 import coil3.ImageLoader
+import coil3.disk.DiskCache
+import coil3.disk.directory
 import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
@@ -97,6 +99,21 @@ interface AppModule {
 
 		@Provides
 		@Singleton
+		fun provideImageDiskCache(
+			@ApplicationContext context: Context,
+		): MiyorareImageDiskCache {
+			val rootDir = context.externalCacheDir ?: context.cacheDir
+			val volatileCache = DiskCache.Builder()
+				.directory(rootDir.resolve("image_cache"))
+				.maxSizePercent(0.10)
+				.minimumMaxSizeBytes(256L * 1024L * 1024L)
+				.maximumMaxSizeBytes(2L * 1024L * 1024L * 1024L)
+				.build()
+			return MiyorareImageDiskCache(context, volatileCache)
+		}
+
+		@Provides
+		@Singleton
 		fun provideCoil(
 			@LocalizedAppContext context: Context,
 			@MangaHttpClient okHttpClientProvider: Provider<OkHttpClient>,
@@ -115,8 +132,6 @@ interface AppModule {
 			}
 			return ImageLoader.Builder(context)
 				.interceptorCoroutineContext(Dispatchers.Default)
-				// Bound cover/network work so a fast grid fling cannot fan out enough fetch/decode
-				// tasks to steal CPU from RecyclerView frame production.
 				.fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(8))
 				.decoderCoroutineContext(Dispatchers.IO.limitedParallelism(3))
 				.diskCache { imageDiskCache }
@@ -124,12 +139,7 @@ interface AppModule {
 				.allowRgb565(context.isLowRamDevice())
 				.eventListener(captchaHandler)
 				.components {
-					// Must precede the default network fetcher so Mihon-source covers/thumbnails are
-					// fetched through the extension's own client + headers (avoids 403/Cloudflare
-					// blocks on sources like Comick). Returns null for non-Mihon data, falling through.
 					add(MihonImageFetcher.Factory())
-					// Same isolation for optional Tsuki/Usagi sources. Factory construction is inert;
-					// the runtime Provider is resolved only for an actual Tsuki image request.
 					add(TsukiImageFetcher.Factory(tsukiRuntimeProvider))
 					add(
 						OkHttpNetworkFetcherFactory(
