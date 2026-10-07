@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runInterruptible
 import okhttp3.Cache
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.image.MiyorareImageDiskCache
 import org.koitharu.kotatsu.core.network.cookies.MutableCookieJar
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -40,6 +41,7 @@ class DataCleanupSettingsViewModel @Inject constructor(
     private val deleteReadChaptersUseCase: DeleteReadChaptersUseCase,
     private val mangaDataRepositoryProvider: Provider<MangaDataRepository>,
     private val coil: ImageLoader,
+    private val imageDiskCache: MiyorareImageDiskCache,
 ) : BaseViewModel() {
 
     val onActionDone = MutableEventFlow<ReversibleAction>()
@@ -48,6 +50,7 @@ class DataCleanupSettingsViewModel @Inject constructor(
     val searchHistoryCount = MutableStateFlow(-1)
     val feedItemsCount = MutableStateFlow(-1)
     val httpCacheSize = MutableStateFlow(-1L)
+    val coverCacheSize = MutableStateFlow(-1L)
     val cacheSizes = EnumMap<CacheDir, MutableStateFlow<Long>>(CacheDir::class.java)
 
     val onChaptersCleanedUp = MutableEventFlow<Pair<Int, Long>>()
@@ -70,6 +73,9 @@ class DataCleanupSettingsViewModel @Inject constructor(
                 checkNotNull(cacheSizes[cache]).value = storageManager.computeCacheSize(cache)
             }
         }
+        launchJob(Dispatchers.IO) {
+            coverCacheSize.value = imageDiskCache.coverSize
+        }
         launchJob(Dispatchers.Default) {
             httpCacheSize.value = runInterruptible { httpCache.size() }
         }
@@ -81,17 +87,30 @@ class DataCleanupSettingsViewModel @Inject constructor(
                 loadingKeys.update { it + key }
                 for (cache in caches) {
                     if (cache == CacheDir.THUMBS) {
-                        // Coil keeps its disk cache journal in memory. Deleting the directory behind
-                        // its back leaves it handing out entries whose files are gone, so images fail
-                        // to decode until the process restarts. Clear it through Coil first.
+                        // Cover entries live in app-specific files and must not be removed by the
+                        // generic disposable-thumbnail action.
                         coil.memoryCache?.clear()
-                        coil.diskCache?.clear()
+                        imageDiskCache.clearVolatile()
                     }
                     storageManager.clearCache(cache)
                     checkNotNull(cacheSizes[cache]).value = storageManager.computeCacheSize(cache)
                 }
             } finally {
                 loadingKeys.update { it - key }
+            }
+        }
+    }
+
+    fun clearCoverCache() {
+        launchJob(Dispatchers.IO) {
+            try {
+                loadingKeys.update { it + KEY_COVER_CACHE_CLEAR }
+                // Memory entries can otherwise keep a just-cleared cover visible until eviction.
+                coil.memoryCache?.clear()
+                imageDiskCache.clearCovers()
+                coverCacheSize.value = imageDiskCache.coverSize
+            } finally {
+                loadingKeys.update { it - KEY_COVER_CACHE_CLEAR }
             }
         }
     }
@@ -184,5 +203,9 @@ class DataCleanupSettingsViewModel @Inject constructor(
                 loadingKeys.update { it - AppSettings.KEY_CHAPTERS_CLEAR }
             }
         }
+    }
+
+    companion object {
+        const val KEY_COVER_CACHE_CLEAR = "cover_cache_clear"
     }
 }
