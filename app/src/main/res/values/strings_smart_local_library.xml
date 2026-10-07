@@ -56,4 +56,5 @@
         <item>Latest chapter</item>
     </string-array>
     <item name="action_smart_local_info" type="id" />
+    <item name="action_smart_local_restore" type="id" />
 </resources>

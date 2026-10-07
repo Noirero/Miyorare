@@ -1,11 +1,13 @@
 package org.koitharu.kotatsu.details.data
 
+import androidx.core.net.toUri
 import org.koitharu.kotatsu.core.model.getLocale
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.withMergedBranches
 import org.koitharu.kotatsu.core.model.withOverride
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaState
@@ -52,7 +54,7 @@ data class MangaDetails(
         get() = manga.isLocal
 
     val local: LocalManga?
-        get() = localManga ?: if (manga.isLocal) LocalManga(manga) else null
+        get() = localManga ?: if (manga.isLocal && manga.url.toUri().scheme != LOCAL_LIBRARY_SCHEME) LocalManga(manga) else null
 
     val coverUrl: String?
         get() = override?.coverUrl
