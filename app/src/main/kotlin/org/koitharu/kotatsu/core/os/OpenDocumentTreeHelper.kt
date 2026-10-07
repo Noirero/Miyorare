@@ -23,7 +23,7 @@ class OpenDocumentTreeHelper(
 
 	constructor(activityResultCaller: ActivityResultCaller, callback: ActivityResultCallback<Uri?>) : this(
 		activityResultCaller,
-		0,
+		DEFAULT_TREE_GRANT_FLAGS,
 		callback,
 	)
 
@@ -91,5 +91,12 @@ class OpenDocumentTreeHelper(
 			}
 			return intent
 		}
+	}
+
+	private companion object {
+		const val DEFAULT_TREE_GRANT_FLAGS = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+			Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+			Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+			Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
 	}
 }

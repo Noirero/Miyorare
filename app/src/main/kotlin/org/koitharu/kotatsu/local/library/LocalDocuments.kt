@@ -31,7 +31,12 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
         if (u.scheme == ContentResolver.SCHEME_FILE) return fileNode(u.toFile())
         require(u.scheme == ContentResolver.SCHEME_CONTENT && DocumentsContract.isTreeUri(u))
         val document = DocumentsContract.buildDocumentUriUsingTree(u, DocumentsContract.getTreeDocumentId(u))
-        return query(document).singleOrNull() ?: throw IOException("Folder is unavailable")
+        // Most providers expose the selected root through its document URI. A few valid SAF
+        // providers only answer the original tree URI, so accept that representation as a
+        // compatibility fallback without converting the grant to a filesystem path.
+        return query(document).singleOrNull()
+            ?: runCatching { query(u).singleOrNull() }.getOrNull()
+            ?: throw IOException("Folder is unavailable")
     }
 
     fun access(root: Node, cancelled: () -> Unit): LocalTreeScanner.Access = object : LocalTreeScanner.Access {
