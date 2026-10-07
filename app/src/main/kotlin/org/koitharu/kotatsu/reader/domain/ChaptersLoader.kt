@@ -87,6 +87,7 @@ class ChaptersLoader @Inject constructor(
 	/**
 	 * Force-resolve one already loaded remote chapter and atomically replace only its page snapshot.
 	 * Neighbouring chapters stay intact, so stale metadata recovery cannot silently rebuild Reader state.
+	 * Source/network failures are local to this attempt; cancellation still propagates normally.
 	 */
 	@CheckResult
 	suspend fun refreshChapterPages(chapterId: Long): Boolean {
@@ -96,8 +97,8 @@ class ChaptersLoader @Inject constructor(
 		if (sourceChapter.source == LocalMangaSource) return false
 		val repository = mangaRepositoryFactory.create(sourceChapter.source)
 		val freshRepository = repository as? FreshChapterPagesRepository ?: return false
-		val pages = freshRepository.getFreshPages(sourceChapter)
-		if (pages.isEmpty()) return false
+		val pages = runCatchingCancellable { freshRepository.getFreshPages(sourceChapter) }.getOrNull()
+		if (pages.isNullOrEmpty()) return false
 		val readerPages = pages.mapIndexed { index, page -> ReaderPage(page, index, chapterId) }
 		return mutex.withLock {
 			chapterPages.replace(chapterId, readerPages)

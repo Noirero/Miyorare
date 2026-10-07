@@ -106,24 +106,6 @@ class MemoryContentCache @Inject constructor(
 		}
 	}
 
-	/**
-	 * Detach future callers from the current page-list generation without cancelling existing
-	 * consumers. This is retained for explicit invalidation paths that do not immediately resolve a
-	 * replacement generation.
-	 */
-	suspend fun invalidatePages(source: MangaSource, chapter: MangaChapter) {
-		val key = PagesRequestKey(source.name, chapter.id, chapter.url)
-		pagesRequestMutex.lock()
-		try {
-			pagesCache.remove(Key(source, chapter.url))
-			pageGenerations[key] = nextPageGeneration()
-			pageMetadataCache.invalidate(source, chapter)
-			inFlightPages[key]?.let { request -> inFlightPages.remove(key, request) }
-		} finally {
-			pagesRequestMutex.unlock()
-		}
-	}
-
 	suspend fun getOrCreateInFlightPages(
 		source: MangaSource,
 		chapter: MangaChapter,
@@ -135,7 +117,7 @@ class MemoryContentCache @Inject constructor(
 			inFlightPages[key] ?: run {
 				val generation = nextPageGeneration()
 				pageGenerations[key] = generation
-				create(generation).also { request -> registerPagesRequest(key, request) }
+				create(generation).also { request -> registerPagesRequest(key, generation, request) }
 			}
 		} finally {
 			pagesRequestMutex.unlock()
@@ -161,7 +143,7 @@ class MemoryContentCache @Inject constructor(
 			pageGenerations[key] = generation
 			pageMetadataCache.invalidate(source, chapter)
 			inFlightPages[key]?.let { request -> inFlightPages.remove(key, request) }
-			create(generation).also { request -> registerPagesRequest(key, request) }
+			create(generation).also { request -> registerPagesRequest(key, generation, request) }
 		} finally {
 			pagesRequestMutex.unlock()
 		}
@@ -169,10 +151,15 @@ class MemoryContentCache @Inject constructor(
 
 	private fun nextPageGeneration(): Long = pageGenerationCounter.incrementAndGet()
 
-	private fun registerPagesRequest(key: PagesRequestKey, request: SafeDeferred<List<MangaPage>>) {
+	private fun registerPagesRequest(
+		key: PagesRequestKey,
+		generation: Long,
+		request: SafeDeferred<List<MangaPage>>,
+	) {
 		inFlightPages[key] = request
 		request.invokeOnCompletion {
 			inFlightPages.remove(key, request)
+			pageGenerations.remove(key, generation)
 		}
 	}
 

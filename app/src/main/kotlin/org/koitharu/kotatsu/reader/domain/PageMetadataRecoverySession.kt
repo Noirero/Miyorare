@@ -25,6 +25,4 @@ internal class PageMetadataRecoverySession(
 			null
 		}
 	}
-
-	fun clear() = policy.clear()
 }
