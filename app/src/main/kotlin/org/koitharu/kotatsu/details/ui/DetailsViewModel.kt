@@ -30,6 +30,7 @@ import androidx.core.net.toUri
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.getPreferredBranch
 import org.koitharu.kotatsu.local.data.isEpubFile
+import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import java.io.File
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.db.MangaDatabase
@@ -300,7 +301,9 @@ class DetailsViewModel @Inject constructor(
 		}
 		launchJob(Dispatchers.Default) {
 			val manga = mangaDetails.firstOrNull { it != null && it.isLocal } ?: return@launchJob
-			remoteManga.value = interactor.findRemote(manga.toManga())
+			if (manga.toManga().url.toUri().scheme != LOCAL_LIBRARY_SCHEME) {
+				remoteManga.value = interactor.findRemote(manga.toManga())
+			}
 		}
 		// Re-apply the override as soon as it changes in the DB so edits from the override editor
 		// are reflected instantly, without waiting for a manual reload or re-entering the screen.
@@ -428,7 +431,7 @@ class DetailsViewModel @Inject constructor(
 		mangaDetails.value?.local?.file?.takeIf { it.isEpubFile }?.let { return it }
 		// A book opened straight from local storage has no separate "local" copy to look up.
 		val manga = getMangaOrNull() ?: return null
-		if (manga.source != LocalMangaSource) return null
+		if (manga.source != LocalMangaSource || manga.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) return null
 		return runCatching { File(manga.url.toUri().schemeSpecificPart) }
 			.getOrNull()
 			?.takeIf { it.isEpubFile }

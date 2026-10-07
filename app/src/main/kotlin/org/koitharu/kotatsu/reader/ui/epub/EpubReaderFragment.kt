@@ -116,7 +116,9 @@ import org.koitharu.kotatsu.core.util.ext.isNightMode
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.URI_SCHEME_ZIP
 import org.koitharu.kotatsu.core.util.ext.isZipUri
+import org.koitharu.kotatsu.local.data.LocalRoutingMangaRepository
 import org.koitharu.kotatsu.local.data.input.EpubParser
+import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.databinding.FragmentReaderEpubBinding
 import org.koitharu.kotatsu.databinding.SheetEpubDictionaryBinding
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -917,7 +919,9 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			archives.values.forEach(ZipFile::close)
 			throw error
 		}
-		val repository = if (manga.source.isNovelSource) mangaRepositoryFactory.create(manga.source) else null
+		val repository = if (manga.source.isNovelSource || manga.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) {
+			mangaRepositoryFactory.create(manga.source)
+		} else null
 		return PreparedBook(items, HybridContentSource(archives, repository, source))
 	}
 
@@ -2212,6 +2216,10 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 					val entry = archive.getEntry(entryName) ?: archive.getEntry(entryName.removePrefix("/")) ?: return null
 					archive.getInputStream(entry).use { it.readBytes() }
 				}
+			}
+			if (uri.scheme == LOCAL_LIBRARY_SCHEME) {
+				val chapter = byUrl[chapterUrl] ?: return null
+				return runBlocking { (repository as? LocalRoutingMangaRepository)?.getChapterImage(chapter, source) }
 			}
 			if (repository == null) return null
 			return when (val novelSource = repository.source.unwrap()) {
