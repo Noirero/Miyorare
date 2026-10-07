@@ -87,12 +87,13 @@ class DataCleanupSettingsViewModel @Inject constructor(
                 loadingKeys.update { it + key }
                 for (cache in caches) {
                     if (cache == CacheDir.THUMBS) {
-                        // Cover entries live in app-specific files and must not be removed by the
-                        // generic disposable-thumbnail action.
+                        // Coil owns the active journal for image_cache. Clear through the routed
+                        // cache and do not delete that directory behind Coil's back.
                         coil.memoryCache?.clear()
                         imageDiskCache.clearVolatile()
+                    } else {
+                        storageManager.clearCache(cache)
                     }
-                    storageManager.clearCache(cache)
                     checkNotNull(cacheSizes[cache]).value = storageManager.computeCacheSize(cache)
                 }
             } finally {
