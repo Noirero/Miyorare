@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.local.library.LocalCoverFetcher
 import org.koitharu.kotatsu.main.domain.CoverRestoreInterceptor
 import org.koitharu.kotatsu.main.ui.protect.AppProtectHelper
 import org.koitharu.kotatsu.main.ui.protect.ScreenshotPolicyHelper
@@ -104,6 +105,7 @@ interface AppModule {
 			faviconFetcherFactory: FaviconFetcher.Factory,
 			imageProxyInterceptor: ImageProxyInterceptor,
 			pageFetcherFactory: MangaPageFetcher.Factory,
+			localCoverFetcherFactory: LocalCoverFetcher.Factory,
 			coverRestoreInterceptor: CoverRestoreInterceptor,
 			networkStateProvider: Provider<NetworkState>,
 			webViewExecutorProvider: Provider<WebViewExecutor>,
@@ -114,10 +116,6 @@ interface AppModule {
 				val rootDir = context.externalCacheDir ?: context.cacheDir
 				DiskCache.Builder()
 					.directory(rootDir.resolve(CacheDir.THUMBS.dir))
-					// Coil defaults to a 250 MiB ceiling. Large libraries churn through that quickly,
-					// causing old covers to be fetched/decoded again during deep scrolling. Keep the
-					// existing directory (no cold-start migration) but give the library a Mihon-scale
-					// retention window. This is a limit, not preallocated storage.
 					.maxSizePercent(0.10)
 					.minimumMaxSizeBytes(256L * 1024L * 1024L)
 					.maximumMaxSizeBytes(2L * 1024L * 1024L * 1024L)
@@ -128,8 +126,6 @@ interface AppModule {
 			}
 			return ImageLoader.Builder(context)
 				.interceptorCoroutineContext(Dispatchers.Default)
-				// Bound cover/network work so a fast grid fling cannot fan out enough fetch/decode
-				// tasks to steal CPU from RecyclerView frame production.
 				.fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(8))
 				.decoderCoroutineContext(Dispatchers.IO.limitedParallelism(3))
 				.diskCache(diskCacheFactory)
@@ -137,12 +133,7 @@ interface AppModule {
 				.allowRgb565(context.isLowRamDevice())
 				.eventListener(captchaHandler)
 				.components {
-					// Must precede the default network fetcher so Mihon-source covers/thumbnails are
-					// fetched through the extension's own client + headers (avoids 403/Cloudflare
-					// blocks on sources like Comick). Returns null for non-Mihon data, falling through.
 					add(MihonImageFetcher.Factory())
-					// Same isolation for optional Tsuki/Usagi sources. Factory construction is inert;
-					// the runtime Provider is resolved only for an actual Tsuki image request.
 					add(TsukiImageFetcher.Factory(tsukiRuntimeProvider))
 					add(
 						OkHttpNetworkFetcherFactory(
@@ -157,6 +148,7 @@ interface AppModule {
 					}
 					add(SvgDecoder.Factory())
 					add(CbzFetcher.Factory())
+					add(localCoverFetcherFactory)
 					add(AvifImageDecoder.Factory())
 					add(faviconFetcherFactory)
 					add(MangaPageKeyer())
