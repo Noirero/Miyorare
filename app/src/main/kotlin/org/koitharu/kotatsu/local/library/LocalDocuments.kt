@@ -35,8 +35,19 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
     }
 
     fun access(root: Node, cancelled: () -> Unit): LocalTreeScanner.Access = object : LocalTreeScanner.Access {
-        override fun children(directory: Node): MutableList<Node> = children(root, directory).toMutableList()
-        override fun contains(selectedRoot: Node, child: Node): Boolean = this@LocalDocuments.contains(selectedRoot, child)
+        // A node returned by children() is already proven to be inside the selected tree by
+        // traversal from an authorized directory. Keep that proof instead of asking SAF
+        // providers to implement isChildDocument(), which is optional/inconsistent in practice.
+        private val traversed = HashSet<String>().apply { add(root.key) }
+
+        override fun children(directory: Node): MutableList<Node> {
+            check(directory.key in traversed) { "Document outside selected folder" }
+            return this@LocalDocuments.childrenUnchecked(directory).also { children ->
+                children.forEach { traversed += it.key }
+            }.toMutableList()
+        }
+        override fun contains(selectedRoot: Node, child: Node): Boolean =
+            selectedRoot.key == root.key && child.key in traversed
         override fun checkCancelled() = cancelled()
         override fun metadataCoverNames(children: MutableList<Node>): MutableSet<String> = children
             .filter { !it.directory && (it.name.endsWith(".xml", true) || it.name.equals("index.json", true)) }
@@ -47,6 +58,10 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
 
     fun children(root: Node, directory: Node): List<Node> {
         check(contains(root, directory)) { "Document outside selected folder" }
+        return childrenUnchecked(directory)
+    }
+
+    private fun childrenUnchecked(directory: Node): List<Node> {
         val u = directory.uri.toUri()
         return if (u.scheme == ContentResolver.SCHEME_FILE) {
             val files = u.toFile().listFiles() ?: throw IOException("Folder cannot be read: ${directory.name}")
@@ -67,8 +82,8 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
             c.toFile().canonicalFile.toPath().startsWith(parent)
         } else {
             if (r.authority != c.authority) return false
-            // Providers with opaque IDs must support the standard descendant query. Fail closed if
-            // they cannot prove ownership, rather than interpreting document IDs as filesystem paths.
+            // Outside scanner traversal (for example destructive actions), keep the stricter
+            // provider-backed ownership check and fail closed.
             DocumentsContract.isChildDocument(resolver, r, c)
         }
     }
