@@ -42,16 +42,33 @@ class DetectReaderModeUseCase @Inject constructor(
 	suspend operator fun invoke(manga: Manga, state: ReaderState?): ReaderMode {
 		dataRepository.getReaderMode(manga.id)?.let { return it }
 		val defaultMode = settings.defaultReaderMode
-		if (manga.isEpub || manga.source.isNovelSource) return defaultMode
-		if (!settings.isReaderModeDetectionEnabled || defaultMode == ReaderMode.WEBTOON) return defaultMode
-		if (EhentaiSourceFamily.isOfficialSource(manga.source.name)) return defaultMode
+		if (manga.isEpub || manga.source.isNovelSource) {
+			// Text chapters cannot be sampled as images. Remote novel adapters such as LNReader expose
+			// a synthetic page whose URL is the prose chapter itself; probing it as an image would fetch
+			// the whole chapter once here and then fetch it again when the text reader opens.
+			return defaultMode
+		}
+		if (!settings.isReaderModeDetectionEnabled || defaultMode == ReaderMode.WEBTOON) {
+			return defaultMode
+		}
+		if (EhentaiSourceFamily.isOfficialSource(manga.source.name)) {
+			// E-Hentai/ExHentai page objects point at intermediate image pages. Auto-detection normally
+			// samples several pages by resolving each intermediate page and then downloading each image
+			// before Reader can start. That duplicates expensive network work and causes a long spinner.
+			// A per-manga saved mode still wins above; otherwise use the configured default immediately.
+			return defaultMode
+		}
 		val chapter = state?.let { manga.findChapterById(it.chapterId) }
 			?: manga.chapters?.firstOrNull()
 			?: error("There are no chapters in this manga")
+		// Details can retain the remote manga identity while a downloaded chapter is LocalMangaSource.
+		// Mode detection must follow that selected chapter source instead of sending its local file URL
+		// back through the remote parser before Reader can display an already-downloaded chapter.
 		val repo = mangaRepositoryFactory.create(chapter.source)
 		val pages = repo.getPages(chapter)
 		return runCatchingCancellable {
-			if (guessMangaIsWebtoon(repo, pages)) ReaderMode.WEBTOON else defaultMode
+			val isWebtoon = guessMangaIsWebtoon(repo, pages)
+			if (isWebtoon) ReaderMode.WEBTOON else defaultMode
 		}.onSuccess {
 			dataRepository.saveReaderMode(manga, it)
 		}.onFailure {
@@ -59,12 +76,18 @@ class DetectReaderModeUseCase @Inject constructor(
 		}.getOrDefault(defaultMode)
 	}
 
+	/**
+	 * Samples multiple pages spread across the chapter and uses a majority vote to determine
+	 * if a manga is a webtoon. Sampling a single page is unreliable because chapter title
+	 * pages and double-page spreads don't represent the typical page dimensions.
+	 */
 	private suspend fun guessMangaIsWebtoon(repository: MangaRepository, pages: List<MangaPage>): Boolean {
 		val samples = getSampleIndices(pages.size).mapNotNull { index ->
 			val page = pages.getOrNull(index) ?: return@mapNotNull null
 			runCatchingCancellable { page to repository.getPageUrl(page) }.getOrNull()
 		}
 		check(samples.isNotEmpty()) { "No pages could be sampled for webtoon detection" }
+
 		val zipUris = samples.map { (_, url) -> url.toUri() }
 		val sharedZipPath = zipUris.firstOrNull()
 			?.takeIf { first -> first.isZipUri() && zipUris.all { it.isZipUri() && it.schemeSpecificPart == first.schemeSpecificPart } }
@@ -90,6 +113,7 @@ class DetectReaderModeUseCase @Inject constructor(
 			check(totalVotes > 0) { "No CBZ pages could be sampled for webtoon detection" }
 			return webtoonVotes * 2 > totalVotes
 		}
+
 		var webtoonVotes = 0
 		var totalVotes = 0
 		for ((page, url) in samples) {
@@ -120,25 +144,42 @@ class DetectReaderModeUseCase @Inject constructor(
 				context.contentResolver.openInputStream(uri).use { getBitmapSize(it) }
 			}
 			else -> {
+				// Prefer the extension's getImage() (handles relative imageUrls like MangaDex
+				// "/data/...", decryption, and per-source headers); fall back to a direct request.
 				val response = repository.getImageStream(url, page)
-					?: imageProxyInterceptor.interceptPageRequest(PageLoader.createPageRequest(url, page.source), okHttpClient)
-				response.use { runInterruptible(Dispatchers.IO) { getBitmapSize(it.body.byteStream()) } }
+					?: imageProxyInterceptor.interceptPageRequest(
+						PageLoader.createPageRequest(url, page.source),
+						okHttpClient,
+					)
+				response.use {
+					runInterruptible(Dispatchers.IO) {
+						getBitmapSize(it.body.byteStream())
+					}
+				}
 			}
 		}
 	}
 
 	private fun getSampleIndices(pageCount: Int): List<Int> = when {
 		pageCount < 4 -> if (pageCount > 0) listOf(pageCount / 2) else emptyList()
-		else -> listOf((pageCount * 0.25).roundToInt(), (pageCount * 0.5).roundToInt(), (pageCount * 0.75).roundToInt()).distinct()
+		else -> listOf(
+			(pageCount * 0.25).roundToInt(),
+			(pageCount * 0.5).roundToInt(),
+			(pageCount * 0.75).roundToInt(),
+		).distinct()
 	}
 
 	companion object {
+
 		private const val MIN_WEBTOON_RATIO = 1.8
+
 		private fun getBitmapSize(input: InputStream?): Size {
-			val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+			val options = BitmapFactory.Options().apply {
+				inJustDecodeBounds = true
+			}
 			BitmapFactory.decodeStream(input, null, options)?.recycle()
-			val imageHeight = options.outHeight
-			val imageWidth = options.outWidth
+			val imageHeight: Int = options.outHeight
+			val imageWidth: Int = options.outWidth
 			check(imageHeight > 0 && imageWidth > 0)
 			return Size(imageWidth, imageHeight)
 		}
