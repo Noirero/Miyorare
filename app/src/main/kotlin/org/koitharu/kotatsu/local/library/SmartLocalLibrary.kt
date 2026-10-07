@@ -11,6 +11,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -19,8 +20,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
-import org.koitharu.kotatsu.local.data.LocalStorageChanges
-import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.local.library.LocalTreeScanner.Node
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
@@ -41,13 +40,14 @@ class SmartLocalLibrary @Inject constructor(
     @ApplicationContext private val context: Context,
     private val documents: LocalDocuments, private val contentReader: LocalContentReader,
     private val dataRepository: MangaDataRepository, private val db: MangaDatabase,
-    @LocalStorageChanges private val storageChanges: MutableSharedFlow<LocalManga?>,
 ) {
     private val mutex = Mutex()
     private val prefs by lazy { context.getSharedPreferences("smart_local_library", Context.MODE_PRIVATE) }
     private val indexFile get() = AtomicFile(File(context.filesDir, "smart-local-index.json"))
     private val mutableState = MutableStateFlow(LocalLibrarySnapshot())
     val state: StateFlow<LocalLibrarySnapshot> get() = mutableState
+    private val mutableChanges = MutableSharedFlow<Unit>()
+    val changes = mutableChanges.asSharedFlow()
     val showExtensions get() = prefs.getBoolean("extensions", false)
     val readingFilter get() = enumValue(prefs.getString("filter", null), LocalReadingFilter.ALL)
     val sort get() = enumValue(prefs.getString("sort", null), LocalLibrarySort.TITLE_ASC)
@@ -104,7 +104,7 @@ class SmartLocalLibrary @Inject constructor(
             publishLocked(state.value.copy(roots = roots, books = state.value.books.filterNot { it.rootUri == uri },
                 diagnoses = state.value.diagnoses.filterNot { it.rootUri == uri }))
         }
-        storageChanges.emit(null)
+        mutableChanges.emit(Unit)
     }
 
     suspend fun scan() = withContext(Dispatchers.IO) {
@@ -155,7 +155,7 @@ class SmartLocalLibrary @Inject constructor(
             for (book in snapshot.books) dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
             publishLocked(snapshot)
         }
-        storageChanges.emit(null)
+        mutableChanges.emit(Unit)
     }
 
     suspend fun confirmManga(rootUri: String, node: Node) = withContext(Dispatchers.IO) {
@@ -178,7 +178,7 @@ class SmartLocalLibrary @Inject constructor(
             saveExclusions(exclusions)
             publishLocked(state.value.copy(books = state.value.books.filterNot { it.id in ids }, excludedCount = exclusions.size))
         }
-        storageChanges.emit(null)
+        mutableChanges.emit(Unit)
     }
 
     suspend fun acknowledgeDiscoveries() = withContext(Dispatchers.IO) {
@@ -223,7 +223,7 @@ class SmartLocalLibrary @Inject constructor(
             runCatchingCancellable { scan() }
             throw error
         }
-        storageChanges.emit(null)
+        mutableChanges.emit(Unit)
     }
 
     suspend fun deleteChapters(mangaId: Long, ids: Set<Long>) = withContext(Dispatchers.IO) {
@@ -253,7 +253,7 @@ class SmartLocalLibrary @Inject constructor(
         check(prefs.edit().putBoolean("extensions", extensions).putString("filter", filter.name).putString("sort", order.name).commit())
         for (book in state.value.books) dataRepository.storeManga(book.toManga(extensions, true), replaceExisting = true)
         mutex.withLock { publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1)) }
-        storageChanges.emit(null)
+        mutableChanges.emit(Unit)
     }
 
     suspend fun book(id: Long): LocalBook? { initialize(); return state.value.books.firstOrNull { it.id == id } }

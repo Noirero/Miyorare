@@ -27,6 +27,8 @@ class LocalRoutingMangaRepository @Inject constructor(
 	@PageCache private val pageCache: LocalStorageCache,
 ) : MangaRepository by legacy {
 
+	val smartLocalChanges get() = library.changes
+
 	override suspend fun getDetails(manga: Manga): Manga {
 		if (!manga.url.isManagedLocalUri()) return legacy.getDetails(manga)
 		return requireNotNull(library.details(manga.id)) { "On-device title is no longer indexed" }

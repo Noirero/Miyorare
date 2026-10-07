@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.details.ui.pager
 
 import android.app.Activity
 import androidx.core.net.toFile
+import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -25,6 +26,7 @@ import kotlinx.coroutines.plus
 import okio.FileNotFoundException
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
 import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.toChipModel
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -51,6 +53,8 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
+import org.koitharu.kotatsu.local.data.LocalRoutingMangaRepository
+import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -317,6 +321,15 @@ abstract class ChaptersPagesViewModel(
 		}
 		launchJob(Dispatchers.Default) {
 			LocalMangaIndex.rebuildEvents.collect { onLocalIndexRebuilt() }
+		}
+		launchJob(Dispatchers.Default) {
+			val repository = mangaRepositoryFactory.create(LocalMangaSource) as? LocalRoutingMangaRepository
+				?: return@launchJob
+			repository.smartLocalChanges.collect {
+				if (mangaDetails.value?.toManga()?.url?.toUri()?.scheme == LOCAL_LIBRARY_SCHEME) {
+					onLocalIndexRebuilt()
+				}
+			}
 		}
 		launchJob(Dispatchers.Default) {
 			val id = mangaDetails.filterNotNull().first().id
