@@ -7,7 +7,6 @@ import android.view.MenuItem
 import android.view.View
 import androidx.appcompat.view.ActionMode
 import androidx.fragment.app.viewModels
-import androidx.core.net.toUri
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import org.koitharu.kotatsu.R
@@ -37,8 +36,15 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
-		addMenuProvider(LocalListMenuProvider(this, ::addFolder, viewModel::onRefresh,
-			::addFolder, ::showFilters, viewModel::requestExclusions))
+		addMenuProvider(
+			LocalListMenuProvider(
+				onImportClick = ::addFolder,
+				onRefreshClick = viewModel::onRefresh,
+				onFoldersClick = ::addFolder,
+				onFiltersClick = ::showFilters,
+				onRestoreClick = viewModel::requestExclusions,
+			),
+		)
 		viewModel.onMangaRemoved.observeEvent(viewLifecycleOwner) {
 			Snackbar.make(binding.recyclerView, R.string.removal_completed, Snackbar.LENGTH_SHORT).show()
 		}
