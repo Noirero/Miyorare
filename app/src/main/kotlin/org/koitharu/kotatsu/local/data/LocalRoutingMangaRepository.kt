@@ -1,6 +1,11 @@
 package org.koitharu.kotatsu.local.data
 
+import android.content.ContentResolver
+import android.content.Context
 import androidx.core.net.toUri
+import dagger.hilt.android.qualifiers.ApplicationContext
+import okio.source
+import okio.use
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.local.library.SmartLocalLibrary
@@ -18,6 +23,8 @@ import javax.inject.Singleton
 class LocalRoutingMangaRepository @Inject constructor(
 	private val legacy: LocalMangaRepository,
 	private val library: SmartLocalLibrary,
+	@ApplicationContext private val context: Context,
+	@PageCache private val pageCache: LocalStorageCache,
 ) : MangaRepository by legacy {
 
 	override suspend fun getDetails(manga: Manga): Manga {
@@ -27,6 +34,16 @@ class LocalRoutingMangaRepository @Inject constructor(
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> =
 		if (chapter.url.isManagedLocalUri()) library.pages(chapter) else legacy.getPages(chapter)
+
+	override suspend fun getPageUrl(page: MangaPage): String {
+		val uri = page.url.toUri()
+		if (uri.scheme != ContentResolver.SCHEME_CONTENT) return legacy.getPageUrl(page)
+		pageCache[page.url]?.let { return it.toUri().toString() }
+		val input = requireNotNull(context.contentResolver.openInputStream(uri)) {
+			"Cannot open on-device page: $uri"
+		}
+		return input.source().use { source -> pageCache.set(page.url, source, null).toUri().toString() }
+	}
 
 	override suspend fun getChapterHtml(chapter: MangaChapter): String? =
 		if (chapter.url.isManagedLocalUri()) library.chapterHtml(chapter) else legacy.getChapterHtml(chapter)
