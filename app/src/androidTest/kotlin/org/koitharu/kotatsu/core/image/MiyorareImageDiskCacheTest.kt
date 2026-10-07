@@ -63,6 +63,24 @@ class MiyorareImageDiskCacheTest {
 	}
 
 	@Test
+	fun explicitCoverClearPreventsLegacyCoverResurrection() {
+		val legacy = DiskCache.Builder().directory(volatileRoot()).build()
+		write(legacy, COVER_KEY, "legacy-cover")
+		write(legacy, VOLATILE_KEY, "temporary")
+		legacy.shutdown()
+
+		val routed = MiyorareImageDiskCache(context).also { cache = it }
+		routed.clearCovers()
+		routed.shutdown()
+		cache = null
+
+		val reopened = MiyorareImageDiskCache(context).also { cache = it }
+		assertNull(reopened.openSnapshot(COVER_KEY))
+		assertNotNull(reopened.openSnapshot(VOLATILE_KEY)?.also { it.close() })
+		assertTrue(reopened.coverSize == 0L)
+	}
+
+	@Test
 	fun scopedClearDoesNotCrossStorageOwnership() {
 		val routed = MiyorareImageDiskCache(context).also { cache = it }
 		write(routed, COVER_KEY, "cover")
@@ -101,6 +119,7 @@ class MiyorareImageDiskCacheTest {
 	private fun deleteTestStorage() {
 		volatileRoot().deleteRecursively()
 		coverRoot().deleteRecursively()
+		context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().commit()
 	}
 
 	private fun volatileRoot(): File = (context.externalCacheDir ?: context.cacheDir).resolve("image_cache")
@@ -110,5 +129,6 @@ class MiyorareImageDiskCacheTest {
 	private companion object {
 		const val COVER_KEY = "cover:123"
 		const val VOLATILE_KEY = "https://example.test/not-a-cover.jpg"
+		const val PREFS_NAME = "persistent_cover_cache"
 	}
 }
