@@ -121,7 +121,7 @@ class TsukiImageFetcher(
 				options = options,
 				imageLoader = imageLoader,
 				runtimeProvider = runtimeProvider,
-				diskCacheKeyLazy = lazy { imageLoader.components.key(data, options) },
+				diskCacheKeyLazy = lazy { options.diskCacheKey ?: imageLoader.components.key(data, options) },
 			)
 		}
 	}

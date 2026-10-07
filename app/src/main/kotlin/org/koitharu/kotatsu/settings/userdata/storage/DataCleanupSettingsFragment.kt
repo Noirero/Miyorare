@@ -58,6 +58,7 @@ class DataCleanupSettingsFragment : BaseComposeSettingsFragment(R.string.data_re
 					searchHistoryCount = viewModel.searchHistoryCount,
 					feedItemsCount = viewModel.feedItemsCount,
 					httpCacheSize = viewModel.httpCacheSize,
+					coverCacheSize = viewModel.coverCacheSize,
 					thumbsCacheSize = checkNotNull(viewModel.cacheSizes[CacheDir.THUMBS]),
 					pagesCacheSize = checkNotNull(viewModel.cacheSizes[CacheDir.PAGES]),
 					loadingKeys = viewModel.loadingKeys,
@@ -81,6 +82,7 @@ class DataCleanupSettingsFragment : BaseComposeSettingsFragment(R.string.data_re
 			AppSettings.KEY_SEARCH_HISTORY_CLEAR -> clearSearchHistory()
 			AppSettings.KEY_PAGES_CACHE_CLEAR -> viewModel.clearCache(key, CacheDir.PAGES)
 			AppSettings.KEY_THUMBS_CACHE_CLEAR -> viewModel.clearCache(key, CacheDir.THUMBS, CacheDir.FAVICONS)
+			DataCleanupSettingsViewModel.KEY_COVER_CACHE_CLEAR -> viewModel.clearCoverCache()
 			AppSettings.KEY_HTTP_CACHE_CLEAR -> viewModel.clearHttpCache()
 			AppSettings.KEY_CHAPTERS_CLEAR -> cleanupChapters()
 			AppSettings.KEY_WEBVIEW_CLEAR -> viewModel.clearBrowserData()
@@ -136,6 +138,7 @@ private fun DataCleanupScreen(
 	searchHistoryCount: StateFlow<Int>,
 	feedItemsCount: StateFlow<Int>,
 	httpCacheSize: StateFlow<Long>,
+	coverCacheSize: StateFlow<Long>,
 	thumbsCacheSize: StateFlow<Long>,
 	pagesCacheSize: StateFlow<Long>,
 	loadingKeys: StateFlow<Set<String>>,
@@ -146,6 +149,7 @@ private fun DataCleanupScreen(
 	val searchCount by searchHistoryCount.collectAsState()
 	val feedCount by feedItemsCount.collectAsState()
 	val httpSize by httpCacheSize.collectAsState()
+	val coverSize by coverCacheSize.collectAsState()
 	val thumbsSize by thumbsCacheSize.collectAsState()
 	val pagesSize by pagesCacheSize.collectAsState()
 	val loading by loadingKeys.collectAsState()
@@ -181,6 +185,16 @@ private fun DataCleanupScreen(
 						shape = pos.shape,
 						enabled = AppSettings.KEY_UPDATES_FEED_CLEAR !in loading,
 						onClick = { onAction(AppSettings.KEY_UPDATES_FEED_CLEAR) },
+					)
+				}
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.clear_cover_cache),
+						subtitle = sizeText(coverSize),
+						icon = R.drawable.ic_images,
+						shape = pos.shape,
+						enabled = DataCleanupSettingsViewModel.KEY_COVER_CACHE_CLEAR !in loading,
+						onClick = { onAction(DataCleanupSettingsViewModel.KEY_COVER_CACHE_CLEAR) },
 					)
 				}
 				item { pos ->

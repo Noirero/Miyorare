@@ -123,7 +123,7 @@ class MihonImageFetcher(
 				url = data.toString(),
 				options = options,
 				imageLoader = imageLoader,
-				diskCacheKeyLazy = lazy { imageLoader.components.key(data, options) },
+				diskCacheKeyLazy = lazy { options.diskCacheKey ?: imageLoader.components.key(data, options) },
 			)
 		}
 	}

@@ -8,6 +8,7 @@ import okhttp3.Response
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
 import org.koitharu.kotatsu.core.model.MissingMangaSource
+import org.koitharu.kotatsu.core.parser.FreshChapterPagesRepository
 import org.koitharu.kotatsu.core.parser.FreshMangaDetailsRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.parsers.InternalParsersApi
@@ -41,7 +42,7 @@ class LazyMihonMangaRepository(
 	private val extensionManager: MihonExtensionManager,
 	private val cache: MemoryContentCache,
 	private val context: Context,
-) : MangaRepository, FreshMangaDetailsRepository, MihonFilterHost {
+) : MangaRepository, FreshMangaDetailsRepository, FreshChapterPagesRepository, MihonFilterHost {
 
 	@Volatile
 	private var delegate: MihonMangaRepository? = null
@@ -76,6 +77,8 @@ class LazyMihonMangaRepository(
 	override suspend fun getFreshDetails(manga: Manga): Manga = resolve(manga).getFreshDetails(manga)
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> = resolve().getPages(chapter)
+
+	override suspend fun getFreshPages(chapter: MangaChapter): List<MangaPage> = resolve().getFreshPages(chapter)
 
 	override suspend fun getPageUrl(page: MangaPage): String = resolve().getPageUrl(page)
 
