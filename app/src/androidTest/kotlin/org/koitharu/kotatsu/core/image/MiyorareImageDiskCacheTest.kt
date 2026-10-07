@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.core.image
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import coil3.disk.DiskCache
+import coil3.disk.directory
 import org.junit.After
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -44,6 +46,23 @@ class MiyorareImageDiskCacheTest {
 	}
 
 	@Test
+	fun legacyStableCoverIsMigratedWithoutFilenameGuessing() {
+		val legacy = DiskCache.Builder().directory(volatileRoot()).build()
+		write(legacy, COVER_KEY, "legacy-cover")
+		legacy.shutdown()
+
+		val routed = MiyorareImageDiskCache(context).also { cache = it }
+		assertNotNull(routed.openSnapshot(COVER_KEY)?.also { it.close() })
+		assertTrue(routed.coverSize > 0L)
+		routed.shutdown()
+		cache = null
+		volatileRoot().deleteRecursively()
+
+		val reopened = MiyorareImageDiskCache(context).also { cache = it }
+		assertNotNull(reopened.openSnapshot(COVER_KEY)?.also { it.close() })
+	}
+
+	@Test
 	fun scopedClearDoesNotCrossStorageOwnership() {
 		val routed = MiyorareImageDiskCache(context).also { cache = it }
 		write(routed, COVER_KEY, "cover")
@@ -72,7 +91,7 @@ class MiyorareImageDiskCacheTest {
 		assertNotNull(routed.openSnapshot(VOLATILE_KEY)?.also { it.close() })
 	}
 
-	private fun write(cache: MiyorareImageDiskCache, key: String, value: String) {
+	private fun write(cache: DiskCache, key: String, value: String) {
 		val editor = checkNotNull(cache.openEditor(key))
 		cache.fileSystem.write(editor.metadata) { writeUtf8("metadata") }
 		cache.fileSystem.write(editor.data) { writeUtf8(value) }
