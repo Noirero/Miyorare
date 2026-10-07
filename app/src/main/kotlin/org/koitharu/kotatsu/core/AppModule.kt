@@ -10,8 +10,6 @@ import androidx.core.content.ContextCompat
 import androidx.room.InvalidationTracker
 import androidx.work.WorkManager
 import coil3.ImageLoader
-import coil3.disk.DiskCache
-import coil3.disk.directory
 import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
@@ -37,6 +35,7 @@ import org.koitharu.kotatsu.core.image.AvifImageDecoder
 import org.koitharu.kotatsu.core.image.CbzFetcher
 import org.koitharu.kotatsu.core.image.MangaSourceHeaderInterceptor
 import org.koitharu.kotatsu.core.image.MihonImageFetcher
+import org.koitharu.kotatsu.core.image.MiyorareImageDiskCache
 import org.koitharu.kotatsu.core.image.TsukiImageFetcher
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.network.imageproxy.ImageProxyInterceptor
@@ -105,24 +104,12 @@ interface AppModule {
 			imageProxyInterceptor: ImageProxyInterceptor,
 			pageFetcherFactory: MangaPageFetcher.Factory,
 			coverRestoreInterceptor: CoverRestoreInterceptor,
+			imageDiskCache: MiyorareImageDiskCache,
 			networkStateProvider: Provider<NetworkState>,
 			webViewExecutorProvider: Provider<WebViewExecutor>,
 			tsukiRuntimeProvider: Provider<TsukiPluginRuntime>,
 			captchaHandler: CaptchaHandler,
 		): ImageLoader {
-			val diskCacheFactory = {
-				val rootDir = context.externalCacheDir ?: context.cacheDir
-				DiskCache.Builder()
-					.directory(rootDir.resolve(CacheDir.THUMBS.dir))
-					// Coil defaults to a 250 MiB ceiling. Large libraries churn through that quickly,
-					// causing old covers to be fetched/decoded again during deep scrolling. Keep the
-					// existing directory (no cold-start migration) but give the library a Mihon-scale
-					// retention window. This is a limit, not preallocated storage.
-					.maxSizePercent(0.10)
-					.minimumMaxSizeBytes(256L * 1024L * 1024L)
-					.maximumMaxSizeBytes(2L * 1024L * 1024L * 1024L)
-					.build()
-			}
 			val okHttpClientLazy = lazy {
 				okHttpClientProvider.get().newBuilder().cache(null).build()
 			}
@@ -132,7 +119,7 @@ interface AppModule {
 				// tasks to steal CPU from RecyclerView frame production.
 				.fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(8))
 				.decoderCoroutineContext(Dispatchers.IO.limitedParallelism(3))
-				.diskCache(diskCacheFactory)
+				.diskCache { imageDiskCache }
 				.logger(if (BuildConfig.DEBUG) DebugLogger() else null)
 				.allowRgb565(context.isLowRamDevice())
 				.eventListener(captchaHandler)
