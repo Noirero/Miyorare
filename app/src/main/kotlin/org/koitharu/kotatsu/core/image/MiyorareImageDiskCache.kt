@@ -3,12 +3,9 @@ package org.koitharu.kotatsu.core.image
 import android.content.Context
 import coil3.disk.DiskCache
 import coil3.disk.directory
-import dagger.hilt.android.qualifiers.ApplicationContext
 import okio.FileSystem
 import okio.Path
 import java.io.File
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * Routes stable manga-cover keys to app-specific files storage while leaving every other Coil
@@ -19,24 +16,13 @@ import javax.inject.Singleton
  * mapping is safe because Coil's public DiskCache API accepts the original request key; no hashed
  * filename or journal implementation detail is guessed here.
  */
-@Singleton
-class MiyorareImageDiskCache @Inject constructor(
-	@ApplicationContext context: Context,
+class MiyorareImageDiskCache(
+	context: Context,
+	private val volatileCache: DiskCache = createVolatileCache(context),
 ) : DiskCache {
-
-	private val volatileCache = DiskCache.Builder()
-		.directory((context.externalCacheDir ?: context.cacheDir).resolve(VOLATILE_DIR))
-		// Preserve the pre-existing shared-cache retention for non-cover entries. Moving covers must
-		// not silently change the lifetime of unrelated thumbnails/bookmark images.
-		.maxSizePercent(0.10)
-		.minimumMaxSizeBytes(256L * 1024L * 1024L)
-		.maximumMaxSizeBytes(2L * 1024L * 1024L * 1024L)
-		.build()
 
 	private val coverCache = DiskCache.Builder()
 		.directory((context.getExternalFilesDir(COVER_DIR) ?: File(context.filesDir, COVER_DIR)).resolve(COIL_DIR))
-		// This cache contains covers only. Coil's conservative default-sized window is enough to give
-		// covers dedicated space without carrying the old shared 256 MiB-2 GiB policy into files/.
 		.maxSizePercent(0.02)
 		.minimumMaxSizeBytes(10L * 1024L * 1024L)
 		.maximumMaxSizeBytes(250L * 1024L * 1024L)
@@ -48,7 +34,6 @@ class MiyorareImageDiskCache @Inject constructor(
 	override val maxSize: Long
 		get() = volatileCache.maxSize + coverCache.maxSize
 
-	// Coil uses one FileSystem for an ImageLoader. Both delegates use the default system FileSystem.
 	override val directory: Path
 		get() = volatileCache.directory
 
@@ -68,7 +53,6 @@ class MiyorareImageDiskCache @Inject constructor(
 
 	override fun remove(key: String): Boolean = cacheFor(key).remove(key)
 
-	/** Coil-level clear means clear the complete image cache. Settings uses the scoped methods below. */
 	override fun clear() {
 		volatileCache.clear()
 		coverCache.clear()
@@ -114,5 +98,12 @@ class MiyorareImageDiskCache @Inject constructor(
 		const val COVER_DIR = "covers"
 		const val COIL_DIR = "coil"
 		const val VOLATILE_DIR = "image_cache"
+
+		fun createVolatileCache(context: Context): DiskCache = DiskCache.Builder()
+			.directory((context.externalCacheDir ?: context.cacheDir).resolve(VOLATILE_DIR))
+			.maxSizePercent(0.10)
+			.minimumMaxSizeBytes(256L * 1024L * 1024L)
+			.maximumMaxSizeBytes(2L * 1024L * 1024L * 1024L)
+			.build()
 	}
 }
