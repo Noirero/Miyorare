@@ -82,7 +82,7 @@ class OpenDocumentTreeHelper(
 			val intent = (context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager)
 				?.primaryStorageVolume
 				?.createOpenDocumentTreeIntent()
-			if (intent == null) { // fallback
+			if (intent == null) {
 				return super.createIntent(context, input)
 			}
 			intent.addFlags(flags)

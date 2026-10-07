@@ -63,6 +63,7 @@ class LocalListViewModel @Inject constructor(
 	private val revision = MutableStateFlow(0)
 	private val localQuery = MutableStateFlow("")
 	private var refreshJob: Job? = null
+	private var folderJob: Job? = null
 
 	init {
 		launchLoadingJob(Dispatchers.IO) {
@@ -82,7 +83,7 @@ class LocalListViewModel @Inject constructor(
 	}
 
 	override fun onRefresh() {
-		if (refreshJob?.isActive == true) return
+		if (refreshJob?.isActive == true || folderJob?.isActive == true) return
 		refreshJob = launchLoadingJob(Dispatchers.IO) {
 			library.scan()
 			revision.value++
@@ -95,8 +96,16 @@ class LocalListViewModel @Inject constructor(
 		savedStateHandle["folders_expanded"] = !foldersExpanded(library.state.value)
 		revision.value++
 	}
-	fun addFolder(uri: Uri) { launchLoadingJob(Dispatchers.IO) { library.addRoot(uri) } }
-	fun removeFolder(uri: String) { launchLoadingJob(Dispatchers.IO) { library.removeRoot(uri) } }
+	fun addFolder(uri: Uri) {
+		if (folderJob?.isActive == true || refreshJob?.isActive == true) return
+		// addRoot publishes the selected root before scanning. Do not replace the already useful
+		// collection UI with a full-page loading state while SAF discovery/database reconciliation runs.
+		folderJob = launchJob(Dispatchers.IO) { library.addRoot(uri) }
+	}
+	fun removeFolder(uri: String) {
+		if (folderJob?.isActive == true || refreshJob?.isActive == true) return
+		folderJob = launchLoadingJob(Dispatchers.IO) { library.removeRoot(uri) }
+	}
 	fun confirmFolder(issue: LocalDiagnosis, node: LocalTreeScanner.Node) {
 		launchLoadingJob(Dispatchers.IO) { library.confirmManga(issue.rootUri, node) }
 	}
