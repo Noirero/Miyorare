@@ -4,11 +4,9 @@ import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import androidx.core.view.MenuProvider
-import androidx.fragment.app.Fragment
 import org.koitharu.kotatsu.R
 
 class LocalListMenuProvider(
-	private val fragment: Fragment,
 	private val onImportClick: Function0<Unit>,
 	private val onRefreshClick: Function0<Unit>,
 	private val onFoldersClick: () -> Unit,
