@@ -56,6 +56,8 @@ class MihonImageFetcher(
 		try {
 			writeToDiskCache(response, diskCacheKey)?.let { snapshot ->
 				val mimeType = response.body.contentType()?.toString()
+				// The snapshot owns the cached bytes, not the network response. Closing here
+				// releases the extension client's socket back to Mihon's shared connection pool.
 				response.close()
 				return SourceFetchResult(
 					source = snapshot.toImageSource(diskCacheKey!!),
@@ -63,6 +65,7 @@ class MihonImageFetcher(
 					dataSource = DataSource.NETWORK,
 				)
 			}
+			// No disk cache available — stream the response directly to the decoder.
 			return SourceFetchResult(
 				source = ImageSource(response.body.source(), options.fileSystem),
 				mimeType = response.body.contentType()?.toString(),
@@ -81,6 +84,8 @@ class MihonImageFetcher(
 
 	private fun writeToDiskCache(response: Response, key: String?): DiskCache.Snapshot? {
 		if (key == null || !options.diskCachePolicy.writeEnabled) return null
+		// Sources sometimes answer HTTP 200 with an error page or a JSON body. Caching that under the
+		// cover key would keep the cover broken for good, since the url (and so the key) never changes.
 		response.body.contentType()?.let { type ->
 			if (type.type.equals("text", true) || type.subtype.equals("json", true)) return null
 		}
