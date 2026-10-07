@@ -57,6 +57,20 @@ class ChapterPages private constructor(private val pages: ArrayDeque<ReaderPage>
 	}
 
 	@Synchronized
+	fun replace(id: Long, newPages: List<ReaderPage>): Boolean {
+		val range = indices[id] ?: return false
+		val oldSize = range.last - range.first + 1
+		pages.subList(range.first, range.last + 1).clear()
+		pages.addAll(range.first, newPages)
+		indices.put(id, range.first until (range.first + newPages.size))
+		val delta = newPages.size - oldSize
+		if (delta != 0) {
+			shiftIndicesAfter(range.last, delta, excludingId = id)
+		}
+		return true
+	}
+
+	@Synchronized
 	fun clear() {
 		indices.clear()
 		pages.clear()
@@ -77,6 +91,16 @@ class ChapterPages private constructor(private val pages: ArrayDeque<ReaderPage>
 		for (i in 0 until indices.size()) {
 			val range = indices.valueAt(i)
 			indices.setValueAt(i, range + delta)
+		}
+	}
+
+	private fun shiftIndicesAfter(position: Int, delta: Int, excludingId: Long) {
+		for (i in 0 until indices.size()) {
+			if (indices.keyAt(i) == excludingId) continue
+			val range = indices.valueAt(i)
+			if (range.first > position) {
+				indices.setValueAt(i, range + delta)
+			}
 		}
 	}
 
