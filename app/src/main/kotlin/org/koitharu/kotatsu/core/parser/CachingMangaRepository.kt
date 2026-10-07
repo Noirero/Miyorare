@@ -22,23 +22,48 @@ import kotlin.coroutines.ContinuationInterceptor
 
 abstract class CachingMangaRepository(
 	private val cache: MemoryContentCache,
-) : MangaRepository, FreshMangaDetailsRepository {
+) : MangaRepository, FreshMangaDetailsRepository, FreshChapterPagesRepository {
 
 	private val relatedMangaMutex = MultiMutex<Long>()
-	private val pagesMutex = MultiMutex<Long>()
 
 	final override suspend fun getDetails(manga: Manga): Manga = getDetails(manga, CachePolicy.ENABLED)
 
 	final override suspend fun getFreshDetails(manga: Manga): Manga = getDetails(manga, CachePolicy.WRITE_ONLY)
 
-	final override suspend fun getPages(chapter: MangaChapter): List<MangaPage> = pagesMutex.withLock(chapter.id) {
-		cache.getPages(source, chapter.url)?.let { return it }
-		val pages = asyncSafe {
-			getPagesImpl(chapter).distinctById()
+	final override suspend fun getPages(chapter: MangaChapter): List<MangaPage> =
+		getPages(chapter, forceRefresh = false)
+
+	final override suspend fun getFreshPages(chapter: MangaChapter): List<MangaPage> =
+		getPages(chapter, forceRefresh = true)
+
+	private suspend fun getPages(chapter: MangaChapter, forceRefresh: Boolean): List<MangaPage> {
+		if (!forceRefresh) {
+			cache.getPages(source, chapter.url)?.let { return it }
 		}
+
+		val createRequest: suspend (generation: Long) -> SafeDeferred<List<MangaPage>> = { generation ->
+			asyncSafe {
+				if (!forceRefresh) {
+					cache.getPersistentPages(source, chapter)?.let { return@asyncSafe it }
+				}
+				getPagesImpl(chapter).distinctById().also { resolved ->
+					cache.putPersistentPagesIfCurrent(source, chapter, generation, resolved)
+				}
+			}
+		}
+		// Normal callers share the current generation, including its persistent lookup. A forced
+		// refresh atomically detaches that generation and installs one fresh request; consumers already
+		// holding the old SafeDeferred can finish, while all later callers join the fresh generation.
+		val pages = if (forceRefresh) {
+			cache.createFreshInFlightPages(source, chapter, createRequest)
+		} else {
+			cache.getOrCreateInFlightPages(source, chapter, createRequest)
+		}
+		// Promote persistent hits as well as fresh resolutions into the existing short-lived memory
+		// cache. This preserves the old fast path after the shared request completes.
 		cache.putPages(source, chapter.url, pages)
-		pages
-	}.await()
+		return pages.await()
+	}
 
 	final override suspend fun getRelated(seed: Manga): List<Manga> = relatedMangaMutex.withLock(seed.id) {
 		cache.getRelatedManga(source, seed.url)?.let { return it }
