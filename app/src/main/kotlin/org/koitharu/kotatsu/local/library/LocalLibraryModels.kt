@@ -17,19 +17,32 @@ data class LocalChapter(val node: Node, val pages: List<Node>, val metadataTitle
     val id get() = preservedId ?: "local-chapter:${node.key}".longHashCode()
     val url get() = "$LOCAL_LIBRARY_SCHEME://chapter/$id/${android.net.Uri.encode(node.name)}"
 }
+
+enum class LocalContentType { MANGA, NOVEL }
+
 data class LocalBook(
     val rootUri: String, val node: Node, val chapters: List<LocalChapter>, val sidecars: List<Node>,
     val title: String?, val authors: Set<String>, val description: String?, val cover: String?,
     val ignored: Int, val addedAt: Long, val scannedAt: Long, val newChapters: Int,
 ) {
+    // Content type is derived from indexed ownership rather than persisted separately, so old
+    // Smart Local indexes remain compatible and a rescan cannot leave a stale type behind.
+    val contentType: LocalContentType
+        get() = if (chapters.isNotEmpty() && chapters.all { LocalTreeScanner.extension(it.node.name) == "epub" }) {
+            LocalContentType.NOVEL
+        } else {
+            LocalContentType.MANGA
+        }
+
+    val isNovel get() = contentType == LocalContentType.NOVEL
+
     // Legacy File identity uses the actual URI path, not a canonical alias (Android /data/user/0
     // and /data/data can differ). Canonical keys still enforce ownership/root deduplication.
     val id get() = node.mangaIdentity()
     val size get() = chapters.sumOf { c -> if (c.node.directory) c.pages.sumOf { it.size } else c.node.size } + sidecars.sumOf { it.size }
     val latestChapterAt get() = chapters.maxOfOrNull { it.node.modified } ?: 0L
     fun toManga(showExtensions: Boolean, withDetails: Boolean = false): Manga {
-        val isText = chapters.isNotEmpty() && chapters.all { LocalTreeScanner.extension(it.node.name) == "epub" }
-        val url = "$LOCAL_LIBRARY_SCHEME://manga/$id/${if (isText) "book.epub" else "book"}"
+        val url = "$LOCAL_LIBRARY_SCHEME://manga/$id/${if (isNovel) "book.epub" else "book"}"
         return Manga(id = id, title = title ?: LocalTreeScanner.displayName(node.name, showExtensions, node.directory),
             altTitles = emptySet(), url = url, publicUrl = url, source = LocalMangaSource,
             coverUrl = "$LOCAL_LIBRARY_SCHEME://cover/$id", largeCoverUrl = null, rating = -1f,
