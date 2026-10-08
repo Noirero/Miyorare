@@ -61,6 +61,8 @@ import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
 import java.io.File
 import tachiyomi.core.common.util.lang.compareToWithCollator
+import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
+import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
 
 abstract class ChaptersPagesViewModel(
 	@JvmField protected val settings: AppSettings,
@@ -75,6 +77,7 @@ abstract class ChaptersPagesViewModel(
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val chapterListOptionsStore: ChapterListOptionsStore? = null,
+	private val chapterPersonalRepository: ChapterPersonalRepository? = null,
 ) : BaseViewModel() {
 
 	val mangaDetails = MutableStateFlow<MangaDetails?>(null)
@@ -235,6 +238,12 @@ abstract class ChaptersPagesViewModel(
 		}
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, ActiveChapterDownloads())
 
+	private val chapterPersonalMetadata = mangaDetails.map { it?.id }.distinctUntilChanged()
+		.flatMapLatest { id ->
+			if (id != null && chapterPersonalRepository != null) chapterPersonalRepository.observe(id)
+			else flowOf(emptyMap())
+		}.withErrorHandling()
+
 	val chapters = combine(
 		combine(
 			chapterMappingDetails.combine(chapterReadOverrides) { manga, overrides -> manga to overrides },
@@ -262,8 +271,12 @@ abstract class ChaptersPagesViewModel(
 		chapterListOptions,
 		chaptersQuery,
 		activeChapterDownloads,
-	) { list, options, query, activeDownloads ->
-		val filtered = list
+		chapterPersonalMetadata,
+	) { list, options, query, activeDownloads, personalMetadata ->
+		val filtered = list.map { item ->
+			val metadata = personalMetadata[item.personalKey] ?: ChapterPersonalMetadata()
+			if (item.personalMetadata == metadata) item else item.copy(personalMetadata = metadata)
+		}
 			.applyChapterOptions(options)
 			.filterSearch(query)
 		if (activeDownloads.isEmpty) {

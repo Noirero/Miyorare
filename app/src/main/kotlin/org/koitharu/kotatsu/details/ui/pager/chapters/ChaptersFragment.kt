@@ -88,6 +88,9 @@ class ChaptersFragment :
 	override fun onViewBindingCreated(binding: FragmentChaptersBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		applyDetailsSheetBackground(binding)
+		(viewModel as? DetailsViewModel)?.chapterPersonalEditor?.observe(viewLifecycleOwner) { item ->
+			if (item != null) dismissParentDialog()
+		}
 		chaptersAdapter = ChaptersAdapter(
 			onItemClickListener = this,
 			onDownloadClick = { item ->

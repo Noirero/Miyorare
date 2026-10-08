@@ -127,6 +127,7 @@ class MangaListMapper @Inject constructor(
 		override = override,
 		subtitle = manga.tags.joinToString(", ") { it.title },
 		counter = getCounter(manga.id, options),
+		isFavorite = isFavorite(manga.id, options),
 	)
 
 	private suspend fun toDetailedListModel(

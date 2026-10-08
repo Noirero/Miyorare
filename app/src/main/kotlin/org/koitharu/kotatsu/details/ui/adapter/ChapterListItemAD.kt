@@ -104,6 +104,7 @@ fun chapterListItemAD(
 		}
 
 		binding.imageViewBookmarked.isVisible = item.isBookmarked
+		binding.imageViewPersonal.isVisible = !item.personalMetadata.isEmpty
 		binding.imageViewBookmarked.imageTintList = accentColorProvider()?.let { ColorStateList.valueOf(it) }
 			?: context.getThemeColorStateList(androidx.appcompat.R.attr.colorPrimary)
 		binding.imageViewDownloaded.isVisible = item.isDownloaded

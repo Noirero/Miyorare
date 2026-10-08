@@ -112,4 +112,9 @@
 	<dimen name="menu_popup_selector_inset_horizontal">4dp</dimen>
 	<dimen name="menu_popup_selector_inset_vertical">4dp</dimen>
 	<dimen name="menu_icon_text_spacing_extra">10dp</dimen>
+	<dimen name="library_indicator_icon_size">22dp</dimen>
+	<dimen name="library_indicator_spacing">4dp</dimen>
+	<dimen name="library_indicator_label_max_width">60dp</dimen>
+	<!-- Below the grid card's top counter/language/progress row. -->
+	<dimen name="library_indicator_grid_top_offset">44dp</dimen>
 </resources>

@@ -30,6 +30,7 @@ fun mangaListItemAD(
 		itemView.setTooltipCompat(item.getSummary(context))
 		binding.textViewTitle.text = item.title
 		val info = buildList {
+			if (item.isFavorite) add(context.getString(R.string.in_library))
 			item.subtitle.takeIf { it.isNotBlank() }?.let(::add)
 			item.languageLabel?.let(::add)
 			if (item.isLocalSource) add(context.getString(R.string.local_storage))

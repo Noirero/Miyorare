@@ -78,6 +78,8 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
 import org.koitharu.kotatsu.stats.data.StatsRepository
 import javax.inject.Inject
+import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
+import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 
 data class DetailsRelatedUiState(
 	val groups: List<RelatedMangaGroup> = emptyList(),
@@ -112,6 +114,7 @@ class DetailsViewModel @Inject constructor(
 	private val detailsNavigationCache: DetailsNavigationCache,
 	mangaRepositoryFactory: MangaRepository.Factory,
 	chapterListOptionsStore: ChapterListOptionsStore,
+	private val chapterPersonalRepository: ChapterPersonalRepository,
 ) : ChaptersPagesViewModel(
 	settings = settings,
 	interactor = interactor,
@@ -127,7 +130,45 @@ class DetailsViewModel @Inject constructor(
 	mangaDataRepository = mangaDataRepository,
 	mangaRepositoryFactory = mangaRepositoryFactory,
 	chapterListOptionsStore = chapterListOptionsStore,
+	chapterPersonalRepository = chapterPersonalRepository,
 ) {
+
+	val chapterPersonalEditor = MutableStateFlow<ChapterListItem?>(null)
+	val isSavingChapterPersonal = MutableStateFlow(false)
+
+	private var chapterPersonalLoadJob: Job? = null
+
+	fun editChapterPersonal(item: ChapterListItem) {
+		if (isSavingChapterPersonal.value || item.personalKey.url.isBlank()) return
+		chapterPersonalLoadJob?.cancel()
+		chapterPersonalLoadJob = launchJob {
+			val id = mangaDetails.value?.id ?: return@launchJob
+			val metadata = chapterPersonalRepository.get(id, item.personalKey)
+			chapterPersonalEditor.value = item.copy(personalMetadata = metadata)
+		}
+	}
+
+	fun dismissChapterPersonalEditor() {
+		if (!isSavingChapterPersonal.value) {
+			chapterPersonalLoadJob?.cancel()
+			chapterPersonalEditor.value = null
+		}
+	}
+
+	fun saveChapterPersonal(rating: Int?, note: String?) {
+		val item = chapterPersonalEditor.value ?: return
+		val manga = mangaDetails.value?.sourceManga ?: return
+		if (isSavingChapterPersonal.value) return
+		isSavingChapterPersonal.value = true
+		launchJob {
+			try {
+				chapterPersonalRepository.set(manga, item.personalKey, rating, note)
+				chapterPersonalEditor.value = null
+			} finally {
+				isSavingChapterPersonal.value = false
+			}
+		}
+	}
 
 	private val intent = MangaIntent(savedStateHandle)
 	private val navigationManga = detailsNavigationCache.getLocalManga(intent.mangaId)

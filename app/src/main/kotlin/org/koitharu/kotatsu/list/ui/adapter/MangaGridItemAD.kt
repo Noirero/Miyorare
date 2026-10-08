@@ -383,23 +383,10 @@ fun mangaGridItemAD(
 		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
 			gravity = Gravity.END or if (isTitleOverCover || item.isPinned) Gravity.TOP else Gravity.BOTTOM
 		}
-		with(binding.iconsView) {
-			clearIcons()
-			if (item.isSaved) addIcon(R.drawable.ic_storage)
-			if (item.isLocalSource) addIcon(R.drawable.ic_manga_source)
-			if (item.isFavorite) addIcon(R.drawable.ic_heart_outline)
-			isVisible = iconsCount > 0
-		}
+		binding.iconsView.bindGrid(item.isSaved, item.isLocalSource, item.isFavorite, item.counter)
 		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
 		binding.badge.number = item.counter
 		binding.badge.isVisible = item.counter > 0
-		binding.iconsView.updateLayoutParams<FrameLayout.LayoutParams> {
-			topMargin = if (item.counter > 0) {
-				(32f * density).toInt()
-			} else {
-				(16f * density).toInt()
-			}
-		}
 	}
 }
 

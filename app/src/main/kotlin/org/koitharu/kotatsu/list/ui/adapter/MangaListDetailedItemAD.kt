@@ -39,13 +39,7 @@ fun mangaListDetailedItemAD(
 			value = item.progress,
 			animate = ListModelDiffCallback.PAYLOAD_PROGRESS_CHANGED in payloads,
 		)
-		with(binding.iconsView) {
-			clearIcons()
-			if (item.isSaved) addIcon(R.drawable.ic_storage)
-			if (item.isLocalSource) addIcon(R.drawable.ic_manga_source)
-			if (item.isFavorite) addIcon(R.drawable.ic_heart_outline)
-			isVisible = iconsCount > 0
-		}
+		binding.iconsView.bind(item.isSaved, item.isLocalSource, item.isFavorite)
 		binding.imageViewPin.isVisible = item.isPinned
 		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
 		binding.textViewTags.text = item.tags.joinToString(separator = ", ") { it.title ?: "" }

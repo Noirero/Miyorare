@@ -64,6 +64,8 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.inject.Provider
 import kotlin.system.measureTimeMillis
+import org.koitharu.kotatsu.core.db.entity.toEntities
+import org.koitharu.kotatsu.details.ui.mapChapters
 
 /**
  * Regression coverage for the cold-start chapter path.
@@ -99,11 +101,12 @@ class ChapterPersistenceRegressionTest {
 		try {
 			assertEquals(expected, migrated.getHistoryDao().find(901L))
 			assertNotNull(migrated.getMangaDao().find(901L))
-			assertEquals(51, migrated.openHelper.writableDatabase.version)
+			assertEquals(DATABASE_VERSION, migrated.openHelper.writableDatabase.version)
 		} finally {
 			migrated.close()
 		}
-		val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
+		val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME)
+			.addMigrations(*getDatabaseMigrations(context)).build()
 		try {
 			assertEquals(expected, reopened.getHistoryDao().find(901L))
 		} finally {
@@ -138,7 +141,8 @@ class ChapterPersistenceRegressionTest {
 			helper.close()
 		}
 		val expected = compatibilityHistory().copy(lastReaderActivityAt = 300L, legacyResumeUpdatedAt = 200L)
-		val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
+		val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME)
+			.addMigrations(*getDatabaseMigrations(context)).build()
 		try {
 			val dao = reopened.getHistoryDao()
 			assertEquals(expected, dao.find(901L))
@@ -147,9 +151,194 @@ class ChapterPersistenceRegressionTest {
 			assertEquals(expected.copy(page = 5, updatedAt = 400L), dao.find(901L))
 			dao.upsertForSync(compatibilityHistory().copy(page = 6, updatedAt = 500L, deletedAt = 600L))
 			assertEquals(expected.copy(page = 6, updatedAt = 500L, deletedAt = 600L), dao.findIncludingDeleted(901L))
-			assertEquals(51, reopened.openHelper.writableDatabase.version)
+			assertEquals(DATABASE_VERSION, reopened.openHelper.writableDatabase.version)
 		} finally {
 			reopened.close()
+		}
+	}
+
+	@Test
+	fun schema51AddsEmptyPersonalMetadataAndPreservesExistingData() = runTest {
+		val current = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
+		try {
+			current.getMangaDao().upsert(SampleData.mangaDetails.copy(id = 901L).toEntity())
+			current.getHistoryDao().upsert(compatibilityHistory())
+		} finally { current.close() }
+		android.database.sqlite.SQLiteDatabase.openDatabase(
+			context.getDatabasePath(MIGRATION_DB_NAME).absolutePath, null,
+			android.database.sqlite.SQLiteDatabase.OPEN_READWRITE,
+		).use { old ->
+			old.execSQL("DROP TABLE chapter_personal")
+			old.execSQL("DROP TABLE room_master_table")
+			old.version = 51
+		}
+		val migrated = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME)
+			.addMigrations(*getDatabaseMigrations(context)).build()
+		try {
+			assertEquals(compatibilityHistory(), migrated.getHistoryDao().find(901L))
+			assertNotNull(migrated.getMangaDao().find(901L))
+			assertTrue(migrated.getChapterPersonalDao().findAll(listOf(901L)).isEmpty())
+			val repository = org.koitharu.kotatsu.details.data.ChapterPersonalRepository(migrated)
+			val manga = SampleData.mangaDetails.copy(id = 901L)
+			val key = org.koitharu.kotatsu.details.data.ChapterPersonalKey.of(SampleData.chapter)
+			repository.set(manga, key, 5, "Peak chapter")
+			assertEquals(5, repository.get(manga.id, key).rating)
+		} finally { migrated.close() }
+		val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
+		try {
+			assertEquals(DATABASE_VERSION, reopened.openHelper.writableDatabase.version)
+			assertEquals("Peak chapter", reopened.getChapterPersonalDao().findAll(listOf(901L)).single().note)
+		} finally { reopened.close() }
+	}
+
+	@Test
+	fun personalMetadataSurvivesReplacementGcAndReopenThenEditsAndClearsWithoutDuplicates() = runTest {
+		val manga = SampleData.mangaDetails.copy(id = 902L)
+		val a = org.koitharu.kotatsu.details.data.ChapterPersonalKey.of(SampleData.chapter)
+		val b = a.copy(url = a.url + "-other")
+		val otherSource = a.copy(source = "OTHER_SOURCE")
+		withDatabase { db ->
+			val repository = org.koitharu.kotatsu.details.data.ChapterPersonalRepository(db)
+			repository.set(manga, a, 5, "Peak chapter")
+			db.getChaptersDao().replaceAll(manga.id, checkNotNull(manga.chapters).reversed().withIndex().toEntities(manga.id))
+			db.getChaptersDao().gc(listOf(manga.id))
+			db.getMangaDao().cleanup(emptySet())
+			assertNotNull(db.getMangaDao().find(manga.id))
+			assertTrue(db.getChaptersDao().findAll(manga.id).isEmpty())
+			assertTrue(repository.get(manga.id, b).isEmpty)
+			assertTrue(repository.get(manga.id, otherSource).isEmpty)
+			assertTrue(repository.get(903L, a).isEmpty)
+			repository.set(manga.copy(id = 903L), a, 1, "Other manga")
+			assertEquals(5, repository.get(manga.id, a).rating)
+		}
+		withDatabase { db ->
+			val repository = org.koitharu.kotatsu.details.data.ChapterPersonalRepository(db)
+			assertEquals(org.koitharu.kotatsu.details.data.ChapterPersonalMetadata(5, "Peak chapter"), repository.get(manga.id, a))
+			repository.set(manga, a, 4, "Edited")
+			assertEquals(org.koitharu.kotatsu.details.data.ChapterPersonalMetadata(4, "Edited"), repository.get(manga.id, a))
+			assertEquals(1, db.getChapterPersonalDao().findAll(listOf(manga.id)).size)
+			repository.set(manga, a, 4, "   ")
+			assertEquals(org.koitharu.kotatsu.details.data.ChapterPersonalMetadata(4), repository.get(manga.id, a))
+			repository.set(manga, a, null, "Note only")
+			assertEquals(org.koitharu.kotatsu.details.data.ChapterPersonalMetadata(note = "Note only"), repository.get(manga.id, a))
+			repository.set(manga, a, null, "")
+			assertTrue(repository.get(manga.id, a).isEmpty)
+			assertTrue(db.getChapterPersonalDao().findAll(listOf(manga.id)).isEmpty())
+			assertTrue(repository.get(manga.id, b).isEmpty)
+		}
+	}
+
+	@Test
+	fun chapterPersonalIdentityUsesSourceLocatorWhenDownloadedObjectReplacesRemote() {
+		val remote = SampleData.chapter
+		val local = remote.copy(source = LocalMangaSource, url = "file:///download/chapter.cbz")
+		val source = SampleData.mangaDetails.copy(chapters = listOf(remote))
+		val details = org.koitharu.kotatsu.details.data.MangaDetails(source).copy(
+			localManga = LocalManga(source.copy(source = LocalMangaSource, url = "file:///download/manga", chapters = listOf(local))),
+		)
+		val rows = details.mapChapters(0, 0, remote.branch, emptyList(), false, false)
+		assertEquals(1, rows.size)
+		assertEquals(local, rows.single().chapter)
+		assertEquals(org.koitharu.kotatsu.details.data.ChapterPersonalKey.of(remote), rows.single().personalKey)
+	}
+
+	@Test
+	fun chapterGridUsesStructuredNumbersAndSafeLocalizedFallbacks() {
+		fun label(number: Float, title: String?) = org.koitharu.kotatsu.details.ui.model.ChapterListItem(
+			SampleData.chapter.copy(number = number, title = title), flags = 0,
+		).getGridTitle(context.resources)
+		assertEquals("1", label(1f, "CH"))
+		assertEquals("12.5", label(12.5f, "CH"))
+		assertEquals("Extra", label(0f, "Extra"))
+		val fallback = context.getString(org.koitharu.kotatsu.R.string.unnamed_chapter)
+		assertEquals(fallback, label(0f, null))
+		assertEquals(fallback, label(Float.POSITIVE_INFINITY, null))
+		assertEquals(fallback, label(Float.NaN, " "))
+		assertEquals("Special", label(Float.POSITIVE_INFINITY, "Special"))
+	}
+
+	@Test
+	fun libraryIndicatorFitsNarrowCardsAndClearsRecycledPresentation() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
+			val view = themed.resources.getLayout(org.koitharu.kotatsu.R.layout.item_manga_grid).use { parser ->
+				while (parser.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+					if (parser.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name.endsWith("MangaIndicatorsView")) break
+				}
+				org.koitharu.kotatsu.list.ui.MangaIndicatorsView(themed, android.util.Xml.asAttributeSet(parser))
+			}
+			val heart = view.findViewById<android.widget.ImageView>(org.koitharu.kotatsu.R.id.library_heart)
+			val label = view.findViewById<android.widget.TextView>(org.koitharu.kotatsu.R.id.library_label)
+			val icons = view.findViewById<org.koitharu.kotatsu.core.ui.widgets.IconsView>(org.koitharu.kotatsu.R.id.status_icons)
+			val size = themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.library_indicator_icon_size)
+			for (favorite in listOf(true, false, true, false)) {
+				for (saved in listOf(false, true)) for (local in listOf(false, true)) {
+					view.bind(saved, local, favorite)
+					assertEquals(if (favorite) android.view.View.VISIBLE else android.view.View.GONE, heart.visibility)
+					assertEquals(heart.visibility, label.visibility)
+					assertEquals(themed.getString(org.koitharu.kotatsu.R.string.in_library), label.text.toString())
+					assertEquals((if (saved) 1 else 0) + (if (local) 1 else 0), icons.iconsCount)
+					assertEquals(if (favorite || saved || local) android.view.View.VISIBLE else android.view.View.GONE, view.visibility)
+					for (widthDp in listOf(79, 90, 140)) {
+						val width = (widthDp * themed.resources.displayMetrics.density).toInt()
+						view.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.AT_MOST),
+							android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
+						view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+						assertTrue(view.measuredWidth <= width)
+						if (favorite) {
+							assertEquals(size, heart.measuredWidth)
+							assertTrue(heart.right <= view.measuredWidth)
+							assertTrue(label.right <= view.measuredWidth)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	fun libraryIndicatorPreservesGridCounterPositionOnRebind() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
+			val parent = android.widget.FrameLayout(themed)
+			val view = org.koitharu.kotatsu.list.ui.MangaIndicatorsView(themed)
+			parent.addView(view, android.widget.FrameLayout.LayoutParams(
+				android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+			))
+			for ((favorite, counter) in listOf(true to 8, false to 8, false to 0, true to 0)) {
+				view.bindGrid(isSaved = true, isLocalSource = true, isFavorite = favorite, counter = counter)
+				val expectedOffset = if (favorite) themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.library_indicator_grid_top_offset)
+					else ((if (counter > 0) 32 else 16) * themed.resources.displayMetrics.density).toInt()
+				assertEquals(expectedOffset, (view.layoutParams as android.widget.FrameLayout.LayoutParams).topMargin)
+				assertEquals(if (favorite) android.view.View.VISIBLE else android.view.View.GONE,
+					view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.library_label).visibility)
+			}
+		}
+	}
+
+	@Test
+	fun unrelatedIconsViewConsumersRetainIconOnlySizingAndRecycling() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
+			for (layout in listOf(org.koitharu.kotatsu.R.layout.item_manga_alternative, org.koitharu.kotatsu.R.layout.item_manga_carousel)) {
+				val parser = themed.resources.getLayout(layout)
+				try {
+					while (parser.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+						if (parser.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name.endsWith("IconsView")) break
+					}
+					val view = org.koitharu.kotatsu.core.ui.widgets.IconsView(themed, android.util.Xml.asAttributeSet(parser))
+					assertEquals(android.view.Gravity.TOP or android.view.Gravity.START, view.gravity)
+					view.addIcon(org.koitharu.kotatsu.R.drawable.ic_storage)
+					view.addIcon(org.koitharu.kotatsu.R.drawable.ic_heart_outline)
+					assertEquals(2, view.iconsCount)
+					val originalSize = view.getChildAt(0).layoutParams.width
+					view.clearIcons()
+					view.addIcon(org.koitharu.kotatsu.R.drawable.ic_manga_source)
+					assertEquals(1, view.iconsCount)
+					assertEquals(originalSize, view.getChildAt(0).layoutParams.width)
+					assertTrue((0 until view.childCount).all { view.getChildAt(it) is android.widget.ImageView })
+				} finally { parser.close() }
+			}
 		}
 	}
 
@@ -180,6 +369,7 @@ class ChapterPersistenceRegressionTest {
 				legacy.execSQL("INSERT INTO history_v50 SELECT manga_id, created_at, updated_at, chapter_id, page, scroll, percent, deleted_at, chapters FROM history")
 				legacy.execSQL("DROP TABLE history")
 				legacy.execSQL("ALTER TABLE history_v50 RENAME TO history")
+				legacy.execSQL("DROP TABLE chapter_personal")
 				legacy.execSQL("DROP TABLE room_master_table")
 				legacy.version = 50
 				legacy.setTransactionSuccessful()

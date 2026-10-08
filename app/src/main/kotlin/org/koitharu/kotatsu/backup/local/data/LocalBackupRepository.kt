@@ -80,6 +80,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
+import org.koitharu.kotatsu.backup.local.data.model.ChapterPersonalBackup
 
 @Reusable
 class LocalBackupRepository @Inject constructor(
@@ -400,10 +401,12 @@ class LocalBackupRepository @Inject constructor(
 								}
 							},
 						) { item ->
+							val annotations = item.personalMetadata.map { it.toEntity(item.manga.id) }
 							getChaptersDao().replaceAll(
 								item.manga.id,
 								item.chapters.map { chapter -> chapter.toEntity().copy(mangaId = item.manga.id) },
 							)
+							annotations.forEach { getChapterPersonalDao().upsert(it) }
 						}
 
 					BackupSection.FEED -> restoreFeed(
@@ -613,7 +616,7 @@ class LocalBackupRepository @Inject constructor(
 			json.encodeToStream(serializer<List<PrivateCategoryBackup>>(), categories, this)
 			write(",\"favourites\":")
 			writeJsonArrayPayload(
-				data = database.getPrivateFavouritesDao().dump().map(::PrivateFavouriteItemBackup),
+				data = dumpPrivateFavouritesWithPersonalMetadata(),
 				serializer = serializer(),
 			)
 			write(",\"library_groups\":")
@@ -626,6 +629,25 @@ class LocalBackupRepository @Inject constructor(
 			closeEntry()
 			flush()
 		}
+	}
+
+	private fun dumpPrivateFavouritesWithPersonalMetadata(): Flow<PrivateFavouriteItemBackup> = flow {
+		val batch = ArrayList<org.koitharu.kotatsu.favourites.data.PrivateFavouriteManga>(BACKUP_DB_BATCH_SIZE)
+		suspend fun flushBatch() {
+			if (batch.isEmpty()) return
+			val personalByManga = database.getChapterPersonalDao().findAll(batch.map { it.manga.id }).groupBy { it.mangaId }
+			for (favourite in batch) {
+				emit(PrivateFavouriteItemBackup(favourite).copy(
+					personalMetadata = personalByManga[favourite.manga.id].orEmpty().map(::ChapterPersonalBackup),
+				))
+			}
+			batch.clear()
+		}
+		database.getPrivateFavouritesDao().dump().collect { favourite ->
+			batch.add(favourite)
+			if (batch.size == BACKUP_DB_BATCH_SIZE) flushBatch()
+		}
+		flushBatch()
 	}
 
 	private suspend fun <T> OutputStream.writeJsonArrayPayload(
@@ -777,6 +799,9 @@ class LocalBackupRepository @Inject constructor(
 					database.getPrivateFavouritesDao().upsert(
 						item.toEntity().copy(mangaId = item.manga.id, categoryId = categoryId),
 					)
+					item.personalMetadata.forEach { annotation ->
+						database.getChapterPersonalDao().upsert(annotation.toEntity(item.manga.id))
+					}
 				}
 			}
 		}
@@ -911,10 +936,12 @@ class LocalBackupRepository @Inject constructor(
 			if (items.isEmpty()) break
 			val ids = items.map { it.manga.id }
 			val chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }
+			val personalByManga = database.getChapterPersonalDao().findAll(ids).groupBy { it.mangaId }
 			for (item in items) {
 				val chapters = chaptersByManga[item.manga.id].orEmpty()
-				if (chapters.isNotEmpty()) {
-					emit(MangaWithChaptersBackup(MangaBackup(item), chapters.map(::ChapterBackup)))
+				val annotations = personalByManga[item.manga.id].orEmpty()
+				if (chapters.isNotEmpty() || annotations.isNotEmpty()) {
+					emit(MangaWithChaptersBackup(MangaBackup(item), chapters.map(::ChapterBackup), annotations.map(::ChapterPersonalBackup)))
 				}
 			}
 			afterMangaId = items.last().manga.id
