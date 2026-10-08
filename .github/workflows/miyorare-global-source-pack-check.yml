@@ -69,6 +69,16 @@ jobs:
           root = Path('extensions/miyorare-sources/overlays/gekkoushi/all')
           if not root.is_dir():
               raise SystemExit(0)
+
+          # RawDEX exists in the pinned Gekkoushi revision as a legacy Madara parser. The live site
+          # has moved to rdx-* markup, so Global replaces that obsolete implementation with the
+          # Miyorare-owned adapter below instead of compiling two RAWDEX runtime identities.
+          legacy_rawdex = Path('_upstream/gekkoushi/src/main/kotlin/tsuki/site/madara/ko/RawDex.kt')
+          rawdex_overlay = root / 'RawDex.kt'
+          if rawdex_overlay.is_file() and legacy_rawdex.is_file():
+              legacy_rawdex.unlink()
+              print(f'removed obsolete upstream parser: {legacy_rawdex}')
+
           for file in root.rglob('*.kt'):
               rel = file.relative_to(root)
               target = Path('_upstream/gekkoushi/src/main/kotlin/tsuki/site/all') / rel
@@ -132,7 +142,7 @@ jobs:
           logical = json.loads((output / 'miyorare-global-pack.json').read_text(encoding='utf-8'))
           shard = json.loads((output / 'miyorare-global-pack-shard.json').read_text(encoding='utf-8'))
 
-          expected_sources = {'EXHENTAI', 'GELBOORU'}
+          expected_sources = {'EXHENTAI', 'GELBOORU', 'RAWDEX', 'NEWXTOON'}
           logical_names = set(logical['sourceNames'])
           shard_names = set(shard['sourceNames'])
           assert logical_names == expected_sources, sorted(logical_names)
