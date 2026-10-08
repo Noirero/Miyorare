@@ -1219,6 +1219,7 @@ internal fun InlineChapterCard(
 			}
 
 			when {
+				!item.canDownload -> Unit
 				item.isDownloaded -> IconButton(onClick = onManageClick) {
 					Icon(
 						painter = painterResource(R.drawable.ic_eye_check),

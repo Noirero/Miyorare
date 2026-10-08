@@ -17,4 +17,8 @@
     <plurals name="smart_local_titles"><item quantity="one">%d judul</item><item quantity="other">%d judul</item></plurals>
     <plurals name="smart_local_chapters"><item quantity="one">%d bab</item><item quantity="other">%d bab</item></plurals>
     <plurals name="smart_local_discovered_chapters"><item quantity="one">%d bab baru ditemukan</item><item quantity="other">%d bab baru ditemukan</item></plurals>
+    <string name="smart_local_file_info">Informasi file</string>
+    <string name="smart_local_manga_details">Manga/Komik • Di perangkat</string>
+    <string name="smart_local_novel_details">Novel/EPUB • Di perangkat</string>
+    <string name="smart_local_file_details">%1$s\n%2$s • %3$s</string>
 </resources>

@@ -253,7 +253,7 @@ class DetailsViewModel @Inject constructor(
 		genreRecommendationsActive,
 	) { details, visible, active -> Triple(details, visible, active) }
 		.mapLatest { (details, visible, active) ->
-			if (details != null && details.isLoaded && visible && active) {
+			if (details != null && details.isLoaded && visible && active && !isSmartLocal) {
 				mangaListMapper.toListModelList(
 					manga = contextualRecommendationUseCase(details.toManga()),
 					mode = ListMode.GRID,
@@ -338,7 +338,7 @@ class DetailsViewModel @Inject constructor(
 	}
 
 	fun requestExpandedRelated() {
-		if (!relatedDiscoveryEnabled.value) return
+		if (!relatedDiscoveryEnabled.value || isSmartLocal) return
 		val state = _expandedRelated.value
 		if (state.isLoading || state.isComplete || expandedRelatedJob?.isActive == true) return
 		val details = mangaDetails.value?.takeIf { it.isLoaded } ?: return

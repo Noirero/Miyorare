@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.widget.TextViewCompat
+import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
@@ -29,7 +30,8 @@ class LocalInfoDialog : AlertDialogFragment<DialogLocalInfoBinding>(), View.OnCl
 	private val viewModel: LocalInfoViewModel by viewModels()
 
 	override fun onBuildDialog(builder: MaterialAlertDialogBuilder): MaterialAlertDialogBuilder {
-		return super.onBuildDialog(builder).setTitle(R.string.saved_manga).setNegativeButton(R.string.close, null)
+		if (viewModel.isSmartLocal) builder.setNeutralButton(R.string.scan_now, null)
+		return super.onBuildDialog(builder).setTitle(if (viewModel.isSmartLocal) R.string.smart_local_file_info else R.string.saved_manga).setNegativeButton(R.string.close, null)
 	}
 
 	override fun onCreateViewBinding(inflater: LayoutInflater, container: ViewGroup?): DialogLocalInfoBinding {
@@ -42,6 +44,18 @@ class LocalInfoDialog : AlertDialogFragment<DialogLocalInfoBinding>(), View.OnCl
 			binding.textViewPath.text = it
 		}
 		binding.chipCleanup.setOnClickListener(this)
+		if (viewModel.isSmartLocal) {
+			binding.chipCleanup.isVisible = false
+			binding.barView.isVisible = false
+			binding.labelAvailable.isVisible = false
+			viewModel.indexedBook.observe(viewLifecycleOwner) { book ->
+				if (book != null) binding.labelUsed.text = getString(
+					R.string.smart_local_file_details,
+					book.node.name, FileSize.BYTES.format(requireContext(), book.size),
+					resources.getQuantityString(R.plurals.smart_local_chapters, book.chapters.size, book.chapters.size),
+				)
+			}
+		}
 		combine(viewModel.size, viewModel.availableSize, ::Pair).observe(viewLifecycleOwner) {
 			if (it.first >= 0 && it.second >= 0) {
 				setSegments(it.first, it.second)
@@ -50,6 +64,20 @@ class LocalInfoDialog : AlertDialogFragment<DialogLocalInfoBinding>(), View.OnCl
 			}
 		}
 		viewModel.onCleanedUp.observeEvent(viewLifecycleOwner, ::onCleanedUp)
+		viewModel.onScanned.observeEvent(viewLifecycleOwner) { complete ->
+			Toast.makeText(requireContext(), if (complete) R.string.smart_local_scan_complete else R.string.smart_local_scan_attention, Toast.LENGTH_LONG).show()
+		}
+		viewModel.onError.observeEvent(viewLifecycleOwner) {
+			Toast.makeText(requireContext(), R.string.error_occurred, Toast.LENGTH_LONG).show()
+		}
+		viewModel.isLoading.observe(viewLifecycleOwner) { loading ->
+			if (viewModel.isSmartLocal) {
+				val alert = dialog as? androidx.appcompat.app.AlertDialog
+				alert?.getButton(android.content.DialogInterface.BUTTON_NEUTRAL)?.isEnabled = !loading
+				alert?.getButton(android.content.DialogInterface.BUTTON_NEGATIVE)?.isEnabled = !loading
+				dialog?.setCancelable(!loading)
+			}
+		}
 		viewModel.isCleaningUp.observe(viewLifecycleOwner) { loading ->
 			binding.chipCleanup.isClickable = !loading
 			dialog?.setCancelable(!loading)
@@ -58,6 +86,14 @@ class LocalInfoDialog : AlertDialogFragment<DialogLocalInfoBinding>(), View.OnCl
 			} else {
 				binding.chipCleanup.setChipIconResource(R.drawable.ic_delete)
 			}
+		}
+	}
+
+	override fun onStart() {
+		super.onStart()
+		if (viewModel.isSmartLocal) {
+			(dialog as? androidx.appcompat.app.AlertDialog)?.getButton(android.content.DialogInterface.BUTTON_NEUTRAL)
+				?.setOnClickListener { viewModel.rescan() }
 		}
 	}
 

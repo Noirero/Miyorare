@@ -34,7 +34,7 @@ fun chapterListItemAD(
 	itemView.isFocusableInTouchMode = false
 
 	binding.imageButtonDownload.setOnClickListener {
-		if (!item.isDownloaded && !item.isDownloading) {
+		if (item.canDownload && !item.isDownloaded && !item.isDownloading) {
 			onDownloadClick(item)
 		}
 	}
@@ -46,12 +46,7 @@ fun chapterListItemAD(
 			setOnMenuItemClickListener { menuItem ->
 				if (menuItem.itemId == R.id.action_delete) {
 					onDeleteClick(item)
-					// Reflect the requested deletion immediately instead of keeping a stale
-					// downloaded icon until the chapter list is manually refreshed. The
-					// storage-change event will still reconcile the real state afterwards.
-					anchor.isVisible = false
-					binding.progressBarDownload.isVisible = false
-					binding.imageButtonDownload.isVisible = true
+
 					true
 				} else {
 					false
@@ -108,6 +103,6 @@ fun chapterListItemAD(
 			?: context.getThemeColorStateList(androidx.appcompat.R.attr.colorPrimary)
 		binding.imageViewDownloaded.isVisible = item.isDownloaded
 		binding.progressBarDownload.isVisible = item.isDownloading && !item.isDownloaded
-		binding.imageButtonDownload.isVisible = !item.isDownloaded && !item.isDownloading
+		binding.imageButtonDownload.isVisible = item.canDownload && !item.isDownloaded && !item.isDownloading
 	}
 }
