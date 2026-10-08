@@ -61,7 +61,10 @@ class LocalListViewModel @Inject constructor(
 	val onMangaRemoved = MutableEventFlow<Unit>()
 	val exclusions = MutableEventFlow<Map<String, String>>()
 	private val revision = MutableStateFlow(0)
-	private val localQuery = MutableStateFlow("")
+	private val localQuery = MutableStateFlow(savedStateHandle["local_query"] ?: "")
+	private val contentType = MutableStateFlow(
+		savedStateHandle.get<String>("content_type")?.let { saved -> LocalContentType.entries.firstOrNull { it.name == saved } },
+	)
 	private var refreshJob: Job? = null
 	private var folderJob: Job? = null
 
@@ -71,10 +74,10 @@ class LocalListViewModel @Inject constructor(
 			if (library.state.value.roots.isNotEmpty() && library.state.value.books.isEmpty()) library.scan()
 		}
 		launchJob(Dispatchers.Default) {
-			combine(library.state, observeListModeWithTriggers(), localQuery, revision) { snapshot, mode, query, _ ->
-				Triple(snapshot, mode, query)
-			}.collect { (snapshot, mode, query) ->
-				content.value = buildContent(snapshot, mode, query)
+			combine(library.state, observeListModeWithTriggers(), localQuery, contentType, revision) { snapshot, mode, query, type, _ ->
+				CollectionState(snapshot, mode, query, type)
+			}.collect { state ->
+				content.value = buildContent(state.snapshot, state.mode, state.query, state.type)
 			}
 		}
 		launchJob(Dispatchers.Default) {
@@ -91,15 +94,20 @@ class LocalListViewModel @Inject constructor(
 	}
 
 	override fun onRetry() = onRefresh()
-	fun setLocalQuery(query: String) { localQuery.value = query }
+	fun setLocalQuery(query: String) {
+		localQuery.value = query
+		savedStateHandle["local_query"] = query
+	}
+	fun setContentType(type: LocalContentType?) {
+		contentType.value = type
+		savedStateHandle["content_type"] = type?.name
+	}
 	fun toggleFolders() {
 		savedStateHandle["folders_expanded"] = !foldersExpanded(library.state.value)
 		revision.value++
 	}
 	fun addFolder(uri: Uri) {
 		if (folderJob?.isActive == true || refreshJob?.isActive == true) return
-		// addRoot publishes the selected root before scanning. Do not replace the already useful
-		// collection UI with a full-page loading state while SAF discovery/database reconciliation runs.
 		folderJob = launchJob(Dispatchers.IO) { library.addRoot(uri) }
 	}
 	fun removeFolder(uri: String) {
@@ -128,7 +136,7 @@ class LocalListViewModel @Inject constructor(
 	private fun foldersExpanded(snapshot: LocalLibrarySnapshot): Boolean =
 		savedStateHandle["folders_expanded"] ?: snapshot.roots.isEmpty()
 
-	private suspend fun buildContent(snapshot: LocalLibrarySnapshot, mode: ListMode, query: String?): List<ListModel> {
+	private suspend fun buildContent(snapshot: LocalLibrarySnapshot, mode: ListMode, query: String?, type: LocalContentType?): List<ListModel> {
 		val ids = snapshot.books.map { it.id }
 		val histories = ids.chunked(500).flatMap { db.getHistoryDao().findByIds(it) }.associateBy { it.mangaId }
 		val expanded = foldersExpanded(snapshot)
@@ -144,19 +152,22 @@ class LocalListViewModel @Inject constructor(
 			result += ListHeader(R.string.smart_local_add_folder, R.string.add, LocalLibraryAction.AddFolder)
 		}
 		result += SmartLocalPanelModel(
-			mangaCount = snapshot.books.size,
+			folderCount = snapshot.roots.size,
+			titleCount = snapshot.books.size,
 			chapterCount = snapshot.books.sumOf { it.chapters.size },
 			readingCount = snapshot.books.count { histories[it.id] != null && !it.isCompleted(histories[it.id]) },
 			newCount = snapshot.books.count { it.newChapters > 0 },
 			query = query.orEmpty(),
+			contentType = type,
 		)
 		if (snapshot.excludedCount > 0) result += ListHeader(context.getString(R.string.smart_local_hidden_count, snapshot.excludedCount),
 			R.string.smart_local_restore, LocalLibraryAction.Restore)
 		if (snapshot.diagnoses.isNotEmpty()) result += ListHeader(context.getString(R.string.smart_local_review_count, snapshot.diagnoses.size),
 			R.string.smart_local_inspect, snapshot.diagnoses)
 		if (query.isNullOrBlank()) {
-			val reading = snapshot.books.filter { b -> histories[b.id]?.let { it.lastReaderActivityAt > 0 && !b.isCompleted(it) } == true }
-				.sortedByDescending { histories[it.id]?.lastReaderActivityAt }.take(3)
+			val reading = snapshot.books.filter { book ->
+				(type == null || book.contentType == type) && histories[book.id]?.let { it.lastReaderActivityAt > 0 && !book.isCompleted(it) } == true
+			}.sortedByDescending { histories[it.id]?.lastReaderActivityAt }.take(3)
 			if (reading.isNotEmpty()) {
 				result += ListHeader(R.string.smart_local_continue)
 				for (book in reading) {
@@ -167,7 +178,7 @@ class LocalListViewModel @Inject constructor(
 						subtitle = chapter?.metadataTitle ?: chapter?.node?.name?.let { LocalTreeScanner.displayName(it, library.showExtensions, chapter.node.directory) }.orEmpty()) else model
 				}
 			}
-			val discovered = snapshot.books.filter { it.newChapters > 0 }
+			val discovered = snapshot.books.filter { (type == null || it.contentType == type) && it.newChapters > 0 }
 			if (discovered.isNotEmpty()) {
 				result += ListHeader(R.string.smart_local_discovered, R.string.smart_local_mark_seen, LocalLibraryAction.Acknowledge)
 				for (book in discovered) result += ListHeader(context.getString(R.string.smart_local_new_chapters,
@@ -175,7 +186,8 @@ class LocalListViewModel @Inject constructor(
 			}
 		}
 		result += ListHeader(R.string.smart_local_collection)
-		val manga = library.list(query).skipNsfwIfNeeded()
+		val visibleIds = snapshot.books.asSequence().filter { type == null || it.contentType == type }.mapTo(HashSet()) { it.id }
+		val manga = library.list(query).filter { it.id in visibleIds }.skipNsfwIfNeeded()
 		val models = mangaListMapper.toListModelList(manga, mode, MangaListMapper.NO_SAVED)
 		val booksById = snapshot.books.associateBy { it.id }
 		for (model in models) {
@@ -197,4 +209,11 @@ class LocalListViewModel @Inject constructor(
 			R.string.text_local_holder_primary, R.string.smart_local_empty, R.string.smart_local_add_folder)
 		return result
 	}
+
+	private data class CollectionState(
+		val snapshot: LocalLibrarySnapshot,
+		val mode: ListMode,
+		val query: String,
+		val type: LocalContentType?,
+	)
 }
