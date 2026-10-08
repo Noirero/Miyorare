@@ -52,6 +52,7 @@ import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.ListFilterOption
+import org.koitharu.kotatsu.local.data.isEpub
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.LocalRoutingMangaRepository
 import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
@@ -285,7 +286,7 @@ abstract class ChaptersPagesViewModel(
 				newCount = news,
 				branch = branch,
 				bookmarks = bookmarks,
-				isGrid = options.grid,
+				isGrid = options.grid && manga.toManga().isEpub.not(),
 				// Always map the complete Room/local snapshot. Status filters below are in-memory only.
 				isDownloadedOnly = false,
 				readOverrides = overrides,

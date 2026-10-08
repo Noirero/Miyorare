@@ -21,4 +21,11 @@
     <string name="smart_local_manga_details">Manga/Komik • Di perangkat</string>
     <string name="smart_local_novel_details">Novel/EPUB • Di perangkat</string>
     <string name="smart_local_file_details">%1$s\n%2$s • %3$s</string>
+    <string name="smart_local_expand_chapter">Buka</string>
+    <string name="smart_local_collapse_chapter">Tutup</string>
+    <string name="smart_local_current_chapter">Aktif</string>
+    <string name="smart_local_contents">Daftar isi</string>
+    <string name="smart_local_page_description">Halaman %d</string>
+    <string name="smart_local_current_page_description">Halaman aktif %d</string>
+    <string name="smart_local_chapter_toggle_description">%1$s %2$s %3$s</string>
 </resources>

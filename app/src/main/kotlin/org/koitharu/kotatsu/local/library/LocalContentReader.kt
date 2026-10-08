@@ -140,6 +140,17 @@ class LocalContentReader @Inject constructor(
                         val path = EpubParser.resolveHref(item.href.substringBeforeLast('/', ""), image.attr("src"))
                         if (safeEntry(path)) image.attr("src", "local-epub:$path") else image.remove()
                     }
+                    val entries = book.toc.filter { it.href == item.href }
+                    if (entries.isEmpty()) {
+                        doc.body().prependChild(org.jsoup.nodes.Element("miyorare-section").attr("data-title", item.title))
+                    } else for (section in entries.asReversed()) {
+                        val marker = org.jsoup.nodes.Element("miyorare-section").attr("data-title", section.title)
+                        val target = section.fragment?.let { fragment ->
+                            val id = runCatching { java.net.URLDecoder.decode(fragment, "UTF-8") }.getOrDefault(fragment)
+                            doc.getElementById(id)
+                        }
+                        if (target != null) target.before(marker) else doc.body().prependChild(marker)
+                    }
                     append(doc.body().html())
                     check(length <= 32 * 1024 * 1024) { "EPUB volume is too large" }
                 }

@@ -110,6 +110,14 @@ class ReaderActionsView @JvmOverloads constructor(
 		}
 
 	var listener: OnInteractionListener? = null
+	private var localContent = false
+	private var epubContent = false
+	fun setContentCapabilities(isLocal: Boolean, isEpub: Boolean) {
+		localContent = isLocal
+		epubContent = isEpub
+		updateControlsVisibility()
+		updatePagesSheetButton()
+	}
 
 	// EPUB: the slider is a smooth in-chapter scrollbar - no tick stops, no label, live seeking
 	var isSliderSmooth: Boolean = false
@@ -166,7 +174,7 @@ class ReaderActionsView @JvmOverloads constructor(
 			R.id.button_save -> listener?.onSavePageClick()
 			// The dock button is a toggle: tap starts/stops autoscroll, long-press opens the panel.
 			R.id.button_timer -> listener?.onScrollTimerClick(isLongClick = true)
-			R.id.button_pages_thumbs -> AppRouter.from(this)?.showChapterPagesSheet()
+			R.id.button_pages_thumbs -> if (listener?.openContents() != true) AppRouter.from(this)?.showChapterPagesSheet()
 			R.id.button_webview -> openCurrentChapterInWebView()
 			R.id.button_screen_rotation -> listener?.toggleScreenOrientation()
 			R.id.button_options -> listener?.openMenu()
@@ -252,6 +260,7 @@ class ReaderActionsView @JvmOverloads constructor(
 	}
 
 	private fun openCurrentChapterInWebView() {
+		if (localContent) return
 		val activity = context.findActivity() as? ReaderActivity ?: return
 		val viewModel = ViewModelProvider(activity)[ReaderViewModel::class.java]
 		val chapterId = viewModel.getCurrentState()?.chapterId ?: return
@@ -266,9 +275,9 @@ class ReaderActionsView @JvmOverloads constructor(
 		binding.buttonPrev.isVisible = ReaderControl.PREV_CHAPTER in controls
 		binding.buttonNext.isVisible = ReaderControl.NEXT_CHAPTER in controls
 		binding.buttonPagesThumbs.isVisible = ReaderControl.PAGES_SHEET in controls
-		binding.buttonWebview.isVisible = ReaderControl.WEBVIEW in controls
+		binding.buttonWebview.isVisible = !localContent && ReaderControl.WEBVIEW in controls
 		binding.buttonScreenRotation.isVisible = ReaderControl.SCREEN_ROTATION in controls
-		binding.buttonSave.isVisible = ReaderControl.SAVE_PAGE in controls
+		binding.buttonSave.isVisible = !epubContent && ReaderControl.SAVE_PAGE in controls
 		binding.buttonTimer.isVisible = ReaderControl.TIMER in controls
 		binding.buttonBookmark.isVisible = ReaderControl.BOOKMARK in controls
 		binding.buttonOptions.isVisible = isLandscape
@@ -299,7 +308,7 @@ class ReaderActionsView @JvmOverloads constructor(
 
 	private fun updatePagesSheetButton() {
 		val button = binding.buttonPagesThumbs
-		val tab = settings.defaultDetailsTab
+		val tab = if (epubContent) ChaptersPagesSheet.TAB_CHAPTERS else settings.defaultDetailsTab
 		button.setIconResource(when (tab) {
 			TAB_PAGES -> R.drawable.ic_grid
 			TAB_BOOKMARKS -> R.drawable.ic_bookmark
@@ -309,7 +318,7 @@ class ReaderActionsView @JvmOverloads constructor(
 			when (tab) {
 				TAB_PAGES -> R.string.pages
 				TAB_BOOKMARKS -> R.string.bookmarks
-				else -> R.string.chapters
+				else -> if (epubContent) R.string.smart_local_contents else R.string.chapters
 			},
 		)
 	}

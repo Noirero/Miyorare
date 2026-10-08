@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_BO
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_CHAPTERS
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_PAGES
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
+import org.koitharu.kotatsu.local.data.isEpub
 import java.lang.ref.WeakReference
 
 class ChapterPagesMenuProvider(
@@ -69,7 +70,7 @@ class ChapterPagesMenuProvider(
 		super.onPrepareMenu(menu)
 		val chapterOptions = viewModel.chapterListOptions.value
 		menu.findItem(R.id.action_reversed)?.isChecked = chapterOptions.descending
-		menu.findItem(R.id.action_grid_view)?.isChecked = chapterOptions.grid
+		menu.findItem(R.id.action_grid_view)?.let { it.isChecked = chapterOptions.grid; it.isVisible = viewModel.getMangaOrNull()?.isEpub != true }
 		menu.findItem(R.id.action_downloaded)?.let { item ->
 			item.isVisible = viewModel.mangaDetails.value?.local != null
 			item.isChecked = chapterOptions.downloadedOnly
@@ -91,7 +92,7 @@ class ChapterPagesMenuProvider(
 			true
 		}
 
-		R.id.action_grid_view -> {
+		R.id.action_grid_view -> if (viewModel.getMangaOrNull()?.isEpub == true) true else {
 			val grid = !menuItem.isChecked
 			viewModel.setChaptersGridView(grid)
 			if (viewModel is ReaderViewModel) {

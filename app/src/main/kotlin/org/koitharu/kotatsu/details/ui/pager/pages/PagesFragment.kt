@@ -81,6 +81,7 @@ class PagesFragment :
 	private var selectionController: ListSelectionController? = null
 
 	private val spanSizeLookup = SpanSizeLookup()
+	private var initialPositionPending = true
 
 	override val recyclerView: RecyclerView?
 		get() = viewBinding?.recyclerView
@@ -118,6 +119,15 @@ class PagesFragment :
 		)
 		thumbnailsAdapter = PageThumbnailAdapter(
 			clickListener = this@PagesFragment,
+			headerListener = object : org.koitharu.kotatsu.list.ui.adapter.ListHeaderClickListener {
+				override fun onListHeaderClick(item: org.koitharu.kotatsu.list.ui.model.ListHeader, view: View) {
+					(item.payload as? Long)?.let(viewModel::toggleExpanded)
+				}
+			},
+			stateListener = object : org.koitharu.kotatsu.list.ui.adapter.ListStateHolderListener {
+				override fun onRetryClick(error: Throwable) = viewModel.retryPreviews()
+				override fun onEmptyActionClick() = Unit
+			},
 		)
 		viewModel.gridScale.observe(viewLifecycleOwner, ::onGridScaleChanged) // before rv initialization
 		with(binding.recyclerView) {
@@ -161,6 +171,17 @@ class PagesFragment :
 		val color = requireActivity().getThemeColor(android.R.attr.colorBackground)
 		binding.root.setBackgroundColor(color)
 		binding.recyclerView.setBackgroundColor(color)
+	}
+
+	override fun onResume() {
+		super.onResume()
+		initialPositionPending = true
+		viewModel.setVisible(true)
+	}
+
+	override fun onPause() {
+		viewModel.setVisible(false)
+		super.onPause()
 	}
 
 	override fun onDestroyView() {
@@ -262,9 +283,10 @@ class PagesFragment :
 
 	private suspend fun onThumbnailsChanged(list: List<ListModel>) {
 		val adapter = thumbnailsAdapter ?: return
-		if (adapter.itemCount == 0) {
+		if (adapter.itemCount == 0 || initialPositionPending) {
 			var position = list.indexOfFirst { it is PageThumbnail && it.isCurrent }
-			if (position > 0) {
+			if (position >= 0) {
+				initialPositionPending = false
 				val spanCount = spanResolver?.spanCount ?: 0
 				val offset = if (position > spanCount + 1) {
 					(resources.getDimensionPixelSize(R.dimen.manga_list_details_item_height) * 0.6).roundToInt()
