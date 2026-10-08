@@ -28,14 +28,23 @@ class LocalContentTypeTest {
     @Test
     fun routeSelectionUsesTheSameCapabilityAuthority() {
         val source = source("org/koitharu/kotatsu/local/library/LocalLibraryModels.kt")
+        val toManga = source.substringAfter("funtoManga(").substringBefore("data class LocalLibrarySnapshot")
 
         assertTrue(
             "Smart Local routing must derive EPUB vs comic route from LocalBook.isNovel",
-            source.contains("if(isNovel)\"book.epub\"else\"book\""),
+            toManga.contains("if(isNovel)"),
+        )
+        assertTrue(
+            "Novel Smart Local route must remain book.epub",
+            toManga.contains("\"book.epub\""),
+        )
+        assertTrue(
+            "Comic Smart Local route must remain book",
+            toManga.contains("\"book\""),
         )
         assertFalse(
             "Routing must not duplicate EPUB extension detection outside the content-type authority",
-            source.substringAfter("funtoManga(").substringBefore("data class LocalLibrarySnapshot").contains("extension("),
+            toManga.contains("extension("),
         )
     }
 
