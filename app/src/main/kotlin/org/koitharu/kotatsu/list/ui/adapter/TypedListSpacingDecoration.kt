@@ -41,6 +41,7 @@ class TypedListSpacingDecoration(
 				-> outRect.set(0)
 
 			ListItemType.HEADER,
+			ListItemType.SMART_LOCAL_COLLECTION_HEADER,
 			ListItemType.FEED,
 			ListItemType.EXPLORE_SOURCE_LIST,
 			ListItemType.MANGA_SCROBBLING,
@@ -49,6 +50,7 @@ class TypedListSpacingDecoration(
 				-> outRect.set(0)
 
 			ListItemType.SMART_LOCAL_PANEL,
+			ListItemType.SMART_LOCAL_RESUME,
 			ListItemType.DOWNLOAD,
 			ListItemType.HINT_EMPTY,
 			ListItemType.MANGA_LIST_DETAILED,
