@@ -180,7 +180,7 @@ class LocalContentReader @Inject constructor(
         for (uri in candidates) {
             val node = (book.sidecars + book.chapters.flatMap { it.pages }).firstOrNull { it.uri == uri }
             if (node != null && documents.contains(root, node)) {
-                runCatchingCancellable { valid(documents.input(node).use { it.readBytesLimited(32 * 1024 * 1024) }) }
+                runCatchingCancellable { valid(documents.input(node).use { it.readBytesLimited(8 * 1024 * 1024) }) }
                     .getOrNull()?.let { return@withContext it }
             }
         }
@@ -188,30 +188,33 @@ class LocalContentReader @Inject constructor(
             currentCoroutineContext().ensureActive()
             val bytes = runCatchingCancellable {
                 if (chapter.pages.isNotEmpty()) {
-                    for (page in chapter.pages) {
+                    for (page in chapter.pages.take(BoundedArchiveCoverReader.MAX_IMAGE_CANDIDATES)) {
                         check(documents.contains(root, page))
-                        runCatchingCancellable { valid(documents.input(page).use { it.readBytesLimited(32 * 1024 * 1024) }) }
-                            .getOrNull()?.let { return@runCatchingCancellable it }
+                        runCatchingCancellable {
+                            valid(documents.input(page).use { it.readBytesLimited(BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES) })
+                        }.getOrNull()?.let { return@runCatchingCancellable it }
                     }
                     null
                 } else {
-                    val file = materialize(root, chapter.node)
+                    check(documents.contains(root, chapter.node)) { "Content outside selected root" }
                     when (LocalTreeScanner.extension(chapter.node.name)) {
-                        "pdf" -> LocalPdfCache.renderCover(file)?.readBytes()
-                        else -> ZipFile(file).use { zip ->
-                            val preferred = if (LocalTreeScanner.extension(chapter.node.name) == "epub")
-                                EpubParser.parse(file).coverHref?.takeIf(::safeEntry)
-                            else runCatchingCancellable { metadata(root, chapter).coverName?.takeIf(::safeEntry) }.getOrNull()
-                            val images = zip.entries().asSequence()
-                                .filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
-                                .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name }).toList()
-                            val explicit = images.filter { LocalTreeScanner.isSidecar(it.name.substringAfterLast('/')) }
-                            for (entry in (explicit + listOfNotNull(preferred?.let { zip.getEntry(it) }) + images).distinctBy { it.name }) {
-                                runCatchingCancellable { valid(zip.getInputStream(entry).use { it.readBytesLimited(32 * 1024 * 1024) }) }
-                                    .getOrNull()?.let { return@use it }
+                        "pdf" -> LocalPdfCache.renderCover(materialize(root, chapter.node))?.readBytes()
+                        "cbz", "zip", "epub" -> {
+                            val coroutineContext = currentCoroutineContext()
+                            documents.input(chapter.node).use { input ->
+                                BoundedArchiveCoverReader.read(
+                                    input = input,
+                                    isSafeImage = { path -> safeEntry(path) && LocalTreeScanner.isImage(path) },
+                                    isPreferred = { path ->
+                                        val name = path.substringAfterLast('/')
+                                        LocalTreeScanner.isSidecar(name) || name.contains("cover", ignoreCase = true)
+                                    },
+                                    isValid = { candidate -> valid(candidate) != null },
+                                    checkActive = { coroutineContext.ensureActive() },
+                                )
                             }
-                            null
                         }
+                        else -> null
                     }
                 }
             }.getOrNull()
