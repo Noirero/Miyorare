@@ -74,6 +74,7 @@ class DetailsInteractor @Inject constructor(
 
 	suspend fun updateLocal(subject: MangaDetails?, localManga: LocalManga): MangaDetails? {
 		subject ?: return null
+		if (org.koitharu.kotatsu.local.library.isSmartLocalUri(subject.toManga().url)) return subject
 		if (subject.isLocal) {
 			val isSameLocal = subject.id == localManga.manga.id || subject.local?.file?.samePathAs(localManga.file) == true
 			return if (isSameLocal) subject.copy(manga = localManga.manga) else subject

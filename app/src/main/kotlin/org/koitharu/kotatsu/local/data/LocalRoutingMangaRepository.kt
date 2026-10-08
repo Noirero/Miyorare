@@ -58,5 +58,5 @@ class LocalRoutingMangaRepository @Inject constructor(
 	suspend fun getChapterImage(chapter: MangaChapter, href: String): Any? =
 		if (chapter.url.isManagedLocalUri()) library.chapterImage(chapter.url, href) else null
 
-	private fun String.isManagedLocalUri(): Boolean = toUri().scheme == LOCAL_LIBRARY_SCHEME
+	private fun String.isManagedLocalUri(): Boolean = org.koitharu.kotatsu.local.library.isSmartLocalUri(this)
 }

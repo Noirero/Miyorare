@@ -84,7 +84,7 @@ abstract class ChaptersPagesViewModel(
 	val mangaDetails = MutableStateFlow<MangaDetails?>(null)
 
 	val isSmartLocal: Boolean
-		get() = getMangaOrNull()?.url?.toUri()?.scheme == LOCAL_LIBRARY_SCHEME
+		get() = getMangaOrNull()?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it.url) } == true
 
 	private fun smartLocalRepository() = mangaRepositoryFactory.create(LocalMangaSource) as LocalRoutingMangaRepository
 
@@ -350,7 +350,9 @@ abstract class ChaptersPagesViewModel(
 				.collect { onDownloadComplete(it) }
 		}
 		launchJob(Dispatchers.Default) {
-			LocalMangaIndex.rebuildEvents.collect { onLocalIndexRebuilt() }
+			LocalMangaIndex.rebuildEvents.collect {
+				if (!isSmartLocal) onLocalIndexRebuilt()
+			}
 		}
 		launchJob(Dispatchers.Default) {
 			val repository = mangaRepositoryFactory.create(LocalMangaSource) as? LocalRoutingMangaRepository
@@ -636,6 +638,7 @@ abstract class ChaptersPagesViewModel(
 	}
 
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
+		if (isSmartLocal) return
 		val current = mangaDetails.value ?: return
 		val expectedRoots = downloadDestinationStore.readableRoots(favouriteSpace)
 		if (downloadedManga != null) {
