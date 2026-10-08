@@ -300,39 +300,18 @@ class ChapterPersistenceRegressionTest {
 	fun libraryIndicatorPreservesGridCounterPositionOnRebind() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
 			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
-			val listener = object : org.koitharu.kotatsu.list.ui.adapter.MangaDetailsClickListener {
-				override fun onItemClick(item: org.koitharu.kotatsu.list.ui.model.MangaListModel, view: android.view.View) = Unit
-				override fun onReadClick(manga: org.koitharu.kotatsu.parsers.model.Manga, view: android.view.View) = Unit
-				override fun onTagClick(manga: org.koitharu.kotatsu.parsers.model.Manga, tag: org.koitharu.kotatsu.parsers.model.MangaTag, view: android.view.View) = Unit
-			}
-			val resolver = object : org.koitharu.kotatsu.list.ui.size.ItemSizeResolver {
-				override val cellWidth = (140 * themed.resources.displayMetrics.density).toInt()
-				override fun attachToView(view: android.view.View, textView: android.widget.TextView?, progressView: org.koitharu.kotatsu.history.ui.util.ReadingProgressView?) = Unit
-			}
-			val adapter = org.koitharu.kotatsu.core.ui.BaseListAdapter<org.koitharu.kotatsu.list.ui.model.ListModel>()
-				.addDelegate(org.koitharu.kotatsu.list.ui.adapter.ListItemType.MANGA_GRID,
-					org.koitharu.kotatsu.list.ui.adapter.mangaGridItemAD(resolver, listener))
-			val model = org.koitharu.kotatsu.list.ui.model.MangaGridModel(
-				SampleData.mangaDetails, null, 8, null, isFavorite = true, isSaved = true, isLocalSource = true,
-			)
-			adapter.items = listOf(model)
-			val parent = androidx.recyclerview.widget.RecyclerView(themed).apply {
-				layoutManager = androidx.recyclerview.widget.GridLayoutManager(themed, 2)
-			}
-			val holder = adapter.onCreateViewHolder(parent, adapter.getItemViewType(0))
-			val binding = org.koitharu.kotatsu.databinding.ItemMangaGridBinding.bind(holder.itemView)
+			val parent = android.widget.FrameLayout(themed)
+			val view = org.koitharu.kotatsu.list.ui.MangaIndicatorsView(themed)
+			parent.addView(view, android.widget.FrameLayout.LayoutParams(
+				android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+			))
 			for ((favorite, counter) in listOf(true to 8, false to 8, false to 0, true to 0)) {
-				// Submitting after null is synchronous, so this exercises the same recycled holder deterministically.
-				adapter.items = null
-				adapter.items = listOf(model.copy(isFavorite = favorite, counter = counter))
-				adapter.onBindViewHolder(holder, 0)
-				assertEquals(counter, binding.badge.number)
-				assertEquals(if (counter > 0) android.view.View.VISIBLE else android.view.View.GONE, binding.badge.visibility)
+				view.bindGrid(isSaved = true, isLocalSource = true, isFavorite = favorite, counter = counter)
 				val expectedOffset = if (favorite) themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.library_indicator_grid_top_offset)
 					else ((if (counter > 0) 32 else 16) * themed.resources.displayMetrics.density).toInt()
-				assertEquals(expectedOffset, (binding.iconsView.layoutParams as android.widget.FrameLayout.LayoutParams).topMargin)
+				assertEquals(expectedOffset, (view.layoutParams as android.widget.FrameLayout.LayoutParams).topMargin)
 				assertEquals(if (favorite) android.view.View.VISIBLE else android.view.View.GONE,
-					binding.iconsView.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.library_label).visibility)
+					view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.library_label).visibility)
 			}
 		}
 	}

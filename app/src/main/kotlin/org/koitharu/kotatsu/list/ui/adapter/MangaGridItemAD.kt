@@ -383,20 +383,10 @@ fun mangaGridItemAD(
 		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
 			gravity = Gravity.END or if (isTitleOverCover || item.isPinned) Gravity.TOP else Gravity.BOTTOM
 		}
-		binding.iconsView.bind(item.isSaved, item.isLocalSource, item.isFavorite)
+		binding.iconsView.bindGrid(item.isSaved, item.isLocalSource, item.isFavorite, item.counter)
 		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
 		binding.badge.number = item.counter
 		binding.badge.isVisible = item.counter > 0
-		binding.iconsView.updateLayoutParams<FrameLayout.LayoutParams> {
-			topMargin = if (item.isFavorite) {
-				// Keep the larger library badge below the existing top status indicators.
-				context.resources.getDimensionPixelSize(R.dimen.library_indicator_grid_top_offset)
-			} else if (item.counter > 0) {
-				(32f * density).toInt()
-			} else {
-				(16f * density).toInt()
-			}
-		}
 	}
 }
 

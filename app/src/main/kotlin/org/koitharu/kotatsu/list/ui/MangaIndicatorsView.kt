@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.list.ui
 import android.content.Context
 import android.util.AttributeSet
 import android.view.Gravity
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -41,5 +42,18 @@ class MangaIndicatorsView @JvmOverloads constructor(
 		libraryHeart.isVisible = isFavorite
 		libraryLabel.isVisible = isFavorite
 		isVisible = statusIcons.isVisible || isFavorite
+	}
+
+	fun bindGrid(isSaved: Boolean, isLocalSource: Boolean, isFavorite: Boolean, counter: Int) {
+		bind(isSaved, isLocalSource, isFavorite)
+		updateLayoutParams<FrameLayout.LayoutParams> {
+			topMargin = when {
+				// Keep the library indicator below the card's top counter/language/progress row.
+				isFavorite -> resources.getDimensionPixelSize(R.dimen.library_indicator_grid_top_offset)
+				// Existing status-only offsets, preserving their pixel truncation.
+				counter > 0 -> resources.getDimensionPixelOffset(R.dimen.card_indicator_size)
+				else -> resources.getDimensionPixelOffset(R.dimen.margin_normal)
+			}
+		}
 	}
 }
