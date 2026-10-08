@@ -37,8 +37,8 @@ class ChaptersSelectionCallback(
 		val selectedIds = controller.peekCheckedIds()
 		val allItems = viewModel.chapters.value
 		val items = allItems.withIndex().filter { it.value.chapter.id in selectedIds }
-		var canSave = true
-		var canDelete = true
+		var canSave = items.isNotEmpty()
+		var canDelete = items.isNotEmpty()
 		items.forEach { (_, x) ->
 			val isLocal = x.isDownloaded || x.chapter.source == LocalMangaSource
 			if (isLocal) canSave = false else canDelete = false
@@ -75,10 +75,13 @@ class ChaptersSelectionCallback(
 			}
 
 			R.id.action_delete -> {
-				val ids = controller.peekCheckedIds()
+				val ids = controller.peekCheckedIds().toSet()
 				val manga = viewModel.getMangaOrNull()
 				when {
 					ids.isEmpty() || manga == null -> Unit
+					viewModel.isSmartLocal -> org.koitharu.kotatsu.local.ui.confirmLocalChapterDeletion(
+						recyclerView.context,
+					) { viewModel.deleteSmartLocalChapters(ids) }
 					ids.size == manga.chapters?.size -> viewModel.deleteLocal()
 					else -> {
 						LocalChaptersRemoveService.start(

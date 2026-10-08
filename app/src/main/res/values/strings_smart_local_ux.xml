@@ -17,4 +17,8 @@
     <plurals name="smart_local_titles"><item quantity="one">%d title</item><item quantity="other">%d titles</item></plurals>
     <plurals name="smart_local_chapters"><item quantity="one">%d chapter</item><item quantity="other">%d chapters</item></plurals>
     <plurals name="smart_local_discovered_chapters"><item quantity="one">%d new chapter found</item><item quantity="other">%d new chapters found</item></plurals>
+    <string name="smart_local_file_info">File information</string>
+    <string name="smart_local_manga_details">Manga/Comic • On-device</string>
+    <string name="smart_local_novel_details">Novel/EPUB • On-device</string>
+    <string name="smart_local_file_details">%1$s\n%2$s • %3$s</string>
 </resources>

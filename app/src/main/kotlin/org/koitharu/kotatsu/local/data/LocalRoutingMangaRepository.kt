@@ -29,6 +29,11 @@ class LocalRoutingMangaRepository @Inject constructor(
 
 	val smartLocalChanges get() = library.changes
 
+	suspend fun getIndexedBook(id: Long) = library.book(id)
+	suspend fun hideIndexedBook(id: Long) = library.hide(setOf(id))
+	suspend fun deleteIndexedBook(id: Long) = library.deleteFromDevice(setOf(id))
+	suspend fun deleteIndexedChapters(id: Long, chapters: Set<Long>) = library.deleteChapters(id, chapters)
+
 	override suspend fun getDetails(manga: Manga): Manga {
 		if (!manga.url.isManagedLocalUri()) return legacy.getDetails(manga)
 		return requireNotNull(library.details(manga.id)) { "On-device title is no longer indexed" }
@@ -53,5 +58,5 @@ class LocalRoutingMangaRepository @Inject constructor(
 	suspend fun getChapterImage(chapter: MangaChapter, href: String): Any? =
 		if (chapter.url.isManagedLocalUri()) library.chapterImage(chapter.url, href) else null
 
-	private fun String.isManagedLocalUri(): Boolean = toUri().scheme == LOCAL_LIBRARY_SCHEME
+	private fun String.isManagedLocalUri(): Boolean = org.koitharu.kotatsu.local.library.isSmartLocalUri(this)
 }

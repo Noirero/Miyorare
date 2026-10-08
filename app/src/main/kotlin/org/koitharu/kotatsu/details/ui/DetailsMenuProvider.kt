@@ -75,11 +75,13 @@ class DetailsMenuProvider(
 
 	override fun onPrepareMenu(menu: Menu) {
 		val manga = viewModel.manga.value
+		val managed = viewModel.isSmartLocal
 		menu.findItem(R.id.action_share).isVisible = manga != null && AppRouter.isShareSupported(manga)
 		menu.findItem(R.id.action_save).isVisible = manga?.source != null && manga.source != LocalMangaSource
 		menu.findItem(R.id.action_delete).isVisible = manga?.source == LocalMangaSource
 		menu.findItem(R.id.action_browser).isVisible = manga?.publicUrl?.isHttpUrl() == true
 		menu.findItem(R.id.action_alternatives).isVisible = manga?.source != LocalMangaSource
+		menu.findItem(R.id.action_related).isVisible = !managed
 		menu.findItem(R.id.action_shortcut).isVisible = ShortcutManagerCompat.isRequestPinShortcutSupported(activity)
 		menu.findItem(R.id.action_scrobbling).isVisible = viewModel.isScrobblingAvailable
 		menu.findItem(R.id.action_online).isVisible = viewModel.remoteManga.value != null
@@ -95,17 +97,27 @@ class DetailsMenuProvider(
 			manga != null && isReadActionReady && !historyInfo.isIncognitoMode
 
 		// Novels and local books only — there is nothing to put in an epub for an image manga.
-		menu.findItem(R.id.action_export_epub).isVisible = manga?.isEpub == true
+		menu.findItem(R.id.action_export_epub).isVisible = manga?.isEpub == true && !managed
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
 		val manga = viewModel.getMangaOrNull() ?: return false
+		if (viewModel.isSmartLocal && menuItem.itemId in setOf(
+			R.id.action_save, R.id.action_browser, R.id.action_online, R.id.action_related,
+			R.id.action_alternatives, R.id.action_export_epub,
+		)) return false
 		when (menuItem.itemId) {
 			R.id.action_share -> {
 				router.showShareDialog(manga)
 			}
 
 			R.id.action_delete -> {
+				if (viewModel.isSmartLocal) {
+					org.koitharu.kotatsu.local.ui.showLocalLibraryDeletionDialog(
+						activity, viewModel::hideSmartLocal, viewModel::deleteLocal,
+					)
+					return true
+				}
 				buildAlertDialog(activity) {
 					setTitle(R.string.delete_manga)
 					setMessage(activity.getString(R.string.text_delete_local_manga, manga.title))

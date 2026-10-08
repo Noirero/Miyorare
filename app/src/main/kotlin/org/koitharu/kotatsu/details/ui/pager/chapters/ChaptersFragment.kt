@@ -91,13 +91,18 @@ class ChaptersFragment :
 		chaptersAdapter = ChaptersAdapter(
 			onItemClickListener = this,
 			onDownloadClick = { item ->
+				if (!item.canDownload) return@ChaptersAdapter
 				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
 					viewModel.download(setOf(item.chapter.id), allowMeteredNetwork)
 				}
 			},
 			onDeleteClick = { item ->
 				val manga = viewModel.getMangaOrNull()
-				if (manga != null) {
+				if (viewModel.isSmartLocal) {
+					org.koitharu.kotatsu.local.ui.confirmLocalChapterDeletion(requireContext()) {
+						viewModel.deleteSmartLocalChapters(setOf(item.chapter.id))
+					}
+				} else if (manga != null) {
 					LocalChaptersRemoveService.start(
 						requireContext(),
 						manga,

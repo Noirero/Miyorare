@@ -14,3 +14,11 @@ fun showLocalLibraryDeletionDialog(context: Context, hide: () -> Unit, deleteFro
                 .setNegativeButton(android.R.string.cancel, null).show()
         }.setNegativeButton(android.R.string.cancel, null).show()
 }
+
+/** Confirmation happens before any indexed chapter can be removed from the device. */
+fun confirmLocalChapterDeletion(context: Context, deleteFromDevice: () -> Unit) {
+    MaterialAlertDialogBuilder(context).setTitle(R.string.smart_local_delete_device)
+        .setMessage(R.string.smart_local_delete_device_message)
+        .setPositiveButton(R.string.delete) { _, _ -> deleteFromDevice() }
+        .setNegativeButton(android.R.string.cancel, null).show()
+}

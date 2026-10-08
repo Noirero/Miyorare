@@ -82,6 +82,36 @@ abstract class ChaptersPagesViewModel(
 ) : BaseViewModel() {
 
 	val mangaDetails = MutableStateFlow<MangaDetails?>(null)
+
+	val isSmartLocal: Boolean
+		get() = getMangaOrNull()?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it.url) } == true
+
+	private fun smartLocalRepository() = mangaRepositoryFactory.create(LocalMangaSource) as LocalRoutingMangaRepository
+
+	val indexedLocalBook = mangaDetails.mapLatest { details ->
+		if (details?.toManga()?.url?.toUri()?.scheme == LOCAL_LIBRARY_SCHEME) {
+			smartLocalRepository().getIndexedBook(details.id)
+		} else null
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), null)
+
+	fun hideSmartLocal() {
+		if (!isSmartLocal) return
+		val manga = requireManga()
+		launchLoadingJob(Dispatchers.IO) {
+			smartLocalRepository().hideIndexedBook(manga.id)
+			onMangaRemoved.call(manga)
+		}
+	}
+
+	fun deleteSmartLocalChapters(ids: Set<Long>) {
+		if (!isSmartLocal || ids.isEmpty()) return
+		val manga = requireManga()
+		launchLoadingJob(Dispatchers.IO) {
+			smartLocalRepository().deleteIndexedChapters(manga.id, ids)
+			if (smartLocalRepository().getIndexedBook(manga.id) == null) onMangaRemoved.call(manga)
+		}
+	}
+
 	val readingState = MutableStateFlow<ReaderState?>(null)
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
@@ -320,7 +350,9 @@ abstract class ChaptersPagesViewModel(
 				.collect { onDownloadComplete(it) }
 		}
 		launchJob(Dispatchers.Default) {
-			LocalMangaIndex.rebuildEvents.collect { onLocalIndexRebuilt() }
+			LocalMangaIndex.rebuildEvents.collect {
+				if (!isSmartLocal) onLocalIndexRebuilt()
+			}
 		}
 		launchJob(Dispatchers.Default) {
 			val repository = mangaRepositoryFactory.create(LocalMangaSource) as? LocalRoutingMangaRepository
@@ -467,6 +499,7 @@ abstract class ChaptersPagesViewModel(
 	}
 
 	fun openChapterInBrowser(chapterId: Long) {
+		if (getMangaOrNull()?.source == LocalMangaSource) return
 		val chapter = chapters.value.firstOrNull { it.chapter.id == chapterId }?.chapter ?: return
 		launchJob(Dispatchers.Default) {
 			val url = mangaRepositoryFactory.create(requireManga().source).getChapterUrl(chapter)
@@ -477,6 +510,7 @@ abstract class ChaptersPagesViewModel(
 	}
 
 	fun download(chaptersIds: Set<Long>?, allowMeteredNetwork: Boolean) {
+		if (getMangaOrNull()?.source == LocalMangaSource) return
 		launchJob(Dispatchers.Default) {
 			val manga = requireManga()
 			val active = activeChapterDownloads.value
@@ -502,6 +536,14 @@ abstract class ChaptersPagesViewModel(
 	}
 
 	fun deleteLocal() {
+		if (isSmartLocal) {
+			val manga = requireManga()
+			launchLoadingJob(Dispatchers.IO) {
+				smartLocalRepository().deleteIndexedBook(manga.id)
+				onMangaRemoved.call(manga)
+			}
+			return
+		}
 		val m = mangaDetails.value?.local?.manga
 		if (m == null) {
 			errorEvent.call(FileNotFoundException())
@@ -596,6 +638,7 @@ abstract class ChaptersPagesViewModel(
 	}
 
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
+		if (isSmartLocal) return
 		val current = mangaDetails.value ?: return
 		val expectedRoots = downloadDestinationStore.readableRoots(favouriteSpace)
 		if (downloadedManga != null) {

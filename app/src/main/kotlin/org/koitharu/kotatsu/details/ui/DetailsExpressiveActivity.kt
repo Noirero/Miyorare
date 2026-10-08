@@ -333,6 +333,7 @@ class DetailsExpressiveActivity :
 			onChapterOptionsResetClick = viewModel::resetChapterOptions,
 			onChapterClick = ::openChapter,
 			onChapterDownloadClick = { item ->
+				if (!item.canDownload) return@DetailsExpressiveActions
 				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
 					viewModel.download(setOf(item.chapter.id), allowMeteredNetwork)
 				}
@@ -361,6 +362,7 @@ class DetailsExpressiveActivity :
 				val genreRecommendations by viewModel.genreRecommendations.collectAsState()
 				val expandedRelated by viewModel.expandedRelated.collectAsState()
 				val localSize by viewModel.localSize.collectAsState()
+				val indexedBook by viewModel.indexedLocalBook.collectAsState()
 				val srcTitle by viewModel.cachedSourceTitle.collectAsState()
 				val coverUrl by viewModel.coverUrl.collectAsState()
 				val backdropUrl by viewModel.backdropUrl.collectAsState()
@@ -385,6 +387,7 @@ class DetailsExpressiveActivity :
 					expandedRelated = expandedRelated,
 					relatedDiscoveryEnabled = viewModel.isRelatedDiscoveryEnabled,
 					localSize = localSize,
+					indexedLocalBook = indexedBook,
 					sourceTitle = srcTitle,
 					imageLoader = coil,
 					coverUrl = coverUrl,
