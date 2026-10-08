@@ -57,6 +57,7 @@ class SmartLocalCoverPipelineTest {
     private lateinit var cache: SmartLocalCoverCache
     private var loader: ImageLoader? = null
     private val counts = Counts()
+    private val readerPageDirectories = HashSet<File>()
     private val resolver get() = context.contentResolver
     private val provider = Uri.parse("content://org.noirero.miyorare.test.cover-fixtures")
     private val rootUri = DocumentsContract.buildTreeDocumentUri(provider.authority, "root").toString()
@@ -75,6 +76,7 @@ class SmartLocalCoverPipelineTest {
         loader?.shutdown()
         call("fixture-reset")
         context.getSharedPreferences("smart_local_library", Context.MODE_PRIVATE).edit().clear().commit()
+        readerPageDirectories.forEach { it.deleteRecursively() }
         context.storage.deleteRecursively()
         InstrumentationRegistry.getInstrumentation().uiAutomation.dropShellPermissionIdentity()
     }
@@ -136,6 +138,7 @@ class SmartLocalCoverPipelineTest {
         val documents = LocalDocuments(context)
         val root = documents.root(rootUri)
         val pages = reader.pages(root, chapter, original)
+        readerPageDirectories += File(Uri.parse(pages.first().url).path!!).parentFile!!
         val backing = contentFiles().single()
         request(book.toManga(false))
         assertTrue(backing.exists())
@@ -148,6 +151,16 @@ class SmartLocalCoverPipelineTest {
         val page = File(Uri.parse(pages.single().url).path!!)
         // LocalPdfCache's pre-existing Reader page API remains responsible for lazy pages.
         assertTrue(org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(page).length() > 0)
+    }
+
+    @Test fun failedPdfRenderStillReleasesTemporaryMaterialization() = runBlocking {
+        put("broken.pdf", byteArrayOf(1, 2, 3))
+        library.scan()
+        assertNull(library.cover(library.state.value.books.single().id))
+        assertEquals(1, counts.materialize)
+        assertEquals(1, counts.render)
+        assertTrue(contentFiles().isEmpty())
+        assertEquals(0L, cache.size())
     }
 
     @Test fun manyPdfCoversDoNotRetainFullSourcesAndWarmOpenDoesNoSafWork() = runBlocking {
@@ -237,10 +250,13 @@ class SmartLocalCoverPipelineTest {
     private fun call(method: String, arg: String? = null, bundle: Bundle? = null) = resolver.call(provider, method, arg, bundle)
     private fun put(name: String, bytes: ByteArray, padding: Int = 0) = call("fixture-put", name,
         Bundle().apply { putByteArray("bytes", bytes); putInt("padding", padding) })
-    private fun pdf(color: Int): ByteArray = PdfDocument().use { pdf ->
-        val page = pdf.startPage(PdfDocument.PageInfo.Builder(300, 450, 1).create())
-        page.canvas.drawColor(color); pdf.finishPage(page)
-        ByteArrayOutputStream().also { pdf.writeTo(it) }.toByteArray()
+    private fun pdf(color: Int): ByteArray {
+        val pdf = PdfDocument()
+        try {
+            val page = pdf.startPage(PdfDocument.PageInfo.Builder(300, 450, 1).create())
+            page.canvas.drawColor(color); pdf.finishPage(page)
+            return ByteArrayOutputStream().also { pdf.writeTo(it) }.toByteArray()
+        } finally { pdf.close() }
     }
     private fun png(color: Int, width: Int = 100, height: Int = 150): ByteArray {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)

@@ -31,6 +31,7 @@ class SmartLocalCoverCache internal constructor(
     private val generation = Semaphore(GENERATION_PARALLELISM)
     private var initialized = false
     private var clearEpoch = 0L
+    private var lastAccess = 0L
 
     internal suspend fun getOrGenerate(id: Long, plan: LocalCoverPlan, isCurrent: () -> Boolean = { true }, generate: suspend () -> GeneratedLocalCover?): ByteArray? =
         withContext(Dispatchers.IO) {
@@ -73,6 +74,7 @@ class SmartLocalCoverCache internal constructor(
         // Crash leftovers are never valid entries. Writes and cleanup share the same lock.
         directory.listFiles().orEmpty().filter { it.name.endsWith(".partial") }.forEach { it.delete() }
         trimLocked()
+        lastAccess = directory.listFiles().orEmpty().maxOfOrNull { it.lastModified() } ?: 0L
         initialized = true
     }
 
@@ -90,7 +92,7 @@ class SmartLocalCoverCache internal constructor(
                 val bytes = ByteArray(length)
                 input.readFully(bytes)
                 if (input.read() != -1 || coverDigest(bytes) != digest) throw IOException("Incomplete thumbnail")
-                file.setLastModified(System.currentTimeMillis())
+                touchLocked(file)
                 bytes
             }
         } catch (_: IOException) {
@@ -113,9 +115,16 @@ class SmartLocalCoverCache internal constructor(
                 output.flush()
                 stream.fd.sync()
             }
-            check(temporary.renameTo(File(directory, "$key.thumb"))) { "Cannot publish derived thumbnail" }
+            val target = File(directory, "$key.thumb")
+            check(temporary.renameTo(target)) { "Cannot publish derived thumbnail" }
+            touchLocked(target)
             trimLocked()
         } finally { temporary.delete() }
+    }
+
+    private fun touchLocked(file: File) {
+        lastAccess = maxOf(System.currentTimeMillis(), lastAccess + 1)
+        file.setLastModified(lastAccess)
     }
 
     private fun trimLocked() {
