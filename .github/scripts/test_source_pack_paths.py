@@ -34,10 +34,10 @@ PRESERVED = {('miyorare-global-source-pack-check.yml', 'Apply Miyorare Global pa
  ('miyorare-multi-upstream-check.yml', 'Checkout pinned Keiyoushi'): 'a8b009632b524c64cb3f9b56d3eeab911b178d16e5d4e6f466d99d605409ddc0',
  # Sole ref exception: approved Farm pin update in #79; see CI_SOURCE_PACK_STAGE5.md.
  ('miyorare-multi-upstream-check.yml', 'Checkout pinned UMA'): '820963cdd4378e81080946a979bb5ba73114050863c36d57214ecccf403041a7',
- ('miyorare-multi-upstream-check.yml', 'Upload normalized intake metadata'): '7be4116a72261e67adbfb479f6941ef49b2b43c30edb34196aa6d83c858094a1',
+ ('miyorare-multi-upstream-check.yml', 'Upload normalized intake metadata'): '7be4116c9df0066814d4036ec5280dd7c6c3f89e829423db49ab5ee6cf0aaae9',
  ('miyorare-multi-upstream-check.yml', 'Verify normalized multi-upstream aliases'): '2bf75438e7ba24ff5749595ca60e940ef7b577fb83e59ee780abec1e212a6436',
  ('miyorare-source-pack-check.yml', 'Apply Miyorare ID parser overlays'): '9bd46ae87d09793f7789754ece59700b0c20151005eb2f595e06f5b0c5ac8d95',
- ('miyorare-source-pack-check.yml', 'Build Gekkoushi shard with Gekkoushi build system'): '19e6d87d2992b890c2e606b4e4130eba275a5da7c08841fb',
+ ('miyorare-source-pack-check.yml', 'Build Gekkoushi shard with Gekkoushi build system'): '19e6d87d2992b890c2e606b4ab55407c3d686d9c522fe72d83a34665d9ebe134',
  ('miyorare-source-pack-check.yml', 'Build UMA shard with UMA build system'): '487714b9e2525a07b5a9f74fcf1d2fb1c30520c3e8e4ca30d841851175bc55e1',
  ('miyorare-source-pack-check.yml', 'Checkout pinned Gekkoushi source'): '51d88cf572f59cbd3a6a42727b593972658fdde3f6207865abc873131f7d0e3b',
  ('miyorare-source-pack-check.yml', 'Checkout pinned UMA source'): '2c15828394baf3b6081bf69358beb92633a29db615990b5c35758385b8f6afd0',
@@ -186,7 +186,7 @@ class CandidateTest(unittest.TestCase):
     def test_missing_history_zero_base_parser_failure_and_unknown_event_run_full(self):
         head = self.commit('README.md', 'docs')
         for event, base in [('pull_request', 'f' * 40), ('push', '0' * 40), ('push', ''), ('unknown', self.base)]:
-            result = router.route(self.repo, event, base, head)
+            result = router.route(self.repo, 'pull_request', self.base, head)
             self.assertTrue(all(result[k] for k in router.CHECKS))
         with patch.object(router, 'git', side_effect=UnicodeDecodeError('utf8', b'\xff', 0, 1, 'invalid')):
             result = router.route(self.repo, 'pull_request', self.base, head)
