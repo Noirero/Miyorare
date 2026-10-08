@@ -96,7 +96,9 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 
 	private companion object {
 		const val PREFS_NAME = "legacy_favourite_download_reconcile"
-		const val KEY_COMPLETE = "v2_all_spaces_complete"
+		// v3 intentionally reruns the one-shot repair for installations where the earlier v2 pass
+		// completed before the final indexed title/chapter-evidence compatibility path was available.
+		const val KEY_COMPLETE = "v3_all_spaces_complete"
 		val WHITESPACE = Regex("\\s+")
 	}
 }
