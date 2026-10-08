@@ -61,10 +61,19 @@ class CoverFixtureDocumentsProvider : DocumentsProvider() {
             val file = file(requireNotNull(arg)); file.parentFile!!.mkdirs()
             file.outputStream().use { output ->
                 val data = requireNotNull(extras)
-                output.write(requireNotNull(data.getByteArray("bytes")))
+                val bytes = requireNotNull(data.getByteArray("bytes"))
                 var remaining = data.getInt("padding")
-                val zeros = ByteArray(8192)
-                while (remaining > 0) { val n = minOf(zeros.size, remaining); output.write(zeros, 0, n); remaining -= n }
+                // Grow a valid PDF comment before its footer, preserving existing xref offsets.
+                // Appending megabytes after %%EOF would instead create a malformed fixture.
+                val footer = if (remaining > 0) bytes.toString(Charsets.ISO_8859_1).lastIndexOf("startxref") else -1
+                if (footer >= 0) {
+                    output.write(bytes, 0, footer)
+                    output.write("\n%".toByteArray())
+                    val padding = ByteArray(8192) { 'x'.code.toByte() }
+                    while (remaining > 0) { val n = minOf(padding.size, remaining); output.write(padding, 0, n); remaining -= n }
+                    output.write('\n'.code)
+                    output.write(bytes, footer, bytes.size - footer)
+                } else output.write(bytes)
             }
             file.setLastModified(++revision)
             Bundle()
