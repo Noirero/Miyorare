@@ -70,7 +70,11 @@ data class ChapterListItem(
 			|| volumeString()?.contains(query) == true
 	}
 
-	fun getGridTitle(resources: Resources): String = chapter.gridNumberLabel() ?: chapter.getLocalizedTitle(resources)
+	fun getGridTitle(resources: Resources): String = chapter.gridNumberLabel() ?: if (chapter.number.isFinite()) {
+		chapter.getLocalizedTitle(resources)
+	} else {
+		chapter.title?.takeIf { it.isNotBlank() } ?: resources.getString(org.koitharu.kotatsu.R.string.unnamed_chapter)
+	}
 
 	fun getTitle(resources: Resources): String {
 		cachedTitle?.let {

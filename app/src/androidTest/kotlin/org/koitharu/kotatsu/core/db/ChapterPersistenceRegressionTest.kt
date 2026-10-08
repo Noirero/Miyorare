@@ -243,6 +243,21 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun chapterGridUsesStructuredNumbersAndSafeLocalizedFallbacks() {
+		fun label(number: Float, title: String?) = org.koitharu.kotatsu.details.ui.model.ChapterListItem(
+			SampleData.chapter.copy(number = number, title = title), flags = 0,
+		).getGridTitle(context.resources)
+		assertEquals("1", label(1f, "CH"))
+		assertEquals("12.5", label(12.5f, "CH"))
+		assertEquals("Extra", label(0f, "Extra"))
+		val fallback = context.getString(org.koitharu.kotatsu.R.string.unnamed_chapter)
+		assertEquals(fallback, label(0f, null))
+		assertEquals(fallback, label(Float.POSITIVE_INFINITY, null))
+		assertEquals(fallback, label(Float.NaN, " "))
+		assertEquals("Special", label(Float.POSITIVE_INFINITY, "Special"))
+	}
+
+	@Test
 	fun libraryIndicatorFitsNarrowCardsAndClearsRecycledPresentation() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
 			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
