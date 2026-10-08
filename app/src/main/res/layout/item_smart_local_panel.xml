@@ -1,97 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView
-	xmlns:android="http://schemas.android.com/apk/res/android"
-	xmlns:app="http://schemas.android.com/apk/res-auto"
-	android:layout_width="match_parent"
-	android:layout_height="wrap_content"
-	android:layout_marginVertical="@dimen/grid_spacing"
-	app:cardElevation="0dp"
-	app:strokeWidth="1dp">
-
-	<LinearLayout
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:orientation="vertical"
-		android:padding="@dimen/list_spacing_normal">
-
-		<LinearLayout
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:gravity="center_vertical"
-			android:orientation="horizontal">
-
-			<LinearLayout
-				android:layout_width="0dp"
-				android:layout_height="wrap_content"
-				android:layout_weight="1"
-				android:orientation="vertical">
-
-				<TextView
-					android:id="@+id/textView_summary"
-					android:layout_width="wrap_content"
-					android:layout_height="wrap_content"
-					android:textAppearance="?textAppearanceTitleMedium" />
-
-				<LinearLayout
-					android:layout_width="wrap_content"
-					android:layout_height="wrap_content"
-					android:layout_marginTop="4dp"
-					android:orientation="horizontal">
-					<TextView android:id="@+id/textView_reading" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textAppearance="?textAppearanceBodyMedium" />
-					<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginHorizontal="6dp" android:text="•" />
-					<TextView android:id="@+id/textView_new" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textAppearance="?textAppearanceBodyMedium" />
-				</LinearLayout>
-			</LinearLayout>
-
-			<com.google.android.material.button.MaterialButton
-				android:id="@+id/button_manage_folders"
-				style="@style/Widget.Kotatsu.Button.More.Small"
-				android:layout_width="wrap_content"
-				android:layout_height="wrap_content"
-				android:text="@string/smart_local_manage_folders" />
-		</LinearLayout>
-
-		<com.google.android.material.chip.ChipGroup
-			android:id="@+id/chipGroup_content_type"
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:layout_marginTop="@dimen/grid_spacing"
-			app:selectionRequired="true"
-			app:singleSelection="true">
-			<com.google.android.material.chip.Chip android:id="@+id/chip_all" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/smart_local_type_all" />
-			<com.google.android.material.chip.Chip android:id="@+id/chip_manga" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/smart_local_type_manga" />
-			<com.google.android.material.chip.Chip android:id="@+id/chip_novel" style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/smart_local_type_novel" />
-		</com.google.android.material.chip.ChipGroup>
-
-		<LinearLayout
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:layout_marginTop="@dimen/grid_spacing"
-			android:gravity="center_vertical"
-			android:orientation="horizontal">
-
-			<com.google.android.material.textfield.TextInputLayout
-				android:layout_width="0dp"
-				android:layout_height="wrap_content"
-				android:layout_weight="1"
-				android:hint="@string/smart_local_search_hint"
-				app:startIconDrawable="@drawable/ic_search">
-				<com.google.android.material.textfield.TextInputEditText
-					android:id="@+id/editText_search"
-					android:layout_width="match_parent"
-					android:layout_height="wrap_content"
-					android:imeOptions="actionDone"
-					android:inputType="text"
-					android:maxLines="1" />
-			</com.google.android.material.textfield.TextInputLayout>
-
-			<com.google.android.material.button.MaterialButton
-				android:id="@+id/button_filter"
-				style="@style/Widget.Kotatsu.Button.More.Small"
-				android:layout_width="wrap_content"
-				android:layout_height="wrap_content"
-				android:layout_marginStart="@dimen/grid_spacing"
-				android:text="@string/filter" />
-		</LinearLayout>
-	</LinearLayout>
-</com.google.android.material.card.MaterialCardView>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+ xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent"
+ android:layout_height="wrap_content" android:orientation="vertical">
+ <TextView android:id="@+id/textView_summary" android:layout_width="match_parent" android:layout_height="wrap_content" android:textAppearance="?textAppearanceTitleMedium" />
+ <com.google.android.material.button.MaterialButton android:id="@+id/button_manage_folders"
+  style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="wrap_content" android:layout_height="wrap_content"
+  android:layout_gravity="end" android:text="@string/smart_local_manage_folders" />
+ <com.google.android.material.button.MaterialButtonToggleGroup android:layout_width="match_parent" android:layout_height="wrap_content"
+  app:singleSelection="true" app:selectionRequired="true">
+  <com.google.android.material.button.MaterialButton android:id="@+id/chip_all" style="@style/Widget.Material3.Button.OutlinedButton"
+   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/smart_local_type_all" />
+  <com.google.android.material.button.MaterialButton android:id="@+id/chip_manga" style="@style/Widget.Material3.Button.OutlinedButton"
+   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/smart_local_type_manga" />
+  <com.google.android.material.button.MaterialButton android:id="@+id/chip_novel" style="@style/Widget.Material3.Button.OutlinedButton"
+   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/smart_local_type_novel" />
+ </com.google.android.material.button.MaterialButtonToggleGroup>
+ <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+  android:layout_marginTop="8dp" android:hint="@string/smart_local_search_hint" app:startIconDrawable="@drawable/ic_search" app:endIconMode="clear_text">
+  <com.google.android.material.textfield.TextInputEditText android:id="@+id/editText_search" android:layout_width="match_parent" android:layout_height="wrap_content"
+   android:imeOptions="actionDone" android:inputType="text" android:maxLines="1" />
+ </com.google.android.material.textfield.TextInputLayout>
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+  <com.google.android.material.button.MaterialButton android:id="@+id/button_filter" style="@style/Widget.Material3.Button.OutlinedButton"
+   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/filter" app:icon="@drawable/ic_filter_funnel" />
+  <com.google.android.material.button.MaterialButton android:id="@+id/button_sort" style="@style/Widget.Material3.Button.OutlinedButton"
+   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:minHeight="48dp" android:text="@string/sort_order" />
+ </LinearLayout>
+</LinearLayout>

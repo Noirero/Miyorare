@@ -16,6 +16,8 @@ class LocalListMenuProvider(
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
 		menuInflater.inflate(R.menu.opt_local, menu)
+		menu.findItem(R.id.action_import)?.setTitle(R.string.smart_local_add_folder)
+		menu.findItem(R.id.action_directories)?.setTitle(R.string.smart_local_manage_folders)
 		menu.add(Menu.NONE, R.id.action_smart_local_restore, 70, R.string.smart_local_restore)
 	}
 

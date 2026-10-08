@@ -40,11 +40,15 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 			LocalListMenuProvider(
 				onImportClick = ::addFolder,
 				onRefreshClick = viewModel::onRefresh,
-				onFoldersClick = ::addFolder,
+				onFoldersClick = ::showFolderManager,
 				onFiltersClick = ::showFilters,
 				onRestoreClick = viewModel::requestExclusions,
 			),
 		)
+		viewModel.resumeIntent.observeEvent(viewLifecycleOwner) { router.openReader(it) }
+		viewModel.scanCompleted.observeEvent(viewLifecycleOwner) { complete ->
+			Snackbar.make(binding.recyclerView, if (complete) R.string.smart_local_scan_complete else R.string.smart_local_scan_attention, Snackbar.LENGTH_LONG).show()
+		}
 		viewModel.onMangaRemoved.observeEvent(viewLifecycleOwner) {
 			Snackbar.make(binding.recyclerView, R.string.removal_completed, Snackbar.LENGTH_SHORT).show()
 		}
@@ -61,19 +65,18 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	override fun onSmartLocalQueryChanged(query: String) = viewModel.setLocalQuery(query)
 	override fun onSmartLocalFilterClick(view: View) = showFilters()
 	override fun onSmartLocalTypeChanged(type: LocalContentType?) = viewModel.setContentType(type)
+	override fun onSmartLocalResume(manga: org.koitharu.kotatsu.parsers.model.Manga) = viewModel.resume(manga)
+	override fun onSmartLocalSortClick(view: View) = showSort()
+	override fun onSmartLocalListModeChanged(mode: org.koitharu.kotatsu.core.prefs.ListMode) = viewModel.setLocalListMode(mode)
 	override fun onSmartLocalManageFoldersClick(view: View) = showFolderManager()
 	override fun onScrolledToEnd() = Unit
 
 	override fun onListHeaderClick(item: ListHeader, view: View) {
 		when (val action = item.payload) {
-			LocalLibraryAction.ToggleFolders -> viewModel.toggleFolders()
-			LocalLibraryAction.AddFolder -> addFolder()
-			LocalLibraryAction.Filters -> showFilters()
+			LocalLibraryAction.ContinueAll -> viewModel.showAllContinueReading()
 			LocalLibraryAction.Restore -> viewModel.requestExclusions()
-			LocalLibraryAction.Acknowledge -> viewModel.acknowledgeDiscoveries()
-			is LocalLibraryAction.Folder -> showFolderActions(action.root)
+			is LocalLibraryAction.Acknowledge -> viewModel.acknowledgeDiscoveries(action.ids)
 			is LocalLibraryAction.Diagnosis -> showDiagnosis(action.issue)
-			is LocalLibraryAction.Open -> router.openDetails(action.manga)
 			is List<*> -> {
 				val diagnoses = action.filterIsInstance<LocalDiagnosis>()
 				MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_diagnosis)
@@ -135,7 +138,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	}
 
 	private fun showFilters() {
-		val options = arrayOf(getString(R.string.smart_local_reading_filter), getString(R.string.sort_order),
+		val options = arrayOf(getString(R.string.smart_local_reading_filter),
 			getString(R.string.smart_local_extensions), getString(R.string.smart_local_restore))
 		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.filter).setItems(options) { _, index ->
 			when (index) {
@@ -144,17 +147,21 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 						viewModel.updateOptions(viewModel.library.showExtensions, LocalReadingFilter.entries[choice], viewModel.library.sort); dialog.dismiss()
 					}.setNegativeButton(android.R.string.cancel, null).show()
 				1 -> MaterialAlertDialogBuilder(requireContext()).setTitle(options[1])
-					.setSingleChoiceItems(resources.getStringArray(R.array.smart_local_sorts), viewModel.library.sort.ordinal) { dialog, choice ->
-						viewModel.updateOptions(viewModel.library.showExtensions, viewModel.library.readingFilter, LocalLibrarySort.entries[choice]); dialog.dismiss()
-					}.setNegativeButton(android.R.string.cancel, null).show()
-				2 -> MaterialAlertDialogBuilder(requireContext()).setTitle(options[2])
 					.setSingleChoiceItems(arrayOf(getString(R.string.smart_local_extension_off), getString(R.string.smart_local_extension_on)),
 						if (viewModel.library.showExtensions) 1 else 0) { dialog, choice ->
 						viewModel.updateOptions(choice == 1, viewModel.library.readingFilter, viewModel.library.sort); dialog.dismiss()
 					}.setNegativeButton(android.R.string.cancel, null).show()
-				3 -> viewModel.requestExclusions()
+				2 -> viewModel.requestExclusions()
 			}
 		}.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
+	private fun showSort() {
+		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.sort_order)
+			.setSingleChoiceItems(resources.getStringArray(R.array.smart_local_sorts), viewModel.library.sort.ordinal) { dialog, choice ->
+				viewModel.updateOptions(viewModel.library.showExtensions, viewModel.library.readingFilter, LocalLibrarySort.entries[choice])
+				dialog.dismiss()
+			}.setNegativeButton(android.R.string.cancel, null).show()
 	}
 
 	private fun diagnosisLabel(issue: LocalDiagnosis): String {

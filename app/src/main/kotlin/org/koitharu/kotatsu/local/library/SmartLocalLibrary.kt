@@ -50,6 +50,10 @@ class SmartLocalLibrary @Inject constructor(
     val changes = mutableChanges.asSharedFlow()
     val showExtensions get() = prefs.getBoolean("extensions", false)
     val readingFilter get() = enumValue(prefs.getString("filter", null), LocalReadingFilter.ALL)
+    val selectedContentType get() = LocalContentType.entries.firstOrNull { it.name == prefs.getString("content_type", null) }
+    suspend fun setContentType(type: LocalContentType?) = withContext(Dispatchers.IO) {
+        check(prefs.edit().putString("content_type", type?.name).commit())
+    }
     val sort get() = enumValue(prefs.getString("sort", null), LocalLibrarySort.TITLE_ASC)
 
     suspend fun initialize() = withContext(Dispatchers.IO) {
@@ -146,7 +150,7 @@ class SmartLocalLibrary @Inject constructor(
                         metadata.flatMapTo(LinkedHashSet()) { it.authors }.ifEmpty { old?.authors.orEmpty() },
                         metadata.firstNotNullOfOrNull { it.description } ?: old?.description, explicitCover ?: metadataCover ?: chapters.firstOrNull()?.pages?.firstOrNull()?.uri,
                         entry.ignored, old?.addedAt ?: System.currentTimeMillis(), System.currentTimeMillis(),
-                        if (discovered > 0) discovered else old?.newChapters ?: 0)
+                        pendingLocalDiscoveries(old?.newChapters ?: 0, discovered, chapters.size))
                     books.putIfAbsent(book.node.key, book)
                 }
                 scanned.issues.forEach { diagnoses += LocalDiagnosis(root.uri, it.node, it.reason, it.candidates) }
@@ -181,9 +185,9 @@ class SmartLocalLibrary @Inject constructor(
         mutableChanges.emit(Unit)
     }
 
-    suspend fun acknowledgeDiscoveries() = withContext(Dispatchers.IO) {
+    suspend fun acknowledgeDiscoveries(ids: Set<Long>? = null) = withContext(Dispatchers.IO) {
         initialize()
-        mutex.withLock { publishLocked(state.value.copy(books = state.value.books.map { it.copy(newChapters = 0) })) }
+        mutex.withLock { publishLocked(state.value.copy(books = state.value.books.map { if (ids == null || it.id in ids) it.copy(newChapters = 0) else it })) }
     }
 
     suspend fun excluded(): Map<String, String> = withContext(Dispatchers.IO) { readExclusions() }
@@ -276,28 +280,13 @@ class SmartLocalLibrary @Inject constructor(
         book.toManga(showExtensions, true)
     }
 
-    suspend fun list(query: String?): List<Manga> = withContext(Dispatchers.IO) {
+    suspend fun list(query: String?, type: LocalContentType? = null): List<Manga> = withContext(Dispatchers.IO) {
         initialize()
         val snapshot = state.value.books
         val histories = snapshot.map { it.id }.chunked(500).flatMap { db.getHistoryDao().findByIds(it) }.associateBy { it.mangaId }
-        val filtered = snapshot.filter { b ->
-            val history = histories[b.id]
-            val matches = when (readingFilter) {
-                LocalReadingFilter.ALL -> true
-                LocalReadingFilter.UNREAD -> history == null
-                LocalReadingFilter.READING -> history != null && !b.isCompleted(history)
-                LocalReadingFilter.COMPLETED -> b.isCompleted(history)
-            }
-            matches && (query.isNullOrBlank() || b.toManga(showExtensions).title.contains(query, true) || b.authors.any { it.contains(query, true) })
-        }
-        val sorted = when (sort) {
-            LocalLibrarySort.LAST_READ -> filtered.sortedByDescending { histories[it.id]?.lastReaderActivityAt ?: 0L }
-            LocalLibrarySort.ADDED -> filtered.sortedByDescending { it.addedAt }
-            LocalLibrarySort.TITLE_ASC -> filtered.sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.toManga(showExtensions).title })
-            LocalLibrarySort.TITLE_DESC -> filtered.sortedWith(compareByDescending(LocalTreeScanner.NATURAL) { it.toManga(showExtensions).title })
-            LocalLibrarySort.CHAPTER_UPDATED -> filtered.sortedByDescending { it.latestChapterAt }
-        }
-        sorted.map { it.toManga(showExtensions) }
+        val historiesByKey = snapshot.mapNotNull { book -> histories[book.id]?.let { book.node.key to it } }.toMap()
+        projectLocalCollection(snapshot, historiesByKey, query, type, readingFilter, sort, showExtensions)
+            .map { it.toManga(showExtensions) }
     }
 
     suspend fun pages(chapter: MangaChapter): List<MangaPage> = withContext(Dispatchers.IO) {
