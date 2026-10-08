@@ -224,6 +224,24 @@ class SmartLocalCoverPipelineTest {
         assertEquals(0, metrics().getInt("opens"))
     }
 
+    @Test fun userCoverOverrideKeepsIndependentPresentationIdentityAndSkipsSourceGeneration() = runBlocking {
+        put("book.pdf", pdf(Color.RED)); library.scan()
+        val manga = library.state.value.books.single().toManga(false)
+        request(manga)
+        val customCover = File(context.filesDir, "user-cover.png").apply { writeBytes(png(Color.GREEN)) }
+        val url = Uri.fromFile(customCover).toString()
+        val first = request(manga, url)
+        assertNull(first.request.diskCacheKey)
+        assertEquals(1, counts.extract)
+        put("book.pdf", pdf(Color.BLUE)); library.scan()
+        val warm = request(manga, url)
+        assertEquals(first.memoryCacheKey, warm.memoryCacheKey)
+        assertEquals(first.image.toBitmap().getPixel(10, 10), warm.image.toBitmap().getPixel(10, 10))
+        assertEquals(1, counts.extract)
+        assertEquals(1, counts.materialize)
+        assertEquals(1, counts.render)
+    }
+
     @Test fun thumbnailEncodingBoundsDimensionsAndKeepsValidImage() {
         val encoded = LocalCoverThumbnail.encode(png(Color.BLUE, 2048, 1024))!!
         val decoded = BitmapFactory.decodeByteArray(encoded, 0, encoded.size)!!
@@ -238,14 +256,14 @@ class SmartLocalCoverPipelineTest {
         library = SmartLocalLibrary(context, documents, reader, repository, database, cache)
     }
 
-    private suspend fun request(manga: Manga): SuccessResult {
+    private suspend fun request(manga: Manga, coverUrl: String? = manga.coverUrl): SuccessResult {
         val imageLoader = loader ?: ImageLoader.Builder(context).diskCache { MiyorareImageDiskCache(context) }
             .components {
                 add(LocalCoverFetcher.Factory(Provider { library }))
                 add(LocalCoverVersionInterceptor(Provider { library }))
             }.build().also { loader = it }
-        val result = imageLoader.execute(ImageRequest.Builder(context).data(manga.coverUrl).mangaExtra(manga)
-            .stableMangaCoverKey(manga, manga.coverUrl).size(128, 192).allowHardware(false).build())
+        val result = imageLoader.execute(ImageRequest.Builder(context).data(coverUrl).mangaExtra(manga)
+            .stableMangaCoverKey(manga, coverUrl).size(128, 192).allowHardware(false).build())
         assertTrue("ImageRequest failed: $result", result is SuccessResult)
         return result as SuccessResult
     }
