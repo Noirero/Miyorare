@@ -46,11 +46,12 @@ class SmartLocalCoverCache internal constructor(
                 generation.withPermit {
                     val result = generate() ?: return@withPermit null
                     check(result.candidateIndex in plan.candidates.indices)
-                    check(result.bytes.size in 1..MAX_THUMBNAIL_BYTES) { "Oversized derived thumbnail" }
+                    val payloadLimit = if (result.cacheable) MAX_THUMBNAIL_BYTES else BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES
+                    check(result.bytes.size in 1..payloadLimit) { "Oversized local cover payload" }
                     currentCoroutineContext().ensureActive()
                     files.withLock {
                         // A settings clear during generation must not resurrect the removed entry.
-                        if (epoch == clearEpoch && isCurrent()) writeLocked(key, plan, result)
+                        if (result.cacheable && epoch == clearEpoch && isCurrent()) writeLocked(key, plan, result)
                     }
                     result.bytes
                 }

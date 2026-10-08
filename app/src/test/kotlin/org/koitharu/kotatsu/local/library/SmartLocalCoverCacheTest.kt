@@ -10,6 +10,8 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.koitharu.kotatsu.local.library.LocalTreeScanner.Node
 import java.io.File
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.util.concurrent.atomic.AtomicInteger
 
 class SmartLocalCoverCacheTest {
@@ -156,6 +158,71 @@ class SmartLocalCoverCacheTest {
         SmartLocalCoverCache(directory).getOrGenerate(42, LocalCoverPlan("root", listOf(source), 11)) {
             calls++; GeneratedLocalCover(byteArrayOf(2), 0)
         }
+        assertEquals(1, calls)
+    }
+
+    @Test fun animatedPassthroughDoesNotConsumeStorageOrReplacePersistentStaticCover() = runBlocking {
+        val directory = temporary.newFolder()
+        var cache = SmartLocalCoverCache(directory)
+        cache.getOrGenerate(1, plan(node("static.png"))) { GeneratedLocalCover(byteArrayOf(7), 0) }
+        val storedSize = cache.size()
+        val passthrough = ByteArray(SmartLocalCoverCache.MAX_THUMBNAIL_BYTES + 1) { 9 }
+        var calls = 0
+        repeat(2) {
+            assertArrayEquals(passthrough, cache.getOrGenerate(2, plan(node("animated.gif"))) {
+                calls++; GeneratedLocalCover(passthrough, 0, cacheable = false)
+            })
+            assertEquals(storedSize, cache.size())
+            assertEquals(1, directory.listFiles()!!.size)
+            cache = SmartLocalCoverCache(directory)
+        }
+        assertArrayEquals(byteArrayOf(7), cache.getOrGenerate(1, plan(node("static.png"))) {
+            fail("Passthrough disturbed the unrelated persistent entry"); null
+        })
+        assertEquals(2, calls)
+    }
+
+    @Test fun persistentPayloadCeilingRemainsHardAndPassthroughRetainsSourceCeiling() = runBlocking {
+        val directory = temporary.newFolder()
+        val cache = SmartLocalCoverCache(directory)
+        val maximum = ByteArray(SmartLocalCoverCache.MAX_THUMBNAIL_BYTES)
+        cache.getOrGenerate(1, plan(node("animated.gif"))) { GeneratedLocalCover(maximum, 0) }
+        assertArrayEquals(maximum, SmartLocalCoverCache(directory).getOrGenerate(1, plan(node("animated.gif"))) {
+            fail("Eligible maximum-sized payload must remain persistent"); null
+        })
+        val persistentError = runCatching {
+            cache.getOrGenerate(2, plan(node())) {
+                GeneratedLocalCover(ByteArray(SmartLocalCoverCache.MAX_THUMBNAIL_BYTES + 1), 0)
+            }
+        }.exceptionOrNull()
+        assertTrue(persistentError is IllegalStateException)
+        val sourceError = runCatching {
+            cache.getOrGenerate(3, plan(node())) {
+                GeneratedLocalCover(ByteArray(BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES + 1), 0, cacheable = false)
+            }
+        }.exceptionOrNull()
+        assertTrue(sourceError is IllegalStateException)
+        assertEquals(1, directory.listFiles()!!.size)
+        assertTrue(cache.size() <= SmartLocalCoverCache.MAX_BYTES)
+    }
+
+    @Test fun oldFlattenedAnimationFingerprintIsNeverReusedAfterPolicyUpgrade() = runBlocking {
+        val directory = temporary.newFolder()
+        val source = node("cover.gif")
+        val versionOne = ByteArrayOutputStream().also { bytes -> DataOutputStream(bytes).use { out ->
+            out.writeInt(1); out.writeUTF("root")
+            out.writeUTF(source.key); out.writeUTF(source.uri); out.writeUTF(source.name)
+            out.writeLong(source.size); out.writeLong(source.modified)
+        } }.toByteArray()
+        val oldPayload = byteArrayOf(1)
+        DataOutputStream(File(directory, "${coverDigest("42".toByteArray())}.thumb").outputStream()).use { out ->
+            out.writeInt(0x534C4301); out.writeInt(0); out.writeUTF(coverDigest(versionOne))
+            out.writeInt(oldPayload.size); out.writeUTF(coverDigest(oldPayload)); out.write(oldPayload)
+        }
+        var calls = 0
+        assertArrayEquals(byteArrayOf(2), SmartLocalCoverCache(directory).getOrGenerate(42, plan(source)) {
+            calls++; GeneratedLocalCover(byteArrayOf(2), 0)
+        })
         assertEquals(1, calls)
     }
 

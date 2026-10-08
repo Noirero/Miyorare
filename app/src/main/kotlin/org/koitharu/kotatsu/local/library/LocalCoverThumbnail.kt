@@ -4,6 +4,10 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
+import coil3.decode.DecodeUtils
+import coil3.gif.isAnimatedWebP
+import coil3.gif.isGif
+import okio.Buffer
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -12,6 +16,69 @@ import kotlin.math.roundToInt
 /** Lossless presentation-sized cover. Bounds decoding before allocating the bitmap. */
 internal object LocalCoverThumbnail {
     const val MAX_EDGE = 768
+
+    /** Preserve encoded animation; eligibility changes persistence, never its presentation. */
+    fun prepare(bytes: ByteArray, candidateIndex: Int): GeneratedLocalCover? {
+        val animated = animation(bytes)
+        if (animated == false) return encode(bytes)?.let { GeneratedLocalCover(it, candidateIndex) }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        val cacheable = animated == true && bytes.size <= SmartLocalCoverCache.MAX_THUMBNAIL_BYTES &&
+            maxOf(bounds.outWidth, bounds.outHeight) <= MAX_EDGE
+        return GeneratedLocalCover(bytes, candidateIndex, cacheable)
+    }
+
+    /** Null means an uncertain GIF structure: leave decoding to Coil and do not persist it. */
+    internal fun animation(bytes: ByteArray): Boolean? {
+        val header = Buffer().write(bytes, 0, minOf(21, bytes.size))
+        return when {
+            DecodeUtils.isAnimatedWebP(header) -> true
+            DecodeUtils.isGif(header) -> gifHasMultipleFrames(bytes)
+            else -> false
+        }
+    }
+
+    // GIF89a block structure: https://www.w3.org/Graphics/GIF/spec-gif89a.txt
+    // Skip palettes and length-prefixed compressed sub-blocks, without decoding any pixels.
+    private fun gifHasMultipleFrames(bytes: ByteArray): Boolean? {
+        if (bytes.size < 13) return null
+        fun unsigned(index: Int) = bytes[index].toInt() and 0xff
+        fun paletteSize(flags: Int) = if (flags and 0x80 != 0) 3 * (1 shl ((flags and 7) + 1)) else 0
+        var offset = 13 + paletteSize(unsigned(10))
+        var frames = 0
+        fun skipSubBlocks(): Boolean {
+            while (offset < bytes.size) {
+                val length = unsigned(offset++)
+                if (length == 0) return true
+                if (length > bytes.size - offset) return false
+                offset += length
+            }
+            return false
+        }
+        while (offset < bytes.size) {
+            when (unsigned(offset++)) {
+                0x3b -> return if (frames == 1) false else null // Trailer; a one-frame GIF is static.
+                0x21 -> {
+                    if (offset >= bytes.size) return null
+                    val label = unsigned(offset++)
+                    // Plain text may itself render a graphic; unsupported extensions are uncertain.
+                    if ((label != 0xf9 && label != 0xfe && label != 0xff) || !skipSubBlocks()) return null
+                }
+                0x2c -> {
+                    if (bytes.size - offset < 9) return null
+                    val flags = unsigned(offset + 8)
+                    offset += 9 + paletteSize(flags)
+                    if (offset >= bytes.size) return null
+                    offset++ // LZW minimum code size.
+                    if (!skipSubBlocks()) return null
+                    if (++frames == 2) return true
+                }
+                else -> return null
+            }
+        }
+        return null
+    }
 
     fun encode(bytes: ByteArray): ByteArray? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

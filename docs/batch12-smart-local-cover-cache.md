@@ -55,7 +55,9 @@ unchanged. Cover plans are lazily memoized on immutable indexed books, with no s
 
 ## Persistence, concurrency, and cleanup
 
-Artifacts contain PNG <=768 px long edge, a candidate index, fingerprint and payload checksum.
+Artifacts contain PNG thumbnails or eligible encoded GIF/WebP animations <=768 px long edge,
+a candidate index, fingerprint and payload checksum. Animated bytes are preserved verbatim;
+their eligibility and passthrough policy are described below.
 No aggressive lossy encoding; direct-image EXIF orientation is applied before PNG encoding.
 Archive discovery retains #554's streaming budgets: 64 entries, 8 image candidates, 8 MiB per
 candidate and 32 MiB candidate-read budget. PDF extraction never forces archives through
@@ -106,27 +108,40 @@ interrupted Android 15 validation after 1 of 16 tests. The first failure was a s
 test-process crash in CoverFixtureDocumentsProvider.call(): NoClassDefFoundError for
 kotlin.jvm.internal.Intrinsics. The Android/JDK-only fixture components address that
 classloader boundary without changing production code, URI grants, or test assertions.
-Cache persistence, source freshness, and Reader pin runtime evidence still require a new run.
+Run 37801324031 on 809833d07962e52233ac9f27e67c0d1043ed4185 subsequently passed both
+compile/JVM and Android 15 jobs. Animated preservation changes require fresh exact-head CI.
 
-## Unresolved animated-cover decision
+## Animated-cover preservation
 
-The existing Smart Local path passes original encoded GIF/WebP image bytes to Coil. The app
-registers AnimatedImageDecoder on API 28+ and GifDecoder below it; GIF animation and animated
-WebP on supported APIs can therefore survive the original fetch path. Direct images,
-sidecars, and images selected from CBZ/ZIP/EPUB are affected by the new PNG conversion.
-The pipeline test loader does not register animated decoders and has only PNG/PDF fixtures,
-so a passing lifecycle suite does not prove animation compatibility. PDF covers are static
-and the fixture-process failure does not depend on this product decision.
+The owner requires animated GIF/WebP covers to remain animated. Direct images, sidecars and
+selected CBZ/ZIP/EPUB images use the same preparation boundary; PDFs keep their accepted
+static path. No multi-frame encoder, Reader change, or app-wide Coil change is introduced.
 
-Available approaches, not implemented pending owner approval:
+Coil's existing DecodeUtils.isAnimatedWebP checks the VP8X animation flag. An incidental ANIM
+string or a .webp extension is not enough. Coil's isGif identifies GIF87a/GIF89a containers;
+a bounded structural walk then distinguishes a single frame from multiple frames by skipping
+palettes and compressed sub-blocks, without decoding pixels. Loop/delay metadata alone does
+not imply multiple frames. Uncertain/truncated GIF structures and unfamiliar rendering
+extensions are conservatively passed through without persistence, never flattened by this path.
 
-- Preserve encoded animated payloads within a byte cap, using the same freshness/persistence
-  authority. This needs an explicit exception to PNG/dimension limits and a policy for
-  oversized animations; a byte cap alone does not bound decoded animation memory.
-- Preserve animated source passthrough without derived persistence while retaining persistent
-  PDF/static thumbnails. This keeps animation but repeats extraction for animated warm misses.
-- Produce resized multi-frame animated derivatives. This preserves animation and dimensions
-  but needs a format-aware encoder, bounded frame work, and broader compatibility testing.
-- Authorize static first-frame thumbnails. This is the simplest option but changes current UX.
+Confirmed animations use a bounds-only BitmapFactory read. With valid positive dimensions,
+<=768 px long edge and <=4 MiB encoded size, the original bytes enter the existing persistent
+authority. Larger encoded payloads or canvases return unchanged bytes to Coil with cacheable=false.
+They never pass through PNG conversion and never increase derived storage. Warm misses for
+such passthrough images repeat extraction. Original source limits remain: <=8 MiB per image
+candidate and the existing archive discovery/read budgets. This does not admit previously
+unsupported images beyond those input limits. Static WebP and single-frame GIF still use PNG.
 
-No animated-cover policy has been selected. The PR remains blocked even if lifecycle CI passes.
+Storage remains <=128 MiB / 1024 entries / 4 MiB persistent payload, with the same atomic writes,
+clear epochs, fingerprint validation, concurrency permits, and retention. Fingerprint thumbnail
+version 2 invalidates interim first-frame entries once, including images selected from archives;
+Smart Local manga/chapter identity and discovery/freshness authority remain unchanged.
+
+The test ImageLoader now registers the same API-selected animated decoder as the app. Small
+two-frame GIF/WebP and single-frame/static fixtures verify the real Smart Local/Coil path,
+encoded-byte equality, Animatable presentation, eligible owner-recreation reuse with zero
+source opens, animated archive/sidecar reuse, animated-to-static Refresh, and oversized
+byte/dimension passthrough. Large valid GIF comments/WebP JUNK chunks are built in the fixture
+provider process to avoid Binder limits and oversized committed assets. Existing PDF, Reader
+pin, and #557 image-cache tests remain intact and run alongside these regressions. Recreation
+still replaces cache/domain owners, not the OS process. Physical-device validation is the owner’s.

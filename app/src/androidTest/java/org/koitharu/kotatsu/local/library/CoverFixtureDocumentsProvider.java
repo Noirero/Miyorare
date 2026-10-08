@@ -146,6 +146,15 @@ public class CoverFixtureDocumentsProvider extends DocumentsProvider {
             } else {
                 output.write(bytes);
             }
+            // Build large valid image fixtures in the provider process, avoiding Binder's
+            // transaction limit and multi-megabyte committed assets. GIF comment sub-blocks
+            // and WebP JUNK chunks are supplied by the test; no image pixels are rewritten.
+            byte[] repeated = data.getByteArray("repeat-block");
+            if (repeated != null) {
+                for (int i = 0; i < data.getInt("repeat-count"); i++) output.write(repeated);
+                byte[] suffix = data.getByteArray("suffix");
+                if (suffix != null) output.write(suffix);
+            }
         } catch (IOException error) {
             throw new IllegalStateException("Cannot write cover fixture", error);
         }

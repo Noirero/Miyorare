@@ -31,7 +31,8 @@ internal class LocalCoverPlan(val rootUri: String, val candidates: List<Node>, p
     }
 
     companion object {
-        const val THUMBNAIL_VERSION = 1
+        // Invalidate interim PNG entries that may have flattened an animated source.
+        const val THUMBNAIL_VERSION = 2
 
         fun from(book: LocalBook): LocalCoverPlan {
             val nodes = (book.sidecars + book.chapters.flatMap { it.pages }).associateBy { it.uri }
@@ -48,7 +49,7 @@ internal class LocalCoverPlan(val rootUri: String, val candidates: List<Node>, p
     }
 }
 
-internal data class GeneratedLocalCover(val bytes: ByteArray, val candidateIndex: Int)
+internal data class GeneratedLocalCover(val bytes: ByteArray, val candidateIndex: Int, val cacheable: Boolean = true)
 
 internal fun coverDigest(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
     .digest(bytes).joinToString("") { "%02x".format(it) }

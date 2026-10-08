@@ -7,6 +7,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.pdf.PdfDocument
+import android.graphics.drawable.Animatable
+import android.graphics.drawable.AnimatedImageDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
@@ -14,10 +16,14 @@ import android.provider.DocumentsContract
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
+import coil3.asDrawable
+import coil3.gif.AnimatedImageDecoder
+import coil3.gif.GifDecoder
 import coil3.intercept.Interceptor
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
+import coil3.size.ScaleDrawable
 import coil3.toBitmap
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -41,6 +47,8 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -273,6 +281,169 @@ class SmartLocalCoverPipelineTest {
         finally { decoded.recycle() }
     }
 
+    @Test fun boundedGifAndWebpStayAnimatedAndReuseEncodedPayloadAfterOwnerRecreation() = runBlocking {
+        val originals = listOf("gif", "webp").associateWith { asset("animated.$it") }
+        originals.forEach { (format, bytes) -> put("$format/001.$format", bytes) }
+        library.scan()
+        val mangas = library.state.value.books.map { it.toManga(false) }
+        assertEquals(2, mangas.size)
+        for (manga in mangas) {
+            assertArrayEquals(originals.getValue(manga.title), library.cover(manga.id))
+            assertAnimated(request(manga))
+        }
+        assertEquals(2, counts.extract)
+        assertEquals(0, counts.materialize)
+        assertTrue(cache.size() in 1..SmartLocalCoverCache.MAX_BYTES)
+        assertEquals(2, derivedFiles().size)
+        loader!!.shutdown(); loader = null; owners(); call("fixture-metrics-reset")
+        for (manga in mangas) {
+            assertAnimated(request(manga))
+            assertArrayEquals(originals.getValue(manga.title), library.cover(manga.id))
+        }
+        assertEquals(2, counts.extract)
+        assertEquals(0, metrics().getInt("opens"))
+        assertEquals(0, metrics().getInt("queries"))
+    }
+
+    @Test fun animatedArchiveAndSidecarCoversPreserveOriginalFramesAndRestartReuse() = runBlocking {
+        val gif = asset("animated.gif")
+        val webp = asset("animated.webp")
+        for (extension in listOf("cbz", "zip", "epub")) put("book.$extension", archive(gif, "cover.gif"))
+        put("Sidecar/book.pdf", pdf(Color.RED)); put("Sidecar/cover.webp", webp)
+        library.scan()
+        val books = library.state.value.books
+        assertEquals(4, books.size)
+        for (book in books) {
+            assertArrayEquals(if (book.node.name == "Sidecar") webp else gif, library.cover(book.id))
+            assertAnimated(request(book.toManga(false)))
+        }
+        assertEquals(4, counts.extract)
+        assertEquals(0, counts.materialize)
+        assertEquals(0, counts.render)
+        loader!!.shutdown(); loader = null; owners(); call("fixture-metrics-reset")
+        books.forEach { assertAnimated(request(it.toManga(false))) }
+        assertEquals(4, counts.extract)
+        assertEquals(0, metrics().getInt("opens"))
+        assertEquals(0, metrics().getInt("queries"))
+    }
+
+    @Test fun oversizedGifAndWebpRemainAnimatedPassthroughAndNeverEnterDerivedStorage() = runBlocking {
+        for (format in listOf("gif", "webp")) putOversizedAnimation("$format/001.$format", format)
+        library.scan()
+        val mangas = library.state.value.books.map { it.toManga(false) }
+        assertEquals(2, mangas.size)
+        var extractions = 0
+        for (manga in mangas) {
+            val payload = library.cover(manga.id)!!
+            assertTrue(payload.size > SmartLocalCoverCache.MAX_THUMBNAIL_BYTES)
+            assertTrue(payload.size <= BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES)
+            assertEquals(true, LocalCoverThumbnail.animation(payload))
+            assertAnimated(request(manga))
+            assertEquals(0L, cache.size())
+            assertTrue(derivedFiles().isEmpty())
+            loader!!.shutdown(); loader = null; owners(); call("fixture-metrics-reset")
+            assertAnimated(request(manga))
+            extractions += 3
+            assertEquals(extractions, counts.extract)
+            assertEquals(1, metrics().getInt("opens"))
+            assertEquals(0, metrics().getInt("queries"))
+            assertEquals(0L, cache.size())
+            assertTrue(derivedFiles().isEmpty())
+        }
+        assertEquals(0, counts.materialize)
+        assertEquals(0, counts.render)
+    }
+
+    @Test fun animationAboveThumbnailDimensionsUsesUnmodifiedPassthrough() = runBlocking {
+        val original = asset("wide.gif")
+        assertTrue(original.size < SmartLocalCoverCache.MAX_THUMBNAIL_BYTES)
+        put("Wide/001.gif", original); library.scan()
+        val manga = library.state.value.books.single().toManga(false)
+        assertArrayEquals(original, library.cover(manga.id))
+        assertAnimated(request(manga))
+        assertEquals(0L, cache.size())
+        loader!!.shutdown(); loader = null; owners()
+        assertAnimated(request(manga))
+        assertEquals(3, counts.extract)
+        assertEquals(0L, cache.size())
+    }
+
+    @Test fun singleFrameGifAndStaticWebpUsePersistentStaticThumbnails() = runBlocking {
+        for (format in listOf("gif", "webp")) {
+            val source = asset("static.$format")
+            assertEquals(false, LocalCoverThumbnail.animation(source))
+            put("$format/001.$format", source)
+        }
+        library.scan()
+        val mangas = library.state.value.books.map { it.toManga(false) }
+        assertEquals(2, mangas.size)
+        for (manga in mangas) {
+            val derived = library.cover(manga.id)!!
+            assertArrayEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47), derived.copyOf(4))
+            assertFalse(request(manga).image.asDrawable(context.resources) is Animatable)
+        }
+        assertEquals(2, counts.extract)
+        assertEquals(2, derivedFiles().size)
+        loader!!.shutdown(); loader = null; owners(); call("fixture-metrics-reset")
+        mangas.forEach { assertFalse(request(it).image.asDrawable(context.resources) is Animatable) }
+        assertEquals(2, counts.extract)
+        assertEquals(0, metrics().getInt("opens"))
+        assertEquals(0, metrics().getInt("queries"))
+    }
+
+    @Test fun refreshedAnimationCanBecomeStaticWithoutReusingOldEncodedOrMemoryCover() = runBlocking {
+        put("Title/001.gif", asset("animated.gif")); library.scan()
+        val manga = library.state.value.books.single().toManga(false)
+        val animated = request(manga)
+        assertAnimated(animated)
+        put("Title/001.gif", asset("static.gif")); library.scan()
+        val static = request(manga)
+        assertFalse(static.image.asDrawable(context.resources) is Animatable)
+        assertNotEquals(animated.memoryCacheKey, static.memoryCacheKey)
+        assertEquals(2, counts.extract)
+    }
+
+    private fun asset(name: String) = InstrumentationRegistry.getInstrumentation().context.assets
+        .open("smart-local-covers/$name").use { it.readBytes() }
+
+    private fun assertAnimated(result: SuccessResult) {
+        val drawable = result.image.asDrawable(context.resources)
+        assertTrue("Cover was flattened: ${result.image}", drawable is Animatable)
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            val native = (drawable as? ScaleDrawable)?.child ?: drawable
+            assertTrue("Expected Android's multi-frame drawable: $native", native is AnimatedImageDrawable)
+        }
+    }
+
+    private fun derivedFiles() = File(context.filesDir, "smart-local-covers").listFiles().orEmpty().toList()
+
+    private fun putOversizedAnimation(name: String, format: String) {
+        val original = asset("animated.$format")
+        val block: ByteArray
+        val repeats: Int
+        val prefix: ByteArray
+        val suffix: ByteArray
+        if (format == "gif") {
+            // Insert a valid Comment Extension before the trailer; preserve both image frames.
+            prefix = original.copyOf(original.size - 1) + byteArrayOf(0x21, 0xfe.toByte())
+            block = byteArrayOf(255.toByte()) + ByteArray(255) { 'x'.code.toByte() }
+            repeats = SmartLocalCoverCache.MAX_THUMBNAIL_BYTES / block.size + 1
+            suffix = byteArrayOf(0, 0x3b)
+        } else {
+            // Append a valid even-sized unknown RIFF chunk and update the container length.
+            block = ByteArray(8192) { 'x'.code.toByte() }
+            repeats = SmartLocalCoverCache.MAX_THUMBNAIL_BYTES / block.size
+            prefix = original + "JUNK".toByteArray() + ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
+                .putInt(block.size * repeats).array()
+            ByteBuffer.wrap(prefix).order(ByteOrder.LITTLE_ENDIAN).putInt(4, prefix.size + block.size * repeats - 8)
+            suffix = byteArrayOf()
+        }
+        call("fixture-put", name, Bundle().apply {
+            putByteArray("bytes", prefix); putByteArray("repeat-block", block)
+            putInt("repeat-count", repeats); putByteArray("suffix", suffix)
+        })
+    }
+
     private fun owners() {
         val documents = LocalDocuments(context)
         reader = CountingReader(context, documents, counts)
@@ -283,6 +454,8 @@ class SmartLocalCoverPipelineTest {
     private suspend fun request(manga: Manga, coverUrl: String? = manga.coverUrl): SuccessResult {
         val imageLoader = loader ?: ImageLoader.Builder(context).diskCache { MiyorareImageDiskCache(context) }
             .components {
+                if (android.os.Build.VERSION.SDK_INT >= 28) add(AnimatedImageDecoder.Factory())
+                else add(GifDecoder.Factory())
                 add(LocalCoverFetcher.Factory(Provider { library }))
                 add(LocalCoverVersionInterceptor(Provider { library }))
                 add(Interceptor { chain -> beforePresentation?.invoke(); chain.proceed() })
@@ -321,8 +494,8 @@ class SmartLocalCoverPipelineTest {
             return ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
         } finally { bitmap.recycle() }
     }
-    private fun archive(image: ByteArray): ByteArray = ByteArrayOutputStream().also { bytes ->
-        ZipOutputStream(bytes).use { zip -> zip.putNextEntry(ZipEntry("cover.png")); zip.write(image); zip.closeEntry() }
+    private fun archive(image: ByteArray, name: String = "cover.png"): ByteArray = ByteArrayOutputStream().also { bytes ->
+        ZipOutputStream(bytes).use { zip -> zip.putNextEntry(ZipEntry(name)); zip.write(image); zip.closeEntry() }
     }.toByteArray()
 
     private class Counts { var extract = 0; var materialize = 0; var render = 0 }

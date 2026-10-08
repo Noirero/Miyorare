@@ -188,7 +188,7 @@ open class LocalContentReader @Inject constructor(
     internal open suspend fun cover(root: Node, plan: LocalCoverPlan): GeneratedLocalCover? = withContext(Dispatchers.IO) {
         for ((index, node) in plan.candidates.withIndex()) {
             currentCoroutineContext().ensureActive()
-            val bytes = runCatchingCancellable {
+            val result = runCatchingCancellable {
                 check(documents.contains(root, node)) { "Content outside selected root" }
                 val extension = LocalTreeScanner.extension(node.name)
                 val source = when (extension) {
@@ -218,9 +218,12 @@ open class LocalContentReader @Inject constructor(
                     }
                     else -> documents.input(node).use { it.readBytesLimited(BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES) }
                 }
-                if (extension == "pdf") source else source?.let(LocalCoverThumbnail::encode)
+                source?.let {
+                    if (extension == "pdf") GeneratedLocalCover(it, index)
+                    else LocalCoverThumbnail.prepare(it, index)
+                }
             }.getOrNull()
-            if (bytes != null) return@withContext GeneratedLocalCover(bytes, index)
+            if (result != null) return@withContext result
         }
         null
     }
