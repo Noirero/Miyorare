@@ -234,7 +234,7 @@ class ChapterPersistenceRegressionTest {
 		val local = remote.copy(source = LocalMangaSource, url = "file:///download/chapter.cbz")
 		val source = SampleData.mangaDetails.copy(chapters = listOf(remote))
 		val details = org.koitharu.kotatsu.details.data.MangaDetails(source).copy(
-			localManga = LocalManga(source.copy(chapters = listOf(local))),
+			localManga = LocalManga(source.copy(source = LocalMangaSource, url = "file:///download/manga", chapters = listOf(local))),
 		)
 		val rows = details.mapChapters(0, 0, remote.branch, emptyList(), false, false)
 		assertEquals(1, rows.size)
