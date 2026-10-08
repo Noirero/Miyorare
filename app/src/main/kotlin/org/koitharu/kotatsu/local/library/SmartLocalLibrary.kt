@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.AtomicFile
 import androidx.core.net.toUri
+import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -156,7 +157,14 @@ class SmartLocalLibrary @Inject constructor(
                 scanned.issues.forEach { diagnoses += LocalDiagnosis(root.uri, it.node, it.reason, it.candidates) }
             }
             val snapshot = previous.copy(books = books.values.toList(), diagnoses = diagnoses, excludedCount = exclusions.size)
-            for (book in snapshot.books) dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
+            // One Room transaction avoids paying transaction setup/commit cost once per title in
+            // large Smart Local collections. Nested storeManga() calls reuse this transaction.
+            db.withTransaction {
+                for (book in snapshot.books) {
+                    currentCoroutineContext().ensureActive()
+                    dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
+                }
+            }
             publishLocked(snapshot)
         }
         mutableChanges.emit(Unit)
@@ -244,7 +252,7 @@ class SmartLocalLibrary @Inject constructor(
                 check(owned.none { it.key in others }) { "A document is shared by another chapter" }
                 check(owned.all { !it.directory && it.key != root.key && documents.contains(root, it) })
                 for (page in owned) if (documents.exists(root, page)) documents.delete(root, page)
-                if (chapter.node.directory && chapter.node.uri.toUri().scheme == "file" && chapter.node.key != root.key && documents.children(root, chapter.node).isEmpty()) documents.delete(root, chapter.node)
+                if (chapter.node.directory && chapter.node.uri.toUri().scheme == "file" && chapter.node.key != root.key && documents.exists(root, chapter.node) && documents.children(root, chapter.node).isEmpty()) documents.delete(root, chapter.node)
             }
         } } catch (error: Exception) {
             runCatchingCancellable { scan() }
@@ -255,7 +263,12 @@ class SmartLocalLibrary @Inject constructor(
 
     suspend fun setDisplayOptions(extensions: Boolean, filter: LocalReadingFilter = readingFilter, order: LocalLibrarySort = sort) = withContext(Dispatchers.IO) {
         check(prefs.edit().putBoolean("extensions", extensions).putString("filter", filter.name).putString("sort", order.name).commit())
-        for (book in state.value.books) dataRepository.storeManga(book.toManga(extensions, true), replaceExisting = true)
+        db.withTransaction {
+            for (book in state.value.books) {
+                currentCoroutineContext().ensureActive()
+                dataRepository.storeManga(book.toManga(extensions, true), replaceExisting = true)
+            }
+        }
         mutex.withLock { publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1)) }
         mutableChanges.emit(Unit)
     }
