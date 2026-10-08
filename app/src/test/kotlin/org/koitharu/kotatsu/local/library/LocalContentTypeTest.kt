@@ -83,7 +83,8 @@ class LocalContentTypeTest {
         File("src/main/kotlin", relativePath),
         File("app/src/main/kotlin", relativePath),
     ).firstOrNull(File::isFile)?.readText()
-        ?.replace(Regex("""//[^\r\n]*"""), "")
+        // Keep line comments intact: Smart Local routes contain :// inside string literals, so a
+        // regex that strips // comments would accidentally truncate the production URL itself.
         ?.replace(Regex("""\s+"""), "")
         ?: error("Cannot find production source: $relativePath")
 }
