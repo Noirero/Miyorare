@@ -36,8 +36,9 @@ class LocalContentReader @Inject constructor(
 ) {
     private val cacheMutex = Mutex()
     // Returned archive URIs remain in Reader state. Pin them for this process so cache
-    // maintenance cannot invalidate a still-open/previous chapter. Budget is deliberately soft.
-    private val activeFiles = HashSet<String>()
+    // maintenance cannot invalidate a still-open/previous chapter. Temporary cover users acquire
+    // their own reference and release it as soon as extraction finishes.
+    private val activeFiles = MaterializedCachePins()
     private val metadataCache = android.util.LruCache<String, LocalMetadata>(32)
     private val cacheDir get() = File(context.cacheDir, "smart-local-content").also { it.mkdirs() }
 
@@ -67,15 +68,27 @@ class LocalContentReader @Inject constructor(
                 } finally { temporary.delete() }
             }
             target.setLastModified(System.currentTimeMillis())
-            activeFiles.add(target.name)
-            var total = cacheDir.listFiles().orEmpty().sumOf { it.length() }
-            for (old in cacheDir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
-                if (total <= 512L * 1024 * 1024) break
-                if (old.name in activeFiles) continue
-                val size = old.length()
-                if (old.delete()) total -= size
-            }
+            activeFiles.acquire(target.name)
+            trimMaterializedCacheLocked()
             target
+        }
+    }
+
+    private suspend fun releaseMaterialized(file: File) {
+        if (file.parentFile != cacheDir) return
+        cacheMutex.withLock {
+            activeFiles.release(file.name)
+            trimMaterializedCacheLocked()
+        }
+    }
+
+    private fun trimMaterializedCacheLocked() {
+        var total = cacheDir.listFiles().orEmpty().sumOf { it.length() }
+        for (old in cacheDir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
+            if (total <= MATERIALIZED_CACHE_MAX_BYTES) break
+            if (activeFiles.isPinned(old.name)) continue
+            val size = old.length()
+            if (old.delete()) total -= size
         }
     }
 
@@ -198,7 +211,14 @@ class LocalContentReader @Inject constructor(
                 } else {
                     check(documents.contains(root, chapter.node)) { "Content outside selected root" }
                     when (LocalTreeScanner.extension(chapter.node.name)) {
-                        "pdf" -> LocalPdfCache.renderCover(materialize(root, chapter.node))?.readBytes()
+                        "pdf" -> {
+                            val file = materialize(root, chapter.node)
+                            try {
+                                LocalPdfCache.renderCover(file)?.readBytes()
+                            } finally {
+                                releaseMaterialized(file)
+                            }
+                        }
                         "cbz", "zip", "epub" -> {
                             val coroutineContext = currentCoroutineContext()
                             documents.input(chapter.node).use { input ->
@@ -225,4 +245,8 @@ class LocalContentReader @Inject constructor(
 
     private fun safeEntry(path: String) = path.isNotBlank() && !path.startsWith('/') && '\\' !in path &&
         path.split('/').none { it == ".." } && ':' !in path
+
+    private companion object {
+        const val MATERIALIZED_CACHE_MAX_BYTES = 512L * 1024 * 1024
+    }
 }
