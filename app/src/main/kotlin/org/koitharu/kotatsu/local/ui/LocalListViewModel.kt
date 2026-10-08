@@ -190,7 +190,8 @@ class LocalListViewModel @Inject constructor(
 						LocalTreeScanner.displayName(it, library.showExtensions, chapter.node.directory)
 					}.orEmpty()
 					val progress = (history.percent.coerceIn(0f, 1f) * 100).toInt()
-					val subtitle = if (book.isNovel) context.getString(R.string.smart_local_resume_novel, label, progress)
+					val subtitle = if (chapter == null) context.getString(R.string.chapter_is_missing)
+						else if (book.isNovel) context.getString(R.string.smart_local_resume_novel, label, progress)
 						else context.getString(R.string.smart_local_resume_manga, label, history.page + 1)
 					result += SmartLocalResumeModel(book.toManga(library.showExtensions), subtitle, progress)
 				}
