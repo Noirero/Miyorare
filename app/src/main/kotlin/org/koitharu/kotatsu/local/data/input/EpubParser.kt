@@ -25,6 +25,7 @@ class EpubBook(
 		val title: String,
 		val href: String,
 		val level: Int,
+		val fragment: String? = null,
 	)
 }
 
@@ -231,6 +232,7 @@ object EpubParser {
 									title = label.trim(),
 									href = resolveHref(opfDir, src.substringBefore('#')),
 									level = depth,
+									fragment = src.substringAfter('#', "").takeIf { it.isNotEmpty() },
 								),
 							)
 						}
@@ -268,7 +270,8 @@ object EpubParser {
 
 					"ol", "ul" -> if (inToc) listDepth++
 					"a" -> if (inToc) {
-						val href = parser.attr("href")?.substringBefore('#')
+						val rawHref = parser.attr("href")
+						val href = rawHref?.substringBefore('#')
 						val text = parser.nextTextSafe()
 						if (!href.isNullOrEmpty() && text != null) {
 							result.add(
@@ -277,6 +280,7 @@ object EpubParser {
 									// hrefs in the nav doc are relative to the nav doc itself
 									href = resolveHref(navDir.ifEmpty { opfDir }, href),
 									level = listDepth.coerceAtLeast(0),
+									fragment = rawHref?.substringAfter('#', "")?.takeIf { it.isNotEmpty() },
 								),
 							)
 						}

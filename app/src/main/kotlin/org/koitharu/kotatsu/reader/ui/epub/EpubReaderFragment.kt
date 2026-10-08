@@ -123,6 +123,7 @@ import org.koitharu.kotatsu.databinding.FragmentReaderEpubBinding
 import org.koitharu.kotatsu.databinding.SheetEpubDictionaryBinding
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
+import org.koitharu.kotatsu.core.model.getLocalizedTitle
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.epub.translation.MiyorareOnlineTranslationEngine
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelAiTranslationEngine
@@ -788,6 +789,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		remoteCacheCenter = -1
 		runCatching { chapterContent?.close() }
 		chapterContent = null
+		chapters = emptyList()
 		super.onDestroyView()
 	}
 
@@ -853,6 +855,10 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 					ensureChaptersLoadedBackground(chapter.preloadRange())
 				}
 			}
+			if (chapters[chapter].content == null) {
+				android.widget.Toast.makeText(requireContext(), R.string.error_corrupted_file, android.widget.Toast.LENGTH_LONG).show()
+				return
+			}
 			val offset = ReaderState.decodeEpubOffset(state.scroll)
 				?: (chapters[chapter].text.length.toLong() * state.scroll.coerceIn(0, 1000) / 1000).toInt()
 			renderMode(Locator(chapter, offset), state.page.takeIf { isPagedMode })
@@ -910,7 +916,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	}
 
 	private fun prepareBook(manga: Manga, source: List<MangaChapter>): PreparedBook {
-		val items = source.map { chapter -> NativeChapter(chapter.id, chapter.title.orEmpty(), chapter.url) }
+		val items = source.map { chapter -> NativeChapter(chapter.id, chapter.getLocalizedTitle(resources), chapter.url) }
 		val archives = HashMap<File, ZipFile>()
 		try {
 			items.mapNotNull { it.url.toUri().takeIf { u -> u.isZipUri() }?.let { u -> File(u.schemeSpecificPart) } }
@@ -961,6 +967,37 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		}
 	}
 
+	fun showContents() {
+		if (chapters.isEmpty()) return
+		val locator = currentLocator().clamped()
+		val entries = buildList {
+			chapters.forEachIndexed { index, chapter ->
+				if (chapter.sections.isEmpty()) add(ContentsEntry(chapter.title, index, 0))
+				else chapter.sections.forEach { section -> add(ContentsEntry(section.first, index, section.second)) }
+			}
+		}
+		val selected = entries.indexOfLast { it.chapter == locator.chapter && it.offset <= locator.offset }
+		com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.smart_local_contents)
+			.setSingleChoiceItems(entries.map { it.title }.toTypedArray(), selected) { dialog, which ->
+				dialog.dismiss()
+				val target = entries[which]
+				viewLifecycleOwner.lifecycleScope.launch {
+					setChapterLoading(true)
+					try {
+						val ready = withContext(Dispatchers.IO) { ensureChapterLoadedForDisplay(target.chapter) }
+						if (ready) goTo(Locator(target.chapter, target.offset))
+						else android.widget.Toast.makeText(requireContext(), R.string.error, android.widget.Toast.LENGTH_LONG).show()
+					} finally { setChapterLoading(false) }
+				}
+			}
+			.setNeutralButton(R.string.bookmarks) { _, _ -> router.showChapterPagesSheet(org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.TAB_BOOKMARKS) }
+			.setPositiveButton(R.string.chapters) { _, _ -> router.showChapterPagesSheet(org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.TAB_CHAPTERS) }
+			.setNegativeButton(R.string.close, null).show()
+	}
+
+	private data class ContentsEntry(val title: String, val chapter: Int, val offset: Int)
+
 	private fun parseChapter(chapter: NativeChapter, raw: String): Spanned {
 		val document = Jsoup.parse(raw)
 		document.select("script,style,noscript").remove()
@@ -969,14 +1006,27 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val source = image.attr("href").ifBlank { image.attr("xlink:href") }
 			if (source.isNotBlank()) svg.replaceWith(image.clone().tagName("img").attr("src", source))
 		}
-		val parsed = SpannableString(
-			HtmlCompat.fromHtml(
-				document.body().html(),
-				HtmlCompat.FROM_HTML_MODE_LEGACY,
-				Html.ImageGetter { source -> loadEpubImage(chapter, source) },
-				null,
-			).trimmed(),
+		val titles = mutableMapOf<String, String>()
+		document.select("miyorare-section").forEachIndexed { index, marker ->
+			val tag = "miyorare-section-$index"
+			titles[tag] = marker.attr("data-title")
+			marker.tagName(tag)
+		}
+		val offsets = mutableListOf<Pair<String, Int>>()
+		val html = HtmlCompat.fromHtml(
+			document.body().html(), HtmlCompat.FROM_HTML_MODE_LEGACY,
+			Html.ImageGetter { source -> loadEpubImage(chapter, source) },
+			Html.TagHandler { opening, tag, output, _ ->
+				if (opening) titles[tag]?.let { title -> offsets += title to output.length }
+			},
 		)
+		val trimmedStart = html.indexOfFirst { !it.isWhitespace() }.coerceAtLeast(0)
+		val parsed = SpannableString(html.trimmed())
+		chapter.sections = mapEpubContentsOffsets(offsets, trimmedStart, parsed.length)
+
+		if (chapter.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) {
+			if (parsed.isBlank()) throw org.koitharu.kotatsu.core.exceptions.NoDataReceivedException(chapter.url)
+		}
 		return SpannedString(parsed).takeIf { it.isNotEmpty() } ?: EMPTY_CHAPTER_TEXT
 	}
 
@@ -2154,6 +2204,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	}
 	private class NativeChapter(val id: Long, val title: String, val url: String) {
 		@Volatile var content: Spanned? = null
+		@Volatile var sections: List<Pair<String, Int>> = emptyList()
 		@Volatile var readingUnits: Int = 0
 		val text: Spanned get() = content ?: EMPTY_CHAPTER_TEXT
 	}

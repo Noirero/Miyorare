@@ -368,6 +368,10 @@ class ReaderActivity :
             return
         }
         readerManager.isEpub = viewModel.getMangaOrNull()?.isEpub == true
+        viewBinding.actionsView.setContentCapabilities(
+            isLocal = viewModel.getMangaOrNull()?.source == org.koitharu.kotatsu.core.model.LocalMangaSource,
+            isEpub = readerManager.isEpub,
+        )
         if (readerManager.isEpub) {
             viewModel.getMangaOrNull()?.id?.let(tts::attachBook)
         }
@@ -527,6 +531,12 @@ class ReaderActivity :
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
         return controlDelegate.onKeyUp(keyCode, event) || super.onKeyUp(keyCode, event)
+    }
+
+    override fun openContents(): Boolean {
+        val reader = readerManager.currentReader as? EpubReaderFragment ?: return false
+        reader.showContents()
+        return true
     }
 
     override fun onChapterSelected(chapter: MangaChapter): Boolean {
@@ -759,6 +769,7 @@ class ReaderActivity :
     }
 
     override fun onSavePageClick() {
+        if (readerManager.isEpub) return
         viewModel.saveCurrentPage(pageSaveHelper)
     }
 
@@ -823,6 +834,7 @@ class ReaderActivity :
     }
 
     private fun onToolbarLongClick(view: View): Boolean {
+        if (viewModel.getMangaOrNull()?.source == org.koitharu.kotatsu.core.model.LocalMangaSource) return false
         val chapterId = viewModel.getCurrentState()?.chapterId ?: return false
         view.hapticFeedback(HapticEffect.LONG_PRESS)
         PopupMenu(view.context, view, Gravity.START).run {

@@ -155,6 +155,8 @@ class ReaderControlDelegate(
 
 		fun onBookmarkClick()
 
+		fun openContents(): Boolean = false
+
 		fun openMenu()
 
 		fun onSavePageClick()

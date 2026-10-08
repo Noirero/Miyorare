@@ -21,4 +21,11 @@
     <string name="smart_local_manga_details">Manga/Comic • On-device</string>
     <string name="smart_local_novel_details">Novel/EPUB • On-device</string>
     <string name="smart_local_file_details">%1$s\n%2$s • %3$s</string>
+    <string name="smart_local_expand_chapter">Expand</string>
+    <string name="smart_local_collapse_chapter">Collapse</string>
+    <string name="smart_local_current_chapter">Current</string>
+    <string name="smart_local_contents">Contents</string>
+    <string name="smart_local_page_description">Page %d</string>
+    <string name="smart_local_current_page_description">Current page %d</string>
+    <string name="smart_local_chapter_toggle_description">%1$s %2$s %3$s</string>
 </resources>
