@@ -38,7 +38,7 @@ class LocalContentReader @Inject constructor(
     // Returned archive URIs remain in Reader state. Pin them for this process so cache
     // maintenance cannot invalidate a still-open/previous chapter. Temporary cover users acquire
     // their own reference and release it as soon as extraction finishes.
-    private val activeFiles = HashMap<String, Int>()
+    private val activeFiles = MaterializedCachePins()
     private val metadataCache = android.util.LruCache<String, LocalMetadata>(32)
     private val cacheDir get() = File(context.cacheDir, "smart-local-content").also { it.mkdirs() }
 
@@ -68,7 +68,7 @@ class LocalContentReader @Inject constructor(
                 } finally { temporary.delete() }
             }
             target.setLastModified(System.currentTimeMillis())
-            activeFiles[target.name] = (activeFiles[target.name] ?: 0) + 1
+            activeFiles.acquire(target.name)
             trimMaterializedCacheLocked()
             target
         }
@@ -77,8 +77,7 @@ class LocalContentReader @Inject constructor(
     private suspend fun releaseMaterialized(file: File) {
         if (file.parentFile != cacheDir) return
         cacheMutex.withLock {
-            val count = activeFiles[file.name] ?: return@withLock
-            if (count <= 1) activeFiles.remove(file.name) else activeFiles[file.name] = count - 1
+            activeFiles.release(file.name)
             trimMaterializedCacheLocked()
         }
     }
@@ -87,7 +86,7 @@ class LocalContentReader @Inject constructor(
         var total = cacheDir.listFiles().orEmpty().sumOf { it.length() }
         for (old in cacheDir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
             if (total <= MATERIALIZED_CACHE_MAX_BYTES) break
-            if ((activeFiles[old.name] ?: 0) > 0) continue
+            if (activeFiles.isPinned(old.name)) continue
             val size = old.length()
             if (old.delete()) total -= size
         }
