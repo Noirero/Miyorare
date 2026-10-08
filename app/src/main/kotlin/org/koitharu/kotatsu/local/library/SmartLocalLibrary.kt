@@ -44,7 +44,6 @@ class SmartLocalLibrary @Inject constructor(
     private val coverCache: SmartLocalCoverCache,
 ) {
     private val mutex = Mutex()
-    private val coverPlans = android.util.LruCache<Long, Pair<LocalBook, LocalCoverPlan>>(512)
     private val prefs by lazy { context.getSharedPreferences("smart_local_library", Context.MODE_PRIVATE) }
     private val indexFile get() = AtomicFile(File(context.filesDir, "smart-local-index.json"))
     private val mutableState = MutableStateFlow(LocalLibrarySnapshot())
@@ -321,8 +320,7 @@ class SmartLocalLibrary @Inject constructor(
 
     private suspend fun coverPlan(id: Long): Pair<LocalBook, LocalCoverPlan>? {
         val book = book(id) ?: return null
-        coverPlans.get(id)?.takeIf { it.first === book }?.let { return it }
-        return (book to LocalCoverPlan.from(book)).also { coverPlans.put(id, it) }
+        return book to book.coverPlan
     }
 
     suspend fun cover(id: Long): ByteArray? = withContext(Dispatchers.IO) {

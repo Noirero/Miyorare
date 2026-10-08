@@ -117,7 +117,12 @@ class SmartLocalCoverPipelineTest {
         assertEquals(2, counts.extract)
         put("first.pdf", pdf(Color.GREEN))
         library.scan()
-        val fresh = request(first)
+        val updated = library.state.value.books.single { it.node.name == "first.pdf" }.toManga(false)
+        assertNotEquals(first.coverUrl, updated.coverUrl) // Existing adapter cells receive a changed model.
+        assertEquals(first.id, updated.id)
+        assertEquals(first.url, updated.url)
+        assertEquals(first.publicUrl, updated.publicUrl)
+        val fresh = request(first) // Even a caller holding the old transport URL must use the new version.
         assertNotEquals(old.memoryCacheKey, fresh.memoryCacheKey)
         assertNotEquals(old.image.toBitmap().getPixel(10, 10), fresh.image.toBitmap().getPixel(10, 10))
         request(second)
