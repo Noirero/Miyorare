@@ -30,7 +30,7 @@ class LocalInfoDialog : AlertDialogFragment<DialogLocalInfoBinding>(), View.OnCl
 	private val viewModel: LocalInfoViewModel by viewModels()
 
 	override fun onBuildDialog(builder: MaterialAlertDialogBuilder): MaterialAlertDialogBuilder {
-		if (viewModel.isSmartLocal) builder.setNeutralButton(R.string.scan_now, null)
+		if (viewModel.isSmartLocal) builder.setNeutralButton(R.string.rescan, null)
 		return super.onBuildDialog(builder).setTitle(if (viewModel.isSmartLocal) R.string.smart_local_file_info else R.string.saved_manga).setNegativeButton(R.string.close, null)
 	}
 
