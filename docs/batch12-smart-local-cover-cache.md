@@ -88,11 +88,45 @@ Reader backing/lazy-page safety and archive/sidecar/direct-image paths.
 
 The SAF fixture provider and grant activity exist only in the test APK. The provider-owning
 test UID grants its root tree to the target app, preserving Android's URI permission checks;
-no production SAF grants/permissions or containment checks are changed. The Hilt fixture also
+no production SAF grants/permissions or containment checks are changed. These two manifest
+components use only Android/JDK APIs: Android loads the test APK in its own process, where
+Kotlin dependencies shared with the target APK are unavailable. Kotlin instrumentation tests
+still run with the target's combined classpath. The Hilt fixture also
 initializes/restores the PDF page-cache context normally initialized by BaseApp.
 Owner recreation is simulated by replacing ImageLoader, SmartLocalLibrary, LocalContentReader
 and SmartLocalCoverCache; this is not a literal OS process kill or physical-device validation.
 
 PR Compile & Unit Check validates the exact head and retains full compile/JVM checks.
-The ci:runtime-required label enables an Android 15 job running the new pipeline suite together
-with existing MiyorareImageDiskCacheTest. No merge is authorized.
+The ci:runtime-required label enables compile/JVM and Android 15 validation even for a draft
+waiting for an owner decision. The runtime job runs the new pipeline suite together with
+existing MiyorareImageDiskCacheTest. No merge is authorized.
+
+Run 37790523277 on f3d623ef52c0b7f59a03ef814058c8f96abb00cf passed compile/JVM but
+interrupted Android 15 validation after 1 of 16 tests. The first failure was a standalone
+test-process crash in CoverFixtureDocumentsProvider.call(): NoClassDefFoundError for
+kotlin.jvm.internal.Intrinsics. The Android/JDK-only fixture components address that
+classloader boundary without changing production code, URI grants, or test assertions.
+Cache persistence, source freshness, and Reader pin runtime evidence still require a new run.
+
+## Unresolved animated-cover decision
+
+The existing Smart Local path passes original encoded GIF/WebP image bytes to Coil. The app
+registers AnimatedImageDecoder on API 28+ and GifDecoder below it; GIF animation and animated
+WebP on supported APIs can therefore survive the original fetch path. Direct images,
+sidecars, and images selected from CBZ/ZIP/EPUB are affected by the new PNG conversion.
+The pipeline test loader does not register animated decoders and has only PNG/PDF fixtures,
+so a passing lifecycle suite does not prove animation compatibility. PDF covers are static
+and the fixture-process failure does not depend on this product decision.
+
+Available approaches, not implemented pending owner approval:
+
+- Preserve encoded animated payloads within a byte cap, using the same freshness/persistence
+  authority. This needs an explicit exception to PNG/dimension limits and a policy for
+  oversized animations; a byte cap alone does not bound decoded animation memory.
+- Preserve animated source passthrough without derived persistence while retaining persistent
+  PDF/static thumbnails. This keeps animation but repeats extraction for animated warm misses.
+- Produce resized multi-frame animated derivatives. This preserves animation and dimensions
+  but needs a format-aware encoder, bounded frame work, and broader compatibility testing.
+- Authorize static first-frame thumbnails. This is the simplest option but changes current UX.
+
+No animated-cover policy has been selected. The PR remains blocked even if lifecycle CI passes.

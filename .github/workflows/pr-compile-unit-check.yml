@@ -16,7 +16,8 @@ permissions:
 jobs:
   compile-unit:
     name: Compile, resources & unit tests
-    if: github.event.pull_request.draft == false
+    # Explicit runtime validation also applies to drafts waiting for owner decisions.
+    if: github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -56,7 +57,7 @@ jobs:
 
   android-runtime:
     name: Smart Local cover lifecycle — Android 15
-    if: github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'ci:runtime-required')
+    if: contains(github.event.pull_request.labels.*.name, 'ci:runtime-required')
     needs: compile-unit
     runs-on: ubuntu-latest
     timeout-minutes: 45
