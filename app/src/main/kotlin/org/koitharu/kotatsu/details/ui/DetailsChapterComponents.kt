@@ -924,6 +924,7 @@ internal fun InlineChapterHeader(
 				Icon(
 					painter = painterResource(R.drawable.ic_chevron_right),
 					contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand),
+					tint = MaterialTheme.colorScheme.onSurface,
 					modifier = Modifier.rotate(if (expanded) 90f else 0f),
 				)
 			}
