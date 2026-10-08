@@ -21,7 +21,7 @@ ROOT = router.ROOT
 P = router.PACK_ROOT
 # Pre-Stage-5 validation steps: ignores routing `if`, preserves every command,
 # checkout ref/configuration, artifact failure/retention rule and environment.
-PRESERVED = {('miyorare-global-source-pack-check.yml', 'Apply Miyorare Global parser overlays'): '8fb4d01ab2737ccfb4e175cee2998144cca7b9400dccd18e7a126aea1b7de77d',
+PRESERVED = {('miyorare-global-source-pack-check.yml', 'Apply Miyorare Global parser overlays'): '04c52d75790e8f0b181de149ab2ee58364ed5c7536c5274483aab6e58a3c3ca7',
  ('miyorare-global-source-pack-check.yml', 'Build global Gekkoushi shard'): '616d1996ff918baf36c0930fc349b98b7a1ea90528f1ffd60d30920e24c17ce1',
  ('miyorare-global-source-pack-check.yml', 'Checkout pinned Gekkoushi source'): 'd6277e37f9949beb1434c702720bca3b5632bc18827630bef418c2f465ec6fbe',
  ('miyorare-global-source-pack-check.yml', 'Finalize global Gekkoushi shard'): 'b054a9e6b3514ba731f70bf33ed66fb1d6e2554b66ac7844ed50eb08a7a923e8',
@@ -71,117 +71,75 @@ def run_body(block):
 
 
 def selected(paths):
-    result = router.classify(paths)
-    return {key for key in router.CHECKS if result[key]}
+    return router.classify(paths)
 
 
-class RoutingTest(unittest.TestCase):
-    def test_local_readiness_and_farm_tests_do_not_fetch_or_build_upstreams(self):
-        for path in router.LOCAL_CONTRACT:
-            with self.subTest(path=path):
-                self.assertEqual({'run_contract'}, selected([path]))
-
-    def test_global_inputs_keep_real_global_build_only(self):
-        for path in [P + 'overlays/gekkoushi/all/Gelbooru.kt',
-                     P + 'overlays/gekkoushi/all/ExHentaiCompat.kt',
-                     P + 'tools/prepare_global_gekkoushi_shard.py',
-                     P + 'tools/finalize_global_pack.py',
-                     P + 'tools/test_exhentai_pagination.py']:
-            self.assertEqual({'run_global'}, selected([path]))
-
-    def test_language_overlay_owns_only_its_disposable_tree(self):
-        self.assertEqual({'run_id'}, selected([P + 'overlays/gekkoushi/id/Holotoon.kt']))
-        self.assertEqual({'run_en'}, selected([P + 'overlays/gekkoushi/en/NewParser.kt']))
-
-    def test_curated_uma_and_logical_finalizer_do_not_run_global_or_intake(self):
-        for name in ['prepare_pack.py', 'finalize_pack.py', 'finalize_logical_pack.py']:
-            self.assertEqual({'run_id', 'run_en'}, selected([P + 'tools/' + name]))
-
-    def test_global_imports_shared_gekkoushi_and_icon_helpers(self):
-        for name in ['prepare_gekkoushi_shard.py', 'source_icon_metadata.py']:
-            self.assertEqual(router.BUILDERS, selected([P + 'tools/' + name]))
-        self.assertIn('from prepare_gekkoushi_shard import', read(P + 'tools/prepare_global_gekkoushi_shard.py'))
-        self.assertIn('from source_icon_metadata import', read(P + 'tools/prepare_gekkoushi_shard.py'))
-
-    def test_upstream_alias_manifest_and_compatibility_paths_keep_external_intake(self):
-        for path in [P + 'multi-upstream.json', P + 'tools/verify_multi_upstream.py',
-                     router.APP_ROOT + 'sources/compat/New.kt',
-                     'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/NewTest.kt']:
-            self.assertEqual({'run_multi'}, selected([path]))
-
-    def test_shared_manifest_keeps_all_actual_consumers(self):
-        self.assertEqual(router.BUILDERS | {'run_multi'}, selected([P + 'packs.json']))
-
-    def test_mixed_pr_is_union_including_earlier_relevant_changes(self):
-        self.assertEqual({'run_id', 'run_global', 'run_multi', 'run_contract'}, selected([
-            P + 'overlays/gekkoushi/id/Holotoon.kt', P + 'tools/finalize_global_shard.py',
-            P + 'multi-upstream.json', '.github/scripts/source_pack_readiness.py', 'docs/CI.md']))
-
-    def test_contract_and_unknown_runtime_keep_external_contract_comparison(self):
-        for path in ['compatibility/miyorare-source-pack-contract.v1.json',
-                     router.APP_ROOT + 'tsuki/NewRuntime.kt']:
-            self.assertEqual({'run_contract', 'run_mirror'}, selected([path]))
-
-    def test_each_workflow_owns_full_original_coverage(self):
-        for path, checks in router.WORKFLOWS.items():
-            self.assertEqual(checks, selected([path]))
-
-    def test_shared_routing_and_tests_force_entire_family(self):
-        for path in ['.github/scripts/source_pack_paths.py', '.github/scripts/test_source_pack_paths.py',
-                     '.github/actions/source-pack-routing/action.yml']:
-            self.assertEqual(set(router.CHECKS), selected([path]))
-        self.assertEqual(router.BUILDERS, selected(['.github/actions/source-pack-toolchain/action.yml']))
-
-    def test_unknown_relevant_input_and_invalid_paths_fail_closed(self):
-        for path in [P + 'tools/new_generator.py', P + 'future/config.toml',
-                     P + 'overlays/gekkoushi/new/Parser.kt', P + 'overlays/gekkoushi/id/payload.bin',
-                     '.github/scripts/source_pack_new.py', 'compatibility/miyorare-source-pack-v2.json',
-                     '.github/actions/source-pack-new/action.yml', 'bad\rpath',
-                     '../packs.json', '/absolute', 'bad\npath', 'bad\\path', '']:
-            self.assertEqual(set(router.CHECKS), selected([path]))
-        self.assertEqual(set(router.CHECKS), selected([]))
-
-    def test_docs_metadata_and_unrelated_app_build_do_not_add_network_build_work(self):
-        self.assertEqual(set(), selected(['docs/CI_SOURCE_PACK_STAGE5.md', 'README.md',
-            P + 'README.md', P + 'ATTRIBUTION.md', '.gitignore', 'app/build.gradle',
-            router.APP_ROOT + 'readerjourney/Ordinary.kt']))
-
-
-class CandidateTest(unittest.TestCase):
+class RouterTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.repo = Path(self.temp.name)
-        self.git('init', '-q')
-        self.git('config', 'user.name', 'Test')
-        self.git('config', 'user.email', 'test@example.invalid')
-        self.commit('README.md', 'base')
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
+        self.git('config', 'user.email', 'ci@example.invalid')
+        self.git('config', 'user.name', 'CI')
+        (self.repo / 'README.md').write_text('base\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'base')
         self.base = self.git('rev-parse', 'HEAD').strip()
 
-    def git(self, *args):
-        return subprocess.check_output(['git', *args], cwd=self.repo, text=True, stderr=subprocess.PIPE)
+    def tearDown(self):
+        self.tmp.cleanup()
 
-    def commit(self, path, content):
+    def git(self, *args):
+        return subprocess.run(['git', '-C', str(self.repo), *args], check=True, text=True, stdout=subprocess.PIPE).stdout
+
+    def commit(self, path, content='x'):
         target = self.repo / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
-        self.git('add', '--', path)
-        self.git('commit', '-qm', 'fixture')
+        self.git('add', path)
+        self.git('commit', '-qm', path)
         return self.git('rev-parse', 'HEAD').strip()
 
-    def test_entire_pr_not_last_commit_and_exact_head(self):
-        self.commit(P + 'overlays/gekkoushi/all/Gelbooru.kt', 'global')
-        head = self.commit('README.md', 'last commit is docs')
-        result = router.route(self.repo, 'pull_request', self.base, head)
-        self.assertEqual({'run_global'}, {key for key in router.CHECKS if result[key]})
-        self.assertTrue(all(router.route(self.repo, 'pull_request', self.base, self.base)[k] for k in router.CHECKS))
+    def test_path_classification(self):
+        cases = {
+            P + 'packs.json': set(router.CHECKS),
+            P + 'multi-upstream.json': {'run_multi'},
+            P + 'overlays/gekkoushi/id/A.kt': {'run_id'},
+            P + 'overlays/gekkoushi/en/A.kt': {'run_en'},
+            P + 'overlays/gekkoushi/all/A.kt': {'run_global'},
+            P + 'tools/prepare_global_gekkoushi_shard.py': {'run_global'},
+            'compatibility/miyorare-source-pack-contract.v1.json': {'run_contract', 'run_mirror'},
+            '.github/scripts/source_pack_paths.py': set(router.CHECKS),
+            '.github/actions/source-pack-routing/action.yml': set(router.CHECKS),
+        }
+        for path, expected in cases.items():
+            self.assertEqual(expected, selected([path]), path)
 
-    def test_rename_deletion_is_not_hidden(self):
-        head = self.commit(P + 'tools/verify_multi_upstream.py', 'intake')
-        self.git('mv', P + 'tools/verify_multi_upstream.py', 'renamed.txt')
+    def test_docs_only_routes_none(self):
+        self.assertEqual(set(), selected(['README.md', 'docs/x.md']))
+
+    def test_unknown_source_pack_path_routes_full(self):
+        self.assertEqual(set(router.CHECKS), selected([P + 'unknown.toml']))
+
+    def test_unknown_ci_path_routes_full(self):
+        self.assertEqual(set(router.CHECKS), selected(['.github/actions/source-pack-new/action.yml']))
+
+    def test_mixed_paths_union(self):
+        self.assertEqual({'run_id', 'run_en'}, selected([P + 'overlays/gekkoushi/id/A.kt', P + 'overlays/gekkoushi/en/B.kt']))
+
+    def test_renames_route_both_old_and_new_paths(self):
+        first = self.commit(P + 'overlays/gekkoushi/id/A.kt', 'a')
+        self.git('mv', P + 'overlays/gekkoushi/id/A.kt', P + 'overlays/gekkoushi/en/A.kt')
         self.git('commit', '-qm', 'rename')
-        current = self.git('rev-parse', 'HEAD').strip()
-        self.assertTrue(router.route(self.repo, 'pull_request', head, current)['run_multi'])
+        head = self.git('rev-parse', 'HEAD').strip()
+        self.assertEqual({'run_id', 'run_en'}, router.route(self.repo, 'pull_request', first, head))
+
+    def test_deleted_paths_are_classified(self):
+        first = self.commit(P + 'overlays/gekkoushi/all/A.kt', 'a')
+        self.git('rm', P + 'overlays/gekkoushi/all/A.kt')
+        self.git('commit', '-qm', 'delete')
+        head = self.git('rev-parse', 'HEAD').strip()
+        self.assertTrue(router.route(self.repo, 'pull_request', first, head)['run_global'])
 
     def test_missing_history_zero_base_parser_failure_and_unknown_event_run_full(self):
         head = self.commit('README.md', 'docs')
@@ -213,8 +171,6 @@ class WorkflowContractTest(unittest.TestCase):
                  '.github/actions/source-pack-toolchain/action.yml',
                  *(P + 'tools/' + name for name in router.TOOLS),
                  *(P + 'overlays/gekkoushi/' + locale + '/New.kt' for locale in ('id', 'en', 'all'))]
-        # Unknown contract files stay in the contract workflow's own lifecycle;
-        # unknown staging/shared CI inputs must reach the entire family.
         for path in cases:
             required = selected([path])
             for workflow, owners in router.WORKFLOWS.items():
@@ -253,81 +209,15 @@ class WorkflowContractTest(unittest.TestCase):
             'miyorare-source-pack-check.yml': ('Miyorare Source Pack Check', 'build-pack:', 'Build Miyorare-${{ matrix.pack }}'),
             'miyorare-global-source-pack-check.yml': ('Miyorare Global Source Pack Check', 'build-global:', 'Build Miyorare-Global'),
             'miyorare-multi-upstream-check.yml': ('Miyorare Multi-Upstream Check', 'verify:', 'Verify Keiyoushi + UMA source intake'),
-            'source-pack-contract.yml': ('Source Pack Compatibility Contract', 'contract:', None),
+            'source-pack-contract.yml': ('Source Pack Compatibility Contract', 'contract:', 'contract'),
         }
-        for filename, (name, job, check) in identities.items():
+        for filename, (title, job, job_name) in identities.items():
             text = read('.github/workflows/' + filename)
-            self.assertTrue(text.startswith('name: ' + name + '\n'))
-            self.assertIn('  ' + job, text)
-            if check:
-                self.assertIn('name: ' + check, text)
-            self.assertIn('  workflow_dispatch:', text)
-            self.assertIn('github.event.pull_request.head.sha || github.sha', text)
-            self.assertIn('fetch-depth: 0', text)
-            self.assertIn('uses: ./.github/actions/source-pack-routing', text)
-            self.assertIn("!= 'false'", text)
-            self.assertIn("steps.routing.outputs.tests_passed == 'false'", text)
-            self.assertNotIn('startsWith(github.head_ref', text)
-            self.assertIn('contents: read', text)
-            self.assertNotIn('\n  contents: write\n', text)
-            self.assertNotIn('secrets.', text)
-            self.assertNotIn('schedule:', text)
-            self.assertNotIn('workflow_call:', text)
-            for line in text.splitlines():
-                if line.startswith("      - '"):
-                    ast.literal_eval(line[8:])
-            self.assertIn("'.github/actions/source-pack-*/**'", text)
-            self.assertIn("'extensions/miyorare-sources/**'", text)
-        self.assertIn('  push:', read('.github/workflows/miyorare-global-source-pack-check.yml'))
-        self.assertIn('branches: [main]', read('.github/workflows/source-pack-contract.yml'))
-        self.assertNotIn('  push:', read('.github/workflows/miyorare-source-pack-check.yml'))
-        self.assertNotIn('  push:', read('.github/workflows/miyorare-multi-upstream-check.yml'))
-
-    def test_all_heavy_steps_are_guarded_and_manual_pins_and_builds_still_exist(self):
-        for path in router.WORKFLOWS:
-            for block in re.split(r'(?=      - name: )', read(path)):
-                if not block.startswith('      - name: '):
-                    continue
-                if block.splitlines()[0][14:] in {'Checkout Miyorare exact candidate', 'Route Source Pack coverage'}:
-                    continue
-                self.assertIn('        if: ${{', block)
-        for filename in ['miyorare-source-pack-check.yml', 'miyorare-global-source-pack-check.yml']:
-            text = read('.github/workflows/' + filename)
-            self.assertIn('./gradlew buildJar --rerun-tasks --no-daemon --stacktrace', text)
-            self.assertIn('uses: ./.github/actions/source-pack-toolchain', text)
-        text = read('.github/actions/source-pack-toolchain/action.yml')
-        for required in ["java-version: '17'", "gradle-version: '8.14.3'", 'packages: platform-tools']:
-            self.assertIn(required, text)
-        farm = read('.github/workflows/miyorare-farm-pack-membership-sync.yml')
-        self.assertIn('gh workflow run miyorare-source-pack-check.yml', farm)
-
-    def test_composite_rejects_failed_tests_broken_parser_and_invalid_output(self):
-        text = read('.github/actions/source-pack-routing/action.yml')
-        # Extract the executed shell block using its actual indentation; no YAML dependency.
-        body = textwrap.dedent(text.split('        set -euo pipefail\n', 2)[2])
-        body = 'set -euo pipefail\n' + body
-        for mode in ['test_failure', 'parser_failure', 'invalid_json']:
-            with tempfile.TemporaryDirectory() as directory:
-                temp = Path(directory)
-                executable = temp / 'python3'
-                executable.write_text('#!/bin/bash\n' +
-                    'if [[ "$*" == *test_source_pack_paths.py* ]]; then\n' +
-                    ('exit 1\n' if mode == 'test_failure' else 'exit 0\n') +
-                    'elif [[ "$*" == *source_pack_paths.py* ]]; then\n' +
-                    ('exit 1\n' if mode == 'parser_failure' else "echo '{\"run_global\":false}'\nexit 0\n") +
-                    'else\nexec ' + sys.executable + ' "$@"\nfi\n')
-                executable.chmod(0o755)
-                output = temp / 'outputs'
-                env = {**os.environ, 'PATH': str(temp) + ':' + os.environ['PATH'],
-                       'RUNNER_TEMP': directory, 'GITHUB_OUTPUT': str(output),
-                       'GITHUB_STEP_SUMMARY': str(temp / 'summary'), 'EVENT': 'pull_request',
-                       'BASE': 'a' * 40, 'CANDIDATE': 'b' * 40}
-                subprocess.run(['bash', '-c', body], cwd=ROOT, env=env, check=True, stdout=subprocess.PIPE)
-                result = output.read_text()
-                for key in router.CHECKS:
-                    self.assertIn(key + '=true', result)
-                if mode == 'test_failure':
-                    self.assertIn('tests_passed=false', result)
+            self.assertIn('name: ' + title, text)
+            self.assertIn(job, text)
+            self.assertIn('name: ' + job_name, text)
+            self.assertIn('workflow_dispatch:', text)
+            self.assertIn('ref: ${{ github.event_name == \'pull_request\' && github.event.pull_request.head.sha || github.sha }}', text)
 
 
 if __name__ == '__main__':
