@@ -86,8 +86,10 @@ through the domain owners and a test-only SAF DocumentsProvider, counts real ext
 materialization and PDF cover-render calls, and verifies restart hits plus source refresh,
 Reader backing/lazy-page safety and archive/sidecar/direct-image paths.
 
-The SAF fixture provider exists only in the test APK. Test shell permissions are adopted for
-MANAGE_DOCUMENTS; no production SAF grants/permissions or containment checks are changed.
+The SAF fixture provider and grant activity exist only in the test APK. The provider-owning
+test UID grants its root tree to the target app, preserving Android's URI permission checks;
+no production SAF grants/permissions or containment checks are changed. The Hilt fixture also
+initializes/restores the PDF page-cache context normally initialized by BaseApp.
 Owner recreation is simulated by replacing ImageLoader, SmartLocalLibrary, LocalContentReader
 and SmartLocalCoverCache; this is not a literal OS process kill or physical-device validation.
 

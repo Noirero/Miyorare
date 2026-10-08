@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -21,6 +22,7 @@ import coil3.toBitmap
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.runBlocking
+import okhttp3.internal.platform.PlatformRegistry
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -58,6 +60,7 @@ class SmartLocalCoverPipelineTest {
     private lateinit var cache: SmartLocalCoverCache
     private var loader: ImageLoader? = null
     private var beforePresentation: (suspend () -> Unit)? = null
+    private var previousPdfContext: Context? = null
     private val counts = Counts()
     private val readerPageDirectories = HashSet<File>()
     private val resolver get() = context.contentResolver
@@ -65,9 +68,11 @@ class SmartLocalCoverPipelineTest {
     private val rootUri = DocumentsContract.buildTreeDocumentUri(provider.authority, "root").toString()
 
     @Before fun setUp() {
-        InstrumentationRegistry.getInstrumentation().uiAutomation.adoptShellPermissionIdentity("android.permission.MANAGE_DOCUMENTS")
         hilt.inject()
         context = FixtureContext(InstrumentationRegistry.getInstrumentation().targetContext)
+        previousPdfContext = PlatformRegistry.applicationContext
+        PlatformRegistry.applicationContext = context
+        fixtureGrant(false)
         call("fixture-reset")
         context.getSharedPreferences("smart_local_library", Context.MODE_PRIVATE).edit().putString("roots",
             JSONArray().put(JSONObject().put("uri", rootUri).put("name", "Fixture")).toString()).commit()
@@ -80,7 +85,8 @@ class SmartLocalCoverPipelineTest {
         context.getSharedPreferences("smart_local_library", Context.MODE_PRIVATE).edit().clear().commit()
         readerPageDirectories.forEach { it.deleteRecursively() }
         context.storage.deleteRecursively()
-        InstrumentationRegistry.getInstrumentation().uiAutomation.dropShellPermissionIdentity()
+        PlatformRegistry.applicationContext = previousPdfContext
+        fixtureGrant(true)
     }
 
     @Test fun coldPdfRecreateOwnersWarmHitNeverExtractsMaterializesOrRendersAgain() = runBlocking {
@@ -289,7 +295,15 @@ class SmartLocalCoverPipelineTest {
 
     private fun contentFiles() = File(context.cacheDir, "smart-local-content").listFiles().orEmpty().toList()
     private fun metrics() = call("fixture-counts")!!
-    private fun call(method: String, arg: String? = null, bundle: Bundle? = null) = resolver.call(provider, method, arg, bundle)
+    private fun call(method: String, arg: String? = null, bundle: Bundle? = null) = resolver.call(Uri.parse(rootUri), method, arg, bundle)
+    private fun fixtureGrant(revoke: Boolean) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val component = "${instrumentation.context.packageName}/${CoverFixtureGrantActivity::class.java.name}"
+        val command = "am start -W -n $component --es recipient ${context.packageName} --ez revoke $revoke"
+        val output = ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command))
+            .bufferedReader().use { it.readText() }
+        check(!output.contains("Error:")) { output }
+    }
     private fun put(name: String, bytes: ByteArray, padding: Int = 0) = call("fixture-put", name,
         Bundle().apply { putByteArray("bytes", bytes); putInt("padding", padding) })
     private fun pdf(color: Int): ByteArray {
