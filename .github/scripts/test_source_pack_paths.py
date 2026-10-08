@@ -186,7 +186,7 @@ class CandidateTest(unittest.TestCase):
     def test_missing_history_zero_base_parser_failure_and_unknown_event_run_full(self):
         head = self.commit('README.md', 'docs')
         for event, base in [('pull_request', 'f' * 40), ('push', '0' * 40), ('push', ''), ('unknown', self.base)]:
-            result = router.route(self.repo, 'pull_request', self.base, head)
+            result = router.route(self.repo, event, base, head)
             self.assertTrue(all(result[k] for k in router.CHECKS))
         with patch.object(router, 'git', side_effect=UnicodeDecodeError('utf8', b'\xff', 0, 1, 'invalid')):
             result = router.route(self.repo, 'pull_request', self.base, head)
