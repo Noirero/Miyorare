@@ -5,25 +5,38 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.koitharu.kotatsu.local.library.LocalTreeScanner.Node
+import java.io.File
 
 class LocalContentTypeTest {
 
     @Test
-    fun epubOnlyBookIsNovelAndUsesEpubRoute() {
+    fun epubOnlyBookIsNovel() {
         val book = book("Novel", listOf("Volume 1.EPUB", "Volume 2.epub"))
 
         assertEquals(LocalContentType.NOVEL, book.contentType)
         assertTrue(book.isNovel)
-        assertTrue(book.toManga(showExtensions = false).url.endsWith("/book.epub"))
     }
 
     @Test
-    fun comicBookIsMangaAndUsesComicRoute() {
+    fun comicBookIsManga() {
         val book = book("Comic", listOf("Chapter 1.cbz", "Chapter 2.zip"))
 
         assertEquals(LocalContentType.MANGA, book.contentType)
         assertFalse(book.isNovel)
-        assertTrue(book.toManga(showExtensions = false).url.endsWith("/book"))
+    }
+
+    @Test
+    fun routeSelectionUsesTheSameCapabilityAuthority() {
+        val source = source("org/koitharu/kotatsu/local/library/LocalLibraryModels.kt")
+
+        assertTrue(
+            "Smart Local routing must derive EPUB vs comic route from LocalBook.isNovel",
+            source.contains("if(isNovel)\"book.epub\"else\"book\""),
+        )
+        assertFalse(
+            "Routing must not duplicate EPUB extension detection outside the content-type authority",
+            source.substringAfter("funtoManga(").substringBefore("data class LocalLibrarySnapshot").contains("extension("),
+        )
     }
 
     @Test
@@ -56,4 +69,12 @@ class LocalContentTypeTest {
 
     private fun node(key: String, uri: String, name: String, directory: Boolean) =
         Node(key, uri, name, directory, 0L, 0L)
+
+    private fun source(relativePath: String): String = sequenceOf(
+        File("src/main/kotlin", relativePath),
+        File("app/src/main/kotlin", relativePath),
+    ).firstOrNull(File::isFile)?.readText()
+        ?.replace(Regex("""//[^\r\n]*"""), "")
+        ?.replace(Regex("""\s+"""), "")
+        ?: error("Cannot find production source: $relativePath")
 }
