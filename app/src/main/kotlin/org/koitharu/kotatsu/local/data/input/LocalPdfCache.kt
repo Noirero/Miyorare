@@ -8,6 +8,7 @@ import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.withContext
 import okhttp3.internal.platform.PlatformRegistry
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -80,6 +81,19 @@ object LocalPdfCache {
 			}
 		}
 	}.getOrNull()
+
+	/** Transient cover derivation for Smart Local. Persistence belongs to SmartLocalCoverCache. */
+	fun renderCoverThumbnail(pdf: File): ByteArray? = withRenderPermit {
+		openRenderer(pdf) { renderer ->
+			if (renderer.pageCount <= 0) return@openRenderer null
+			val bitmap = renderBitmap(renderer, 0, COVER_MAX_RENDER_DIMENSION)
+			try {
+				val output = ByteArrayOutputStream()
+				if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) throw IOException("Cannot encode PDF cover")
+				output.toByteArray()
+			} finally { bitmap.recycle() }
+		}
+	}
 
 	/**
 	 * Return stable cache targets for all pages without rendering them eagerly. The tiny source marker
@@ -189,25 +203,14 @@ object LocalPdfCache {
 		ensureOutputDir(outputDir)
 
 		val tempFile = File(outputDir, outputFile.name + ".tmp")
-		renderer.openPage(pageIndex).use { page ->
-			val maxPageSize = maxOf(page.width, page.height).coerceAtLeast(1)
-			val scale = minOf(PDF_RENDER_SCALE, maxRenderDimension / maxPageSize.toFloat())
-			val matrix = Matrix().apply { setScale(scale, scale) }
-			val width = (page.width * scale).roundToInt().coerceAtLeast(1)
-			val height = (page.height * scale).roundToInt().coerceAtLeast(1)
-			val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-			try {
-				bitmap.eraseColor(Color.WHITE)
-				page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-				tempFile.outputStream().buffered().use { output ->
-					if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
-						throw IOException("Cannot encode rendered PDF page $pageIndex")
-					}
+		val bitmap = renderBitmap(renderer, pageIndex, maxRenderDimension)
+		try {
+			tempFile.outputStream().buffered().use { output ->
+				if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+					throw IOException("Cannot encode rendered PDF page $pageIndex")
 				}
-			} finally {
-				bitmap.recycle()
 			}
-		}
+		} finally { bitmap.recycle() }
 
 		if (outputFile.exists() && !outputFile.delete()) {
 			tempFile.delete()
@@ -219,6 +222,21 @@ object LocalPdfCache {
 		}
 		return outputFile
 	}
+
+	private fun renderBitmap(renderer: PdfRenderer, pageIndex: Int, maxRenderDimension: Int): Bitmap =
+		renderer.openPage(pageIndex).use { page ->
+			val maxPageSize = maxOf(page.width, page.height).coerceAtLeast(1)
+			val scale = minOf(PDF_RENDER_SCALE, maxRenderDimension / maxPageSize.toFloat())
+			val matrix = Matrix().apply { setScale(scale, scale) }
+			val width = (page.width * scale).roundToInt().coerceAtLeast(1)
+			val height = (page.height * scale).roundToInt().coerceAtLeast(1)
+			val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+			try {
+				bitmap.eraseColor(Color.WHITE)
+				page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+				bitmap
+			} catch (error: Throwable) { bitmap.recycle(); throw error }
+		}
 
 	private fun validateSourceIdentity(pdf: File, outputDir: File) {
 		val expectedDir = cacheDirFor(pdf)

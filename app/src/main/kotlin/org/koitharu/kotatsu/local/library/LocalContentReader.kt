@@ -2,11 +2,11 @@ package org.koitharu.kotatsu.local.library
 
 import android.content.ContentResolver
 import android.content.Context
-import android.graphics.BitmapFactory
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
@@ -31,7 +31,7 @@ import javax.inject.Singleton
 
 /** Reuses archive/PDF/EPUB backends. Seekable copies are lazy cache artifacts, never user imports. */
 @Singleton
-class LocalContentReader @Inject constructor(
+open class LocalContentReader @Inject constructor(
     @ApplicationContext private val context: Context, private val documents: LocalDocuments,
 ) {
     private val cacheMutex = Mutex()
@@ -42,7 +42,7 @@ class LocalContentReader @Inject constructor(
     private val metadataCache = android.util.LruCache<String, LocalMetadata>(32)
     private val cacheDir get() = File(context.cacheDir, "smart-local-content").also { it.mkdirs() }
 
-    suspend fun materialize(root: Node, node: Node): File = withContext(Dispatchers.IO) {
+    open suspend fun materialize(root: Node, node: Node): File = withContext(Dispatchers.IO) {
         check(documents.contains(root, node)) { "Content outside selected root" }
         val uri = node.uri.toUri()
         if (uri.scheme == ContentResolver.SCHEME_FILE) return@withContext uri.toFile()
@@ -67,7 +67,9 @@ class LocalContentReader @Inject constructor(
                     check(temporary.renameTo(target)) { "Cannot prepare local content" }
                 } finally { temporary.delete() }
             }
-            target.setLastModified(System.currentTimeMillis())
+            // Reader page cache identity includes backing-file mtime. Touch only an unpinned
+            // artifact; reopening it for a cover must not invalidate an active Reader marker.
+            if (!activeFiles.isPinned(target.name)) target.setLastModified(System.currentTimeMillis())
             activeFiles.acquire(target.name)
             trimMaterializedCacheLocked()
             target
@@ -78,6 +80,8 @@ class LocalContentReader @Inject constructor(
         if (file.parentFile != cacheDir) return
         cacheMutex.withLock {
             activeFiles.release(file.name)
+            // A cover-only copy is temporary. A concurrent/retained Reader reference wins.
+            if (!activeFiles.isPinned(file.name)) file.delete()
             trimMaterializedCacheLocked()
         }
     }
@@ -181,67 +185,48 @@ class LocalContentReader @Inject constructor(
         }
     }
 
-    suspend fun cover(root: Node, book: LocalBook): ByteArray? = withContext(Dispatchers.IO) {
-        fun valid(bytes: ByteArray?): ByteArray? {
-            if (bytes == null) return null
-            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-            return bytes.takeIf { options.outWidth > 0 && options.outHeight > 0 }
-        }
-        val candidates = (listOfNotNull(book.cover) + book.sidecars.filter { LocalTreeScanner.isImage(it.name) }
-            .sortedByDescending { LocalTreeScanner.isSidecar(it.name) }.map { it.uri }).distinct()
-        for (uri in candidates) {
-            val node = (book.sidecars + book.chapters.flatMap { it.pages }).firstOrNull { it.uri == uri }
-            if (node != null && documents.contains(root, node)) {
-                runCatchingCancellable { valid(documents.input(node).use { it.readBytesLimited(8 * 1024 * 1024) }) }
-                    .getOrNull()?.let { return@withContext it }
-            }
-        }
-        for (chapter in book.chapters) {
+    internal open suspend fun cover(root: Node, plan: LocalCoverPlan): GeneratedLocalCover? = withContext(Dispatchers.IO) {
+        for ((index, node) in plan.candidates.withIndex()) {
             currentCoroutineContext().ensureActive()
             val bytes = runCatchingCancellable {
-                if (chapter.pages.isNotEmpty()) {
-                    for (page in chapter.pages.take(BoundedArchiveCoverReader.MAX_IMAGE_CANDIDATES)) {
-                        check(documents.contains(root, page))
-                        runCatchingCancellable {
-                            valid(documents.input(page).use { it.readBytesLimited(BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES) })
-                        }.getOrNull()?.let { return@runCatchingCancellable it }
+                check(documents.contains(root, node)) { "Content outside selected root" }
+                val extension = LocalTreeScanner.extension(node.name)
+                val source = when (extension) {
+                    "pdf" -> {
+                        val file = materialize(root, node)
+                        try { renderPdfCover(file) }
+                        finally { withContext(NonCancellable) { releaseMaterialized(file) } }
                     }
-                    null
-                } else {
-                    check(documents.contains(root, chapter.node)) { "Content outside selected root" }
-                    when (LocalTreeScanner.extension(chapter.node.name)) {
-                        "pdf" -> {
-                            val file = materialize(root, chapter.node)
-                            try {
-                                LocalPdfCache.renderCover(file)?.readBytes()
-                            } finally {
-                                releaseMaterialized(file)
-                            }
+                    "cbz", "zip", "epub" -> {
+                        val coroutine = currentCoroutineContext()
+                        documents.input(node).use { input ->
+                            BoundedArchiveCoverReader.read(
+                                input = input,
+                                isSafeImage = { path -> safeEntry(path) && LocalTreeScanner.isImage(path) },
+                                isPreferred = { path ->
+                                    val name = path.substringAfterLast('/')
+                                    LocalTreeScanner.isSidecar(name) || name.contains("cover", ignoreCase = true)
+                                },
+                                isValid = { candidate ->
+                                    val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                    android.graphics.BitmapFactory.decodeByteArray(candidate, 0, candidate.size, options)
+                                    options.outWidth > 0 && options.outHeight > 0
+                                },
+                                checkActive = { coroutine.ensureActive() },
+                            )
                         }
-                        "cbz", "zip", "epub" -> {
-                            val coroutineContext = currentCoroutineContext()
-                            documents.input(chapter.node).use { input ->
-                                BoundedArchiveCoverReader.read(
-                                    input = input,
-                                    isSafeImage = { path -> safeEntry(path) && LocalTreeScanner.isImage(path) },
-                                    isPreferred = { path ->
-                                        val name = path.substringAfterLast('/')
-                                        LocalTreeScanner.isSidecar(name) || name.contains("cover", ignoreCase = true)
-                                    },
-                                    isValid = { candidate -> valid(candidate) != null },
-                                    checkActive = { coroutineContext.ensureActive() },
-                                )
-                            }
-                        }
-                        else -> null
                     }
+                    else -> documents.input(node).use { it.readBytesLimited(BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES) }
                 }
+                if (extension == "pdf") source else source?.let(LocalCoverThumbnail::encode)
             }.getOrNull()
-            valid(bytes)?.let { return@withContext it }
+            if (bytes != null) return@withContext GeneratedLocalCover(bytes, index)
         }
-        null // Existing Coil/UI default artwork handles wholly unreadable/missing covers.
+        null
     }
+
+    // Kept separate from materialization so lifecycle tests can count real renderer calls.
+    protected open fun renderPdfCover(file: File): ByteArray? = LocalPdfCache.renderCoverThumbnail(file)
 
     private fun safeEntry(path: String) = path.isNotBlank() && !path.startsWith('/') && '\\' !in path &&
         path.split('/').none { it == ".." } && ':' !in path
