@@ -28,4 +28,10 @@
     <string name="smart_local_page_description">Halaman %d</string>
     <string name="smart_local_current_page_description">Halaman aktif %d</string>
     <string name="smart_local_chapter_toggle_description">%1$s %2$s %3$s</string>
+    <string name="smart_local_book_counts_localized">%1$s • %2$s</string>
+    <plurals name="smart_local_unread_chapters"><item quantity="one">%d bab belum dibaca</item><item quantity="other">%d bab belum dibaca</item></plurals>
+    <plurals name="smart_local_hidden_titles"><item quantity="one">%d judul tersembunyi</item><item quantity="other">%d judul tersembunyi</item></plurals>
+    <plurals name="smart_local_attention_items"><item quantity="one">%d item perlu diperiksa</item><item quantity="other">%d item perlu diperiksa</item></plurals>
+    <plurals name="smart_local_ignored_files"><item quantity="one">%d file diabaikan</item><item quantity="other">%d file diabaikan</item></plurals>
+    <string name="smart_local_information_message_localized">%1$s\n\n%2$s\n%3$s\nTerakhir dipindai: %4$s\n%5$s</string>
 </resources>

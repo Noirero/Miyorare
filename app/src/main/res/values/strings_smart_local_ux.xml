@@ -28,4 +28,10 @@
     <string name="smart_local_page_description">Page %d</string>
     <string name="smart_local_current_page_description">Current page %d</string>
     <string name="smart_local_chapter_toggle_description">%1$s %2$s %3$s</string>
+    <string name="smart_local_book_counts_localized">%1$s • %2$s</string>
+    <plurals name="smart_local_unread_chapters"><item quantity="one">%d unread chapter</item><item quantity="other">%d unread chapters</item></plurals>
+    <plurals name="smart_local_hidden_titles"><item quantity="one">%d hidden title</item><item quantity="other">%d hidden titles</item></plurals>
+    <plurals name="smart_local_attention_items"><item quantity="one">%d item needs attention</item><item quantity="other">%d items need attention</item></plurals>
+    <plurals name="smart_local_ignored_files"><item quantity="one">%d ignored file</item><item quantity="other">%d ignored files</item></plurals>
+    <string name="smart_local_information_message_localized">%1$s\n\n%2$s\n%3$s\nLast scanned: %4$s\n%5$s</string>
 </resources>

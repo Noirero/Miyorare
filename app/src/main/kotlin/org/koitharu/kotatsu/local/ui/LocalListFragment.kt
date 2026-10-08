@@ -188,9 +188,11 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
 	private fun showInformation(book: LocalBook) {
 		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_information)
-			.setMessage(getString(R.string.smart_local_information_message, book.node.uri, book.chapters.size,
+			.setMessage(getString(R.string.smart_local_information_message_localized, book.node.uri,
+				resources.getQuantityString(R.plurals.smart_local_chapters, book.chapters.size, book.chapters.size),
 				android.text.format.Formatter.formatFileSize(requireContext(), book.size),
-				java.text.DateFormat.getDateTimeInstance().format(java.util.Date(book.scannedAt)), book.ignored))
+				java.text.DateFormat.getDateTimeInstance().format(java.util.Date(book.scannedAt)),
+				resources.getQuantityString(R.plurals.smart_local_ignored_files, book.ignored, book.ignored)))
 			.setPositiveButton(android.R.string.ok, null).show()
 	}
 }

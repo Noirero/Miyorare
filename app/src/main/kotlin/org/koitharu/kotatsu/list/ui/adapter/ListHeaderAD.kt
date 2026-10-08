@@ -22,6 +22,7 @@ fun listHeaderAD(
 ) {
 	var badge: BadgeDrawable? = null
 	val defaultButtonMinHeight = binding.buttonMore.minHeight
+	val defaultHeaderBackground = itemView.background
 	val defaultHeaderEllipsize = binding.textViewTitle.ellipsize
 	val defaultButtonMinimumHeight = binding.buttonMore.minimumHeight
 	val defaultRootPaddingBottom = binding.root.paddingBottom
@@ -35,11 +36,15 @@ fun listHeaderAD(
 
 	bind {
 		val currentItem = item
+		val notice = currentItem.buttonStyle == ListHeader.ButtonStyle.NOTICE
+		itemView.background = if (notice) androidx.core.content.ContextCompat.getDrawable(context, R.drawable.bg_smart_local_notice) else defaultHeaderBackground
+		binding.textViewTitle.setCompoundDrawablesRelativeWithIntrinsicBounds(if (notice) R.drawable.ic_sparkles else 0, 0, 0, 0)
+		binding.textViewTitle.compoundDrawablePadding = context.resources.getDimensionPixelSize(R.dimen.margin_small)
 		val isChapterToggle = currentItem.buttonTextRes == R.string.smart_local_expand_chapter ||
 			currentItem.buttonTextRes == R.string.smart_local_collapse_chapter
-		binding.textViewTitle.setSingleLine(!isChapterToggle)
-		binding.textViewTitle.maxLines = if (isChapterToggle) 2 else 1
-		binding.textViewTitle.ellipsize = if (isChapterToggle) android.text.TextUtils.TruncateAt.END else defaultHeaderEllipsize
+		binding.textViewTitle.setSingleLine(!isChapterToggle && !notice)
+		binding.textViewTitle.maxLines = if (isChapterToggle || notice) 2 else 1
+		binding.textViewTitle.ellipsize = if (isChapterToggle || notice) android.text.TextUtils.TruncateAt.END else defaultHeaderEllipsize
 		androidx.core.view.ViewCompat.setAccessibilityHeading(binding.textViewTitle, isChapterToggle)
 		itemView.isSelected = isChapterToggle && currentItem.badge != null
 		binding.textViewTitle.text = currentItem.getText(context)

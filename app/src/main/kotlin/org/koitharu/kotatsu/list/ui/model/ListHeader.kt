@@ -18,6 +18,7 @@ data class ListHeader private constructor(
 	enum class ButtonStyle {
 		TEXT,
 		OUTLINED,
+		NOTICE,
 	}
 
 	constructor(

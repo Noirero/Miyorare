@@ -146,7 +146,7 @@ class LocalContentReader @Inject constructor(
                     } else for (section in entries.asReversed()) {
                         val marker = org.jsoup.nodes.Element("miyorare-section").attr("data-title", section.title)
                         val target = section.fragment?.let { fragment ->
-                            val id = runCatching { java.net.URLDecoder.decode(fragment, "UTF-8") }.getOrDefault(fragment)
+                            val id = runCatching { java.net.URLDecoder.decode(fragment.replace("+", "%2B"), "UTF-8") }.getOrDefault(fragment)
                             doc.getElementById(id)
                         }
                         if (target != null) target.before(marker) else doc.body().prependChild(marker)
