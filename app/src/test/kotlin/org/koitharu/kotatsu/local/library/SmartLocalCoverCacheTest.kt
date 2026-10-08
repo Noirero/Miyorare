@@ -126,9 +126,9 @@ class SmartLocalCoverCacheTest {
         assertTrue(directory.listFiles()!!.size <= 3)
         assertTrue(directory.listFiles()!!.all { it.length() < 1024 })
         // Reopening retains the newest thumbnail and only lazy-prunes idle or over-budget entries.
-        SmartLocalCoverCache(directory, 4096, 3).getOrGenerate(99, plan(node("99.pdf", size = 55L * 1024 * 1024))) {
+        assertNotNull(SmartLocalCoverCache(directory, 4096, 3).getOrGenerate(99, plan(node("99.pdf", size = 55L * 1024 * 1024))) {
             fail("Newest thumbnail was unnecessarily deleted on restart"); null
-        }
+        })
     }
 
     @Test fun explicitClearDoesNotResurrectAnInflightThumbnailOrTouchOtherOwnership() = runBlocking {
