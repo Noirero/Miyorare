@@ -58,6 +58,15 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 			return
 		}
 
+		val favouritesBySpace = FavouriteSpace.entries.associateWith { space ->
+			favouritesRepository.getAllManga(space)
+		}
+		val membershipBySpace = favouritesBySpace.mapValues { (_, mangas) ->
+			mangas.mapTo(HashSet()) { it.id }
+		}
+		val canInferSpaceFromPath =
+			downloadDestinationStore.privateUsesOwnRoot() && !downloadDestinationStore.rootsOverlap()
+
 		var allRootsReadable = true
 		for (space in FavouriteSpace.entries) {
 			// Use the same ownership boundary as interactive badges, including historical roots.
@@ -66,11 +75,16 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 			if (readable.size != configured.size || readable.isEmpty()) allRootsReadable = false
 			val roots = readable.map { File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME) }
 			if (roots.isEmpty()) continue
-			val candidates = favouritesRepository.getAllManga(space)
+			val candidates = favouritesBySpace.getValue(space)
 			val knownIds = downloadedContentClassifier.getKnownDownloadedIds(space, candidates.map { it.id })
+			val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
 			for (candidate in candidates) {
 				// Current downloads already have authoritative ownership; never parse them during repair.
 				if (candidate.id in knownIds || candidate.isLocal || !candidate.hasLegacyTitleCandidate(localTitles)) continue
+				// A shared physical root contains no Normal/Private identity. If the same title belongs to
+				// both spaces, assigning its legacy artifact to either side would be a guess, so leave it
+				// unresolved until an explicit ownership-producing action occurs.
+				if (!canInferSpaceFromPath && candidate.id in membershipBySpace.getValue(otherSpace)) continue
 				val remote = mangaDataRepository.findMangaById(candidate.id, withChapters = true) ?: continue
 				val linked = localMangaRepository.findSavedMangaIndexedByTitle(remote, roots) ?: continue
 				// Persist verified ownership before publishing/marking completion, as DownloadWorker does.
