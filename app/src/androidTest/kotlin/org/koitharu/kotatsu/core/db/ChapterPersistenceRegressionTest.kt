@@ -299,19 +299,57 @@ class ChapterPersistenceRegressionTest {
 	@Test
 	fun libraryIndicatorPreservesGridCounterPositionOnRebind() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
-			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
-			val parent = android.widget.FrameLayout(themed)
-			val view = org.koitharu.kotatsu.list.ui.MangaIndicatorsView(themed)
-			parent.addView(view, android.widget.FrameLayout.LayoutParams(
-				android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-			))
-			for ((favorite, counter) in listOf(true to 8, false to 8, false to 0, true to 0)) {
-				view.bindGrid(isSaved = true, isLocalSource = true, isFavorite = favorite, counter = counter)
-				val expectedOffset = if (favorite) themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.library_indicator_grid_top_offset)
-					else ((if (counter > 0) 32 else 16) * themed.resources.displayMetrics.density).toInt()
-				assertEquals(expectedOffset, (view.layoutParams as android.widget.FrameLayout.LayoutParams).topMargin)
-				assertEquals(if (favorite) android.view.View.VISIBLE else android.view.View.GONE,
-					view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.library_label).visibility)
+			for (densityDpi in listOf(160, 240, 320)) {
+				val configuration = android.content.res.Configuration(context.resources.configuration).apply {
+					this.densityDpi = densityDpi
+				}
+				val themed = android.view.ContextThemeWrapper(
+					context.createConfigurationContext(configuration), org.koitharu.kotatsu.R.style.Theme_Kotatsu,
+				)
+				// Use the actual grid overlay's XML attributes and FrameLayout params, without the
+				// unrelated CoverImageView/Hilt host. The cover fills this same unpadded container.
+				val parent = android.widget.FrameLayout(themed)
+				val view = themed.resources.getLayout(org.koitharu.kotatsu.R.layout.item_manga_grid).use { parser ->
+					while (parser.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+						if (parser.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name.endsWith("MangaIndicatorsView")) break
+					}
+					val attrs = android.util.Xml.asAttributeSet(parser)
+					org.koitharu.kotatsu.list.ui.MangaIndicatorsView(themed, attrs).also {
+						parent.addView(it, parent.generateLayoutParams(attrs))
+					}
+				}
+				val label = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.library_label)
+				val icons = view.findViewById<org.koitharu.kotatsu.core.ui.widgets.IconsView>(org.koitharu.kotatsu.R.id.status_icons)
+				for (direction in listOf(android.view.View.LAYOUT_DIRECTION_LTR, android.view.View.LAYOUT_DIRECTION_RTL)) {
+					parent.layoutDirection = direction
+					for (widthDp in listOf(79, 90, 140)) {
+						val width = (widthDp * themed.resources.displayMetrics.density).toInt()
+						val height = (200 * themed.resources.displayMetrics.density).toInt()
+						for (saved in listOf(false, true)) for (local in listOf(false, true)) {
+							for ((favorite, counter) in listOf(true to 8, false to 8, false to 0, true to 0)) {
+								view.bindGrid(isSaved = saved, isLocalSource = local, isFavorite = favorite, counter = counter)
+								val expectedOffset = if (favorite) 0
+									else ((if (counter > 0) 32 else 16) * themed.resources.displayMetrics.density).toInt()
+								assertEquals(expectedOffset, (view.layoutParams as android.widget.FrameLayout.LayoutParams).topMargin)
+								assertEquals(if (favorite) android.view.View.VISIBLE else android.view.View.GONE, label.visibility)
+								assertEquals((if (saved) 1 else 0) + (if (local) 1 else 0), icons.iconsCount)
+								assertEquals(if (favorite || saved || local) android.view.View.VISIBLE else android.view.View.GONE, view.visibility)
+								parent.measure(
+									android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
+									android.view.View.MeasureSpec.makeMeasureSpec(height, android.view.View.MeasureSpec.EXACTLY),
+								)
+								parent.layout(0, 0, width, height)
+								if (view.visibility == android.view.View.VISIBLE) {
+									assertEquals(expectedOffset, view.top)
+									assertTrue(view.measuredWidth <= width)
+									if (direction == android.view.View.LAYOUT_DIRECTION_LTR) assertEquals(0, view.left)
+									else assertEquals(width, view.right)
+									if (favorite) assertEquals(0, view.top)
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 	}
