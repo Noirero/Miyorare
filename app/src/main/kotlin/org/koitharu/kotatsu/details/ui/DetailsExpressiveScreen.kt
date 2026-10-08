@@ -58,6 +58,8 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 
 private const val KEY_GENRE_RECOMMENDATIONS_VISIBLE = "genre_recommendations_visible"
 
@@ -87,6 +89,7 @@ class DetailsExpressiveActions(
 	val onChapterOptionsResetClick: () -> Unit,
 	val onChapterClick: (ChapterListItem) -> Unit,
 	val onChapterDownloadClick: (ChapterListItem) -> Unit,
+	val onChapterPersonalClick: (ChapterListItem) -> Unit,
 )
 
 @Composable
@@ -119,6 +122,7 @@ fun DetailsExpressiveScreen(
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
+	var chaptersExpanded by rememberSaveable(manga?.id) { mutableStateOf(true) }
 	var showRelatedSuggestions by rememberBooleanPref(
 		AppSettings.KEY_RELATED_MANGA,
 		relatedDiscoveryEnabled,
@@ -300,9 +304,11 @@ fun DetailsExpressiveScreen(
 								onManage = actions.onChaptersClick,
 								onSetDefault = actions.onChapterOptionsSetDefaultClick,
 								onReset = actions.onChapterOptionsResetClick,
+								expanded = chaptersExpanded,
+								onToggleExpanded = { chaptersExpanded = !chaptersExpanded },
 							)
 						}
-						items(
+						if (chaptersExpanded) items(
 							items = chapters,
 							key = { it.detailsLazyListKey() },
 							contentType = { "chapter" },
@@ -314,6 +320,7 @@ fun DetailsExpressiveScreen(
 								onClick = { actions.onChapterClick(chapter) },
 								onDownloadClick = { actions.onChapterDownloadClick(chapter) },
 								onManageClick = actions.onChaptersClick,
+								onPersonalClick = { actions.onChapterPersonalClick(chapter) },
 							)
 						}
 					}

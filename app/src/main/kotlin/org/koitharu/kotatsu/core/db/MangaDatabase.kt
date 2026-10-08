@@ -114,13 +114,16 @@ import org.koitharu.kotatsu.suggestions.data.SuggestionEntity
 import org.koitharu.kotatsu.tracker.data.TrackEntity
 import org.koitharu.kotatsu.tracker.data.TrackLogEntity
 import org.koitharu.kotatsu.tracker.data.TracksDao
+import org.koitharu.kotatsu.core.db.migrations.Migration51To52
+import org.koitharu.kotatsu.details.data.ChapterPersonalDao
+import org.koitharu.kotatsu.details.data.ChapterPersonalEntity
 
-const val DATABASE_VERSION = 51
+const val DATABASE_VERSION = 52
 
 @Database(
 	entities = [
 		LibrarySyncMappingEntity::class, LibrarySyncEntryEntity::class,
-		MangaEntity::class, TagEntity::class, HistoryEntity::class, MangaTagsEntity::class, ChapterEntity::class,
+		MangaEntity::class, TagEntity::class, HistoryEntity::class, MangaTagsEntity::class, ChapterEntity::class, ChapterPersonalEntity::class,
 		FavouriteCategoryEntity::class, FavouriteEntity::class, PrivateFavouriteEntity::class, MangaPrefsEntity::class,
 		TrackEntity::class, TrackLogEntity::class, SuggestionEntity::class, BookmarkEntity::class, ScrobblingEntity::class,
 		MangaSourceEntity::class, StatsEntity::class, LocalMangaIndexEntity::class, FavouriteDownloadIndexEntity::class,
@@ -153,6 +156,7 @@ abstract class MangaDatabase : RoomDatabase() {
 	abstract fun getReaderJourneyDao(): ReaderJourneyDao
 	abstract fun getLocalMangaIndexDao(): LocalMangaIndexDao
 	abstract fun getChaptersDao(): ChaptersDao
+	abstract fun getChapterPersonalDao(): ChapterPersonalDao
 	abstract fun getLibraryGroupsDao(): LibraryGroupsDao
 	abstract fun getLibraryGroupMetadataDao(): LibraryGroupMetadataDao
 	abstract fun getLibraryGroupTrackingDao(): LibraryGroupTrackingDao
@@ -167,7 +171,7 @@ fun getDatabaseMigrations(context: Context): Array<Migration> = arrayOf(
 	Migration31To32(), Migration32To33(), Migration33To34(), Migration34To35(), Migration35To36(), Migration36To37(),
 	Migration37To38(), Migration38To39(), Migration39To40(), Migration40To41(), Migration41To42(), Migration42To43(),
 	Migration43To44(), Migration44To45(), Migration45To46(), Migration46To47(), Migration47To48(), Migration48To49(), Migration49To50(),
-	Migration50To51(),
+	Migration50To51(), Migration51To52(),
 )
 
 fun MangaDatabase(context: Context): MangaDatabase = Room

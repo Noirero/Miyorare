@@ -177,6 +177,7 @@ class ChapterBackup(
 class MangaWithChaptersBackup(
 	@SerialName("manga") val manga: MangaBackup,
 	@SerialName("chapters") val chapters: List<ChapterBackup> = emptyList(),
+	@SerialName("personal_metadata") val personalMetadata: List<ChapterPersonalBackup> = emptyList(),
 )
 
 @Serializable

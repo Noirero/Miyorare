@@ -551,6 +551,57 @@ class LocalBackupIdentityTest {
 		}
 	}
 
+	@Test
+	fun chapterPersonalNativeBackupRestoresWithoutChapterCacheAndOldBackupsDoNotClearIt() = runTest {
+		val owner = manga(1001L, "Annotated chapter", "/manga/1001")
+		database.getMangaDao().upsert(owner)
+		val annotation = org.koitharu.kotatsu.details.data.ChapterPersonalEntity(owner.id, owner.source, "/chapter/a", 5, "Peak chapter")
+		database.getChapterPersonalDao().upsert(annotation)
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val file = File.createTempFile("chapter_personal_", ".zip", context.cacheDir)
+		try {
+			ZipOutputStream(file.outputStream()).use { repository.createBackup(it, null) }
+			database.clearAllTables()
+			val result = ZipInputStream(file.inputStream()).use { repository.restoreBackup(it, setOf(BackupSection.CHAPTERS), null) }
+			assertTrue(result.failures.toString(), result.isAllSuccess)
+			assertEquals(annotation, database.getChapterPersonalDao().findAll(listOf(owner.id)).single())
+			val old = java.io.ByteArrayOutputStream()
+			ZipOutputStream(old).use {
+				it.putNextEntry(java.util.zip.ZipEntry("chapters"))
+				it.write("[]".toByteArray())
+				it.closeEntry()
+			}
+			ZipInputStream(old.toByteArray().inputStream()).use { repository.restoreBackup(it, setOf(BackupSection.CHAPTERS), null) }
+			assertEquals(annotation, database.getChapterPersonalDao().findAll(listOf(owner.id)).single())
+		} finally { file.delete() }
+	}
+
+	@Test
+	fun privateChapterPersonalMetadataFollowsNativeBackupOptIn() = runTest {
+		val owner = manga(1002L, "Private annotated", "/manga/1002")
+		database.getMangaDao().upsert(owner)
+		val privateCategory = database.getFavouriteCategoriesDao().insert(category("Private annotations", 42, FavouriteSpace.PRIVATE)).toLong()
+		database.getPrivateFavouritesDao().upsert(PrivateFavouriteEntity(owner.id, privateCategory, 0, false, 1L, 0L))
+		val annotation = org.koitharu.kotatsu.details.data.ChapterPersonalEntity(owner.id, owner.source, "/private/chapter", 5, "PRIVATE_NOTE_SENTINEL")
+		database.getChapterPersonalDao().upsert(annotation)
+		val bytes = java.io.ByteArrayOutputStream()
+		ZipOutputStream(bytes).use { repository.createBackup(it, null) }
+		val allEntries = StringBuilder()
+		ZipInputStream(bytes.toByteArray().inputStream()).use { input ->
+			while (input.nextEntry != null) allEntries.append(input.readBytes().toString(Charsets.UTF_8))
+		}
+		assertFalse(allEntries.contains("PRIVATE_NOTE_SENTINEL"))
+		privateSecurity.includePrivateInBackup = true
+		bytes.reset()
+		ZipOutputStream(bytes).use { repository.createBackup(it, null) }
+		database.clearAllTables()
+		val result = ZipInputStream(bytes.toByteArray().inputStream()).use {
+			repository.restoreBackup(it, emptySet(), null, restorePrivateFavourites = true)
+		}
+		assertTrue(result.failures.toString(), result.isAllSuccess)
+		assertEquals(annotation, database.getChapterPersonalDao().findAll(listOf(owner.id)).single())
+	}
+
 	private fun category(title: String, sortKey: Int, space: FavouriteSpace = FavouriteSpace.NORMAL) = FavouriteCategoryEntity(
 		categoryId = 0,
 		createdAt = sortKey.toLong(),

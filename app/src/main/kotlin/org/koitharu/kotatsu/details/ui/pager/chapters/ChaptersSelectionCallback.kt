@@ -17,6 +17,7 @@ import org.koitharu.kotatsu.core.util.ext.toCollection
 import org.koitharu.kotatsu.core.util.ext.toSet
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.local.ui.LocalChaptersRemoveService
+import org.koitharu.kotatsu.details.ui.DetailsViewModel
 
 class ChaptersSelectionCallback(
 	private val viewModel: ChaptersPagesViewModel,
@@ -47,6 +48,7 @@ class ChaptersSelectionCallback(
 		menu.findItem(R.id.action_delete).isVisible = canDelete
 		menu.findItem(R.id.action_select_all).isVisible = items.size < allItems.size
 		menu.findItem(R.id.action_mark_current).isVisible = items.size == 1
+		menu.findItem(R.id.action_chapter_personal).isVisible = viewModel is DetailsViewModel && items.size == 1
 		menu.findItem(R.id.action_browser).isVisible = items.size == 1 &&
 			!items[0].value.isDownloaded && items[0].value.chapter.source != LocalMangaSource
 		mode?.title = items.size.toString()
@@ -144,6 +146,15 @@ class ChaptersSelectionCallback(
 				} else {
 					false
 				}
+			}
+
+			R.id.action_chapter_personal -> {
+				val selected = viewModel.chapters.value.filter { it.chapter.id in controller.peekCheckedIds() }.singleOrNull()
+				val detailsViewModel = viewModel as? DetailsViewModel
+				if (selected == null || detailsViewModel == null) return false
+				mode?.finish()
+				detailsViewModel.editChapterPersonal(selected)
+				true
 			}
 
 			R.id.action_mark_current -> {

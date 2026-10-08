@@ -12,6 +12,7 @@ import org.koitharu.kotatsu.list.ui.model.MissingChapters
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.mapToSet
+import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 
 fun MangaDetails.mapChapters(
 	currentChapterId: Long,
@@ -30,6 +31,7 @@ fun MangaDetails.mapChapters(
 	if (remoteChapters.isEmpty() && localChapters.isEmpty()) {
 		return emptyList()
 	}
+	val sourceChaptersById = sourceManga.chapters.orEmpty().groupBy { it.id }
 	val bookmarked = bookmarks.mapToSet { it.chapterId }
 	val newFrom = if (newCount == 0 || remoteChapters.isEmpty()) Int.MAX_VALUE else remoteChapters.size - newCount
 	val remoteIds = remoteChapters.mapTo(HashSet(remoteChapters.size)) { it.id }
@@ -66,7 +68,9 @@ fun MangaDetails.mapChapters(
 				isDownloaded = local != null,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
-			)
+			).copy(personalKey = ChapterPersonalKey.of(
+				sourceChaptersById[chapter.id]?.singleOrNull() ?: chapter,
+			))
 			if (isCurrent) {
 				isUnread = true
 			}
@@ -82,7 +86,9 @@ fun MangaDetails.mapChapters(
 				isDownloaded = !isLocal,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
-			)
+			).copy(personalKey = ChapterPersonalKey.of(
+				sourceChaptersById[chapter.id]?.singleOrNull() ?: chapter,
+			))
 			if (isCurrent) {
 				isUnread = true
 			}

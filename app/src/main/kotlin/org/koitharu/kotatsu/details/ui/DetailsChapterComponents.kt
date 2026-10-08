@@ -898,6 +898,8 @@ internal fun InlineChapterHeader(
 	onManage: () -> Unit,
 	onSetDefault: () -> Unit,
 	onReset: () -> Unit,
+	expanded: Boolean,
+	onToggleExpanded: () -> Unit,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
 	var moreExpanded by remember { mutableStateOf(false) }
@@ -918,6 +920,13 @@ internal fun InlineChapterHeader(
 			modifier = Modifier.fillMaxWidth(),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
+			IconButton(onClick = onToggleExpanded) {
+				Icon(
+					painter = painterResource(R.drawable.ic_chevron_right),
+					contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand),
+					modifier = Modifier.rotate(if (expanded) 90f else 0f),
+				)
+			}
 			Text(
 				text = title,
 				style = MaterialTheme.typography.titleMedium,
@@ -934,6 +943,7 @@ internal fun InlineChapterHeader(
 					.padding(horizontal = 4.dp, vertical = 6.dp),
 			)
 		}
+		if (!expanded) return@Column
 		if (palette.isModern) {
 			Spacer(Modifier.height(2.dp))
 			Surface(
@@ -1111,6 +1121,7 @@ internal fun InlineChapterCard(
 	onClick: () -> Unit,
 	onDownloadClick: () -> Unit,
 	onManageClick: () -> Unit,
+	onPersonalClick: () -> Unit,
 ) {
 	val context = LocalContext.current
 	val palette = LocalMiyorareVisualPalette.current
@@ -1260,6 +1271,14 @@ internal fun InlineChapterCard(
 				}
 			}
 
+			IconButton(onClick = onPersonalClick) {
+				Icon(
+					painter = painterResource(R.drawable.ic_star_rate),
+					contentDescription = stringResource(R.string.chapter_personal_edit),
+					tint = if (item.personalMetadata.isEmpty) secondaryColor else accent,
+					modifier = Modifier.size(20.dp),
+				)
+			}
 			if (item.isBookmarked) {
 				Icon(
 					painter = painterResource(R.drawable.ic_bookmark),

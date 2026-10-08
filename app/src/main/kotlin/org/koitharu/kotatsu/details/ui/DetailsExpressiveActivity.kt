@@ -332,6 +332,7 @@ class DetailsExpressiveActivity :
 			},
 			onChapterOptionsResetClick = viewModel::resetChapterOptions,
 			onChapterClick = ::openChapter,
+			onChapterPersonalClick = viewModel::editChapterPersonal,
 			onChapterDownloadClick = { item ->
 				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
 					viewModel.download(setOf(item.chapter.id), allowMeteredNetwork)
@@ -399,6 +400,16 @@ class DetailsExpressiveActivity :
 					actions = actions,
 				)
 
+				val personalEditor by viewModel.chapterPersonalEditor.collectAsState()
+				val personalSaving by viewModel.isSavingChapterPersonal.collectAsState()
+				personalEditor?.let { item ->
+					ChapterPersonalEditor(
+						item = item,
+						saving = personalSaving,
+						onDismiss = viewModel::dismissChapterPersonalEditor,
+						onSave = viewModel::saveChapterPersonal,
+					)
+				}
 				if (chapterOptionsVisible.value) {
 					ChapterOptionsSheet(
 						initialTab = chapterOptionsInitialTab.value,

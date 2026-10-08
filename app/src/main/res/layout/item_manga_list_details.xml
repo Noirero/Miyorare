@@ -75,6 +75,9 @@
 			app:iconSize="14dp"
 			app:iconSpacing="4dp"
 			app:layout_constraintStart_toStartOf="@id/imageView_cover"
+			app:layout_constraintEnd_toEndOf="@id/imageView_cover"
+			app:layout_constraintHorizontal_bias="0"
+			app:layout_constrainedWidth="true"
 			app:layout_constraintTop_toTopOf="@id/imageView_cover" />
 
 		<LinearLayout

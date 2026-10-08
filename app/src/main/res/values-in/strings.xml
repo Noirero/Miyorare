@@ -1037,4 +1037,13 @@
     <string name="developer_preview_journey_achievement">Preview achievement</string>
     <string name="developer_preview_journey_cosmetic">Preview cosmetic unlock</string>
     <string name="developer_preview_journey_rank_up">Preview rank-up</string>
+    <string name="in_library">Di koleksi</string>
+    <string name="chapter_personal_edit">Rating &amp; catatan chapter</string>
+    <string name="chapter_personal_local_only">Pribadi, disimpan di perangkat ini.</string>
+    <string name="chapter_personal_stars">%1$d bintang</string>
+    <string name="chapter_personal_rating_value">Rating: %1$d / 5</string>
+    <string name="chapter_personal_clear_rating">Hapus rating</string>
+    <string name="chapter_personal_note">Catatan pribadi (opsional)</string>
+    <string name="chapter_personal_clear_note">Hapus catatan</string>
+    <string name="chapter_personal_unrated">Belum diberi rating</string>
 </resources>

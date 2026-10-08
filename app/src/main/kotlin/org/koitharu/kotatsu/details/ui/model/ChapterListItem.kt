@@ -8,11 +8,16 @@ import org.koitharu.kotatsu.details.ui.pager.ChapterTitleMode
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import kotlin.experimental.and
+import org.koitharu.kotatsu.details.data.ChapterPersonalKey
+import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
+import org.koitharu.kotatsu.details.ui.gridNumberLabel
 
 data class ChapterListItem(
 	val chapter: MangaChapter,
 	val flags: Byte,
 	val titleMode: ChapterTitleMode = ChapterTitleMode.SOURCE,
+	val personalKey: ChapterPersonalKey = ChapterPersonalKey.of(chapter),
+	val personalMetadata: ChapterPersonalMetadata = ChapterPersonalMetadata(),
 ) : ListModel {
 
 	private var cachedTitle: String? = null
@@ -64,6 +69,8 @@ data class ChapterListItem(
 			|| numberString()?.contains(query) == true
 			|| volumeString()?.contains(query) == true
 	}
+
+	fun getGridTitle(resources: Resources): String = chapter.gridNumberLabel() ?: chapter.getLocalizedTitle(resources)
 
 	fun getTitle(resources: Resources): String {
 		cachedTitle?.let {
@@ -122,7 +129,7 @@ data class ChapterListItem(
 		if (previousState !is ChapterListItem) {
 			return super.getChangePayload(previousState)
 		}
-		return if (chapter == previousState.chapter && flags != previousState.flags) {
+		return if (chapter == previousState.chapter && personalMetadata == previousState.personalMetadata && flags != previousState.flags) {
 			flags
 		} else {
 			super.getChangePayload(previousState)
