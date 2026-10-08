@@ -191,6 +191,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		}
 	}
 	private var chapterContent: ChapterContent? = null
+	private var hasRenderedContent = false
 	private val loadingChapters = HashSet<Int>()
 	private val remoteChapterLoadMutex = Mutex()
 	private var remoteCacheCenter = -1
@@ -789,6 +790,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		remoteCacheCenter = -1
 		runCatching { chapterContent?.close() }
 		chapterContent = null
+		hasRenderedContent = false
 		chapters = emptyList()
 		super.onDestroyView()
 	}
@@ -840,6 +842,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				loading = true
 				try {
 					val prepared = withContext(Dispatchers.IO) { prepareBook(manga, mangaChapters) }
+					hasRenderedContent = false
 					chapters = prepared.chapters
 					chapterContent = prepared.content
 				} finally {
@@ -862,6 +865,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val offset = ReaderState.decodeEpubOffset(state.scroll)
 				?: (chapters[chapter].text.length.toLong() * state.scroll.coerceIn(0, 1000) / 1000).toInt()
 			renderMode(Locator(chapter, offset), state.page.takeIf { isPagedMode })
+			hasRenderedContent = true
 		} finally {
 			setChapterLoading(false)
 		}
@@ -986,7 +990,11 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 					setChapterLoading(true)
 					try {
 						val ready = withContext(Dispatchers.IO) { ensureChapterLoadedForDisplay(target.chapter) }
-						if (ready) goTo(Locator(target.chapter, target.offset))
+						if (ready) {
+							val destination = Locator(target.chapter, target.offset)
+							if (hasRenderedContent) goTo(destination) else renderMode(destination)
+							hasRenderedContent = true
+						}
 						else android.widget.Toast.makeText(requireContext(), R.string.error, android.widget.Toast.LENGTH_LONG).show()
 					} finally { setChapterLoading(false) }
 				}
@@ -1840,7 +1848,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	}
 
 	override fun getCurrentState(): ReaderState? {
-		if (chapters.isEmpty()) return null
+		if (!hasRenderedContent || chapters.isEmpty()) return null
 		val locator = currentLocator().clamped()
 		val chapter = chapters[locator.chapter]
 		val firstChapterPage = pagerView?.let { pages.indexOfFirst { page -> page.chapter == locator.chapter } } ?: 0
