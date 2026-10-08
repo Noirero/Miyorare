@@ -15,5 +15,11 @@ interface MangaListListener : MangaDetailsClickListener, ListStateHolderListener
 
 	fun onSmartLocalTypeChanged(type: LocalContentType?) = Unit
 
+	fun onSmartLocalSortClick(view: View) = Unit
+
+	fun onSmartLocalListModeChanged(mode: org.koitharu.kotatsu.core.prefs.ListMode) = Unit
+
+	fun onSmartLocalResume(manga: org.koitharu.kotatsu.parsers.model.Manga) = Unit
+
 	fun onSmartLocalManageFoldersClick(view: View) = Unit
 }

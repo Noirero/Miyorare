@@ -16,6 +16,7 @@ fun smartLocalPanelAD(listener: MangaListListener) =
 			val query = text?.toString().orEmpty()
 			if (query != item.query) listener.onSmartLocalQueryChanged(query)
 		}
+		binding.buttonSort.setOnClickListener { listener.onSmartLocalSortClick(it) }
 		binding.buttonFilter.setOnClickListener { listener.onSmartLocalFilterClick(it) }
 		binding.buttonManageFolders.setOnClickListener { listener.onSmartLocalManageFoldersClick(it) }
 		binding.chipAll.setOnClickListener { listener.onSmartLocalTypeChanged(null) }
@@ -23,14 +24,14 @@ fun smartLocalPanelAD(listener: MangaListListener) =
 		binding.chipNovel.setOnClickListener { listener.onSmartLocalTypeChanged(LocalContentType.NOVEL) }
 
 		bind {
-			binding.textViewSummary.text = context.getString(
-				R.string.smart_local_collection_summary,
-				item.folderCount,
-				item.titleCount,
-				item.chapterCount,
-			)
-			binding.textViewReading.text = context.getString(R.string.smart_local_stat_reading, item.readingCount)
-			binding.textViewNew.text = context.getString(R.string.smart_local_stat_new, item.newCount)
+			binding.textViewSummary.text = listOf(
+				context.resources.getQuantityString(R.plurals.smart_local_folders, item.folderCount, item.folderCount),
+				context.resources.getQuantityString(R.plurals.smart_local_titles, item.titleCount, item.titleCount),
+				context.resources.getQuantityString(R.plurals.smart_local_chapters, item.chapterCount, item.chapterCount),
+			).joinToString(" • ")
+			binding.buttonSort.text = context.resources.getStringArray(R.array.smart_local_sorts)[item.sort.ordinal]
+			binding.buttonFilter.text = if (item.readingFilter == org.koitharu.kotatsu.local.library.LocalReadingFilter.ALL) context.getString(R.string.filter)
+				else context.resources.getStringArray(R.array.smart_local_reading_filters)[item.readingFilter.ordinal]
 			binding.chipAll.isChecked = item.contentType == null
 			binding.chipManga.isChecked = item.contentType == LocalContentType.MANGA
 			binding.chipNovel.isChecked = item.contentType == LocalContentType.NOVEL
