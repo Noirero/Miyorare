@@ -40,7 +40,7 @@ import javax.inject.Inject
 
 sealed interface LocalLibraryAction {
 	data object ContinueAll : LocalLibraryAction
-		data object Restore : LocalLibraryAction
+	data object Restore : LocalLibraryAction
 	data class Acknowledge(val ids: Set<Long>) : LocalLibraryAction
 	data class Diagnosis(val issue: LocalDiagnosis) : LocalLibraryAction
 }
@@ -64,14 +64,18 @@ class LocalListViewModel @Inject constructor(
 	private val showAllReading = MutableStateFlow(savedStateHandle["all_reading"] ?: false)
 	private val revision = MutableStateFlow(0)
 	private val localQuery = MutableStateFlow(savedStateHandle["local_query"] ?: "")
-	private val contentType = MutableStateFlow(
-		savedStateHandle.get<String>("content_type")?.let { saved -> LocalContentType.entries.firstOrNull { it.name == saved } }
-			?: library.selectedContentType,
-	)
+	private val contentType = MutableStateFlow(restoreLocalContentSelection(
+		hasSavedValue = savedStateHandle.contains("content_type"),
+		savedValue = savedStateHandle["content_type"], persisted = library.selectedContentType,
+	))
+
 	private var refreshJob: Job? = null
 	private var folderJob: Job? = null
 
 	init {
+		launchJob(Dispatchers.IO) {
+			contentType.collect { type -> library.setContentType(type) }
+		}
 		launchLoadingJob(Dispatchers.IO) {
 			library.initialize()
 			if (library.state.value.roots.isNotEmpty() && library.state.value.books.isEmpty()) library.scan()
@@ -105,7 +109,6 @@ class LocalListViewModel @Inject constructor(
 	fun setContentType(type: LocalContentType?) {
 		contentType.value = type
 		savedStateHandle["content_type"] = type?.name
-		launchJob(Dispatchers.IO) { library.setContentType(type) }
 	}
 	fun showAllContinueReading() {
 		showAllReading.value = !showAllReading.value
@@ -159,22 +162,20 @@ class LocalListViewModel @Inject constructor(
 			folderCount = snapshot.roots.size,
 			titleCount = snapshot.books.size,
 			chapterCount = snapshot.books.sumOf { it.chapters.size },
-			readingCount = snapshot.books.count { histories[it.id] != null && !it.isCompleted(histories[it.id]) },
-			newCount = snapshot.books.count { it.newChapters > 0 },
 			query = query.orEmpty(),
 			contentType = type,
 			sort = library.sort,
 			readingFilter = library.readingFilter,
 		)
-		if (snapshot.excludedCount > 0) result += ListHeader(context.getString(R.string.smart_local_hidden_count, snapshot.excludedCount),
+		if (snapshot.excludedCount > 0) result += ListHeader(context.resources.getQuantityString(R.plurals.smart_local_hidden_titles, snapshot.excludedCount, snapshot.excludedCount),
 			R.string.smart_local_restore, LocalLibraryAction.Restore)
-		if (snapshot.diagnoses.isNotEmpty()) result += ListHeader(context.getString(R.string.smart_local_review_count, snapshot.diagnoses.size),
+		if (snapshot.diagnoses.isNotEmpty()) result += ListHeader(context.resources.getQuantityString(R.plurals.smart_local_attention_items, snapshot.diagnoses.size, snapshot.diagnoses.size),
 			R.string.smart_local_inspect, snapshot.diagnoses)
 		if (query.isNullOrBlank()) {
 			val discovered = snapshot.books.filter { (type == null || it.contentType == type) && it.newChapters > 0 }
 			val count = discovered.sumOf { it.newChapters }
 			if (count > 0) result += ListHeader(context.resources.getQuantityString(R.plurals.smart_local_discovered_chapters, count, count),
-				R.string.smart_local_mark_seen, LocalLibraryAction.Acknowledge(discovered.mapTo(HashSet()) { it.id }))
+				R.string.smart_local_mark_seen, LocalLibraryAction.Acknowledge(discovered.mapTo(HashSet()) { it.id }), buttonStyle = ListHeader.ButtonStyle.NOTICE)
 			val reading = snapshot.books.filter { book ->
 				(type == null || book.contentType == type) && histories[book.id]?.let { !book.isCompleted(it) } == true
 			}.sortedByDescending { histories[it.id]?.updatedAt }
@@ -206,7 +207,10 @@ class LocalListViewModel @Inject constructor(
 				val index = book.chapters.indexOfFirst { it.id == history.chapterId }
 				if (index < 0) book.chapters.size else (book.chapters.size - index - 1).coerceAtLeast(0)
 			}
-			val status = context.getString(R.string.smart_local_book_counts, book.chapters.size, unread)
+			val status = context.getString(R.string.smart_local_book_counts_localized,
+				context.resources.getQuantityString(R.plurals.smart_local_chapters, book.chapters.size, book.chapters.size),
+				context.resources.getQuantityString(R.plurals.smart_local_unread_chapters, unread, unread),
+			)
 			result += when (model) {
 				is MangaCompactListModel -> model.copy(subtitle = status, counter = book.chapters.size, isSaved = true)
 				is MangaDetailedListModel -> model.copy(subtitle = status, counter = book.chapters.size, isSaved = true)
@@ -215,15 +219,18 @@ class LocalListViewModel @Inject constructor(
 			}
 		}
 		if (manga.isEmpty() && snapshot.initialized) {
-			val message = when {
-				snapshot.roots.isEmpty() -> R.string.smart_local_empty
-				snapshot.books.isEmpty() && snapshot.diagnoses.isNotEmpty() -> R.string.smart_local_access_empty
-				!query.isNullOrBlank() -> R.string.smart_local_search_empty
-				type == LocalContentType.MANGA && snapshot.books.none { it.contentType == type } -> R.string.smart_local_manga_empty
-				type == LocalContentType.NOVEL && snapshot.books.none { it.contentType == type } -> R.string.smart_local_novel_empty
-				snapshot.books.isEmpty() -> R.string.smart_local_content_empty
-				else -> R.string.smart_local_filter_empty
+			val reason = localCollectionEmptyReason(snapshot.roots.size,
+				snapshot.books.mapTo(HashSet()) { it.contentType }, snapshot.diagnoses.isNotEmpty(), query, type)
+			val message = when (reason) {
+				LocalCollectionEmptyReason.NO_FOLDERS -> R.string.smart_local_empty
+				LocalCollectionEmptyReason.ACCESS -> R.string.smart_local_access_empty
+				LocalCollectionEmptyReason.SEARCH -> R.string.smart_local_search_empty
+				LocalCollectionEmptyReason.MANGA -> R.string.smart_local_manga_empty
+				LocalCollectionEmptyReason.NOVEL -> R.string.smart_local_novel_empty
+				LocalCollectionEmptyReason.NO_CONTENT -> R.string.smart_local_content_empty
+				LocalCollectionEmptyReason.FILTER -> R.string.smart_local_filter_empty
 			}
+
 			result += EmptyState(R.drawable.ic_empty_local, R.string.smart_local_collection, message,
 				if (snapshot.roots.isEmpty()) R.string.smart_local_add_folder else 0)
 		}

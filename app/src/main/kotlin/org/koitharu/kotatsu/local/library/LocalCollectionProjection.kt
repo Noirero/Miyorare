@@ -34,3 +34,19 @@ internal fun projectLocalCollection(
 
 internal fun pendingLocalDiscoveries(previous: Int, discovered: Int, chapterCount: Int): Int =
 	(previous.coerceAtLeast(0).toLong() + discovered.coerceAtLeast(0)).coerceAtMost(chapterCount.coerceAtLeast(0).toLong()).toInt()
+
+internal fun restoreLocalContentSelection(hasSavedValue: Boolean, savedValue: String?, persisted: LocalContentType?): LocalContentType? =
+    if (hasSavedValue) LocalContentType.entries.firstOrNull { it.name == savedValue } else persisted
+
+internal enum class LocalCollectionEmptyReason { NO_FOLDERS, ACCESS, SEARCH, MANGA, NOVEL, NO_CONTENT, FILTER }
+
+internal fun localCollectionEmptyReason(rootCount: Int, indexedTypes: Set<LocalContentType>, hasDiagnoses: Boolean,
+    query: String?, type: LocalContentType?): LocalCollectionEmptyReason = when {
+    rootCount == 0 -> LocalCollectionEmptyReason.NO_FOLDERS
+    indexedTypes.isEmpty() && hasDiagnoses -> LocalCollectionEmptyReason.ACCESS
+    !query.isNullOrBlank() -> LocalCollectionEmptyReason.SEARCH
+    type == LocalContentType.MANGA && LocalContentType.MANGA !in indexedTypes -> LocalCollectionEmptyReason.MANGA
+    type == LocalContentType.NOVEL && LocalContentType.NOVEL !in indexedTypes -> LocalCollectionEmptyReason.NOVEL
+    indexedTypes.isEmpty() -> LocalCollectionEmptyReason.NO_CONTENT
+    else -> LocalCollectionEmptyReason.FILTER
+}

@@ -113,6 +113,26 @@ public final class LocalScannerScenarios {
             new LocalTreeScanner().scan(n("/selected/book.cbz", false), t, Collections.emptySet(), Collections.emptySet());
             throw new AssertionError("A file is not a selected root");
         } catch (IOException expected) { check(true, "Root must be an explicit directory"); }
+        MemoryTree empty = new MemoryTree();
+        check(empty.scan().entries.isEmpty() && empty.scan().issues.isEmpty(), "Empty selected folder stays empty without fake content");
+        MemoryTree onlyComic = new MemoryTree(); onlyComic.file("/selected/one.cbz");
+        check(onlyComic.scan().entries.size() == 1, "One CBZ remains one title");
+        check(onlyComic.scan().entries.get(0).chapters.size() == 1, "One CBZ has one indexed chapter without materialization");
+        MemoryTree onlyNovel = new MemoryTree(); onlyNovel.file("/selected/one.epub");
+        check(onlyNovel.scan().entries.size() == 1 && onlyNovel.scan().entries.get(0).chapters.size() == 1, "EPUB-only selected folder is valid");
+        MemoryTree inaccessible = new MemoryTree(); inaccessible.dir("/selected/Revoked");
+        Access revoked = new Access() {
+            public List<Node> children(Node directory) throws IOException { throw new IOException("Access revoked"); }
+            public boolean contains(Node root, Node child) { return root.key.equals(child.key); }
+            public void checkCancelled() {}
+        };
+        try { new LocalTreeScanner().scan(inaccessible.root, revoked, Collections.emptySet(), Collections.emptySet());
+            throw new AssertionError("Revoked root must report failure");
+        } catch (IOException expected) { check(true, "Revoked root cannot become a successful empty scan"); }
+        Result unchanged = onlyComic.scan();
+        check(unchanged.entries.size() == 1 && unchanged.entries.get(0).chapters.size() == 1, "No-change rescan keeps the original title/chapter count");
+        onlyComic.file("/selected/two.cbz");
+        check(onlyComic.scan().entries.size() == 2, "New content appears on selected-root rescan");
         return checks;
     }
     public static void main(String[] args) throws Exception { System.out.println("PASS: " + run() + " scanner assertions"); }

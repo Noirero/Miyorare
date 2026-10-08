@@ -33,7 +33,7 @@
     <string name="smart_local_detach_message">Remove this folder from Miyorare? All files on your device will remain.</string>
     <string name="smart_local_hide">Remove from Miyorare</string>
     <string name="smart_local_delete_device">Remove from Miyorare &amp; device</string>
-    <string name="smart_local_delete_device_message">Permanently delete the selected title files from this device? This cannot be undone. Other files and titles will remain.</string>
+    <string name="smart_local_delete_device_message">Permanently delete the selected files from this device? This cannot be undone. Other files and titles will remain.</string>
     <string name="smart_local_reading_filter">Reading status</string>
     <string name="smart_local_extensions">Show file extensions</string>
     <string name="smart_local_extension_off">OFF — hide extensions</string>

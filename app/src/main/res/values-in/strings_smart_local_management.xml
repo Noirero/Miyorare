@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="smart_local_add_folder">Tambahkan Folder Perangkat</string>
+    <string name="smart_local_restore">Pulihkan judul tersembunyi</string>
+    <string name="smart_local_inspect">Periksa</string>
+    <string name="smart_local_empty">Pilih folder di perangkat untuk menemukan koleksi. Unduhan dikelola secara terpisah.</string>
+    <string name="smart_local_information">Informasi file di perangkat</string>
+    <string name="smart_local_detach">Lepaskan folder dari koleksi</string>
+    <string name="smart_local_detach_message">Lepaskan folder ini dari Miyorare? Semua file di perangkat tetap tersimpan.</string>
+    <string name="smart_local_hide">Hapus dari koleksi Miyorare</string>
+    <string name="smart_local_delete_device">Hapus dari Miyorare dan perangkat</string>
+    <string name="smart_local_delete_device_message">Hapus permanen file yang dipilih dari perangkat? Tindakan ini tidak dapat dibatalkan. File dan judul lain tetap tersimpan.</string>
+    <string name="smart_local_reading_filter">Status baca</string>
+    <string name="smart_local_extensions">Tampilkan ekstensi file</string>
+    <string name="smart_local_extension_off">MATI — sembunyikan ekstensi</string>
+    <string name="smart_local_extension_on">AKTIF — tampilkan ekstensi</string>
+    <string name="smart_local_needs_review">Perlu diperiksa</string>
+    <string name="smart_local_unavailable">Folder tidak tersedia</string>
+    <string name="smart_local_unreadable">Bab tidak dapat dibaca</string>
+    <string name="smart_local_unsupported">Tidak didukung atau kosong</string>
+    <string name="smart_local_diagnosis">Periksa file di perangkat</string>
+    <string name="smart_local_confirm_boundary">Pilih folder judul</string>
+    <string name="smart_local_confirm_boundary_message">Gunakan “%s” sebagai folder judul dan kelompokkan bab yang dikenali? File asli tetap tersimpan.</string>
+    <string name="smart_local_diagnosis_message">Lokasi: %s\n\nPeriksa izin dan isi folder. Struktur yang ambigu perlu diperiksa. Untuk memulihkan akses, pilih folder yang sama kembali.</string>
+    <string-array name="smart_local_reading_filters"><item>Semua</item><item>Belum dibaca</item><item>Sedang dibaca</item><item>Selesai</item></string-array>
+    <string-array name="smart_local_sorts"><item>Terakhir dibaca</item><item>Terbaru</item><item>Judul A–Z</item><item>Judul Z–A</item><item>Bab terbaru</item></string-array>
+</resources>

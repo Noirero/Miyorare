@@ -8,8 +8,6 @@ data class SmartLocalPanelModel(
 	val folderCount: Int,
 	val titleCount: Int,
 	val chapterCount: Int,
-	val readingCount: Int,
-	val newCount: Int,
 	val query: String,
 	val contentType: LocalContentType?,
 	val sort: LocalLibrarySort,
