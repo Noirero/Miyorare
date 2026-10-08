@@ -66,6 +66,9 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 		}
 		val canInferSpaceFromPath =
 			downloadDestinationStore.privateUsesOwnRoot() && !downloadDestinationStore.rootsOverlap()
+		if (!canInferSpaceFromPath) {
+			repairSharedRootOwnership(membershipBySpace)
+		}
 
 		var allRootsReadable = true
 		for (space in FavouriteSpace.entries) {
@@ -102,6 +105,31 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 		if (allRootsReadable) prefs.edit { putBoolean(KEY_COMPLETE, true) }
 	}
 
+	private suspend fun repairSharedRootOwnership(membershipBySpace: Map<FavouriteSpace, Set<Long>>) {
+		val normalIds = membershipBySpace.getValue(FavouriteSpace.NORMAL)
+		val privateIds = membershipBySpace.getValue(FavouriteSpace.PRIVATE)
+		val relevantIds = normalIds + privateIds
+		if (relevantIds.isEmpty()) return
+		val dao = database.getFavouriteDownloadIndexDao()
+		for (chunk in relevantIds.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			for ((mangaId, entries) in dao.findEntries(chunk).groupBy { it.mangaId }) {
+				if (entries.size < 2 || entries.map { it.path }.distinct().size != 1) continue
+				val inNormal = mangaId in normalIds
+				val inPrivate = mangaId in privateIds
+				when {
+					inNormal && !inPrivate -> dao.delete(FavouriteSpace.PRIVATE.dbValue, mangaId)
+					inPrivate && !inNormal -> dao.delete(FavouriteSpace.NORMAL.dbValue, mangaId)
+					inNormal && inPrivate -> {
+						// Historical path-derived rows cannot tell which destination was selected. Keeping either
+						// would preserve the leak, so make the ambiguous state unknown until an explicit action.
+						dao.delete(FavouriteSpace.NORMAL.dbValue, mangaId)
+						dao.delete(FavouriteSpace.PRIVATE.dbValue, mangaId)
+					}
+				}
+			}
+		}
+	}
+
 	private fun Manga.hasLegacyTitleCandidate(keys: Set<String>): Boolean =
 		title.legacyTitleKey() in keys || altTitles.any { it.legacyTitleKey() in keys }
 
@@ -113,6 +141,7 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 		// v3 intentionally reruns the one-shot repair for installations where the earlier v2 pass
 		// completed before the final indexed title/chapter-evidence compatibility path was available.
 		const val KEY_COMPLETE = "v3_all_spaces_complete"
+		const val INDEX_QUERY_CHUNK_SIZE = 500
 		val WHITESPACE = Regex("\\s+")
 	}
 }
