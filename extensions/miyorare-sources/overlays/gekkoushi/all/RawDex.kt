@@ -31,6 +31,8 @@ internal class RawDex(context: MangaLoaderContext) :
     override val filterCapabilities: MangaListFilterCapabilities
         get() = MangaListFilterCapabilities(isSearchSupported = true)
 
+    override suspend fun getFilterOptions() = MangaListFilterOptions()
+
     override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
         val query = filter.query?.trim().orEmpty()
         val url = if (query.isNotEmpty()) {
