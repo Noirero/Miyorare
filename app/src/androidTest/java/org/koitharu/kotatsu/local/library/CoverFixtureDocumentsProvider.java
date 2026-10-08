@@ -14,8 +14,10 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -26,6 +28,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class CoverFixtureDocumentsProvider extends DocumentsProvider {
     private final AtomicInteger queries = new AtomicInteger();
     private final AtomicInteger opens = new AtomicInteger();
+    private final ConcurrentLinkedQueue<String> queriedDocuments = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<String> queriedChildren = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<String> openedDocuments = new ConcurrentLinkedQueue<>();
     private long revision = System.currentTimeMillis();
 
     private File directory() {
@@ -60,6 +65,7 @@ public class CoverFixtureDocumentsProvider extends DocumentsProvider {
     @Override
     public Cursor queryDocument(String documentId, String[] projection) {
         queries.incrementAndGet();
+        queriedDocuments.add(documentId);
         MatrixCursor cursor = cursor(projection);
         File file = file(documentId);
         if (file.exists()) add(cursor, file, documentId);
@@ -69,6 +75,7 @@ public class CoverFixtureDocumentsProvider extends DocumentsProvider {
     @Override
     public Cursor queryChildDocuments(String parentDocumentId, String[] projection, String sortOrder) {
         queries.incrementAndGet();
+        queriedChildren.add(parentDocumentId);
         MatrixCursor cursor = cursor(projection);
         File[] children = file(parentDocumentId).listFiles();
         if (children != null) {
@@ -93,6 +100,7 @@ public class CoverFixtureDocumentsProvider extends DocumentsProvider {
         throws FileNotFoundException {
         if (!"r".equals(mode)) throw new IllegalArgumentException("Read-only fixture");
         opens.incrementAndGet();
+        openedDocuments.add(documentId);
         return ParcelFileDescriptor.open(file(documentId), ParcelFileDescriptor.MODE_READ_ONLY);
     }
 
@@ -101,17 +109,21 @@ public class CoverFixtureDocumentsProvider extends DocumentsProvider {
         switch (method) {
             case "fixture-reset":
                 deleteRecursively(directory());
-                queries.set(0);
-                opens.set(0);
-                return new Bundle();
+                // Reset storage and operation evidence together; metric-only resets keep files.
             case "fixture-metrics-reset":
                 queries.set(0);
                 opens.set(0);
+                queriedDocuments.clear();
+                queriedChildren.clear();
+                openedDocuments.clear();
                 return new Bundle();
             case "fixture-counts":
                 Bundle counts = new Bundle();
                 counts.putInt("queries", queries.get());
                 counts.putInt("opens", opens.get());
+                counts.putStringArrayList("queried-documents", new ArrayList<>(queriedDocuments));
+                counts.putStringArrayList("queried-children", new ArrayList<>(queriedChildren));
+                counts.putStringArrayList("opened-documents", new ArrayList<>(openedDocuments));
                 return counts;
             case "fixture-put":
                 put(Objects.requireNonNull(arg), Objects.requireNonNull(extras));

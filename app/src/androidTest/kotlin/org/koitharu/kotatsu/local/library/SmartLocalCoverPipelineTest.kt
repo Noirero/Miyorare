@@ -334,6 +334,8 @@ class SmartLocalCoverPipelineTest {
         assertEquals(2, mangas.size)
         var extractions = 0
         for (manga in mangas) {
+            val source = library.state.value.books.single { it.id == manga.id }.coverPlan.candidates.first()
+            val sourceDocumentId = DocumentsContract.getDocumentId(Uri.parse(source.uri))
             val payload = library.cover(manga.id)!!
             assertTrue(payload.size > SmartLocalCoverCache.MAX_THUMBNAIL_BYTES)
             assertTrue(payload.size <= BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES)
@@ -345,10 +347,17 @@ class SmartLocalCoverPipelineTest {
             assertAnimated(request(manga))
             extractions += 3
             assertEquals(extractions, counts.extract)
-            assertEquals(1, metrics().getInt("opens"))
-            assertEquals(0, metrics().getInt("queries"))
             assertEquals(0L, cache.size())
-            assertTrue(derivedFiles().isEmpty())
+            assertTrue("Oversized source ${source.key} created derived files: ${derivedFiles()}", derivedFiles().isEmpty())
+            val operations = metrics()
+            assertEquals(1, operations.getInt("opens"))
+            assertEquals(listOf(sourceDocumentId), operations.getStringArrayList("opened-documents"))
+            // Passthrough must extract again, including LocalDocuments.root()'s authorized-root
+            // lookup. It is not a persistent warm hit: forbid candidate metadata/child scans,
+            // and identify the only allowed query instead of conflating queries with storage.
+            assertEquals(listOf("root"), operations.getStringArrayList("queried-documents"))
+            assertEquals(0, operations.getStringArrayList("queried-children")!!.size)
+            assertEquals(operations.getStringArrayList("queried-documents")!!.size, operations.getInt("queries"))
         }
         assertEquals(0, counts.materialize)
         assertEquals(0, counts.render)
