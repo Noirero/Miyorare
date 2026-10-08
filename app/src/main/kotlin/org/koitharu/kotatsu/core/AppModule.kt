@@ -61,6 +61,7 @@ import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.local.library.LocalCoverVersionInterceptor
 import org.koitharu.kotatsu.local.library.LocalCoverFetcher
 import org.koitharu.kotatsu.main.domain.CoverRestoreInterceptor
 import org.koitharu.kotatsu.main.ui.protect.AppProtectHelper
@@ -124,6 +125,7 @@ interface AppModule {
 			imageProxyInterceptor: ImageProxyInterceptor,
 			pageFetcherFactory: MangaPageFetcher.Factory,
 			localCoverFetcherFactory: LocalCoverFetcher.Factory,
+			localCoverVersionInterceptor: LocalCoverVersionInterceptor,
 			coverRestoreInterceptor: CoverRestoreInterceptor,
 			imageDiskCache: MiyorareImageDiskCache,
 			networkStateProvider: Provider<NetworkState>,
@@ -166,6 +168,7 @@ interface AppModule {
 					add(SvgDecoder.Factory())
 					add(CbzFetcher.Factory())
 					add(localCoverFetcherFactory)
+					add(localCoverVersionInterceptor)
 					add(AvifImageDecoder.Factory())
 					add(faviconFetcherFactory)
 					add(MangaPageKeyer())

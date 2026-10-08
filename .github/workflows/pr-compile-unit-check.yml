@@ -16,14 +16,16 @@ permissions:
 jobs:
   compile-unit:
     name: Compile, resources & unit tests
+    # Explicit runtime validation also applies to drafts waiting for owner decisions.
+    if: github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      - name: Checkout exact PR merge candidate
+      - name: Checkout exact PR head
         uses: actions/checkout@v5
         with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
 
       - name: Set up JDK 17
@@ -43,3 +45,58 @@ jobs:
 
       - name: Run JVM unit tests
         run: ./gradlew testDebugUnitTest --max-workers=4 --no-daemon --stacktrace
+
+      - name: Upload JVM evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-jvm-evidence
+          path: app/build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 14
+
+  android-runtime:
+    name: Smart Local cover lifecycle — Android 15
+    if: contains(github.event.pull_request.labels.*.name, 'ci:runtime-required')
+    needs: compile-unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Grant execute permission
+        run: chmod +x gradlew
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - name: Validate cover persistence, source freshness and Reader pins
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: >-
+            ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest,org.koitharu.kotatsu.core.image.MiyorareImageDiskCacheTest
+      - name: Upload Android evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-local-cover-android15
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 14

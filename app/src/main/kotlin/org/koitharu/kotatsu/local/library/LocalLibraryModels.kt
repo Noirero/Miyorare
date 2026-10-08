@@ -36,6 +36,10 @@ data class LocalBook(
 
     val isNovel get() = contentType == LocalContentType.NOVEL
 
+    // The query versions presentation only: IDs and manga/chapter routes stay stable. A Refresh
+    // that changes the cover source must also produce a changed model for existing grid cells.
+    internal val coverPlan: LocalCoverPlan by lazy { LocalCoverPlan.from(this) }
+
     // Legacy File identity uses the actual URI path, not a canonical alias (Android /data/user/0
     // and /data/data can differ). Canonical keys still enforce ownership/root deduplication.
     val id get() = node.mangaIdentity()
@@ -45,7 +49,7 @@ data class LocalBook(
         val url = "$LOCAL_LIBRARY_SCHEME://manga/$id/${if (isNovel) "book.epub" else "book"}"
         return Manga(id = id, title = title ?: LocalTreeScanner.displayName(node.name, showExtensions, node.directory),
             altTitles = emptySet(), url = url, publicUrl = url, source = LocalMangaSource,
-            coverUrl = "$LOCAL_LIBRARY_SCHEME://cover/$id", largeCoverUrl = null, rating = -1f,
+            coverUrl = "$LOCAL_LIBRARY_SCHEME://cover/$id?v=${coverPlan.fingerprint}", largeCoverUrl = null, rating = -1f,
             contentRating = null, tags = emptySet(), state = null, authors = authors, description = description,
             chapters = if (withDetails) chapters.mapIndexed { index, c ->
                 MangaChapter(id = c.id, title = c.metadataTitle ?: LocalTreeScanner.displayName(c.node.name, showExtensions, c.node.directory),

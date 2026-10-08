@@ -41,6 +41,7 @@ class SmartLocalLibrary @Inject constructor(
     @ApplicationContext private val context: Context,
     private val documents: LocalDocuments, private val contentReader: LocalContentReader,
     private val dataRepository: MangaDataRepository, private val db: MangaDatabase,
+    private val coverCache: SmartLocalCoverCache,
 ) {
     private val mutex = Mutex()
     private val prefs by lazy { context.getSharedPreferences("smart_local_library", Context.MODE_PRIVATE) }
@@ -315,9 +316,25 @@ class SmartLocalLibrary @Inject constructor(
         val (book, chapter) = requireChapter(url)
         return@withContext contentReader.epubImage(documents.root(book.rootUri), chapter, source)
     }
+    internal suspend fun coverFingerprint(id: Long): String? = coverPlan(id)?.second?.fingerprint
+
+    private suspend fun coverPlan(id: Long): Pair<LocalBook, LocalCoverPlan>? {
+        val book = book(id) ?: return null
+        return book to book.coverPlan
+    }
+
     suspend fun cover(id: Long): ByteArray? = withContext(Dispatchers.IO) {
-        val book = book(id) ?: return@withContext null
-        return@withContext contentReader.cover(documents.root(book.rootUri), book)
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val (book, plan) = coverPlan(id) ?: return@withContext null
+            val isCurrent = { state.value.books.firstOrNull { it.id == id } === book }
+            val bytes = coverCache.getOrGenerate(id, plan, isCurrent) {
+                contentReader.cover(documents.root(book.rootUri), plan)
+            }
+            if (isCurrent()) return@withContext bytes
+            // Refresh/detach raced this request. Never return a superseded source version.
+        }
+        @Suppress("UNREACHABLE_CODE") null
     }
     private suspend fun requireChapter(url: String): Pair<LocalBook, LocalChapter> {
         initialize()
