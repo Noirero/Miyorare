@@ -1219,7 +1219,6 @@ internal fun InlineChapterCard(
 			}
 
 			when {
-				!item.canDownload -> Unit
 				item.isDownloaded -> IconButton(onClick = onManageClick) {
 					Icon(
 						painter = painterResource(R.drawable.ic_eye_check),
@@ -1228,6 +1227,7 @@ internal fun InlineChapterCard(
 						modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
 					)
 				}
+				!item.canDownload -> Unit
 				item.isDownloading -> Box {
 					Box(
 						modifier = Modifier
