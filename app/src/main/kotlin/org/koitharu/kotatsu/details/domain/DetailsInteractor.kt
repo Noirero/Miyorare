@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.TriStateOption
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
@@ -36,8 +37,11 @@ class DetailsInteractor @Inject constructor(
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 ) {
 
-	fun observeFavourite(mangaId: Long): Flow<Set<FavouriteCategory>> {
-		return favouritesRepository.observeCategories(mangaId)
+	fun observeFavourite(
+		mangaId: Long,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
+	): Flow<Set<FavouriteCategory>> {
+		return favouritesRepository.observeCategories(mangaId, space)
 	}
 
 	fun observeNewChapters(mangaId: Long): Flow<Int> {
