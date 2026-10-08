@@ -12,6 +12,10 @@ import java.io.File
  * entry in Android's disposable cache. Cover entries therefore survive Android "Clear cache"
  * without turning reader pages, favicons, bookmarks, or arbitrary network images into user data.
  *
+ * Smart Local cover URLs are normalized here as well as at request-building call sites. The disk
+ * cache is the ownership boundary for persistence, so a caller that submits
+ * `smart-local://cover/<mangaId>` directly cannot accidentally create a second volatile entry.
+ *
  * Existing `cover:<mangaId>` entries are lazily copied from the legacy cache on first read. The
  * mapping is safe because Coil's public DiskCache API accepts the original request key; no hashed
  * filename or journal implementation detail is guessed here.
@@ -49,15 +53,22 @@ class MiyorareImageDiskCache(
 		get() = coverCache.size
 
 	override fun openSnapshot(key: String): DiskCache.Snapshot? {
-		if (!isCoverKey(key)) return volatileCache.openSnapshot(key)
-		coverCache.openSnapshot(key)?.let { return it }
+		val normalizedKey = normalizeKey(key)
+		if (!isCoverKey(normalizedKey)) return volatileCache.openSnapshot(normalizedKey)
+		coverCache.openSnapshot(normalizedKey)?.let { return it }
 		if (!migrationPreferences.getBoolean(KEY_LEGACY_MIGRATION_ENABLED, true)) return null
-		return migrateLegacyCover(key)
+		return migrateLegacyCover(normalizedKey)
 	}
 
-	override fun openEditor(key: String): DiskCache.Editor? = cacheFor(key).openEditor(key)
+	override fun openEditor(key: String): DiskCache.Editor? {
+		val normalizedKey = normalizeKey(key)
+		return cacheFor(normalizedKey).openEditor(normalizedKey)
+	}
 
-	override fun remove(key: String): Boolean = cacheFor(key).remove(key)
+	override fun remove(key: String): Boolean {
+		val normalizedKey = normalizeKey(key)
+		return cacheFor(normalizedKey).remove(normalizedKey)
+	}
 
 	/** Coil-level clear means clear the complete image cache. Settings uses the scoped methods below. */
 	override fun clear() {
@@ -85,6 +96,12 @@ class MiyorareImageDiskCache(
 
 	private fun cacheFor(key: String): DiskCache = if (isCoverKey(key)) coverCache else volatileCache
 
+	private fun normalizeKey(key: String): String {
+		if (!key.startsWith(SMART_LOCAL_COVER_PREFIX, ignoreCase = true)) return key
+		val id = key.substring(SMART_LOCAL_COVER_PREFIX.length).substringBefore('/').substringBefore('?').substringBefore('#')
+		return id.toLongOrNull()?.let { "$COVER_KEY_PREFIX$it" } ?: key
+	}
+
 	private fun migrateLegacyCover(key: String): DiskCache.Snapshot? {
 		val legacy = volatileCache.openSnapshot(key) ?: return null
 		try {
@@ -111,6 +128,7 @@ class MiyorareImageDiskCache(
 
 	private companion object {
 		const val COVER_KEY_PREFIX = "cover:"
+		const val SMART_LOCAL_COVER_PREFIX = "smart-local://cover/"
 		const val COVER_DIR = "covers"
 		const val COIL_DIR = "coil"
 		const val VOLATILE_DIR = "image_cache"
