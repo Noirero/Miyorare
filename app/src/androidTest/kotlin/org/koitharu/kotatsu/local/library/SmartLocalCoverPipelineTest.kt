@@ -13,6 +13,7 @@ import android.provider.DocumentsContract
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
+import coil3.intercept.Interceptor
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
@@ -56,6 +57,7 @@ class SmartLocalCoverPipelineTest {
     private lateinit var reader: CountingReader
     private lateinit var cache: SmartLocalCoverCache
     private var loader: ImageLoader? = null
+    private var beforePresentation: (suspend () -> Unit)? = null
     private val counts = Counts()
     private val readerPageDirectories = HashSet<File>()
     private val resolver get() = context.contentResolver
@@ -242,6 +244,22 @@ class SmartLocalCoverPipelineTest {
         assertEquals(1, counts.render)
     }
 
+    @Test fun refreshRacingCoilMemoryHitRetriesBeforeReturningSupersededCover() = runBlocking {
+        put("book.pdf", pdf(Color.RED)); library.scan()
+        val manga = library.state.value.books.single().toManga(false)
+        val old = request(manga)
+        beforePresentation = {
+            beforePresentation = null
+            put("book.pdf", pdf(Color.BLUE)); library.scan()
+        }
+        val fresh = request(manga)
+        assertNotEquals(old.memoryCacheKey, fresh.memoryCacheKey)
+        assertNotEquals(old.image.toBitmap().getPixel(10, 10), fresh.image.toBitmap().getPixel(10, 10))
+        assertEquals(2, counts.extract)
+        assertEquals(2, counts.materialize)
+        assertEquals(2, counts.render)
+    }
+
     @Test fun thumbnailEncodingBoundsDimensionsAndKeepsValidImage() {
         val encoded = LocalCoverThumbnail.encode(png(Color.BLUE, 2048, 1024))!!
         val decoded = BitmapFactory.decodeByteArray(encoded, 0, encoded.size)!!
@@ -261,6 +279,7 @@ class SmartLocalCoverPipelineTest {
             .components {
                 add(LocalCoverFetcher.Factory(Provider { library }))
                 add(LocalCoverVersionInterceptor(Provider { library }))
+                add(Interceptor { chain -> beforePresentation?.invoke(); chain.proceed() })
             }.build().also { loader = it }
         val result = imageLoader.execute(ImageRequest.Builder(context).data(coverUrl).mangaExtra(manga)
             .stableMangaCoverKey(manga, coverUrl).size(128, 192).allowHardware(false).build())

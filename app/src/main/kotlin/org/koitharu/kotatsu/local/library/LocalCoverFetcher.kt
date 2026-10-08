@@ -10,6 +10,8 @@ import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.toAndroidUri
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import okio.Buffer
 import java.io.IOException
 import javax.inject.Inject
@@ -43,10 +45,16 @@ class LocalCoverVersionInterceptor @Inject constructor(private val library: Prov
         }
         if (uri.scheme != LOCAL_LIBRARY_SCHEME || uri.host != "cover") return chain.proceed()
         val id = uri.pathSegments.firstOrNull()?.toLongOrNull() ?: return chain.proceed()
-        val fingerprint = library.get().coverFingerprint(id)
-        val builder = chain.request.newBuilder()
-        if (fingerprint == null) builder.memoryCachePolicy(CachePolicy.DISABLED)
-        else builder.memoryCacheKeyExtra("smart-local-source-version", fingerprint)
-        return chain.withRequest(builder.build()).proceed()
+        val owner = library.get()
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val fingerprint = owner.coverFingerprint(id)
+            val builder = chain.request.newBuilder()
+            if (fingerprint == null) builder.memoryCachePolicy(CachePolicy.DISABLED)
+            else builder.memoryCacheKeyExtra("smart-local-source-version", fingerprint)
+            val result = chain.withRequest(builder.build()).proceed()
+            // Refresh can publish between version resolution and an engine memory hit.
+            if (owner.coverFingerprint(id) == fingerprint) return result
+        }
     }
 }

@@ -46,7 +46,8 @@ key, URI, name, size and modified time (plus scan timestamp only for unknown met
 A cached winner validates its prefix, including failed higher-priority candidates. A changed
 sidecar supersedes an archive fallback; changes to later non-cover chapters do not regenerate
 a successful earlier cover. The full candidate fingerprint is resolved before Coil's memory
-lookup by LocalCoverVersionInterceptor, without source I/O. A new version cannot reuse the
+lookup by LocalCoverVersionInterceptor, without source I/O, and checked again after the result
+to retry a Refresh racing a memory hit. A new version cannot reuse the
 old version's memory key. The domain manga model also includes the version as a cover URL query,
 so an existing grid cell is rebound after Refresh even if title/chapters are otherwise unchanged.
 #557 still normalizes that URL to cover:<mangaId>. Smart Local manga/chapter URLs and IDs remain
