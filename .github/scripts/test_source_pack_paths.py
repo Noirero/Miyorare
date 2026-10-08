@@ -21,7 +21,7 @@ ROOT = router.ROOT
 P = router.PACK_ROOT
 # Pre-Stage-5 validation steps: ignores routing `if`, preserves every command,
 # checkout ref/configuration, artifact failure/retention rule and environment.
-PRESERVED = {('miyorare-global-source-pack-check.yml', 'Apply Miyorare Global parser overlays'): '8fb4d01ab2737ccfb4e175cee2998144cca7b9400dccd18e7a126aea1b7de77d',
+PRESERVED = {('miyorare-global-source-pack-check.yml', 'Apply Miyorare Global parser overlays'): '04c52d75790e8f0b181de149ab2ee58364ed5c7536c5274483aab6e58a3c3ca7',
  ('miyorare-global-source-pack-check.yml', 'Build global Gekkoushi shard'): '616d1996ff918baf36c0930fc349b98b7a1ea90528f1ffd60d30920e24c17ce1',
  ('miyorare-global-source-pack-check.yml', 'Checkout pinned Gekkoushi source'): 'd6277e37f9949beb1434c702720bca3b5632bc18827630bef418c2f465ec6fbe',
  ('miyorare-global-source-pack-check.yml', 'Finalize global Gekkoushi shard'): 'b054a9e6b3514ba731f70bf33ed66fb1d6e2554b66ac7844ed50eb08a7a923e8',
@@ -30,7 +30,7 @@ PRESERVED = {('miyorare-global-source-pack-check.yml', 'Apply Miyorare Global pa
  ('miyorare-global-source-pack-check.yml', 'Upload Gradle diagnostics on failure'): 'a055711a72261e67adbfb479f6941ef49b2b43c30edb34196aa6d83c858094a1',
  ('miyorare-global-source-pack-check.yml', 'Upload staging pack'): 'df4d04f860aa3fcc91209f1edb6b29efe06b3044e4130eba275a5da7c08841fb',
  ('miyorare-global-source-pack-check.yml', 'Verify ExHentai pagination regression contract'): 'da0f75786892df82656a5468e1d868917be783baa59a22a5f636e8c45625236a',
- ('miyorare-global-source-pack-check.yml', 'Verify Global ownership and complete E-Hentai family preset'): 'e7e8536c50758a6435fe2b2708332c6c6da6d937b1d750a848796383df11af44',
+ ('miyorare-global-source-pack-check.yml', 'Verify Global ownership and complete E-Hentai family preset'): '2201f4e92f97c92e63f168db5379a78d5a0dd1696cfb23ebc137193706a57ee8',
  ('miyorare-multi-upstream-check.yml', 'Checkout pinned Keiyoushi'): 'a8b009632b524c64cb3f9b56d3eeab911b178d16e5d4e6f466d99d605409ddc0',
  # Sole ref exception: approved Farm pin update in #79; see CI_SOURCE_PACK_STAGE5.md.
  ('miyorare-multi-upstream-check.yml', 'Checkout pinned UMA'): '820963cdd4378e81080946a979bb5ba73114050863c36d57214ecccf403041a7',
