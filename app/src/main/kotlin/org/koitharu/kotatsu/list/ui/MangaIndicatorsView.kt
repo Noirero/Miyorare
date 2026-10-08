@@ -48,8 +48,8 @@ class MangaIndicatorsView @JvmOverloads constructor(
 		bind(isSaved, isLocalSource, isFavorite)
 		updateLayoutParams<FrameLayout.LayoutParams> {
 			topMargin = when {
-				// Keep the library indicator below the card's top counter/language/progress row.
-				isFavorite -> resources.getDimensionPixelSize(R.dimen.library_indicator_grid_top_offset)
+				// The library indicator is anchored directly to the cover's top-start edge.
+				isFavorite -> 0
 				// Existing status-only offsets, preserving their pixel truncation.
 				counter > 0 -> resources.getDimensionPixelOffset(R.dimen.card_indicator_size)
 				else -> resources.getDimensionPixelOffset(R.dimen.margin_normal)
