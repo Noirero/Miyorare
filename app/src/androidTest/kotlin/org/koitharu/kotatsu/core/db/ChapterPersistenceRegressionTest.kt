@@ -316,7 +316,10 @@ class ChapterPersistenceRegressionTest {
 				SampleData.mangaDetails, null, 8, null, isFavorite = true, isSaved = true, isLocalSource = true,
 			)
 			adapter.items = listOf(model)
-			val holder = adapter.onCreateViewHolder(androidx.recyclerview.widget.RecyclerView(themed), adapter.getItemViewType(0))
+			val parent = androidx.recyclerview.widget.RecyclerView(themed).apply {
+				layoutManager = androidx.recyclerview.widget.GridLayoutManager(themed, 2)
+			}
+			val holder = adapter.onCreateViewHolder(parent, adapter.getItemViewType(0))
 			val binding = org.koitharu.kotatsu.databinding.ItemMangaGridBinding.bind(holder.itemView)
 			for ((favorite, counter) in listOf(true to 8, false to 8, false to 0, true to 0)) {
 				// Submitting after null is synchronous, so this exercises the same recycled holder deterministically.
