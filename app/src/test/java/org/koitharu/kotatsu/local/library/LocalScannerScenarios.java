@@ -114,7 +114,8 @@ public final class LocalScannerScenarios {
             throw new AssertionError("A file is not a selected root");
         } catch (IOException expected) { check(true, "Root must be an explicit directory"); }
         MemoryTree empty = new MemoryTree();
-        check(empty.scan().entries.isEmpty() && empty.scan().issues.isEmpty(), "Empty selected folder stays empty without fake content");
+        Result emptyResult = empty.scan();
+        check(emptyResult.entries.isEmpty() && emptyResult.issues.size() == 1 && emptyResult.issues.get(0).reason.equals("empty"), "Empty selected folder is diagnosed without fake content");
         MemoryTree onlyComic = new MemoryTree(); onlyComic.file("/selected/one.cbz");
         check(onlyComic.scan().entries.size() == 1, "One CBZ remains one title");
         check(onlyComic.scan().entries.get(0).chapters.size() == 1, "One CBZ has one indexed chapter without materialization");

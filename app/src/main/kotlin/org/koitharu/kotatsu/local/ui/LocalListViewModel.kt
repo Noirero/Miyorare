@@ -221,7 +221,7 @@ class LocalListViewModel @Inject constructor(
 		}
 		if (manga.isEmpty() && snapshot.initialized) {
 			val reason = localCollectionEmptyReason(snapshot.roots.size,
-				snapshot.books.mapTo(HashSet()) { it.contentType }, snapshot.diagnoses.isNotEmpty(), query, type)
+				snapshot.books.mapTo(HashSet()) { it.contentType }, snapshot.diagnoses, query, type)
 			val message = when (reason) {
 				LocalCollectionEmptyReason.NO_FOLDERS -> R.string.smart_local_empty
 				LocalCollectionEmptyReason.ACCESS -> R.string.smart_local_access_empty

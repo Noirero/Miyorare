@@ -40,10 +40,10 @@ internal fun restoreLocalContentSelection(hasSavedValue: Boolean, savedValue: St
 
 internal enum class LocalCollectionEmptyReason { NO_FOLDERS, ACCESS, SEARCH, MANGA, NOVEL, NO_CONTENT, FILTER }
 
-internal fun localCollectionEmptyReason(rootCount: Int, indexedTypes: Set<LocalContentType>, hasDiagnoses: Boolean,
+internal fun localCollectionEmptyReason(rootCount: Int, indexedTypes: Set<LocalContentType>, diagnoses: List<LocalDiagnosis>,
     query: String?, type: LocalContentType?): LocalCollectionEmptyReason = when {
     rootCount == 0 -> LocalCollectionEmptyReason.NO_FOLDERS
-    indexedTypes.isEmpty() && hasDiagnoses -> LocalCollectionEmptyReason.ACCESS
+    indexedTypes.isEmpty() && diagnoses.any { it.reason == "unavailable" } -> LocalCollectionEmptyReason.ACCESS
     !query.isNullOrBlank() -> LocalCollectionEmptyReason.SEARCH
     type == LocalContentType.MANGA && LocalContentType.MANGA !in indexedTypes -> LocalCollectionEmptyReason.MANGA
     type == LocalContentType.NOVEL && LocalContentType.NOVEL !in indexedTypes -> LocalCollectionEmptyReason.NOVEL
