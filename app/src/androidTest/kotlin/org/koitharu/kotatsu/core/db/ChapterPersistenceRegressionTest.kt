@@ -261,30 +261,102 @@ class ChapterPersistenceRegressionTest {
 	fun libraryIndicatorFitsNarrowCardsAndClearsRecycledPresentation() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
 			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
-			val parser = themed.resources.getLayout(org.koitharu.kotatsu.R.layout.item_manga_grid)
-			try {
+			val view = themed.resources.getLayout(org.koitharu.kotatsu.R.layout.item_manga_grid).use { parser ->
 				while (parser.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
-					if (parser.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name.endsWith("IconsView")) break
+					if (parser.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name.endsWith("MangaIndicatorsView")) break
 				}
-				val view = org.koitharu.kotatsu.core.ui.widgets.IconsView(themed, android.util.Xml.asAttributeSet(parser))
-				val size = themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.library_indicator_icon_size)
-				view.addIcon(org.koitharu.kotatsu.R.drawable.ic_heart, size)
-				view.addLabel(themed.getString(org.koitharu.kotatsu.R.string.in_library))
-				for (widthDp in listOf(90, 140)) {
-					val width = (widthDp * themed.resources.displayMetrics.density).toInt()
-					view.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.AT_MOST),
-						android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
-					assertTrue(view.measuredWidth <= width)
+				org.koitharu.kotatsu.list.ui.MangaIndicatorsView(themed, android.util.Xml.asAttributeSet(parser))
+			}
+			val heart = view.findViewById<android.widget.ImageView>(org.koitharu.kotatsu.R.id.library_heart)
+			val label = view.findViewById<android.widget.TextView>(org.koitharu.kotatsu.R.id.library_label)
+			val icons = view.findViewById<org.koitharu.kotatsu.core.ui.widgets.IconsView>(org.koitharu.kotatsu.R.id.status_icons)
+			val size = themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.library_indicator_icon_size)
+			for (favorite in listOf(true, false, true, false)) {
+				for (saved in listOf(false, true)) for (local in listOf(false, true)) {
+					view.bind(saved, local, favorite)
+					assertEquals(if (favorite) android.view.View.VISIBLE else android.view.View.GONE, heart.visibility)
+					assertEquals(heart.visibility, label.visibility)
+					assertEquals(themed.getString(org.koitharu.kotatsu.R.string.in_library), label.text.toString())
+					assertEquals((if (saved) 1 else 0) + (if (local) 1 else 0), icons.iconsCount)
+					assertEquals(if (favorite || saved || local) android.view.View.VISIBLE else android.view.View.GONE, view.visibility)
+					for (widthDp in listOf(79, 90, 140)) {
+						val width = (widthDp * themed.resources.displayMetrics.density).toInt()
+						view.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.AT_MOST),
+							android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
+						view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+						assertTrue(view.measuredWidth <= width)
+						if (favorite) {
+							assertEquals(size, heart.measuredWidth)
+							assertTrue(heart.right <= view.measuredWidth)
+							assertTrue(label.right <= view.measuredWidth)
+						}
+					}
 				}
-				assertEquals(size, view.getChildAt(0).layoutParams.width)
-				assertTrue(view.getChildAt(1) is android.widget.TextView)
-				view.clearIcons()
-				assertEquals(0, view.iconsCount)
-				view.addIcon(org.koitharu.kotatsu.R.drawable.ic_storage)
-				assertEquals(1, view.iconsCount)
-				assertEquals(android.view.View.GONE, view.getChildAt(1).visibility)
-				assertTrue(view.getChildAt(0).layoutParams.width < size)
-			} finally { parser.close() }
+			}
+		}
+	}
+
+	@Test
+	fun libraryIndicatorPreservesGridCounterPositionOnRebind() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
+			val listener = object : org.koitharu.kotatsu.list.ui.adapter.MangaDetailsClickListener {
+				override fun onItemClick(item: org.koitharu.kotatsu.list.ui.model.MangaListModel, view: android.view.View) = Unit
+				override fun onReadClick(manga: org.koitharu.kotatsu.parsers.model.Manga, view: android.view.View) = Unit
+				override fun onTagClick(manga: org.koitharu.kotatsu.parsers.model.Manga, tag: org.koitharu.kotatsu.parsers.model.MangaTag, view: android.view.View) = Unit
+			}
+			val resolver = object : org.koitharu.kotatsu.list.ui.size.ItemSizeResolver {
+				override val cellWidth = (140 * themed.resources.displayMetrics.density).toInt()
+				override fun attachToView(view: android.view.View, textView: android.widget.TextView?, progressView: org.koitharu.kotatsu.history.ui.util.ReadingProgressView?) = Unit
+			}
+			val adapter = org.koitharu.kotatsu.core.ui.BaseListAdapter<org.koitharu.kotatsu.list.ui.model.ListModel>()
+				.addDelegate(org.koitharu.kotatsu.list.ui.adapter.ListItemType.MANGA_GRID,
+					org.koitharu.kotatsu.list.ui.adapter.mangaGridItemAD(resolver, listener))
+			val model = org.koitharu.kotatsu.list.ui.model.MangaGridModel(
+				SampleData.mangaDetails, null, 8, null, isFavorite = true, isSaved = true, isLocalSource = true,
+			)
+			adapter.items = listOf(model)
+			val holder = adapter.onCreateViewHolder(androidx.recyclerview.widget.RecyclerView(themed), adapter.getItemViewType(0))
+			val binding = org.koitharu.kotatsu.databinding.ItemMangaGridBinding.bind(holder.itemView)
+			for ((favorite, counter) in listOf(true to 8, false to 8, false to 0, true to 0)) {
+				// Submitting after null is synchronous, so this exercises the same recycled holder deterministically.
+				adapter.items = null
+				adapter.items = listOf(model.copy(isFavorite = favorite, counter = counter))
+				adapter.onBindViewHolder(holder, 0)
+				assertEquals(counter, binding.badge.number)
+				assertEquals(if (counter > 0) android.view.View.VISIBLE else android.view.View.GONE, binding.badge.visibility)
+				val expectedOffset = if (favorite) themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.library_indicator_grid_top_offset)
+					else ((if (counter > 0) 32 else 16) * themed.resources.displayMetrics.density).toInt()
+				assertEquals(expectedOffset, (binding.iconsView.layoutParams as android.widget.FrameLayout.LayoutParams).topMargin)
+				assertEquals(if (favorite) android.view.View.VISIBLE else android.view.View.GONE,
+					binding.iconsView.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.library_label).visibility)
+			}
+		}
+	}
+
+	@Test
+	fun unrelatedIconsViewConsumersRetainIconOnlySizingAndRecycling() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
+			for (layout in listOf(org.koitharu.kotatsu.R.layout.item_manga_alternative, org.koitharu.kotatsu.R.layout.item_manga_carousel)) {
+				val parser = themed.resources.getLayout(layout)
+				try {
+					while (parser.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+						if (parser.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name.endsWith("IconsView")) break
+					}
+					val view = org.koitharu.kotatsu.core.ui.widgets.IconsView(themed, android.util.Xml.asAttributeSet(parser))
+					assertEquals(android.view.Gravity.TOP or android.view.Gravity.START, view.gravity)
+					view.addIcon(org.koitharu.kotatsu.R.drawable.ic_storage)
+					view.addIcon(org.koitharu.kotatsu.R.drawable.ic_heart_outline)
+					assertEquals(2, view.iconsCount)
+					val originalSize = view.getChildAt(0).layoutParams.width
+					view.clearIcons()
+					view.addIcon(org.koitharu.kotatsu.R.drawable.ic_manga_source)
+					assertEquals(1, view.iconsCount)
+					assertEquals(originalSize, view.getChildAt(0).layoutParams.width)
+					assertTrue((0 until view.childCount).all { view.getChildAt(it) is android.widget.ImageView })
+				} finally { parser.close() }
+			}
 		}
 	}
 

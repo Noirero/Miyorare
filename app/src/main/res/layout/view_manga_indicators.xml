@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto">
+
+	<org.koitharu.kotatsu.core.ui.widgets.IconsView
+		android:id="@+id/status_icons"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:orientation="horizontal"
+		app:iconSize="14dp"
+		app:iconSpacing="@dimen/library_indicator_spacing" />
+
+	<ImageView
+		android:id="@+id/library_heart"
+		android:layout_width="@dimen/library_indicator_icon_size"
+		android:layout_height="@dimen/library_indicator_icon_size"
+		android:importantForAccessibility="no"
+		android:src="@drawable/ic_heart" />
+
+	<TextView
+		android:id="@+id/library_label"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="@dimen/library_indicator_spacing"
+		android:layout_weight="1"
+		android:ellipsize="end"
+		android:maxLines="1"
+		android:maxWidth="@dimen/library_indicator_label_max_width"
+		android:text="@string/in_library"
+		android:textColor="?android:attr/textColorPrimary"
+		android:textSize="12sp"
+		android:textStyle="bold" />
+
+</merge>
