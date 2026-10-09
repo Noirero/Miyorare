@@ -368,6 +368,30 @@ class MangaUpdatesRepositoryTest {
 		assertTrue(mutations().isEmpty())
 	}
 
+	@Test fun aCapturedUiEditCannotAdoptAnAssociationBeforeTheJobStarts() = runBlocking {
+		val repo = repository(); linked(repo)
+		val edit = repo.captureEdit(41, target)!!
+		db.getScrobblingDao().upsert(ScrobblingEntity(6, 0, 41, target + 1, "wish", 2, null, 0.2f))
+		val requests = transport.requests.size
+		try { repo.updateRate(edit, 0.6f, "complete"); fail("Expected stale UI association") } catch (_: CancellationException) { }
+		assertEquals(requests, transport.requests.size)
+		assertEquals(target + 1, db.getScrobblingDao().find(6, 41)?.targetId)
+		assertEquals("wish", db.getScrobblingDao().find(6, 41)?.status)
+	}
+
+	@Test fun aLowerReaderUpdateRetriesTheHigherUnsynchronizedChapter() = runBlocking {
+		val repo = repository(); linked(repo)
+		transport.failWrites = 2
+		repo.enqueueProgress(41, 60, false)
+		withTimeout(5000) { repo.failedProgress.first { 41L in it } }
+		assertEquals(31, db.getScrobblingDao().find(6, 41)?.chapter)
+		repo.enqueueProgress(41, 40, false)
+		withTimeout(5000) { db.getScrobblingDao().observe(6, 41).first { it?.chapter == 60 } }
+		assertEquals(60, transport.remote!!.getValue("status").jsonObject.getValue("chapter").jsonPrimitive.int)
+		assertTrue(repo.failedProgress.value.isEmpty())
+		assertEquals(target, db.getScrobblingDao().find(6, 41)?.targetId)
+	}
+
 	@Test fun associationChangesDuringAReadAreRecheckedBeforeAListOrRatingMutation() = runBlocking {
 		val repo = repository(); linked(repo)
 		val original = db.getScrobblingDao().find(6, 41)!!

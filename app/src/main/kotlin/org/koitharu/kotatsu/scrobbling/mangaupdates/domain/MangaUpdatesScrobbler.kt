@@ -36,8 +36,10 @@ class MangaUpdatesScrobbler @Inject constructor(
 		return true
 	}
 
-	suspend fun scrobble(context: MangaUpdatesEditContext, manga: Manga, chapterId: Long) =
+	suspend fun scrobble(context: MangaUpdatesEditContext, manga: Manga, chapterId: Long) {
+		if (db.getPrivateFavouritesDao().isPrivateOnly(manga.id) || db.getScrobblingDao().find(scrobblerService.id, manga.id)?.targetId != context.targetId) return
 		repository.enqueueProgress(context, scrobbleChapterNumber(manga, chapterId), manga.isNsfw())
+	}
 
 	override suspend fun scrobble(manga: Manga, chapterId: Long) {
 		if (db.getPrivateFavouritesDao().isPrivateOnly(manga.id) || db.getScrobblingDao().find(scrobblerService.id, manga.id) == null) return
