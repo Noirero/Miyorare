@@ -3,6 +3,8 @@ package org.koitharu.kotatsu.scrobbling.common.domain
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.scrobbling.common.domain.model.*
@@ -18,12 +20,12 @@ class ReadTrackerDetailsUseCase @Inject constructor(
 		services: Set<ScrobblerService>,
 		requested: Map<TrackerContent, TrackerPage>,
 		policy: TrackerDetailsReadPolicy = TrackerDetailsReadPolicy(),
-	): List<AssociatedTrackerDetails> {
+	): List<AssociatedTrackerDetails> = withContext(Dispatchers.IO) {
 		if (!policy.allowsNetwork || requested.isEmpty()) {
-			return services.map { AssociatedTrackerDetails(it, null, TrackerDetailsReadState.SUPPRESSED) }
+			return@withContext services.map { AssociatedTrackerDetails(it, null, TrackerDetailsReadState.SUPPRESSED) }
 		}
 		val associations = database.getScrobblingDao().findAll(mangaId)
-		return services.map { service ->
+		services.map { service ->
 			currentCoroutineContext().ensureActive()
 			// A corrupt/ambiguous persisted mapping is not permission to choose a target or fuzzy-link.
 			val target = associatedTrackerTarget(service, associations)
@@ -72,3 +74,4 @@ internal suspend fun readAssociatedTrackerDetails(
 	)
 	return if (provider.isAuthorized) result else AssociatedTrackerDetails(target.service, target, TrackerDetailsReadState.AUTH_REQUIRED)
 }
+

@@ -272,6 +272,21 @@ class MangaUpdatesRepositoryTest {
 		assertTrue(db.getScrobblingDao().findByTarget(2, target + 319).isEmpty())
 	}
 
+	@Test fun explicitReassociationClearsAnOldFailureAndNeverRetriesThePreviousTarget() = runBlocking {
+		val repo = repository(); linked(repo)
+		transport.failWrites = 2
+		repo.enqueueProgress(41, 60, false)
+		withTimeout(5000) { repo.failedProgress.first { 41L in it } }
+		val writes = mutations().size
+		transport.id = target + 1
+		transport.remote = transport.state()
+		repo.createRate(41, target + 1)
+		assertTrue(repo.failedProgress.value.isEmpty())
+		repo.retryProgress(41)
+		assertEquals(target + 1, db.getScrobblingDao().find(6, 41)?.targetId)
+		assertEquals(writes, mutations().size)
+	}
+
 	private fun count(table: String): Int = db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM $table").use { it.moveToFirst(); it.getInt(0) }
 
 	private class Sessions : MangaUpdatesSessionStore {
@@ -282,7 +297,7 @@ class MangaUpdatesRepositoryTest {
 		@Synchronized override fun clear(expectedGeneration: Long?): Boolean { if (expectedGeneration != null && expectedGeneration != generation.value) return false; generation.value++; value = null; return true }
 	}
 	private data class Recorded(val path: String, val method: String, val authorization: String?, val body: JsonElement?)
-	private class Transport(private val id: Long) : Interceptor {
+	private class Transport(var id: Long) : Interceptor {
 		val requests: MutableList<Recorded> = Collections.synchronizedList(mutableListOf())
 		var remote: JsonObject? = state()
 		var rating: Float? = 8f

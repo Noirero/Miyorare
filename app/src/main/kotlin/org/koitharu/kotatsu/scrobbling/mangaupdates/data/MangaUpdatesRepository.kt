@@ -171,6 +171,7 @@ class MangaUpdatesRepository internal constructor(
 		val state = existing ?: throw IOException("MangaUpdates entry was not confirmed")
 		val rating = rating(state.seriesId, ticket)
 		save(mangaId, state, rating, ticket, replace = true)
+		progress.remove(mangaId)
 		// Always adopt confirmed remote values, including a concurrent addition, without a reset write.
 		adopted || state.chapter > 0 || state.volume > 0 || rating > 0f || state.type != "wish"
 	}

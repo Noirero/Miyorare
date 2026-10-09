@@ -10,6 +10,8 @@ import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
 import org.koitharu.kotatsu.R
@@ -19,10 +21,11 @@ import org.koitharu.kotatsu.databinding.ActivityMangaupdatesAuthBinding
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesRepository
 import javax.inject.Inject
+import javax.inject.Provider
 
 @AndroidEntryPoint
 class MangaUpdatesAuthActivity : BaseActivity<ActivityMangaupdatesAuthBinding>() {
-	@Inject lateinit var repository: MangaUpdatesRepository
+	@Inject lateinit var repository: Provider<MangaUpdatesRepository>
 	private var login: Job? = null
 	override fun isPrivacySensitiveContent() = flowOf(true)
 	override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,7 +53,7 @@ class MangaUpdatesAuthActivity : BaseActivity<ActivityMangaupdatesAuthBinding>()
 			viewBinding.progressLogin.isVisible = true
 			viewBinding.textError.isVisible = false
 			try {
-				repository.signIn(username, password)
+				withContext(Dispatchers.IO) { repository.get().signIn(username, password) }
 				router.openScrobblerSettings(ScrobblerService.MANGAUPDATES)
 				finish()
 			} catch (e: CancellationException) { throw e } catch (_: Exception) {

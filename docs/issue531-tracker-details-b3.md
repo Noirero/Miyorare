@@ -19,7 +19,7 @@ A tap reverses the selected provider's persisted target association. One usable 
 
 KEEP: B1 provider capability/result models, stable association authority, scoped clients and account epochs; B2 sequential provider reads, cancellation, late-result rejection, independent retry, partial data and bounded UI. These protections are retained together with all existing tests. No B1/B2 component was replaced.
 
-ADAPT: preserve optional person URLs, preferred names, larger portrait/cover fallbacks, and AniList's role/favorites character order and rating recommendation order. Official MAL authors retain actual roles without website scraping or invented character data. Kitsu's explicit relationship parsing remains stronger than a general work-information request. Supplemental data remains suppressed in incognito, private-only and on-device contexts.
+ADAPT: preserve optional person URLs, preferred names, larger portrait/cover fallbacks, and AniList's role/favorites character order and rating recommendation order. Production supplemental reads use an I/O dispatcher so legacy body parsing cannot block the UI. Official MAL authors retain actual roles without website scraping or invented character data. Kitsu's explicit relationship parsing remains stronger than a general work-information request. Supplemental data remains suppressed in incognito, private-only and on-device contexts.
 
 The behavior review traced provider parsing through normalized identity, attribution and UI navigation. Direct source copying, a second catalog/entity framework, website scraping, and automatic remote-library import were unnecessary. Existing privacy, cancellation, provider isolation and test infrastructure remain in place.
 

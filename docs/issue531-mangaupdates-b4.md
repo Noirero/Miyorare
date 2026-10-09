@@ -8,7 +8,7 @@ The native sign-in form sends username/password directly to PUT `/account/login`
 
 Only token/profile data are saved in Android Keystore AES-GCM ciphertext under `noBackupFilesDir`. Credentials are excluded from application and Android backups. Login, replacement, corruption, logout and authenticated 401 advance the account generation; late responses cannot clear a replacement session or publish stale private data. Logout clears locally immediately, then attempts provider revocation without delaying local logout.
 
-The dedicated credential client uses normal TLS verification, the existing proxy/DNS settings, no curl logger, no cookies, no cache, no redirects and bounded timeouts/response size. Three requests may run at once, including account-list enrichment; queued stale sessions are rejected before sending credentials. The bearer interceptor checks exact HTTPS origin, port and API path and removes unsolicited authorization. Public reads have no bearer. Errors contain generic descriptions or HTTP codes, never response/login bodies.
+The dedicated credential client uses normal TLS verification, the existing proxy/DNS settings, no curl logger, no cookies, no cache, no redirects and bounded timeouts/response size. Three requests may run at once, including account-list enrichment; queued stale sessions are rejected before sending credentials. Response bodies are read on OkHttp workers, with cancellation retained after headers arrive. The bearer interceptor checks exact HTTPS origin, port and API path and removes unsolicited authorization. Public reads have no bearer. Errors contain generic descriptions or HTTP codes, never response/login bodies.
 
 ## Identity, association and remote state
 
@@ -22,7 +22,7 @@ Rating reads preserve the documented numeric field on the provider's ten-point s
 
 ## Writes and synchronization
 
-The provider owns one bounded coalescing reader-progress queue and a five-second list-write gate. Other trackers and Reader/History remain independent. Pending entries capture local manga, full tracker target and account generation. Mapping changes, privacy/incognito and account changes reject stale work; failures are visible in Details with explicit retry.
+The provider owns one bounded coalescing reader-progress queue and a five-second list-write gate. Other trackers and Reader/History remain independent. Pending entries capture local manga, full tracker target and account generation. Mapping changes, privacy/incognito and account changes reject stale work; failures are visible in Details with explicit retry. Confirmed explicit reassociation clears the previous target's pending/error state.
 
 Each retry re-reads current remote state and applies an absolute change, including after an uncertain acknowledgement. At most two attempts occur, throttling is respected, unowned remote fields are preserved, and Room advances only after remote confirmation. Existing pull synchronization calls `refreshRate`; it neither imports a remote library nor creates synthetic local manga or Favorites.
 

@@ -5,6 +5,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -18,6 +19,10 @@ import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import okio.Buffer
+import okio.Source
+import okio.Timeout
+import okio.buffer
 
 class MangaUpdatesApiTest {
 	private class Sessions : MangaUpdatesSessionStore {
@@ -137,5 +142,38 @@ class MangaUpdatesApiTest {
 			for (call in calls) try { call.await(); fail("Expected stale account rejection") } catch (_: kotlinx.coroutines.CancellationException) { }
 			assertEquals(3, count.get())
 		} finally { release.countDown(); calls.forEach { it.cancel() } }
+	}
+
+	@Test fun `cancellation after headers interrupts a slow body without blocking the caller`() = runBlocking {
+		val entered = CountDownLatch(1)
+		val ended = CountDownLatch(1)
+		val client = OkHttpClient.Builder().addInterceptor { chain ->
+			val source = object : Source {
+				override fun timeout() = Timeout.NONE
+				override fun close() = Unit
+				override fun read(sink: Buffer, byteCount: Long): Long {
+					entered.countDown()
+					try {
+						val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+						while (!chain.call().isCanceled() && System.nanoTime() < deadline) Thread.sleep(10)
+						if (!chain.call().isCanceled()) throw IOException("Fixture cancellation timed out")
+						throw IOException("Fixture body canceled")
+					} finally { ended.countDown() }
+				}
+			}.buffer()
+			val body = object : ResponseBody() {
+				override fun contentType() = "application/json".toMediaType()
+				override fun contentLength() = -1L
+				override fun source() = source
+			}
+			Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("fixture").body(body).build()
+		}.build()
+		val api = MangaUpdatesApi(client, Sessions(), MANGAUPDATES_API)
+		val flight = async { api.request("GET", "series/17360452316") }
+		try {
+			assertTrue(withContext(Dispatchers.IO) { entered.await(5, TimeUnit.SECONDS) })
+			flight.cancelAndJoin()
+			assertTrue(withContext(Dispatchers.IO) { ended.await(5, TimeUnit.SECONDS) })
+		} finally { flight.cancelAndJoin() }
 	}
 }

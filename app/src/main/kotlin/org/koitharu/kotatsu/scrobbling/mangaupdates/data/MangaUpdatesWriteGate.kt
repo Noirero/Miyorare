@@ -13,7 +13,6 @@ internal class MangaUpdatesWriteGate(
 	private var lastAttempt: Long? = null
 	suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock {
 		lastAttempt?.let { previous -> (5000 - (now() - previous)).takeIf { it > 0 }?.let { wait(it) } }
-		lastAttempt = now()
-		block()
+		try { block() } finally { lastAttempt = now() }
 	}
 }

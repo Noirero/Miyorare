@@ -26,4 +26,12 @@ class MangaUpdatesWriteGateTest {
 		runCurrent(); next.cancel(); advanceUntilIdle()
 		assertEquals(0, writes)
 	}
+
+	@Test fun `slow reads inside an operation cannot shorten the gap between actual writes`() = runTest {
+		val gate = MangaUpdatesWriteGate({ testScheduler.currentTime }, { delay(it) })
+		val writes = mutableListOf<Long>()
+		gate.execute { delay(10000); writes += testScheduler.currentTime }
+		gate.execute { writes += testScheduler.currentTime }
+		assertEquals(listOf(10000L, 15000L), writes)
+	}
 }
