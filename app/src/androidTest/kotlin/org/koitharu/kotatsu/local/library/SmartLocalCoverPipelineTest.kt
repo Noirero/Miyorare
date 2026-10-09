@@ -612,7 +612,15 @@ class SmartLocalCoverPipelineTest {
 
     @Test fun recipeSurveyMeasuresLegacyAndNewBytesAndEncodingWithoutDeviceClaims() {
         val oldSizes = ArrayList<Int>(); val newSizes = ArrayList<Int>()
+        val oldDecodeNanos = ArrayList<Long>(); val newDecodeNanos = ArrayList<Long>()
         var oldNanos = 0L; var newNanos = 0L
+        fun measureStoredDecode(bytes: ByteArray, edge: Int): Long {
+            val started = System.nanoTime()
+            val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)!!
+            val elapsed = System.nanoTime() - started
+            try { assertEquals(edge, maxOf(decoded.width, decoded.height)) } finally { decoded.recycle() }
+            return elapsed
+        }
         repeat(12) { seed ->
             val bitmap = texturedBitmap(1024, 1536, seed)
             val input = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
@@ -626,6 +634,8 @@ class SmartLocalCoverPipelineTest {
                 val newBytes = LocalCoverThumbnail.encode(input)!!
                 newNanos += System.nanoTime() - started
                 oldSizes += oldBytes.size; newSizes += newBytes.size
+                oldDecodeNanos += measureStoredDecode(oldBytes, 768)
+                newDecodeNanos += measureStoredDecode(newBytes, LocalCoverRecipe.STATIC_MAX_EDGE)
                 assertJpeg(newBytes)
             } finally { old.recycle() }
         }
@@ -634,6 +644,8 @@ class SmartLocalCoverPipelineTest {
         writeSurvey("recipe", JSONObject().put("dataset", "SYNTHETIC_12_TEXTURED_IMAGES").put("legacyRecipe", "768PNG100")
             .put("recipe", LocalCoverRecipe.IDENTITY).put("samples", 12).put("legacyMedianBytes", oldSizes[6]).put("medianBytes", newSizes[6])
             .put("legacyP95Bytes", oldSizes.last()).put("p95Bytes", newSizes.last()).put("legacyEncodeNanos", oldNanos)
+            .put("legacyMedianStoredDecodeNanos", oldDecodeNanos.sorted()[6]).put("medianStoredDecodeNanos", newDecodeNanos.sorted()[6])
+            .put("legacyP95StoredDecodeNanos", oldDecodeNanos.max()).put("p95StoredDecodeNanos", newDecodeNanos.max())
             .put("decodeResizeEncodeNanos", newNanos))
         android.util.Log.i("SmartLocalCoverSurvey", "SYNTHETIC recipe=768PNG->512JPEG82 n=12 median=${oldSizes[6]}->${newSizes[6]} p95=${oldSizes.last()}->${newSizes.last()} oldEncodeNs=$oldNanos newDecodeResizeEncodeNs=$newNanos")
     }
