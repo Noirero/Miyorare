@@ -370,6 +370,7 @@ class DetailsExpressiveActivity :
 			onTrackerRecommendationsRefresh = viewModel::refreshTrackerRecommendations,
 			onTrackerRecommendationClick = viewModel::openTrackerRecommendation,
 			onTrackerRecommendationProvider = viewModel::openTrackerRecommendationProvider,
+			onMangaUpdatesProgressRetry = viewModel::retryMangaUpdatesProgress,
 		)
 		viewBinding.composeView.setViewCompositionStrategy(
 			ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
@@ -393,6 +394,7 @@ class DetailsExpressiveActivity :
 				val scrob by viewModel.scrobblingInfo.collectAsState()
 				val trackerPeople by viewModel.trackerPeople.collectAsState()
 				val trackerRecommendations by viewModel.trackerRecommendations.collectAsState()
+				val mangaUpdatesProgressFailed by viewModel.mangaUpdatesProgressFailed.collectAsState()
 				val privateContent by privateContentStateFlow.collectAsState()
 				val genreRecommendations by viewModel.genreRecommendations.collectAsState()
 				val expandedRelated by viewModel.expandedRelated.collectAsState()
@@ -420,6 +422,7 @@ class DetailsExpressiveActivity :
 					scrobblings = scrob,
 					trackerPeople = if (privateContent == PrivateContentState.NORMAL && !history.isIncognitoMode) trackerPeople else DetailsPeopleUiState(),
 					trackerRecommendations = if (privateContent == PrivateContentState.NORMAL && !history.isIncognitoMode) trackerRecommendations else DetailsPeopleUiState(),
+					mangaUpdatesProgressFailed = privateContent == PrivateContentState.NORMAL && !history.isIncognitoMode && mangaUpdatesProgressFailed,
 					genreRecommendations = genreRecommendations,
 					expandedRelated = expandedRelated,
 					relatedDiscoveryEnabled = viewModel.isRelatedDiscoveryEnabled,

@@ -70,25 +70,29 @@ abstract class Scrobbler(
 		return true
 	}
 
-	suspend fun scrobble(manga: Manga, chapterId: Long) {
+	open suspend fun scrobble(manga: Manga, chapterId: Long) {
 		if (isPrivateOnly(manga.id)) return
+		val number = scrobbleChapterNumber(manga, chapterId)
+		val entity = db.getScrobblingDao().find(scrobblerService.id, manga.id) ?: return
+		if (isPrivateOnly(manga.id)) return
+		repository.updateRate(entity.id, entity.mangaId, number)
+		if (isNotStarted(entity.status)) {
+			updateScrobblingInfo(manga.id, entity.rating, ScrobblingStatus.READING, entity.comment)
+		}
+	}
+
+	protected suspend fun scrobbleChapterNumber(manga: Manga, chapterId: Long): Int {
 		var chapters = manga.chapters
 		if (chapters.isNullOrEmpty()) {
 			chapters = mangaRepositoryFactory.create(manga.source).getDetails(manga).chapters
 		}
 		requireNotNull(chapters)
 		val chapter = checkNotNull(chapters.findById(chapterId)) { "Chapter $chapterId not found in this manga" }
-		val number = if (chapter.number > 0f) {
+		return if (chapter.number > 0f) {
 			chapter.number.toInt()
 		} else {
 			chapters = chapters.filter { x -> x.branch == chapter.branch }
 			chapters.indexOf(chapter) + 1
-		}
-		val entity = db.getScrobblingDao().find(scrobblerService.id, manga.id) ?: return
-		if (isPrivateOnly(manga.id)) return
-		repository.updateRate(entity.id, entity.mangaId, number)
-		if (isNotStarted(entity.status)) {
-			updateScrobblingInfo(manga.id, entity.rating, ScrobblingStatus.READING, entity.comment)
 		}
 	}
 
@@ -227,3 +231,4 @@ suspend fun Scrobbler.tryScrobble(manga: Manga, chapterId: Long): Boolean {
 		.onFailure { it.printStackTraceDebug() }
 		.isSuccess
 }
+

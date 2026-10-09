@@ -96,6 +96,7 @@ class DetailsExpressiveActions(
 	val onTrackerRecommendationsRefresh: () -> Unit,
 	val onTrackerRecommendationClick: (org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation) -> Unit,
 	val onTrackerRecommendationProvider: (org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation) -> Unit,
+	val onMangaUpdatesProgressRetry: () -> Unit,
 )
 
 @Composable
@@ -112,6 +113,7 @@ fun DetailsExpressiveScreen(
 	scrobblings: List<ScrobblingInfo>,
 	trackerPeople: DetailsPeopleUiState,
 	trackerRecommendations: DetailsPeopleUiState,
+	mangaUpdatesProgressFailed: Boolean,
 	genreRecommendations: List<MangaListModel>,
 	expandedRelated: DetailsRelatedUiState,
 	relatedDiscoveryEnabled: Boolean,
@@ -362,6 +364,10 @@ fun DetailsExpressiveScreen(
 					}
 
 					if (!managed) item(key = "tracker-recommendations", contentType = "tracker-recommendations") {
+						if (mangaUpdatesProgressFailed) Row(Modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+							Text(stringResource(R.string.mangaupdates_progress_failed), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+							TextButton(onClick = actions.onMangaUpdatesProgressRetry) { Text(stringResource(R.string.tracker_people_retry)) }
+						}
 						LaunchedEffect(manga.id, manga.source, manga.url) { actions.onTrackerRecommendationsRequested() }
 						TrackerRecommendationSection(trackerRecommendations, imageLoader,
 							actions.onTrackerRecommendationClick, actions.onTrackerRecommendationProvider,

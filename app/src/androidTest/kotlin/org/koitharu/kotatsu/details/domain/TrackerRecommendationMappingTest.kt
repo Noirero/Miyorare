@@ -13,9 +13,9 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.*
 
 class TrackerRecommendationMappingTest {
 	private val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, MangaDatabase::class.java).build()
-	private val item = TrackerRecommendation(TrackerTarget(ScrobblerService.ANILIST, "17360452316"), "Recommendation title", null, TrackerRecommendationKind.RECOMMENDATION)
+	private val item = TrackerRecommendation(TrackerTarget(ScrobblerService.MANGAUPDATES, "17360452316"), "Recommendation title", null, TrackerRecommendationKind.RECOMMENDATION)
 	@After fun close() { db.close() }
-	private suspend fun associate(id: Long, service: ScrobblerService = ScrobblerService.ANILIST) {
+	private suspend fun associate(id: Long, service: ScrobblerService = ScrobblerService.MANGAUPDATES) {
 		db.getMangaDao().upsert(MangaEntity(id, "Actual local title $id", null, "file:///actual-$id.cbz", "file:///actual-$id.cbz", 0f, false, null, "", null, null, null, null, "LOCAL", null))
 		db.getScrobblingDao().upsert(ScrobblingEntity(service.id, 0, id, 17360452316, "read", 0, null, 0f))
 	}

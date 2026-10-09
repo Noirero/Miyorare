@@ -9,6 +9,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerUser
 import org.koitharu.kotatsu.scrobbling.kitsu.ui.KitsuAuthActivity
 import javax.inject.Inject
+import org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivity
 
 class ScrobblerAuthHelper @Inject constructor(
 	private val repositoriesMap: ScrobblerRepositoryMap,
@@ -28,6 +29,8 @@ class ScrobblerAuthHelper @Inject constructor(
 	fun startAuth(context: Context, scrobbler: ScrobblerService) = runCatching {
 		if (scrobbler == ScrobblerService.KITSU) {
 			launchKitsuAuth(context)
+		} else if (scrobbler == ScrobblerService.MANGAUPDATES) {
+			context.startActivity(Intent(context, MangaUpdatesAuthActivity::class.java))
 		} else {
 			val repository = repositoriesMap[scrobbler]
 			val intent = Intent(Intent.ACTION_VIEW)
@@ -40,3 +43,4 @@ class ScrobblerAuthHelper @Inject constructor(
 		context.startActivity(Intent(context, KitsuAuthActivity::class.java))
 	}
 }
+

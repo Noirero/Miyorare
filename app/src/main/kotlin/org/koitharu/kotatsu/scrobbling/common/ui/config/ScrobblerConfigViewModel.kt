@@ -24,6 +24,8 @@ import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
+import org.koitharu.kotatsu.scrobbling.common.domain.ScrobblerRepositoryMap
+import org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesRepository
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerUser
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
@@ -33,6 +35,7 @@ import javax.inject.Inject
 class ScrobblerConfigViewModel @Inject constructor(
 	savedStateHandle: SavedStateHandle,
 	scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
+	repositories: ScrobblerRepositoryMap,
 ) : BaseViewModel() {
 
 	private val scrobblerService = getScrobblerService(savedStateHandle)
@@ -52,8 +55,14 @@ class ScrobblerConfigViewModel @Inject constructor(
 
 	init {
 		scrobbler.user
-			.onEach { user.value = it }
+			.onEach { if (scrobblerService != ScrobblerService.MANGAUPDATES ||
+				(scrobbler.isEnabled && it.id == repositories[scrobblerService].cachedUser?.id)) user.value = it }
 			.launchIn(viewModelScope + Dispatchers.Default)
+		if (scrobblerService == ScrobblerService.MANGAUPDATES) {
+			val repository = repositories[scrobblerService] as MangaUpdatesRepository
+			repository.detailsSessionGeneration.onEach { user.value = repository.cachedUser }
+				.launchIn(viewModelScope)
+		}
 	}
 
 	fun onAuthCodeReceived(authCode: String) {
@@ -114,3 +123,4 @@ class ScrobblerConfigViewModel @Inject constructor(
 		}
 	}
 }
+

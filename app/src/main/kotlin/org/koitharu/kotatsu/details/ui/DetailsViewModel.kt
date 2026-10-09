@@ -89,6 +89,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerContent
 import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPage
 import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerDetailsReadPolicy
 import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation
+import org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesRepository
 import org.koitharu.kotatsu.scrobbling.common.domain.SyncProgressFromScrobblersUseCase
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
@@ -289,6 +290,15 @@ class DetailsViewModel @Inject constructor(
 	private var recommendationContext: DetailsPeopleContext? = null
 	private var recommendationNavigationJob: Job? = null
 	private var recommendationsActive = false
+	private val mangaUpdatesRepository get() = scrobblerRepositories[ScrobblerService.MANGAUPDATES] as MangaUpdatesRepository
+	val mangaUpdatesProgressFailed = combine(mangaUpdatesRepository.failedProgress, mangaUpdatesRepository.detailsSessionGeneration) { failed, _ ->
+		mangaUpdatesRepository.isAuthorized && mangaId in failed
+	}.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+	private val _trackerVolume = MutableStateFlow(TrackerVolumeUiState())
+	val trackerVolume = _trackerVolume.asStateFlow()
+	private var volumeJob: Job? = null
+	private var volumeContext: DetailsPeopleContext? = null
+	private var volumeDemanded = false
 
 	init {
 		val sessions = if (peopleProviders.isEmpty()) flowOf(emptyList()) else combine(
@@ -313,9 +323,13 @@ class DetailsViewModel @Inject constructor(
 				peopleController.updateContext(people)
 				if (recommendationContext != recommendations) {
 					recommendationNavigationJob?.cancel()
+					volumeJob?.cancel()
+					volumeContext = null
+					_trackerVolume.value = TrackerVolumeUiState()
 				}
 				recommendationContext = recommendations
 				recommendationController.updateContext(recommendations)
+				if (volumeDemanded) requestTrackerVolume()
 			}
 			.launchIn(viewModelScope)
 	}
@@ -356,12 +370,70 @@ class DetailsViewModel @Inject constructor(
 	fun resumeTrackerRecommendations() {
 		recommendationsActive = true
 		recommendationController.setActive(true)
+		if (volumeDemanded) requestTrackerVolume()
 	}
 	fun pauseTrackerRecommendations() {
 		recommendationsActive = false
 		recommendationNavigationJob?.cancel()
+		volumeJob?.cancel()
+		volumeContext = null
+		_trackerVolume.value = TrackerVolumeUiState()
 		recommendationController.setActive(false)
 	}
+
+	fun requestTrackerVolume(force: Boolean = false) {
+		volumeDemanded = true
+		if (!recommendationsActive || volumeJob?.isActive == true) return
+		val key = recommendationContext ?: return
+		// Volume editing is an explicit tracking action, including for a linked on-device book.
+		if (key.policy.incognito || key.policy.privateOnly || ScrobblerService.MANGAUPDATES !in key.services) return
+		if (!force && volumeContext == key && _trackerVolume.value.isRequested) return
+		volumeContext = key
+		_trackerVolume.value = TrackerVolumeUiState(isRequested = true, isLoading = true)
+		volumeJob = viewModelScope.launch {
+			try {
+				val volume = mangaUpdatesRepository.getVolume(mangaId)
+				if (isVolumeContextCurrent(key)) _trackerVolume.value = TrackerVolumeUiState(isRequested = true, volume = volume)
+			} catch (e: CancellationException) { throw e } catch (_: Exception) {
+				if (isVolumeContextCurrent(key)) _trackerVolume.value = TrackerVolumeUiState(isRequested = true, isError = true)
+			} finally {
+				if (volumeContext == key && _trackerVolume.value.isLoading) _trackerVolume.value = TrackerVolumeUiState(isRequested = true, isError = true)
+			}
+		}
+	}
+
+	fun updateTrackerVolume(volume: Int) {
+		if (volume < 0 || volumeJob?.isActive == true) return
+		val key = volumeContext ?: return
+		_trackerVolume.value = _trackerVolume.value.copy(isLoading = true, isError = false)
+		volumeJob = viewModelScope.launch {
+			try {
+				if (!isVolumeContextCurrent(key)) return@launch
+				mangaUpdatesRepository.updateVolume(mangaId, volume)
+				val confirmed = mangaUpdatesRepository.getVolume(mangaId)
+				if (isVolumeContextCurrent(key)) _trackerVolume.value = TrackerVolumeUiState(isRequested = true, volume = confirmed)
+			} catch (e: CancellationException) { throw e } catch (_: Exception) {
+				if (isVolumeContextCurrent(key)) _trackerVolume.value = _trackerVolume.value.copy(isLoading = false, isError = true)
+			} finally {
+				if (volumeContext == key && _trackerVolume.value.isLoading) _trackerVolume.value = TrackerVolumeUiState(isRequested = true, isError = true)
+			}
+		}
+	}
+
+	fun clearTrackerVolume() {
+		volumeDemanded = false
+		volumeJob?.cancel()
+		volumeContext = null
+		_trackerVolume.value = TrackerVolumeUiState()
+	}
+	fun retryMangaUpdatesProgress() {
+		val key = recommendationContext ?: return
+		if (recommendationsActive && !key.policy.incognito && !key.policy.privateOnly && ScrobblerService.MANGAUPDATES in key.services) mangaUpdatesRepository.retryProgress(mangaId)
+	}
+	private suspend fun isVolumeContextCurrent(key: DetailsPeopleContext): Boolean = try {
+		recommendationsActive && key == peopleContext(mangaDetails.value, database.getScrobblingDao().findAll(mangaId),
+			database.getPrivateFavouritesDao().isPrivateOnly(mangaId), recommendationContent)
+	} catch (e: CancellationException) { throw e } catch (_: Exception) { false }
 
 	internal fun isRecommendationNavigationCurrent(event: TrackerRecommendationNavigation): Boolean =
 		recommendationsActive && event.context == recommendationContext && event.context.policy.allowsNetwork &&
