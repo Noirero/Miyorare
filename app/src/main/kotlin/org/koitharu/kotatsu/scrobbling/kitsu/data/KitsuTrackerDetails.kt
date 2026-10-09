@@ -58,7 +58,7 @@ internal fun kitsuPeople(root: JsonObject, target: TrackerTarget, content: Track
 		val attrs = person.obj("attributes") ?: return@trackerPage null
 		val name = attrs.text("canonicalName") ?: attrs.text("name") ?: attrs.obj("names")?.text("en") ?: attrs.obj("names")?.text("ja_jp") ?: return@trackerPage null
 		val image = attrs.obj("image")
-		TrackerPerson(person.text("id"), name, image?.text("large") ?: image?.text("medium") ?: image?.text("small") ?: image?.text("original") ?: image?.text("tiny"), listOfNotNull(edge.obj("attributes")?.text("role")), person.text("id")?.let { "https://kitsu.app/$personType/$it" })
+		TrackerPerson(person.text("id"), name, image?.text("large") ?: image?.text("medium") ?: image?.text("small") ?: image?.text("original") ?: image?.text("tiny"), listOfNotNull(edge.obj("attributes")?.text("role")), attrs.text("url") ?: person.obj("links")?.text("self"))
 	}.mergePersonRoles()
 	return if (badLink) when (result) {
 		is TrackerResult.Success -> TrackerResult.Partial(result.items, setOf(TrackerPartialReason.MISSING_RECORDS))

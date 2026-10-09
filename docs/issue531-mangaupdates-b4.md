@@ -8,7 +8,7 @@ The native sign-in form sends username/password directly to PUT `/account/login`
 
 Only token/profile data are saved in Android Keystore AES-GCM ciphertext under `noBackupFilesDir`. Credentials are excluded from application and Android backups. Login, replacement, corruption, logout and authenticated 401 advance the account generation; late responses cannot clear a replacement session or publish stale private data. Logout clears locally immediately, then attempts provider revocation without delaying local logout.
 
-The dedicated credential client uses normal TLS verification, the existing proxy/DNS settings, no curl logger, no cookies, no cache, no redirects and bounded timeouts/response size. The bearer interceptor checks exact HTTPS origin, port and API path and removes unsolicited authorization. Public reads have no bearer. Errors contain generic descriptions or HTTP codes, never response/login bodies.
+The dedicated credential client uses normal TLS verification, the existing proxy/DNS settings, no curl logger, no cookies, no cache, no redirects and bounded timeouts/response size. Three requests may run at once, including account-list enrichment; queued stale sessions are rejected before sending credentials. The bearer interceptor checks exact HTTPS origin, port and API path and removes unsolicited authorization. Public reads have no bearer. Errors contain generic descriptions or HTTP codes, never response/login bodies.
 
 ## Identity, association and remote state
 

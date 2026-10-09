@@ -3,6 +3,8 @@ package org.koitharu.kotatsu.scrobbling.mangaupdates.data
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.*
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -51,8 +53,9 @@ class MangaUpdatesApi internal constructor(
 	private val base: HttpUrl,
 ) {
 	@Inject constructor(@ScrobblerType(ScrobblerService.MANGAUPDATES) client: OkHttpClient, store: MangaUpdatesSessionStore) : this(client, store, MANGAUPDATES_API)
+	private val requests = Semaphore(3)
 
-	suspend fun request(method: String, path: String, body: JsonElement? = null, ticket: MangaUpdatesAuthTicket? = null): JsonElement {
+	suspend fun request(method: String, path: String, body: JsonElement? = null, ticket: MangaUpdatesAuthTicket? = null): JsonElement = requests.withPermit {
 		currentCoroutineContext().ensureActive()
 		if (ticket != null) ensureCurrent(ticket)
 		require(!path.startsWith('/') && ':' !in path && ".." !in path)
@@ -61,7 +64,7 @@ class MangaUpdatesApi internal constructor(
 		val request = Request.Builder().url(url).header("Accept", "application/json").header("User-Agent", "Miyorare")
 			.tag(MangaUpdatesAuthTicket::class.java, ticket)
 			.method(method, payload ?: if (method in setOf("POST", "PUT", "PATCH")) "".toRequestBody() else null).build()
-		return client.newCall(request).await().use { response ->
+		client.newCall(request).await().use { response ->
 			if (!response.isSuccessful) throw MangaUpdatesHttpException(response.code)
 			if (ticket != null) ensureCurrent(ticket)
 			val responseBody = response.body
@@ -69,6 +72,8 @@ class MangaUpdatesApi internal constructor(
 			val content = responseBody?.string().orEmpty()
 			val result = if (content.isBlank()) JsonNull else try { Json.parseToJsonElement(content) } catch (_: Exception) { throw IOException("Malformed MangaUpdates response") }
 			if (method != "GET" && (result as? JsonObject)?.get("status") == JsonPrimitive("error")) throw IOException("MangaUpdates rejected the request")
+			currentCoroutineContext().ensureActive()
+			if (ticket != null) ensureCurrent(ticket)
 			result
 		}
 	}

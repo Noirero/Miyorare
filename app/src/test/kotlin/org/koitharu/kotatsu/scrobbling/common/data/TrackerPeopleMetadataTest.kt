@@ -20,11 +20,12 @@ class TrackerPeopleMetadataTest {
 		assertEquals(listOf("MAIN"), result.items.single().roles)
 	}
 	@Test fun `Kitsu name and portrait fallbacks retain relationship identity`() {
-		val result = kitsuPeople(root("""{"data":[{"type":"mediaStaff","relationships":{"person":{"data":{"type":"people","id":"7"}}},"attributes":{"role":"Story"}}],"included":[{"type":"people","id":"7","attributes":{"names":{"en":"Creator"},"image":{"original":"https://image.invalid/original"}}}]}"""), TrackerTarget(ScrobblerService.KITSU, "2"), TrackerContent.STAFF, TrackerPage()) as TrackerResult.Success
+		val result = kitsuPeople(root("""{"data":[{"type":"mediaStaff","relationships":{"person":{"data":{"type":"people","id":"7"}}},"attributes":{"role":"Story"}}],"included":[{"type":"people","id":"7","links":{"self":"https://kitsu.app/api/edge/people/7"},"attributes":{"names":{"en":"Creator"},"image":{"original":"https://image.invalid/original"}}}]}"""), TrackerTarget(ScrobblerService.KITSU, "2"), TrackerContent.STAFF, TrackerPage()) as TrackerResult.Success
 		assertEquals("7", result.items.single().id)
 		assertEquals("Creator", result.items.single().name)
 		assertEquals("https://image.invalid/original", result.items.single().image)
 		assertEquals(listOf("Story"), result.items.single().roles)
+		assertEquals("https://kitsu.app/api/edge/people/7", result.items.single().url)
 	}
 	@Test fun `Shikimori preserves public person page and MAL preserves the actual author role`() {
 		val shiki = shikimoriPeople(root("""{"data":{"mangas":[{"id":"2","personRoles":[{"rolesEn":["Story"],"person":{"id":"7","name":"Creator","url":"/people/7","poster":null}}]}]}}"""), TrackerTarget(ScrobblerService.SHIKIMORI, "2"), TrackerContent.STAFF) as TrackerResult.Success

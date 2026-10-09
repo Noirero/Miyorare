@@ -126,6 +126,24 @@ class MangaUpdatesRepositoryTest {
 		assertTrue(mutations().isEmpty())
 	}
 
+	@Test fun catalogPaginationHonorsTheProviderPageSizeAndKeepsLargeIDsDistinct() = runBlocking {
+		val repo = repository()
+		fun page(number: Int) = buildJsonObject {
+			put("page", number); put("per_page", 25); put("total_hits", 50)
+			put("results", buildJsonArray { repeat(25) { index -> add(buildJsonObject {
+				put("record", buildJsonObject { put("series_id", target + (number - 1) * 25 + index); put("title", "Title $number/$index") })
+			}) } })
+		}.toString()
+		transport.searchBody = page(1)
+		val first = repo.findManga("Fixture", 0, ScrobblerMangaType.MANGA)
+		transport.searchBody = page(2)
+		val second = repo.findManga("Fixture", first.size, ScrobblerMangaType.MANGA)
+		assertEquals(50, (first + second).map { it.id }.toSet().size)
+		assertTrue(repo.findManga("Fixture", 50, ScrobblerMangaType.MANGA).isEmpty())
+		assertEquals(listOf(1, 2), transport.requests.filter { it.path == "/v1/series/search" }.map { it.body!!.jsonObject.getValue("page").jsonPrimitive.int })
+		assertEquals(0, count("scrobblings")); assertEquals(0, count("favourites"))
+	}
+
 	@Test fun newAssociationUsesDiscoveredWishlistIdentityAndRetainsFullSeriesID() = runBlocking {
 		transport.remote = null; transport.rating = null
 		val repo = repository(); manga()
@@ -271,6 +289,7 @@ class MangaUpdatesRepositoryTest {
 		var loginCode = 200
 		var loginBody = """{"status":"success","context":{"session_token":"fixture-session"}}"""
 		var profileCode = 200
+		var searchBody: String? = null
 		var failWrites = 0
 		var failureCode = 503
 		var loseAcknowledgement = false
@@ -289,7 +308,7 @@ class MangaUpdatesRepositoryTest {
 				recorded.path == "/v1/account/profile" -> { code = profileCode; """{"user_id":1,"username":"Fixture User"}""" }
 				recorded.path == "/v1/account/logout" -> "{}"
 				recorded.path == "/v1/lists" -> lists
-				recorded.path == "/v1/series/search" -> """{"results":[{"record":{"series_id":$id,"title":"Fixture title","url":"https://www.mangaupdates.com/series/fixture","image":{"url":{"original":"https://image.invalid/cover"}}}}]}"""
+				recorded.path == "/v1/series/search" -> searchBody ?: """{"results":[{"record":{"series_id":$id,"title":"Fixture title","url":"https://www.mangaupdates.com/series/fixture","image":{"url":{"original":"https://image.invalid/cover"}}}}]}"""
 				recorded.path == "/v1/series/$id" -> """{"series_id":$id,"title":"Fixture title","url":"https://www.mangaupdates.com/series/fixture","latest_chapter":700,"authors":[{"author_id":9545965743,"name":"Creator","type":"Author"},{"author_id":9545965743,"name":"Creator","type":"Artist"}],"recommendations":[{"series_id":70994361491,"series_name":"Other title","series_url":"https://www.mangaupdates.com/series/other"}]}"""
 				recorded.path == "/v1/authors/9545965743" -> """{"id":9545965743,"name":"Creator","image":{"url":{"original":"https://image.invalid/author"}}}"""
 				recorded.path == "/v1/series/$id/rating" -> when (recorded.method) {

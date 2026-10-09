@@ -2,6 +2,8 @@
 
 package org.koitharu.kotatsu.details.ui
 
+import androidx.compose.foundation.layout.Row
+
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box

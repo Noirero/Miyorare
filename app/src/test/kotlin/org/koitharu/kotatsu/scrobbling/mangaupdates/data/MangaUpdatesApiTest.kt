@@ -1,6 +1,10 @@
 package org.koitharu.kotatsu.scrobbling.mangaupdates.data
 
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.runTest
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -11,6 +15,9 @@ import org.junit.Test
 import org.koitharu.kotatsu.core.network.CurlLoggingInterceptor
 import org.koitharu.kotatsu.scrobbling.common.domain.model.*
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class MangaUpdatesApiTest {
 	private class Sessions : MangaUpdatesSessionStore {
@@ -109,5 +116,26 @@ class MangaUpdatesApiTest {
 		try { api.request("PUT", "account/login"); fail("Expected malformed response") } catch (e: IOException) { assertFalse(e.message.orEmpty().contains("fixture-password")) }
 		assertFalse(MangaUpdatesAuthTicket("fixture-session", 0).toString().contains("fixture-session"))
 		assertFalse(MangaUpdatesSession("fixture-session", user, 0).toString().contains("fixture-session"))
+	}
+
+	@Test fun `concurrent account reads are bounded and queued stale requests send no credentials`() = runBlocking {
+		val store = Sessions().apply { save("fixture-session", user, 0) }
+		val started = CountDownLatch(3)
+		val release = CountDownLatch(1)
+		val count = AtomicInteger()
+		val api = MangaUpdatesApi(fixture(store) {
+			count.incrementAndGet(); started.countDown()
+			check(release.await(10, TimeUnit.SECONDS))
+			200 to "{}"
+		}, store, MANGAUPDATES_API)
+		val ticket = api.sessionTicket()
+		val calls = List(6) { async { api.request("GET", "account/profile", ticket = ticket) } }
+		try {
+			assertTrue(withContext(Dispatchers.IO) { started.await(5, TimeUnit.SECONDS) })
+			assertEquals(3, count.get())
+			store.clear(); release.countDown()
+			for (call in calls) try { call.await(); fail("Expected stale account rejection") } catch (_: kotlinx.coroutines.CancellationException) { }
+			assertEquals(3, count.get())
+		} finally { release.countDown(); calls.forEach { it.cancel() } }
 	}
 }

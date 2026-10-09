@@ -124,7 +124,9 @@ class MangaUpdatesRepository internal constructor(
 			ScrobblerManga(id, title, null, record.muImage(), record.text("url") ?: "https://www.mangaupdates.com/series/$id", false)
 		}.distinctBy { it.id }
 		if (results.isEmpty() && rows.isNotEmpty()) throw IOException("Malformed MangaUpdates search records")
-		searchCursor = SearchCursor(query, type, ticket.generation, page + 1, previous?.ids.orEmpty() + results.map { it.id }, rows.size < 100)
+		val perPage = (root["per_page"] as? JsonPrimitive)?.intOrNull?.takeIf { it in 1..100 } ?: 100
+		val total = (root["total_hits"] as? JsonPrimitive)?.longOrNull?.takeIf { it >= 0 }
+		searchCursor = SearchCursor(query, type, ticket.generation, page + 1, previous?.ids.orEmpty() + results.map { it.id }, rows.size < perPage || total?.let { page.toLong() * perPage >= it } == true)
 		results
 	}
 
