@@ -17,6 +17,7 @@ import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
 import org.koitharu.kotatsu.parsers.util.json.mapJSONNotNull
 import org.koitharu.kotatsu.parsers.util.parseJson
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerRepository
+import org.koitharu.kotatsu.scrobbling.common.data.trackerDetailsClient
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerStorage
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.scrobbling.common.domain.TrackerDetailsProvider
@@ -50,6 +51,8 @@ class MALRepository @Inject constructor(
 	private val db: MangaDatabase,
 ) : ScrobblerRepository, TrackerDetailsProvider {
 
+	private val detailsHttpClient by lazy { trackerDetailsClient(okHttp) }
+
 	override val detailsService = ScrobblerService.MAL
 	override val detailsCapabilities = MAL_DETAILS_CAPABILITIES
 
@@ -63,7 +66,7 @@ class MALRepository @Inject constructor(
 		require(target.service == detailsService && page.number == 1 && page.url == null)
 		val url = "$BASE_API_URL/manga/${target.id}".toHttpUrl().newBuilder().addQueryParameter("fields", field).build()
 		val request = Request.Builder().url(url).get().build()
-		return Json.parseToJsonElement(okHttp.newCall(request).await().parseJson().toString()).jsonObject
+		return Json.parseToJsonElement(detailsHttpClient.newCall(request).await().parseJson().toString()).jsonObject
 	}
 
 	private val clientId = context.getString(R.string.mal_clientId)

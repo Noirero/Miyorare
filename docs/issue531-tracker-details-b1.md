@@ -28,6 +28,11 @@ invalid association cannot authorize a guessed replacement. No write API is call
   Logout discards results. The future screen consumer owns cancellation and
   generation checks on source, mapping, account and privacy changes; B1 installs
   no screen consumer or lifecycle hooks.
+- AniList/MAL/Kitsu optional requests clone their existing provider client,
+  retaining provider auth and application networking while excluding Curl logging,
+  HTTP cache and redirects. This prevents optional reads from inheriting legacy
+  bearer logging or following response redirects with credentials. Existing
+  tracking/auth clients and credential storage remain unchanged.
 - Results distinguish not-requested, unsupported, empty, success, partial and error.
   A capability failure does not discard another capability/provider's data.
   Coroutine cancellation propagates. Error causes remain diagnostic, without
