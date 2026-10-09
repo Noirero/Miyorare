@@ -24,10 +24,9 @@ import org.koitharu.kotatsu.parsers.model.Manga
  * One-shot compatibility repair for downloads created before remote-id ownership was persisted.
  *
  * The migration is deliberately background-only. It starts from the persisted Local index and the
- * existing favourites database; it never walks storage. Only title-intersecting candidates are
- * verified, and [LocalMangaRepository.findSavedMangaIndexedByTitle] requires concrete chapter
- * evidence before it persists a remote -> physical Local alias. This keeps ordinary list rendering
- * index-only while removing the old requirement to open Details before a legacy download is known.
+ * existing favourites database; it never walks storage during ordinary list rendering. If that
+ * persisted index is both stale and empty, the migration rebuilds it once before reconciliation so
+ * startup ordering cannot permanently defer legacy ownership until Details is opened.
  */
 @Singleton
 class LegacyFavouriteDownloadReconciler @Inject constructor(
@@ -46,7 +45,13 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 	suspend fun reconcileOnce() {
 		if (prefs.getBoolean(KEY_COMPLETE, false)) return
 
-		val localSnapshot = localMangaIndex.getPersistedSnapshot()
+		var localSnapshot = localMangaIndex.getPersistedSnapshot()
+		if (localSnapshot.isEmpty()) {
+			// A cold process may start this migration before a stale Local index has been rebuilt. Do the
+			// required maintenance here once instead of waiting for Details to discover the same download.
+			localMangaIndex.rebuildIfRequired()
+			localSnapshot = localMangaIndex.getPersistedSnapshot()
+		}
 		if (localSnapshot.isEmpty()) return
 		val localTitles = localSnapshot.asSequence()
 			.flatMap { sequenceOf(it.manga.title) + it.manga.altTitles.asSequence() }
