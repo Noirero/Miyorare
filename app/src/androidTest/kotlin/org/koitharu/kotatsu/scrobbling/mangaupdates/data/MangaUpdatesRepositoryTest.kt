@@ -463,6 +463,23 @@ class MangaUpdatesRepositoryTest {
 		db.getScrobblingDao().upsert(ScrobblingEntity(6, 0, 41, targetId, "hold", 12, null, 0.4f))
 	}
 
+	private fun assertAssociationUnchanged(expected: ScrobblingEntity?, actual: ScrobblingEntity?) {
+		if (expected == null) {
+			assertNull(actual)
+			return
+		}
+		assertNotNull(actual)
+		val persisted = actual!!
+		assertEquals(expected.scrobbler, persisted.scrobbler)
+		assertEquals(expected.id, persisted.id)
+		assertEquals(expected.mangaId, persisted.mangaId)
+		assertEquals(expected.targetId, persisted.targetId)
+		assertEquals(expected.status, persisted.status)
+		assertEquals(expected.chapter, persisted.chapter)
+		assertEquals(expected.comment, persisted.comment)
+		assertEquals(expected.rating, persisted.rating, 0f)
+	}
+
 	private suspend fun selectorLink(
 		initialTarget: Long?, whilePaused: suspend () -> Unit, expectedTarget: Long?, stale: Boolean,
 		remoteExists: Boolean = true, allowReads: Boolean = false,
@@ -518,8 +535,8 @@ class MangaUpdatesRepositoryTest {
 				assertTrue(mutations().isEmpty())
 				assertTrue(transport.requests.none { it.method in setOf("PUT", "DELETE") && it.path.endsWith("/rating") })
 				assertEquals(remote, transport.remote)
-				if (!allowReads) assertEquals("Newer association must remain intact", before, after)
-				else assertEquals(ScrobblingEntity(6, 0, 41, target + 1, "hold", 12, null, 0.4f), after)
+				if (!allowReads) assertAssociationUnchanged(before, after)
+				else assertAssociationUnchanged(ScrobblingEntity(6, 0, 41, target + 1, "hold", 12, null, 0.4f), after)
 			} else {
 				assertNotNull(after)
 				assertEquals(if (remoteExists) 31 else 0, after!!.chapter)
