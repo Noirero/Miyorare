@@ -23,8 +23,7 @@ internal class MangaUpdatesProgressQueue(
 
 	fun enqueue(value: MangaUpdatesPendingProgress) = synchronized(lock) {
 		check(value.mangaId in pending || pending.size < 64) { "MangaUpdates progress queue is full" }
-		val old = pending[value.mangaId]
-		pending[value.mangaId] = if (old != null && old.ticket.generation == value.ticket.generation && old.targetId == value.targetId) value.copy(chapter = maxOf(old.chapter, value.chapter)) else value
+		pending[value.mangaId] = highest(value, pending[value.mangaId], active, failed[value.mangaId])
 		failed.remove(value.mangaId)
 		failures.value = failed.keys.toSet()
 		signals.trySend(Unit)
@@ -37,7 +36,8 @@ internal class MangaUpdatesProgressQueue(
 						try {
 							write(entry)
 							synchronized(lock) {
-								if (failed[entry.mangaId]?.ticket?.generation == entry.ticket.generation) failed.remove(entry.mangaId)
+								val old = failed[entry.mangaId]
+								if (old != null && sameAssociation(old, entry) && old.chapter <= entry.chapter) failed.remove(entry.mangaId)
 								failures.value = failed.keys.toSet()
 							}
 						} catch (e: CancellationException) {
@@ -45,9 +45,12 @@ internal class MangaUpdatesProgressQueue(
 						} catch (_: Exception) {
 							currentCoroutineContext().ensureActive()
 							synchronized(lock) {
-								if (entry.mangaId !in pending) {
+								val next = pending[entry.mangaId]
+								if (next != null) {
+									if (sameAssociation(next, entry)) pending[entry.mangaId] = highest(next, entry)
+								} else {
 									if (failed.size >= 64) failed.remove(failed.keys.first())
-									failed[entry.mangaId] = entry
+									failed[entry.mangaId] = highest(entry, failed[entry.mangaId])
 								}
 								failures.value = failed.keys.toSet()
 							}
@@ -62,7 +65,13 @@ internal class MangaUpdatesProgressQueue(
 		}
 	}
 
-	fun retry(mangaId: Long) { synchronized(lock) { failed[mangaId] }?.let(::enqueue) }
+	private fun sameAssociation(a: MangaUpdatesPendingProgress, b: MangaUpdatesPendingProgress) =
+		a.mangaId == b.mangaId && a.targetId == b.targetId && a.ticket.generation == b.ticket.generation
+
+	private fun highest(value: MangaUpdatesPendingProgress, vararg others: MangaUpdatesPendingProgress?): MangaUpdatesPendingProgress =
+		value.copy(chapter = others.filterNotNull().filter { sameAssociation(value, it) }.fold(value.chapter) { chapter, other -> maxOf(chapter, other.chapter) })
+
+	fun retry(mangaId: Long) = synchronized(lock) { failed[mangaId]?.let(::enqueue) }
 	fun remove(mangaId: Long) = synchronized(lock) {
 		pending.remove(mangaId); failed.remove(mangaId); failures.value = failed.keys.toSet()
 	}
