@@ -328,8 +328,8 @@ class SmartLocalLibrary @Inject constructor(
             currentCoroutineContext().ensureActive()
             val (book, plan) = coverPlan(id) ?: return@withContext null
             val isCurrent = { state.value.books.firstOrNull { it.id == id } === book }
-            val bytes = coverCache.getOrGenerate(id, plan, isCurrent) {
-                contentReader.cover(documents.root(book.rootUri), plan)
+            val bytes = coverCache.getOrGenerateScoped(id, plan, isCurrent) { publish ->
+                contentReader.cover(plan, publish)
             }
             if (isCurrent()) return@withContext bytes
             // Refresh/detach raced this request. Never return a superseded source version.

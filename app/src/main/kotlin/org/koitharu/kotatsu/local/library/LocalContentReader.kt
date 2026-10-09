@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.local.library
 
 import android.content.ContentResolver
 import android.content.Context
+import android.os.ParcelFileDescriptor
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -35,6 +36,7 @@ open class LocalContentReader @Inject constructor(
     @ApplicationContext private val context: Context, private val documents: LocalDocuments,
 ) {
     private val cacheMutex = Mutex()
+    private val coverWork = LocalCoverWorkScheduler()
     // Returned archive URIs remain in Reader state. Pin them for this process so cache
     // maintenance cannot invalidate a still-open/previous chapter. Temporary cover users acquire
     // their own reference and release it as soon as extraction finishes.
@@ -185,51 +187,73 @@ open class LocalContentReader @Inject constructor(
         }
     }
 
-    internal open suspend fun cover(root: Node, plan: LocalCoverPlan): GeneratedLocalCover? = withContext(Dispatchers.IO) {
+    internal open suspend fun cover(
+        plan: LocalCoverPlan, publish: suspend (GeneratedLocalCover) -> ByteArray,
+    ): ByteArray? = withContext(Dispatchers.IO) {
+        var selectedRoot: Node? = null
         for ((index, node) in plan.candidates.withIndex()) {
             currentCoroutineContext().ensureActive()
-            val result = runCatchingCancellable {
-                check(documents.contains(root, node)) { "Content outside selected root" }
-                val extension = LocalTreeScanner.extension(node.name)
-                val source = when (extension) {
-                    "pdf" -> {
-                        val file = materialize(root, node)
-                        try { renderPdfCover(file) }
-                        finally { withContext(NonCancellable) { releaseMaterialized(file) } }
-                    }
-                    "cbz", "zip", "epub" -> {
-                        val coroutine = currentCoroutineContext()
-                        documents.input(node).use { input ->
-                            BoundedArchiveCoverReader.read(
-                                input = input,
-                                isSafeImage = { path -> safeEntry(path) && LocalTreeScanner.isImage(path) },
-                                isPreferred = { path ->
-                                    val name = path.substringAfterLast('/')
-                                    LocalTreeScanner.isSidecar(name) || name.contains("cover", ignoreCase = true)
-                                },
-                                isValid = { candidate ->
-                                    val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                                    android.graphics.BitmapFactory.decodeByteArray(candidate, 0, candidate.size, options)
-                                    options.outWidth > 0 && options.outHeight > 0
-                                },
-                                checkActive = { coroutine.ensureActive() },
-                            )
+            val extension = LocalTreeScanner.extension(node.name)
+            val result = coverWork.source(extension) {
+                // Resolve the authorized root only on a miss and inside the source limit.
+                val root = selectedRoot ?: documents.root(plan.rootUri).also { selectedRoot = it }
+                val generated = runCatchingCancellable {
+                    // PDF descriptor/materialization entry points enforce containment themselves.
+                    if (extension != "pdf") check(documents.contains(root, node)) { "Content outside selected root" }
+                    val source = when (extension) {
+                        "pdf" -> pdfCover(root, node)
+                        "cbz", "zip", "epub" -> {
+                            val coroutine = currentCoroutineContext()
+                            documents.input(node).use { input ->
+                                BoundedArchiveCoverReader.read(
+                                    input = input,
+                                    isSafeImage = { path -> safeEntry(path) && LocalTreeScanner.isImage(path) },
+                                    isPreferred = { path ->
+                                        val name = path.substringAfterLast('/')
+                                        LocalTreeScanner.isSidecar(name) || name.contains("cover", ignoreCase = true)
+                                    },
+                                    isValid = { candidate ->
+                                        val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                        android.graphics.BitmapFactory.decodeByteArray(candidate, 0, candidate.size, options)
+                                        options.outWidth > 0 && options.outHeight > 0
+                                    },
+                                    checkActive = { coroutine.ensureActive() },
+                                )
+                            }
                         }
+                        else -> documents.input(node).use { it.readBytesLimited(BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES) }
                     }
-                    else -> documents.input(node).use { it.readBytesLimited(BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES) }
-                }
-                source?.let {
-                    if (extension == "pdf") GeneratedLocalCover(it, index)
-                    else LocalCoverThumbnail.prepare(it, index)
-                }
-            }.getOrNull()
+                    source?.let {
+                        if (extension == "pdf") GeneratedLocalCover(it, index)
+                        else coverWork.bitmap { LocalCoverThumbnail.prepare(it, index) }
+                    }
+                }.getOrNull()
+                // Retain source admission through publication; do not accumulate unbounded
+                // completed images waiting for the cache file mutex. Publication errors propagate.
+                generated?.let { publish(it) }
+            }
             if (result != null) return@withContext result
         }
         null
     }
 
+    private suspend fun pdfCover(root: Node, node: Node): ByteArray? {
+        val direct = try {
+            documents.withReadDescriptor(root, node, ::renderPdfCover)
+        } catch (_: IOException) { null
+        } catch (_: IllegalArgumentException) { null
+        } catch (_: UnsupportedOperationException) { null
+        } catch (_: SecurityException) { null }
+        currentCoroutineContext().ensureActive()
+        if (direct != null) return direct
+        val file = materialize(root, node)
+        try { return renderPdfCover(file) }
+        finally { withContext(NonCancellable) { releaseMaterialized(file) } }
+    }
+
     // Kept separate from materialization so lifecycle tests can count real renderer calls.
     protected open fun renderPdfCover(file: File): ByteArray? = LocalPdfCache.renderCoverThumbnail(file)
+    protected open fun renderPdfCover(descriptor: ParcelFileDescriptor): ByteArray? = LocalPdfCache.renderCoverThumbnail(descriptor)
 
     private fun safeEntry(path: String) = path.isNotBlank() && !path.startsWith('/') && '\\' !in path &&
         path.split('/').none { it == ".." } && ':' !in path

@@ -68,23 +68,46 @@ class SmartLocalCoverCacheTest {
         assertEquals(1, count.get())
     }
 
-    @Test fun generationConcurrencyIsBoundedAcrossDifferentSources() = runBlocking {
+    @Test fun differentTitlesNeverShareHeavySingleFlightStripe() = runBlocking {
         val cache = SmartLocalCoverCache(temporary.newFolder())
-        val active = AtomicInteger()
-        val peak = AtomicInteger()
-        val twoStarted = CompletableDeferred<Unit>()
-        val proceed = CompletableDeferred<Unit>()
-        val jobs = List(30) { id -> async {
-            cache.getOrGenerate(id.toLong(), plan(node("$id.pdf"))) {
-                val current = active.incrementAndGet()
-                peak.updateAndGet { maxOf(it, current) }
-                if (current == 2) twoStarted.complete(Unit)
-                try { proceed.await(); GeneratedLocalCover(byteArrayOf(1), 0) }
-                finally { active.decrementAndGet() }
+        fun oldStripe(id: Long) = (coverDigest(id.toString().toByteArray()).hashCode() and Int.MAX_VALUE) % 64
+        val heavyId = 42L
+        val lightId = (43L..1000L).first { oldStripe(it) == oldStripe(heavyId) }
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val heavy = async {
+            cache.getOrGenerate(heavyId, plan(node())) {
+                started.complete(Unit); release.await(); GeneratedLocalCover(byteArrayOf(1), 0)
             }
-        } }
-        twoStarted.await(); proceed.complete(Unit); jobs.awaitAll()
-        assertEquals(SmartLocalCoverCache.GENERATION_PARALLELISM, peak.get())
+        }
+        try {
+            started.await()
+            // Timeout is only a deadlock watchdog, not a device-latency assertion.
+            kotlinx.coroutines.withTimeout(10_000) {
+                assertArrayEquals(byteArrayOf(2), cache.getOrGenerate(lightId, plan(node("cover.png"))) {
+                    GeneratedLocalCover(byteArrayOf(2), 0)
+                })
+            }
+            assertFalse(heavy.isCompleted)
+        } finally { release.complete(Unit); heavy.await() }
+    }
+
+    @Test fun cancelledSameKeyWaiterKeepsRemainingRequestsSingleFlight() = runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+        val cache = SmartLocalCoverCache(temporary.newFolder())
+        val calls = AtomicInteger()
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        suspend fun request() = cache.getOrGenerate(42, plan(node())) {
+            calls.incrementAndGet(); started.complete(Unit); release.await(); GeneratedLocalCover(byteArrayOf(8), 0)
+        }
+        val first = async { request() }
+        started.await()
+        val cancelled = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { request() }
+        cancelled.cancel(); cancelled.join()
+        val remaining = List(8) { async { request() } }
+        release.complete(Unit)
+        (remaining + first).awaitAll().forEach { assertArrayEquals(byteArrayOf(8), it) }
+        assertEquals(1, calls.get())
     }
 
     @Test fun cancelledGenerationAndCrashLeftoverAreNeverValidEntries() = runBlocking {

@@ -6,9 +6,9 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.pdf.PdfDocument
 import android.graphics.drawable.Animatable
 import android.graphics.drawable.AnimatedImageDrawable
+import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
@@ -27,6 +27,21 @@ import coil3.size.ScaleDrawable
 import coil3.toBitmap
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import javax.inject.Inject
+import javax.inject.Provider
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import okhttp3.internal.platform.PlatformRegistry
 import org.json.JSONArray
@@ -45,15 +60,6 @@ import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.local.library.LocalTreeScanner.Node
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.util.UUID
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
-import javax.inject.Inject
-import javax.inject.Provider
 
 /** Executes real ImageRequests, domain owners, SAF copies, PdfRenderer, and encoded thumbnails. */
 @HiltAndroidTest
@@ -103,11 +109,13 @@ class SmartLocalCoverPipelineTest {
         val manga = library.state.value.books.single().toManga(false)
         val cold = request(manga)
         assertEquals(1, counts.extract)
-        assertEquals(1, counts.materialize)
+        assertEquals(0, counts.materialize)
         assertEquals(1, counts.render)
         assertTrue(cache.size() > 0L)
         assertTrue(contentFiles().isEmpty())
         assertEquals(1, metrics().getInt("opens"))
+        assertClosedDescriptors()
+        assertEquals(1, counts.descriptors.size)
 
         // All relevant owners are recreated from the same persisted index/files. No in-memory
         // cache, cached PDF render, or previous reader object survives this lifecycle boundary.
@@ -116,11 +124,125 @@ class SmartLocalCoverPipelineTest {
         val warm = request(manga)
         assertEquals(cold.image.toBitmap().getPixel(10, 10), warm.image.toBitmap().getPixel(10, 10))
         assertEquals(1, counts.extract)
-        assertEquals(1, counts.materialize)
+        assertEquals(0, counts.materialize)
         assertEquals(1, counts.render)
         assertEquals(0, metrics().getInt("opens"))
         assertEquals(0, metrics().getInt("queries"))
         assertTrue(contentFiles().isEmpty())
+    }
+
+    @Test fun nonSeekableAndRejectedDescriptorsUseTemporaryFallbackThenWarmReuse() = runBlocking {
+        put("pipe.pdf", pdf(Color.RED)); descriptorMode("pipe.pdf", "pipe")
+        put("rejected.pdf", pdf(Color.BLUE)); descriptorMode("rejected.pdf", "reject-once")
+        library.scan(); call("fixture-metrics-reset")
+        val books = library.state.value.books
+        val cold = books.associate { it.id to library.cover(it.id)!! }
+        assertEquals(2, counts.materialize)
+        assertEquals(3, counts.render) // Pipe rejected by PdfRenderer; both copies render.
+        assertEquals(4, metrics().getInt("opens"))
+        assertEquals(1, counts.descriptors.size)
+        assertClosedDescriptors()
+        assertTrue(contentFiles().isEmpty())
+        owners(); call("fixture-metrics-reset")
+        books.forEach { assertArrayEquals(cold.getValue(it.id), library.cover(it.id)) }
+        assertEquals(2, counts.extract)
+        assertEquals(2, counts.materialize)
+        assertEquals(3, counts.render)
+        assertEquals(0, metrics().getInt("opens"))
+        assertEquals(0, metrics().getInt("queries"))
+    }
+
+    @Test fun directRendererFailureClosesDescriptorBeforeSuccessfulFallback() = runBlocking {
+        put("book.pdf", pdf(Color.GREEN)); library.scan()
+        reader.directGate = { throw IOException("Controlled direct-access failure") }
+        val bytes = library.cover(library.state.value.books.single().id)!!
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)!!
+        try { assertEquals(Color.GREEN, bitmap.getPixel(10, 10)) } finally { bitmap.recycle() }
+        assertEquals(1, counts.materialize)
+        assertEquals(2, counts.render)
+        assertClosedDescriptors()
+        assertTrue(contentFiles().isEmpty())
+    }
+
+    @Test fun cancelledDirectGenerationClosesDescriptorWithoutFallbackOrPublication() = runBlocking {
+        put("book.pdf", pdf(Color.RED)); library.scan()
+        val started = CompletableDeferred<Unit>()
+        val release = CountDownLatch(1)
+        reader.directGate = {
+            started.complete(Unit)
+            check(release.await(10, TimeUnit.SECONDS)) { "Fixture gate was not released" }
+        }
+        val id = library.state.value.books.single().id
+        val job = async { library.cover(id) }
+        try {
+            kotlinx.coroutines.withTimeout(10_000) { started.await() }
+            job.cancel()
+        } finally { release.countDown(); job.join(); reader.directGate = null }
+        assertTrue(job.isCancelled)
+        assertClosedDescriptors()
+        assertEquals(0, counts.materialize)
+        assertEquals(0L, cache.size())
+        assertTrue(contentFiles().isEmpty())
+        assertNotNull(library.cover(id)) // Cancellation also released source/flight permits.
+    }
+
+    @Test fun cancelledFallbackReleasesItsTemporaryCopyAndDescriptor() = runBlocking {
+        put("book.pdf", pdf(Color.RED)); descriptorMode("book.pdf", "pipe"); library.scan()
+        val started = CompletableDeferred<Unit>()
+        val release = CountDownLatch(1)
+        reader.materializedGate = {
+            started.complete(Unit)
+            check(release.await(10, TimeUnit.SECONDS)) { "Fixture gate was not released" }
+        }
+        val job = async { library.cover(library.state.value.books.single().id) }
+        try {
+            kotlinx.coroutines.withTimeout(10_000) { started.await() }
+            assertEquals(1, contentFiles().size)
+            job.cancel()
+        } finally { release.countDown(); job.join(); reader.materializedGate = null }
+        assertTrue(job.isCancelled)
+        assertClosedDescriptors()
+        assertEquals(1, counts.materialize)
+        assertTrue(contentFiles().isEmpty())
+        assertEquals(0L, cache.size())
+    }
+
+    @Test fun coldMixedGridAndSameKeyRequestsProgressWhileTwoPdfsAreBlocked() = runBlocking {
+        repeat(3) { put("heavy$it.pdf", pdf(Color.RED)) }
+        for (extension in listOf("cbz", "zip", "epub")) put("book.$extension", archive(png(Color.BLUE)))
+        put("Images/001.png", png(Color.GREEN))
+        put("Sidecar/book.pdf", pdf(Color.RED)); put("Sidecar/cover.png", png(Color.GREEN))
+        library.scan()
+        val books = library.state.value.books
+        val heavyBooks = books.filter { it.node.name.startsWith("heavy") }
+        val entered = java.util.concurrent.atomic.AtomicInteger()
+        val twoStarted = CompletableDeferred<Unit>()
+        val release = CountDownLatch(1)
+        reader.directGate = {
+            if (entered.incrementAndGet() == 2) twoStarted.complete(Unit)
+            check(release.await(15, TimeUnit.SECONDS)) { "Fixture gate was not released" }
+        }
+        val heavy = heavyBooks.take(2).map { async { library.cover(it.id) } }
+        val queued = ArrayList<kotlinx.coroutines.Deferred<ByteArray?>>()
+        try {
+            kotlinx.coroutines.withTimeout(10_000) { twoStarted.await() }
+            queued += async { library.cover(heavyBooks.last().id) }
+            repeat(8) { queued += async { library.cover(heavyBooks.first().id) } }
+            val light = books.filterNot { it in heavyBooks }.map { async { library.cover(it.id) } }
+            // A watchdog prevents hangs; completion is proven before the heavy gate is released.
+            kotlinx.coroutines.withTimeout(10_000) { light.awaitAll().forEach { assertNotNull(it) } }
+            assertEquals(2, entered.get())
+            assertTrue(heavy.none { it.isCompleted })
+            assertEquals(0, counts.materialize)
+        } finally { release.countDown(); (heavy + queued).awaitAll(); reader.directGate = null }
+        assertEquals(3, entered.get()) // Concurrent requests for heavy0 reused its single generation.
+        assertEquals(3, counts.render)
+        assertClosedDescriptors()
+        assertTrue(contentFiles().isEmpty())
+        owners(); call("fixture-metrics-reset")
+        books.forEach { assertNotNull(library.cover(it.id)) }
+        assertEquals(0, metrics().getInt("opens"))
+        assertEquals(0, metrics().getInt("queries"))
     }
 
     @Test fun refreshChangesOnlyRelatedSourceAndBypassesStaleCoilMemoryAndDerivedDisk() = runBlocking {
@@ -143,7 +265,7 @@ class SmartLocalCoverPipelineTest {
         assertNotEquals(old.image.toBitmap().getPixel(10, 10), fresh.image.toBitmap().getPixel(10, 10))
         request(second)
         assertEquals(3, counts.extract)
-        assertEquals(3, counts.materialize)
+        assertEquals(0, counts.materialize)
         assertEquals(3, counts.render)
         loader!!.memoryCache!!.clear()
         request(first); request(second)
@@ -161,17 +283,20 @@ class SmartLocalCoverPipelineTest {
         val pages = reader.pages(root, chapter, original)
         readerPageDirectories += File(Uri.parse(pages.first().url).path!!).parentFile!!
         val backing = contentFiles().single()
+        descriptorMode("reader.pdf", "pipe")
         request(book.toManga(false))
         assertTrue(backing.exists())
         cache.clear()
         assertTrue(backing.exists())
         // Opening another cover releases/deletes only its own temporary copy.
-        put("other.pdf", pdf(Color.BLUE)); library.scan()
+        put("other.pdf", pdf(Color.BLUE)); descriptorMode("other.pdf", "pipe"); library.scan()
         request(library.state.value.books.single { it.node.name == "other.pdf" }.toManga(false))
         assertTrue(backing.exists())
         val page = File(Uri.parse(pages.single().url).path!!)
         // LocalPdfCache's pre-existing Reader page API remains responsible for lazy pages.
         assertTrue(org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(page).length() > 0)
+        assertEquals(3, counts.materialize)
+        assertClosedDescriptors()
     }
 
     @Test fun failedPdfRenderStillReleasesTemporaryMaterialization() = runBlocking {
@@ -179,7 +304,8 @@ class SmartLocalCoverPipelineTest {
         library.scan()
         assertNull(library.cover(library.state.value.books.single().id))
         assertEquals(1, counts.materialize)
-        assertEquals(1, counts.render)
+        assertEquals(2, counts.render)
+        assertClosedDescriptors()
         assertTrue(contentFiles().isEmpty())
         assertEquals(0L, cache.size())
     }
@@ -254,7 +380,7 @@ class SmartLocalCoverPipelineTest {
         assertEquals(first.memoryCacheKey, warm.memoryCacheKey)
         assertEquals(first.image.toBitmap().getPixel(10, 10), warm.image.toBitmap().getPixel(10, 10))
         assertEquals(1, counts.extract)
-        assertEquals(1, counts.materialize)
+        assertEquals(0, counts.materialize)
         assertEquals(1, counts.render)
     }
 
@@ -270,7 +396,7 @@ class SmartLocalCoverPipelineTest {
         assertNotEquals(old.memoryCacheKey, fresh.memoryCacheKey)
         assertNotEquals(old.image.toBitmap().getPixel(10, 10), fresh.image.toBitmap().getPixel(10, 10))
         assertEquals(2, counts.extract)
-        assertEquals(2, counts.materialize)
+        assertEquals(0, counts.materialize)
         assertEquals(2, counts.render)
     }
 
@@ -475,6 +601,13 @@ class SmartLocalCoverPipelineTest {
         return result as SuccessResult
     }
 
+    private fun descriptorMode(name: String, mode: String) = call("fixture-descriptor-mode", name,
+        Bundle().apply { putString("mode", mode) })
+    private fun assertClosedDescriptors() {
+        counts.descriptors.forEach { descriptor ->
+            assertFalse("Source descriptor leaked", runCatching { descriptor.fileDescriptor.valid() }.getOrDefault(false))
+        }
+    }
     private fun contentFiles() = File(context.cacheDir, "smart-local-content").listFiles().orEmpty().toList()
     private fun metrics() = call("fixture-counts")!!
     private fun call(method: String, arg: String? = null, bundle: Bundle? = null) = resolver.call(Uri.parse(rootUri), method, arg, bundle)
@@ -507,15 +640,32 @@ class SmartLocalCoverPipelineTest {
         ZipOutputStream(bytes).use { zip -> zip.putNextEntry(ZipEntry(name)); zip.write(image); zip.closeEntry() }
     }.toByteArray()
 
-    private class Counts { var extract = 0; var materialize = 0; var render = 0 }
+    private class Counts {
+        private val extractions = java.util.concurrent.atomic.AtomicInteger()
+        private val materializations = java.util.concurrent.atomic.AtomicInteger()
+        private val renders = java.util.concurrent.atomic.AtomicInteger()
+        val extract get() = extractions.get()
+        val materialize get() = materializations.get()
+        val render get() = renders.get()
+        fun extracted() { extractions.incrementAndGet() }
+        fun materialized() { materializations.incrementAndGet() }
+        fun rendered() { renders.incrementAndGet() }
+        val descriptors = java.util.Collections.synchronizedList(ArrayList<ParcelFileDescriptor>())
+    }
     private class CountingReader(context: Context, documents: LocalDocuments, val counts: Counts) : LocalContentReader(context, documents) {
-        internal override suspend fun cover(root: Node, plan: LocalCoverPlan): GeneratedLocalCover? {
-            counts.extract++; return super.cover(root, plan)
+        var directGate: (() -> Unit)? = null
+        var materializedGate: (() -> Unit)? = null
+        internal override suspend fun cover(plan: LocalCoverPlan, publish: suspend (GeneratedLocalCover) -> ByteArray): ByteArray? {
+            counts.extracted(); return super.cover(plan, publish)
         }
         override suspend fun materialize(root: Node, node: Node): File {
-            counts.materialize++; return super.materialize(root, node)
+            counts.materialized(); return super.materialize(root, node)
         }
-        override fun renderPdfCover(file: File): ByteArray? { counts.render++; return super.renderPdfCover(file) }
+        override fun renderPdfCover(file: File): ByteArray? { counts.rendered(); materializedGate?.invoke(); return super.renderPdfCover(file) }
+        override fun renderPdfCover(descriptor: ParcelFileDescriptor): ByteArray? {
+            counts.descriptors.add(descriptor); counts.rendered(); directGate?.invoke()
+            return super.renderPdfCover(descriptor)
+        }
     }
     private class FixtureContext(base: Context) : ContextWrapper(base) {
         val storage = File(base.cacheDir, "derived-cover-test-${UUID.randomUUID()}").apply { mkdirs() }

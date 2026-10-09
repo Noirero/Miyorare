@@ -12,12 +12,14 @@ import android.provider.DocumentsProvider;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -31,6 +33,7 @@ public class CoverFixtureDocumentsProvider extends DocumentsProvider {
     private final ConcurrentLinkedQueue<String> queriedDocuments = new ConcurrentLinkedQueue<>();
     private final ConcurrentLinkedQueue<String> queriedChildren = new ConcurrentLinkedQueue<>();
     private final ConcurrentLinkedQueue<String> openedDocuments = new ConcurrentLinkedQueue<>();
+    private final ConcurrentHashMap<String, String> descriptorModes = new ConcurrentHashMap<>();
     private long revision = System.currentTimeMillis();
 
     private File directory() {
@@ -101,6 +104,31 @@ public class CoverFixtureDocumentsProvider extends DocumentsProvider {
         if (!"r".equals(mode)) throw new IllegalArgumentException("Read-only fixture");
         opens.incrementAndGet();
         openedDocuments.add(documentId);
+        String descriptorMode = descriptorModes.get(documentId);
+        if ("reject-once".equals(descriptorMode)) {
+            descriptorModes.remove(documentId);
+            throw new FileNotFoundException("Fixture descriptor unavailable; stream retry is supported");
+        }
+        if ("pipe".equals(descriptorMode)) {
+            try {
+                ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
+                Thread writer = new Thread(() -> {
+                    try (FileInputStream input = new FileInputStream(file(documentId));
+                         ParcelFileDescriptor.AutoCloseOutputStream output = new ParcelFileDescriptor.AutoCloseOutputStream(pipe[1])) {
+                        byte[] buffer = new byte[8192];
+                        int count;
+                        while ((count = input.read(buffer)) >= 0) output.write(buffer, 0, count);
+                    } catch (IOException ignored) {
+                        // A rejected direct pipe is closed before reading; EPIPE is expected.
+                    }
+                }, "cover-fixture-pipe");
+                writer.setDaemon(true);
+                writer.start();
+                return pipe[0];
+            } catch (IOException error) {
+                throw new FileNotFoundException(error.toString());
+            }
+        }
         return ParcelFileDescriptor.open(file(documentId), ParcelFileDescriptor.MODE_READ_ONLY);
     }
 
@@ -109,6 +137,7 @@ public class CoverFixtureDocumentsProvider extends DocumentsProvider {
         switch (method) {
             case "fixture-reset":
                 deleteRecursively(directory());
+                descriptorModes.clear();
                 // Reset storage and operation evidence together; metric-only resets keep files.
             case "fixture-metrics-reset":
                 queries.set(0);
@@ -125,6 +154,9 @@ public class CoverFixtureDocumentsProvider extends DocumentsProvider {
                 counts.putStringArrayList("queried-children", new ArrayList<>(queriedChildren));
                 counts.putStringArrayList("opened-documents", new ArrayList<>(openedDocuments));
                 return counts;
+            case "fixture-descriptor-mode":
+                descriptorModes.put(Objects.requireNonNull(arg), Objects.requireNonNull(extras).getString("mode"));
+                return new Bundle();
             case "fixture-put":
                 put(Objects.requireNonNull(arg), Objects.requireNonNull(extras));
                 return new Bundle();

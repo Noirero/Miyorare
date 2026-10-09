@@ -3,6 +3,8 @@ package org.koitharu.kotatsu.local.library
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import android.os.CancellationSignal
+import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import androidx.core.net.toFile
 import androidx.core.net.toUri
@@ -10,12 +12,15 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.local.library.LocalTreeScanner.Node
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import javax.inject.Inject
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /** Tree grants stay tree grants. No broad-storage permission, real-path conversion or parent walk. */
 class LocalDocuments @Inject constructor(@ApplicationContext private val context: Context) {
@@ -97,6 +102,33 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
         val uri = node.uri.toUri()
         return if (uri.scheme == ContentResolver.SCHEME_FILE) uri.toFile().inputStream()
         else resolver.openInputStream(uri) ?: throw IOException("File is unavailable: ${node.name}")
+    }
+
+    /** Scoped descriptor capability. A provider may return null, a pipe, or reject this access.
+     * The consumer decides compatibility; this layer retains grant checks and closes even when
+     * opening/rendering fails or cancellation races the synchronous provider operation.
+     * Run on an I/O dispatcher. No live descriptor crosses a suspension/dispatcher boundary.
+     */
+    internal suspend fun <T> withReadDescriptor(root: Node, node: Node, block: (ParcelFileDescriptor) -> T): T? {
+        check(contains(root, node)) { "Content outside selected root" }
+        return suspendCancellableCoroutine { continuation ->
+            val signal = CancellationSignal()
+            continuation.invokeOnCancellation { signal.cancel() }
+            try {
+                continuation.context.ensureActive()
+                val uri = node.uri.toUri()
+                val descriptor = if (uri.scheme == ContentResolver.SCHEME_FILE) {
+                    ParcelFileDescriptor.open(uri.toFile(), ParcelFileDescriptor.MODE_READ_ONLY)
+                } else resolver.openFileDescriptor(uri, "r", signal)
+                val result = descriptor?.use {
+                    continuation.context.ensureActive()
+                    block(it).also { continuation.context.ensureActive() }
+                }
+                continuation.resume(result)
+            } catch (error: Exception) {
+                continuation.resumeWithException(error)
+            }
+        }
     }
 
     fun delete(root: Node, node: Node) {
