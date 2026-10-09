@@ -4,6 +4,7 @@ import coil3.ImageLoader
 import coil3.intercept.Interceptor
 import coil3.request.CachePolicy
 import coil3.request.ImageResult
+import coil3.request.SuccessResult
 import coil3.decode.DataSource
 import coil3.decode.ImageSource
 import coil3.fetch.Fetcher
@@ -52,9 +53,15 @@ class LocalCoverVersionInterceptor @Inject constructor(private val library: Prov
             val builder = chain.request.newBuilder()
             if (fingerprint == null) builder.memoryCachePolicy(CachePolicy.DISABLED)
             else builder.memoryCacheKeyExtra("smart-local-source-version", fingerprint)
+            val started = System.nanoTime()
             val result = chain.withRequest(builder.build()).proceed()
             // Refresh can publish between version resolution and an engine memory hit.
-            if (owner.coverFingerprint(id) == fingerprint) return result
+            if (owner.coverFingerprint(id) == fingerprint) {
+                owner.recordCoverPresentation(id, result is SuccessResult && result.dataSource == DataSource.MEMORY_CACHE,
+                    System.nanoTime() - started)
+                return result
+            }
         }
     }
 }
+

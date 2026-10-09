@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="smart_local_cover_cache">On-device cover cache</string>
+    <string name="smart_local_cover_cache_summary">%1$s · %2$d thumbnails</string>
+    <string name="smart_local_cover_cache_clear">Clear On-device cover cache</string>
+    <string name="smart_local_cover_cache_clear_message">Only On-device Files thumbnails will be removed. Source files, library data and Reader pages are kept. Covers will be generated again when opened.</string>
+    <string name="smart_local_cover_cache_cleared">On-device cover cache cleared</string>
+    <string name="smart_local_cover_cache_diagnostics">Cover cache diagnostics</string>
+    <string name="smart_local_cover_cache_reset_measurement">Reset measurement</string>
+</resources>

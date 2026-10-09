@@ -53,10 +53,11 @@ internal data class LocalMetadata(
     }
 }
 
-internal fun InputStream.readBytesLimited(limit: Int): ByteArray {
+internal fun InputStream.readBytesLimited(limit: Int, checkActive: () -> Unit = {}): ByteArray {
     val output = java.io.ByteArrayOutputStream()
     val buffer = ByteArray(8192)
     while (true) {
+        checkActive()
         val read = read(buffer)
         if (read < 0) break
         require(output.size().toLong() + read <= limit) { "Local content exceeds size limit" }
@@ -64,3 +65,4 @@ internal fun InputStream.readBytesLimited(limit: Int): ByteArray {
     }
     return output.toByteArray()
 }
+

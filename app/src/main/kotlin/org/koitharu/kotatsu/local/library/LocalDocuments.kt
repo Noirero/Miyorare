@@ -109,7 +109,7 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
      * opening/rendering fails or cancellation races the synchronous provider operation.
      * Run on an I/O dispatcher. No live descriptor crosses a suspension/dispatcher boundary.
      */
-    internal suspend fun <T> withReadDescriptor(root: Node, node: Node, block: (ParcelFileDescriptor) -> T): T? {
+    internal suspend fun <T> withReadDescriptor(root: Node, node: Node, block: (ParcelFileDescriptor) -> T, onOpened: ((Long) -> Unit)? = null): T? {
         check(contains(root, node)) { "Content outside selected root" }
         return suspendCancellableCoroutine { continuation ->
             val signal = CancellationSignal()
@@ -117,10 +117,12 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
             try {
                 continuation.context.ensureActive()
                 val uri = node.uri.toUri()
+                val started = System.nanoTime()
                 val descriptor = if (uri.scheme == ContentResolver.SCHEME_FILE) {
                     ParcelFileDescriptor.open(uri.toFile(), ParcelFileDescriptor.MODE_READ_ONLY)
                 } else resolver.openFileDescriptor(uri, "r", signal)
                 val result = descriptor?.use {
+                    onOpened?.invoke(System.nanoTime() - started)
                     continuation.context.ensureActive()
                     block(it).also { continuation.context.ensureActive() }
                 }
@@ -175,3 +177,4 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
             block(selected, access(selected) { coroutine.ensureActive() })
         }
 }
+

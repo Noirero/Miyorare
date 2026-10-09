@@ -88,6 +88,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >-
+            bash .github/scripts/collect-on-device-cover-evidence.sh
             ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace
             -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest,org.koitharu.kotatsu.core.image.MiyorareImageDiskCacheTest
       - name: Upload Android evidence
@@ -98,5 +99,15 @@ jobs:
           path: |
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
+            app/build/reports/on-device-cover/
           if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload exact-head debug APK for owner validation
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: on-device-cover-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
           retention-days: 14

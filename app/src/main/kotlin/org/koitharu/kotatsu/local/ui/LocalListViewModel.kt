@@ -61,6 +61,11 @@ class LocalListViewModel @Inject constructor(
 	val onMangaRemoved = MutableEventFlow<Unit>()
 	val exclusions = MutableEventFlow<Map<String, String>>()
 	val scanCompleted = MutableEventFlow<Boolean>()
+	val coverCacheReport = MutableEventFlow<SmartLocalCoverCacheReport>()
+	val coverCacheCleared = MutableEventFlow<Unit>()
+	fun requestCoverCacheReport() { launchJob(Dispatchers.IO) { coverCacheReport.call(library.coverCacheReport()) } }
+	fun clearCoverCache() { launchJob(Dispatchers.IO) { library.clearCoverCache(); coverCacheCleared.call(Unit) } }
+	fun resetCoverDiagnostics() { library.resetCoverDiagnostics(); requestCoverCacheReport() }
 	private val showAllReading = MutableStateFlow(savedStateHandle["all_reading"] ?: false)
 	private val revision = MutableStateFlow(0)
 	private val localQuery = MutableStateFlow(savedStateHandle["local_query"] ?: "")
@@ -245,3 +250,4 @@ class LocalListViewModel @Inject constructor(
 		val type: LocalContentType?,
 	)
 }
+

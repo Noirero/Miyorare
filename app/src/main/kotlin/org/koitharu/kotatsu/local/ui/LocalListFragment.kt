@@ -27,7 +27,14 @@ import org.koitharu.kotatsu.remotelist.ui.RemoteListFragment
 class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	override val viewModel by viewModels<LocalListViewModel>()
 	override val filterCoordinator get() = viewModel.filterCoordinator
-	private val folderPicker = OpenDocumentTreeHelper(this) { uri -> uri?.let(viewModel::addFolder) }
+	private var scanProgressSnackbar: Snackbar? = null
+	private val folderPicker = OpenDocumentTreeHelper(this) { uri ->
+		uri?.let {
+			scanProgressSnackbar?.dismiss()
+			scanProgressSnackbar = Snackbar.make(requireView(), R.string.smart_local_scan_running, Snackbar.LENGTH_INDEFINITE).also { snackbar -> snackbar.show() }
+			viewModel.addFolder(it)
+		}
+	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -43,10 +50,17 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 				onFoldersClick = ::showFolderManager,
 				onFiltersClick = ::showFilters,
 				onRestoreClick = viewModel::requestExclusions,
+				onCacheClick = viewModel::requestCoverCacheReport,
 			),
 		)
+		viewModel.coverCacheReport.observeEvent(viewLifecycleOwner) { showCoverCache(it) }
+		viewModel.coverCacheCleared.observeEvent(viewLifecycleOwner) {
+			Snackbar.make(binding.recyclerView, R.string.smart_local_cover_cache_cleared, Snackbar.LENGTH_SHORT).show()
+		}
 		viewModel.resumeIntent.observeEvent(viewLifecycleOwner) { router.openReader(it) }
 		viewModel.scanCompleted.observeEvent(viewLifecycleOwner) { complete ->
+			scanProgressSnackbar?.dismiss()
+			scanProgressSnackbar = null
 			Snackbar.make(binding.recyclerView, if (complete) R.string.smart_local_scan_complete else R.string.smart_local_scan_attention, Snackbar.LENGTH_LONG).show()
 		}
 		viewModel.onMangaRemoved.observeEvent(viewLifecycleOwner) {
@@ -58,6 +72,12 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 				.setItems(entries.map { it.value }.toTypedArray()) { _, index -> viewModel.restore(entries[index].key) }
 				.setNegativeButton(android.R.string.cancel, null).show()
 		}
+	}
+
+	override fun onDestroyView() {
+		scanProgressSnackbar?.dismiss()
+		scanProgressSnackbar = null
+		super.onDestroyView()
 	}
 
 	override fun onEmptyActionClick() = addFolder()
@@ -184,6 +204,34 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 				.setNegativeButton(android.R.string.cancel, null).show()
 		} else builder.setMessage(getString(R.string.smart_local_diagnosis_message, issue.node?.uri ?: issue.rootUri))
 		builder.show()
+	}
+
+	private fun showCoverCache(report: SmartLocalCoverCacheReport) {
+		val storage = report.storage
+		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_cover_cache)
+			.setMessage(getString(R.string.smart_local_cover_cache_summary,
+				android.text.format.Formatter.formatFileSize(requireContext(), storage.bytes), storage.entries))
+			.setPositiveButton(R.string.smart_local_cover_cache_clear) { _, _ ->
+				MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_cover_cache_clear)
+					.setMessage(R.string.smart_local_cover_cache_clear_message)
+					.setPositiveButton(R.string.smart_local_cover_cache_clear) { _, _ -> viewModel.clearCoverCache() }
+					.setNegativeButton(android.R.string.cancel, null).show()
+			}.setNeutralButton(R.string.smart_local_cover_cache_diagnostics) { _, _ -> showCoverDiagnostics(report) }
+			.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
+	private fun showCoverDiagnostics(report: SmartLocalCoverCacheReport) {
+		val text = buildString {
+			appendLine("${report.storage.entries} thumbnails · ${report.storage.bytes} bytes")
+			appendLine("Entry bytes median/p90/p95: ${report.storage.medianEntryBytes}/${report.storage.p90EntryBytes}/${report.storage.p95EntryBytes}")
+			for ((reason, count) in report.diagnostics.counts) if (count > 0) appendLine("$reason: $count")
+			for (event in report.diagnostics.recent.takeLast(12)) {
+				appendLine("${event.reason} ${event.cacheKey?.take(12).orEmpty()} ${event.sourceKind.orEmpty()} candidate=${event.candidateIndex} bytes=${event.entryBytes} sourceBytes=${event.sourceBytes} ms=${event.elapsedNanos / 1_000_000}")
+			}
+		}
+		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_cover_cache_diagnostics)
+			.setMessage(text).setPositiveButton(android.R.string.ok, null)
+			.setNeutralButton(R.string.smart_local_cover_cache_reset_measurement) { _, _ -> viewModel.resetCoverDiagnostics() }.show()
 	}
 
 	private fun showInformation(book: LocalBook) {

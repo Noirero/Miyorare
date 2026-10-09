@@ -12,6 +12,7 @@ class LocalListMenuProvider(
 	private val onFoldersClick: () -> Unit,
 	private val onFiltersClick: () -> Unit,
 	private val onRestoreClick: () -> Unit,
+	private val onCacheClick: () -> Unit = {},
 ) : MenuProvider {
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
@@ -30,8 +31,10 @@ class LocalListMenuProvider(
 		R.id.action_import -> { onImportClick(); true }
 		R.id.action_refresh -> { onRefreshClick(); true }
 		R.id.action_directories -> { onFoldersClick(); true }
+		R.id.action_smart_local_cover_cache -> { onCacheClick(); true }
 		R.id.action_smart_local_restore -> { onRestoreClick(); true }
 		R.id.action_filter -> { onFiltersClick(); true }
 		else -> false
 	}
 }
+

@@ -316,7 +316,19 @@ class SmartLocalLibrary @Inject constructor(
         val (book, chapter) = requireChapter(url)
         return@withContext contentReader.epubImage(documents.root(book.rootUri), chapter, source)
     }
-    internal suspend fun coverFingerprint(id: Long): String? = coverPlan(id)?.second?.fingerprint
+    internal suspend fun coverFingerprint(id: Long): String? = coverPlan(id)?.second?.fingerprint?.let {
+        "$it:${coverCache.clearEpoch}"
+    }
+
+    suspend fun coverCacheReport(): SmartLocalCoverCacheReport = coverCache.report()
+    suspend fun clearCoverCache() = coverCache.clear()
+    fun resetCoverDiagnostics() = coverCache.resetDiagnostics()
+    internal fun recordCoverPresentation(id: Long, memoryHit: Boolean, elapsedNanos: Long) {
+        coverCache.diagnostics.record(SmartLocalCoverDiagnostics.Event(
+            if (memoryHit) SmartLocalCoverDiagnostics.Reason.PRESENTATION_MEMORY_HIT else SmartLocalCoverDiagnostics.Reason.PRESENTATION_LOAD,
+            cacheKey = coverDigest(id.toString().toByteArray()), elapsedNanos = elapsedNanos,
+        ))
+    }
 
     private suspend fun coverPlan(id: Long): Pair<LocalBook, LocalCoverPlan>? {
         val book = book(id) ?: return null
@@ -397,3 +409,4 @@ class SmartLocalLibrary @Inject constructor(
     }
     private inline fun <reified T : Enum<T>> enumValue(value: String?, default: T): T = enumValues<T>().firstOrNull { it.name == value } ?: default
 }
+

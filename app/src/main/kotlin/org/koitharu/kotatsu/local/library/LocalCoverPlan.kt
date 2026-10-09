@@ -6,7 +6,8 @@ import java.io.DataOutputStream
 import java.security.MessageDigest
 
 /** Immutable cover candidates from the last successfully published discovery snapshot. No I/O. */
-internal class LocalCoverPlan(val rootUri: String, val candidates: List<Node>, private val scanVersion: Long) {
+internal class LocalCoverPlan(val rootUri: String, val candidates: List<Node>, private val scanVersion: Long, val mangaId: Long? = null) {
+    val diagnosticKey: String? by lazy { mangaId?.let { coverDigest(it.toString().toByteArray()) } }
     val fingerprint: String by lazy { fingerprintThrough(candidates.lastIndex) }
 
     // Include failed higher-priority candidates: replacing a broken sidecar must supersede a
@@ -15,6 +16,7 @@ internal class LocalCoverPlan(val rootUri: String, val candidates: List<Node>, p
         val bytes = ByteArrayOutputStream()
         DataOutputStream(bytes).use { out ->
             out.writeInt(THUMBNAIL_VERSION)
+            out.writeUTF(LocalCoverRecipe.IDENTITY)
             out.writeUTF(rootUri)
             for (node in candidates.take(index + 1)) {
                 out.writeUTF(node.key)
@@ -31,8 +33,8 @@ internal class LocalCoverPlan(val rootUri: String, val candidates: List<Node>, p
     }
 
     companion object {
-        // Invalidate interim PNG entries that may have flattened an animated source.
-        const val THUMBNAIL_VERSION = 2
+        // One controlled invalidation of the old 768px/PNG recipe. Source/chapter IDs are unchanged.
+        const val THUMBNAIL_VERSION = LocalCoverRecipe.VERSION
 
         fun from(book: LocalBook): LocalCoverPlan {
             val nodes = (book.sidecars + book.chapters.flatMap { it.pages }).associateBy { it.uri }
@@ -44,7 +46,7 @@ internal class LocalCoverPlan(val rootUri: String, val candidates: List<Node>, p
                 else if (LocalTreeScanner.extension(chapter.node.name) in setOf("pdf", "cbz", "zip", "epub")) listOf(chapter.node)
                 else emptyList()
             }
-            return LocalCoverPlan(book.rootUri, explicit + fallback, book.scannedAt)
+            return LocalCoverPlan(book.rootUri, explicit + fallback, book.scannedAt, book.id)
         }
     }
 }
@@ -53,3 +55,4 @@ internal data class GeneratedLocalCover(val bytes: ByteArray, val candidateIndex
 
 internal fun coverDigest(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
     .digest(bytes).joinToString("") { "%02x".format(it) }
+
