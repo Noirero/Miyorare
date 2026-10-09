@@ -91,6 +91,11 @@ class DetailsExpressiveActions(
 	val onTrackerPeopleRequested: () -> Unit,
 	val onTrackerPeopleRetry: (ScrobblerService) -> Unit,
 	val onTrackerPeopleRefresh: () -> Unit,
+	val onTrackerRecommendationsRequested: () -> Unit,
+	val onTrackerRecommendationsRetry: (ScrobblerService) -> Unit,
+	val onTrackerRecommendationsRefresh: () -> Unit,
+	val onTrackerRecommendationClick: (org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation) -> Unit,
+	val onTrackerRecommendationProvider: (org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation) -> Unit,
 )
 
 @Composable
@@ -106,6 +111,7 @@ fun DetailsExpressiveScreen(
 	favouriteLabel: String?,
 	scrobblings: List<ScrobblingInfo>,
 	trackerPeople: DetailsPeopleUiState,
+	trackerRecommendations: DetailsPeopleUiState,
 	genreRecommendations: List<MangaListModel>,
 	expandedRelated: DetailsRelatedUiState,
 	relatedDiscoveryEnabled: Boolean,
@@ -353,6 +359,13 @@ fun DetailsExpressiveScreen(
 								onCardClick = actions.onScrobblingCardClick,
 							)
 						}
+					}
+
+					if (!managed) item(key = "tracker-recommendations", contentType = "tracker-recommendations") {
+						LaunchedEffect(manga.id, manga.source, manga.url) { actions.onTrackerRecommendationsRequested() }
+						TrackerRecommendationSection(trackerRecommendations, imageLoader,
+							actions.onTrackerRecommendationClick, actions.onTrackerRecommendationProvider,
+							actions.onTrackerRecommendationsRetry, actions.onTrackerRecommendationsRefresh)
 					}
 
 					if (!managed) item(key = "discovery-controls", contentType = "discovery-controls") {
@@ -750,3 +763,4 @@ private fun ExpressiveBackdrop(
 		)
 	}
 }
+
