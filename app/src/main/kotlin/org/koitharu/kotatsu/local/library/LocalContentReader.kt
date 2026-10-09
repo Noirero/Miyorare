@@ -288,7 +288,7 @@ open class LocalContentReader @Inject constructor(
             "cbz", "zip" -> "ARCHIVE"
             else -> if (LocalTreeScanner.isSidecar(node.name)) "SIDECAR" else "IMAGE"
         }
-        return Event(reason, plan.mangaId?.let { coverDigest(it.toString().toByteArray()) }, kind, index,
+        return Event(reason, plan.diagnosticKey, kind, index,
             entryBytes = bytes, elapsedNanos = elapsed, sourceOpened = true)
     }
 

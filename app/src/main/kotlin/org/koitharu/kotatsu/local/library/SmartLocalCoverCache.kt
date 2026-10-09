@@ -108,7 +108,7 @@ class SmartLocalCoverCache internal constructor(
     suspend fun stats(): SmartLocalCoverCacheStats = withContext(Dispatchers.IO) {
         files.withLock {
             initializeLocked()
-            val sizes = directory.listFiles().orEmpty().filter { it.name.endsWith(".thumb") }.map { it.length() }.sorted()
+            val sizes = directory.listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".thumb") }.map { it.length() }.sorted()
             fun percentile(percent: Int) = sizes.getOrNull(((sizes.size * percent + 99) / 100 - 1).coerceAtLeast(0)) ?: 0L
             SmartLocalCoverCacheStats(sizes.sum(), sizes.size, percentile(50), percentile(90), percentile(95), maxBytes, maxEntries)
         }
@@ -126,7 +126,7 @@ class SmartLocalCoverCache internal constructor(
                 directory.listFiles().orEmpty().forEach { if (!it.delete()) throw IOException("Cannot clear derived cover") }
                 cleared = true
             } finally {
-                val remaining = directory.listFiles().orEmpty().filter { it.name.endsWith(".thumb") }
+                val remaining = directory.listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".thumb") }
                 storedBytes = remaining.sumOf { it.length() }; storedEntries = remaining.size
                 event(if (cleared) Reason.CLEAR else Reason.CLEAR_FAILED)
             }
@@ -138,7 +138,7 @@ class SmartLocalCoverCache internal constructor(
         check(directory.isDirectory || directory.mkdirs()) { "Cannot create derived cover storage" }
         // Crash leftovers are never valid entries. Writes and cleanup share the same lock.
         directory.listFiles().orEmpty().filter { it.name.endsWith(".partial") }.forEach { it.delete() }
-        val entries = directory.listFiles().orEmpty().filter { it.name.endsWith(".thumb") }
+        val entries = directory.listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".thumb") }
         storedBytes = entries.sumOf { it.length() }; storedEntries = entries.size
         trimLocked()
         lastAccess = directory.listFiles().orEmpty().maxOfOrNull { it.lastModified() } ?: 0L
@@ -209,7 +209,7 @@ class SmartLocalCoverCache internal constructor(
     }
 
     private fun trimLocked() {
-        val entries = directory.listFiles().orEmpty().filter { it.name.endsWith(".thumb") }.sortedBy { it.lastModified() }
+        val entries = directory.listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".thumb") }.sortedBy { it.lastModified() }
         var bytes = entries.sumOf { it.length() }
         var count = entries.size
         val obsoleteBefore = System.currentTimeMillis() - MAX_IDLE_MS

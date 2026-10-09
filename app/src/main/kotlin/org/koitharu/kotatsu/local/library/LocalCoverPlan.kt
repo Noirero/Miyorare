@@ -7,6 +7,7 @@ import java.security.MessageDigest
 
 /** Immutable cover candidates from the last successfully published discovery snapshot. No I/O. */
 internal class LocalCoverPlan(val rootUri: String, val candidates: List<Node>, private val scanVersion: Long, val mangaId: Long? = null) {
+    val diagnosticKey: String? by lazy { mangaId?.let { coverDigest(it.toString().toByteArray()) } }
     val fingerprint: String by lazy { fingerprintThrough(candidates.lastIndex) }
 
     // Include failed higher-priority candidates: replacing a broken sidecar must supersede a

@@ -619,10 +619,14 @@ class SmartLocalCoverPipelineTest {
         }
         oldSizes.sort(); newSizes.sort()
         assertTrue("Representation bytes did not fall", newSizes[6] < oldSizes[6] / 2)
+        writeSurvey("recipe", JSONObject().put("dataset", "SYNTHETIC_12_TEXTURED_IMAGES").put("legacyRecipe", "768PNG100")
+            .put("recipe", LocalCoverRecipe.IDENTITY).put("samples", 12).put("legacyMedianBytes", oldSizes[6]).put("medianBytes", newSizes[6])
+            .put("legacyP95Bytes", oldSizes.last()).put("p95Bytes", newSizes.last()).put("legacyEncodeNanos", oldNanos)
+            .put("decodeResizeEncodeNanos", newNanos))
         android.util.Log.i("SmartLocalCoverSurvey", "SYNTHETIC recipe=768PNG->512JPEG82 n=12 median=${oldSizes[6]}->${newSizes[6]} p95=${oldSizes.last()}->${newSizes.last()} oldEncodeNs=$oldNanos newDecodeResizeEncodeNs=$newNanos")
     }
 
-    @Test fun mixed350TitleColdRevisitRestartAndUnchangedRefreshNeverThrash() = runBlocking {
+    @Test fun mixed350TitleColdRevisitRestartAndUnchangedRefreshNeverThrash(): Unit = runBlocking {
         val bitmap = texturedBitmap(256, 384, 17)
         val image = try { ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray() }
         finally { bitmap.recycle() }
@@ -655,7 +659,56 @@ class SmartLocalCoverPipelineTest {
         library.state.value.books.forEach { assertNotNull(library.cover(it.id)) }
         assertEquals(350, counts.extract)
         assertEquals(0, metrics().getInt("opens")); assertEquals(0, metrics().getInt("queries"))
+        writeSurvey("mixed350", JSONObject().put("dataset", "SYNTHETIC_MIXED_350").put("recipe", LocalCoverRecipe.IDENTITY)
+            .put("coldNanos", coldNanos).put("entries", report.storage.entries).put("bytes", report.storage.bytes)
+            .put("medianEntryBytes", report.storage.medianEntryBytes).put("p90EntryBytes", report.storage.p90EntryBytes)
+            .put("p95EntryBytes", report.storage.p95EntryBytes).put("projected100Bytes", report.storage.projectedP95Bytes(100))
+            .put("projected350Bytes", report.storage.projectedP95Bytes(350)).put("projected1000Bytes", report.storage.projectedP95Bytes(1000))
+            .put("generationCount", report.diagnostics.count(SmartLocalCoverDiagnostics.Reason.GENERATED))
+            .put("byteEvictions", report.diagnostics.count(SmartLocalCoverDiagnostics.Reason.EVICT_BYTES))
+            .put("countEvictions", report.diagnostics.count(SmartLocalCoverDiagnostics.Reason.EVICT_ENTRY_COUNT))
+            .put("revisitRestartRefreshSourceOpens", metrics().getInt("opens")))
         android.util.Log.i("SmartLocalCoverSurvey", "SYNTHETIC mixed350 coldNs=$coldNanos bytes=${report.storage.bytes} median=${report.storage.medianEntryBytes} p90=${report.storage.p90EntryBytes} p95=${report.storage.p95EntryBytes} projected100=${report.storage.projectedP95Bytes(100)} projected350=${report.storage.projectedP95Bytes(350)} projected1000=${report.storage.projectedP95Bytes(1000)}")
+    }
+
+    @Test fun revokedProviderPermissionFailsColdWithoutPublicationOrReaderArtifacts() = runBlocking {
+        put("book.pdf", pdf(Color.RED)); library.scan()
+        val book = library.state.value.books.single()
+        assertNotNull(library.cover(book.id))
+        cache.clear()
+        fixtureGrant(true)
+        try {
+            assertTrue(runCatching { library.cover(book.id) }.isFailure)
+            assertEquals(0, cache.stats().entries)
+            assertTrue(contentFiles().isEmpty())
+            assertClosedDescriptors()
+        } finally { fixtureGrant(false) }
+    }
+
+    @Test fun exifRotationIsAppliedBeforeTheStableGridRecipe() {
+        val input = Bitmap.createBitmap(160, 320, Bitmap.Config.ARGB_8888)
+        val file = File(context.cacheDir, "rotation.jpg")
+        try {
+            input.eraseColor(Color.BLUE)
+            file.outputStream().use { input.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+            android.media.ExifInterface(file.absolutePath).apply {
+                setAttribute(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_ROTATE_90.toString())
+                saveAttributes()
+            }
+            val encoded = LocalCoverThumbnail.encode(file.readBytes())!!
+            assertJpeg(encoded)
+            val rotated = BitmapFactory.decodeByteArray(encoded, 0, encoded.size)!!
+            try { assertEquals(320, rotated.width); assertEquals(160, rotated.height) }
+            finally { rotated.recycle() }
+        } finally { input.recycle(); file.delete() }
+    }
+
+    // Kept outside the per-test FixtureContext, so the existing CI job can collect exact-head
+    // measurement evidence after teardown. Contains fixture numbers only, not user source paths.
+    private fun writeSurvey(name: String, report: JSONObject) {
+        val target = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = File(target.filesDir, "on-device-cover-survey").apply { check(isDirectory || mkdirs()) }
+        File(directory, "$name.json").writeText(report.toString())
     }
 
     private fun assertJpeg(bytes: ByteArray) = assertArrayEquals(byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte()), bytes.copyOf(3))

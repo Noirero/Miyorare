@@ -67,6 +67,21 @@ class SmartLocalCoverDiagnosticsTest {
         assertEquals(1L, cache.diagnostics.snapshot().count(Reason.MISS_ABSENT))
     }
 
+    @Test fun failedAtomicPublicationPropagatesAndNeverLeavesAPartialOrPoisonedEntry() = runBlocking {
+        val directory = temporary.newFolder()
+        val cache = SmartLocalCoverCache(directory)
+        cache.stats()
+        val target = File(directory, "${coverDigest("42".toByteArray())}.thumb").apply { mkdir() }
+        val error = runCatching { cache.getOrGenerate(42, plan()) { GeneratedLocalCover(byteArrayOf(1), 0) } }.exceptionOrNull()
+        assertNotNull(error)
+        assertTrue(directory.listFiles()!!.none { it.name.endsWith(".partial") })
+        assertEquals(0, cache.stats().entries)
+        assertEquals(1L, cache.diagnostics.snapshot().count(Reason.PUBLICATION_FAILED))
+        assertTrue(target.delete())
+        assertArrayEquals(byteArrayOf(2), cache.getOrGenerate(42, plan()) { GeneratedLocalCover(byteArrayOf(2), 0) })
+        assertEquals(1, cache.stats().entries)
+    }
+
     @Test fun ringIsBoundedAndResetDoesNotReturnMutableInternalState() {
         val diagnostics = SmartLocalCoverDiagnostics()
         repeat(1000) { diagnostics.record(Event(Reason.CACHE_HIT, entryBytes = it.toLong())) }
