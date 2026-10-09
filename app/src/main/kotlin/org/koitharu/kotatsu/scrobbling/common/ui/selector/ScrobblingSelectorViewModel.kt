@@ -10,12 +10,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.model.MangaHistory
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.BaseViewModel
@@ -30,26 +33,37 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingFooter
 import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.parsers.util.ifZero
+import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaType
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.ui.selector.model.ScrobblerHint
 import org.koitharu.kotatsu.scrobbling.mangaupdates.domain.MangaUpdatesScrobbler
 import javax.inject.Inject
 
 @HiltViewModel
-class ScrobblingSelectorViewModel @Inject constructor(
+class ScrobblingSelectorViewModel internal constructor(
 	savedStateHandle: SavedStateHandle,
 	scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
-	private val historyRepository: HistoryRepository,
+	private val readHistory: suspend (Manga) -> MangaHistory?,
 	private val database: MangaDatabase,
 ) : BaseViewModel() {
+	@Inject constructor(savedStateHandle: SavedStateHandle, scrobblers: Set<@JvmSuppressWildcards Scrobbler>, historyRepository: HistoryRepository, database: MangaDatabase) :
+		this(savedStateHandle, scrobblers, historyRepository::getOne, database)
 
 	val manga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
 
 	val availableScrobblers = scrobblers.filter { it.isEnabled }
+
+	// null means the Room observation is not ready; Snapshot(null) means no association.
+	internal data class AssociationSnapshot(val targetId: Long?)
+	internal val mangaUpdatesAssociation: StateFlow<AssociationSnapshot?> = (if (availableScrobblers.any { it.scrobblerService == ScrobblerService.MANGAUPDATES }) {
+		database.getScrobblingDao().observe(ScrobblerService.MANGAUPDATES.id, manga.id)
+			.map { AssociationSnapshot(it?.targetId) }
+	} else flowOf(null)).stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
 	val selectedScrobblerIndex = MutableStateFlow(0)
 
@@ -190,6 +204,7 @@ class ScrobblingSelectorViewModel @Inject constructor(
 			return
 		}
 		val mangaUpdates = currentScrobbler as? MangaUpdatesScrobbler
+		val association = if (mangaUpdates != null) mangaUpdatesAssociation.value ?: return else null
 		val edit = mangaUpdates?.captureEdit(manga.id, targetId)
 		if (mangaUpdates != null && edit == null) return
 		doneJob = launchLoadingJob(Dispatchers.Default) {
@@ -197,7 +212,7 @@ class ScrobblingSelectorViewModel @Inject constructor(
 				onClose.call(Unit)
 				return@launchLoadingJob
 			}
-			val history = historyRepository.getOne(manga)
+			val history = readHistory(manga)
 			if (isPrivateOnly()) {
 				onClose.call(Unit)
 				return@launchLoadingJob
@@ -208,7 +223,7 @@ class ScrobblingSelectorViewModel @Inject constructor(
 				else -> ScrobblingStatus.READING
 			}
 			val canPushProgress = if (mangaUpdates != null && edit != null) {
-				mangaUpdates.linkManga(edit, fallbackStatus)
+				mangaUpdates.linkManga(edit, fallbackStatus, checkNotNull(association).targetId)
 			} else {
 				currentScrobbler.linkManga(manga.id, targetId, fallbackStatus)
 			}

@@ -147,17 +147,20 @@ class MangaUpdatesRepository internal constructor(
 			authors.filter { it.text("type") == "Artist" }.mapNotNull { it.text("name") }.distinct().joinToString().ifBlank { null })
 	}
 
-	override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long): Boolean =
-		createRate(MangaUpdatesEditContext(mangaId, scrobblerMangaId, api.sessionTicket()))
+	override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long): Boolean {
+		val context = MangaUpdatesEditContext(mangaId, scrobblerMangaId, api.sessionTicket())
+		eligible(mangaId, context.ticket)
+		val previousTarget = db.getScrobblingDao().find(detailsService.id, mangaId)?.targetId
+		api.ensureCurrent(context.ticket)
+		return createRate(context, previousTarget)
+	}
 
-	suspend fun createRate(context: MangaUpdatesEditContext): Boolean {
+	suspend fun createRate(context: MangaUpdatesEditContext, previousTarget: Long?): Boolean {
 		val mangaId = context.mangaId
 		val scrobblerMangaId = context.targetId
 		require(scrobblerMangaId > 0)
 		val ticket = context.ticket
 		eligible(mangaId, ticket)
-		val previousTarget = db.getScrobblingDao().find(detailsService.id, mangaId)?.targetId
-		api.ensureCurrent(ticket)
 		return operations.withLock {
 			ensureAssociation(mangaId, previousTarget, ticket)
 			var existing = remoteState(scrobblerMangaId, ticket)

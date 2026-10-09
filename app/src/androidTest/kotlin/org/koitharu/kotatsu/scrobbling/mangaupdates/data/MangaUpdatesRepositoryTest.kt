@@ -3,7 +3,12 @@ package org.koitharu.kotatsu.scrobbling.mangaupdates.data
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.room.Room
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -17,18 +22,30 @@ import okio.Buffer
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.MangaEntity
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.parser.MangaRepository
+import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
+import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.scrobbling.common.domain.model.*
+import org.koitharu.kotatsu.scrobbling.common.ui.selector.ScrobblingSelectorViewModel
+import org.koitharu.kotatsu.scrobbling.mangaupdates.domain.MangaUpdatesScrobbler
 import java.io.IOException
 import java.util.Collections
 import java.util.UUID
+import javax.inject.Inject
 
 /** Real Room and API request paths; the terminal transport can never reach a provider. */
+@HiltAndroidTest
 class MangaUpdatesRepositoryTest {
+	@get:Rule val hilt = HiltAndroidRule(this)
+	@Inject lateinit var mangaRepositoryFactory: MangaRepository.Factory
 	private val app = InstrumentationRegistry.getInstrumentation().targetContext
 	private val prefix = "mu-fixture-${UUID.randomUUID()}-"
 	private val preferences = mutableSetOf<String>()
@@ -44,6 +61,7 @@ class MangaUpdatesRepositoryTest {
 	private val user = ScrobblerUser(1, "Fixture User", null, ScrobblerService.MANGAUPDATES)
 
 	@Before fun setup() {
+		hilt.inject()
 		db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
 		settings = AppSettings(context).apply { isIncognitoModeEnabled = false }
 		sessions = Sessions(); transport = Transport(target); scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -407,6 +425,114 @@ class MangaUpdatesRepositoryTest {
 			assertTrue(transport.requests.none { it.method in setOf("PUT", "DELETE") && it.path.endsWith("/rating") })
 		}
 		transport.beforeReply = null
+	}
+
+	@Test fun selectorRejectsAnAssociationReplacedWhileHistoryIsSuspended() = runBlocking {
+		selectorLink(target, { replaceSelectorAssociation(target + 1) }, target + 1, stale = true)
+	}
+
+	@Test fun selectorPreservesAnAssociationCreatedWhileAnAbsenceSnapshotIsSuspended() = runBlocking {
+		selectorLink(null, { replaceSelectorAssociation(target + 1) }, target + 1, stale = true)
+	}
+
+	@Test fun selectorDoesNotRecreateAnAssociationRemovedWhileHistoryIsSuspended() = runBlocking {
+		selectorLink(target, { db.getScrobblingDao().delete(6, 41) }, null, stale = true)
+	}
+
+	@Test fun selectorStillAdoptsAnUnchangedAssociationAfterHistorySuspension() = runBlocking {
+		selectorLink(target, {}, target, stale = false)
+	}
+
+	@Test fun selectorStillCreatesALinkFromAnUnchangedAbsenceSnapshot() = runBlocking {
+		selectorLink(null, {}, target, stale = false, remoteExists = false)
+	}
+
+	@Test fun selectorAllowsAnExplicitRemapFromAnUnchangedDifferentTarget() = runBlocking {
+		selectorLink(target + 1, {}, target, stale = false)
+	}
+
+	@Test fun selectorRechecksItsSnapshotAfterRemoteAdoptionBeforePersistence() = runBlocking {
+		selectorLink(target, {
+			transport.beforeReply = { request ->
+				if (request.path == "/v1/lists/series/$target") runBlocking { replaceSelectorAssociation(target + 1) }
+			}
+		}, target + 1, stale = true, allowReads = true)
+	}
+
+	private suspend fun replaceSelectorAssociation(targetId: Long) {
+		db.getScrobblingDao().upsert(ScrobblingEntity(6, 0, 41, targetId, "hold", 12, null, 0.4f))
+	}
+
+	private suspend fun selectorLink(
+		initialTarget: Long?, whilePaused: suspend () -> Unit, expectedTarget: Long?, stale: Boolean,
+		remoteExists: Boolean = true, allowReads: Boolean = false,
+	) = coroutineScope {
+		val repo = repository(); manga()
+		if (initialTarget != null) replaceSelectorAssociation(initialTarget)
+		if (!remoteExists) { transport.remote = null; transport.rating = null }
+		val sourceManga = Manga(
+			id = 41, title = "Source title", altTitles = emptySet(), url = "file:///fixture-41.cbz", publicUrl = "file:///fixture-41.cbz",
+			rating = 0f, contentRating = null, coverUrl = null, largeCoverUrl = null, description = null, tags = emptySet(),
+			state = null, authors = emptySet(), chapters = null, source = LocalMangaSource,
+		)
+		val enteredHistory = CompletableDeferred<Unit>()
+		val resumeHistory = CompletableDeferred<Unit>()
+		val observedLoading = CompletableDeferred<Unit>()
+		val viewModels = ViewModelStore()
+		val selector = withContext(Dispatchers.Main) {
+			ScrobblingSelectorViewModel(
+				SavedStateHandle(mapOf(AppRouter.KEY_MANGA to ParcelableManga(sourceManga))),
+				setOf(MangaUpdatesScrobbler(repo, db, mangaRepositoryFactory)),
+				readHistory = { seed ->
+					enteredHistory.complete(Unit)
+					resumeHistory.await()
+					assertNull(db.getHistoryDao().find(seed.id))
+					null
+				}, database = db,
+			).also { viewModels.put("selector", it) }
+		}
+		var completed: Deferred<Boolean>? = null
+		try {
+			withTimeout(5000) {
+				assertEquals(initialTarget, selector.mangaUpdatesAssociation.first { it != null }!!.targetId)
+				selector.content.first { !selector.isEmpty }
+			}
+			val finish = async(start = CoroutineStart.UNDISPATCHED) {
+				selector.isLoading.first { it }
+				observedLoading.complete(Unit)
+				selector.isLoading.first { !it }
+			}
+			completed = finish
+			withContext(Dispatchers.Main) { selector.selectItem(target); selector.onDoneClick() }
+			withTimeout(5000) { enteredHistory.await(); observedLoading.await() }
+			whilePaused()
+			val before = db.getScrobblingDao().find(6, 41)
+			val requests = transport.requests.size
+			val remote = transport.remote
+			resumeHistory.complete(Unit)
+			withTimeout(5000) { finish.await() }
+			val after = db.getScrobblingDao().find(6, 41)
+			assertEquals(expectedTarget, after?.targetId)
+			if (stale) {
+				if (!allowReads) assertEquals("Stale selector must stop before provider requests", requests, transport.requests.size)
+				assertTrue(mutations().isEmpty())
+				assertTrue(transport.requests.none { it.method in setOf("PUT", "DELETE") && it.path.endsWith("/rating") })
+				assertEquals(remote, transport.remote)
+				if (!allowReads) assertEquals("Newer association must remain intact", before, after)
+				else assertEquals(ScrobblingEntity(6, 0, 41, target + 1, "hold", 12, null, 0.4f), after)
+			} else {
+				assertNotNull(after)
+				assertEquals(if (remoteExists) 31 else 0, after!!.chapter)
+				if (!remoteExists) assertEquals(1, mutations().size)
+			}
+			assertEquals(0, count("favourites")); assertEquals(0, count("private_favourites"))
+		} finally {
+			resumeHistory.complete(Unit)
+			withContext(Dispatchers.Main) { viewModels.clear() }
+			selector.viewModelScope.coroutineContext[Job]?.join()
+			completed?.cancelAndJoin()
+			transport.beforeReply = null
+		}
 	}
 
 	private class ObservedMutex(private val delegate: Mutex = Mutex()) : Mutex by delegate {

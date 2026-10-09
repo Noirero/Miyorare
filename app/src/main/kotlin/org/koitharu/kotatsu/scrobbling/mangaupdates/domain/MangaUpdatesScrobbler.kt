@@ -28,8 +28,8 @@ class MangaUpdatesScrobbler @Inject constructor(
 	suspend fun updateScrobblingInfo(context: MangaUpdatesEditContext, rating: Float, status: ScrobblingStatus?) =
 		repository.updateRate(context, rating, statuses[status])
 
-	suspend fun linkManga(context: MangaUpdatesEditContext, fallbackStatus: ScrobblingStatus): Boolean {
-		if (repository.createRate(context)) {
+	suspend fun linkManga(context: MangaUpdatesEditContext, fallbackStatus: ScrobblingStatus, previousTarget: Long?): Boolean {
+		if (repository.createRate(context, previousTarget)) {
 			return db.getScrobblingDao().find(scrobblerService.id, context.mangaId)?.chapter?.let { it <= 0 } != false
 		}
 		repository.updateRate(context, 0f, statuses[fallbackStatus])
