@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="smart_local_see_all">Lihat semua</string>
+    <string name="smart_local_show_less">Tampilkan sedikit</string>
+    <string name="smart_local_resume_manga">%1$s • halaman %2$d</string>
+    <string name="smart_local_resume_novel">%1$s • %2$d%%</string>
+    <string name="smart_local_resume_description">Lanjutkan %1$s, %2$s</string>
+    <string name="smart_local_scan_complete">Pemindaian selesai</string>
+    <string name="smart_local_scan_attention">Pemindaian selesai — ada konten yang perlu diperiksa</string>
+    <string name="smart_local_access_empty">Koleksi tidak dapat diakses. Periksa izin folder atau pilih folder yang sama kembali.</string>
+    <string name="smart_local_search_empty">Tidak ada judul yang cocok dengan pencarian.</string>
+    <string name="smart_local_manga_empty">Belum ada manga di folder yang dipilih.</string>
+    <string name="smart_local_novel_empty">Belum ada novel di folder yang dipilih.</string>
+    <string name="smart_local_content_empty">Belum ada konten yang didukung. Tambahkan komik atau EPUB, lalu pindai ulang.</string>
+    <string name="smart_local_filter_empty">Tidak ada judul yang cocok dengan filter status baca.</string>
+    <plurals name="smart_local_folders"><item quantity="one">%d folder</item><item quantity="other">%d folder</item></plurals>
+    <plurals name="smart_local_titles"><item quantity="one">%d judul</item><item quantity="other">%d judul</item></plurals>
+    <plurals name="smart_local_chapters"><item quantity="one">%d bab</item><item quantity="other">%d bab</item></plurals>
+    <plurals name="smart_local_discovered_chapters"><item quantity="one">%d bab baru ditemukan</item><item quantity="other">%d bab baru ditemukan</item></plurals>
+    <string name="smart_local_file_info">Informasi file</string>
+    <string name="smart_local_manga_details">Manga/Komik • Di perangkat</string>
+    <string name="smart_local_novel_details">Novel/EPUB • Di perangkat</string>
+    <string name="smart_local_file_details">%1$s\n%2$s • %3$s</string>
+    <string name="smart_local_expand_chapter">Buka</string>
+    <string name="smart_local_collapse_chapter">Tutup</string>
+    <string name="smart_local_current_chapter">Aktif</string>
+    <string name="smart_local_contents">Daftar isi</string>
+    <string name="smart_local_page_description">Halaman %d</string>
+    <string name="smart_local_current_page_description">Halaman aktif %d</string>
+    <string name="smart_local_chapter_toggle_description">%1$s %2$s %3$s</string>
+    <string name="smart_local_book_counts_localized">%1$s • %2$s</string>
+    <plurals name="smart_local_unread_chapters"><item quantity="one">%d bab belum dibaca</item><item quantity="other">%d bab belum dibaca</item></plurals>
+    <plurals name="smart_local_hidden_titles"><item quantity="one">%d judul tersembunyi</item><item quantity="other">%d judul tersembunyi</item></plurals>
+    <plurals name="smart_local_attention_items"><item quantity="one">%d item perlu diperiksa</item><item quantity="other">%d item perlu diperiksa</item></plurals>
+    <plurals name="smart_local_ignored_files"><item quantity="one">%d file diabaikan</item><item quantity="other">%d file diabaikan</item></plurals>
+    <string name="smart_local_information_message_localized">%1$s\n\n%2$s\n%3$s\nTerakhir dipindai: %4$s\n%5$s</string>
+</resources>

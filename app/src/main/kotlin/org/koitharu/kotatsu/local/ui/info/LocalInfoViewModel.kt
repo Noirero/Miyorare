@@ -23,13 +23,18 @@ class LocalInfoViewModel @Inject constructor(
 	savedStateHandle: SavedStateHandle,
 	private val localMangaRepository: LocalMangaRepository,
 	private val storageManager: LocalStorageManager,
+	private val library: org.koitharu.kotatsu.local.library.SmartLocalLibrary,
 	private val deleteReadChaptersUseCase: DeleteReadChaptersUseCase,
 ) : BaseViewModel() {
 
 	private val manga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
 
+	val isSmartLocal = manga.url.toUri().scheme == org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
+	val indexedBook = MutableStateFlow<org.koitharu.kotatsu.local.library.LocalBook?>(null)
+
 	val isCleaningUp = MutableStateFlow(false)
 	val onCleanedUp = MutableEventFlow<Pair<Int, Long>>()
+	val onScanned = MutableEventFlow<Boolean>()
 
 	val path = MutableStateFlow<String?>(null)
 	val size = MutableStateFlow(-1L)
@@ -39,7 +44,17 @@ class LocalInfoViewModel @Inject constructor(
 		computeSize()
 	}
 
+	fun rescan() {
+		if (!isSmartLocal || isLoading.value) return
+		launchLoadingJob(Dispatchers.IO) {
+			library.scan()
+			computeSize().join()
+			onScanned.call(library.state.value.diagnoses.isEmpty())
+		}
+	}
+
 	fun cleanup() {
+		if (isSmartLocal) return
 		launchJob(Dispatchers.Default) {
 			try {
 				isCleaningUp.value = true
@@ -55,6 +70,13 @@ class LocalInfoViewModel @Inject constructor(
 	}
 
 	private fun computeSize() = launchLoadingJob(Dispatchers.Default) {
+		if (isSmartLocal) {
+			val book = requireNotNull(library.book(manga.id))
+			indexedBook.value = book
+			path.value = book.node.uri
+			size.value = book.size
+			return@launchLoadingJob
+		}
 		val file = manga.url.toUri().toFileOrNull() ?: localMangaRepository.findSavedManga(manga)?.file
 		requireNotNull(file)
 		path.value = file.path

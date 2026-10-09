@@ -1227,6 +1227,7 @@ internal fun InlineChapterCard(
 						modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
 					)
 				}
+				!item.canDownload -> Unit
 				item.isDownloading -> Box {
 					Box(
 						modifier = Modifier

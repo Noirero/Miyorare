@@ -75,7 +75,6 @@ class LocalStackSafetyRegressionTest {
 		)
 	}
 
-
 	@Test
 	fun `cold app start stays off full Local filesystem rebuild`() {
 		val mainActivity = source("org/koitharu/kotatsu/main/ui/MainActivity.kt")
@@ -94,12 +93,15 @@ class LocalStackSafetyRegressionTest {
 			"Retired LocalIndexUpdateService must not remain registered in the manifest",
 			manifest.contains("LocalIndexUpdateService"),
 		)
-		assertTrue(
-			"Explicit Local refresh must retain the full discovery path",
+		assertFalse(
+			"On-device Files must not revive the broad legacy LocalMangaIndex refresh path",
 			localViewModel.contains("localMangaIndex.update()"),
 		)
+		assertTrue(
+			"Explicit On-device refresh must retain selected-root Smart Local discovery",
+			localViewModel.contains("library.scan()"),
+		)
 	}
-
 
 	private fun manifest(): String = sequenceOf(
 		File("src/main/AndroidManifest.xml"),

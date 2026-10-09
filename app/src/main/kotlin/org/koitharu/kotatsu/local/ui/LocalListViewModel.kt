@@ -1,251 +1,253 @@
 package org.koitharu.kotatsu.local.ui
 
-import android.content.SharedPreferences
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.combine
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.model.toChipModel
-import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
-import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
-import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
-import org.koitharu.kotatsu.core.util.ext.toFileOrNull
-import org.koitharu.kotatsu.core.util.ext.toUriOrNull
-import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
-import org.koitharu.kotatsu.explore.domain.ExploreRepository
 import org.koitharu.kotatsu.filter.ui.FilterCoordinator
-import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.MangaListMapper
-import org.koitharu.kotatsu.list.domain.QuickFilterListener
+import org.koitharu.kotatsu.list.ui.MangaListViewModel
 import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
-import org.koitharu.kotatsu.list.ui.model.MangaListModel
-import org.koitharu.kotatsu.list.ui.model.QuickFilter
-import org.koitharu.kotatsu.list.ui.model.TipModel
+import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
+import org.koitharu.kotatsu.list.ui.model.MangaDetailedListModel
+import org.koitharu.kotatsu.list.ui.model.MangaGridModel
+import org.koitharu.kotatsu.list.ui.model.LoadingState
+import org.koitharu.kotatsu.list.ui.model.SmartLocalPanelModel
+import org.koitharu.kotatsu.list.ui.model.SmartLocalResumeModel
+import org.koitharu.kotatsu.list.ui.model.SmartLocalCollectionHeaderModel
+import org.koitharu.kotatsu.core.nav.ReaderIntent
+import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
-import org.koitharu.kotatsu.local.data.LocalStorageManager
-import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
-import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.local.library.*
 import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.remotelist.ui.RemoteListViewModel
-import java.io.File
 import javax.inject.Inject
 
-internal const val LOCAL_LIBRARY_TIP_KEY = "local_library"
+sealed interface LocalLibraryAction {
+	data object ContinueAll : LocalLibraryAction
+	data object Restore : LocalLibraryAction
+	data class Acknowledge(val ids: Set<Long>) : LocalLibraryAction
+	data class Diagnosis(val issue: LocalDiagnosis) : LocalLibraryAction
+}
 
 @HiltViewModel
 class LocalListViewModel @Inject constructor(
-	savedStateHandle: SavedStateHandle,
-	mangaRepositoryFactory: MangaRepository.Factory,
-	filterCoordinator: FilterCoordinator,
+	private val savedStateHandle: SavedStateHandle,
+	override val filterCoordinator: FilterCoordinator,
 	private val settings: AppSettings,
-	mangaListMapper: MangaListMapper,
-	private val deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
-	exploreRepository: ExploreRepository,
-	@param:LocalStorageChanges private val localStorageChanges: SharedFlow<LocalManga?>,
-	private val localStorageManager: LocalStorageManager,
-	private val localMangaIndex: LocalMangaIndex,
-	sourcesRepository: MangaSourcesRepository,
 	mangaDataRepository: MangaDataRepository,
-) : RemoteListViewModel(
-	savedStateHandle = savedStateHandle,
-	mangaRepositoryFactory = mangaRepositoryFactory,
-	filterCoordinator = filterCoordinator,
-	settings = settings,
-	mangaListMapper = mangaListMapper,
-	exploreRepository = exploreRepository,
-	sourcesRepository = sourcesRepository,
-	mangaDataRepository = mangaDataRepository,
-	localStorageChanges = localStorageChanges,
-), SharedPreferences.OnSharedPreferenceChangeListener, QuickFilterListener {
-
+	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
+	private val mangaListMapper: MangaListMapper,
+	val library: SmartLocalLibrary,
+	private val db: MangaDatabase,
+	@ApplicationContext private val context: Context,
+) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), FilterCoordinator.Owner {
+	override val content = MutableStateFlow<List<ListModel>>(listOf(LoadingState))
 	val onMangaRemoved = MutableEventFlow<Unit>()
-	private val showInlineFilter: Boolean = savedStateHandle[AppRouter.KEY_IS_BOTTOMTAB] ?: false
+	val exclusions = MutableEventFlow<Map<String, String>>()
+	val scanCompleted = MutableEventFlow<Boolean>()
+	val coverCacheReport = MutableEventFlow<SmartLocalCoverCacheReport>()
+	val coverCacheCleared = MutableEventFlow<Unit>()
+	fun requestCoverCacheReport() { launchJob(Dispatchers.IO) { coverCacheReport.call(library.coverCacheReport()) } }
+	fun clearCoverCache() { launchJob(Dispatchers.IO) { library.clearCoverCache(); coverCacheCleared.call(Unit) } }
+	fun resetCoverDiagnostics() { library.resetCoverDiagnostics(); requestCoverCacheReport() }
+	private val showAllReading = MutableStateFlow(savedStateHandle["all_reading"] ?: false)
+	private val revision = MutableStateFlow(0)
+	private val localQuery = MutableStateFlow(savedStateHandle["local_query"] ?: "")
+	private val contentType = MutableStateFlow(restoreLocalContentSelection(
+		hasSavedValue = savedStateHandle.contains("content_type"),
+		savedValue = savedStateHandle["content_type"], persisted = library.selectedContentType,
+	))
+
 	private var refreshJob: Job? = null
+	private var folderJob: Job? = null
 
 	init {
+		launchJob(Dispatchers.IO) {
+			contentType.collect { type -> library.setContentType(type) }
+		}
+		launchLoadingJob(Dispatchers.IO) {
+			library.initialize()
+			if (library.state.value.roots.isNotEmpty() && library.state.value.books.isEmpty()) library.scan()
+		}
 		launchJob(Dispatchers.Default) {
-			localStorageChanges
-				.distinctUntilChanged { old, new ->
-					old != null && new != null &&
-						old.manga.id == new.manga.id && old.file.path == new.file.path
-				}
-				.collect {
-					loadList(filterCoordinator.snapshot(), append = false).join()
-				}
-		}
-		settings.subscribe(this)
-	}
-
-	override suspend fun onBuildList(list: MutableList<ListModel>) {
-		super.onBuildList(list)
-		if (showInlineFilter) {
-			createFilterHeader(maxCount = 16)?.let {
-				list.add(0, it)
+			combine(library.state, observeListModeWithTriggers(), localQuery, contentType, revision) { snapshot, mode, query, type, _ ->
+				CollectionState(snapshot, mode, query, type)
+			}.collect { state ->
+				content.value = buildContent(state.snapshot, state.mode, state.query, state.type)
 			}
 		}
-		val storageOverview = createStorageOverview()
-		if (storageOverview.isNotEmpty()) {
-			list.addAll(0, storageOverview)
+		launchJob(Dispatchers.Default) {
+			db.getHistoryDao().observeAll().collect { revision.value++ }
 		}
-		list.add(
-			0,
-			TipModel(
-				key = LOCAL_LIBRARY_TIP_KEY,
-				title = R.string.local_files,
-				text = R.string.local_files_summary,
-				icon = R.drawable.ic_folder_file,
-				primaryButtonText = R.string.manage_folders,
-				secondaryButtonText = R.string.rescan,
-			),
-		)
-		if (!localStorageManager.hasExternalStoragePermission(isReadOnly = true)) {
-			for (item in list) {
-				if (item !is MangaListModel) {
-					continue
-				}
-				val file = item.manga.url.toUriOrNull()?.toFileOrNull() ?: continue
-				if (localStorageManager.isOnExternalStorage(file)) {
-					val tip = TipModel(
-						key = "permission",
-						title = R.string.external_storage,
-						text = R.string.missing_storage_permission,
-						icon = R.drawable.ic_storage,
-						primaryButtonText = R.string.fix,
-						secondaryButtonText = R.string.settings,
-					)
-					list.add(0, tip)
-					return
-				}
-			}
-		}
-	}
-
-	override fun setFilterOption(option: ListFilterOption, isApplied: Boolean) {
-		if (option is ListFilterOption.Tag) {
-			filterCoordinator.toggleTag(option.tag, isApplied)
-		}
-	}
-
-	override fun toggleFilterOption(option: ListFilterOption) {
-		if (option is ListFilterOption.Tag) {
-			val tag = option.tag
-			val isSelected = tag in filterCoordinator.snapshot().listFilter.tags
-			filterCoordinator.toggleTag(option.tag, !isSelected)
-		}
-	}
-
-	override fun clearFilter() = filterCoordinator.reset()
-
-	override fun onCleared() {
-		settings.unsubscribe(this)
-		super.onCleared()
 	}
 
 	override fun onRefresh() {
-		if (refreshJob?.isActive == true) {
-			return
-		}
-		refreshJob = launchLoadingJob(Dispatchers.Default) {
-			localMangaIndex.update()
-			loadList(filterCoordinator.snapshot(), append = false).join()
-		}
-	}
-
-	override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-		if (key == AppSettings.KEY_LOCAL_MANGA_DIRS) {
-			onRefresh()
+		if (refreshJob?.isActive == true || folderJob?.isActive == true) return
+		refreshJob = launchLoadingJob(Dispatchers.IO) {
+			library.scan()
+			revision.value++
+			scanCompleted.call(library.state.value.diagnoses.isEmpty())
 		}
 	}
 
-	fun delete(ids: Set<Long>) {
-		launchLoadingJob(Dispatchers.Default) {
-			deleteLocalMangaUseCase(ids)
+	override fun onRetry() = onRefresh()
+	fun setLocalQuery(query: String) {
+		localQuery.value = query
+		savedStateHandle["local_query"] = query
+	}
+	fun setContentType(type: LocalContentType?) {
+		contentType.value = type
+		savedStateHandle["content_type"] = type?.name
+	}
+	fun showAllContinueReading() {
+		showAllReading.value = !showAllReading.value
+		savedStateHandle["all_reading"] = showAllReading.value
+		revision.value++
+	}
+	fun setLocalListMode(mode: ListMode) { settings.listMode = mode }
+	fun resume(manga: Manga) {
+		launchJob(Dispatchers.IO) {
+			val history = db.getHistoryDao().find(manga.id) ?: return@launchJob
+			val book = library.book(manga.id) ?: return@launchJob
+			// A removed chapter must go through Reader's existing recovery, never a guessed file route.
+			val state = history.takeIf { h -> book.chapters.any { it.id == h.chapterId } }
+				?.let { ReaderState(it.chapterId, it.page, it.scroll.toInt()) }
+			resumeIntent.call(ReaderIntent.Builder(context).manga(manga).state(state).build())
+		}
+	}
+	val resumeIntent = MutableEventFlow<ReaderIntent>()
+	fun addFolder(uri: Uri) {
+		if (folderJob?.isActive == true || refreshJob?.isActive == true) return
+		folderJob = launchLoadingJob(Dispatchers.IO) { library.addRoot(uri); scanCompleted.call(library.state.value.diagnoses.isEmpty()) }
+	}
+	fun removeFolder(uri: String) {
+		if (folderJob?.isActive == true || refreshJob?.isActive == true) return
+		folderJob = launchLoadingJob(Dispatchers.IO) { library.removeRoot(uri) }
+	}
+	fun confirmFolder(issue: LocalDiagnosis, node: LocalTreeScanner.Node) {
+		launchLoadingJob(Dispatchers.IO) { library.confirmManga(issue.rootUri, node) }
+	}
+	fun updateOptions(extensions: Boolean, filter: LocalReadingFilter, order: LocalLibrarySort) {
+		launchLoadingJob(Dispatchers.IO) { library.setDisplayOptions(extensions, filter, order); revision.value++ }
+	}
+	fun requestExclusions() { launchJob(Dispatchers.IO) { exclusions.call(library.excluded()) } }
+	fun restore(key: String) { launchLoadingJob(Dispatchers.IO) { library.restore(key) } }
+	fun acknowledgeDiscoveries(ids: Set<Long>) { launchJob(Dispatchers.IO) { library.acknowledgeDiscoveries(ids) } }
+
+	fun delete(ids: Set<Long>, fromDevice: Boolean) {
+		launchLoadingJob(Dispatchers.IO) {
+			val managed = library.state.value.books.filter { it.id in ids }.mapTo(HashSet()) { it.id }
+			if (fromDevice) library.deleteFromDevice(managed) else library.hide(managed)
+			revision.value++
 			onMangaRemoved.call(Unit)
 		}
 	}
 
-	override suspend fun mapMangaList(
-		destination: MutableCollection<in ListModel>,
-		manga: Collection<Manga>,
-		mode: ListMode
-	) = mangaListMapper.toListModelList(destination, manga, mode, MangaListMapper.NO_SAVED)
-
-	override fun createEmptyState(canResetFilter: Boolean): EmptyState = if (canResetFilter) {
-		super.createEmptyState(true)
-	} else {
-		EmptyState(
-			icon = R.drawable.ic_empty_local,
-			textPrimary = R.string.text_local_holder_primary,
-			textSecondary = R.string.text_local_holder_secondary,
-			actionStringRes = R.string._import,
+	private suspend fun buildContent(snapshot: LocalLibrarySnapshot, mode: ListMode, query: String?, type: LocalContentType?): List<ListModel> {
+		val ids = snapshot.books.map { it.id }
+		val histories = ids.chunked(500).flatMap { db.getHistoryDao().findByIds(it) }.associateBy { it.mangaId }
+		val result = ArrayList<ListModel>()
+		result += SmartLocalPanelModel(
+			folderCount = snapshot.roots.size,
+			titleCount = snapshot.books.size,
+			chapterCount = snapshot.books.sumOf { it.chapters.size },
+			query = query.orEmpty(),
+			contentType = type,
+			sort = library.sort,
+			readingFilter = library.readingFilter,
 		)
+		if (snapshot.excludedCount > 0) result += ListHeader(context.resources.getQuantityString(R.plurals.smart_local_hidden_titles, snapshot.excludedCount, snapshot.excludedCount),
+			R.string.smart_local_restore, LocalLibraryAction.Restore)
+		if (snapshot.diagnoses.isNotEmpty()) result += ListHeader(context.resources.getQuantityString(R.plurals.smart_local_attention_items, snapshot.diagnoses.size, snapshot.diagnoses.size),
+			R.string.smart_local_inspect, snapshot.diagnoses)
+		if (query.isNullOrBlank()) {
+			val discovered = snapshot.books.filter { (type == null || it.contentType == type) && it.newChapters > 0 }
+			val count = discovered.sumOf { it.newChapters }
+			if (count > 0) result += ListHeader(context.resources.getQuantityString(R.plurals.smart_local_discovered_chapters, count, count),
+				R.string.smart_local_mark_seen, LocalLibraryAction.Acknowledge(discovered.mapTo(HashSet()) { it.id }), buttonStyle = ListHeader.ButtonStyle.NOTICE)
+			val reading = snapshot.books.filter { book ->
+				(type == null || book.contentType == type) && histories[book.id]?.let { !book.isCompleted(it) } == true
+			}.sortedByDescending { histories[it.id]?.updatedAt }
+			if (reading.isNotEmpty()) {
+				result += ListHeader(R.string.smart_local_continue,
+					if (reading.size > 3) (if (showAllReading.value) R.string.smart_local_show_less else R.string.smart_local_see_all) else 0,
+					LocalLibraryAction.ContinueAll)
+				for (book in if (showAllReading.value) reading else reading.take(3)) {
+					val history = histories.getValue(book.id)
+					val chapter = book.chapters.firstOrNull { it.id == history.chapterId }
+					val label = chapter?.metadataTitle ?: chapter?.node?.name?.let {
+						LocalTreeScanner.displayName(it, library.showExtensions, chapter.node.directory)
+					}.orEmpty()
+					val progress = (history.percent.coerceIn(0f, 1f) * 100).toInt()
+					val subtitle = if (chapter == null) context.getString(R.string.chapter_is_missing)
+						else if (book.isNovel) context.getString(R.string.smart_local_resume_novel, label, progress)
+						else context.getString(R.string.smart_local_resume_manga, label, history.page + 1)
+					result += SmartLocalResumeModel(book.toManga(library.showExtensions), subtitle, progress)
+				}
+			}
+		}
+		result += SmartLocalCollectionHeaderModel(mode)
+		val manga = library.list(query, type).skipNsfwIfNeeded()
+		val models = mangaListMapper.toListModelList(manga, mode, MangaListMapper.NO_SAVED)
+		val booksById = snapshot.books.associateBy { it.id }
+		for (model in models) {
+			val book = booksById[model.id] ?: continue
+			val history = histories[model.id]
+			val unread = if (history == null) book.chapters.size else {
+				val index = book.chapters.indexOfFirst { it.id == history.chapterId }
+				if (index < 0) book.chapters.size else (book.chapters.size - index - 1).coerceAtLeast(0)
+			}
+			val status = context.getString(R.string.smart_local_book_counts_localized,
+				context.resources.getQuantityString(R.plurals.smart_local_chapters, book.chapters.size, book.chapters.size),
+				context.resources.getQuantityString(R.plurals.smart_local_unread_chapters, unread, unread),
+			)
+			result += when (model) {
+				is MangaCompactListModel -> model.copy(subtitle = status, counter = book.chapters.size, isSaved = true)
+				is MangaDetailedListModel -> model.copy(subtitle = status, counter = book.chapters.size, isSaved = true)
+				is MangaGridModel -> model.copy(counter = book.chapters.size, isSaved = true)
+				else -> model
+			}
+		}
+		if (manga.isEmpty() && snapshot.initialized) {
+			val reason = localCollectionEmptyReason(snapshot.roots.size,
+				snapshot.books.mapTo(HashSet()) { it.contentType }, snapshot.diagnoses, query, type)
+			val message = when (reason) {
+				LocalCollectionEmptyReason.NO_FOLDERS -> R.string.smart_local_empty
+				LocalCollectionEmptyReason.ACCESS -> R.string.smart_local_access_empty
+				LocalCollectionEmptyReason.SEARCH -> R.string.smart_local_search_empty
+				LocalCollectionEmptyReason.MANGA -> R.string.smart_local_manga_empty
+				LocalCollectionEmptyReason.NOVEL -> R.string.smart_local_novel_empty
+				LocalCollectionEmptyReason.NO_CONTENT -> R.string.smart_local_content_empty
+				LocalCollectionEmptyReason.FILTER -> R.string.smart_local_filter_empty
+			}
+
+			result += EmptyState(R.drawable.ic_empty_local, R.string.smart_local_collection, message,
+				if (snapshot.roots.isEmpty()) R.string.smart_local_add_folder else 0)
+		}
+		return result
 	}
 
-	private suspend fun createStorageOverview(): List<ListHeader> {
-		val configuredRoots = localStorageManager.getConfiguredDirs().toList()
-		if (configuredRoots.isEmpty()) {
-			return emptyList()
-		}
-		val displayNames = LinkedHashMap<File, String>(configuredRoots.size)
-		for (root in configuredRoots) {
-			displayNames[root] = localStorageManager.getDirectoryDisplayName(root, isFullPath = false)
-		}
-		val duplicateNames = displayNames.values.groupingBy { it }.eachCount()
-		val rootsBySpecificity = configuredRoots.sortedByDescending { it.absolutePath.length }
-		val counts = HashMap<File, Int>()
-		for (localManga in localMangaIndex.getAll()) {
-			val file = localManga.manga.url.toUriOrNull()?.toFileOrNull() ?: continue
-			val root = rootsBySpecificity.firstOrNull { file.isInside(it) } ?: continue
-			counts[root] = counts.getOrDefault(root, 0) + 1
-		}
-		return configuredRoots.map { root ->
-			val count = counts.getOrDefault(root, 0)
-			val shortName = displayNames.getValue(root)
-			val displayName = if (duplicateNames[shortName] == 1) {
-				shortName
-			} else {
-				localStorageManager.getDirectoryDisplayName(root, isFullPath = true)
-			}
-			ListHeader(text = "($count) $displayName")
-		}
-	}
-
-	private fun File.isInside(root: File): Boolean {
-		val rootPath = root.absolutePath.trimEnd(File.separatorChar)
-		val filePath = absolutePath
-		return filePath == rootPath || filePath.startsWith(rootPath + File.separator)
-	}
-
-	private suspend fun createFilterHeader(maxCount: Int): QuickFilter? {
-		val appliedTags = filterCoordinator.snapshot().listFilter.tags
-		val availableTags = repository.getFilterOptions().availableTags
-		if (appliedTags.isEmpty() && availableTags.size < 3) {
-			return null
-		}
-		val result = ArrayList<ChipsView.ChipModel>(minOf(availableTags.size, maxCount))
-		appliedTags.mapTo(result) { tag ->
-			ListFilterOption.Tag(tag).toChipModel(isChecked = true)
-		}
-		for (tag in availableTags) {
-			if (result.size >= maxCount) {
-				break
-			}
-			if (tag in appliedTags) {
-				continue
-			}
-			result.add(ListFilterOption.Tag(tag).toChipModel(isChecked = false))
-		}
-		return QuickFilter(result)
-	}
+	private data class CollectionState(
+		val snapshot: LocalLibrarySnapshot,
+		val mode: ListMode,
+		val query: String,
+		val type: LocalContentType?,
+	)
 }
+

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="smart_local_collection_summary">%1$d folder • %2$d judul • %3$d bab</string>
+    <string name="smart_local_manage_folders">Kelola Folder</string>
+    <string name="smart_local_type_all">Semua</string>
+    <string name="smart_local_type_manga">Manga</string>
+    <string name="smart_local_type_novel">Novel</string>
+    <string name="smart_local_stat_reading">%d dibaca</string>
+    <string name="smart_local_stat_new">%d baru</string>
+    <string name="smart_local_search_hint">Cari koleksi di perangkat…</string>
+    <string name="smart_local_continue">Lanjutkan Membaca</string>
+    <string name="smart_local_discovered">Baru Ditemukan</string>
+    <string name="smart_local_mark_seen">Tandai dilihat</string>
+    <string name="smart_local_collection">Koleksi di perangkat</string>
+</resources>

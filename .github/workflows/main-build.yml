@@ -1,5 +1,5 @@
-name: Amain
-run-name: Amain · ${{ github.ref_name }}
+name: Miyorare Main Build
+run-name: Miyorare Main Build · ${{ github.ref_name }}
 
 # Manual-only stable build entry point for the main branch.
 on:

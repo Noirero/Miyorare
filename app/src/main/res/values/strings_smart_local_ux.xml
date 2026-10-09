@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="smart_local_see_all">See all</string>
+    <string name="smart_local_show_less">Show less</string>
+    <string name="smart_local_resume_manga">%1$s • page %2$d</string>
+    <string name="smart_local_resume_novel">%1$s • %2$d%%</string>
+    <string name="smart_local_resume_description">Continue %1$s, %2$s</string>
+    <string name="smart_local_scan_complete">Scan completed</string>
+    <string name="smart_local_scan_attention">Scan completed — some content needs attention</string>
+    <string name="smart_local_access_empty">Cannot access this collection. Inspect folder permissions or select the same folder again.</string>
+    <string name="smart_local_search_empty">No titles match your search.</string>
+    <string name="smart_local_manga_empty">No manga in the selected folders.</string>
+    <string name="smart_local_novel_empty">No novels in the selected folders.</string>
+    <string name="smart_local_content_empty">No supported content in the selected folders. Add comics or EPUB books, then rescan.</string>
+    <string name="smart_local_filter_empty">No titles match this reading filter.</string>
+    <plurals name="smart_local_folders"><item quantity="one">%d folder</item><item quantity="other">%d folders</item></plurals>
+    <plurals name="smart_local_titles"><item quantity="one">%d title</item><item quantity="other">%d titles</item></plurals>
+    <plurals name="smart_local_chapters"><item quantity="one">%d chapter</item><item quantity="other">%d chapters</item></plurals>
+    <plurals name="smart_local_discovered_chapters"><item quantity="one">%d new chapter found</item><item quantity="other">%d new chapters found</item></plurals>
+    <string name="smart_local_file_info">File information</string>
+    <string name="smart_local_manga_details">Manga/Comic • On-device</string>
+    <string name="smart_local_novel_details">Novel/EPUB • On-device</string>
+    <string name="smart_local_file_details">%1$s\n%2$s • %3$s</string>
+    <string name="smart_local_expand_chapter">Expand</string>
+    <string name="smart_local_collapse_chapter">Collapse</string>
+    <string name="smart_local_current_chapter">Current</string>
+    <string name="smart_local_contents">Contents</string>
+    <string name="smart_local_page_description">Page %d</string>
+    <string name="smart_local_current_page_description">Current page %d</string>
+    <string name="smart_local_chapter_toggle_description">%1$s %2$s %3$s</string>
+    <string name="smart_local_book_counts_localized">%1$s • %2$s</string>
+    <plurals name="smart_local_unread_chapters"><item quantity="one">%d unread chapter</item><item quantity="other">%d unread chapters</item></plurals>
+    <plurals name="smart_local_hidden_titles"><item quantity="one">%d hidden title</item><item quantity="other">%d hidden titles</item></plurals>
+    <plurals name="smart_local_attention_items"><item quantity="one">%d item needs attention</item><item quantity="other">%d items need attention</item></plurals>
+    <plurals name="smart_local_ignored_files"><item quantity="one">%d ignored file</item><item quantity="other">%d ignored files</item></plurals>
+    <string name="smart_local_information_message_localized">%1$s\n\n%2$s\n%3$s\nLast scanned: %4$s\n%5$s</string>
+</resources>

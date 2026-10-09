@@ -1,0 +1,190 @@
+# Smart Local derived covers
+
+## Baseline and ownership
+
+Based on Amain2 `8b7c81bd378ccef3b4801b049bfadcc2775da1f1` (#554–#558).
+Coil 3.4.0 does not automatically read/write DiskCache for a custom SourceFetchResult.
+LocalCoverFetcher previously always entered extraction after a memory miss. DataSource.DISK
+and a stable cover key do not constitute persistent fetching.
+
+SmartLocalLibrary.cover() now delegates to SmartLocalCoverCache before opening the selected root
+or any source. The new directory, filesDir/smart-local-covers, contains only encoded thumbnails
+and their validation header. MiyorareImageDiskCache retains its existing presentation/cache
+routing (#557), remote covers, legacy migration, and scoped clearing. No full PDFs are stored
+in the derived cache. Settings' existing explicit cover clear clears both cover authorities;
+volatile-only clearing does not remove derived thumbnails.
+
+LocalPdfCache retains page rendering. Its new transient cover-render API returns PNG bytes
+without generating persistent Reader page/cover artifacts. PDF cover materializations release
+references in NonCancellable finally, and delete only an unpinned app-owned backing file.
+Reader/metadata pins remain protected (#558). A reused pinned backing file is not touched:
+Reader page identity includes mtime, so touching it during cover generation would invalidate
+an already returned lazy-page marker. User source files are never deleted by cache cleanup.
+
+## Freshness contract
+
+The successfully published Smart Local discovery snapshot is source-version authority.
+Existing scan/add-root/Refresh operations validate metadata through LocalDocuments. Opening
+an already indexed collection, binding/scrolling covers, and reopening cover owners do not
+add source metadata queries or rescan the collection. Process recreation reloads the atomic
+persisted index: its fingerprint describes the last accepted discovery snapshot, not an
+assertion that external storage has remained physically unchanged since that scan.
+
+External edits become observable when the existing Refresh/discovery updates that snapshot.
+Manual Refresh is required after an external edit if no discovery operation has occurred.
+There is no watcher, periodic scan, forced collection-open scan, or implicit source hashing.
+A metadata-preserving external replacement (same stable key, size and positive modified time)
+is indistinguishable under this metadata contract; explicit cover clear forces derivation.
+For missing/zero size or modified metadata, the persisted scan timestamp is additionally used:
+restart reuse remains possible, while a new Refresh conservatively invalidates the candidate.
+This explicit contract avoids N SAF queries on RecyclerView binds and repeated full scans of
+350+ title collections. It preserves existing discovery UX rather than pretending external
+changes can be observed without reading metadata/content.
+
+Fingerprint encoding is length-delimited: thumbnail version, root URI, then ordered candidate
+key, URI, name, size and modified time (plus scan timestamp only for unknown metadata).
+A cached winner validates its prefix, including failed higher-priority candidates. A changed
+sidecar supersedes an archive fallback; changes to later non-cover chapters do not regenerate
+a successful earlier cover. The full candidate fingerprint is resolved before Coil's memory
+lookup by LocalCoverVersionInterceptor, without source I/O, and checked again after the result
+to retry a Refresh racing a memory hit. A new version cannot reuse the
+old version's memory key. The domain manga model also includes the version as a cover URL query,
+so an existing grid cell is rebound after Refresh even if title/chapters are otherwise unchanged.
+#557 still normalizes that URL to cover:<mangaId>. Smart Local manga/chapter URLs and IDs remain
+unchanged. Cover plans are lazily memoized on immutable indexed books, with no second index map.
+
+## Persistence, concurrency, and cleanup
+
+Artifacts contain PNG thumbnails or eligible encoded GIF/WebP animations <=768 px long edge,
+a candidate index, fingerprint and payload checksum. Animated bytes are preserved verbatim;
+their eligibility and passthrough policy are described below.
+No aggressive lossy encoding; direct-image EXIF orientation is applied before PNG encoding.
+Archive discovery retains #554's streaming budgets: 64 entries, 8 image candidates, 8 MiB per
+candidate and 32 MiB candidate-read budget. PDF extraction never forces archives through
+seekable materialization.
+
+Same-title requests use exact-key, reference-counted flights and recheck persistence before
+generation. Completed/cancelled flights retain no per-title state. Exact keys avoid unrelated
+covers colliding behind a heavy mutex stripe.
+
+Cold cover work has independent FIFO admission for PDF (2), archive (2 shared by CBZ/ZIP/EPUB),
+and image/sidecar (2). There is no shared whole-generation queue. Each class holds its permit
+from root/source access through publication, bounding open sources and completed encoded
+buffers. Static image decode/resize/encode also has a shared 2-permit bitmap stage; acquire
+source before bitmap, never the reverse. PDF cover rendering shares LocalPdfCache's existing
+app-wide 2-render limit with Reader. The scheduler launches no coroutines.
+
+Cover-only PDFs try LocalDocuments' scoped read descriptor first. PdfRenderer validates the
+provider descriptor's seekability/usability; successful direct access renders page 0 without
+copying the full PDF or creating Reader page artifacts. Null/unsupported/rejected descriptors
+and compatible access/render failures use the existing materialization fallback. Scoped use
+and CancellationSignal close descriptors on success, constructor failure and cancellation;
+native rendering completes before its resource is closed. Cancellation observed during direct
+access does not trigger a new fallback or publication. Fallback copies retain #558/#559 release/delete and Reader-pin
+protection. Reader page/materialization semantics do not use this fast path.
+
+Encoding audit: before and after this change, PDF rendering produces a <=768-px PNG and
+LocalContentReader publishes it directly. There is no second decode/resize/PNG encode. Both
+direct and materialized PDF paths use that same encoder. Animation policy/version, fingerprint,
+freshness authority and persistent budget are unchanged.
+
+A write fsyncs a unique .partial then renames it atomically in the same directory. Partial
+files are never readable entries; cancellation cannot publish incomplete payloads. Checksum,
+length, version and fingerprint validation turn malformed artifacts into misses. Clear epochs
+prevent an in-flight generation from repopulating persistent storage after explicit clear.
+A request racing Refresh/removal retries against the current snapshot before returning.
+
+Retention: 128 MiB, 1024 entries, maximum 4 MiB encoded payload. Entries idle for 30 days are
+eligible for lazy cleanup at owner initialization/new writes. One artifact per manga replaces
+obsolete versions atomically. Hits do not enumerate the cache; bytes are read under the cache
+file mutex, so eviction never deletes an artifact still being streamed by Coil. Maintenance
+never touches smart-local-content, Reader pages, remote covers or volatile Coil files.
+
+## Automated evidence
+
+SmartLocalCoverCacheTest tests recreation reuse, actual-source/fallback invalidation, single
+flight, bounded concurrency/storage, corruption, cancellation/crash remnants, explicit-clear
+races and unknown metadata versions. SmartLocalCoverPipelineTest executes real ImageRequests
+through the domain owners and a test-only SAF DocumentsProvider, counts real extraction,
+materialization and PDF cover-render calls, and verifies restart hits plus source refresh,
+Reader backing/lazy-page safety and archive/sidecar/direct-image paths.
+
+The SAF fixture provider and grant activity exist only in the test APK. The provider-owning
+test UID grants its root tree to the target app, preserving Android's URI permission checks;
+no production SAF grants/permissions or containment checks are changed. These two manifest
+components use only Android/JDK APIs: Android loads the test APK in its own process, where
+Kotlin dependencies shared with the target APK are unavailable. Kotlin instrumentation tests
+still run with the target's combined classpath. The Hilt fixture also
+initializes/restores the PDF page-cache context normally initialized by BaseApp.
+Owner recreation is simulated by replacing ImageLoader, SmartLocalLibrary, LocalContentReader
+and SmartLocalCoverCache; this is not a literal OS process kill or physical-device validation.
+
+PR Compile & Unit Check validates the exact head and retains full compile/JVM checks.
+The ci:runtime-required label enables compile/JVM and Android 15 validation even for a draft
+waiting for an owner decision. The runtime job runs the new pipeline suite together with
+existing MiyorareImageDiskCacheTest. No merge is authorized.
+
+Run 37790523277 on f3d623ef52c0b7f59a03ef814058c8f96abb00cf passed compile/JVM but
+interrupted Android 15 validation after 1 of 16 tests. The first failure was a standalone
+test-process crash in CoverFixtureDocumentsProvider.call(): NoClassDefFoundError for
+kotlin.jvm.internal.Intrinsics. The Android/JDK-only fixture components address that
+classloader boundary without changing production code, URI grants, or test assertions.
+Run 37801324031 on 809833d07962e52233ac9f27e67c0d1043ed4185 subsequently passed both
+compile/JVM and Android 15 jobs. Animated preservation changes require fresh exact-head CI.
+
+## Animated-cover preservation
+
+The owner requires animated GIF/WebP covers to remain animated. Direct images, sidecars and
+selected CBZ/ZIP/EPUB images use the same preparation boundary; PDFs keep their accepted
+static path. No multi-frame encoder, Reader change, or app-wide Coil change is introduced.
+
+Coil's existing DecodeUtils.isAnimatedWebP checks the VP8X animation flag. An incidental ANIM
+string or a .webp extension is not enough. Coil's isGif identifies GIF87a/GIF89a containers;
+a bounded structural walk then distinguishes a single frame from multiple frames by skipping
+palettes and compressed sub-blocks, without decoding pixels. Loop/delay metadata alone does
+not imply multiple frames. Uncertain/truncated GIF structures and unfamiliar rendering
+extensions are conservatively passed through without persistence, never flattened by this path.
+
+Confirmed animations use a bounds-only BitmapFactory read. With valid positive dimensions,
+<=768 px long edge and <=4 MiB encoded size, the original bytes enter the existing persistent
+authority. Larger encoded payloads or canvases return unchanged bytes to Coil with cacheable=false.
+They never pass through PNG conversion and never increase derived storage. Warm misses for
+such passthrough images repeat extraction. Original source limits remain: <=8 MiB per image
+candidate and the existing archive discovery/read budgets. This does not admit previously
+unsupported images beyond those input limits. Static WebP and single-frame GIF still use PNG.
+
+Storage remains <=128 MiB / 1024 entries / 4 MiB persistent payload, with the same atomic writes,
+clear epochs, fingerprint validation, bounded resource scheduling, and retention. Fingerprint thumbnail
+version 2 invalidates interim first-frame entries once, including images selected from archives;
+Smart Local manga/chapter identity and discovery/freshness authority remain unchanged.
+
+The test ImageLoader now registers the same API-selected animated decoder as the app. Small
+two-frame GIF/WebP and single-frame/static fixtures verify the real Smart Local/Coil path,
+encoded-byte equality, Animatable presentation, eligible owner-recreation reuse with zero
+source opens, animated archive/sidecar reuse, animated-to-static Refresh, and oversized
+byte/dimension passthrough. Large valid GIF comments/WebP JUNK chunks are built in the fixture
+provider process to avoid Binder limits and oversized committed assets. Existing PDF, Reader
+pin, and #557 image-cache tests remain intact and run alongside these regressions. Recreation
+still replaces cache/domain owners, not the OS process. Physical-device validation is the owner’s.
+
+## Cold-grid regression evidence
+
+LocalCoverWorkSchedulerTest uses controlled coroutine gates to prove independent source lanes,
+source/bitmap bounds, FIFO progress for queued heavy work and cancelled-waiter cleanup.
+SmartLocalCoverCacheTest retains persistence/clear/corruption/single-flight coverage and adds
+an exact-key test using a deliberate collision in the former 64-stripe table.
+
+The Android pipeline suite additionally blocks two real PDF cover requests while CBZ, ZIP,
+EPUB, direct-image and sidecar covers finish. A third PDF remains admitted behind the PDF
+bound, and concurrent same-key requests reuse a single generation. Direct PDF recreation
+proves zero new source opens, SAF queries, materialization or rendering. Provider fixtures
+exercise nonseekable pipes and rejected descriptor opens, fallback cleanup, Reader-backed
+protection, renderer failure and direct/fallback cancellation. Timeouts are deadlock watchdogs;
+assertions concern gates, operation counts, resource lifetime and ordering, not elapsed latency.
+
+Sequential archive traversal and #554 extraction budgets are unchanged. These tests do not
+measure device latency or establish an archive-performance root cause. If physical-device
+validation still finds archive-specific delay, separately measure time/entries/bytes until the
+selected cover, then evaluate bounded random-access ZIP/EPUB discovery with its provider,
+selection, animation, cancellation and containment regression surface. No such redesign is
+included here; Comichu remains an experiential reference, with no claims about its internals.

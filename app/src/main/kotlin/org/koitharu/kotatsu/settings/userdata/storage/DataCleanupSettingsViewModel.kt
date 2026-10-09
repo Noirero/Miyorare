@@ -20,6 +20,7 @@ import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.local.library.SmartLocalCoverCache
 import org.koitharu.kotatsu.local.data.CacheDir
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.local.domain.DeleteReadChaptersUseCase
@@ -42,6 +43,7 @@ class DataCleanupSettingsViewModel @Inject constructor(
     private val mangaDataRepositoryProvider: Provider<MangaDataRepository>,
     private val coil: ImageLoader,
     private val imageDiskCache: MiyorareImageDiskCache,
+    private val smartLocalCoverCache: SmartLocalCoverCache,
 ) : BaseViewModel() {
 
     val onActionDone = MutableEventFlow<ReversibleAction>()
@@ -74,7 +76,7 @@ class DataCleanupSettingsViewModel @Inject constructor(
             }
         }
         launchJob(Dispatchers.IO) {
-            coverCacheSize.value = imageDiskCache.coverSize
+            coverCacheSize.value = imageDiskCache.coverSize + smartLocalCoverCache.size()
         }
         launchJob(Dispatchers.Default) {
             httpCacheSize.value = runInterruptible { httpCache.size() }
@@ -109,7 +111,8 @@ class DataCleanupSettingsViewModel @Inject constructor(
                 // Memory entries can otherwise keep a just-cleared cover visible until eviction.
                 coil.memoryCache?.clear()
                 imageDiskCache.clearCovers()
-                coverCacheSize.value = imageDiskCache.coverSize
+                smartLocalCoverCache.clear()
+                coverCacheSize.value = imageDiskCache.coverSize + smartLocalCoverCache.size()
             } finally {
                 loadingKeys.update { it - KEY_COVER_CACHE_CLEAR }
             }

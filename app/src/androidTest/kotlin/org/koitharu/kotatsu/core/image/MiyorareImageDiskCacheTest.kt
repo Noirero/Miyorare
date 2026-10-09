@@ -46,6 +46,23 @@ class MiyorareImageDiskCacheTest {
 	}
 
 	@Test
+	fun smartLocalCoverUsesSamePersistentIdentityAcrossReopen() {
+		val first = MiyorareImageDiskCache(context).also { cache = it }
+		write(first, SMART_LOCAL_COVER_KEY, "smart-local-cover")
+		assertTrue(first.coverSize > 0L)
+		assertNotNull(first.openSnapshot(COVER_KEY)?.also { it.close() })
+		first.shutdown()
+		cache = null
+
+		// Simulate the disposable Android cache disappearing between processes. A Smart Local cover
+		// must still be found through either the virtual URL or the canonical cover:<id> identity.
+		volatileRoot().deleteRecursively()
+		val reopened = MiyorareImageDiskCache(context).also { cache = it }
+		assertNotNull(reopened.openSnapshot(SMART_LOCAL_COVER_KEY)?.also { it.close() })
+		assertNotNull(reopened.openSnapshot(COVER_KEY)?.also { it.close() })
+	}
+
+	@Test
 	fun legacyStableCoverIsMigratedWithoutFilenameGuessing() {
 		val legacy = DiskCache.Builder().directory(volatileRoot()).build()
 		write(legacy, COVER_KEY, "legacy-cover")
@@ -128,6 +145,7 @@ class MiyorareImageDiskCacheTest {
 
 	private companion object {
 		const val COVER_KEY = "cover:123"
+		const val SMART_LOCAL_COVER_KEY = "smart-local://cover/123"
 		const val VOLATILE_KEY = "https://example.test/not-a-cover.jpg"
 		const val PREFS_NAME = "persistent_cover_cache"
 	}
