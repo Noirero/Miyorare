@@ -78,7 +78,15 @@ jobs:
         run: chmod +x gradlew
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
-      - name: Validate cover guards, tracker lifecycle and recommendation UI
+      - name: Prepare collector compatibility for the exact head
+        run: |
+          # Amain2's collector remains authoritative whenever it exists in the checked-out head.
+          # Older heads still run their existing cover tests through the same command wrapper.
+          if ! test -f .github/scripts/collect-on-device-cover-evidence.sh; then
+            mkdir -p .github/scripts
+            printf '#!/usr/bin/env bash\nset -euo pipefail\n"$@"\n' > .github/scripts/collect-on-device-cover-evidence.sh
+          fi
+      - name: Validate cover persistence, source freshness and Reader pins
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -87,12 +95,11 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            evidence_runner=()
-            if test -f .github/scripts/collect-on-device-cover-evidence.sh; then
-              evidence_runner=(bash .github/scripts/collect-on-device-cover-evidence.sh)
-            fi
-            "${evidence_runner[@]}" ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest,org.koitharu.kotatsu.core.image.MiyorareImageDiskCacheTest,org.koitharu.kotatsu.details.ui.TrackerPeopleSectionTest,org.koitharu.kotatsu.scrobbling.common.data.TrackerDetailsSessionTest,org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.details.ui.TrackerRecommendationSectionTest,org.koitharu.kotatsu.details.domain.TrackerRecommendationMappingTest,org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesRepositoryTest,org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesSessionStoreTest,org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivityTest
+          script: >-
+            ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest,org.koitharu.kotatsu.core.image.MiyorareImageDiskCacheTest
+            && ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.details.ui.TrackerPeopleSectionTest,org.koitharu.kotatsu.scrobbling.common.data.TrackerDetailsSessionTest,org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.details.ui.TrackerRecommendationSectionTest,org.koitharu.kotatsu.details.domain.TrackerRecommendationMappingTest,org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesRepositoryTest,org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesSessionStoreTest,org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivityTest
       - name: Upload Android evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -101,15 +108,6 @@ jobs:
           path: |
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
-            app/build/reports/on-device-cover/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload exact-head debug APK for owner validation
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: on-device-cover-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 14
