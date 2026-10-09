@@ -1,0 +1,47 @@
+name: Promotion Compile & Unit Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: promotion-compile-unit-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compile-unit:
+    name: Compile, resources & unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Grant execute permission
+        run: chmod +x gradlew
+      - name: Compile debug sources and validate Android resources
+        run: ./gradlew compileDebugSources --max-workers=4 --no-daemon --stacktrace
+      - name: Run JVM unit tests
+        run: ./gradlew testDebugUnitTest --max-workers=4 --no-daemon --stacktrace
+      - name: Upload JVM evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promotion-jvm-evidence
+          path: app/build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 14
