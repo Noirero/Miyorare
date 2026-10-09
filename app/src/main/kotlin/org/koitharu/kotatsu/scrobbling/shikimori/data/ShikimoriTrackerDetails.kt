@@ -8,7 +8,6 @@ import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.koitharu.kotatsu.parsers.util.await
 import org.koitharu.kotatsu.core.network.CurlLoggingInterceptor
 import org.koitharu.kotatsu.scrobbling.common.data.*
 import org.koitharu.kotatsu.scrobbling.common.domain.model.*
@@ -39,7 +38,7 @@ internal class ShikimoriDetailsApi(baseHttpClient: OkHttpClient) {
 		return shikimoriSimilar(json(request).jsonArray)
 	}
 
-	private suspend fun json(request: Request): JsonElement = client.newCall(request).await().use { response ->
+	private suspend fun json(request: Request): JsonElement = client.newCall(request).awaitTrackerDetails { response ->
 		if (!response.isSuccessful) throw IOException("Shikimori supplemental HTTP ${response.code}")
 		Json.parseToJsonElement(checkNotNull(response.body).string())
 	}

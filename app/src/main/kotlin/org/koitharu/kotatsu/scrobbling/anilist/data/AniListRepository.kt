@@ -21,6 +21,7 @@ import org.koitharu.kotatsu.parsers.util.parseJson
 import org.koitharu.kotatsu.parsers.util.toIntUp
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerRepository
 import org.koitharu.kotatsu.scrobbling.common.data.trackerDetailsClient
+import org.koitharu.kotatsu.scrobbling.common.data.awaitTrackerDetails
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerStorage
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.scrobbling.common.domain.TrackerDetailsProvider
@@ -78,7 +79,7 @@ class AniListRepository @Inject constructor(
 		val request = Request.Builder().url(ENDPOINT)
 			.post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
 		// Keep a GraphQL data+errors response for partial conversion; core doRequest semantics stay unchanged.
-		return Json.parseToJsonElement(detailsHttpClient.newCall(request).await().parseJson().toString()).jsonObject
+		return detailsHttpClient.newCall(request).awaitTrackerDetails { Json.parseToJsonElement(it.parseJson().toString()).jsonObject }
 	}
 
 	private val clientId = context.getString(R.string.anilist_clientId)

@@ -22,6 +22,7 @@ import org.koitharu.kotatsu.parsers.util.parseJson
 import org.koitharu.kotatsu.parsers.util.urlEncoded
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerRepository
 import org.koitharu.kotatsu.scrobbling.common.data.trackerDetailsClient
+import org.koitharu.kotatsu.scrobbling.common.data.awaitTrackerDetails
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerStorage
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.scrobbling.common.domain.TrackerDetailsProvider
@@ -69,7 +70,7 @@ class KitsuRepository(
 
 	private suspend fun supplementalRequest(target: TrackerTarget, content: TrackerContent, page: TrackerPage): kotlinx.serialization.json.JsonObject {
 		val request = Request.Builder().url(kitsuDetailsUrl(target, content, page)).get().build()
-		return Json.parseToJsonElement(detailsHttpClient.newCall(request).await().parseJson().toString()).jsonObject
+		return detailsHttpClient.newCall(request).awaitTrackerDetails { Json.parseToJsonElement(it.parseJson().toString()).jsonObject }
 	}
 
 	override val oauthUrl: String = "kotatsu+kitsu://auth"
