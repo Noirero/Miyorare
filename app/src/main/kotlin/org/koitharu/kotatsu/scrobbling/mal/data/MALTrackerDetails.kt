@@ -13,7 +13,7 @@ internal fun malStaff(root: JsonObject, target: TrackerTarget): TrackerResult<Tr
 		val node = edge.obj("node") ?: return@trackerPage null
 		val name = listOfNotNull(node.text("first_name"), node.text("last_name")).joinToString(" ")
 		if (name.isEmpty()) return@trackerPage null
-		TrackerPerson(node.id(), name, null, listOfNotNull(edge.text("role")))
+		TrackerPerson(node.id(), name, null, listOfNotNull(edge.text("role")), node.id()?.let { "https://myanimelist.net/people/$it" })
 	}.mergePersonRoles()
 }
 
@@ -30,3 +30,4 @@ internal fun malRecommendations(root: JsonObject, target: TrackerTarget): Tracke
 		)
 	}
 }
+

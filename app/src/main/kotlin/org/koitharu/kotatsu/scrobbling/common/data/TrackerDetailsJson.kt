@@ -48,7 +48,7 @@ internal fun TrackerResult<TrackerPerson>.mergePersonRoles(): TrackerResult<Trac
 				result += person
 			} else {
 				val old = result[position]
-				result[position] = old.copy(image = old.image ?: person.image, roles = (old.roles + person.roles).distinct())
+				result[position] = old.copy(image = old.image ?: person.image, roles = (old.roles + person.roles).distinct(), url = old.url ?: person.url)
 			}
 		}
 		return result
@@ -59,3 +59,4 @@ internal fun TrackerResult<TrackerPerson>.mergePersonRoles(): TrackerResult<Trac
 		else -> this
 	}
 }
+

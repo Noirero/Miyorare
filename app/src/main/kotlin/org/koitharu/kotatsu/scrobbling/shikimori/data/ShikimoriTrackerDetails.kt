@@ -26,7 +26,7 @@ internal class ShikimoriDetailsApi(baseHttpClient: OkHttpClient) {
 		val character = content == TrackerContent.CHARACTERS
 		val field = if (character) "characterRoles" else "personRoles"
 		val node = if (character) "character" else "person"
-		val query = "{ mangas(ids: \"${target.id}\", limit: 1) { id $field { rolesEn $node { id name poster { originalUrl } } } } }"
+		val query = "{ mangas(ids: \"${target.id}\", limit: 1) { id $field { rolesEn $node { id name url poster { originalUrl } } } } }"
 		val body = buildJsonObject { put("query", query) }.toString().toRequestBody("application/json".toMediaType())
 		val request = Request.Builder().url("$SHIKIMORI_DETAILS_ORIGIN/api/graphql").header("User-Agent", "Miyorare").post(body).build()
 		return shikimoriPeople(json(request).jsonObject, target, content)
@@ -76,7 +76,7 @@ internal fun shikimoriPeople(root: JsonObject, target: TrackerTarget, content: T
 		val person = edge.obj(nodeKey) ?: return@trackerPage null
 		val name = person.text("name") ?: return@trackerPage null
 		val roles = edge.array("rolesEn").orEmpty().mapNotNull { (it as? JsonPrimitive)?.takeUnless { it is JsonNull }?.content?.takeIf(String::isNotBlank) }
-		TrackerPerson(person.id(), name, shikimoriUrl(person.obj("poster")?.text("originalUrl")), roles)
+		TrackerPerson(person.id(), name, shikimoriUrl(person.obj("poster")?.text("originalUrl")), roles, shikimoriUrl(person.text("url")))
 	}.mergePersonRoles()
 }
 
@@ -88,3 +88,4 @@ internal fun shikimoriSimilar(rows: JsonArray): TrackerResult<TrackerRecommendat
 		shikimoriUrl(node.obj("image")?.text("preview")), TrackerRecommendationKind.SIMILAR_MANGA,
 	)
 }
+

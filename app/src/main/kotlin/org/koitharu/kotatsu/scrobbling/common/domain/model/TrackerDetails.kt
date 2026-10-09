@@ -21,6 +21,7 @@ data class TrackerPerson(
 	val name: String,
 	val image: String?,
 	val roles: List<String>,
+	val url: String? = null,
 )
 
 enum class TrackerRecommendationKind { RECOMMENDATION, SIMILAR_MANGA }
@@ -68,3 +69,4 @@ data class TrackerDetailsReadPolicy(
 ) {
 	val allowsNetwork: Boolean get() = enabled && !incognito && !privateOnly && !onDevice
 }
+
