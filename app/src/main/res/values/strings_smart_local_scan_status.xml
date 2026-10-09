@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="smart_local_scan_running">Scanning device files…</string>
+</resources>

@@ -1,9 +1,11 @@
 package org.koitharu.kotatsu.reader.domain
 
+import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.Size
 import androidx.core.net.toFile
 import androidx.core.net.toUri
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import okhttp3.OkHttpClient
@@ -29,6 +31,7 @@ import javax.inject.Inject
 import kotlin.math.roundToInt
 
 class DetectReaderModeUseCase @Inject constructor(
+	@ApplicationContext private val context: Context,
 	private val dataRepository: MangaDataRepository,
 	private val settings: AppSettings,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
@@ -136,6 +139,9 @@ class DetectReaderModeUseCase @Inject constructor(
 			}
 			uri.isFileUri() -> runInterruptible(Dispatchers.IO) {
 				uri.toFile().inputStream().use { getBitmapSize(it) }
+			}
+			uri.scheme == "content" -> runInterruptible(Dispatchers.IO) {
+				context.contentResolver.openInputStream(uri).use { getBitmapSize(it) }
 			}
 			else -> {
 				// Prefer the extension's getImage() (handles relative imageUrls like MangaDex

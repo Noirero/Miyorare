@@ -26,6 +26,11 @@ fun pageThumbnailAD(
 
 	bind {
 		binding.imageViewThumb.setImageAsync(item.page)
+		itemView.isSelected = item.isCurrent
+		itemView.contentDescription = context.getString(
+			if (item.isCurrent) R.string.smart_local_current_page_description else R.string.smart_local_page_description,
+			item.number,
+		)
 		with(binding.textViewNumber) {
 			setBackgroundResource(if (item.isCurrent) R.drawable.bg_badge_accent else R.drawable.bg_badge_empty)
 			setTextColorAttr(if (item.isCurrent) materialR.attr.colorOnTertiary else android.R.attr.textColorPrimary)

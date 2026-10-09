@@ -4,6 +4,7 @@ import android.text.Html
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
+import androidx.core.net.toUri
 import androidx.core.text.getSpans
 import androidx.core.text.parseAsHtml
 import coil3.request.CachePolicy
@@ -40,6 +41,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.exception.NotFoundException
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -75,7 +77,9 @@ class DetailsLoadUseCase @Inject constructor(
 		val resolvedIntentManga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
 			"Cannot resolve intent $intent"
 		}
-		val manga = downloadedMangaResolver.resolveCanonicalManga(resolvedIntentManga)
+		val manga = if (resolvedIntentManga.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) {
+			resolvedIntentManga
+		} else downloadedMangaResolver.resolveCanonicalManga(resolvedIntentManga)
 		val override = mangaDataRepository.getOverride(manga.id)
 		if (manga.isLocal) {
 			// Local is authoritative. Do not replace a filesystem-backed title with its historical
@@ -125,7 +129,9 @@ class DetailsLoadUseCase @Inject constructor(
 
 
 	private suspend fun FlowCollector<MangaDetails>.loadLocal(manga: Manga, override: MangaOverride?) {
-		val localDetails = localMangaRepository.getDetails(manga)
+		val localDetails = if (manga.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) {
+			mangaRepositoryFactory.create(manga.source).getDetails(manga)
+		} else localMangaRepository.getDetails(manga)
 		val fastDescription = localDetails.description?.parseAsHtml(withImages = false)
 		val visibleDetails = MangaDetails(
 			manga = localDetails,

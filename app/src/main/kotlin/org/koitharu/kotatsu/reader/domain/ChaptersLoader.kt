@@ -129,6 +129,8 @@ class ChaptersLoader @Inject constructor(
 
 	fun snapshot() = synchronized(chapterPages) { chapterPages.toList() }
 
+	suspend fun loadPreviewPages(chapterId: Long): List<ReaderPage> = loadChapter(chapterId)
+
 	private suspend fun loadChapter(chapterId: Long): List<ReaderPage> {
 		val chapter = checkNotNull(chapters[chapterId]) { "Requested chapter not found" }
 		val pages = loadPagesLocalFirst(chapter)

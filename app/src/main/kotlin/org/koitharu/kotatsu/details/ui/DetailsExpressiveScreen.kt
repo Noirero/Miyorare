@@ -105,6 +105,7 @@ fun DetailsExpressiveScreen(
 	expandedRelated: DetailsRelatedUiState,
 	relatedDiscoveryEnabled: Boolean,
 	localSize: Long,
+	indexedLocalBook: org.koitharu.kotatsu.local.library.LocalBook?,
 	sourceTitle: String?,
 	imageLoader: ImageLoader,
 	coverUrl: String?,
@@ -119,6 +120,7 @@ fun DetailsExpressiveScreen(
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
+	val managed = manga?.url?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it) } == true
 	var showRelatedSuggestions by rememberBooleanPref(
 		AppSettings.KEY_RELATED_MANGA,
 		relatedDiscoveryEnabled,
@@ -130,7 +132,7 @@ fun DetailsExpressiveScreen(
 	val visibleExpandedRelated = expandedRelated.groups
 
 	LaunchedEffect(showGenreRecommendations) {
-		actions.onGenreRecommendationsVisibilityChanged(showGenreRecommendations)
+		actions.onGenreRecommendationsVisibilityChanged(showGenreRecommendations && !managed)
 	}
 
 	val baseScheme = MaterialTheme.colorScheme
@@ -238,6 +240,16 @@ fun DetailsExpressiveScreen(
 						)
 					}
 
+					if (managed) item(contentType = "on-device-capability") {
+						androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+							indexedLocalBook?.let { book ->
+								Text(stringResource(if (book.contentType == org.koitharu.kotatsu.local.library.LocalContentType.NOVEL)
+									R.string.smart_local_novel_details else R.string.smart_local_manga_details),
+									style = MaterialTheme.typography.labelLarge)
+							}
+							TextButton(onClick = { actions.onLocalClick(manga) }) { Text(stringResource(R.string.smart_local_file_info)) }
+						}
+					}
 					item(contentType = "primary-actions") {
 						Spacer(Modifier.height(if (palette.isModern) 10.dp else 20.dp))
 						PrimaryDetailsActions(
@@ -329,7 +341,7 @@ fun DetailsExpressiveScreen(
 						}
 					}
 
-					item(key = "discovery-controls", contentType = "discovery-controls") {
+					if (!managed) item(key = "discovery-controls", contentType = "discovery-controls") {
 						DiscoveryControlsCard(
 							relatedVisible = showRelatedSuggestions,
 							genreVisible = showGenreRecommendations,
@@ -339,7 +351,7 @@ fun DetailsExpressiveScreen(
 						)
 					}
 
-					if (showRelatedSuggestions) {
+					if (showRelatedSuggestions && !managed) {
 						item(key = "related-discovery-anchor", contentType = "related") {
 							LaunchedEffect(manga.id, details.isLoaded) {
 								if (details.isLoaded) {
@@ -379,7 +391,7 @@ fun DetailsExpressiveScreen(
 						}
 					}
 
-					if (showGenreRecommendations && genreRecommendations.isNotEmpty()) {
+					if (!managed && showGenreRecommendations && genreRecommendations.isNotEmpty()) {
 						item(key = "genre-recommendations", contentType = "genre-recommendations") {
 							GenreRecommendationSection(
 								items = genreRecommendations,

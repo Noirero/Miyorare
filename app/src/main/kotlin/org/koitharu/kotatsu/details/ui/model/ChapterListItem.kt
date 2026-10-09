@@ -38,6 +38,9 @@ data class ChapterListItem(
 			return field
 		}
 
+	val canDownload: Boolean
+		get() = chapter.source != org.koitharu.kotatsu.core.model.LocalMangaSource
+
 	val isDownloading: Boolean
 		get() = hasFlag(FLAG_DOWNLOADING)
 

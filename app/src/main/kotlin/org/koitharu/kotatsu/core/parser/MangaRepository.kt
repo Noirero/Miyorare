@@ -10,7 +10,7 @@ import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
 import org.koitharu.kotatsu.core.model.MissingMangaSource
 import org.koitharu.kotatsu.core.model.MangaSourceInfo
 import org.koitharu.kotatsu.core.model.UnknownMangaSource
-import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.data.LocalRoutingMangaRepository
 import org.koitharu.kotatsu.lnreader.LnMangaRepository
 import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.lnreader.js.JsHost
@@ -96,7 +96,7 @@ interface MangaRepository {
 
 	@Singleton
 	class Factory @Inject constructor(
-		private val localMangaRepository: LocalMangaRepository,
+		private val localMangaRepository: LocalRoutingMangaRepository,
 		private val contentCache: MemoryContentCache,
 		private val mihonExtensionManager: MihonExtensionManager,
 		private val lnPluginManager: LnPluginManager,

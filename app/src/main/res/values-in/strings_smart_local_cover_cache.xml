@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="smart_local_cover_cache">Cache cover File di Perangkat</string>
+    <string name="smart_local_cover_cache_summary">%1$s · %2$d thumbnail</string>
+    <string name="smart_local_cover_cache_clear">Hapus cache cover File di Perangkat</string>
+    <string name="smart_local_cover_cache_clear_message">Hanya thumbnail File di Perangkat yang dihapus. File asli, data pustaka, dan halaman Reader tetap tersimpan. Cover akan dibuat kembali saat dibuka.</string>
+    <string name="smart_local_cover_cache_cleared">Cache cover File di Perangkat dihapus</string>
+    <string name="smart_local_cover_cache_diagnostics">Diagnostik cache cover</string>
+    <string name="smart_local_cover_cache_reset_measurement">Mulai ulang pengukuran</string>
+</resources>

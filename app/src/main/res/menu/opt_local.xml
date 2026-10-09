@@ -31,4 +31,11 @@
 		android:title="@string/directories"
 		app:showAsAction="never" />
 
+	<item
+		android:id="@+id/action_smart_local_cover_cache"
+		android:orderInCategory="90"
+		android:title="@string/smart_local_cover_cache"
+		app:showAsAction="never" />
+
 </menu>
+

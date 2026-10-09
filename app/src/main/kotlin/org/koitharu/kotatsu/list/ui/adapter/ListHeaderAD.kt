@@ -22,6 +22,8 @@ fun listHeaderAD(
 ) {
 	var badge: BadgeDrawable? = null
 	val defaultButtonMinHeight = binding.buttonMore.minHeight
+	val defaultHeaderBackground = itemView.background
+	val defaultHeaderEllipsize = binding.textViewTitle.ellipsize
 	val defaultButtonMinimumHeight = binding.buttonMore.minimumHeight
 	val defaultRootPaddingBottom = binding.root.paddingBottom
 	val defaultButtonMarginEnd = (binding.buttonMore.layoutParams as? ViewGroup.MarginLayoutParams)?.marginEnd ?: 0
@@ -34,6 +36,17 @@ fun listHeaderAD(
 
 	bind {
 		val currentItem = item
+		val notice = currentItem.buttonStyle == ListHeader.ButtonStyle.NOTICE
+		itemView.background = if (notice) androidx.core.content.ContextCompat.getDrawable(context, R.drawable.bg_smart_local_notice) else defaultHeaderBackground
+		binding.textViewTitle.setCompoundDrawablesRelativeWithIntrinsicBounds(if (notice) R.drawable.ic_sparkles else 0, 0, 0, 0)
+		binding.textViewTitle.compoundDrawablePadding = context.resources.getDimensionPixelSize(R.dimen.margin_small)
+		val isChapterToggle = currentItem.buttonTextRes == R.string.smart_local_expand_chapter ||
+			currentItem.buttonTextRes == R.string.smart_local_collapse_chapter
+		binding.textViewTitle.setSingleLine(!isChapterToggle && !notice)
+		binding.textViewTitle.maxLines = if (isChapterToggle || notice) 2 else 1
+		binding.textViewTitle.ellipsize = if (isChapterToggle || notice) android.text.TextUtils.TruncateAt.END else defaultHeaderEllipsize
+		androidx.core.view.ViewCompat.setAccessibilityHeading(binding.textViewTitle, isChapterToggle)
+		itemView.isSelected = isChapterToggle && currentItem.badge != null
 		binding.textViewTitle.text = currentItem.getText(context)
 		if (currentItem.buttonTextRes == 0) {
 			binding.root.updatePadding(bottom = defaultRootPaddingBottom)
@@ -53,6 +66,9 @@ fun listHeaderAD(
 				},
 			)
 			binding.buttonMore.icon = null
+			if (isChapterToggle) binding.buttonMore.setIconResource(
+				if (currentItem.buttonTextRes == R.string.smart_local_collapse_chapter) R.drawable.ic_expand_more else R.drawable.ic_chevron_right,
+			)
 			binding.buttonMore.setText(currentItem.buttonTextRes)
 			binding.buttonMore.contentDescription = context.getString(currentItem.buttonTextRes)
 			binding.buttonMore.isGone = false
@@ -68,8 +84,12 @@ fun listHeaderAD(
 					marginEnd = context.resources.getDimensionPixelSize(R.dimen.margin_normal)
 				}
 			} else {
-				binding.buttonMore.minHeight = defaultButtonMinHeight
-				binding.buttonMore.minimumHeight = defaultButtonMinimumHeight
+				val localControl = isChapterToggle || currentItem.buttonTextRes in setOf(
+					R.string.smart_local_see_all, R.string.smart_local_show_less, R.string.smart_local_mark_seen,
+				)
+				val minTouchHeight = if (localControl) (48 * context.resources.displayMetrics.density).toInt() else 0
+				binding.buttonMore.minHeight = maxOf(defaultButtonMinHeight, minTouchHeight)
+				binding.buttonMore.minimumHeight = maxOf(defaultButtonMinimumHeight, minTouchHeight)
 				binding.buttonMore.updateLayoutParams<ViewGroup.LayoutParams> {
 					width = ViewGroup.LayoutParams.WRAP_CONTENT
 					height = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -104,6 +124,10 @@ fun listHeaderAD(
 					binding.buttonMore.setTextColor(primaryColor)
 				}
 			}
+			if (isChapterToggle) binding.buttonMore.contentDescription = context.getString(
+				R.string.smart_local_chapter_toggle_description, context.getString(currentItem.buttonTextRes),
+				currentItem.getText(context), currentItem.badge.orEmpty(),
+			).trim()
 			badge = itemView.bindBadge(badge, currentItem.badge)
 		}
 	}

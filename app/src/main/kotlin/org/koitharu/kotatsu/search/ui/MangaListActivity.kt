@@ -146,7 +146,7 @@ class MangaListActivity :
 	 * into the title itself. In both cases only the name collapses into the top bar.
 	 */
 	private fun applyTitle() {
-		val name = source.getTitle(this)
+		val name = if (source == LocalMangaSource) getString(R.string.local_files) else source.getTitle(this)
 		val lang = activeLanguageName
 		title = name
 		val ctl = viewBinding.collapsingToolbarLayout ?: return
@@ -324,6 +324,15 @@ class MangaListActivity :
 	}
 
 	private fun initFilter(filterOwner: FilterCoordinator.Owner) {
+		if (filterOwner is LocalListFragment) {
+			// Smart Local owns its index projection controls. Do not install the online catalog header.
+			viewBinding.buttonOrder?.isVisible = false
+			viewBinding.containerFilterHeader?.isVisible = false
+			supportFragmentManager.findFragmentById(R.id.container_filter_header)?.let { oldHeader ->
+				supportFragmentManager.commit { remove(oldHeader) }
+			}
+			return
+		}
 		if (viewBinding.containerFilterHeader != null) {
 			if (supportFragmentManager.findFragmentById(R.id.container_filter_header) == null) {
 				supportFragmentManager.commit {
