@@ -63,9 +63,30 @@ Archive discovery retains #554's streaming budgets: 64 entries, 8 image candidat
 candidate and 32 MiB candidate-read budget. PDF extraction never forces archives through
 seekable materialization.
 
-Same-title requests use fixed bounded mutex stripes and recheck persistence before generation.
-Two generation permits bound the complete miss workload (including SAF copy and PDF render),
-not only native rendering. LocalPdfCache's existing rendering permits remain in place.
+Same-title requests use exact-key, reference-counted flights and recheck persistence before
+generation. Completed/cancelled flights retain no per-title state. Exact keys avoid unrelated
+covers colliding behind a heavy mutex stripe.
+
+Cold cover work has independent FIFO admission for PDF (2), archive (2 shared by CBZ/ZIP/EPUB),
+and image/sidecar (2). There is no shared whole-generation queue. Each class holds its permit
+from root/source access through publication, bounding open sources and completed encoded
+buffers. Static image decode/resize/encode also has a shared 2-permit bitmap stage; acquire
+source before bitmap, never the reverse. PDF cover rendering shares LocalPdfCache's existing
+app-wide 2-render limit with Reader. The scheduler launches no coroutines.
+
+Cover-only PDFs try LocalDocuments' scoped read descriptor first. PdfRenderer validates the
+provider descriptor's seekability/usability; successful direct access renders page 0 without
+copying the full PDF or creating Reader page artifacts. Null/unsupported/rejected descriptors
+and compatible access/render failures use the existing materialization fallback. Scoped use
+and CancellationSignal close descriptors on success, constructor failure and cancellation;
+native rendering completes before its resource is closed. Cancellation observed during direct
+access does not trigger a new fallback or publication. Fallback copies retain #558/#559 release/delete and Reader-pin
+protection. Reader page/materialization semantics do not use this fast path.
+
+Encoding audit: before and after this change, PDF rendering produces a <=768-px PNG and
+LocalContentReader publishes it directly. There is no second decode/resize/PNG encode. Both
+direct and materialized PDF paths use that same encoder. Animation policy/version, fingerprint,
+freshness authority and persistent budget are unchanged.
 
 A write fsyncs a unique .partial then renames it atomically in the same directory. Partial
 files are never readable entries; cancellation cannot publish incomplete payloads. Checksum,
@@ -133,7 +154,7 @@ candidate and the existing archive discovery/read budgets. This does not admit p
 unsupported images beyond those input limits. Static WebP and single-frame GIF still use PNG.
 
 Storage remains <=128 MiB / 1024 entries / 4 MiB persistent payload, with the same atomic writes,
-clear epochs, fingerprint validation, concurrency permits, and retention. Fingerprint thumbnail
+clear epochs, fingerprint validation, bounded resource scheduling, and retention. Fingerprint thumbnail
 version 2 invalidates interim first-frame entries once, including images selected from archives;
 Smart Local manga/chapter identity and discovery/freshness authority remain unchanged.
 
@@ -145,3 +166,25 @@ byte/dimension passthrough. Large valid GIF comments/WebP JUNK chunks are built 
 provider process to avoid Binder limits and oversized committed assets. Existing PDF, Reader
 pin, and #557 image-cache tests remain intact and run alongside these regressions. Recreation
 still replaces cache/domain owners, not the OS process. Physical-device validation is the owner’s.
+
+## Cold-grid regression evidence
+
+LocalCoverWorkSchedulerTest uses controlled coroutine gates to prove independent source lanes,
+source/bitmap bounds, FIFO progress for queued heavy work and cancelled-waiter cleanup.
+SmartLocalCoverCacheTest retains persistence/clear/corruption/single-flight coverage and adds
+an exact-key test using a deliberate collision in the former 64-stripe table.
+
+The Android pipeline suite additionally blocks two real PDF cover requests while CBZ, ZIP,
+EPUB, direct-image and sidecar covers finish. A third PDF remains admitted behind the PDF
+bound, and concurrent same-key requests reuse a single generation. Direct PDF recreation
+proves zero new source opens, SAF queries, materialization or rendering. Provider fixtures
+exercise nonseekable pipes and rejected descriptor opens, fallback cleanup, Reader-backed
+protection, renderer failure and direct/fallback cancellation. Timeouts are deadlock watchdogs;
+assertions concern gates, operation counts, resource lifetime and ordering, not elapsed latency.
+
+Sequential archive traversal and #554 extraction budgets are unchanged. These tests do not
+measure device latency or establish an archive-performance root cause. If physical-device
+validation still finds archive-specific delay, separately measure time/entries/bytes until the
+selected cover, then evaluate bounded random-access ZIP/EPUB discovery with its provider,
+selection, animation, cancellation and containment regression surface. No such redesign is
+included here; Comichu remains an experiential reference, with no claims about its internals.

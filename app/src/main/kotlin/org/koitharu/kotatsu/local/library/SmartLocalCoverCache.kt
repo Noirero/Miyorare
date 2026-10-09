@@ -6,9 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -27,36 +25,56 @@ class SmartLocalCoverCache internal constructor(
     @Inject constructor(@ApplicationContext context: Context) : this(File(context.filesDir, "smart-local-covers"))
 
     private val files = Mutex()
-    private val flights = Array(64) { Mutex() }
-    private val generation = Semaphore(GENERATION_PARALLELISM)
+    private val flights = HashMap<Long, Flight>()
     private var initialized = false
     private var clearEpoch = 0L
     private var lastAccess = 0L
 
     internal suspend fun getOrGenerate(id: Long, plan: LocalCoverPlan, isCurrent: () -> Boolean = { true }, generate: suspend () -> GeneratedLocalCover?): ByteArray? =
-        withContext(Dispatchers.IO) {
-            val key = coverDigest(id.toString().toByteArray())
-            flights[(key.hashCode() and Int.MAX_VALUE) % flights.size].withLock {
-                if (!isCurrent()) return@withContext null
-                val epoch = files.withLock {
-                    initializeLocked()
-                    readLocked(key, plan)?.let { return@withContext it }
-                    clearEpoch
+        getOrGenerateScoped(id, plan, isCurrent) { publish -> generate()?.let { publish(it) } }
+
+    /** The generator publishes while holding its resource permit, bounding completed buffers too.
+     * Cache lookup remains outside source scheduling, and this owner alone validates/writes bytes.
+     */
+    internal suspend fun getOrGenerateScoped(
+        id: Long, plan: LocalCoverPlan, isCurrent: () -> Boolean = { true },
+        generate: suspend (publish: suspend (GeneratedLocalCover) -> ByteArray) -> ByteArray?,
+    ): ByteArray? = withContext(Dispatchers.IO) {
+        val key = coverDigest(id.toString().toByteArray())
+        withFlight(id) {
+            if (!isCurrent()) return@withFlight null
+            val (epoch, cached) = files.withLock {
+                initializeLocked()
+                clearEpoch to readLocked(key, plan)
+            }
+            if (cached != null) return@withFlight cached
+            generate { result ->
+                check(result.candidateIndex in plan.candidates.indices)
+                val payloadLimit = if (result.cacheable) MAX_THUMBNAIL_BYTES else BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES
+                check(result.bytes.size in 1..payloadLimit) { "Oversized local cover payload" }
+                currentCoroutineContext().ensureActive()
+                files.withLock {
+                    // A settings clear during generation must not resurrect the removed entry.
+                    if (result.cacheable && epoch == clearEpoch && isCurrent()) writeLocked(key, plan, result)
                 }
-                generation.withPermit {
-                    val result = generate() ?: return@withPermit null
-                    check(result.candidateIndex in plan.candidates.indices)
-                    val payloadLimit = if (result.cacheable) MAX_THUMBNAIL_BYTES else BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES
-                    check(result.bytes.size in 1..payloadLimit) { "Oversized local cover payload" }
-                    currentCoroutineContext().ensureActive()
-                    files.withLock {
-                        // A settings clear during generation must not resurrect the removed entry.
-                        if (result.cacheable && epoch == clearEpoch && isCurrent()) writeLocked(key, plan, result)
-                    }
-                    result.bytes
-                }
+                result.bytes
             }
         }
+    }
+
+    // Exact keys avoid an unrelated lightweight cover queueing behind a heavy stripe collision.
+    // A waiting/cancelled caller owns a reference until finally, so the mutex cannot be replaced
+    // while another caller still uses it. Finished flights retain no per-title state.
+    private suspend fun <T> withFlight(id: Long, block: suspend () -> T): T {
+        val flight = synchronized(flights) { flights.getOrPut(id) { Flight() }.also { it.users++ } }
+        try {
+            return flight.mutex.withLock { block() }
+        } finally {
+            synchronized(flights) { if (--flight.users == 0) flights.remove(id) }
+        }
+    }
+
+    private class Flight(val mutex: Mutex = Mutex(), var users: Int = 0)
 
     suspend fun size(): Long = withContext(Dispatchers.IO) {
         files.withLock { initializeLocked(); directory.listFiles().orEmpty().sumOf { it.length() } }
@@ -141,7 +159,6 @@ class SmartLocalCoverCache internal constructor(
     }
 
     internal companion object {
-        const val GENERATION_PARALLELISM = 2
         const val MAX_BYTES = 128L * 1024 * 1024
         const val MAX_ENTRIES = 1024
         const val MAX_THUMBNAIL_BYTES = 4 * 1024 * 1024

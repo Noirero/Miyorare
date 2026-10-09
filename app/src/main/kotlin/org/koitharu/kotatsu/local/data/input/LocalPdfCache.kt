@@ -84,15 +84,25 @@ object LocalPdfCache {
 
 	/** Transient cover derivation for Smart Local. Persistence belongs to SmartLocalCoverCache. */
 	fun renderCoverThumbnail(pdf: File): ByteArray? = withRenderPermit {
-		openRenderer(pdf) { renderer ->
-			if (renderer.pageCount <= 0) return@openRenderer null
-			val bitmap = renderBitmap(renderer, 0, COVER_MAX_RENDER_DIMENSION)
-			try {
-				val output = ByteArrayOutputStream()
-				if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) throw IOException("Cannot encode PDF cover")
-				output.toByteArray()
-			} finally { bitmap.recycle() }
-		}
+		openRenderer(pdf, ::encodeCoverThumbnail)
+	}
+
+	/** Cover-only source access. PdfRenderer validates seekability and owns a usable descriptor;
+	 * the caller also scopes it so constructor failures cannot leak the original descriptor.
+	 * Uses the same app-wide render limit, dimensions and encoder as the materialized fallback.
+	 */
+	fun renderCoverThumbnail(descriptor: ParcelFileDescriptor): ByteArray? = withRenderPermit {
+		PdfRenderer(descriptor).use(::encodeCoverThumbnail)
+	}
+
+	private fun encodeCoverThumbnail(renderer: PdfRenderer): ByteArray? {
+		if (renderer.pageCount <= 0) return null
+		val bitmap = renderBitmap(renderer, 0, COVER_MAX_RENDER_DIMENSION)
+		try {
+			val output = ByteArrayOutputStream()
+			if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) throw IOException("Cannot encode PDF cover")
+			return output.toByteArray()
+		} finally { bitmap.recycle() }
 	}
 
 	/**
