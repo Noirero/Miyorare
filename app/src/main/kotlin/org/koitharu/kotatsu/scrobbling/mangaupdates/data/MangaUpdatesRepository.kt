@@ -17,6 +17,13 @@ import kotlin.math.abs
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** An explicit edit keeps its initiating session and provider target through every suspension. */
+class MangaUpdatesEditContext internal constructor(
+	internal val mangaId: Long,
+	internal val targetId: Long,
+	internal val ticket: MangaUpdatesAuthTicket,
+)
+
 @Singleton
 class MangaUpdatesRepository internal constructor(
 	private val api: MangaUpdatesApi,
@@ -25,10 +32,10 @@ class MangaUpdatesRepository internal constructor(
 	private val settings: AppSettings,
 	private val scope: CoroutineScope,
 	private val writes: MangaUpdatesWriteGate,
+	private val operations: Mutex = Mutex(),
 ) : ScrobblerRepository, TrackerDetailsProvider {
 	@Inject constructor(api: MangaUpdatesApi, store: MangaUpdatesSessionStore, db: MangaDatabase, settings: AppSettings) :
 		this(api, store, db, settings, CoroutineScope(SupervisorJob() + Dispatchers.IO), MangaUpdatesWriteGate())
-	private val operations = Mutex()
 	private val login = Mutex()
 	private val searches = Mutex()
 	private var searchCursor: SearchCursor? = null
@@ -140,57 +147,72 @@ class MangaUpdatesRepository internal constructor(
 			authors.filter { it.text("type") == "Artist" }.mapNotNull { it.text("name") }.distinct().joinToString().ifBlank { null })
 	}
 
-	override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long): Boolean = operations.withLock {
+	override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long): Boolean =
+		createRate(MangaUpdatesEditContext(mangaId, scrobblerMangaId, api.sessionTicket()))
+
+	suspend fun createRate(context: MangaUpdatesEditContext): Boolean {
+		val mangaId = context.mangaId
+		val scrobblerMangaId = context.targetId
 		require(scrobblerMangaId > 0)
-		val ticket = api.sessionTicket()
+		val ticket = context.ticket
 		eligible(mangaId, ticket)
-		var existing = remoteState(scrobblerMangaId, ticket)
-		var adopted = existing != null
-		if (existing == null) {
-			val list = defaultList("wish", ticket)
-			val initial = MangaUpdatesRemoteState(scrobblerMangaId, list.id, list.type, 0, 0, 0)
-			for (attempt in 0..1) {
-				try {
-					existing = writes.execute {
-						eligible(mangaId, ticket)
-						// Another client may have added the title while this request was paced.
-						remoteState(scrobblerMangaId, ticket)?.also { adopted = true } ?: run {
-							api.request("POST", "lists/series", initial.writeBody(), ticket)
-							remoteState(scrobblerMangaId, ticket) ?: throw IOException("MangaUpdates entry was not confirmed")
+		val previousTarget = db.getScrobblingDao().find(detailsService.id, mangaId)?.targetId
+		api.ensureCurrent(ticket)
+		return operations.withLock {
+			ensureAssociation(mangaId, previousTarget, ticket)
+			var existing = remoteState(scrobblerMangaId, ticket)
+			var adopted = existing != null
+			if (existing == null) {
+				val list = defaultList("wish", ticket)
+				val initial = MangaUpdatesRemoteState(scrobblerMangaId, list.id, list.type, 0, 0, 0)
+				for (attempt in 0..1) {
+					try {
+						existing = writes.execute {
+							ensureAssociation(mangaId, previousTarget, ticket)
+							// Another client may have added the title while this request was paced.
+							remoteState(scrobblerMangaId, ticket)?.also { adopted = true } ?: run {
+								ensureAssociation(mangaId, previousTarget, ticket)
+								api.request("POST", "lists/series", initial.writeBody(), ticket)
+								remoteState(scrobblerMangaId, ticket) ?: throw IOException("MangaUpdates entry was not confirmed")
+							}
 						}
+						break
+					} catch (e: IOException) {
+						api.ensureCurrent(ticket)
+						existing = remoteState(scrobblerMangaId, ticket)
+						if (existing != null) { adopted = true; break }
+						if (attempt == 1 || !retryable(e)) throw e
 					}
-					break
-				} catch (e: IOException) {
-					api.ensureCurrent(ticket)
-					existing = remoteState(scrobblerMangaId, ticket)
-					if (existing != null) { adopted = true; break }
-					if (attempt == 1 || !retryable(e)) throw e
 				}
 			}
+			val state = existing ?: throw IOException("MangaUpdates entry was not confirmed")
+			val rating = rating(state.seriesId, ticket)
+			save(mangaId, state, rating, ticket, replace = true, previousTarget = previousTarget)
+			progress.remove(mangaId)
+			// Always adopt confirmed remote values, including a concurrent addition, without a reset write.
+			adopted || state.chapter > 0 || state.volume > 0 || rating > 0f || state.type != "wish"
 		}
-		val state = existing ?: throw IOException("MangaUpdates entry was not confirmed")
-		val rating = rating(state.seriesId, ticket)
-		save(mangaId, state, rating, ticket, replace = true)
-		progress.remove(mangaId)
-		// Always adopt confirmed remote values, including a concurrent addition, without a reset write.
-		adopted || state.chapter > 0 || state.volume > 0 || rating > 0f || state.type != "wish"
 	}
 
-	override suspend fun refreshRate(entity: ScrobblingEntity): ScrobblingEntity = operations.withLock {
-		val ticket = api.sessionTicket()
-		val current = association(entity.mangaId, ticket)
-		if (current.targetId != entity.targetId || current.id != entity.id) throw CancellationException("MangaUpdates association changed")
-		val state = remoteState(current.targetId, ticket) ?: throw MangaUpdatesHttpException(404)
-		save(current.mangaId, state, rating(current.targetId, ticket), ticket)
+	override suspend fun refreshRate(entity: ScrobblingEntity): ScrobblingEntity {
+		val context = MangaUpdatesEditContext(entity.mangaId, entity.targetId, api.sessionTicket())
+		return operations.withLock {
+			val ticket = context.ticket
+			val current = association(context)
+			if (current.targetId != entity.targetId || current.id != entity.id) throw CancellationException("MangaUpdates association changed")
+			val state = remoteState(current.targetId, ticket) ?: throw MangaUpdatesHttpException(404)
+			save(current.mangaId, state, rating(current.targetId, ticket), ticket)
+		}
 	}
 
-	override suspend fun updateRate(rateId: Int, mangaId: Long, chapter: Int) = operations.withLock {
+	override suspend fun updateRate(rateId: Int, mangaId: Long, chapter: Int) {
 		require(chapter >= 0)
-		val ticket = api.sessionTicket()
-		val entity = association(mangaId, ticket)
-		require(entity.id == rateId)
-		updateChapter(entity, chapter, ticket)
-		Unit
+		val context = captureEdit(mangaId)
+		operations.withLock {
+			val entity = association(context)
+			require(entity.id == rateId)
+			updateChapter(entity, chapter, context.ticket)
+		}
 	}
 
 	private suspend fun updateChapter(entity: ScrobblingEntity, chapter: Int, ticket: MangaUpdatesAuthTicket) {
@@ -204,10 +226,16 @@ class MangaUpdatesRepository internal constructor(
 		save(entity.mangaId, state, rating(entity.targetId, ticket), ticket)
 	}
 
-	override suspend fun updateRate(rateId: Int, mangaId: Long, rating: Float, status: String?, comment: String?, setStartDate: Boolean) = operations.withLock {
-		val ticket = api.sessionTicket()
-		val entity = association(mangaId, ticket)
-		require(entity.id == rateId)
+	override suspend fun updateRate(rateId: Int, mangaId: Long, rating: Float, status: String?, comment: String?, setStartDate: Boolean) {
+		val context = captureEdit(mangaId)
+		require(association(context).id == rateId)
+		updateRate(context, rating, status)
+	}
+
+	suspend fun updateRate(context: MangaUpdatesEditContext, rating: Float, status: String?) = operations.withLock {
+		val ticket = context.ticket
+		val mangaId = context.mangaId
+		val entity = association(context)
 		val changedStatus = status?.takeIf { it != entity.status }
 		val newRating = mangaUpdatesRatingValue(rating)
 		val changeRating = abs(rating - entity.rating) > 0.00001f
@@ -227,22 +255,43 @@ class MangaUpdatesRepository internal constructor(
 			if (association(mangaId, ticket).targetId != entity.targetId) throw CancellationException("MangaUpdates association changed")
 		}
 	}
-	suspend fun updateVolume(mangaId: Long, volume: Int) = operations.withLock {
+	suspend fun updateVolume(mangaId: Long, volume: Int) = updateVolume(captureEdit(mangaId), volume)
+
+	suspend fun updateVolume(context: MangaUpdatesEditContext, volume: Int) = operations.withLock {
 		require(volume >= 0)
-		val ticket = api.sessionTicket()
-		val entity = association(mangaId, ticket)
-		val state = updateRemote(mangaId, entity.targetId, ticket) { it.copy(volume = volume) }
-		save(mangaId, state, rating(entity.targetId, ticket), ticket)
+		val ticket = context.ticket
+		val entity = association(context)
+		val state = updateRemote(context.mangaId, entity.targetId, ticket) { it.copy(volume = volume) }
+		save(context.mangaId, state, rating(entity.targetId, ticket), ticket)
 		Unit
 	}
 
 	suspend fun enqueueProgress(mangaId: Long, chapter: Int, nsfw: Boolean) {
 		require(chapter >= 0)
 		if (!settings.isIncognitoModeEnabled(nsfw)) {
-			val ticket = api.sessionTicket()
-			val entity = association(mangaId, ticket)
-			progress.enqueue(MangaUpdatesPendingProgress(mangaId, entity.targetId, chapter, nsfw, ticket))
+			enqueueProgress(captureEdit(mangaId), chapter, nsfw)
 		}
+	}
+	suspend fun enqueueProgress(context: MangaUpdatesEditContext, chapter: Int, nsfw: Boolean) {
+		require(chapter >= 0)
+		if (!settings.isIncognitoModeEnabled(nsfw)) {
+			association(context)
+			progress.enqueue(MangaUpdatesPendingProgress(context.mangaId, context.targetId, chapter, nsfw, context.ticket))
+		}
+	}
+
+	/** Capture on the UI event, before launching an edit coroutine. */
+	fun captureEdit(mangaId: Long, targetId: Long, expectedGeneration: Long? = null): MangaUpdatesEditContext? {
+		require(targetId > 0)
+		val session = store.snapshot() ?: return null
+		if (expectedGeneration != null && session.generation != expectedGeneration) return null
+		return MangaUpdatesEditContext(mangaId, targetId, MangaUpdatesAuthTicket(session.token, session.generation))
+	}
+	private suspend fun captureEdit(mangaId: Long): MangaUpdatesEditContext {
+		val ticket = api.sessionTicket()
+		val entity = association(mangaId, ticket)
+		api.ensureCurrent(ticket)
+		return MangaUpdatesEditContext(mangaId, entity.targetId, ticket)
 	}
 	fun retryProgress(mangaId: Long) = progress.retry(mangaId)
 
@@ -302,7 +351,7 @@ class MangaUpdatesRepository internal constructor(
 				val old = remoteState(targetId, ticket) ?: throw MangaUpdatesHttpException(404)
 				val next = change(old)
 				if (next == old) old else {
-					eligible(mangaId, ticket)
+					ensureAssociation(mangaId, targetId, ticket)
 					api.request("POST", "lists/series/update", next.writeBody(), ticket)
 					val confirmed = remoteState(targetId, ticket) ?: throw IOException("MangaUpdates update was not confirmed")
 					if (change(confirmed) != confirmed) throw IOException("MangaUpdates update was not confirmed")
@@ -316,6 +365,7 @@ class MangaUpdatesRepository internal constructor(
 		for (attempt in 0..1) try {
 			eligible(mangaId, ticket)
 			if (abs(rating(id, ticket) - value / 10f) < 0.00001f) return
+			ensureAssociation(mangaId, id, ticket)
 			if (value == 0) api.request("DELETE", "series/$id/rating", ticket = ticket)
 			else api.request("PUT", "series/$id/rating", buildJsonObject { put("rating", value) }, ticket)
 			if (abs(rating(id, ticket) - value / 10f) >= 0.00001f) throw IOException("MangaUpdates rating was not confirmed")
@@ -333,8 +383,20 @@ class MangaUpdatesRepository internal constructor(
 		eligible(mangaId, ticket)
 		return db.getScrobblingDao().find(detailsService.id, mangaId)?.takeIf { it.targetId > 0 } ?: throw CancellationException("MangaUpdates association is unavailable")
 	}
-	private suspend fun save(mangaId: Long, state: MangaUpdatesRemoteState, rating: Float, ticket: MangaUpdatesAuthTicket, replace: Boolean = false): ScrobblingEntity = db.withTransaction {
+	private suspend fun association(context: MangaUpdatesEditContext): ScrobblingEntity {
+		val entity = association(context.mangaId, context.ticket)
+		api.ensureCurrent(context.ticket)
+		if (entity.targetId != context.targetId) throw CancellationException("MangaUpdates association changed")
+		return entity
+	}
+	private suspend fun ensureAssociation(mangaId: Long, targetId: Long?, ticket: MangaUpdatesAuthTicket) {
 		eligible(mangaId, ticket)
+		if (db.getScrobblingDao().find(detailsService.id, mangaId)?.targetId != targetId) throw CancellationException("MangaUpdates association changed")
+		api.ensureCurrent(ticket)
+	}
+	private suspend fun save(mangaId: Long, state: MangaUpdatesRemoteState, rating: Float, ticket: MangaUpdatesAuthTicket, replace: Boolean = false, previousTarget: Long? = null): ScrobblingEntity = db.withTransaction {
+		eligible(mangaId, ticket)
+		if (replace) ensureAssociation(mangaId, previousTarget, ticket)
 		if (!replace && association(mangaId, ticket).targetId != state.seriesId) throw CancellationException("MangaUpdates association changed")
 		// No provider rate id exists. The existing compound key includes service and local manga id.
 		val entity = ScrobblingEntity(detailsService.id, 0, mangaId, state.seriesId, state.type, state.chapter, null, rating)

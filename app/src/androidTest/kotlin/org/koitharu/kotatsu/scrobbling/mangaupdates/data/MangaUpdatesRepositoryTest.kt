@@ -8,6 +8,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.serialization.json.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -52,11 +53,11 @@ class MangaUpdatesRepositoryTest {
 		db.close()
 		preferences.forEach { app.deleteSharedPreferences(prefix + it) }
 	}
-	private fun repository(authorized: Boolean = true): MangaUpdatesRepository {
+	private fun repository(authorized: Boolean = true, operations: Mutex = Mutex()): MangaUpdatesRepository {
 		if (authorized && sessions.snapshot() == null) sessions.save("fixture-session", user, sessions.generation.value)
 		val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
 			.addInterceptor(MangaUpdatesInterceptor(sessions)).addInterceptor(transport).build()
-		return MangaUpdatesRepository(MangaUpdatesApi(client, sessions, MANGAUPDATES_API), sessions, db, settings, scope, MangaUpdatesWriteGate({ 0L }, {}))
+		return MangaUpdatesRepository(MangaUpdatesApi(client, sessions, MANGAUPDATES_API), sessions, db, settings, scope, MangaUpdatesWriteGate({ 0L }, {}), operations)
 	}
 	private suspend fun manga(id: Long = 41) = db.getMangaDao().upsert(MangaEntity(id, "Source title", null, "file:///fixture-$id.cbz", "file:///fixture-$id.cbz", 0f, false, null, "", null, null, null, null, "LOCAL", null))
 	private suspend fun linked(repo: MangaUpdatesRepository) { manga(); repo.createRate(41, target) }
@@ -287,6 +288,111 @@ class MangaUpdatesRepositoryTest {
 		assertEquals(writes, mutations().size)
 	}
 
+	@Test fun waitingExplicitEditsCannotUseAReplacementAccount() = runBlocking {
+		val operations = ObservedMutex()
+		val repo = repository(operations = operations); linked(repo)
+		val original = db.getScrobblingDao().find(6, 41)!!
+		val edits: List<suspend () -> Unit> = listOf(
+			{ repo.updateRate(0, 41, 0.6f, "complete", null, false) },
+			{ repo.updateRate(0, 41, 60) },
+			{ repo.updateVolume(41, 8) },
+			{ repo.createRate(41, target) },
+			{ repo.refreshRate(original) },
+		)
+		for ((index, edit) in edits.withIndex()) {
+			operations.queued = CompletableDeferred()
+			operations.lock()
+			val waiting = async(start = CoroutineStart.UNDISPATCHED) { edit() }
+			try {
+				withTimeout(5000) { operations.queued.await() }
+				transport.loginBody = """{"status":"success","context":{"session_token":"replacement-fixture-$index"}}"""
+				transport.profileId = index.toLong() + 2
+				repo.signIn("replacement-user", "fixture password")
+				val requests = transport.requests.size
+				operations.unlock()
+				try { withTimeout(5000) { waiting.await() }; fail("Expected stale initiating account") } catch (e: CancellationException) { if (e is TimeoutCancellationException) throw e }
+				assertEquals("A waiting edit must send no replacement-account requests", requests, transport.requests.size)
+				assertEquals(original.targetId, db.getScrobblingDao().find(6, 41)?.targetId)
+				assertEquals(original.chapter, db.getScrobblingDao().find(6, 41)?.chapter)
+			} finally {
+				if (operations.isLocked) operations.unlock()
+				waiting.cancelAndJoin()
+			}
+		}
+		assertTrue(mutations().isEmpty())
+		assertEquals(0.8f, db.getScrobblingDao().find(6, 41)!!.rating, 0f)
+	}
+
+	@Test fun anEditCapturedAtTheUiEventCannotAdoptASessionBeforeTheJobStarts() = runBlocking {
+		val repo = repository(); linked(repo)
+		val edit = repo.captureEdit(41, target)!!
+		transport.profileId = 2
+		transport.loginBody = """{"status":"success","context":{"session_token":"replacement-fixture"}}"""
+		repo.signIn("replacement-user", "fixture password")
+		val requests = transport.requests.size
+		try { repo.updateRate(edit, 0.6f, "complete"); fail("Expected stale UI context") } catch (_: CancellationException) { }
+		assertEquals(requests, transport.requests.size)
+		assertEquals("read", db.getScrobblingDao().find(6, 41)?.status)
+		assertNull(repo.captureEdit(41, target, edit.ticket.generation))
+	}
+
+	@Test fun associationReplacementWhileAnEditWaitsCannotRedirectItsMutation() = runBlocking {
+		val operations = ObservedMutex()
+		val repo = repository(operations = operations); linked(repo)
+		val original = db.getScrobblingDao().find(6, 41)!!
+		val edits: List<suspend () -> Unit> = listOf(
+			{ repo.updateRate(0, 41, 0.6f, "complete", null, false) },
+			{ repo.updateRate(0, 41, 60) },
+			{ repo.updateVolume(41, 8) },
+			{ repo.createRate(41, target) },
+			{ repo.refreshRate(original) },
+		)
+		for (edit in edits) {
+			db.getScrobblingDao().upsert(original)
+			operations.queued = CompletableDeferred(); operations.lock()
+			val waiting = async(start = CoroutineStart.UNDISPATCHED) { edit() }
+			try {
+				withTimeout(5000) { operations.queued.await() }
+				db.getScrobblingDao().upsert(ScrobblingEntity(6, 0, 41, target + 1, "wish", 2, null, 0.2f))
+				val requests = transport.requests.size
+				operations.unlock()
+				try { withTimeout(5000) { waiting.await() }; fail("Expected stale association") } catch (e: CancellationException) { if (e is TimeoutCancellationException) throw e }
+				assertEquals(requests, transport.requests.size)
+				assertEquals(target + 1, db.getScrobblingDao().find(6, 41)?.targetId)
+				assertEquals(2, db.getScrobblingDao().find(6, 41)?.chapter)
+			} finally {
+				if (operations.isLocked) operations.unlock()
+				waiting.cancelAndJoin()
+			}
+		}
+		assertTrue(mutations().isEmpty())
+	}
+
+	@Test fun associationChangesDuringAReadAreRecheckedBeforeAListOrRatingMutation() = runBlocking {
+		val repo = repository(); linked(repo)
+		val original = db.getScrobblingDao().find(6, 41)!!
+		for (path in listOf("/v1/lists/series/$target", "/v1/series/$target/rating")) {
+			db.getScrobblingDao().upsert(original)
+			transport.beforeReply = { request ->
+				if (request.path == path) runBlocking {
+					db.getScrobblingDao().upsert(ScrobblingEntity(6, 0, 41, target + 1, "wish", 2, null, 0.2f))
+				}
+			}
+			try { repo.updateRate(0, 41, 0.6f, if (path.contains("lists/series")) "complete" else null, null, false); fail("Expected stale association") } catch (_: CancellationException) { }
+			assertTrue(mutations().isEmpty())
+			assertTrue(transport.requests.none { it.method in setOf("PUT", "DELETE") && it.path.endsWith("/rating") })
+		}
+		transport.beforeReply = null
+	}
+
+	private class ObservedMutex(private val delegate: Mutex = Mutex()) : Mutex by delegate {
+		var queued = CompletableDeferred<Unit>()
+		override suspend fun lock(owner: Any?) {
+			if (delegate.isLocked) queued.complete(Unit)
+			delegate.lock(owner)
+		}
+	}
+
 	private fun count(table: String): Int = db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM $table").use { it.moveToFirst(); it.getInt(0) }
 
 	private class Sessions : MangaUpdatesSessionStore {
@@ -304,6 +410,7 @@ class MangaUpdatesRepositoryTest {
 		var loginCode = 200
 		var loginBody = """{"status":"success","context":{"session_token":"fixture-session"}}"""
 		var profileCode = 200
+		var profileId = 1L
 		var searchBody: String? = null
 		var failWrites = 0
 		var failureCode = 503
@@ -320,7 +427,7 @@ class MangaUpdatesRepositoryTest {
 			var code = 200
 			val body = when {
 				recorded.path == "/v1/account/login" -> { code = loginCode; loginBody }
-				recorded.path == "/v1/account/profile" -> { code = profileCode; """{"user_id":1,"username":"Fixture User"}""" }
+				recorded.path == "/v1/account/profile" -> { code = profileCode; """{"user_id":$profileId,"username":"Fixture User"}""" }
 				recorded.path == "/v1/account/logout" -> "{}"
 				recorded.path == "/v1/lists" -> lists
 				recorded.path == "/v1/series/search" -> searchBody ?: """{"results":[{"record":{"series_id":$id,"title":"Fixture title","url":"https://www.mangaupdates.com/series/fixture","image":{"url":{"original":"https://image.invalid/cover"}}}}]}"""

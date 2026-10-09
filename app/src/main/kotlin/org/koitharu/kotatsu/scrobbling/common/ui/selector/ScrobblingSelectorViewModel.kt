@@ -36,6 +36,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaType
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
 import org.koitharu.kotatsu.scrobbling.common.ui.selector.model.ScrobblerHint
+import org.koitharu.kotatsu.scrobbling.mangaupdates.domain.MangaUpdatesScrobbler
 import javax.inject.Inject
 
 @HiltViewModel
@@ -188,6 +189,9 @@ class ScrobblingSelectorViewModel @Inject constructor(
 			onClose.call(Unit)
 			return
 		}
+		val mangaUpdates = currentScrobbler as? MangaUpdatesScrobbler
+		val edit = mangaUpdates?.captureEdit(manga.id, targetId)
+		if (mangaUpdates != null && edit == null) return
 		doneJob = launchLoadingJob(Dispatchers.Default) {
 			if (isPrivateOnly()) {
 				onClose.call(Unit)
@@ -198,19 +202,22 @@ class ScrobblingSelectorViewModel @Inject constructor(
 				onClose.call(Unit)
 				return@launchLoadingJob
 			}
-			val canPushProgress = currentScrobbler.linkManga(
-				mangaId = manga.id,
-				targetId = targetId,
-				fallbackStatus = when {
-					history == null -> ScrobblingStatus.PLANNED
-					ReadingProgress.isCompleted(history.percent) -> ScrobblingStatus.COMPLETED
-					else -> ScrobblingStatus.READING
-				},
-			)
+			val fallbackStatus = when {
+				history == null -> ScrobblingStatus.PLANNED
+				ReadingProgress.isCompleted(history.percent) -> ScrobblingStatus.COMPLETED
+				else -> ScrobblingStatus.READING
+			}
+			val canPushProgress = if (mangaUpdates != null && edit != null) {
+				mangaUpdates.linkManga(edit, fallbackStatus)
+			} else {
+				currentScrobbler.linkManga(manga.id, targetId, fallbackStatus)
+			}
 			// A tracker that is already ahead of local history keeps its count; progress sync pulls it
 			// back into the app instead of the app pushing it backwards.
 			if (history != null && canPushProgress && !isPrivateOnly()) {
-				currentScrobbler.scrobble(
+				if (mangaUpdates != null && edit != null) {
+					mangaUpdates.scrobble(edit, manga, history.chapterId)
+				} else currentScrobbler.scrobble(
 					manga = manga,
 					chapterId = history.chapterId,
 				)

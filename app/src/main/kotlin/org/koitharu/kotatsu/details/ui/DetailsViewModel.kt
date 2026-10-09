@@ -90,6 +90,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPage
 import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerDetailsReadPolicy
 import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation
 import org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesRepository
+import org.koitharu.kotatsu.scrobbling.mangaupdates.domain.MangaUpdatesScrobbler
 import org.koitharu.kotatsu.scrobbling.common.domain.SyncProgressFromScrobblersUseCase
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
@@ -405,11 +406,14 @@ class DetailsViewModel @Inject constructor(
 	fun updateTrackerVolume(volume: Int) {
 		if (volume < 0 || volumeJob?.isActive == true) return
 		val key = volumeContext ?: return
+		val target = key.associations.singleOrNull { it.serviceId == ScrobblerService.MANGAUPDATES.id }?.targetId ?: return
+		val generation = key.sessions[ScrobblerService.MANGAUPDATES] ?: return
+		val edit = mangaUpdatesRepository.captureEdit(mangaId, target, generation) ?: return
 		_trackerVolume.value = _trackerVolume.value.copy(isLoading = true, isError = false)
 		volumeJob = viewModelScope.launch {
 			try {
 				if (!isVolumeContextCurrent(key)) return@launch
-				mangaUpdatesRepository.updateVolume(mangaId, volume)
+				mangaUpdatesRepository.updateVolume(edit, volume)
 				val confirmed = mangaUpdatesRepository.getVolume(mangaId)
 				if (isVolumeContextCurrent(key)) _trackerVolume.value = TrackerVolumeUiState(isRequested = true, volume = confirmed)
 			} catch (e: CancellationException) { throw e } catch (_: Exception) {
@@ -678,6 +682,12 @@ class DetailsViewModel @Inject constructor(
 
 	fun updateScrobbling(index: Int, rating: Float, status: ScrobblingStatus?) {
 		val scrobbler = getScrobbler(index) ?: return
+		if (scrobbler is MangaUpdatesScrobbler) {
+			val target = scrobblingInfo.value.getOrNull(index)?.targetId ?: return
+			val edit = scrobbler.captureEdit(mangaId, target) ?: return
+			launchJob(Dispatchers.Default) { scrobbler.updateScrobblingInfo(edit, rating, status) }
+			return
+		}
 		launchJob(Dispatchers.Default) {
 			scrobbler.updateScrobblingInfo(
 				mangaId = mangaId,
