@@ -403,7 +403,7 @@ class SmartLocalCoverPipelineTest {
     @Test fun thumbnailEncodingBoundsDimensionsAndKeepsValidImage() {
         val encoded = LocalCoverThumbnail.encode(png(Color.BLUE, 2048, 1024))!!
         val decoded = BitmapFactory.decodeByteArray(encoded, 0, encoded.size)!!
-        try { assertEquals(768, decoded.width); assertEquals(384, decoded.height) }
+        try { assertEquals(512, decoded.width); assertEquals(256, decoded.height) }
         finally { decoded.recycle() }
     }
 
@@ -514,7 +514,11 @@ class SmartLocalCoverPipelineTest {
         assertEquals(2, mangas.size)
         for (manga in mangas) {
             val derived = library.cover(manga.id)!!
-            assertArrayEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47), derived.copyOf(4))
+            val source = BitmapFactory.decodeByteArray(asset("static.${manga.title}"), 0, asset("static.${manga.title}").size)!!
+            val pixels = IntArray(source.width * source.height)
+            source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+            source.recycle()
+            if (pixels.any { (it ushr 24) != 255 }) assertPng(derived) else assertJpeg(derived)
             assertFalse(request(manga).image.asDrawable(context.resources) is Animatable)
         }
         assertEquals(2, counts.extract)
@@ -536,6 +540,134 @@ class SmartLocalCoverPipelineTest {
         assertFalse(static.image.asDrawable(context.resources) is Animatable)
         assertNotEquals(animated.memoryCacheKey, static.memoryCacheKey)
         assertEquals(2, counts.extract)
+    }
+
+    @Test fun opaqueAndTransparentRecipePreservesContentAndBoundsWithoutFlatteningAlpha() {
+        val opaque = LocalCoverThumbnail.encode(png(Color.BLUE, 2048, 1024))!!
+        assertJpeg(opaque)
+        val decoded = BitmapFactory.decodeByteArray(opaque, 0, opaque.size)!!
+        try {
+            assertEquals(512, decoded.width); assertEquals(256, decoded.height)
+            assertTrue(Color.blue(decoded.getPixel(100, 100)) > 245)
+            assertTrue(Color.red(decoded.getPixel(100, 100)) < 10)
+        } finally { decoded.recycle() }
+        val alpha = LocalCoverThumbnail.encode(png(0x6600ff00, 2048, 1024))!!
+        assertPng(alpha)
+        val transparent = BitmapFactory.decodeByteArray(alpha, 0, alpha.size)!!
+        try { assertEquals(0x66, Color.alpha(transparent.getPixel(100, 100))) }
+        finally { transparent.recycle() }
+    }
+
+    @Test fun clearBypassesCoilMemoryAndKeepsRemotePresentationReaderAndIndexDomains() = runBlocking {
+        put("book.pdf", pdf(Color.RED)); library.scan()
+        val manga = library.state.value.books.single().toManga(false)
+        val cold = request(manga)
+        request(manga)
+        assertEquals(1, counts.extract)
+        val memory = loader!!.memoryCache!!
+        val beforeEntries = memory.keys.toSet()
+        val index = library.state.value
+        val outside = File(context.cacheDir, "unrelated-cache/keep").apply { parentFile!!.mkdirs(); writeText("keep") }
+        library.clearCoverCache()
+        assertEquals(beforeEntries, memory.keys.toSet()) // No global memory clear.
+        assertSame(index, library.state.value)
+        assertEquals("keep", outside.readText())
+        assertEquals(0, cache.stats().entries)
+        val fresh = request(manga)
+        assertNotEquals(cold.memoryCacheKey, fresh.memoryCacheKey)
+        assertEquals(2, counts.extract)
+        request(manga)
+        assertEquals(2, counts.extract)
+        assertEquals(1L, cache.diagnostics.snapshot().count(SmartLocalCoverDiagnostics.Reason.CLEAR))
+    }
+
+    @Test fun pdfStageMeasurementsIdentifyDirectWarmAndPresentationMemoryWork() = runBlocking {
+        put("book.pdf", pdf(Color.RED)); library.scan()
+        val manga = library.state.value.books.single().toManga(false)
+        request(manga); request(manga)
+        val snapshot = cache.diagnostics.snapshot()
+        for (reason in listOf(SmartLocalCoverDiagnostics.Reason.SOURCE_OPEN, SmartLocalCoverDiagnostics.Reason.PDF_DESCRIPTOR_OPEN,
+            SmartLocalCoverDiagnostics.Reason.PDF_RENDERER_OPEN, SmartLocalCoverDiagnostics.Reason.PDF_RENDER,
+            SmartLocalCoverDiagnostics.Reason.ENCODE, SmartLocalCoverDiagnostics.Reason.GENERATED, SmartLocalCoverDiagnostics.Reason.PUBLISHED)) {
+            assertEquals("Missing or duplicate $reason", 1L, snapshot.count(reason))
+        }
+        assertEquals(1L, snapshot.count(SmartLocalCoverDiagnostics.Reason.PRESENTATION_MEMORY_HIT))
+        loader!!.memoryCache!!.clear(); call("fixture-metrics-reset"); request(manga)
+        assertEquals(1L, cache.diagnostics.snapshot().count(SmartLocalCoverDiagnostics.Reason.CACHE_HIT))
+        assertEquals(0, metrics().getInt("opens"))
+        assertEquals(0, metrics().getInt("queries"))
+    }
+
+    @Test fun recipeSurveyMeasuresLegacyAndNewBytesAndEncodingWithoutDeviceClaims() {
+        val oldSizes = ArrayList<Int>(); val newSizes = ArrayList<Int>()
+        var oldNanos = 0L; var newNanos = 0L
+        repeat(12) { seed ->
+            val bitmap = texturedBitmap(1024, 1536, seed)
+            val input = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+            val old = Bitmap.createScaledBitmap(bitmap, 512, 768, true)
+            bitmap.recycle()
+            try {
+                var started = System.nanoTime()
+                val oldBytes = ByteArrayOutputStream().also { old.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+                oldNanos += System.nanoTime() - started
+                started = System.nanoTime()
+                val newBytes = LocalCoverThumbnail.encode(input)!!
+                newNanos += System.nanoTime() - started
+                oldSizes += oldBytes.size; newSizes += newBytes.size
+                assertJpeg(newBytes)
+            } finally { old.recycle() }
+        }
+        oldSizes.sort(); newSizes.sort()
+        assertTrue("Representation bytes did not fall", newSizes[6] < oldSizes[6] / 2)
+        android.util.Log.i("SmartLocalCoverSurvey", "SYNTHETIC recipe=768PNG->512JPEG82 n=12 median=${oldSizes[6]}->${newSizes[6]} p95=${oldSizes.last()}->${newSizes.last()} oldEncodeNs=$oldNanos newDecodeResizeEncodeNs=$newNanos")
+    }
+
+    @Test fun mixed350TitleColdRevisitRestartAndUnchangedRefreshNeverThrash() = runBlocking {
+        val bitmap = texturedBitmap(256, 384, 17)
+        val image = try { ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray() }
+        finally { bitmap.recycle() }
+        val pdf = pdf(Color.BLUE); val archive = archive(image)
+        repeat(350) { index ->
+            when (index % 3) {
+                0 -> put("pdf-$index.pdf", pdf)
+                1 -> put("archive-$index.cbz", archive)
+                else -> put("image-$index/001.png", image)
+            }
+        }
+        library.scan(); call("fixture-metrics-reset")
+        val books = library.state.value.books
+        assertEquals(350, books.size)
+        val start = System.nanoTime()
+        books.chunked(6).forEach { chunk -> chunk.map { book -> async { assertNotNull(library.cover(book.id)) } }.awaitAll() }
+        val coldNanos = System.nanoTime() - start
+        val report = cache.report()
+        assertEquals(350, report.storage.entries)
+        assertEquals(350, counts.extract)
+        assertEquals(0L, report.diagnostics.count(SmartLocalCoverDiagnostics.Reason.EVICT_BYTES))
+        assertEquals(0L, report.diagnostics.count(SmartLocalCoverDiagnostics.Reason.EVICT_ENTRY_COUNT))
+        assertTrue(contentFiles().isEmpty())
+        repeat(3) { books.forEach { assertNotNull(library.cover(it.id)) } }
+        assertEquals(350, counts.extract)
+        owners(); call("fixture-metrics-reset")
+        books.forEach { assertNotNull(library.cover(it.id)) }
+        assertEquals(0, metrics().getInt("opens")); assertEquals(0, metrics().getInt("queries"))
+        library.scan(); call("fixture-metrics-reset")
+        library.state.value.books.forEach { assertNotNull(library.cover(it.id)) }
+        assertEquals(350, counts.extract)
+        assertEquals(0, metrics().getInt("opens")); assertEquals(0, metrics().getInt("queries"))
+        android.util.Log.i("SmartLocalCoverSurvey", "SYNTHETIC mixed350 coldNs=$coldNanos bytes=${report.storage.bytes} median=${report.storage.medianEntryBytes} p90=${report.storage.p90EntryBytes} p95=${report.storage.p95EntryBytes} projected100=${report.storage.projectedP95Bytes(100)} projected350=${report.storage.projectedP95Bytes(350)} projected1000=${report.storage.projectedP95Bytes(1000)}")
+    }
+
+    private fun assertJpeg(bytes: ByteArray) = assertArrayEquals(byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte()), bytes.copyOf(3))
+    private fun assertPng(bytes: ByteArray) = assertArrayEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47), bytes.copyOf(4))
+    private fun texturedBitmap(width: Int, height: Int, seed: Int): Bitmap {
+        val random = java.util.Random(seed.toLong())
+        val pixels = IntArray(width * height) { index ->
+            val noise = random.nextInt(31)
+            Color.rgb(((index % width) * 255 / width + noise).coerceAtMost(255),
+                ((index / width) * 255 / height + noise).coerceAtMost(255), (seed * 17 + noise) and 255)
+        }
+        return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
     }
 
     private fun asset(name: String) = InstrumentationRegistry.getInstrumentation().context.assets
@@ -581,8 +713,9 @@ class SmartLocalCoverPipelineTest {
 
     private fun owners() {
         val documents = LocalDocuments(context)
-        reader = CountingReader(context, documents, counts)
-        cache = SmartLocalCoverCache(context)
+        val diagnostics = SmartLocalCoverDiagnostics()
+        reader = CountingReader(context, documents, counts, diagnostics)
+        cache = SmartLocalCoverCache(context, diagnostics)
         library = SmartLocalLibrary(context, documents, reader, repository, database, cache)
     }
 
@@ -652,7 +785,7 @@ class SmartLocalCoverPipelineTest {
         fun rendered() { renders.incrementAndGet() }
         val descriptors = java.util.Collections.synchronizedList(ArrayList<ParcelFileDescriptor>())
     }
-    private class CountingReader(context: Context, documents: LocalDocuments, val counts: Counts) : LocalContentReader(context, documents) {
+    private class CountingReader(context: Context, documents: LocalDocuments, val counts: Counts, diagnostics: SmartLocalCoverDiagnostics) : LocalContentReader(context, documents, diagnostics) {
         var directGate: (() -> Unit)? = null
         var materializedGate: (() -> Unit)? = null
         internal override suspend fun cover(plan: LocalCoverPlan, publish: suspend (GeneratedLocalCover) -> ByteArray): ByteArray? {
@@ -677,3 +810,4 @@ class SmartLocalCoverPipelineTest {
         override fun getSharedPreferences(name: String, mode: Int): SharedPreferences = super.getSharedPreferences("$name-$suffix", mode)
     }
 }
+

@@ -78,6 +78,9 @@ class SmartLocalCoverCache internal constructor(
                     }
                 }
                 result.bytes
+            }.also { bytes ->
+                if (bytes == null) diagnostics.record(Event(Reason.GENERATION_FAILED, cacheKey = key,
+                    elapsedNanos = System.nanoTime() - started))
             } } catch (error: Exception) {
                 diagnostics.record(Event(if (error is CancellationException) Reason.CANCELLED else Reason.GENERATION_FAILED,
                     cacheKey = key, elapsedNanos = System.nanoTime() - started))

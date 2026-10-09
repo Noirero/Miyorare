@@ -323,6 +323,12 @@ class SmartLocalLibrary @Inject constructor(
     suspend fun coverCacheReport(): SmartLocalCoverCacheReport = coverCache.report()
     suspend fun clearCoverCache() = coverCache.clear()
     fun resetCoverDiagnostics() = coverCache.resetDiagnostics()
+    internal fun recordCoverPresentation(id: Long, memoryHit: Boolean, elapsedNanos: Long) {
+        coverCache.diagnostics.record(SmartLocalCoverDiagnostics.Event(
+            if (memoryHit) SmartLocalCoverDiagnostics.Reason.PRESENTATION_MEMORY_HIT else SmartLocalCoverDiagnostics.Reason.PRESENTATION_LOAD,
+            cacheKey = coverDigest(id.toString().toByteArray()), elapsedNanos = elapsedNanos,
+        ))
+    }
 
     private suspend fun coverPlan(id: Long): Pair<LocalBook, LocalCoverPlan>? {
         val book = book(id) ?: return null

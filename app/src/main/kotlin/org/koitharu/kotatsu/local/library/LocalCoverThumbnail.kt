@@ -13,9 +13,9 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import kotlin.math.roundToInt
 
-/** Lossless presentation-sized cover. Bounds decoding before allocating the bitmap. */
+/** Format-aware presentation-sized cover. Bounds decoding before allocating the bitmap. */
 internal object LocalCoverThumbnail {
-    const val MAX_EDGE = 768
+    const val MAX_EDGE = LocalCoverRecipe.STATIC_MAX_EDGE
 
     /** Preserve encoded animation; eligibility changes persistence, never its presentation. */
     fun prepare(bytes: ByteArray, candidateIndex: Int): GeneratedLocalCover? {
@@ -25,7 +25,7 @@ internal object LocalCoverThumbnail {
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         val cacheable = animated == true && bytes.size <= SmartLocalCoverCache.MAX_THUMBNAIL_BYTES &&
-            maxOf(bounds.outWidth, bounds.outHeight) <= MAX_EDGE
+            maxOf(bounds.outWidth, bounds.outHeight) <= LocalCoverRecipe.ANIMATION_MAX_EDGE
         return GeneratedLocalCover(bytes, candidateIndex, cacheable)
     }
 
@@ -84,8 +84,7 @@ internal object LocalCoverThumbnail {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > MAX_EDGE * 2) sample *= 2
+        val sample = LocalCoverRecipe.sampleSize(bounds.outWidth, bounds.outHeight)
         val options = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }
         var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
         try {
@@ -100,10 +99,29 @@ internal object LocalCoverThumbnail {
                     (bitmap.height * scale).roundToInt().coerceAtLeast(1), true)
                 if (scaled !== bitmap) { bitmap.recycle(); bitmap = scaled }
             }
-            val output = ByteArrayOutputStream()
-            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) throw IOException("Cannot encode local thumbnail")
-            return output.toByteArray()
+            return encodeBitmap(bitmap)
         } finally { bitmap.recycle() }
+    }
+
+    /** PDF callers already render to the target; do not decode/transcode their encoded output. */
+    fun encodeBitmap(bitmap: Bitmap): ByteArray {
+        val transparent = hasTransparency(bitmap)
+        val output = ByteArrayOutputStream()
+        val format = if (transparent) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+        val quality = if (transparent) 100 else LocalCoverRecipe.JPEG_QUALITY
+        if (!bitmap.compress(format, quality, output)) throw IOException("Cannot encode local thumbnail")
+        return output.toByteArray()
+    }
+
+    // hasAlpha is a capability flag. An opaque ARGB PNG should still take the compact JPEG path.
+    private fun hasTransparency(bitmap: Bitmap): Boolean {
+        if (!bitmap.hasAlpha()) return false
+        val row = IntArray(bitmap.width)
+        for (y in 0 until bitmap.height) {
+            bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
+            if (row.any { (it ushr 24) != 255 }) return true
+        }
+        return false
     }
 
     private fun orientation(bytes: ByteArray): Matrix {
@@ -123,3 +141,4 @@ internal object LocalCoverThumbnail {
         }
     }
 }
+

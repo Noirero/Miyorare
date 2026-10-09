@@ -8,6 +8,8 @@ import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.withContext
 import okhttp3.internal.platform.PlatformRegistry
+import org.koitharu.kotatsu.local.library.LocalCoverRecipe
+import org.koitharu.kotatsu.local.library.LocalCoverThumbnail
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -83,26 +85,37 @@ object LocalPdfCache {
 	}.getOrNull()
 
 	/** Transient cover derivation for Smart Local. Persistence belongs to SmartLocalCoverCache. */
-	fun renderCoverThumbnail(pdf: File): ByteArray? = withRenderPermit {
-		openRenderer(pdf, ::encodeCoverThumbnail)
+	fun renderCoverThumbnail(pdf: File, onStage: (String, Long) -> Unit = { _, _ -> }): ByteArray? = withRenderPermit {
+		val started = System.nanoTime()
+		ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+			onStage("PDF_DESCRIPTOR_OPEN", System.nanoTime() - started)
+			renderThumbnailDescriptor(descriptor, onStage)
+		}
 	}
 
 	/** Cover-only source access. PdfRenderer validates seekability and owns a usable descriptor;
 	 * the caller also scopes it so constructor failures cannot leak the original descriptor.
 	 * Uses the same app-wide render limit, dimensions and encoder as the materialized fallback.
 	 */
-	fun renderCoverThumbnail(descriptor: ParcelFileDescriptor): ByteArray? = withRenderPermit {
-		PdfRenderer(descriptor).use(::encodeCoverThumbnail)
+	fun renderCoverThumbnail(descriptor: ParcelFileDescriptor, onStage: (String, Long) -> Unit = { _, _ -> }): ByteArray? = withRenderPermit {
+		renderThumbnailDescriptor(descriptor, onStage)
 	}
 
-	private fun encodeCoverThumbnail(renderer: PdfRenderer): ByteArray? {
-		if (renderer.pageCount <= 0) return null
-		val bitmap = renderBitmap(renderer, 0, COVER_MAX_RENDER_DIMENSION)
-		try {
-			val output = ByteArrayOutputStream()
-			if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) throw IOException("Cannot encode PDF cover")
-			return output.toByteArray()
-		} finally { bitmap.recycle() }
+	private fun renderThumbnailDescriptor(descriptor: ParcelFileDescriptor, onStage: (String, Long) -> Unit): ByteArray? {
+		val started = System.nanoTime()
+		return PdfRenderer(descriptor).use { renderer ->
+			onStage("PDF_RENDERER_OPEN", System.nanoTime() - started)
+			if (renderer.pageCount <= 0) return@use null
+			val renderStarted = System.nanoTime()
+			val bitmap = renderBitmap(renderer, 0, LocalCoverRecipe.STATIC_MAX_EDGE)
+			onStage("PDF_RENDER", System.nanoTime() - renderStarted)
+			try {
+				// The white render background is opaque even though ARGB is required by PdfRenderer.
+				bitmap.setHasAlpha(false)
+				val encodeStarted = System.nanoTime()
+				LocalCoverThumbnail.encodeBitmap(bitmap).also { onStage("ENCODE", System.nanoTime() - encodeStarted) }
+			} finally { bitmap.recycle() }
+		}
 	}
 
 	/**
@@ -287,3 +300,4 @@ object LocalPdfCache {
 		}
 	}
 }
+
