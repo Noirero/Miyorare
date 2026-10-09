@@ -252,4 +252,29 @@ class SmartLocalCoverCacheTest {
     private fun node(name: String = "book.pdf", modified: Long = 1, size: Long = 100) =
         Node(name, "content://test/$name", name, false, size, modified)
     private fun plan(vararg nodes: Node) = LocalCoverPlan("root", nodes.toList(), 1)
+
+    @Test fun baselineVersionTwoRecipeInvalidatesOnceAndThenReusesAcrossOwnerRecreation(): Unit = runBlocking {
+        val directory = temporary.newFolder()
+        val source = node()
+        val versionTwo = ByteArrayOutputStream().also { bytes -> DataOutputStream(bytes).use { out ->
+            out.writeInt(2); out.writeUTF("root")
+            out.writeUTF(source.key); out.writeUTF(source.uri); out.writeUTF(source.name)
+            out.writeLong(source.size); out.writeLong(source.modified)
+        } }.toByteArray()
+        val oldPayload = byteArrayOf(1)
+        DataOutputStream(File(directory, "${coverDigest("42".toByteArray())}.thumb").outputStream()).use { out ->
+            out.writeInt(0x534C4301); out.writeInt(0); out.writeUTF(coverDigest(versionTwo))
+            out.writeInt(oldPayload.size); out.writeUTF(coverDigest(oldPayload)); out.write(oldPayload)
+        }
+        val current = plan(source)
+        val cache = SmartLocalCoverCache(directory)
+        var generations = 0
+        assertArrayEquals(byteArrayOf(2), cache.getOrGenerate(42, current) { generations++; GeneratedLocalCover(byteArrayOf(2), 0) })
+        assertEquals(1L, cache.diagnostics.snapshot().count(SmartLocalCoverDiagnostics.Reason.MISS_FINGERPRINT))
+        assertArrayEquals(byteArrayOf(2), SmartLocalCoverCache(directory).getOrGenerate(42, current) {
+            generations++; GeneratedLocalCover(byteArrayOf(3), 0)
+        })
+        assertEquals(1, generations)
+    }
 }
+

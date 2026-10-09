@@ -853,6 +853,38 @@ class SmartLocalCoverPipelineTest {
         finally { bitmap.recycle() }
     }
 
+    @Test fun pdfHeavyAndArchiveHeavy100TitleCollectionsRemainWarmAndBounded(): Unit = runBlocking {
+        val surveys = JSONArray()
+        for (extension in listOf("pdf", "cbz")) {
+            cache.clear(); call("fixture-reset")
+            val heavy = if (extension == "pdf") pdf(Color.BLUE) else archive(png(Color.BLUE))
+            repeat(100) { index ->
+                if (index < 80) put("heavy-$index.$extension", heavy) else put("Images-$index/001.png", png(Color.GREEN))
+            }
+            library.scan(); call("fixture-metrics-reset")
+            val books = library.state.value.books
+            assertEquals(100, books.size)
+            val start = System.nanoTime()
+            books.chunked(6).forEach { chunk -> chunk.map { book -> async { assertNotNull(library.cover(book.id)) } }.awaitAll() }
+            val elapsed = System.nanoTime() - start
+            val report = cache.report()
+            assertEquals(100, report.storage.entries)
+            assertTrue(report.storage.bytes <= report.storage.maxBytes)
+            assertEquals(0L, report.diagnostics.count(SmartLocalCoverDiagnostics.Reason.EVICT_BYTES))
+            assertEquals(0L, report.diagnostics.count(SmartLocalCoverDiagnostics.Reason.EVICT_ENTRY_COUNT))
+            assertEquals(100, metrics().getInt("opens"))
+            assertEquals(0, counts.materialize); assertTrue(contentFiles().isEmpty()); assertClosedDescriptors()
+            owners(); call("fixture-metrics-reset")
+            books.forEach { assertNotNull(library.cover(it.id)) }
+            assertEquals(0, metrics().getInt("opens")); assertEquals(0, metrics().getInt("queries"))
+            surveys.put(JSONObject().put("heavyFormat", extension).put("heavyTitles", 80).put("imageTitles", 20)
+                .put("coldNanos", elapsed).put("entries", report.storage.entries).put("bytes", report.storage.bytes)
+                .put("p95EntryBytes", report.storage.p95EntryBytes).put("warmSourceOpens", metrics().getInt("opens")))
+        }
+        writeSurvey("format-heavy", JSONObject().put("dataset", "SYNTHETIC_TWO_100_TITLE_FORMAT_HEAVY_COLLECTIONS")
+            .put("recipe", LocalCoverRecipe.IDENTITY).put("collections", surveys))
+    }
+
     // Kept outside the per-test FixtureContext, so the existing CI job can collect exact-head
     // measurement evidence after teardown. Contains fixture numbers only, not user source paths.
     private fun writeSurvey(name: String, report: JSONObject) {

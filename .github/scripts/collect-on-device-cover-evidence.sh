@@ -5,7 +5,7 @@ set -euo pipefail
 # The fixture reports contain synthetic numeric measurements only.
 report_dir=app/build/reports/on-device-cover
 mkdir -p "$report_dir"
-for survey in recipe mixed350 pdf archives; do
+for survey in recipe mixed350 pdf archives format-heavy; do
     adb shell run-as org.noirero.miyorare.debug cat "files/on-device-cover-survey/$survey.json" > "$report_dir/$survey.json"
     python3 -m json.tool "$report_dir/$survey.json"
 done
