@@ -5,6 +5,11 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.*
 import org.junit.Test
+import okhttp3.Authenticator
+import okhttp3.CookieJar
+import okhttp3.Dns
+import okhttp3.OkHttpClient
+import org.koitharu.kotatsu.core.network.CurlLoggingInterceptor
 import org.koitharu.kotatsu.scrobbling.common.domain.model.*
 
 class ShikimoriTrackerDetailsTest {
@@ -58,5 +63,22 @@ class ShikimoriTrackerDetailsTest {
 	@Test fun `invalid URL schemes and embedded credentials are rejected`() {
 		assertNull(shikimoriUrl("javascript:alert(1)"))
 		assertNull(shikimoriUrl("https://user:pass@host/path"))
+	}
+
+	@Test fun `public client preserves DNS and proxy while excluding cookies auth and redirects`() {
+		val dns = Dns { emptyList() }
+		val base = OkHttpClient.Builder().dns(dns).authenticator { _, _ -> null }
+			.addInterceptor(CurlLoggingInterceptor()).build()
+		val client = shikimoriDetailsClient(base)
+		assertSame(dns, client.dns)
+		assertSame(base.proxySelector, client.proxySelector)
+		assertSame(base.proxyAuthenticator, client.proxyAuthenticator)
+		assertSame(Authenticator.NONE, client.authenticator)
+		assertSame(CookieJar.NO_COOKIES, client.cookieJar)
+		assertNull(client.cache)
+		assertFalse(client.followRedirects)
+		assertFalse(client.followSslRedirects)
+		assertTrue(client.callTimeoutMillis > 0)
+		assertTrue(client.interceptors.none { it is CurlLoggingInterceptor })
 	}
 }

@@ -51,10 +51,10 @@ invalid association cannot authorize a guessed replacement. No write API is call
 
 Anonymous reads on 2026-10-09 verified `.one` similar redirects to `.io`, `.io`
 GraphQL roles and `.io` Similar Manga. Supplemental Shikimori uses a public,
-credential-free client at `.io`, with normal TLS, finite timeouts, no cookie store,
-no logger and redirects disabled. Legacy `.one` OAuth/tracking is unchanged.
-This scoped public client does not inherit the application's custom proxy/DoH
-configuration. Kitsu related collections at `kitsu.app` returned current
+credential-free client at `.io`, retaining base networking/proxy/DoH/rate-limit
+configuration with finite timeouts, no shared cookies/cache, no Curl logger and
+redirects disabled. It uses the base client, not the legacy bearer client.
+Legacy `.one` OAuth/tracking is unchanged. Kitsu related collections at `kitsu.app` returned current
 mediaCharacters/mediaStaff plus matching included resources and collection links.
 
 Fixture tests need no network or account credentials. Local isolated JVM execution

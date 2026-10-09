@@ -2,11 +2,14 @@ package org.koitharu.kotatsu.scrobbling.shikimori.data
 
 import kotlinx.serialization.json.*
 import okhttp3.OkHttpClient
+import okhttp3.Authenticator
+import okhttp3.CookieJar
 import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.koitharu.kotatsu.parsers.util.await
+import org.koitharu.kotatsu.core.network.CurlLoggingInterceptor
 import org.koitharu.kotatsu.scrobbling.common.data.*
 import org.koitharu.kotatsu.scrobbling.common.domain.model.*
 import java.io.IOException
@@ -15,10 +18,8 @@ import java.util.concurrent.TimeUnit
 internal const val SHIKIMORI_DETAILS_ORIGIN = "https://shikimori.io"
 
 /** Public catalog only. Do not forward legacy .one OAuth credentials across a redirect. */
-internal class ShikimoriDetailsApi {
-	private val client = OkHttpClient.Builder()
-		.connectTimeout(20, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS)
-		.callTimeout(40, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build()
+internal class ShikimoriDetailsApi(baseHttpClient: OkHttpClient) {
+	private val client = shikimoriDetailsClient(baseHttpClient)
 
 	suspend fun people(target: TrackerTarget, content: TrackerContent, page: TrackerPage): TrackerResult<TrackerPerson> {
 		require(target.service == ScrobblerService.SHIKIMORI && page.number == 1 && page.url == null)
@@ -43,6 +44,19 @@ internal class ShikimoriDetailsApi {
 		Json.parseToJsonElement(checkNotNull(response.body).string())
 	}
 }
+
+/** Retain application proxy/DoH/rate-limit behavior, without the legacy provider auth client. */
+internal fun shikimoriDetailsClient(baseHttpClient: OkHttpClient): OkHttpClient = baseHttpClient.newBuilder().apply {
+	authenticator(Authenticator.NONE)
+	cookieJar(CookieJar.NO_COOKIES)
+	cache(null)
+	interceptors().removeAll { it is CurlLoggingInterceptor }
+	networkInterceptors().removeAll { it is CurlLoggingInterceptor }
+	readTimeout(30, TimeUnit.SECONDS)
+	callTimeout(40, TimeUnit.SECONDS)
+	followRedirects(false)
+	followSslRedirects(false)
+}.build()
 
 internal fun shikimoriUrl(value: String?): String? {
 	if (value == null) return null

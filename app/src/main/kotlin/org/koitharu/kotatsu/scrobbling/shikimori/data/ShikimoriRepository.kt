@@ -9,6 +9,7 @@ import okhttp3.Request
 import org.json.JSONObject
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.util.ext.toRequestBody
 import org.koitharu.kotatsu.parsers.util.await
 import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
@@ -44,6 +45,7 @@ private const val MANGA_PAGE_SIZE = 10
 class ShikimoriRepository @Inject constructor(
 	@ApplicationContext context: Context,
 	@ScrobblerType(ScrobblerService.SHIKIMORI) private val okHttp: OkHttpClient,
+	@BaseHttpClient private val baseHttpClient: OkHttpClient,
 	@ScrobblerType(ScrobblerService.SHIKIMORI) private val storage: ScrobblerStorage,
 	private val db: MangaDatabase,
 ) : ScrobblerRepository, TrackerDetailsProvider {
@@ -51,7 +53,7 @@ class ShikimoriRepository @Inject constructor(
 	override val detailsService = ScrobblerService.SHIKIMORI
 	override val detailsCapabilities = setOf(TrackerContent.CHARACTERS, TrackerContent.STAFF, TrackerContent.RECOMMENDATIONS)
 
-	private val detailsApi by lazy { ShikimoriDetailsApi() }
+	private val detailsApi by lazy { ShikimoriDetailsApi(baseHttpClient) }
 
 	override suspend fun loadCharacters(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
 		detailsApi.people(target, TrackerContent.CHARACTERS, page)
