@@ -160,6 +160,8 @@ class DetailsViewModel @Inject constructor(
 		val initialDetails = (navigationManga ?: intent.manga)?.let(::MangaDetails)
 		mangaDetails.value = initialDetails
 		readingState.value = navigationHistory?.let(::ReaderState)
+		// Named scanlator/language branches have no null-key entry. Select a usable branch alongside
+		// the cached snapshot so the chapter count/list do not wait for the source refresh collector.
 		if (initialDetails != null && initialDetails.allChapters.isNotEmpty()) {
 			val branches = initialDetails.chapters.keys
 			selectedBranch.value = if (null in branches) null else branches.first()
@@ -210,6 +212,8 @@ class DetailsViewModel @Inject constructor(
 				.filter { changed ->
 					val local = mangaDetails.value?.local ?: return@filter false
 					if (changed == null) {
+						// Null means a whole local container was removed. Ignore unrelated removals while
+						// this title's root still exists; one stat is enough to avoid a recursive size walk.
 						!local.file.exists()
 					} else {
 						changed.manga.id == local.manga.id || changed.file == local.file
@@ -240,6 +244,9 @@ class DetailsViewModel @Inject constructor(
 		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
+	// Contextual/genre recommendations are independent from Related Titles. They begin with visibility
+	// disabled in the ViewModel, so a persisted closed eye never triggers source/network work before
+	// Compose has restored the user's preference. mapLatest cancels the in-flight load when hidden.
 	val genreRecommendations: StateFlow<List<MangaListModel>> = combine(
 		mangaDetails,
 		genreRecommendationsVisible,
@@ -298,6 +305,8 @@ class DetailsViewModel @Inject constructor(
 				remoteManga.value = interactor.findRemote(manga.toManga())
 			}
 		}
+		// Re-apply the override as soon as it changes in the DB so edits from the override editor
+		// are reflected instantly, without waiting for a manual reload or re-entering the screen.
 		mangaDataRepository.observeOverridesTrigger(emitInitialState = false)
 			.onEach {
 				val current = mangaDetails.value ?: return@onEach
@@ -306,6 +315,10 @@ class DetailsViewModel @Inject constructor(
 			.withErrorHandling()
 			.launchIn(viewModelScope + Dispatchers.Default)
 
+		// Observe every committed Room snapshot. The reconciliation below already no-ops when the
+		// chapter list is identical, while consuming the first emission avoids an ordering assumption
+		// that could discard the first meaningful DB update during cold-start/process recreation.
+		// The query is manga-scoped and distinctUntilChanged() suppresses unrelated table writes.
 		mangaDataRepository.observeChapters(mangaId)
 			.mapLatest { chapters -> syncCachedChaptersWhenLoadIdle(chapters) }
 			.withErrorHandling()
@@ -378,6 +391,7 @@ class DetailsViewModel @Inject constructor(
 		}
 	}
 
+	/** Turning the global Related Titles control off must stop network/source enrichment immediately. */
 	private fun clearExpandedRelated() {
 		expandedRelatedGeneration++
 		expandedRelatedJob?.cancel()
@@ -385,6 +399,7 @@ class DetailsViewModel @Inject constructor(
 		_expandedRelated.value = DetailsRelatedUiState()
 	}
 
+	/** Stop enrichment when Details leaves the foreground. Partial groups stay available. */
 	fun pauseExpandedRelated() {
 		val job = expandedRelatedJob ?: return
 		if (!job.isActive) return
@@ -394,6 +409,7 @@ class DetailsViewModel @Inject constructor(
 		_expandedRelated.value = _expandedRelated.value.copy(isLoading = false)
 	}
 
+	/** Resume only a discovery that the user had already reached before leaving Details. */
 	fun resumeExpandedRelatedIfNeeded() {
 		val state = _expandedRelated.value
 		if (state.isRequested && !state.isComplete && !state.isLoading) {
@@ -406,8 +422,14 @@ class DetailsViewModel @Inject constructor(
 		loadingJob = doLoad(force = true)
 	}
 
+	/**
+	 * The EPUB backing this entry, or null when there is nothing to export. A downloaded novel already
+	 * *is* an epub, so exporting is a copy rather than a rebuild — and like LNReader, only downloaded
+	 * chapters can be exported.
+	 */
 	fun getLocalEpubFile(): File? {
 		mangaDetails.value?.local?.file?.takeIf { it.isEpubFile }?.let { return it }
+		// A book opened straight from local storage has no separate "local" copy to look up.
 		val manga = getMangaOrNull() ?: return null
 		if (manga.source != LocalMangaSource || manga.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) return null
 		return runCatching { File(manga.url.toUri().schemeSpecificPart) }
@@ -454,9 +476,12 @@ class DetailsViewModel @Inject constructor(
 			val current = mangaDetails.value ?: return
 			if (current.isLocal) return
 
+			// Any concurrent Details load, override edit or download/local event gets priority. Retry from
+			// the newest state instead of replacing it with the Room snapshot emitted above.
 			if (loadingJob !== observedLoad || mangaDetails.value !== current) continue
 
 			val currentSourceChapters = current.sourceManga.chapters.orEmpty()
+			// A cache cleanup or other empty DB snapshot must not blank an already renderable Details list.
 			if (chapters.isEmpty() && currentSourceChapters.isNotEmpty()) return
 
 			var updated = current.copy(manga = current.sourceManga.copy(chapters = chapters))
@@ -486,6 +511,10 @@ class DetailsViewModel @Inject constructor(
 				.withErrorHandling()
 				.collect {
 					val current = mangaDetails.value
+					// Keep presentation-only progressive snapshots from replacing an already renderable state.
+					// The first chapter-bearing emission is the local resolveIntent()/Room snapshot and may replace
+					// an older navigation snapshot. Later incomplete emissions are source-progress snapshots and
+					// must not shrink a usable cached list while the final refresh is still running.
 					val addsLocalCopy = it.local != null && current?.local == null
 					val addsChapters = it.allChapters.isNotEmpty() && current?.allChapters.isNullOrEmpty()
 					val isFirstResolvedChapterSnapshot = firstEmission && it.allChapters.isNotEmpty()
