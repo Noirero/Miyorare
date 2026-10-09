@@ -88,9 +88,9 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >-
+            bash .github/scripts/collect-on-device-cover-evidence.sh
             ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace
             -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest,org.koitharu.kotatsu.core.image.MiyorareImageDiskCacheTest
-            && bash .github/scripts/collect-on-device-cover-evidence.sh
       - name: Upload Android evidence
         if: always()
         uses: actions/upload-artifact@v4

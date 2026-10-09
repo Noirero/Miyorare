@@ -897,12 +897,11 @@ class SmartLocalCoverPipelineTest {
             .put("recipe", LocalCoverRecipe.IDENTITY).put("collections", surveys))
     }
 
-    // Kept outside the per-test FixtureContext, so the existing CI job can collect exact-head
-    // measurement evidence after teardown. Contains fixture numbers only, not user source paths.
+    // Captured by the CI runner while tests execute: AGP can uninstall the app afterward.
+    // Contains synthetic fixture numbers only, not user source paths.
     private fun writeSurvey(name: String, report: JSONObject) {
-        val target = InstrumentationRegistry.getInstrumentation().targetContext
-        val directory = File(target.filesDir, "on-device-cover-survey").apply { check(isDirectory || mkdirs()) }
-        File(directory, "$name.json").writeText(report.toString())
+        report.put("fixture", "synthetic")
+        android.util.Log.i("SmartLocalCoverReport", "REPORT $name $report")
     }
 
     private fun assertJpeg(bytes: ByteArray) = assertArrayEquals(byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte()), bytes.copyOf(3))
