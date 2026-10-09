@@ -1,0 +1,7 @@
+name: z
+on: workflow_dispatch
+jobs:
+  z:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo z
