@@ -156,8 +156,15 @@ class SmartLocalCoverPipelineTest {
         put("book.pdf", pdf(Color.GREEN)); library.scan()
         reader.directGate = { throw IOException("Controlled direct-access failure") }
         val bytes = library.cover(library.state.value.books.single().id)!!
+        assertJpeg(bytes)
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)!!
-        try { assertEquals(Color.GREEN, bitmap.getPixel(10, 10)) } finally { bitmap.recycle() }
+        try {
+            // The grid recipe deliberately uses lossy JPEG for this opaque PDF; retain a
+            // strict channel bound while testing fallback content rather than PNG identity.
+            val pixel = bitmap.getPixel(10, 10)
+            assertEquals(255, Color.alpha(pixel))
+            assertTrue(Color.green(pixel) >= 253 && Color.red(pixel) <= 2 && Color.blue(pixel) <= 2)
+        } finally { bitmap.recycle() }
         assertEquals(1, counts.materialize)
         assertEquals(2, counts.render)
         assertClosedDescriptors()
@@ -596,6 +603,11 @@ class SmartLocalCoverPipelineTest {
         assertEquals(1L, cache.diagnostics.snapshot().count(SmartLocalCoverDiagnostics.Reason.CACHE_HIT))
         assertEquals(0, metrics().getInt("opens"))
         assertEquals(0, metrics().getInt("queries"))
+        val stages = JSONObject()
+        snapshot.recent.filter { it.elapsedNanos > 0 }.forEach { stages.put(it.reason.name, it.elapsedNanos) }
+        writeSurvey("pdf", JSONObject().put("dataset", "SYNTHETIC_ONE_PAGE_SEEKABLE_PDF").put("recipe", LocalCoverRecipe.IDENTITY)
+            .put("stagesNanos", stages).put("materializations", counts.materialize)
+            .put("warmSourceOpens", metrics().getInt("opens")))
     }
 
     @Test fun recipeSurveyMeasuresLegacyAndNewBytesAndEncodingWithoutDeviceClaims() {
@@ -642,7 +654,25 @@ class SmartLocalCoverPipelineTest {
         val books = library.state.value.books
         assertEquals(350, books.size)
         val start = System.nanoTime()
-        books.chunked(6).forEach { chunk -> chunk.map { book -> async { assertNotNull(library.cover(book.id)) } }.awaitAll() }
+        val requestNanos = ArrayList<Long>()
+        val boundaryReports = JSONArray()
+        var firstCompletedNanos = 0L
+        var completed = 0
+        for (titles in listOf(35, 100, 350)) {
+            books.subList(completed, titles).chunked(6).forEach { chunk -> chunk.map { book -> async {
+                val requested = System.nanoTime()
+                assertNotNull(library.cover(book.id))
+                requestNanos += System.nanoTime() - requested
+                if (firstCompletedNanos == 0L) firstCompletedNanos = System.nanoTime() - start
+            } }.awaitAll() }
+            completed = titles
+            val boundary = cache.report()
+            assertEquals(titles, boundary.storage.entries)
+            assertEquals(0L, boundary.diagnostics.count(SmartLocalCoverDiagnostics.Reason.EVICT_BYTES))
+            assertEquals(0L, boundary.diagnostics.count(SmartLocalCoverDiagnostics.Reason.EVICT_ENTRY_COUNT))
+            boundaryReports.put(JSONObject().put("titles", titles).put("completionNanos", System.nanoTime() - start)
+                .put("bytes", boundary.storage.bytes).put("p95EntryBytes", boundary.storage.p95EntryBytes))
+        }
         val coldNanos = System.nanoTime() - start
         val report = cache.report()
         assertEquals(350, report.storage.entries)
@@ -650,7 +680,9 @@ class SmartLocalCoverPipelineTest {
         assertEquals(0L, report.diagnostics.count(SmartLocalCoverDiagnostics.Reason.EVICT_BYTES))
         assertEquals(0L, report.diagnostics.count(SmartLocalCoverDiagnostics.Reason.EVICT_ENTRY_COUNT))
         assertTrue(contentFiles().isEmpty())
+        call("fixture-metrics-reset")
         repeat(3) { books.forEach { assertNotNull(library.cover(it.id)) } }
+        assertEquals(0, metrics().getInt("opens")); assertEquals(0, metrics().getInt("queries"))
         assertEquals(350, counts.extract)
         owners(); call("fixture-metrics-reset")
         books.forEach { assertNotNull(library.cover(it.id)) }
@@ -661,6 +693,9 @@ class SmartLocalCoverPipelineTest {
         assertEquals(0, metrics().getInt("opens")); assertEquals(0, metrics().getInt("queries"))
         writeSurvey("mixed350", JSONObject().put("dataset", "SYNTHETIC_MIXED_350").put("recipe", LocalCoverRecipe.IDENTITY)
             .put("coldNanos", coldNanos).put("entries", report.storage.entries).put("bytes", report.storage.bytes)
+            .put("boundaries", boundaryReports).put("firstCompletedCoverNanos", firstCompletedNanos)
+            .put("medianRequestNanos", requestNanos.sorted()[requestNanos.size / 2])
+            .put("p95RequestNanos", requestNanos.sorted()[(requestNanos.size * 95 + 99) / 100 - 1])
             .put("medianEntryBytes", report.storage.medianEntryBytes).put("p90EntryBytes", report.storage.p90EntryBytes)
             .put("p95EntryBytes", report.storage.p95EntryBytes).put("projected100Bytes", report.storage.projectedP95Bytes(100))
             .put("projected350Bytes", report.storage.projectedP95Bytes(350)).put("projected1000Bytes", report.storage.projectedP95Bytes(1000))
@@ -701,6 +736,121 @@ class SmartLocalCoverPipelineTest {
             try { assertEquals(320, rotated.width); assertEquals(160, rotated.height) }
             finally { rotated.recycle() }
         } finally { input.recycle(); file.delete() }
+    }
+
+    @Test fun seekableArchiveSelectsLateCoverWithoutTraversingLargePayloadOrMaterializing(): Unit = runBlocking {
+        val entries = buildList {
+            add("unrelated.bin" to ByteArray(4 * 1024 * 1024))
+            add("001.png" to png(Color.RED))
+            repeat(100) { add("note-$it.txt" to byteArrayOf(0)) }
+            add("cover.png" to png(Color.BLUE))
+        }
+        put("late.cbz", archiveEntries(*entries.toTypedArray())); library.scan(); call("fixture-metrics-reset")
+        val book = library.state.value.books.single()
+        val cold = library.cover(book.id)!!
+        assertBlue(cold)
+        val event = cache.diagnostics.snapshot().recent.single { it.reason == SmartLocalCoverDiagnostics.Reason.ARCHIVE_INDEXED }
+        assertTrue("Unrelated payload traversed", event.sourceBytes < 100_000)
+        assertEquals(1, metrics().getInt("opens")); assertEquals(0, counts.materialize)
+        assertEquals(0L, cache.diagnostics.snapshot().count(SmartLocalCoverDiagnostics.Reason.ARCHIVE_STREAMING))
+        assertClosedDescriptors(); assertTrue(contentFiles().isEmpty())
+        owners(); call("fixture-metrics-reset")
+        assertArrayEquals(cold, library.cover(book.id))
+        assertEquals(0, metrics().getInt("opens")); assertEquals(0, metrics().getInt("queries"))
+        writeSurvey("archives", JSONObject().put("dataset", "SYNTHETIC_LATE_COVER_ZIP").put("recipe", LocalCoverRecipe.IDENTITY)
+            .put("sourceBytesRead", event.sourceBytes).put("skippedUncompressedBytes", 4 * 1024 * 1024)
+            .put("indexedNanos", event.elapsedNanos).put("warmSourceOpens", metrics().getInt("opens")))
+    }
+
+    @Test fun pipeAndRejectedArchiveDescriptorsRetainBoundedStreamingAndPersistentWarmReuse(): Unit = runBlocking {
+        put("pipe.cbz", archive(png(Color.BLUE))); descriptorMode("pipe.cbz", "pipe")
+        put("rejected.zip", archive(png(Color.GREEN))); descriptorMode("rejected.zip", "reject-once")
+        library.scan(); call("fixture-metrics-reset")
+        val books = library.state.value.books
+        val cold = books.associate { it.id to library.cover(it.id)!! }
+        assertEquals(4, metrics().getInt("opens"))
+        assertEquals(2L, cache.diagnostics.snapshot().count(SmartLocalCoverDiagnostics.Reason.ARCHIVE_STREAMING))
+        assertEquals(2L, cache.diagnostics.snapshot().count(SmartLocalCoverDiagnostics.Reason.ARCHIVE_FALLBACK))
+        assertEquals(0, counts.materialize); assertClosedDescriptors(); assertTrue(contentFiles().isEmpty())
+        owners(); call("fixture-metrics-reset")
+        books.forEach { assertArrayEquals(cold.getValue(it.id), library.cover(it.id)) }
+        assertEquals(0, metrics().getInt("opens")); assertEquals(0, metrics().getInt("queries"))
+    }
+
+    @Test fun epubContainerAndOpfSelectDeclaredArtAndBrokenMetadataFallsBackWithinBounds(): Unit = runBlocking {
+        val container = """<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>""".toByteArray()
+        val opf = """<package><metadata><meta name="cover" content="art"/></metadata><manifest><item id="art" href="Images/art.png" media-type="image/png"/></manifest></package>""".toByteArray()
+        fun epub(cover: ByteArray, containerBytes: ByteArray = container) = archiveEntries(
+            "001.png" to png(Color.RED), "META-INF/container.xml" to containerBytes, "OEBPS/content.opf" to opf,
+            *List(100) { "note-$it.txt" to byteArrayOf(0) }.toTypedArray(), "OEBPS/Images/art.png" to cover)
+        put("declared.epub", epub(png(Color.BLUE)))
+        put("broken.epub", epub(byteArrayOf(1, 2, 3)))
+        put("escape.epub", epub(png(Color.BLUE), """<container><rootfile full-path="../../other.opf"/></container>""".toByteArray()))
+        library.scan()
+        val books = library.state.value.books
+        val cold = books.associate { it.id to library.cover(it.id)!! }
+        assertBlue(cold.getValue(books.single { it.node.name == "declared.epub" }.id))
+        for (name in listOf("broken.epub", "escape.epub")) {
+            val bytes = cold.getValue(books.single { it.node.name == name }.id)
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)!!
+            try { assertTrue(Color.red(bitmap.getPixel(10, 10)) > 250 && Color.blue(bitmap.getPixel(10, 10)) < 5) }
+            finally { bitmap.recycle() }
+        }
+        assertEquals(3L, cache.diagnostics.snapshot().count(SmartLocalCoverDiagnostics.Reason.ARCHIVE_INDEXED))
+        assertEquals(0, counts.materialize); assertClosedDescriptors(); assertTrue(contentFiles().isEmpty())
+        owners(); call("fixture-metrics-reset")
+        books.forEach { assertArrayEquals(cold.getValue(it.id), library.cover(it.id)) }
+        assertEquals(0, metrics().getInt("opens")); assertEquals(0, metrics().getInt("queries"))
+    }
+
+    @Test fun corruptPdfZipAndBrokenImageNeverPublishPoisonedThumbnails(): Unit = runBlocking {
+        put("bad.pdf", byteArrayOf(1, 2, 3)); put("bad.zip", byteArrayOf(1, 2, 3)); put("Images/001.png", byteArrayOf(1, 2, 3))
+        library.scan()
+        val books = library.state.value.books
+        assertEquals(3, books.size)
+        books.forEach { assertNull(library.cover(it.id)) }
+        assertEquals(0, cache.stats().entries)
+        assertTrue(derivedFiles().isEmpty()); assertTrue(contentFiles().isEmpty()); assertClosedDescriptors()
+        assertEquals(3L, cache.diagnostics.snapshot().count(SmartLocalCoverDiagnostics.Reason.GENERATION_FAILED))
+    }
+
+    @Test fun cancelledIndexedArchiveClosesDescriptorWithoutStreamFallbackOrPublication(): Unit = runBlocking {
+        put("book.cbz", archive(png(Color.BLUE))); library.scan()
+        val started = CompletableDeferred<Unit>(); val release = CountDownLatch(1)
+        reader.archiveGate = { started.complete(Unit); check(release.await(10, TimeUnit.SECONDS)) }
+        val job = async { library.cover(library.state.value.books.single().id) }
+        try { kotlinx.coroutines.withTimeout(10_000) { started.await() }; job.cancel() }
+        finally { release.countDown(); job.join(); reader.archiveGate = null }
+        assertTrue(job.isCancelled); assertClosedDescriptors()
+        assertEquals(0L, cache.diagnostics.snapshot().count(SmartLocalCoverDiagnostics.Reason.ARCHIVE_STREAMING))
+        assertEquals(1L, cache.diagnostics.snapshot().count(SmartLocalCoverDiagnostics.Reason.CANCELLED))
+        assertEquals(0, counts.materialize); assertTrue(contentFiles().isEmpty()); assertTrue(derivedFiles().isEmpty())
+    }
+
+    @Test fun imageLaneCompletesWhileTwoArchiveDescriptorsAreBlocked(): Unit = runBlocking {
+        repeat(3) { put("heavy-$it.cbz", archive(png(Color.BLUE))) }; put("Images/001.png", png(Color.GREEN))
+        library.scan()
+        val books = library.state.value.books
+        val heavyBooks = books.filter { it.node.name.startsWith("heavy") }
+        val entered = java.util.concurrent.atomic.AtomicInteger(); val twoStarted = CompletableDeferred<Unit>()
+        val release = CountDownLatch(1)
+        reader.archiveGate = { if (entered.incrementAndGet() == 2) twoStarted.complete(Unit); check(release.await(15, TimeUnit.SECONDS)) }
+        val heavy = heavyBooks.take(2).map { async { library.cover(it.id) } }
+        val queued = ArrayList<kotlinx.coroutines.Deferred<ByteArray?>>()
+        try {
+            kotlinx.coroutines.withTimeout(10_000) { twoStarted.await() }
+            queued += async { library.cover(heavyBooks.last().id) }
+            repeat(8) { queued += async { library.cover(heavyBooks.first().id) } }
+            kotlinx.coroutines.withTimeout(10_000) { assertNotNull(library.cover(books.single { it !in heavyBooks }.id)) }
+            assertEquals(2, entered.get()); assertTrue(heavy.none { it.isCompleted })
+        } finally { release.countDown(); (heavy + queued).awaitAll(); reader.archiveGate = null }
+        assertEquals(3, entered.get()); assertEquals(0, counts.materialize); assertClosedDescriptors()
+    }
+
+    private fun assertBlue(bytes: ByteArray) {
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)!!
+        try { val pixel = bitmap.getPixel(10, 10); assertTrue(Color.blue(pixel) > 250 && Color.red(pixel) < 5) }
+        finally { bitmap.recycle() }
     }
 
     // Kept outside the per-test FixtureContext, so the existing CI job can collect exact-head
@@ -826,6 +976,10 @@ class SmartLocalCoverPipelineTest {
         ZipOutputStream(bytes).use { zip -> zip.putNextEntry(ZipEntry(name)); zip.write(image); zip.closeEntry() }
     }.toByteArray()
 
+    private fun archiveEntries(vararg entries: Pair<String, ByteArray>): ByteArray = ByteArrayOutputStream().also { bytes ->
+        ZipOutputStream(bytes).use { zip -> entries.forEach { (name, content) -> zip.putNextEntry(ZipEntry(name)); zip.write(content); zip.closeEntry() } }
+    }.toByteArray()
+
     private class Counts {
         private val extractions = java.util.concurrent.atomic.AtomicInteger()
         private val materializations = java.util.concurrent.atomic.AtomicInteger()
@@ -841,6 +995,7 @@ class SmartLocalCoverPipelineTest {
     private class CountingReader(context: Context, documents: LocalDocuments, val counts: Counts, diagnostics: SmartLocalCoverDiagnostics) : LocalContentReader(context, documents, diagnostics) {
         var directGate: (() -> Unit)? = null
         var materializedGate: (() -> Unit)? = null
+        var archiveGate: (() -> Unit)? = null
         internal override suspend fun cover(plan: LocalCoverPlan, publish: suspend (GeneratedLocalCover) -> ByteArray): ByteArray? {
             counts.extracted(); return super.cover(plan, publish)
         }
@@ -851,6 +1006,10 @@ class SmartLocalCoverPipelineTest {
         override fun renderPdfCover(descriptor: ParcelFileDescriptor): ByteArray? {
             counts.descriptors.add(descriptor); counts.rendered(); directGate?.invoke()
             return super.renderPdfCover(descriptor)
+        }
+        override fun readIndexedArchiveCover(descriptor: ParcelFileDescriptor, epub: Boolean, checkActive: () -> Unit): Pair<ByteArray?, Long> {
+            counts.descriptors.add(descriptor); archiveGate?.invoke()
+            return super.readIndexedArchiveCover(descriptor, epub, checkActive)
         }
     }
     private class FixtureContext(base: Context) : ContextWrapper(base) {

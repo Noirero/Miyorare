@@ -109,6 +109,7 @@ class SmartLocalCoverCache internal constructor(
         files.withLock {
             initializeLocked()
             val sizes = directory.listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".thumb") }.map { it.length() }.sorted()
+            storedBytes = sizes.sum(); storedEntries = sizes.size
             fun percentile(percent: Int) = sizes.getOrNull(((sizes.size * percent + 99) / 100 - 1).coerceAtLeast(0)) ?: 0L
             SmartLocalCoverCacheStats(sizes.sum(), sizes.size, percentile(50), percentile(90), percentile(95), maxBytes, maxEntries)
         }
@@ -169,7 +170,12 @@ class SmartLocalCoverCache internal constructor(
             }
         } catch (_: IOException) {
             val size = file.length()
-            if (file.delete()) { storedBytes -= size; storedEntries-- }
+            if (file.delete()) {
+                // A corrupted/truncated entry can have changed size since the last publication.
+                // Rescan only on this failure path rather than reporting stale byte totals.
+                val remaining = directory.listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".thumb") }
+                storedBytes = remaining.sumOf { it.length() }; storedEntries = remaining.size
+            }
             event(Reason.MISS_CORRUPT, key, plan, entryBytes = size)
             null
         }
@@ -212,6 +218,7 @@ class SmartLocalCoverCache internal constructor(
         val entries = directory.listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".thumb") }.sortedBy { it.lastModified() }
         var bytes = entries.sumOf { it.length() }
         var count = entries.size
+        storedBytes = bytes; storedEntries = count
         val obsoleteBefore = System.currentTimeMillis() - MAX_IDLE_MS
         for (entry in entries) {
             if (bytes <= maxBytes && count <= maxEntries && entry.lastModified() >= obsoleteBefore) break

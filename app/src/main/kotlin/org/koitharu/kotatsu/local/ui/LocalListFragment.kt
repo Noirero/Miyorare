@@ -211,7 +211,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 			appendLine("Entry bytes median/p90/p95: ${report.storage.medianEntryBytes}/${report.storage.p90EntryBytes}/${report.storage.p95EntryBytes}")
 			for ((reason, count) in report.diagnostics.counts) if (count > 0) appendLine("$reason: $count")
 			for (event in report.diagnostics.recent.takeLast(12)) {
-				appendLine("${event.reason} ${event.cacheKey?.take(12).orEmpty()} ${event.sourceKind.orEmpty()} candidate=${event.candidateIndex} bytes=${event.entryBytes} ms=${event.elapsedNanos / 1_000_000}")
+				appendLine("${event.reason} ${event.cacheKey?.take(12).orEmpty()} ${event.sourceKind.orEmpty()} candidate=${event.candidateIndex} bytes=${event.entryBytes} sourceBytes=${event.sourceBytes} ms=${event.elapsedNanos / 1_000_000}")
 			}
 		}
 		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_cover_cache_diagnostics)

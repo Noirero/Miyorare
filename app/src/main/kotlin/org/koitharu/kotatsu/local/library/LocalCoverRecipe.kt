@@ -9,7 +9,7 @@ internal object LocalCoverRecipe {
     const val JPEG_QUALITY = 82
     // Animation remains byte-for-byte and retains the pre-existing eligibility policy.
     const val ANIMATION_MAX_EDGE = 768
-    const val IDENTITY = "v3:grid512:opaque-jpeg82:alpha-png:exif1:animation768-4MiB-passthrough"
+    const val IDENTITY = "v3:grid512:opaque-jpeg82:alpha-png:exif1:animation768-4MiB-passthrough:archive-index1:epub-opf1"
 
     fun sampleSize(width: Int, height: Int): Int {
         var sample = 1

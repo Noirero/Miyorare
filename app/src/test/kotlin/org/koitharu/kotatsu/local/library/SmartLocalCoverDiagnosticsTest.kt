@@ -35,6 +35,8 @@ class SmartLocalCoverDiagnosticsTest {
         assertFalse(snapshot.recent.single { it.reason == Reason.CACHE_HIT }.sourceOpened)
         assertTrue(snapshot.recent.single { it.reason == Reason.MISS_FINGERPRINT }.fingerprintMismatch)
         assertTrue(snapshot.recent.filter { it.reason == Reason.PUBLISHED }.all { it.sourceKind == "PDF" && it.candidateIndex == 0 })
+        assertEquals(0L, snapshot.recent.single { it.reason == Reason.MISS_CORRUPT }.totalBytes)
+        assertEquals(cache.stats().bytes, snapshot.recent.last { it.reason == Reason.PUBLISHED }.totalBytes)
     }
 
     @Test fun byteAndCountEvictionHaveDistinctReasonsAndNewestEntrySurvives() = runBlocking {
@@ -91,5 +93,31 @@ class SmartLocalCoverDiagnosticsTest {
         diagnostics.reset()
         assertEquals(0L, diagnostics.snapshot().count(Reason.CACHE_HIT))
         assertEquals(1000L, before.count(Reason.CACHE_HIT))
+    }
+
+    @Test fun measuredEntryBudgetRetains35Through1000TitlesWithoutMassRevisitGeneration(): Unit = runBlocking {
+        val directory = temporary.newFolder()
+        val cache = SmartLocalCoverCache(directory)
+        // Synthetic boundary data, deliberately close to the byte budget at 1,000 entries.
+        // This verifies the model/bounds; it does not represent an unmeasured real library.
+        val payload = ByteArray((SmartLocalCoverCache.MAX_BYTES / 1000 - 1024).toInt()) { 7 }
+        var generated = 0
+        var populated = 0
+        for (titles in listOf(35, 100, 350, 1000)) {
+            for (id in populated until titles) cache.getOrGenerate(id.toLong(), plan()) {
+                generated++; GeneratedLocalCover(payload, 0)
+            }
+            populated = titles
+            val storage = cache.stats()
+            assertEquals(titles, storage.entries)
+            assertTrue(storage.bytes <= storage.maxBytes)
+            val reopened = SmartLocalCoverCache(directory)
+            repeat(titles) { id -> assertArrayEquals(payload, reopened.getOrGenerate(id.toLong(), plan()) {
+                fail("Eligible title was evicted inside the measured budget"); null
+            }) }
+            assertEquals(titles, generated)
+        }
+        assertEquals(0L, cache.diagnostics.snapshot().count(Reason.EVICT_BYTES))
+        assertEquals(0L, cache.diagnostics.snapshot().count(Reason.EVICT_ENTRY_COUNT))
     }
 }

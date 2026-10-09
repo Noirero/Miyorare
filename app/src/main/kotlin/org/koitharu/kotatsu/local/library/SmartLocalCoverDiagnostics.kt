@@ -10,7 +10,7 @@ class SmartLocalCoverDiagnostics @Inject constructor() {
         CACHE_HIT, MISS_ABSENT, MISS_FINGERPRINT, MISS_CORRUPT, NOT_CACHEABLE,
         EVICT_BYTES, EVICT_ENTRY_COUNT, EVICT_IDLE, GENERATED, PUBLISHED, CLEAR, CLEAR_FAILED,
         SOURCE_OPEN, PDF_DESCRIPTOR_OPEN, PDF_RENDERER_OPEN, PDF_RENDER, ENCODE, IMAGE_PREPARE,
-        ARCHIVE_INDEXED, ARCHIVE_STREAMING, PRESENTATION_MEMORY_HIT, PRESENTATION_LOAD, GENERATION_FAILED, CANCELLED, PUBLICATION_FAILED, CLEAR_REJECTED,
+        ARCHIVE_INDEXED, ARCHIVE_STREAMING, ARCHIVE_FALLBACK, PRESENTATION_MEMORY_HIT, PRESENTATION_LOAD, GENERATION_FAILED, CANCELLED, PUBLICATION_FAILED, CLEAR_REJECTED,
     }
 
     data class Event(
@@ -24,6 +24,7 @@ class SmartLocalCoverDiagnostics @Inject constructor() {
         val elapsedNanos: Long = 0,
         val sourceOpened: Boolean = false,
         val fingerprintMismatch: Boolean = false,
+        val sourceBytes: Long = 0,
     )
 
     data class Snapshot(val counts: Map<Reason, Long>, val recent: List<Event>) {
