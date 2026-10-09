@@ -95,6 +95,26 @@ class SmartLocalCoverDiagnosticsTest {
         assertEquals(1000L, before.count(Reason.CACHE_HIT))
     }
 
+    @Test fun refreshedSourceRejectionIsDistinctFromAUserClearAndNeverPublishesStaleOutput(): Unit = runBlocking {
+        val cache = SmartLocalCoverCache(temporary.newFolder())
+        var current = true
+        cache.getOrGenerate(42, plan(), isCurrent = { current }) {
+            current = false // Deterministic publication boundary: discovery superseded this plan.
+            GeneratedLocalCover(byteArrayOf(1), 0)
+        }
+        assertEquals(0, cache.stats().entries)
+        val snapshot = cache.diagnostics.snapshot()
+        assertEquals(1L, snapshot.count(Reason.STALE_SOURCE_REJECTED))
+        assertEquals(0L, snapshot.count(Reason.CLEAR_REJECTED))
+        assertEquals(0L, snapshot.count(Reason.CLEAR))
+        assertEquals(0L, snapshot.count(Reason.PUBLISHED))
+        current = true
+        assertArrayEquals(byteArrayOf(2), cache.getOrGenerate(42, plan(2), isCurrent = { current }) {
+            GeneratedLocalCover(byteArrayOf(2), 0)
+        })
+        assertEquals(1, cache.stats().entries)
+    }
+
     @Test fun measuredEntryBudgetRetains35Through1000TitlesWithoutMassRevisitGeneration(): Unit = runBlocking {
         val directory = temporary.newFolder()
         val cache = SmartLocalCoverCache(directory)

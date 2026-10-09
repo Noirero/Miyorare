@@ -69,7 +69,9 @@ class SmartLocalCoverCache internal constructor(
                     when {
                         !result.cacheable -> event(Reason.NOT_CACHEABLE, key, plan, result.candidateIndex,
                             result.bytes.size.toLong(), sourceOpened = true)
-                        epoch != clearEpoch || !isCurrent() -> event(Reason.CLEAR_REJECTED, key, plan,
+                        epoch != clearEpoch -> event(Reason.CLEAR_REJECTED, key, plan,
+                            result.candidateIndex, result.bytes.size.toLong(), sourceOpened = true)
+                        !isCurrent() -> event(Reason.STALE_SOURCE_REJECTED, key, plan,
                             result.candidateIndex, result.bytes.size.toLong(), sourceOpened = true)
                         else -> try { writeLocked(key, plan, result) } catch (error: Exception) {
                             event(Reason.PUBLICATION_FAILED, key, plan, result.candidateIndex, sourceOpened = true)
