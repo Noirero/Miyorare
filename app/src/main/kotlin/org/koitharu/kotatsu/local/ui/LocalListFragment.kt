@@ -27,7 +27,14 @@ import org.koitharu.kotatsu.remotelist.ui.RemoteListFragment
 class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	override val viewModel by viewModels<LocalListViewModel>()
 	override val filterCoordinator get() = viewModel.filterCoordinator
-	private val folderPicker = OpenDocumentTreeHelper(this) { uri -> uri?.let(viewModel::addFolder) }
+	private var scanProgressSnackbar: Snackbar? = null
+	private val folderPicker = OpenDocumentTreeHelper(this) { uri ->
+		uri?.let {
+			scanProgressSnackbar?.dismiss()
+			scanProgressSnackbar = Snackbar.make(requireView(), R.string.smart_local_scan_running, Snackbar.LENGTH_INDEFINITE).also { snackbar -> snackbar.show() }
+			viewModel.addFolder(it)
+		}
+	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -52,6 +59,8 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		}
 		viewModel.resumeIntent.observeEvent(viewLifecycleOwner) { router.openReader(it) }
 		viewModel.scanCompleted.observeEvent(viewLifecycleOwner) { complete ->
+			scanProgressSnackbar?.dismiss()
+			scanProgressSnackbar = null
 			Snackbar.make(binding.recyclerView, if (complete) R.string.smart_local_scan_complete else R.string.smart_local_scan_attention, Snackbar.LENGTH_LONG).show()
 		}
 		viewModel.onMangaRemoved.observeEvent(viewLifecycleOwner) {
@@ -63,6 +72,12 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 				.setItems(entries.map { it.value }.toTypedArray()) { _, index -> viewModel.restore(entries[index].key) }
 				.setNegativeButton(android.R.string.cancel, null).show()
 		}
+	}
+
+	override fun onDestroyView() {
+		scanProgressSnackbar?.dismiss()
+		scanProgressSnackbar = null
+		super.onDestroyView()
 	}
 
 	override fun onEmptyActionClick() = addFolder()
@@ -229,4 +244,3 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 			.setPositiveButton(android.R.string.ok, null).show()
 	}
 }
-
