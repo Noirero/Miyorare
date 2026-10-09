@@ -12,11 +12,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Incrementally records which favourites space owns a downloaded container.
+ * Incrementally records which favourites space owns a downloaded container when the physical path
+ * itself proves that ownership. Explicit Normal/Private ownership for new downloads is written by
+ * DownloadWorker before the local-storage event is published.
  *
- * This deliberately listens to the same local-storage events as LocalMangaIndex instead of scanning
- * storage. A shared Normal/Private destination records both spaces; distinct destinations record only
- * the matching space. The virtual Downloaded shelf does not depend on this table.
+ * A shared destination is intentionally ignored here: the same path belongs to both readable-root
+ * sets and therefore cannot identify which destination the user selected. Treating it as evidence
+ * would manufacture cross-space ownership every time Details or Local storage emitted an update.
  */
 @Singleton
 class FavouriteDownloadOwnershipIndex @Inject constructor(
@@ -26,6 +28,7 @@ class FavouriteDownloadOwnershipIndex @Inject constructor(
 
 	override suspend fun emit(value: LocalManga?) {
 		if (value == null) return
+		if (!downloadDestinationStore.privateUsesOwnRoot() || downloadDestinationStore.rootsOverlap()) return
 		val path = value.file.canonicalOrAbsolute()
 		val entries = FavouriteSpace.entries.mapNotNull { space ->
 			val ownsPath = downloadDestinationStore.readableRoots(space).any { destination ->

@@ -31,8 +31,8 @@ class DownloadedContentClassifier @Inject constructor(
 	 * Return downloads physically owned by [space] from persisted indexes only.
 	 *
 	 * favourite_download_index carries explicit Normal/Private ownership for app downloads. local_index
-	 * is also accepted when its path lives under one of the space's readable roots, which keeps an
-	 * already-built local index useful after a destination move without starting any storage scan.
+	 * is accepted only when Normal and Private have distinct physical roots. When both spaces share a
+	 * root, path alone cannot prove ownership and only favourite_download_index may classify the item.
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> {
 		val allowedRoots = getDownloadRoots(space)
@@ -44,7 +44,9 @@ class DownloadedContentClassifier @Inject constructor(
 			.filter { File(it.path).isInsideAny(allowedRoots) }
 			.mapTo(HashSet()) { it.mangaId }
 
-		findIndexedEntriesInRoots(allowedRoots).mapTo(result) { it.mangaId }
+		if (canInferSpaceFromPath()) {
+			findIndexedEntriesInRoots(allowedRoots).mapTo(result) { it.mangaId }
+		}
 		return result
 	}
 
@@ -70,7 +72,7 @@ class DownloadedContentClassifier @Inject constructor(
 				.filter { File(it.path).isInsideAny(allowedRoots) }
 				.mapTo(result) { it.mangaId }
 		}
-		if (result.size == ids.size) return result
+		if (result.size == ids.size || !canInferSpaceFromPath()) return result
 
 		val localDao = db.getLocalMangaIndexDao()
 		for (chunk in (ids - result).chunked(INDEX_QUERY_CHUNK_SIZE)) {
@@ -88,21 +90,25 @@ class DownloadedContentClassifier @Inject constructor(
 	/**
 	 * Space-scoped persisted-download predicate used as a coarse SQL filter.
 	 *
-	 * Both local_index and favourite_download_index are durable state. Legacy storage probing is not
-	 * part of this expression and is never started as a side effect of a library query.
+	 * favourite_download_index is always authoritative. local_index is additionally usable only when
+	 * the two spaces have distinct roots; on a shared root its path carries no Normal/Private identity.
 	 */
 	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
 		val rootPaths = getDownloadRoots(space)
 			.map { it.normalizedAbsolutePath().trimEnd(File.separatorChar) }
 			.distinct()
 
-		val localCondition = buildSqlPathExists(
-			table = "local_index",
-			idColumn = "local_index.manga_id",
-			pathColumn = "local_index.path",
-			mangaIdColumn = mangaIdColumn,
-			rootPaths = rootPaths,
-		)
+		val localCondition = if (canInferSpaceFromPath()) {
+			buildSqlPathExists(
+				table = "local_index",
+				idColumn = "local_index.manga_id",
+				pathColumn = "local_index.path",
+				mangaIdColumn = mangaIdColumn,
+				rootPaths = rootPaths,
+			)
+		} else {
+			"0"
+		}
 		val ownershipPathCondition = if (rootPaths.isEmpty()) {
 			"0"
 		} else {
@@ -179,6 +185,9 @@ class DownloadedContentClassifier @Inject constructor(
 		downloadDestinationStore.readableRoots(space).map {
 			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME)
 		}
+
+	private fun canInferSpaceFromPath(): Boolean =
+		downloadDestinationStore.privateUsesOwnRoot() && !downloadDestinationStore.rootsOverlap()
 
 	private suspend fun findIndexedEntriesInRoots(downloadRoots: List<File>): List<LocalMangaIndexEntity> {
 		if (downloadRoots.isEmpty()) return emptyList()

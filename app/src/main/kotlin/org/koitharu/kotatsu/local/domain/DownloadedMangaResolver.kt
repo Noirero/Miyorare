@@ -71,23 +71,16 @@ class DownloadedMangaResolver @Inject constructor(
 			}
 		}
 
-		// The global Local index can point at a copy owned by the other favourites space. Validate it
-		// before accepting it; if it is outside this space, continue to the space-scoped compatibility
-		// bridge instead of returning null and hiding a valid copy in the requested destination.
+		// When Normal and Private share a physical destination, path alone cannot identify which space
+		// owns an unindexed legacy artifact. Do not let opening Details manufacture ownership for the
+		// active space; the background legacy reconciler is the only compatibility path allowed to
+		// persist ownership after checking favourite membership and chapter evidence.
+		if (!canInferSpaceFromPath()) return null
+
+		// With distinct roots the global Local index is safe as a compatibility hint, but it still has
+		// to live inside the requested space before it can be accepted and persisted as ownership.
 		val indexed = localMangaRepository.findSavedMangaIndexed(manga)
-			?.takeIf { candidate ->
-				when (favouriteSpace) {
-					FavouriteSpace.PRIVATE -> roots.any { candidate.file.isInside(it) }
-					FavouriteSpace.NORMAL -> if (downloadDestinationStore.privateUsesOwnRoot()) {
-						val inNormal = roots.any { candidate.file.isInside(it) }
-						val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
-							.any { candidate.file.isInside(it) }
-						inNormal || !inPrivate
-					} else {
-						true
-					}
-				}
-			}
+			?.takeIf { candidate -> roots.any { candidate.file.isInside(it) } }
 			?: localMangaRepository.findSavedMangaIndexedByTitle(
 				remoteManga = manga,
 				roots = roots,
@@ -97,6 +90,9 @@ class DownloadedMangaResolver @Inject constructor(
 		rememberFavouriteDownloadOwnership(favouriteSpace, manga.id, indexed.file)
 		return indexed
 	}
+
+	private fun canInferSpaceFromPath(): Boolean =
+		downloadDestinationStore.privateUsesOwnRoot() && !downloadDestinationStore.rootsOverlap()
 
 	private suspend fun rememberFavouriteDownloadOwnership(
 		space: FavouriteSpace,

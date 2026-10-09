@@ -179,7 +179,7 @@ class DetailsViewModel @Inject constructor(
 		}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, navigationHistory)
 
-	val favouriteCategories = interactor.observeFavourite(mangaId)
+	val favouriteCategories = interactor.observeFavourite(mangaId, favouriteSpace)
 		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptySet())
 

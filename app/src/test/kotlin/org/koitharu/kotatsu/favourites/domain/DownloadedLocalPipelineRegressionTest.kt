@@ -22,12 +22,13 @@ class DownloadedLocalPipelineRegressionTest {
 		val startup = source("core/BaseApp.kt")
 		assertTrue(startup.contains("legacyFavouriteDownloadReconcilerProvider.get().reconcileOnce()"))
 		val repair = source("favourites/domain/LegacyFavouriteDownloadReconciler.kt")
-		assertTrue(repair.contains("v2_all_spaces_complete"))
+		assertTrue(repair.contains("v3_all_spaces_complete"))
 		assertTrue(repair.contains("FavouriteSpace.entries"))
 		assertTrue(repair.contains("downloadDestinationStore.readableRoots(space)"))
 		assertTrue(repair.contains("getPersistedSnapshot()"))
+		assertTrue(repair.contains("rebuildIfRequired()"))
 		assertTrue(repair.contains("findSavedMangaIndexedByTitle(remote,roots)"))
-		for (forbidden in listOf("getRawListAsFlow", "listFiles(", "rebuildIfRequired(", "getAll()")) {
+		for (forbidden in listOf("getRawListAsFlow", "listFiles(", "getAll()")) {
 			assertFalse("Legacy repair must use bounded indexed candidates: $forbidden", repair.contains(forbidden))
 		}
 		assertFalse(source("favourites/ui/list/FavouritesListViewModel.kt").contains("reconcileOnce("))

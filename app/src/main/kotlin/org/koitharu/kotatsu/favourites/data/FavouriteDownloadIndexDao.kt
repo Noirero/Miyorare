@@ -31,6 +31,9 @@ interface FavouriteDownloadIndexDao {
 	@Upsert
 	suspend fun upsert(entities: Collection<FavouriteDownloadIndexEntity>)
 
+	@Query("DELETE FROM favourite_download_index WHERE space = :space AND manga_id = :mangaId")
+	suspend fun delete(space: Int, mangaId: Long)
+
 	@Query("DELETE FROM favourite_download_index WHERE path = :path")
 	suspend fun deleteByPath(path: String)
 }
