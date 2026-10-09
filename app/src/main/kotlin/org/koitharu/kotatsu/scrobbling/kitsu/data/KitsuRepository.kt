@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.scrobbling.kitsu.data
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -21,6 +23,13 @@ import org.koitharu.kotatsu.parsers.util.urlEncoded
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerRepository
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerStorage
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
+import org.koitharu.kotatsu.scrobbling.common.domain.TrackerDetailsProvider
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerContent
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPage
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPerson
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerResult
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerTarget
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaType
@@ -43,7 +52,21 @@ class KitsuRepository(
 	private val okHttp: OkHttpClient,
 	private val storage: ScrobblerStorage,
 	private val db: MangaDatabase,
-) : ScrobblerRepository {
+) : ScrobblerRepository, TrackerDetailsProvider {
+
+	override val detailsService = ScrobblerService.KITSU
+	override val detailsCapabilities = KITSU_DETAILS_CAPABILITIES
+
+	override suspend fun loadCharacters(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
+		kitsuPeople(supplementalRequest(target, TrackerContent.CHARACTERS, page), target, TrackerContent.CHARACTERS, page)
+
+	override suspend fun loadStaff(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
+		kitsuPeople(supplementalRequest(target, TrackerContent.STAFF, page), target, TrackerContent.STAFF, page)
+
+	private suspend fun supplementalRequest(target: TrackerTarget, content: TrackerContent, page: TrackerPage): kotlinx.serialization.json.JsonObject {
+		val request = Request.Builder().url(kitsuDetailsUrl(target, content, page)).get().build()
+		return Json.parseToJsonElement(okHttp.newCall(request).await().parseJson().toString()).jsonObject
+	}
 
 	override val oauthUrl: String = "kotatsu+kitsu://auth"
 

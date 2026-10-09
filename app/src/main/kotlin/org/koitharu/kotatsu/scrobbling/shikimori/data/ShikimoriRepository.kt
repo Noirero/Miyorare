@@ -19,6 +19,13 @@ import org.koitharu.kotatsu.parsers.util.toAbsoluteUrl
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerRepository
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerStorage
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
+import org.koitharu.kotatsu.scrobbling.common.domain.TrackerDetailsProvider
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerContent
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPage
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPerson
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerResult
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerTarget
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaType
@@ -39,7 +46,21 @@ class ShikimoriRepository @Inject constructor(
 	@ScrobblerType(ScrobblerService.SHIKIMORI) private val okHttp: OkHttpClient,
 	@ScrobblerType(ScrobblerService.SHIKIMORI) private val storage: ScrobblerStorage,
 	private val db: MangaDatabase,
-) : ScrobblerRepository {
+) : ScrobblerRepository, TrackerDetailsProvider {
+
+	override val detailsService = ScrobblerService.SHIKIMORI
+	override val detailsCapabilities = setOf(TrackerContent.CHARACTERS, TrackerContent.STAFF, TrackerContent.RECOMMENDATIONS)
+
+	private val detailsApi by lazy { ShikimoriDetailsApi() }
+
+	override suspend fun loadCharacters(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
+		detailsApi.people(target, TrackerContent.CHARACTERS, page)
+
+	override suspend fun loadStaff(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
+		detailsApi.people(target, TrackerContent.STAFF, page)
+
+	override suspend fun loadRecommendations(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerRecommendation> =
+		detailsApi.recommendations(target, page)
 
 	private val clientId = context.getString(R.string.shikimori_clientId)
 	private val clientSecret = context.getString(R.string.shikimori_clientSecret)

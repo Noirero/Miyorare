@@ -3,6 +3,8 @@ package org.koitharu.kotatsu.scrobbling.mal.data
 import android.content.Context
 import android.util.Base64
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -17,6 +19,12 @@ import org.koitharu.kotatsu.parsers.util.parseJson
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerRepository
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerStorage
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
+import org.koitharu.kotatsu.scrobbling.common.domain.TrackerDetailsProvider
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPage
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPerson
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerResult
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerTarget
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaType
@@ -40,7 +48,23 @@ class MALRepository @Inject constructor(
 	@ScrobblerType(ScrobblerService.MAL) private val okHttp: OkHttpClient,
 	@ScrobblerType(ScrobblerService.MAL) private val storage: ScrobblerStorage,
 	private val db: MangaDatabase,
-) : ScrobblerRepository {
+) : ScrobblerRepository, TrackerDetailsProvider {
+
+	override val detailsService = ScrobblerService.MAL
+	override val detailsCapabilities = MAL_DETAILS_CAPABILITIES
+
+	override suspend fun loadStaff(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
+		malStaff(supplementalRequest(target, page, "authors"), target)
+
+	override suspend fun loadRecommendations(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerRecommendation> =
+		malRecommendations(supplementalRequest(target, page, "recommendations"), target)
+
+	private suspend fun supplementalRequest(target: TrackerTarget, page: TrackerPage, field: String): kotlinx.serialization.json.JsonObject {
+		require(target.service == detailsService && page.number == 1 && page.url == null)
+		val url = "$BASE_API_URL/manga/${target.id}".toHttpUrl().newBuilder().addQueryParameter("fields", field).build()
+		val request = Request.Builder().url(url).get().build()
+		return Json.parseToJsonElement(okHttp.newCall(request).await().parseJson().toString()).jsonObject
+	}
 
 	private val clientId = context.getString(R.string.mal_clientId)
 	private val codeVerifier: String by lazy(::generateCodeVerifier)
