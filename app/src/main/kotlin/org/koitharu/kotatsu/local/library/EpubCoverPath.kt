@@ -7,18 +7,18 @@ import java.net.URLDecoder
 
 /** Bounded container/OPF cover selection only. No spine, TOC or Reader materialization. */
 internal object EpubCoverPath {
-    fun opf(container: ByteArray): String? = elements(container).firstOrNull { it.tag() == "rootfile" }
-        ?.attribute("full-path")?.let { resolve("", it) }
+    fun opf(container: ByteArray): String? = elements(container).firstOrNull { it.localTagName() == "rootfile" }
+        ?.localAttributeValue("full-path")?.let { resolve("", it) }
 
     fun cover(opf: String, metadata: ByteArray): String? {
         val elements = elements(metadata)
-        val items = elements.filter { it.tag() == "item" }
-        val id = elements.firstOrNull { it.tag() == "meta" && it.attribute("name") == "cover" }?.attribute("content")
-        val selected = id?.let { value -> items.firstOrNull { it.attribute("id") == value } }
-            ?: items.firstOrNull { "cover-image" in it.attribute("properties").orEmpty().split(Regex("\\s+")) }
-            ?: items.firstOrNull { it.attribute("media-type").orEmpty().startsWith("image/") &&
-                (it.attribute("id").orEmpty().contains("cover", true) || it.attribute("href").orEmpty().contains("cover", true)) }
-        return selected?.attribute("href")?.let { resolve(opf.substringBeforeLast('/', ""), it) }
+        val items = elements.filter { it.localTagName() == "item" }
+        val id = elements.firstOrNull { it.localTagName() == "meta" && it.localAttributeValue("name") == "cover" }?.localAttributeValue("content")
+        val selected = id?.let { value -> items.firstOrNull { it.localAttributeValue("id") == value } }
+            ?: items.firstOrNull { "cover-image" in it.localAttributeValue("properties").orEmpty().split(Regex("\\s+")) }
+            ?: items.firstOrNull { it.localAttributeValue("media-type").orEmpty().startsWith("image/") &&
+                (it.localAttributeValue("id").orEmpty().contains("cover", true) || it.localAttributeValue("href").orEmpty().contains("cover", true)) }
+        return selected?.localAttributeValue("href")?.let { resolve(opf.substringBeforeLast('/', ""), it) }
     }
 
     internal fun resolve(base: String, href: String): String? {
@@ -35,6 +35,6 @@ internal object EpubCoverPath {
     }
 
     private fun elements(bytes: ByteArray): List<Element> = Jsoup.parse(bytes.toString(Charsets.UTF_8), "", Parser.xmlParser()).allElements.toList()
-    private fun Element.tag() = tagName().substringAfterLast(':').lowercase()
-    private fun Element.attribute(name: String) = attributes().firstOrNull { it.key.substringAfterLast(':') == name }?.value
+    private fun Element.localTagName() = tagName().substringAfterLast(':').lowercase()
+    private fun Element.localAttributeValue(name: String) = attributes().firstOrNull { it.key.substringAfterLast(':') == name }?.value
 }
