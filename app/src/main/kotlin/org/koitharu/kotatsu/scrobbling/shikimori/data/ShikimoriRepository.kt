@@ -52,6 +52,7 @@ class ShikimoriRepository @Inject constructor(
 
 	override val detailsService = ScrobblerService.SHIKIMORI
 	override val detailsCapabilities = setOf(TrackerContent.CHARACTERS, TrackerContent.STAFF, TrackerContent.RECOMMENDATIONS)
+	override val detailsSessionGeneration get() = storage.sessionGeneration
 
 	private val detailsApi by lazy { ShikimoriDetailsApi(baseHttpClient) }
 

@@ -304,6 +304,9 @@ dependencies {
 
 	androidTestImplementation libs.androidx.runner
 	androidTestImplementation libs.androidx.junit
+	androidTestImplementation platform(libs.androidx.compose.bom)
+	androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+	debugImplementation 'androidx.compose.ui:ui-test-manifest'
 
 	androidTestImplementation libs.kotlinx.coroutines.test
 

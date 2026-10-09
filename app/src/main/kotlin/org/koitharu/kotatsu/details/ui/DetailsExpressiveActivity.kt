@@ -241,11 +241,13 @@ class DetailsExpressiveActivity :
 		super.onStart()
 		viewModel.resumeExpandedRelatedIfNeeded()
 		viewModel.resumeGenreRecommendations()
+		viewModel.resumeTrackerPeople()
 	}
 
 	override fun onStop() {
 		viewModel.pauseExpandedRelated()
 		viewModel.pauseGenreRecommendations()
+		viewModel.pauseTrackerPeople()
 		super.onStop()
 	}
 
@@ -338,6 +340,9 @@ class DetailsExpressiveActivity :
 					viewModel.download(setOf(item.chapter.id), allowMeteredNetwork)
 				}
 			},
+			onTrackerPeopleRequested = viewModel::requestTrackerPeople,
+			onTrackerPeopleRetry = viewModel::retryTrackerPeople,
+			onTrackerPeopleRefresh = viewModel::refreshTrackerPeople,
 		)
 		viewBinding.composeView.setViewCompositionStrategy(
 			ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
@@ -359,6 +364,8 @@ class DetailsExpressiveActivity :
 				val loading by viewModel.isLoading.collectAsState()
 				val favs by viewModel.favouriteCategories.collectAsState()
 				val scrob by viewModel.scrobblingInfo.collectAsState()
+				val trackerPeople by viewModel.trackerPeople.collectAsState()
+				val privateContent by privateContentStateFlow.collectAsState()
 				val genreRecommendations by viewModel.genreRecommendations.collectAsState()
 				val expandedRelated by viewModel.expandedRelated.collectAsState()
 				val localSize by viewModel.localSize.collectAsState()
@@ -383,6 +390,7 @@ class DetailsExpressiveActivity :
 					favouriteCount = favs.size,
 					favouriteLabel = favLabel,
 					scrobblings = scrob,
+					trackerPeople = if (privateContent == PrivateContentState.NORMAL && !history.isIncognitoMode) trackerPeople else DetailsPeopleUiState(),
 					genreRecommendations = genreRecommendations,
 					expandedRelated = expandedRelated,
 					relatedDiscoveryEnabled = viewModel.isRelatedDiscoveryEnabled,

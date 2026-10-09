@@ -55,6 +55,7 @@ class MALRepository @Inject constructor(
 
 	override val detailsService = ScrobblerService.MAL
 	override val detailsCapabilities = MAL_DETAILS_CAPABILITIES
+	override val detailsSessionGeneration get() = storage.sessionGeneration
 
 	override suspend fun loadStaff(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
 		malStaff(supplementalRequest(target, page, "authors"), target)

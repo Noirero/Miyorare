@@ -62,6 +62,7 @@ class AniListRepository @Inject constructor(
 
 	override val detailsService = ScrobblerService.ANILIST
 	override val detailsCapabilities = setOf(TrackerContent.CHARACTERS, TrackerContent.STAFF, TrackerContent.RECOMMENDATIONS)
+	override val detailsSessionGeneration get() = storage.sessionGeneration
 
 	override suspend fun loadCharacters(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
 		aniListPeople(supplementalRequest(target, TrackerContent.CHARACTERS, page), target, TrackerContent.CHARACTERS, page)

@@ -78,7 +78,7 @@ jobs:
         run: chmod +x gradlew
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
-      - name: Validate cover persistence, source freshness and Reader pins
+      - name: Validate cover guards, tracker people UI and session invalidation
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -89,7 +89,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >-
             ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace
-            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest,org.koitharu.kotatsu.core.image.MiyorareImageDiskCacheTest
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest,org.koitharu.kotatsu.core.image.MiyorareImageDiskCacheTest,org.koitharu.kotatsu.details.ui.TrackerPeopleSectionTest,org.koitharu.kotatsu.scrobbling.common.data.TrackerDetailsSessionTest,org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest
       - name: Upload Android evidence
         if: always()
         uses: actions/upload-artifact@v4

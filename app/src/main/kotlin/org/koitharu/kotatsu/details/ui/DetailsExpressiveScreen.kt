@@ -57,6 +57,7 @@ import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 
 private const val KEY_GENRE_RECOMMENDATIONS_VISIBLE = "genre_recommendations_visible"
@@ -87,6 +88,9 @@ class DetailsExpressiveActions(
 	val onChapterOptionsResetClick: () -> Unit,
 	val onChapterClick: (ChapterListItem) -> Unit,
 	val onChapterDownloadClick: (ChapterListItem) -> Unit,
+	val onTrackerPeopleRequested: () -> Unit,
+	val onTrackerPeopleRetry: (ScrobblerService) -> Unit,
+	val onTrackerPeopleRefresh: () -> Unit,
 )
 
 @Composable
@@ -101,6 +105,7 @@ fun DetailsExpressiveScreen(
 	favouriteCount: Int,
 	favouriteLabel: String?,
 	scrobblings: List<ScrobblingInfo>,
+	trackerPeople: DetailsPeopleUiState,
 	genreRecommendations: List<MangaListModel>,
 	expandedRelated: DetailsRelatedUiState,
 	relatedDiscoveryEnabled: Boolean,
@@ -327,6 +332,15 @@ fun DetailsExpressiveScreen(
 								onManageClick = actions.onChaptersClick,
 							)
 						}
+					}
+
+					if (!managed) item(key = "tracker-people", contentType = "tracker-people") {
+						// Lazy composition requests metadata only when the post-chapter section is reached.
+						LaunchedEffect(manga.id, manga.source, manga.url) { actions.onTrackerPeopleRequested() }
+						TrackerPeopleSection(
+							state = trackerPeople, imageLoader = imageLoader,
+							onRetry = actions.onTrackerPeopleRetry, onRefresh = actions.onTrackerPeopleRefresh,
+						)
 					}
 
 					if (scrobblings.isNotEmpty()) {

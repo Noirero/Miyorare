@@ -59,6 +59,7 @@ class KitsuRepository(
 
 	override val detailsService = ScrobblerService.KITSU
 	override val detailsCapabilities = KITSU_DETAILS_CAPABILITIES
+	override val detailsSessionGeneration get() = storage.sessionGeneration
 
 	override suspend fun loadCharacters(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
 		kitsuPeople(supplementalRequest(target, TrackerContent.CHARACTERS, page), target, TrackerContent.CHARACTERS, page)
