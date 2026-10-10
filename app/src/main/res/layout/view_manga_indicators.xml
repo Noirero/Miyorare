@@ -7,29 +7,44 @@
 		android:id="@+id/status_icons"
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
+		android:background="@drawable/bg_list_icons"
 		android:orientation="horizontal"
+		android:padding="4dp"
 		app:iconSize="14dp"
 		app:iconSpacing="@dimen/library_indicator_spacing" />
 
-	<ImageView
-		android:id="@+id/library_heart"
-		android:layout_width="@dimen/library_indicator_icon_size"
-		android:layout_height="@dimen/library_indicator_icon_size"
-		android:importantForAccessibility="no"
-		android:src="@drawable/ic_heart" />
-
-	<TextView
-		android:id="@+id/library_label"
+	<LinearLayout
+		android:id="@+id/status_ribbon"
 		android:layout_width="wrap_content"
-		android:layout_height="wrap_content"
-		android:layout_marginStart="@dimen/library_indicator_spacing"
-		android:layout_weight="1"
-		android:ellipsize="end"
-		android:maxLines="1"
-		android:maxWidth="@dimen/library_indicator_label_max_width"
-		android:text="@string/in_library"
-		android:textColor="?android:attr/textColorPrimary"
-		android:textSize="12sp"
-		android:textStyle="bold" />
+		android:layout_height="@dimen/manga_status_ribbon_height"
+		android:background="@drawable/bg_manga_status_ribbon"
+		android:clipToOutline="true"
+		android:importantForAccessibility="yes"
+		android:layoutDirection="ltr"
+		android:orientation="horizontal">
+
+		<ImageView
+			android:id="@+id/status_library"
+			android:layout_width="@dimen/manga_status_ribbon_width"
+			android:layout_height="match_parent"
+			android:background="?attr/colorPrimary"
+			android:importantForAccessibility="no"
+			android:padding="3dp"
+			android:scaleType="centerInside"
+			android:src="@drawable/ic_bookmark"
+			android:tint="?attr/colorOnPrimary" />
+
+		<ImageView
+			android:id="@+id/status_downloaded"
+			android:layout_width="@dimen/manga_status_ribbon_width"
+			android:layout_height="match_parent"
+			android:background="?attr/colorTertiary"
+			android:importantForAccessibility="no"
+			android:padding="3dp"
+			android:scaleType="centerInside"
+			android:src="@drawable/ic_download"
+			android:tint="?attr/colorOnTertiary" />
+
+	</LinearLayout>
 
 </merge>

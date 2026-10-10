@@ -384,6 +384,14 @@ fun mangaGridItemAD(
 			gravity = Gravity.END or if (isTitleOverCover || item.isPinned) Gravity.TOP else Gravity.BOTTOM
 		}
 		binding.iconsView.bindGrid(item.isSaved, item.isLocalSource, item.isFavorite, item.counter)
+		// Reserve the corner without squeezing controls out of narrow covers. Reset on rebind.
+		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
+			topMargin = context.resources.getDimensionPixelSize(R.dimen.card_indicator_offset) +
+				if ((item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
+					context.resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_height) +
+						context.resources.getDimensionPixelSize(R.dimen.library_indicator_spacing)
+				} else 0
+		}
 		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
 		binding.badge.number = item.counter
 		binding.badge.isVisible = item.counter > 0

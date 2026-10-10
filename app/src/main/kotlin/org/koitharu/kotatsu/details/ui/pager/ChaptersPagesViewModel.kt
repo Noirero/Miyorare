@@ -89,6 +89,8 @@ abstract class ChaptersPagesViewModel(
 	val onOpenChapterInBrowser = MutableEventFlow<String>()
 
 	val chaptersQuery = MutableStateFlow("")
+	// Transient, explicit search mode. It does not overwrite normal chapter search or list options.
+	val chapterNotesQuery = MutableStateFlow<String?>(null)
 	val selectedBranch = MutableStateFlow<String?>(null)
 	val selectedScanlator = MutableStateFlow<String?>(null)
 
@@ -269,7 +271,7 @@ abstract class ChaptersPagesViewModel(
 				.map { item -> item.withTitleMode(options.titleMode) }
 		},
 		chapterListOptions,
-		chaptersQuery,
+		chaptersQuery.combine(chapterNotesQuery) { chapterQuery, notesQuery -> chapterQuery to notesQuery },
 		activeChapterDownloads,
 		chapterPersonalMetadata,
 	) { list, options, query, activeDownloads, personalMetadata ->
@@ -278,7 +280,7 @@ abstract class ChaptersPagesViewModel(
 			if (item.personalMetadata == metadata) item else item.copy(personalMetadata = metadata)
 		}
 			.applyChapterOptions(options)
-			.filterSearch(query)
+			.filterChapterSearch(query.first, query.second)
 		if (activeDownloads.isEmpty) {
 			filtered
 		} else {
@@ -401,7 +403,16 @@ abstract class ChaptersPagesViewModel(
 	}
 
 	fun performChapterSearch(query: String?) {
+		if (query != null) chapterNotesQuery.value = null
 		chaptersQuery.value = query?.trim().orEmpty()
+	}
+
+	fun performChapterNoteSearch(query: String) {
+		chapterNotesQuery.value = query
+	}
+
+	fun exitChapterNoteSearch() {
+		chapterNotesQuery.value = null
 	}
 
 	fun getMangaOrNull(): Manga? = mangaDetails.value?.toManga()
@@ -574,13 +585,6 @@ abstract class ChaptersPagesViewModel(
 			val result = left.compareToWithCollator(right)
 			if (descending) -result else result
 		}
-	}
-
-	private fun List<ChapterListItem>.filterSearch(query: String): List<ChapterListItem> {
-		if (query.isEmpty() || this.isEmpty()) {
-			return this
-		}
-		return filter { it.contains(query) }
 	}
 
 	private suspend fun onLocalIndexRebuilt() {

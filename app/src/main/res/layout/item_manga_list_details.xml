@@ -68,13 +68,12 @@
 			android:id="@+id/iconsView"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
-			android:layout_marginTop="10dp"
-			android:background="@drawable/bg_list_icons"
+			android:layout_marginTop="0dp"
+			android:layout_marginEnd="@dimen/card_indicator_offset"
 			android:orientation="horizontal"
-			android:padding="4dp"
 			app:layout_constraintStart_toStartOf="@id/imageView_cover"
 			app:layout_constraintEnd_toEndOf="@id/imageView_cover"
-			app:layout_constraintHorizontal_bias="0"
+			app:layout_constraintHorizontal_bias="1"
 			app:layout_constrainedWidth="true"
 			app:layout_constraintTop_toTopOf="@id/imageView_cover" />
 

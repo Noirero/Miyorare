@@ -23,6 +23,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -176,10 +177,10 @@ class ChaptersFragment :
 		}
 		kotlinx.coroutines.flow.combine(
 			viewModel.chapters,
-			viewModel.chaptersQuery,
+			viewModel.chaptersQuery.combine(viewModel.chapterNotesQuery) { chapterQuery, notesQuery -> chapterQuery to notesQuery },
 			viewModel.chapterListOptions,
 		) { list, query, options ->
-			val isPresentationSubset = query.isNotEmpty() ||
+			val isPresentationSubset = (query.second?.isNotBlank() ?: query.first.isNotEmpty()) ||
 				options.hasStatusFilter ||
 				options.sortMode != ChapterSortMode.SOURCE
 			if (isPresentationSubset) {
@@ -193,8 +194,11 @@ class ChaptersFragment :
 				onChaptersChanged(decorateVolumeHeaders(list))
 			}
 		viewModel.quickFilter.observe(viewLifecycleOwner, this::onFilterChanged)
-		viewModel.emptyReason.observe(viewLifecycleOwner) {
-			binding.textViewHolder.setTextAndVisible(it?.msgResId ?: 0)
+		combine(viewModel.emptyReason, viewModel.chapterNotesQuery, viewModel.chapters) { reason, notesQuery, chapters ->
+			if (!notesQuery.isNullOrBlank() && chapters.isEmpty()) R.string.chapter_search_notes_empty
+			else reason?.msgResId ?: 0
+		}.observe(viewLifecycleOwner) {
+			binding.textViewHolder.setTextAndVisible(it)
 		}
 		viewModel.onOpenChapterInBrowser.observeEvent(viewLifecycleOwner) { url ->
 			val manga = viewModel.getMangaOrNull()
@@ -212,7 +216,7 @@ class ChaptersFragment :
 
 	private fun decorateVolumeHeaders(list: List<ListModel>): List<ListModel> {
 		val options = viewModel.chapterListOptions.value
-		if (viewModel.chaptersQuery.value.isNotEmpty() ||
+		if ((viewModel.chapterNotesQuery.value?.isNotBlank() ?: viewModel.chaptersQuery.value.isNotEmpty()) ||
 			options.hasStatusFilter ||
 			options.sortMode != ChapterSortMode.SOURCE ||
 			viewModel.getMangaOrNull()?.source == LocalMangaSource

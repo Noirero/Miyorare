@@ -35,14 +35,10 @@
 			tools:text="150"
 			tools:textColor="?android:textColorPrimary" />
 
-		<ImageView
+		<org.koitharu.kotatsu.details.ui.ChapterPersonalIndicatorsView
 			android:id="@+id/imageView_personal"
-			android:layout_width="14dp"
-			android:layout_height="14dp"
-			android:visibility="gone"
-			android:contentDescription="@string/chapter_personal_edit"
-			app:srcCompat="@drawable/ic_star_rate"
-			app:tint="?colorPrimary"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
 			app:layout_constraintStart_toStartOf="@id/textView_title"
 			app:layout_constraintTop_toTopOf="@id/textView_title"
 			android:layout_margin="6dp" />

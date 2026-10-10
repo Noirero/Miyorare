@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Regression and workflow contract tests; stdlib only, no Gradle or emulator."""
 import hashlib
+import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
 import tempfile
+import textwrap
 import unittest
 from unittest.mock import patch
 
@@ -254,7 +256,7 @@ class WorkflowContractTest(unittest.TestCase):
     def test_exact_head_and_no_legacy_last_commit_or_owner_bypass(self):
         source = (ROOT / policy.WORKFLOW).read_text()
         self.assertEqual(3, source.count("ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"))
-        self.assertEqual(3, source.count('test "$actual" = "$EXPECTED_HEAD"'))
+        self.assertEqual(4, source.count('test "$actual" = "$EXPECTED_HEAD"'))
         self.assertIn('BASE_SHA: ${{ github.event.pull_request.base.sha }}', source)
         self.assertIn('--base "$BASE_SHA" --head "$HEAD_SHA"', source)
         self.assertNotIn('BEFORE_SHA', source)
@@ -295,12 +297,97 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_entire_render_matrix_configuration_assertions_and_evidence_stay_intact(self):
         source = (ROOT / policy.WORKFLOW).read_text().split('  rendered-device-matrix:', 1)[1]
+        # The owner APK export is appended after the original report upload. Keep the
+        # complete existing renderer/device/test/evidence fingerprint, excluding only that addition.
+        source = source.split('\n      - name: Prepare debug-signed owner-testing Preview APK', 1)[0]
         source = source.replace("needs.deterministic-validation.outputs.run_render == 'true'", '<route>')
         # All three original scenarios, device settings, Preview properties,
         # instrumentation arguments, mandatory PNG/JSON and startup/memory/gfx
         # collection remain identical. Only their routing condition changes.
         self.assertEqual('41aab96399807a781420e218011bf0a6c7ad13cba4c2cc1940cfae66bdf81401',
                          hashlib.sha256(source.encode()).hexdigest())
+
+    def test_owner_preview_export_keeps_read_only_debug_signing_and_apk_only_exposure(self):
+        source = (ROOT / policy.WORKFLOW).read_text()
+        render = source.split('  rendered-device-matrix:', 1)[1]
+        export = render.split('      - name: Prepare debug-signed owner-testing Preview APK', 1)[1]
+        self.assertEqual(2, export.count("if: matrix.scenario == 'modern-dark'"))
+        self.assertIn("permissions:\n  contents: read", source)
+        self.assertNotIn('secrets.', source)
+        self.assertNotIn('RELEASE_STORE', source)
+        self.assertIn('-PMIYORARE_VISUAL_TEST_SIGNING=true', render)
+        self.assertIn('test "$actual" = "$EXPECTED_HEAD"', export)
+        self.assertIn('EXPECTED_HEAD: ${{ github.event_name == \'pull_request\' && github.event.pull_request.head.sha || github.sha }}', export)
+        self.assertIn('verify --verbose --print-certs "$apk"', export)
+        upload = export.split('      - name: Upload debug-signed owner-testing Preview APK', 1)[1]
+        self.assertIn('path: ${{ steps.owner_preview.outputs.apk_path }}', upload)
+        self.assertIn('name: ${{ steps.owner_preview.outputs.artifact_name }}', upload)
+        self.assertIn('if-no-files-found: error', upload)
+        self.assertIn('retention-days: 14', upload)
+        self.assertNotIn('always()', export)
+        self.assertNotIn('*', upload)
+        self.assertNotIn('keystore', upload)
+
+    def test_real_export_shell_rejects_wrong_head_unsigned_missing_or_non_debug_apks(self):
+        source = (ROOT / policy.WORKFLOW).read_text()
+        export = source.split('      - name: Prepare debug-signed owner-testing Preview APK', 1)[1]
+        script = textwrap.dedent(export.split('        run: |\n', 1)[1].split('\n      - name:', 1)[0])
+        with tempfile.TemporaryDirectory() as temp:
+            repo = Path(temp)
+            subprocess.run(['git', 'init', '-q'], cwd=repo, check=True)
+            (repo / 'source.txt').write_text('source fixture')
+            subprocess.run(['git', 'add', '.'], cwd=repo, check=True)
+            subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                            'commit', '-qm', 'fixture'], cwd=repo, check=True)
+            head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip()
+            apk = repo / 'app/build/outputs/apk/preview/app-preview.apk'
+            apk.parent.mkdir(parents=True)
+            signer = repo / 'sdk/build-tools/37.0.0/apksigner'
+            signer.parent.mkdir(parents=True)
+            signer.write_text('#!/bin/bash\nif [ "$FAKE_VALID" != true ]; then exit 1; fi\n'
+                              'printf "%s\\n" "$FAKE_REPORT"\n')
+            signer.chmod(0o755)
+            debug_cert = 'CN=Android Debug, O=Android, C=US'
+            report = f'Verifies\nNumber of signers: 1\nSigner #1 certificate DN: {debug_cert}'
+            sdk_report = report.replace('Signer #1', 'V2 Signer:')
+            for case, expected, exists, valid, signature in (
+                ('valid-legacy', head, True, 'true', report),
+                ('valid-sdk', head, True, 'true', sdk_report),
+                ('valid-order', head, True, 'true', sdk_report.replace(debug_cert, 'C=US, O=Android, CN=Android Debug')),
+                ('valid-schemes', head, True, 'true', sdk_report + f'\nV3.1 Signer: certificate DN: {debug_cert}'),
+                ('wrong-head', 'f' * 40, True, 'true', report),
+                ('missing', head, False, 'true', report),
+                ('unsigned', head, True, 'false', report),
+                ('other-signer', head, True, 'true', report.replace(debug_cert, 'CN=Official Beta')),
+                ('missing-cert', head, True, 'true', 'Verifies\nNumber of signers: 1'),
+                ('unverified', head, True, 'true', report.replace('Verifies\n', '')),
+                ('multiple-signers', head, True, 'true', report.replace('Number of signers: 1', 'Number of signers: 2')),
+                ('ambiguous-cert', head, True, 'true', sdk_report + '\nV3 Signer: certificate DN: CN=Other'),
+                ('unexpected-signer', head, True, 'true', report.replace('Signer #1', 'Signer #2')),
+            ):
+                with self.subTest(case=case):
+                    if exists: apk.write_bytes(b'APK fixture')
+                    elif apk.exists(): apk.unlink()
+                    runner = repo / case
+                    runner.mkdir()
+                    output = runner / 'output'
+                    summary = runner / 'summary'
+                    env = dict(os.environ, EXPECTED_HEAD=expected, ANDROID_HOME=str(repo / 'sdk'),
+                               RUNNER_TEMP=str(runner), GITHUB_OUTPUT=str(output),
+                               GITHUB_STEP_SUMMARY=str(summary), GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='2',
+                               FAKE_VALID=valid, FAKE_REPORT=signature)
+                    result = subprocess.run(['bash', '-c', script], cwd=repo, env=env, capture_output=True, text=True)
+                    if case.startswith('valid-'):
+                        self.assertEqual(0, result.returncode, result.stderr)
+                        values = dict(line.split('=', 1) for line in output.read_text().splitlines())
+                        self.assertEqual(f'owner-testing-preview-debug-signed-{head}-run-123-2', values['artifact_name'])
+                        self.assertEqual(apk.read_bytes(), Path(values['apk_path']).read_bytes())
+                        self.assertEqual([Path(values['apk_path'])], list(runner.glob('*.apk')))
+                        self.assertIn(head, summary.read_text())
+                    else:
+                        self.assertNotEqual(0, result.returncode)
+                        self.assertFalse(output.exists())
+                        self.assertEqual([], list(runner.glob('*.apk')))
 
     def test_preserved_scope_and_new_dependency_events(self):
         rules = policy.workflow_paths()

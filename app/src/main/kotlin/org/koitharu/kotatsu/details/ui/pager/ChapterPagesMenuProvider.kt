@@ -14,6 +14,7 @@ import com.google.android.material.slider.LabelFormatter
 import com.google.android.material.slider.Slider
 import com.google.android.material.slider.TickVisibilityMode
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
 import org.koitharu.kotatsu.core.util.ext.setValueRounded
@@ -45,12 +46,19 @@ class ChapterPagesMenuProvider(
 				menuInflater.inflate(R.menu.opt_chapters, menu)
 				// Match the rest of the app's checkable overflow menus (e.g. the home incognito toggle).
 				menu.setOptionalIconsVisibleCompat(true)
-				menu.findItem(R.id.action_search)?.let { item ->
+				menu.findItem(R.id.action_search_notes)?.isVisible = viewModel is DetailsViewModel
+				for (id in listOf(R.id.action_search, R.id.action_search_notes)) menu.findItem(id)?.let { item ->
 					item.setOnActionExpandListener(this)
 					(item.actionView as? SearchView)?.apply {
 						setIconifiedByDefault(false)
 						queryHint = item.title
 						setOnQueryTextListener(this@ChapterPagesMenuProvider)
+					}
+				}
+				if (viewModel is DetailsViewModel && viewModel.chapterNotesQuery.value != null) {
+					menu.findItem(R.id.action_search_notes)?.let { item ->
+						item.expandActionView()
+						(item.actionView as? SearchView)?.setQuery(viewModel.chapterNotesQuery.value.orEmpty(), false)
 					}
 				}
 			}
@@ -123,8 +131,13 @@ class ChapterPagesMenuProvider(
 		isEnabled = true
 		// The search field needs the whole bar, so the tabs (the toolbar's custom content) step aside
 		// while it is open and the sheet rises to full screen for room.
-		if (item.itemId == R.id.action_search) {
+		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
 			toolbarContent.isGone = true
+			if (item.itemId == R.id.action_search_notes) {
+				if (viewModel.chapterNotesQuery.value == null) viewModel.performChapterNoteSearch("")
+			} else {
+				viewModel.exitChapterNoteSearch()
+			}
 		}
 		return true
 	}
@@ -133,10 +146,17 @@ class ChapterPagesMenuProvider(
 		expandedItemRef = null
 		isEnabled = false
 		sheet.unlock()
-		if (item.itemId == R.id.action_search) {
+		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
 			toolbarContent.isVisible = true
-			(item.actionView as? SearchView)?.setQuery("", false)
-			viewModel.performChapterSearch(null)
+			(item.actionView as? SearchView)?.apply {
+				// Collapse owns mode cleanup. Clearing the widget must not run normal-search callbacks
+				// and overwrite the separate chapter query when exiting note search.
+				setOnQueryTextListener(null)
+				setQuery("", false)
+				setOnQueryTextListener(this@ChapterPagesMenuProvider)
+			}
+			if (item.itemId == R.id.action_search_notes) viewModel.exitChapterNoteSearch()
+			else viewModel.performChapterSearch(null)
 		}
 		return true
 	}
@@ -144,7 +164,11 @@ class ChapterPagesMenuProvider(
 	override fun onQueryTextSubmit(query: String?): Boolean = false
 
 	override fun onQueryTextChange(newText: String?): Boolean {
-		viewModel.performChapterSearch(newText)
+		if (expandedItemRef?.get()?.itemId == R.id.action_search_notes) {
+			viewModel.performChapterNoteSearch(newText.orEmpty())
+		} else {
+			viewModel.performChapterSearch(newText)
+		}
 		return true
 	}
 

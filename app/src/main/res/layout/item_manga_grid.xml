@@ -41,9 +41,7 @@
 			android:layout_gravity="top|start"
 			android:layout_marginStart="0dp"
 			android:layout_marginTop="16dp"
-			android:background="@drawable/bg_list_icons"
-			android:orientation="horizontal"
-			android:padding="4dp" />
+			android:orientation="horizontal" />
 
 		<org.koitharu.kotatsu.core.ui.widgets.BadgeView
 			android:id="@+id/badge"

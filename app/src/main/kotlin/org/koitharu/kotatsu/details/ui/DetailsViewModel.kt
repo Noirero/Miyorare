@@ -51,6 +51,7 @@ import org.koitharu.kotatsu.details.domain.DetailsInteractor
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
 import org.koitharu.kotatsu.details.domain.ReadingTimeUseCase
+import org.koitharu.kotatsu.details.domain.predictSourceChapterRelease
 import org.koitharu.kotatsu.details.domain.RelatedMangaGroup
 import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
@@ -78,6 +79,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
 import org.koitharu.kotatsu.stats.data.StatsRepository
 import javax.inject.Inject
+import java.time.ZoneId
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 
@@ -228,6 +230,17 @@ class DetailsViewModel @Inject constructor(
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
 	val remoteManga = MutableStateFlow<Manga?>(null)
+
+	private val releasePredictionRefreshTime = MutableStateFlow(System.currentTimeMillis())
+	val chapterReleasePrediction = combine(mangaDetails, selectedBranch, releasePredictionRefreshTime) { details, branch, _ ->
+		// Source results can arrive after onStart (including synthetic "just now" dates).
+		// Sample the clock for every calculation rather than treating that result as future data.
+		predictSourceChapterRelease(details, branch, System.currentTimeMillis(), ZoneId.systemDefault())
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), null)
+
+	fun refreshChapterReleasePrediction() {
+		releasePredictionRefreshTime.value = System.currentTimeMillis()
+	}
 
 	val historyInfo: StateFlow<HistoryInfo> = combine(
 		mangaDetails,
