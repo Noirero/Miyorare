@@ -60,6 +60,9 @@ class ExtensionDetailsStages234RegressionTest {
 		assertTrue(success > store)
 
 		assertTrue(loader.contains("if(!preferLocalBeforeInitialSnapshot){emitSourceFirstRemoteDetails("))
+		val sourceFirstHelper = loader.substringAfter("suspendfunFlowCollector<MangaDetails>.emitSourceFirstRemoteDetails(")
+			.substringBefore("privatesuspendfunsingleFlightRefresh(")
+		assertTrue(sourceFirstHelper.contains("isLoaded=false"))
 		assertTrue(details.contains("mangaDataRepository.observeChapters(mangaId)"))
 		assertFalse(details.contains(".drop(1)"))
 		assertTrue(details.contains(".mapLatest{chapters->syncCachedChaptersWhenLoadIdle(chapters)}"))
