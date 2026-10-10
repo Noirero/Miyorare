@@ -82,19 +82,10 @@ class DetailsLoadUseCase @Inject constructor(
 		} else downloadedMangaResolver.resolveCanonicalManga(resolvedIntentManga)
 		val override = mangaDataRepository.getOverride(manga.id)
 		if (manga.isLocal) {
-			// Local is authoritative. Do not replace a filesystem-backed title with its historical
-			// remote/source identity: the user must always be able to open downloaded/imported content
-			// even when the original extension is missing, broken, offline, or no longer installed.
-			// Also make the first collected Local snapshot chapter-complete so Details never renders an
-			// avoidable empty chapter state while waiting for source enrichment.
 			loadLocal(manga, override)
 		} else {
 			val cachedState = getCachedDetailsState(manga, force)
 			val fastDescription = manga.description?.parseAsHtml(withImages = false)
-			// Room chapters are the fastest durable snapshot after process recreation. Do not hold them
-			// behind Local/download enrichment: indexed lookup can touch the filesystem and may wait for a
-			// stale Local index rebuild. Only titles without any initialized persistent details snapshot keep
-			// local-first behaviour, so a valid zero-chapter snapshot is not mistaken for "never loaded".
 			val savedManga = emitRemoteInitialSnapshot(
 				manga = manga,
 				override = override,
@@ -113,6 +104,7 @@ class DetailsLoadUseCase @Inject constructor(
 				initialSavedManga = savedManga,
 				favouriteSpace = favouriteSpace,
 				cachedIsFresh = cachedState.fresh,
+				preferLocalBeforeInitialSnapshot = preferLocalBeforeInitialSnapshot,
 				findSavedManga = {
 					downloadedMangaResolver.findSavedManga(manga, favouriteSpace)
 				},
@@ -126,7 +118,6 @@ class DetailsLoadUseCase @Inject constructor(
 		}
 	}.distinctUntilChanged()
 		.flowOn(Dispatchers.Default)
-
 
 	private suspend fun FlowCollector<MangaDetails>.loadLocal(manga: Manga, override: MangaOverride?) {
 		val localDetails = if (manga.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) {
@@ -142,8 +133,6 @@ class DetailsLoadUseCase @Inject constructor(
 		)
 		emit(visibleDetails)
 
-		// Rich local descriptions are presentation-only. Loading them after the chapter-complete
-		// snapshot keeps Local opening responsive and never introduces a dependency on the old source.
 		val richDescription = localDetails.description?.parseAsHtml(withImages = true)
 		if (richDescription != fastDescription) {
 			emit(visibleDetails.copy(description = richDescription))
@@ -157,10 +146,9 @@ class DetailsLoadUseCase @Inject constructor(
 		initialSavedManga: LocalManga?,
 		favouriteSpace: FavouriteSpace?,
 		cachedIsFresh: Boolean,
+		preferLocalBeforeInitialSnapshot: Boolean,
 		findSavedManga: suspend () -> LocalManga?,
 	) = coroutineScope {
-		// Details must not wait for download/local enrichment before starting source work. Reader passes
-		// an already resolved local copy and keeps its local-first offline semantics.
 		val localLookup = async {
 			runCatchingCancellable {
 				initialSavedManga ?: findSavedManga()
@@ -197,8 +185,6 @@ class DetailsLoadUseCase @Inject constructor(
 			return@coroutineScope
 		}
 
-		// Capture the DB generation before joining the single-flight. If another refresh finishes in the
-		// small window before this caller becomes the owner, the owner block reuses that atomic snapshot.
 		val observedRefreshAt = mangaDataRepository.getDetailsUpdatedAt(manga.id)
 		var progressiveDescription: CharSequence? = null
 		val refreshKey = RefreshKey(manga.source.name, manga.id)
@@ -255,8 +241,20 @@ class DetailsLoadUseCase @Inject constructor(
 				)
 			}
 
-			// Persist before completing the shared result. Every waiter therefore observes either the same
-			// failure or the same fully committed Room snapshot, never another source request.
+			// Details can render a validated source snapshot immediately. Reader deliberately keeps the
+			// committed handoff: a concurrent Reader joins this single-flight and cannot proceed until the
+			// Room transaction below has completed. This removes Room write latency from Details' first
+			// useful render without weakening the shared durability boundary.
+			if (!preferLocalBeforeInitialSnapshot) {
+				emitSourceFirstRemoteDetails(
+					remoteDetails = remoteDetails,
+					initialSavedManga = initialSavedManga,
+					override = override,
+				)
+			}
+
+			// Keep persistence inside the single-flight. Waiters still observe only a fully committed
+			// snapshot and never trigger a second source request while this write is in progress.
 			mangaDataRepository.storeManga(
 				remoteDetails,
 				replaceExisting = true,
@@ -267,8 +265,6 @@ class DetailsLoadUseCase @Inject constructor(
 		}
 
 		if (remoteResult.isFailure) {
-			// Source failure is where the concurrently resolved local copy becomes authoritative. This
-			// preserves offline/download fallback without delaying the normal Extension Details source path.
 			val discoveredLocal = localLookup.await()
 			val fallback = MangaDetails(
 				manga = manga,
@@ -293,8 +289,6 @@ class DetailsLoadUseCase @Inject constructor(
 			description = fastDescription,
 			isLoaded = true,
 		)
-		// Publish the committed source result immediately. Local/download enrichment was started in
-		// parallel and must never sit in front of a healthy source response.
 		emit(visibleDetails)
 
 		val discoveredLocal = localLookup.await()
@@ -330,6 +324,24 @@ class DetailsLoadUseCase @Inject constructor(
 		}
 	}
 
+	private suspend fun FlowCollector<MangaDetails>.emitSourceFirstRemoteDetails(
+		remoteDetails: Manga,
+		initialSavedManga: LocalManga?,
+		override: MangaOverride?,
+	) {
+		val fastDescription = (remoteDetails.description ?: initialSavedManga?.manga?.description)
+			?.parseAsHtml(withImages = false)
+		emit(
+			MangaDetails(
+				manga = remoteDetails,
+				localManga = initialSavedManga,
+				override = override,
+				description = fastDescription,
+				isLoaded = true,
+			),
+		)
+	}
+
 	private suspend fun singleFlightRefresh(
 		key: RefreshKey,
 		block: suspend () -> Result<Manga>,
@@ -341,9 +353,6 @@ class DetailsLoadUseCase @Inject constructor(
 				try {
 					return active.await()
 				} catch (_: CancellationException) {
-					// The request belongs to the owner coroutine. If that owner disappears (for example a
-					// Details screen is destroyed), do not propagate its cancellation into another active
-					// caller such as Reader. A caller that is itself cancelled still exits via ensureActive().
 					currentCoroutineContext().ensureActive()
 					continue
 				}
@@ -363,14 +372,11 @@ class DetailsLoadUseCase @Inject constructor(
 
 	private suspend fun getCachedDetailsState(manga: Manga, force: Boolean): CachedDetailsState {
 		val updatedAt = mangaDataRepository.getDetailsUpdatedAt(manga.id)
-		// The explicit Room flag distinguishes NotLoaded from Loaded(empty). Non-empty chapters also
-		// count as initialized so legacy/imported snapshots remain usable even before migration/backfill.
 		val initialized = mangaDataRepository.isChaptersInitialized(manga.id) || !manga.chapters.isNullOrEmpty()
 		val fresh = !force && initialized && updatedAt > 0L &&
 			System.currentTimeMillis() - updatedAt < DETAILS_FRESHNESS_MS
 		return CachedDetailsState(initialized = initialized, fresh = fresh)
 	}
-
 
 	private suspend fun getDetails(seed: Manga, fresh: Boolean) = runCatchingCancellable {
 		loadDetails(seed, fresh, refreshExtensions = false)
@@ -386,9 +392,6 @@ class DetailsLoadUseCase @Inject constructor(
 
 	private suspend fun loadDetails(seed: Manga, fresh: Boolean, refreshExtensions: Boolean): Manga {
 		val resolvedSeed = if (seed.source.name.startsWith("MIHON_")) {
-			// Opening a title must not rescan every installed extension just because the Parcelable/DB
-			// seed was reconstructed as a MissingMangaSource. ensureReady() resolves the normal startup
-			// race; a full refresh is reserved for the retry after UnsupportedSourceException.
 			mihonExtensionManager.ensureReady(forceRefresh = refreshExtensions)
 			val resolvedSource = ResolveMangaSource(seed.source.name)
 			seed.copy(source = resolvedSource)
@@ -454,10 +457,6 @@ internal suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(
 	deferLocalLookup: Boolean = false,
 	findSavedManga: suspend () -> LocalManga?,
 ): LocalManga? {
-	// Details UI wants the durable Room snapshot immediately. Reader is different: consuming the first
-	// emission can synchronously start page loading, so emitting a remote chapter before exact local
-	// enrichment can strand an offline Reader on network IO and prevent it from ever reaching the
-	// following CBZ-backed emission. Reader opts into one bounded indexed local lookup first.
 	if (preferLocalBeforeCached) {
 		val savedManga = findSavedManga()
 		emit(
@@ -499,4 +498,3 @@ internal suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(
 	}
 	return savedManga
 }
-
