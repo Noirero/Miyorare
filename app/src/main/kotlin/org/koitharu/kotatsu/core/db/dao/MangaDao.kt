@@ -76,7 +76,8 @@ abstract class MangaDao {
 	@Query(
 		"""
 		SELECT * FROM manga
-		WHERE EXISTS(SELECT 1 FROM chapters WHERE chapters.manga_id = manga.manga_id)
+		WHERE (EXISTS(SELECT 1 FROM chapters WHERE chapters.manga_id = manga.manga_id)
+				OR EXISTS(SELECT 1 FROM chapter_personal WHERE chapter_personal.manga_id = manga.manga_id))
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
 				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
@@ -93,7 +94,8 @@ abstract class MangaDao {
 		"""
 		SELECT * FROM manga
 		WHERE manga_id > :afterMangaId
-			AND EXISTS(SELECT 1 FROM chapters WHERE chapters.manga_id = manga.manga_id)
+			AND (EXISTS(SELECT 1 FROM chapters WHERE chapters.manga_id = manga.manga_id)
+				OR EXISTS(SELECT 1 FROM chapter_personal WHERE chapter_personal.manga_id = manga.manga_id))
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
 				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
@@ -357,6 +359,7 @@ abstract class MangaDao {
 			AND NOT EXISTS(SELECT * FROM favourites WHERE favourites.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM private_favourites WHERE private_favourites.manga_id == manga.manga_id AND private_favourites.deleted_at = 0)
 			AND NOT EXISTS(SELECT * FROM bookmarks WHERE bookmarks.manga_id == manga.manga_id)
+			AND NOT EXISTS(SELECT * FROM chapter_personal WHERE chapter_personal.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM suggestions WHERE suggestions.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM scrobblings WHERE scrobblings.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM local_index WHERE local_index.manga_id == manga.manga_id)

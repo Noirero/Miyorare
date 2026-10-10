@@ -332,23 +332,18 @@ fun mangaGridItemAD(
 		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
 			gravity = Gravity.END or if (isTitleOverCover || item.isPinned) Gravity.TOP else Gravity.BOTTOM
 		}
-		with(binding.iconsView) {
-			clearIcons()
-			if (item.isSaved) addIcon(R.drawable.ic_storage)
-			if (item.isLocalSource) addIcon(R.drawable.ic_manga_source)
-			if (item.isFavorite) addIcon(R.drawable.ic_heart_outline)
-			isVisible = iconsCount > 0
+		binding.iconsView.bindGrid(item.isSaved, item.isLocalSource, item.isFavorite, item.counter)
+		// Reserve the corner without squeezing controls out of narrow covers. Reset on rebind.
+		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
+			topMargin = context.resources.getDimensionPixelSize(R.dimen.card_indicator_offset) +
+				if ((item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
+					context.resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_height) +
+						context.resources.getDimensionPixelSize(R.dimen.library_indicator_spacing)
+				} else 0
 		}
 		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
 		binding.badge.number = item.counter
 		binding.badge.isVisible = item.counter > 0
-		binding.iconsView.updateLayoutParams<FrameLayout.LayoutParams> {
-			topMargin = if (item.counter > 0) {
-				(32f * density).toInt()
-			} else {
-				(16f * density).toInt()
-			}
-		}
 	}
 }
 

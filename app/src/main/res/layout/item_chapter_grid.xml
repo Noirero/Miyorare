@@ -21,6 +21,11 @@
 			android:layout_height="0dp"
 			android:gravity="center"
 			android:singleLine="true"
+			android:ellipsize="end"
+			app:autoSizeTextType="uniform"
+			app:autoSizeMinTextSize="10sp"
+			app:autoSizeMaxTextSize="20sp"
+			app:autoSizeStepGranularity="1sp"
 			android:textAlignment="center"
 			android:textAppearance="?attr/textAppearanceTitleMedium"
 			app:layout_constraintDimensionRatio="1:1"
@@ -29,6 +34,14 @@
 			app:layout_constraintTop_toTopOf="parent"
 			tools:text="150"
 			tools:textColor="?android:textColorPrimary" />
+
+		<org.koitharu.kotatsu.details.ui.ChapterPersonalIndicatorsView
+			android:id="@+id/imageView_personal"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			app:layout_constraintStart_toStartOf="@id/textView_title"
+			app:layout_constraintTop_toTopOf="@id/textView_title"
+			android:layout_margin="6dp" />
 
 		<ImageView
 			android:id="@+id/imageView_bookmarked"

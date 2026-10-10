@@ -26,11 +26,16 @@ fun chapterGridItemAD(
 
 	bind { payloads ->
 		if (payloads.isEmpty()) {
-			binding.textViewTitle.text = item.getTitle(context.resources)
+			binding.textViewTitle.text = item.getGridTitle(context.resources)
 			itemView.setTooltipCompat(item.chapter.title)
 		}
 		binding.imageViewNew.isVisible = item.isNew
 		binding.imageViewBookmarked.isVisible = item.isBookmarked
+		binding.imageViewPersonal.bind(
+			item.personalMetadata,
+			accentColorProvider() ?: context.getThemeColor(androidx.appcompat.R.attr.colorPrimary),
+			context.getThemeColor(materialR.attr.colorOnSurfaceVariant),
+		)
 		binding.imageViewBookmarked.imageTintList = accentColorProvider()?.let { ColorStateList.valueOf(it) }
 			?: context.getThemeColorStateList(androidx.appcompat.R.attr.colorPrimary)
 		binding.imageViewDownloaded.isVisible = item.isDownloaded

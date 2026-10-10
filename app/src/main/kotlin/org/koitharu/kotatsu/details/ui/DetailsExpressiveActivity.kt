@@ -259,6 +259,7 @@ class DetailsExpressiveActivity :
 
 	override fun onStart() {
 		super.onStart()
+		viewModel.refreshChapterReleasePrediction()
 		viewModel.resumeExpandedRelatedIfNeeded()
 		viewModel.resumeGenreRecommendations()
 		viewModel.resumeTrackerPeople()
@@ -356,6 +357,10 @@ class DetailsExpressiveActivity :
 			},
 			onChapterOptionsResetClick = viewModel::resetChapterOptions,
 			onChapterClick = ::openChapter,
+			onChapterPersonalClick = viewModel::editChapterPersonal,
+			onChapterNotesSearchClick = { viewModel.performChapterNoteSearch("") },
+			onChapterNotesQueryChange = viewModel::performChapterNoteSearch,
+			onChapterNotesSearchExit = viewModel::exitChapterNoteSearch,
 			onChapterDownloadClick = { item ->
 				if (!item.canDownload) return@DetailsExpressiveActions
 				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
@@ -380,7 +385,9 @@ class DetailsExpressiveActivity :
 				val density = androidx.compose.ui.platform.LocalDensity.current
 				val details by viewModel.mangaDetails.collectAsState()
 				val history by viewModel.historyInfo.collectAsState()
+				val chapterReleasePrediction by viewModel.chapterReleasePrediction.collectAsState()
 				val chapters by viewModel.chapters.collectAsState()
+				val chapterNotesQuery by viewModel.chapterNotesQuery.collectAsState()
 				val chapterOptions by viewModel.chapterListOptions.collectAsState()
 				val chapterBranches by viewModel.chapterBranchOptions.collectAsState()
 				val selectedChapterBranch by viewModel.selectedBranch.collectAsState()
@@ -415,6 +422,8 @@ class DetailsExpressiveActivity :
 					tags = tags,
 					historyInfo = history,
 					chapters = chapters,
+					chapterReleasePrediction = chapterReleasePrediction,
+					chapterNotesQuery = chapterNotesQuery,
 					isChapterFilterActive = chapterFilterActive,
 					isLoading = loading,
 					favouriteCount = favs.size,
@@ -442,6 +451,16 @@ class DetailsExpressiveActivity :
 					actions = actions,
 				)
 
+				val personalEditor by viewModel.chapterPersonalEditor.collectAsState()
+				val personalSaving by viewModel.isSavingChapterPersonal.collectAsState()
+				personalEditor?.let { item ->
+					ChapterPersonalEditor(
+						item = item,
+						saving = personalSaving,
+						onDismiss = viewModel::dismissChapterPersonalEditor,
+						onSave = viewModel::saveChapterPersonal,
+					)
+				}
 				if (chapterOptionsVisible.value) {
 					ChapterOptionsSheet(
 						initialTab = chapterOptionsInitialTab.value,
