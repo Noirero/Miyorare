@@ -257,7 +257,7 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
-	fun noteSearchUsesObservedCurrentTitleMetadataAndPreservesTheExistingSubsetAndOrder() = runTest {
+	fun noteSearchUsesObservedCurrentTitleMetadataAndPreservesTheExistingSubsetAndOrder() = runBlocking {
 		withDatabase { db ->
 			val repository = org.koitharu.kotatsu.details.data.ChapterPersonalRepository(db)
 			val manga = SampleData.mangaDetails.copy(id = 904L)
@@ -616,6 +616,7 @@ class ChapterPersistenceRegressionTest {
 					layoutManager = androidx.recyclerview.widget.LinearLayoutManager(themed)
 				}
 				lateinit var indicators: MangaIndicatorsView
+				lateinit var controls: android.view.View
 				recycler.adapter = object : androidx.recyclerview.widget.RecyclerView.Adapter<androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
 					override fun getItemCount() = 1
 					override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): androidx.recyclerview.widget.RecyclerView.ViewHolder {
@@ -630,6 +631,8 @@ class ChapterPersistenceRegressionTest {
 						indicators = MangaIndicatorsView(themed)
 						indicators.id = org.koitharu.kotatsu.R.id.iconsView
 						card.addView(indicators, android.widget.FrameLayout.LayoutParams(-2, -2))
+						controls = android.view.View(themed).apply { id = org.koitharu.kotatsu.R.id.layout_indicators }
+						card.addView(controls, android.widget.FrameLayout.LayoutParams(26, 26, android.view.Gravity.TOP or android.view.Gravity.END))
 						return object : androidx.recyclerview.widget.RecyclerView.ViewHolder(card) {}
 					}
 					override fun onBindViewHolder(holder: androidx.recyclerview.widget.RecyclerView.ViewHolder, position: Int) {
@@ -653,6 +656,9 @@ class ChapterPersistenceRegressionTest {
 						val ribbon = indicators.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.status_ribbon)
 						assertEquals(if (selected) 0f else 1f, ribbon.alpha)
 						assertEquals(selected, recycler.getChildAt(0).isSelected)
+						val controlOffset = themed.resources.getDimension(org.koitharu.kotatsu.R.dimen.manga_status_ribbon_width) +
+							themed.resources.getDimension(org.koitharu.kotatsu.R.dimen.library_indicator_spacing)
+						assertEquals(if (selected && !saved && !favorite) controlOffset else 0f, controls.translationY)
 						assertEquals(if (selected) android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
 							else android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES, ribbon.importantForAccessibility)
 						decoration.onDrawOver(canvas, recycler, state)
@@ -687,6 +693,12 @@ class ChapterPersistenceRegressionTest {
 				assertEquals(0, decoration.checkedItemsCount)
 				assertTrue(normal.sameAs(render(false, false, false)))
 				assertTrue(library.sameAs(render(false, true, false)))
+				// Bottom controls retain their established position even when selected.
+				(controls.layoutParams as android.widget.FrameLayout.LayoutParams).gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+				indicators.bindGrid(false, false, false, 0)
+				decoration.setItemIsChecked(1L, true)
+				decoration.onDraw(android.graphics.Canvas(), recycler, androidx.recyclerview.widget.RecyclerView.State())
+				assertEquals(0f, controls.translationY)
 			}
 		}
 	}

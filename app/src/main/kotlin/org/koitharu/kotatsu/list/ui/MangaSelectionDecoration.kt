@@ -7,7 +7,9 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
+import android.view.Gravity
 import android.view.View
+import android.widget.FrameLayout
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
@@ -41,6 +43,7 @@ open class MangaSelectionDecoration(context: Context) : AbstractSelectionItemDec
 	}
 	private val selectionSize = context.resources.getDimension(R.dimen.manga_status_ribbon_width)
 	private val selectionInset = context.resources.getDimension(R.dimen.card_indicator_offset)
+	private val selectionControlOffset = selectionSize + context.resources.getDimension(R.dimen.library_indicator_spacing)
 	private val coverBounds = Rect()
 	private val coverBoundsF = RectF()
 	private val coverPath = Path()
@@ -66,6 +69,17 @@ open class MangaSelectionDecoration(context: Context) : AbstractSelectionItemDec
 			val selected = getItemId(parent, child) in checkedItemsIds
 			indicators.applySelectionPresentation(selected)
 			if (child.isSelected != selected) child.isSelected = selected
+			// Status cards already reserve this corner during binding. Normal cards need the
+			// same temporary space for the selected marker, without hiding existing controls.
+			val controls = child.findViewById<View>(R.id.layout_indicators)
+			if (controls != null) {
+				val gravity = (controls.layoutParams as? FrameLayout.LayoutParams)?.gravity ?: 0
+				controls.translationY = if (selected && indicators.status == MangaCardStatus.NONE &&
+					(gravity and Gravity.VERTICAL_GRAVITY_MASK) == Gravity.TOP) selectionControlOffset else 0f
+			} else {
+				child.findViewById<View>(R.id.imageView_pin)?.translationY =
+					if (selected && indicators.status == MangaCardStatus.NONE) selectionControlOffset else 0f
+			}
 		}
 		super.onDraw(canvas, parent, state)
 	}
