@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mangaupdates" translatable="false">MangaUpdates</string>
+    <string name="mangaupdates_login_hint">Sign in with your MangaUpdates username and password.</string>
+    <string name="mangaupdates_username">Username</string>
+    <string name="mangaupdates_sign_in">Sign in</string>
+    <string name="mangaupdates_login_failed">Unable to sign in. Check your credentials and connection.</string>
+    <string name="mangaupdates_volume">Volume progress: %1$d</string>
+    <string name="mangaupdates_volume_edit">Edit volume progress</string>
+    <string name="mangaupdates_progress_failed">MangaUpdates progress could not be sent</string>
+    <string name="mangaupdates_volume_unavailable">Volume progress is unavailable. Tap to retry.</string>
+    <string name="mangaupdates_volume_invalid">Enter a non-negative whole number</string>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tracker_people_characters">Karakter · %1$s</string>
+    <string name="tracker_people_staff">Staf · %1$s</string>
+    <string name="tracker_people_loading">Memuat karakter dan staf…</string>
+    <string name="tracker_people_unavailable">Sebagian metadata dari %1$s belum tersedia.</string>
+    <string name="tracker_people_retry">Coba lagi metadata</string>
+    <string name="tracker_people_show_more">Tampilkan lebih banyak</string>
+    <string name="tracker_people_show_less">Tampilkan lebih sedikit</string>
+    <string name="tracker_people_partial">Menampilkan metadata yang tersedia; mungkin ada data lainnya.</string>
+    <string name="tracker_people_no_image">Potret %1$s tidak tersedia</string>
+</resources>

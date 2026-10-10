@@ -2,6 +2,8 @@
 
 package org.koitharu.kotatsu.details.ui
 
+import androidx.compose.foundation.layout.Row
+
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -57,6 +59,7 @@ import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 
 private const val KEY_GENRE_RECOMMENDATIONS_VISIBLE = "genre_recommendations_visible"
@@ -87,6 +90,15 @@ class DetailsExpressiveActions(
 	val onChapterOptionsResetClick: () -> Unit,
 	val onChapterClick: (ChapterListItem) -> Unit,
 	val onChapterDownloadClick: (ChapterListItem) -> Unit,
+	val onTrackerPeopleRequested: () -> Unit,
+	val onTrackerPeopleRetry: (ScrobblerService) -> Unit,
+	val onTrackerPeopleRefresh: () -> Unit,
+	val onTrackerRecommendationsRequested: () -> Unit,
+	val onTrackerRecommendationsRetry: (ScrobblerService) -> Unit,
+	val onTrackerRecommendationsRefresh: () -> Unit,
+	val onTrackerRecommendationClick: (org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation) -> Unit,
+	val onTrackerRecommendationProvider: (org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation) -> Unit,
+	val onMangaUpdatesProgressRetry: () -> Unit,
 )
 
 @Composable
@@ -101,6 +113,9 @@ fun DetailsExpressiveScreen(
 	favouriteCount: Int,
 	favouriteLabel: String?,
 	scrobblings: List<ScrobblingInfo>,
+	trackerPeople: DetailsPeopleUiState,
+	trackerRecommendations: DetailsPeopleUiState,
+	mangaUpdatesProgressFailed: Boolean,
 	genreRecommendations: List<MangaListModel>,
 	expandedRelated: DetailsRelatedUiState,
 	relatedDiscoveryEnabled: Boolean,
@@ -329,6 +344,15 @@ fun DetailsExpressiveScreen(
 						}
 					}
 
+					if (!managed) item(key = "tracker-people", contentType = "tracker-people") {
+						// Lazy composition requests metadata only when the post-chapter section is reached.
+						LaunchedEffect(manga.id, manga.source, manga.url) { actions.onTrackerPeopleRequested() }
+						TrackerPeopleSection(
+							state = trackerPeople, imageLoader = imageLoader,
+							onRetry = actions.onTrackerPeopleRetry, onRefresh = actions.onTrackerPeopleRefresh,
+						)
+					}
+
 					if (scrobblings.isNotEmpty()) {
 						item(contentType = "scrobbling") {
 							ScrobblingSection(
@@ -339,6 +363,17 @@ fun DetailsExpressiveScreen(
 								onCardClick = actions.onScrobblingCardClick,
 							)
 						}
+					}
+
+					if (!managed) item(key = "tracker-recommendations", contentType = "tracker-recommendations") {
+						if (mangaUpdatesProgressFailed) Row(Modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+							Text(stringResource(R.string.mangaupdates_progress_failed), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+							TextButton(onClick = actions.onMangaUpdatesProgressRetry) { Text(stringResource(R.string.tracker_people_retry)) }
+						}
+						LaunchedEffect(manga.id, manga.source, manga.url) { actions.onTrackerRecommendationsRequested() }
+						TrackerRecommendationSection(trackerRecommendations, imageLoader,
+							actions.onTrackerRecommendationClick, actions.onTrackerRecommendationProvider,
+							actions.onTrackerRecommendationsRetry, actions.onTrackerRecommendationsRefresh)
 					}
 
 					if (!managed) item(key = "discovery-controls", contentType = "discovery-controls") {
@@ -736,3 +771,4 @@ private fun ExpressiveBackdrop(
 		)
 	}
 }
+

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tracker_recommendations">Recommendations · %1$s</string>
+    <string name="tracker_similar_manga">Similar manga · %1$s</string>
+    <string name="tracker_recommendations_loading">Loading tracker recommendations…</string>
+    <string name="tracker_recommendations_unavailable">%1$s recommendations are unavailable</string>
+    <string name="tracker_provider_page">Provider page</string>
+    <string name="tracker_recommendation_choose">Choose a source for %1$s</string>
+    <string name="tracker_recommendation_search">Search by title</string>
+</resources>

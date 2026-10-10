@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tracker_recommendations">Rekomendasi · %1$s</string>
+    <string name="tracker_similar_manga">Manga serupa · %1$s</string>
+    <string name="tracker_recommendations_loading">Memuat rekomendasi pelacak…</string>
+    <string name="tracker_recommendations_unavailable">Rekomendasi %1$s tidak tersedia</string>
+    <string name="tracker_provider_page">Halaman penyedia</string>
+    <string name="tracker_recommendation_choose">Pilih sumber untuk %1$s</string>
+    <string name="tracker_recommendation_search">Cari berdasarkan judul</string>
+</resources>

@@ -78,6 +78,14 @@ jobs:
         run: chmod +x gradlew
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
+      - name: Prepare collector compatibility for the exact head
+        run: |
+          # Amain2's collector remains authoritative whenever it exists in the checked-out head.
+          # Older heads still run their existing cover tests through the same command wrapper.
+          if ! test -f .github/scripts/collect-on-device-cover-evidence.sh; then
+            mkdir -p .github/scripts
+            printf '#!/usr/bin/env bash\nset -euo pipefail\n"$@"\n' > .github/scripts/collect-on-device-cover-evidence.sh
+          fi
       - name: Validate cover persistence, source freshness and Reader pins
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -91,6 +99,8 @@ jobs:
             bash .github/scripts/collect-on-device-cover-evidence.sh
             ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace
             -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest,org.koitharu.kotatsu.core.image.MiyorareImageDiskCacheTest
+            && ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.details.ui.TrackerPeopleSectionTest,org.koitharu.kotatsu.scrobbling.common.data.TrackerDetailsSessionTest,org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.details.ui.TrackerRecommendationSectionTest,org.koitharu.kotatsu.details.domain.TrackerRecommendationMappingTest,org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesRepositoryTest,org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesSessionStoreTest,org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivityTest
       - name: Upload Android evidence
         if: always()
         uses: actions/upload-artifact@v4

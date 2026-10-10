@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView android:fillViewport="true" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingHorizontal="24dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:gravity="center" android:text="@string/mangaupdates" android:textAppearance="?attr/textAppearanceHeadlineMedium" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/mangaupdates_login_hint" android:textAppearance="?attr/textAppearanceBodyLarge" />
+    <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:hint="@string/mangaupdates_username">
+        <com.google.android.material.textfield.TextInputEditText android:id="@+id/edit_username" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="text|textNoSuggestions" android:autofillHints="username" android:imeOptions="actionNext" android:singleLine="true" android:maxLength="512" />
+    </com.google.android.material.textfield.TextInputLayout>
+    <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:hint="@string/password" app:endIconMode="password_toggle">
+        <com.google.android.material.textfield.TextInputEditText android:id="@+id/edit_password" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textPassword" android:saveEnabled="false" android:autofillHints="password" android:imeOptions="actionDone" android:singleLine="true" android:maxLength="512" />
+    </com.google.android.material.textfield.TextInputLayout>
+    <TextView android:id="@+id/text_error" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:textColor="?attr/colorError" android:visibility="gone" android:accessibilityLiveRegion="polite" />
+    <ProgressBar android:id="@+id/progress_login" android:layout_width="40dp" android:layout_height="40dp" android:layout_gravity="center_horizontal" android:layout_marginTop="12dp" android:visibility="gone" />
+    <com.google.android.material.button.MaterialButton android:id="@+id/button_sign_in" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/mangaupdates_sign_in" />
+    <com.google.android.material.button.MaterialButton android:id="@+id/button_cancel" style="?attr/materialButtonOutlinedStyle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@android:string/cancel" />
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

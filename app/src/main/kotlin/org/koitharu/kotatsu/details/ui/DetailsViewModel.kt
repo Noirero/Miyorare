@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
@@ -28,6 +30,9 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
 import androidx.core.net.toUri
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.core.model.isBroken
+import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.model.getPreferredBranch
 import org.koitharu.kotatsu.local.data.isEpubFile
 import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
@@ -54,6 +59,7 @@ import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
 import org.koitharu.kotatsu.details.domain.ReadingTimeUseCase
 import org.koitharu.kotatsu.details.domain.RelatedMangaGroup
 import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
+import org.koitharu.kotatsu.details.domain.resolveTrackerRecommendation
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.model.MangaBranch
 import org.koitharu.kotatsu.details.ui.pager.ChapterListOptionsStore
@@ -74,6 +80,17 @@ import org.koitharu.kotatsu.parsers.util.findById
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
+import org.koitharu.kotatsu.scrobbling.common.domain.ReadTrackerDetailsUseCase
+import org.koitharu.kotatsu.scrobbling.common.domain.ScrobblerRepositoryMap
+import org.koitharu.kotatsu.scrobbling.common.domain.TrackerDetailsProvider
+import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerContent
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPage
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerDetailsReadPolicy
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation
+import org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesRepository
+import org.koitharu.kotatsu.scrobbling.mangaupdates.domain.MangaUpdatesScrobbler
 import org.koitharu.kotatsu.scrobbling.common.domain.SyncProgressFromScrobblersUseCase
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
@@ -106,6 +123,8 @@ class DetailsViewModel @Inject constructor(
 	private val detailsLoadUseCase: DetailsLoadUseCase,
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
 	private val syncProgressFromScrobblersUseCase: SyncProgressFromScrobblersUseCase,
+	private val readTrackerDetailsUseCase: ReadTrackerDetailsUseCase,
+	private val scrobblerRepositories: ScrobblerRepositoryMap,
 	private val readingTimeUseCase: ReadingTimeUseCase,
 	statsRepository: StatsRepository,
 	private val database: MangaDatabase,
@@ -243,6 +262,228 @@ class DetailsViewModel @Inject constructor(
 	val scrobblingInfo: StateFlow<List<ScrobblingInfo>> = interactor.observeScrobblingInfo(mangaId)
 		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+
+	private val peopleProviders = ScrobblerService.entries
+		.mapNotNull { scrobblerRepositories[it] as? TrackerDetailsProvider }.associateBy { it.detailsService }
+	private val peopleContent = setOf(TrackerContent.CHARACTERS, TrackerContent.STAFF)
+	private val recommendationContent = setOf(TrackerContent.RECOMMENDATIONS)
+	private fun trackerController(content: Set<TrackerContent>) = DetailsPeopleController(
+		scope = viewModelScope,
+		read = { key, service ->
+			readTrackerDetailsUseCase(
+				key.mangaId, setOf(service),
+				content.associateWith { TrackerPage() },
+				key.policy,
+			)
+		},
+		isCurrent = { key ->
+			// Recheck authorities before/after each provider, even if their observer is queued.
+			val rows = database.getScrobblingDao().findAll(mangaId)
+			val privateOnly = database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
+			key == peopleContext(mangaDetails.value, rows, privateOnly, content)
+		},
+	)
+	private val peopleController = trackerController(peopleContent)
+	private val recommendationController = trackerController(recommendationContent)
+	val trackerPeople = peopleController.state
+	val trackerRecommendations = recommendationController.state
+	internal val onTrackerRecommendationNavigation = MutableEventFlow<TrackerRecommendationNavigation>()
+	private var recommendationContext: DetailsPeopleContext? = null
+	private var recommendationNavigationJob: Job? = null
+	private var recommendationsActive = false
+	private val mangaUpdatesRepository get() = scrobblerRepositories[ScrobblerService.MANGAUPDATES] as MangaUpdatesRepository
+	val mangaUpdatesProgressFailed = combine(mangaUpdatesRepository.failedProgress, mangaUpdatesRepository.detailsSessionGeneration) { failed, _ ->
+		mangaUpdatesRepository.isAuthorized && mangaId in failed
+	}.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+	private val _trackerVolume = MutableStateFlow(TrackerVolumeUiState())
+	val trackerVolume = _trackerVolume.asStateFlow()
+	private var volumeJob: Job? = null
+	private var volumeContext: DetailsPeopleContext? = null
+	private var volumeDemanded = false
+
+	init {
+		val sessions = if (peopleProviders.isEmpty()) flowOf(emptyList()) else combine(
+			peopleProviders.values.map { it.detailsSessionGeneration },
+		) { it.toList() }
+		val privacy = combine(
+			database.getPrivateFavouritesDao().observePrivateOnly(mangaId),
+			settings.observeAsFlow(AppSettings.KEY_INCOGNITO_MODE) { isIncognitoModeEnabled },
+			settings.observeAsFlow(AppSettings.KEY_INCOGNITO_NSFW) { incognitoModeForNsfw },
+		) { privateOnly, _, _ -> privateOnly }
+		combine(mangaDetails, database.getScrobblingDao().observeAll(mangaId), privacy, sessions) {
+			details, rows, privateOnly, _ ->
+				peopleContext(details, rows, privateOnly, peopleContent) to
+					peopleContext(details, rows, privateOnly, recommendationContent)
+		}.distinctUntilChanged()
+			.catch { e ->
+				if (e is CancellationException) throw e
+				// Unknown privacy/mapping must fail closed, without a core Details error.
+				emit(null to null)
+			}
+			.onEach { (people, recommendations) ->
+				peopleController.updateContext(people)
+				if (recommendationContext != recommendations) {
+					recommendationNavigationJob?.cancel()
+					volumeJob?.cancel()
+					volumeContext = null
+					_trackerVolume.value = TrackerVolumeUiState()
+				}
+				recommendationContext = recommendations
+				recommendationController.updateContext(recommendations)
+				if (volumeDemanded) requestTrackerVolume()
+			}
+			.launchIn(viewModelScope)
+	}
+
+	private fun peopleContext(
+		details: MangaDetails?, rows: List<ScrobblingEntity>, privateOnly: Boolean, content: Set<TrackerContent>,
+	): DetailsPeopleContext? {
+		val seed = details?.toManga() ?: return null
+		if (seed.id != mangaId) return null // A changed local identity cannot reuse this screen's associations.
+		val associations = rows.map { PeopleAssociation(it.scrobbler, it.id, it.targetId) }.toSet()
+		val associated = peopleProviders.filterKeys { service -> associations.any { it.serviceId == service.id } }
+		return DetailsPeopleContext(
+			mangaId = seed.id, source = seed.source.name, url = seed.url,
+			associations = associations,
+			sessions = associated.mapValues { it.value.detailsSessionGeneration.value },
+			services = associated.filterValues { provider ->
+				provider.isAuthorized && provider.detailsCapabilities.any { it in content }
+			}.keys,
+			policy = TrackerDetailsReadPolicy(
+				enabled = true,
+				incognito = settings.isIncognitoModeEnabled ||
+					(seed.isNsfw() && settings.incognitoModeForNsfw != TriStateOption.DISABLED),
+				privateOnly = privateOnly || favouriteSpace == FavouriteSpace.PRIVATE,
+				onDevice = details.isLocal || seed.source == LocalMangaSource ||
+					org.koitharu.kotatsu.local.library.isSmartLocalUri(seed.url),
+			),
+		)
+	}
+
+	fun requestTrackerPeople() = peopleController.request()
+	fun resumeTrackerPeople() = peopleController.setActive(true)
+	fun pauseTrackerPeople() = peopleController.setActive(false)
+	fun retryTrackerPeople(service: ScrobblerService) = peopleController.retry(service)
+	fun refreshTrackerPeople() = peopleController.refresh()
+	fun requestTrackerRecommendations() = recommendationController.request()
+	fun retryTrackerRecommendations(service: ScrobblerService) = recommendationController.retry(service)
+	fun refreshTrackerRecommendations() = recommendationController.refresh()
+	fun resumeTrackerRecommendations() {
+		recommendationsActive = true
+		recommendationController.setActive(true)
+		if (volumeDemanded) requestTrackerVolume()
+	}
+	fun pauseTrackerRecommendations() {
+		recommendationsActive = false
+		recommendationNavigationJob?.cancel()
+		volumeJob?.cancel()
+		volumeContext = null
+		_trackerVolume.value = TrackerVolumeUiState()
+		recommendationController.setActive(false)
+	}
+
+	fun requestTrackerVolume(force: Boolean = false) {
+		volumeDemanded = true
+		if (!recommendationsActive || volumeJob?.isActive == true) return
+		val key = recommendationContext ?: return
+		// Volume editing is an explicit tracking action, including for a linked on-device book.
+		if (key.policy.incognito || key.policy.privateOnly || ScrobblerService.MANGAUPDATES !in key.services) return
+		if (!force && volumeContext == key && _trackerVolume.value.isRequested) return
+		volumeContext = key
+		_trackerVolume.value = TrackerVolumeUiState(isRequested = true, isLoading = true)
+		volumeJob = viewModelScope.launch {
+			try {
+				val volume = mangaUpdatesRepository.getVolume(mangaId)
+				if (isVolumeContextCurrent(key)) _trackerVolume.value = TrackerVolumeUiState(isRequested = true, volume = volume)
+			} catch (e: CancellationException) { throw e } catch (_: Exception) {
+				if (isVolumeContextCurrent(key)) _trackerVolume.value = TrackerVolumeUiState(isRequested = true, isError = true)
+			} finally {
+				if (volumeContext == key && _trackerVolume.value.isLoading) _trackerVolume.value = TrackerVolumeUiState(isRequested = true, isError = true)
+			}
+		}
+	}
+
+	fun updateTrackerVolume(volume: Int) {
+		if (volume < 0 || volumeJob?.isActive == true) return
+		val key = volumeContext ?: return
+		val target = key.associations.singleOrNull { it.serviceId == ScrobblerService.MANGAUPDATES.id }?.targetId ?: return
+		val generation = key.sessions[ScrobblerService.MANGAUPDATES] ?: return
+		val edit = mangaUpdatesRepository.captureEdit(mangaId, target, generation) ?: return
+		_trackerVolume.value = _trackerVolume.value.copy(isLoading = true, isError = false)
+		volumeJob = viewModelScope.launch {
+			try {
+				if (!isVolumeContextCurrent(key)) return@launch
+				mangaUpdatesRepository.updateVolume(edit, volume)
+				val confirmed = mangaUpdatesRepository.getVolume(mangaId)
+				if (isVolumeContextCurrent(key)) _trackerVolume.value = TrackerVolumeUiState(isRequested = true, volume = confirmed)
+			} catch (e: CancellationException) { throw e } catch (_: Exception) {
+				if (isVolumeContextCurrent(key)) _trackerVolume.value = _trackerVolume.value.copy(isLoading = false, isError = true)
+			} finally {
+				if (volumeContext == key && _trackerVolume.value.isLoading) _trackerVolume.value = TrackerVolumeUiState(isRequested = true, isError = true)
+			}
+		}
+	}
+
+	fun clearTrackerVolume() {
+		volumeDemanded = false
+		volumeJob?.cancel()
+		volumeContext = null
+		_trackerVolume.value = TrackerVolumeUiState()
+	}
+	fun retryMangaUpdatesProgress() {
+		val key = recommendationContext ?: return
+		if (recommendationsActive && !key.policy.incognito && !key.policy.privateOnly && ScrobblerService.MANGAUPDATES in key.services) mangaUpdatesRepository.retryProgress(mangaId)
+	}
+	private suspend fun isVolumeContextCurrent(key: DetailsPeopleContext): Boolean = try {
+		recommendationsActive && key == peopleContext(mangaDetails.value, database.getScrobblingDao().findAll(mangaId),
+			database.getPrivateFavouritesDao().isPrivateOnly(mangaId), recommendationContent)
+	} catch (e: CancellationException) { throw e } catch (_: Exception) { false }
+
+	internal fun isRecommendationNavigationCurrent(event: TrackerRecommendationNavigation): Boolean =
+		recommendationsActive && event.context == recommendationContext && event.context.policy.allowsNetwork &&
+			!settings.isIncognitoModeEnabled && event.context.sessions.all { (service, generation) ->
+				peopleProviders[service]?.let { it.isAuthorized && it.detailsSessionGeneration.value == generation } == true
+			}
+
+	internal fun selectTrackerRecommendation(event: TrackerRecommendationNavigation, id: Long) {
+		if (isRecommendationNavigationCurrent(event)) navigateTrackerRecommendation(event.recommendation, selectedId = id)
+	}
+
+	fun openTrackerRecommendation(item: TrackerRecommendation) = navigateTrackerRecommendation(item)
+	fun openTrackerRecommendationProvider(item: TrackerRecommendation) = navigateTrackerRecommendation(item, providerPage = true)
+
+	private fun navigateTrackerRecommendation(item: TrackerRecommendation, selectedId: Long? = null, providerPage: Boolean = false) {
+		if (recommendationNavigationJob?.isActive == true || !recommendationsActive) return
+		val key = recommendationContext?.takeIf { it.policy.allowsNetwork } ?: return
+		if (recommendationController.state.value.providers.none { item in it.recommendations.recommendationItems() }) return
+		recommendationNavigationJob = viewModelScope.launch {
+			try {
+				val current: suspend () -> Boolean = {
+					key == peopleContext(mangaDetails.value, database.getScrobblingDao().findAll(mangaId),
+						database.getPrivateFavouritesDao().isPrivateOnly(mangaId), recommendationContent) && recommendationsActive
+				}
+				val result = resolveTrackerRecommendation(item, { target ->
+					val candidates = mutableListOf<Manga>()
+					val rows = database.getScrobblingDao().findByTarget(target.service.id, target.id.toLong())
+					// A large mapping set requires title search rather than an incomplete automatic choice.
+					if (rows.size < 65) for (row in rows) {
+						if (database.getPrivateFavouritesDao().isPrivateOnly(row.mangaId)) continue
+						val manga = mangaDataRepository.findMangaById(row.mangaId, withChapters = false) ?: continue
+						if (!manga.source.isBroken && manga.url.isNotBlank()) candidates += manga
+					}
+					candidates
+				}, Manga::id, current) ?: return@launch
+				val selected = selectedId?.let { id -> result.candidates.singleOrNull { it.id == id } ?: return@launch }
+				val url = if (providerPage) trackerPortraitUrl(item.target.url) ?: return@launch else null
+				onTrackerRecommendationNavigation.call(TrackerRecommendationNavigation(key, item, result.candidates, selected, url))
+			} catch (e: CancellationException) {
+				throw e
+			} catch (_: Exception) {
+				// Fail closed when association/privacy lookup fails; only this optional section retries.
+				recommendationController.refresh()
+			}
+		}
+	}
 
 	// Contextual/genre recommendations are independent from Related Titles. They begin with visibility
 	// disabled in the ViewModel, so a persisted closed eye never triggers source/network work before
@@ -418,6 +659,8 @@ class DetailsViewModel @Inject constructor(
 	}
 
 	override fun reload() {
+		peopleController.refresh()
+		recommendationController.refresh()
 		loadingJob.cancel()
 		loadingJob = doLoad(force = true)
 	}
@@ -439,6 +682,12 @@ class DetailsViewModel @Inject constructor(
 
 	fun updateScrobbling(index: Int, rating: Float, status: ScrobblingStatus?) {
 		val scrobbler = getScrobbler(index) ?: return
+		if (scrobbler is MangaUpdatesScrobbler) {
+			val target = scrobblingInfo.value.getOrNull(index)?.targetId ?: return
+			val edit = scrobbler.captureEdit(mangaId, target) ?: return
+			launchJob(Dispatchers.Default) { scrobbler.updateScrobblingInfo(edit, rating, status) }
+			return
+		}
 		launchJob(Dispatchers.Default) {
 			scrobbler.updateScrobblingInfo(
 				mangaId = mangaId,
@@ -605,3 +854,4 @@ internal fun resolveSelectedBranch(
 		else -> availableBranches.first()
 	}
 }
+
