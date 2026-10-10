@@ -156,6 +156,14 @@ open class SlidingBottomNavigationView @JvmOverloads constructor(
 		if (currentState == STATE_DOWN) {
 			return
 		}
+		// SearchView can restore its visible state before MainActivity's hierarchy is attached.
+		// measureHeight() performs an eager measure; doing that while detached can force a ComposeView
+		// child to create its composition without a windowRecomposer. Defer the whole state transition
+		// until attachment so the normal hide animation still owns measurement and translation.
+		if (!isAttachedToWindow) {
+			post { hide() }
+			return
+		}
 		currentAnimator?.cancel()
 		clearAnimation()
 
@@ -191,8 +199,8 @@ open class SlidingBottomNavigationView @JvmOverloads constructor(
 						currentAnimator = null
 						postInvalidate()
 					}
-				},
-			)
+			},
+		)
 	}
 
 	internal class SavedState : AbsSavedState {
@@ -223,7 +231,7 @@ open class SlidingBottomNavigationView @JvmOverloads constructor(
 			val CREATOR: Parcelable.Creator<SavedState> = object : Parcelable.Creator<SavedState> {
 				override fun createFromParcel(`in`: Parcel) = SavedState(`in`, SavedState::class.java.classLoader)
 
-				override fun newArray(size: Int): Array<SavedState?> = arrayOfNulls(size)
+			override fun newArray(size: Int): Array<SavedState?> = arrayOfNulls(size)
 			}
 		}
 	}
