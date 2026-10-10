@@ -463,6 +463,89 @@ class MangaUpdatesRepositoryTest {
 		db.getScrobblingDao().upsert(ScrobblingEntity(6, 0, 41, targetId, "hold", 12, null, 0.4f))
 	}
 
+	@Test fun selectorAdoptsExistingReadingProgressWhenMembershipOmitsListType() = runBlocking {
+		transport.remote = membershipWithoutType(42)
+		transport.searchBody = """{"results":[{"record":{"series_id":$target,"title":"One Piece","url":"https://www.mangaupdates.com/series/fixture"}}]}"""
+		val before = transport.remote
+		selectorLink(null, {}, target, stale = false, expectedChapter = 1, expectedName = "One Piece")
+		val local = db.getScrobblingDao().find(6, 41)!!
+		assertEquals("read", local.status)
+		assertEquals(1, local.chapter)
+		assertEquals(0.8f, local.rating, 0f)
+		assertEquals(1, repository().getVolume(41))
+		assertEquals(before, transport.remote)
+		assertEquals(8f, transport.rating)
+		assertTrue(mutations().isEmpty())
+		assertTrue(transport.requests.none { it.method in setOf("PUT", "DELETE") && it.path.endsWith("/rating") })
+		val metadata = transport.requests.first { it.path == "/v1/lists/42" }
+		assertEquals("unrenderedFields=true", metadata.query)
+		assertEquals("Bearer fixture-session", metadata.authorization)
+	}
+
+	@Test fun existingMembershipWithoutTypePreservesEverySupportedList() = runBlocking {
+		val repo = repository(); manga()
+		for ((listId, type) in listOf(42L to "read", 77L to "wish", 88L to "complete", 99L to "hold", 111L to "unfinished", 9000L to "read")) {
+			transport.remote = membershipWithoutType(listId)
+			val before = transport.remote
+			assertTrue(repo.createRate(41, target))
+			val local = db.getScrobblingDao().find(6, 41)!!
+			assertEquals(type, local.status)
+			assertEquals(1, local.chapter)
+			assertEquals(1, repo.getVolume(41))
+			assertEquals(0.8f, local.rating, 0f)
+			assertEquals(before, transport.remote)
+		}
+		assertTrue(mutations().isEmpty())
+	}
+
+	@Test fun missingListMetadataNeverTreatsExistingMembershipAsAbsent() = runBlocking {
+		val repo = repository(); manga()
+		transport.remote = membershipWithoutType(42)
+		transport.listMetadataCode = 404
+		val before = transport.remote
+		try { repo.createRate(41, target); fail("Expected unavailable list metadata") } catch (e: MangaUpdatesHttpException) { assertEquals(404, e.code) }
+		assertNull(db.getScrobblingDao().find(6, 41))
+		assertEquals(before, transport.remote)
+		assertTrue(mutations().isEmpty())
+	}
+
+	@Test fun invalidListMetadataNeverPersistsOrMutatesExistingState() = runBlocking {
+		val repo = repository(); manga()
+		transport.remote = membershipWithoutType(42)
+		val before = transport.remote
+		for (body in listOf("""{"list_id":42}""", """{"list_id":42,"type":"unknown"}""", """{"list_id":77,"type":"read"}""")) {
+			transport.listMetadataBody = body
+			try { repo.createRate(41, target); fail("Expected invalid list metadata") } catch (_: IOException) { }
+			assertNull(db.getScrobblingDao().find(6, 41))
+			assertEquals(before, transport.remote)
+			assertTrue(mutations().isEmpty())
+		}
+	}
+
+	@Test fun listMetadataReadRejectsReplacedSessionBeforeAdoption() = runBlocking {
+		val repo = repository(); manga()
+		transport.remote = membershipWithoutType(42)
+		val before = transport.remote
+		transport.beforeReply = { request ->
+			if (request.path == "/v1/lists/42") sessions.save("fixture-replacement", user.copy(id = 2), sessions.generation.value)
+		}
+		try { repo.createRate(41, target); fail("Expected stale session") } catch (_: CancellationException) { }
+		assertNull(db.getScrobblingDao().find(6, 41))
+		assertEquals(before, transport.remote)
+		assertTrue(mutations().isEmpty())
+	}
+
+	@Test fun selectorRejectsAssociationReplacementDuringListMetadataRead() = runBlocking {
+		transport.remote = membershipWithoutType(42)
+		selectorLink(null, {
+			transport.beforeReply = { request ->
+				if (request.path == "/v1/lists/42") runBlocking { replaceSelectorAssociation(target + 1) }
+			}
+		}, target + 1, stale = true, allowReads = true)
+	}
+
+	private fun membershipWithoutType(listId: Long): JsonObject = JsonObject(transport.state(chapter = 1, volume = 1, listId = listId).filterKeys { it != "list_type" })
+
 	private fun assertAssociationUnchanged(expected: ScrobblingEntity?, actual: ScrobblingEntity?) {
 		if (expected == null) {
 			assertNull(actual)
@@ -483,6 +566,7 @@ class MangaUpdatesRepositoryTest {
 	private suspend fun selectorLink(
 		initialTarget: Long?, whilePaused: suspend () -> Unit, expectedTarget: Long?, stale: Boolean,
 		remoteExists: Boolean = true, allowReads: Boolean = false,
+		expectedChapter: Int = if (remoteExists) 31 else 0, expectedName: String? = null,
 	) = coroutineScope {
 		val repo = repository(); manga()
 		if (initialTarget != null) replaceSelectorAssociation(initialTarget)
@@ -513,6 +597,7 @@ class MangaUpdatesRepositoryTest {
 			withTimeout(5000) {
 				assertEquals(initialTarget, selector.mangaUpdatesAssociation.first { it != null }!!.targetId)
 				selector.content.first { !selector.isEmpty }
+				if (expectedName != null) assertEquals(expectedName, selector.content.value.filterIsInstance<ScrobblerManga>().single { it.id == target }.name)
 			}
 			val finish = async(start = CoroutineStart.UNDISPATCHED) {
 				selector.isLoading.first { it }
@@ -539,7 +624,7 @@ class MangaUpdatesRepositoryTest {
 				else assertAssociationUnchanged(ScrobblingEntity(6, 0, 41, target + 1, "hold", 12, null, 0.4f), after)
 			} else {
 				assertNotNull(after)
-				assertEquals(if (remoteExists) 31 else 0, after!!.chapter)
+				assertEquals(expectedChapter, after!!.chapter)
 				if (!remoteExists) assertEquals(1, mutations().size)
 			}
 			assertEquals(0, count("favourites")); assertEquals(0, count("private_favourites"))
@@ -569,7 +654,7 @@ class MangaUpdatesRepositoryTest {
 		@Synchronized override fun save(token: String, user: ScrobblerUser, expectedGeneration: Long): Boolean { if (expectedGeneration != generation.value) return false; generation.value++; value = MangaUpdatesSession(token, user, generation.value); return true }
 		@Synchronized override fun clear(expectedGeneration: Long?): Boolean { if (expectedGeneration != null && expectedGeneration != generation.value) return false; generation.value++; value = null; return true }
 	}
-	private data class Recorded(val path: String, val method: String, val authorization: String?, val body: JsonElement?)
+	private data class Recorded(val path: String, val method: String, val authorization: String?, val body: JsonElement?, val query: String? = null)
 	private class Transport(var id: Long) : Interceptor {
 		val requests: MutableList<Recorded> = Collections.synchronizedList(mutableListOf())
 		var remote: JsonObject? = state()
@@ -579,6 +664,8 @@ class MangaUpdatesRepositoryTest {
 		var profileCode = 200
 		var profileId = 1L
 		var searchBody: String? = null
+		var listMetadataCode = 200
+		var listMetadataBody: String? = null
 		var failWrites = 0
 		var failureCode = 503
 		var loseAcknowledgement = false
@@ -589,7 +676,7 @@ class MangaUpdatesRepositoryTest {
 		@Synchronized override fun intercept(chain: Interceptor.Chain): Response {
 			val request = chain.request()
 			val text = request.body?.let { Buffer().also(it::writeTo).readUtf8() }.orEmpty()
-			val recorded = Recorded(request.url.encodedPath, request.method, request.header("Authorization"), text.takeIf { it.isNotBlank() }?.let(Json::parseToJsonElement))
+			val recorded = Recorded(request.url.encodedPath, request.method, request.header("Authorization"), text.takeIf { it.isNotBlank() }?.let(Json::parseToJsonElement), request.url.query)
 			requests += recorded; beforeReply?.invoke(recorded)
 			var code = 200
 			val body = when {
@@ -597,6 +684,10 @@ class MangaUpdatesRepositoryTest {
 				recorded.path == "/v1/account/profile" -> { code = profileCode; """{"user_id":$profileId,"username":"Fixture User"}""" }
 				recorded.path == "/v1/account/logout" -> "{}"
 				recorded.path == "/v1/lists" -> lists
+				recorded.path.matches(Regex("/v1/lists/[0-9]+")) -> {
+					code = listMetadataCode
+					listMetadataBody ?: Json.parseToJsonElement(lists).jsonArray.single { it.jsonObject.getValue("list_id").jsonPrimitive.long == recorded.path.substringAfterLast('/').toLong() }.toString()
+				}
 				recorded.path == "/v1/series/search" -> searchBody ?: """{"results":[{"record":{"series_id":$id,"title":"Fixture title","url":"https://www.mangaupdates.com/series/fixture","image":{"url":{"original":"https://image.invalid/cover"}}}}]}"""
 				recorded.path == "/v1/series/$id" -> """{"series_id":$id,"title":"Fixture title","url":"https://www.mangaupdates.com/series/fixture","latest_chapter":700,"authors":[{"author_id":9545965743,"name":"Creator","type":"Author"},{"author_id":9545965743,"name":"Creator","type":"Artist"}],"recommendations":[{"series_id":70994361491,"series_name":"Other title","series_url":"https://www.mangaupdates.com/series/other"}]}"""
 				recorded.path == "/v1/authors/9545965743" -> """{"id":9545965743,"name":"Creator","image":{"url":{"original":"https://image.invalid/author"}}}"""

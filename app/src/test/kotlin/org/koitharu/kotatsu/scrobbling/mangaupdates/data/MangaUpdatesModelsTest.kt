@@ -69,6 +69,40 @@ class MangaUpdatesModelsTest {
 		assertThrows(IllegalArgumentException::class.java) { mangaUpdatesRatingValue(Float.NaN) }
 	}
 
+	@Test fun `optional membership type resolves from matching list metadata without changing progress`() {
+		val membership = root("""{"series":{"id":17360452316},"list_id":42,"status":{"chapter":1,"volume":1},"priority":2}""")
+		val metadata = root("""{"list_id":42,"title":"Reading List","type":"read","custom":false}""")
+		val state = mangaUpdatesRemoteState(membership, 17360452316L, mangaUpdatesListType(metadata, membership.muLong("list_id")))
+		assertEquals("read", state.type)
+		assertEquals(42L, state.listId)
+		assertEquals(1, state.chapter)
+		assertEquals(1, state.volume)
+		assertEquals(2, state.priority)
+		assertEquals(17360452316L, state.seriesId)
+	}
+
+	@Test fun `metadata resolution supports every documented list type including custom list identity`() {
+		for (type in listOf("read", "wish", "complete", "unfinished", "hold")) {
+			val membership = root("""{"series":{"id":17360452316},"list_id":3000,"list_type":null,"status":{"chapter":1,"volume":1},"priority":2}""")
+			val metadata = root("""{"list_id":3000,"type":"$type","custom":true}""")
+			val state = mangaUpdatesRemoteState(membership, 17360452316L, mangaUpdatesListType(metadata, 3000))
+			assertEquals(type, state.type)
+			assertEquals(3000L, state.listId)
+		}
+	}
+
+	@Test fun `missing invalid or mismatched list metadata never supplies a default type`() {
+		for (value in listOf("""{"list_id":42}""", """{"list_id":42,"type":null}""", """{"list_id":42,"type":"unknown"}""", """{"list_id":77,"type":"read"}""")) {
+			assertThrows(IOException::class.java) { mangaUpdatesListType(root(value), 42) }
+		}
+	}
+
+	@Test fun `resolved list type does not excuse invalid membership identity or progress`() {
+		for (value in listOf("""{"series":{"id":4},"list_id":42,"status":{"chapter":1,"volume":1},"priority":2}""", """{"series":{"id":17360452316},"list_id":42,"status":{"chapter":-1,"volume":1},"priority":2}""", """{"series":{"id":17360452316},"status":{"chapter":1,"volume":1},"priority":2}""")) {
+			assertThrows(IOException::class.java) { mangaUpdatesRemoteState(root(value), 17360452316L, "read") }
+		}
+	}
+
 	@Test fun `only reusable session fields are accepted and malformed tokens fail closed`() {
 		assertEquals("fixture-session", mangaUpdatesLoginToken(root("""{"status":"success","context":{"session_token":"fixture-session"}}""")))
 		assertEquals("fixture-session", mangaUpdatesLoginToken(root("""{"session_token":"fixture-session"}""")))

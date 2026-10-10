@@ -338,9 +338,17 @@ class MangaUpdatesRepository internal constructor(
 	private suspend fun lists(ticket: MangaUpdatesAuthTicket) = mangaUpdatesLists(api.request("GET", "lists", ticket = ticket)).also { require(it.size <= 1000) }
 	private suspend fun defaultList(type: String, ticket: MangaUpdatesAuthTicket): MangaUpdatesList =
 		lists(ticket).singleOrNull { it.type == type && !it.custom } ?: throw IOException("MangaUpdates default list is unavailable")
-	private suspend fun remoteState(id: Long, ticket: MangaUpdatesAuthTicket): MangaUpdatesRemoteState? = try {
-		mangaUpdatesRemoteState(api.request("GET", "lists/series/$id", ticket = ticket).muObject(), id)
-	} catch (e: MangaUpdatesHttpException) { if (e.code == 404) null else throw e }
+	private suspend fun remoteState(id: Long, ticket: MangaUpdatesAuthTicket): MangaUpdatesRemoteState? {
+		val root = try {
+			api.request("GET", "lists/series/$id", ticket = ticket).muObject()
+		} catch (e: MangaUpdatesHttpException) { if (e.code == 404) return null else throw e }
+		val type = root.text("list_type")?.takeIf { it in MANGAUPDATES_LIST_TYPES } ?: run {
+			// Membership can omit its optional type; resolve the exact account list, never a default.
+			val listId = root.muLong("list_id").also { require(it >= 0) }
+			mangaUpdatesListType(api.request("GET", "lists/$listId?unrenderedFields=true", ticket = ticket).muObject(), listId)
+		}
+		return mangaUpdatesRemoteState(root, id, type)
+	}
 	private suspend fun rating(id: Long, ticket: MangaUpdatesAuthTicket): Float = try {
 		mangaUpdatesRating(api.request("GET", "series/$id/rating", ticket = ticket).muObject())
 	} catch (e: MangaUpdatesHttpException) { if (e.code == 404) 0f else throw e }

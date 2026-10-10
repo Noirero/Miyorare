@@ -33,11 +33,18 @@ internal fun mangaUpdatesLists(root: JsonElement): List<MangaUpdatesList> = (roo
 		(list["custom"] as? JsonPrimitive)?.booleanOrNull ?: throw IOException("Missing MangaUpdates list kind"))
 } ?: throw IOException("Malformed MangaUpdates lists")
 
-internal fun mangaUpdatesRemoteState(root: JsonObject, targetId: Long): MangaUpdatesRemoteState {
+internal val MANGAUPDATES_LIST_TYPES = setOf("read", "wish", "complete", "unfinished", "hold")
+
+internal fun mangaUpdatesListType(root: JsonObject, listId: Long): String {
+	if (root.muLong("list_id") != listId) throw IOException("MangaUpdates returned a different list")
+	return root.text("type")?.takeIf { it in MANGAUPDATES_LIST_TYPES } ?: throw IOException("Invalid MangaUpdates list type")
+}
+
+internal fun mangaUpdatesRemoteState(root: JsonObject, targetId: Long, listType: String? = root.text("list_type")): MangaUpdatesRemoteState {
 	val id = root.obj("series")?.muLong("id") ?: throw IOException("Missing MangaUpdates series")
 	if (id != targetId) throw IOException("MangaUpdates returned a different series")
 	val status = root.obj("status") ?: throw IOException("Missing MangaUpdates progress")
-	return MangaUpdatesRemoteState(id, root.muLong("list_id").also { require(it >= 0) }, root.text("list_type") ?: throw IOException("Missing MangaUpdates list type"),
+	return MangaUpdatesRemoteState(id, root.muLong("list_id").also { require(it >= 0) }, listType?.takeIf { it in MANGAUPDATES_LIST_TYPES } ?: throw IOException("Missing or invalid MangaUpdates list type"),
 		status.muProgress("chapter"), status.muProgress("volume"), (root["priority"] as? JsonPrimitive)?.intOrNull ?: throw IOException("Missing MangaUpdates priority"))
 }
 
