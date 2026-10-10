@@ -1,0 +1,226 @@
+name: Details Timing PR577
+run-name: Details timing · PR577 · ${{ github.sha }}
+
+on:
+  push:
+    branches:
+      - diagnostics/details-timing-pr577
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EXPECTED_SOURCE_SHA: 4b6f0f02b5975c8beecbe9596e459c8a44c3db86
+
+concurrency:
+  group: details-timing-pr577
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build instrumented Details timing APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout diagnostic branch
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify diagnostic parent is exact PR577 head
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARENT=$(git rev-parse HEAD^)
+          if [ "$PARENT" != "$EXPECTED_SOURCE_SHA" ]; then
+            echo "::error::Diagnostic commit parent ${PARENT} is not exact PR577 source ${EXPECTED_SOURCE_SHA}."
+            exit 1
+          fi
+          echo "Instrumentation is applied over exact PR577 source ${EXPECTED_SOURCE_SHA}."
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Require signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required repository secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+      - name: Apply build-only timing instrumentation and isolated identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          # Isolated install identity: must coexist with Main, Beta and Amain/Amain2.
+          replace_once('app/build.gradle', "versionNameSuffix = '-beta'", "versionNameSuffix = '-timing577'", 'preview version suffix')
+          replace_once('app/build.gradle', "variant.applicationId.set('org.noirero.miyorare.beta')", "variant.applicationId.set('org.noirero.miyorare.timing577')", 'preview application id')
+          replace_once('app/src/main/res/values/strings.xml', '<string name="app_name" translatable="false">Miyorare</string>', '<string name="app_name" translatable="false">Miyorare Timing 577</string>', 'app name')
+
+          # DetailsLoadUseCase: end-to-end resolve, cache-state, source fetch and Room persistence.
+          path = 'app/src/main/kotlin/org/koitharu/kotatsu/details/domain/DetailsLoadUseCase.kt'
+          replace_once(path, 'import android.text.style.ForegroundColorSpan\n', 'import android.text.style.ForegroundColorSpan\nimport android.os.SystemClock\nimport android.util.Log\n', 'DetailsLoad imports')
+          replace_once(path,
+              '\t\tval resolvedIntentManga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {\n\t\t\t"Cannot resolve intent $intent"\n\t\t}\n',
+              '\t\tval resolveStarted = SystemClock.elapsedRealtime()\n\t\tLog.i("MiyorareTiming", "DetailsLoad resolveIntent START")\n\t\tval resolvedIntentManga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {\n\t\t\t"Cannot resolve intent $intent"\n\t\t}\n\t\tLog.i("MiyorareTiming", "DetailsLoad resolveIntent END ms=${SystemClock.elapsedRealtime() - resolveStarted} manga=${resolvedIntentManga.id} chapters=${resolvedIntentManga.chapters?.size ?: 0}")\n',
+              'resolveIntent timing')
+          replace_once(path,
+              '\t\t\tval cachedState = getCachedDetailsState(manga, force)\n',
+              '\t\t\tval cacheStarted = SystemClock.elapsedRealtime()\n\t\t\tval cachedState = getCachedDetailsState(manga, force)\n\t\t\tLog.i("MiyorareTiming", "DetailsLoad cacheState ms=${SystemClock.elapsedRealtime() - cacheStarted} manga=${manga.id} initialized=${cachedState.initialized} fresh=${cachedState.fresh}")\n',
+              'cache-state timing')
+          replace_once(path,
+              '\t\t\tval result = if (progressiveRepository != null) {\n',
+              '\t\t\tval sourceStarted = SystemClock.elapsedRealtime()\n\t\t\tLog.i("MiyorareTiming", "DetailsLoad sourceFetch START manga=${manga.id} source=${cachedBeforeFetch.source.name}")\n\t\t\tval result = if (progressiveRepository != null) {\n',
+              'source start timing')
+          replace_once(path,
+              '\t\t\tif (result.isFailure) {\n',
+              '\t\t\tLog.i("MiyorareTiming", "DetailsLoad sourceFetch END ms=${SystemClock.elapsedRealtime() - sourceStarted} manga=${manga.id} success=${result.isSuccess}")\n\t\t\tif (result.isFailure) {\n',
+              'source end timing')
+          replace_once(path,
+              '\t\t\tmangaDataRepository.storeManga(\n\t\t\t\tremoteDetails,\n\t\t\t\treplaceExisting = true,\n\t\t\t\tstripAppliedOverride = false,\n\t\t\t\tdetailsFetched = true,\n\t\t\t)\n',
+              '\t\t\tval storeStarted = SystemClock.elapsedRealtime()\n\t\t\tmangaDataRepository.storeManga(\n\t\t\t\tremoteDetails,\n\t\t\t\treplaceExisting = true,\n\t\t\t\tstripAppliedOverride = false,\n\t\t\t\tdetailsFetched = true,\n\t\t\t)\n\t\t\tLog.i("MiyorareTiming", "DetailsLoad storeManga ms=${SystemClock.elapsedRealtime() - storeStarted} manga=${manga.id} chapters=${remoteDetails.chapters?.size ?: 0}")\n',
+              'store timing')
+
+          # MangaDataRepository: split MangaDao.find from persisted chapter materialization.
+          path = 'app/src/main/kotlin/org/koitharu/kotatsu/core/parser/MangaDataRepository.kt'
+          replace_once(path, 'import androidx.room.withTransaction\n', 'import androidx.room.withTransaction\nimport android.os.SystemClock\nimport android.util.Log\n', 'MangaDataRepository imports')
+          old = '''\tsuspend fun findMangaById(mangaId: Long, withChapters: Boolean): Manga? {\n\t\tval stored = db.getMangaDao().find(mangaId) ?: return null\n\t\tval chapters = if (withChapters && hasPersistedChapterSnapshot(stored.manga.chaptersInitialized, mangaId)) {\n\t\t\tdb.getChaptersDao().findAll(mangaId).takeUnless { it.isEmpty() }\n\t\t} else {\n\t\t\tnull\n\t\t}\n\t\treturn stored.toManga(chapters)\n\t}\n'''
+          new = '''\tsuspend fun findMangaById(mangaId: Long, withChapters: Boolean): Manga? {\n\t\tval totalStarted = SystemClock.elapsedRealtime()\n\t\tval mangaStarted = SystemClock.elapsedRealtime()\n\t\tval stored = db.getMangaDao().find(mangaId)\n\t\tLog.i("MiyorareTiming", "MangaData findMangaById MangaDao.find ms=${SystemClock.elapsedRealtime() - mangaStarted} manga=$mangaId found=${stored != null}")\n\t\tif (stored == null) return null\n\t\tval chapterStarted = SystemClock.elapsedRealtime()\n\t\tval chapters = if (withChapters && hasPersistedChapterSnapshot(stored.manga.chaptersInitialized, mangaId)) {\n\t\t\tdb.getChaptersDao().findAll(mangaId).takeUnless { it.isEmpty() }\n\t\t} else {\n\t\t\tnull\n\t\t}\n\t\tLog.i("MiyorareTiming", "MangaData findMangaById chapters ms=${SystemClock.elapsedRealtime() - chapterStarted} manga=$mangaId count=${chapters?.size ?: 0} requested=$withChapters")\n\t\tval result = stored.toManga(chapters)\n\t\tLog.i("MiyorareTiming", "MangaData findMangaById TOTAL ms=${SystemClock.elapsedRealtime() - totalStarted} manga=$mangaId")\n\t\treturn result\n\t}\n'''
+          replace_once(path, old, new, 'findMangaById timing')
+
+          # DetailsViewModel: history lookup and exact publication point.
+          path = 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt'
+          replace_once(path, 'import androidx.lifecycle.viewModelScope\n', 'import androidx.lifecycle.viewModelScope\nimport android.os.SystemClock\nimport android.util.Log\n', 'DetailsViewModel imports')
+          replace_once(path,
+              '\t\t\t\t\t\tval hist = historyRepository.getOne(manga)\n',
+              '\t\t\t\t\t\tval historyStarted = SystemClock.elapsedRealtime()\n\t\t\t\t\t\tval hist = historyRepository.getOne(manga)\n\t\t\t\t\t\tLog.i("MiyorareTiming", "DetailsVM historyRepository.getOne ms=${SystemClock.elapsedRealtime() - historyStarted} manga=${manga.id} chapters=${manga.chapters?.size ?: 0}")\n',
+              'history timing')
+          replace_once(path,
+              '\t\t\t\t\tmangaDetails.value = it\n\t\t\t\t\tif (initialLoading && it.allChapters.isNotEmpty()) {\n',
+              '\t\t\t\t\tval publishStarted = SystemClock.elapsedRealtime()\n\t\t\t\t\tmangaDetails.value = it\n\t\t\t\t\tLog.i("MiyorareTiming", "DetailsVM mangaDetails.value ms=${SystemClock.elapsedRealtime() - publishStarted} manga=${it.id} chapters=${it.allChapters.size} loaded=${it.isLoaded}")\n\t\t\t\t\tif (initialLoading && it.allChapters.isNotEmpty()) {\n',
+              'Details publication timing')
+
+          # ChaptersMapper: measure actual chapter list materialization.
+          path = 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/ChaptersMapper.kt'
+          replace_once(path, 'import android.content.Context\n', 'import android.content.Context\nimport android.os.SystemClock\nimport android.util.Log\n', 'ChaptersMapper imports')
+          replace_once(path,
+              '): List<ChapterListItem> {\n\t// Some third-party sources occasionally return the exact same chapter more than once.\n',
+              '): List<ChapterListItem> {\n\tval timingStarted = SystemClock.elapsedRealtime()\n\t// Some third-party sources occasionally return the exact same chapter more than once.\n',
+              'chapter mapping start')
+          replace_once(path,
+              '\treturn result\n}\n\nprivate data class ChapterMappingIdentity(',
+              '\tLog.i("MiyorareTiming", "ChaptersMapper mapChapters ms=${SystemClock.elapsedRealtime() - timingStarted} manga=$id remote=${remoteChapters.size} local=${localChapters.size} result=${result.size}")\n\treturn result\n}\n\nprivate data class ChapterMappingIdentity(',
+              'chapter mapping end')
+          PY
+
+      - name: Show instrumentation diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff -- app/src/main/kotlin/org/koitharu/kotatsu/details/domain/DetailsLoadUseCase.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/core/parser/MangaDataRepository.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/details/ui/ChaptersMapper.kt \
+            app/build.gradle app/src/main/res/values/strings.xml
+
+      - name: Pre-warm JitPack dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 10); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$POM_URL")
+            if [ "$HTTP_STATUS" = "200" ]; then exit 0; fi
+            echo "Attempt $i: JitPack returned ${HTTP_STATUS}; retrying..."
+            sleep 15
+          done
+          echo "::error::JitPack dependency was not ready after 10 attempts."
+          exit 1
+
+      - name: Build timing APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assemblePreview --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE=../release.keystore \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+
+      - name: Verify and collect timing APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          metadata = json.loads(Path('app/build/outputs/apk/preview/output-metadata.json').read_text())
+          expected = 'org.noirero.miyorare.timing577'
+          actual = metadata.get('applicationId')
+          if actual != expected:
+              raise SystemExit(f'Built applicationId is {actual!r}, expected {expected!r}')
+          PY
+          APK=$(find app/build/outputs/apk/preview -name '*.apk' -type f | head -n1)
+          test -n "$APK"
+          DEST="Miyorare-Timing-PR577-4b6f0f0.apk"
+          cp "$APK" "$DEST"
+          echo "apk_name=$DEST" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Details timing diagnostic APK"
+            echo
+            echo "- Runtime source: \`4b6f0f02b5975c8beecbe9596e459c8a44c3db86\` (PR #577 exact validated head)"
+            echo "- Instrumentation: build-only, not committed into runtime source"
+            echo "- Application ID: \`org.noirero.miyorare.timing577\`"
+            echo "- App name: \`Miyorare Timing 577\`"
+            echo "- Logcat tag: \`MiyorareTiming\`"
+            echo "- APK: \`${DEST}\`"
+            echo "- SHA-256: \`$(sha256sum "$DEST" | awk '{print $1}')\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload timing APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.apk_name }}
+          path: ${{ steps.apk.outputs.apk_name }}
+          if-no-files-found: error
+          retention-days: 14
