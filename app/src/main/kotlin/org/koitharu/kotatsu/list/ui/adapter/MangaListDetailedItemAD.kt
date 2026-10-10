@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.list.ui.adapter
 
 import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
+import androidx.constraintlayout.widget.ConstraintLayout
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
@@ -40,6 +42,18 @@ fun mangaListDetailedItemAD(
 			animate = ListModelDiffCallback.PAYLOAD_PROGRESS_CHANGED in payloads,
 		)
 		binding.iconsView.bind(item.isSaved, item.isLocalSource, item.isFavorite)
+		binding.iconsView.updateLayoutParams<ConstraintLayout.LayoutParams> {
+			horizontalBias = if (item.isSaved || item.isFavorite) 1f else 0f
+			topMargin = if (item.isSaved || item.isFavorite) 0 else (10f * context.resources.displayMetrics.density).toInt()
+			marginEnd = if (item.isSaved || item.isFavorite) context.resources.getDimensionPixelSize(R.dimen.card_indicator_offset) else 0
+		}
+		binding.imageViewPin.updateLayoutParams<ConstraintLayout.LayoutParams> {
+			topMargin = context.resources.getDimensionPixelSize(R.dimen.card_indicator_offset) +
+				if (item.isSaved || item.isFavorite) {
+					context.resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_height) +
+						context.resources.getDimensionPixelSize(R.dimen.library_indicator_spacing)
+				} else 0
+		}
 		binding.imageViewPin.isVisible = item.isPinned
 		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
 		binding.textViewTags.text = item.tags.joinToString(separator = ", ") { it.title ?: "" }

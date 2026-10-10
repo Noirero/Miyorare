@@ -6,50 +6,66 @@ import android.view.Gravity
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.widgets.IconsView
 
-/** Cover indicators for the grid and detailed manga list; library state is supplied by the mapper. */
+enum class MangaCardStatus { NONE, LIBRARY, DOWNLOADED }
+
+/** Cover indicators for the grid and detailed manga list; state is supplied by the existing mapper. */
 class MangaIndicatorsView @JvmOverloads constructor(
 	context: Context,
 	attrs: AttributeSet? = null,
 ) : LinearLayout(context, attrs) {
 
 	private val statusIcons: IconsView
-	private val libraryHeart: ImageView
-	private val libraryLabel: TextView
+	private val ribbon: ImageView
+	var status: MangaCardStatus = MangaCardStatus.NONE
+		private set
 
 	init {
 		orientation = HORIZONTAL
 		gravity = Gravity.CENTER_VERTICAL
 		inflate(context, R.layout.view_manga_indicators, this)
 		statusIcons = findViewById(R.id.status_icons)
-		libraryHeart = findViewById(R.id.library_heart)
-		libraryLabel = findViewById(R.id.library_label)
+		ribbon = findViewById(R.id.status_ribbon)
 	}
 
 	fun bind(isSaved: Boolean, isLocalSource: Boolean, isFavorite: Boolean) {
 		statusIcons.clearIcons()
-		if (isSaved) statusIcons.addIcon(R.drawable.ic_storage)
 		if (isLocalSource) statusIcons.addIcon(R.drawable.ic_manga_source)
 		statusIcons.isVisible = statusIcons.iconsCount > 0
-		libraryHeart.updateLayoutParams<LayoutParams> {
-			marginStart = if (statusIcons.isVisible) resources.getDimensionPixelSize(R.dimen.library_indicator_spacing) else 0
+		status = when {
+			isSaved -> MangaCardStatus.DOWNLOADED
+			isFavorite -> MangaCardStatus.LIBRARY
+			else -> MangaCardStatus.NONE
 		}
-		libraryHeart.isVisible = isFavorite
-		libraryLabel.isVisible = isFavorite
-		isVisible = statusIcons.isVisible || isFavorite
+		ribbon.isVisible = status != MangaCardStatus.NONE
+		when (status) {
+			MangaCardStatus.DOWNLOADED -> {
+				ribbon.setImageResource(R.drawable.ic_download)
+				ribbon.contentDescription = context.getString(R.string.favourites_show_downloaded)
+			}
+			MangaCardStatus.LIBRARY -> {
+				ribbon.setImageResource(R.drawable.ic_bookmark)
+				ribbon.contentDescription = context.getString(R.string.in_library)
+			}
+			MangaCardStatus.NONE -> {
+				ribbon.setImageDrawable(null)
+				ribbon.contentDescription = null
+			}
+		}
+		isVisible = statusIcons.isVisible || ribbon.isVisible
 	}
 
 	fun bindGrid(isSaved: Boolean, isLocalSource: Boolean, isFavorite: Boolean, counter: Int) {
 		bind(isSaved, isLocalSource, isFavorite)
 		updateLayoutParams<FrameLayout.LayoutParams> {
+			gravity = if (status != MangaCardStatus.NONE) Gravity.TOP or Gravity.END else Gravity.TOP or Gravity.START
+			marginEnd = if (status != MangaCardStatus.NONE) resources.getDimensionPixelSize(R.dimen.card_indicator_offset) else 0
 			topMargin = when {
-				// Anchor the library indicator to the cover container's top-start boundary.
-				isFavorite -> 0
+				status != MangaCardStatus.NONE -> 0
 				// Existing status-only offsets, preserving their pixel truncation.
 				counter > 0 -> resources.getDimensionPixelOffset(R.dimen.card_indicator_size)
 				else -> resources.getDimensionPixelOffset(R.dimen.margin_normal)

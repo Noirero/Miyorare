@@ -49,6 +49,7 @@ import org.koitharu.kotatsu.core.ui.util.StatusBarScrim
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsTab
@@ -99,6 +100,7 @@ fun DetailsExpressiveScreen(
 	tags: List<ChipsView.ChipModel>,
 	historyInfo: HistoryInfo,
 	chapters: List<ChapterListItem>,
+	chapterReleasePrediction: NextChapterReleasePrediction?,
 	isChapterFilterActive: Boolean,
 	isLoading: Boolean,
 	favouriteCount: Int,
@@ -306,6 +308,7 @@ fun DetailsExpressiveScreen(
 								onReset = actions.onChapterOptionsResetClick,
 								expanded = chaptersExpanded,
 								onToggleExpanded = { chaptersExpanded = !chaptersExpanded },
+								prediction = chapterReleasePrediction,
 							)
 						}
 						if (chaptersExpanded) items(

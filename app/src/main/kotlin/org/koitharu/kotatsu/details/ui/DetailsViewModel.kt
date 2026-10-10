@@ -51,6 +51,7 @@ import org.koitharu.kotatsu.details.domain.DetailsInteractor
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
 import org.koitharu.kotatsu.details.domain.ReadingTimeUseCase
+import org.koitharu.kotatsu.details.domain.predictSourceChapterRelease
 import org.koitharu.kotatsu.details.domain.RelatedMangaGroup
 import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
@@ -78,6 +79,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
 import org.koitharu.kotatsu.stats.data.StatsRepository
 import javax.inject.Inject
+import java.time.ZoneId
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 
@@ -228,6 +230,15 @@ class DetailsViewModel @Inject constructor(
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
 	val remoteManga = MutableStateFlow<Manga?>(null)
+
+	private val releasePredictionNow = MutableStateFlow(System.currentTimeMillis())
+	val chapterReleasePrediction = combine(mangaDetails, selectedBranch, releasePredictionNow) { details, branch, now ->
+		predictSourceChapterRelease(details, branch, now, ZoneId.systemDefault())
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), null)
+
+	fun refreshChapterReleasePrediction() {
+		releasePredictionNow.value = System.currentTimeMillis()
+	}
 
 	val historyInfo: StateFlow<HistoryInfo> = combine(
 		mangaDetails,

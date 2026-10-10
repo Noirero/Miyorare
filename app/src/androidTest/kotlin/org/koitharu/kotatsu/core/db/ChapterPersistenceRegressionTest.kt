@@ -55,6 +55,9 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaLinkResolver
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.list.ui.MangaCardStatus
+import org.koitharu.kotatsu.list.ui.MangaIndicatorsView
+import org.koitharu.kotatsu.list.ui.MangaSelectionDecoration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -258,7 +261,7 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
-	fun libraryIndicatorFitsNarrowCardsAndClearsRecycledPresentation() {
+	fun statusRibbonFitsNarrowCardsAndClearsRecycledPresentation() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
 			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
 			val view = themed.resources.getLayout(org.koitharu.kotatsu.R.layout.item_manga_grid).use { parser ->
@@ -267,17 +270,27 @@ class ChapterPersistenceRegressionTest {
 				}
 				org.koitharu.kotatsu.list.ui.MangaIndicatorsView(themed, android.util.Xml.asAttributeSet(parser))
 			}
-			val heart = view.findViewById<android.widget.ImageView>(org.koitharu.kotatsu.R.id.library_heart)
-			val label = view.findViewById<android.widget.TextView>(org.koitharu.kotatsu.R.id.library_label)
+			val ribbon = view.findViewById<android.widget.ImageView>(org.koitharu.kotatsu.R.id.status_ribbon)
 			val icons = view.findViewById<org.koitharu.kotatsu.core.ui.widgets.IconsView>(org.koitharu.kotatsu.R.id.status_icons)
-			val size = themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.library_indicator_icon_size)
+			val size = themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.manga_status_ribbon_width)
+			// The cover status has no persistent label; compact-list subtitles remain independent.
+			assertTrue((0 until view.childCount).none { view.getChildAt(it) is android.widget.TextView })
 			for (favorite in listOf(true, false, true, false)) {
 				for (saved in listOf(false, true)) for (local in listOf(false, true)) {
 					view.bind(saved, local, favorite)
-					assertEquals(if (favorite) android.view.View.VISIBLE else android.view.View.GONE, heart.visibility)
-					assertEquals(heart.visibility, label.visibility)
-					assertEquals(themed.getString(org.koitharu.kotatsu.R.string.in_library), label.text.toString())
-					assertEquals((if (saved) 1 else 0) + (if (local) 1 else 0), icons.iconsCount)
+					val expected = when {
+						saved -> MangaCardStatus.DOWNLOADED
+						favorite -> MangaCardStatus.LIBRARY
+						else -> MangaCardStatus.NONE
+					}
+					assertEquals(expected, view.status)
+					assertEquals(if (saved || favorite) android.view.View.VISIBLE else android.view.View.GONE, ribbon.visibility)
+					assertEquals(when (expected) {
+						MangaCardStatus.DOWNLOADED -> themed.getString(org.koitharu.kotatsu.R.string.favourites_show_downloaded)
+						MangaCardStatus.LIBRARY -> themed.getString(org.koitharu.kotatsu.R.string.in_library)
+						MangaCardStatus.NONE -> null
+					}, ribbon.contentDescription)
+					assertEquals(if (local) 1 else 0, icons.iconsCount)
 					assertEquals(if (favorite || saved || local) android.view.View.VISIBLE else android.view.View.GONE, view.visibility)
 					for (widthDp in listOf(79, 90, 140)) {
 						val width = (widthDp * themed.resources.displayMetrics.density).toInt()
@@ -285,10 +298,9 @@ class ChapterPersistenceRegressionTest {
 							android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
 						view.layout(0, 0, view.measuredWidth, view.measuredHeight)
 						assertTrue(view.measuredWidth <= width)
-						if (favorite) {
-							assertEquals(size, heart.measuredWidth)
-							assertTrue(heart.right <= view.measuredWidth)
-							assertTrue(label.right <= view.measuredWidth)
+						if (saved || favorite) {
+							assertEquals(size, ribbon.measuredWidth)
+							assertTrue(ribbon.right <= view.measuredWidth)
 						}
 					}
 				}
@@ -297,7 +309,7 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
-	fun libraryIndicatorPreservesGridCounterPositionOnRebind() {
+	fun statusRibbonPreservesGridCounterSpaceAndCornerOnRebind() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
 			for (densityDpi in listOf(160, 240, 320)) {
 				val configuration = android.content.res.Configuration(context.resources.configuration).apply {
@@ -318,7 +330,7 @@ class ChapterPersistenceRegressionTest {
 						parent.addView(it, parent.generateLayoutParams(attrs))
 					}
 				}
-				val label = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.library_label)
+				val ribbon = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.status_ribbon)
 				val icons = view.findViewById<org.koitharu.kotatsu.core.ui.widgets.IconsView>(org.koitharu.kotatsu.R.id.status_icons)
 				for (direction in listOf(android.view.View.LAYOUT_DIRECTION_LTR, android.view.View.LAYOUT_DIRECTION_RTL)) {
 					parent.layoutDirection = direction
@@ -328,11 +340,12 @@ class ChapterPersistenceRegressionTest {
 						for (saved in listOf(false, true)) for (local in listOf(false, true)) {
 							for ((favorite, counter) in listOf(true to 8, false to 8, false to 0, true to 0)) {
 								view.bindGrid(isSaved = saved, isLocalSource = local, isFavorite = favorite, counter = counter)
-								val expectedOffset = if (favorite) 0
+								val hasRibbon = favorite || saved
+								val expectedOffset = if (hasRibbon) 0
 									else ((if (counter > 0) 32 else 16) * themed.resources.displayMetrics.density).toInt()
 								assertEquals(expectedOffset, (view.layoutParams as android.widget.FrameLayout.LayoutParams).topMargin)
-								assertEquals(if (favorite) android.view.View.VISIBLE else android.view.View.GONE, label.visibility)
-								assertEquals((if (saved) 1 else 0) + (if (local) 1 else 0), icons.iconsCount)
+								assertEquals(if (hasRibbon) android.view.View.VISIBLE else android.view.View.GONE, ribbon.visibility)
+								assertEquals(if (local) 1 else 0, icons.iconsCount)
 								assertEquals(if (favorite || saved || local) android.view.View.VISIBLE else android.view.View.GONE, view.visibility)
 								parent.measure(
 									android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
@@ -342,14 +355,91 @@ class ChapterPersistenceRegressionTest {
 								if (view.visibility == android.view.View.VISIBLE) {
 									assertEquals(expectedOffset, view.top)
 									assertTrue(view.measuredWidth <= width)
-									if (direction == android.view.View.LAYOUT_DIRECTION_LTR) assertEquals(0, view.left)
-									else assertEquals(width, view.right)
-									if (favorite) assertEquals(0, view.top)
+									val edgeMargin = if (hasRibbon) themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.card_indicator_offset) else 0
+									val atEnd = hasRibbon == (direction == android.view.View.LAYOUT_DIRECTION_LTR)
+									if (atEnd) assertEquals(width - edgeMargin, view.right)
+									else assertEquals(edgeMargin, view.left)
+									if (hasRibbon) assertEquals(0, view.top)
 								}
 							}
 						}
 					}
 				}
+			}
+		}
+	}
+
+	@Test
+	fun statusDimmingIsSubtleAndSelectionNeverCompoundsIt() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			for (night in listOf(android.content.res.Configuration.UI_MODE_NIGHT_NO, android.content.res.Configuration.UI_MODE_NIGHT_YES)) {
+				val configuration = android.content.res.Configuration(context.resources.configuration).apply {
+					uiMode = (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or night
+				}
+				val themed = android.view.ContextThemeWrapper(context.createConfigurationContext(configuration), org.koitharu.kotatsu.R.style.Theme_Kotatsu)
+				val recycler = androidx.recyclerview.widget.RecyclerView(themed).apply {
+					layoutManager = androidx.recyclerview.widget.LinearLayoutManager(themed)
+				}
+				lateinit var indicators: MangaIndicatorsView
+				recycler.adapter = object : androidx.recyclerview.widget.RecyclerView.Adapter<androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
+					override fun getItemCount() = 1
+					override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): androidx.recyclerview.widget.RecyclerView.ViewHolder {
+						val card = android.widget.FrameLayout(themed).apply {
+							layoutParams = androidx.recyclerview.widget.RecyclerView.LayoutParams(180, 160)
+						}
+						// Isolate the actual indicator/decoration without CoverImageView's unrelated Hilt host.
+						card.addView(com.google.android.material.imageview.ShapeableImageView(themed).apply {
+							id = org.koitharu.kotatsu.R.id.imageView_cover
+							shapeAppearanceModel = com.google.android.material.shape.ShapeAppearanceModel.builder().setAllCornerSizes(8f).build()
+						}, android.widget.FrameLayout.LayoutParams(180, 120))
+						indicators = MangaIndicatorsView(themed)
+						indicators.id = org.koitharu.kotatsu.R.id.iconsView
+						card.addView(indicators, android.widget.FrameLayout.LayoutParams(-2, -2))
+						return object : androidx.recyclerview.widget.RecyclerView.ViewHolder(card) {}
+					}
+					override fun onBindViewHolder(holder: androidx.recyclerview.widget.RecyclerView.ViewHolder, position: Int) {
+						holder.itemView.tag = 1L
+					}
+				}
+				recycler.measure(android.view.View.MeasureSpec.makeMeasureSpec(180, android.view.View.MeasureSpec.EXACTLY),
+					android.view.View.MeasureSpec.makeMeasureSpec(160, android.view.View.MeasureSpec.EXACTLY))
+				recycler.layout(0, 0, 180, 160)
+				val decoration = object : MangaSelectionDecoration(themed) {
+					override fun getItemId(parent: androidx.recyclerview.widget.RecyclerView, child: android.view.View) = child.tag as Long
+				}
+				fun render(saved: Boolean, favorite: Boolean, selected: Boolean): android.graphics.Bitmap {
+					indicators.bindGrid(saved, false, favorite, 0)
+					decoration.setItemIsChecked(1L, selected)
+					return android.graphics.Bitmap.createBitmap(180, 160, android.graphics.Bitmap.Config.ARGB_8888).apply {
+						eraseColor(android.graphics.Color.WHITE)
+						decoration.onDrawOver(android.graphics.Canvas(this), recycler, androidx.recyclerview.widget.RecyclerView.State())
+					}
+				}
+				val normal = render(false, false, false)
+				val library = render(false, true, false)
+				val downloaded = render(true, false, false)
+				val both = render(true, true, false)
+				val selected = render(false, false, true)
+				assertTrue(library.sameAs(downloaded))
+				assertTrue(downloaded.sameAs(both))
+				assertTrue(selected.sameAs(render(false, true, true)))
+				assertTrue(selected.sameAs(render(true, false, true)))
+				assertTrue(selected.sameAs(render(true, true, true)))
+				assertEquals(1, decoration.checkedItemsCount)
+				fun distanceFromWhite(color: Int) = 765 - android.graphics.Color.red(color) - android.graphics.Color.green(color) - android.graphics.Color.blue(color)
+				val statusStrength = distanceFromWhite(library.getPixel(60, 60))
+				val selectionStrength = distanceFromWhite(selected.getPixel(60, 60))
+				assertTrue(statusStrength > 0)
+				assertTrue(selectionStrength > statusStrength * 2)
+				assertEquals(android.graphics.Color.WHITE, normal.getPixel(60, 60))
+				// The status scrim covers only the cover. Selection retains the full-card fill/border.
+				assertEquals(android.graphics.Color.WHITE, library.getPixel(60, 140))
+				assertTrue(selected.getPixel(60, 140) != android.graphics.Color.WHITE)
+				assertTrue(selected.getPixel(1, 60) != selected.getPixel(60, 60))
+				decoration.clearSelection()
+				assertEquals(0, decoration.checkedItemsCount)
+				assertTrue(normal.sameAs(render(false, false, false)))
+				assertTrue(library.sameAs(render(false, true, false)))
 			}
 		}
 	}

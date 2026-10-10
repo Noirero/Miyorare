@@ -239,6 +239,7 @@ class DetailsExpressiveActivity :
 
 	override fun onStart() {
 		super.onStart()
+		viewModel.refreshChapterReleasePrediction()
 		viewModel.resumeExpandedRelatedIfNeeded()
 		viewModel.resumeGenreRecommendations()
 	}
@@ -347,6 +348,7 @@ class DetailsExpressiveActivity :
 				val density = androidx.compose.ui.platform.LocalDensity.current
 				val details by viewModel.mangaDetails.collectAsState()
 				val history by viewModel.historyInfo.collectAsState()
+				val chapterReleasePrediction by viewModel.chapterReleasePrediction.collectAsState()
 				val chapters by viewModel.chapters.collectAsState()
 				val chapterOptions by viewModel.chapterListOptions.collectAsState()
 				val chapterBranches by viewModel.chapterBranchOptions.collectAsState()
@@ -377,6 +379,7 @@ class DetailsExpressiveActivity :
 					tags = tags,
 					historyInfo = history,
 					chapters = chapters,
+					chapterReleasePrediction = chapterReleasePrediction,
 					isChapterFilterActive = chapterFilterActive,
 					isLoading = loading,
 					favouriteCount = favs.size,

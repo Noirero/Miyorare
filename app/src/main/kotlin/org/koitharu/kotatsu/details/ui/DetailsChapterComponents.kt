@@ -46,11 +46,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,6 +75,7 @@ import org.koitharu.kotatsu.core.ui.detailsSelectedBrush
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.parsers.model.ContentRating
@@ -887,6 +892,67 @@ internal fun PrimaryDetailsActions(
 }
 
 @Composable
+internal fun ChapterHeaderTitle(
+	title: String,
+	prediction: NextChapterReleasePrediction?,
+	modifier: Modifier = Modifier,
+) {
+	val titleStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+	val secondaryStyle = MaterialTheme.typography.bodySmall
+	val measurer = rememberTextMeasurer()
+	val density = LocalDensity.current
+	val days = prediction?.daysUntilNext
+	val label = when {
+		days == null -> null
+		days == 0L -> stringResource(R.string.chapter_release_expected_today)
+		days >= 14L -> stringResource(R.string.chapter_release_expected_weeks, (days + 3L) / 7L)
+		else -> stringResource(R.string.chapter_release_expected_days, days)
+	}
+	val description = when {
+		days == null -> null
+		days == 0L -> stringResource(R.string.chapter_release_accessibility_today)
+		else -> pluralStringResource(R.plurals.chapter_release_accessibility_days, days.toInt(), days)
+	}
+	BoxWithConstraints(modifier) {
+		// Measure localized text at the active font scale. Drop the secondary estimate entirely
+		// when it cannot fit beside the primary count; Manage keeps its own unweighted space.
+		val titleWidth = measurer.measure(title, titleStyle, maxLines = 1).size.width
+		val predictionWidth = label?.let {
+			measurer.measure(it, secondaryStyle, maxLines = 1).size.width +
+				measurer.measure(" · ", secondaryStyle, maxLines = 1).size.width +
+				with(density) { 20.dp.roundToPx() }
+		} ?: 0
+		val showPrediction = label != null && titleWidth + predictionWidth <= with(density) { maxWidth.roundToPx() }
+		Row(verticalAlignment = Alignment.CenterVertically) {
+			Text(
+				text = title,
+				style = titleStyle,
+				color = MaterialTheme.colorScheme.onSurface,
+				maxLines = 1,
+				overflow = TextOverflow.Ellipsis,
+				modifier = Modifier.weight(1f, fill = false),
+			)
+			if (showPrediction) {
+				Row(
+					verticalAlignment = Alignment.CenterVertically,
+					modifier = Modifier.clearAndSetSemantics { contentDescription = description.orEmpty() },
+				) {
+					Text(" · ", style = secondaryStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+					Icon(
+						painter = painterResource(R.drawable.ic_timer),
+						contentDescription = null,
+						tint = MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.size(16.dp),
+					)
+					Spacer(Modifier.width(4.dp))
+					Text(label.orEmpty(), style = secondaryStyle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+				}
+			}
+		}
+	}
+}
+
+@Composable
 internal fun InlineChapterHeader(
 	visibleCount: Int,
 	totalCount: Int,
@@ -900,6 +966,7 @@ internal fun InlineChapterHeader(
 	onReset: () -> Unit,
 	expanded: Boolean,
 	onToggleExpanded: () -> Unit,
+	prediction: NextChapterReleasePrediction? = null,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
 	var moreExpanded by remember { mutableStateOf(false) }
@@ -928,17 +995,12 @@ internal fun InlineChapterHeader(
 					modifier = Modifier.rotate(if (expanded) 90f else 0f),
 				)
 			}
-			Text(
-				text = title,
-				style = MaterialTheme.typography.titleMedium,
-				fontWeight = FontWeight.Bold,
-				color = MaterialTheme.colorScheme.onSurface,
-				modifier = Modifier.weight(1f),
-			)
+			ChapterHeaderTitle(title, prediction, Modifier.weight(1f))
 			Text(
 				text = stringResource(R.string.manage),
 				color = toolbarAccent,
 				fontWeight = FontWeight.SemiBold,
+				maxLines = 1,
 				modifier = Modifier
 					.clickable(onClick = onManage)
 					.padding(horizontal = 4.dp, vertical = 6.dp),
