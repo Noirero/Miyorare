@@ -231,13 +231,15 @@ class DetailsViewModel @Inject constructor(
 
 	val remoteManga = MutableStateFlow<Manga?>(null)
 
-	private val releasePredictionNow = MutableStateFlow(System.currentTimeMillis())
-	val chapterReleasePrediction = combine(mangaDetails, selectedBranch, releasePredictionNow) { details, branch, now ->
-		predictSourceChapterRelease(details, branch, now, ZoneId.systemDefault())
+	private val releasePredictionRefreshTime = MutableStateFlow(System.currentTimeMillis())
+	val chapterReleasePrediction = combine(mangaDetails, selectedBranch, releasePredictionRefreshTime) { details, branch, _ ->
+		// Source results can arrive after onStart (including synthetic "just now" dates).
+		// Sample the clock for every calculation rather than treating that result as future data.
+		predictSourceChapterRelease(details, branch, System.currentTimeMillis(), ZoneId.systemDefault())
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), null)
 
 	fun refreshChapterReleasePrediction() {
-		releasePredictionNow.value = System.currentTimeMillis()
+		releasePredictionRefreshTime.value = System.currentTimeMillis()
 	}
 
 	val historyInfo: StateFlow<HistoryInfo> = combine(
