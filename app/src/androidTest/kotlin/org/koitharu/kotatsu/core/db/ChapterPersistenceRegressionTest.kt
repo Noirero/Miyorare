@@ -1,6 +1,20 @@
 package org.koitharu.kotatsu.core.db
 
 import android.os.SystemClock
+import android.content.Intent
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsOwner
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.AnnotatedString
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
 import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
@@ -23,6 +37,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
@@ -69,6 +84,11 @@ import javax.inject.Provider
 import kotlin.system.measureTimeMillis
 import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.details.ui.mapChapters
+import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
+import org.koitharu.kotatsu.details.ui.ChapterNoteSearch
+import org.koitharu.kotatsu.details.ui.ChapterPersonalEditor
+import org.koitharu.kotatsu.details.ui.InlineChapterCard
+import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 
 /**
  * Regression coverage for the cold-start chapter path.
@@ -79,12 +99,15 @@ import org.koitharu.kotatsu.details.ui.mapChapters
  * and recreating the Miyorare process.
  */
 @RunWith(AndroidJUnit4::class)
+@HiltAndroidTest
 class ChapterPersistenceRegressionTest {
+	@get:Rule val hiltRule = HiltAndroidRule(this)
 
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
 	@Before
 	fun setUp() {
+		hiltRule.inject()
 		context.deleteDatabase(DB_NAME)
 		context.deleteDatabase(MIGRATION_DB_NAME)
 	}
@@ -258,6 +281,155 @@ class ChapterPersistenceRegressionTest {
 		assertEquals(fallback, label(Float.POSITIVE_INFINITY, null))
 		assertEquals(fallback, label(Float.NaN, " "))
 		assertEquals("Special", label(Float.POSITIVE_INFINITY, "Special"))
+	}
+
+	@Test
+	fun personalIndicatorsRecycleInActualListAndGridRowsWithoutChangingSourceTextOrControls() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
+			for (grid in listOf(false, true)) {
+				val source = SampleData.chapter.copy(title = "One Piece Chapter 1", number = 1f, uploadDate = 0)
+				val states = listOf(ChapterPersonalMetadata(), ChapterPersonalMetadata(note = "Note only"),
+					ChapterPersonalMetadata(3), ChapterPersonalMetadata(5, "Peak"), ChapterPersonalMetadata())
+				val rows = states.mapIndexed { index, metadata -> ChapterListItem(
+					source.copy(id = index + 1L),
+					flags = (ChapterListItem.FLAG_UNREAD.toInt() or if (grid) ChapterListItem.FLAG_GRID.toInt() else 0).toByte(),
+					personalMetadata = metadata,
+				) }
+				var downloaded: ChapterListItem? = null
+				val adapter = org.koitharu.kotatsu.details.ui.adapter.ChaptersAdapter(
+					org.koitharu.kotatsu.core.ui.list.OnListItemClickListener { _, _ -> },
+					onDownloadClick = { downloaded = it }, onDeleteClick = {},
+				)
+				adapter.items = rows
+				val holder = adapter.onCreateViewHolder(android.widget.FrameLayout(themed), adapter.getItemViewType(0))
+				for (position in rows.indices) {
+					adapter.onBindViewHolder(holder, position)
+					val view = holder.itemView
+					val metadata = rows[position].personalMetadata
+					val note = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageView_personal_note)
+					val number = view.findViewById<android.widget.TextView>(org.koitharu.kotatsu.R.id.textView_personal_rating)
+					val star = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageView_personal_star)
+					assertEquals(metadata.note != null, note.visibility == android.view.View.VISIBLE)
+					assertEquals(metadata.rating != null, number.visibility == android.view.View.VISIBLE)
+					assertEquals(metadata.rating?.toString().orEmpty(), number.text.toString())
+					assertEquals(metadata.rating != null, star.isActivated)
+					assertEquals(android.view.View.VISIBLE, star.visibility)
+					val title = view.findViewById<android.widget.TextView>(org.koitharu.kotatsu.R.id.textView_title)
+					assertEquals(if (grid) rows[position].getGridTitle(themed.resources) else rows[position].getTitle(themed.resources), title.text.toString())
+					if (!grid) {
+						assertEquals(rows[position].description.orEmpty(), view.findViewById<android.widget.TextView>(org.koitharu.kotatsu.R.id.textView_description).text.toString())
+						view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageButton_download).performClick()
+						assertEquals(rows[position], downloaded)
+					}
+					val width = ((if (grid) 80 else 240) * themed.resources.displayMetrics.density).toInt()
+					view.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
+						android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
+					view.layout(0, 0, width, view.measuredHeight)
+					val indicators = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageView_personal)
+					assertTrue(indicators.measuredWidth <= width - (12 * themed.resources.displayMetrics.density).toInt())
+					assertTrue(indicators.right <= width)
+				}
+			}
+		}
+	}
+
+	@Test
+	fun actualDetailsPersonalControlsAndNoteSearchKeepIntegerRatingEditorAndChapterActions() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		runCatching { androidx.work.WorkManager.getInstance(context) }.getOrElse {
+			androidx.work.WorkManager.initialize(context, androidx.work.Configuration.Builder().build())
+		}
+		val activity = instrumentation.startActivitySync(Intent(context, org.koitharu.kotatsu.stats.ui.StatsActivity::class.java)
+			.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as org.koitharu.kotatsu.stats.ui.StatsActivity
+		val compose = activity.findViewById<ComposeView>(org.koitharu.kotatsu.R.id.composeView)
+		val metadata = mutableStateOf(ChapterPersonalMetadata())
+		val editing = mutableStateOf(false)
+		val query = mutableStateOf("")
+		var downloads = 0
+		var reads = 0
+		var exits = 0
+		val source = SampleData.chapter.copy(title = "One Piece Chapter 1", number = 1f, uploadDate = 0)
+		try {
+			instrumentation.runOnMainSync {
+				compose.setContent {
+					MaterialTheme {
+						val item = ChapterListItem(source, ChapterListItem.FLAG_UNREAD, personalMetadata = metadata.value)
+						Column {
+							InlineChapterCard(item, org.koitharu.kotatsu.core.prefs.VisualEffectLevel.LIGHT, Color.Blue,
+								onClick = { reads++ }, onDownloadClick = { downloads++ }, onManageClick = {}, onPersonalClick = { editing.value = true })
+							ChapterNoteSearch(query.value, { query.value = it }, { exits++ })
+						}
+						if (editing.value) ChapterPersonalEditor(item, false, { editing.value = false }, { rating, note ->
+							metadata.value = ChapterPersonalMetadata.normalized(rating, note)
+							editing.value = false
+						})
+					}
+				}
+			}
+			fun nodes() = detailsComposeNodes(compose)
+			val hasNote = context.getString(org.koitharu.kotatsu.R.string.chapter_personal_has_note)
+			for (state in listOf(ChapterPersonalMetadata(), ChapterPersonalMetadata(note = "Note"),
+				ChapterPersonalMetadata(2), ChapterPersonalMetadata(4, "Peak"), ChapterPersonalMetadata())) {
+				instrumentation.runOnMainSync { metadata.value = state }
+				waitForDetailsCompose(compose) { tree ->
+					tree.any { it.config.getOrNull(SemanticsProperties.Selected) == (state.rating != null) } &&
+						tree.any { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(hasNote) == true } == (state.note != null)
+				}
+				instrumentation.runOnMainSync {
+					val tree = nodes()
+					val numbers = tree.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }.filter { it in (1..5).map(Int::toString) }
+					assertEquals(state.rating?.let { listOf(it.toString()) }.orEmpty(), numbers)
+					assertTrue(tree.any { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == source.title } == true })
+				}
+			}
+			instrumentation.runOnMainSync {
+				val tree = nodes()
+				tree.first { it.config.getOrNull(SemanticsProperties.Selected) != null }.config[SemanticsActions.OnClick].action!!.invoke()
+				tree.first { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(context.getString(org.koitharu.kotatsu.R.string.download)) == true }
+					.let { (it.config.getOrNull(SemanticsActions.OnClick) ?: it.parent!!.config[SemanticsActions.OnClick]).action!!.invoke() }
+				tree.first { it.config.getOrNull(SemanticsActions.OnClick) != null && it.config.getOrNull(SemanticsProperties.Role) == null && it.config.getOrNull(SemanticsProperties.Selected) == null }
+					.config[SemanticsActions.OnClick].action!!.invoke()
+			}
+			assertEquals(1, downloads)
+			assertEquals(1, reads)
+			assertTrue(editing.value)
+			// Dismiss restores the same row; the editor and repository semantics are unchanged.
+			instrumentation.runOnMainSync { editing.value = false }
+			waitForDetailsCompose(compose) { it.any { node -> node.config.getOrNull(SemanticsActions.SetText) != null } }
+			instrumentation.runOnMainSync {
+				nodes().first { it.config.getOrNull(SemanticsActions.SetText) != null }.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("HaMa"))
+			}
+			waitForDetailsCompose(compose) { query.value == "HaMa" }
+			instrumentation.runOnMainSync {
+				nodes().first { it.config.getOrNull(SemanticsActions.SetText) != null }.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString(""))
+				nodes().first { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(context.getString(org.koitharu.kotatsu.R.string.chapter_search_notes_exit)) == true }
+					.let { (it.config.getOrNull(SemanticsActions.OnClick) ?: it.parent!!.config[SemanticsActions.OnClick]).action!!.invoke() }
+			}
+			assertEquals("", query.value)
+			assertEquals(1, exits)
+		} finally {
+			instrumentation.runOnMainSync { compose.disposeComposition(); activity.finish() }
+		}
+	}
+
+	private fun detailsComposeNodes(view: ComposeView): List<SemanticsNode> {
+		val ownerView = view.getChildAt(0) ?: return emptyList()
+		val owner = ownerView.javaClass.getMethod("getSemanticsOwner").invoke(ownerView) as SemanticsOwner
+		fun walk(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::walk)
+		return walk(owner.unmergedRootSemanticsNode)
+	}
+
+	private fun waitForDetailsCompose(view: ComposeView, predicate: (List<SemanticsNode>) -> Boolean) {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		val deadline = SystemClock.uptimeMillis() + 5000L
+		while (SystemClock.uptimeMillis() < deadline) {
+			var ready = false
+			instrumentation.runOnMainSync { ready = predicate(detailsComposeNodes(view)) }
+			if (ready) return
+			SystemClock.sleep(20)
+		}
+		error("Details Compose state did not settle")
 	}
 
 	@Test

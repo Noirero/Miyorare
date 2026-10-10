@@ -28,6 +28,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -55,6 +56,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -967,6 +971,7 @@ internal fun InlineChapterHeader(
 	expanded: Boolean,
 	onToggleExpanded: () -> Unit,
 	prediction: NextChapterReleasePrediction? = null,
+	onSearchNotes: () -> Unit = {},
 ) {
 	val palette = LocalMiyorareVisualPalette.current
 	var moreExpanded by remember { mutableStateOf(false) }
@@ -1082,6 +1087,14 @@ internal fun InlineChapterHeader(
 							onDismissRequest = { moreExpanded = false },
 						) {
 							DropdownMenuItem(
+								text = { Text(stringResource(R.string.chapter_search_notes)) },
+								leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
+								onClick = {
+									moreExpanded = false
+									onSearchNotes()
+								},
+							)
+							DropdownMenuItem(
 								text = { Text(stringResource(R.string.manage)) },
 								onClick = {
 									moreExpanded = false
@@ -1128,6 +1141,23 @@ internal fun InlineChapterHeader(
 			}
 		}
 	}
+}
+
+@Composable
+internal fun ChapterNoteSearch(query: String, onQueryChange: (String) -> Unit, onExit: () -> Unit) {
+	OutlinedTextField(
+		value = query,
+		onValueChange = onQueryChange,
+		label = { Text(stringResource(R.string.chapter_search_notes)) },
+		leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
+		trailingIcon = {
+			IconButton(onClick = onExit) {
+				Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.chapter_search_notes_exit))
+			}
+		},
+		singleLine = true,
+		modifier = Modifier.fillMaxWidth().padding(horizontal = SCREEN_PADDING, vertical = 4.dp),
+	)
 }
 
 @Composable
@@ -1334,11 +1364,32 @@ internal fun InlineChapterCard(
 				}
 			}
 
-			IconButton(onClick = onPersonalClick) {
+			val personal = item.personalMetadata.presentation(context.resources.configuration.locales[0])
+			if (personal.hasNote) {
+				Icon(
+					painter = painterResource(R.drawable.ic_export_notes),
+					contentDescription = stringResource(R.string.chapter_personal_has_note),
+					tint = accent,
+					modifier = Modifier.size(16.dp).padding(end = 2.dp),
+				)
+			}
+			personal.ratingText?.let { rating ->
+				Text(rating, style = MaterialTheme.typography.bodySmall, color = accent, maxLines = 1)
+			}
+			val ratingDescription = item.personalMetadata.rating?.let {
+				stringResource(R.string.chapter_personal_rating_value, it)
+			} ?: stringResource(R.string.chapter_personal_unrated)
+			IconButton(
+				onClick = onPersonalClick,
+				modifier = Modifier.semantics {
+					selected = personal.isRated
+					stateDescription = ratingDescription
+				},
+			) {
 				Icon(
 					painter = painterResource(R.drawable.ic_star_rate),
 					contentDescription = stringResource(R.string.chapter_personal_edit),
-					tint = if (item.personalMetadata.isEmpty) secondaryColor else accent,
+					tint = if (personal.isRated) accent else secondaryColor,
 					modifier = Modifier.size(20.dp),
 				)
 			}

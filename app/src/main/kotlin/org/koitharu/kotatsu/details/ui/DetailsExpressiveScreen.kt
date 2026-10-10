@@ -3,6 +3,7 @@
 package org.koitharu.kotatsu.details.ui
 
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
@@ -91,6 +92,9 @@ class DetailsExpressiveActions(
 	val onChapterClick: (ChapterListItem) -> Unit,
 	val onChapterDownloadClick: (ChapterListItem) -> Unit,
 	val onChapterPersonalClick: (ChapterListItem) -> Unit,
+	val onChapterNotesSearchClick: () -> Unit = {},
+	val onChapterNotesQueryChange: (String) -> Unit = {},
+	val onChapterNotesSearchExit: () -> Unit = {},
 )
 
 @Composable
@@ -101,6 +105,7 @@ fun DetailsExpressiveScreen(
 	historyInfo: HistoryInfo,
 	chapters: List<ChapterListItem>,
 	chapterReleasePrediction: NextChapterReleasePrediction?,
+	chapterNotesQuery: String? = null,
 	isChapterFilterActive: Boolean,
 	isLoading: Boolean,
 	favouriteCount: Int,
@@ -125,6 +130,7 @@ fun DetailsExpressiveScreen(
 ) {
 	val manga = details?.toManga()
 	var chaptersExpanded by rememberSaveable(manga?.id) { mutableStateOf(true) }
+	BackHandler(enabled = chapterNotesQuery != null, onBack = actions.onChapterNotesSearchExit)
 	var showRelatedSuggestions by rememberBooleanPref(
 		AppSettings.KEY_RELATED_MANGA,
 		relatedDiscoveryEnabled,
@@ -298,7 +304,7 @@ fun DetailsExpressiveScreen(
 							InlineChapterHeader(
 								visibleCount = chapters.size,
 								totalCount = historyInfo.totalChapters.coerceAtLeast(chapters.size),
-								isFilterActive = isChapterFilterActive,
+								isFilterActive = isChapterFilterActive || !chapterNotesQuery.isNullOrBlank(),
 								accent = accentColor,
 								onFilter = { actions.onChapterOptionsClick(ChapterOptionsTab.FILTER) },
 								onSort = { actions.onChapterOptionsClick(ChapterOptionsTab.SORT) },
@@ -309,7 +315,11 @@ fun DetailsExpressiveScreen(
 								expanded = chaptersExpanded,
 								onToggleExpanded = { chaptersExpanded = !chaptersExpanded },
 								prediction = chapterReleasePrediction,
+								onSearchNotes = actions.onChapterNotesSearchClick,
 							)
+							if (chaptersExpanded && chapterNotesQuery != null) {
+								ChapterNoteSearch(chapterNotesQuery, actions.onChapterNotesQueryChange, actions.onChapterNotesSearchExit)
+							}
 						}
 						if (chaptersExpanded) items(
 							items = chapters,
@@ -325,6 +335,16 @@ fun DetailsExpressiveScreen(
 								onManageClick = actions.onChaptersClick,
 								onPersonalClick = { actions.onChapterPersonalClick(chapter) },
 							)
+						}
+						if (chaptersExpanded && !chapterNotesQuery.isNullOrBlank() && chapters.isEmpty()) {
+							item(contentType = "chapter-notes-empty") {
+								Text(
+									stringResource(R.string.chapter_search_notes_empty),
+									style = MaterialTheme.typography.bodyMedium,
+									color = scheme.onSurfaceVariant,
+									modifier = Modifier.padding(horizontal = SCREEN_PADDING, vertical = 8.dp),
+								)
+							}
 						}
 					}
 

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto">
+	<ImageView
+		android:id="@+id/imageView_personal_note"
+		android:layout_width="14dp"
+		android:layout_height="14dp"
+		android:layout_marginEnd="4dp"
+		android:contentDescription="@string/chapter_personal_has_note"
+		app:srcCompat="@drawable/ic_export_notes" />
+	<TextView
+		android:id="@+id/textView_personal_rating"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_marginEnd="2dp"
+		android:importantForAccessibility="no"
+		android:singleLine="true"
+		android:textAppearance="?attr/textAppearanceBodySmall" />
+	<ImageView
+		android:id="@+id/imageView_personal_star"
+		android:layout_width="14dp"
+		android:layout_height="14dp"
+		app:srcCompat="@drawable/ic_star_rate" />
+</merge>

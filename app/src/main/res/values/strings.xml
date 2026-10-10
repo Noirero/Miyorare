@@ -1645,4 +1645,8 @@
     <string name="chapter_personal_note">Personal note (optional)</string>
     <string name="chapter_personal_clear_note">Clear note</string>
     <string name="chapter_personal_unrated">Unrated</string>
+    <string name="chapter_personal_has_note">Has a personal note</string>
+    <string name="chapter_search_notes">Search notes</string>
+    <string name="chapter_search_notes_exit">Exit note search</string>
+    <string name="chapter_search_notes_empty">No chapters have a personal note matching this search.</string>
 </resources>
