@@ -102,6 +102,7 @@ import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 @HiltAndroidTest
 class ChapterPersistenceRegressionTest {
 	@get:Rule val hiltRule = HiltAndroidRule(this)
+	@javax.inject.Inject lateinit var imageLoaderProvider: Provider<coil3.ImageLoader>
 
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
@@ -302,9 +303,10 @@ class ChapterPersistenceRegressionTest {
 					onDownloadClick = { downloaded = it }, onDeleteClick = {},
 				)
 				adapter.items = rows
-				val holder = adapter.onCreateViewHolder(android.widget.FrameLayout(themed), adapter.getItemViewType(0))
+				// RecyclerView's public wrappers initialize the holder's view type and position.
+				val holder = adapter.createViewHolder(android.widget.FrameLayout(themed), adapter.getItemViewType(0))
 				for (position in rows.indices) {
-					adapter.onBindViewHolder(holder, position)
+					adapter.bindViewHolder(holder, position)
 					val view = holder.itemView
 					val metadata = rows[position].personalMetadata
 					val note = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageView_personal_note)
@@ -337,6 +339,9 @@ class ChapterPersistenceRegressionTest {
 	@Test
 	fun actualDetailsPersonalControlsAndNoteSearchKeepIntegerRatingEditorAndChapterActions() {
 		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		// HiltTestApplication skips the app's background initialization. Prepare the activity's
+		// image loader here so its HTTP client is not first constructed during main-thread injection.
+		imageLoaderProvider.get()
 		runCatching { androidx.work.WorkManager.getInstance(context) }.getOrElse {
 			androidx.work.WorkManager.initialize(context, androidx.work.Configuration.Builder().build())
 		}
