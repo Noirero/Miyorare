@@ -44,7 +44,22 @@ class DownloadedLocalPipelineRegressionTest {
 	}
 
 	@Test fun `every icon binding caller commits the final set`() {
-		for (path in listOf("list/ui/adapter/MangaGridItemAD.kt", "list/ui/adapter/MangaListDetailedItemAD.kt", "alternatives/ui/AlternativeAD.kt")) {
+		// Card adapters now delegate to the manga-specific badge owner. Verify both callers
+		// carry the existing state, and that the actual nested IconsView binding still commits.
+		assertTrue(source("list/ui/adapter/MangaGridItemAD.kt").contains(
+			"binding.iconsView.bindGrid(item.isSaved,item.isLocalSource,item.isFavorite,item.counter)",
+		))
+		assertTrue(source("list/ui/adapter/MangaListDetailedItemAD.kt").contains(
+			"binding.iconsView.bind(item.isSaved,item.isLocalSource,item.isFavorite)",
+		))
+		val indicators = source("list/ui/MangaIndicatorsView.kt")
+		assertTrue(indicators.contains("funbindGrid(isSaved:Boolean,isLocalSource:Boolean,isFavorite:Boolean,counter:Int){bind(isSaved,isLocalSource,isFavorite)"))
+		val binding = indicators.substringAfter("funbind(isSaved:Boolean,isLocalSource:Boolean,isFavorite:Boolean)")
+			.substringBefore("funapplySelectionPresentation")
+		assertTrue(binding.contains("statusIcons.clearIcons()"))
+		assertTrue(binding.contains("if(isLocalSource)statusIcons.addIcon(R.drawable.ic_manga_source)"))
+		assertTrue(binding.contains("statusIcons.isVisible=statusIcons.iconsCount>0"))
+		for (path in listOf("list/ui/MangaIndicatorsView.kt", "alternatives/ui/AlternativeAD.kt")) {
 			val caller = source(path)
 			val start = caller.indexOf("clearIcons()")
 			val commit = caller.indexOf("iconsCount", start)
