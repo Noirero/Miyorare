@@ -345,15 +345,25 @@ class WorkflowContractTest(unittest.TestCase):
             signer = repo / 'sdk/build-tools/37.0.0/apksigner'
             signer.parent.mkdir(parents=True)
             signer.write_text('#!/bin/bash\nif [ "$FAKE_VALID" != true ]; then exit 1; fi\n'
-                              'echo "Signer #1 certificate DN: $FAKE_CERT"\n')
+                              'printf "%s\\n" "$FAKE_REPORT"\n')
             signer.chmod(0o755)
             debug_cert = 'CN=Android Debug, O=Android, C=US'
-            for case, expected, exists, valid, cert in (
-                ('valid', head, True, 'true', debug_cert),
-                ('wrong-head', 'f' * 40, True, 'true', debug_cert),
-                ('missing', head, False, 'true', debug_cert),
-                ('unsigned', head, True, 'false', debug_cert),
-                ('other-signer', head, True, 'true', 'CN=Official Beta'),
+            report = f'Verifies\nNumber of signers: 1\nSigner #1 certificate DN: {debug_cert}'
+            sdk_report = report.replace('Signer #1', 'V2 Signer:')
+            for case, expected, exists, valid, signature in (
+                ('valid-legacy', head, True, 'true', report),
+                ('valid-sdk', head, True, 'true', sdk_report),
+                ('valid-order', head, True, 'true', sdk_report.replace(debug_cert, 'C=US, O=Android, CN=Android Debug')),
+                ('valid-schemes', head, True, 'true', sdk_report + f'\nV3.1 Signer: certificate DN: {debug_cert}'),
+                ('wrong-head', 'f' * 40, True, 'true', report),
+                ('missing', head, False, 'true', report),
+                ('unsigned', head, True, 'false', report),
+                ('other-signer', head, True, 'true', report.replace(debug_cert, 'CN=Official Beta')),
+                ('missing-cert', head, True, 'true', 'Verifies\nNumber of signers: 1'),
+                ('unverified', head, True, 'true', report.replace('Verifies\n', '')),
+                ('multiple-signers', head, True, 'true', report.replace('Number of signers: 1', 'Number of signers: 2')),
+                ('ambiguous-cert', head, True, 'true', sdk_report + '\nV3 Signer: certificate DN: CN=Other'),
+                ('unexpected-signer', head, True, 'true', report.replace('Signer #1', 'Signer #2')),
             ):
                 with self.subTest(case=case):
                     if exists: apk.write_bytes(b'APK fixture')
@@ -365,9 +375,9 @@ class WorkflowContractTest(unittest.TestCase):
                     env = dict(os.environ, EXPECTED_HEAD=expected, ANDROID_HOME=str(repo / 'sdk'),
                                RUNNER_TEMP=str(runner), GITHUB_OUTPUT=str(output),
                                GITHUB_STEP_SUMMARY=str(summary), GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='2',
-                               FAKE_VALID=valid, FAKE_CERT=cert)
+                               FAKE_VALID=valid, FAKE_REPORT=signature)
                     result = subprocess.run(['bash', '-c', script], cwd=repo, env=env, capture_output=True, text=True)
-                    if case == 'valid':
+                    if case.startswith('valid-'):
                         self.assertEqual(0, result.returncode, result.stderr)
                         values = dict(line.split('=', 1) for line in output.read_text().splitlines())
                         self.assertEqual(f'owner-testing-preview-debug-signed-{head}-run-123-2', values['artifact_name'])

@@ -491,7 +491,20 @@ jobs:
           apksigner="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n1)"
           test -n "$apksigner"
           "$apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/owner-preview-signature.txt"
-          grep -Fq 'Signer #1 certificate DN: CN=Android Debug, O=Android, C=US' "$RUNNER_TEMP/owner-preview-signature.txt"
+          python3 - "$RUNNER_TEMP/owner-preview-signature.txt" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+          lines = Path(sys.argv[1]).read_text().splitlines()
+          if lines.count('Verifies') != 1 or [x for x in lines if x.startswith('Number of signers:')] != ['Number of signers: 1']:
+              sys.exit('Expected a verified APK with exactly one signer')
+          names = [x for x in lines if 'certificate DN:' in x]
+          pattern = r'(?:Signer #1|V[1-4](?:\.\d+)? Signer:) certificate DN: (.+)'
+          debug = ['C=US', 'CN=Android Debug', 'O=Android']
+          if not names or any(not (match := re.fullmatch(pattern, x)) or sorted(part.strip() for part in match[1].split(',')) != debug for x in names):
+              sys.exit('Expected the existing Android debug certificate')
+          print('Verified existing Android debug signature')
+          PY
           artifact="owner-testing-preview-debug-signed-${actual}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           filename="Miyorare-${artifact}.apk"
           cp "$apk" "$RUNNER_TEMP/$filename"

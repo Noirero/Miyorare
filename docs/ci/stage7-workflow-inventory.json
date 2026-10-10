@@ -3964,7 +3964,7 @@
       "filename": ".github/workflows/reader-journey-phase10-validation.yml",
       "display_name": "Reader Journey Phase 10 Full Validation",
       "category": "specialized",
-      "sha256": "ace11a33842ad08ca16dbfa915e0eef70732913c9e2ee2c9a4a6668c61e449a6",
+      "sha256": "bc23c1d99945ffd9049ab919e966e243efd84a2cc1c92b1e59b80c4fb3a82872",
       "events": {
         "pull_request": {
           "branches": [
@@ -4400,7 +4400,8 @@
                 "EXPECTED_HEAD": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
               },
               "invocations": [
-                "\"$apksigner\" verify --verbose --print-certs \"$apk\" > \"$RUNNER_TEMP/owner-preview-signature.txt\""
+                "\"$apksigner\" verify --verbose --print-certs \"$apk\" > \"$RUNNER_TEMP/owner-preview-signature.txt\"",
+                "python3 - \"$RUNNER_TEMP/owner-preview-signature.txt\" <<'PY'"
               ]
             }
           ]
