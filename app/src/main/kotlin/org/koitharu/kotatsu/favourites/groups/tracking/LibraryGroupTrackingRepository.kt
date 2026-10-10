@@ -47,7 +47,7 @@ class LibraryGroupTrackingRepository @Inject constructor(
 		dao.findAll(groupId).mapNotNull(::toDomain)
 
 	fun availableServices(): List<ScrobblerService> = ScrobblerService.values().filter { service ->
-		repositories[service].isAuthorized
+		service != ScrobblerService.MANGAUPDATES && repositories[service].isAuthorized
 	}
 
 	suspend fun search(service: ScrobblerService, query: String): List<ScrobblerManga> {
@@ -182,3 +182,4 @@ class LibraryGroupTrackingRepository @Inject constructor(
 		)
 	}
 }
+

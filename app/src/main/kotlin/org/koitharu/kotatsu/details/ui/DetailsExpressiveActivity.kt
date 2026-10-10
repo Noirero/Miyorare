@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -216,6 +217,25 @@ class DetailsExpressiveActivity :
 				),
 			)
 		viewModel.onMangaRemoved.observeEvent(this) { finishAfterTransition() }
+		viewModel.onTrackerRecommendationNavigation.observeEvent(this) { event ->
+			if (!viewModel.isRecommendationNavigationCurrent(event) || privateContentStateFlow.value != PrivateContentState.NORMAL) return@observeEvent
+			when {
+				event.providerUrl != null -> router.openBrowser(event.providerUrl, source = null, title = event.recommendation.title)
+				event.selected != null -> router.openDetails(event.selected)
+				event.candidates.isEmpty() -> router.openSearch(event.recommendation.title)
+				event.candidates.size == 1 -> router.openDetails(event.candidates.single())
+				else -> buildAlertDialog(this) {
+					setTitle(getString(R.string.tracker_recommendation_choose, event.recommendation.title))
+					setItems(event.candidates.map { "${it.title} · ${it.source.getTitle(this@DetailsExpressiveActivity)}" }.toTypedArray()) { _, index ->
+						viewModel.selectTrackerRecommendation(event, event.candidates[index].id)
+					}
+					setNeutralButton(R.string.tracker_recommendation_search) { _, _ ->
+						if (viewModel.isRecommendationNavigationCurrent(event)) router.openSearch(event.recommendation.title)
+					}
+					setNegativeButton(android.R.string.cancel, null)
+				}.show()
+			}
+		}
 		viewModel.onDownloadStarted
 			.filterNot { router.isChapterPagesSheetShown() }
 			.observeEvent(this, DownloadStartedObserver(viewBinding.composeView))
@@ -239,13 +259,18 @@ class DetailsExpressiveActivity :
 
 	override fun onStart() {
 		super.onStart()
+		viewModel.refreshChapterReleasePrediction()
 		viewModel.resumeExpandedRelatedIfNeeded()
 		viewModel.resumeGenreRecommendations()
+		viewModel.resumeTrackerPeople()
+		viewModel.resumeTrackerRecommendations()
 	}
 
 	override fun onStop() {
 		viewModel.pauseExpandedRelated()
 		viewModel.pauseGenreRecommendations()
+		viewModel.pauseTrackerPeople()
+		viewModel.pauseTrackerRecommendations()
 		super.onStop()
 	}
 
@@ -332,12 +357,25 @@ class DetailsExpressiveActivity :
 			},
 			onChapterOptionsResetClick = viewModel::resetChapterOptions,
 			onChapterClick = ::openChapter,
+			onChapterPersonalClick = viewModel::editChapterPersonal,
+			onChapterNotesSearchClick = { viewModel.performChapterNoteSearch("") },
+			onChapterNotesQueryChange = viewModel::performChapterNoteSearch,
+			onChapterNotesSearchExit = viewModel::exitChapterNoteSearch,
 			onChapterDownloadClick = { item ->
 				if (!item.canDownload) return@DetailsExpressiveActions
 				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
 					viewModel.download(setOf(item.chapter.id), allowMeteredNetwork)
 				}
 			},
+			onTrackerPeopleRequested = viewModel::requestTrackerPeople,
+			onTrackerPeopleRetry = viewModel::retryTrackerPeople,
+			onTrackerPeopleRefresh = viewModel::refreshTrackerPeople,
+			onTrackerRecommendationsRequested = viewModel::requestTrackerRecommendations,
+			onTrackerRecommendationsRetry = viewModel::retryTrackerRecommendations,
+			onTrackerRecommendationsRefresh = viewModel::refreshTrackerRecommendations,
+			onTrackerRecommendationClick = viewModel::openTrackerRecommendation,
+			onTrackerRecommendationProvider = viewModel::openTrackerRecommendationProvider,
+			onMangaUpdatesProgressRetry = viewModel::retryMangaUpdatesProgress,
 		)
 		viewBinding.composeView.setViewCompositionStrategy(
 			ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
@@ -347,7 +385,9 @@ class DetailsExpressiveActivity :
 				val density = androidx.compose.ui.platform.LocalDensity.current
 				val details by viewModel.mangaDetails.collectAsState()
 				val history by viewModel.historyInfo.collectAsState()
+				val chapterReleasePrediction by viewModel.chapterReleasePrediction.collectAsState()
 				val chapters by viewModel.chapters.collectAsState()
+				val chapterNotesQuery by viewModel.chapterNotesQuery.collectAsState()
 				val chapterOptions by viewModel.chapterListOptions.collectAsState()
 				val chapterBranches by viewModel.chapterBranchOptions.collectAsState()
 				val selectedChapterBranch by viewModel.selectedBranch.collectAsState()
@@ -359,6 +399,10 @@ class DetailsExpressiveActivity :
 				val loading by viewModel.isLoading.collectAsState()
 				val favs by viewModel.favouriteCategories.collectAsState()
 				val scrob by viewModel.scrobblingInfo.collectAsState()
+				val trackerPeople by viewModel.trackerPeople.collectAsState()
+				val trackerRecommendations by viewModel.trackerRecommendations.collectAsState()
+				val mangaUpdatesProgressFailed by viewModel.mangaUpdatesProgressFailed.collectAsState()
+				val privateContent by privateContentStateFlow.collectAsState()
 				val genreRecommendations by viewModel.genreRecommendations.collectAsState()
 				val expandedRelated by viewModel.expandedRelated.collectAsState()
 				val localSize by viewModel.localSize.collectAsState()
@@ -378,11 +422,16 @@ class DetailsExpressiveActivity :
 					tags = tags,
 					historyInfo = history,
 					chapters = chapters,
+					chapterReleasePrediction = chapterReleasePrediction,
+					chapterNotesQuery = chapterNotesQuery,
 					isChapterFilterActive = chapterFilterActive,
 					isLoading = loading,
 					favouriteCount = favs.size,
 					favouriteLabel = favLabel,
 					scrobblings = scrob,
+					trackerPeople = if (privateContent == PrivateContentState.NORMAL && !history.isIncognitoMode) trackerPeople else DetailsPeopleUiState(),
+					trackerRecommendations = if (privateContent == PrivateContentState.NORMAL && !history.isIncognitoMode) trackerRecommendations else DetailsPeopleUiState(),
+					mangaUpdatesProgressFailed = privateContent == PrivateContentState.NORMAL && !history.isIncognitoMode && mangaUpdatesProgressFailed,
 					genreRecommendations = genreRecommendations,
 					expandedRelated = expandedRelated,
 					relatedDiscoveryEnabled = viewModel.isRelatedDiscoveryEnabled,
@@ -402,6 +451,16 @@ class DetailsExpressiveActivity :
 					actions = actions,
 				)
 
+				val personalEditor by viewModel.chapterPersonalEditor.collectAsState()
+				val personalSaving by viewModel.isSavingChapterPersonal.collectAsState()
+				personalEditor?.let { item ->
+					ChapterPersonalEditor(
+						item = item,
+						saving = personalSaving,
+						onDismiss = viewModel::dismissChapterPersonalEditor,
+						onSave = viewModel::saveChapterPersonal,
+					)
+				}
 				if (chapterOptionsVisible.value) {
 					ChapterOptionsSheet(
 						initialTab = chapterOptionsInitialTab.value,
@@ -578,3 +637,4 @@ class DetailsExpressiveActivity :
 		const val PRIVATE_FAVOURITE_DIALOG_TAG = "private_favourite_dialog"
 	}
 }
+

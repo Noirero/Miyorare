@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tracker_people_characters">Characters · %1$s</string>
+    <string name="tracker_people_staff">Staff · %1$s</string>
+    <string name="tracker_people_loading">Loading characters and staff…</string>
+    <string name="tracker_people_unavailable">Some metadata from %1$s is unavailable.</string>
+    <string name="tracker_people_retry">Retry metadata</string>
+    <string name="tracker_people_show_more">Show more</string>
+    <string name="tracker_people_show_less">Show less</string>
+    <string name="tracker_people_partial">Showing available metadata; more records may exist.</string>
+    <string name="tracker_people_no_image">No portrait available for %1$s</string>
+</resources>

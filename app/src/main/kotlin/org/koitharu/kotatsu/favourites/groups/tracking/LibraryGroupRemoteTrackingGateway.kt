@@ -62,6 +62,7 @@ class LibraryGroupRemoteTrackingGateway @Inject constructor(
 		ScrobblerService.MAL -> malEnsure(targetId)
 		ScrobblerService.KITSU -> kitsuEnsure(targetId)
 		ScrobblerService.SHIKIMORI -> shikimoriEnsure(targetId)
+		ScrobblerService.MANGAUPDATES -> throw UnsupportedOperationException("MangaUpdates does not support Library Group tracking")
 		ScrobblerService.MANGABAKA -> mangaBakaEnsure(targetId)
 	}
 
@@ -70,6 +71,7 @@ class LibraryGroupRemoteTrackingGateway @Inject constructor(
 		ScrobblerService.MAL -> malRefresh(rate.targetId)
 		ScrobblerService.KITSU -> kitsuRefresh(rate.rateId)
 		ScrobblerService.SHIKIMORI -> shikimoriRefresh(rate.targetId)
+		ScrobblerService.MANGAUPDATES -> throw UnsupportedOperationException("MangaUpdates does not support Library Group tracking")
 		ScrobblerService.MANGABAKA -> mangaBakaRefresh(rate.targetId)
 	}
 
@@ -82,6 +84,7 @@ class LibraryGroupRemoteTrackingGateway @Inject constructor(
 		ScrobblerService.MAL -> malSync(rate.targetId, progress)
 		ScrobblerService.KITSU -> kitsuSync(rate.rateId, progress)
 		ScrobblerService.SHIKIMORI -> shikimoriSync(rate.rateId, progress)
+		ScrobblerService.MANGAUPDATES -> throw UnsupportedOperationException("MangaUpdates does not support Library Group tracking")
 		ScrobblerService.MANGABAKA -> mangaBakaSync(rate, progress)
 	}
 
@@ -368,3 +371,4 @@ class LibraryGroupRemoteTrackingGateway @Inject constructor(
 	private fun JSONObject.jsonBody() = toString().toRequestBody("application/json".toMediaType())
 	private fun JSONObject.jsonApiBody() = toString().toRequestBody("application/vnd.api+json".toMediaType())
 }
+

@@ -9,6 +9,7 @@ import okhttp3.Request
 import org.json.JSONObject
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.util.ext.toRequestBody
 import org.koitharu.kotatsu.parsers.util.await
 import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
@@ -19,6 +20,13 @@ import org.koitharu.kotatsu.parsers.util.toAbsoluteUrl
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerRepository
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerStorage
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
+import org.koitharu.kotatsu.scrobbling.common.domain.TrackerDetailsProvider
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerContent
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPage
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPerson
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerResult
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerTarget
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaType
@@ -37,9 +45,25 @@ private const val MANGA_PAGE_SIZE = 10
 class ShikimoriRepository @Inject constructor(
 	@ApplicationContext context: Context,
 	@ScrobblerType(ScrobblerService.SHIKIMORI) private val okHttp: OkHttpClient,
+	@BaseHttpClient private val baseHttpClient: OkHttpClient,
 	@ScrobblerType(ScrobblerService.SHIKIMORI) private val storage: ScrobblerStorage,
 	private val db: MangaDatabase,
-) : ScrobblerRepository {
+) : ScrobblerRepository, TrackerDetailsProvider {
+
+	override val detailsService = ScrobblerService.SHIKIMORI
+	override val detailsCapabilities = setOf(TrackerContent.CHARACTERS, TrackerContent.STAFF, TrackerContent.RECOMMENDATIONS)
+	override val detailsSessionGeneration get() = storage.sessionGeneration
+
+	private val detailsApi by lazy { ShikimoriDetailsApi(baseHttpClient) }
+
+	override suspend fun loadCharacters(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
+		detailsApi.people(target, TrackerContent.CHARACTERS, page)
+
+	override suspend fun loadStaff(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
+		detailsApi.people(target, TrackerContent.STAFF, page)
+
+	override suspend fun loadRecommendations(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerRecommendation> =
+		detailsApi.recommendations(target, page)
 
 	private val clientId = context.getString(R.string.shikimori_clientId)
 	private val clientSecret = context.getString(R.string.shikimori_clientSecret)

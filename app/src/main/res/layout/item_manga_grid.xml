@@ -34,18 +34,14 @@
 			android:layout_gravity="bottom"
 			tools:background="#CC000000" />
 
-		<org.koitharu.kotatsu.core.ui.widgets.IconsView
+		<org.koitharu.kotatsu.list.ui.MangaIndicatorsView
 			android:id="@+id/iconsView"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
 			android:layout_gravity="top|start"
 			android:layout_marginStart="0dp"
 			android:layout_marginTop="16dp"
-			android:background="@drawable/bg_list_icons"
-			android:orientation="horizontal"
-			android:padding="4dp"
-			app:iconSize="14dp"
-			app:iconSpacing="4dp" />
+			android:orientation="horizontal" />
 
 		<org.koitharu.kotatsu.core.ui.widgets.BadgeView
 			android:id="@+id/badge"

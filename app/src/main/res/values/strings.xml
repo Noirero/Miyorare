@@ -1458,4 +1458,25 @@
 	<string name="reader_journey_personality_manga">Manga Reader</string>
 	<string name="reader_journey_personality_novel">Novel Reader</string>
 	<string name="reader_journey_personality_balanced">Balanced Reader</string>
+    <string name="chapter_release_expected_today">Expected today</string>
+    <string name="chapter_release_expected_days">Expected ~%1$dd</string>
+    <string name="chapter_release_expected_weeks">Expected ~%1$dw</string>
+    <string name="chapter_release_accessibility_today">Estimated next chapter availability from this source: today.</string>
+    <plurals name="chapter_release_accessibility_days">
+        <item quantity="one">Estimated next chapter availability from this source: about %1$d day.</item>
+        <item quantity="other">Estimated next chapter availability from this source: about %1$d days.</item>
+    </plurals>
+    <string name="in_library">In library</string>
+    <string name="chapter_personal_edit">Chapter rating &amp; note</string>
+    <string name="chapter_personal_local_only">Personal, stored on this device.</string>
+    <string name="chapter_personal_stars">%1$d stars</string>
+    <string name="chapter_personal_rating_value">Rating: %1$d / 5</string>
+    <string name="chapter_personal_clear_rating">Clear rating</string>
+    <string name="chapter_personal_note">Personal note (optional)</string>
+    <string name="chapter_personal_clear_note">Clear note</string>
+    <string name="chapter_personal_unrated">Unrated</string>
+    <string name="chapter_personal_has_note">Has a personal note</string>
+    <string name="chapter_search_notes">Search notes</string>
+    <string name="chapter_search_notes_exit">Exit note search</string>
+    <string name="chapter_search_notes_empty">No chapters have a personal note matching this search.</string>
 </resources>

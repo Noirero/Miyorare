@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mangaupdates_login_hint">Masuk dengan nama pengguna dan kata sandi MangaUpdates.</string>
+    <string name="mangaupdates_username">Nama pengguna</string>
+    <string name="mangaupdates_sign_in">Masuk</string>
+    <string name="mangaupdates_login_failed">Tidak dapat masuk. Periksa kredensial dan koneksi Anda.</string>
+    <string name="mangaupdates_volume">Progres volume: %1$d</string>
+    <string name="mangaupdates_volume_edit">Ubah progres volume</string>
+    <string name="mangaupdates_progress_failed">Progres MangaUpdates tidak dapat dikirim</string>
+    <string name="mangaupdates_volume_unavailable">Progres volume tidak tersedia. Ketuk untuk mencoba lagi.</string>
+    <string name="mangaupdates_volume_invalid">Masukkan bilangan bulat nonnegatif</string>
+</resources>

@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.scrobbling.anilist.data
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -18,8 +20,17 @@ import org.koitharu.kotatsu.parsers.util.json.mapJSON
 import org.koitharu.kotatsu.parsers.util.parseJson
 import org.koitharu.kotatsu.parsers.util.toIntUp
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerRepository
+import org.koitharu.kotatsu.scrobbling.common.data.trackerDetailsClient
+import org.koitharu.kotatsu.scrobbling.common.data.awaitTrackerDetails
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerStorage
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
+import org.koitharu.kotatsu.scrobbling.common.domain.TrackerDetailsProvider
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerContent
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPage
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerPerson
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerResult
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerTarget
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaType
@@ -46,7 +57,30 @@ class AniListRepository @Inject constructor(
 	@ScrobblerType(ScrobblerService.ANILIST) private val okHttp: OkHttpClient,
 	@ScrobblerType(ScrobblerService.ANILIST) private val storage: ScrobblerStorage,
 	private val db: MangaDatabase,
-) : ScrobblerRepository {
+) : ScrobblerRepository, TrackerDetailsProvider {
+
+	private val detailsHttpClient by lazy { trackerDetailsClient(okHttp) }
+
+	override val detailsService = ScrobblerService.ANILIST
+	override val detailsCapabilities = setOf(TrackerContent.CHARACTERS, TrackerContent.STAFF, TrackerContent.RECOMMENDATIONS)
+	override val detailsSessionGeneration get() = storage.sessionGeneration
+
+	override suspend fun loadCharacters(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
+		aniListPeople(supplementalRequest(target, TrackerContent.CHARACTERS, page), target, TrackerContent.CHARACTERS, page)
+
+	override suspend fun loadStaff(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerPerson> =
+		aniListPeople(supplementalRequest(target, TrackerContent.STAFF, page), target, TrackerContent.STAFF, page)
+
+	override suspend fun loadRecommendations(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerRecommendation> =
+		aniListRecommendations(supplementalRequest(target, TrackerContent.RECOMMENDATIONS, page), target, page)
+
+	private suspend fun supplementalRequest(target: TrackerTarget, content: TrackerContent, page: TrackerPage): kotlinx.serialization.json.JsonObject {
+		val body = JSONObject().put("query", aniListDetailsQuery(target, content, page))
+		val request = Request.Builder().url(ENDPOINT)
+			.post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+		// Keep a GraphQL data+errors response for partial conversion; core doRequest semantics stay unchanged.
+		return detailsHttpClient.newCall(request).awaitTrackerDetails { Json.parseToJsonElement(it.parseJson().toString()).jsonObject }
+	}
 
 	private val clientId = context.getString(R.string.anilist_clientId)
 	private val clientSecret = context.getString(R.string.anilist_clientSecret)

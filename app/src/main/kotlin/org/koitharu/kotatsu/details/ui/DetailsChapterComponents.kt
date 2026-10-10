@@ -28,6 +28,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,17 +39,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,6 +76,7 @@ import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.parsers.model.ContentRating
@@ -841,6 +851,67 @@ internal fun PrimaryDetailsActions(
 }
 
 @Composable
+internal fun ChapterHeaderTitle(
+	title: String,
+	prediction: NextChapterReleasePrediction?,
+	modifier: Modifier = Modifier,
+) {
+	val titleStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+	val secondaryStyle = MaterialTheme.typography.bodySmall
+	val measurer = rememberTextMeasurer()
+	val density = LocalDensity.current
+	val days = prediction?.daysUntilNext
+	val label = when {
+		days == null -> null
+		days == 0L -> stringResource(R.string.chapter_release_expected_today)
+		days >= 14L -> stringResource(R.string.chapter_release_expected_weeks, (days + 3L) / 7L)
+		else -> stringResource(R.string.chapter_release_expected_days, days)
+	}
+	val description = when {
+		days == null -> null
+		days == 0L -> stringResource(R.string.chapter_release_accessibility_today)
+		else -> pluralStringResource(R.plurals.chapter_release_accessibility_days, days.toInt(), days)
+	}
+	BoxWithConstraints(modifier) {
+		// Measure localized text at the active font scale. Drop the secondary estimate entirely
+		// when it cannot fit beside the primary count; Manage keeps its own unweighted space.
+		val titleWidth = measurer.measure(title, titleStyle, maxLines = 1).size.width
+		val predictionWidth = label?.let {
+			measurer.measure(it, secondaryStyle, maxLines = 1).size.width +
+				measurer.measure(" · ", secondaryStyle, maxLines = 1).size.width +
+				with(density) { 20.dp.roundToPx() }
+		} ?: 0
+		val showPrediction = label != null && titleWidth + predictionWidth <= with(density) { maxWidth.roundToPx() }
+		Row(verticalAlignment = Alignment.CenterVertically) {
+			Text(
+				text = title,
+				style = titleStyle,
+				color = MaterialTheme.colorScheme.onSurface,
+				maxLines = 1,
+				overflow = TextOverflow.Ellipsis,
+				modifier = Modifier.weight(1f, fill = false),
+			)
+			if (showPrediction) {
+				Row(
+					verticalAlignment = Alignment.CenterVertically,
+					modifier = Modifier.clearAndSetSemantics { contentDescription = description.orEmpty() },
+				) {
+					Text(" · ", style = secondaryStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+					Icon(
+						painter = painterResource(R.drawable.ic_timer),
+						contentDescription = null,
+						tint = MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.size(16.dp),
+					)
+					Spacer(Modifier.width(4.dp))
+					Text(label.orEmpty(), style = secondaryStyle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+				}
+			}
+		}
+	}
+}
+
+@Composable
 internal fun InlineChapterHeader(
 	visibleCount: Int,
 	totalCount: Int,
@@ -852,6 +923,10 @@ internal fun InlineChapterHeader(
 	onManage: () -> Unit,
 	onSetDefault: () -> Unit,
 	onReset: () -> Unit,
+	expanded: Boolean,
+	onToggleExpanded: () -> Unit,
+	prediction: NextChapterReleasePrediction? = null,
+	onSearchNotes: () -> Unit = {},
 ) {
 	val palette = LocalMiyorareVisualPalette.current
 	var moreExpanded by remember { mutableStateOf(false) }
@@ -872,22 +947,26 @@ internal fun InlineChapterHeader(
 			modifier = Modifier.fillMaxWidth(),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
-			Text(
-				text = title,
-				style = MaterialTheme.typography.titleMedium,
-				fontWeight = FontWeight.Bold,
-				color = MaterialTheme.colorScheme.onSurface,
-				modifier = Modifier.weight(1f),
-			)
+			IconButton(onClick = onToggleExpanded) {
+				Icon(
+					painter = painterResource(R.drawable.ic_chevron_right),
+					contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand),
+					tint = MaterialTheme.colorScheme.onSurface,
+					modifier = Modifier.rotate(if (expanded) 90f else 0f),
+				)
+			}
+			ChapterHeaderTitle(title, prediction, Modifier.weight(1f))
 			Text(
 				text = stringResource(R.string.manage),
 				color = toolbarAccent,
 				fontWeight = FontWeight.SemiBold,
+				maxLines = 1,
 				modifier = Modifier
 					.clickable(onClick = onManage)
 					.padding(horizontal = 4.dp, vertical = 6.dp),
 			)
 		}
+		if (!expanded) return@Column
 		if (palette.isModern) {
 			Spacer(Modifier.height(2.dp))
 			Surface(
@@ -962,6 +1041,14 @@ internal fun InlineChapterHeader(
 							onDismissRequest = { moreExpanded = false },
 						) {
 							DropdownMenuItem(
+								text = { Text(stringResource(R.string.chapter_search_notes)) },
+								leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
+								onClick = {
+									moreExpanded = false
+									onSearchNotes()
+								},
+							)
+							DropdownMenuItem(
 								text = { Text(stringResource(R.string.manage)) },
 								onClick = {
 									moreExpanded = false
@@ -1008,6 +1095,23 @@ internal fun InlineChapterHeader(
 			}
 		}
 	}
+}
+
+@Composable
+internal fun ChapterNoteSearch(query: String, onQueryChange: (String) -> Unit, onExit: () -> Unit) {
+	OutlinedTextField(
+		value = query,
+		onValueChange = onQueryChange,
+		label = { Text(stringResource(R.string.chapter_search_notes)) },
+		leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
+		trailingIcon = {
+			IconButton(onClick = onExit) {
+				Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.chapter_search_notes_exit))
+			}
+		},
+		singleLine = true,
+		modifier = Modifier.fillMaxWidth().padding(horizontal = SCREEN_PADDING, vertical = 4.dp),
+	)
 }
 
 @Composable
@@ -1064,6 +1168,7 @@ internal fun InlineChapterCard(
 	onClick: () -> Unit,
 	onDownloadClick: () -> Unit,
 	onManageClick: () -> Unit,
+	onPersonalClick: () -> Unit,
 ) {
 	val context = LocalContext.current
 	val palette = LocalMiyorareVisualPalette.current
@@ -1207,6 +1312,37 @@ internal fun InlineChapterCard(
 				}
 			}
 
+			val personal = item.personalMetadata.presentation(context.resources.configuration.locales[0])
+			if (personal.hasNote) {
+				Icon(
+					painter = painterResource(R.drawable.ic_export_notes),
+					contentDescription = stringResource(R.string.chapter_personal_has_note),
+					tint = accent,
+					modifier = Modifier.padding(end = 6.dp).size(16.dp),
+				)
+			}
+			val ratingDescription = item.personalMetadata.rating?.let {
+				stringResource(R.string.chapter_personal_rating_value, it)
+			} ?: stringResource(R.string.chapter_personal_unrated)
+			IconButton(
+				onClick = onPersonalClick,
+				modifier = Modifier.semantics {
+					selected = personal.isRated
+					stateDescription = ratingDescription
+				},
+			) {
+				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+					personal.ratingText?.let { rating ->
+						Text(rating, style = MaterialTheme.typography.bodySmall, color = accent, maxLines = 1)
+					}
+					Icon(
+						painter = painterResource(R.drawable.ic_star_rate),
+						contentDescription = stringResource(R.string.chapter_personal_edit),
+						tint = if (personal.isRated) accent else secondaryColor,
+						modifier = Modifier.size(20.dp),
+					)
+				}
+			}
 			if (item.isBookmarked) {
 				Icon(
 					painter = painterResource(R.drawable.ic_bookmark),

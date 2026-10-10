@@ -2,7 +2,10 @@
 
 package org.koitharu.kotatsu.details.ui
 
+import androidx.compose.foundation.layout.Row
+
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
@@ -49,6 +52,7 @@ import org.koitharu.kotatsu.core.ui.util.StatusBarScrim
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsTab
@@ -57,7 +61,10 @@ import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 
 private const val KEY_GENRE_RECOMMENDATIONS_VISIBLE = "genre_recommendations_visible"
 
@@ -87,6 +94,19 @@ class DetailsExpressiveActions(
 	val onChapterOptionsResetClick: () -> Unit,
 	val onChapterClick: (ChapterListItem) -> Unit,
 	val onChapterDownloadClick: (ChapterListItem) -> Unit,
+	val onTrackerPeopleRequested: () -> Unit,
+	val onTrackerPeopleRetry: (ScrobblerService) -> Unit,
+	val onTrackerPeopleRefresh: () -> Unit,
+	val onTrackerRecommendationsRequested: () -> Unit,
+	val onTrackerRecommendationsRetry: (ScrobblerService) -> Unit,
+	val onTrackerRecommendationsRefresh: () -> Unit,
+	val onTrackerRecommendationClick: (org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation) -> Unit,
+	val onTrackerRecommendationProvider: (org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation) -> Unit,
+	val onMangaUpdatesProgressRetry: () -> Unit,
+	val onChapterPersonalClick: (ChapterListItem) -> Unit,
+	val onChapterNotesSearchClick: () -> Unit = {},
+	val onChapterNotesQueryChange: (String) -> Unit = {},
+	val onChapterNotesSearchExit: () -> Unit = {},
 )
 
 @Composable
@@ -96,11 +116,16 @@ fun DetailsExpressiveScreen(
 	tags: List<ChipsView.ChipModel>,
 	historyInfo: HistoryInfo,
 	chapters: List<ChapterListItem>,
+	chapterReleasePrediction: NextChapterReleasePrediction?,
+	chapterNotesQuery: String? = null,
 	isChapterFilterActive: Boolean,
 	isLoading: Boolean,
 	favouriteCount: Int,
 	favouriteLabel: String?,
 	scrobblings: List<ScrobblingInfo>,
+	trackerPeople: DetailsPeopleUiState,
+	trackerRecommendations: DetailsPeopleUiState,
+	mangaUpdatesProgressFailed: Boolean,
 	genreRecommendations: List<MangaListModel>,
 	expandedRelated: DetailsRelatedUiState,
 	relatedDiscoveryEnabled: Boolean,
@@ -121,6 +146,8 @@ fun DetailsExpressiveScreen(
 ) {
 	val manga = details?.toManga()
 	val managed = manga?.url?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it) } == true
+	var chaptersExpanded by rememberSaveable(manga?.id) { mutableStateOf(true) }
+	BackHandler(enabled = chapterNotesQuery != null, onBack = actions.onChapterNotesSearchExit)
 	var showRelatedSuggestions by rememberBooleanPref(
 		AppSettings.KEY_RELATED_MANGA,
 		relatedDiscoveryEnabled,
@@ -303,7 +330,7 @@ fun DetailsExpressiveScreen(
 							InlineChapterHeader(
 								visibleCount = chapters.size,
 								totalCount = historyInfo.totalChapters.coerceAtLeast(chapters.size),
-								isFilterActive = isChapterFilterActive,
+								isFilterActive = isChapterFilterActive || !chapterNotesQuery.isNullOrBlank(),
 								accent = accentColor,
 								onFilter = { actions.onChapterOptionsClick(ChapterOptionsTab.FILTER) },
 								onSort = { actions.onChapterOptionsClick(ChapterOptionsTab.SORT) },
@@ -311,9 +338,16 @@ fun DetailsExpressiveScreen(
 								onManage = actions.onChaptersClick,
 								onSetDefault = actions.onChapterOptionsSetDefaultClick,
 								onReset = actions.onChapterOptionsResetClick,
+								expanded = chaptersExpanded,
+								onToggleExpanded = { chaptersExpanded = !chaptersExpanded },
+								prediction = chapterReleasePrediction,
+								onSearchNotes = actions.onChapterNotesSearchClick,
 							)
+							if (chaptersExpanded && chapterNotesQuery != null) {
+								ChapterNoteSearch(chapterNotesQuery, actions.onChapterNotesQueryChange, actions.onChapterNotesSearchExit)
+							}
 						}
-						items(
+						if (chaptersExpanded) items(
 							items = chapters,
 							key = { it.detailsLazyListKey() },
 							contentType = { "chapter" },
@@ -325,8 +359,28 @@ fun DetailsExpressiveScreen(
 								onClick = { actions.onChapterClick(chapter) },
 								onDownloadClick = { actions.onChapterDownloadClick(chapter) },
 								onManageClick = actions.onChaptersClick,
+								onPersonalClick = { actions.onChapterPersonalClick(chapter) },
 							)
 						}
+						if (chaptersExpanded && !chapterNotesQuery.isNullOrBlank() && chapters.isEmpty()) {
+							item(contentType = "chapter-notes-empty") {
+								Text(
+									stringResource(R.string.chapter_search_notes_empty),
+									style = MaterialTheme.typography.bodyMedium,
+									color = scheme.onSurfaceVariant,
+									modifier = Modifier.padding(horizontal = SCREEN_PADDING, vertical = 8.dp),
+								)
+							}
+						}
+					}
+
+					if (!managed) item(key = "tracker-people", contentType = "tracker-people") {
+						// Lazy composition requests metadata only when the post-chapter section is reached.
+						LaunchedEffect(manga.id, manga.source, manga.url) { actions.onTrackerPeopleRequested() }
+						TrackerPeopleSection(
+							state = trackerPeople, imageLoader = imageLoader,
+							onRetry = actions.onTrackerPeopleRetry, onRefresh = actions.onTrackerPeopleRefresh,
+						)
 					}
 
 					if (scrobblings.isNotEmpty()) {
@@ -339,6 +393,17 @@ fun DetailsExpressiveScreen(
 								onCardClick = actions.onScrobblingCardClick,
 							)
 						}
+					}
+
+					if (!managed) item(key = "tracker-recommendations", contentType = "tracker-recommendations") {
+						if (mangaUpdatesProgressFailed) Row(Modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+							Text(stringResource(R.string.mangaupdates_progress_failed), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+							TextButton(onClick = actions.onMangaUpdatesProgressRetry) { Text(stringResource(R.string.tracker_people_retry)) }
+						}
+						LaunchedEffect(manga.id, manga.source, manga.url) { actions.onTrackerRecommendationsRequested() }
+						TrackerRecommendationSection(trackerRecommendations, imageLoader,
+							actions.onTrackerRecommendationClick, actions.onTrackerRecommendationProvider,
+							actions.onTrackerRecommendationsRetry, actions.onTrackerRecommendationsRefresh)
 					}
 
 					if (!managed) item(key = "discovery-controls", contentType = "discovery-controls") {
@@ -736,3 +801,4 @@ private fun ExpressiveBackdrop(
 		)
 	}
 }
+

@@ -33,10 +33,23 @@ import org.koitharu.kotatsu.scrobbling.shikimori.data.ShikimoriAuthenticator
 import org.koitharu.kotatsu.scrobbling.shikimori.data.ShikimoriInterceptor
 import org.koitharu.kotatsu.scrobbling.shikimori.domain.ShikimoriScrobbler
 import javax.inject.Singleton
+import org.koitharu.kotatsu.scrobbling.mangaupdates.data.EncryptedMangaUpdatesSessionStore
+import org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesSessionStore
+import org.koitharu.kotatsu.scrobbling.mangaupdates.data.mangaUpdatesClient
+import org.koitharu.kotatsu.scrobbling.mangaupdates.domain.MangaUpdatesScrobbler
 
 @Module
 @InstallIn(SingletonComponent::class)
 object ScrobblingModule {
+
+	@Provides
+	@Singleton
+	fun provideMangaUpdatesSessionStore(@ApplicationContext context: Context): MangaUpdatesSessionStore = EncryptedMangaUpdatesSessionStore(context)
+
+	@Provides
+	@Singleton
+	@ScrobblerType(ScrobblerService.MANGAUPDATES)
+	fun provideMangaUpdatesHttpClient(@BaseHttpClient client: OkHttpClient, store: MangaUpdatesSessionStore): OkHttpClient = mangaUpdatesClient(client, store)
 
 	@Provides
 	@Singleton
@@ -147,11 +160,14 @@ object ScrobblingModule {
 		malScrobbler: MALScrobbler,
 		kitsuScrobbler: KitsuScrobbler,
 		mangaBakaScrobbler: MangaBakaScrobbler,
+		mangaUpdatesScrobbler: MangaUpdatesScrobbler,
 	): Set<@JvmSuppressWildcards Scrobbler> = setOf(
 		shikimoriScrobbler,
 		aniListScrobbler,
 		malScrobbler,
 		kitsuScrobbler,
 		mangaBakaScrobbler,
+		mangaUpdatesScrobbler,
 	)
 }
+

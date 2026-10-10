@@ -31,6 +31,14 @@ abstract class ScrobblingDao {
 	@Query("SELECT * FROM scrobblings WHERE manga_id = :mangaId")
 	abstract suspend fun findAll(mangaId: Long): List<ScrobblingEntity>
 
+	/** Reverse a persisted, explicitly selected provider association; never a title match. */
+	@Query("SELECT * FROM scrobblings WHERE scrobbler = :scrobbler AND target_id = :targetId ORDER BY manga_id, id LIMIT 65")
+	abstract suspend fun findByTarget(scrobbler: Int, targetId: Long): List<ScrobblingEntity>
+
+	/** Raw association authority; does not fetch enriched tracker info or mutate tracking. */
+	@Query("SELECT * FROM scrobblings WHERE manga_id = :mangaId")
+	abstract fun observeAll(mangaId: Long): Flow<List<ScrobblingEntity>>
+
 	@Query(
 		"SELECT DISTINCT s2.manga_id FROM scrobblings s1 " +
 			"INNER JOIN scrobblings s2 ON s1.scrobbler = s2.scrobbler " +
@@ -97,3 +105,4 @@ abstract class ScrobblingDao {
 		}
 	}
 }
+

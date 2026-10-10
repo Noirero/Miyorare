@@ -1,6 +1,33 @@
 package org.koitharu.kotatsu.core.db
 
 import android.os.SystemClock
+import android.content.Intent
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsOwner
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.AnnotatedString
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
+import org.junit.Rule
+import org.koitharu.kotatsu.list.ui.MangaCardStatus
+import org.koitharu.kotatsu.list.ui.MangaIndicatorsView
+import org.koitharu.kotatsu.list.ui.MangaSelectionDecoration
+import org.koitharu.kotatsu.core.db.entity.toEntities
+import org.koitharu.kotatsu.details.ui.mapChapters
+import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
+import org.koitharu.kotatsu.details.ui.ChapterNoteSearch
+import org.koitharu.kotatsu.details.ui.ChapterPersonalEditor
+import org.koitharu.kotatsu.details.ui.InlineChapterCard
+import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.pager.filterChapterSearch
+import org.koitharu.kotatsu.history.data.HistoryEntity
 import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
@@ -61,12 +88,16 @@ import kotlin.system.measureTimeMillis
  * and recreating the Miyorare process.
  */
 @RunWith(AndroidJUnit4::class)
+@HiltAndroidTest
 class ChapterPersistenceRegressionTest {
+	@get:Rule val hiltRule = HiltAndroidRule(this)
+	@javax.inject.Inject lateinit var imageLoaderProvider: Provider<coil3.ImageLoader>
 
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
 	@Before
 	fun setUp() {
+		hiltRule.inject()
 		context.deleteDatabase(DB_NAME)
 		context.deleteDatabase(MIGRATION_DB_NAME)
 	}
@@ -76,6 +107,574 @@ class ChapterPersistenceRegressionTest {
 		context.deleteDatabase(DB_NAME)
 		context.deleteDatabase(MIGRATION_DB_NAME)
 	}
+
+	@Test
+	fun schema48AddsEmptyPersonalMetadataAndPreservesExistingData() = runTest {
+		val association = org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity(
+			org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService.MANGAUPDATES.id,
+			531, 901L, 9876543210123L, "Reading", 60, "Existing tracker comment", 8f,
+		)
+		fun fields(row: org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity) = listOf(
+			row.scrobbler, row.id, row.mangaId, row.targetId, row.status, row.chapter, row.comment, row.rating,
+		)
+		val current = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
+		try {
+			current.getMangaDao().upsert(SampleData.mangaDetails.copy(id = 901L).toEntity())
+			current.getHistoryDao().upsert(compatibilityHistory())
+			current.getScrobblingDao().upsert(association)
+		} finally { current.close() }
+		android.database.sqlite.SQLiteDatabase.openDatabase(
+			context.getDatabasePath(MIGRATION_DB_NAME).absolutePath, null,
+			android.database.sqlite.SQLiteDatabase.OPEN_READWRITE,
+		).use { old ->
+			old.execSQL("DROP TABLE chapter_personal")
+			old.execSQL("DROP TABLE room_master_table")
+			old.version = 48
+		}
+		val migrated = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME)
+			.addMigrations(*getDatabaseMigrations(context)).build()
+		try {
+			assertEquals(compatibilityHistory(), migrated.getHistoryDao().find(901L))
+			assertNotNull(migrated.getMangaDao().find(901L))
+			assertEquals(fields(association), fields(checkNotNull(migrated.getScrobblingDao().find(association.scrobbler, 901L))))
+			assertTrue(migrated.getChapterPersonalDao().findAll(listOf(901L)).isEmpty())
+			val repository = org.koitharu.kotatsu.details.data.ChapterPersonalRepository(migrated)
+			val manga = SampleData.mangaDetails.copy(id = 901L)
+			val key = org.koitharu.kotatsu.details.data.ChapterPersonalKey.of(SampleData.chapter)
+			repository.set(manga, key, 5, "Peak chapter")
+			assertEquals(5, repository.get(manga.id, key).rating)
+		} finally { migrated.close() }
+		val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
+		try {
+			assertEquals(DATABASE_VERSION, reopened.openHelper.writableDatabase.version)
+			assertEquals("Peak chapter", reopened.getChapterPersonalDao().findAll(listOf(901L)).single().note)
+			assertEquals(fields(association), fields(checkNotNull(reopened.getScrobblingDao().find(association.scrobbler, 901L))))
+		} finally { reopened.close() }
+	}
+
+	@Test
+	fun personalMetadataSurvivesReplacementGcAndReopenThenEditsAndClearsWithoutDuplicates() = runTest {
+		val manga = SampleData.mangaDetails.copy(id = 902L)
+		val a = org.koitharu.kotatsu.details.data.ChapterPersonalKey.of(SampleData.chapter)
+		val b = a.copy(url = a.url + "-other")
+		val otherSource = a.copy(source = "OTHER_SOURCE")
+		withDatabase { db ->
+			val repository = org.koitharu.kotatsu.details.data.ChapterPersonalRepository(db)
+			repository.set(manga, a, 5, "Peak chapter")
+			db.getChaptersDao().replaceAll(manga.id, checkNotNull(manga.chapters).reversed().withIndex().toEntities(manga.id))
+			db.getChaptersDao().gc(listOf(manga.id))
+			db.getMangaDao().cleanup(emptySet())
+			assertNotNull(db.getMangaDao().find(manga.id))
+			assertTrue(db.getChaptersDao().findAll(manga.id).isEmpty())
+			assertTrue(repository.get(manga.id, b).isEmpty)
+			assertTrue(repository.get(manga.id, otherSource).isEmpty)
+			assertTrue(repository.get(903L, a).isEmpty)
+			repository.set(manga.copy(id = 903L), a, 1, "Other manga")
+			assertEquals(5, repository.get(manga.id, a).rating)
+		}
+		withDatabase { db ->
+			val repository = org.koitharu.kotatsu.details.data.ChapterPersonalRepository(db)
+			assertEquals(org.koitharu.kotatsu.details.data.ChapterPersonalMetadata(5, "Peak chapter"), repository.get(manga.id, a))
+			repository.set(manga, a, 4, "Edited")
+			assertEquals(org.koitharu.kotatsu.details.data.ChapterPersonalMetadata(4, "Edited"), repository.get(manga.id, a))
+			assertEquals(1, db.getChapterPersonalDao().findAll(listOf(manga.id)).size)
+			repository.set(manga, a, 4, "   ")
+			assertEquals(org.koitharu.kotatsu.details.data.ChapterPersonalMetadata(4), repository.get(manga.id, a))
+			repository.set(manga, a, null, "Note only")
+			assertEquals(org.koitharu.kotatsu.details.data.ChapterPersonalMetadata(note = "Note only"), repository.get(manga.id, a))
+			repository.set(manga, a, null, "")
+			assertTrue(repository.get(manga.id, a).isEmpty)
+			assertTrue(db.getChapterPersonalDao().findAll(listOf(manga.id)).isEmpty())
+			assertTrue(repository.get(manga.id, b).isEmpty)
+		}
+	}
+
+	@Test
+	fun noteSearchUsesObservedCurrentTitleMetadataAndPreservesTheExistingSubsetAndOrder() = runBlocking {
+		withDatabase { db ->
+			val repository = org.koitharu.kotatsu.details.data.ChapterPersonalRepository(db)
+			val manga = SampleData.mangaDetails.copy(id = 904L)
+			val chapters = (1L..3L).map { id -> SampleData.chapter.copy(id = id, url = "/chapter/$id", title = "Source title $id") }
+			val keys = chapters.map { org.koitharu.kotatsu.details.data.ChapterPersonalKey.of(it) }
+			repository.set(manga, keys[0], 4, "Hama vs manusia sangat menarik")
+			repository.set(manga, keys[1], null, "Pertemuan dengan karakter baru")
+			// The same chapter locator on another title must not supply a matching note here.
+			repository.set(manga.copy(id = 905L), keys[1], 5, "HAMA from another title")
+			val observed = withTimeout(5000L) { repository.observe(manga.id).first() }
+			val rows = chapters.mapIndexed { index, chapter -> ChapterListItem(
+				chapter, flags = ChapterListItem.FLAG_UNREAD, personalKey = keys[index],
+				personalMetadata = observed[keys[index]] ?: ChapterPersonalMetadata(),
+			) }.reversed()
+			val matches = rows.filterChapterSearch("unrelated chapter query", "AMA")
+			assertEquals(listOf(1L), matches.map { it.chapter.id })
+			assertTrue(matches.single() === rows.last())
+			assertEquals(ChapterPersonalMetadata(4, "Hama vs manusia sangat menarik"), matches.single().personalMetadata)
+			assertEquals("Source title 1", matches.single().chapter.title)
+			assertTrue(rows.filterChapterSearch("", "never mentioned").isEmpty())
+			assertTrue(rows === rows.filterChapterSearch("", " \t "))
+			assertTrue(rows.dropLast(1).filterChapterSearch("", "hama").isEmpty())
+			assertEquals(observed, withTimeout(5000L) { repository.observe(manga.id).first() })
+		}
+	}
+
+	@Test
+	fun chapterPersonalIdentityUsesSourceLocatorWhenDownloadedObjectReplacesRemote() {
+		val source = remoteDetails()
+		val remote = requireNotNull(source.chapters)[2]
+		val local = remote.copy(source = LocalMangaSource, url = "file:///download/chapter.cbz")
+		val details = org.koitharu.kotatsu.details.data.MangaDetails(source.copy(chapters = listOf(remote))).copy(
+			localManga = LocalManga(source.copy(source = LocalMangaSource, url = "file:///download/manga", chapters = listOf(local))),
+		)
+		val rows = details.mapChapters(0, 0, remote.branch, emptyList(), false, false)
+		assertEquals(1, rows.size)
+		assertEquals(local, rows.single().chapter)
+		assertEquals(org.koitharu.kotatsu.details.data.ChapterPersonalKey.of(remote), rows.single().personalKey)
+	}
+
+	@Test
+	fun chapterGridUsesStructuredNumbersAndSafeLocalizedFallbacks() {
+		fun label(number: Float, title: String?) = org.koitharu.kotatsu.details.ui.model.ChapterListItem(
+			SampleData.chapter.copy(number = number, title = title), flags = 0,
+		).getGridTitle(context.resources)
+		assertEquals("1", label(1f, "CH"))
+		assertEquals("12.5", label(12.5f, "CH"))
+		assertEquals("Extra", label(0f, "Extra"))
+		val fallback = context.getString(org.koitharu.kotatsu.R.string.unnamed_chapter)
+		assertEquals(fallback, label(0f, null))
+		assertEquals(fallback, label(Float.POSITIVE_INFINITY, null))
+		assertEquals(fallback, label(Float.NaN, " "))
+		assertEquals("Special", label(Float.POSITIVE_INFINITY, "Special"))
+	}
+
+	@Test
+	fun personalIndicatorsRecycleInActualListAndGridRowsWithoutChangingSourceTextOrControls() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
+			for (grid in listOf(false, true)) {
+				val source = requireNotNull(remoteDetails().chapters)[2].copy(title = "One Piece Chapter 1", number = 1f, uploadDate = 0)
+				val states = listOf(ChapterPersonalMetadata(), ChapterPersonalMetadata(note = "Note only"),
+					ChapterPersonalMetadata(3), ChapterPersonalMetadata(5, "Peak"), ChapterPersonalMetadata())
+				val rows = states.mapIndexed { index, metadata -> ChapterListItem(
+					source.copy(id = index + 1L),
+					flags = (ChapterListItem.FLAG_UNREAD.toInt() or if (grid) ChapterListItem.FLAG_GRID.toInt() else 0).toByte(),
+					personalMetadata = metadata,
+				) }
+				var downloaded: ChapterListItem? = null
+				val adapter = org.koitharu.kotatsu.details.ui.adapter.ChaptersAdapter(
+					org.koitharu.kotatsu.core.ui.list.OnListItemClickListener { _, _ -> },
+					onDownloadClick = { downloaded = it }, onDeleteClick = {},
+				)
+				val localRow = rows.last().copy(chapter = source.copy(source = LocalMangaSource, url = "file:///download/chapter.cbz"))
+				// The initial list commits synchronously. Keep Local in that snapshot so the
+				// main-thread recycling loop does not race a later AsyncListDiffer submission.
+				adapter.items = if (grid) rows else rows + localRow
+				// RecyclerView's public wrappers initialize the holder's view type and position.
+				val holder = adapter.createViewHolder(android.widget.FrameLayout(themed), adapter.getItemViewType(0))
+				for (position in rows.indices) {
+					adapter.bindViewHolder(holder, position)
+					val view = holder.itemView
+					val metadata = rows[position].personalMetadata
+					val note = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageView_personal_note)
+					val number = view.findViewById<android.widget.TextView>(org.koitharu.kotatsu.R.id.textView_personal_rating)
+					val star = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageView_personal_star)
+					assertEquals(metadata.note != null, note.visibility == android.view.View.VISIBLE)
+					assertEquals(metadata.rating != null, number.visibility == android.view.View.VISIBLE)
+					assertEquals(metadata.rating?.toString().orEmpty(), number.text.toString())
+					assertEquals(metadata.rating != null, star.isActivated)
+					assertEquals(android.view.View.VISIBLE, star.visibility)
+					val title = view.findViewById<android.widget.TextView>(org.koitharu.kotatsu.R.id.textView_title)
+					assertEquals(if (grid) rows[position].getGridTitle(themed.resources) else rows[position].getTitle(themed.resources), title.text.toString())
+					if (!grid) {
+						assertEquals(rows[position].description.orEmpty(), view.findViewById<android.widget.TextView>(org.koitharu.kotatsu.R.id.textView_description).text.toString())
+						view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageButton_download).performClick()
+						assertEquals(rows[position], downloaded)
+					}
+					val width = ((if (grid) 80 else 240) * themed.resources.displayMetrics.density).toInt()
+					view.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
+						android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
+					view.layout(0, 0, width, view.measuredHeight)
+					val indicators = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageView_personal)
+					assertTrue(indicators.measuredWidth <= width - (12 * themed.resources.displayMetrics.density).toInt())
+					assertTrue(indicators.right <= width)
+				}
+				if (!grid) {
+					adapter.bindViewHolder(holder, rows.size)
+					downloaded = null
+					val download = holder.itemView.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageButton_download)
+					assertTrue(!localRow.canDownload)
+					assertEquals(android.view.View.GONE, download.visibility)
+					download.performClick()
+					assertNull(downloaded)
+				}
+			}
+		}
+	}
+
+	@Test
+	fun actualDetailsPersonalControlsAndNoteSearchKeepIntegerRatingEditorAndChapterActions() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		// HiltTestApplication skips the app's background initialization. Prepare the activity's
+		// image loader here so its HTTP client is not first constructed during main-thread injection.
+		imageLoaderProvider.get()
+		runCatching { androidx.work.WorkManager.getInstance(context) }.getOrElse {
+			androidx.work.WorkManager.initialize(context, androidx.work.Configuration.Builder().build())
+		}
+		val activity = instrumentation.startActivitySync(Intent(context, org.koitharu.kotatsu.stats.ui.StatsActivity::class.java)
+			.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as org.koitharu.kotatsu.stats.ui.StatsActivity
+		val compose = activity.findViewById<ComposeView>(org.koitharu.kotatsu.R.id.composeView)
+		val metadata = mutableStateOf(ChapterPersonalMetadata())
+		val editing = mutableStateOf(false)
+		val query = mutableStateOf("")
+		var downloads = 0
+		var reads = 0
+		var exits = 0
+		val source = requireNotNull(remoteDetails().chapters)[2].copy(title = "One Piece Chapter 1", number = 1f, uploadDate = 0)
+		try {
+			instrumentation.runOnMainSync {
+				compose.setContent {
+					MaterialTheme {
+						val item = ChapterListItem(source, ChapterListItem.FLAG_UNREAD, personalMetadata = metadata.value)
+						Column {
+							InlineChapterCard(item, org.koitharu.kotatsu.core.prefs.VisualEffectLevel.LIGHT, Color.Blue,
+								onClick = { reads++ }, onDownloadClick = { downloads++ }, onManageClick = {}, onPersonalClick = { editing.value = true })
+							ChapterNoteSearch(query.value, { query.value = it }, { exits++ })
+						}
+						if (editing.value) ChapterPersonalEditor(item, false, { editing.value = false }, { rating, note ->
+							metadata.value = ChapterPersonalMetadata.normalized(rating, note)
+							editing.value = false
+						})
+					}
+				}
+			}
+			fun nodes() = detailsComposeNodes(compose)
+			val hasNote = context.getString(org.koitharu.kotatsu.R.string.chapter_personal_has_note)
+			val states = listOf(ChapterPersonalMetadata(), ChapterPersonalMetadata(note = "Note")) +
+				(1..5).flatMap { listOf(ChapterPersonalMetadata(it), ChapterPersonalMetadata(it, "Peak")) } + ChapterPersonalMetadata()
+			for (state in states) {
+				instrumentation.runOnMainSync { metadata.value = state }
+				waitForDetailsCompose(compose) { tree ->
+					tree.any { it.config.getOrNull(SemanticsProperties.Selected) == (state.rating != null) } &&
+						tree.any { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(hasNote) == true } == (state.note != null) &&
+						tree.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+							.filter { it in (1..5).map(Int::toString) } == state.rating?.let { listOf(it.toString()) }.orEmpty()
+				}
+				instrumentation.runOnMainSync {
+					val tree = nodes()
+					val numbers = tree.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }.filter { it in (1..5).map(Int::toString) }
+					assertEquals(state.rating?.let { listOf(it.toString()) }.orEmpty(), numbers)
+					assertTrue(tree.any { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == source.title } == true })
+					if (state.rating != null) {
+						val number = tree.single { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == state.rating.toString() } == true }
+						val star = tree.single { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(context.getString(org.koitharu.kotatsu.R.string.chapter_personal_edit)) == true }
+						fun ratingControl(node: SemanticsNode) = generateSequence(node) { it.parent }
+							.first { it.config.getOrNull(SemanticsProperties.Selected) != null }
+						assertEquals(ratingControl(star).id, ratingControl(number).id)
+						val gap = star.boundsInRoot.left - number.boundsInRoot.right
+						assertTrue(gap >= 0 && gap <= 3 * context.resources.displayMetrics.density)
+						if (state.note != null) {
+							val note = tree.single { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(hasNote) == true }
+							assertTrue(number.boundsInRoot.left - note.boundsInRoot.right > gap)
+						}
+					}
+				}
+			}
+			instrumentation.runOnMainSync {
+				val tree = nodes()
+				tree.first { it.config.getOrNull(SemanticsProperties.Selected) != null }.config[SemanticsActions.OnClick].action!!.invoke()
+				tree.first { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(context.getString(org.koitharu.kotatsu.R.string.download)) == true }
+					.let { (it.config.getOrNull(SemanticsActions.OnClick) ?: it.parent!!.config[SemanticsActions.OnClick]).action!!.invoke() }
+				tree.first { it.config.getOrNull(SemanticsActions.OnClick) != null && it.config.getOrNull(SemanticsProperties.Role) == null && it.config.getOrNull(SemanticsProperties.Selected) == null }
+					.config[SemanticsActions.OnClick].action!!.invoke()
+			}
+			assertEquals(1, downloads)
+			assertEquals(1, reads)
+			assertTrue(editing.value)
+			// Dismiss restores the same row; the editor and repository semantics are unchanged.
+			instrumentation.runOnMainSync { editing.value = false }
+			waitForDetailsCompose(compose) { it.any { node -> node.config.getOrNull(SemanticsActions.SetText) != null } }
+			instrumentation.runOnMainSync {
+				nodes().first { it.config.getOrNull(SemanticsActions.SetText) != null }.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("HaMa"))
+			}
+			waitForDetailsCompose(compose) { query.value == "HaMa" }
+			instrumentation.runOnMainSync {
+				nodes().first { it.config.getOrNull(SemanticsActions.SetText) != null }.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString(""))
+				nodes().first { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(context.getString(org.koitharu.kotatsu.R.string.chapter_search_notes_exit)) == true }
+					.let { (it.config.getOrNull(SemanticsActions.OnClick) ?: it.parent!!.config[SemanticsActions.OnClick]).action!!.invoke() }
+			}
+			assertEquals("", query.value)
+			assertEquals(1, exits)
+		} finally {
+			instrumentation.runOnMainSync { compose.disposeComposition(); activity.finish() }
+		}
+	}
+
+	private fun detailsComposeNodes(view: ComposeView): List<SemanticsNode> {
+		val ownerView = view.getChildAt(0) ?: return emptyList()
+		val owner = ownerView.javaClass.getMethod("getSemanticsOwner").invoke(ownerView) as SemanticsOwner
+		fun walk(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::walk)
+		return walk(owner.unmergedRootSemanticsNode)
+	}
+
+	private fun waitForDetailsCompose(view: ComposeView, predicate: (List<SemanticsNode>) -> Boolean) {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		val deadline = SystemClock.uptimeMillis() + 5000L
+		while (SystemClock.uptimeMillis() < deadline) {
+			var ready = false
+			instrumentation.runOnMainSync { ready = predicate(detailsComposeNodes(view)) }
+			if (ready) return
+			SystemClock.sleep(20)
+		}
+		error("Details Compose state did not settle")
+	}
+
+	@Test
+	fun statusRibbonFitsNarrowCardsAndClearsRecycledPresentation() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
+			val view = themed.resources.getLayout(org.koitharu.kotatsu.R.layout.item_manga_grid).use { parser ->
+				while (parser.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+					if (parser.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name.endsWith("MangaIndicatorsView")) break
+				}
+				org.koitharu.kotatsu.list.ui.MangaIndicatorsView(themed, android.util.Xml.asAttributeSet(parser))
+			}
+			val ribbon = view.findViewById<android.view.ViewGroup>(org.koitharu.kotatsu.R.id.status_ribbon)
+			val libraryIcon = ribbon.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.status_library)
+			val downloadIcon = ribbon.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.status_downloaded)
+			val icons = view.findViewById<org.koitharu.kotatsu.core.ui.widgets.IconsView>(org.koitharu.kotatsu.R.id.status_icons)
+			val size = themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.manga_status_ribbon_width)
+			// The cover status has no persistent label; compact-list subtitles remain independent.
+			assertTrue((0 until view.childCount).none { view.getChildAt(it) is android.widget.TextView })
+			for (favorite in listOf(true, false, true, false)) {
+				for (saved in listOf(false, true)) for (local in listOf(false, true)) {
+					view.bind(saved, local, favorite)
+					val expected = when {
+						saved && favorite -> MangaCardStatus.LIBRARY_DOWNLOADED
+						saved -> MangaCardStatus.DOWNLOADED
+						favorite -> MangaCardStatus.LIBRARY
+						else -> MangaCardStatus.NONE
+					}
+					assertEquals(expected, view.status)
+					assertEquals(if (saved || favorite) android.view.View.VISIBLE else android.view.View.GONE, ribbon.visibility)
+					assertEquals(when (expected) {
+						MangaCardStatus.LIBRARY_DOWNLOADED -> themed.getString(org.koitharu.kotatsu.R.string.in_library) + ", " + themed.getString(org.koitharu.kotatsu.R.string.favourites_show_downloaded)
+						MangaCardStatus.DOWNLOADED -> themed.getString(org.koitharu.kotatsu.R.string.favourites_show_downloaded)
+						MangaCardStatus.LIBRARY -> themed.getString(org.koitharu.kotatsu.R.string.in_library)
+						MangaCardStatus.NONE -> null
+					}, ribbon.contentDescription)
+					assertEquals(favorite, libraryIcon.visibility == android.view.View.VISIBLE)
+					assertEquals(saved, downloadIcon.visibility == android.view.View.VISIBLE)
+					assertEquals(1f, ribbon.alpha)
+					assertEquals(if (local) 1 else 0, icons.iconsCount)
+					assertEquals(if (favorite || saved || local) android.view.View.VISIBLE else android.view.View.GONE, view.visibility)
+					for (widthDp in listOf(79, 90, 140)) {
+						val width = (widthDp * themed.resources.displayMetrics.density).toInt()
+						view.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.AT_MOST),
+							android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
+						view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+						assertTrue(view.measuredWidth <= width)
+						if (saved || favorite) {
+							assertEquals(size * (if (saved && favorite) 2 else 1), ribbon.measuredWidth)
+							if (saved && favorite) {
+								assertEquals(size, libraryIcon.measuredWidth)
+								assertEquals(size, downloadIcon.measuredWidth)
+								assertEquals(libraryIcon.right, downloadIcon.left)
+								assertEquals(0, libraryIcon.left)
+							}
+							assertTrue(ribbon.right <= view.measuredWidth)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	fun statusRibbonPreservesGridCounterSpaceAndCornerOnRebind() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			for (densityDpi in listOf(160, 240, 320)) {
+				val configuration = android.content.res.Configuration(context.resources.configuration).apply {
+					this.densityDpi = densityDpi
+				}
+				val themed = android.view.ContextThemeWrapper(
+					context.createConfigurationContext(configuration), org.koitharu.kotatsu.R.style.Theme_Kotatsu,
+				)
+				// Use the actual grid overlay's XML attributes and FrameLayout params, without the
+				// unrelated CoverImageView/Hilt host. The cover fills this same unpadded container.
+				val parent = android.widget.FrameLayout(themed)
+				val view = themed.resources.getLayout(org.koitharu.kotatsu.R.layout.item_manga_grid).use { parser ->
+					while (parser.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+						if (parser.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name.endsWith("MangaIndicatorsView")) break
+					}
+					val attrs = android.util.Xml.asAttributeSet(parser)
+					org.koitharu.kotatsu.list.ui.MangaIndicatorsView(themed, attrs).also {
+						parent.addView(it, parent.generateLayoutParams(attrs))
+					}
+				}
+				val ribbon = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.status_ribbon)
+				val icons = view.findViewById<org.koitharu.kotatsu.core.ui.widgets.IconsView>(org.koitharu.kotatsu.R.id.status_icons)
+				for (direction in listOf(android.view.View.LAYOUT_DIRECTION_LTR, android.view.View.LAYOUT_DIRECTION_RTL)) {
+					parent.layoutDirection = direction
+					for (widthDp in listOf(79, 90, 140)) {
+						val width = (widthDp * themed.resources.displayMetrics.density).toInt()
+						val height = (200 * themed.resources.displayMetrics.density).toInt()
+						for (saved in listOf(false, true)) for (local in listOf(false, true)) {
+							for ((favorite, counter) in listOf(true to 8, false to 8, false to 0, true to 0)) {
+								view.bindGrid(isSaved = saved, isLocalSource = local, isFavorite = favorite, counter = counter)
+								val hasRibbon = favorite || saved
+								val expectedOffset = if (hasRibbon) themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.card_indicator_offset)
+									else ((if (counter > 0) 32 else 16) * themed.resources.displayMetrics.density).toInt()
+								assertEquals(expectedOffset, (view.layoutParams as android.widget.FrameLayout.LayoutParams).topMargin)
+								assertEquals(if (hasRibbon) android.view.View.VISIBLE else android.view.View.GONE, ribbon.visibility)
+								assertEquals(if (local) 1 else 0, icons.iconsCount)
+								assertEquals(if (favorite || saved || local) android.view.View.VISIBLE else android.view.View.GONE, view.visibility)
+								parent.measure(
+									android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
+									android.view.View.MeasureSpec.makeMeasureSpec(height, android.view.View.MeasureSpec.EXACTLY),
+								)
+								parent.layout(0, 0, width, height)
+								if (view.visibility == android.view.View.VISIBLE) {
+									assertEquals(expectedOffset, view.top)
+									assertTrue(view.measuredWidth <= width)
+									val edgeMargin = if (hasRibbon) themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.card_indicator_offset) else 0
+									val atEnd = hasRibbon == (direction == android.view.View.LAYOUT_DIRECTION_LTR)
+									if (atEnd) assertEquals(width - edgeMargin, view.right)
+									else assertEquals(edgeMargin, view.left)
+									if (hasRibbon) assertEquals(edgeMargin, view.top)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	fun statusDimmingIsSubtleAndSelectionNeverCompoundsIt() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			for (night in listOf(android.content.res.Configuration.UI_MODE_NIGHT_NO, android.content.res.Configuration.UI_MODE_NIGHT_YES)) {
+				val configuration = android.content.res.Configuration(context.resources.configuration).apply {
+					uiMode = (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or night
+				}
+				val themed = android.view.ContextThemeWrapper(context.createConfigurationContext(configuration), org.koitharu.kotatsu.R.style.Theme_Kotatsu)
+				val recycler = androidx.recyclerview.widget.RecyclerView(themed).apply {
+					layoutManager = androidx.recyclerview.widget.LinearLayoutManager(themed)
+				}
+				lateinit var indicators: MangaIndicatorsView
+				lateinit var controls: android.view.View
+				recycler.adapter = object : androidx.recyclerview.widget.RecyclerView.Adapter<androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
+					override fun getItemCount() = 1
+					override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): androidx.recyclerview.widget.RecyclerView.ViewHolder {
+						val card = android.widget.FrameLayout(themed).apply {
+							layoutParams = androidx.recyclerview.widget.RecyclerView.LayoutParams(180, 160)
+						}
+						// Isolate the actual indicator/decoration without CoverImageView's unrelated Hilt host.
+						card.addView(com.google.android.material.imageview.ShapeableImageView(themed).apply {
+							id = org.koitharu.kotatsu.R.id.imageView_cover
+							shapeAppearanceModel = com.google.android.material.shape.ShapeAppearanceModel.builder().setAllCornerSizes(8f).build()
+						}, android.widget.FrameLayout.LayoutParams(180, 120))
+						indicators = MangaIndicatorsView(themed)
+						indicators.id = org.koitharu.kotatsu.R.id.iconsView
+						card.addView(indicators, android.widget.FrameLayout.LayoutParams(-2, -2))
+						controls = android.view.View(themed).apply { id = org.koitharu.kotatsu.R.id.layout_indicators }
+						card.addView(controls, android.widget.FrameLayout.LayoutParams(26, 26, android.view.Gravity.TOP or android.view.Gravity.END))
+						return object : androidx.recyclerview.widget.RecyclerView.ViewHolder(card) {}
+					}
+					override fun onBindViewHolder(holder: androidx.recyclerview.widget.RecyclerView.ViewHolder, position: Int) {
+						holder.itemView.tag = 1L
+					}
+				}
+				recycler.measure(android.view.View.MeasureSpec.makeMeasureSpec(180, android.view.View.MeasureSpec.EXACTLY),
+					android.view.View.MeasureSpec.makeMeasureSpec(160, android.view.View.MeasureSpec.EXACTLY))
+				recycler.layout(0, 0, 180, 160)
+				val decoration = object : MangaSelectionDecoration(themed) {
+					override fun getItemId(parent: androidx.recyclerview.widget.RecyclerView, child: android.view.View) = child.tag as Long
+				}
+				fun render(saved: Boolean, favorite: Boolean, selected: Boolean): android.graphics.Bitmap {
+					indicators.bindGrid(saved, false, favorite, 0)
+					decoration.setItemIsChecked(1L, selected)
+					return android.graphics.Bitmap.createBitmap(180, 160, android.graphics.Bitmap.Config.ARGB_8888).apply {
+						eraseColor(android.graphics.Color.WHITE)
+						val canvas = android.graphics.Canvas(this)
+						val state = androidx.recyclerview.widget.RecyclerView.State()
+						decoration.onDraw(canvas, recycler, state)
+						val ribbon = indicators.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.status_ribbon)
+						assertEquals(if (selected) 0f else 1f, ribbon.alpha)
+						assertEquals(selected, recycler.getChildAt(0).isSelected)
+						val controlOffset = themed.resources.getDimension(org.koitharu.kotatsu.R.dimen.manga_status_ribbon_width) +
+							themed.resources.getDimension(org.koitharu.kotatsu.R.dimen.library_indicator_spacing)
+						assertEquals(if (selected && !saved && !favorite) controlOffset else 0f, controls.translationY)
+						assertEquals(if (selected) android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+							else android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES, ribbon.importantForAccessibility)
+						decoration.onDrawOver(canvas, recycler, state)
+					}
+				}
+				val normal = render(false, false, false)
+				val library = render(false, true, false)
+				val downloaded = render(true, false, false)
+				val both = render(true, true, false)
+				val selected = render(false, false, true)
+				assertTrue(library.sameAs(downloaded))
+				assertTrue(downloaded.sameAs(both))
+				assertTrue(selected.sameAs(render(false, true, true)))
+				assertTrue(selected.sameAs(render(true, false, true)))
+				assertTrue(selected.sameAs(render(true, true, true)))
+				assertEquals(1, decoration.checkedItemsCount)
+				fun distanceFromWhite(color: Int) = 765 - android.graphics.Color.red(color) - android.graphics.Color.green(color) - android.graphics.Color.blue(color)
+				val statusStrength = distanceFromWhite(library.getPixel(60, 60))
+				val selectionStrength = distanceFromWhite(selected.getPixel(60, 60))
+				assertTrue(statusStrength > 0)
+				assertTrue(selectionStrength > statusStrength * 2)
+				assertEquals(android.graphics.Color.WHITE, normal.getPixel(60, 60))
+				// The status scrim covers only the cover. Selection retains the full-card fill/border.
+				assertEquals(android.graphics.Color.WHITE, library.getPixel(60, 140))
+				assertTrue(selected.getPixel(60, 140) != android.graphics.Color.WHITE)
+				assertTrue(selected.getPixel(1, 60) != selected.getPixel(60, 60))
+				// The selected marker replaces persistent status; it does not depend on either flag.
+				val markerInset = themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.card_indicator_offset)
+				val markerSize = themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.manga_status_ribbon_width)
+				assertTrue(selected.getPixel(180 - markerInset - markerSize / 2, markerInset + markerSize / 2) != selected.getPixel(60, 60))
+				decoration.clearSelection()
+				assertEquals(0, decoration.checkedItemsCount)
+				assertTrue(normal.sameAs(render(false, false, false)))
+				assertTrue(library.sameAs(render(false, true, false)))
+				// Bottom controls retain their established position even when selected.
+				(controls.layoutParams as android.widget.FrameLayout.LayoutParams).gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+				indicators.bindGrid(false, false, false, 0)
+				decoration.setItemIsChecked(1L, true)
+				decoration.onDraw(android.graphics.Canvas(), recycler, androidx.recyclerview.widget.RecyclerView.State())
+				assertEquals(0f, controls.translationY)
+			}
+		}
+	}
+
+	@Test
+	fun unrelatedIconsViewConsumersRetainIconOnlySizingAndRecycling() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
+			for (layout in listOf(org.koitharu.kotatsu.R.layout.item_manga_alternative, org.koitharu.kotatsu.R.layout.item_manga_carousel)) {
+				val parser = themed.resources.getLayout(layout)
+				try {
+					while (parser.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+						if (parser.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name.endsWith("IconsView")) break
+					}
+					val view = org.koitharu.kotatsu.core.ui.widgets.IconsView(themed, android.util.Xml.asAttributeSet(parser))
+					assertEquals(android.view.Gravity.TOP or android.view.Gravity.START, view.gravity)
+					view.addIcon(org.koitharu.kotatsu.R.drawable.ic_storage)
+					view.addIcon(org.koitharu.kotatsu.R.drawable.ic_heart_outline)
+					assertEquals(2, view.iconsCount)
+					val originalSize = view.getChildAt(0).layoutParams.width
+					view.clearIcons()
+					view.addIcon(org.koitharu.kotatsu.R.drawable.ic_manga_source)
+					assertEquals(1, view.iconsCount)
+					assertEquals(originalSize, view.getChildAt(0).layoutParams.width)
+					assertTrue((0 until view.childCount).all { view.getChildAt(it) is android.widget.ImageView })
+				} finally { parser.close() }
+			}
+		}
+	}
+
+	private fun compatibilityHistory() = HistoryEntity(901L, 100L, 200L, 1L, 4, 0.25f, 0.5f, 0L, 3)
 
 	@Test
 	fun migration45To46BackfillsOnlyExistingChapterSnapshots() {

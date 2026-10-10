@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.details.ui.scrobbling
 
 import android.os.Bundle
+import android.text.InputType
+import android.widget.EditText
 import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
@@ -10,6 +12,7 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.core.text.method.LinkMovementMethodCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+import androidx.core.view.isVisible
 import androidx.fragment.app.activityViewModels
 import com.google.android.material.chip.Chip
 import com.google.android.material.snackbar.Snackbar
@@ -17,6 +20,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
 import org.koitharu.kotatsu.core.ui.widgets.StarRatingView
 import org.koitharu.kotatsu.core.util.ext.adjustPopupMenuIcons
@@ -30,6 +34,7 @@ import org.koitharu.kotatsu.databinding.SheetScrobblingBinding
 import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 
 @AndroidEntryPoint
 class ScrobblingInfoSheet :
@@ -65,6 +70,16 @@ class ScrobblingInfoSheet :
 		buildStatusChips(binding)
 		binding.ratingBar.onRatingChangeListener = ::onRatingChanged
 		binding.buttonMenu.setOnClickListener(this)
+		binding.buttonMangaupdatesVolume.setOnClickListener(this)
+		viewModel.trackerVolume.observe(viewLifecycleOwner) { state ->
+			binding.buttonMangaupdatesVolume.isVisible = state.isRequested && viewModel.scrobblingInfo.value.getOrNull(scrobblerIndex)?.scrobbler == ScrobblerService.MANGAUPDATES
+			binding.buttonMangaupdatesVolume.isEnabled = !state.isLoading
+			binding.buttonMangaupdatesVolume.text = when {
+				state.isError -> getString(R.string.mangaupdates_volume_unavailable)
+				state.volume != null -> getString(R.string.mangaupdates_volume, state.volume)
+				else -> getString(R.string.mangaupdates_volume_edit)
+			}
+		}
 		binding.imageViewCover.setOnClickListener(this)
 		binding.textViewDescription.movementMethod = LinkMovementMethodCompat.getInstance()
 
@@ -78,6 +93,7 @@ class ScrobblingInfoSheet :
 	}
 
 	override fun onDestroyView() {
+		viewModel.clearTrackerVolume()
 		super.onDestroyView()
 		menu = null
 	}
@@ -101,6 +117,10 @@ class ScrobblingInfoSheet :
 
 	override fun onClick(v: View) {
 		when (v.id) {
+			R.id.button_mangaupdates_volume -> {
+				val state = viewModel.trackerVolume.value
+				if (state.isError || state.volume == null) viewModel.requestTrackerVolume(force = true) else showVolumeEditor(state.volume)
+			}
 			R.id.button_menu -> menu?.show()
 			R.id.imageView_cover -> router.openImage(
 				url = viewModel.scrobblingInfo.value.getOrNull(scrobblerIndex)?.coverUrl ?: return,
@@ -149,6 +169,10 @@ class ScrobblingInfoSheet :
 			return
 		}
 		val binding = viewBinding ?: return
+		val mangaUpdates = scrobbling.scrobbler == ScrobblerService.MANGAUPDATES
+		binding.buttonMangaupdatesVolume.isVisible = mangaUpdates && viewModel.trackerVolume.value.isRequested
+		binding.chipGroupStatus.findViewById<Chip>(ScrobblingStatus.RE_READING.ordinal + 1)?.isVisible = !mangaUpdates
+		if (mangaUpdates) viewModel.requestTrackerVolume()
 		binding.textViewTitle.text = scrobbling.title
 		binding.textViewService.setText(scrobbling.scrobbler.titleResId)
 		binding.ratingBar.rating = scrobbling.rating * StarRatingView.MAX_RATING
@@ -173,6 +197,23 @@ class ScrobblingInfoSheet :
 		} else {
 			"%.1f".format(stars)
 		}
+	}
+
+	private fun showVolumeEditor(volume: Int) {
+		val input = EditText(requireContext()).apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(volume.toString()); selectAll() }
+		val dialog = buildAlertDialog(requireContext()) {
+			setTitle(R.string.mangaupdates_volume_edit)
+			setView(input)
+			setPositiveButton(android.R.string.ok, null)
+			setNegativeButton(android.R.string.cancel, null)
+		}
+		dialog.setOnShowListener {
+			dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+				val value = input.text.toString().toIntOrNull()?.takeIf { it >= 0 }
+				if (value == null) input.error = getString(R.string.mangaupdates_volume_invalid) else { viewModel.updateTrackerVolume(value); dialog.dismiss() }
+			}
+		}
+		dialog.show()
 	}
 
 	override fun onMenuItemClick(item: MenuItem): Boolean {
@@ -203,3 +244,4 @@ class ScrobblingInfoSheet :
 		return true
 	}
 }
+

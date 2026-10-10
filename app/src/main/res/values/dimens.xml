@@ -112,4 +112,7 @@
 	<dimen name="menu_popup_selector_inset_horizontal">4dp</dimen>
 	<dimen name="menu_popup_selector_inset_vertical">4dp</dimen>
 	<dimen name="menu_icon_text_spacing_extra">10dp</dimen>
+	<dimen name="library_indicator_spacing">4dp</dimen>
+	<dimen name="manga_status_ribbon_width">24dp</dimen>
+	<dimen name="manga_status_ribbon_height">28dp</dimen>
 </resources>

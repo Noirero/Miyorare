@@ -66,6 +66,7 @@ data class PrivateFavouriteItemBackup(
 	@SerialName("pinned") val isPinned: Boolean = false,
 	@SerialName("created_at") val createdAt: Long,
 	@SerialName("manga") val manga: MangaBackup,
+	@SerialName("personal_metadata") val personalMetadata: List<ChapterPersonalBackup> = emptyList(),
 ) {
 	constructor(entity: PrivateFavouriteManga) : this(
 		mangaId = entity.manga.id,
