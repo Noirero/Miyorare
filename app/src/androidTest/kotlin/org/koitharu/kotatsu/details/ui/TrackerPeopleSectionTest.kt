@@ -10,6 +10,15 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
 import coil3.intercept.Interceptor
@@ -19,6 +28,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.core.prefs.DetailsUiMode
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
+import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.model.HistoryInfo
+import org.koitharu.kotatsu.details.ui.pager.filterChapterSearch
 import org.koitharu.kotatsu.scrobbling.common.domain.model.*
 import java.io.IOException
 
@@ -121,6 +138,86 @@ class TrackerPeopleSectionTest {
 		compose.onNodeWithTag("tracker-people:ANILIST:characters").assertExists()
 		compose.onNodeWithTag("tracker-people:KITSU:characters").assertExists()
 		compose.onAllNodesWithTag("tracker-person-no-image").assertCountEquals(2)
+	}
+
+	@Test fun fullDetailsCollapseAndNoteSearchPreserveChaptersPeopleAndRecommendationNavigation() {
+		val remoteSource = org.koitharu.kotatsu.core.model.MangaSource("MIHON_424242")
+		val chapter = SampleData.chapter.copy(id = 531L, title = "Ported chapter", number = 1f, uploadDate = 0L, source = remoteSource)
+		val row = ChapterListItem(chapter, ChapterListItem.FLAG_UNREAD, personalMetadata = ChapterPersonalMetadata(5, "Peak encounter"))
+		val rows = listOf(row)
+		val query = mutableStateOf<String?>(null)
+		var opened: TrackerRecommendation? = null
+		var personal: ChapterListItem? = null
+		val recommendation = TrackerRecommendation(TrackerTarget(service, "531"), "Preserved recommendation", null, TrackerRecommendationKind.RECOMMENDATION)
+		val actions = DetailsExpressiveActions(
+			onTagClick = {}, onCoverClick = {}, onScrobblingMore = {}, onScrobblingCardClick = {},
+			onFavoriteClick = {}, onFavoriteLongClick = {}, onTitleClick = {}, onAuthorClick = {},
+			onRelatedMore = {}, onRelatedClick = {}, onRelatedMangaClick = {}, onRelatedKeywordMore = { _, _ -> },
+			onRelatedDiscoveryRequested = {}, onSourceClick = {}, onLocalClick = {},
+			onGenreRecommendationsVisibilityChanged = {}, onReadClick = {}, onIncognitoClick = {}, onForgetHistoryClick = {},
+			onChaptersClick = {}, onChapterOptionsClick = {}, onChapterOptionsSetDefaultClick = {}, onChapterOptionsResetClick = {},
+			onChapterClick = {}, onChapterDownloadClick = {}, onChapterPersonalClick = { personal = it },
+			onChapterNotesSearchClick = { query.value = "" }, onChapterNotesQueryChange = { query.value = it },
+			onChapterNotesSearchExit = { query.value = null },
+			onTrackerPeopleRequested = {}, onTrackerPeopleRetry = {}, onTrackerPeopleRefresh = {},
+			onTrackerRecommendationsRequested = {}, onTrackerRecommendationsRetry = {}, onTrackerRecommendationsRefresh = {},
+			onTrackerRecommendationClick = { opened = it }, onTrackerRecommendationProvider = {}, onMangaUpdatesProgressRetry = {},
+		)
+		compose.setContent {
+			MaterialTheme {
+				DetailsExpressiveScreen(
+					details = MangaDetails(SampleData.mangaDetails.copy(source = remoteSource, chapters = listOf(chapter)), null, null, "Fixture description", true),
+					note = null, tags = emptyList(), historyInfo = HistoryInfo(1, -2, null, false, false, true, null),
+					chapters = rows.filterChapterSearch("", query.value), chapterReleasePrediction = null, chapterNotesQuery = query.value,
+					isChapterFilterActive = false, isLoading = false, favouriteCount = 0, favouriteLabel = null, scrobblings = emptyList(),
+					trackerPeople = DetailsPeopleUiState(providers = listOf(provider(
+						TrackerResult.Success(listOf(TrackerPerson("531", "Preserved character", null, listOf("MAIN")))),
+						TrackerResult.Success(listOf(TrackerPerson("532", "Preserved staff", null, listOf("Story")))),
+					))),
+					trackerRecommendations = DetailsPeopleUiState(providers = listOf(provider(TrackerResult.Empty(), TrackerResult.Empty()).copy(
+						recommendations = TrackerResult.Success(listOf(recommendation)),
+					))),
+					mangaUpdatesProgressFailed = false, genreRecommendations = emptyList(), expandedRelated = DetailsRelatedUiState(),
+					relatedDiscoveryEnabled = false, localSize = 0L, indexedLocalBook = null, sourceTitle = "Fixture source", imageLoader = loader,
+					coverUrl = null, backdropUrl = null, isBackdropEnabled = false, backdropBlurAmount = 0,
+					visualEffectLevel = VisualEffectLevel.LIGHT, style = DetailsUiMode.COMPACT, topInset = 0.dp, bottomContentPadding = 0.dp,
+					onScroll = {}, actions = actions,
+				)
+			}
+		}
+		fun scrollTo(matcher: androidx.compose.ui.test.SemanticsMatcher) {
+			compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(matcher)
+		}
+		val collapse = context.getString(R.string.collapse)
+		val expand = context.getString(R.string.expand)
+		scrollTo(hasContentDescription(collapse))
+		compose.onNodeWithContentDescription(collapse).performClick()
+		compose.onNodeWithText("Ported chapter").assertDoesNotExist()
+		scrollTo(hasTestTag("tracker-people:ANILIST:characters"))
+		compose.onNodeWithText("Preserved character").assertExists()
+		scrollTo(hasTestTag("tracker-people:ANILIST:staff"))
+		compose.onNodeWithText("Preserved staff").assertExists()
+		scrollTo(hasTestTag("tracker-recommendation:ANILIST:531"))
+		compose.onNodeWithTag("tracker-recommendation:ANILIST:531").performClick()
+		assertEquals(recommendation, opened)
+		scrollTo(hasContentDescription(expand))
+		compose.onNodeWithContentDescription(expand).performClick()
+		compose.onNodeWithText("Ported chapter").assertExists()
+		compose.onNodeWithContentDescription(context.getString(R.string.chapter_personal_edit)).performClick()
+		assertEquals(row, personal)
+		compose.runOnIdle { query.value = "" }
+		compose.onNodeWithText(context.getString(R.string.chapter_search_notes)).performTextInput("missing note")
+		compose.onNodeWithText(context.getString(R.string.chapter_search_notes_empty)).assertExists()
+		compose.onNodeWithText("Ported chapter").assertDoesNotExist()
+		compose.onNodeWithText(context.getString(R.string.chapter_search_notes)).performTextClearance()
+		compose.onNodeWithText("Ported chapter").assertExists()
+		compose.onNodeWithContentDescription(collapse).performClick()
+		assertEquals("", query.value)
+		compose.onNodeWithContentDescription(expand).performClick()
+		compose.onNodeWithContentDescription(context.getString(R.string.chapter_search_notes_exit)).performClick()
+		assertEquals(null, query.value)
+		compose.onNodeWithText("Ported chapter").assertExists()
+		assertEquals(ChapterPersonalMetadata(5, "Peak encounter"), row.personalMetadata)
 	}
 
 	private fun setContent(state: DetailsPeopleUiState) {

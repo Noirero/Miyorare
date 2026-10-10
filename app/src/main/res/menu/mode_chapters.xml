@@ -39,4 +39,10 @@
 		android:title="@android:string/selectAll"
 		app:showAsAction="ifRoom|withText" />
 
+	<item
+		android:id="@+id/action_chapter_personal"
+		android:icon="@drawable/ic_star_rate"
+		android:title="@string/chapter_personal_edit"
+		app:showAsAction="ifRoom|withText" />
+
 </menu>

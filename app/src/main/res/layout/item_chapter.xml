@@ -50,6 +50,12 @@
 			tools:textColor="?android:textColorTertiary" />
 	</LinearLayout>
 
+	<org.koitharu.kotatsu.details.ui.ChapterPersonalIndicatorsView
+		android:id="@+id/imageView_personal"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_marginEnd="8dp" />
+
 	<ImageView
 		android:id="@+id/imageView_bookmarked"
 		android:layout_width="wrap_content"
