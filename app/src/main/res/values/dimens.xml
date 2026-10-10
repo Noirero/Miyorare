@@ -114,5 +114,5 @@
 	<dimen name="menu_icon_text_spacing_extra">10dp</dimen>
 	<dimen name="library_indicator_spacing">4dp</dimen>
 	<dimen name="manga_status_ribbon_width">24dp</dimen>
-	<dimen name="manga_status_ribbon_height">32dp</dimen>
+	<dimen name="manga_status_ribbon_height">28dp</dimen>
 </resources>

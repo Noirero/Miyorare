@@ -13,15 +13,38 @@
 		app:iconSize="14dp"
 		app:iconSpacing="@dimen/library_indicator_spacing" />
 
-	<ImageView
+	<LinearLayout
 		android:id="@+id/status_ribbon"
-		android:layout_width="@dimen/manga_status_ribbon_width"
+		android:layout_width="wrap_content"
 		android:layout_height="@dimen/manga_status_ribbon_height"
 		android:background="@drawable/bg_manga_status_ribbon"
-		android:paddingStart="3dp"
-		android:paddingEnd="3dp"
-		android:paddingTop="3dp"
-		android:paddingBottom="9dp"
-		android:tint="?attr/colorOnPrimary" />
+		android:clipToOutline="true"
+		android:importantForAccessibility="yes"
+		android:layoutDirection="ltr"
+		android:orientation="horizontal">
+
+		<ImageView
+			android:id="@+id/status_library"
+			android:layout_width="@dimen/manga_status_ribbon_width"
+			android:layout_height="match_parent"
+			android:background="?attr/colorPrimary"
+			android:importantForAccessibility="no"
+			android:padding="3dp"
+			android:scaleType="centerInside"
+			android:src="@drawable/ic_bookmark"
+			android:tint="?attr/colorOnPrimary" />
+
+		<ImageView
+			android:id="@+id/status_downloaded"
+			android:layout_width="@dimen/manga_status_ribbon_width"
+			android:layout_height="match_parent"
+			android:background="?attr/colorTertiary"
+			android:importantForAccessibility="no"
+			android:padding="3dp"
+			android:scaleType="centerInside"
+			android:src="@drawable/ic_download"
+			android:tint="?attr/colorOnTertiary" />
+
+	</LinearLayout>
 
 </merge>

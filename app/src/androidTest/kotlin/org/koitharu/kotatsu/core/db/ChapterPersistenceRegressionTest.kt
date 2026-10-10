@@ -89,6 +89,7 @@ import org.koitharu.kotatsu.details.ui.ChapterNoteSearch
 import org.koitharu.kotatsu.details.ui.ChapterPersonalEditor
 import org.koitharu.kotatsu.details.ui.InlineChapterCard
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.pager.filterChapterSearch
 
 /**
  * Regression coverage for the cold-start chapter path.
@@ -256,6 +257,34 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun noteSearchUsesObservedCurrentTitleMetadataAndPreservesTheExistingSubsetAndOrder() = runTest {
+		withDatabase { db ->
+			val repository = org.koitharu.kotatsu.details.data.ChapterPersonalRepository(db)
+			val manga = SampleData.mangaDetails.copy(id = 904L)
+			val chapters = (1L..3L).map { id -> SampleData.chapter.copy(id = id, url = "/chapter/$id", title = "Source title $id") }
+			val keys = chapters.map { org.koitharu.kotatsu.details.data.ChapterPersonalKey.of(it) }
+			repository.set(manga, keys[0], 4, "Hama vs manusia sangat menarik")
+			repository.set(manga, keys[1], null, "Pertemuan dengan karakter baru")
+			// The same chapter locator on another title must not supply a matching note here.
+			repository.set(manga.copy(id = 905L), keys[1], 5, "HAMA from another title")
+			val observed = withTimeout(5000L) { repository.observe(manga.id).first() }
+			val rows = chapters.mapIndexed { index, chapter -> ChapterListItem(
+				chapter, flags = ChapterListItem.FLAG_UNREAD, personalKey = keys[index],
+				personalMetadata = observed[keys[index]] ?: ChapterPersonalMetadata(),
+			) }.reversed()
+			val matches = rows.filterChapterSearch("unrelated chapter query", "AMA")
+			assertEquals(listOf(1L), matches.map { it.chapter.id })
+			assertTrue(matches.single() === rows.last())
+			assertEquals(ChapterPersonalMetadata(4, "Hama vs manusia sangat menarik"), matches.single().personalMetadata)
+			assertEquals("Source title 1", matches.single().chapter.title)
+			assertTrue(rows.filterChapterSearch("", "never mentioned").isEmpty())
+			assertTrue(rows === rows.filterChapterSearch("", " \t "))
+			assertTrue(rows.dropLast(1).filterChapterSearch("", "hama").isEmpty())
+			assertEquals(observed, withTimeout(5000L) { repository.observe(manga.id).first() })
+		}
+	}
+
+	@Test
 	fun chapterPersonalIdentityUsesSourceLocatorWhenDownloadedObjectReplacesRemote() {
 		val remote = SampleData.chapter
 		val local = remote.copy(source = LocalMangaSource, url = "file:///download/chapter.cbz")
@@ -374,18 +403,34 @@ class ChapterPersistenceRegressionTest {
 			}
 			fun nodes() = detailsComposeNodes(compose)
 			val hasNote = context.getString(org.koitharu.kotatsu.R.string.chapter_personal_has_note)
-			for (state in listOf(ChapterPersonalMetadata(), ChapterPersonalMetadata(note = "Note"),
-				ChapterPersonalMetadata(2), ChapterPersonalMetadata(4, "Peak"), ChapterPersonalMetadata())) {
+			val states = listOf(ChapterPersonalMetadata(), ChapterPersonalMetadata(note = "Note")) +
+				(1..5).flatMap { listOf(ChapterPersonalMetadata(it), ChapterPersonalMetadata(it, "Peak")) } + ChapterPersonalMetadata()
+			for (state in states) {
 				instrumentation.runOnMainSync { metadata.value = state }
 				waitForDetailsCompose(compose) { tree ->
 					tree.any { it.config.getOrNull(SemanticsProperties.Selected) == (state.rating != null) } &&
-						tree.any { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(hasNote) == true } == (state.note != null)
+						tree.any { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(hasNote) == true } == (state.note != null) &&
+						tree.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+							.filter { it in (1..5).map(Int::toString) } == state.rating?.let { listOf(it.toString()) }.orEmpty()
 				}
 				instrumentation.runOnMainSync {
 					val tree = nodes()
 					val numbers = tree.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }.filter { it in (1..5).map(Int::toString) }
 					assertEquals(state.rating?.let { listOf(it.toString()) }.orEmpty(), numbers)
 					assertTrue(tree.any { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == source.title } == true })
+					if (state.rating != null) {
+						val number = tree.single { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == state.rating.toString() } == true }
+						val star = tree.single { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(context.getString(org.koitharu.kotatsu.R.string.chapter_personal_edit)) == true }
+						fun ratingControl(node: SemanticsNode) = generateSequence(node) { it.parent }
+							.first { it.config.getOrNull(SemanticsProperties.Selected) != null }
+						assertEquals(ratingControl(star).id, ratingControl(number).id)
+						val gap = star.boundsInRoot.left - number.boundsInRoot.right
+						assertTrue(gap >= 0 && gap <= 3 * context.resources.displayMetrics.density)
+						if (state.note != null) {
+							val note = tree.single { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(hasNote) == true }
+							assertTrue(number.boundsInRoot.left - note.boundsInRoot.right > gap)
+						}
+					}
 				}
 			}
 			instrumentation.runOnMainSync {
@@ -447,7 +492,9 @@ class ChapterPersistenceRegressionTest {
 				}
 				org.koitharu.kotatsu.list.ui.MangaIndicatorsView(themed, android.util.Xml.asAttributeSet(parser))
 			}
-			val ribbon = view.findViewById<android.widget.ImageView>(org.koitharu.kotatsu.R.id.status_ribbon)
+			val ribbon = view.findViewById<android.view.ViewGroup>(org.koitharu.kotatsu.R.id.status_ribbon)
+			val libraryIcon = ribbon.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.status_library)
+			val downloadIcon = ribbon.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.status_downloaded)
 			val icons = view.findViewById<org.koitharu.kotatsu.core.ui.widgets.IconsView>(org.koitharu.kotatsu.R.id.status_icons)
 			val size = themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.manga_status_ribbon_width)
 			// The cover status has no persistent label; compact-list subtitles remain independent.
@@ -456,6 +503,7 @@ class ChapterPersistenceRegressionTest {
 				for (saved in listOf(false, true)) for (local in listOf(false, true)) {
 					view.bind(saved, local, favorite)
 					val expected = when {
+						saved && favorite -> MangaCardStatus.LIBRARY_DOWNLOADED
 						saved -> MangaCardStatus.DOWNLOADED
 						favorite -> MangaCardStatus.LIBRARY
 						else -> MangaCardStatus.NONE
@@ -463,10 +511,14 @@ class ChapterPersistenceRegressionTest {
 					assertEquals(expected, view.status)
 					assertEquals(if (saved || favorite) android.view.View.VISIBLE else android.view.View.GONE, ribbon.visibility)
 					assertEquals(when (expected) {
+						MangaCardStatus.LIBRARY_DOWNLOADED -> themed.getString(org.koitharu.kotatsu.R.string.in_library) + ", " + themed.getString(org.koitharu.kotatsu.R.string.favourites_show_downloaded)
 						MangaCardStatus.DOWNLOADED -> themed.getString(org.koitharu.kotatsu.R.string.favourites_show_downloaded)
 						MangaCardStatus.LIBRARY -> themed.getString(org.koitharu.kotatsu.R.string.in_library)
 						MangaCardStatus.NONE -> null
 					}, ribbon.contentDescription)
+					assertEquals(favorite, libraryIcon.visibility == android.view.View.VISIBLE)
+					assertEquals(saved, downloadIcon.visibility == android.view.View.VISIBLE)
+					assertEquals(1f, ribbon.alpha)
 					assertEquals(if (local) 1 else 0, icons.iconsCount)
 					assertEquals(if (favorite || saved || local) android.view.View.VISIBLE else android.view.View.GONE, view.visibility)
 					for (widthDp in listOf(79, 90, 140)) {
@@ -476,7 +528,13 @@ class ChapterPersistenceRegressionTest {
 						view.layout(0, 0, view.measuredWidth, view.measuredHeight)
 						assertTrue(view.measuredWidth <= width)
 						if (saved || favorite) {
-							assertEquals(size, ribbon.measuredWidth)
+							assertEquals(size * (if (saved && favorite) 2 else 1), ribbon.measuredWidth)
+							if (saved && favorite) {
+								assertEquals(size, libraryIcon.measuredWidth)
+								assertEquals(size, downloadIcon.measuredWidth)
+								assertEquals(libraryIcon.right, downloadIcon.left)
+								assertEquals(0, libraryIcon.left)
+							}
 							assertTrue(ribbon.right <= view.measuredWidth)
 						}
 					}
@@ -518,7 +576,7 @@ class ChapterPersistenceRegressionTest {
 							for ((favorite, counter) in listOf(true to 8, false to 8, false to 0, true to 0)) {
 								view.bindGrid(isSaved = saved, isLocalSource = local, isFavorite = favorite, counter = counter)
 								val hasRibbon = favorite || saved
-								val expectedOffset = if (hasRibbon) 0
+								val expectedOffset = if (hasRibbon) themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.card_indicator_offset)
 									else ((if (counter > 0) 32 else 16) * themed.resources.displayMetrics.density).toInt()
 								assertEquals(expectedOffset, (view.layoutParams as android.widget.FrameLayout.LayoutParams).topMargin)
 								assertEquals(if (hasRibbon) android.view.View.VISIBLE else android.view.View.GONE, ribbon.visibility)
@@ -536,7 +594,7 @@ class ChapterPersistenceRegressionTest {
 									val atEnd = hasRibbon == (direction == android.view.View.LAYOUT_DIRECTION_LTR)
 									if (atEnd) assertEquals(width - edgeMargin, view.right)
 									else assertEquals(edgeMargin, view.left)
-									if (hasRibbon) assertEquals(0, view.top)
+									if (hasRibbon) assertEquals(edgeMargin, view.top)
 								}
 							}
 						}
@@ -589,7 +647,15 @@ class ChapterPersistenceRegressionTest {
 					decoration.setItemIsChecked(1L, selected)
 					return android.graphics.Bitmap.createBitmap(180, 160, android.graphics.Bitmap.Config.ARGB_8888).apply {
 						eraseColor(android.graphics.Color.WHITE)
-						decoration.onDrawOver(android.graphics.Canvas(this), recycler, androidx.recyclerview.widget.RecyclerView.State())
+						val canvas = android.graphics.Canvas(this)
+						val state = androidx.recyclerview.widget.RecyclerView.State()
+						decoration.onDraw(canvas, recycler, state)
+						val ribbon = indicators.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.status_ribbon)
+						assertEquals(if (selected) 0f else 1f, ribbon.alpha)
+						assertEquals(selected, recycler.getChildAt(0).isSelected)
+						assertEquals(if (selected) android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+							else android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES, ribbon.importantForAccessibility)
+						decoration.onDrawOver(canvas, recycler, state)
 					}
 				}
 				val normal = render(false, false, false)
@@ -613,6 +679,10 @@ class ChapterPersistenceRegressionTest {
 				assertEquals(android.graphics.Color.WHITE, library.getPixel(60, 140))
 				assertTrue(selected.getPixel(60, 140) != android.graphics.Color.WHITE)
 				assertTrue(selected.getPixel(1, 60) != selected.getPixel(60, 60))
+				// The selected marker replaces persistent status; it does not depend on either flag.
+				val markerInset = themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.card_indicator_offset)
+				val markerSize = themed.resources.getDimensionPixelSize(org.koitharu.kotatsu.R.dimen.manga_status_ribbon_width)
+				assertTrue(selected.getPixel(180 - markerInset - markerSize / 2, markerInset + markerSize / 2) != selected.getPixel(60, 60))
 				decoration.clearSelection()
 				assertEquals(0, decoration.checkedItemsCount)
 				assertTrue(normal.sameAs(render(false, false, false)))

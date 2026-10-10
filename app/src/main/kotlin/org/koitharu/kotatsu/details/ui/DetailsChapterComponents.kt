@@ -1370,11 +1370,8 @@ internal fun InlineChapterCard(
 					painter = painterResource(R.drawable.ic_export_notes),
 					contentDescription = stringResource(R.string.chapter_personal_has_note),
 					tint = accent,
-					modifier = Modifier.size(16.dp).padding(end = 2.dp),
+					modifier = Modifier.padding(end = 6.dp).size(16.dp),
 				)
-			}
-			personal.ratingText?.let { rating ->
-				Text(rating, style = MaterialTheme.typography.bodySmall, color = accent, maxLines = 1)
 			}
 			val ratingDescription = item.personalMetadata.rating?.let {
 				stringResource(R.string.chapter_personal_rating_value, it)
@@ -1386,12 +1383,17 @@ internal fun InlineChapterCard(
 					stateDescription = ratingDescription
 				},
 			) {
-				Icon(
-					painter = painterResource(R.drawable.ic_star_rate),
-					contentDescription = stringResource(R.string.chapter_personal_edit),
-					tint = if (personal.isRated) accent else secondaryColor,
-					modifier = Modifier.size(20.dp),
-				)
+				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+					personal.ratingText?.let { rating ->
+						Text(rating, style = MaterialTheme.typography.bodySmall, color = accent, maxLines = 1)
+					}
+					Icon(
+						painter = painterResource(R.drawable.ic_star_rate),
+						contentDescription = stringResource(R.string.chapter_personal_edit),
+						tint = if (personal.isRated) accent else secondaryColor,
+						modifier = Modifier.size(20.dp),
+					)
+				}
 			}
 			if (item.isBookmarked) {
 				Icon(
