@@ -46,17 +46,20 @@ class ExtensionDetailsStages234RegressionTest {
 	}
 
 	@Test
-	fun `Stage 4 persists source result before publication and keeps Room Flow ownership`() {
+	fun `Stage 4 publishes validated Details before persistence while shared result stays committed`() {
 		val loader = source("org/koitharu/kotatsu/details/domain/DetailsLoadUseCase.kt")
 		val details = source("org/koitharu/kotatsu/details/ui/DetailsViewModel.kt")
 
-		val store = loader.indexOf("mangaDataRepository.storeManga(")
+		val suspiciousEmptyGuard = loader.indexOf("if(!cachedBeforeFetch.chapters.isNullOrEmpty()&&remoteDetails.chapters.isNullOrEmpty())")
+		val sourceFirstPublish = loader.indexOf("emitSourceFirstRemoteDetails(", startIndex = suspiciousEmptyGuard)
+		val store = loader.indexOf("mangaDataRepository.storeManga(", startIndex = sourceFirstPublish)
 		val success = loader.indexOf("Result.success(remoteDetails)", startIndex = store)
-		val publish = loader.indexOf("valremoteDetails=remoteResult.getOrThrow()", startIndex = success)
-		assertTrue(store >= 0)
+		assertTrue(suspiciousEmptyGuard >= 0)
+		assertTrue(sourceFirstPublish > suspiciousEmptyGuard)
+		assertTrue(store > sourceFirstPublish)
 		assertTrue(success > store)
-		assertTrue(publish > success)
 
+		assertTrue(loader.contains("if(!preferLocalBeforeInitialSnapshot){emitSourceFirstRemoteDetails("))
 		assertTrue(details.contains("mangaDataRepository.observeChapters(mangaId)"))
 		assertFalse(details.contains(".drop(1)"))
 		assertTrue(details.contains(".mapLatest{chapters->syncCachedChaptersWhenLoadIdle(chapters)}"))
