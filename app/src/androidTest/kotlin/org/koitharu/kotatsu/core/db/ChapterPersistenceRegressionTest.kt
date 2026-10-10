@@ -264,7 +264,10 @@ class ChapterPersistenceRegressionTest {
 					org.koitharu.kotatsu.core.ui.list.OnListItemClickListener { _, _ -> },
 					onDownloadClick = { downloaded = it }, onDeleteClick = {},
 				)
-				adapter.items = rows
+				val localRow = rows.last().copy(chapter = source.copy(source = LocalMangaSource, url = "file:///download/chapter.cbz"))
+				// The initial list commits synchronously. Keep Local in that snapshot so the
+				// main-thread recycling loop does not race a later AsyncListDiffer submission.
+				adapter.items = if (grid) rows else rows + localRow
 				// RecyclerView's public wrappers initialize the holder's view type and position.
 				val holder = adapter.createViewHolder(android.widget.FrameLayout(themed), adapter.getItemViewType(0))
 				for (position in rows.indices) {
@@ -295,9 +298,7 @@ class ChapterPersistenceRegressionTest {
 					assertTrue(indicators.right <= width)
 				}
 				if (!grid) {
-					val localRow = rows.last().copy(chapter = source.copy(source = LocalMangaSource, url = "file:///download/chapter.cbz"))
-					adapter.items = listOf(localRow)
-					adapter.bindViewHolder(holder, 0)
+					adapter.bindViewHolder(holder, rows.size)
 					downloaded = null
 					val download = holder.itemView.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageButton_download)
 					assertTrue(!localRow.canDownload)
