@@ -241,10 +241,9 @@ class DetailsLoadUseCase @Inject constructor(
 				)
 			}
 
-			// Details can render a validated source snapshot immediately. Reader deliberately keeps the
-			// committed handoff: a concurrent Reader joins this single-flight and cannot proceed until the
-			// Room transaction below has completed. This removes Room write latency from Details' first
-			// useful render without weakening the shared durability boundary.
+			// The provisional snapshot deliberately remains incomplete. DetailsViewModel treats chapter-bearing
+			// incomplete emissions as renderable, while consumers using first { it.isLoaded } keep waiting for
+			// the committed result. That prevents an early collector cancellation from skipping persistence.
 			if (!preferLocalBeforeInitialSnapshot) {
 				emitSourceFirstRemoteDetails(
 					remoteDetails = remoteDetails,
@@ -253,8 +252,6 @@ class DetailsLoadUseCase @Inject constructor(
 				)
 			}
 
-			// Keep persistence inside the single-flight. Waiters still observe only a fully committed
-			// snapshot and never trigger a second source request while this write is in progress.
 			mangaDataRepository.storeManga(
 				remoteDetails,
 				replaceExisting = true,
@@ -337,7 +334,7 @@ class DetailsLoadUseCase @Inject constructor(
 				localManga = initialSavedManga,
 				override = override,
 				description = fastDescription,
-				isLoaded = true,
+				isLoaded = false,
 			),
 		)
 	}
