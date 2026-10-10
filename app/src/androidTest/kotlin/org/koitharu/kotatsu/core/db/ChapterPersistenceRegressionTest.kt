@@ -219,10 +219,10 @@ class ChapterPersistenceRegressionTest {
 
 	@Test
 	fun chapterPersonalIdentityUsesSourceLocatorWhenDownloadedObjectReplacesRemote() {
-		val remote = SampleData.chapter
+		val source = remoteDetails()
+		val remote = requireNotNull(source.chapters)[2]
 		val local = remote.copy(source = LocalMangaSource, url = "file:///download/chapter.cbz")
-		val source = SampleData.mangaDetails.copy(chapters = listOf(remote))
-		val details = org.koitharu.kotatsu.details.data.MangaDetails(source).copy(
+		val details = org.koitharu.kotatsu.details.data.MangaDetails(source.copy(chapters = listOf(remote))).copy(
 			localManga = LocalManga(source.copy(source = LocalMangaSource, url = "file:///download/manga", chapters = listOf(local))),
 		)
 		val rows = details.mapChapters(0, 0, remote.branch, emptyList(), false, false)
@@ -251,7 +251,7 @@ class ChapterPersistenceRegressionTest {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
 			val themed = android.view.ContextThemeWrapper(context, org.koitharu.kotatsu.R.style.Theme_Kotatsu)
 			for (grid in listOf(false, true)) {
-				val source = SampleData.chapter.copy(title = "One Piece Chapter 1", number = 1f, uploadDate = 0)
+				val source = requireNotNull(remoteDetails().chapters)[2].copy(title = "One Piece Chapter 1", number = 1f, uploadDate = 0)
 				val states = listOf(ChapterPersonalMetadata(), ChapterPersonalMetadata(note = "Note only"),
 					ChapterPersonalMetadata(3), ChapterPersonalMetadata(5, "Peak"), ChapterPersonalMetadata())
 				val rows = states.mapIndexed { index, metadata -> ChapterListItem(
@@ -294,6 +294,17 @@ class ChapterPersistenceRegressionTest {
 					assertTrue(indicators.measuredWidth <= width - (12 * themed.resources.displayMetrics.density).toInt())
 					assertTrue(indicators.right <= width)
 				}
+				if (!grid) {
+					val localRow = rows.last().copy(chapter = source.copy(source = LocalMangaSource, url = "file:///download/chapter.cbz"))
+					adapter.items = listOf(localRow)
+					adapter.bindViewHolder(holder, 0)
+					downloaded = null
+					val download = holder.itemView.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageButton_download)
+					assertTrue(!localRow.canDownload)
+					assertEquals(android.view.View.GONE, download.visibility)
+					download.performClick()
+					assertNull(downloaded)
+				}
 			}
 		}
 	}
@@ -316,7 +327,7 @@ class ChapterPersistenceRegressionTest {
 		var downloads = 0
 		var reads = 0
 		var exits = 0
-		val source = SampleData.chapter.copy(title = "One Piece Chapter 1", number = 1f, uploadDate = 0)
+		val source = requireNotNull(remoteDetails().chapters)[2].copy(title = "One Piece Chapter 1", number = 1f, uploadDate = 0)
 		try {
 			instrumentation.runOnMainSync {
 				compose.setContent {

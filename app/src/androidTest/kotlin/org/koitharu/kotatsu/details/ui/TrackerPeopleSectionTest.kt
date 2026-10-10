@@ -141,7 +141,8 @@ class TrackerPeopleSectionTest {
 	}
 
 	@Test fun fullDetailsCollapseAndNoteSearchPreserveChaptersPeopleAndRecommendationNavigation() {
-		val chapter = SampleData.chapter.copy(id = 531L, title = "Ported chapter", number = 1f, uploadDate = 0L)
+		val remoteSource = org.koitharu.kotatsu.core.model.MangaSource("MIHON_424242")
+		val chapter = SampleData.chapter.copy(id = 531L, title = "Ported chapter", number = 1f, uploadDate = 0L, source = remoteSource)
 		val row = ChapterListItem(chapter, ChapterListItem.FLAG_UNREAD, personalMetadata = ChapterPersonalMetadata(5, "Peak encounter"))
 		val rows = listOf(row)
 		val query = mutableStateOf<String?>(null)
@@ -165,7 +166,7 @@ class TrackerPeopleSectionTest {
 		compose.setContent {
 			MaterialTheme {
 				DetailsExpressiveScreen(
-					details = MangaDetails(SampleData.mangaDetails.copy(chapters = listOf(chapter)), null, null, "Fixture description", true),
+					details = MangaDetails(SampleData.mangaDetails.copy(source = remoteSource, chapters = listOf(chapter)), null, null, "Fixture description", true),
 					note = null, tags = emptyList(), historyInfo = HistoryInfo(1, -2, null, false, false, true, null),
 					chapters = rows.filterChapterSearch("", query.value), chapterReleasePrediction = null, chapterNotesQuery = query.value,
 					isChapterFilterActive = false, isLoading = false, favouriteCount = 0, favouriteLabel = null, scrobblings = emptyList(),
