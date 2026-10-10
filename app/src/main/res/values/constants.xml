@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 	<string name="url_github" translatable="false">https://github.com/Noirero/Miyorare</string>
-	<string name="url_discord_web" translatable="false">https://discord.gg/AKK3AQgvw</string>
+	<string name="url_discord_web" translatable="false">https://discord.gg/NPh8SUNQMY</string>
 	<string name="url_project_license" translatable="false">https://github.com/Noirero/Miyorare/blob/beta/LICENSE</string>
 	<string name="url_project_credits" translatable="false">https://github.com/Noirero/Miyorare#credits</string>
-	<string name="url_miyorare_website" translatable="false">https://github.com/Noirero/Miyorare</string>
+	<string name="url_miyorare_website" translatable="false">https://miyorare.my.id</string>
 	<string name="url_user_manual" translatable="false">https://github.com/Noirero/Miyorare#readme</string>
 	<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>
 	<string name="shikimori_clientId" translatable="false">Mw6F0tPEOgyV7F9U9Twg50Q8SndMY7hzIOfXg0AX_XU</string>
