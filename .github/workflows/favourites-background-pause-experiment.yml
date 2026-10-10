@@ -1,0 +1,204 @@
+name: Favourites Background Pause Experiment
+run-name: Favourites background-pause experiment · ${{ github.sha }}
+
+on:
+  push:
+    branches:
+      - experiment/favourites-background-pause
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EXPECTED_SOURCE_SHA: c22517f2b8c9ecf81e98cbb28ce1f2675f473f01
+
+concurrency:
+  group: favourites-background-pause-experiment
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build isolated Favourites pause APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout experiment branch
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify runtime source is exact v1.4.7 main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --quiet "$EXPECTED_SOURCE_SHA"..HEAD -- app/src app/build.gradle gradle gradle.properties settings.gradle || {
+            echo "::error::Committed runtime source differs from exact v1.4.7 main ${EXPECTED_SOURCE_SHA}."
+            git diff --stat "$EXPECTED_SOURCE_SHA"..HEAD -- app/src app/build.gradle gradle gradle.properties settings.gradle
+            exit 1
+          }
+          echo "Runtime source is exact v1.4.7 main; experiment changes are applied build-only."
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Require signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required repository secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+      - name: Apply build-only Favourites lifecycle experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          # Isolated identity so this can coexist with Main/Beta/Amain and prior diagnostics.
+          replace_once('app/build.gradle', "versionNameSuffix = '-beta'", "versionNameSuffix = '-favpause'", 'preview version suffix')
+          replace_once('app/build.gradle', "variant.applicationId.set('org.noirero.miyorare.beta')", "variant.applicationId.set('org.noirero.miyorare.favpause')", 'preview application id')
+          replace_once('app/src/main/res/values/strings.xml', '<string name="app_name" translatable="false">Miyorare</string>', '<string name="app_name" translatable="false">Miyorare FavPause</string>', 'app name')
+
+          # Experiment A: stop Favourites list upstream collectors when the UI has no active subscriber.
+          # StateFlow keeps the last value, so returning from Details should preserve the last rendered state
+          # while avoiding eager DB/group/search/list recomputation in the background Activity.
+          for path in [
+              'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/container/FavouritesContainerViewModel.kt',
+          ]:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count('SharingStarted.Eagerly')
+              if count == 0:
+                  raise SystemExit(f'{path}: no SharingStarted.Eagerly occurrences found')
+              p.write_text(text.replace('SharingStarted.Eagerly', 'SharingStarted.WhileSubscribed(stopTimeoutMillis = 0)'))
+              print(f'{path}: converted {count} eager stateIn collectors to WhileSubscribed(0)')
+
+          # Experiment B: immediately cancel Favourites-only cover prefetch when MainActivity is stopped
+          # by opening Details. onResume already schedules a fresh batch on return.
+          path = 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt'
+          marker = '''\toverride fun onResume() {\n\t\tsuper.onResume()\n\t\tscheduleCoverPrefetch(viewModel.content.value)\n\t}\n'''
+          replacement = '''\toverride fun onResume() {\n\t\tsuper.onResume()\n\t\tscheduleCoverPrefetch(viewModel.content.value)\n\t}\n\n\toverride fun onStop() {\n\t\tviewBinding?.recyclerView?.removeCallbacks(coverPrefetchRunnable)\n\t\tcoverPrefetchJob?.cancel()\n\t\tcoverPrefetchJob = null\n\t\tpendingCoverPrefetchItems = null\n\t\tsuper.onStop()\n\t}\n'''
+          replace_once(path, marker, replacement, 'Favourites cover prefetch onStop cancellation')
+          PY
+
+      - name: Verify experiment scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          CHANGED=$(git diff --name-only | sort)
+          printf '%s\n' "$CHANGED"
+          ALLOWED=$(printf '%s\n' \
+            app/build.gradle \
+            app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/container/FavouritesContainerViewModel.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt \
+            app/src/main/res/values/strings.xml | sort)
+          if [ "$CHANGED" != "$ALLOWED" ]; then
+            echo "::error::Experiment modified files outside the allowlist."
+            exit 1
+          fi
+          if ! git diff --quiet -- app/src/main/kotlin/org/koitharu/kotatsu/details; then
+            echo "::error::Details code changed; this experiment must not touch Details."
+            exit 1
+          fi
+          echo "Details untouched; only Favourites lifecycle/image-prefetch plus isolated build identity changed."
+          git diff --stat
+
+      - name: Pre-warm JitPack dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 10); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$POM_URL")
+            if [ "$HTTP_STATUS" = "200" ]; then exit 0; fi
+            echo "Attempt $i: JitPack returned ${HTTP_STATUS}; retrying..."
+            sleep 15
+          done
+          echo "::error::JitPack dependency was not ready after 10 attempts."
+          exit 1
+
+      - name: Build isolated preview APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assemblePreview --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE=../release.keystore \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+
+      - name: Verify and collect APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          metadata = json.loads(Path('app/build/outputs/apk/preview/output-metadata.json').read_text())
+          expected = 'org.noirero.miyorare.favpause'
+          actual = metadata.get('applicationId')
+          if actual != expected:
+              raise SystemExit(f'Built applicationId is {actual!r}, expected {expected!r}')
+          PY
+          APK=$(find app/build/outputs/apk/preview -name '*.apk' -type f | head -n1)
+          test -n "$APK"
+          DEST="Miyorare-FavPause-v1.4.7.apk"
+          cp "$APK" "$DEST"
+          echo "apk_name=$DEST" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Favourites background-pause experiment"
+            echo
+            echo "- Runtime baseline: \`${EXPECTED_SOURCE_SHA}\` (v1.4.7 main)"
+            echo "- Details code: unchanged"
+            echo "- Favourites eager stateIn collectors: build-only WhileSubscribed(0)"
+            echo "- Favourites cover prefetch: cancelled onStop, resumed onResume"
+            echo "- Application ID: \`org.noirero.miyorare.favpause\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload experiment APK
+        uses: actions/upload-artifact@v5
+        with:
+          name: Miyorare-FavPause-v1.4.7
+          path: ${{ steps.apk.outputs.apk_name }}
+          if-no-files-found: error
+          retention-days: 14
