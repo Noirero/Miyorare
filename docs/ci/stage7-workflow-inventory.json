@@ -3964,7 +3964,7 @@
       "filename": ".github/workflows/reader-journey-phase10-validation.yml",
       "display_name": "Reader Journey Phase 10 Full Validation",
       "category": "specialized",
-      "sha256": "b68cb4777d4582d3db3f9627cd94a11e6f7a2d060af71a73f170794ab73143e7",
+      "sha256": "ace11a33842ad08ca16dbfa915e0eef70732913c9e2ee2c9a4a6668c61e449a6",
       "events": {
         "pull_request": {
           "branches": [
@@ -4349,6 +4349,17 @@
                 "if-no-files-found": "warn",
                 "retention-days": "14"
               }
+            },
+            {
+              "name": "Upload debug-signed owner-testing Preview APK",
+              "if": "matrix.scenario == 'modern-dark'",
+              "uses": "actions/upload-artifact@v4",
+              "with": {
+                "name": "${{ steps.owner_preview.outputs.artifact_name }}",
+                "path": "${{ steps.owner_preview.outputs.apk_path }}",
+                "if-no-files-found": "error",
+                "retention-days": "14"
+              }
             }
           ],
           "local_actions": [],
@@ -4381,6 +4392,16 @@
               "if": null,
               "env": null,
               "invocations": []
+            },
+            {
+              "name": "Prepare debug-signed owner-testing Preview APK",
+              "if": "matrix.scenario == 'modern-dark'",
+              "env": {
+                "EXPECTED_HEAD": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+              },
+              "invocations": [
+                "\"$apksigner\" verify --verbose --print-certs \"$apk\" > \"$RUNNER_TEMP/owner-preview-signature.txt\""
+              ]
             }
           ]
         }

@@ -475,3 +475,42 @@ jobs:
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Prepare debug-signed owner-testing Preview APK
+        if: matrix.scenario == 'modern-dark'
+        id: owner_preview
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_HEAD"
+          apk="app/build/outputs/apk/preview/app-preview.apk"
+          test -s "$apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n1)"
+          test -n "$apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/owner-preview-signature.txt"
+          grep -Fq 'Signer #1 certificate DN: CN=Android Debug, O=Android, C=US' "$RUNNER_TEMP/owner-preview-signature.txt"
+          artifact="owner-testing-preview-debug-signed-${actual}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          filename="Miyorare-${artifact}.apk"
+          cp "$apk" "$RUNNER_TEMP/$filename"
+          echo "artifact_name=$artifact" >> "$GITHUB_OUTPUT"
+          echo "apk_path=$RUNNER_TEMP/$filename" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Debug-signed owner-testing Preview"
+            echo "Exact source head: $actual"
+            echo "Artifact: $artifact (retained 14 days)"
+            echo "SHA-256: $(sha256sum "$RUNNER_TEMP/$filename" | cut -d ' ' -f1)"
+            echo "Package: org.noirero.miyorare.beta; signing: existing Android debug key."
+            echo "This is an owner-testing APK, not an official Beta/release. It cannot update a permanent-key Beta installation."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload debug-signed owner-testing Preview APK
+        if: matrix.scenario == 'modern-dark'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.owner_preview.outputs.artifact_name }}
+          path: ${{ steps.owner_preview.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 14
