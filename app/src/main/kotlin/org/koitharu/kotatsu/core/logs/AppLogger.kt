@@ -20,6 +20,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ArrayBlockingQueue
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -48,6 +49,7 @@ class AppLogger @Inject constructor(
 	private var readerJob: Job? = null
 	private var logcatProcess: Process? = null
 	private var generation = 0
+	private var diagnosticsSummary = ""
 
 	fun getLogContent(): String = runCatching {
 		val sb = StringBuilder()
@@ -69,23 +71,27 @@ class AppLogger @Inject constructor(
 			if (enabled) {
 				buffer.clear()
 				startReadingLocked(generation)
+				diagnosticsSummary = ""
+				PerformanceDiagnostics.start(context)
 			} else {
+				diagnosticsSummary = PerformanceDiagnostics.stop()
 				stopReadingLocked()
 			}
 		}
 	}
 
 	suspend fun stopAndDrainToString(): String {
-		val job = synchronized(stateLock) {
+		val (job, summary) = synchronized(stateLock) {
 			if (isEnabled) {
+				diagnosticsSummary = PerformanceDiagnostics.stop()
 				isEnabled = false
 				generation++
 			}
-			stopReadingLocked()
+			stopReadingLocked() to diagnosticsSummary
 		}
 		job?.join()
 		val diskLogs = getLogContent()
-		return diskLogs.ifBlank { drainToString() }
+		return diskLogs.ifBlank { drainToString() } + "\n" + summary
 	}
 
 	private fun drainToString(): String {

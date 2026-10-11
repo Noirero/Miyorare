@@ -17,6 +17,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.ui.AutoFixService
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
@@ -50,6 +51,8 @@ import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
 import org.koitharu.kotatsu.list.ui.adapter.MangaListListener
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.model.ListHeader
+import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupUiModel
+import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
@@ -191,10 +194,24 @@ abstract class MangaListFragment :
 	}
 
 	private suspend fun onListChanged(list: List<ListModel>) {
-		listAdapter?.emit(list)
+		PerformanceDiagnostics.measure("render", "adapter_emit", PerformanceDiagnostics.ownerTrace(this)) { listAdapter?.emit(list) }
+		PerformanceDiagnostics.milestone(this, "adapter_ready")
 		spanSizeLookup.invalidateCache()
 		viewBinding?.recyclerView?.let {
 			paginationListener?.postInvalidate(it)
+			if (PerformanceDiagnostics.enabled && list.hasMeaningfulContent()) PerformanceDiagnostics.drawn(this, it, meaningful = true)
+		}
+	}
+
+	private fun List<ListModel>.hasMeaningfulContent() = any {
+		it is MangaListModel || it is LibraryGroupUiModel || it is EmptyState
+	}
+
+	override fun onResume() {
+		super.onResume()
+		if (PerformanceDiagnostics.enabled && listAdapter?.items?.hasMeaningfulContent() == true) {
+			PerformanceDiagnostics.milestone(this, "adapter_ready")
+			viewBinding?.recyclerView?.let { PerformanceDiagnostics.drawn(this, it, meaningful = true) }
 		}
 	}
 
@@ -215,6 +232,7 @@ abstract class MangaListFragment :
 		requireViewBinding().swipeRefreshLayout.isEnabled = requireViewBinding().swipeRefreshLayout.isRefreshing ||
 			isSwipeRefreshEnabled && !isLoading
 		if (!isLoading) {
+			PerformanceDiagnostics.milestone(this, "loading_finished")
 			requireViewBinding().swipeRefreshLayout.isRefreshing = false
 		}
 	}

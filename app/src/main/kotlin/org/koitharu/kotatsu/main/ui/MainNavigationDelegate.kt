@@ -28,6 +28,8 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
+import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.ui.AllBookmarksFragment
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -263,6 +265,7 @@ class MainNavigationDelegate(
 		}
 		val tag = fragmentClass.name
 		val current = primaryFragment
+		val trace = PerformanceDiagnostics.navigation(current?.javaClass?.simpleName ?: "none", fragmentClass.simpleName)
 		val transaction = fragmentManager.beginTransaction()
 			.setReorderingAllowed(true)
 		val involvesFavourites = fragmentClass == FavouritesContainerFragment::class.java ||
@@ -292,8 +295,13 @@ class MainNavigationDelegate(
 			}
 			transaction.add(R.id.container, shownFragment, tag)
 		}
+		PerformanceDiagnostics.bind(shownFragment, trace)
+		if (trace != null) navBar.context.findActivity()?.let { PerformanceDiagnostics.bind(it, trace) }
 		transaction.setMaxLifecycle(shownFragment, Lifecycle.State.RESUMED)
 		transaction.runOnCommit {
+			PerformanceDiagnostics.activate(trace)
+			PerformanceDiagnostics.milestone(trace, "transaction_committed")
+			shownFragment.view?.let { PerformanceDiagnostics.drawn(shownFragment, it) }
 			val shown = primaryFragment ?: shownFragment
 			onFragmentChanged(shown, fromUser = true)
 		}

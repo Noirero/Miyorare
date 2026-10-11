@@ -20,12 +20,14 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
 import androidx.core.net.toUri
@@ -207,6 +209,8 @@ class DetailsViewModel @Inject constructor(
 		}
 	}
 
+	private val performanceTrace = PerformanceDiagnostics.trace(savedStateHandle.get<String>(PerformanceDiagnostics.TRACE_EXTRA))
+		?: PerformanceDiagnostics.currentTrace
 	private val intent = MangaIntent(savedStateHandle)
 	private val navigationManga = detailsNavigationCache.getLocalManga(intent.mangaId)
 	private val navigationHistory = detailsNavigationCache.getHistory(intent.mangaId)
@@ -236,6 +240,7 @@ class DetailsViewModel @Inject constructor(
 	init {
 		val initialDetails = (navigationManga ?: intent.manga)?.let(::MangaDetails)
 		mangaDetails.value = initialDetails
+		if (initialDetails != null) PerformanceDiagnostics.milestone(performanceTrace, "navigation_snapshot_ready")
 		readingState.value = navigationHistory?.let(::ReaderState)
 		// Named scanlator/language branches have no null-key entry. Select a usable branch alongside
 		// the cached snapshot so the chapter count/list do not wait for the source refresh collector.
@@ -257,6 +262,7 @@ class DetailsViewModel @Inject constructor(
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, navigationHistory)
 
 	val favouriteCategories = interactor.observeFavourite(mangaId, favouriteSpace)
+		.onEach { PerformanceDiagnostics.milestone(performanceTrace, "favourite_state_ready") }
 		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptySet())
 
@@ -818,14 +824,21 @@ class DetailsViewModel @Inject constructor(
 	}
 
 	private fun doLoad(force: Boolean) = launchJob(Dispatchers.Default) {
+		val work = PerformanceDiagnostics.begin("work", "details_load", performanceTrace)
+		var outcome = "complete"
 		var initialLoading = mangaDetails.value?.allChapters.isNullOrEmpty()
 		if (initialLoading) {
 			loadingCounter.increment()
+		} else {
+			PerformanceDiagnostics.milestone(performanceTrace, "loading_finished")
 		}
 		var firstEmission = true
 		var scrobblingSynced = false
 		try {
 			detailsLoadUseCase.invoke(intent, force)
+				.onCompletion { error ->
+					if (error != null) outcome = if (error is CancellationException) "cancel" else "failure"
+				}
 				.withErrorHandling()
 				.collect {
 					val current = mangaDetails.value
@@ -840,6 +853,7 @@ class DetailsViewModel @Inject constructor(
 						!it.isLoaded && current.hasRenderableSnapshot() && !addsLocalCopy && !addsChapters &&
 						!isFirstResolvedChapterSnapshot
 					) {
+						PerformanceDiagnostics.milestone(performanceTrace, "progressive_snapshot_discarded")
 						firstEmission = false
 						if (!initialLoading && current?.allChapters?.isNotEmpty() == true) {
 							_isRefreshing.value = true
@@ -849,7 +863,7 @@ class DetailsViewModel @Inject constructor(
 					firstEmission = false
 					if (it.allChapters.isNotEmpty()) {
 						val manga = it.toManga()
-						val hist = historyRepository.getOne(manga)
+						val hist = PerformanceDiagnostics.measure("repository", "details_history", performanceTrace) { historyRepository.getOne(manga) }
 						val preferredBranch = manga.getPreferredBranch(hist)
 						val resolvedBranch = resolveSelectedBranch(
 							selectedBranch = selectedBranch.value,
@@ -861,8 +875,11 @@ class DetailsViewModel @Inject constructor(
 						}
 					}
 					mangaDetails.value = it
+					PerformanceDiagnostics.milestone(performanceTrace, "manga_ready")
+					if (it.allChapters.isNotEmpty() || it.isLoaded) PerformanceDiagnostics.milestone(performanceTrace, "chapters_ready")
 					if (initialLoading && it.allChapters.isNotEmpty()) {
 						loadingCounter.decrement()
+						PerformanceDiagnostics.milestone(performanceTrace, "loading_finished")
 						initialLoading = false
 					}
 					_isRefreshing.value = !initialLoading && !it.isLoaded
@@ -875,9 +892,15 @@ class DetailsViewModel @Inject constructor(
 						}
 					}
 				}
+		} catch (error: Throwable) {
+			outcome = if (error is CancellationException) "cancel" else "failure"
+			throw error
 		} finally {
+			PerformanceDiagnostics.end(work, outcome)
+			PerformanceDiagnostics.milestone(performanceTrace, "load_flow_finished")
 			if (initialLoading) {
 				loadingCounter.decrement()
+				PerformanceDiagnostics.milestone(performanceTrace, "loading_finished")
 			}
 			_isRefreshing.value = false
 		}

@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.local.library
 
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,6 +36,17 @@ class SmartLocalCoverDiagnostics @Inject constructor() {
     private val recent = ArrayDeque<Event>()
 
     @Synchronized internal fun record(event: Event) {
+        if (PerformanceDiagnostics.enabled) {
+            PerformanceDiagnostics.observed(
+                "image", "local_${event.reason.name}", event.elapsedNanos,
+                when (event.reason) {
+                    Reason.GENERATION_FAILED, Reason.PUBLICATION_FAILED, Reason.CLEAR_FAILED -> "failure"
+                    Reason.CANCELLED -> "cancel"
+                    Reason.STALE_SOURCE_REJECTED -> "stale_generation_discard"
+                    else -> "complete"
+                },
+            )
+        }
         counts[event.reason.ordinal]++
         if (recent.size == MAX_EVENTS) recent.removeFirst()
         recent.addLast(event)
