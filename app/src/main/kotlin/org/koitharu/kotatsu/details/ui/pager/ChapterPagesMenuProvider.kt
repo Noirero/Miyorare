@@ -110,7 +110,14 @@ class ChapterPagesMenuProvider(
 		}
 		R.id.action_reversed -> {
 			viewModel.toggleChapterSortDirection()
-			settings.isChaptersReverse = viewModel.chapterListOptions.value.descending
+			val descending = viewModel.chapterListOptions.value.descending
+			if (viewModel is ReaderViewModel) {
+				settings.isChaptersReverse = descending
+			} else if (viewModel is DetailsViewModel) {
+				// Details now retains the user's explicit sort direction across reopen while
+				// keeping the rest of its chapter-list defaults scoped to Details.
+				settings.isChaptersReverse = descending
+			}
 			true
 		}
 		R.id.action_grid_view -> if (viewModel.getMangaOrNull()?.isEpub == true) true else {
