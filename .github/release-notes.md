@@ -1,3 +1,18 @@
+## Miyorare v1.4.8
+
+### 🚀 Improvements
+
+- Improved **Favorites → Details performance**, especially for large libraries.
+- Reduced unnecessary background work from Favorites when opening another screen, resulting in faster and smoother navigation.
+
+### 🐞 Fixes
+
+- Fixed background Favorites processing that could slow down manga Details when working with large libraries.
+- Improved Favorites state handling when navigating away and returning to the screen.
+
+<details>
+<summary><strong>📋 Changelog v1.4.7</strong></summary>
+
 This update brings major improvements to reading, local files, tracking, chapter information, and overall stability.
 
 ## 🇬🇧 English
@@ -262,5 +277,7 @@ Gunakan kontrol pada bagian chapter di halaman Detail manga untuk membuka atau m
 - Memperbaiki masalah stabilitas di **Pengaturan** ketika banyak preferensi berubah dalam waktu singkat.
 - Memperbaiki crash yang dapat terjadi ketika memulihkan **Pencarian** dari navigasi bawah.
 - Berbagai peningkatan performa, keandalan, dan stabilitas lainnya.
+
+</details>
 
 </details>
