@@ -66,6 +66,7 @@ import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
+import org.koitharu.kotatsu.favourites.ui.list.FavouritesListWorkOwner
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import javax.inject.Inject
 import kotlin.math.roundToInt
@@ -94,10 +95,10 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var isActionModeActive = false
 	private var displayedContentType: FavouriteContentType? = null
 	private var pendingCategoryRestore: FavouriteContentType? = null
-	private var listWorkStarted = false
+	private val listWorkOwner = FavouritesListWorkOwner()
 
 	internal val isListWorkActive: Boolean
-		get() = listWorkStarted && !isHidden && view != null
+		get() = listWorkOwner.isActive(hasView = view != null, hidden = isHidden)
 
 	private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
 		override fun onPageSelected(position: Int) {
@@ -222,7 +223,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	override fun onDestroyView() {
-		listWorkStarted = false
+		listWorkOwner.onDestroyView()
 		updateListWorkActivity()
 		rememberCurrentCategory()
 		viewBinding?.pager?.unregisterOnPageChangeCallback(pageChangeCallback)
@@ -244,12 +245,12 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	override fun onStart() {
 		super.onStart()
-		listWorkStarted = true
+		listWorkOwner.onStart()
 		updateListWorkActivity()
 	}
 
 	override fun onStop() {
-		listWorkStarted = false
+		listWorkOwner.onStop()
 		updateListWorkActivity()
 		super.onStop()
 	}
@@ -262,6 +263,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	override fun onResume() {
 		super.onResume()
+		listWorkOwner.onResume()
+		updateListWorkActivity()
 		if (isHidden) return
 		searchScopeActive.value = true
 		attachTabsToAppBar()
@@ -270,6 +273,12 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		if (searchSessionActive.value) {
 			enterInlineSearch()
 		}
+	}
+
+	override fun onPause() {
+		listWorkOwner.onPause()
+		updateListWorkActivity()
+		super.onPause()
 	}
 
 	override fun onHiddenChanged(hidden: Boolean) {

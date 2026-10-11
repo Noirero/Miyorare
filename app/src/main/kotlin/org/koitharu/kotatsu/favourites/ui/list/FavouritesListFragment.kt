@@ -121,7 +121,7 @@ class FavouritesListFragment : MangaListFragment() {
 	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null
 	private var modernChildAttachListener: RecyclerView.OnChildAttachStateChangeListener? = null
 	private var modernSelectionPopupItems: List<MenuItem> = emptyList()
-	private var listWorkStarted = false
+	private val listWorkOwner = FavouritesListWorkOwner()
 
 	val categoryId
 		get() = viewModel.categoryId
@@ -172,7 +172,7 @@ class FavouritesListFragment : MangaListFragment() {
 	}
 
 	override fun onDestroyView() {
-		listWorkStarted = false
+		listWorkOwner.onDestroyView()
 		updateWorkActivity()
 		viewBinding?.recyclerView?.let { recyclerView ->
 			recyclerView.removeCallbacks(coverPrefetchRunnable)
@@ -190,12 +190,12 @@ class FavouritesListFragment : MangaListFragment() {
 
 	override fun onStart() {
 		super.onStart()
-		listWorkStarted = true
+		listWorkOwner.onStart()
 		updateWorkActivity()
 	}
 
 	override fun onStop() {
-		listWorkStarted = false
+		listWorkOwner.onStop()
 		updateWorkActivity()
 		super.onStop()
 	}
@@ -208,13 +208,21 @@ class FavouritesListFragment : MangaListFragment() {
 	internal fun updateWorkActivity() {
 		if (view == null) return
 		// FavouritesActivity also hosts this list directly, without a tab container.
-		val containerActive = (parentFragment as? FavouritesContainerFragment)?.isListWorkActive ?: true
-		viewModel.setWorkActive(listWorkStarted && !isHidden && containerActive)
+		val containerActive = (parentFragment as? FavouritesContainerFragment)?.isListWorkActive
+		viewModel.setWorkActive(listWorkOwner.isActive(hasView = true, hidden = isHidden, containerActive = containerActive))
 	}
 
 	override fun onResume() {
 		super.onResume()
+		listWorkOwner.onResume()
+		updateWorkActivity()
 		scheduleCoverPrefetch(viewModel.content.value)
+	}
+
+	override fun onPause() {
+		listWorkOwner.onPause()
+		updateWorkActivity()
+		super.onPause()
 	}
 
 	private fun compactModernEmptyState(view: View) {

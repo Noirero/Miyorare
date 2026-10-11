@@ -5,6 +5,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -59,7 +60,9 @@ class FavouritesListWorkScopeTest {
 		var started = 0
 		var inFlight = 0
 		var peak = 0
+		var producer: Job? = null
 		val database = flow {
+			producer = currentCoroutineContext()[Job]
 			val generation = ++started
 			inFlight++
 			peak = maxOf(peak, inFlight)
@@ -75,11 +78,17 @@ class FavouritesListWorkScopeTest {
 		work.setActive(true)
 		runCurrent()
 		work.setActive(false)
-		runCurrent()
+		assertTrue(producer!!.isCancelled)
+		// No dispatch/yield between pause and resume: the inactive value may be conflated.
 		work.setActive(true)
 		runCurrent()
 		assertEquals(1, started)
 		assertEquals(1, content.value)
+		// Supersede a resume whose collector is still waiting for the previous generation to drain.
+		work.setActive(false)
+		work.setActive(true)
+		runCurrent()
+		assertEquals(1, started)
 		release.complete(Unit)
 		runCurrent()
 		assertEquals(2, started)
@@ -104,18 +113,21 @@ class FavouritesListWorkScopeTest {
 		work.setActive(true)
 		backgroundScope.launch { work.whileActive(source).collect() }
 		runCurrent()
-		oldJob!!.cancel()
+		checkNotNull(oldJob).cancel()
 		currentJob = work.launch(StandardTestDispatcher(testScheduler)) { awaitCancellation() }
 		runCurrent()
 		work.setActive(false)
+		assertTrue(checkNotNull(currentJob).isCancelled)
+		assertFalse(checkNotNull(oldJob).isCompleted)
+		assertEquals(0, stopped)
 		runCurrent()
-		assertTrue(currentJob!!.isCancelled)
-		assertFalse(oldJob!!.isCompleted)
+		assertTrue(checkNotNull(currentJob).isCancelled)
+		assertFalse(checkNotNull(oldJob).isCompleted)
 		assertEquals(0, stopped)
 		release.complete(Unit)
 		runCurrent()
-		assertTrue(oldJob!!.isCompleted)
-		assertTrue(currentJob!!.isCompleted)
+		assertTrue(checkNotNull(oldJob).isCompleted)
+		assertTrue(checkNotNull(currentJob).isCompleted)
 		assertEquals(1, stopped)
 	}
 
@@ -228,5 +240,149 @@ class FavouritesListWorkScopeTest {
 		recreated.setActive(true)
 		runCurrent()
 		assertEquals(1, database.subscriptionCount.value)
+	}
+
+	@Test
+	fun `pause without stop requests producer cancellation before returning`() = runTest {
+		val owner = FavouritesListWorkOwner()
+		val release = CompletableDeferred<Unit>()
+		var stopped = 0
+		val work = FavouritesListWorkScope { stopped++ }
+		var producer: Job? = null
+		val database = flow {
+			producer = currentCoroutineContext()[Job]
+			try {
+				emit(listOf(1, 2))
+				awaitCancellation()
+			} finally {
+				withContext(NonCancellable) { release.await() }
+			}
+		}
+		val content = work.whileActive(database).stateIn(backgroundScope, SharingStarted.Eagerly, emptyList())
+		owner.onStart()
+		work.setActive(owner.isActive(hasView = true, hidden = false))
+		runCurrent()
+		assertEquals(null, producer)
+		owner.onResume()
+		work.setActive(owner.isActive(hasView = true, hidden = false))
+		runCurrent()
+		owner.onPause() // The source remains STARTED. No onStop, dispatcher run or yield.
+		work.setActive(owner.isActive(hasView = true, hidden = false))
+		assertTrue(producer!!.isCancelled)
+		assertFalse(producer!!.isCompleted)
+		assertEquals(0, stopped)
+		assertEquals(listOf(1, 2), content.value)
+		runCurrent()
+		assertEquals(0, stopped)
+		release.complete(Unit)
+		runCurrent()
+		assertTrue(producer!!.isCompleted)
+		assertEquals(1, stopped)
+	}
+
+	@Test
+	fun `container pause gates every STARTED child and child callbacks cannot reactivate it`() = runTest {
+		val container = FavouritesListWorkOwner().apply { onStart(); onResume() }
+		val selected = FavouritesListWorkOwner().apply { onStart(); onResume() }
+		val neighbour = FavouritesListWorkOwner().apply { onStart() }
+		val notStarted = FavouritesListWorkOwner()
+		val owners = listOf(selected, neighbour, notStarted)
+		val works = owners.map { FavouritesListWorkScope() }
+		val databases = owners.map { MutableStateFlow(1) }
+		val producers = arrayOfNulls<Job>(owners.size)
+		works.forEachIndexed { index, work ->
+			backgroundScope.launch {
+				work.whileActive(databases[index].onEach { producers[index] = currentCoroutineContext()[Job] }).collect()
+			}
+		}
+		fun updateChildren(hidden: Boolean = false) {
+			val screenActive = container.isActive(hasView = true, hidden = hidden)
+			owners.forEachIndexed { index, owner ->
+				works[index].setActive(owner.isActive(hasView = true, hidden = false, containerActive = screenActive))
+			}
+		}
+		updateChildren()
+		runCurrent()
+		assertEquals(listOf(1, 1, 0), databases.map { it.subscriptionCount.value })
+		container.onPause()
+		updateChildren()
+		assertTrue(producers[0]!!.isCancelled)
+		assertTrue(producers[1]!!.isCancelled)
+		selected.onResume() // A child callback cannot override the paused outer screen.
+		updateChildren()
+		runCurrent()
+		assertEquals(listOf(0, 0, 0), databases.map { it.subscriptionCount.value })
+		container.onResume()
+		updateChildren()
+		runCurrent()
+		assertEquals(listOf(1, 1, 0), databases.map { it.subscriptionCount.value })
+		updateChildren(hidden = true) // Browse's hidden-tab gate remains authoritative.
+		runCurrent()
+		assertEquals(listOf(0, 0, 0), databases.map { it.subscriptionCount.value })
+	}
+
+	@Test
+	fun `standalone pause and rapid return resume exactly one producer without resetting content`() = runTest {
+		val owner = FavouritesListWorkOwner().apply { onStart(); onResume() }
+		val work = FavouritesListWorkScope()
+		var started = 0
+		var running = 0
+		var peak = 0
+		var producer: Job? = null
+		val database = flow {
+			producer = currentCoroutineContext()[Job]
+			started++
+			running++
+			peak = maxOf(peak, running)
+			try {
+				emit(listOf(7, 8))
+				awaitCancellation()
+			} finally { running-- }
+		}
+		val content = work.whileActive(database).stateIn(backgroundScope, SharingStarted.Eagerly, emptyList())
+		work.setActive(owner.isActive(hasView = true, hidden = false))
+		runCurrent()
+		val retained = content.value
+		owner.onPause()
+		work.setActive(owner.isActive(hasView = true, hidden = false))
+		assertTrue(producer!!.isCancelled)
+		assertTrue(content.value === retained)
+		owner.onResume()
+		work.setActive(owner.isActive(hasView = true, hidden = false))
+		work.setActive(owner.isActive(hasView = true, hidden = false))
+		runCurrent()
+		assertEquals(2, started)
+		assertEquals(1, running)
+		assertEquals(1, peak)
+		assertTrue(content.value === retained)
+	}
+
+	@Test
+	fun `inactive or destroyed views stay ineligible despite container resume`() = runTest {
+		val child = FavouritesListWorkOwner().apply { onStart() }
+		assertTrue(child.isActive(hasView = true, hidden = false, containerActive = true))
+		assertFalse(child.isActive(hasView = false, hidden = false, containerActive = true))
+		assertFalse(child.isActive(hasView = true, hidden = true, containerActive = true))
+		assertFalse(child.isActive(hasView = true, hidden = false, containerActive = false))
+		child.onDestroyView()
+		assertFalse(child.isActive(hasView = true, hidden = false, containerActive = true))
+		child.onStart()
+		assertFalse(child.isActive(hasView = true, hidden = false))
+		child.onResume()
+		assertTrue(child.isActive(hasView = true, hidden = false))
+	}
+
+	@Test
+	fun `activation withdrawn before its producer is scheduled does not query the database`() = runTest {
+		val work = FavouritesListWorkScope()
+		var queries = 0
+		backgroundScope.launch { work.whileActive(flow { queries++; emit(1) }).collect() }
+		work.setActive(true)
+		work.setActive(false)
+		runCurrent()
+		assertEquals(0, queries)
+		work.setActive(true)
+		runCurrent()
+		assertEquals(1, queries)
 	}
 }
