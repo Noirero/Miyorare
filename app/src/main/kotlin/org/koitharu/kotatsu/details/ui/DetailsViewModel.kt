@@ -100,6 +100,7 @@ import javax.inject.Inject
 import java.time.ZoneId
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.model.ChapterRange
 
 data class DetailsRelatedUiState(
 	val groups: List<RelatedMangaGroup> = emptyList(),
@@ -119,7 +120,7 @@ class DetailsViewModel @Inject constructor(
 	downloadScheduler: DownloadWorker.Scheduler,
 	downloadDestinationStore: DownloadDestinationStore,
 	interactor: DetailsInteractor,
-	savedStateHandle: SavedStateHandle,
+	private val savedStateHandle: SavedStateHandle,
 	deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
 	private val relatedMangaUseCase: RelatedMangaUseCase,
 	private val contextualRecommendationUseCase: ContextualRecommendationUseCase,
@@ -154,6 +155,20 @@ class DetailsViewModel @Inject constructor(
 	chapterListOptionsStore = chapterListOptionsStore,
 	chapterPersonalRepository = chapterPersonalRepository,
 ) {
+
+	private val rangeExpansion = savedStateHandle.getStateFlow<HashMap<String, Boolean>>("chapter_range_expansion", hashMapOf())
+
+	internal val groupedChapterPresentation = combine(chapterPresentation, rangeExpansion) { presentation, expansion ->
+		presentation.copy(ranges = presentation.ranges.withRangeExpansion(
+			expansion, presentation.searchActive, presentation.hasReadingPosition,
+		))
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, ChapterListPresentation())
+
+	fun toggleChapterRange(range: ChapterRange) {
+		// Temporary search exposure must not erase the user's independent expansion choices.
+		if (chapterNotesQuery.value?.isNotBlank() ?: chaptersQuery.value.isNotEmpty()) return
+		savedStateHandle["chapter_range_expansion"] = rangeExpansion.value.withRangeChoice(range, !range.expanded)
+	}
 
 	val chapterPersonalEditor = MutableStateFlow<ChapterListItem?>(null)
 	val isSavingChapterPersonal = MutableStateFlow(false)

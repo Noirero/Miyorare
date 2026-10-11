@@ -30,6 +30,7 @@ data class ChapterListOptions(
 	val descending: Boolean = false,
 	val titleMode: ChapterTitleMode = ChapterTitleMode.SOURCE,
 	val grid: Boolean = false,
+	val groupingMode: ChapterGroupingMode = ChapterGroupingMode.AUTOMATIC,
 ) {
 	val hasStatusFilter: Boolean
 		get() = downloadedOnly || unreadOnly || bookmarkedOnly || newOnly
@@ -57,12 +58,22 @@ class ChapterListOptionsStore @Inject constructor(
 			return ChapterListOptions(
 				descending = appSettings.isChaptersReverse,
 				grid = appSettings.isChaptersGridView,
+				groupingMode = getGroupingMode(space, isNovel),
 			)
 		}
-		return decode(raw) ?: ChapterListOptions(
+		return (decode(raw) ?: ChapterListOptions(
 			descending = appSettings.isChaptersReverse,
 			grid = appSettings.isChaptersGridView,
-		)
+		)).copy(groupingMode = getGroupingMode(space, isNovel))
+	}
+
+	private fun getGroupingMode(space: FavouriteSpace, isNovel: Boolean): ChapterGroupingMode =
+		prefs.getString(key(space, isNovel) + "_grouping", null)
+			?.let { raw -> ChapterGroupingMode.entries.firstOrNull { it.name == raw } }
+			?: ChapterGroupingMode.AUTOMATIC
+
+	fun setGroupingMode(space: FavouriteSpace, isNovel: Boolean, mode: ChapterGroupingMode) {
+		prefs.edit { putString(key(space, isNovel) + "_grouping", mode.name) }
 	}
 
 	fun setDefault(space: FavouriteSpace, isNovel: Boolean, options: ChapterListOptions) {

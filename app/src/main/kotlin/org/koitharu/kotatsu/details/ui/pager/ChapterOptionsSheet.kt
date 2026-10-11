@@ -68,6 +68,7 @@ fun ChapterOptionsSheet(
 	onSortModeChange: (ChapterSortMode) -> Unit,
 	onTitleModeChange: (ChapterTitleMode) -> Unit,
 	onGridChange: (Boolean) -> Unit,
+	onGroupingChange: (ChapterGroupingMode) -> Unit = {},
 ) {
 	var tab by remember(initialTab) { mutableStateOf(initialTab) }
 	val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -126,7 +127,7 @@ fun ChapterOptionsSheet(
 					onScanlatorChange = onScanlatorChange,
 				)
 				ChapterOptionsTab.SORT -> SortTab(options, onSortModeChange)
-				ChapterOptionsTab.DISPLAY -> DisplayTab(options, onTitleModeChange, onGridChange)
+				ChapterOptionsTab.DISPLAY -> DisplayTab(options, onTitleModeChange, onGridChange, onGroupingChange)
 			}
 		}
 	}
@@ -357,8 +358,19 @@ private fun DisplayTab(
 	options: ChapterListOptions,
 	onTitleModeChange: (ChapterTitleMode) -> Unit,
 	onGridChange: (Boolean) -> Unit,
+	onGroupingChange: (ChapterGroupingMode) -> Unit,
 ) {
 	Column(modifier = Modifier.padding(vertical = 8.dp)) {
+		SectionLabel(painterResource(R.drawable.ic_chapter_stack), stringResource(R.string.chapter_grouping))
+		for (mode in ChapterGroupingMode.entries) {
+			RadioRow(
+				label = chapterGroupingLabel(mode),
+				summary = if (mode == ChapterGroupingMode.AUTOMATIC) stringResource(R.string.chapter_grouping_auto_summary) else "",
+				selected = options.groupingMode == mode,
+				onClick = { onGroupingChange(mode) },
+			)
+		}
+		HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
 		SectionLabel(
 			icon = painterResource(R.drawable.ic_title),
 			text = stringResource(R.string.chapter_options_title_display),
@@ -427,7 +439,16 @@ private fun RadioRow(
 		Spacer(Modifier.width(8.dp))
 		Column {
 			Text(label, style = MaterialTheme.typography.bodyLarge)
-			Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			if (summary.isNotEmpty()) Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 		}
 	}
+}
+
+@Composable
+private fun chapterGroupingLabel(mode: ChapterGroupingMode): String = when (mode) {
+	ChapterGroupingMode.AUTOMATIC -> stringResource(R.string.chapter_grouping_automatic)
+	ChapterGroupingMode.CHAPTERS_25 -> stringResource(R.string.chapter_grouping_size, 25)
+	ChapterGroupingMode.CHAPTERS_50 -> stringResource(R.string.chapter_grouping_size, 50)
+	ChapterGroupingMode.CHAPTERS_100 -> stringResource(R.string.chapter_grouping_size, 100)
+	ChapterGroupingMode.OFF -> stringResource(R.string.chapter_grouping_off)
 }

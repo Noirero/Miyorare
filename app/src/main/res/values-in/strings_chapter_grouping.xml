@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="chapter_grouping">Pengelompokan chapter</string>
+	<string name="chapter_grouping_automatic">Otomatis (Disarankan)</string>
+	<string name="chapter_grouping_auto_summary">Tanpa pengelompokan untuk 50 chapter atau kurang. Gunakan rentang 50 hingga 500 chapter, lalu 100.</string>
+	<string name="chapter_grouping_size">%1$d chapter</string>
+	<string name="chapter_grouping_off">Nonaktif</string>
+	<string name="chapter_grouping_special">Chapter khusus / tidak diketahui</string>
+	<string name="chapter_range_read_progress">%1$d/%2$d dibaca</string>
+</resources>

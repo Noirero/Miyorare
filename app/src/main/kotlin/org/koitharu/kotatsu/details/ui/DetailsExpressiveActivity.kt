@@ -361,6 +361,7 @@ class DetailsExpressiveActivity :
 			onChapterNotesSearchClick = { viewModel.performChapterNoteSearch("") },
 			onChapterNotesQueryChange = viewModel::performChapterNoteSearch,
 			onChapterNotesSearchExit = viewModel::exitChapterNoteSearch,
+			onChapterRangeToggle = viewModel::toggleChapterRange,
 			onChapterDownloadClick = { item ->
 				if (!item.canDownload) return@DetailsExpressiveActions
 				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
@@ -386,7 +387,8 @@ class DetailsExpressiveActivity :
 				val details by viewModel.mangaDetails.collectAsState()
 				val history by viewModel.historyInfo.collectAsState()
 				val chapterReleasePrediction by viewModel.chapterReleasePrediction.collectAsState()
-				val chapters by viewModel.chapters.collectAsState()
+				val chapterPresentation by viewModel.groupedChapterPresentation.collectAsState()
+				val chapters = chapterPresentation.chapters
 				val chapterNotesQuery by viewModel.chapterNotesQuery.collectAsState()
 				val chapterOptions by viewModel.chapterListOptions.collectAsState()
 				val chapterBranches by viewModel.chapterBranchOptions.collectAsState()
@@ -422,6 +424,7 @@ class DetailsExpressiveActivity :
 					tags = tags,
 					historyInfo = history,
 					chapters = chapters,
+					chapterRanges = chapterPresentation.ranges,
 					chapterReleasePrediction = chapterReleasePrediction,
 					chapterNotesQuery = chapterNotesQuery,
 					isChapterFilterActive = chapterFilterActive,
@@ -481,6 +484,7 @@ class DetailsExpressiveActivity :
 						onSortModeChange = viewModel::setChapterSortMode,
 						onTitleModeChange = viewModel::setChapterTitleMode,
 						onGridChange = viewModel::setChaptersGridView,
+						onGroupingChange = viewModel::setChapterGroupingMode,
 					)
 				}
 			}
