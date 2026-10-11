@@ -5,6 +5,8 @@ import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.list.fastscroll.FastScroller
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.model.ChapterRange
+import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.adapter.listHeaderAD
 import org.koitharu.kotatsu.list.ui.model.ListHeader
@@ -15,11 +17,13 @@ class ChaptersAdapter(
 	onDownloadClick: (ChapterListItem) -> Unit,
 	onDeleteClick: (ChapterListItem) -> Unit,
 	accentColorProvider: () -> Int? = { null },
+	onRangeToggle: (ChapterRange) -> Unit = {},
 ) : BaseListAdapter<ListModel>(), FastScroller.SectionIndexer {
 
 	private var hasVolumes = false
 
 	init {
+		delegatesManager.addDelegate(R.layout.item_chapter_range, chapterRangeAD(onRangeToggle))
 		addDelegate(ListItemType.HEADER, listHeaderAD(null))
 		addDelegate(
 			ListItemType.CHAPTER_LIST,
@@ -35,6 +39,9 @@ class ChaptersAdapter(
 	}
 
 	override fun getSectionText(context: Context, position: Int): CharSequence? {
+		(items.getOrNull(position) as? ChapterRange)?.let {
+			return it.numberLabel ?: context.getString(R.string.chapter_grouping_special)
+		}
 		return if (hasVolumes) {
 			findHeader(position)?.getText(context)
 		} else {

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="chapter_grouping">Chapter grouping</string>
+	<string name="chapter_grouping_automatic">Automatic (Recommended)</string>
+	<string name="chapter_grouping_auto_summary">No grouping for 50 chapters or fewer. Use ranges of 50 up to 500 chapters, then 100.</string>
+	<string name="chapter_grouping_size">%1$d chapters</string>
+	<string name="chapter_grouping_off">Off</string>
+	<string name="chapter_grouping_special">Special / unknown chapters</string>
+	<string name="chapter_range_read_progress">%1$d/%2$d read</string>
+</resources>
