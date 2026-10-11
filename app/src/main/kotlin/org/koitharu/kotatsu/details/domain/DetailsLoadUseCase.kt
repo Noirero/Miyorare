@@ -65,56 +65,22 @@ class DetailsLoadUseCase @Inject constructor(
 	private val mihonExtensionManager: MihonExtensionManager,
 	private val checkNewChaptersUseCase: Provider<CheckNewChaptersUseCase>,
 ) {
-
 	private val inFlightRefreshes = ConcurrentHashMap<RefreshKey, CompletableDeferred<Result<Manga>>>()
 
-	operator fun invoke(
-		intent: MangaIntent,
-		force: Boolean,
-		favouriteSpace: FavouriteSpace? = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) },
-		preferLocalBeforeInitialSnapshot: Boolean = false,
-	): Flow<MangaDetails> = flow {
-		val resolvedIntentManga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
-			"Cannot resolve intent $intent"
-		}
-		val manga = if (resolvedIntentManga.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) {
-			resolvedIntentManga
-		} else downloadedMangaResolver.resolveCanonicalManga(resolvedIntentManga)
+	operator fun invoke(intent: MangaIntent, force: Boolean, favouriteSpace: FavouriteSpace? = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) }, preferLocalBeforeInitialSnapshot: Boolean = false): Flow<MangaDetails> = flow {
+		val resolvedIntentManga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) { "Cannot resolve intent $intent" }
+		val manga = if (resolvedIntentManga.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) resolvedIntentManga else downloadedMangaResolver.resolveCanonicalManga(resolvedIntentManga)
 		val override = mangaDataRepository.getOverride(manga.id)
-		if (manga.isLocal) {
-			loadLocal(manga, override)
-		} else {
+		if (manga.isLocal) loadLocal(manga, override) else {
 			val cachedState = getCachedDetailsState(manga, force)
 			val fastDescription = manga.description?.parseAsHtml(withImages = false)
-			val savedManga = emitRemoteInitialSnapshot(
-				manga = manga,
-				override = override,
-				description = fastDescription,
-				cachedInitialized = cachedState.initialized,
-				cachedIsFresh = cachedState.fresh,
-				preferLocalBeforeCached = preferLocalBeforeInitialSnapshot,
-				deferLocalLookup = !preferLocalBeforeInitialSnapshot,
-			) {
-				downloadedMangaResolver.findSavedManga(manga, favouriteSpace)
-			}
-			loadRemote(
-				manga = manga,
-				override = override,
-				force = force,
-				initialSavedManga = savedManga,
-				favouriteSpace = favouriteSpace,
-				cachedIsFresh = cachedState.fresh,
-				findSavedManga = { downloadedMangaResolver.findSavedManga(manga, favouriteSpace) },
-			)
+			val savedManga = emitRemoteInitialSnapshot(manga, override, fastDescription, cachedState.initialized, cachedState.fresh, preferLocalBeforeInitialSnapshot, !preferLocalBeforeInitialSnapshot) { downloadedMangaResolver.findSavedManga(manga, favouriteSpace) }
+			loadRemote(manga, override, force, savedManga, favouriteSpace, cachedState.fresh) { downloadedMangaResolver.findSavedManga(manga, favouriteSpace) }
 		}
-	}.map { details ->
-		if (mangaDataRepository.isScanlatorsMerged(details.id)) details.withMergedBranches() else details
-	}.distinctUntilChanged().flowOn(Dispatchers.Default)
+	}.map { details -> if (mangaDataRepository.isScanlatorsMerged(details.id)) details.withMergedBranches() else details }.distinctUntilChanged().flowOn(Dispatchers.Default)
 
 	private suspend fun FlowCollector<MangaDetails>.loadLocal(manga: Manga, override: MangaOverride?) {
-		val localDetails = if (manga.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) {
-			mangaRepositoryFactory.create(manga.source).getDetails(manga)
-		} else localMangaRepository.getDetails(manga)
+		val localDetails = if (manga.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) mangaRepositoryFactory.create(manga.source).getDetails(manga) else localMangaRepository.getDetails(manga)
 		val fastDescription = localDetails.description?.parseAsHtml(withImages = false)
 		val visibleDetails = MangaDetails(manga = localDetails, localManga = null, override = override, description = fastDescription, isLoaded = true)
 		emit(visibleDetails)
@@ -122,71 +88,41 @@ class DetailsLoadUseCase @Inject constructor(
 		if (richDescription != fastDescription) emit(visibleDetails.copy(description = richDescription))
 	}
 
-	private suspend fun FlowCollector<MangaDetails>.loadRemote(
-		manga: Manga,
-		override: MangaOverride?,
-		force: Boolean,
-		initialSavedManga: LocalManga?,
-		favouriteSpace: FavouriteSpace?,
-		cachedIsFresh: Boolean,
-		findSavedManga: suspend () -> LocalManga?,
-	) = coroutineScope {
-		val localLookup = async {
-			runCatchingCancellable { initialSavedManga ?: findSavedManga() }
-				.onFailure { it.printStackTraceDebug() }.getOrNull()
-		}
+	private suspend fun FlowCollector<MangaDetails>.loadRemote(manga: Manga, override: MangaOverride?, force: Boolean, initialSavedManga: LocalManga?, favouriteSpace: FavouriteSpace?, cachedIsFresh: Boolean, findSavedManga: suspend () -> LocalManga?) = coroutineScope {
+		val localLookup = async { runCatchingCancellable { initialSavedManga ?: findSavedManga() }.onFailure { it.printStackTraceDebug() }.getOrNull() }
 		if (cachedIsFresh) {
 			val fastDescription = manga.description?.parseAsHtml(withImages = false)
 			val discoveredLocal = localLookup.await()
-			if (discoveredLocal != null && initialSavedManga == null) {
-				emit(MangaDetails(manga = manga, localManga = discoveredLocal, override = override, description = fastDescription, isLoaded = true))
-			}
+			if (discoveredLocal != null && initialSavedManga == null) emit(MangaDetails(manga = manga, localManga = discoveredLocal, override = override, description = fastDescription, isLoaded = true))
 			val richDescription = manga.description?.parseAsHtml(withImages = true)
-			if (richDescription != fastDescription) {
-				emit(MangaDetails(manga = manga, localManga = discoveredLocal ?: initialSavedManga, override = override, description = richDescription, isLoaded = true))
-			}
+			if (richDescription != fastDescription) emit(MangaDetails(manga = manga, localManga = discoveredLocal ?: initialSavedManga, override = override, description = richDescription, isLoaded = true))
 			return@coroutineScope
 		}
-
 		val observedRefreshAt = mangaDataRepository.getDetailsUpdatedAt(manga.id)
 		var progressiveDescription: CharSequence? = null
 		val refreshKey = RefreshKey(manga.source.name, manga.id)
 		val remoteResult = singleFlightRefresh(refreshKey) {
 			val latestRefreshAt = mangaDataRepository.getDetailsUpdatedAt(manga.id)
-			if (latestRefreshAt > 0L && latestRefreshAt != observedRefreshAt) {
-				mangaDataRepository.findMangaById(manga.id, withChapters = true)?.let { return@singleFlightRefresh Result.success(it) }
-			}
+			if (latestRefreshAt > 0L && latestRefreshAt != observedRefreshAt) mangaDataRepository.findMangaById(manga.id, withChapters = true)?.let { return@singleFlightRefresh Result.success(it) }
 			val cachedBeforeFetch = mangaDataRepository.findMangaById(manga.id, withChapters = true) ?: manga
 			val cachedBeforeFetchState = getCachedDetailsState(cachedBeforeFetch, force = false)
 			if (!force && cachedBeforeFetchState.fresh) return@singleFlightRefresh Result.success(cachedBeforeFetch)
-			val progressiveRepository = if (!force && !cachedBeforeFetchState.initialized) {
-				mangaRepositoryFactory.create(cachedBeforeFetch.source) as? ProgressiveMangaDetailsRepository
-			} else null
-			val result = if (progressiveRepository != null) {
-				runCatchingCancellable {
-					progressiveRepository.getDetailsProgressively(cachedBeforeFetch) { partial ->
-						if (progressiveDescription == null) progressiveDescription = partial.description?.parseAsHtml(withImages = false)
-						emit(MangaDetails(manga = partial, localManga = initialSavedManga, override = override, description = progressiveDescription, isLoaded = false))
-					}
+			val progressiveRepository = if (!force && !cachedBeforeFetchState.initialized) mangaRepositoryFactory.create(cachedBeforeFetch.source) as? ProgressiveMangaDetailsRepository else null
+			val result = if (progressiveRepository != null) runCatchingCancellable {
+				progressiveRepository.getDetailsProgressively(cachedBeforeFetch) { partial ->
+					if (progressiveDescription == null) progressiveDescription = partial.description?.parseAsHtml(withImages = false)
+					emit(MangaDetails(manga = partial, localManga = initialSavedManga, override = override, description = progressiveDescription, isLoaded = false))
 				}
-			} else {
-				getDetails(seed = cachedBeforeFetch, fresh = force || cachedBeforeFetchState.initialized)
-			}
+			} else getDetails(seed = cachedBeforeFetch, fresh = force || cachedBeforeFetchState.initialized)
 			if (result.isFailure) return@singleFlightRefresh result
 			val remoteDetails = result.getOrThrow()
-			if (!cachedBeforeFetch.chapters.isNullOrEmpty() && remoteDetails.chapters.isNullOrEmpty()) {
-				return@singleFlightRefresh Result.failure(IllegalStateException("Source returned an empty chapter list for cached manga ${manga.id}"))
-			}
+			if (!cachedBeforeFetch.chapters.isNullOrEmpty() && remoteDetails.chapters.isNullOrEmpty()) return@singleFlightRefresh Result.failure(IllegalStateException("Source returned an empty chapter list for cached manga ${manga.id}"))
 			mangaDataRepository.storeManga(remoteDetails, replaceExisting = true, stripAppliedOverride = false, detailsFetched = true)
 			Result.success(remoteDetails)
 		}
-
 		if (remoteResult.isFailure) {
 			val discoveredLocal = localLookup.await()
-			val fallback = MangaDetails(
-				manga = manga, localManga = discoveredLocal, override = override,
-				description = (manga.description ?: discoveredLocal?.manga?.description)?.parseAsHtml(withImages = false), isLoaded = true,
-			)
+			val fallback = MangaDetails(manga = manga, localManga = discoveredLocal, override = override, description = (manga.description ?: discoveredLocal?.manga?.description)?.parseAsHtml(withImages = false), isLoaded = true)
 			emit(fallback)
 			if (!discoveredLocal?.manga?.chapters.isNullOrEmpty()) return@coroutineScope
 		}
@@ -200,9 +136,7 @@ class DetailsLoadUseCase @Inject constructor(
 			emit(visibleDetails)
 		}
 		val richDescription = (remoteDetails.description ?: discoveredLocal?.manga?.description)?.parseAsHtml(withImages = true)
-		if (richDescription != visibleDetails.description) {
-			emit(MangaDetails(manga = remoteDetails, localManga = discoveredLocal, override = override, description = richDescription, isLoaded = true))
-		}
+		if (richDescription != visibleDetails.description) emit(MangaDetails(manga = remoteDetails, localManga = discoveredLocal, override = override, description = richDescription, isLoaded = true))
 		runCatchingCancellable { checkNewChaptersUseCase.get().invoke(remoteDetails) }.onFailure { it.printStackTraceDebug() }
 	}
 
@@ -213,53 +147,58 @@ class DetailsLoadUseCase @Inject constructor(
 			if (active != null) {
 				try { return active.await() } catch (_: CancellationException) { currentCoroutineContext().ensureActive(); continue }
 			}
-			try {
-				val result = block()
-				candidate.complete(result)
-				return result
-			} catch (e: Throwable) {
-				candidate.completeExceptionally(e)
-				throw e
-			} finally {
-				inFlightRefreshes.remove(key, candidate)
-			}
-		}
-	}
-
-	private suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(
-		manga: Manga,
-		override: MangaOverride?,
-		description: CharSequence?,
-		cachedInitialized: Boolean,
-		cachedIsFresh: Boolean,
-		preferLocalBeforeCached: Boolean,
-		deferLocalLookup: Boolean,
-		findSavedManga: suspend () -> LocalManga?,
-	): LocalManga? {
-		val cached = mangaDataRepository.findMangaById(manga.id, withChapters = true)
-		val local = if (preferLocalBeforeCached || (!deferLocalLookup && cached == null)) findSavedManga() else null
-		val initial = cached ?: local?.manga ?: manga
-		if (cachedInitialized || cachedIsFresh || cached != null || local != null) {
-			emit(MangaDetails(manga = initial, localManga = local, override = override, description = description, isLoaded = cachedIsFresh || cachedInitialized))
-		}
-		return local
-	}
-
-	private suspend fun getDetails(seed: Manga, fresh: Boolean): Result<Manga> = runCatchingCancellable {
-		val repository = mangaRepositoryFactory.create(seed.source)
-		when {
-			fresh && repository is FreshMangaDetailsRepository -> repository.getDetailsFresh(seed)
-			else -> repository.getDetails(seed)
+			return try { val result = block(); candidate.complete(result); result } catch (error: Throwable) { candidate.completeExceptionally(error); throw error } finally { inFlightRefreshes.remove(key, candidate) }
 		}
 	}
 
 	private suspend fun getCachedDetailsState(manga: Manga, force: Boolean): CachedDetailsState {
-		if (force) return CachedDetailsState(false, false)
 		val updatedAt = mangaDataRepository.getDetailsUpdatedAt(manga.id)
-		return CachedDetailsState(updatedAt > 0L, updatedAt > 0L && System.currentTimeMillis() - updatedAt < DETAILS_CACHE_TTL_MS)
+		val initialized = mangaDataRepository.isChaptersInitialized(manga.id) || !manga.chapters.isNullOrEmpty()
+		val fresh = !force && initialized && updatedAt > 0L && System.currentTimeMillis() - updatedAt < DETAILS_FRESHNESS_MS
+		return CachedDetailsState(initialized, fresh)
 	}
 
-	private data class RefreshKey(val source: String, val mangaId: Long)
+	private suspend fun getDetails(seed: Manga, fresh: Boolean) = runCatchingCancellable { loadDetails(seed, fresh, refreshExtensions = false) }.recoverCatching { error ->
+		if (error is UnsupportedSourceException && seed.source.isExternalSource()) loadDetails(seed, fresh, refreshExtensions = true) else throw error
+	}.recoverNotNull { e -> if (e is NotFoundException) recoverUseCase(seed) else null }
+
+	private suspend fun loadDetails(seed: Manga, fresh: Boolean, refreshExtensions: Boolean): Manga {
+		val resolvedSeed = if (seed.source.name.startsWith("MIHON_")) {
+			mihonExtensionManager.ensureReady(forceRefresh = refreshExtensions)
+			seed.copy(source = ResolveMangaSource(seed.source.name))
+		} else seed
+		val repository = mangaRepositoryFactory.create(resolvedSeed.source)
+		return when {
+			fresh && repository is FreshMangaDetailsRepository -> repository.getFreshDetails(resolvedSeed)
+			repository is CachingMangaRepository -> repository.getDetails(resolvedSeed, CachePolicy.ENABLED)
+			else -> repository.getDetails(resolvedSeed)
+		}
+	}
+
+	private suspend fun String.parseAsHtml(withImages: Boolean): CharSequence? {
+		val html = if (contains("<br", ignoreCase = true) || contains("<p", ignoreCase = true)) this else replace("\n", "<br>")
+		return if (withImages) runInterruptible(Dispatchers.IO) { html.parseAsHtml(imageGetter = imageGetter) }.filterSpans() else runInterruptible(Dispatchers.Default) { html.parseAsHtml() }.filterSpans().sanitize().trim().nullIfEmpty()
+	}
+
 	private data class CachedDetailsState(val initialized: Boolean, val fresh: Boolean)
-	companion object { private const val DETAILS_CACHE_TTL_MS = 30L * 60L * 1000L }
+	private data class RefreshKey(val sourceName: String, val mangaId: Long)
+	private companion object { val DETAILS_FRESHNESS_MS = java.util.concurrent.TimeUnit.HOURS.toMillis(12) }
+	private fun Spanned.filterSpans(): Spanned {
+		val spannable = SpannableString.valueOf(this)
+		spannable.getSpans<ForegroundColorSpan>().forEach(spannable::removeSpan)
+		return spannable
+	}
+}
+
+internal suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(manga: Manga, override: MangaOverride?, description: CharSequence?, cachedInitialized: Boolean, cachedIsFresh: Boolean, preferLocalBeforeCached: Boolean = false, deferLocalLookup: Boolean = false, findSavedManga: suspend () -> LocalManga?): LocalManga? {
+	if (preferLocalBeforeCached) {
+		val savedManga = findSavedManga()
+		emit(MangaDetails(manga = manga, localManga = savedManga, override = override, description = description, isLoaded = cachedIsFresh))
+		return savedManga
+	}
+	if (cachedInitialized || deferLocalLookup) emit(MangaDetails(manga = manga, localManga = null, override = override, description = description, isLoaded = cachedIsFresh))
+	if (deferLocalLookup) return null
+	val savedManga = findSavedManga()
+	if (!cachedInitialized || savedManga != null) emit(MangaDetails(manga = manga, localManga = savedManga, override = override, description = description, isLoaded = cachedIsFresh))
+	return savedManga
 }
