@@ -59,6 +59,7 @@ import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
 import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.FragmentListBinding
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.NormalTransferDestination
 import org.koitharu.kotatsu.favourites.domain.NormalTransferResult
@@ -120,6 +121,7 @@ class FavouritesListFragment : MangaListFragment() {
 	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null
 	private var modernChildAttachListener: RecyclerView.OnChildAttachStateChangeListener? = null
 	private var modernSelectionPopupItems: List<MenuItem> = emptyList()
+	private val listWorkOwner = FavouritesListWorkOwner()
 
 	val categoryId
 		get() = viewModel.categoryId
@@ -170,6 +172,8 @@ class FavouritesListFragment : MangaListFragment() {
 	}
 
 	override fun onDestroyView() {
+		listWorkOwner.onDestroyView()
+		updateWorkActivity()
 		viewBinding?.recyclerView?.let { recyclerView ->
 			recyclerView.removeCallbacks(coverPrefetchRunnable)
 			recyclerView.removeOnScrollListener(coverPrefetchScrollListener)
@@ -184,9 +188,41 @@ class FavouritesListFragment : MangaListFragment() {
 		super.onDestroyView()
 	}
 
+	override fun onStart() {
+		super.onStart()
+		listWorkOwner.onStart()
+		updateWorkActivity()
+	}
+
+	override fun onStop() {
+		listWorkOwner.onStop()
+		updateWorkActivity()
+		super.onStop()
+	}
+
+	override fun onHiddenChanged(hidden: Boolean) {
+		super.onHiddenChanged(hidden)
+		updateWorkActivity()
+	}
+
+	internal fun updateWorkActivity() {
+		if (view == null) return
+		// FavouritesActivity also hosts this list directly, without a tab container.
+		val containerActive = (parentFragment as? FavouritesContainerFragment)?.isListWorkActive
+		viewModel.setWorkActive(listWorkOwner.isActive(hasView = true, hidden = isHidden, containerActive = containerActive))
+	}
+
 	override fun onResume() {
 		super.onResume()
+		listWorkOwner.onResume()
+		updateWorkActivity()
 		scheduleCoverPrefetch(viewModel.content.value)
+	}
+
+	override fun onPause() {
+		listWorkOwner.onPause()
+		updateWorkActivity()
+		super.onPause()
 	}
 
 	private fun compactModernEmptyState(view: View) {
