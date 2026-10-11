@@ -1,23 +1,73 @@
-name: Amain2 APK Build
-run-name: Amain2 Staging APK · ${{ github.ref_name }}
+name: PR583 Owner Test APK
+run-name: PR583 Owner Test APK · 4255a6b611c85ea767e19dc11878843d7b06f859
 
-on:
+# Temporary build-only adaptation on build/pr583-owner-test-apk.
+# The workflow definition and checked-out feature source are separate revisions.
+'on':
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
-  group: amain2-staging-build
-  cancel-in-progress: true
+  group: pr583-isolated-owner-test-apk
+  cancel-in-progress: false
+
+env:
+  EXPECTED_SOURCE_SHA: 4255a6b611c85ea767e19dc11878843d7b06f859
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
-    if: github.ref_name == 'Amain2'
+    if: github.repository == 'Noirero/Miyorare' && github.ref_name == 'build/pr583-owner-test-apk'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
+    timeout-minutes: 60
     steps:
-      - name: Checkout Amain2 candidate
+      - name: Require unchanged open PR583
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/Noirero/Miyorare/pulls/583 > "$RUNNER_TEMP/pr583-state.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          pr = json.loads((Path(os.environ['RUNNER_TEMP']) / 'pr583-state.json').read_text())
+          if not (
+              pr['head']['sha'] == os.environ['EXPECTED_SOURCE_SHA']
+              and pr['head']['ref'] == 'port/amain2-chapter-range-grouping'
+              and pr['base']['ref'] == 'Amain2'
+              and pr['state'] == 'open'
+              and not pr['merged']
+              and pr['auto_merge'] is None
+          ):
+              raise SystemExit('PR583 revision/state changed; refusing to build')
+          print(f"PR583 source branch: {pr['head']['ref']}")
+          print(f"PR583 source SHA: {pr['head']['sha']}")
+          print('PR583 is OPEN, UNMERGED, with auto-merge disabled')
+          PY
+
+      - name: Checkout exact PR583 source
         uses: actions/checkout@v5
+        with:
+          ref: 4255a6b611c85ea767e19dc11878843d7b06f859
+          persist-credentials: false
+
+      - name: Guard exact source SHA before Gradle
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          echo "Expected source SHA: $EXPECTED_SOURCE_SHA"
+          echo "Actual source SHA:   $ACTUAL_SHA"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SOURCE_SHA" ]; then
+            echo "::error::Unexpected source revision"
+            exit 1
+          fi
+          git diff --exit-code
+          git diff --cached --exit-code
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -27,9 +77,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
-
-      - name: Grant execute permission
-        run: chmod +x gradlew
 
       - name: Require permanent signing key
         env:
@@ -50,96 +97,175 @@ jobs:
             exit 1
           fi
 
-      - name: Decode permanent keystore
+      - name: Decode permanent keystore outside source tree
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pr583-release.keystore"
 
-      - name: Apply Amain2 staging identity and monotonic version
-        shell: bash
+      - name: Apply isolated build identity and monotonic version
         run: |
           set -euo pipefail
           VERSION_CODE=$(( $(date -u +%s) - 1577836800 ))
-          if [ "$VERSION_CODE" -gt 2100000000 ]; then
-            echo "::error::Generated Android versionCode is too large"
+          if [ "$VERSION_CODE" -le 0 ] || [ "$VERSION_CODE" -gt 2100000000 ]; then
+            echo "::error::Generated Android versionCode is out of bounds"
             exit 1
           fi
           export VERSION_CODE
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
 
           python3 - <<'PY'
-          from pathlib import Path
+          import hashlib
+          import json
           import os
           import re
+          from pathlib import Path
 
           gradle = Path('app/build.gradle')
-          text = gradle.read_text()
           text, app_count = re.subn(
               r"applicationId\s*=\s*'org\.noirero\.miyorare'",
-              "applicationId = 'org.noirero.miyorare.amain2'",
-              text,
-              count=1,
+              "applicationId = 'org.noirero.miyorare.pr583'",
+              gradle.read_text(),
           )
           text, version_count = re.subn(
               r'versionCode\s*=\s*\d+',
               f"versionCode = {os.environ['VERSION_CODE']}",
               text,
-              count=1,
           )
           if app_count != 1 or version_count != 1:
-              raise SystemExit('Could not apply Amain2 applicationId/versionCode exactly once')
+              raise SystemExit('applicationId/versionCode replacement must occur exactly once')
           gradle.write_text(text)
 
-          strings = Path('app/src/main/res/values/strings.xml')
-          if strings.exists():
-              value = strings.read_text()
-              value, changed = re.subn(
-                  r'(<string\s+name="app_name"[^>]*>)(.*?)(</string>)',
-                  r'\1Miyorare Amain2\3',
-                  value,
-                  count=1,
-                  flags=re.S,
+          label_paths = [
+              Path('app/src/main/res/values/strings.xml'),
+              Path('app/src/main/res/values-in/settings_language_stage3.xml'),
+              Path('app/src/release/res/values/app_name.xml'),
+          ]
+          for path in label_paths:
+              value, count = re.subn(
+                  r'(<string\s+name="app_name"[^>]*>)Miyorare(</string>)',
+                  r'\1Miyorare PR583\2',
+                  path.read_text(),
               )
-              if changed == 1:
-                  strings.write_text(value)
+              if count != 1:
+                  raise SystemExit(f'app_name replacement must occur exactly once: {path}')
+              path.write_text(value)
+
+          hashes = {str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+                    for path in [gradle, *label_paths]}
+          (Path(os.environ['RUNNER_TEMP']) / 'pr583-build-only-files.json').write_text(json.dumps(hashes))
+          print('Build-only applicationId: org.noirero.miyorare.pr583')
+          print('Build-only display name: Miyorare PR583')
+          print(f"Build-only versionCode: {os.environ['VERSION_CODE']}")
           PY
 
-          echo "Amain2 versionCode: $VERSION_CODE"
-          grep -F "applicationId = 'org.noirero.miyorare.amain2'" app/build.gradle
-
-      - name: Build permanently signed Amain2 APK
+      - name: Build permanently signed Release APK
         env:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          ./gradlew assembleRelease --max-workers=4 --no-daemon --stacktrace \
-            -PRELEASE_STORE_FILE=../release.keystore \
+          bash ./gradlew assembleRelease --max-workers=4 --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE="$RUNNER_TEMP/pr583-release.keystore" \
             -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
             -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
             -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
 
-      - name: Collect APK
-        shell: bash
+      - name: Verify feature source integrity
         run: |
           set -euo pipefail
-          mkdir -p artifact
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          git diff --cached --exit-code
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          hashes = json.loads((Path(os.environ['RUNNER_TEMP']) / 'pr583-build-only-files.json').read_text())
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          if changed != set(hashes):
+              raise SystemExit(f'Unexpected tracked source modifications: {sorted(changed)}')
+          for path, expected in hashes.items():
+              if hashlib.sha256(Path(path).read_bytes()).hexdigest() != expected:
+                  raise SystemExit(f'Unexpected change after build-only transformation: {path}')
+          print('Feature integrity verified: only applicationId, versionCode and app-name staging edits')
+          PY
+
+      - name: Inspect signed APK identity and record provenance
+        run: |
+          set -euo pipefail
           shopt -s nullglob
           apks=(app/build/outputs/apk/release/*.apk)
-          if [ ${#apks[@]} -eq 0 ]; then
-            echo "::error::No release APK produced"
+          if [ "${#apks[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one Release APK, found ${#apks[@]}"
             exit 1
           fi
-          for apk in "${apks[@]}"; do
-            cp "$apk" "artifact/Miyorare-Amain2-$(basename "$apk")"
-          done
+          mapfile -t apk_tools < <(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name aapt2 | sort -V)
+          if [ "${#apk_tools[@]}" -eq 0 ]; then
+            echo "::error::Android APK inspection tools are unavailable"
+            exit 1
+          fi
+          TOOL_DIR="$(dirname "${apk_tools[-1]}")"
+          "$TOOL_DIR/aapt2" dump badging "${apks[0]}" > "$RUNNER_TEMP/pr583-apk-badging.txt"
+          "$TOOL_DIR/apksigner" verify --verbose --print-certs "${apks[0]}"
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
 
-      - name: Upload Amain2 staging APK
+          badging = (Path(os.environ['RUNNER_TEMP']) / 'pr583-apk-badging.txt').read_text()
+          package = re.search(r"^package: name='([^']+)' versionCode='([^']+)'", badging, re.M)
+          if not package or package.group(1) != 'org.noirero.miyorare.pr583':
+              raise SystemExit('Produced APK has the wrong applicationId')
+          if package.group(2) != os.environ['VERSION_CODE']:
+              raise SystemExit('Produced APK has the wrong versionCode')
+          labels = re.findall(r"^application-label(?:-[^:]+)?:'([^']*)'", badging, re.M)
+          if not labels or any(label != 'Miyorare PR583' for label in labels):
+              raise SystemExit(f'Produced APK has unexpected app labels: {labels}')
+          print(f'Verified APK applicationId: {package.group(1)}')
+          print(f'Verified APK versionCode: {package.group(2)}')
+          print('Verified APK display name: Miyorare PR583 (all packaged locales)')
+          PY
+          mkdir -p artifact
+          cp "${apks[0]}" artifact/Miyorare-PR583-Owner-Test.apk
+          sha256sum artifact/Miyorare-PR583-Owner-Test.apk
+          {
+            echo "PR: #583"
+            echo "Source branch: port/amain2-chapter-range-grouping"
+            echo "Exact source SHA: $EXPECTED_SOURCE_SHA"
+            echo "Workflow definition SHA: $GITHUB_SHA"
+            echo "Workflow: PR583 Owner Test APK"
+            echo "Run ID: $GITHUB_RUN_ID"
+            echo "Run URL: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "Artifact: Miyorare-PR583-Owner-Test-APK"
+            echo "APK: Miyorare-PR583-Owner-Test.apk"
+            echo "Verified applicationId: org.noirero.miyorare.pr583"
+            echo "Verified display name: Miyorare PR583"
+            echo "APK SHA-256: $(sha256sum artifact/Miyorare-PR583-Owner-Test.apk | cut -d ' ' -f 1)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload only the owner-test APK
+        id: apk
         uses: actions/upload-artifact@v4
         with:
-          name: Miyorare-Amain2-APK
-          path: artifact/*.apk
+          name: Miyorare-PR583-Owner-Test-APK
+          path: artifact/Miyorare-PR583-Owner-Test.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Record artifact ID
+        env:
+          ARTIFACT_ID: ${{ steps.apk.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.apk.outputs.artifact-url }}
+        run: |
+          echo "Artifact ID: $ARTIFACT_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "Artifact URL: $ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/pr583-release.keystore"
