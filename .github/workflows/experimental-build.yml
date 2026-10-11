@@ -57,8 +57,8 @@ jobs:
           p = Path('app/build.gradle')
           text = p.read_text()
           for old, new in [
-              ("variant.applicationId.set('org.noirero.miyorare.beta')", "variant.applicationId.set('org.noirero.miyorare.favouritesfix')"),
-              ("versionNameSuffix = '-beta'", "versionNameSuffix = '-favouritesfix'"),
+              ("variant.applicationId.set('org.noirero.miyorare.beta')", "variant.applicationId.set('org.noirero.miyorare.favouritesfix2')"),
+              ("versionNameSuffix = '-beta'", "versionNameSuffix = '-favouritesfix2'"),
               ("versionName = '1.2.0'", "versionName = '1.4.7'"),
           ]:
               assert text.count(old) == 1, old
@@ -68,7 +68,7 @@ jobs:
           text = p.read_text()
           old = '<string name="app_name_beta" translatable="false">Miyorare Beta</string>'
           assert text.count(old) == 1
-          p.write_text(text.replace(old, '<string name="app_name_beta" translatable="false">Miyorare Favourites Fix</string>', 1))
+          p.write_text(text.replace(old, '<string name="app_name_beta" translatable="false">Miyorare Favourites Fix 2</string>', 1))
           PYCODE
           mkdir -p build/owner-apk
           git diff -- app/build.gradle app/src/preview/res/values/strings.xml > build/owner-apk/BUILD-ONLY-IDENTITY.patch
@@ -108,15 +108,15 @@ jobs:
           test -n "$APK"
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
           "$BUILD_TOOLS/aapt" dump badging "$APK" > build/owner-apk/APK-BADGING.txt
-          grep -Fq "package: name='org.noirero.miyorare.favouritesfix'" build/owner-apk/APK-BADGING.txt
-          grep -Fq "application-label:'Miyorare Favourites Fix'" build/owner-apk/APK-BADGING.txt
+          grep -Fq "package: name='org.noirero.miyorare.favouritesfix2'" build/owner-apk/APK-BADGING.txt
+          grep -Fq "application-label:'Miyorare Favourites Fix 2'" build/owner-apk/APK-BADGING.txt
           "$BUILD_TOOLS/apksigner" verify "$APK"
-          cp "$APK" "build/owner-apk/Miyorare-Favourites-Fix-${SOURCE_SHA:0:8}.apk"
+          cp "$APK" "build/owner-apk/Miyorare-Favourites-Fix-2-${SOURCE_SHA:0:8}.apk"
           sha256sum build/owner-apk/*.apk > build/owner-apk/SHA256SUMS.txt
           printf 'Production source SHA: %s\nWorkflow SHA: %s\nVariant: normal Preview, build-only package/label/version changes\nNo diagnostic recorder/export/experiment flags\n' "$SOURCE_SHA" "$GITHUB_SHA" > build/owner-apk/BUILD.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: Miyorare-Favourites-Fix-${{ inputs.source_sha }}
+          name: Miyorare-Favourites-Fix-2-${{ inputs.source_sha }}
           path: build/owner-apk/
           if-no-files-found: error
           retention-days: 14
