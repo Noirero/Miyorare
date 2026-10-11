@@ -20,10 +20,19 @@ fun <T> StateFlow<T>.collectDiagnosticState(session: Long, stage: String, count:
 	val observed = remember(this, session, stage) {
 		onEach { value ->
 			val size = count(value)
-			if (size > 0) DetailsDiagnostic.mark(session, stage, mapOf("chapterCount" to size), once = true)
+			if (size > 0 && DetailsDiagnostic.pending(session, stage)) DetailsDiagnostic.mark(session, stage,
+				mapOf("chapterCount" to size, "origin" to "collector_emission"), once = true)
 		}
 	}
-	return observed.collectAsState(initial = value)
+	val state = observed.collectAsState(initial = value)
+	// StateFlow may already hold chapters before the UI collector coroutine starts. Record the
+	// actual Compose state read as well so this fast path cannot appear to consume after layout.
+	if (DetailsDiagnostic.pending(session, stage)) {
+		val size = count(state.value)
+		if (size > 0) DetailsDiagnostic.mark(session, stage,
+			mapOf("chapterCount" to size, "origin" to "composition_state_read"), once = true)
+	}
+	return state
 }
 
 private class ChapterPlacement { var intersectsWindow = false }

@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.details.ui
 
 import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import org.koitharu.kotatsu.core.diagnostics.diagnosticChapter
+import org.koitharu.kotatsu.core.diagnostics.diagnosticImage
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -235,6 +236,7 @@ private fun HeroSourceCard(
 	val faviconRequest = remember(manga.source) {
 		ImageRequest.Builder(context)
 			.data(manga.source.faviconUri())
+			.diagnosticImage(manga.id, "details_favicon")
 			.mangaSourceExtra(manga.source)
 			.crossfade(true)
 			.build()

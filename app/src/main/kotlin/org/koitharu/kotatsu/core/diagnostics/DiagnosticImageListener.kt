@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.diagnostics
 
+import android.net.Uri
 import coil3.EventListener
 import coil3.Extras
 import coil3.decode.DecodeResult
@@ -36,7 +37,11 @@ class DiagnosticImageListener(private val delegate: EventListener) : EventListen
 		delegate.onStart(request)
 		session = request.extras[sessionKey] ?: 0L
 		role = request.extras[roleKey] ?: "untagged"
-		if (role == "untagged" && (request.data as? String)?.startsWith("favicon:") == true) role = "favicon"
+		if (role == "untagged" && when (val data = request.data) {
+			is Uri -> data.scheme == "favicon"
+			is String -> data.startsWith("favicon:")
+			else -> false
+		}) role = "favicon"
 		started = DetailsDiagnostic.now()
 		active = true
 		DetailsDiagnostic.imageDelta("request", 1)

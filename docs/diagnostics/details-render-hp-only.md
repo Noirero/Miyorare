@@ -53,6 +53,8 @@ Summary fields include `stateReadyMs`, `publicationBeginMs`, `publicationSetterM
 
 Missing stage → `unknown`. Consumer can execute during setter assignment; that span is `overlap_or_earlier_emission`, not a fabricated zero/positive latency. First values can derive from the initial seed or later Room/source publication; manga/session/count and loaded/cache state must be considered together. No claim that unrelated progressive emissions are the same state revision.
 
+UI receive markers identify `collector_emission` or `composition_state_read`. The latter covers an already-populated StateFlow read during initial composition before the existing collector coroutine starts; it adds no subscription. Details favicon requests are explicitly tagged, and general favicon URI requests are classified without logging URI content.
+
 Placement/composition can precede visibility due to LazyColumn precomposition. Draw is accepted only when the item bounds intersect a shown root window. **A draw callback records draw commands; it does not prove physical display presentation, full visibility or absence of occlusion.** If no chapter enters the viewport, draw can stay unknown. The UI is not scrolled or otherwise changed by instrumentation.
 
 ## Overhead / limitations
