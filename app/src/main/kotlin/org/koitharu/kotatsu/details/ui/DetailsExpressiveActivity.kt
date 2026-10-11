@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.db.MangaDatabase
@@ -164,6 +165,12 @@ class DetailsExpressiveActivity :
 		// Keep the first frame protected. ScreenshotPolicyHelper becomes the sole owner of clearing it
 		// once both the global policy and this screen's Private-only classification are known.
 		window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+		if (PerformanceDiagnostics.enabled) {
+			val trace = PerformanceDiagnostics.trace(intent.getStringExtra(PerformanceDiagnostics.TRACE_EXTRA))
+				?: PerformanceDiagnostics.navigation("system", "DetailsExpressiveActivity")
+			PerformanceDiagnostics.bind(this, trace)
+			if (trace != null) intent.putExtra(PerformanceDiagnostics.TRACE_EXTRA, trace.id)
+		}
 		super.onCreate(savedInstanceState)
 		setContentView(ActivityDetailsExpressiveBinding.inflate(layoutInflater))
 		WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -264,6 +271,14 @@ class DetailsExpressiveActivity :
 		viewModel.resumeGenreRecommendations()
 		viewModel.resumeTrackerPeople()
 		viewModel.resumeTrackerRecommendations()
+	}
+
+	override fun onResume() {
+		super.onResume()
+		if (PerformanceDiagnostics.enabled && viewBinding.composeView.isLaidOut && viewModel.mangaDetails.value != null) {
+			PerformanceDiagnostics.milestone(this, "content_state_ready")
+			PerformanceDiagnostics.drawn(this, viewBinding.composeView, meaningful = true)
+		}
 	}
 
 	override fun onStop() {
@@ -399,6 +414,12 @@ class DetailsExpressiveActivity :
 				val downloadedFilterAvailable by viewModel.isDownloadedFilterAvailable.collectAsState()
 				val chapterFilterActive by viewModel.isChapterFilterActive.collectAsState()
 				val loading by viewModel.isLoading.collectAsState()
+				if (PerformanceDiagnostics.enabled && details != null) {
+					androidx.compose.runtime.SideEffect {
+						PerformanceDiagnostics.milestone(this@DetailsExpressiveActivity, "content_composed")
+						PerformanceDiagnostics.drawn(this@DetailsExpressiveActivity, viewBinding.composeView, meaningful = true)
+					}
+				}
 				val favs by viewModel.favouriteCategories.collectAsState()
 				val scrob by viewModel.scrobblingInfo.collectAsState()
 				val trackerPeople by viewModel.trackerPeople.collectAsState()

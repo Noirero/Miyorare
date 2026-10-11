@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.util.ActionModeDelegate
@@ -71,6 +72,11 @@ abstract class BaseActivity<B : ViewBinding> :
 		}
 	}
 
+	override fun onEnterAnimationComplete() {
+		super.onEnterAnimationComplete()
+		PerformanceDiagnostics.milestone(this, "enter_animation_complete")
+	}
+
 	override fun attachBaseContext(newBase: Context) {
 		entryPoint = EntryPointAccessors.fromApplication<BaseActivityEntryPoint>(newBase.applicationContext)
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
@@ -80,6 +86,8 @@ abstract class BaseActivity<B : ViewBinding> :
 	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
+		// Register before super restores fragments, so created events are observable on API 26+.
+		PerformanceDiagnostics.registerFragments(this)
 		val settings = entryPoint.settings
 		isAmoledTheme = settings.isAmoledTheme
 		setTheme(settings.colorScheme.styleResId)

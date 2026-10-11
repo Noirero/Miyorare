@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 
 /** Screen resume controls standalone lists; pager children keep their STARTED eligibility. */
 internal class FavouritesListWorkOwner {
@@ -72,6 +73,8 @@ internal class FavouritesListWorkScope(private val onStopped: () -> Unit = {}) {
 			emptyFlow()
 		} else {
 			flow {
+				val work = PerformanceDiagnostics.begin("work", "favourites_active_producer")
+				var outcome = "complete"
 				var registeredScope: CoroutineScope? = null
 				try {
 					supervisorScope {
@@ -86,7 +89,10 @@ internal class FavouritesListWorkScope(private val onStopped: () -> Unit = {}) {
 								true
 							}
 						}
-						if (!registered) return@supervisorScope
+						if (!registered) {
+							PerformanceDiagnostics.end(work, "stale_generation_discard")
+							return@supervisorScope
+						}
 						try {
 							coroutineContext.ensureActive()
 							emitAll(source)
@@ -94,7 +100,11 @@ internal class FavouritesListWorkScope(private val onStopped: () -> Unit = {}) {
 							coroutineContext.cancelChildren()
 						}
 					}
+				} catch (error: Throwable) {
+					outcome = if (error is kotlinx.coroutines.CancellationException) "cancel" else "failure"
+					throw error
 				} finally {
+					PerformanceDiagnostics.end(work, outcome)
 					if (registeredScope != null) {
 						// Keep the owner registered until every child has drained, including replaced jobs.
 						synchronized(lock) { producerScope = null }
