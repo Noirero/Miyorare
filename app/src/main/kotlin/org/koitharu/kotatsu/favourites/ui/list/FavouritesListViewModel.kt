@@ -185,7 +185,7 @@ class FavouritesListViewModel @Inject constructor(
 	private var cardEnrichmentJob: Job? = null
 	private var diagnosticRepairJob: Job? = null
 	private var diagnosticEventsJob: Job? = null
-	private var diagnosticDbRows = 0
+	@Volatile private var diagnosticDbRows: Int? = null
 
 	private val libraryGroups = DetailsDiagnostic.observePipeline(libraryGroupsRepository.observeGroups(favouriteSpace), this, "groups").stateIn(
 		viewModelScope + Dispatchers.Default,
@@ -498,12 +498,12 @@ class FavouritesListViewModel @Inject constructor(
 
 	private fun diagnosticSnapshot(): Map<String, Any?> = mapOf(
 		"space" to favouriteSpace.name, "categoryId" to categoryId,
-		"databaseWindow" to databaseWindow.value, "databaseRows" to diagnosticDbRows,
+		"databaseWindow" to databaseWindow.value, "databaseRows" to (diagnosticDbRows ?: "unknown"),
 		"displayLimit" to limit.value, "mappedSize" to content.value.size,
 		"contentCollectorCount" to DetailsDiagnostic.collectorCount(content),
 		"queryActive" to lastSearchQuery.isNotBlank(), "queryLength" to lastSearchQuery.length,
-		"filterCount" to (lastFilters?.size ?: 0), "contentType" to lastContentType?.name,
-		"filterTypes" to lastFilters?.map { it.javaClass.simpleName },
+		"filterCount" to (lastFilters?.size ?: "unknown"), "contentType" to (lastContentType?.name ?: "unknown"),
+		"filterTypes" to (lastFilters?.map { it.javaClass.simpleName } ?: "unknown"),
 		"groupCount" to libraryGroups.value.size, "groupMemberCount" to libraryGroups.value.sumOf { it.members.size },
 		"cardEnrichmentActive" to (cardEnrichmentJob?.isActive ?: false),
 		"repairJobActive" to (diagnosticRepairJob?.isActive ?: false),
