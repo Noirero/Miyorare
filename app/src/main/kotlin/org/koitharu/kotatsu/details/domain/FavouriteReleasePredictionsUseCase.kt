@@ -1,60 +1,79 @@
 package org.koitharu.kotatsu.details.domain
 
+import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.withContext
-import org.koitharu.kotatsu.core.parser.MangaDataRepository
-import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.TABLE_CHAPTERS
+import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
+import org.koitharu.kotatsu.core.db.TABLE_MANGA
+import org.koitharu.kotatsu.core.db.TABLE_PRIVATE_FAVOURITES
+import org.koitharu.kotatsu.details.data.ReleasePredictionDate
+import org.koitharu.kotatsu.details.data.releasePredictionDatesQuery
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
-import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
 
-/**
- * Builds the release-prediction picker from persisted favourites only.
- *
- * This deliberately never refreshes a source. Opening the prediction calendar must not fan out
- * network requests across a large library. A favourite without a usable persisted chapter snapshot
- * simply does not appear until normal app activity has populated one.
- */
-class FavouriteReleasePredictionsUseCase @Inject constructor(
-	private val favouritesRepository: FavouritesRepository,
-	private val mangaDataRepository: MangaDataRepository,
-) {
-	data class Item(
-		val manga: Manga,
-		val prediction: NextChapterReleasePrediction,
-		val releaseDates: List<LocalDate>,
-	)
+/** Local persisted evidence only: no source repositories, refreshes or network fan-out. */
+class FavouriteReleasePredictionsUseCase @Inject constructor(private val database: MangaDatabase) {
+
+	fun observe(space: FavouriteSpace): Flow<List<ChapterReleasePredictionItem>> = database.invalidationTracker.createFlow(
+		TABLE_MANGA, TABLE_CHAPTERS,
+		if (space == FavouriteSpace.PRIVATE) TABLE_PRIVATE_FAVOURITES else TABLE_FAVOURITES,
+	).mapLatest { invoke(space) }.flowOn(Dispatchers.IO)
 
 	suspend operator fun invoke(
 		space: FavouriteSpace,
 		nowMillis: Long = System.currentTimeMillis(),
-		zone: ZoneId = ZoneId.systemDefault(),
-	): List<Item> = withContext(Dispatchers.IO) {
-		favouritesRepository.getAllManga(space).mapNotNull { favourite ->
+	): List<ChapterReleasePredictionItem> = withContext(Dispatchers.IO) {
+		val zone = ZoneId.systemDefault()
+		val results = ArrayList<ChapterReleasePredictionItem>()
+		var afterId: Long? = null
+		while (true) {
 			ensureActive()
-			val stored = mangaDataRepository.findMangaById(favourite.id, withChapters = true) ?: return@mapNotNull null
-			if (stored.chapters.isNullOrEmpty()) return@mapNotNull null
-			val details = MangaDetails(stored, null, null, null, true)
-			val sourceChapters = details.sourceManga.chapters.orEmpty().filter { it.source == stored.source }
-			val candidates = sourceChapters
-				.groupBy { it.branch }
-				.mapNotNull { (branch, _) ->
-					predictSourceChapterRelease(details, branch, nowMillis, zone)?.let { branch to it }
+			// Each small batch sees one snapshot: a concurrent source replacement cannot pair old
+			// manga metadata with a new source's dates. Do not hold a transaction across the library.
+			val (manga, dates) = database.withTransaction {
+				val candidates = database.getMangaDao().findReleasePredictionCandidates(space == FavouriteSpace.PRIVATE, afterId, BATCH_SIZE)
+				val dates = ArrayList<ReleasePredictionDate>()
+				if (candidates.isNotEmpty()) {
+					val branches = database.getChaptersDao().findReleasePredictionBranches(candidates.map { it.id }, nowMillis)
+					for (batch in branches.chunked(BATCH_SIZE)) {
+						ensureActive()
+						dates += database.getChaptersDao().findReleasePredictionDates(releasePredictionDatesQuery(batch, nowMillis))
+					}
 				}
-			if (candidates.isEmpty()) return@mapNotNull null
-			val (branch, prediction) = candidates.minBy { it.second.expectedDate }
-			val dates = sourceChapters.asSequence()
-				.filter { it.branch == branch && it.uploadDate > 0L && it.uploadDate <= nowMillis }
-				.map { Instant.ofEpochMilli(it.uploadDate).atZone(zone).toLocalDate() }
-				.distinct()
-				.sorted()
-				.toList()
-			Item(stored, prediction, dates)
-		}.sortedWith(compareBy<Item> { it.prediction.expectedDate }.thenBy { it.manga.title })
+				candidates to dates
+			}
+			if (manga.isEmpty()) break
+			val datesByManga = dates.groupBy { it.mangaId }
+			for (candidate in manga) {
+				ensureActive()
+				persistedReleasePredictionItem(candidate.toManga(), datesByManga[candidate.id].orEmpty(), nowMillis, zone)?.let(results::add)
+			}
+			afterId = manga.last().id
+		}
+		ensureActive()
+		results.sortedWith(releasePredictionOrder)
 	}
+
+	private companion object { const val BATCH_SIZE = 100 }
 }
+
+internal val releasePredictionOrder = compareBy<ChapterReleasePredictionItem> { it.prediction.expectedDate }
+	.thenBy { it.manga.title }.thenBy { it.manga.id }
+
+internal fun persistedReleasePredictionItem(manga: Manga, dates: List<ReleasePredictionDate>, nowMillis: Long, zone: ZoneId): ChapterReleasePredictionItem? =
+	dates.filter { it.mangaId == manga.id }.groupBy { it.branch }.mapNotNull { (branch, evidence) ->
+		val timestamps = evidence.map { it.uploadDate }
+		val prediction = predictSourceChapterRelease(manga, timestamps, nowMillis, zone) ?: return@mapNotNull null
+		val releases = timestamps.asSequence().filter { it > 0L && it <= nowMillis }
+			.map { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }.distinct().sorted().toList().takeLast(12)
+		ChapterReleasePredictionItem(manga, prediction, releases, branch)
+	}.minWithOrNull(compareBy<ChapterReleasePredictionItem> { it.prediction.expectedDate }.thenBy { it.branch })

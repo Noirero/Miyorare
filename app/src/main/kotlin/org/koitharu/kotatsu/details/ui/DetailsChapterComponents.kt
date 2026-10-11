@@ -54,6 +54,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
@@ -855,6 +858,7 @@ internal fun ChapterHeaderTitle(
 	title: String,
 	prediction: NextChapterReleasePrediction?,
 	modifier: Modifier = Modifier,
+	onPredictionClick: () -> Unit = {},
 ) {
 	val titleStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
 	val secondaryStyle = MaterialTheme.typography.bodySmall
@@ -872,6 +876,7 @@ internal fun ChapterHeaderTitle(
 		days == 0L -> stringResource(R.string.chapter_release_accessibility_today)
 		else -> pluralStringResource(R.plurals.chapter_release_accessibility_days, days.toInt(), days)
 	}
+	val openCalendarLabel = stringResource(R.string.release_calendar_title)
 	BoxWithConstraints(modifier) {
 		// Measure localized text at the active font scale. Drop the secondary estimate entirely
 		// when it cannot fit beside the primary count; Manage keeps its own unweighted space.
@@ -894,7 +899,11 @@ internal fun ChapterHeaderTitle(
 			if (showPrediction) {
 				Row(
 					verticalAlignment = Alignment.CenterVertically,
-					modifier = Modifier.clearAndSetSemantics { contentDescription = description.orEmpty() },
+					modifier = Modifier.clickable(onClick = onPredictionClick).clearAndSetSemantics {
+						contentDescription = description.orEmpty()
+						role = Role.Button
+						onClick(label = openCalendarLabel) { onPredictionClick(); true }
+					},
 				) {
 					Text(" · ", style = secondaryStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
 					Icon(
@@ -926,6 +935,7 @@ internal fun InlineChapterHeader(
 	expanded: Boolean,
 	onToggleExpanded: () -> Unit,
 	prediction: NextChapterReleasePrediction? = null,
+	onPredictionClick: () -> Unit = {},
 	onSearchNotes: () -> Unit = {},
 ) {
 	val palette = LocalMiyorareVisualPalette.current
@@ -955,7 +965,7 @@ internal fun InlineChapterHeader(
 					modifier = Modifier.rotate(if (expanded) 90f else 0f),
 				)
 			}
-			ChapterHeaderTitle(title, prediction, Modifier.weight(1f))
+			ChapterHeaderTitle(title, prediction, Modifier.weight(1f), onPredictionClick)
 			Text(
 				text = stringResource(R.string.manage),
 				color = toolbarAccent,
