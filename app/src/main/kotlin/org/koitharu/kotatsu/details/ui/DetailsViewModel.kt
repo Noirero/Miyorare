@@ -82,6 +82,8 @@ import javax.inject.Inject
 import java.time.ZoneId
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.model.ChapterRange
+import org.koitharu.kotatsu.details.ui.pager.filterChapterSearch
 
 data class DetailsRelatedUiState(
 	val groups: List<RelatedMangaGroup> = emptyList(),
@@ -101,7 +103,7 @@ class DetailsViewModel @Inject constructor(
 	downloadScheduler: DownloadWorker.Scheduler,
 	downloadDestinationStore: DownloadDestinationStore,
 	interactor: DetailsInteractor,
-	savedStateHandle: SavedStateHandle,
+	private val savedStateHandle: SavedStateHandle,
 	deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
 	private val relatedMangaUseCase: RelatedMangaUseCase,
 	private val contextualRecommendationUseCase: ContextualRecommendationUseCase,
@@ -134,6 +136,30 @@ class DetailsViewModel @Inject constructor(
 	chapterListOptionsStore = chapterListOptionsStore,
 	chapterPersonalRepository = chapterPersonalRepository,
 ) {
+	private val rangeExpansion = savedStateHandle.getStateFlow<HashMap<String, Boolean>>("chapter_range_expansion", hashMapOf())
+
+	val chapterRanges = combine(
+		combine(
+			chapterCollection,
+			chaptersQuery.combine(chapterNotesQuery) { chapterQuery, notesQuery -> chapterQuery to notesQuery },
+			chapterListOptions.map { it.groupingMode }.distinctUntilChanged(),
+		) { collection, query, mode ->
+			groupChapterRanges(collection, mode, collection.filterChapterSearch(query.first, query.second)) to
+				(query.second?.isNotBlank() ?: query.first.isNotEmpty())
+		},
+		rangeExpansion,
+		readingState.map { it != null }.distinctUntilChanged(),
+	) { (ranges, searchActive), expansion, hasReadingPosition ->
+		ranges.withRangeExpansion(expansion, searchActive, hasReadingPosition)
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+
+	fun toggleChapterRange(range: ChapterRange) {
+		// Search results must stay exposed until the query is cleared.
+		if (chapterNotesQuery.value?.isNotBlank() ?: chaptersQuery.value.isNotEmpty()) return
+		savedStateHandle["chapter_range_expansion"] = HashMap(rangeExpansion.value).apply {
+			put(range.key, !range.expanded)
+		}
+	}
 
 	val chapterPersonalEditor = MutableStateFlow<ChapterListItem?>(null)
 	val isSavingChapterPersonal = MutableStateFlow(false)

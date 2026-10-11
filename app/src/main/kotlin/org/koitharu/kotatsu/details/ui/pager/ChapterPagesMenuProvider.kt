@@ -12,6 +12,7 @@ import androidx.core.view.isVisible
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.slider.LabelFormatter
 import com.google.android.material.slider.Slider
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.TickVisibilityMode
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.details.ui.DetailsViewModel
@@ -76,6 +77,7 @@ class ChapterPagesMenuProvider(
 	override fun onPrepareMenu(menu: Menu) {
 		super.onPrepareMenu(menu)
 		val chapterOptions = viewModel.chapterListOptions.value
+		menu.findItem(R.id.action_chapter_grouping)?.isVisible = viewModel is DetailsViewModel
 		menu.findItem(R.id.action_reversed)?.isChecked = chapterOptions.descending
 		menu.findItem(R.id.action_grid_view)?.isChecked = chapterOptions.grid
 		menu.findItem(R.id.action_downloaded)?.let { item ->
@@ -91,6 +93,29 @@ class ChapterPagesMenuProvider(
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
+		R.id.action_chapter_grouping -> {
+			val context = toolbarContent.context
+			val modes = ChapterGroupingMode.entries
+			val labels = modes.map { mode ->
+				when (mode) {
+					ChapterGroupingMode.AUTOMATIC -> context.getString(R.string.chapter_grouping_automatic)
+					ChapterGroupingMode.CHAPTERS_25 -> context.getString(R.string.chapter_grouping_size, 25)
+					ChapterGroupingMode.CHAPTERS_50 -> context.getString(R.string.chapter_grouping_size, 50)
+					ChapterGroupingMode.CHAPTERS_100 -> context.getString(R.string.chapter_grouping_size, 100)
+					ChapterGroupingMode.OFF -> context.getString(R.string.chapter_grouping_off)
+				}
+			}.toTypedArray()
+			MaterialAlertDialogBuilder(context)
+				.setTitle(R.string.chapter_grouping)
+				.setSingleChoiceItems(labels, modes.indexOf(viewModel.chapterListOptions.value.groupingMode)) { dialog, which ->
+					viewModel.setChapterGroupingMode(modes[which])
+					dialog.dismiss()
+				}
+				.setNegativeButton(android.R.string.cancel, null)
+				.show()
+			true
+		}
+
 		R.id.action_reversed -> {
 			viewModel.toggleChapterSortDirection()
 			if (viewModel is ReaderViewModel) {

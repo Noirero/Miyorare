@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.LocalMangaSource
@@ -50,6 +51,8 @@ import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.details.ui.adapter.ChaptersAdapter
 import org.koitharu.kotatsu.details.ui.adapter.ChaptersSelectionDecoration
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.model.ChapterRange
+import org.koitharu.kotatsu.details.ui.withRangeHeaders
 import org.koitharu.kotatsu.details.ui.pager.ChapterSortMode
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.details.ui.withVolumeHeaders
@@ -77,6 +80,7 @@ class ChaptersFragment :
 
 	private var isInitialReverseValue = true
 	private var pendingReverseScroll: Pair<Int, Int>? = null
+	private var isRestoringList = false
 
 	override val recyclerView: RecyclerView?
 		get() = viewBinding?.recyclerViewChapters
@@ -88,12 +92,14 @@ class ChaptersFragment :
 
 	override fun onViewBindingCreated(binding: FragmentChaptersBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
+		isRestoringList = viewModel is DetailsViewModel && savedInstanceState != null
 		applyDetailsSheetBackground(binding)
 		(viewModel as? DetailsViewModel)?.chapterPersonalEditor?.observe(viewLifecycleOwner) { item ->
 			if (item != null) dismissParentDialog()
 		}
 		chaptersAdapter = ChaptersAdapter(
 			onItemClickListener = this,
+			onRangeToggle = { range -> (viewModel as? DetailsViewModel)?.toggleChapterRange(range) },
 			onDownloadClick = { item ->
 				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
 					viewModel.download(setOf(item.chapter.id), allowMeteredNetwork)
@@ -179,19 +185,21 @@ class ChaptersFragment :
 			viewModel.chapters,
 			viewModel.chaptersQuery.combine(viewModel.chapterNotesQuery) { chapterQuery, notesQuery -> chapterQuery to notesQuery },
 			viewModel.chapterListOptions,
-		) { list, query, options ->
+			(viewModel as? DetailsViewModel)?.chapterRanges ?: flowOf(emptyList<ChapterRange>()),
+		) { list, query, options, ranges ->
 			val isPresentationSubset = (query.second?.isNotBlank() ?: query.first.isNotEmpty()) ||
 				options.hasStatusFilter ||
 				options.sortMode != ChapterSortMode.SOURCE
-			if (isPresentationSubset) {
+			val decorated = if (isPresentationSubset) {
 				list
 			} else {
 				list.withVolumeHeaders(requireContext(), showMissingChapters = true)
 			}
+			decorated to ranges
 		}
 			.flowOn(Dispatchers.Default)
-			.observe(viewLifecycleOwner) { list ->
-				onChaptersChanged(decorateVolumeHeaders(list))
+			.observe(viewLifecycleOwner) { (list, ranges) ->
+				onChaptersChanged(ranges.withRangeHeaders(decorateVolumeHeaders(list)))
 			}
 		viewModel.quickFilter.observe(viewLifecycleOwner, this::onFilterChanged)
 		combine(viewModel.emptyReason, viewModel.chapterNotesQuery, viewModel.chapters) { reason, notesQuery, chapters ->
@@ -497,7 +505,7 @@ class ChaptersFragment :
 		val adapter = chaptersAdapter ?: return
 		val reverseScroll = pendingReverseScroll
 		when {
-			adapter.itemCount == 0 -> {
+			adapter.itemCount == 0 && !isRestoringList -> {
 				val position = list.indexOfFirst { it is ChapterListItem && it.isCurrent } - 1
 				if (position > 0) {
 					val offset = (resources.getDimensionPixelSize(R.dimen.chapter_list_item_height) * 0.6).roundToInt()
@@ -524,6 +532,7 @@ class ChaptersFragment :
 
 			else -> adapter.items = list
 		}
+		if (list.isNotEmpty()) isRestoringList = false
 	}
 
 	private fun captureScrollForReverse() {

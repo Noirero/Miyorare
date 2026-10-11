@@ -52,6 +52,7 @@ import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.model.ChapterRange
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsTab
 import org.koitharu.kotatsu.details.ui.related.RelatedKeywordCarousel
@@ -95,6 +96,7 @@ class DetailsExpressiveActions(
 	val onChapterNotesSearchClick: () -> Unit = {},
 	val onChapterNotesQueryChange: (String) -> Unit = {},
 	val onChapterNotesSearchExit: () -> Unit = {},
+	val onChapterRangeToggle: (ChapterRange) -> Unit = {},
 )
 
 @Composable
@@ -106,6 +108,7 @@ fun DetailsExpressiveScreen(
 	chapters: List<ChapterListItem>,
 	chapterReleasePrediction: NextChapterReleasePrediction?,
 	chapterNotesQuery: String? = null,
+	chapterRanges: List<ChapterRange> = emptyList(),
 	isChapterFilterActive: Boolean,
 	isLoading: Boolean,
 	favouriteCount: Int,
@@ -321,7 +324,28 @@ fun DetailsExpressiveScreen(
 								ChapterNoteSearch(chapterNotesQuery, actions.onChapterNotesQueryChange, actions.onChapterNotesSearchExit)
 							}
 						}
-						if (chaptersExpanded) items(
+						if (chaptersExpanded && chapterRanges.isNotEmpty()) {
+							for (range in chapterRanges) {
+								item(key = "chapter-range:${range.key}", contentType = "chapter-range") {
+									InlineChapterRangeHeader(range, accentColor) { actions.onChapterRangeToggle(range) }
+								}
+								if (range.expanded) items(
+									items = range.chapters,
+									key = { it.detailsLazyListKey() },
+									contentType = { "chapter" },
+								) { chapter ->
+									InlineChapterCard(
+										item = chapter,
+										visualEffectLevel = visualEffectLevel,
+										accent = accentColor,
+										onClick = { actions.onChapterClick(chapter) },
+										onDownloadClick = { actions.onChapterDownloadClick(chapter) },
+										onManageClick = actions.onChaptersClick,
+										onPersonalClick = { actions.onChapterPersonalClick(chapter) },
+									)
+								}
+								}
+						} else if (chaptersExpanded) items(
 							items = chapters,
 							key = { it.detailsLazyListKey() },
 							contentType = { "chapter" },

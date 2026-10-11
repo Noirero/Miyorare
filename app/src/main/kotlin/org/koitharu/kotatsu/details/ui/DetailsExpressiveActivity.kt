@@ -337,6 +337,7 @@ class DetailsExpressiveActivity :
 			onChapterNotesSearchClick = { viewModel.performChapterNoteSearch("") },
 			onChapterNotesQueryChange = viewModel::performChapterNoteSearch,
 			onChapterNotesSearchExit = viewModel::exitChapterNoteSearch,
+			onChapterRangeToggle = viewModel::toggleChapterRange,
 			onChapterDownloadClick = { item ->
 				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
 					viewModel.download(setOf(item.chapter.id), allowMeteredNetwork)
@@ -353,6 +354,7 @@ class DetailsExpressiveActivity :
 				val history by viewModel.historyInfo.collectAsState()
 				val chapterReleasePrediction by viewModel.chapterReleasePrediction.collectAsState()
 				val chapters by viewModel.chapters.collectAsState()
+				val chapterRanges by viewModel.chapterRanges.collectAsState()
 				val chapterNotesQuery by viewModel.chapterNotesQuery.collectAsState()
 				val chapterOptions by viewModel.chapterListOptions.collectAsState()
 				val chapterBranches by viewModel.chapterBranchOptions.collectAsState()
@@ -383,6 +385,7 @@ class DetailsExpressiveActivity :
 					tags = tags,
 					historyInfo = history,
 					chapters = chapters,
+					chapterRanges = chapterRanges,
 					chapterReleasePrediction = chapterReleasePrediction,
 					chapterNotesQuery = chapterNotesQuery,
 					isChapterFilterActive = chapterFilterActive,
@@ -438,6 +441,7 @@ class DetailsExpressiveActivity :
 						onSortModeChange = viewModel::setChapterSortMode,
 						onTitleModeChange = viewModel::setChapterTitleMode,
 						onGridChange = viewModel::setChaptersGridView,
+						onGroupingChange = viewModel::setChapterGroupingMode,
 					)
 				}
 			}

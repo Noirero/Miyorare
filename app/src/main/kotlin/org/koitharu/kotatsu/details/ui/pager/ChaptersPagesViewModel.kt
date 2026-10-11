@@ -246,7 +246,7 @@ abstract class ChaptersPagesViewModel(
 			else flowOf(emptyMap())
 		}.withErrorHandling()
 
-	val chapters = combine(
+	protected val chapterCollection = combine(
 		combine(
 			chapterMappingDetails.combine(chapterReadOverrides) { manga, overrides -> manga to overrides },
 			readingState.map { it?.chapterId ?: 0L }.distinctUntilChanged(),
@@ -271,16 +271,14 @@ abstract class ChaptersPagesViewModel(
 				.map { item -> item.withTitleMode(options.titleMode) }
 		},
 		chapterListOptions,
-		chaptersQuery.combine(chapterNotesQuery) { chapterQuery, notesQuery -> chapterQuery to notesQuery },
 		activeChapterDownloads,
 		chapterPersonalMetadata,
-	) { list, options, query, activeDownloads, personalMetadata ->
+	) { list, options, activeDownloads, personalMetadata ->
 		val filtered = list.map { item ->
 			val metadata = personalMetadata[item.personalKey] ?: ChapterPersonalMetadata()
 			if (item.personalMetadata == metadata) item else item.copy(personalMetadata = metadata)
 		}
 			.applyChapterOptions(options)
-			.filterChapterSearch(query.first, query.second)
 		if (activeDownloads.isEmpty) {
 			filtered
 		} else {
@@ -289,6 +287,12 @@ abstract class ChaptersPagesViewModel(
 			}
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+
+	val chapters = combine(
+		chapterCollection,
+		chaptersQuery.combine(chapterNotesQuery) { chapterQuery, notesQuery -> chapterQuery to notesQuery },
+	) { list, query -> list.filterChapterSearch(query.first, query.second) }
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
 	val quickFilter = combine(
 		chapterMappingDetails,
@@ -380,6 +384,13 @@ abstract class ChaptersPagesViewModel(
 	fun setChapterTitleMode(mode: ChapterTitleMode) = updateChapterOptions { copy(titleMode = mode) }
 
 	fun setChaptersGridView(value: Boolean) = updateChapterOptions { copy(grid = value) }
+
+	fun setChapterGroupingMode(mode: ChapterGroupingMode) {
+		val store = chapterListOptionsStore ?: return
+		val manga = getMangaOrNull() ?: return
+		store.setGroupingMode(favouriteSpace, manga.isNovelContent, mode)
+		updateChapterOptions { copy(groupingMode = mode) }
+	}
 
 	fun saveChapterOptionsAsDefault() {
 		val store = chapterListOptionsStore ?: return
