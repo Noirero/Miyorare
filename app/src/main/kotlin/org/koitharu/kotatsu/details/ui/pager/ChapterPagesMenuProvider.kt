@@ -123,7 +123,9 @@ class ChapterPagesMenuProvider(
 		R.id.action_grid_view -> if (viewModel.getMangaOrNull()?.isEpub == true) true else {
 			val grid = !menuItem.isChecked
 			viewModel.setChaptersGridView(grid)
-			if (viewModel is ReaderViewModel) settings.isChaptersGridView = grid
+			if (viewModel is ReaderViewModel) {
+				settings.isChaptersGridView = grid
+			}
 			true
 		}
 		R.id.action_downloaded -> {
@@ -145,9 +147,13 @@ class ChapterPagesMenuProvider(
 		expandedItemRef = WeakReference(item)
 		sheet.expandAndLock()
 		isEnabled = true
-		if (item.itemId == R.id.action_search) {
+		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
 			toolbarContent.isGone = true
-			viewModel.exitChapterNoteSearch()
+			if (item.itemId == R.id.action_search_notes) {
+				if (viewModel.chapterNotesQuery.value == null) viewModel.performChapterNoteSearch("")
+			} else {
+				viewModel.exitChapterNoteSearch()
+			}
 		}
 		return true
 	}
@@ -156,14 +162,16 @@ class ChapterPagesMenuProvider(
 		expandedItemRef = null
 		isEnabled = false
 		sheet.unlock()
-		if (item.itemId == R.id.action_search) {
+		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
 			toolbarContent.isVisible = true
 			(item.actionView as? SearchView)?.apply {
+				// Detach first so clearing one search mode cannot mutate the other query.
 				setOnQueryTextListener(null)
 				setQuery("", false)
 				setOnQueryTextListener(this@ChapterPagesMenuProvider)
 			}
-			viewModel.performChapterSearch(null)
+			if (item.itemId == R.id.action_search_notes) viewModel.exitChapterNoteSearch()
+			else viewModel.performChapterSearch(null)
 		}
 		return true
 	}
@@ -171,7 +179,11 @@ class ChapterPagesMenuProvider(
 	override fun onQueryTextSubmit(query: String?): Boolean = false
 
 	override fun onQueryTextChange(newText: String?): Boolean {
-		viewModel.performChapterSearch(newText)
+		if (expandedItemRef?.get()?.itemId == R.id.action_search_notes) {
+			viewModel.performChapterNoteSearch(newText.orEmpty())
+		} else {
+			viewModel.performChapterSearch(newText)
+		}
 		return true
 	}
 
