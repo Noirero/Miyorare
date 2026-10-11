@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.favourites.ui.list
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -182,18 +183,22 @@ class FavouritesListViewModel @Inject constructor(
 	private val cardEnrichmentRevision = AtomicLong()
 	private var pendingCardEnrichmentKey: CardEnrichmentKey? = null
 	private var cardEnrichmentJob: Job? = null
+	private var diagnosticRepairJob: Job? = null
+	private var diagnosticEventsJob: Job? = null
+	private var diagnosticDbRows = 0
 
-	private val libraryGroups = libraryGroupsRepository.observeGroups(favouriteSpace).stateIn(
+	private val libraryGroups = DetailsDiagnostic.observePipeline(libraryGroupsRepository.observeGroups(favouriteSpace), this, "groups").stateIn(
 		viewModelScope + Dispatchers.Default,
 		SharingStarted.Eagerly,
 		emptyList(),
 	)
 
 	init {
-		viewModelScope.launch(Dispatchers.Default) {
+		DetailsDiagnostic.registerOwner(this, "favourites.list_vm") { owner -> (owner as FavouritesListViewModel).diagnosticSnapshot() }
+		diagnosticRepairJob = viewModelScope.launch(Dispatchers.Default) {
 			libraryGroupsRepository.repairInvalidGroups(favouriteSpace)
 		}
-		viewModelScope.launch(Dispatchers.Default) {
+		diagnosticEventsJob = viewModelScope.launch(Dispatchers.Default) {
 			merge(
 				repository.observeDownloadedChanges(),
 				localStorageChanges,
@@ -335,7 +340,7 @@ class FavouritesListViewModel @Inject constructor(
 		get() = libraryGroups.value.isNotEmpty()
 
 	override val content = combine(
-		combine(observeFavorites(), libraryGroups, pinnedGroupIds) { items, groups, groupPins ->
+		combine(DetailsDiagnostic.observePipeline(observeFavorites(), this, "favourites_db").onEach { diagnosticDbRows = it.size }, libraryGroups, pinnedGroupIds) { items, groups, groupPins ->
 			Triple(items, groups, groupPins)
 		},
 		combine(
@@ -482,11 +487,28 @@ class FavouritesListViewModel @Inject constructor(
 			cardSnapshot,
 			downloadedIds,
 		)
+	}.onEach {
+		DetailsDiagnostic.mark(DetailsDiagnostic.currentSession(), "favourites_content_emission", mapOf("ownerId" to System.identityHashCode(this), "mappedSize" to it.size))
 	}.distinctUntilChanged().onEach {
 		isPaginationReady.set(true)
 	}.catch {
 		emit(listOf(it.toErrorState(canRetry = false)))
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
+	}.let { DetailsDiagnostic.observePipeline(it, this, "favourites_content") }
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
+
+	private fun diagnosticSnapshot(): Map<String, Any?> = mapOf(
+		"space" to favouriteSpace.name, "categoryId" to categoryId,
+		"databaseWindow" to databaseWindow.value, "databaseRows" to diagnosticDbRows,
+		"displayLimit" to limit.value, "mappedSize" to content.value.size,
+		"contentCollectorCount" to DetailsDiagnostic.collectorCount(content),
+		"queryActive" to lastSearchQuery.isNotBlank(), "queryLength" to lastSearchQuery.length,
+		"filterCount" to (lastFilters?.size ?: 0), "contentType" to lastContentType?.name,
+		"groupCount" to libraryGroups.value.size, "groupMemberCount" to libraryGroups.value.sumOf { it.members.size },
+		"cardEnrichmentActive" to (cardEnrichmentJob?.isActive ?: false),
+		"repairJobActive" to (diagnosticRepairJob?.isActive ?: false),
+		"manualEventsJobActive" to (diagnosticEventsJob?.isActive ?: false),
+		"activeScopeChildren" to viewModelScope.coroutineContext[Job]?.children?.count { it.isActive },
+	)
 
 	override fun onRefresh() {
 		invalidateCardEnrichment()

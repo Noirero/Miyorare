@@ -1,6 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-
 plugins {
 	id 'com.android.application'
 	id 'com.google.devtools.ksp'
@@ -10,6 +9,8 @@ plugins {
 	id 'org.jetbrains.kotlin.plugin.serialization'
 	id 'org.jetbrains.kotlin.plugin.compose'
 }
+
+def detailsDiagnosticBuild = project.findProperty('DETAILS_DIAGNOSTIC') == 'true'
 
 android {
 	compileSdk {
@@ -26,6 +27,9 @@ android {
 	defaultConfig {
 		applicationId = 'org.noirero.miyorare'
 		buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'false'
+		buildConfigField 'boolean', 'DETAILS_DIAGNOSTIC', 'false'
+		buildConfigField 'String', 'DETAILS_DIAGNOSTIC_SHA', '"disabled"'
+		buildConfigField 'String', 'DETAILS_DIAGNOSTIC_BASELINE', '"c22517f2b8c9ecf81e98cbb28ce1f2675f473f01"'
 		minSdk = 26
 		targetSdk = 37
 		versionCode = 75
@@ -54,7 +58,11 @@ android {
 			applicationIdSuffix = '.debug'
 		}
 		preview {
-			versionNameSuffix = '-beta'
+			versionNameSuffix = detailsDiagnosticBuild ? '-detailsdiag' : '-beta'
+			if (detailsDiagnosticBuild) {
+				buildConfigField 'boolean', 'DETAILS_DIAGNOSTIC', 'true'
+				buildConfigField 'String', 'DETAILS_DIAGNOSTIC_SHA', '"' + (project.findProperty('DETAILS_DIAGNOSTIC_SHA') ?: 'local-unverified') + '"'
+			}
 			minifyEnabled = false
 			debuggable = true
 			// Canonical screenshot instrumentation needs an installable Preview APK on CI.
@@ -101,6 +109,10 @@ android {
 	sourceSets {
 		preview.kotlin.srcDirs += 'src/release/kotlin'
 		preview.res.srcDirs += 'src/release/res'
+		if (detailsDiagnosticBuild) {
+			preview.res.srcDirs += 'src/detailsDiagnostic/res'
+			preview.manifest.srcFile 'src/detailsDiagnostic/AndroidManifest.xml'
+		}
 	}
 	compileOptions {
 		coreLibraryDesugaringEnabled = true
@@ -153,7 +165,7 @@ android {
 
 androidComponents {
 	onVariants(selector().withBuildType('preview')) { variant ->
-		variant.applicationId.set('org.noirero.miyorare.beta')
+		variant.applicationId.set(detailsDiagnosticBuild ? 'org.noirero.miyorare.detailsdiag' : 'org.noirero.miyorare.beta')
 	}
 }
 

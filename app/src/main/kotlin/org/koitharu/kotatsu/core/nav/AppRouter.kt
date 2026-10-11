@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.nav
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -168,18 +169,22 @@ class AppRouter private constructor(
     fun openDetails(manga: Manga) {
         val context = contextOrNull() ?: return
         val intent = detailsIntent(context, manga, resolveFavouriteSpace())
+        DetailsDiagnostic.navigate(activity ?: fragment?.activity, fragment?.javaClass?.simpleName ?: "activity", manga.id, intent)
         startActivity(intent)
     }
 
     fun openDetails(mangaId: Long) {
-        startActivity(detailsIntent(contextOrNull() ?: return, mangaId, resolveFavouriteSpace()))
+        val intent = detailsIntent(contextOrNull() ?: return, mangaId, resolveFavouriteSpace())
+        DetailsDiagnostic.navigate(activity ?: fragment?.activity, fragment?.javaClass?.simpleName ?: "activity", mangaId, intent)
+        startActivity(intent)
     }
 
     fun openDetails(link: Uri) {
         val context = contextOrNull() ?: return
         startActivity(
             Intent(context, detailsActivityClassInstance())
-                .setData(link),
+                .setData(link)
+                .also { DetailsDiagnostic.navigate(activity ?: fragment?.activity, "link", 0L, it) },
         )
     }
 

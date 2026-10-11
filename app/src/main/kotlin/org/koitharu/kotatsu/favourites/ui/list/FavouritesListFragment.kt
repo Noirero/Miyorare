@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.favourites.ui.list
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
+import org.koitharu.kotatsu.core.diagnostics.diagnosticImage
 import android.content.DialogInterface
 import android.graphics.Canvas
 import android.graphics.Color
@@ -129,6 +131,14 @@ class FavouritesListFragment : MangaListFragment() {
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
+		DetailsDiagnostic.registerOwner(this, "favourites.prefetch_fragment") { owner ->
+			val fragment = owner as FavouritesListFragment
+			mapOf("lifecycle" to fragment.lifecycle.currentState.name,
+				"viewLifecycle" to fragment.viewLifecycleOwnerLiveData.value?.lifecycle?.currentState?.name,
+				"isResumed" to fragment.isResumed, "prefetchJobActive" to (fragment.coverPrefetchJob?.isActive ?: false),
+				"pendingListSize" to (fragment.pendingCoverPrefetchItems?.size ?: 0),
+				"rememberedCoverKeys" to fragment.prefetchedCovers.size)
+		}
 		binding.recyclerView.isVP2BugWorkaroundEnabled = true
 		binding.recyclerView.addOnScrollListener(coverPrefetchScrollListener)
 		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
@@ -318,6 +328,7 @@ class FavouritesListFragment : MangaListFragment() {
 							try {
 								val request = ImageRequest.Builder(requireContext())
 									.data(candidate.coverUrl)
+									.diagnosticImage(candidate.item.id, "favourites_prefetch")
 									.size(size)
 									.mangaExtra(candidate.item.manga)
 									.stableMangaCoverKey(candidate.item.manga, candidate.coverUrl)

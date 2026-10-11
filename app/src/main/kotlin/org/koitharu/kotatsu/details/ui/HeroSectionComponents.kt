@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.details.ui
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
+import org.koitharu.kotatsu.core.diagnostics.diagnosticImage
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -125,6 +127,7 @@ internal fun CoverCard(
 		val coverRequest = remember(coverUrl, manga.id, manga.source) {
 			ImageRequest.Builder(ctx)
 				.data(coverUrl)
+				.diagnosticImage(manga.id, "details_cover_display")
 				.crossfade(true)
 				.mangaSourceExtra(manga.source)
 				.stableMangaCoverKey(manga, coverUrl)
@@ -135,6 +138,7 @@ internal fun CoverCard(
 				imageLoader.enqueue(
 					ImageRequest.Builder(ctx)
 						.data(coverUrl)
+						.diagnosticImage(manga.id, "details_cover_refresh")
 						.mangaSourceExtra(manga.source)
 						.diskCacheKey(mangaCoverDiskCacheKey(manga.id))
 						.diskCachePolicy(CachePolicy.WRITE_ONLY)

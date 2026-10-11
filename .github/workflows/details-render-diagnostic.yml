@@ -1,0 +1,113 @@
+name: Details Render Diagnostic
+run-name: Details diagnostic HP-only · ${{ github.sha }}
+
+on:
+  push:
+    branches: [diagnostics/details-render-hp-only]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: details-render-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Validate and build isolated diagnostic APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Require diagnostic branch and baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = diagnostics/details-render-hp-only
+          test "$(git merge-base HEAD c22517f2b8c9ecf81e98cbb28ce1f2675f473f01)" = c22517f2b8c9ecf81e98cbb28ce1f2675f473f01
+          git diff --check
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: false
+      - name: Prepare diagnostic build identity and signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/build.gradle')
+          text = p.read_text()
+          assert text.count("versionName = '1.2.0'") == 1
+          p.write_text(text.replace("versionName = '1.2.0'", "versionName = '1.4.7'"))
+          PY
+      - name: Validate targeted regressions and diagnostic timeline
+        run: |
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
+            --tests 'org.koitharu.kotatsu.core.diagnostics.DiagnosticTimelineTest' \
+            --tests 'org.koitharu.kotatsu.details.domain.DetailsHotPathOrderingTest' \
+            --tests 'org.koitharu.kotatsu.details.domain.DetailsChapterRoomFlowRegressionTest' \
+            --tests 'org.koitharu.kotatsu.favourites.ui.list.FavouritesPaginationRegressionTest'
+      - name: Build debuggable diagnostic Preview
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assemblePreview --no-daemon --stacktrace \
+            -PDETAILS_DIAGNOSTIC=true -PDETAILS_DIAGNOSTIC_SHA="$GITHUB_SHA" \
+            -PRELEASE_STORE_FILE=../release.keystore \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+      - name: Verify APK identity, debuggability and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          metadata = json.loads(Path('app/build/outputs/apk/preview/output-metadata.json').read_text())
+          assert metadata['applicationId'] == 'org.noirero.miyorare.detailsdiag', metadata
+          PY
+          APK=$(find app/build/outputs/apk/preview -name '*.apk' -type f | head -n1)
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > build/diagnostic-apk-badging.txt
+          grep -Fq "package: name='org.noirero.miyorare.detailsdiag'" build/diagnostic-apk-badging.txt
+          grep -Fq "application-label:'Miyorare Details Diagnostic'" build/diagnostic-apk-badging.txt
+          grep -Fq 'application-debuggable' build/diagnostic-apk-badging.txt
+          "$BUILD_TOOLS/apksigner" verify "$APK"
+          mkdir -p build/details-diagnostic
+          cp "$APK" "build/details-diagnostic/Miyorare-Details-Diagnostic-${GITHUB_SHA:0:8}.apk"
+          sha256sum build/details-diagnostic/*.apk > build/details-diagnostic/SHA256SUMS.txt
+          cp build/diagnostic-apk-badging.txt build/details-diagnostic/
+          cp docs/diagnostics/details-render-hp-only.md build/details-diagnostic/OWNER-INSTRUCTIONS.md
+          printf 'Head: %s\nBaseline: c22517f2b8c9ecf81e98cbb28ce1f2675f473f01\n' "$GITHUB_SHA" > build/details-diagnostic/BUILD.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Miyorare-Details-Diagnostic-${{ github.sha }}
+          path: build/details-diagnostic/
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diagnostic-test-reports-${{ github.sha }}
+          path: app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: ignore

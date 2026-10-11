@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.favourites.domain
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.core.db.MangaDatabase
@@ -26,6 +27,20 @@ class FavouritesSearchRepository @Inject constructor(
 	)
 	private val cachedEntries = ConcurrentHashMap<FavouriteSpace, List<FavouriteSearchEntry>>()
 	private val cachedMemberships = ConcurrentHashMap<FavouriteSpace, List<FavouriteMembership>>()
+
+	init {
+		DetailsDiagnostic.registerOwner(this, "favourites.search_cache") { owner ->
+			(owner as FavouritesSearchRepository).diagnosticSnapshot()
+		}
+	}
+
+	private fun diagnosticSnapshot(): Map<String, Any?> = FavouriteSpace.entries.associate { space ->
+		space.name to mapOf("entriesPopulated" to cachedEntries.containsKey(space),
+			"entriesCount" to (cachedEntries[space]?.size ?: 0),
+			"membershipsPopulated" to cachedMemberships.containsKey(space),
+			"membershipsCount" to (cachedMemberships[space]?.size ?: 0),
+			"generation" to generation(space).get())
+	}
 
 	/**
 	 * Invalidate only the library space that changed. Passing null remains available for callers that

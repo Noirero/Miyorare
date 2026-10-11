@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.settings.about
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -68,6 +69,22 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 
 	private val viewModel by viewModels<AboutSettingsViewModel>()
 
+	private val saveDiagnosticLauncher = registerForActivityResult(
+		ActivityResultContracts.CreateDocument("text/plain"),
+	) { uri: Uri? ->
+		val content = viewModel.pendingDiagnosticExport.value ?: return@registerForActivityResult
+		val resolver = context?.contentResolver
+		viewLifecycleOwner.lifecycleScope.launch {
+			try {
+				kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+					if (uri != null && resolver != null) checkNotNull(resolver.openOutputStream(uri)).use { it.write(content.toByteArray(Charsets.UTF_8)) }
+				}
+			} catch (_: Exception) {
+				view?.let { Snackbar.make(it, R.string.error_occurred, Snackbar.LENGTH_SHORT).show() }
+			} finally { viewModel.consumeDiagnosticExport() }
+		}
+	}
+
 	private val saveLogLauncher = registerForActivityResult(
 		ActivityResultContracts.CreateDocument("text/plain"),
 	) { uri: Uri? ->
@@ -105,6 +122,7 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 					onOpenLink = ::openLink,
 					onVerboseLoggingToggle = viewModel::setVerboseLogging,
 					onOpenDeveloperTools = ::openDeveloperTools,
+					onExportDiagnostic = { viewModel.exportDiagnostic() },
 				)
 			}
 		}
@@ -115,6 +133,13 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 		if (requireActivity().intent.getBooleanExtra(WhatsNewFragment.EXTRA_OPEN_WHATS_NEW, false)) {
 			requireActivity().intent.removeExtra(WhatsNewFragment.EXTRA_OPEN_WHATS_NEW)
 			view.post(::openWhatsNew)
+		}
+		viewLifecycleOwner.lifecycleScope.launch {
+			viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+				viewModel.pendingDiagnosticExport.filterNotNull().collect {
+					if (viewModel.requestDiagnosticExport()) saveDiagnosticLauncher.launch("miyorare_details_diag_${System.currentTimeMillis()}.jsonl")
+				}
+			}
 		}
 		viewModel.onUpdateAvailable.observeEvent(viewLifecycleOwner, ::onUpdateAvailable)
 		viewModel.onError.observeEvent(viewLifecycleOwner) { error ->
@@ -186,6 +211,7 @@ private fun AboutScreen(
 	onOpenLink: (urlRes: Int, titleRes: Int) -> Unit,
 	onVerboseLoggingToggle: (Boolean) -> Unit,
 	onOpenDeveloperTools: () -> Unit,
+	onExportDiagnostic: () -> Unit,
 ) {
 	val updateColors = CategoryPalette.forKey("downloads")
 	val whatsNewColors = CategoryPalette.forKey("favourites")
@@ -281,6 +307,14 @@ private fun AboutScreen(
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
 			SettingsGroup(title = stringResource(R.string.about_advanced_section)) {
+				if (DetailsDiagnostic.enabled) item { pos ->
+					ActionSettingsItem(
+						title = "Export Details diagnostic",
+						subtitle = "Save a diagnostic file to Downloads; no PC needed",
+						icon = R.drawable.ic_script, iconColors = loggingColors,
+						shape = pos.shape, onClick = onExportDiagnostic,
+					)
+				}
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.about_verbose_logging_title),

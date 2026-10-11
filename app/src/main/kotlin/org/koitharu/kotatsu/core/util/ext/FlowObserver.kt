@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.util.ext
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
@@ -14,7 +15,8 @@ import org.koitharu.kotatsu.core.util.Event
 fun <T> Flow<T>.observe(owner: LifecycleOwner, collector: FlowCollector<T>) {
 	val start = if (this is StateFlow) CoroutineStart.UNDISPATCHED else CoroutineStart.DEFAULT
 	owner.lifecycleScope.launch(start = start) {
-		collect(collector)
+		val diagnosticToken = DetailsDiagnostic.collectorStart(this@observe, owner)
+		try { collect(collector) } finally { DetailsDiagnostic.collectorEnd(this@observe, diagnosticToken) }
 	}
 }
 

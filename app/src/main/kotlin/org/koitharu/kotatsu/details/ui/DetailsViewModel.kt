@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.details.ui
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -153,6 +154,7 @@ class DetailsViewModel @Inject constructor(
 	mangaRepositoryFactory = mangaRepositoryFactory,
 	chapterListOptionsStore = chapterListOptionsStore,
 	chapterPersonalRepository = chapterPersonalRepository,
+	diagnosticSession = savedStateHandle[DetailsDiagnostic.EXTRA_SESSION] ?: 0L,
 ) {
 
 	val chapterPersonalEditor = MutableStateFlow<ChapterListItem?>(null)
@@ -220,7 +222,9 @@ class DetailsViewModel @Inject constructor(
 
 	init {
 		val initialDetails = (navigationManga ?: intent.manga)?.let(::MangaDetails)
+		DetailsDiagnostic.publication(diagnosticSession, initialDetails?.allChapters?.size ?: 0, end = false, mangaId = intent.mangaId)
 		mangaDetails.value = initialDetails
+		DetailsDiagnostic.publication(diagnosticSession, initialDetails?.allChapters?.size ?: 0, end = true, mangaId = intent.mangaId)
 		readingState.value = navigationHistory?.let(::ReaderState)
 		// Named scanlator/language branches have no null-key entry. Select a usable branch alongside
 		// the cached snapshot so the chapter count/list do not wait for the source refresh collector.
@@ -834,7 +838,9 @@ class DetailsViewModel @Inject constructor(
 					firstEmission = false
 					if (it.allChapters.isNotEmpty()) {
 						val manga = it.toManga()
+						val historyStarted = DetailsDiagnostic.start(diagnosticSession, "history")
 						val hist = historyRepository.getOne(manga)
+						DetailsDiagnostic.end(diagnosticSession, "history", historyStarted)
 						val preferredBranch = manga.getPreferredBranch(hist)
 						val resolvedBranch = resolveSelectedBranch(
 							selectedBranch = selectedBranch.value,
@@ -845,7 +851,11 @@ class DetailsViewModel @Inject constructor(
 							selectedBranch.value = resolvedBranch
 						}
 					}
+					DetailsDiagnostic.publication(diagnosticSession, it.allChapters.size, end = false, mangaId = it.id)
+					val assignmentStarted = DetailsDiagnostic.start(diagnosticSession, "manga_details_assignment")
 					mangaDetails.value = it
+					DetailsDiagnostic.end(diagnosticSession, "manga_details_assignment", assignmentStarted, mapOf("chapterCount" to it.allChapters.size, "loaded" to it.isLoaded))
+					DetailsDiagnostic.publication(diagnosticSession, it.allChapters.size, end = true, mangaId = it.id)
 					if (initialLoading && it.allChapters.isNotEmpty()) {
 						loadingCounter.decrement()
 						initialLoading = false

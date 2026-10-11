@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.details.ui.pager
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import android.app.Activity
 import androidx.core.net.toFile
 import androidx.core.net.toUri
@@ -83,6 +84,7 @@ abstract class ChaptersPagesViewModel(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val chapterListOptionsStore: ChapterListOptionsStore? = null,
 	private val chapterPersonalRepository: ChapterPersonalRepository? = null,
+	val diagnosticSession: Long = 0L,
 ) : BaseViewModel() {
 
 	val mangaDetails = MutableStateFlow<MangaDetails?>(null)
@@ -292,6 +294,7 @@ abstract class ChaptersPagesViewModel(
 		) { mangaWithOverrides, currentChapterId, branchAndScanlator, news, bookmarks, options ->
 			val (manga, overrides) = mangaWithOverrides
 			val (branch, scanlator) = branchAndScanlator
+			val mappingStarted = DetailsDiagnostic.start(diagnosticSession, "chapter_mapping")
 			manga?.mapChapters(
 				currentChapterId = currentChapterId,
 				newCount = news,
@@ -304,25 +307,30 @@ abstract class ChaptersPagesViewModel(
 			).orEmpty()
 				.filter { item -> scanlator == null || item.chapter.scanlator?.trim() == scanlator }
 				.map { item -> item.withTitleMode(options.titleMode) }
+				.also { DetailsDiagnostic.end(diagnosticSession, "chapter_mapping", mappingStarted, mapOf("chapterCount" to it.size)) }
 		},
 		chapterListOptions,
 		chaptersQuery.combine(chapterNotesQuery) { chapterQuery, notesQuery -> chapterQuery to notesQuery },
 		activeChapterDownloads,
 		chapterPersonalMetadata,
 	) { list, options, query, activeDownloads, personalMetadata ->
+		val combineStarted = DetailsDiagnostic.start(diagnosticSession, "chapter_final_combine")
 		val filtered = list.map { item ->
 			val metadata = personalMetadata[item.personalKey] ?: ChapterPersonalMetadata()
 			if (item.personalMetadata == metadata) item else item.copy(personalMetadata = metadata)
 		}
 			.applyChapterOptions(options)
 			.filterChapterSearch(query.first, query.second)
-		if (activeDownloads.isEmpty) {
+		val result = if (activeDownloads.isEmpty) {
 			filtered
 		} else {
 			filtered.map { item ->
 				item.withDownloading(!item.isDownloaded && activeDownloads.contains(item.chapter.id))
 			}
 		}
+		DetailsDiagnostic.end(diagnosticSession, "chapter_final_combine", combineStarted, mapOf("chapterCount" to result.size))
+		if (result.isNotEmpty()) DetailsDiagnostic.mark(diagnosticSession, "final_model_ready", mapOf("chapterCount" to result.size), once = true)
+		result
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
 	val quickFilter = combine(

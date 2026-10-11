@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.list.ui
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.Menu
@@ -101,6 +102,9 @@ abstract class MangaListFragment :
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
+		DetailsDiagnostic.registerOwner(this, "list_fragment") { owner ->
+			(owner as MangaListFragment).diagnosticSnapshot()
+		}
 		listAdapter = onCreateAdapter()
 		spanResolver = GridSpanResolver(binding.root.resources)
 		selectionController = ListSelectionController(
@@ -190,8 +194,19 @@ abstract class MangaListFragment :
 		viewModel.onRefresh()
 	}
 
+	private fun diagnosticSnapshot(): Map<String, Any?> = mapOf(
+		"fragment" to javaClass.simpleName, "lifecycle" to lifecycle.currentState.name,
+		"viewLifecycle" to viewLifecycleOwnerLiveData.value?.lifecycle?.currentState?.name,
+		"hidden" to isHidden, "adapterSize" to (listAdapter?.items?.size ?: 0),
+		"viewChildCount" to (viewBinding?.recyclerView?.childCount ?: 0),
+		"contentCollectorCount" to DetailsDiagnostic.collectorCount(viewModel.content),
+	)
+
 	private suspend fun onListChanged(list: List<ListModel>) {
+		val diagnosticSession = DetailsDiagnostic.currentSession()
+		val submitted = DetailsDiagnostic.start(diagnosticSession, "list_adapter_submit")
 		listAdapter?.emit(list)
+		DetailsDiagnostic.end(diagnosticSession, "list_adapter_submit", submitted, mapOf("fragment" to javaClass.simpleName, "listSize" to list.size, "currentSize" to (listAdapter?.items?.size ?: 0)))
 		spanSizeLookup.invalidateCache()
 		viewBinding?.recyclerView?.let {
 			paginationListener?.postInvalidate(it)

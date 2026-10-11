@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import android.app.Application
 import android.content.Context
 import android.os.Build
@@ -145,7 +146,9 @@ interface AppModule {
 				.diskCache { imageDiskCache }
 				.logger(if (BuildConfig.DEBUG) DebugLogger() else null)
 				.allowRgb565(context.isLowRamDevice())
-				.eventListener(captchaHandler)
+				.eventListenerFactory {
+					if (DetailsDiagnostic.enabled) org.koitharu.kotatsu.core.diagnostics.DiagnosticImageListener(captchaHandler) else captchaHandler
+				}
 				.components {
 					// Must precede the default network fetcher so Mihon-source covers/thumbnails are
 					// fetched through the extension's own client + headers (avoids 403/Cloudflare
@@ -176,7 +179,7 @@ interface AppModule {
 					add(imageProxyInterceptor)
 					add(coverRestoreInterceptor)
 					add(MangaSourceHeaderInterceptor(webViewExecutorProvider))
-				}.build()
+				}.build().also(DetailsDiagnostic::registerImageLoader)
 		}
 
 		@Provides

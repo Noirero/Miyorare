@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.favourites.ui.container
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -115,6 +116,13 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	override fun onViewBindingCreated(binding: FragmentFavouritesContainerBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
+		DetailsDiagnostic.registerOwner(this, "favourites.container_fragment") { owner ->
+			val fragment = owner as FavouritesContainerFragment
+			mapOf("lifecycle" to fragment.lifecycle.currentState.name,
+				"viewLifecycle" to fragment.viewLifecycleOwnerLiveData.value?.lifecycle?.currentState?.name,
+				"hidden" to fragment.isHidden, "selectedPage" to fragment.viewBinding?.pager?.currentItem,
+				"categoryCount" to fragment.categories.size)
+		}
 		val shouldRestoreInlineSearch = savedInstanceState?.getBoolean(STATE_INLINE_SEARCH_ACTIVE)
 			?: searchSessionActive.value
 		savedInstanceState?.getString(STATE_SEARCH_QUERY)?.let { searchQuery.value = it }

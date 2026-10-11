@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.favourites.ui.container
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -74,6 +75,7 @@ class FavouritesContainerViewModel @Inject constructor(
 	)
 
 	init {
+		DetailsDiagnostic.registerOwner(this, "favourites.container_vm") { owner -> (owner as FavouritesContainerViewModel).diagnosticSnapshot() }
 		launchJob(Dispatchers.IO) {
 			// Ordinary Favourites must not pay for a cold-start filesystem scan. Use the persisted
 			// Local snapshot for counts; the Local shelf itself owns full discovery/refresh.
@@ -162,7 +164,9 @@ class FavouritesContainerViewModel @Inject constructor(
 		)
 	}
 
-	private val countState = countRequests.mapLatest { request ->
+	private val countState = DetailsDiagnostic.observePipeline(countRequests, this, "favourites_counts").mapLatest { request ->
+		val countSession = DetailsDiagnostic.currentSession()
+		val countStarted = DetailsDiagnostic.start(countSession, "favourites_counts")
 		val typedCategories = request.categories
 		val state = request.state
 		val query = request.query
@@ -181,7 +185,7 @@ class FavouritesContainerViewModel @Inject constructor(
 			counts = remote.counts,
 			localCount = localCount,
 			downloadedCount = downloadedCount,
-		)
+		).also { DetailsDiagnostic.end(countSession, "favourites_counts", countStarted, mapOf("allCount" to remote.allCount)) }
 	}.withErrorHandling()
 		.distinctUntilChanged()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, CountSnapshot.EMPTY)
@@ -361,6 +365,14 @@ class FavouritesContainerViewModel @Inject constructor(
 		}
 		return searchMatcher.matchingIds(entries, query).size
 	}
+
+	private fun diagnosticSnapshot(): Map<String, Any?> = mapOf(
+		"space" to favouriteSpace.name, "categoryCount" to categories.value.size,
+		"categoriesCollectorCount" to DetailsDiagnostic.collectorCount(categories),
+		"allCount" to countState.value.allCount, "localCount" to countState.value.localCount,
+		"downloadedCount" to countState.value.downloadedCount,
+		"queryActive" to searchQuery.value.isNotBlank(), "queryLength" to searchQuery.value.length,
+	)
 
 	fun hide(categoryId: Long) {
 		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID ||
