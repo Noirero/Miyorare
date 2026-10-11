@@ -1,0 +1,36 @@
+name: Apply note clickable links change
+on:
+  push:
+    branches: [feat/amain2-note-clickable-links]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/amain2-note-clickable-links
+      - name: Apply focused note rendering change
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt')
+          s = p.read_text()
+          s = s.replace('import androidx.compose.foundation.background\n', 'import androidx.compose.foundation.background\nimport androidx.compose.foundation.text.selection.SelectionContainer\n')
+          s = s.replace('import androidx.compose.ui.res.stringResource\n', 'import androidx.compose.ui.res.stringResource\nimport androidx.compose.ui.text.LinkAnnotation\nimport androidx.compose.ui.text.SpanStyle\nimport androidx.compose.ui.text.buildAnnotatedString\nimport androidx.compose.ui.text.style.TextDecoration\nimport androidx.compose.ui.text.withLink\n')
+          old = '''@Composable\nprivate fun NoteCard(note: String) {\n\tSectionCard {\n\t\tText(\n\t\t\ttext = note,\n\t\t\tstyle = MaterialTheme.typography.bodyLarge,\n\t\t\tcolor = MaterialTheme.colorScheme.onSurface,\n\t\t)\n\t}\n}\n'''
+          new = '''private val NOTE_URL_REGEX = Regex("""https?://[^\\s<>]+""", RegexOption.IGNORE_CASE)\nprivate val NOTE_URL_TRAILING_PUNCTUATION = setOf('.', ',', ';', ':', '!', '?', ')', ']', '}')\n\nprivate fun noteWithLinks(note: String, linkStyle: SpanStyle) = buildAnnotatedString {\n\tvar cursor = 0\n\tfor (match in NOTE_URL_REGEX.findAll(note)) {\n\t\tvar urlEnd = match.range.last + 1\n\t\twhile (urlEnd > match.range.first && note[urlEnd - 1] in NOTE_URL_TRAILING_PUNCTUATION) {\n\t\t\turlEnd--\n\t\t}\n\t\tif (urlEnd <= match.range.first) continue\n\t\tappend(note.substring(cursor, match.range.first))\n\t\tval url = note.substring(match.range.first, urlEnd)\n\t\twithLink(LinkAnnotation.Url(url)) {\n\t\t\twithStyle(linkStyle) { append(url) }\n\t\t}\n\t\tappend(note.substring(urlEnd, match.range.last + 1))\n\t\tcursor = match.range.last + 1\n\t}\n\tappend(note.substring(cursor))\n}\n\n@Composable\nprivate fun NoteCard(note: String) {\n\tval linkStyle = SpanStyle(\n\t\tcolor = MaterialTheme.colorScheme.primary,\n\t\ttextDecoration = TextDecoration.Underline,\n\t)\n\tval annotatedNote = remember(note, linkStyle) { noteWithLinks(note, linkStyle) }\n\tSectionCard {\n\t\tSelectionContainer {\n\t\t\tText(\n\t\t\t\ttext = annotatedNote,\n\t\t\t\tstyle = MaterialTheme.typography.bodyLarge,\n\t\t\t\tcolor = MaterialTheme.colorScheme.onSurface,\n\t\t\t)\n\t\t}\n\t}\n}\n'''
+          if old not in s:
+              raise SystemExit('NoteCard target not found; refusing broad edit')
+          p.write_text(s.replace(old, new))
+          Path('.github/workflows/apply-note-clickable-links.yml').unlink()
+          PY
+      - name: Commit focused change
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt .github/workflows/apply-note-clickable-links.yml
+          git commit -m 'Make manga note URLs clickable and text selectable'
+          git push origin HEAD:feat/amain2-note-clickable-links
