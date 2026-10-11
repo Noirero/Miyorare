@@ -1,0 +1,126 @@
+name: Exclusive Badge Animation V2 Evidence
+
+on:
+  push:
+    branches:
+      - fix/beta-badge-v2-static-20260927
+    paths:
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadge.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/stats/ui/BadgeV2AnimationEvidenceTest.kt'
+      - '.github/workflows/exclusive-badge-animation-v2.yml'
+      - '.github/scripts/badge_v2_animation_evidence.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: badge-v2-animation-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  animation-evidence:
+    name: Record 01-12 preview profile reduce-motion battery-saver
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Verify V2 payload provenance
+        run: python3 tools/regenerate_badge_v2_payload.py --check
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data = tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
+          print(str(data["versions"]["parsers"]).strip())
+          PY
+          )"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 12); do
+            HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 "$POM_URL" || true)"
+            if [ "$HTTP_STATUS" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          exit 1
+
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Build and record Animation V2 evidence on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/badge_v2_animation_evidence.sh
+
+      - name: Validate motion suppression evidence
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("badge-v2-animation-files")
+          preview=json.loads((root/"large-preview-sequence.json").read_text())
+          profile=json.loads((root/"profile-equipped.json").read_text())
+          rm=json.loads((root/"reduce-motion-metrics.json").read_text())
+          bs=json.loads((root/"battery-saver-metrics.json").read_text())
+
+          assert preview["animation"] is True
+          assert preview["selectorGridAnimation"] is False
+          assert len(preview["order"]) == 12
+          assert preview["secondsPerBadge"] >= 5.0
+
+          assert profile["state"] == "EQUIPPED"
+          assert profile["animation"] is True
+          assert profile["profileMode"] is True
+
+          assert rm["animationRequested"] is True
+          assert rm["reduceMotion"] is True
+          assert rm["postRevealPixelDelta"] < 0.003, rm
+
+          assert bs["animationRequested"] is True
+          assert bs["batterySaver"] is True
+          assert bs["postRevealPixelDelta"] < 0.003, bs
+          PY
+
+      - name: Upload Animation V2 review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-v2-animation-review-evidence
+          path: |
+            badge-v2-animation-videos/
+            badge-v2-animation-files/
+            *-instrumentation.txt
+            battery-saver-state.txt
+            app/build/reports/androidTests/
+          if-no-files-found: warn
+          retention-days: 14
