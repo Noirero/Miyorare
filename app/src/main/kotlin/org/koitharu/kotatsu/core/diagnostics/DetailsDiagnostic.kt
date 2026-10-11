@@ -126,23 +126,24 @@ object DetailsDiagnostic {
 		if (!enabled || session == 0L) return
 		var emittedFrames = 0
 		val listener = Window.OnFrameMetricsAvailableListener { _, metrics, dropped ->
+			fun measured(metric: Int): Any = metrics.getMetric(metric).takeIf { it >= 0L } ?: "unknown"
 			val total = metrics.getMetric(FrameMetrics.TOTAL_DURATION)
 			timeline.aggregate(session, "frames")
 			timeline.aggregate(session, "frameCallbacksDropped", dropped.toLong())
-			timeline.aggregate(session, "frameTotalMaxNs", total, maximum = true)
+			if (total >= 0L) timeline.aggregate(session, "frameTotalMaxNs", total, maximum = true)
 			if (total > 32_000_000L) timeline.aggregate(session, "framesOver32ms")
 			if (emittedFrames < 48 && (emittedFrames < 4 || total > 32_000_000L)) {
 				emittedFrames++
-				mark(session, "window_frame", mapOf("totalNs" to total,
-					"layoutMeasureNs" to metrics.getMetric(FrameMetrics.LAYOUT_MEASURE_DURATION),
-					"drawNs" to metrics.getMetric(FrameMetrics.DRAW_DURATION),
-					"syncNs" to metrics.getMetric(FrameMetrics.SYNC_DURATION),
-					"commandIssueNs" to metrics.getMetric(FrameMetrics.COMMAND_ISSUE_DURATION),
-					"swapNs" to metrics.getMetric(FrameMetrics.SWAP_BUFFERS_DURATION),
-					"unknownDelayNs" to metrics.getMetric(FrameMetrics.UNKNOWN_DELAY_DURATION),
-					"firstDraw" to metrics.getMetric(FrameMetrics.FIRST_DRAW_FRAME),
-					"intendedVsyncMonotonicNs" to metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP),
-					"vsyncMonotonicNs" to metrics.getMetric(FrameMetrics.VSYNC_TIMESTAMP),
+				mark(session, "window_frame", mapOf("totalNs" to measured(FrameMetrics.TOTAL_DURATION),
+					"layoutMeasureNs" to measured(FrameMetrics.LAYOUT_MEASURE_DURATION),
+					"drawNs" to measured(FrameMetrics.DRAW_DURATION),
+					"syncNs" to measured(FrameMetrics.SYNC_DURATION),
+					"commandIssueNs" to measured(FrameMetrics.COMMAND_ISSUE_DURATION),
+					"swapNs" to measured(FrameMetrics.SWAP_BUFFERS_DURATION),
+					"unknownDelayNs" to measured(FrameMetrics.UNKNOWN_DELAY_DURATION),
+					"firstDraw" to measured(FrameMetrics.FIRST_DRAW_FRAME),
+					"intendedVsyncMonotonicNs" to measured(FrameMetrics.INTENDED_VSYNC_TIMESTAMP),
+					"vsyncMonotonicNs" to measured(FrameMetrics.VSYNC_TIMESTAMP),
 					"callbackDropped" to dropped))
 			}
 		}
@@ -212,9 +213,9 @@ object DetailsDiagnostic {
 		}
 	}
 
-	fun firstDraw(session: Long) {
+	fun firstDraw(session: Long, chapterId: Long) {
 		if (timeline.has(session, "first_chapter_draw")) return
-		if (mark(session, "first_chapter_draw", once = true)) memory(session, "first_draw")
+		if (mark(session, "first_chapter_draw", mapOf("chapterId" to chapterId), once = true)) memory(session, "first_draw")
 	}
 
 	fun pending(session: Long, stage: String): Boolean = enabled && session != 0L && !timeline.has(session, stage)
@@ -258,7 +259,10 @@ object DetailsDiagnostic {
 
 	fun registerOwner(owner: Any, kind: String, snapshot: (Any) -> Map<String, Any?>) {
 		if (enabled) {
-			owners.entries.removeAll { it.value.ref.get() == null }
+			owners.entries.filter { it.value.ref.get() == null }.forEach { (id, _) ->
+				owners.remove(id)
+				upstream.keys.removeAll { it.startsWith("$id:") }
+			}
 			owners[System.identityHashCode(owner)] = Owner(WeakReference(owner), kind, snapshot)
 		}
 	}

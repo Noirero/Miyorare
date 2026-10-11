@@ -41,6 +41,8 @@ Controlled memory points: before navigation, chapter-bearing publication end, fi
 
 FrameMetrics are attached specifically to Details window. They include total, layout/measure, draw, sync, command issue, swap, unknown delay and vsync clocks. Callback dropped count is **listener delivery loss**, not automatically dropped display frames. Choreographer gaps are a separate bounded indicator, not CPU scheduling proof.
 
+Unsupported FrameMetrics values are exported as `unknown`. First chapter draw includes the actual chapter ID; filter snapshots include type names without tag/source text.
+
 Every event carries elapsedRealtime nanoseconds, System.nanoTime, native TID, thread name, and thread CPU clock. Frame API timestamps use the monotonic clock; do not subtract them directly from elapsedRealtime across suspend/deep sleep. Main CPU span is reported separately from wall latency.
 
 Exactly **one conditional main-stack snapshot** is allowed per navigation, 150 ms after chapter-bearing publication if draw remains pending. It records up to 24 method frames and its measured collection cost. It is not a method trace or continuous sampling loop. Java thread state cannot distinguish Linux running/runnable/descheduled. A pending draw caused by an off-screen chapter can produce an idle stack; do not label that a stall automatically.

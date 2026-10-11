@@ -503,6 +503,7 @@ class FavouritesListViewModel @Inject constructor(
 		"contentCollectorCount" to DetailsDiagnostic.collectorCount(content),
 		"queryActive" to lastSearchQuery.isNotBlank(), "queryLength" to lastSearchQuery.length,
 		"filterCount" to (lastFilters?.size ?: 0), "contentType" to lastContentType?.name,
+		"filterTypes" to lastFilters?.map { it.javaClass.simpleName },
 		"groupCount" to libraryGroups.value.size, "groupMemberCount" to libraryGroups.value.sumOf { it.members.size },
 		"cardEnrichmentActive" to (cardEnrichmentJob?.isActive ?: false),
 		"repairJobActive" to (diagnosticRepairJob?.isActive ?: false),

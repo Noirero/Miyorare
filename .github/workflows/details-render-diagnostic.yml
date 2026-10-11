@@ -88,12 +88,12 @@ jobs:
           PY
           APK=$(find app/build/outputs/apk/preview -name '*.apk' -type f | head -n1)
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
+          mkdir -p build/details-diagnostic
           "$BUILD_TOOLS/aapt" dump badging "$APK" > build/diagnostic-apk-badging.txt
           grep -Fq "package: name='org.noirero.miyorare.detailsdiag'" build/diagnostic-apk-badging.txt
           grep -Fq "application-label:'Miyorare Details Diagnostic'" build/diagnostic-apk-badging.txt
           grep -Fq 'application-debuggable' build/diagnostic-apk-badging.txt
           "$BUILD_TOOLS/apksigner" verify "$APK"
-          mkdir -p build/details-diagnostic
           cp "$APK" "build/details-diagnostic/Miyorare-Details-Diagnostic-${GITHUB_SHA:0:8}.apk"
           sha256sum build/details-diagnostic/*.apk > build/details-diagnostic/SHA256SUMS.txt
           cp build/diagnostic-apk-badging.txt build/details-diagnostic/

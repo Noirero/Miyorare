@@ -34,8 +34,8 @@ class DiagnosticImageListener(private val delegate: EventListener) : EventListen
 
 	override fun onStart(request: ImageRequest) {
 		delegate.onStart(request)
-		session = request.extras[sessionKey]
-		role = request.extras[roleKey]
+		session = request.extras[sessionKey] ?: 0L
+		role = request.extras[roleKey] ?: "untagged"
 		if (role == "untagged" && (request.data as? String)?.startsWith("favicon:") == true) role = "favicon"
 		started = DetailsDiagnostic.now()
 		active = true

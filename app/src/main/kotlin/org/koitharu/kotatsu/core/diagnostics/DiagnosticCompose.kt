@@ -50,6 +50,6 @@ fun Modifier.diagnosticChapter(session: Long, chapterId: Long): Modifier {
 		}
 		.drawWithContent {
 			drawContent()
-			if (placement.intersectsWindow) DetailsDiagnostic.firstDraw(session)
+			if (placement.intersectsWindow) DetailsDiagnostic.firstDraw(session, chapterId)
 		}
 }
