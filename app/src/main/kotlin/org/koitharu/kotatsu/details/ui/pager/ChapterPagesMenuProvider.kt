@@ -58,7 +58,6 @@ class ChapterPagesMenuProvider(
 					}
 				}
 			}
-
 			TAB_PAGES, TAB_BOOKMARKS -> {
 				menuInflater.inflate(R.menu.opt_pages, menu)
 				menu.findItem(R.id.action_grid_size)?.run {
@@ -109,34 +108,25 @@ class ChapterPagesMenuProvider(
 				.show()
 			true
 		}
-
 		R.id.action_reversed -> {
 			viewModel.toggleChapterSortDirection()
-			if (viewModel is ReaderViewModel) {
-				settings.isChaptersReverse = viewModel.chapterListOptions.value.descending
-			}
+			settings.isChaptersReverse = viewModel.chapterListOptions.value.descending
 			true
 		}
-
 		R.id.action_grid_view -> if (viewModel.getMangaOrNull()?.isEpub == true) true else {
 			val grid = !menuItem.isChecked
 			viewModel.setChaptersGridView(grid)
-			if (viewModel is ReaderViewModel) {
-				settings.isChaptersGridView = grid
-			}
+			if (viewModel is ReaderViewModel) settings.isChaptersGridView = grid
 			true
 		}
-
 		R.id.action_downloaded -> {
 			viewModel.setDownloadedOnly(!menuItem.isChecked)
 			true
 		}
-
 		R.id.action_merge_scanlators -> {
 			viewModel.setScanlatorsMerged(!menuItem.isChecked)
 			true
 		}
-
 		else -> false
 	}
 
@@ -179,9 +169,7 @@ class ChapterPagesMenuProvider(
 	}
 
 	override fun onValueChange(slider: Slider, value: Float, fromUser: Boolean) {
-		if (fromUser) {
-			settings.gridSizePages = value.toInt()
-		}
+		if (fromUser) settings.gridSizePages = value.toInt()
 	}
 
 	private fun Slider.setupPagesSizeSlider() {
@@ -197,9 +185,7 @@ class ChapterPagesMenuProvider(
 
 	private fun getCurrentTab(): Int {
 		var page = pager.currentItem
-		if (page > 0 && pager.adapter?.itemCount == 2) {
-			page++
-		}
+		if (page > 0 && pager.adapter?.itemCount == 2) page++
 		return page
 	}
 }
