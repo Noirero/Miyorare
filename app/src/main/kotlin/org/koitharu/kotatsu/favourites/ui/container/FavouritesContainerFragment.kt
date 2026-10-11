@@ -94,6 +94,10 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var isActionModeActive = false
 	private var displayedContentType: FavouriteContentType? = null
 	private var pendingCategoryRestore: FavouriteContentType? = null
+	private var listWorkStarted = false
+
+	internal val isListWorkActive: Boolean
+		get() = listWorkStarted && !isHidden && view != null
 
 	private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
 		override fun onPageSelected(position: Int) {
@@ -218,6 +222,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	override fun onDestroyView() {
+		listWorkStarted = false
+		updateListWorkActivity()
 		rememberCurrentCategory()
 		viewBinding?.pager?.unregisterOnPageChangeCallback(pageChangeCallback)
 		exitInlineSearch(clearQuery = false, endSession = false)
@@ -236,6 +242,24 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat = insets
 
+	override fun onStart() {
+		super.onStart()
+		listWorkStarted = true
+		updateListWorkActivity()
+	}
+
+	override fun onStop() {
+		listWorkStarted = false
+		updateListWorkActivity()
+		super.onStop()
+	}
+
+	private fun updateListWorkActivity() {
+		childFragmentManager.fragments.filterIsInstance<FavouritesListFragment>().forEach {
+			it.updateWorkActivity()
+		}
+	}
+
 	override fun onResume() {
 		super.onResume()
 		if (isHidden) return
@@ -250,6 +274,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	override fun onHiddenChanged(hidden: Boolean) {
 		super.onHiddenChanged(hidden)
+		updateListWorkActivity()
 		searchScopeActive.value = !hidden
 		if (hidden) {
 			exitInlineSearch(clearQuery = false, endSession = false)

@@ -59,6 +59,7 @@ import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
 import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.FragmentListBinding
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.NormalTransferDestination
 import org.koitharu.kotatsu.favourites.domain.NormalTransferResult
@@ -120,6 +121,7 @@ class FavouritesListFragment : MangaListFragment() {
 	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null
 	private var modernChildAttachListener: RecyclerView.OnChildAttachStateChangeListener? = null
 	private var modernSelectionPopupItems: List<MenuItem> = emptyList()
+	private var listWorkStarted = false
 
 	val categoryId
 		get() = viewModel.categoryId
@@ -170,6 +172,8 @@ class FavouritesListFragment : MangaListFragment() {
 	}
 
 	override fun onDestroyView() {
+		listWorkStarted = false
+		updateWorkActivity()
 		viewBinding?.recyclerView?.let { recyclerView ->
 			recyclerView.removeCallbacks(coverPrefetchRunnable)
 			recyclerView.removeOnScrollListener(coverPrefetchScrollListener)
@@ -182,6 +186,30 @@ class FavouritesListFragment : MangaListFragment() {
 		modernChildAttachListener = null
 		modernSurfaceDecoration = null
 		super.onDestroyView()
+	}
+
+	override fun onStart() {
+		super.onStart()
+		listWorkStarted = true
+		updateWorkActivity()
+	}
+
+	override fun onStop() {
+		listWorkStarted = false
+		updateWorkActivity()
+		super.onStop()
+	}
+
+	override fun onHiddenChanged(hidden: Boolean) {
+		super.onHiddenChanged(hidden)
+		updateWorkActivity()
+	}
+
+	internal fun updateWorkActivity() {
+		if (view == null) return
+		// FavouritesActivity also hosts this list directly, without a tab container.
+		val containerActive = (parentFragment as? FavouritesContainerFragment)?.isListWorkActive ?: true
+		viewModel.setWorkActive(listWorkStarted && !isHidden && containerActive)
 	}
 
 	override fun onResume() {

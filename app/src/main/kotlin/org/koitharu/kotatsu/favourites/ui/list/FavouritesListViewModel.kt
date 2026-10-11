@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -182,6 +183,10 @@ class FavouritesListViewModel @Inject constructor(
 	private val cardEnrichmentRevision = AtomicLong()
 	private var pendingCardEnrichmentKey: CardEnrichmentKey? = null
 	private var cardEnrichmentJob: Job? = null
+	private val listWorkScope = FavouritesListWorkScope {
+		cardEnrichmentJob = null
+		pendingCardEnrichmentKey = null
+	}
 
 	private val libraryGroups = libraryGroupsRepository.observeGroups(favouriteSpace).stateIn(
 		viewModelScope + Dispatchers.Default,
@@ -486,7 +491,10 @@ class FavouritesListViewModel @Inject constructor(
 		isPaginationReady.set(true)
 	}.catch {
 		emit(listOf(it.toErrorState(canRetry = false)))
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
+	}.let(listWorkScope::whileActive)
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
+
+	fun setWorkActive(active: Boolean) = listWorkScope.setActive(active)
 
 	override fun onRefresh() {
 		invalidateCardEnrichment()
@@ -850,7 +858,7 @@ class FavouritesListViewModel @Inject constructor(
 
 		cardEnrichmentJob?.cancel()
 		pendingCardEnrichmentKey = key
-		cardEnrichmentJob = viewModelScope.launch(Dispatchers.IO) {
+		cardEnrichmentJob = listWorkScope.launch(Dispatchers.IO) {
 			try {
 				val deltaSnapshot = unreadCounter.getSnapshot(
 					mangaIds = deltaIds,
@@ -868,6 +876,7 @@ class FavouritesListViewModel @Inject constructor(
 					else -> previous.downloadedIds.orEmpty() + deltaDownloadedIds.orEmpty()
 				}
 				// Details only needs the tiny history handoff. Reuse old metadata and query only the page delta.
+				coroutineContext.ensureActive()
 				detailsNavigationCache.updateHistory(key.ids.takeLast(16), snapshot::getHistory)
 				if (key.revision == cardEnrichmentRevision.get()) {
 					cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
