@@ -1,12 +1,14 @@
-## 🚀 Improvements
+## Miyorare v1.4.8
 
-- Improved **Favorites → Details performance**, especially for very large libraries.
-- Reduced unnecessary Favorites background work when opening manga Details while preserving the current list, search, filter, category, and scroll state.
+### 🚀 Improvements
 
-## 🐞 Fixes
+- Improved **Favorites → Details performance**, especially for large libraries.
+- Reduced unnecessary background work from Favorites when opening another screen, resulting in faster and smoother navigation.
 
-- Fixed background Favorites database work that could delay opening manga Details in very large libraries.
-- Improved navigation reliability when quickly leaving and returning to Favorites.
+### 🐞 Fixes
+
+- Fixed background Favorites processing that could slow down manga Details when working with large libraries.
+- Improved Favorites state handling when navigating away and returning to the screen.
 
 <details>
 <summary><strong>📋 Changelog v1.4.7</strong></summary>
