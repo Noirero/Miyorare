@@ -1,3 +1,16 @@
+## 🚀 Improvements
+
+- Improved **Favorites → Details performance**, especially for very large libraries.
+- Reduced unnecessary Favorites background work when opening manga Details while preserving the current list, search, filter, category, and scroll state.
+
+## 🐞 Fixes
+
+- Fixed background Favorites database work that could delay opening manga Details in very large libraries.
+- Improved navigation reliability when quickly leaving and returning to Favorites.
+
+<details>
+<summary><strong>📋 Changelog v1.4.7</strong></summary>
+
 This update brings major improvements to reading, local files, tracking, chapter information, and overall stability.
 
 ## 🇬🇧 English
@@ -262,5 +275,7 @@ Gunakan kontrol pada bagian chapter di halaman Detail manga untuk membuka atau m
 - Memperbaiki masalah stabilitas di **Pengaturan** ketika banyak preferensi berubah dalam waktu singkat.
 - Memperbaiki crash yang dapat terjadi ketika memulihkan **Pencarian** dari navigasi bawah.
 - Berbagai peningkatan performa, keandalan, dan stabilitas lainnya.
+
+</details>
 
 </details>
