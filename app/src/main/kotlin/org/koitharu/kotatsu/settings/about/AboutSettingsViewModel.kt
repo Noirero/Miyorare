@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.settings.about
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,27 @@ class AboutSettingsViewModel @Inject constructor(
 	private val _pendingLogExport = MutableStateFlow<String?>(null)
 	val pendingLogExport: StateFlow<String?> = _pendingLogExport
 	private var isLogExportPickerOpen = false
+
+	private val _pendingDiagnosticExport = MutableStateFlow<String?>(null)
+	val pendingDiagnosticExport: StateFlow<String?> = _pendingDiagnosticExport
+	private var diagnosticPickerOpen = false
+
+	fun exportDiagnostic() = launchJob(Dispatchers.IO) {
+		if (DetailsDiagnostic.enabled && _pendingDiagnosticExport.value == null) {
+			_pendingDiagnosticExport.value = DetailsDiagnostic.exportText()
+		}
+	}
+
+	fun requestDiagnosticExport(): Boolean {
+		if (diagnosticPickerOpen || _pendingDiagnosticExport.value == null) return false
+		diagnosticPickerOpen = true
+		return true
+	}
+
+	fun consumeDiagnosticExport() {
+		_pendingDiagnosticExport.value = null
+		diagnosticPickerOpen = false
+	}
 
 	private val _isVerboseLogging = MutableStateFlow(settings.isVerboseLoggingEnabled)
 	val isVerboseLogging: StateFlow<Boolean> = _isVerboseLogging

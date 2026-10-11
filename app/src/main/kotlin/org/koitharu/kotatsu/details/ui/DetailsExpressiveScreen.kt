@@ -2,6 +2,7 @@
 
 package org.koitharu.kotatsu.details.ui
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import androidx.compose.foundation.layout.Row
 
 import android.os.Build
@@ -112,6 +113,7 @@ class DetailsExpressiveActions(
 @Composable
 fun DetailsExpressiveScreen(
 	details: MangaDetails?,
+	diagnosticSession: Long = 0L,
 	note: String?,
 	tags: List<ChipsView.ChipModel>,
 	historyInfo: HistoryInfo,
@@ -326,7 +328,9 @@ fun DetailsExpressiveScreen(
 					}
 
 					if (details.isLoaded || historyInfo.totalChapters > 0 || chapters.isNotEmpty()) {
+						if (chapters.isNotEmpty()) DetailsDiagnostic.mark(diagnosticSession, "chapter_section_composition", mapOf("chapterCount" to chapters.size), once = true)
 						item(contentType = "chapters-header") {
+							DetailsDiagnostic.mark(diagnosticSession, "chapter_header_composition", mapOf("chapterCount" to chapters.size), once = true)
 							InlineChapterHeader(
 								visibleCount = chapters.size,
 								totalCount = historyInfo.totalChapters.coerceAtLeast(chapters.size),
@@ -352,8 +356,10 @@ fun DetailsExpressiveScreen(
 							key = { it.detailsLazyListKey() },
 							contentType = { "chapter" },
 						) { chapter ->
+							if (DetailsDiagnostic.pending(diagnosticSession, "first_chapter_composition")) DetailsDiagnostic.mark(diagnosticSession, "first_chapter_composition", mapOf("chapterId" to chapter.chapter.id), once = true)
 							InlineChapterCard(
 								item = chapter,
+								diagnosticSession = diagnosticSession,
 								visualEffectLevel = visualEffectLevel,
 								accent = accentColor,
 								onClick = { actions.onChapterClick(chapter) },

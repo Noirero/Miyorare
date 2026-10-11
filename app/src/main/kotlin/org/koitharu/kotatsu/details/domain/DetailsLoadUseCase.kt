@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.details.domain
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import android.text.Html
 import android.text.SpannableString
 import android.text.Spanned
@@ -74,9 +75,11 @@ class DetailsLoadUseCase @Inject constructor(
 		favouriteSpace: FavouriteSpace? = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) },
 		preferLocalBeforeInitialSnapshot: Boolean = false,
 	): Flow<MangaDetails> = flow {
+		val resolveStarted = DetailsDiagnostic.start(intent.diagnosticSession, "resolve_intent")
 		val resolvedIntentManga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
 			"Cannot resolve intent $intent"
 		}
+		DetailsDiagnostic.end(intent.diagnosticSession, "resolve_intent", resolveStarted, mapOf("mangaId" to resolvedIntentManga.id))
 		val manga = if (resolvedIntentManga.url.toUri().scheme == LOCAL_LIBRARY_SCHEME) {
 			resolvedIntentManga
 		} else downloadedMangaResolver.resolveCanonicalManga(resolvedIntentManga)
@@ -89,7 +92,10 @@ class DetailsLoadUseCase @Inject constructor(
 			// avoidable empty chapter state while waiting for source enrichment.
 			loadLocal(manga, override)
 		} else {
+			val cacheStarted = DetailsDiagnostic.start(intent.diagnosticSession, "cache_lookup")
 			val cachedState = getCachedDetailsState(manga, force)
+			DetailsDiagnostic.end(intent.diagnosticSession, "cache_lookup", cacheStarted)
+			DetailsDiagnostic.mark(intent.diagnosticSession, "cache_state", mapOf("initialized" to cachedState.initialized, "fresh" to cachedState.fresh), once = true)
 			val fastDescription = manga.description?.parseAsHtml(withImages = false)
 			// Room chapters are the fastest durable snapshot after process recreation. Do not hold them
 			// behind Local/download enrichment: indexed lookup can touch the filesystem and may wait for a
@@ -113,6 +119,7 @@ class DetailsLoadUseCase @Inject constructor(
 				initialSavedManga = savedManga,
 				favouriteSpace = favouriteSpace,
 				cachedIsFresh = cachedState.fresh,
+				diagnosticSession = intent.diagnosticSession,
 				findSavedManga = {
 					downloadedMangaResolver.findSavedManga(manga, favouriteSpace)
 				},
@@ -157,6 +164,7 @@ class DetailsLoadUseCase @Inject constructor(
 		initialSavedManga: LocalManga?,
 		favouriteSpace: FavouriteSpace?,
 		cachedIsFresh: Boolean,
+		diagnosticSession: Long = 0L,
 		findSavedManga: suspend () -> LocalManga?,
 	) = coroutineScope {
 		// Details must not wait for download/local enrichment before starting source work. Reader passes
@@ -205,12 +213,12 @@ class DetailsLoadUseCase @Inject constructor(
 		val remoteResult = singleFlightRefresh(refreshKey) {
 			val latestRefreshAt = mangaDataRepository.getDetailsUpdatedAt(manga.id)
 			if (latestRefreshAt > 0L && latestRefreshAt != observedRefreshAt) {
-				mangaDataRepository.findMangaById(manga.id, withChapters = true)?.let {
+				mangaDataRepository.findMangaById(manga.id, withChapters = true, diagnosticSession = diagnosticSession)?.let {
 					return@singleFlightRefresh Result.success(it)
 				}
 			}
 
-			val cachedBeforeFetch = mangaDataRepository.findMangaById(manga.id, withChapters = true) ?: manga
+			val cachedBeforeFetch = mangaDataRepository.findMangaById(manga.id, withChapters = true, diagnosticSession = diagnosticSession) ?: manga
 			val cachedBeforeFetchState = getCachedDetailsState(cachedBeforeFetch, force = false)
 			if (!force && cachedBeforeFetchState.fresh) {
 				return@singleFlightRefresh Result.success(cachedBeforeFetch)
@@ -221,6 +229,7 @@ class DetailsLoadUseCase @Inject constructor(
 			} else {
 				null
 			}
+			val sourceStarted = DetailsDiagnostic.start(diagnosticSession, "source_fetch")
 			val result = if (progressiveRepository != null) {
 				runCatchingCancellable {
 					progressiveRepository.getDetailsProgressively(cachedBeforeFetch) { partial ->
@@ -244,6 +253,7 @@ class DetailsLoadUseCase @Inject constructor(
 					fresh = force || cachedBeforeFetchState.initialized,
 				)
 			}
+			DetailsDiagnostic.end(diagnosticSession, "source_fetch", sourceStarted, mapOf("success" to result.isSuccess))
 			if (result.isFailure) {
 				return@singleFlightRefresh result
 			}
@@ -257,12 +267,14 @@ class DetailsLoadUseCase @Inject constructor(
 
 			// Persist before completing the shared result. Every waiter therefore observes either the same
 			// failure or the same fully committed Room snapshot, never another source request.
+			val persistStarted = DetailsDiagnostic.start(diagnosticSession, "persistence")
 			mangaDataRepository.storeManga(
 				remoteDetails,
 				replaceExisting = true,
 				stripAppliedOverride = false,
 				detailsFetched = true,
 			)
+			DetailsDiagnostic.end(diagnosticSession, "persistence", persistStarted)
 			Result.success(remoteDetails)
 		}
 

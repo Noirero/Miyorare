@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.parser
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import androidx.collection.LongObjectMap
 import androidx.collection.MutableLongObjectMap
 import androidx.core.net.toUri
@@ -137,14 +138,20 @@ class MangaDataRepository @Inject constructor(
 			.distinctUntilChanged()
 	}
 
-	suspend fun findMangaById(mangaId: Long, withChapters: Boolean): Manga? {
-		val stored = db.getMangaDao().find(mangaId) ?: return null
+	suspend fun findMangaById(mangaId: Long, withChapters: Boolean, diagnosticSession: Long = 0L): Manga? {
+		val findStarted = DetailsDiagnostic.start(diagnosticSession, "dao_find")
+		val stored = db.getMangaDao().find(mangaId)
+		DetailsDiagnostic.end(diagnosticSession, "dao_find", findStarted, mapOf("mangaId" to mangaId, "found" to (stored != null)))
+		if (stored == null) return null
+		val chapterStarted = DetailsDiagnostic.start(diagnosticSession, "chapter_materialization")
 		val chapters = if (withChapters && hasPersistedChapterSnapshot(stored.manga.chaptersInitialized, mangaId)) {
 			db.getChaptersDao().findAll(mangaId).takeUnless { it.isEmpty() }
 		} else {
 			null
 		}
-		return stored.toManga(chapters)
+		val result = stored.toManga(chapters)
+		DetailsDiagnostic.end(diagnosticSession, "chapter_materialization", chapterStarted, mapOf("chapterCount" to (chapters?.size ?: 0)))
+		return result
 	}
 
 
@@ -156,13 +163,13 @@ class MangaDataRepository @Inject constructor(
 		intent.manga != null -> {
 			val direct = intent.manga.copy(source = ResolveMangaSource(intent.manga.source.name))
 			val resolved = if (!direct.isLocal) {
-				findMangaById(direct.id, withChapters)?.let { stored ->
+				findMangaById(direct.id, withChapters, intent.diagnosticSession)?.let { stored ->
 					stored.copy(source = ResolveMangaSource(stored.source.name))
 				} ?: direct
 			} else direct
 			resolved.withCachedChaptersIfNeeded(withChapters)
 		}
-		intent.mangaId != 0L -> findMangaById(intent.mangaId, withChapters)
+		intent.mangaId != 0L -> findMangaById(intent.mangaId, withChapters, intent.diagnosticSession)
 		intent.uri != null -> resolverProvider.get().resolve(intent.uri).withCachedChaptersIfNeeded(withChapters)
 		else -> null
 	}

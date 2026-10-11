@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.details.ui
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
+import org.koitharu.kotatsu.core.diagnostics.collectDiagnosticState
 import android.app.Activity
 import android.app.assist.AssistContent
 import android.content.Context
@@ -161,10 +163,12 @@ class DetailsExpressiveActivity :
 	private var contentAtTop = true
 
 	override fun onCreate(savedInstanceState: Bundle?) {
+		val diagnosticSession = DetailsDiagnostic.create(this)
 		// Keep the first frame protected. ScreenshotPolicyHelper becomes the sole owner of clearing it
 		// once both the global policy and this screen's Private-only classification are known.
 		window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 		super.onCreate(savedInstanceState)
+		DetailsDiagnostic.attachWindow(this, diagnosticSession)
 		setContentView(ActivityDetailsExpressiveBinding.inflate(layoutInflater))
 		WindowCompat.setDecorFitsSystemWindows(window, false)
 		isDarkTheme = ColorUtils.calculateLuminance(getThemeColor(android.R.attr.colorBackground)) <= 0.5
@@ -382,11 +386,12 @@ class DetailsExpressiveActivity :
 		)
 		viewBinding.composeView.setContent {
 			org.koitharu.kotatsu.settings.compose.MiyorareTheme {
+				DetailsDiagnostic.mark(viewModel.diagnosticSession, "details_first_composition", once = true)
 				val density = androidx.compose.ui.platform.LocalDensity.current
-				val details by viewModel.mangaDetails.collectAsState()
+				val details by viewModel.mangaDetails.collectDiagnosticState(viewModel.diagnosticSession, "ui_details_received") { it?.allChapters?.size ?: 0 }
 				val history by viewModel.historyInfo.collectAsState()
 				val chapterReleasePrediction by viewModel.chapterReleasePrediction.collectAsState()
-				val chapters by viewModel.chapters.collectAsState()
+				val chapters by viewModel.chapters.collectDiagnosticState(viewModel.diagnosticSession, "ui_state_received") { it.size }
 				val chapterNotesQuery by viewModel.chapterNotesQuery.collectAsState()
 				val chapterOptions by viewModel.chapterListOptions.collectAsState()
 				val chapterBranches by viewModel.chapterBranchOptions.collectAsState()
@@ -418,6 +423,7 @@ class DetailsExpressiveActivity :
 
 				DetailsExpressiveScreen(
 					details = details,
+					diagnosticSession = viewModel.diagnosticSession,
 					note = mangaNote.value,
 					tags = tags,
 					historyInfo = history,

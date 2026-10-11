@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.details.ui
 
+import org.koitharu.kotatsu.core.diagnostics.diagnosticChapter
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -1163,6 +1164,7 @@ private fun ChapterToolbarDivider() {
 @Composable
 internal fun InlineChapterCard(
 	item: ChapterListItem,
+	diagnosticSession: Long = 0L,
 	visualEffectLevel: VisualEffectLevel,
 	accent: Color,
 	onClick: () -> Unit,
@@ -1245,7 +1247,8 @@ internal fun InlineChapterCard(
 		modifier = Modifier
 			.fillMaxWidth()
 			.padding(horizontal = SCREEN_PADDING, vertical = if (palette.isModern) 2.dp else 4.dp)
-			.clickable(onClick = onClick),
+			.clickable(onClick = onClick)
+			.diagnosticChapter(diagnosticSession, item.chapter.id),
 	) {
 		Row(
 			modifier = Modifier.padding(

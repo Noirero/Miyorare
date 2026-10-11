@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.favourites.ui.container
 
+import org.koitharu.kotatsu.core.diagnostics.FavouritesContentionExperiment
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -236,6 +237,21 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat = insets
 
+	override fun onStart() {
+		super.onStart()
+		FavouritesContentionExperiment.visibility(this, !isHidden, "container_onStart")
+	}
+
+	override fun onStop() {
+		FavouritesContentionExperiment.visibility(this, false, "container_onStop")
+		super.onStop()
+	}
+
+	override fun onDestroy() {
+		FavouritesContentionExperiment.removeContainer(this)
+		super.onDestroy()
+	}
+
 	override fun onResume() {
 		super.onResume()
 		if (isHidden) return
@@ -250,6 +266,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	override fun onHiddenChanged(hidden: Boolean) {
 		super.onHiddenChanged(hidden)
+		FavouritesContentionExperiment.visibility(this, !hidden && lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED), "container_hidden_changed")
 		searchScopeActive.value = !hidden
 		if (hidden) {
 			exitInlineSearch(clearQuery = false, endSession = false)

@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.favourites.ui.list
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
+import org.koitharu.kotatsu.core.diagnostics.FavouritesContentionExperiment
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -163,6 +165,8 @@ class FavouritesListViewModel @Inject constructor(
 	private val similarTitleScanState = MutableStateFlow<SimilarTitleScanState?>(null)
 	private val limit = MutableStateFlow(PAGE_SIZE)
 	private val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)
+	// Retain the same last result while paused: the experiment must not improve memory by dropping it.
+	@Volatile private var diagnosticDatabaseRows: List<Manga>? = null
 	private val loadingMode = settings.observeAsFlow(AppSettings.KEY_FAVOURITES_LIST_LOADING_MODE) { favouritesListLoadingMode }.stateIn(
 		viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, settings.favouritesListLoadingMode,
 	)
@@ -190,6 +194,8 @@ class FavouritesListViewModel @Inject constructor(
 	)
 
 	init {
+		FavouritesContentionExperiment.register(this, favouriteSpace.name, categoryId)
+		DetailsDiagnostic.registerListOwner(this) { (it as FavouritesListViewModel).diagnosticListState() }
 		viewModelScope.launch(Dispatchers.Default) {
 			libraryGroupsRepository.repairInvalidGroups(favouriteSpace)
 		}
@@ -335,7 +341,12 @@ class FavouritesListViewModel @Inject constructor(
 		get() = libraryGroups.value.isNotEmpty()
 
 	override val content = combine(
-		combine(observeFavorites(), libraryGroups, pinnedGroupIds) { items, groups, groupPins ->
+		combine(observeFavorites().onEach {
+			if (DetailsDiagnostic.enabled) {
+				diagnosticDatabaseRows = it
+				FavouritesContentionExperiment.emission(this)
+			}
+		}, libraryGroups, pinnedGroupIds) { items, groups, groupPins ->
 			Triple(items, groups, groupPins)
 		},
 		combine(
@@ -486,7 +497,23 @@ class FavouritesListViewModel @Inject constructor(
 		isPaginationReady.set(true)
 	}.catch {
 		emit(listOf(it.toErrorState(canRetry = false)))
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
+	}.let { FavouritesContentionExperiment.pauseListWhenBackground(this, it) }
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
+
+	private fun diagnosticListState(): Map<String, Any?> = mapOf(
+		"space" to favouriteSpace.name, "categoryId" to categoryId,
+		"databaseWindow" to databaseWindow.value, "databaseRows" to (diagnosticDatabaseRows?.size ?: "unknown"),
+		"displayLimit" to limit.value, "mappedSize" to content.value.size,
+		"queryActive" to lastSearchQuery.isNotBlank(), "filterCount" to (lastFilters?.size ?: "unknown"),
+		"cardEnrichmentActive" to (cardEnrichmentJob?.isActive ?: false),
+		"groupCount" to libraryGroups.value.size,
+	)
+
+	override fun onCleared() {
+		FavouritesContentionExperiment.unregister(this)
+		DetailsDiagnostic.unregisterListOwner(this)
+		super.onCleared()
+	}
 
 	override fun onRefresh() {
 		invalidateCardEnrichment()
@@ -875,7 +902,7 @@ class FavouritesListViewModel @Inject constructor(
 			} finally {
 				if (pendingCardEnrichmentKey == key) pendingCardEnrichmentKey = null
 			}
-		}
+		}.also { FavouritesContentionExperiment.trackEnrichment(this, it) }
 	}
 
 	private fun invalidateCardEnrichment() {

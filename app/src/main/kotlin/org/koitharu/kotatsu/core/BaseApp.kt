@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core
 
+import org.koitharu.kotatsu.core.diagnostics.DetailsDiagnostic
 import android.app.Application
 import android.content.ComponentName
 import android.content.Context
@@ -116,6 +117,7 @@ open class BaseApp : Application(), Configuration.Provider {
 		appLogger.setEnabled(settings.isVerboseLoggingEnabled)
 		// Keep default platform security provider.
 		setupActivityLifecycleCallbacks()
+		DetailsDiagnostic.initialize(this)
 		cleanupDownloadedExtensionApks()
 		processLifecycleScope.launch(Dispatchers.IO) {
 			// Credentials are restored silently from app-private encrypted storage; never log values.
