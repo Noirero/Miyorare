@@ -1,5 +1,5 @@
 name: PR583 Owner Test APK
-run-name: PR583 Owner Test APK · 4255a6b611c85ea767e19dc11878843d7b06f859
+run-name: PR583 Owner Test APK · 573ba290712caaf837296f2cf242bfed065e5ac5
 
 # Temporary build-only adaptation on build/pr583-owner-test-apk.
 # The workflow definition and checked-out feature source are separate revisions.
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  EXPECTED_SOURCE_SHA: 4255a6b611c85ea767e19dc11878843d7b06f859
+  EXPECTED_SOURCE_SHA: 573ba290712caaf837296f2cf242bfed065e5ac5
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -53,7 +53,7 @@ jobs:
       - name: Checkout exact PR583 source
         uses: actions/checkout@v5
         with:
-          ref: 4255a6b611c85ea767e19dc11878843d7b06f859
+          ref: 573ba290712caaf837296f2cf242bfed065e5ac5
           persist-credentials: false
 
       - name: Guard exact source SHA before Gradle
@@ -77,6 +77,22 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
+
+      - name: Enable KVM for focused contrast regression
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Verify range-header foregrounds on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: >-
+            bash ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.details.ui.ChapterRangeHeaderContrastTest
 
       - name: Require permanent signing key
         env:
