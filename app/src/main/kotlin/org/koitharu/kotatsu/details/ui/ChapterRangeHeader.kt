@@ -41,6 +41,7 @@ internal fun InlineChapterRangeHeader(range: ChapterRange, accent: Color, onClic
 		onClick = onClick,
 		shape = RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp),
 		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (palette.isModern) 0.82f else 1f),
+		contentColor = MaterialTheme.colorScheme.onSurface,
 		border = BorderStroke(0.75.dp, if (palette.isModern) palette.borderHighlight.copy(alpha = 0.28f)
 			else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
 		modifier = Modifier.fillMaxWidth().padding(horizontal = SCREEN_PADDING, vertical = 3.dp)
