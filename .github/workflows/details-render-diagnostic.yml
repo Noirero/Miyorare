@@ -98,7 +98,7 @@ jobs:
           cp "$APK" "build/details-diagnostic/Miyorare-DAO-Contention-Test-${GITHUB_SHA:0:8}.apk"
           sha256sum build/details-diagnostic/*.apk > build/details-diagnostic/SHA256SUMS.txt
           cp build/diagnostic-apk-badging.txt build/details-diagnostic/
-          cp docs/experiment/details-dao-favourites-contention.md build/details-diagnostic/OWNER-INSTRUCTIONS.md
+          cp docs/diagnostics/details-dao-favourites-contention.md build/details-diagnostic/OWNER-INSTRUCTIONS.md
           printf 'Head: %s\nBaseline: c22517f2b8c9ecf81e98cbb28ce1f2675f473f01\n' "$GITHUB_SHA" > build/details-diagnostic/BUILD.txt
       - name: Preserve exact generated DAO and Room path for cancellation verification
         shell: bash
