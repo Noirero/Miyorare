@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.stateIn
 import org.koitharu.kotatsu.core.github.AppUpdateRepository
 import org.koitharu.kotatsu.core.github.AppVersion
 import org.koitharu.kotatsu.core.logs.AppLogger
+import org.koitharu.kotatsu.core.logs.VerbosePerformanceDiagnostics
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
@@ -22,6 +23,7 @@ class AboutSettingsViewModel @Inject constructor(
 	private val appUpdateRepository: AppUpdateRepository,
 	private val settings: AppSettings,
 	private val appLogger: AppLogger,
+	private val performanceDiagnostics: VerbosePerformanceDiagnostics,
 ) : BaseViewModel() {
 
 	val isUpdateSupported = flow {
@@ -58,6 +60,8 @@ class AboutSettingsViewModel @Inject constructor(
 			appLogger.setEnabled(true)
 		} else {
 			launchJob(Dispatchers.Default) {
+				// Emit the bounded performance digest while logcat capture is still active.
+				performanceDiagnostics.dumpSummary()
 				val content = appLogger.stopAndDrainToString()
 				if (content.isNotBlank()) {
 					// StateFlow retains the drained log while the About view is stopped/recreated.
