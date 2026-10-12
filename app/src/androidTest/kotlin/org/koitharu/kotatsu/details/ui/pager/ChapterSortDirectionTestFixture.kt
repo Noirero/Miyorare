@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
+import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -68,6 +69,16 @@ class ChapterSortDirectionTestFixture @Inject constructor(
 			// Reconstruct settings/store as a reopened consumer does, using the same persisted prefs.
 			val restoredSettings = AppSettings(context)
 			val restoredStore = if (detailsDefaults) ChapterListOptionsStore(context, restoredSettings) else null
+			// SampleData's LOCAL source has a remote-style locator; it is not a local file fixture.
+			val source = MangaSource("MIHON_424242")
+			val manga = SampleData.mangaDetails.copy(
+				id = 906L, source = source,
+				url = "https://example.invalid/manga/chapter-sort",
+				publicUrl = "https://example.invalid/manga/chapter-sort",
+				chapters = SampleData.mangaDetails.chapters?.map { chapter ->
+					chapter.copy(source = source, url = "https://example.invalid/chapter/${chapter.id}")
+				},
+			)
 			lateinit var result: ChaptersPagesViewModel
 			onMain {
 				result = object : ChaptersPagesViewModel(
@@ -88,7 +99,7 @@ class ChapterSortDirectionTestFixture @Inject constructor(
 					override fun reload() = Unit
 				}
 				viewModels.put("sort-${nextId++}", result)
-				result.mangaDetails.value = MangaDetails(SampleData.mangaDetails)
+				result.mangaDetails.value = MangaDetails(manga)
 			}
 			if (restoredStore != null) {
 				val expected = restoredStore.getDefault(FavouriteSpace.NORMAL, false)
