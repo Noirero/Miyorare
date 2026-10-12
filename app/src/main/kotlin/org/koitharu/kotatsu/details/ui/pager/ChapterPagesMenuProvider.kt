@@ -39,6 +39,7 @@ class ChapterPagesMenuProvider(
 	Slider.OnChangeListener {
 
 	private var expandedItemRef: WeakReference<MenuItem>? = null
+	private val menuVisibilityBeforeSearch = mutableMapOf<Int, Boolean>()
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
 		val tab = getCurrentTab()
@@ -46,17 +47,13 @@ class ChapterPagesMenuProvider(
 			TAB_CHAPTERS -> {
 				menuInflater.inflate(R.menu.opt_chapters, menu)
 				menu.setOptionalIconsVisibleCompat(true)
-				// Notes search belongs to the manga details surface. The chapter manager owns
-				// chapter-title search only, so do not expose a second search mode here.
-				menu.findItem(R.id.action_search_notes)?.isVisible = false
-				menu.findItem(R.id.action_search)?.let { item ->
-					item.setOnActionExpandListener(this)
-					(item.actionView as? SearchView)?.apply {
-						setIconifiedByDefault(false)
-						queryHint = item.title
-						setOnQueryTextListener(this@ChapterPagesMenuProvider)
-					}
+				// Details owns Notes search on its main surface. Reader keeps Notes search in
+				// its chapter toolbox; the Details chapter manager owns chapter-title search only.
+				menu.findItem(R.id.action_search_notes)?.let { item ->
+					item.isVisible = viewModel is ReaderViewModel
+					if (item.isVisible) setupSearchItem(item)
 				}
+				menu.findItem(R.id.action_search)?.let(::setupSearchItem)
 			}
 			TAB_PAGES, TAB_BOOKMARKS -> {
 				menuInflater.inflate(R.menu.opt_pages, menu)
@@ -72,6 +69,7 @@ class ChapterPagesMenuProvider(
 		super.onPrepareMenu(menu)
 		val chapterOptions = viewModel.chapterListOptions.value
 		menu.findItem(R.id.action_chapter_grouping)?.isVisible = viewModel is DetailsViewModel
+		menu.findItem(R.id.action_search_notes)?.isVisible = viewModel is ReaderViewModel
 		menu.findItem(R.id.action_reversed)?.isChecked = chapterOptions.descending
 		menu.findItem(R.id.action_grid_view)?.let { it.isChecked = chapterOptions.grid; it.isVisible = viewModel.getMangaOrNull()?.isEpub != true }
 		menu.findItem(R.id.action_downloaded)?.let { item ->
@@ -83,6 +81,7 @@ class ChapterPagesMenuProvider(
 			item.isVisible = isMerged || (viewModel.mangaDetails.value?.chapters?.size ?: 0) > 1
 			item.isChecked = isMerged
 		}
+		if (expandedItemRef?.get() != null) hideOtherMenuItems(menu, expandedItemRef?.get())
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
@@ -144,7 +143,10 @@ class ChapterPagesMenuProvider(
 	}
 
 	override fun onMenuItemActionExpand(item: MenuItem): Boolean {
+		if (expandedItemRef?.get() != null) return false
 		expandedItemRef = WeakReference(item)
+		item.menuInfo
+		menuVisibilityBeforeSearch.clear()
 		sheet.expandAndLock()
 		isEnabled = true
 		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
@@ -173,6 +175,7 @@ class ChapterPagesMenuProvider(
 			if (item.itemId == R.id.action_search_notes) viewModel.exitChapterNoteSearch()
 			else viewModel.performChapterSearch(null)
 		}
+		menuVisibilityBeforeSearch.clear()
 		return true
 	}
 
@@ -189,6 +192,26 @@ class ChapterPagesMenuProvider(
 
 	override fun onValueChange(slider: Slider, value: Float, fromUser: Boolean) {
 		if (fromUser) settings.gridSizePages = value.toInt()
+	}
+
+	private fun setupSearchItem(item: MenuItem) {
+		item.setOnActionExpandListener(this)
+		(item.actionView as? SearchView)?.apply {
+			setIconifiedByDefault(false)
+			queryHint = item.title
+			setOnQueryTextListener(this@ChapterPagesMenuProvider)
+		}
+	}
+
+	private fun hideOtherMenuItems(menu: Menu, expandedItem: MenuItem?) {
+		for (index in 0 until menu.size()) {
+			val item = menu.getItem(index)
+			if (menuVisibilityBeforeSearch.putIfAbsent(item.itemId, item.isVisible) == null && item != expandedItem) {
+				item.isVisible = false
+			} else if (item != expandedItem) {
+				item.isVisible = false
+			}
+		}
 	}
 
 	private fun Slider.setupPagesSizeSlider() {
