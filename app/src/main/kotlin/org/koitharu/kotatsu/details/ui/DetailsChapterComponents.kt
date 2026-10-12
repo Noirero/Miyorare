@@ -45,6 +45,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
@@ -897,6 +898,18 @@ internal fun ChapterHeaderTitle(
 				modifier = Modifier.weight(1f, fill = false),
 			)
 			if (showPrediction) {
+				val lightSurface = MaterialTheme.colorScheme.surface.luminance() >= 0.5f
+				val predictionBrush = remember(lightSurface) {
+					Brush.horizontalGradient(
+						if (lightSurface) listOf(
+							Color(0xFFB71C47), Color(0xFFA34800), Color(0xFF806000),
+							Color(0xFF237A3B), Color(0xFF006DA8), Color(0xFF7541B8),
+						) else listOf(
+							Color(0xFFFF6B85), Color(0xFFFFB454), Color(0xFFFFE66D),
+							Color(0xFF7DE089), Color(0xFF6AD6F4), Color(0xFFC4A1FF),
+						),
+					)
+				}
 				Row(
 					verticalAlignment = Alignment.CenterVertically,
 					modifier = Modifier.clickable(onClick = onPredictionClick).clearAndSetSemantics {
@@ -913,7 +926,7 @@ internal fun ChapterHeaderTitle(
 						modifier = Modifier.size(16.dp),
 					)
 					Spacer(Modifier.width(4.dp))
-					Text(label.orEmpty(), style = secondaryStyle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+					Text(label.orEmpty(), style = secondaryStyle.copy(brush = predictionBrush), maxLines = 1)
 				}
 			}
 		}
