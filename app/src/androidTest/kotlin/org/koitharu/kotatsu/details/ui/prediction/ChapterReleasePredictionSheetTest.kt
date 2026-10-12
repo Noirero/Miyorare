@@ -168,6 +168,10 @@ class ChapterReleasePredictionSheetTest {
 				Text("Parent: ${original.manga.title}")
 				if (visible.value) ChapterReleasePredictionSheet(1, original, UpcomingPredictions(loading = false), loader) { visible.value = false }
 			} } }
+			val sheetBounds = compose.onNodeWithTag("release-prediction-sheet").getUnclippedBoundsInRoot()
+			val backdropBounds = compose.onNodeWithTag("release-prediction-backdrop").getUnclippedBoundsInRoot()
+			assertEquals(sheetBounds.top, backdropBounds.top)
+			assertEquals(sheetBounds.bottom, backdropBounds.bottom)
 			compose.onNodeWithTag("release-prediction-handle")
 				.assert(hasAnyAncestor(hasTestTag("release-prediction-backdrop")))
 				.performSemanticsAction(SemanticsActions.Dismiss) { it() }

@@ -196,19 +196,22 @@ internal fun ChapterReleasePredictionSheet(
 	val baseScheme = MaterialTheme.colorScheme
 	val calendarScheme = remember(baseScheme, imageBackground) { predictionCalendarColorScheme(baseScheme, imageBackground) }
 	val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+	val noInsets = WindowInsets(0, 0, 0, 0)
 	val dismissLabel = stringResource(R.string.close)
 	MaterialTheme(colorScheme = calendarScheme) {
 		ModalBottomSheet(
+			modifier = Modifier.testTag("release-prediction-sheet"),
 			onDismissRequest = onDismiss,
 			sheetState = sheetState,
 			dragHandle = if (imageBackground) null else ({ BottomSheetDefaults.DragHandle() }),
 			containerColor = if (imageBackground) Color.Transparent else MaterialTheme.colorScheme.surface,
 			// Transparent containers cannot resolve a themed content color automatically.
 			contentColor = MaterialTheme.colorScheme.onSurface,
+			contentWindowInsets = { if (imageBackground) noInsets else BottomSheetDefaults.windowInsets },
 		) {
 			Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).testTag("release-prediction-backdrop")) {
 				PredictionBackground(selected, backgroundMode, blurCover, customRevision, imageLoader, Modifier.matchParentSize())
-				Column(Modifier.fillMaxWidth()) {
+				Column(Modifier.fillMaxWidth().windowInsetsPadding(if (imageBackground) BottomSheetDefaults.windowInsets else noInsets)) {
 					if (imageBackground) BottomSheetDefaults.DragHandle(
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 						modifier = Modifier.align(Alignment.CenterHorizontally).testTag("release-prediction-handle").semantics(mergeDescendants = true) {
