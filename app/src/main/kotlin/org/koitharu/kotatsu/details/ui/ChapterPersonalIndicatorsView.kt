@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.util.AttributeSet
 import android.view.Gravity
+import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -26,6 +27,11 @@ class ChapterPersonalIndicatorsView @JvmOverloads constructor(context: Context, 
 		note = findViewById(R.id.imageView_personal_note)
 		number = findViewById(R.id.textView_personal_rating)
 		star = findViewById(R.id.imageView_personal_star)
+	}
+
+	fun setOnNoteClickListener(listener: View.OnClickListener?) {
+		note.setOnClickListener(listener)
+		note.isClickable = listener != null
 	}
 
 	fun bind(metadata: ChapterPersonalMetadata, accent: Int, inactive: Int) {
