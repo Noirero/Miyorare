@@ -7,7 +7,9 @@ import android.provider.CalendarContract
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,13 +27,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
@@ -52,8 +55,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getTitle
-import org.koitharu.kotatsu.core.util.ext.tryLaunch
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
+import org.koitharu.kotatsu.core.util.ext.tryLaunch
 import org.koitharu.kotatsu.details.domain.ChapterReleasePredictionItem
 import org.koitharu.kotatsu.details.domain.FavouriteReleasePredictionsUseCase
 import org.koitharu.kotatsu.details.domain.releasePredictionOrder
@@ -86,8 +89,6 @@ internal fun ChapterReleasePredictionRoute(
 	onDismiss: () -> Unit,
 ) {
 	val lifecycle = LocalLifecycleOwner.current.lifecycle
-	// One collector, owned by this composition. Closing the sheet or stopping the Activity cancels
-	// both Room observation and mapLatest aggregation; restarting samples the current date again.
 	val upcoming by produceState(UpcomingPredictions(), space, lifecycle, useCase, canReadFavourites) {
 		if (!canReadFavourites) {
 			value = UpcomingPredictions(loading = false, locked = true)
@@ -99,9 +100,6 @@ internal fun ChapterReleasePredictionRoute(
 				.collect { value = UpcomingPredictions(it, loading = false) }
 		}
 	}
-	// Keep the document launcher composed across a vault lock while the external picker is open.
-	// Private context/results disappear immediately and its collector is cancelled, independently
-	// of preserving that launcher. A forged Private-space intent cannot enumerate a locked vault.
 	ChapterReleasePredictionSheet(originMangaId, origin.takeIf { canReadFavourites },
 		if (canReadFavourites) upcoming else UpcomingPredictions(loading = false, locked = true), imageLoader, onDismiss)
 }
@@ -127,8 +125,6 @@ internal fun ChapterReleasePredictionSheet(
 			upcoming.items.map { if (useOriginRow && it.manga.id == originMangaId && origin != null) origin else it }.sortedWith(releasePredictionOrder)
 		}
 	}
-	// Loading/invalidation never resets selection to the parent manga. An invalid selection loses
-	// its actions until valid evidence arrives or the user chooses a different row.
 	val selected = remember(selectedId, selectedFromOrigin, origin, upcoming.items) {
 		if (selectedFromOrigin) origin else upcoming.items.find { it.manga.id == selectedId }
 	}
@@ -157,8 +153,12 @@ internal fun ChapterReleasePredictionSheet(
 			Toast.makeText(context, R.string.release_calendar_import_error, Toast.LENGTH_SHORT).show()
 		}
 	}
-	ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-		Box(Modifier.fillMaxWidth()) {
+	ModalBottomSheet(
+		onDismissRequest = onDismiss,
+		sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+		containerColor = if (backgroundMode == PredictionCalendarBackgroundMode.DEFAULT) MaterialTheme.colorScheme.surface else Color.Transparent,
+	) {
+		Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
 			PredictionBackground(selected, backgroundMode, customRevision, imageLoader, Modifier.matchParentSize())
 			Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
 				Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -175,10 +175,9 @@ internal fun ChapterReleasePredictionSheet(
 						modifier = Modifier.testTag("release-prediction-date").padding(top = 6.dp))
 					Text(expectedLabel(selected), style = MaterialTheme.typography.bodySmall)
 					Spacer(Modifier.height(8.dp))
-					PredictionCalendar(selected)
+					PredictionCalendar(selected, backgroundMode != PredictionCalendarBackgroundMode.DEFAULT)
 				} else Text(unavailable, modifier = Modifier.padding(vertical = 16.dp))
 				Spacer(Modifier.height(12.dp))
-				// The calendar is a sibling above the pager. Horizontal drags on it cannot select manga.
 				HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth().height(280.dp).testTag("release-prediction-pager")) { page ->
 					if (page == 0) {
 						if (selected != null) PredictionActions(selected, onDetails = { showDetails = true })
@@ -226,15 +225,24 @@ internal fun ChapterReleasePredictionSheet(
 	if (showDetails && selected != null) AlertDialog(
 		onDismissRequest = { showDetails = false },
 		title = { Text(stringResource(R.string.release_calendar_details)) },
-		text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-			Text(selected.manga.title, fontWeight = FontWeight.Bold)
-			Text(formatDate(selected.prediction.expectedDate))
-			Text(stringResource(R.string.release_calendar_source, selected.manga.source.getTitle(context)))
-			selected.branch?.let { Text(stringResource(R.string.release_calendar_branch, it)) }
-			Text(stringResource(R.string.release_calendar_estimate))
-			Text(stringResource(R.string.release_calendar_recent_history), fontWeight = FontWeight.SemiBold)
-			Text(selected.releaseDates.joinToString("\n") { formatDate(it) })
-		} },
+		text = {
+			Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+				Text(selected.manga.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+				Text(stringResource(R.string.release_calendar_source, selected.manga.source.getTitle(context)), style = MaterialTheme.typography.bodySmall)
+				selected.branch?.let { Text(stringResource(R.string.release_calendar_branch, it), style = MaterialTheme.typography.bodySmall) }
+				Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f), modifier = Modifier.fillMaxWidth()) {
+					Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+						Text(formatDate(selected.prediction.expectedDate), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+						Text(expectedLabel(selected), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+						Text(stringResource(R.string.release_calendar_predicted), style = MaterialTheme.typography.labelSmall)
+					}
+				}
+				Text(stringResource(R.string.release_calendar_recent_history), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+				selected.releaseDates.forEach { Text(formatDate(it), style = MaterialTheme.typography.bodyMedium) }
+				HorizontalDivider()
+				Text(stringResource(R.string.release_calendar_estimate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			}
+		},
 		confirmButton = { TextButton(onClick = { showDetails = false }) { Text(stringResource(R.string.close)) } },
 	)
 }
@@ -256,12 +264,12 @@ private fun PredictionBackground(item: ChapterReleasePredictionItem?, mode: Pred
 			modifier = Modifier.fillMaxSize().blur(22.dp), onError = {
 				if (mode == PredictionCalendarBackgroundMode.CUSTOM) Toast.makeText(context, R.string.release_calendar_image_error, Toast.LENGTH_SHORT).show()
 			})
-		Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.90f)))
+		Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)))
 	}
 }
 
 @Composable
-private fun PredictionCalendar(item: ChapterReleasePredictionItem) {
+private fun PredictionCalendar(item: ChapterReleasePredictionItem, imageBackground: Boolean) {
 	val expectedDate = item.prediction.expectedDate
 	var monthValue by rememberSaveable(item.manga.id, expectedDate.toString()) { mutableStateOf(YearMonth.from(expectedDate).toString()) }
 	val month = YearMonth.parse(monthValue)
@@ -272,7 +280,13 @@ private fun PredictionCalendar(item: ChapterReleasePredictionItem) {
 	val dayHeight = maxOf(34.dp, with(density) { MaterialTheme.typography.bodyMedium.lineHeight.toDp() + 6.dp })
 	val previousMonthLabel = stringResource(R.string.release_calendar_previous_month)
 	val nextMonthLabel = stringResource(R.string.release_calendar_next_month)
-	Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth().testTag("release-prediction-calendar")) {
+	val rainbow = Brush.sweepGradient(listOf(Color(0xFFFF4D6D), Color(0xFFFFB84D), Color(0xFFFFF15C), Color(0xFF62E36D), Color(0xFF4DD8FF), Color(0xFF6C63FF), Color(0xFFD65CFF), Color(0xFFFF4D6D)))
+	Surface(
+		shape = RoundedCornerShape(20.dp),
+		color = if (imageBackground) MaterialTheme.colorScheme.surface.copy(alpha = 0.76f) else MaterialTheme.colorScheme.surface,
+		tonalElevation = if (imageBackground) 0.dp else 2.dp,
+		modifier = Modifier.fillMaxWidth().testTag("release-prediction-calendar"),
+	) {
 		Column(Modifier.padding(12.dp)) {
 			Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
 				IconButton(onClick = { monthValue = month.minusMonths(1).toString() }) { Text("‹", modifier = Modifier.semantics { contentDescription = previousMonthLabel }) }
@@ -298,9 +312,9 @@ private fun PredictionCalendar(item: ChapterReleasePredictionItem) {
 						else -> ""
 					}
 					Box(Modifier.weight(1f).height(dayHeight).semantics { if (date != null) contentDescription = "${formatDate(date)} $markerLabel" }, contentAlignment = Alignment.Center) {
-						if (predicted) Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(dayHeight - 4.dp)) {}
+						if (predicted) Box(Modifier.size(dayHeight - 4.dp).border(BorderStroke(2.dp, rainbow), CircleShape))
 						if (date != null) Text(day.toString(), style = MaterialTheme.typography.bodyMedium, fontWeight = if (predicted) FontWeight.Bold else FontWeight.Normal,
-							color = if (predicted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+							color = MaterialTheme.colorScheme.onSurface)
 						if (historical) Box(Modifier.align(Alignment.BottomCenter).size(if (previous) 6.dp else 4.dp).clip(if (previous) CircleShape else RoundedCornerShape(1.dp))
 							.background(if (previous) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.tertiary))
 					}
@@ -371,7 +385,6 @@ private fun expectedLabel(item: ChapterReleasePredictionItem): String = if (item
 	else pluralStringResource(R.plurals.release_calendar_expected_days, item.prediction.daysUntilNext.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), item.prediction.daysUntilNext)
 
 internal fun releasePredictionCalendarIntent(context: Context, item: ChapterReleasePredictionItem): Intent {
-	// CalendarContract all-day timestamps are UTC calendar dates, avoiding shifts in ±timezones/DST.
 	val start = item.prediction.expectedDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 	val end = item.prediction.expectedDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 	return Intent(Intent.ACTION_INSERT).setData(CalendarContract.Events.CONTENT_URI)
