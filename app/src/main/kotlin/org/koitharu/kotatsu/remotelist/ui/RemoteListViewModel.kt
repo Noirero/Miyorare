@@ -139,6 +139,16 @@ open class RemoteListViewModel @Inject constructor(
 		}
 	}
 
+	/**
+	 * The catalogue request belongs to the Remote list screen, not to the Details destination.
+	 * Cancel it synchronously at navigation handoff so Source Pack parser/network work cannot keep
+	 * competing with the foreground Details request. Published list state is intentionally retained.
+	 */
+	fun pauseListWorkForDetailsHandoff() {
+		loadingJob?.cancel()
+		loadingJob = null
+	}
+
 	protected fun loadList(filterState: FilterCoordinator.Snapshot, append: Boolean): Job {
 		loadingJob?.let {
 			if (it.isActive) return it
