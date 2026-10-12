@@ -336,7 +336,7 @@ class ChapterPersistenceRegressionTest {
 						val item = ChapterListItem(source, ChapterListItem.FLAG_UNREAD, personalMetadata = metadata.value)
 						Column {
 							InlineChapterCard(item, org.koitharu.kotatsu.core.prefs.VisualEffectLevel.LIGHT, Color.Blue,
-								onClick = { reads++ }, onDownloadClick = { downloads++ }, onManageClick = {}, onPersonalClick = { editing.value = true })
+								onClick = { reads++ }, onDownloadClick = { downloads++ }, onManageClick = {}, onPersonalClick = { editing.value = true }, onNoteClick = {})
 							ChapterNoteSearch(query.value, { query.value = it }, { exits++ })
 						}
 						if (editing.value) ChapterPersonalEditor(item, false, { editing.value = false }, { rating, note ->
@@ -347,7 +347,7 @@ class ChapterPersistenceRegressionTest {
 				}
 			}
 			fun nodes() = detailsComposeNodes(compose)
-			val hasNote = context.getString(org.koitharu.kotatsu.R.string.chapter_personal_has_note)
+			val hasNote = context.getString(org.koitharu.kotatsu.R.string.chapter_personal_view_note)
 			val states = listOf(ChapterPersonalMetadata(), ChapterPersonalMetadata(note = "Note")) +
 				(1..5).flatMap { listOf(ChapterPersonalMetadata(it), ChapterPersonalMetadata(it, "Peak")) } + ChapterPersonalMetadata()
 			for (state in states) {
