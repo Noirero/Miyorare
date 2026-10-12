@@ -17,11 +17,13 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.plus
 import okio.FileNotFoundException
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
@@ -431,12 +433,18 @@ abstract class ChaptersPagesViewModel(
 	fun setNewOnly(value: Boolean) = updateChapterOptions { copy(newOnly = value) }
 
 	fun setChapterSortMode(mode: ChapterSortMode) {
-		updateChapterOptions {
-			if (sortMode == mode) copy(descending = !descending) else copy(sortMode = mode)
+		val previous = chapterListOptions.getAndUpdate { current ->
+			if (current.sortMode == mode) current.copy(descending = !current.descending) else current.copy(sortMode = mode)
+		}
+		if (previous.sortMode == mode) {
+			settings.isChaptersReverse = !previous.descending
 		}
 	}
 
-	fun toggleChapterSortDirection() = updateChapterOptions { copy(descending = !descending) }
+	fun toggleChapterSortDirection() {
+		val options = chapterListOptions.updateAndGet { it.copy(descending = !it.descending) }
+		settings.isChaptersReverse = options.descending
+	}
 
 	fun setChapterTitleMode(mode: ChapterTitleMode) = updateChapterOptions { copy(titleMode = mode) }
 

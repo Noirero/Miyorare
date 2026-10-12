@@ -80,7 +80,8 @@ class ChapterOptionsRegressionTest {
 		assertTrue(details.contains("chapterListOptionsStore=chapterListOptionsStore"))
 		assertFalse(reader.contains("ChapterListOptionsStore"))
 		assertFalse(reader.contains("chapterListOptionsStore="))
-		assertTrue(menu.contains("if(viewModelisReaderViewModel){settings.isChaptersReverse="))
+		assertTrue(menu.contains("viewModel.toggleChapterSortDirection()"))
+		assertFalse(menu.contains("settings.isChaptersReverse="))
 		assertTrue(menu.contains("if(viewModelisReaderViewModel)settings.isChaptersGridView="))
 	}
 
