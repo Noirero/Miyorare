@@ -16,6 +16,7 @@ import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePaddingRelative
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.commit
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.appbar.CollapsingToolbarLayout
@@ -126,6 +127,11 @@ class MangaListActivity :
 			}
 			// A newer resume/refresh may already have installed a fresher wrapper while we were waiting.
 			if (source !== staleSource) return@launch
+			// The IO wait may outlive this resume. Do not mutate source state or commit fragments after
+			// the Activity has left RESUMED / saved FragmentManager state; the next onResume retries it.
+			if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || supportFragmentManager.isStateSaved) {
+				return@launch
+			}
 			val sourceChanged = resolved.source !== staleSource
 			val languageChanged = resolved.languageSubtitle != activeLanguageName
 			if (!sourceChanged && !languageChanged) return@launch
