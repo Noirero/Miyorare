@@ -37,6 +37,7 @@ import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.FragmentListBinding
 import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.list.ui.MangaListFragment
+import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.lnreader.model.LnMangaSource
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaSource
@@ -101,9 +102,9 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
         resolveMiyorareSourceWebViewUrl()
     }
 
-    override fun onMangaClick(item: org.koitharu.kotatsu.list.ui.model.MangaListModel, view: View) {
+    override fun onItemClick(item: MangaListModel, view: View) {
         pauseSourcePackListWorkForDetails()
-        super.onMangaClick(item, view)
+        super.onItemClick(item, view)
     }
 
     private fun pauseSourcePackListWorkForDetails() {
