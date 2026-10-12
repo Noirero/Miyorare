@@ -35,7 +35,7 @@ class SourcePackDetailsHandoffRegressionTest {
 		val fragment = source("org/koitharu/kotatsu/remotelist/ui/RemoteListFragment.kt")
 		val handoff = fragment.substringAfter("privatefunpauseSourcePackListWorkForDetails(){").substringBefore("overridefunonScrolledToEnd")
 
-		assertTrue(handoff.contains("ass?TsukiMangaSource?:return"))
+		assertTrue(handoff.contains("as?TsukiMangaSource?:return"))
 		assertTrue(handoff.contains("TsukiPluginProvider.MIYORARE"))
 		assertFalse(handoff.contains("LnMangaSource"))
 		assertFalse(handoff.contains("MihonMangaSource"))
