@@ -6,8 +6,16 @@ import android.net.Uri
 import android.provider.CalendarContract
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -99,6 +107,92 @@ class ChapterReleasePredictionSheetTest {
 		assertTrue(intent.getStringExtra(CalendarContract.Events.DESCRIPTION).orEmpty().contains("not an official"))
 	}
 
+	@Test fun backgroundSurfacesOwnTextColorsAcrossTheLightDarkAndBlurMatrix() {
+		val prefs = context.getSharedPreferences(PREDICTION_PREFS, android.content.Context.MODE_PRIVATE)
+		val previous = prefs.all
+		val cases = listOf(lightColorScheme(), darkColorScheme()).flatMap { scheme ->
+			listOf(
+				Triple(scheme, PredictionCalendarBackgroundMode.DEFAULT, true),
+				Triple(scheme, PredictionCalendarBackgroundMode.MANGA_COVER, true),
+				Triple(scheme, PredictionCalendarBackgroundMode.MANGA_COVER, false),
+				Triple(scheme, PredictionCalendarBackgroundMode.CUSTOM, true),
+			)
+		}
+		val appearance = mutableStateOf(cases.first())
+		try {
+			PredictionCalendarBackgroundStore.writeMode(context, cases.first().second)
+			compose.setContent { key(appearance.value) {
+				MaterialTheme(colorScheme = appearance.value.first) {
+					// A transparent/alpha Surface must never inherit this unrelated parent color.
+					CompositionLocalProvider(LocalContentColor provides Color.Magenta) {
+						ChapterReleasePredictionSheet(1, original, UpcomingPredictions(listOf(original, alternate), loading = false), loader) {}
+					}
+				}
+			} }
+			for (case in cases) {
+				compose.runOnIdle {
+					PredictionCalendarBackgroundStore.writeMode(context, case.second)
+					PredictionCalendarBackgroundStore.writeCoverBlur(context, case.third)
+					appearance.value = case
+				}
+				val scheme = case.first
+				compose.onNodeWithText(context.getString(R.string.release_calendar_title)).assertTextColor(scheme.onSurface)
+				compose.onNodeWithTag("release-prediction-active-title").assertTextColor(scheme.onSurface)
+				compose.onNodeWithTag("release-prediction-date").assertTextColor(scheme.onSurface)
+				compose.onNodeWithText(date.format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy"))).assertTextColor(scheme.onSurface)
+				compose.onNodeWithText(context.getString(R.string.release_calendar_predicted)).assertTextColor(scheme.onSurface)
+				compose.onNodeWithText(context.getString(R.string.release_calendar_recent_history)).assertTextColor(scheme.onSurfaceVariant)
+				compose.onNodeWithText(context.getString(R.string.release_calendar_details)).performClick()
+				val dialogDate = date.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM))
+				compose.onNode(hasText(dialogDate) and hasAnyAncestor(isDialog())).assertTextColor(scheme.onPrimaryContainer)
+				compose.onNode(hasText(context.getString(R.string.close)) and hasAnyAncestor(isDialog())).performClick()
+				compose.onNodeWithTag("release-prediction-pager").performTouchInput { swipeLeft() }
+				compose.onNodeWithText(context.getString(R.string.release_calendar_upcoming)).assertTextColor(scheme.onSurface)
+				compose.onNode(hasText(alternate.manga.title) and hasAnyAncestor(hasTestTag("release-prediction-manga:2")), useUnmergedTree = true)
+					.assertTextColor(scheme.onSurface)
+			}
+		} finally { restorePreferences(previous) }
+	}
+
+	@Test fun coverBlurTogglePersistsWithoutBecomingACustomImageSetting() {
+		val prefs = context.getSharedPreferences(PREDICTION_PREFS, android.content.Context.MODE_PRIVATE)
+		val previous = prefs.all
+		try {
+			prefs.edit().remove(KEY_COVER_BLUR).apply()
+			assertTrue(PredictionCalendarBackgroundStore.readCoverBlur(context))
+			PredictionCalendarBackgroundStore.writeMode(context, PredictionCalendarBackgroundMode.DEFAULT)
+			compose.setContent { MaterialTheme { ChapterReleasePredictionSheet(1, original, UpcomingPredictions(loading = false), loader) {} } }
+			compose.onNodeWithContentDescription(context.getString(R.string.release_calendar_background)).performClick()
+			compose.onNodeWithText(context.getString(R.string.release_calendar_cover_blur)).assertDoesNotExist()
+			compose.onNodeWithText(context.getString(R.string.release_calendar_background_cover)).performClick()
+			compose.onNodeWithText(context.getString(R.string.release_calendar_cover_blur)).assertIsOn().performClick().assertIsOff()
+			assertFalse(PredictionCalendarBackgroundStore.readCoverBlur(context))
+			compose.onNodeWithText(context.getString(R.string.close)).performClick()
+			compose.onNodeWithContentDescription(context.getString(R.string.release_calendar_background)).performClick()
+			compose.onNodeWithText(context.getString(R.string.release_calendar_cover_blur)).assertIsOff().performClick().assertIsOn()
+			assertTrue(PredictionCalendarBackgroundStore.readCoverBlur(context))
+			compose.onNodeWithText(context.getString(R.string.release_calendar_background_default)).performClick()
+			compose.onNodeWithContentDescription(context.getString(R.string.release_calendar_background)).performClick()
+			compose.onNodeWithText(context.getString(R.string.release_calendar_cover_blur)).assertDoesNotExist()
+		} finally { restorePreferences(previous) }
+	}
+
+	private fun SemanticsNodeInteraction.assertTextColor(expected: Color) {
+		val layouts = mutableListOf<TextLayoutResult>()
+		performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+		assertEquals(expected, layouts.single().layoutInput.style.color)
+	}
+
+	private fun restorePreferences(previous: Map<String, *>) {
+		context.getSharedPreferences(PREDICTION_PREFS, android.content.Context.MODE_PRIVATE).edit().clear().apply {
+			previous.forEach { (key, value) -> when (value) {
+				is String -> putString(key, value)
+				is Int -> putInt(key, value)
+				is Boolean -> putBoolean(key, value)
+			} }
+		}.apply()
+	}
+
 	@Test fun calendarBackgroundModePersistsAndInvalidImportsPreserveOwnedImage() = runBlocking {
 		val prefs = context.getSharedPreferences(PREDICTION_PREFS, android.content.Context.MODE_PRIVATE)
 		val previous = prefs.all
@@ -120,13 +214,7 @@ class ChapterReleasePredictionSheetTest {
 		} finally {
 			image.delete()
 			if (previousBytes != null) target.writeBytes(previousBytes) else target.delete()
-			prefs.edit().clear().apply()
-			prefs.edit().apply {
-				previous.forEach { (key, value) -> when (value) {
-					is String -> putString(key, value)
-					is Int -> putInt(key, value)
-				} }
-			}.apply()
+			restorePreferences(previous)
 		}
 	}
 }

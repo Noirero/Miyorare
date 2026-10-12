@@ -26,6 +26,7 @@
     <string name="release_calendar_background">Customize background</string>
     <string name="release_calendar_background_default">Default (Theme)</string>
     <string name="release_calendar_background_cover">Manga Cover</string>
+    <string name="release_calendar_cover_blur">Blur manga cover</string>
     <string name="release_calendar_background_custom">Custom Image</string>
     <string name="release_calendar_choose_image">Choose image</string>
     <string name="release_calendar_image_error">The background image could not be read. Using the theme background.</string>

@@ -14,8 +14,12 @@ import java.io.File
 internal const val PREDICTION_PREFS = "release_prediction_calendar"
 internal const val KEY_BACKGROUND = "background_mode"
 internal const val KEY_BACKGROUND_REVISION = "background_revision"
+internal const val KEY_COVER_BLUR = "cover_blur"
 
 enum class PredictionCalendarBackgroundMode { DEFAULT, MANGA_COVER, CUSTOM }
+
+internal fun PredictionCalendarBackgroundMode.shouldBlur(blurCover: Boolean) =
+	this == PredictionCalendarBackgroundMode.MANGA_COVER && blurCover
 
 /** App-owned, global calendar image; mirrors the appearance import's sampled/atomic file pattern. */
 internal object PredictionCalendarBackgroundStore {
@@ -32,6 +36,13 @@ internal object PredictionCalendarBackgroundStore {
 
 	fun writeMode(context: Context, mode: PredictionCalendarBackgroundMode) {
 		context.getSharedPreferences(PREDICTION_PREFS, Context.MODE_PRIVATE).edit().putString(KEY_BACKGROUND, mode.name).apply()
+	}
+
+	fun readCoverBlur(context: Context) =
+		context.getSharedPreferences(PREDICTION_PREFS, Context.MODE_PRIVATE).getBoolean(KEY_COVER_BLUR, true)
+
+	fun writeCoverBlur(context: Context, enabled: Boolean) {
+		context.getSharedPreferences(PREDICTION_PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_COVER_BLUR, enabled).apply()
 	}
 
 	suspend fun import(context: Context, uri: Uri) {
