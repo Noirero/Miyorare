@@ -54,6 +54,7 @@ class ChapterListOptionsStore @Inject constructor(
 	fun getDefault(space: FavouriteSpace, isNovel: Boolean): ChapterListOptions {
 		val raw = prefs.getString(key(space, isNovel), null)
 		if (raw.isNullOrBlank()) {
+			// Preserve the user's existing chapter direction/layout on first upgrade.
 			return ChapterListOptions(
 				descending = appSettings.isChaptersReverse,
 				grid = appSettings.isChaptersGridView,
@@ -63,13 +64,7 @@ class ChapterListOptionsStore @Inject constructor(
 		return (decode(raw) ?: ChapterListOptions(
 			descending = appSettings.isChaptersReverse,
 			grid = appSettings.isChaptersGridView,
-		)).copy(
-			// Sort direction is a live user preference shared by Details and Reader. Keeping it
-			// outside the explicit "set default" snapshot prevents reopening Details from
-			// silently restoring an older direction.
-			descending = appSettings.isChaptersReverse,
-			groupingMode = getGroupingMode(space, isNovel),
-		)
+		)).copy(groupingMode = getGroupingMode(space, isNovel))
 	}
 
 	private fun getGroupingMode(space: FavouriteSpace, isNovel: Boolean): ChapterGroupingMode =

@@ -43,13 +43,13 @@ class ChapterPagesMenuProvider(
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
 		val tab = getCurrentTab()
 		when (tab) {
+			// Chapters tab: the search action + the list-option toggles share the toolbar's action pill.
 			TAB_CHAPTERS -> {
 				menuInflater.inflate(R.menu.opt_chapters, menu)
+				// Match the rest of the app's checkable overflow menus (e.g. the home incognito toggle).
 				menu.setOptionalIconsVisibleCompat(true)
-				// Notes search belongs to the manga details surface. The chapter manager owns
-				// chapter-title search only, so do not expose a second search mode here.
-				menu.findItem(R.id.action_search_notes)?.isVisible = false
-				menu.findItem(R.id.action_search)?.let { item ->
+				menu.findItem(R.id.action_search_notes)?.isVisible = viewModel is DetailsViewModel
+				for (id in listOf(R.id.action_search, R.id.action_search_notes)) menu.findItem(id)?.let { item ->
 					item.setOnActionExpandListener(this)
 					(item.actionView as? SearchView)?.apply {
 						setIconifiedByDefault(false)
@@ -57,7 +57,14 @@ class ChapterPagesMenuProvider(
 						setOnQueryTextListener(this@ChapterPagesMenuProvider)
 					}
 				}
+				if (viewModel is DetailsViewModel && viewModel.chapterNotesQuery.value != null) {
+					menu.findItem(R.id.action_search_notes)?.let { item ->
+						item.expandActionView()
+						(item.actionView as? SearchView)?.setQuery(viewModel.chapterNotesQuery.value.orEmpty(), false)
+					}
+				}
 			}
+
 			TAB_PAGES, TAB_BOOKMARKS -> {
 				menuInflater.inflate(R.menu.opt_pages, menu)
 				menu.findItem(R.id.action_grid_size)?.run {
@@ -80,6 +87,7 @@ class ChapterPagesMenuProvider(
 		}
 		menu.findItem(R.id.action_merge_scanlators)?.let { item ->
 			val isMerged = viewModel.isScanlatorsMerged.value
+			// only offer it when there is something to merge (or to unmerge)
 			item.isVisible = isMerged || (viewModel.mangaDetails.value?.chapters?.size ?: 0) > 1
 			item.isChecked = isMerged
 		}
@@ -108,18 +116,15 @@ class ChapterPagesMenuProvider(
 				.show()
 			true
 		}
+
 		R.id.action_reversed -> {
 			viewModel.toggleChapterSortDirection()
-			val descending = viewModel.chapterListOptions.value.descending
 			if (viewModel is ReaderViewModel) {
-				settings.isChaptersReverse = descending
-			} else if (viewModel is DetailsViewModel) {
-				// Details now retains the user's explicit sort direction across reopen while
-				// keeping the rest of its chapter-list defaults scoped to Details.
-				settings.isChaptersReverse = descending
+				settings.isChaptersReverse = viewModel.chapterListOptions.value.descending
 			}
 			true
 		}
+
 		R.id.action_grid_view -> if (viewModel.getMangaOrNull()?.isEpub == true) true else {
 			val grid = !menuItem.isChecked
 			viewModel.setChaptersGridView(grid)
@@ -128,14 +133,17 @@ class ChapterPagesMenuProvider(
 			}
 			true
 		}
+
 		R.id.action_downloaded -> {
 			viewModel.setDownloadedOnly(!menuItem.isChecked)
 			true
 		}
+
 		R.id.action_merge_scanlators -> {
 			viewModel.setScanlatorsMerged(!menuItem.isChecked)
 			true
 		}
+
 		else -> false
 	}
 
@@ -147,6 +155,8 @@ class ChapterPagesMenuProvider(
 		expandedItemRef = WeakReference(item)
 		sheet.expandAndLock()
 		isEnabled = true
+		// The search field needs the whole bar, so the tabs (the toolbar's custom content) step aside
+		// while it is open and the sheet rises to full screen for room.
 		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
 			toolbarContent.isGone = true
 			if (item.itemId == R.id.action_search_notes) {
@@ -165,7 +175,8 @@ class ChapterPagesMenuProvider(
 		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
 			toolbarContent.isVisible = true
 			(item.actionView as? SearchView)?.apply {
-				// Detach first so clearing one search mode cannot mutate the other query.
+				// Collapse owns mode cleanup. Clearing the widget must not run normal-search callbacks
+				// and overwrite the separate chapter query when exiting note search.
 				setOnQueryTextListener(null)
 				setQuery("", false)
 				setOnQueryTextListener(this@ChapterPagesMenuProvider)
@@ -188,7 +199,9 @@ class ChapterPagesMenuProvider(
 	}
 
 	override fun onValueChange(slider: Slider, value: Float, fromUser: Boolean) {
-		if (fromUser) settings.gridSizePages = value.toInt()
+		if (fromUser) {
+			settings.gridSizePages = value.toInt()
+		}
 	}
 
 	private fun Slider.setupPagesSizeSlider() {
@@ -204,7 +217,9 @@ class ChapterPagesMenuProvider(
 
 	private fun getCurrentTab(): Int {
 		var page = pager.currentItem
-		if (page > 0 && pager.adapter?.itemCount == 2) page++
+		if (page > 0 && pager.adapter?.itemCount == 2) { // no Pages page
+			page++ // shift
+		}
 		return page
 	}
 }
