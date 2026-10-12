@@ -101,7 +101,6 @@ import org.koitharu.kotatsu.stats.data.StatsRepository
 import javax.inject.Inject
 import java.time.ZoneId
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
-import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.ChapterRange
 
 data class DetailsRelatedUiState(
@@ -139,7 +138,7 @@ class DetailsViewModel @Inject constructor(
 	private val detailsNavigationCache: DetailsNavigationCache,
 	mangaRepositoryFactory: MangaRepository.Factory,
 	chapterListOptionsStore: ChapterListOptionsStore,
-	private val chapterPersonalRepository: ChapterPersonalRepository,
+	chapterPersonalRepository: ChapterPersonalRepository,
 ) : ChaptersPagesViewModel(
 	settings = settings,
 	interactor = interactor,
@@ -170,43 +169,6 @@ class DetailsViewModel @Inject constructor(
 		// Temporary search exposure must not erase the user's independent expansion choices.
 		if (chapterNotesQuery.value?.isNotBlank() ?: chaptersQuery.value.isNotEmpty()) return
 		savedStateHandle["chapter_range_expansion"] = rangeExpansion.value.withRangeChoice(range, !range.expanded)
-	}
-
-	val chapterPersonalEditor = MutableStateFlow<ChapterListItem?>(null)
-	val isSavingChapterPersonal = MutableStateFlow(false)
-
-	private var chapterPersonalLoadJob: Job? = null
-
-	fun editChapterPersonal(item: ChapterListItem) {
-		if (isSavingChapterPersonal.value || item.personalKey.url.isBlank()) return
-		chapterPersonalLoadJob?.cancel()
-		chapterPersonalLoadJob = launchJob {
-			val id = mangaDetails.value?.id ?: return@launchJob
-			val metadata = chapterPersonalRepository.get(id, item.personalKey)
-			chapterPersonalEditor.value = item.copy(personalMetadata = metadata)
-		}
-	}
-
-	fun dismissChapterPersonalEditor() {
-		if (!isSavingChapterPersonal.value) {
-			chapterPersonalLoadJob?.cancel()
-			chapterPersonalEditor.value = null
-		}
-	}
-
-	fun saveChapterPersonal(rating: Int?, note: String?) {
-		val item = chapterPersonalEditor.value ?: return
-		val manga = mangaDetails.value?.sourceManga ?: return
-		if (isSavingChapterPersonal.value) return
-		isSavingChapterPersonal.value = true
-		launchJob {
-			try {
-				chapterPersonalRepository.set(manga, item.personalKey, rating, note)
-				chapterPersonalEditor.value = null
-			} finally {
-				isSavingChapterPersonal.value = false
-			}
-		}
 	}
 
 	private val performanceTrace = PerformanceDiagnostics.trace(savedStateHandle.get<String>(PerformanceDiagnostics.TRACE_EXTRA))

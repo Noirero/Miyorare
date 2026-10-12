@@ -50,6 +50,7 @@ import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.details.ui.adapter.ChaptersAdapter
 import org.koitharu.kotatsu.details.ui.adapter.ChaptersSelectionDecoration
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.showChapterPersonalNote
 import org.koitharu.kotatsu.details.ui.pager.ChapterSortMode
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.details.ui.withVolumeHeaders
@@ -92,11 +93,13 @@ class ChaptersFragment :
 		super.onViewBindingCreated(binding, savedInstanceState)
 		isRestoringList = viewModel is DetailsViewModel && savedInstanceState != null
 		applyDetailsSheetBackground(binding)
-		(viewModel as? DetailsViewModel)?.chapterPersonalEditor?.observe(viewLifecycleOwner) { item ->
+		viewModel.chapterPersonalEditor.observe(viewLifecycleOwner) { item ->
 			if (item != null) dismissParentDialog()
 		}
 		chaptersAdapter = ChaptersAdapter(
 			onItemClickListener = this,
+			onPersonalClick = viewModel::editChapterPersonal,
+			onNoteClick = { item -> showChapterPersonalNote(requireContext(), item) },
 			onRangeToggle = { range -> (viewModel as? DetailsViewModel)?.toggleChapterRange(range) },
 			onDownloadClick = { item ->
 				if (!item.canDownload) return@ChaptersAdapter

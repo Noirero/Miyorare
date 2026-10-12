@@ -7,6 +7,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -83,11 +84,54 @@ abstract class ChaptersPagesViewModel(
 	private val localStorageChanges: SharedFlow<LocalManga?>,
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
+	private val chapterPersonalRepository: ChapterPersonalRepository,
 	private val chapterListOptionsStore: ChapterListOptionsStore? = null,
-	private val chapterPersonalRepository: ChapterPersonalRepository? = null,
 ) : BaseViewModel() {
 
 	val mangaDetails = MutableStateFlow<MangaDetails?>(null)
+
+	val chapterPersonalEditor = MutableStateFlow<ChapterListItem?>(null)
+	val isSavingChapterPersonal = MutableStateFlow(false)
+
+	private var chapterPersonalLoadJob: Job? = null
+	private var chapterPersonalMangaId: Long? = null
+
+	fun editChapterPersonal(item: ChapterListItem) {
+		if (isSavingChapterPersonal.value || item.personalKey.source.isBlank() || item.personalKey.url.isBlank()) return
+		val mangaId = mangaDetails.value?.id ?: return
+		chapterPersonalLoadJob?.cancel()
+		chapterPersonalLoadJob = launchJob {
+			val metadata = chapterPersonalRepository.get(mangaId, item.personalKey)
+			if (mangaDetails.value?.id != mangaId) return@launchJob
+			chapterPersonalMangaId = mangaId
+			chapterPersonalEditor.value = item.copy(personalMetadata = metadata)
+		}
+	}
+
+	fun dismissChapterPersonalEditor() {
+		if (!isSavingChapterPersonal.value) {
+			chapterPersonalLoadJob?.cancel()
+			chapterPersonalEditor.value = null
+			chapterPersonalMangaId = null
+		}
+	}
+
+	fun saveChapterPersonal(rating: Int?, note: String?) {
+		val item = chapterPersonalEditor.value ?: return
+		val manga = mangaDetails.value?.sourceManga?.takeIf { it.id == chapterPersonalMangaId } ?: return
+		if (isSavingChapterPersonal.value) return
+		chapterPersonalLoadJob?.cancel()
+		isSavingChapterPersonal.value = true
+		launchJob {
+			try {
+				chapterPersonalRepository.set(manga, item.personalKey, rating, note)
+				chapterPersonalEditor.value = null
+				chapterPersonalMangaId = null
+			} finally {
+				isSavingChapterPersonal.value = false
+			}
+		}
+	}
 
 	val isSmartLocal: Boolean
 		get() = getMangaOrNull()?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it.url) } == true
@@ -279,7 +323,7 @@ abstract class ChaptersPagesViewModel(
 
 	private val chapterPersonalMetadata = mangaDetails.map { it?.id }.distinctUntilChanged()
 		.flatMapLatest { id ->
-			if (id != null && chapterPersonalRepository != null) chapterPersonalRepository.observe(id)
+			if (id != null) chapterPersonalRepository.observe(id)
 			else flowOf(emptyMap())
 		}.withErrorHandling()
 
