@@ -1192,6 +1192,7 @@ internal fun InlineChapterCard(
 	onDownloadClick: () -> Unit,
 	onManageClick: () -> Unit,
 	onPersonalClick: () -> Unit,
+	onNoteClick: () -> Unit,
 ) {
 	val context = LocalContext.current
 	val palette = LocalMiyorareVisualPalette.current
@@ -1337,12 +1338,14 @@ internal fun InlineChapterCard(
 
 			val personal = item.personalMetadata.presentation(context.resources.configuration.locales[0])
 			if (personal.hasNote) {
-				Icon(
-					painter = painterResource(R.drawable.ic_export_notes),
-					contentDescription = stringResource(R.string.chapter_personal_has_note),
-					tint = accent,
-					modifier = Modifier.padding(end = 6.dp).size(16.dp),
-				)
+				IconButton(onClick = onNoteClick) {
+					Icon(
+						painter = painterResource(R.drawable.ic_export_notes),
+						contentDescription = stringResource(R.string.chapter_personal_view_note),
+						tint = accent,
+						modifier = Modifier.size(16.dp),
+					)
+				}
 			}
 			val ratingDescription = item.personalMetadata.rating?.let {
 				stringResource(R.string.chapter_personal_rating_value, it)
