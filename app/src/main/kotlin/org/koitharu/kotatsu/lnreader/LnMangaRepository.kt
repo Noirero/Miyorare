@@ -156,7 +156,15 @@ class LnMangaRepository(
 				}
 			}
 		}
-		return toDetailsManga(manga, novel, chapters)
+		val complete = toDetailsManga(manga, novel, chapters)
+		// Source Pack plugins with a single chapter page previously produced no progressive emission at
+		// all, so cold Details waited for Room persistence even though parseNovel already had the full
+		// chapter list. Publish the validated complete list as presentation-only state first; the caller
+		// still persists and marks the shared result loaded before committed consumers can complete.
+		if (!complete.chapters.isNullOrEmpty()) {
+			onIntermediate(complete)
+		}
+		return complete
 	}
 
 	private fun toDetailsManga(manga: Manga, novel: JSONObject, chapters: List<JSONObject>): Manga {
