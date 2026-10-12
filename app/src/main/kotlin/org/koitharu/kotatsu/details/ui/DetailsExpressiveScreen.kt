@@ -115,6 +115,7 @@ class DetailsExpressiveActions(
 	val onChapterNotesQueryChange: (String) -> Unit = {},
 	val onChapterNotesSearchExit: () -> Unit = {},
 	val onChapterRangeToggle: (ChapterRange) -> Unit = {},
+	val onReleasePredictionClick: () -> Unit = {},
 )
 
 @Composable
@@ -350,6 +351,7 @@ fun DetailsExpressiveScreen(
 								expanded = chaptersExpanded,
 								onToggleExpanded = { chaptersExpanded = !chaptersExpanded },
 								prediction = chapterReleasePrediction,
+								onPredictionClick = actions.onReleasePredictionClick,
 								onSearchNotes = actions.onChapterNotesSearchClick,
 							)
 							if (chaptersExpanded && chapterNotesQuery != null) {

@@ -4,10 +4,14 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.RawQuery
 import androidx.room.Transaction
+import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 import org.koitharu.kotatsu.core.db.DetailsCachePolicy
 import org.koitharu.kotatsu.core.db.entity.ChapterEntity
+import org.koitharu.kotatsu.details.data.ReleasePredictionBranch
+import org.koitharu.kotatsu.details.data.ReleasePredictionDate
 
 data class ChapterLogicalCount(
 	val mangaId: Long,
@@ -31,6 +35,26 @@ abstract class ChaptersDao {
 
 	@Query("SELECT * FROM chapters WHERE manga_id IN (:mangaIds) ORDER BY manga_id, `index` ASC")
 	abstract suspend fun findAll(mangaIds: Collection<Long>): List<ChapterEntity>
+
+	@Query(
+		"""
+		SELECT DISTINCT c.manga_id AS mangaId, c.source, c.branch
+		FROM chapters c INNER JOIN manga m ON m.manga_id = c.manga_id
+		WHERE c.manga_id IN (:mangaIds) AND c.source = m.source
+			AND c.upload_date > 0 AND c.upload_date <= :nowMillis
+		ORDER BY c.manga_id, c.branch
+		""",
+	)
+	abstract suspend fun findReleasePredictionBranches(
+		mangaIds: Collection<Long>,
+		nowMillis: Long,
+	): List<ReleasePredictionBranch>
+
+	/** Bounded UNION queries return recent source events, never whole chapter histories. */
+	@RawQuery
+	abstract suspend fun findReleasePredictionDates(
+		query: SupportSQLiteQuery,
+	): List<ReleasePredictionDate>
 
 	@Query("SELECT url FROM chapters WHERE manga_id = :mangaId AND chapter_id = :chapterId LIMIT 1")
 	abstract suspend fun findChapterUrl(mangaId: Long, chapterId: Long): String?
