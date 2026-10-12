@@ -9,9 +9,7 @@ class ChapterOptionsRegressionTest {
 
 	@Test
 	fun `chapter filters stay in memory after the existing snapshot is mapped`() {
-		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
-			.replace(Regex("\\s+"), "")
-
+		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt").replace(Regex("\\s+"), "")
 		assertTrue(source.contains("isDownloadedOnly=false"))
 		assertTrue(source.contains("applyChapterOptions(options)"))
 		assertTrue(source.contains("!options.downloadedOnly||item.isDownloaded"))
@@ -23,11 +21,8 @@ class ChapterOptionsRegressionTest {
 
 	@Test
 	fun `scanlator filter falls back when a source has no alternate branches`() {
-		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
-			.replace(Regex("\\s+"), "")
-		val sheet = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterOptionsSheet.kt")
-			.replace(Regex("\\s+"), "")
-
+		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt").replace(Regex("\\s+"), "")
+		val sheet = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterOptionsSheet.kt").replace(Regex("\\s+"), "")
 		assertTrue(source.contains("valchapterScanlatorOptions=combine(chapterMappingDetails,selectedBranch)"))
 		assertTrue(source.contains("scanlator==null||item.chapter.scanlator?.trim()==scanlator"))
 		assertTrue(source.contains("selectedScanlator.value=null"))
@@ -37,9 +32,7 @@ class ChapterOptionsRegressionTest {
 
 	@Test
 	fun `sort modes keep source fallback and unknown metadata stable`() {
-		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
-			.replace(Regex("\\s+"), "")
-
+		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt").replace(Regex("\\s+"), "")
 		assertTrue(source.contains("ChapterSortMode.SOURCE"))
 		assertTrue(source.contains("ChapterSortMode.NUMBER"))
 		assertTrue(source.contains("ChapterSortMode.UPLOAD_DATE"))
@@ -51,11 +44,8 @@ class ChapterOptionsRegressionTest {
 
 	@Test
 	fun `alphabetical sort uses locale collation and keeps stable fallback`() {
-		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
-			.replace(Regex("\\s+"), "")
-		val sheet = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterOptionsSheet.kt")
-			.replace(Regex("\\s+"), "")
-
+		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt").replace(Regex("\\s+"), "")
+		val sheet = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterOptionsSheet.kt").replace(Regex("\\s+"), "")
 		assertTrue(source.contains("left.compareToWithCollator(right)"))
 		assertTrue(source.contains("left.index.compareTo(right.index)"))
 		assertTrue(sheet.contains("rotate(if(options.descending)180felse0f)"))
@@ -63,9 +53,7 @@ class ChapterOptionsRegressionTest {
 
 	@Test
 	fun `defaults are isolated by content type and favourite space`() {
-		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterListOptions.kt")
-			.replace(Regex("\\s+"), "")
-
+		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterListOptions.kt").replace(Regex("\\s+"), "")
 		assertTrue(source.contains("if(isNovel)\"novel\"else\"manga\""))
 		assertTrue(source.contains("if(space==FavouriteSpace.PRIVATE)\"private\"else\"normal\""))
 		assertTrue(source.contains("\"details_chapter_options_v1_\${content}_\${workspace}\""))
@@ -74,9 +62,7 @@ class ChapterOptionsRegressionTest {
 
 	@Test
 	fun `novel defaults use the full content domain not epub only`() {
-		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
-			.replace(Regex("\\s+"), "")
-
+		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt").replace(Regex("\\s+"), "")
 		assertTrue(source.contains("manga.idtomanga.isNovelContent"))
 		assertTrue(source.contains("setDefault(favouriteSpace,manga.isNovelContent,chapterListOptions.value)"))
 		assertTrue(source.contains("getDefault(favouriteSpace,manga.isNovelContent)"))
@@ -85,35 +71,38 @@ class ChapterOptionsRegressionTest {
 
 	@Test
 	fun `details defaults do not leak into Reader chapter sheet`() {
-		val base = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
-			.replace(Regex("\\s+"), "")
-		val details = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt")
-			.replace(Regex("\\s+"), "")
-		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt")
-			.replace(Regex("\\s+"), "")
-		val menu = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt")
-			.replace(Regex("\\s+"), "")
-
+		val base = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt").replace(Regex("\\s+"), "")
+		val details = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt").replace(Regex("\\s+"), "")
+		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt").replace(Regex("\\s+"), "")
+		val menu = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt").replace(Regex("\\s+"), "")
 		assertTrue(base.contains("chapterListOptionsStore:ChapterListOptionsStore?=null"))
 		assertTrue(base.contains("chapterListOptionsStore?.let{store->"))
 		assertTrue(details.contains("chapterListOptionsStore=chapterListOptionsStore"))
 		assertFalse(reader.contains("ChapterListOptionsStore"))
 		assertFalse(reader.contains("chapterListOptionsStore="))
 		assertTrue(menu.contains("if(viewModelisReaderViewModel){settings.isChaptersReverse="))
-		assertTrue(menu.contains("if(viewModelisReaderViewModel){settings.isChaptersGridView="))
+		assertTrue(menu.contains("if(viewModelisReaderViewModel)settings.isChaptersGridView="))
+	}
+
+	@Test
+	fun `Reader toolbox owns Notes search without exposing it in Details manage`() {
+		val menu = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt").replace(Regex("\\s+"), "")
+		assertTrue(menu.contains("item.isVisible=viewModelisReaderViewModel"))
+		assertTrue(menu.contains("if(item.isVisible)setupSearchItem(item)"))
+		assertTrue(menu.contains("if(expandedItemRef?.get()!=null)returnfalse"))
+		assertTrue(menu.contains("hideOtherMenuItems(it,item)"))
+		assertTrue(menu.contains("if(item!=expandedItem)item.isVisible=false"))
+		assertTrue(menu.contains("restoreMenuVisibility"))
+		assertTrue(menu.contains("viewModel.performChapterNoteSearch(\"\")"))
+		assertTrue(menu.contains("viewModel.exitChapterNoteSearch()"))
 	}
 
 	@Test
 	fun `Details chapter toolbar opens the requested option tab and keeps more actions outside the sheet`() {
-		val header = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt")
-			.replace(Regex("\\s+"), "")
-		val screen = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt")
-			.replace(Regex("\\s+"), "")
-		val activity = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveActivity.kt")
-			.replace(Regex("\\s+"), "")
-		val sheet = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterOptionsSheet.kt")
-			.replace(Regex("\\s+"), "")
-
+		val header = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt").replace(Regex("\\s+"), "")
+		val screen = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt").replace(Regex("\\s+"), "")
+		val activity = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveActivity.kt").replace(Regex("\\s+"), "")
+		val sheet = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterOptionsSheet.kt").replace(Regex("\\s+"), "")
 		assertTrue(header.contains("onClick=onFilter"))
 		assertTrue(header.contains("onClick=onSort"))
 		assertTrue(header.contains("onClick=onDisplay"))
@@ -140,11 +129,8 @@ class ChapterOptionsRegressionTest {
 
 	@Test
 	fun `details and manage chapters share one option state`() {
-		val activity = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveActivity.kt")
-			.replace(Regex("\\s+"), "")
-		val menu = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt")
-			.replace(Regex("\\s+"), "")
-
+		val activity = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveActivity.kt").replace(Regex("\\s+"), "")
+		val menu = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt").replace(Regex("\\s+"), "")
 		assertTrue(activity.contains("viewModel.chapterListOptions.collectAsState()"))
 		assertTrue(activity.contains("ChapterOptionsSheet("))
 		assertTrue(menu.contains("viewModel.chapterListOptions.value"))
@@ -153,12 +139,7 @@ class ChapterOptionsRegressionTest {
 	}
 
 	private fun source(relativePath: String): String {
-		return sequenceOf(
-			File("src/main", relativePath),
-			File("app/src/main", relativePath),
-		)
-			.firstOrNull(File::isFile)
-			?.readText()
-			?: error("Cannot find production source: $relativePath")
+		return sequenceOf(File("src/main", relativePath), File("app/src/main", relativePath))
+			.firstOrNull(File::isFile)?.readText() ?: error("Cannot find production source: $relativePath")
 	}
 }
