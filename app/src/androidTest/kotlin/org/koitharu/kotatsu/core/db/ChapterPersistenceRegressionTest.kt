@@ -48,6 +48,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -260,9 +261,12 @@ class ChapterPersistenceRegressionTest {
 					personalMetadata = metadata,
 				) }
 				var downloaded: ChapterListItem? = null
+				var personal: ChapterListItem? = null
+				var viewedNote: ChapterListItem? = null
 				val adapter = org.koitharu.kotatsu.details.ui.adapter.ChaptersAdapter(
 					org.koitharu.kotatsu.core.ui.list.OnListItemClickListener { _, _ -> },
 					onDownloadClick = { downloaded = it }, onDeleteClick = {},
+					onPersonalClick = { personal = it }, onNoteClick = { viewedNote = it },
 				)
 				val localRow = rows.last().copy(chapter = source.copy(source = LocalMangaSource, url = "file:///download/chapter.cbz"))
 				// The initial list commits synchronously. Keep Local in that snapshot so the
@@ -282,6 +286,17 @@ class ChapterPersistenceRegressionTest {
 					assertEquals(metadata.rating?.toString().orEmpty(), number.text.toString())
 					assertEquals(metadata.rating != null, star.isActivated)
 					assertEquals(android.view.View.VISIBLE, star.visibility)
+					personal = null
+					viewedNote = null
+					assertTrue(view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageView_personal).performClick())
+					assertSame(rows[position], personal)
+					assertNull(viewedNote)
+					if (metadata.note != null) {
+						personal = null
+						assertTrue(note.performClick())
+						assertSame(rows[position], viewedNote)
+						assertNull(personal)
+					}
 					val title = view.findViewById<android.widget.TextView>(org.koitharu.kotatsu.R.id.textView_title)
 					assertEquals(if (grid) rows[position].getGridTitle(themed.resources) else rows[position].getTitle(themed.resources), title.text.toString())
 					if (!grid) {

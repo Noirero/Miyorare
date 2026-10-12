@@ -36,7 +36,7 @@ class ChapterGroupingIntegrationRegressionTest {
 		assertTrue(screen.contains("if (chaptersExpanded && chapterRanges.isNotEmpty())"))
 		assertTrue(screen.contains("if (range.expanded) items("))
 		val vm = source("DetailsViewModel.kt")
-		val toggle = vm.substringAfter("fun toggleChapterRange").substringBefore("val chapterPersonalEditor")
+		val toggle = vm.substringAfter("fun toggleChapterRange").substringBefore("private val performanceTrace")
 		assertFalse(toggle.contains("chapterListOptions"))
 		assertFalse(toggle.contains("chaptersExpanded"))
 		val manage = source("pager/chapters/ChaptersFragment.kt")

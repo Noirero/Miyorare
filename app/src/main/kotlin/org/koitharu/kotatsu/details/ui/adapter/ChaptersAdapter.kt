@@ -16,6 +16,8 @@ class ChaptersAdapter(
 	onItemClickListener: OnListItemClickListener<ChapterListItem>,
 	onDownloadClick: (ChapterListItem) -> Unit,
 	onDeleteClick: (ChapterListItem) -> Unit,
+	onPersonalClick: (ChapterListItem) -> Unit,
+	onNoteClick: (ChapterListItem) -> Unit,
 	accentColorProvider: () -> Int? = { null },
 	onRangeToggle: (ChapterRange) -> Unit = {},
 ) : BaseListAdapter<ListModel>(), FastScroller.SectionIndexer {
@@ -27,9 +29,9 @@ class ChaptersAdapter(
 		addDelegate(ListItemType.HEADER, listHeaderAD(null))
 		addDelegate(
 			ListItemType.CHAPTER_LIST,
-			chapterListItemAD(onItemClickListener, onDownloadClick, onDeleteClick, accentColorProvider),
+			chapterListItemAD(onItemClickListener, onDownloadClick, onDeleteClick, onPersonalClick, onNoteClick, accentColorProvider),
 		)
-		addDelegate(ListItemType.CHAPTER_GRID, chapterGridItemAD(onItemClickListener, accentColorProvider))
+		addDelegate(ListItemType.CHAPTER_GRID, chapterGridItemAD(onItemClickListener, onPersonalClick, onNoteClick, accentColorProvider))
 		addDelegate(ListItemType.MISSING_CHAPTERS, missingChaptersAD())
 	}
 

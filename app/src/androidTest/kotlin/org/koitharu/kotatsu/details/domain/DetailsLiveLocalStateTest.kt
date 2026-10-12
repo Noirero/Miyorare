@@ -33,6 +33,9 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
+import org.koitharu.kotatsu.details.data.ChapterPersonalKey
+import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
@@ -68,6 +71,7 @@ class DetailsLiveLocalStateTest {
 	@Inject lateinit var deleteLocal: DeleteLocalMangaUseCase
 	@Inject lateinit var mangaDataRepository: MangaDataRepository
 	@Inject lateinit var repositories: MangaRepository.Factory
+	@Inject lateinit var chapterPersonalRepository: ChapterPersonalRepository
 
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 	private val events = MutableSharedFlow<LocalManga?>()
@@ -120,6 +124,53 @@ class DetailsLiveLocalStateTest {
 		root.deleteRecursively()
 		privateRoot.deleteRecursively()
 		Unit
+	}
+
+	@Test
+	fun personalEditorPersistsToTheSharedRepositoryAndUpdatesBothLiveConsumers() = runBlocking {
+		val manga = remote()
+		val initial = MangaDetails(manga)
+		val first = viewModel(initial)
+		val second = TestViewModel(FavouriteSpace.NORMAL).also {
+			viewModels.put("second-personal-consumer", it)
+			it.mangaDetails.value = initial
+		}
+		val key = ChapterPersonalKey.of(requireNotNull(manga.chapters).first())
+		try {
+			val item = awaitChapters(first) { true }.single { it.personalKey == key }
+			val original = ChapterPersonalMetadata(2, "Existing note")
+			chapterPersonalRepository.set(manga, key, original.rating, original.note)
+			awaitChapters(first) { list -> list.any { it.personalKey == key && it.personalMetadata == original } }
+			awaitChapters(second) { list -> list.any { it.personalKey == key && it.personalMetadata == original } }
+
+			// Even a stale row must load the current stored metadata before editing.
+			InstrumentationRegistry.getInstrumentation().runOnMainSync { first.editChapterPersonal(item) }
+			val editor = withTimeout(5_000L) { requireNotNull(first.chapterPersonalEditor.first { it != null }) }
+			assertEquals(original, editor.personalMetadata)
+			InstrumentationRegistry.getInstrumentation().runOnMainSync { first.saveChapterPersonal(4, "Updated https://example.com") }
+			withTimeout(5_000L) { first.isSavingChapterPersonal.first { !it } }
+			val updated = ChapterPersonalMetadata(4, "Updated https://example.com")
+			assertEquals(updated, chapterPersonalRepository.get(manga.id, key))
+			awaitChapters(first) { list -> list.any { it.personalKey == key && it.personalMetadata == updated } }
+			val secondItem = awaitChapters(second) { list -> list.any { it.personalKey == key && it.personalMetadata == updated } }
+				.single { it.personalKey == key }
+
+			InstrumentationRegistry.getInstrumentation().runOnMainSync { second.editChapterPersonal(secondItem) }
+			withTimeout(5_000L) { second.chapterPersonalEditor.first { it != null } }
+			InstrumentationRegistry.getInstrumentation().runOnMainSync { second.dismissChapterPersonalEditor() }
+			assertEquals(updated, chapterPersonalRepository.get(manga.id, key))
+
+			InstrumentationRegistry.getInstrumentation().runOnMainSync { second.editChapterPersonal(secondItem) }
+			withTimeout(5_000L) { second.chapterPersonalEditor.first { it != null } }
+			InstrumentationRegistry.getInstrumentation().runOnMainSync { second.saveChapterPersonal(null, null) }
+			withTimeout(5_000L) { second.isSavingChapterPersonal.first { !it } }
+			awaitChapters(first) { list -> list.all { it.personalMetadata.isEmpty } }
+			awaitChapters(second) { list -> list.all { it.personalMetadata.isEmpty } }
+			assertEquals(0, first.reloads.get())
+			assertEquals(0, second.reloads.get())
+		} finally {
+			chapterPersonalRepository.set(manga, key, null, null)
+		}
 	}
 
 	@Test
@@ -396,7 +447,7 @@ class DetailsLiveLocalStateTest {
 
 	private inner class TestViewModel(space: FavouriteSpace) : ChaptersPagesViewModel(
 		settings, interactor, bookmarksRepository, historyRepository, scheduler, destinations, space,
-		deleteLocal, events, mangaDataRepository, repositories,
+		deleteLocal, events, mangaDataRepository, repositories, chapterPersonalRepository,
 	) {
 		val reloads = AtomicInteger()
 		override fun reload() { reloads.incrementAndGet() }

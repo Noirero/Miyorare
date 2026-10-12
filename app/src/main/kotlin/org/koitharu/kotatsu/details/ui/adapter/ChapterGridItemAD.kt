@@ -16,6 +16,8 @@ import com.google.android.material.R as materialR
 
 fun chapterGridItemAD(
 	clickListener: OnListItemClickListener<ChapterListItem>,
+	onPersonalClick: (ChapterListItem) -> Unit,
+	onNoteClick: (ChapterListItem) -> Unit,
 	accentColorProvider: () -> Int? = { null },
 ) = adapterDelegateViewBinding<ChapterListItem, ListModel, ItemChapterGridBinding>(
 	viewBinding = { inflater, parent -> ItemChapterGridBinding.inflate(inflater, parent, false) },
@@ -23,6 +25,8 @@ fun chapterGridItemAD(
 ) {
 
 	AdapterDelegateClickListenerAdapter(this, clickListener).attach(itemView)
+	binding.imageViewPersonal.setOnClickListener { onPersonalClick(item) }
+	binding.imageViewPersonal.setOnNoteClickListener { onNoteClick(item) }
 
 	bind { payloads ->
 		if (payloads.isEmpty()) {
