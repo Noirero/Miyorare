@@ -4,11 +4,11 @@ import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.parsers.model.Manga
 
 /**
- * Feedback 1 recommendation policy.
+ * Strict policy for the Similar Genres lane.
  *
- * Priority is intentionally strict and cheap to evaluate after a source response arrives:
- * content kind -> SFW/NSFW -> primary genre -> additional genres/themes -> quality.
- * No extra source/network request is made by this policy.
+ * Candidate discovery may be broad, but eligibility is not: SFW/NSFW boundaries and known content
+ * kinds must match, and both sides must expose at least one canonical genre in common. Ranking then
+ * prefers the strongest genre overlap, with shared themes and quality used only as tie-breakers.
  */
 internal object ContextualRecommendationPolicy {
 
@@ -29,8 +29,8 @@ internal object ContextualRecommendationPolicy {
 	}
 
 	/**
-	 * Tags are stronger discovery signals than arbitrary words from a title. Genre tags receive the
-	 * highest priority, followed by useful theme tags. Type/rating/administrative tags are excluded.
+	 * Discovery keywords prefer canonical genres over themes. Eligibility is still decided by
+	 * [score], so a broad source search cannot leak unrelated titles into Similar Genres.
 	 */
 	fun tagKeywords(seed: Manga): List<RankedRecommendationKeyword> = seed.tags
 		.asSequence()
@@ -55,40 +55,32 @@ internal object ContextualRecommendationPolicy {
 		seed: RecommendationSignals,
 		candidate: RecommendationSignals,
 	): Int? {
-		// SFW and NSFW are separate recommendation universes. Never cross this boundary.
 		if (seed.isNsfw != candidate.isNsfw) return null
 
-		// If both sides expose a reliable kind, manga/manhwa/manhua/etc. must not cross-mix.
 		if (seed.kind != RelatedContentKind.UNKNOWN &&
 			candidate.kind != RelatedContentKind.UNKNOWN &&
 			seed.kind != candidate.kind
 		) return null
 
-		var score = 0
-		if (seed.kind != RelatedContentKind.UNKNOWN) {
-			score += if (candidate.kind == seed.kind) EXACT_KIND_SCORE else UNKNOWN_KIND_FALLBACK_SCORE
-		}
-
-		val primaryGenre = seed.primaryGenre
-		if (primaryGenre != null) {
-			if (primaryGenre in candidate.genres) {
-				score += PRIMARY_GENRE_SCORE
-			} else if (candidate.genres.isNotEmpty()) {
-				// Keep a small fallback path for sparse catalogues, but ensure an Action match always
-				// outranks a Romance-only result when Action is the seed's primary genre.
-				score -= PRIMARY_GENRE_MISS_PENALTY
-			}
-		}
-
+		// The lane is explicitly "Similar Genres": no canonical genre evidence means no result.
+		if (seed.genres.isEmpty() || candidate.genres.isEmpty()) return null
 		val sharedGenres = seed.genres.count { it in candidate.genres }
-		score += sharedGenres * ADDITIONAL_GENRE_SCORE
+		if (sharedGenres == 0) return null
 
+		// Similarity is based on the seed's complete genre set. Do not infer a "primary" genre from
+		// parser tag order: sources are not required to expose tags in semantic priority order.
+		val genreSimilarity = sharedGenres * GENRE_SIMILARITY_SCALE / seed.genres.size
 		val sharedThemes = seed.semanticTags.count { it in candidate.semanticTags }
-		score += sharedThemes * THEME_SCORE
-
-		// Quality is deliberately a final tie-breaker, never strong enough to override context.
-		score += candidate.qualityScore.coerceIn(0, QUALITY_SCORE_CAP)
-		return score
+		val kindBonus = if (seed.kind != RelatedContentKind.UNKNOWN && candidate.kind == seed.kind) {
+			EXACT_KIND_TIE_BREAKER
+		} else {
+			0
+		}
+		return genreSimilarity +
+			(sharedGenres * SHARED_GENRE_TIE_BREAKER) +
+			kindBonus +
+			(sharedThemes * THEME_SCORE) +
+			candidate.qualityScore.coerceIn(0, QUALITY_SCORE_CAP)
 	}
 
 	internal fun signals(manga: Manga): RecommendationSignals {
@@ -104,7 +96,6 @@ internal object ContextualRecommendationPolicy {
 		return RecommendationSignals(
 			kind = inferKind(tags),
 			isNsfw = manga.isNsfw(),
-			primaryGenre = genres.firstOrNull(),
 			genres = genres,
 			semanticTags = semanticTags,
 			qualityScore = qualityScore(manga.rating),
@@ -113,7 +104,6 @@ internal object ContextualRecommendationPolicy {
 
 	private fun qualityScore(rating: Float): Int {
 		if (!rating.isFinite() || rating <= 0f) return 0
-		// Parser ratings vary by source. Clamp instead of assuming a single 5/10/100 scale.
 		return (rating * 10f).toInt().coerceAtMost(QUALITY_SCORE_CAP)
 	}
 
@@ -134,25 +124,19 @@ internal object ContextualRecommendationPolicy {
 
 	private fun canonicalGenre(tag: String): String? = GENRE_ALIASES[tag]
 
-	private fun normalize(value: String): String = value
+	private fun normalize(value: String) = value
 		.lowercase()
 		.replace(Regex("[^\\p{L}\\p{N}]+"), " ")
 		.replace(Regex("\\s+"), " ")
 		.trim()
 
-	private data class ScoredCandidate(
-		val manga: Manga,
-		val score: Int,
-		val originalIndex: Int,
-	)
+	private data class ScoredCandidate(val manga: Manga, val score: Int, val originalIndex: Int)
 
-	private const val EXACT_KIND_SCORE = 4_000
-	private const val UNKNOWN_KIND_FALLBACK_SCORE = 600
-	private const val PRIMARY_GENRE_SCORE = 3_000
-	private const val PRIMARY_GENRE_MISS_PENALTY = 900
-	private const val ADDITIONAL_GENRE_SCORE = 550
-	private const val THEME_SCORE = 90
-	private const val QUALITY_SCORE_CAP = 80
+	private const val GENRE_SIMILARITY_SCALE = 10_000
+	private const val SHARED_GENRE_TIE_BREAKER = 250
+	private const val EXACT_KIND_TIE_BREAKER = 100
+	private const val THEME_SCORE = 10
+	private const val QUALITY_SCORE_CAP = 9
 	private const val GENRE_KEYWORD_SCORE = 20_000
 	private const val THEME_KEYWORD_SCORE = 10_000
 	private const val MAX_TAG_KEYWORDS = 4
@@ -175,79 +159,43 @@ internal object ContextualRecommendationPolicy {
 	)
 
 	private val GENRE_ALIASES = mapOf(
-		"action" to "action",
-		"aksi" to "action",
-		"adventure" to "adventure",
-		"petualangan" to "adventure",
-		"romance" to "romance",
-		"romantic" to "romance",
-		"comedy" to "comedy",
-		"komedi" to "comedy",
+		"action" to "action", "aksi" to "action",
+		"adventure" to "adventure", "petualangan" to "adventure",
+		"romance" to "romance", "romantic" to "romance",
+		"comedy" to "comedy", "komedi" to "comedy",
 		"drama" to "drama",
-		"fantasy" to "fantasy",
-		"fantasi" to "fantasy",
-		"dark fantasy" to "dark fantasy",
-		"horror" to "horror",
-		"horor" to "horror",
-		"mystery" to "mystery",
-		"misteri" to "mystery",
-		"psychological" to "psychological",
-		"thriller" to "thriller",
-		"sci fi" to "sci fi",
-		"science fiction" to "sci fi",
-		"martial arts" to "martial arts",
-		"martial art" to "martial arts",
-		"school life" to "school life",
-		"school" to "school life",
-		"slice of life" to "slice of life",
-		"supernatural" to "supernatural",
-		"historical" to "historical",
-		"history" to "historical",
-		"sports" to "sports",
-		"sport" to "sports",
-		"tragedy" to "tragedy",
+		"fantasy" to "fantasy", "fantasi" to "fantasy", "dark fantasy" to "dark fantasy",
+		"horror" to "horror", "horor" to "horror",
+		"mystery" to "mystery", "misteri" to "mystery",
+		"psychological" to "psychological", "thriller" to "thriller",
+		"sci fi" to "sci fi", "science fiction" to "sci fi",
+		"martial arts" to "martial arts", "martial art" to "martial arts",
+		"school life" to "school life", "school" to "school life",
+		"slice of life" to "slice of life", "supernatural" to "supernatural",
+		"historical" to "historical", "history" to "historical",
+		"sports" to "sports", "sport" to "sports", "tragedy" to "tragedy",
 		"isekai" to "isekai",
-		"reincarnation" to "reincarnation",
-		"reincarnated" to "reincarnation",
-		"cultivation" to "cultivation",
-		"cultivator" to "cultivation",
-		"wuxia" to "cultivation",
-		"xianxia" to "cultivation",
-		"dungeon" to "dungeon",
-		"game" to "game",
-		"gaming" to "game",
-		"harem" to "harem",
-		"reverse harem" to "reverse harem",
-		"ecchi" to "ecchi",
-		"smut" to "smut",
-		"erotica" to "erotica",
-		"boys love" to "boys love",
-		"bl" to "boys love",
-		"girls love" to "girls love",
-		"gl" to "girls love",
+		"reincarnation" to "reincarnation", "reincarnated" to "reincarnation",
+		"cultivation" to "cultivation", "cultivator" to "cultivation",
+		"wuxia" to "cultivation", "xianxia" to "cultivation",
+		"dungeon" to "dungeon", "game" to "game", "gaming" to "game",
+		"harem" to "harem", "reverse harem" to "reverse harem",
+		"ecchi" to "ecchi", "smut" to "smut", "erotica" to "erotica",
+		"boys love" to "boys love", "bl" to "boys love",
+		"girls love" to "girls love", "gl" to "girls love",
 	)
 }
 
 internal enum class RelatedContentKind {
-	MANGA,
-	MANHWA,
-	MANHUA,
-	COMICS,
-	DOUJINSHI,
-	NOVEL,
-	UNKNOWN,
+	MANGA, MANHWA, MANHUA, COMICS, DOUJINSHI, NOVEL, UNKNOWN,
 }
 
 internal data class RecommendationSignals(
 	val kind: RelatedContentKind,
 	val isNsfw: Boolean,
-	val primaryGenre: String?,
 	val genres: Set<String>,
 	val semanticTags: Set<String>,
 	val qualityScore: Int = 0,
 )
 
-internal data class RankedRecommendationKeyword(
-	val value: String,
-	val score: Int,
-)
+internal data class RankedRecommendationKeyword(val value: String, val score: Int)
