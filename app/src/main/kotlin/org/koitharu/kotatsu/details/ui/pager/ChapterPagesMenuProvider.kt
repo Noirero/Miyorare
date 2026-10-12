@@ -1,9 +1,11 @@
 package org.koitharu.kotatsu.details.ui.pager
 
+import android.content.Context
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.MenuProvider
@@ -148,6 +150,7 @@ class ChapterPagesMenuProvider(
 			} else {
 				viewModel.exitChapterNoteSearch()
 			}
+			(item.actionView as? SearchView)?.focusSearchInput()
 		}
 		return true
 	}
@@ -159,8 +162,10 @@ class ChapterPagesMenuProvider(
 		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
 			toolbarContent.isVisible = true
 			(item.actionView as? SearchView)?.apply {
+				hideSearchKeyboard()
 				setOnQueryTextListener(null)
 				setQuery("", false)
+				clearFocus()
 				setOnQueryTextListener(this@ChapterPagesMenuProvider)
 			}
 			if (item.itemId == R.id.action_search_notes) viewModel.exitChapterNoteSearch()
@@ -191,7 +196,27 @@ class ChapterPagesMenuProvider(
 			setIconifiedByDefault(false)
 			queryHint = item.title
 			setOnQueryTextListener(this@ChapterPagesMenuProvider)
+			findViewById<View?>(androidx.appcompat.R.id.search_close_btn)?.setOnClickListener {
+				// X clears the query but keeps the current search session active.
+				setQuery("", false)
+				focusSearchInput()
+			}
 		}
+	}
+
+	private fun SearchView.focusSearchInput() {
+		post {
+			isIconified = false
+			val input = findViewById<View>(androidx.appcompat.R.id.search_src_text)
+			input.requestFocus()
+			(context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+				?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+		}
+	}
+
+	private fun SearchView.hideSearchKeyboard() {
+		(context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+			?.hideSoftInputFromWindow(windowToken, 0)
 	}
 
 	private fun hideOtherMenuItems(menu: Menu, expandedItem: MenuItem) {
