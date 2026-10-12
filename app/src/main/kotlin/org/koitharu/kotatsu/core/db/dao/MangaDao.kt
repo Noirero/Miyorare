@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.core.db.entity.MangaEntity
 import org.koitharu.kotatsu.core.db.entity.MangaTagsEntity
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.TagEntity
+import org.koitharu.kotatsu.details.data.ReleasePredictionManga
 
 data class LibrarySourceUsage(
 	val source: String,
@@ -35,6 +36,32 @@ abstract class MangaDao {
 	@Transaction
 	@Query("SELECT * FROM manga WHERE manga_id IN (:ids)")
 	abstract suspend fun findByIds(ids: Collection<Long>): List<MangaWithTags>
+
+	/** Keyset batches for the prediction sheet; no tags, descriptions or full library snapshot. */
+	@Query(
+		"""
+		SELECT manga_id AS id, title, url, public_url AS publicUrl,
+			cover_url AS coverUrl, large_cover_url AS largeCoverUrl, source, source_title AS sourceTitle, state
+		FROM manga
+		WHERE manga_id >= COALESCE(:afterId, -9223372036854775808)
+			AND (:afterId IS NULL OR manga_id > :afterId)
+			AND source != 'LOCAL'
+			AND (state IS NULL OR state = 'ONGOING')
+			AND EXISTS(SELECT 1 FROM chapters WHERE chapters.manga_id = manga.manga_id)
+			AND ((:privateSpace = 0 AND EXISTS(
+				SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0
+			)) OR (:privateSpace = 1 AND EXISTS(
+				SELECT 1 FROM private_favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0
+			)))
+		ORDER BY manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findReleasePredictionCandidates(
+		privateSpace: Boolean,
+		afterId: Long?,
+		limit: Int,
+	): List<ReleasePredictionManga>
 
 	@Query("SELECT EXISTS(SELECT * FROM manga WHERE manga_id = :id)")
 	abstract suspend operator fun contains(id: Long): Boolean
