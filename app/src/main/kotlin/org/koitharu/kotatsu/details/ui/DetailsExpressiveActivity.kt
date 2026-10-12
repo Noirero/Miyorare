@@ -17,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowCompat
@@ -63,6 +64,8 @@ import org.koitharu.kotatsu.core.util.ext.toUriOrNull
 import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.ActivityDetailsExpressiveBinding
 import org.koitharu.kotatsu.details.service.MangaPrefetchService
+import org.koitharu.kotatsu.details.domain.FavouriteReleasePredictionsUseCase
+import org.koitharu.kotatsu.details.ui.prediction.ChapterReleasePredictionRoute
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsSheet
 import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsTab
@@ -100,6 +103,7 @@ class DetailsExpressiveActivity :
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
 	@Inject lateinit var privateFavouritesSession: PrivateFavouritesSession
 	@Inject lateinit var favouritesRepository: FavouritesRepository
+	@Inject lateinit var favouriteReleasePredictions: FavouriteReleasePredictionsUseCase
 
 	private val viewModel: DetailsViewModel by viewModels()
 	private lateinit var menuProvider: DetailsMenuProvider
@@ -108,6 +112,7 @@ class DetailsExpressiveActivity :
 	private val bottomInset = mutableIntStateOf(0)
 	private val mangaNote = mutableStateOf<String?>(null)
 	private val chapterOptionsVisible = mutableStateOf(false)
+	private val predictionCalendarVisible = mutableStateOf(false)
 	private val chapterOptionsInitialTab = mutableStateOf(ChapterOptionsTab.FILTER)
 	private val notesPreferences by lazy { getSharedPreferences(NOTES_PREFERENCES, Context.MODE_PRIVATE) }
 	private var isDarkTheme = false
@@ -300,8 +305,12 @@ class DetailsExpressiveActivity :
 	override fun isNsfwContent(): Flow<Boolean> =
 		viewModel.manga.map { it?.contentRating == ContentRating.ADULT }
 
-	override fun isPrivacySensitiveContent(): Flow<Boolean> = privateContentStateFlow
-		.map { it != PrivateContentState.NORMAL }
+	override fun isPrivacySensitiveContent(): Flow<Boolean> = combine(
+		privateContentStateFlow,
+		snapshotFlow { predictionCalendarVisible.value },
+	) { state, predictionVisible ->
+		state != PrivateContentState.NORMAL || (predictionVisible && viewModel.favouriteSpace == FavouriteSpace.PRIVATE)
+	}
 		.distinctUntilChanged()
 
 	override fun isPrivateVaultContent(): Flow<Boolean> = privateVaultContentFlow
@@ -377,6 +386,7 @@ class DetailsExpressiveActivity :
 			onChapterNotesQueryChange = viewModel::performChapterNoteSearch,
 			onChapterNotesSearchExit = viewModel::exitChapterNoteSearch,
 			onChapterRangeToggle = viewModel::toggleChapterRange,
+			onReleasePredictionClick = { predictionCalendarVisible.value = true },
 			onChapterDownloadClick = { item ->
 				if (!item.canDownload) return@DetailsExpressiveActions
 				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
@@ -401,7 +411,7 @@ class DetailsExpressiveActivity :
 				val density = androidx.compose.ui.platform.LocalDensity.current
 				val details by viewModel.mangaDetails.collectAsState()
 				val history by viewModel.historyInfo.collectAsState()
-				val chapterReleasePrediction by viewModel.chapterReleasePrediction.collectAsState()
+				val chapterReleaseOrigin by viewModel.chapterReleaseCalendarOrigin.collectAsState()
 				val chapterPresentation by viewModel.groupedChapterPresentation.collectAsState()
 				val chapters = chapterPresentation.chapters
 				val chapterNotesQuery by viewModel.chapterNotesQuery.collectAsState()
@@ -426,6 +436,7 @@ class DetailsExpressiveActivity :
 				val trackerRecommendations by viewModel.trackerRecommendations.collectAsState()
 				val mangaUpdatesProgressFailed by viewModel.mangaUpdatesProgressFailed.collectAsState()
 				val privateContent by privateContentStateFlow.collectAsState()
+				val privateUnlocked by privateFavouritesSession.isUnlocked.collectAsState()
 				val genreRecommendations by viewModel.genreRecommendations.collectAsState()
 				val expandedRelated by viewModel.expandedRelated.collectAsState()
 				val localSize by viewModel.localSize.collectAsState()
@@ -446,7 +457,7 @@ class DetailsExpressiveActivity :
 					historyInfo = history,
 					chapters = chapters,
 					chapterRanges = chapterPresentation.ranges,
-					chapterReleasePrediction = chapterReleasePrediction,
+					chapterReleasePrediction = chapterReleaseOrigin?.prediction,
 					chapterNotesQuery = chapterNotesQuery,
 					isChapterFilterActive = chapterFilterActive,
 					isLoading = loading,
@@ -474,6 +485,19 @@ class DetailsExpressiveActivity :
 					onScroll = ::onContentScroll,
 					actions = actions,
 				)
+
+				val predictionSpace = if (privateContent == PrivateContentState.PRIVATE) FavouriteSpace.PRIVATE else viewModel.favouriteSpace
+				if (predictionCalendarVisible.value && privateContent != PrivateContentState.UNKNOWN) {
+					ChapterReleasePredictionRoute(
+						originMangaId = details?.id ?: viewModel.mangaId,
+						origin = chapterReleaseOrigin,
+						space = predictionSpace,
+						canReadFavourites = predictionSpace == FavouriteSpace.NORMAL || privateUnlocked,
+						useCase = favouriteReleasePredictions,
+						imageLoader = coil,
+						onDismiss = { predictionCalendarVisible.value = false },
+					)
+				}
 
 				val personalEditor by viewModel.chapterPersonalEditor.collectAsState()
 				val personalSaving by viewModel.isSavingChapterPersonal.collectAsState()
