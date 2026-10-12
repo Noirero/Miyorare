@@ -59,7 +59,7 @@ import org.koitharu.kotatsu.details.domain.DetailsInteractor
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
 import org.koitharu.kotatsu.details.domain.ReadingTimeUseCase
-import org.koitharu.kotatsu.details.domain.predictSourceChapterRelease
+import org.koitharu.kotatsu.details.domain.sourceReleasePredictionItem
 import org.koitharu.kotatsu.details.domain.RelatedMangaGroup
 import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.details.domain.resolveTrackerRecommendation
@@ -273,10 +273,10 @@ class DetailsViewModel @Inject constructor(
 	val remoteManga = MutableStateFlow<Manga?>(null)
 
 	private val releasePredictionRefreshTime = MutableStateFlow(System.currentTimeMillis())
-	val chapterReleasePrediction = combine(mangaDetails, selectedBranch, releasePredictionRefreshTime) { details, branch, _ ->
+	val chapterReleaseCalendarOrigin = combine(mangaDetails, selectedBranch, releasePredictionRefreshTime) { details, branch, _ ->
 		// Source results can arrive after onStart (including synthetic "just now" dates).
 		// Sample the clock for every calculation rather than treating that result as future data.
-		predictSourceChapterRelease(details, branch, System.currentTimeMillis(), ZoneId.systemDefault())
+		sourceReleasePredictionItem(details, branch, System.currentTimeMillis(), ZoneId.systemDefault())
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), null)
 
 	fun refreshChapterReleasePrediction() {

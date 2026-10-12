@@ -45,6 +45,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
@@ -54,6 +55,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
@@ -855,6 +859,7 @@ internal fun ChapterHeaderTitle(
 	title: String,
 	prediction: NextChapterReleasePrediction?,
 	modifier: Modifier = Modifier,
+	onPredictionClick: () -> Unit = {},
 ) {
 	val titleStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
 	val secondaryStyle = MaterialTheme.typography.bodySmall
@@ -872,6 +877,7 @@ internal fun ChapterHeaderTitle(
 		days == 0L -> stringResource(R.string.chapter_release_accessibility_today)
 		else -> pluralStringResource(R.plurals.chapter_release_accessibility_days, days.toInt(), days)
 	}
+	val openCalendarLabel = stringResource(R.string.release_calendar_title)
 	BoxWithConstraints(modifier) {
 		// Measure localized text at the active font scale. Drop the secondary estimate entirely
 		// when it cannot fit beside the primary count; Manage keeps its own unweighted space.
@@ -892,9 +898,25 @@ internal fun ChapterHeaderTitle(
 				modifier = Modifier.weight(1f, fill = false),
 			)
 			if (showPrediction) {
+				val lightSurface = MaterialTheme.colorScheme.surface.luminance() >= 0.5f
+				val predictionBrush = remember(lightSurface) {
+					Brush.horizontalGradient(
+						if (lightSurface) listOf(
+							Color(0xFFB71C47), Color(0xFFA34800), Color(0xFF806000),
+							Color(0xFF237A3B), Color(0xFF006DA8), Color(0xFF7541B8),
+						) else listOf(
+							Color(0xFFFF6B85), Color(0xFFFFB454), Color(0xFFFFE66D),
+							Color(0xFF7DE089), Color(0xFF6AD6F4), Color(0xFFC4A1FF),
+						),
+					)
+				}
 				Row(
 					verticalAlignment = Alignment.CenterVertically,
-					modifier = Modifier.clearAndSetSemantics { contentDescription = description.orEmpty() },
+					modifier = Modifier.clickable(onClick = onPredictionClick).clearAndSetSemantics {
+						contentDescription = description.orEmpty()
+						role = Role.Button
+						onClick(label = openCalendarLabel) { onPredictionClick(); true }
+					},
 				) {
 					Text(" · ", style = secondaryStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
 					Icon(
@@ -904,7 +926,7 @@ internal fun ChapterHeaderTitle(
 						modifier = Modifier.size(16.dp),
 					)
 					Spacer(Modifier.width(4.dp))
-					Text(label.orEmpty(), style = secondaryStyle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+					Text(label.orEmpty(), style = secondaryStyle.copy(brush = predictionBrush), maxLines = 1)
 				}
 			}
 		}
@@ -926,6 +948,7 @@ internal fun InlineChapterHeader(
 	expanded: Boolean,
 	onToggleExpanded: () -> Unit,
 	prediction: NextChapterReleasePrediction? = null,
+	onPredictionClick: () -> Unit = {},
 	onSearchNotes: () -> Unit = {},
 ) {
 	val palette = LocalMiyorareVisualPalette.current
@@ -955,7 +978,7 @@ internal fun InlineChapterHeader(
 					modifier = Modifier.rotate(if (expanded) 90f else 0f),
 				)
 			}
-			ChapterHeaderTitle(title, prediction, Modifier.weight(1f))
+			ChapterHeaderTitle(title, prediction, Modifier.weight(1f), onPredictionClick)
 			Text(
 				text = stringResource(R.string.manage),
 				color = toolbarAccent,
