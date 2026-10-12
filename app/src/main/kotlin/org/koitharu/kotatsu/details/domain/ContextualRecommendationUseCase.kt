@@ -1,5 +1,8 @@
 package org.koitharu.kotatsu.details.domain
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -62,14 +65,65 @@ class ContextualRecommendationUseCase @Inject constructor(
 			ranked = ContextualRecommendationPolicy.rank(seed, candidates.values.toList())
 			if (ranked.size >= MAX_RESULTS) break
 		}
+
+		if (ranked.size < PREFERRED_RESULT_COUNT) {
+			enrichSparseCandidates(repository, candidates, seed)
+			ranked = ContextualRecommendationPolicy.rank(seed, candidates.values.toList())
+		}
 		return ranked.take(MAX_RESULTS)
+	}
+
+	/**
+	 * List/related endpoints on some sources intentionally return summary Manga objects without
+	 * tags, while getDetails() carries the authoritative genres. Enrich only those sparse summaries;
+	 * candidates that already have canonical genre evidence stay under the strict policy unchanged.
+	 *
+	 * Work is scheduled in pairs rather than launching every request eagerly. The repository may
+	 * share an already-started details request process-wide, so the overall deadline stops scheduling
+	 * new work without pretending that cancellation necessarily aborts a shared underlying request.
+	 */
+	private suspend fun enrichSparseCandidates(
+		repository: MangaRepository,
+		candidates: LinkedHashMap<Long, Manga>,
+		seed: Manga,
+	) {
+		val sparse = candidates.values
+			.asSequence()
+			.filterNot(ContextualRecommendationPolicy::hasCanonicalGenreEvidence)
+			.take(MAX_ENRICHMENT_CANDIDATES)
+			.toList()
+		if (sparse.isEmpty()) return
+
+		withTimeoutOrNull(ENRICHMENT_BUDGET_MS) {
+			for (batch in sparse.chunked(MAX_PARALLEL_ENRICHMENTS)) {
+				val enriched = coroutineScope {
+					batch.map { candidate ->
+						async {
+							candidate.id to withTimeoutOrNull(DETAIL_ENRICHMENT_TIMEOUT_MS) {
+								runCatchingCancellable { repository.getDetails(candidate) }.getOrNull()
+							}
+						}
+					}.awaitAll()
+				}
+				enriched.forEach { (id, details) ->
+					if (details != null && details.id != seed.id) candidates[id] = details
+				}
+				if (ContextualRecommendationPolicy.rank(seed, candidates.values.toList()).size >= PREFERRED_RESULT_COUNT) {
+					break
+				}
+			}
+		}
 	}
 
 	private companion object {
 		const val MAX_RESULTS = 12
 		const val PREFERRED_RESULT_COUNT = 6
 		const val MAX_CONTEXT_QUERIES = 2
+		const val MAX_ENRICHMENT_CANDIDATES = 12
+		const val MAX_PARALLEL_ENRICHMENTS = 2
 		const val NATIVE_RELATED_TIMEOUT_MS = 8_000L
 		const val CONTEXT_SEARCH_TIMEOUT_MS = 8_000L
+		const val DETAIL_ENRICHMENT_TIMEOUT_MS = 4_000L
+		const val ENRICHMENT_BUDGET_MS = 8_000L
 	}
 }

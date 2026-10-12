@@ -28,6 +28,9 @@ internal object ContextualRecommendationPolicy {
 			.map { it.manga }
 	}
 
+	/** True when this model already carries enough metadata for strict Similar Genres eligibility. */
+	fun hasCanonicalGenreEvidence(manga: Manga): Boolean = signals(manga).genres.isNotEmpty()
+
 	/**
 	 * Discovery keywords prefer canonical genres over themes. Eligibility is still decided by
 	 * [score], so a broad source search cannot leak unrelated titles into Similar Genres.
