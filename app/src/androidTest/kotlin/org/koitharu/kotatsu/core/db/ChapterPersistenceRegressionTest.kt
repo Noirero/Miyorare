@@ -73,6 +73,8 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaLinkResolver
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.details.ui.pager.ChapterSortDirectionTestFixture
+import org.koitharu.kotatsu.details.ui.pager.ChapterSortMode
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
@@ -93,6 +95,7 @@ import kotlin.system.measureTimeMillis
 class ChapterPersistenceRegressionTest {
 	@get:Rule val hiltRule = HiltAndroidRule(this)
 	@javax.inject.Inject lateinit var imageLoaderProvider: Provider<coil3.ImageLoader>
+	@javax.inject.Inject lateinit var chapterSortFixture: Provider<ChapterSortDirectionTestFixture>
 
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
@@ -107,6 +110,113 @@ class ChapterPersistenceRegressionTest {
 	fun tearDown() {
 		context.deleteDatabase(DB_NAME)
 		context.deleteDatabase(MIGRATION_DB_NAME)
+	}
+
+	@Test
+	fun activeChapterSortModePersistsBothDirections() = withChapterSortOptions {
+		val vm = create()
+		for (mode in ChapterSortMode.entries) {
+			onMain {
+				vm.chapterListOptions.value = vm.chapterListOptions.value.copy(sortMode = mode, descending = false)
+				settings.isChaptersReverse = false
+			}
+			val initial = vm.chapterListOptions.value
+			for (descending in listOf(true, false)) {
+				onMain { vm.setChapterSortMode(mode) }
+				assertEquals(initial.copy(descending = descending), vm.chapterListOptions.value)
+				assertEquals(descending, settings.isChaptersReverse)
+			}
+		}
+	}
+
+	@Test
+	fun changingChapterSortModeKeepsDirectionAndExplicitDefaults() = withChapterSortOptions {
+		val vm = create()
+		val initial = vm.chapterListOptions.value
+		onMain { vm.setChapterSortMode(ChapterSortMode.NUMBER) }
+		assertEquals(initial.copy(sortMode = ChapterSortMode.NUMBER), vm.chapterListOptions.value)
+		assertEquals(false, settings.isChaptersReverse)
+		assertEquals(initial, restoredDefault())
+	}
+
+	@Test
+	fun changingChapterSortModeDoesNotWriteAStaleDirectionOverTheSharedPreference() = withChapterSortOptions {
+		val vm = create()
+		// Another consumer changed the live preference after this screen initialized.
+		onMain { settings.isChaptersReverse = true }
+		onMain { vm.setChapterSortMode(ChapterSortMode.NUMBER) }
+		assertEquals(ChapterSortMode.NUMBER, vm.chapterListOptions.value.sortMode)
+		assertEquals(false, vm.chapterListOptions.value.descending)
+		assertEquals(true, settings.isChaptersReverse)
+	}
+
+	@Test
+	fun explicitChapterDirectionTogglePersistsWithoutAMenuWriter() = withChapterSortOptions {
+		val vm = create()
+		val initial = vm.chapterListOptions.value
+		for (descending in listOf(true, false)) {
+			onMain { vm.toggleChapterSortDirection() }
+			assertEquals(initial.copy(descending = descending), vm.chapterListOptions.value)
+			assertEquals(descending, settings.isChaptersReverse)
+			assertEquals(initial.copy(descending = descending), restoredDefault())
+		}
+	}
+
+	@Test
+	fun chapterDirectionSurvivesViewModelSettingsAndStoreRecreation() = withChapterSortOptions {
+		val first = create()
+		val initial = first.chapterListOptions.value
+		onMain { first.setChapterSortMode(initial.sortMode) }
+		clearViewModels()
+		assertEquals(initial.copy(descending = true), create().chapterListOptions.value)
+		for (space in FavouriteSpace.entries) {
+			for (novel in listOf(false, true)) {
+				assertEquals(true, store.getDefault(space, novel).descending)
+			}
+		}
+	}
+
+	@Test
+	fun sortModeStillRequiresSetAsDefaultWhileDirectionRemainsLive() = withChapterSortOptions {
+		val vm = create()
+		val initial = vm.chapterListOptions.value
+		onMain {
+			vm.setChapterSortMode(ChapterSortMode.NUMBER)
+			vm.toggleChapterSortDirection()
+		}
+		assertEquals(initial.copy(descending = true), restoredDefault())
+		onMain { vm.saveChapterOptionsAsDefault() }
+		val saved = initial.copy(sortMode = ChapterSortMode.NUMBER, descending = true)
+		assertEquals(saved, restoredDefault())
+		onMain {
+			vm.setChapterSortMode(ChapterSortMode.UPLOAD_DATE)
+			vm.toggleChapterSortDirection()
+			vm.resetChapterOptions()
+		}
+		assertEquals(saved.copy(descending = false), vm.chapterListOptions.value)
+		clearViewModels()
+		assertEquals(saved.copy(descending = false), create().chapterListOptions.value)
+	}
+
+	@Test
+	fun readerStyleConsumerSharesDirectionWithoutInheritingDetailsDefaults() = withChapterSortOptions {
+		val details = create()
+		onMain { details.toggleChapterSortDirection() }
+		val reader = create(detailsDefaults = false)
+		assertEquals(org.koitharu.kotatsu.details.ui.pager.ChapterListOptions(descending = true), reader.chapterListOptions.value)
+		onMain { reader.toggleChapterSortDirection() }
+		assertEquals(false, settings.isChaptersReverse)
+		onMain { details.resetChapterOptions() }
+		assertEquals(false, details.chapterListOptions.value.descending)
+		assertEquals(restoredDefault(), details.chapterListOptions.value)
+	}
+
+	private fun withChapterSortOptions(block: suspend ChapterSortDirectionTestFixture.Session.() -> Unit) = runBlocking {
+		// The injected scheduler uses WorkManager, which HiltTestApplication does not initialize.
+		runCatching { androidx.work.WorkManager.getInstance(context) }.getOrElse {
+			androidx.work.WorkManager.initialize(context, androidx.work.Configuration.Builder().build())
+		}
+		chapterSortFixture.get().withIsolatedPreferences(block)
 	}
 
 	@Test
