@@ -135,7 +135,11 @@ class ChapterReleasePredictionSheetTest {
 					PredictionCalendarBackgroundStore.writeCoverBlur(context, case.third)
 					appearance.value = case
 				}
-				val scheme = case.first
+				val imageBackground = case.second != PredictionCalendarBackgroundMode.DEFAULT
+				val scheme = predictionCalendarColorScheme(case.first, imageBackground)
+				if (imageBackground) compose.onNodeWithTag("release-prediction-handle")
+					.assert(hasAnyAncestor(hasTestTag("release-prediction-backdrop")))
+				else compose.onNodeWithTag("release-prediction-handle").assertDoesNotExist()
 				compose.onNodeWithText(context.getString(R.string.release_calendar_title)).assertTextColor(scheme.onSurface)
 				compose.onNodeWithTag("release-prediction-active-title").assertTextColor(scheme.onSurface)
 				compose.onNodeWithTag("release-prediction-date").assertTextColor(scheme.onSurface)
@@ -151,6 +155,24 @@ class ChapterReleasePredictionSheetTest {
 				compose.onNode(hasText(alternate.manga.title) and hasAnyAncestor(hasTestTag("release-prediction-manga:2")), useUnmergedTree = true)
 					.assertTextColor(scheme.onSurface)
 			}
+		} finally { restorePreferences(previous) }
+	}
+
+	@Test fun imageBackdropIncludesAccessibleHandleAndDismissLeavesParentUnchanged() {
+		val prefs = context.getSharedPreferences(PREDICTION_PREFS, android.content.Context.MODE_PRIVATE)
+		val previous = prefs.all
+		val visible = mutableStateOf(true)
+		try {
+			PredictionCalendarBackgroundStore.writeMode(context, PredictionCalendarBackgroundMode.CUSTOM)
+			compose.setContent { MaterialTheme { Column {
+				Text("Parent: ${original.manga.title}")
+				if (visible.value) ChapterReleasePredictionSheet(1, original, UpcomingPredictions(loading = false), loader) { visible.value = false }
+			} } }
+			compose.onNodeWithTag("release-prediction-handle")
+				.assert(hasAnyAncestor(hasTestTag("release-prediction-backdrop")))
+				.performSemanticsAction(SemanticsActions.Dismiss) { it() }
+			compose.onNodeWithTag("release-prediction-active-title").assertDoesNotExist()
+			compose.onNodeWithText("Parent: ${original.manga.title}").assertExists()
 		} finally { restorePreferences(previous) }
 	}
 

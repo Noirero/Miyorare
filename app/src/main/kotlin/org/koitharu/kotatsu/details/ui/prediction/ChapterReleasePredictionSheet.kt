@@ -30,6 +30,10 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -38,6 +42,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.dismiss
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
@@ -73,8 +78,36 @@ import java.time.format.FormatStyle
 import java.time.format.TextStyle
 import java.util.Locale
 
-// Keep both onSurface and onSurfaceVariant readable even over black/white image regions.
-internal const val PREDICTION_BACKGROUND_SCRIM_ALPHA = 0.88f
+// A dark image treatment is independent of the host theme; retain the image's character.
+internal const val PREDICTION_BACKGROUND_SCRIM_ALPHA = 0.68f
+
+internal fun predictionCalendarColorScheme(base: ColorScheme, imageBackground: Boolean): ColorScheme {
+	if (!imageBackground) return base
+	val dark = darkColorScheme()
+	val brightestBackdrop = dark.scrim.copy(alpha = PREDICTION_BACKGROUND_SCRIM_ALPHA).compositeOver(Color.White)
+	fun accent(color: Color): Color {
+		var candidate = color.copy(alpha = 1f)
+		repeat(12) {
+			val contrast = (candidate.luminance() + 0.05f) / (brightestBackdrop.luminance() + 0.05f)
+			if (contrast >= 4.5f) return candidate
+			candidate = lerp(candidate, dark.onSurface, 0.16f)
+		}
+		return candidate
+	}
+	val primary = accent(base.primary)
+	return dark.copy(
+		primary = primary, onPrimary = dark.surface,
+		primaryContainer = lerp(dark.surface, primary, 0.2f), onPrimaryContainer = dark.onSurface,
+		secondary = accent(base.secondary), tertiary = accent(base.tertiary),
+		outline = dark.onSurfaceVariant.copy(alpha = 0.8f),
+		outlineVariant = dark.onSurfaceVariant.copy(alpha = 0.7f),
+	)
+}
+
+@Composable
+private fun predictionRainbowBrush(): Brush = remember {
+	Brush.sweepGradient(listOf(Color(0xFFFF4D6D), Color(0xFFFFB84D), Color(0xFFFFF15C), Color(0xFF62E36D), Color(0xFF4DD8FF), Color(0xFF6C63FF), Color(0xFFD65CFF), Color(0xFFFF4D6D)))
+}
 
 internal data class UpcomingPredictions(
 	val items: List<ChapterReleasePredictionItem> = emptyList(),
@@ -159,110 +192,129 @@ internal fun ChapterReleasePredictionSheet(
 			Toast.makeText(context, R.string.release_calendar_import_error, Toast.LENGTH_SHORT).show()
 		}
 	}
-	ModalBottomSheet(
-		onDismissRequest = onDismiss,
-		sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-		containerColor = if (backgroundMode == PredictionCalendarBackgroundMode.DEFAULT) MaterialTheme.colorScheme.surface else Color.Transparent,
-		// Transparent containers cannot resolve a themed content color automatically.
-		contentColor = MaterialTheme.colorScheme.onSurface,
-	) {
-		Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
-			PredictionBackground(selected, backgroundMode, blurCover, customRevision, imageLoader, Modifier.matchParentSize())
-			Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-				Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-					Text(stringResource(R.string.release_calendar_title), style = MaterialTheme.typography.titleLarge,
-						fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-					IconButton(onClick = { showBackground = true }) {
-						Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_settings), stringResource(R.string.release_calendar_background))
-					}
-				}
-				if (selected != null) {
-					Text(selected.manga.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-						modifier = Modifier.testTag("release-prediction-active-title"))
-					Text(selected.prediction.expectedDate.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL)), fontWeight = FontWeight.SemiBold,
-						modifier = Modifier.testTag("release-prediction-date").padding(top = 6.dp))
-					Text(expectedLabel(selected), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-					Spacer(Modifier.height(8.dp))
-					PredictionCalendar(selected, backgroundMode != PredictionCalendarBackgroundMode.DEFAULT)
-				} else Text(unavailable, modifier = Modifier.padding(vertical = 16.dp))
-				Spacer(Modifier.height(12.dp))
-				HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth().height(280.dp).testTag("release-prediction-pager")) { page ->
-					if (page == 0) {
-						if (selected != null) PredictionActions(selected, onDetails = { showDetails = true })
-						else Text(unavailable)
-					} else PredictionMangaList(candidates, selectedId, upcoming, imageLoader) { item ->
-						selectedId = item.manga.id
-						selectedFromOrigin = item == origin
-						scope.launch { pagerState.animateScrollToPage(0) }
-					}
-				}
-				Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.Center) {
-					repeat(2) { index ->
-						val label = stringResource(R.string.release_calendar_page, index + 1)
-						Box(Modifier.padding(horizontal = 4.dp).size(8.dp).clip(CircleShape)
-							.background(if (pagerState.currentPage == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
-							.semantics { contentDescription = label; this.selected = pagerState.currentPage == index })
+	val imageBackground = backgroundMode != PredictionCalendarBackgroundMode.DEFAULT
+	val baseScheme = MaterialTheme.colorScheme
+	val calendarScheme = remember(baseScheme, imageBackground) { predictionCalendarColorScheme(baseScheme, imageBackground) }
+	val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+	val dismissLabel = stringResource(R.string.close)
+	MaterialTheme(colorScheme = calendarScheme) {
+		ModalBottomSheet(
+			onDismissRequest = onDismiss,
+			sheetState = sheetState,
+			dragHandle = if (imageBackground) null else ({ BottomSheetDefaults.DragHandle() }),
+			containerColor = if (imageBackground) Color.Transparent else MaterialTheme.colorScheme.surface,
+			// Transparent containers cannot resolve a themed content color automatically.
+			contentColor = MaterialTheme.colorScheme.onSurface,
+		) {
+			Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).testTag("release-prediction-backdrop")) {
+				PredictionBackground(selected, backgroundMode, blurCover, customRevision, imageLoader, Modifier.matchParentSize())
+				Column(Modifier.fillMaxWidth()) {
+					if (imageBackground) BottomSheetDefaults.DragHandle(
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.align(Alignment.CenterHorizontally).testTag("release-prediction-handle").semantics(mergeDescendants = true) {
+							dismiss(dismissLabel) {
+								scope.launch { sheetState.hide() }.invokeOnCompletion { if (!sheetState.isVisible) onDismiss() }
+								true
+							}
+						},
+					)
+					Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+						Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+							Text(stringResource(R.string.release_calendar_title), style = MaterialTheme.typography.titleLarge,
+								fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+							IconButton(onClick = { showBackground = true }) {
+								Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_settings), stringResource(R.string.release_calendar_background))
+							}
+						}
+						if (selected != null) {
+							Text(selected.manga.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+								modifier = Modifier.testTag("release-prediction-active-title"))
+							Text(selected.prediction.expectedDate.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL)), fontWeight = FontWeight.SemiBold,
+								modifier = Modifier.testTag("release-prediction-date").padding(top = 6.dp))
+							Text(expectedLabel(selected), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+							Spacer(Modifier.height(8.dp))
+							PredictionCalendar(selected, imageBackground)
+						} else Text(unavailable, modifier = Modifier.padding(vertical = 16.dp))
+						Spacer(Modifier.height(12.dp))
+						HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth().height(280.dp).testTag("release-prediction-pager")) { page ->
+							if (page == 0) {
+								if (selected != null) PredictionActions(selected, onDetails = { showDetails = true })
+								else Text(unavailable)
+							} else PredictionMangaList(candidates, selectedId, upcoming, imageLoader) { item ->
+								selectedId = item.manga.id
+								selectedFromOrigin = item == origin
+								scope.launch { pagerState.animateScrollToPage(0) }
+							}
+						}
+						Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.Center) {
+							repeat(2) { index ->
+								val label = stringResource(R.string.release_calendar_page, index + 1)
+								Box(Modifier.padding(horizontal = 4.dp).size(8.dp).clip(CircleShape)
+									.background(if (pagerState.currentPage == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+									.semantics { contentDescription = label; this.selected = pagerState.currentPage == index })
+							}
+						}
 					}
 				}
 			}
 		}
+		if (showBackground) AlertDialog(
+			onDismissRequest = { showBackground = false },
+			title = { Text(stringResource(R.string.release_calendar_background)) },
+			text = { Column {
+				PredictionCalendarBackgroundMode.entries.forEach { mode ->
+					val label = when (mode) {
+						PredictionCalendarBackgroundMode.DEFAULT -> R.string.release_calendar_background_default
+						PredictionCalendarBackgroundMode.MANGA_COVER -> R.string.release_calendar_background_cover
+						PredictionCalendarBackgroundMode.CUSTOM -> R.string.release_calendar_background_custom
+					}
+					Row(Modifier.fillMaxWidth().clickable(enabled = !importing) {
+						if (mode == PredictionCalendarBackgroundMode.CUSTOM && !PredictionCalendarBackgroundStore.file(context).isFile) chooseImage()
+						else { backgroundMode = mode; PredictionCalendarBackgroundStore.writeMode(context, mode) }
+						if (mode != PredictionCalendarBackgroundMode.MANGA_COVER) showBackground = false
+					}, verticalAlignment = Alignment.CenterVertically) {
+						RadioButton(selected = mode == backgroundMode, onClick = null, enabled = !importing)
+						Text(stringResource(label))
+					}
+					if (mode == PredictionCalendarBackgroundMode.MANGA_COVER && backgroundMode == mode) {
+						Row(Modifier.fillMaxWidth().padding(start = 16.dp).toggleable(
+							value = blurCover, role = Role.Switch, enabled = !importing,
+							onValueChange = { blurCover = it; PredictionCalendarBackgroundStore.writeCoverBlur(context, it) },
+						), verticalAlignment = Alignment.CenterVertically) {
+							Text(stringResource(R.string.release_calendar_cover_blur), modifier = Modifier.weight(1f))
+							Switch(checked = blurCover, onCheckedChange = null, enabled = !importing)
+						}
+					}
+				}
+				TextButton(onClick = { showBackground = false; chooseImage() }, enabled = !importing) { Text(stringResource(R.string.release_calendar_choose_image)) }
+			} },
+			confirmButton = { TextButton(onClick = { showBackground = false }) { Text(stringResource(R.string.close)) } },
+		)
+		if (showDetails && selected != null) AlertDialog(
+			onDismissRequest = { showDetails = false },
+			title = { Text(stringResource(R.string.release_calendar_details)) },
+			text = {
+				Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+					Text(selected.manga.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+					Text(stringResource(R.string.release_calendar_source, selected.manga.source.getTitle(context)), style = MaterialTheme.typography.bodySmall)
+					selected.branch?.let { Text(stringResource(R.string.release_calendar_branch, it), style = MaterialTheme.typography.bodySmall) }
+					Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+						contentColor = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.fillMaxWidth()) {
+						Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+							Text(formatDate(selected.prediction.expectedDate), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+							Text(expectedLabel(selected), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+							Text(stringResource(R.string.release_calendar_predicted), style = MaterialTheme.typography.labelSmall)
+						}
+					}
+					Text(stringResource(R.string.release_calendar_recent_history), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+					selected.releaseDates.forEach { Text(formatDate(it), style = MaterialTheme.typography.bodyMedium) }
+					HorizontalDivider()
+					Text(stringResource(R.string.release_calendar_estimate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+				}
+			},
+			confirmButton = { TextButton(onClick = { showDetails = false }) { Text(stringResource(R.string.close)) } },
+		)
 	}
-	if (showBackground) AlertDialog(
-		onDismissRequest = { showBackground = false },
-		title = { Text(stringResource(R.string.release_calendar_background)) },
-		text = { Column {
-			PredictionCalendarBackgroundMode.entries.forEach { mode ->
-				val label = when (mode) {
-					PredictionCalendarBackgroundMode.DEFAULT -> R.string.release_calendar_background_default
-					PredictionCalendarBackgroundMode.MANGA_COVER -> R.string.release_calendar_background_cover
-					PredictionCalendarBackgroundMode.CUSTOM -> R.string.release_calendar_background_custom
-				}
-				Row(Modifier.fillMaxWidth().clickable(enabled = !importing) {
-					if (mode == PredictionCalendarBackgroundMode.CUSTOM && !PredictionCalendarBackgroundStore.file(context).isFile) chooseImage()
-					else { backgroundMode = mode; PredictionCalendarBackgroundStore.writeMode(context, mode) }
-					if (mode != PredictionCalendarBackgroundMode.MANGA_COVER) showBackground = false
-				}, verticalAlignment = Alignment.CenterVertically) {
-					RadioButton(selected = mode == backgroundMode, onClick = null, enabled = !importing)
-					Text(stringResource(label))
-				}
-				if (mode == PredictionCalendarBackgroundMode.MANGA_COVER && backgroundMode == mode) {
-					Row(Modifier.fillMaxWidth().padding(start = 16.dp).toggleable(
-						value = blurCover, role = Role.Switch, enabled = !importing,
-						onValueChange = { blurCover = it; PredictionCalendarBackgroundStore.writeCoverBlur(context, it) },
-					), verticalAlignment = Alignment.CenterVertically) {
-						Text(stringResource(R.string.release_calendar_cover_blur), modifier = Modifier.weight(1f))
-						Switch(checked = blurCover, onCheckedChange = null, enabled = !importing)
-					}
-				}
-			}
-			TextButton(onClick = { showBackground = false; chooseImage() }, enabled = !importing) { Text(stringResource(R.string.release_calendar_choose_image)) }
-		} },
-		confirmButton = { TextButton(onClick = { showBackground = false }) { Text(stringResource(R.string.close)) } },
-	)
-	if (showDetails && selected != null) AlertDialog(
-		onDismissRequest = { showDetails = false },
-		title = { Text(stringResource(R.string.release_calendar_details)) },
-		text = {
-			Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-				Text(selected.manga.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-				Text(stringResource(R.string.release_calendar_source, selected.manga.source.getTitle(context)), style = MaterialTheme.typography.bodySmall)
-				selected.branch?.let { Text(stringResource(R.string.release_calendar_branch, it), style = MaterialTheme.typography.bodySmall) }
-				Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
-					contentColor = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.fillMaxWidth()) {
-					Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-						Text(formatDate(selected.prediction.expectedDate), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-						Text(expectedLabel(selected), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-						Text(stringResource(R.string.release_calendar_predicted), style = MaterialTheme.typography.labelSmall)
-					}
-				}
-				Text(stringResource(R.string.release_calendar_recent_history), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-				selected.releaseDates.forEach { Text(formatDate(it), style = MaterialTheme.typography.bodyMedium) }
-				HorizontalDivider()
-				Text(stringResource(R.string.release_calendar_estimate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-			}
-		},
-		confirmButton = { TextButton(onClick = { showDetails = false }) { Text(stringResource(R.string.close)) } },
-	)
 }
 
 @Composable
@@ -282,7 +334,7 @@ private fun PredictionBackground(item: ChapterReleasePredictionItem?, mode: Pred
 			modifier = Modifier.fillMaxSize().then(if (mode.shouldBlur(blurCover)) Modifier.blur(22.dp) else Modifier), onError = {
 				if (mode == PredictionCalendarBackgroundMode.CUSTOM) Toast.makeText(context, R.string.release_calendar_image_error, Toast.LENGTH_SHORT).show()
 			})
-		Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface.copy(alpha = PREDICTION_BACKGROUND_SCRIM_ALPHA)))
+		Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = PREDICTION_BACKGROUND_SCRIM_ALPHA)))
 	}
 }
 
@@ -298,7 +350,7 @@ private fun PredictionCalendar(item: ChapterReleasePredictionItem, imageBackgrou
 	val dayHeight = maxOf(34.dp, with(density) { MaterialTheme.typography.bodyMedium.lineHeight.toDp() + 6.dp })
 	val previousMonthLabel = stringResource(R.string.release_calendar_previous_month)
 	val nextMonthLabel = stringResource(R.string.release_calendar_next_month)
-	val rainbow = Brush.sweepGradient(listOf(Color(0xFFFF4D6D), Color(0xFFFFB84D), Color(0xFFFFF15C), Color(0xFF62E36D), Color(0xFF4DD8FF), Color(0xFF6C63FF), Color(0xFFD65CFF), Color(0xFFFF4D6D)))
+	val rainbow = predictionRainbowBrush()
 	Surface(
 		shape = RoundedCornerShape(20.dp),
 		color = if (imageBackground) MaterialTheme.colorScheme.surface.copy(alpha = 0.76f) else MaterialTheme.colorScheme.surface,
@@ -348,18 +400,18 @@ private fun PredictionCalendar(item: ChapterReleasePredictionItem, imageBackgrou
 private fun PredictionActions(item: ChapterReleasePredictionItem, onDetails: () -> Unit) {
 	val context = LocalContext.current
 	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-		Legend(stringResource(R.string.release_calendar_predicted), formatDate(item.prediction.expectedDate), MaterialTheme.colorScheme.primary, true)
-		Legend(stringResource(R.string.release_calendar_previous), item.releaseDates.maxOrNull()?.let(::formatDate).orEmpty(), MaterialTheme.colorScheme.secondary, true)
-		Legend(stringResource(R.string.release_calendar_history), stringResource(R.string.release_calendar_recent_history), MaterialTheme.colorScheme.tertiary, false)
+		Legend(stringResource(R.string.release_calendar_predicted), formatDate(item.prediction.expectedDate), predictionRainbowBrush(), true)
+		Legend(stringResource(R.string.release_calendar_previous), item.releaseDates.maxOrNull()?.let(::formatDate).orEmpty(), SolidColor(MaterialTheme.colorScheme.secondary), true)
+		Legend(stringResource(R.string.release_calendar_history), stringResource(R.string.release_calendar_recent_history), SolidColor(MaterialTheme.colorScheme.tertiary), false)
 		Button(onClick = { addToCalendar(context, item) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.release_calendar_add)) }
 		OutlinedButton(onClick = onDetails, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.release_calendar_details)) }
 	}
 }
 
 @Composable
-private fun Legend(title: String, subtitle: String, color: Color, round: Boolean) {
+private fun Legend(title: String, subtitle: String, brush: Brush, round: Boolean) {
 	Row(verticalAlignment = Alignment.CenterVertically) {
-		Box(Modifier.size(10.dp).clip(if (round) CircleShape else RoundedCornerShape(1.dp)).background(color))
+		Box(Modifier.size(10.dp).clip(if (round) CircleShape else RoundedCornerShape(1.dp)).background(brush))
 		Column(Modifier.padding(start = 10.dp)) { Text(title, fontWeight = FontWeight.SemiBold)
 			Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 	}
