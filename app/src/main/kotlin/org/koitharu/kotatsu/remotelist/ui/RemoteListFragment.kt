@@ -88,7 +88,10 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
         addMenuProvider(RemoteListMenuProvider())
         addMenuProvider(MangaSearchMenuProvider(filterCoordinator, viewModel, activity))
         viewModel.isRandomLoading.observe(viewLifecycleOwner, MenuInvalidator(requireActivity()))
-        viewModel.onOpenManga.observeEvent(viewLifecycleOwner) { router.openDetails(it) }
+        viewModel.onOpenManga.observeEvent(viewLifecycleOwner) {
+            pauseSourcePackListWorkForDetails()
+            router.openDetails(it)
+        }
         viewModel.onBrokenSortFallback.observeEvent(viewLifecycleOwner) { showBrokenSortWarning() }
         filterCoordinator.observe().distinctUntilChangedBy { it.listFilter.isEmpty() }
             .drop(1)
@@ -96,6 +99,18 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
                 activity?.invalidateMenu()
             }
         resolveMiyorareSourceWebViewUrl()
+    }
+
+    override fun onMangaClick(item: org.koitharu.kotatsu.list.ui.model.MangaListModel, view: View) {
+        pauseSourcePackListWorkForDetails()
+        super.onMangaClick(item, view)
+    }
+
+    private fun pauseSourcePackListWorkForDetails() {
+        val source = viewModel.source.unwrap() as? TsukiMangaSource ?: return
+        if (source.plugin.provider == TsukiPluginProvider.MIYORARE) {
+            viewModel.pauseListWorkForDetailsHandoff()
+        }
     }
 
     override fun onScrolledToEnd() {
