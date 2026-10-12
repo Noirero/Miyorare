@@ -39,9 +39,11 @@ class ChapterPagesMenuProvider(
 	Slider.OnChangeListener {
 
 	private var expandedItemRef: WeakReference<MenuItem>? = null
+	private var menuRef: WeakReference<Menu>? = null
 	private val menuVisibilityBeforeSearch = mutableMapOf<Int, Boolean>()
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+		menuRef = WeakReference(menu)
 		val tab = getCurrentTab()
 		when (tab) {
 			TAB_CHAPTERS -> {
@@ -81,7 +83,7 @@ class ChapterPagesMenuProvider(
 			item.isVisible = isMerged || (viewModel.mangaDetails.value?.chapters?.size ?: 0) > 1
 			item.isChecked = isMerged
 		}
-		if (expandedItemRef?.get() != null) hideOtherMenuItems(menu, expandedItemRef?.get())
+		expandedItemRef?.get()?.let { hideOtherMenuItems(menu, it) }
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
@@ -113,8 +115,6 @@ class ChapterPagesMenuProvider(
 			if (viewModel is ReaderViewModel) {
 				settings.isChaptersReverse = descending
 			} else if (viewModel is DetailsViewModel) {
-				// Details now retains the user's explicit sort direction across reopen while
-				// keeping the rest of its chapter-list defaults scoped to Details.
 				settings.isChaptersReverse = descending
 			}
 			true
@@ -122,9 +122,7 @@ class ChapterPagesMenuProvider(
 		R.id.action_grid_view -> if (viewModel.getMangaOrNull()?.isEpub == true) true else {
 			val grid = !menuItem.isChecked
 			viewModel.setChaptersGridView(grid)
-			if (viewModel is ReaderViewModel) {
-				settings.isChaptersGridView = grid
-			}
+			if (viewModel is ReaderViewModel) settings.isChaptersGridView = grid
 			true
 		}
 		R.id.action_downloaded -> {
@@ -145,8 +143,8 @@ class ChapterPagesMenuProvider(
 	override fun onMenuItemActionExpand(item: MenuItem): Boolean {
 		if (expandedItemRef?.get() != null) return false
 		expandedItemRef = WeakReference(item)
-		item.menuInfo
 		menuVisibilityBeforeSearch.clear()
+		menuRef?.get()?.let { hideOtherMenuItems(it, item) }
 		sheet.expandAndLock()
 		isEnabled = true
 		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
@@ -167,7 +165,6 @@ class ChapterPagesMenuProvider(
 		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
 			toolbarContent.isVisible = true
 			(item.actionView as? SearchView)?.apply {
-				// Detach first so clearing one search mode cannot mutate the other query.
 				setOnQueryTextListener(null)
 				setQuery("", false)
 				setOnQueryTextListener(this@ChapterPagesMenuProvider)
@@ -175,7 +172,7 @@ class ChapterPagesMenuProvider(
 			if (item.itemId == R.id.action_search_notes) viewModel.exitChapterNoteSearch()
 			else viewModel.performChapterSearch(null)
 		}
-		menuVisibilityBeforeSearch.clear()
+		menuRef?.get()?.let(::restoreMenuVisibility)
 		return true
 	}
 
@@ -203,15 +200,20 @@ class ChapterPagesMenuProvider(
 		}
 	}
 
-	private fun hideOtherMenuItems(menu: Menu, expandedItem: MenuItem?) {
+	private fun hideOtherMenuItems(menu: Menu, expandedItem: MenuItem) {
 		for (index in 0 until menu.size()) {
 			val item = menu.getItem(index)
-			if (menuVisibilityBeforeSearch.putIfAbsent(item.itemId, item.isVisible) == null && item != expandedItem) {
-				item.isVisible = false
-			} else if (item != expandedItem) {
-				item.isVisible = false
-			}
+			menuVisibilityBeforeSearch.putIfAbsent(item.itemId, item.isVisible)
+			if (item != expandedItem) item.isVisible = false
 		}
+	}
+
+	private fun restoreMenuVisibility(menu: Menu) {
+		for (index in 0 until menu.size()) {
+			val item = menu.getItem(index)
+			menuVisibilityBeforeSearch[item.itemId]?.let { item.isVisible = it }
+		}
+		menuVisibilityBeforeSearch.clear()
 	}
 
 	private fun Slider.setupPagesSizeSlider() {
