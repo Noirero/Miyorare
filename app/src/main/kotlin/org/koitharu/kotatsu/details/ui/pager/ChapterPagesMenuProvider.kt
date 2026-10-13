@@ -12,22 +12,22 @@ import androidx.core.view.MenuProvider
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.viewpager2.widget.ViewPager2
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.LabelFormatter
 import com.google.android.material.slider.Slider
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.TickVisibilityMode
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
-import org.koitharu.kotatsu.core.util.ext.setValueRounded
 import org.koitharu.kotatsu.core.util.ext.setOptionalIconsVisibleCompat
+import org.koitharu.kotatsu.core.util.ext.setValueRounded
 import org.koitharu.kotatsu.core.util.progress.IntPercentLabelFormatter
+import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_BOOKMARKS
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_CHAPTERS
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_PAGES
-import org.koitharu.kotatsu.reader.ui.ReaderViewModel
 import org.koitharu.kotatsu.local.data.isEpub
+import org.koitharu.kotatsu.reader.ui.ReaderViewModel
 import java.lang.ref.WeakReference
 
 class ChapterPagesMenuProvider(
@@ -37,26 +37,23 @@ class ChapterPagesMenuProvider(
 	private val viewModel: ChaptersPagesViewModel,
 	private val toolbarContent: View,
 ) : OnBackPressedCallback(false), MenuProvider, MenuItem.OnActionExpandListener,
-	SearchView.OnQueryTextListener,
-	Slider.OnChangeListener {
+	SearchView.OnQueryTextListener, Slider.OnChangeListener {
+
+	private enum class SearchMode { CHAPTERS, NOTES }
 
 	private var expandedItemRef: WeakReference<MenuItem>? = null
 	private var menuRef: WeakReference<Menu>? = null
-	private val menuVisibilityBeforeSearch = mutableMapOf<Int, Boolean>()
+	private var searchMode: SearchMode? = null
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
 		menuRef = WeakReference(menu)
-		val tab = getCurrentTab()
-		when (tab) {
+		when (getCurrentTab()) {
 			TAB_CHAPTERS -> {
 				menuInflater.inflate(R.menu.opt_chapters, menu)
 				menu.setOptionalIconsVisibleCompat(true)
-				// Details owns Notes search on its main surface. Reader keeps Notes search in
-				// its chapter toolbox; the Details chapter manager owns chapter-title search only.
-				menu.findItem(R.id.action_search_notes)?.let { item ->
-					item.isVisible = viewModel is ReaderViewModel
-					if (item.isVisible) setupSearchItem(item)
-				}
+				// Manage and Reader Toolbox share one deterministic search entry point.
+				// The user chooses chapter-title or personal-note search before entering it.
+				menu.findItem(R.id.action_search_notes)?.isVisible = false
 				menu.findItem(R.id.action_search)?.let(::setupSearchItem)
 			}
 			TAB_PAGES, TAB_BOOKMARKS -> {
@@ -73,9 +70,12 @@ class ChapterPagesMenuProvider(
 		super.onPrepareMenu(menu)
 		val chapterOptions = viewModel.chapterListOptions.value
 		menu.findItem(R.id.action_chapter_grouping)?.isVisible = viewModel is DetailsViewModel
-		menu.findItem(R.id.action_search_notes)?.isVisible = viewModel is ReaderViewModel
+		menu.findItem(R.id.action_search_notes)?.isVisible = false
 		menu.findItem(R.id.action_reversed)?.isChecked = chapterOptions.descending
-		menu.findItem(R.id.action_grid_view)?.let { it.isChecked = chapterOptions.grid; it.isVisible = viewModel.getMangaOrNull()?.isEpub != true }
+		menu.findItem(R.id.action_grid_view)?.let {
+			it.isChecked = chapterOptions.grid
+			it.isVisible = viewModel.getMangaOrNull()?.isEpub != true
+		}
 		menu.findItem(R.id.action_downloaded)?.let { item ->
 			item.isVisible = viewModel.mangaDetails.value?.local != null
 			item.isChecked = chapterOptions.downloadedOnly
@@ -138,19 +138,14 @@ class ChapterPagesMenuProvider(
 
 	override fun onMenuItemActionExpand(item: MenuItem): Boolean {
 		if (expandedItemRef?.get() != null) return false
+		if (item.itemId == R.id.action_search && searchMode == null) return false
 		expandedItemRef = WeakReference(item)
-		menuVisibilityBeforeSearch.clear()
 		menuRef?.get()?.let { hideOtherMenuItems(it, item) }
 		sheet.expandAndLock()
 		isEnabled = true
-		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
+		if (item.itemId == R.id.action_search) {
 			toolbarContent.isGone = true
-			if (item.itemId == R.id.action_search_notes) {
-				if (viewModel.chapterNotesQuery.value == null) viewModel.performChapterNoteSearch("")
-			} else {
-				viewModel.exitChapterNoteSearch()
-			}
-			(item.actionView as? SearchView)?.focusSearchInput()
+			activateSearchMode(searchMode ?: SearchMode.CHAPTERS, item.actionView as? SearchView)
 		}
 		return true
 	}
@@ -159,7 +154,7 @@ class ChapterPagesMenuProvider(
 		expandedItemRef = null
 		isEnabled = false
 		sheet.unlock()
-		if (item.itemId == R.id.action_search || item.itemId == R.id.action_search_notes) {
+		if (item.itemId == R.id.action_search) {
 			toolbarContent.isVisible = true
 			(item.actionView as? SearchView)?.apply {
 				hideSearchKeyboard()
@@ -168,20 +163,24 @@ class ChapterPagesMenuProvider(
 				clearFocus()
 				setOnQueryTextListener(this@ChapterPagesMenuProvider)
 			}
-			if (item.itemId == R.id.action_search_notes) viewModel.exitChapterNoteSearch()
-			else viewModel.performChapterSearch(null)
+			viewModel.performChapterSearch(null)
+			viewModel.exitChapterNoteSearch()
+			searchMode = null
 		}
-		menuRef?.get()?.let(::restoreMenuVisibility)
+		// Recompute normal menu visibility from source-of-truth state. Do not restore a
+		// stale visibility snapshot captured before search; that caused the search icon
+		// to disappear nondeterministically after Back in Manage and Reader Toolbox.
+		menuRef?.get()?.let(::onPrepareMenu)
 		return true
 	}
 
 	override fun onQueryTextSubmit(query: String?): Boolean = false
 
 	override fun onQueryTextChange(newText: String?): Boolean {
-		if (expandedItemRef?.get()?.itemId == R.id.action_search_notes) {
-			viewModel.performChapterNoteSearch(newText.orEmpty())
-		} else {
-			viewModel.performChapterSearch(newText)
+		when (searchMode) {
+			SearchMode.NOTES -> viewModel.performChapterNoteSearch(newText.orEmpty())
+			SearchMode.CHAPTERS -> viewModel.performChapterSearch(newText)
+			null -> Unit
 		}
 		return true
 	}
@@ -192,16 +191,69 @@ class ChapterPagesMenuProvider(
 
 	private fun setupSearchItem(item: MenuItem) {
 		item.setOnActionExpandListener(this)
+		item.setOnMenuItemClickListener {
+			showSearchModeChooser(item)
+			true
+		}
 		(item.actionView as? SearchView)?.apply {
 			setIconifiedByDefault(false)
-			queryHint = item.title
 			setOnQueryTextListener(this@ChapterPagesMenuProvider)
 			findViewById<View?>(androidx.appcompat.R.id.search_close_btn)?.setOnClickListener {
-				// X clears the query but keeps the current search session active.
+				// X always clears the active query and keeps the selected search mode active.
 				setQuery("", false)
 				focusSearchInput()
 			}
+			findViewById<View?>(androidx.appcompat.R.id.search_mag_icon)?.setOnClickListener {
+				showSearchModeChooser(item)
+			}
 		}
+	}
+
+	private fun showSearchModeChooser(item: MenuItem) {
+		val context = toolbarContent.context
+		val modes = arrayOf(SearchMode.CHAPTERS, SearchMode.NOTES)
+		val labels = arrayOf(
+			context.getString(R.string.search_chapters),
+			context.getString(R.string.chapter_search_notes),
+		)
+		MaterialAlertDialogBuilder(context)
+			.setTitle(R.string.search)
+			.setItems(labels) { dialog, which ->
+				val selectedMode = modes[which]
+				if (item.isActionViewExpanded) {
+					activateSearchMode(selectedMode, item.actionView as? SearchView)
+				} else {
+					searchMode = selectedMode
+					item.expandActionView()
+				}
+				dialog.dismiss()
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun activateSearchMode(mode: SearchMode, searchView: SearchView?) {
+		searchMode = mode
+		searchView?.apply {
+			setOnQueryTextListener(null)
+			setQuery("", false)
+			queryHint = when (mode) {
+				SearchMode.CHAPTERS -> context.getString(R.string.search_chapters)
+				SearchMode.NOTES -> context.getString(R.string.chapter_search_notes)
+			}
+			setOnQueryTextListener(this@ChapterPagesMenuProvider)
+		}
+		when (mode) {
+			SearchMode.CHAPTERS -> {
+				viewModel.exitChapterNoteSearch()
+				viewModel.performChapterSearch("")
+			}
+			SearchMode.NOTES -> {
+				viewModel.performChapterSearch(null)
+				viewModel.performChapterNoteSearch("")
+			}
+		}
+		searchView?.focusSearchInput()
 	}
 
 	private fun SearchView.focusSearchInput() {
@@ -222,17 +274,8 @@ class ChapterPagesMenuProvider(
 	private fun hideOtherMenuItems(menu: Menu, expandedItem: MenuItem) {
 		for (index in 0 until menu.size()) {
 			val item = menu.getItem(index)
-			menuVisibilityBeforeSearch.putIfAbsent(item.itemId, item.isVisible)
 			if (item != expandedItem) item.isVisible = false
 		}
-	}
-
-	private fun restoreMenuVisibility(menu: Menu) {
-		for (index in 0 until menu.size()) {
-			val item = menu.getItem(index)
-			menuVisibilityBeforeSearch[item.itemId]?.let { item.isVisible = it }
-		}
-		menuVisibilityBeforeSearch.clear()
 	}
 
 	private fun Slider.setupPagesSizeSlider() {
