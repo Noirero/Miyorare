@@ -1,0 +1,48 @@
+name: Staging note search patch
+
+on:
+  push:
+    branches:
+      - test/staging-598-602
+    paths:
+      - .github/workflows/staging-note-search-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: test/staging-598-602
+          fetch-depth: 1
+      - name: Apply exact production patch
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt')
+          text = path.read_text()
+          old = '\t\tleadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },'
+          new = '''\t\tleadingIcon = {
+          \tIconButton(onClick = onExit) {
+          \t\tIcon(
+          \t\t\tpainter = painterResource(R.drawable.ic_arrow_back),
+          \t\t\tcontentDescription = stringResource(R.string.chapter_search_notes_exit),
+          \t\t)
+          \t}
+          },'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one target, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+      - name: Remove temporary patch workflow
+        run: rm .github/workflows/staging-note-search-patch.yml
+      - name: Commit staging fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt .github/workflows/staging-note-search-patch.yml
+          git diff --cached --check
+          git commit -m "fix(staging): restore note search exit control"
+          git push origin HEAD:test/staging-598-602
