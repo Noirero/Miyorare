@@ -22,8 +22,4 @@ class ChangelogViewModel @Inject constructor(
 			append(context.getString(R.string.changelog_current_body))
 		},
 	)
-
-	val changelogIndonesian = MutableStateFlow<String?>(
-		context.getString(R.string.changelog_current_body_indonesian),
-	)
 }
