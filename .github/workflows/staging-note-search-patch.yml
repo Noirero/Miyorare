@@ -19,8 +19,8 @@ jobs:
           ref: test/staging-598-602
           fetch-depth: 1
       - name: Apply exact production patch
-        shell: python
         run: |
+          python - <<'PY'
           from pathlib import Path
           path = Path('app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt')
           text = path.read_text()
@@ -36,6 +36,7 @@ jobs:
           if text.count(old) != 1:
               raise SystemExit(f'Expected exactly one target, found {text.count(old)}')
           path.write_text(text.replace(old, new))
+          PY
       - name: Remove temporary patch workflow
         run: rm .github/workflows/staging-note-search-patch.yml
       - name: Commit staging fix
