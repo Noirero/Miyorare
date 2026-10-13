@@ -87,7 +87,6 @@ class ChapterPagesMenuProvider(
 			item.isVisible = isMerged || (viewModel.mangaDetails.value?.chapters?.size ?: 0) > 1
 			item.isChecked = isMerged
 		}
-		expandedItemRef?.get()?.let { hideOtherMenuItems(menu, it) }
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
@@ -145,7 +144,6 @@ class ChapterPagesMenuProvider(
 			return false
 		}
 		expandedItemRef = WeakReference(item)
-		menuRef?.get()?.let { hideOtherMenuItems(it, item) }
 		sheet.expandAndLock()
 		isEnabled = true
 		if (item.itemId == R.id.action_search) {
@@ -266,13 +264,6 @@ class ChapterPagesMenuProvider(
 	private fun SearchView.hideSearchKeyboard() {
 		(context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
 			?.hideSoftInputFromWindow(windowToken, 0)
-	}
-
-	private fun hideOtherMenuItems(menu: Menu, expandedItem: MenuItem) {
-		for (index in 0 until menu.size()) {
-			val item = menu.getItem(index)
-			if (item != expandedItem) item.isVisible = false
-		}
 	}
 
 	private fun Slider.setupPagesSizeSlider() {
