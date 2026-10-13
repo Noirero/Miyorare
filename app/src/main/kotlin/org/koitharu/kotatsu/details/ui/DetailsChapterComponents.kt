@@ -1124,7 +1124,14 @@ internal fun ChapterNoteSearch(query: String, onQueryChange: (String) -> Unit, o
 		value = query,
 		onValueChange = onQueryChange,
 		label = { Text(stringResource(R.string.chapter_search_notes)) },
-		leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
+		leadingIcon = {
+			IconButton(onClick = onExit) {
+				Icon(
+					painter = painterResource(R.drawable.ic_arrow_back),
+					contentDescription = stringResource(R.string.chapter_search_notes_exit),
+				)
+			}
+		},
 		trailingIcon = {
 			IconButton(onClick = { onQueryChange("") }) {
 				Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.clear))
