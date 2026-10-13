@@ -51,8 +51,6 @@ class ChapterPagesMenuProvider(
 			TAB_CHAPTERS -> {
 				menuInflater.inflate(R.menu.opt_chapters, menu)
 				menu.setOptionalIconsVisibleCompat(true)
-				// Manage and Reader Toolbox share one deterministic search entry point.
-				// The user chooses chapter-title or personal-note search before entering it.
 				menu.findItem(R.id.action_search_notes)?.isVisible = false
 				menu.findItem(R.id.action_search)?.let(::setupSearchItem)
 			}
@@ -69,9 +67,16 @@ class ChapterPagesMenuProvider(
 	override fun onPrepareMenu(menu: Menu) {
 		super.onPrepareMenu(menu)
 		val chapterOptions = viewModel.chapterListOptions.value
-		menu.findItem(R.id.action_chapter_grouping)?.isVisible = viewModel is DetailsViewModel
+		// Search temporarily hides every sibling menu item. Re-establish every static
+		// chapter-menu visibility from source-of-truth before applying dynamic rules;
+		// otherwise the false values written by hideOtherMenuItems survive collapse.
+		menu.findItem(R.id.action_search)?.isVisible = true
 		menu.findItem(R.id.action_search_notes)?.isVisible = false
-		menu.findItem(R.id.action_reversed)?.isChecked = chapterOptions.descending
+		menu.findItem(R.id.action_reversed)?.apply {
+			isVisible = true
+			isChecked = chapterOptions.descending
+		}
+		menu.findItem(R.id.action_chapter_grouping)?.isVisible = viewModel is DetailsViewModel
 		menu.findItem(R.id.action_grid_view)?.let {
 			it.isChecked = chapterOptions.grid
 			it.isVisible = viewModel.getMangaOrNull()?.isEpub != true
@@ -167,9 +172,6 @@ class ChapterPagesMenuProvider(
 			viewModel.exitChapterNoteSearch()
 			searchMode = null
 		}
-		// Recompute normal menu visibility from source-of-truth state. Do not restore a
-		// stale visibility snapshot captured before search; that caused the search icon
-		// to disappear nondeterministically after Back in Manage and Reader Toolbox.
 		menuRef?.get()?.let(::onPrepareMenu)
 		return true
 	}
@@ -199,7 +201,6 @@ class ChapterPagesMenuProvider(
 			setIconifiedByDefault(false)
 			setOnQueryTextListener(this@ChapterPagesMenuProvider)
 			findViewById<View?>(androidx.appcompat.R.id.search_close_btn)?.setOnClickListener {
-				// X always clears the active query and keeps the selected search mode active.
 				setQuery("", false)
 				focusSearchInput()
 			}
