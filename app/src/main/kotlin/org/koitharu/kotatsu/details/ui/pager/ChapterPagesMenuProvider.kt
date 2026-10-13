@@ -67,9 +67,6 @@ class ChapterPagesMenuProvider(
 	override fun onPrepareMenu(menu: Menu) {
 		super.onPrepareMenu(menu)
 		val chapterOptions = viewModel.chapterListOptions.value
-		// Search temporarily hides every sibling menu item. Re-establish every static
-		// chapter-menu visibility from source-of-truth before applying dynamic rules;
-		// otherwise the false values written by hideOtherMenuItems survive collapse.
 		menu.findItem(R.id.action_search)?.isVisible = true
 		menu.findItem(R.id.action_search_notes)?.isVisible = false
 		menu.findItem(R.id.action_reversed)?.apply {
@@ -143,7 +140,10 @@ class ChapterPagesMenuProvider(
 
 	override fun onMenuItemActionExpand(item: MenuItem): Boolean {
 		if (expandedItemRef?.get() != null) return false
-		if (item.itemId == R.id.action_search && searchMode == null) return false
+		if (item.itemId == R.id.action_search && searchMode == null) {
+			showSearchModeChooser(item)
+			return false
+		}
 		expandedItemRef = WeakReference(item)
 		menuRef?.get()?.let { hideOtherMenuItems(it, item) }
 		sheet.expandAndLock()
@@ -193,10 +193,6 @@ class ChapterPagesMenuProvider(
 
 	private fun setupSearchItem(item: MenuItem) {
 		item.setOnActionExpandListener(this)
-		item.setOnMenuItemClickListener {
-			showSearchModeChooser(item)
-			true
-		}
 		(item.actionView as? SearchView)?.apply {
 			setIconifiedByDefault(false)
 			setOnQueryTextListener(this@ChapterPagesMenuProvider)
