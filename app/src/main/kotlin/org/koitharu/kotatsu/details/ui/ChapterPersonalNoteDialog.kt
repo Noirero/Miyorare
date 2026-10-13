@@ -1,7 +1,7 @@
 package org.koitharu.kotatsu.details.ui
 
 import android.content.Context
-import android.text.SpannableString
+import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.method.LinkMovementMethod
 import android.text.style.URLSpan
@@ -16,15 +16,8 @@ private val noteTrailingPunctuation = setOf('.', ',', ';', ':', '!', '?', ')', '
 
 internal fun showChapterPersonalNote(context: Context, item: ChapterListItem) {
 	val note = item.personalMetadata.note?.takeIf(String::isNotBlank) ?: return
-	val linked = SpannableString(note)
-	for (match in noteUrlRegex.findAll(note)) {
-		var end = match.range.last + 1
-		while (end > match.range.first && note[end - 1] in noteTrailingPunctuation) end--
-		if (end > match.range.first) {
-			val url = note.substring(match.range.first, end)
-			linked.setSpan(URLSpan(url), match.range.first, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-		}
-	}
+	val linked = SpannableStringBuilder()
+	appendLinkedChapterNote(linked, note)
 	val message = TextView(context).apply {
 		text = linked
 		setTextIsSelectable(true)
@@ -38,4 +31,17 @@ internal fun showChapterPersonalNote(context: Context, item: ChapterListItem) {
 		.setView(message)
 		.setPositiveButton(android.R.string.ok, null)
 		.show()
+}
+
+internal fun appendLinkedChapterNote(builder: SpannableStringBuilder, note: String) {
+	val start = builder.length
+	builder.append(note)
+	for (match in noteUrlRegex.findAll(note)) {
+		var end = match.range.last + 1
+		while (end > match.range.first && note[end - 1] in noteTrailingPunctuation) end--
+		if (end > match.range.first) {
+			val url = note.substring(match.range.first, end)
+			builder.setSpan(URLSpan(url), start + match.range.first, start + end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+		}
+	}
 }
