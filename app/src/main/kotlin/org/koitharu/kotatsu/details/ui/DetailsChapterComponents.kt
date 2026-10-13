@@ -879,8 +879,6 @@ internal fun ChapterHeaderTitle(
 	}
 	val openCalendarLabel = stringResource(R.string.release_calendar_title)
 	BoxWithConstraints(modifier) {
-		// Measure localized text at the active font scale. Drop the secondary estimate entirely
-		// when it cannot fit beside the primary count; Manage keeps its own unweighted space.
 		val titleWidth = measurer.measure(title, titleStyle, maxLines = 1).size.width
 		val predictionWidth = label?.let {
 			measurer.measure(it, secondaryStyle, maxLines = 1).size.width +
@@ -1126,10 +1124,17 @@ internal fun ChapterNoteSearch(query: String, onQueryChange: (String) -> Unit, o
 		value = query,
 		onValueChange = onQueryChange,
 		label = { Text(stringResource(R.string.chapter_search_notes)) },
-		leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
-		trailingIcon = {
+		leadingIcon = {
 			IconButton(onClick = onExit) {
-				Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.chapter_search_notes_exit))
+				Icon(
+					painter = painterResource(R.drawable.ic_arrow_back),
+					contentDescription = stringResource(R.string.chapter_search_notes_exit),
+				)
+			}
+		},
+		trailingIcon = {
+			IconButton(onClick = { onQueryChange("") }) {
+				Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.clear))
 			}
 		},
 		singleLine = true,
@@ -1345,7 +1350,7 @@ internal fun InlineChapterCard(
 						tint = accent,
 						modifier = Modifier.size(16.dp),
 					)
-				}
+			}
 			}
 			val ratingDescription = item.personalMetadata.rating?.let {
 				stringResource(R.string.chapter_personal_rating_value, it)
