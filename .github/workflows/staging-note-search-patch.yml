@@ -24,18 +24,23 @@ jobs:
           from pathlib import Path
           path = Path('app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt')
           text = path.read_text()
-          old = '\t\tleadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },'
-          new = '''\t\tleadingIcon = {
-          \tIconButton(onClick = onExit) {
-          \t\tIcon(
-          \t\t\tpainter = painterResource(R.drawable.ic_arrow_back),
-          \t\t\tcontentDescription = stringResource(R.string.chapter_search_notes_exit),
-          \t\t)
-          \t}
-          },'''
-          if text.count(old) != 1:
-              raise SystemExit(f'Expected exactly one target, found {text.count(old)}')
-          path.write_text(text.replace(old, new))
+          marker = 'internal fun ChapterNoteSearch(query: String, onQueryChange: (String) -> Unit, onExit: () -> Unit) {'
+          start = text.index(marker)
+          end = text.index('\n}\n', start) + 3
+          block = text[start:end]
+          old = 'leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },'
+          new = '''leadingIcon = {
+          \t\t\tIconButton(onClick = onExit) {
+          \t\t\t\tIcon(
+          \t\t\t\t\tpainter = painterResource(R.drawable.ic_arrow_back),
+          \t\t\t\t\tcontentDescription = stringResource(R.string.chapter_search_notes_exit),
+          \t\t\t\t)
+          \t\t\t}
+          \t\t},'''
+          if block.count(old) != 1:
+              raise SystemExit(f'Expected one leading search icon in ChapterNoteSearch, found {block.count(old)}')
+          patched = block.replace(old, new)
+          path.write_text(text[:start] + patched + text[end:])
           PY
       - name: Remove temporary patch workflow
         run: rm .github/workflows/staging-note-search-patch.yml
