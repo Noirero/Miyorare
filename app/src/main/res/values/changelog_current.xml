@@ -1,8 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="changelog_current_body" formatted="false">## Miyorare v1.4.9\n\nThis update focuses on chapter organization, release predictions, personal notes, Source Pack responsiveness, recommendations, Favourites category management, and stability.\n\n## ✨ What&apos;s New\n\n- **Chapter range grouping** — long chapter lists can now be grouped into expandable numeric ranges. Choose Automatic, 25, 50, 100, or Off while keeping existing search, filters, sorting, grid/list display, and chapter actions.\n- **Next chapter prediction calendar** — tap the release estimate in Details to open a calendar with the predicted date, release-history evidence, and an option to add the estimate to your calendar. Cached predictions for supported Favourites can also be browsed from the sheet.\n- **Prediction calendar backgrounds** — use the default theme, manga cover, or a custom image, with a dedicated blur option for cover backgrounds.\n- **Better chapter Personal Notes** — chapter notes can be opened in a read-only selectable viewer, and explicit HTTP(S) links inside notes are clickable.\n- **Search Notes result viewer** — open the selected note or all matching note results without losing the active Search Notes session.\n- **Redesigned Favourite category picker** — a wider adaptive dialog supports compact rows, two-column layouts when appropriate, paging for large category sets, and an optional cover/title header.\n\n## 🚀 Improvements\n\n- **Faster Source Pack → Details handoff and chapter first render** — unnecessary catalogue work is released before Details opens, and completed chapter data can be shown before final persistence finishes.\n- **More accurate Similar Genres** — candidates now require real shared genre evidence, with bounded metadata enrichment for sources whose list results omit genres.\n- **Unified chapter search behavior** — Chapter Search and Search Notes stay mutually exclusive; X clears the query while Back exits search mode.\n- **Reader toolbox personal actions** — chapter ratings and Personal Notes now use the same working data path as Details.\n- **Chapter sort direction persistence** — ascending/descending choices are preserved more consistently across reopen and shared chapter controls.\n- **Manga Notes links** — explicit HTTP(S) URLs are clickable while ordinary note text remains selectable and copyable.\n- **Performance diagnostics** — bounded verbose timing and lifecycle diagnostics were expanded while remaining disabled by default.\n\n## 🐞 Fixes\n\n- Fixed Search Notes routing so chapter taps still open Reader while the dedicated note action opens note results.\n- Fixed nested/competing Reader toolbox search sessions.\n- Fixed Reader chapter personal actions that could fail to open their editor/viewer.\n- Fixed chapter sort direction reverting after Details was reopened.\n- Fixed Similar Genres candidates without actual genre overlap and improved sparse source metadata handling.\n- Fixed a Fragment state-save crash when source refresh completed after a manga list screen left the resumed state.\n- Fixed Source Pack handoff and first-render timing issues.\n- Refined Favourite category picker geometry, spacing, paging height, and interactions for compact and short-screen layouts.</string>
+    <string name="changelog_current_body" formatted="false"><![CDATA[## Miyorare v1.4.9
 
-    <string name="changelog_current_body_indonesian" formatted="false">## Miyorare v1.4.9\n\nPembaruan ini berfokus pada pengelolaan chapter, prediksi rilis, catatan pribadi, responsivitas Source Pack, rekomendasi, pengelolaan kategori Favourites, dan stabilitas.\n\n## ✨ Yang Baru\n\n- **Pengelompokan rentang chapter** — daftar chapter panjang sekarang dapat dikelompokkan menjadi rentang angka yang bisa dibuka/tutup. Tersedia Automatic, 25, 50, 100, atau Off tanpa menghilangkan search, filter, sorting, tampilan grid/list, dan aksi chapter yang sudah ada.\n- **Kalender prediksi chapter berikutnya** — tekan perkiraan rilis di Details untuk membuka kalender berisi tanggal prediksi, bukti riwayat rilis, serta opsi menambahkan perkiraan tersebut ke kalender. Prediksi tersimpan dari Favourites yang didukung juga dapat dilihat dari sheet.\n- **Background kalender prediksi** — gunakan tema default, cover manga, atau gambar kustom, termasuk opsi blur khusus untuk background cover.\n- **Personal Notes chapter yang lebih baik** — catatan chapter dapat dibuka dalam viewer read-only yang teksnya bisa dipilih, dan tautan HTTP(S) di dalam catatan dapat ditekan.\n- **Viewer hasil Search Notes** — buka catatan terpilih atau seluruh hasil yang cocok tanpa menghilangkan sesi Search Notes aktif.\n- **Pemilih kategori Favourite baru** — dialog yang lebih lebar dan adaptif dengan baris ringkas, dua kolom ketika sesuai, paging untuk kategori dalam jumlah besar, serta header cover/judul opsional.\n\n## 🚀 Peningkatan\n\n- **Source Pack → Details dan first render chapter lebih cepat** — pekerjaan katalog yang tidak diperlukan dilepas sebelum Details dibuka, dan data chapter yang sudah selesai dapat tampil sebelum persistence final selesai.\n- **Similar Genres lebih akurat** — kandidat sekarang membutuhkan bukti genre yang benar-benar sama, dengan enrichment metadata terbatas untuk source yang hasil daftarnya tidak memiliki genre.\n- **Perilaku pencarian chapter lebih konsisten** — Chapter Search dan Search Notes tidak dapat aktif bersamaan; X membersihkan query sedangkan Back keluar dari mode pencarian.\n- **Personal action di Reader toolbox** — rating chapter dan Personal Notes sekarang memakai jalur data yang sama dengan Details.\n- **Arah sorting chapter lebih konsisten** — pilihan ascending/descending lebih baik dipertahankan setelah Details dibuka ulang dan pada kontrol chapter bersama.\n- **Link pada Manga Notes** — URL HTTP(S) dapat ditekan sementara teks catatan biasa tetap dapat dipilih dan disalin.\n- **Performance diagnostics** — verbose timing dan lifecycle diagnostics yang terbatas diperluas dan tetap nonaktif secara default.\n\n## 🐞 Perbaikan\n\n- Memperbaiki routing Search Notes sehingga menekan chapter tetap membuka Reader, sedangkan aksi catatan khusus membuka hasil catatan.\n- Memperbaiki sesi pencarian Reader toolbox yang dapat bertumpuk atau saling bersaing.\n- Memperbaiki personal action chapter di Reader yang dapat gagal membuka editor/viewer.\n- Memperbaiki arah sorting chapter yang dapat kembali ke pilihan lama setelah Details dibuka ulang.\n- Memperbaiki kandidat Similar Genres tanpa genre yang benar-benar sama dan meningkatkan penanganan metadata source yang minim.\n- Memperbaiki crash Fragment state-save ketika refresh source selesai setelah layar daftar manga sudah tidak resumed.\n- Memperbaiki timing handoff dan first render Source Pack.\n- Menyempurnakan geometri, spacing, tinggi paging, dan interaksi pemilih kategori Favourite untuk layout compact dan layar pendek.</string>
+This update focuses on chapter organization, release predictions, personal notes, Source Pack responsiveness, recommendations, Favourites category management, and stability.
+
+## ✨ What's New
+
+- **Chapter range grouping** — long chapter lists can now be grouped into expandable numeric ranges. Choose Automatic, 25, 50, 100, or Off while keeping existing search, filters, sorting, grid/list display, and chapter actions.
+- **Next chapter prediction calendar** — tap the release estimate in Details to open a calendar with the predicted date, release-history evidence, and an option to add the estimate to your calendar. Cached predictions for supported Favourites can also be browsed from the sheet.
+- **Prediction calendar backgrounds** — use the default theme, manga cover, or a custom image, with a dedicated blur option for cover backgrounds.
+- **Better chapter Personal Notes** — chapter notes can be opened in a read-only selectable viewer, and explicit HTTP(S) links inside notes are clickable.
+- **Search Notes result viewer** — open the selected note or all matching note results without losing the active Search Notes session.
+- **Redesigned Favourite category picker** — a wider adaptive dialog supports compact rows, two-column layouts when appropriate, paging for large category sets, and an optional cover/title header.
+
+## 🚀 Improvements
+
+- **Faster Source Pack → Details handoff and chapter first render** — unnecessary catalogue work is released before Details opens, and completed chapter data can be shown before final persistence finishes.
+- **More accurate Similar Genres** — candidates now require real shared genre evidence, with bounded metadata enrichment for sources whose list results omit genres.
+- **Unified chapter search behavior** — Chapter Search and Search Notes stay mutually exclusive; X clears the query while Back exits search mode.
+- **Reader toolbox personal actions** — chapter ratings and Personal Notes now use the same working data path as Details.
+- **Chapter sort direction persistence** — ascending/descending choices are preserved more consistently across reopen and shared chapter controls.
+- **Manga Notes links** — explicit HTTP(S) URLs are clickable while ordinary note text remains selectable and copyable.
+- **Performance diagnostics** — bounded verbose timing and lifecycle diagnostics were expanded while remaining disabled by default.
+
+## 🐞 Fixes
+
+- Fixed Search Notes routing so chapter taps still open Reader while the dedicated note action opens note results.
+- Fixed nested/competing Reader toolbox search sessions.
+- Fixed Reader chapter personal actions that could fail to open their editor/viewer.
+- Fixed chapter sort direction reverting after Details was reopened.
+- Fixed Similar Genres candidates without actual genre overlap and improved sparse source metadata handling.
+- Fixed a Fragment state-save crash when source refresh completed after a manga list screen left the resumed state.
+- Fixed Source Pack handoff and first-render timing issues.
+- Refined Favourite category picker geometry, spacing, paging height, and interactions for compact and short-screen layouts.]]></string>
+
+    <string name="changelog_current_body_indonesian" formatted="false"><![CDATA[## Miyorare v1.4.9
+
+Pembaruan ini berfokus pada pengelolaan chapter, prediksi rilis, catatan pribadi, responsivitas Source Pack, rekomendasi, pengelolaan kategori Favourites, dan stabilitas.
+
+## ✨ Yang Baru
+
+- **Pengelompokan rentang chapter** — daftar chapter panjang sekarang dapat dikelompokkan menjadi rentang angka yang bisa dibuka/tutup. Tersedia Automatic, 25, 50, 100, atau Off tanpa menghilangkan search, filter, sorting, tampilan grid/list, dan aksi chapter yang sudah ada.
+- **Kalender prediksi chapter berikutnya** — tekan perkiraan rilis di Details untuk membuka kalender berisi tanggal prediksi, bukti riwayat rilis, serta opsi menambahkan perkiraan tersebut ke kalender. Prediksi tersimpan dari Favourites yang didukung juga dapat dilihat dari sheet.
+- **Background kalender prediksi** — gunakan tema default, cover manga, atau gambar kustom, termasuk opsi blur khusus untuk background cover.
+- **Personal Notes chapter yang lebih baik** — catatan chapter dapat dibuka dalam viewer read-only yang teksnya bisa dipilih, dan tautan HTTP(S) di dalam catatan dapat ditekan.
+- **Viewer hasil Search Notes** — buka catatan terpilih atau seluruh hasil yang cocok tanpa menghilangkan sesi Search Notes aktif.
+- **Pemilih kategori Favourite baru** — dialog yang lebih lebar dan adaptif dengan baris ringkas, dua kolom ketika sesuai, paging untuk kategori dalam jumlah besar, serta header cover/judul opsional.
+
+## 🚀 Peningkatan
+
+- **Source Pack → Details dan first render chapter lebih cepat** — pekerjaan katalog yang tidak diperlukan dilepas sebelum Details dibuka, dan data chapter yang sudah selesai dapat tampil sebelum persistence final selesai.
+- **Similar Genres lebih akurat** — kandidat sekarang membutuhkan bukti genre yang benar-benar sama, dengan enrichment metadata terbatas untuk source yang hasil daftarnya tidak memiliki genre.
+- **Perilaku pencarian chapter lebih konsisten** — Chapter Search dan Search Notes tidak dapat aktif bersamaan; X membersihkan query sedangkan Back keluar dari mode pencarian.
+- **Personal action di Reader toolbox** — rating chapter dan Personal Notes sekarang memakai jalur data yang sama dengan Details.
+- **Arah sorting chapter lebih konsisten** — pilihan ascending/descending lebih baik dipertahankan setelah Details dibuka ulang dan pada kontrol chapter bersama.
+- **Link pada Manga Notes** — URL HTTP(S) dapat ditekan sementara teks catatan biasa tetap dapat dipilih dan disalin.
+- **Performance diagnostics** — verbose timing dan lifecycle diagnostics yang terbatas diperluas dan tetap nonaktif secara default.
+
+## 🐞 Perbaikan
+
+- Memperbaiki routing Search Notes sehingga menekan chapter tetap membuka Reader, sedangkan aksi catatan khusus membuka hasil catatan.
+- Memperbaiki sesi pencarian Reader toolbox yang dapat bertumpuk atau saling bersaing.
+- Memperbaiki personal action chapter di Reader yang dapat gagal membuka editor/viewer.
+- Memperbaiki arah sorting chapter yang dapat kembali ke pilihan lama setelah Details dibuka ulang.
+- Memperbaiki kandidat Similar Genres tanpa genre yang benar-benar sama dan meningkatkan penanganan metadata source yang minim.
+- Memperbaiki crash Fragment state-save ketika refresh source selesai setelah layar daftar manga sudah tidak resumed.
+- Memperbaiki timing handoff dan first render Source Pack.
+- Menyempurnakan geometri, spacing, tinggi paging, dan interaksi pemilih kategori Favourite untuk layout compact dan layar pendek.]]></string>
 
     <string name="changelog_show_indonesian">🇮🇩 Bahasa Indonesia</string>
     <string name="changelog_hide_indonesian">🇮🇩 Sembunyikan Bahasa Indonesia</string>
