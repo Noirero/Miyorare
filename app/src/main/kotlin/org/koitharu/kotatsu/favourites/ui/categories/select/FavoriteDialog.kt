@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.favourites.ui.categories.select
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
@@ -13,11 +12,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -44,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.google.android.material.checkbox.MaterialCheckBox
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
@@ -61,10 +62,10 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.ComposeAlertDialogFragment
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.joinToStringWithLimit
+import org.koitharu.kotatsu.core.util.ext.mangaExtra
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
-import org.koitharu.kotatsu.favourites.ui.categories.FavouriteCategoriesActivity
 import org.koitharu.kotatsu.favourites.ui.categories.edit.FavouritesCategoryEditActivity
 import org.koitharu.kotatsu.favourites.ui.categories.select.model.MangaCategoryItem
 import org.koitharu.kotatsu.list.ui.model.EmptyState
@@ -80,20 +81,8 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		viewModel.onError.observeEvent(viewLifecycleOwner) { e ->
 			Toast.makeText(context ?: return@observeEvent, e.getDisplayMessage(resources), Toast.LENGTH_SHORT).show()
 		}
-		viewModel.onSaved.observeEvent(viewLifecycleOwner) { openCategoryManagement ->
+		viewModel.onSaved.observeEvent(viewLifecycleOwner) {
 			dismiss()
-			if (openCategoryManagement) openCategoryManagement()
-		}
-	}
-
-	private fun openCategoryManagement() {
-		if (viewModel.favouriteSpace == FavouriteSpace.NORMAL) {
-			router.openFavoriteCategories()
-		} else {
-			startActivity(
-				Intent(requireContext(), FavouriteCategoriesActivity::class.java)
-					.putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue),
-			)
 		}
 	}
 
@@ -113,48 +102,38 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 	@Composable
 	override fun Content() {
 		val context = LocalContext.current
+		val configuration = LocalConfiguration.current
 		val content by viewModel.content.collectAsState()
 		val isSaving by viewModel.isSaving.collectAsState()
 		val title = remember { viewModel.manga.joinToStringWithLimit(context, 92) { it.title } }
-		val preferences = remember {
-			context.getSharedPreferences(DIALOG_PREFS, Context.MODE_PRIVATE)
-		}
-		var showHeader by rememberSaveable {
-			mutableStateOf(preferences.getBoolean(KEY_SHOW_HEADER, true))
+		var showHeader by rememberSaveable { mutableStateOf(true) }
+		val pageSize = remember(configuration.screenHeightDp, showHeader) {
+			calculatePageSize(configuration.screenHeightDp, showHeader)
 		}
 
 		Box(
-			modifier = Modifier
-				.fillMaxWidth()
-				.padding(horizontal = 16.dp),
+			modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
 			contentAlignment = Alignment.Center,
 		) {
 			Surface(
 				shape = RoundedCornerShape(28.dp),
 				color = MaterialTheme.colorScheme.surfaceContainerHigh,
 				tonalElevation = 6.dp,
-				modifier = Modifier
-					.fillMaxWidth()
-					.widthIn(max = 760.dp),
+				modifier = Modifier.fillMaxWidth().widthIn(max = 760.dp),
 			) {
 				Column(modifier = Modifier.padding(20.dp)) {
 					DialogHeader(
-						title = title,
 						showHeader = showHeader,
 						enabled = !isSaving,
-						onHeaderChanged = { enabled ->
-							showHeader = enabled
-							preferences.edit().putBoolean(KEY_SHOW_HEADER, enabled).apply()
-						},
-						onEdit = { viewModel.save(openCategoryManagement = true) },
+						onHeaderChanged = { showHeader = it },
 					)
-					Spacer(Modifier.height(16.dp))
+					Spacer(Modifier.height(12.dp))
 					if (showHeader) {
 						MangaHeader(title)
-						Spacer(Modifier.height(16.dp))
+						Spacer(Modifier.height(12.dp))
 					}
-					CategoryContent(content, enabled = !isSaving)
-					Spacer(Modifier.height(16.dp))
+					CategoryContent(content, enabled = !isSaving, pageSize = pageSize)
+					Spacer(Modifier.height(12.dp))
 					ActionRow(isSaving)
 				}
 			}
@@ -163,11 +142,9 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 
 	@Composable
 	private fun DialogHeader(
-		title: String,
 		showHeader: Boolean,
 		enabled: Boolean,
 		onHeaderChanged: (Boolean) -> Unit,
-		onEdit: () -> Unit,
 	) {
 		Row(
 			modifier = Modifier.fillMaxWidth(),
@@ -181,7 +158,7 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 				modifier = Modifier.weight(1f),
 			)
 			Text(
-				text = "Header",
+				text = stringResource(R.string.title_over_cover),
 				style = MaterialTheme.typography.labelMedium,
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 			)
@@ -190,24 +167,12 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 				onCheckedChange = onHeaderChanged,
 				enabled = enabled,
 			)
-			FilledTonalButton(
-				onClick = onEdit,
-				enabled = enabled,
-				contentPadding = PaddingValues(horizontal = 14.dp),
-			) {
-				Icon(
-					painter = painterResource(R.drawable.ic_edit),
-					contentDescription = null,
-					modifier = Modifier.size(18.dp),
-				)
-				Spacer(Modifier.size(6.dp))
-				Text(stringResource(R.string.edit))
-			}
 		}
 	}
 
 	@Composable
 	private fun MangaHeader(title: String) {
+		val context = LocalContext.current
 		val manga = viewModel.manga.firstOrNull()
 		Row(
 			modifier = Modifier.fillMaxWidth(),
@@ -216,19 +181,23 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		) {
 			if (manga?.coverUrl?.isNotBlank() == true) {
 				AsyncImage(
-					model = manga.coverUrl,
-					contentDescription = null,
+					model = ImageRequest.Builder(context)
+						.data(manga.coverUrl)
+						.mangaExtra(manga)
+						.build(),
+					contentDescription = manga.title,
 					contentScale = ContentScale.Crop,
 					modifier = Modifier
-						.size(72.dp)
-						.aspectRatio(0.72f)
-						.clip(RoundedCornerShape(14.dp)),
+						.width(52.dp)
+						.height(72.dp)
+						.clip(RoundedCornerShape(12.dp)),
 				)
 			} else {
 				Box(
 					modifier = Modifier
-						.size(64.dp)
-						.background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(14.dp)),
+						.width(52.dp)
+						.height(72.dp)
+						.background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp)),
 					contentAlignment = Alignment.Center,
 				) {
 					Icon(
@@ -257,13 +226,11 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 	}
 
 	@Composable
-	private fun CategoryContent(content: List<Any>, enabled: Boolean) {
+	private fun CategoryContent(content: List<Any>, enabled: Boolean, pageSize: Int) {
 		val categories = content.filterIsInstance<MangaCategoryItem>()
 		when {
 			content.any { it is LoadingState } -> Box(
-				modifier = Modifier
-					.fillMaxWidth()
-					.height(180.dp),
+				modifier = Modifier.fillMaxWidth().height(180.dp),
 				contentAlignment = Alignment.Center,
 			) {
 				CircularProgressIndicator()
@@ -274,34 +241,27 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 					text = stringResource(empty.textPrimary),
 					style = MaterialTheme.typography.bodyMedium,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
-					modifier = Modifier
-						.fillMaxWidth()
-						.padding(vertical = 24.dp),
+					modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
 				)
 			}
-			categories.isNotEmpty() -> CategoryPages(categories, enabled)
+			categories.isNotEmpty() -> CategoryPages(categories, enabled, pageSize)
 		}
 	}
 
 	@Composable
-	private fun CategoryPages(categories: List<MangaCategoryItem>, enabled: Boolean) {
-		val pages = remember(categories) { categories.chunked(PAGE_SIZE) }
+	private fun CategoryPages(categories: List<MangaCategoryItem>, enabled: Boolean, pageSize: Int) {
+		val pages = remember(categories, pageSize) { categories.chunked(pageSize) }
 		val pagerState = rememberPagerState(pageCount = { pages.size })
-		val firstPageSize = minOf(PAGE_SIZE, categories.size)
-		val rowCount = if (firstPageSize <= SINGLE_COLUMN_LIMIT) {
-			firstPageSize
-		} else {
-			(firstPageSize + 1) / 2
-		}
+		val firstPageSize = minOf(pageSize, categories.size)
+		val useTwoColumns = categories.size > SINGLE_COLUMN_LIMIT
+		val rowCount = if (useTwoColumns) (firstPageSize + 1) / 2 else firstPageSize
 		val categoryAreaHeight =
 			(rowCount * CATEGORY_ROW_HEIGHT) + (maxOf(0, rowCount - 1) * CATEGORY_ROW_GAP)
 		HorizontalPager(
 			state = pagerState,
-			modifier = Modifier
-				.fillMaxWidth()
-				.height(categoryAreaHeight.dp),
+			modifier = Modifier.fillMaxWidth().height(categoryAreaHeight.dp),
 		) { page ->
-			CategoryPage(pages[page], enabled)
+			CategoryPage(pages[page], enabled, useTwoColumns)
 		}
 		if (pages.size > 1) {
 			Spacer(Modifier.height(10.dp))
@@ -327,8 +287,8 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 	}
 
 	@Composable
-	private fun CategoryPage(items: List<MangaCategoryItem>, enabled: Boolean) {
-		if (items.size <= SINGLE_COLUMN_LIMIT) {
+	private fun CategoryPage(items: List<MangaCategoryItem>, enabled: Boolean, useTwoColumns: Boolean) {
+		if (!useTwoColumns) {
 			Column(verticalArrangement = Arrangement.spacedBy(CATEGORY_ROW_GAP.dp)) {
 				items.forEach { CategoryRow(it, enabled) }
 			}
@@ -366,9 +326,7 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 			TextButton(
 				onClick = { dismiss() },
 				enabled = !isSaving,
-				modifier = Modifier
-					.weight(1f)
-					.height(48.dp),
+				modifier = Modifier.weight(1f).height(48.dp),
 			) {
 				Text(stringResource(android.R.string.cancel))
 			}
@@ -383,9 +341,7 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 			Button(
 				onClick = { viewModel.save() },
 				enabled = !isSaving,
-				modifier = Modifier
-					.weight(1f)
-					.height(48.dp),
+				modifier = Modifier.weight(1f).height(48.dp),
 			) {
 				Text(stringResource(android.R.string.ok))
 			}
@@ -447,11 +403,19 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		}
 	}
 
+	private fun calculatePageSize(screenHeightDp: Int, showHeader: Boolean): Int {
+		val reservedHeight = if (showHeader) 236 else 152
+		val available = (screenHeightDp - reservedHeight).coerceAtLeast(CATEGORY_ROW_HEIGHT)
+		val rows = ((available + CATEGORY_ROW_GAP) / (CATEGORY_ROW_HEIGHT + CATEGORY_ROW_GAP))
+			.coerceIn(MIN_ROWS_PER_PAGE, MAX_ROWS_PER_PAGE)
+		return (rows * 2).coerceAtMost(PAGE_SIZE)
+	}
+
 	private companion object {
-		const val DIALOG_PREFS = "favourite_category_dialog"
-		const val KEY_SHOW_HEADER = "show_header"
 		const val SINGLE_COLUMN_LIMIT = 10
 		const val PAGE_SIZE = 20
+		const val MIN_ROWS_PER_PAGE = 5
+		const val MAX_ROWS_PER_PAGE = 10
 		const val CATEGORY_ROW_HEIGHT = 56
 		const val CATEGORY_CORNER_RADIUS = 12
 		const val CATEGORY_ROW_GAP = 8
