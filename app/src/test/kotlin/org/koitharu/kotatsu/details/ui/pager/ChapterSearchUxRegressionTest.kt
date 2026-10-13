@@ -7,22 +7,35 @@ import org.junit.Test
 class ChapterSearchUxRegressionTest {
 
 	@Test
-	fun `shared chapter searches keep one active session and X only clears`() {
+	fun `manage and reader use one chooser for chapter and note search`() {
 		val source = source("main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt")
-		assertTrue(source.contains("if (expandedItemRef?.get() != null) return false"))
-		assertTrue(source.contains("if (viewModel.chapterNotesQuery.value == null) viewModel.performChapterNoteSearch(\"\")"))
+		assertTrue(source.contains("private enum class SearchMode { CHAPTERS, NOTES }"))
+		assertTrue(source.contains("showSearchModeChooser(item)"))
+		assertTrue(source.contains("context.getString(R.string.search_chapters)"))
+		assertTrue(source.contains("context.getString(R.string.chapter_search_notes)"))
+		assertTrue(source.contains("menu.findItem(R.id.action_search_notes)?.isVisible = false"))
+		assertTrue(source.contains("menu.findItem(R.id.action_search)?.let(::setupSearchItem)"))
+	}
+
+	@Test
+	fun `switching search mode keeps only one search active and X only clears`() {
+		val source = source("main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt")
+		assertTrue(source.contains("SearchMode.CHAPTERS ->"))
+		assertTrue(source.contains("SearchMode.NOTES ->"))
 		assertTrue(source.contains("viewModel.exitChapterNoteSearch()"))
+		assertTrue(source.contains("viewModel.performChapterSearch(null)"))
+		assertTrue(source.contains("viewModel.performChapterNoteSearch(\"\")"))
 		assertTrue(source.contains("findViewById<View?>(androidx.appcompat.R.id.search_close_btn)?.setOnClickListener"))
 		assertTrue(source.contains("setQuery(\"\", false)"))
-		assertTrue(source.contains("focusSearchInput()"))
 		assertTrue(source.contains("expandedItemRef?.get()?.collapseActionView()"))
 	}
 
 	@Test
-	fun `reader and manage retain their intended search ownership`() {
+	fun `leaving shared search recomputes normal menu instead of restoring stale visibility`() {
 		val source = source("main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt")
-		assertTrue(source.contains("item.isVisible = viewModel is ReaderViewModel"))
-		assertTrue(source.contains("menu.findItem(R.id.action_search)?.let(::setupSearchItem)"))
+		assertTrue(source.contains("menuRef?.get()?.let(::onPrepareMenu)"))
+		assertTrue(!source.contains("menuVisibilityBeforeSearch"))
+		assertTrue(!source.contains("restoreMenuVisibility"))
 	}
 
 	@Test
