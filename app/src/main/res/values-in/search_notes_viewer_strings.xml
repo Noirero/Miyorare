@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chapter_search_notes_view_this">Lihat note ini</string>
+    <string name="chapter_search_notes_view_all">Lihat semua hasil notes</string>
+    <string name="chapter_search_notes_results_title">Hasil pencarian notes</string>
+</resources>
