@@ -1,72 +1,283 @@
-## Miyorare v1.4.9
-
-This update focuses on chapter organization, release predictions, personal notes, Source Pack responsiveness, recommendations, Favourites category management, and stability.
-
-### ✨ What's New
-
-- **Chapter range grouping** — long chapter lists can now be grouped into expandable numeric ranges. Choose Automatic, 25, 50, 100, or Off while keeping existing search, filters, sorting, grid/list display, and chapter actions.
-- **Next chapter prediction calendar** — tap the release estimate in Details to open a calendar view with the predicted date, release-history evidence, and an option to add the estimate to your calendar. The sheet can also browse cached predictions for supported Favourites.
-- **Prediction calendar backgrounds** — use the default theme, manga cover, or a custom image, with a dedicated blur option for cover backgrounds.
-- **Better chapter Personal Notes** — chapter notes can be opened in a read-only selectable viewer, and explicit HTTP(S) links inside notes are clickable.
-- **Search Notes result viewer** — while searching chapter notes, the note action can open the selected note or all matching note results without losing the active search session.
-- **Redesigned Favourite category picker** — a wider adaptive category dialog supports compact rows, two-column layouts when appropriate, paging for large category sets, and an optional cover/title header.
+## Miyorare v1.4.8
 
 ### 🚀 Improvements
 
-- **Faster Source Pack → Details handoff** — catalogue work is released before opening Details, reducing competing background work while preserving the published list state.
-- **Faster Source Pack chapter first render** — completed chapter data can be presented before final Details persistence finishes, reducing unnecessary visible waiting on cold opens.
-- **More accurate Similar Genres** — recommendations now require real shared genre evidence. Sources with sparse list metadata can selectively enrich a bounded number of candidates before ranking them.
-- **Unified chapter search behavior** — Chapter Search and Search Notes are mutually exclusive, the active field receives focus automatically, X clears the query without leaving search mode, and Back exits the search session.
-- **Reader toolbox personal actions** — chapter rating and Personal Note actions now use the same working data path as Details, including live personal metadata updates.
-- **Chapter sort direction persistence** — the selected ascending/descending direction is preserved more consistently when reopening Details and across shared chapter controls.
-- **Manga Notes links** — explicit HTTP(S) URLs in read-only Manga Notes are clickable while ordinary text remains selectable and copyable.
-- **Performance diagnostics** — verbose diagnostics gained bounded timing and lifecycle instrumentation for navigation, rendering, images, network activity, Details, and Favourites while remaining disabled by default.
+- Improved **Favorites → Details performance**, especially for large libraries.
+- Reduced unnecessary background work from Favorites when opening another screen, resulting in faster and smoother navigation.
 
 ### 🐞 Fixes
 
-- Fixed **Search Notes click routing** so tapping a chapter still opens Reader while the dedicated note action opens note results.
-- Fixed Reader toolbox search ownership so Chapter Search and Search Notes cannot create nested competing search sessions.
-- Fixed chapter personal actions in Reader that could previously appear interactive but fail to open the expected editor/viewer.
-- Fixed chapter sort direction reverting after reopening Details.
-- Fixed **Similar Genres** returning candidates without actual genre overlap and improved handling when source summaries omit genre metadata.
-- Fixed a Fragment state-save crash that could occur when a source refresh completed after a manga list screen had already left the resumed state.
-- Fixed several Source Pack handoff and first-render timing issues that could leave unnecessary work running while Details was opening.
-- Refined the Favourite category picker geometry, spacing, paging height, and interaction handling for compact and short-screen layouts.
+- Fixed background Favorites processing that could slow down manga Details when working with large libraries.
+- Improved Favorites state handling when navigating away and returning to the screen.
+
+<details>
+<summary><strong>📋 Changelog v1.4.7</strong></summary>
+
+This update brings major improvements to reading, local files, tracking, chapter information, and overall stability.
+
+## 🇬🇧 English
+
+### ✨ What's New
+
+#### ⭐ Chapter Ratings & Notes
+Rate chapters from **1–5 stars** and save personal notes for chapters you want to remember.
+
+<details>
+<summary>How to use</summary>
+
+1. Open a manga and go to its chapter list.
+2. Open the chapter options.
+3. Select the rating or notes option.
+4. Give the chapter a rating from 1–5 stars and/or write a personal note.
+5. Saved notes can also be found through note search.
+
+</details>
+
+#### 📅 Chapter Release Predictions
+Miyorare can estimate when the next chapter may arrive based on available chapter release patterns.
+
+<details>
+<summary>How to use</summary>
+
+1. Open a supported manga.
+2. Check its chapter information.
+3. When enough release history is available, Miyorare will show an estimated next release.
+4. Predictions are estimates and may differ from the publisher's actual schedule.
+
+</details>
+
+#### 👥 Characters & Staff
+View character and staff information provided by supported trackers.
+
+<details>
+<summary>How to use</summary>
+
+1. Open the Details page of a supported title.
+2. Make sure the title is associated with a supported tracker.
+3. Open the Characters & Staff section to see the available information.
+
+</details>
+
+#### 🔎 Recommendations / Similar Manga
+Discover related titles using recommendations provided by supported trackers.
+
+<details>
+<summary>How to use</summary>
+
+1. Open a manga with a supported tracker association.
+2. Open its recommendation section.
+3. Browse the available related or recommended titles.
+
+Availability depends on the tracker and the information available for that title.
+
+</details>
+
+#### 🔄 MangaUpdates Tracker
+MangaUpdates can now be used for tracking reading activity, including status, chapter/volume progress, ratings, and synchronization.
+
+<details>
+<summary>How to use</summary>
+
+1. Open **Settings → Tracking**.
+2. Sign in to MangaUpdates.
+3. Open a manga and associate it with its MangaUpdates entry.
+4. Your supported reading progress, status, and rating can then be synchronized.
+
+</details>
+
+#### 📚 Improved On-device Files
+On-device Files now provides a more complete experience for locally stored Manga and EPUB/Novel collections.
+
+It includes search, sorting, filtering, folder management, Continue Reading, improved Details, chapter handling, and better cover support.
+
+<details>
+<summary>How to use</summary>
+
+1. Open **Explore → On-device Files**.
+2. Add or manage a folder containing your local content.
+3. Allow Miyorare access to the selected folder when Android asks.
+4. Your supported Manga and EPUB/Novel files will be indexed.
+5. Use **Search, Filter, Sort**, or the Manga/Novel collections to browse your files.
+6. Open a title to view its details and start reading.
+7. Previously opened local titles can also appear in **Continue Reading**.
+
+You can manage or reconnect folders later without having to organize your entire device storage around Miyorare.
+
+</details>
+
+#### 🏷️ Library & Downloaded Indicators
+Manga covers can now display clearer indicators when a title is already in your Library or has downloaded content.
+
+<details>
+<summary>What they mean</summary>
+
+- **Library** indicates that the title is already saved in your library.
+- **Downloaded** indicates that downloaded content is available for the title.
+
+These indicators help identify saved content without opening each title individually.
+
+</details>
+
+#### 📑 Improved Chapter Organization
+Chapter information and numbering have been improved, including support for structured/decimal chapter numbers and collapsible chapter sections.
+
+<details>
+<summary>How to use</summary>
+
+Use the chapter section controls on a manga's Details page to expand or collapse chapter groups and keep long chapter lists easier to navigate.
+
+</details>
+
+### 🚀 Improvements
+
+- Significantly improved **On-device Files cover loading and caching**, especially for large local libraries.
+- Improved handling of manga archives, PDFs, EPUBs, GIFs, and WebP covers.
+- Improved **Downloaded and Local Favorites** detection and synchronization.
+- Improved local folder handling and storage access.
+- Improved page loading efficiency with metadata caching.
+- Improved persistent cover caching so supported covers can remain available after Android's regular cache is cleared.
+
+### 🐞 Fixes
+
+- Fixed several issues affecting local and downloaded item detection.
+- Fixed stability issues in **Settings** during rapid preference changes.
+- Fixed a crash that could occur when restoring **Search** from bottom navigation.
+- Various performance, reliability, and stability improvements.
+
+---
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Pembaruan ini berfokus pada pengelolaan chapter, prediksi rilis, catatan pribadi, responsivitas Source Pack, rekomendasi, pengelolaan kategori Favourites, dan stabilitas.
+Pembaruan ini membawa peningkatan besar pada pengalaman membaca, file lokal, tracker, informasi chapter, dan stabilitas aplikasi.
 
 ### ✨ Yang Baru
 
-- **Pengelompokan rentang chapter** — daftar chapter panjang sekarang dapat dikelompokkan menjadi rentang angka yang bisa dibuka/tutup. Tersedia Automatic, 25, 50, 100, atau Off tanpa menghilangkan search, filter, sorting, tampilan grid/list, dan aksi chapter yang sudah ada.
-- **Kalender prediksi chapter berikutnya** — tekan perkiraan rilis di Details untuk membuka kalender berisi tanggal prediksi, bukti riwayat rilis, serta opsi menambahkan perkiraan tersebut ke kalender. Sheet juga dapat menampilkan prediksi tersimpan dari Favourites yang didukung.
-- **Background kalender prediksi** — gunakan tema default, cover manga, atau gambar kustom, termasuk opsi blur khusus untuk background cover.
-- **Personal Notes chapter yang lebih baik** — catatan chapter dapat dibuka dalam viewer read-only yang teksnya bisa dipilih, dan tautan HTTP(S) di dalam catatan dapat ditekan.
-- **Viewer hasil Search Notes** — ketika mencari catatan chapter, aksi catatan dapat membuka catatan terpilih atau seluruh hasil yang cocok tanpa menghilangkan sesi pencarian aktif.
-- **Pemilih kategori Favourite baru** — dialog kategori yang lebih lebar dan adaptif dengan baris ringkas, dua kolom ketika sesuai, paging untuk kategori dalam jumlah besar, serta header cover/judul opsional.
+#### ⭐ Rating & Catatan Chapter
+Berikan rating **1–5 bintang** dan simpan catatan pribadi pada chapter yang ingin kamu ingat.
+
+<details>
+<summary>Cara menggunakan</summary>
+
+1. Buka manga dan daftar chapter.
+2. Buka opsi pada chapter.
+3. Pilih opsi rating atau catatan.
+4. Berikan rating 1–5 bintang dan/atau tulis catatan pribadi.
+5. Catatan yang tersimpan juga dapat ditemukan melalui pencarian catatan.
+
+</details>
+
+#### 📅 Prediksi Rilis Chapter
+Miyorare dapat memperkirakan kapan chapter berikutnya tersedia berdasarkan pola rilis chapter yang tersedia.
+
+<details>
+<summary>Cara menggunakan</summary>
+
+1. Buka manga yang didukung.
+2. Periksa informasi chapter.
+3. Jika riwayat rilis mencukupi, Miyorare akan menampilkan perkiraan rilis berikutnya.
+4. Prediksi merupakan perkiraan dan dapat berbeda dari jadwal resmi penerbit.
+
+</details>
+
+#### 👥 Karakter & Staf
+Lihat informasi karakter dan staf yang tersedia melalui tracker yang didukung.
+
+<details>
+<summary>Cara menggunakan</summary>
+
+1. Buka halaman Detail dari judul yang didukung.
+2. Pastikan manga telah terhubung dengan tracker yang didukung.
+3. Buka bagian Karakter & Staf untuk melihat informasinya.
+
+</details>
+
+#### 🔎 Rekomendasi / Manga Serupa
+Temukan judul lain berdasarkan rekomendasi dari tracker yang didukung.
+
+<details>
+<summary>Cara menggunakan</summary>
+
+1. Buka manga yang sudah terhubung dengan tracker yang didukung.
+2. Buka bagian rekomendasi.
+3. Jelajahi manga terkait atau manga yang direkomendasikan.
+
+Ketersediaannya bergantung pada tracker dan informasi yang tersedia untuk judul tersebut.
+
+</details>
+
+#### 🔄 MangaUpdates Tracker
+MangaUpdates sekarang dapat digunakan untuk melacak aktivitas membaca, termasuk status, progres chapter/volume, rating, dan sinkronisasi.
+
+<details>
+<summary>Cara menggunakan</summary>
+
+1. Buka **Pengaturan → Tracking**.
+2. Login ke MangaUpdates.
+3. Buka manga lalu hubungkan dengan entri MangaUpdates yang sesuai.
+4. Progres membaca, status, dan rating yang didukung kemudian dapat disinkronkan.
+
+</details>
+
+#### 📚 File di Perangkat yang Lebih Lengkap
+File di Perangkat sekarang memberikan pengalaman yang lebih lengkap untuk koleksi Manga dan EPUB/Novel yang tersimpan secara lokal.
+
+Tersedia pencarian, pengurutan, filter, pengelolaan folder, Lanjut Membaca, Detail yang lebih lengkap, pengelolaan chapter, dan dukungan cover yang lebih baik.
+
+<details>
+<summary>Cara menggunakan</summary>
+
+1. Buka **Jelajah → File di Perangkat**.
+2. Tambahkan atau kelola folder yang berisi koleksi lokal.
+3. Berikan izin akses ke folder tersebut ketika diminta Android.
+4. Manga dan EPUB/Novel yang didukung akan diindeks oleh Miyorare.
+5. Gunakan **Pencarian, Filter, Pengurutan**, atau koleksi Manga/Novel untuk menjelajahinya.
+6. Buka judul untuk melihat Detail dan mulai membaca.
+7. Judul lokal yang sebelumnya dibaca juga dapat muncul di **Lanjut Membaca**.
+
+Folder dapat dikelola atau dihubungkan kembali tanpa harus mengatur seluruh penyimpanan perangkat khusus untuk Miyorare.
+
+</details>
+
+#### 🏷️ Indikator Library & Downloaded
+Cover manga sekarang dapat menampilkan indikator yang lebih jelas ketika judul sudah berada di Library atau memiliki konten yang telah diunduh.
+
+<details>
+<summary>Arti indikator</summary>
+
+- **Library** berarti judul sudah tersimpan di library.
+- **Downloaded** berarti tersedia konten yang telah diunduh untuk judul tersebut.
+
+Dengan begitu, status manga dapat diketahui tanpa harus membuka setiap judul.
+
+</details>
+
+#### 📑 Pengelolaan Chapter yang Lebih Baik
+Informasi dan penomoran chapter telah ditingkatkan, termasuk dukungan nomor chapter terstruktur/desimal dan bagian chapter yang dapat diperluas atau diciutkan.
+
+<details>
+<summary>Cara menggunakan</summary>
+
+Gunakan kontrol pada bagian chapter di halaman Detail manga untuk membuka atau menciutkan kelompok chapter sehingga daftar chapter yang panjang lebih mudah dijelajahi.
+
+</details>
 
 ### 🚀 Peningkatan
 
-- **Source Pack → Details lebih cepat** — pekerjaan katalog dilepas sebelum membuka Details sehingga pekerjaan background tidak bersaing dengan layar yang sedang dibuka, tanpa menghilangkan state daftar yang sudah tampil.
-- **Chapter Source Pack tampil lebih cepat** — data chapter yang sudah selesai dapat ditampilkan sebelum persistence Details final selesai sehingga cold open tidak menunggu pekerjaan yang tidak perlu.
-- **Similar Genres lebih akurat** — rekomendasi sekarang membutuhkan bukti genre yang benar-benar sama. Source dengan metadata daftar yang minim dapat memperkaya kandidat secara terbatas sebelum proses ranking.
-- **Perilaku pencarian chapter lebih konsisten** — Chapter Search dan Search Notes tidak dapat aktif bersamaan, field aktif otomatis mendapat fokus, tombol X membersihkan query tanpa keluar dari mode pencarian, dan Back menutup sesi pencarian.
-- **Personal action di Reader toolbox** — rating chapter dan Personal Note sekarang memakai jalur data yang sama dengan Details, termasuk pembaruan metadata pribadi secara langsung.
-- **Arah sorting chapter lebih konsisten** — pilihan ascending/descending lebih baik dipertahankan ketika Details dibuka kembali dan pada kontrol chapter bersama.
-- **Link pada Manga Notes** — URL HTTP(S) pada Manga Notes read-only dapat ditekan sementara teks biasa tetap dapat dipilih dan disalin.
-- **Performance diagnostics** — verbose diagnostics mendapatkan timing dan lifecycle instrumentation yang terbatas untuk navigasi, rendering, image, network, Details, dan Favourites, serta tetap nonaktif secara default.
+- Pemuatan dan cache cover **File di Perangkat** ditingkatkan secara signifikan, terutama untuk koleksi lokal berukuran besar.
+- Penanganan cover dari arsip manga, PDF, EPUB, GIF, dan WebP ditingkatkan.
+- Deteksi dan sinkronisasi **Downloaded dan Local Favorites** ditingkatkan.
+- Pengelolaan folder lokal dan akses penyimpanan ditingkatkan.
+- Pemuatan halaman dibuat lebih efisien melalui cache metadata.
+- Cache cover persisten ditingkatkan sehingga cover yang didukung dapat tetap tersedia setelah cache reguler Android dibersihkan.
 
 ### 🐞 Perbaikan
 
-- Memperbaiki **routing klik Search Notes** sehingga menekan chapter tetap membuka Reader, sedangkan aksi catatan khusus membuka hasil catatan.
-- Memperbaiki ownership pencarian Reader toolbox agar Chapter Search dan Search Notes tidak membuat sesi pencarian bertumpuk.
-- Memperbaiki personal action chapter di Reader yang sebelumnya dapat terlihat aktif tetapi tidak membuka editor/viewer yang seharusnya.
-- Memperbaiki arah sorting chapter yang dapat kembali ke pilihan lama setelah Details dibuka ulang.
-- Memperbaiki **Similar Genres** agar tidak menampilkan kandidat tanpa genre yang benar-benar sama dan meningkatkan penanganan source yang metadata ringkasannya tidak memiliki genre.
-- Memperbaiki crash terkait Fragment state-save ketika refresh source selesai setelah layar daftar manga sudah tidak berada dalam kondisi resumed.
-- Memperbaiki beberapa masalah timing handoff dan first render Source Pack yang dapat membiarkan pekerjaan tidak perlu berjalan ketika Details sedang dibuka.
-- Menyempurnakan geometri, spacing, tinggi paging, dan interaksi pemilih kategori Favourite untuk layout compact dan layar pendek.
+- Memperbaiki beberapa masalah pada deteksi manga lokal dan manga yang telah diunduh.
+- Memperbaiki masalah stabilitas di **Pengaturan** ketika banyak preferensi berubah dalam waktu singkat.
+- Memperbaiki crash yang dapat terjadi ketika memulihkan **Pencarian** dari navigasi bawah.
+- Berbagai peningkatan performa, keandalan, dan stabilitas lainnya.
+
+</details>
 
 </details>
