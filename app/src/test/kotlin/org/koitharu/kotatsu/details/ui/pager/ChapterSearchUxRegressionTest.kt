@@ -10,13 +10,15 @@ class ChapterSearchUxRegressionTest {
 	fun `manage and reader separate chooser action from active search view`() {
 		val source = source("main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt")
 		val menu = source("main/res/menu/opt_chapters.xml")
+		val chooserItem = menu.substringAfter("android:id=\"@+id/action_search\"").substringBefore("/>")
+		val activeSearchItem = menu.substringAfter("android:id=\"@+id/action_search_notes\"").substringBefore("/>")
 		assertTrue(source.contains("private enum class SearchMode { CHAPTERS, NOTES }"))
 		assertTrue(source.contains("R.id.action_search -> {"))
 		assertTrue(source.contains("showSearchModeChooser()"))
 		assertTrue(source.contains("menu.findItem(R.id.action_search_notes)?.let { item ->"))
 		assertTrue(source.contains("setupSearchItem(item)"))
-		assertTrue(!menu.substringAfter("android:id=\"@+id/action_search\"").substringBefore("</item>").contains("actionViewClass"))
-		assertTrue(menu.substringAfter("android:id=\"@+id/action_search_notes\"").substringBefore("</item>").contains("actionViewClass=\"androidx.appcompat.widget.SearchView\""))
+		assertTrue(!chooserItem.contains("actionViewClass"))
+		assertTrue(activeSearchItem.contains("actionViewClass=\"androidx.appcompat.widget.SearchView\""))
 	}
 
 	@Test
