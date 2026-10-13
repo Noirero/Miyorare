@@ -8,15 +8,14 @@
 		android:icon="?actionModeWebSearchDrawable"
 		android:orderInCategory="0"
 		android:title="@string/search_chapters"
-		app:actionViewClass="androidx.appcompat.widget.SearchView"
-		app:showAsAction="ifRoom|collapseActionView" />
+		app:showAsAction="ifRoom" />
 
 	<item
 		android:id="@+id/action_search_notes"
 		android:icon="@drawable/ic_search"
 		android:title="@string/chapter_search_notes"
 		app:actionViewClass="androidx.appcompat.widget.SearchView"
-		app:showAsAction="never|collapseActionView" />
+		app:showAsAction="ifRoom|collapseActionView" />
 
 	<item
 		android:id="@+id/action_reversed"
@@ -37,6 +36,12 @@
 		android:checkable="true"
 		android:icon="@drawable/ic_merge"
 		android:title="@string/merge_scanlators"
+		app:showAsAction="never" />
+
+	<item
+		android:id="@+id/action_chapter_grouping"
+		android:icon="@drawable/ic_chapter_stack"
+		android:title="@string/chapter_grouping"
 		app:showAsAction="never" />
 
 	<item

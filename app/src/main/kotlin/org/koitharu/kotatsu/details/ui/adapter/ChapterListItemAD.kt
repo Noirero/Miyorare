@@ -23,6 +23,8 @@ fun chapterListItemAD(
 	clickListener: OnListItemClickListener<ChapterListItem>,
 	onDownloadClick: (ChapterListItem) -> Unit,
 	onDeleteClick: (ChapterListItem) -> Unit,
+	onPersonalClick: (ChapterListItem) -> Unit,
+	onNoteClick: (ChapterListItem) -> Unit,
 	accentColorProvider: () -> Int? = { null },
 ) = adapterDelegateViewBinding<ChapterListItem, ListModel, ItemChapterBinding>(
 	viewBinding = { inflater, parent -> ItemChapterBinding.inflate(inflater, parent, false) },
@@ -34,11 +36,8 @@ fun chapterListItemAD(
 	itemView.isFocusableInTouchMode = false
 
 	binding.imageButtonDownload.setOnClickListener {
-		if (item.canDownload && !item.isDownloaded && !item.isDownloading) {
-			onDownloadClick(item)
-		}
+		if (item.canDownload && !item.isDownloaded && !item.isDownloading) onDownloadClick(item)
 	}
-
 	binding.imageViewDownloaded.setOnClickListener { anchor ->
 		if (!item.isDownloaded) return@setOnClickListener
 		PopupMenu(context, anchor).apply {
@@ -46,40 +45,33 @@ fun chapterListItemAD(
 			setOnMenuItemClickListener { menuItem ->
 				if (menuItem.itemId == R.id.action_delete) {
 					onDeleteClick(item)
-
 					true
-				} else {
-					false
-				}
+				} else false
 			}
 			show()
 		}
+	}
+	binding.imageViewPersonal.setOnClickListener {
+		onPersonalClick(item)
+	}
+	binding.imageViewPersonal.setOnNoteClickListener {
+		onNoteClick(item)
 	}
 
 	bind {
 		binding.textViewTitle.text = item.getTitle(context.resources)
 		binding.textViewDescription.textAndVisible = item.description
-
-		// Read state always owns the text colour:
-		// unread = normal/white in dark theme, read = muted grey.
-		// The current-chapter indicator remains visible, but no longer masks a read-state change.
 		if (item.isUnread) {
 			binding.textViewTitle.setTextColor(context.getThemeColorStateList(android.R.attr.textColorPrimary))
 			binding.textViewDescription.setTextColor(context.getThemeColorStateList(materialR.attr.colorOutline))
-			binding.textViewTitle.drawableStart = if (item.isNew) {
-				ContextCompat.getDrawable(context, R.drawable.ic_new)
-			} else {
-				null
-			}
+			binding.textViewTitle.drawableStart = if (item.isNew) ContextCompat.getDrawable(context, R.drawable.ic_new) else null
 		} else {
 			binding.textViewTitle.setTextColor(context.getThemeColorStateList(android.R.attr.textColorHint))
 			binding.textViewDescription.setTextColor(context.getThemeColorStateList(android.R.attr.textColorHint))
 			binding.textViewTitle.drawableStart = null
 		}
-
 		if (item.isCurrent) {
-			val accent = accentColorProvider()
-				?: context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
+			val accent = accentColorProvider() ?: context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
 			val radius = context.resources.displayMetrics.density * 2f
 			binding.viewCurrentIndicator.background = GradientDrawable().apply {
 				shape = GradientDrawable.RECTANGLE
@@ -97,7 +89,6 @@ fun chapterListItemAD(
 			binding.textViewDescription.typeface = Typeface.DEFAULT
 			binding.textViewTitle.textSize = 16f
 		}
-
 		binding.imageViewBookmarked.isVisible = item.isBookmarked
 		binding.imageViewPersonal.bind(
 			item.personalMetadata,

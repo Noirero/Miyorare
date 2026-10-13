@@ -30,9 +30,10 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import okhttp3.OkHttpClient
+import org.koitharu.kotatsu.core.diagnostics.PerformanceImageListener
+import org.koitharu.kotatsu.core.diagnostics.PerformanceLifecycle
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.db.MangaDatabase
-import org.koitharu.kotatsu.core.exceptions.resolve.CaptchaHandler
 import org.koitharu.kotatsu.core.image.AvifImageDecoder
 import org.koitharu.kotatsu.core.image.CbzFetcher
 import org.koitharu.kotatsu.core.image.MangaSourceHeaderInterceptor
@@ -131,7 +132,7 @@ interface AppModule {
 			networkStateProvider: Provider<NetworkState>,
 			webViewExecutorProvider: Provider<WebViewExecutor>,
 			tsukiRuntimeProvider: Provider<TsukiPluginRuntime>,
-			captchaHandler: CaptchaHandler,
+			performanceImageListener: PerformanceImageListener,
 		): ImageLoader {
 			val okHttpClientLazy = lazy {
 				okHttpClientProvider.get().newBuilder().cache(null).build()
@@ -145,7 +146,7 @@ interface AppModule {
 				.diskCache { imageDiskCache }
 				.logger(if (BuildConfig.DEBUG) DebugLogger() else null)
 				.allowRgb565(context.isLowRamDevice())
-				.eventListener(captchaHandler)
+				.eventListenerFactory(performanceImageListener)
 				.components {
 					// Must precede the default network fetcher so Mihon-source covers/thumbnails are
 					// fetched through the extension's own client + headers (avoids 403/Cloudflare
@@ -200,12 +201,14 @@ interface AppModule {
 			appProtectHelper: AppProtectHelper,
 			activityRecreationHandle: ActivityRecreationHandle,
 			acraScreenLogger: AcraScreenLogger,
+			performanceLifecycle: PerformanceLifecycle,
 			screenshotPolicyHelper: ScreenshotPolicyHelper,
 			foregroundActivityHolder: ForegroundActivityHolder,
 		): Set<@JvmSuppressWildcards Application.ActivityLifecycleCallbacks> = arraySetOf(
 			appProtectHelper,
 			activityRecreationHandle,
 			acraScreenLogger,
+			performanceLifecycle,
 			screenshotPolicyHelper,
 			foregroundActivityHolder,
 		)

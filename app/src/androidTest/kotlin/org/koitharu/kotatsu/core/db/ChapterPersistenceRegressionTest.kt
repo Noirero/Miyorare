@@ -48,6 +48,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -72,6 +73,8 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaLinkResolver
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.details.ui.pager.ChapterSortDirectionTestFixture
+import org.koitharu.kotatsu.details.ui.pager.ChapterSortMode
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
@@ -92,6 +95,7 @@ import kotlin.system.measureTimeMillis
 class ChapterPersistenceRegressionTest {
 	@get:Rule val hiltRule = HiltAndroidRule(this)
 	@javax.inject.Inject lateinit var imageLoaderProvider: Provider<coil3.ImageLoader>
+	@javax.inject.Inject lateinit var chapterSortFixture: Provider<ChapterSortDirectionTestFixture>
 
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
@@ -106,6 +110,113 @@ class ChapterPersistenceRegressionTest {
 	fun tearDown() {
 		context.deleteDatabase(DB_NAME)
 		context.deleteDatabase(MIGRATION_DB_NAME)
+	}
+
+	@Test
+	fun activeChapterSortModePersistsBothDirections() = withChapterSortOptions {
+		val vm = create()
+		for (mode in ChapterSortMode.entries) {
+			onMain {
+				vm.chapterListOptions.value = vm.chapterListOptions.value.copy(sortMode = mode, descending = false)
+				settings.isChaptersReverse = false
+			}
+			val initial = vm.chapterListOptions.value
+			for (descending in listOf(true, false)) {
+				onMain { vm.setChapterSortMode(mode) }
+				assertEquals(initial.copy(descending = descending), vm.chapterListOptions.value)
+				assertEquals(descending, settings.isChaptersReverse)
+			}
+		}
+	}
+
+	@Test
+	fun changingChapterSortModeKeepsDirectionAndExplicitDefaults() = withChapterSortOptions {
+		val vm = create()
+		val initial = vm.chapterListOptions.value
+		onMain { vm.setChapterSortMode(ChapterSortMode.NUMBER) }
+		assertEquals(initial.copy(sortMode = ChapterSortMode.NUMBER), vm.chapterListOptions.value)
+		assertEquals(false, settings.isChaptersReverse)
+		assertEquals(initial, restoredDefault())
+	}
+
+	@Test
+	fun changingChapterSortModeDoesNotWriteAStaleDirectionOverTheSharedPreference() = withChapterSortOptions {
+		val vm = create()
+		// Another consumer changed the live preference after this screen initialized.
+		onMain { settings.isChaptersReverse = true }
+		onMain { vm.setChapterSortMode(ChapterSortMode.NUMBER) }
+		assertEquals(ChapterSortMode.NUMBER, vm.chapterListOptions.value.sortMode)
+		assertEquals(false, vm.chapterListOptions.value.descending)
+		assertEquals(true, settings.isChaptersReverse)
+	}
+
+	@Test
+	fun explicitChapterDirectionTogglePersistsWithoutAMenuWriter() = withChapterSortOptions {
+		val vm = create()
+		val initial = vm.chapterListOptions.value
+		for (descending in listOf(true, false)) {
+			onMain { vm.toggleChapterSortDirection() }
+			assertEquals(initial.copy(descending = descending), vm.chapterListOptions.value)
+			assertEquals(descending, settings.isChaptersReverse)
+			assertEquals(initial.copy(descending = descending), restoredDefault())
+		}
+	}
+
+	@Test
+	fun chapterDirectionSurvivesViewModelSettingsAndStoreRecreation() = withChapterSortOptions {
+		val first = create()
+		val initial = first.chapterListOptions.value
+		onMain { first.setChapterSortMode(initial.sortMode) }
+		clearViewModels()
+		assertEquals(initial.copy(descending = true), create().chapterListOptions.value)
+		for (space in FavouriteSpace.entries) {
+			for (novel in listOf(false, true)) {
+				assertEquals(true, store.getDefault(space, novel).descending)
+			}
+		}
+	}
+
+	@Test
+	fun sortModeStillRequiresSetAsDefaultWhileDirectionRemainsLive() = withChapterSortOptions {
+		val vm = create()
+		val initial = vm.chapterListOptions.value
+		onMain {
+			vm.setChapterSortMode(ChapterSortMode.NUMBER)
+			vm.toggleChapterSortDirection()
+		}
+		assertEquals(initial.copy(descending = true), restoredDefault())
+		onMain { vm.saveChapterOptionsAsDefault() }
+		val saved = initial.copy(sortMode = ChapterSortMode.NUMBER, descending = true)
+		assertEquals(saved, restoredDefault())
+		onMain {
+			vm.setChapterSortMode(ChapterSortMode.UPLOAD_DATE)
+			vm.toggleChapterSortDirection()
+			vm.resetChapterOptions()
+		}
+		assertEquals(saved.copy(descending = false), vm.chapterListOptions.value)
+		clearViewModels()
+		assertEquals(saved.copy(descending = false), create().chapterListOptions.value)
+	}
+
+	@Test
+	fun readerStyleConsumerSharesDirectionWithoutInheritingDetailsDefaults() = withChapterSortOptions {
+		val details = create()
+		onMain { details.toggleChapterSortDirection() }
+		val reader = create(detailsDefaults = false)
+		assertEquals(org.koitharu.kotatsu.details.ui.pager.ChapterListOptions(descending = true), reader.chapterListOptions.value)
+		onMain { reader.toggleChapterSortDirection() }
+		assertEquals(false, settings.isChaptersReverse)
+		onMain { details.resetChapterOptions() }
+		assertEquals(false, details.chapterListOptions.value.descending)
+		assertEquals(restoredDefault(), details.chapterListOptions.value)
+	}
+
+	private fun withChapterSortOptions(block: suspend ChapterSortDirectionTestFixture.Session.() -> Unit) = runBlocking {
+		// The injected scheduler uses WorkManager, which HiltTestApplication does not initialize.
+		runCatching { androidx.work.WorkManager.getInstance(context) }.getOrElse {
+			androidx.work.WorkManager.initialize(context, androidx.work.Configuration.Builder().build())
+		}
+		chapterSortFixture.get().withIsolatedPreferences(block)
 	}
 
 	@Test
@@ -260,9 +371,12 @@ class ChapterPersistenceRegressionTest {
 					personalMetadata = metadata,
 				) }
 				var downloaded: ChapterListItem? = null
+				var personal: ChapterListItem? = null
+				var viewedNote: ChapterListItem? = null
 				val adapter = org.koitharu.kotatsu.details.ui.adapter.ChaptersAdapter(
 					org.koitharu.kotatsu.core.ui.list.OnListItemClickListener { _, _ -> },
 					onDownloadClick = { downloaded = it }, onDeleteClick = {},
+					onPersonalClick = { personal = it }, onNoteClick = { viewedNote = it },
 				)
 				val localRow = rows.last().copy(chapter = source.copy(source = LocalMangaSource, url = "file:///download/chapter.cbz"))
 				// The initial list commits synchronously. Keep Local in that snapshot so the
@@ -282,6 +396,17 @@ class ChapterPersistenceRegressionTest {
 					assertEquals(metadata.rating?.toString().orEmpty(), number.text.toString())
 					assertEquals(metadata.rating != null, star.isActivated)
 					assertEquals(android.view.View.VISIBLE, star.visibility)
+					personal = null
+					viewedNote = null
+					assertTrue(view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageView_personal).performClick())
+					assertSame(rows[position], personal)
+					assertNull(viewedNote)
+					if (metadata.note != null) {
+						personal = null
+						assertTrue(note.performClick())
+						assertSame(rows[position], viewedNote)
+						assertNull(personal)
+					}
 					val title = view.findViewById<android.widget.TextView>(org.koitharu.kotatsu.R.id.textView_title)
 					assertEquals(if (grid) rows[position].getGridTitle(themed.resources) else rows[position].getTitle(themed.resources), title.text.toString())
 					if (!grid) {
@@ -336,7 +461,7 @@ class ChapterPersistenceRegressionTest {
 						val item = ChapterListItem(source, ChapterListItem.FLAG_UNREAD, personalMetadata = metadata.value)
 						Column {
 							InlineChapterCard(item, org.koitharu.kotatsu.core.prefs.VisualEffectLevel.LIGHT, Color.Blue,
-								onClick = { reads++ }, onDownloadClick = { downloads++ }, onManageClick = {}, onPersonalClick = { editing.value = true })
+								onClick = { reads++ }, onDownloadClick = { downloads++ }, onManageClick = {}, onPersonalClick = { editing.value = true }, onNoteClick = {})
 							ChapterNoteSearch(query.value, { query.value = it }, { exits++ })
 						}
 						if (editing.value) ChapterPersonalEditor(item, false, { editing.value = false }, { rating, note ->
@@ -347,7 +472,7 @@ class ChapterPersistenceRegressionTest {
 				}
 			}
 			fun nodes() = detailsComposeNodes(compose)
-			val hasNote = context.getString(org.koitharu.kotatsu.R.string.chapter_personal_has_note)
+			val hasNote = context.getString(org.koitharu.kotatsu.R.string.chapter_personal_view_note)
 			val states = listOf(ChapterPersonalMetadata(), ChapterPersonalMetadata(note = "Note")) +
 				(1..5).flatMap { listOf(ChapterPersonalMetadata(it), ChapterPersonalMetadata(it, "Peak")) } + ChapterPersonalMetadata()
 			for (state in states) {

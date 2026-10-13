@@ -15,6 +15,10 @@ import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
 import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -73,6 +77,7 @@ import org.koitharu.kotatsu.core.util.ext.postDelayed
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
 import org.koitharu.kotatsu.core.util.ext.zipWithPrevious
 import org.koitharu.kotatsu.databinding.ActivityReaderBinding
+import org.koitharu.kotatsu.details.ui.ChapterPersonalEditor
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.details.ui.pager.pages.PagesSavedObserver
 import org.koitharu.kotatsu.local.data.isEpub
@@ -91,6 +96,7 @@ import org.koitharu.kotatsu.reader.ui.tts.ReaderTtsService
 import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 import org.koitharu.kotatsu.reader.ui.tapgrid.TapGridDispatcher
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import androidx.appcompat.R as appcompatR
@@ -163,6 +169,28 @@ class ReaderActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(ActivityReaderBinding.inflate(layoutInflater))
+        // A dialog-only composition keeps the existing editor outside the Reader layout.
+        addContentView(
+            ComposeView(this).apply {
+                id = R.id.composeView
+                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+                setContent {
+                    MiyorareTheme {
+                        val personalEditor by viewModel.chapterPersonalEditor.collectAsState()
+                        val personalSaving by viewModel.isSavingChapterPersonal.collectAsState()
+                        personalEditor?.let { item ->
+                            ChapterPersonalEditor(
+                                item = item,
+                                saving = personalSaving,
+                                onDismiss = viewModel::dismissChapterPersonalEditor,
+                                onSave = viewModel::saveChapterPersonal,
+                            )
+                        }
+                    }
+                }
+            },
+            ViewGroup.LayoutParams(0, 0),
+        )
         readerManager = ReaderManager(supportFragmentManager, viewBinding.container, settings)
         setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
         applyTranslucentReaderBars()

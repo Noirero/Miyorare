@@ -1,0 +1,37 @@
+<resources>
+    <string name="release_calendar_title">Next Chapter Release Prediction</string>
+    <plurals name="release_calendar_expected_days">
+        <item quantity="one">Expected in ~%1$d day</item>
+        <item quantity="other">Expected in ~%1$d days</item>
+    </plurals>
+    <string name="release_calendar_today">Expected today</string>
+    <string name="release_calendar_predicted">Predicted next chapter</string>
+    <string name="release_calendar_previous">Previous chapter release</string>
+    <string name="release_calendar_history">Other releases from history</string>
+    <string name="release_calendar_recent_history">Recent persisted source history</string>
+    <string name="release_calendar_add">Add to calendar</string>
+    <string name="release_calendar_details">View prediction details</string>
+    <string name="release_calendar_upcoming">Manga with Upcoming Predictions</string>
+    <string name="release_calendar_selected">Selected</string>
+    <string name="release_calendar_loading">Loading Favorite predictions…</string>
+    <string name="release_calendar_empty">No Favorites currently have a valid prediction from persisted chapter history.</string>
+    <string name="release_calendar_error">Favorite predictions could not be loaded.</string>
+    <string name="release_calendar_locked">Unlock Private Favorites to view these predictions.</string>
+    <string name="release_calendar_unavailable">This prediction is no longer available. Choose another manga from the upcoming predictions list.</string>
+    <string name="release_calendar_estimate">Estimated from chapter release history on the current source. This is not an official publication schedule. Irregular, insufficient or missed predictions are omitted.</string>
+    <string name="release_calendar_source">Source: %1$s</string>
+    <string name="release_calendar_branch">Branch: %1$s</string>
+    <string name="release_calendar_event_title">Expected chapter release — %1$s</string>
+    <string name="release_calendar_no_handler">No calendar application could open this event.</string>
+    <string name="release_calendar_background">Customize background</string>
+    <string name="release_calendar_background_default">Default (Theme)</string>
+    <string name="release_calendar_background_cover">Manga Cover</string>
+    <string name="release_calendar_cover_blur">Blur manga cover</string>
+    <string name="release_calendar_background_custom">Custom Image</string>
+    <string name="release_calendar_choose_image">Choose image</string>
+    <string name="release_calendar_image_error">The background image could not be read. Using the theme background.</string>
+    <string name="release_calendar_import_error">The selected image could not be imported.</string>
+    <string name="release_calendar_previous_month">Previous month</string>
+    <string name="release_calendar_next_month">Next month</string>
+    <string name="release_calendar_page">Page %1$d of 2</string>
+</resources>

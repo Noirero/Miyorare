@@ -10,6 +10,7 @@ import dagger.hilt.components.SingletonComponent
 import okhttp3.Cache
 import okhttp3.CookieJar
 import okhttp3.OkHttpClient
+import org.koitharu.kotatsu.core.diagnostics.PerformanceNetworkListener
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.network.cookies.AndroidCookieJar
 import org.koitharu.kotatsu.core.network.cookies.MutableCookieJar
@@ -64,6 +65,7 @@ interface NetworkModule {
 			cookieJar: CookieJar,
 			settings: AppSettings,
 			proxyProvider: ProxyProvider,
+			performanceNetworkListener: PerformanceNetworkListener,
 		): OkHttpClient = OkHttpClient.Builder().apply {
 			assertNotInMainThread()
 			connectTimeout(20, TimeUnit.SECONDS)
@@ -78,6 +80,7 @@ interface NetworkModule {
 			} else {
 				installExtraCertificates(contextProvider.get())
 			}
+			eventListenerFactory(performanceNetworkListener)
 			cache(cache)
 			addInterceptor(GZipInterceptor())
 			addInterceptor(CloudFlareInterceptor())

@@ -30,6 +30,7 @@ data class ChapterListOptions(
 	val descending: Boolean = false,
 	val titleMode: ChapterTitleMode = ChapterTitleMode.SOURCE,
 	val grid: Boolean = false,
+	val groupingMode: ChapterGroupingMode = ChapterGroupingMode.AUTOMATIC,
 ) {
 	val hasStatusFilter: Boolean
 		get() = downloadedOnly || unreadOnly || bookmarkedOnly || newOnly
@@ -53,16 +54,31 @@ class ChapterListOptionsStore @Inject constructor(
 	fun getDefault(space: FavouriteSpace, isNovel: Boolean): ChapterListOptions {
 		val raw = prefs.getString(key(space, isNovel), null)
 		if (raw.isNullOrBlank()) {
-			// Preserve the user's existing chapter direction/layout on first upgrade.
 			return ChapterListOptions(
 				descending = appSettings.isChaptersReverse,
 				grid = appSettings.isChaptersGridView,
+				groupingMode = getGroupingMode(space, isNovel),
 			)
 		}
-		return decode(raw) ?: ChapterListOptions(
+		return (decode(raw) ?: ChapterListOptions(
 			descending = appSettings.isChaptersReverse,
 			grid = appSettings.isChaptersGridView,
+		)).copy(
+			// Sort direction is a live user preference shared by Details and Reader. Keeping it
+			// outside the explicit "set default" snapshot prevents reopening Details from
+			// silently restoring an older direction.
+			descending = appSettings.isChaptersReverse,
+			groupingMode = getGroupingMode(space, isNovel),
 		)
+	}
+
+	private fun getGroupingMode(space: FavouriteSpace, isNovel: Boolean): ChapterGroupingMode =
+		prefs.getString(key(space, isNovel) + "_grouping", null)
+			?.let { raw -> ChapterGroupingMode.entries.firstOrNull { it.name == raw } }
+			?: ChapterGroupingMode.AUTOMATIC
+
+	fun setGroupingMode(space: FavouriteSpace, isNovel: Boolean, mode: ChapterGroupingMode) {
+		prefs.edit { putString(key(space, isNovel) + "_grouping", mode.name) }
 	}
 
 	fun setDefault(space: FavouriteSpace, isNovel: Boolean, options: ChapterListOptions) {

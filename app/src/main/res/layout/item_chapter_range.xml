@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:minHeight="48dp"
+	android:background="?attr/selectableItemBackground"
+	android:clickable="true"
+	android:focusable="true"
+	android:gravity="center_vertical"
+	android:orientation="horizontal"
+	android:paddingHorizontal="12dp"
+	android:paddingVertical="8dp">
+	<ImageView
+		android:id="@+id/imageView_expand"
+		android:layout_width="18dp"
+		android:layout_height="18dp"
+		android:layout_marginEnd="10dp"
+		app:srcCompat="@drawable/ic_chevron_right"
+		app:tint="?attr/colorOnSurface" />
+	<ImageView
+		android:id="@+id/imageView_complete"
+		android:layout_width="18dp"
+		android:layout_height="18dp"
+		android:layout_marginEnd="10dp"
+		app:srcCompat="@drawable/ic_check"
+		app:tint="?attr/colorPrimary" />
+	<TextView
+		android:id="@+id/textView_range"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_weight="1"
+		android:ellipsize="end"
+		android:maxLines="1"
+		android:textAppearance="?attr/textAppearanceTitleSmall" />
+	<LinearLayout
+		android:layout_width="96dp"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="12dp"
+		android:orientation="vertical">
+		<TextView
+			android:id="@+id/textView_progress"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:textAppearance="?attr/textAppearanceLabelSmall"
+			android:textColor="?attr/colorOnSurfaceVariant" />
+		<com.google.android.material.progressindicator.LinearProgressIndicator
+			android:id="@+id/progress_read"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="4dp"
+			android:indeterminate="false"
+			app:trackThickness="3dp" />
+	</LinearLayout>
+</LinearLayout>

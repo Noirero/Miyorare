@@ -7,6 +7,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,11 +18,13 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.plus
 import okio.FileNotFoundException
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
@@ -45,6 +48,8 @@ import org.koitharu.kotatsu.details.domain.DetailsInteractor
 import org.koitharu.kotatsu.details.ui.DetailsExpressiveActivity
 import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.details.ui.mapChapters
+import org.koitharu.kotatsu.details.ui.ChapterListPresentation
+import org.koitharu.kotatsu.details.ui.groupChapterRanges
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
@@ -81,11 +86,54 @@ abstract class ChaptersPagesViewModel(
 	private val localStorageChanges: SharedFlow<LocalManga?>,
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
+	private val chapterPersonalRepository: ChapterPersonalRepository,
 	private val chapterListOptionsStore: ChapterListOptionsStore? = null,
-	private val chapterPersonalRepository: ChapterPersonalRepository? = null,
 ) : BaseViewModel() {
 
 	val mangaDetails = MutableStateFlow<MangaDetails?>(null)
+
+	val chapterPersonalEditor = MutableStateFlow<ChapterListItem?>(null)
+	val isSavingChapterPersonal = MutableStateFlow(false)
+
+	private var chapterPersonalLoadJob: Job? = null
+	private var chapterPersonalMangaId: Long? = null
+
+	fun editChapterPersonal(item: ChapterListItem) {
+		if (isSavingChapterPersonal.value || item.personalKey.source.isBlank() || item.personalKey.url.isBlank()) return
+		val mangaId = mangaDetails.value?.id ?: return
+		chapterPersonalLoadJob?.cancel()
+		chapterPersonalLoadJob = launchJob {
+			val metadata = chapterPersonalRepository.get(mangaId, item.personalKey)
+			if (mangaDetails.value?.id != mangaId) return@launchJob
+			chapterPersonalMangaId = mangaId
+			chapterPersonalEditor.value = item.copy(personalMetadata = metadata)
+		}
+	}
+
+	fun dismissChapterPersonalEditor() {
+		if (!isSavingChapterPersonal.value) {
+			chapterPersonalLoadJob?.cancel()
+			chapterPersonalEditor.value = null
+			chapterPersonalMangaId = null
+		}
+	}
+
+	fun saveChapterPersonal(rating: Int?, note: String?) {
+		val item = chapterPersonalEditor.value ?: return
+		val manga = mangaDetails.value?.sourceManga?.takeIf { it.id == chapterPersonalMangaId } ?: return
+		if (isSavingChapterPersonal.value) return
+		chapterPersonalLoadJob?.cancel()
+		isSavingChapterPersonal.value = true
+		launchJob {
+			try {
+				chapterPersonalRepository.set(manga, item.personalKey, rating, note)
+				chapterPersonalEditor.value = null
+				chapterPersonalMangaId = null
+			} finally {
+				isSavingChapterPersonal.value = false
+			}
+		}
+	}
 
 	val isSmartLocal: Boolean
 		get() = getMangaOrNull()?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it.url) } == true
@@ -277,14 +325,14 @@ abstract class ChaptersPagesViewModel(
 
 	private val chapterPersonalMetadata = mangaDetails.map { it?.id }.distinctUntilChanged()
 		.flatMapLatest { id ->
-			if (id != null && chapterPersonalRepository != null) chapterPersonalRepository.observe(id)
+			if (id != null) chapterPersonalRepository.observe(id)
 			else flowOf(emptyMap())
 		}.withErrorHandling()
 
-	val chapters = combine(
+	internal val chapterPresentation = combine(
 		combine(
 			chapterMappingDetails.combine(chapterReadOverrides) { manga, overrides -> manga to overrides },
-			readingState.map { it?.chapterId ?: 0L }.distinctUntilChanged(),
+			readingState.map { it?.chapterId }.distinctUntilChanged(),
 			selectedBranch.combine(selectedScanlator) { branch, scanlator -> branch to scanlator },
 			newChaptersCount,
 			bookmarks,
@@ -293,7 +341,7 @@ abstract class ChaptersPagesViewModel(
 			val (manga, overrides) = mangaWithOverrides
 			val (branch, scanlator) = branchAndScanlator
 			manga?.mapChapters(
-				currentChapterId = currentChapterId,
+				currentChapterId = currentChapterId ?: 0L,
 				newCount = news,
 				branch = branch,
 				bookmarks = bookmarks,
@@ -303,27 +351,40 @@ abstract class ChaptersPagesViewModel(
 				readOverrides = overrides,
 			).orEmpty()
 				.filter { item -> scanlator == null || item.chapter.scanlator?.trim() == scanlator }
-				.map { item -> item.withTitleMode(options.titleMode) }
+				.map { item -> item.withTitleMode(options.titleMode) } to (currentChapterId != null)
 		},
 		chapterListOptions,
 		chaptersQuery.combine(chapterNotesQuery) { chapterQuery, notesQuery -> chapterQuery to notesQuery },
 		activeChapterDownloads,
 		chapterPersonalMetadata,
-	) { list, options, query, activeDownloads, personalMetadata ->
-		val filtered = list.map { item ->
+	) { mapped, options, query, activeDownloads, personalMetadata ->
+		val (list, hasReadingPosition) = mapped
+		val collection = list.map { item ->
 			val metadata = personalMetadata[item.personalKey] ?: ChapterPersonalMetadata()
 			if (item.personalMetadata == metadata) item else item.copy(personalMetadata = metadata)
 		}
 			.applyChapterOptions(options)
-			.filterChapterSearch(query.first, query.second)
-		if (activeDownloads.isEmpty) {
+		val filtered = collection.filterChapterSearch(query.first, query.second)
+		val presented = if (activeDownloads.isEmpty) {
 			filtered
 		} else {
 			filtered.map { item ->
 				item.withDownloading(!item.isDownloaded && activeDownloads.contains(item.chapter.id))
 			}
 		}
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+		// Navigation is derived after the existing search/download pipeline. The pre-search bounds
+		// keep Automatic and range keys stable while either independent search mode is active.
+		ChapterListPresentation(
+			chapters = presented,
+			ranges = if (chapterListOptionsStore != null) groupChapterRanges(collection, options.groupingMode, presented) else emptyList(),
+			options = options,
+			searchActive = query.second?.isNotBlank() ?: query.first.isNotEmpty(),
+			hasReadingPosition = hasReadingPosition,
+		)
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, ChapterListPresentation())
+
+	val chapters = chapterPresentation.map { it.chapters }
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
 	val quickFilter = combine(
 		chapterMappingDetails,
@@ -416,16 +477,29 @@ abstract class ChaptersPagesViewModel(
 	fun setNewOnly(value: Boolean) = updateChapterOptions { copy(newOnly = value) }
 
 	fun setChapterSortMode(mode: ChapterSortMode) {
-		updateChapterOptions {
-			if (sortMode == mode) copy(descending = !descending) else copy(sortMode = mode)
+		val previous = chapterListOptions.getAndUpdate { current ->
+			if (current.sortMode == mode) current.copy(descending = !current.descending) else current.copy(sortMode = mode)
+		}
+		if (previous.sortMode == mode) {
+			settings.isChaptersReverse = !previous.descending
 		}
 	}
 
-	fun toggleChapterSortDirection() = updateChapterOptions { copy(descending = !descending) }
+	fun toggleChapterSortDirection() {
+		val options = chapterListOptions.updateAndGet { it.copy(descending = !it.descending) }
+		settings.isChaptersReverse = options.descending
+	}
 
 	fun setChapterTitleMode(mode: ChapterTitleMode) = updateChapterOptions { copy(titleMode = mode) }
 
 	fun setChaptersGridView(value: Boolean) = updateChapterOptions { copy(grid = value) }
+
+	fun setChapterGroupingMode(mode: ChapterGroupingMode) {
+		val store = chapterListOptionsStore ?: return
+		val manga = getMangaOrNull() ?: return
+		store.setGroupingMode(favouriteSpace, manga.isNovelContent, mode)
+		updateChapterOptions { copy(groupingMode = mode) }
+	}
 
 	fun saveChapterOptionsAsDefault() {
 		val store = chapterListOptionsStore ?: return

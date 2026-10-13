@@ -23,6 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -54,6 +55,7 @@ import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.model.ChapterRange
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsTab
 import org.koitharu.kotatsu.details.ui.related.RelatedKeywordCarousel
@@ -107,6 +109,8 @@ class DetailsExpressiveActions(
 	val onChapterNotesSearchClick: () -> Unit = {},
 	val onChapterNotesQueryChange: (String) -> Unit = {},
 	val onChapterNotesSearchExit: () -> Unit = {},
+	val onChapterRangeToggle: (ChapterRange) -> Unit = {},
+	val onReleasePredictionClick: () -> Unit = {},
 )
 
 @Composable
@@ -118,6 +122,7 @@ fun DetailsExpressiveScreen(
 	chapters: List<ChapterListItem>,
 	chapterReleasePrediction: NextChapterReleasePrediction?,
 	chapterNotesQuery: String? = null,
+	chapterRanges: List<ChapterRange> = emptyList(),
 	isChapterFilterActive: Boolean,
 	isLoading: Boolean,
 	favouriteCount: Int,
@@ -147,6 +152,7 @@ fun DetailsExpressiveScreen(
 	val manga = details?.toManga()
 	val managed = manga?.url?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it) } == true
 	var chaptersExpanded by rememberSaveable(manga?.id) { mutableStateOf(true) }
+	var noteChapter by remember(manga?.id) { mutableStateOf<ChapterListItem?>(null) }
 	BackHandler(enabled = chapterNotesQuery != null, onBack = actions.onChapterNotesSearchExit)
 	var showRelatedSuggestions by rememberBooleanPref(
 		AppSettings.KEY_RELATED_MANGA,
@@ -341,13 +347,36 @@ fun DetailsExpressiveScreen(
 								expanded = chaptersExpanded,
 								onToggleExpanded = { chaptersExpanded = !chaptersExpanded },
 								prediction = chapterReleasePrediction,
+								onPredictionClick = actions.onReleasePredictionClick,
 								onSearchNotes = actions.onChapterNotesSearchClick,
 							)
 							if (chaptersExpanded && chapterNotesQuery != null) {
 								ChapterNoteSearch(chapterNotesQuery, actions.onChapterNotesQueryChange, actions.onChapterNotesSearchExit)
 							}
 						}
-						if (chaptersExpanded) items(
+						if (chaptersExpanded && chapterRanges.isNotEmpty()) {
+							for (range in chapterRanges) {
+								item(key = "chapter-range:${range.key}", contentType = "chapter-range") {
+									InlineChapterRangeHeader(range, accentColor) { actions.onChapterRangeToggle(range) }
+								}
+								if (range.expanded) items(
+									items = range.chapters,
+									key = { it.detailsLazyListKey() },
+									contentType = { "chapter" },
+								) { chapter ->
+									InlineChapterCard(
+										item = chapter,
+										visualEffectLevel = visualEffectLevel,
+										accent = accentColor,
+										onClick = { actions.onChapterClick(chapter) },
+										onDownloadClick = { actions.onChapterDownloadClick(chapter) },
+										onManageClick = actions.onChaptersClick,
+										onPersonalClick = { actions.onChapterPersonalClick(chapter) },
+										onNoteClick = { noteChapter = chapter },
+									)
+								}
+								}
+						} else if (chaptersExpanded) items(
 							items = chapters,
 							key = { it.detailsLazyListKey() },
 							contentType = { "chapter" },
@@ -360,6 +389,7 @@ fun DetailsExpressiveScreen(
 								onDownloadClick = { actions.onChapterDownloadClick(chapter) },
 								onManageClick = actions.onChaptersClick,
 								onPersonalClick = { actions.onChapterPersonalClick(chapter) },
+								onNoteClick = { noteChapter = chapter },
 							)
 						}
 						if (chaptersExpanded && !chapterNotesQuery.isNullOrBlank() && chapters.isEmpty()) {
@@ -488,6 +518,11 @@ fun DetailsExpressiveScreen(
 				)
 			}
 		}
+		noteChapter?.let { chapter ->
+			key(chapter.personalKey) {
+				ChapterPersonalNoteViewer(item = chapter, onDismiss = { noteChapter = null })
+			}
+		}
 	}
 }
 
@@ -538,11 +573,7 @@ private fun ChapterListItem.detailsLazyListKey(): String = with(chapter) {
 @Composable
 private fun NoteCard(note: String) {
 	SectionCard {
-		Text(
-			text = note,
-			style = MaterialTheme.typography.bodyLarge,
-			color = MaterialTheme.colorScheme.onSurface,
-		)
+		ReadOnlyNoteText(note)
 	}
 }
 

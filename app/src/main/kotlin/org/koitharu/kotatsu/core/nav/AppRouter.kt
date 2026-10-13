@@ -21,6 +21,7 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.findFragment
 import androidx.lifecycle.LifecycleOwner
 import dagger.hilt.android.EntryPointAccessors
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.ui.AlternativesActivity
@@ -705,6 +706,13 @@ class AppRouter private constructor(
     }
 
     private fun startActivity(intent: Intent, options: Bundle? = null) {
+        if (PerformanceDiagnostics.enabled && intent.component?.packageName == contextOrNull()?.packageName) {
+            val trace = PerformanceDiagnostics.navigation(
+                fragment?.javaClass?.simpleName ?: activity?.javaClass?.simpleName ?: "unknown",
+                intent.component?.shortClassName?.substringAfterLast('.') ?: "Activity",
+            )
+            if (trace != null) intent.putExtra(PerformanceDiagnostics.TRACE_EXTRA, trace.id)
+        }
         fragment?.also {
             if (it.host != null) {
                 it.startActivity(intent, options)

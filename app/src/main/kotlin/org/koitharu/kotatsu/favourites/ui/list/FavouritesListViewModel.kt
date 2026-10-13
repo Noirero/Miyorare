@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.model.LocalMangaSource
@@ -859,14 +860,16 @@ class FavouritesListViewModel @Inject constructor(
 		cardEnrichmentJob?.cancel()
 		pendingCardEnrichmentKey = key
 		cardEnrichmentJob = listWorkScope.launch(Dispatchers.IO) {
+			val work = PerformanceDiagnostics.begin("work", "favourites_card_enrichment")
+			var outcome = "complete"
 			try {
-				val deltaSnapshot = unreadCounter.getSnapshot(
+				val deltaSnapshot = PerformanceDiagnostics.measure("repository", "favourites_history_unread") { unreadCounter.getSnapshot(
 					mangaIds = deltaIds,
 					includeUnread = key.includeUnread,
-				)
+				) }
 				val snapshot = previous?.snapshot?.merge(deltaSnapshot) ?: deltaSnapshot
 				val deltaDownloadedIds = if (key.includeDownloaded) {
-					downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, deltaIds)
+					PerformanceDiagnostics.measure("repository", "favourites_download_state") { downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, deltaIds) }
 				} else {
 					null
 				}
@@ -880,8 +883,14 @@ class FavouritesListViewModel @Inject constructor(
 				detailsNavigationCache.updateHistory(key.ids.takeLast(16), snapshot::getHistory)
 				if (key.revision == cardEnrichmentRevision.get()) {
 					cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
+				} else {
+					outcome = "stale_generation_discard"
 				}
+			} catch (error: Throwable) {
+				outcome = if (error is kotlinx.coroutines.CancellationException) "cancel" else "failure"
+				throw error
 			} finally {
+				PerformanceDiagnostics.end(work, outcome)
 				if (pendingCardEnrichmentKey == key) pendingCardEnrichmentKey = null
 			}
 		}
@@ -1133,7 +1142,7 @@ class FavouritesListViewModel @Inject constructor(
 				effectivePinned,
 				favouriteSpace,
 			)
-		}
+		}.let { PerformanceDiagnostics.firstResult(it, "favourites_subscription_first_result") }
 	}.flattenLatest()
 
 	/**
