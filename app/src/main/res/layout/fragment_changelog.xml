@@ -11,15 +11,40 @@
 		android:layout_width="match_parent"
 		android:layout_height="match_parent">
 
-		<org.koitharu.kotatsu.core.ui.widgets.SelectableTextView
-			android:id="@+id/textView_content"
+		<LinearLayout
+			android:id="@+id/contentContainer"
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:lineSpacingMultiplier="1.3"
-			android:padding="@dimen/margin_normal"
-			android:textAppearance="?textAppearanceBodyMedium"
-			android:textIsSelectable="true"
-			tools:text="@tools:sample/lorem/random" />
+			android:orientation="vertical">
+
+			<org.koitharu.kotatsu.core.ui.widgets.SelectableTextView
+				android:id="@+id/textView_content"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:lineSpacingMultiplier="1.3"
+				android:textAppearance="?textAppearanceBodyMedium"
+				android:textIsSelectable="true"
+				tools:text="@tools:sample/lorem/random" />
+
+			<com.google.android.material.button.MaterialButton
+				android:id="@+id/buttonIndonesian"
+				style="@style/Widget.Material3.Button.TextButton"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:layout_marginTop="@dimen/margin_small"
+				android:text="@string/changelog_show_indonesian" />
+
+			<org.koitharu.kotatsu.core.ui.widgets.SelectableTextView
+				android:id="@+id/textView_indonesian"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:lineSpacingMultiplier="1.3"
+				android:textAppearance="?textAppearanceBodyMedium"
+				android:textIsSelectable="true"
+				android:visibility="gone"
+				tools:text="@tools:sample/lorem/random" />
+
+		</LinearLayout>
 
 	</androidx.core.widget.NestedScrollView>
 
