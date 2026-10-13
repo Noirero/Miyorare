@@ -94,7 +94,13 @@ class ChaptersFragment :
 		chaptersAdapter = ChaptersAdapter(
 			onItemClickListener = this,
 			onPersonalClick = viewModel::editChapterPersonal,
-			onNoteClick = { item -> showChapterPersonalNote(requireContext(), item) },
+			onNoteClick = { item ->
+				if (!viewModel.chapterNotesQuery.value.isNullOrBlank()) {
+					showSearchNoteResultChooser(requireContext(), item, viewModel.chapters.value)
+				} else {
+					showChapterPersonalNote(requireContext(), item)
+				}
+			},
 			onRangeToggle = { range -> (viewModel as? DetailsViewModel)?.toggleChapterRange(range) },
 			onDownloadClick = { item ->
 				if (!item.canDownload) return@ChaptersAdapter
@@ -283,10 +289,6 @@ class ChaptersFragment :
 	override fun onItemClick(item: ChapterListItem, view: View) {
 		if (selectionController?.onItemClick(item.chapter.id) == true) {
 			view.postDelayed({ view.isPressed = false; view.jumpDrawablesToCurrentState() }, 250); view.clearFocus(); return
-		}
-		if (!viewModel.chapterNotesQuery.value.isNullOrBlank()) {
-			showSearchNoteResultChooser(view.context, item, viewModel.chapters.value)
-			return
 		}
 		val listener = findParentCallback(ReaderNavigationCallback::class.java)
 		if (listener != null && listener.onChapterSelected(item.chapter)) dismissParentDialog() else {
