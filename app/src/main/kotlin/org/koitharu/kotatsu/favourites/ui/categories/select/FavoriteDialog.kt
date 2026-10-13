@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -294,11 +293,13 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		} else {
 			(firstPageSize + 1) / 2
 		}
+		val categoryAreaHeight =
+			(rowCount * CATEGORY_ROW_HEIGHT) + (maxOf(0, rowCount - 1) * CATEGORY_ROW_GAP)
 		HorizontalPager(
 			state = pagerState,
 			modifier = Modifier
 				.fillMaxWidth()
-				.height((rowCount * CATEGORY_ROW_HEIGHT).dp),
+				.height(categoryAreaHeight.dp),
 		) { page ->
 			CategoryPage(pages[page], enabled)
 		}
@@ -328,7 +329,7 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 	@Composable
 	private fun CategoryPage(items: List<MangaCategoryItem>, enabled: Boolean) {
 		if (items.size <= SINGLE_COLUMN_LIMIT) {
-			Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+			Column(verticalArrangement = Arrangement.spacedBy(CATEGORY_ROW_GAP.dp)) {
 				items.forEach { CategoryRow(it, enabled) }
 			}
 			return
@@ -338,17 +339,17 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		val right = items.drop(split)
 		Row(
 			modifier = Modifier.fillMaxWidth(),
-			horizontalArrangement = Arrangement.spacedBy(12.dp),
+			horizontalArrangement = Arrangement.spacedBy(CATEGORY_COLUMN_GAP.dp),
 		) {
 			Column(
 				modifier = Modifier.weight(1f),
-				verticalArrangement = Arrangement.spacedBy(4.dp),
+				verticalArrangement = Arrangement.spacedBy(CATEGORY_ROW_GAP.dp),
 			) {
 				left.forEach { CategoryRow(it, enabled) }
 			}
 			Column(
 				modifier = Modifier.weight(1f),
-				verticalArrangement = Arrangement.spacedBy(4.dp),
+				verticalArrangement = Arrangement.spacedBy(CATEGORY_ROW_GAP.dp),
 			) {
 				right.forEach { CategoryRow(it, enabled) }
 			}
@@ -400,14 +401,14 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		Row(
 			modifier = Modifier
 				.fillMaxWidth()
-				.heightIn(min = (CATEGORY_ROW_HEIGHT - 4).dp)
-				.clip(RoundedCornerShape(14.dp))
+				.height(CATEGORY_ROW_HEIGHT.dp)
+				.clip(RoundedCornerShape(CATEGORY_CORNER_RADIUS.dp))
 				.background(
 					if (checked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
 					else MaterialTheme.colorScheme.surfaceContainer,
 				)
 				.clickable(enabled = enabled) { toggle() }
-				.padding(horizontal = 6.dp),
+				.padding(horizontal = CATEGORY_HORIZONTAL_PADDING.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
 			TriStateCheckbox(
@@ -418,7 +419,7 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 				},
 				onClick = if (enabled) ({ toggle() }) else null,
 			)
-			Spacer(Modifier.size(4.dp))
+			Spacer(Modifier.size(CATEGORY_CHECKBOX_TEXT_GAP.dp))
 			Text(
 				text = item.category.title,
 				style = MaterialTheme.typography.bodyMedium,
@@ -451,6 +452,11 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		const val KEY_SHOW_HEADER = "show_header"
 		const val SINGLE_COLUMN_LIMIT = 10
 		const val PAGE_SIZE = 20
-		const val CATEGORY_ROW_HEIGHT = 48
+		const val CATEGORY_ROW_HEIGHT = 56
+		const val CATEGORY_CORNER_RADIUS = 12
+		const val CATEGORY_ROW_GAP = 8
+		const val CATEGORY_COLUMN_GAP = 12
+		const val CATEGORY_HORIZONTAL_PADDING = 12
+		const val CATEGORY_CHECKBOX_TEXT_GAP = 8
 	}
 }
