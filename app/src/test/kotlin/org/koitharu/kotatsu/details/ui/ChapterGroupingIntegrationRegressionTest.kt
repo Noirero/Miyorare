@@ -17,13 +17,16 @@ class ChapterGroupingIntegrationRegressionTest {
 		assertTrue(source.contains("if (isSmartLocal) return"))
 	}
 
-	@Test fun noteSearchCollapseCannotOverwriteTheSeparateNormalChapterQuery() {
+	@Test fun switchingAndCollapsingUnifiedSearchKeepsChapterAndNoteQueriesSeparate() {
 		val menu = source("pager/ChapterPagesMenuProvider.kt")
 		val collapse = menu.substringAfter("override fun onMenuItemActionCollapse").substringBefore("override fun onQueryTextSubmit")
-		assertTrue(collapse.indexOf("setOnQueryTextListener(null)") < collapse.indexOf("setQuery(\"\", false)"))
-		assertTrue(collapse.indexOf("setQuery(\"\", false)") < collapse.indexOf("setOnQueryTextListener(this@ChapterPagesMenuProvider)"))
-		assertTrue(collapse.contains("if (item.itemId == R.id.action_search_notes) viewModel.exitChapterNoteSearch()"))
-		assertTrue(collapse.contains("else viewModel.performChapterSearch(null)"))
+		assertTrue(collapse.contains("clearActiveSearch()"))
+		assertTrue(collapse.contains("viewModel.exitChapterNoteSearch()"))
+		assertTrue(collapse.contains("viewModel.performChapterSearch(null)"))
+		val switchMode = menu.substringAfter("private fun activateSearchMode").substringBefore("private fun showSearchModeChooser")
+		assertTrue(switchMode.contains("clearActiveSearch()"))
+		assertTrue(switchMode.contains("viewModel.performChapterNoteSearch(\"\")"))
+		assertTrue(switchMode.contains("viewModel.performChapterSearch(\"\")"))
 		val vm = source("pager/ChaptersPagesViewModel.kt")
 		val noteMode = vm.substringAfter("fun performChapterNoteSearch").substringBefore("fun getMangaOrNull")
 		assertFalse(noteMode.contains("chaptersQuery.value ="))
