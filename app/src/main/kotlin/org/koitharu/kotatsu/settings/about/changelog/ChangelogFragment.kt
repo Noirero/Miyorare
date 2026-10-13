@@ -47,19 +47,6 @@ class ChangelogFragment : BaseFragment<FragmentChangelogBinding>() {
 			.observe(viewLifecycleOwner) {
 				markwon.setParsedMarkdown(binding.textViewContent, it)
 			}
-		viewModel.changelogIndonesian.filterNotNull()
-			.map { markwon.toMarkdown(it) }
-			.flowOn(Dispatchers.Default)
-			.observe(viewLifecycleOwner) {
-				markwon.setParsedMarkdown(binding.textViewIndonesian, it)
-			}
-		binding.buttonIndonesian.setOnClickListener {
-			val expanded = binding.textViewIndonesian.visibility == View.VISIBLE
-			binding.textViewIndonesian.visibility = if (expanded) View.GONE else View.VISIBLE
-			binding.buttonIndonesian.setText(
-				if (expanded) R.string.changelog_show_indonesian else R.string.changelog_hide_indonesian,
-			)
-		}
 	}
 
 	override fun onResume() {
@@ -76,7 +63,7 @@ class ChangelogFragment : BaseFragment<FragmentChangelogBinding>() {
 		val isTablet = !resources.getBoolean(R.bool.is_tablet)
 		val isMaster = container?.id == R.id.container_master
 		val basePadding = resources.getDimensionPixelOffset(R.dimen.screen_padding)
-		requireViewBinding().contentContainer.setPaddingRelative(
+		requireViewBinding().textViewContent.setPaddingRelative(
 			basePadding + if (isTablet && !isMaster) 0 else barsInsets.start(v),
 			basePadding,
 			basePadding + if (isTablet && isMaster) 0 else barsInsets.end(v),
