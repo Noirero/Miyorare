@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chapter_search_notes_view_this">View this note</string>
+    <string name="chapter_search_notes_view_all">View all note results</string>
+    <string name="chapter_search_notes_results_title">Note search results</string>
+</resources>
