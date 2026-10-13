@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.details.ui.pager
 
 import java.io.File
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -27,12 +26,10 @@ class ChapterSearchUxRegressionTest {
 	}
 
 	@Test
-	fun `main details notes search must clear without exiting`() {
+	fun `main details notes search keeps separate exit and clear controls`() {
 		val source = source("main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt")
-		assertFalse(
-			"Main Details X must not exit the Notes search session",
-			source.contains("IconButton(onClick = onExit)"),
-		)
+		assertTrue(source.contains("IconButton(onClick = onExit)"))
+		assertTrue(source.contains("contentDescription = stringResource(R.string.chapter_search_notes_exit)"))
 		assertTrue(source.contains("IconButton(onClick = { onQueryChange(\"\") })"))
 	}
 
