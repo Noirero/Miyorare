@@ -111,12 +111,6 @@ class ChapterPagesMenuProvider(
 		}
 		R.id.action_reversed -> {
 			viewModel.toggleChapterSortDirection()
-			val descending = viewModel.chapterListOptions.value.descending
-			if (viewModel is ReaderViewModel) {
-				settings.isChaptersReverse = descending
-			} else if (viewModel is DetailsViewModel) {
-				settings.isChaptersReverse = descending
-			}
 			true
 		}
 		R.id.action_grid_view -> if (viewModel.getMangaOrNull()?.isEpub == true) true else {
