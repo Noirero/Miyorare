@@ -7,14 +7,27 @@ import org.junit.Test
 class ChapterSearchUxRegressionTest {
 
 	@Test
-	fun `manage and reader use one chooser for chapter and note search`() {
+	fun `manage and reader separate chooser action from active search view`() {
 		val source = source("main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt")
+		val menu = source("main/res/menu/opt_chapters.xml")
 		assertTrue(source.contains("private enum class SearchMode { CHAPTERS, NOTES }"))
-		assertTrue(source.contains("showSearchModeChooser(item)"))
-		assertTrue(source.contains("context.getString(R.string.search_chapters)"))
-		assertTrue(source.contains("context.getString(R.string.chapter_search_notes)"))
-		assertTrue(source.contains("menu.findItem(R.id.action_search_notes)?.isVisible = false"))
-		assertTrue(source.contains("menu.findItem(R.id.action_search)?.let(::setupSearchItem)"))
+		assertTrue(source.contains("R.id.action_search -> {"))
+		assertTrue(source.contains("showSearchModeChooser()"))
+		assertTrue(source.contains("menu.findItem(R.id.action_search_notes)?.let { item ->"))
+		assertTrue(source.contains("setupSearchItem(item)"))
+		assertTrue(!menu.substringAfter("android:id=\"@+id/action_search\"").substringBefore("</item>").contains("actionViewClass"))
+		assertTrue(menu.substringAfter("android:id=\"@+id/action_search_notes\"").substringBefore("</item>").contains("actionViewClass=\"androidx.appcompat.widget.SearchView\""))
+	}
+
+	@Test
+	fun `chooser expands active search exactly once after mode selection`() {
+		val source = source("main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt")
+		val expand = source.substringAfter("override fun onMenuItemActionExpand").substringBefore("override fun onMenuItemActionCollapse")
+		assertTrue(!expand.contains("showSearchModeChooser"))
+		assertTrue(!expand.contains("return false\n\t\t}"))
+		assertTrue(source.contains("searchItem?.isVisible = true"))
+		assertTrue(source.contains("searchItem?.expandActionView()"))
+		assertTrue(source.contains("activeItem?.itemId == R.id.action_search_notes && activeItem.isActionViewExpanded"))
 	}
 
 	@Test
@@ -31,17 +44,17 @@ class ChapterSearchUxRegressionTest {
 	}
 
 	@Test
-	fun `leaving shared search reconstructs normal search and reverse visibility`() {
+	fun `collapse restores stateless chooser and hides active search item`() {
 		val source = source("main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt")
 		val prepare = source.substringAfter("override fun onPrepareMenu").substringBefore("override fun onMenuItemSelected")
-		assertTrue(prepare.contains("menu.findItem(R.id.action_search)?.isVisible = true"))
-		assertTrue(prepare.contains("menu.findItem(R.id.action_reversed)?.apply"))
-		assertTrue(prepare.contains("isVisible = true"))
+		assertTrue(prepare.contains("val searchExpanded = expandedItemRef?.get()?.itemId == R.id.action_search_notes"))
+		assertTrue(prepare.contains("menu.findItem(R.id.action_search)?.isVisible = !searchExpanded"))
+		assertTrue(prepare.contains("menu.findItem(R.id.action_search_notes)?.isVisible = searchExpanded"))
 		val collapse = source.substringAfter("override fun onMenuItemActionCollapse").substringBefore("override fun onQueryTextSubmit")
 		assertTrue(collapse.contains("expandedItemRef = null"))
+		assertTrue(collapse.contains("searchMode = null"))
+		assertTrue(collapse.contains("item.isVisible = false"))
 		assertTrue(collapse.contains("menuRef?.get()?.let(::onPrepareMenu)"))
-		assertTrue(!source.contains("menuVisibilityBeforeSearch"))
-		assertTrue(!source.contains("restoreMenuVisibility"))
 	}
 
 	@Test
