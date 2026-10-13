@@ -31,9 +31,15 @@ class ChapterSearchUxRegressionTest {
 	}
 
 	@Test
-	fun `leaving shared search recomputes normal menu instead of restoring stale visibility`() {
+	fun `leaving shared search reconstructs normal search and reverse visibility`() {
 		val source = source("main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt")
-		assertTrue(source.contains("menuRef?.get()?.let(::onPrepareMenu)"))
+		val prepare = source.substringAfter("override fun onPrepareMenu").substringBefore("override fun onMenuItemSelected")
+		assertTrue(prepare.contains("menu.findItem(R.id.action_search)?.isVisible = true"))
+		assertTrue(prepare.contains("menu.findItem(R.id.action_reversed)?.apply"))
+		assertTrue(prepare.contains("isVisible = true"))
+		val collapse = source.substringAfter("override fun onMenuItemActionCollapse").substringBefore("override fun onQueryTextSubmit")
+		assertTrue(collapse.contains("expandedItemRef = null"))
+		assertTrue(collapse.contains("menuRef?.get()?.let(::onPrepareMenu)"))
 		assertTrue(!source.contains("menuVisibilityBeforeSearch"))
 		assertTrue(!source.contains("restoreMenuVisibility"))
 	}
