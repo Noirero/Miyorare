@@ -8,15 +8,14 @@
 		android:icon="?actionModeWebSearchDrawable"
 		android:orderInCategory="0"
 		android:title="@string/search_chapters"
-		app:actionViewClass="androidx.appcompat.widget.SearchView"
-		app:showAsAction="ifRoom|collapseActionView" />
+		app:showAsAction="ifRoom" />
 
 	<item
 		android:id="@+id/action_search_notes"
 		android:icon="@drawable/ic_search"
 		android:title="@string/chapter_search_notes"
 		app:actionViewClass="androidx.appcompat.widget.SearchView"
-		app:showAsAction="never|collapseActionView" />
+		app:showAsAction="ifRoom|collapseActionView" />
 
 	<item
 		android:id="@+id/action_reversed"

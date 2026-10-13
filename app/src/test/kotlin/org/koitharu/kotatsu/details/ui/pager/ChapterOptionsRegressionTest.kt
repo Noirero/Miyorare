@@ -86,16 +86,20 @@ class ChapterOptionsRegressionTest {
 	}
 
 	@Test
-	fun `Reader toolbox owns Notes search without exposing it in Details manage`() {
+	fun `Reader toolbox and Details manage share the unified chapter and Notes search chooser`() {
 		val menu = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt").replace(Regex("\\s+"), "")
-		assertTrue(menu.contains("item.isVisible=viewModelisReaderViewModel"))
-		assertTrue(menu.contains("if(item.isVisible)setupSearchItem(item)"))
-		assertTrue(menu.contains("if(expandedItemRef?.get()!=null)returnfalse"))
-		assertTrue(menu.contains("hideOtherMenuItems(it,item)"))
-		assertTrue(menu.contains("if(item!=expandedItem)item.isVisible=false"))
-		assertTrue(menu.contains("restoreMenuVisibility"))
+		assertTrue(menu.contains("R.id.action_search->{showSearchModeChooser()true}"))
+		assertTrue(menu.contains("menu.findItem(R.id.action_search_notes)?.let{item->item.isVisible=falsesetupSearchItem(item)}"))
+		assertTrue(menu.contains("SearchMode.CHAPTERS->"))
+		assertTrue(menu.contains("viewModel.performChapterSearch(\"\")"))
+		assertTrue(menu.contains("SearchMode.NOTES->"))
 		assertTrue(menu.contains("viewModel.performChapterNoteSearch(\"\")"))
-		assertTrue(menu.contains("viewModel.exitChapterNoteSearch()"))
+		assertFalse(menu.contains("setOnMenuItemClickListener"))
+		assertFalse(menu.contains("if(item.itemId==R.id.action_search&&searchMode==null)"))
+		assertTrue(menu.contains("findViewById<View?>(androidx.appcompat.R.id.search_mag_icon)?.setOnClickListener{showSearchModeChooser()}"))
+		assertTrue(menu.contains("searchItem?.expandActionView()"))
+		assertTrue(menu.contains("setQuery(\"\",false)"))
+		assertFalse(menu.contains("restoreMenuVisibility"))
 	}
 
 	@Test
