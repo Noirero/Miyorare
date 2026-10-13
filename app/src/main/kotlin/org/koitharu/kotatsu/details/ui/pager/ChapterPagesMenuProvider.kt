@@ -51,8 +51,10 @@ class ChapterPagesMenuProvider(
 			TAB_CHAPTERS -> {
 				menuInflater.inflate(R.menu.opt_chapters, menu)
 				menu.setOptionalIconsVisibleCompat(true)
-				menu.findItem(R.id.action_search_notes)?.isVisible = false
-				menu.findItem(R.id.action_search)?.let(::setupSearchItem)
+				menu.findItem(R.id.action_search_notes)?.let { item ->
+					item.isVisible = false
+					setupSearchItem(item)
+				}
 			}
 			TAB_PAGES, TAB_BOOKMARKS -> {
 				menuInflater.inflate(R.menu.opt_pages, menu)
@@ -67,8 +69,9 @@ class ChapterPagesMenuProvider(
 	override fun onPrepareMenu(menu: Menu) {
 		super.onPrepareMenu(menu)
 		val chapterOptions = viewModel.chapterListOptions.value
-		menu.findItem(R.id.action_search)?.isVisible = true
-		menu.findItem(R.id.action_search_notes)?.isVisible = false
+		val searchExpanded = expandedItemRef?.get()?.itemId == R.id.action_search_notes
+		menu.findItem(R.id.action_search)?.isVisible = !searchExpanded
+		menu.findItem(R.id.action_search_notes)?.isVisible = searchExpanded
 		menu.findItem(R.id.action_reversed)?.apply {
 			isVisible = true
 			isChecked = chapterOptions.descending
@@ -90,6 +93,10 @@ class ChapterPagesMenuProvider(
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
+		R.id.action_search -> {
+			showSearchModeChooser()
+			true
+		}
 		R.id.action_chapter_grouping -> {
 			val context = toolbarContent.context
 			val modes = ChapterGroupingMode.entries
@@ -139,14 +146,10 @@ class ChapterPagesMenuProvider(
 
 	override fun onMenuItemActionExpand(item: MenuItem): Boolean {
 		if (expandedItemRef?.get() != null) return false
-		if (item.itemId == R.id.action_search && searchMode == null) {
-			showSearchModeChooser(item)
-			return false
-		}
 		expandedItemRef = WeakReference(item)
 		sheet.expandAndLock()
 		isEnabled = true
-		if (item.itemId == R.id.action_search) {
+		if (item.itemId == R.id.action_search_notes) {
 			toolbarContent.isGone = true
 			activateSearchMode(searchMode ?: SearchMode.CHAPTERS, item.actionView as? SearchView)
 		}
@@ -157,7 +160,7 @@ class ChapterPagesMenuProvider(
 		expandedItemRef = null
 		isEnabled = false
 		sheet.unlock()
-		if (item.itemId == R.id.action_search) {
+		if (item.itemId == R.id.action_search_notes) {
 			toolbarContent.isVisible = true
 			(item.actionView as? SearchView)?.apply {
 				hideSearchKeyboard()
@@ -169,6 +172,7 @@ class ChapterPagesMenuProvider(
 			viewModel.performChapterSearch(null)
 			viewModel.exitChapterNoteSearch()
 			searchMode = null
+			item.isVisible = false
 		}
 		menuRef?.get()?.let(::onPrepareMenu)
 		return true
@@ -199,12 +203,12 @@ class ChapterPagesMenuProvider(
 				focusSearchInput()
 			}
 			findViewById<View?>(androidx.appcompat.R.id.search_mag_icon)?.setOnClickListener {
-				showSearchModeChooser(item)
+				showSearchModeChooser()
 			}
 		}
 	}
 
-	private fun showSearchModeChooser(item: MenuItem) {
+	private fun showSearchModeChooser() {
 		val context = toolbarContent.context
 		val modes = arrayOf(SearchMode.CHAPTERS, SearchMode.NOTES)
 		val labels = arrayOf(
@@ -215,11 +219,14 @@ class ChapterPagesMenuProvider(
 			.setTitle(R.string.search)
 			.setItems(labels) { dialog, which ->
 				val selectedMode = modes[which]
-				if (item.isActionViewExpanded) {
-					activateSearchMode(selectedMode, item.actionView as? SearchView)
+				val activeItem = expandedItemRef?.get()
+				if (activeItem?.itemId == R.id.action_search_notes && activeItem.isActionViewExpanded) {
+					activateSearchMode(selectedMode, activeItem.actionView as? SearchView)
 				} else {
+					val searchItem = menuRef?.get()?.findItem(R.id.action_search_notes)
 					searchMode = selectedMode
-					item.expandActionView()
+					searchItem?.isVisible = true
+					searchItem?.expandActionView()
 				}
 				dialog.dismiss()
 			}
