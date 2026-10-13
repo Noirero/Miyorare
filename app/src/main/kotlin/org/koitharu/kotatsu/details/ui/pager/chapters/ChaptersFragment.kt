@@ -51,6 +51,7 @@ import org.koitharu.kotatsu.details.ui.adapter.ChaptersAdapter
 import org.koitharu.kotatsu.details.ui.adapter.ChaptersSelectionDecoration
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.showChapterPersonalNote
+import org.koitharu.kotatsu.details.ui.showSearchNoteResultChooser
 import org.koitharu.kotatsu.details.ui.pager.ChapterSortMode
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.details.ui.withVolumeHeaders
@@ -171,7 +172,6 @@ class ChaptersFragment :
 					if (position != RecyclerView.NO_POSITION) {
 						adapter.notifyItemChanged(position)
 					}
-				}
 			}).attachToRecyclerView(this)
 			attachVolumeHeaderGestures(this)
 		}
@@ -436,6 +436,10 @@ class ChaptersFragment :
 			view.clearFocus()
 			return
 		}
+		if (!viewModel.chapterNotesQuery.value.isNullOrBlank()) {
+			showSearchNoteResultChooser(view.context, item, viewModel.chapters.value)
+			return
+		}
 		val listener = findParentCallback(ReaderNavigationCallback::class.java)
 		if (listener != null && listener.onChapterSelected(item.chapter)) {
 			dismissParentDialog()
@@ -494,7 +498,6 @@ class ChaptersFragment :
 			recyclerViewChapters.updatePadding(
 				left = bars.left,
 				right = bars.right,
-				// Keep the final chapter completely above gesture navigation and the sheet edge.
 				bottom = bars.bottom + finalItemClearance,
 			)
 			chipsFilter.updatePadding(
