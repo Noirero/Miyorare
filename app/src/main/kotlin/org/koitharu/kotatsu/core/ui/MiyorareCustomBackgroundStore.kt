@@ -102,9 +102,9 @@ object MiyorareCustomBackgroundStore {
 
     fun clear(context: Context) {
         val appContext = context.applicationContext
-        sharpFile(context).delete()
-        blurFile(context).delete()
-        previewFile(context).delete()
+        sharpFile(appContext).delete()
+        blurFile(appContext).delete()
+        previewFile(appContext).delete()
         val prefs = PreferenceManager.getDefaultSharedPreferences(appContext)
         prefs.edit {
             remove(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY)
@@ -173,7 +173,7 @@ object MiyorareCustomBackgroundStore {
             ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
             ExifInterface.ORIENTATION_TRANSVERSE -> {
                 matrix.setRotate(-90f)
-                matrix.postScale(1f, -1f)
+                matrix.postScale(-1f, 1f)
             }
             ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(-90f)
             else -> return source
