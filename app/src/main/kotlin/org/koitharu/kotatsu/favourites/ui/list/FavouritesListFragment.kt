@@ -148,11 +148,11 @@ class FavouritesListFragment : MangaListFragment() {
 		}
 		viewModel.gridScale.observe(viewLifecycleOwner) {
 			val adapter = binding.recyclerView.adapter ?: return@observe
-			val layoutManager = binding.recyclerView.layoutManager as? GridLayoutManager ?: return@observe
-			val first = layoutManager.findFirstVisibleItemPosition()
-			val last = layoutManager.findLastVisibleItemPosition()
-			if (first >= 0 && last >= first && first < adapter.itemCount) {
-				adapter.notifyItemRangeChanged(first, (last - first + 1).coerceAtMost(adapter.itemCount - first))
+			if (adapter.itemCount > 0) {
+				// Mark the full adapter range changed so attached, cached, and recycled holders cannot
+				// retain geometry from the previous Custom cover size. RecyclerView only rebinds
+				// holders as needed; this also fixes off-screen stale cards after returning to a preset.
+				adapter.notifyItemRangeChanged(0, adapter.itemCount)
 			}
 		}
 		viewModel.content.observe(viewLifecycleOwner) { items ->

@@ -161,9 +161,10 @@ fun mangaGridItemAD(
 		.setAllCornerSizes(modernCoverRadius)
 		.build()
 
-	fun applyGridAppearance(isModern: Boolean) {
+	fun applyGridAppearance(isModern: Boolean, visualScale: Float) {
 		binding.imageViewCover.setAspectRatioOverride(
-			MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO.takeIf { isNormalModernFavourites },
+			(MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO / visualScale)
+				.takeIf { isNormalModernFavourites },
 		)
 		if (isModern) {
 			val normalNeon = normalGlass != null
@@ -245,7 +246,7 @@ fun mangaGridItemAD(
 
 	binding.viewScrim.background = classicScrim
 
-	fun applyGridSizing(margin: Int) {
+	fun applyGridSizing(margin: Int, visualScale: Float) {
 		itemView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
 			if (
 				leftMargin != margin ||
@@ -258,7 +259,7 @@ fun mangaGridItemAD(
 		}
 		val coverWidth = resolveActualCoverWidth(itemView, sizeResolver.cellWidth, margin)
 		val referenceHeight = if (isNormalModernFavourites && coverWidth > 0) {
-			(coverWidth / MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO).roundToInt()
+			(coverWidth / (MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO / visualScale)).roundToInt()
 		} else {
 			0
 		}
@@ -279,7 +280,10 @@ fun mangaGridItemAD(
 
 	bind { payloads ->
 		itemView.setTooltipCompat(item.getSummary(context))
-		applyGridAppearance(isModernFavouritesGrid)
+		val visualScaleProvider = gridVisualScaleProvider
+		val visualScale = visualScaleProvider?.invoke()?.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
+			?: DEFAULT_FIXED_GRID_SCALE
+		applyGridAppearance(isModernFavouritesGrid, visualScale)
 		val baseMargin = if (item.isGridSpacingIncreased) gridMarginIncreased else gridMargin
 		val styledBaseMargin = if (isNormalModernFavourites) {
 			val marginDp = if (item.isGridSpacingIncreased) {
@@ -291,18 +295,15 @@ fun mangaGridItemAD(
 		} else {
 			baseMargin
 		}
-		val visualScaleProvider = gridVisualScaleProvider
-		val initialMargin = visualScaleProvider?.invoke()?.let { scale ->
-			resolveFixedGridMargin(itemView, styledBaseMargin, scale)
-		} ?: styledBaseMargin
-		applyGridSizing(initialMargin)
+		applyGridSizing(styledBaseMargin, visualScale)
 		if (visualScaleProvider != null) {
 			val boundId = item.id
 			itemView.doOnLayout {
 				if (item.id != boundId) return@doOnLayout
-				applyGridSizing(
-					resolveFixedGridMargin(itemView, styledBaseMargin, visualScaleProvider.invoke()),
-				)
+				val currentScale = visualScaleProvider.invoke()
+					.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
+				applyGridAppearance(isModernFavouritesGrid, currentScale)
+				applyGridSizing(styledBaseMargin, currentScale)
 			}
 		}
 
@@ -347,34 +348,6 @@ fun mangaGridItemAD(
 	}
 }
 
-private fun resolveFixedGridMargin(itemView: View, baseMargin: Int, requestedScale: Float): Int {
-	val scale = requestedScale.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
-	if (scale == DEFAULT_FIXED_GRID_SCALE) return baseMargin
-
-	val recyclerView = itemView.parent as? RecyclerView
-	val layoutManager = recyclerView?.layoutManager as? GridLayoutManager
-	val slotWidth = if (recyclerView != null && layoutManager != null && layoutManager.spanCount > 0) {
-		(recyclerView.width - recyclerView.paddingStart - recyclerView.paddingEnd) / layoutManager.spanCount
-	} else {
-		0
-	}
-
-	return if (scale < DEFAULT_FIXED_GRID_SCALE) {
-		val maxMargin = if (slotWidth > 0) {
-			(slotWidth * MAX_FIXED_GRID_MARGIN_FRACTION).roundToInt().coerceAtLeast(baseMargin)
-		} else {
-			baseMargin
-		}
-		val progress = (scale - MIN_FIXED_GRID_SCALE) /
-			(DEFAULT_FIXED_GRID_SCALE - MIN_FIXED_GRID_SCALE)
-		(maxMargin + (baseMargin - maxMargin) * progress).roundToInt()
-	} else {
-		val minMargin = (baseMargin * MIN_FIXED_GRID_MARGIN_FACTOR).roundToInt().coerceAtLeast(1)
-		val progress = (scale - DEFAULT_FIXED_GRID_SCALE) /
-			(MAX_FIXED_GRID_SCALE - DEFAULT_FIXED_GRID_SCALE)
-		(baseMargin + (minMargin - baseMargin) * progress).roundToInt()
-	}
-}
 
 private fun resolveActualCoverWidth(itemView: View, fallbackWidth: Int, margin: Int): Int {
 	val recyclerView = itemView.parent as? RecyclerView
@@ -390,5 +363,3 @@ private fun resolveActualCoverWidth(itemView: View, fallbackWidth: Int, margin: 
 private const val MIN_FIXED_GRID_SCALE = 0.5f
 private const val DEFAULT_FIXED_GRID_SCALE = 1f
 private const val MAX_FIXED_GRID_SCALE = 1.5f
-private const val MAX_FIXED_GRID_MARGIN_FRACTION = 0.2f
-private const val MIN_FIXED_GRID_MARGIN_FACTOR = 0.25f
