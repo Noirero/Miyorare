@@ -125,6 +125,11 @@ class MangaIndicatorsView @JvmOverloads constructor(
 		reparent(root, legacy, pin, modernLayout(Gravity.TOP or Gravity.END, end = statusRibbonWidthDp() + 10, top = 8))
 		reparent(root, legacy, progress, modernLayout(Gravity.BOTTOM or Gravity.START, start = 8, end = 8, bottom = 4, matchWidth = true))
 		reparent(root, legacy, continueView, modernLayout(Gravity.BOTTOM or Gravity.END, end = 8, bottom = 30))
+		local?.updateLayoutParams<FrameLayout.LayoutParams> {
+			gravity = Gravity.BOTTOM or Gravity.START
+			marginStart = (4 * resources.displayMetrics.density).toInt()
+			bottomMargin = (4 * resources.displayMetrics.density).toInt()
+		}
 		progress?.setModernBottomEdge(true)
 		legacy.isVisible = false
 	}
