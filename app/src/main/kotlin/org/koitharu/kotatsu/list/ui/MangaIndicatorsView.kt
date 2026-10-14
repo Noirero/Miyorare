@@ -13,17 +13,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
-import androidx.preference.PreferenceManager
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
-import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.widgets.IconsView
-import org.koitharu.kotatsu.core.util.ext.findActivity
-import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
-import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
-import org.koitharu.kotatsu.favourites.data.FavouriteSpace
-import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.history.ui.util.ReadingProgressView
 import com.google.android.material.R as materialR
 
@@ -90,9 +82,9 @@ class MangaIndicatorsView @JvmOverloads constructor(
 		}
 	}
 
-	fun bindGrid(isSaved: Boolean, isLocalSource: Boolean, isFavorite: Boolean, counter: Int) {
+	fun bindGrid(isSaved: Boolean, isLocalSource: Boolean, isFavorite: Boolean, counter: Int, useModernFavouritesPresentation: Boolean = false) {
 		bind(isSaved, isLocalSource, isFavorite)
-		modernGridPresentation = shouldUseModernFavouritesPresentation()
+		modernGridPresentation = useModernFavouritesPresentation
 		if (modernGridPresentation) {
 			applyModernGridPresentation(isLocalSource)
 			updateLayoutParams<FrameLayout.LayoutParams> {
@@ -112,19 +104,6 @@ class MangaIndicatorsView @JvmOverloads constructor(
 				}
 			}
 		}
-	}
-
-	private fun shouldUseModernFavouritesPresentation(): Boolean {
-		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-		if (prefs.getEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC) != MiyorareDesignStyle.MODERN) {
-			return false
-		}
-		val activity = context.findActivity()
-		if (activity !is FavouritesActivity) return false
-		return activity.intent.getIntExtra(
-			EXTRA_FAVOURITE_SPACE,
-			FavouriteSpace.NORMAL.dbValue,
-		) == FavouriteSpace.NORMAL.dbValue
 	}
 
 	private fun applyModernGridPresentation(isLocalSource: Boolean) {

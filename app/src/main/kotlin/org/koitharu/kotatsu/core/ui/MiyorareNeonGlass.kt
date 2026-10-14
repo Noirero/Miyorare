@@ -16,7 +16,11 @@ internal fun luminousThemeColor(
 ): Int {
 	val hsv = FloatArray(3)
 	Color.colorToHSV(color, hsv)
-	hsv[1] = maxOf(hsv[1], saturationFloor).coerceIn(0f, 1f)
+	// Achromatic and near-achromatic theme colors have no meaningful hue. Keep them neutral instead
+	// of inventing a saturated hue while still lifting value into the luminous range.
+	if (hsv[1] > NEUTRAL_SATURATION_THRESHOLD) {
+		hsv[1] = maxOf(hsv[1], saturationFloor).coerceIn(0f, 1f)
+	}
 	hsv[2] = maxOf(valueFloor, hsv[2] + valueBoost).coerceIn(0f, 1f)
 	return Color.HSVToColor(Color.alpha(color), hsv)
 }
@@ -120,3 +124,5 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 		contentMuted = ColorUtils.setAlphaComponent(Color.WHITE, 234),
 	)
 }
+
+private const val NEUTRAL_SATURATION_THRESHOLD = 0.08f
