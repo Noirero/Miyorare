@@ -152,6 +152,9 @@ fun DetailsExpressiveScreen(
 	val manga = details?.toManga()
 	val managed = manga?.url?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it) } == true
 	var chaptersExpanded by rememberSaveable(manga?.id) { mutableStateOf(true) }
+	var heroExpanded by rememberSaveable(manga?.id) { mutableStateOf(false) }
+	var titleOverflow by remember(manga?.id) { mutableStateOf(false) }
+	var creatorOverflow by remember(manga?.id) { mutableStateOf(false) }
 	var noteChapter by remember(manga?.id) { mutableStateOf<ChapterListItem?>(null) }
 	BackHandler(enabled = chapterNotesQuery != null, onBack = actions.onChapterNotesSearchExit)
 	var showRelatedSuggestions by rememberBooleanPref(
@@ -202,6 +205,7 @@ fun DetailsExpressiveScreen(
 		val screenSurface = if (palette.isModern) scheme.background else scheme.surface
 		val listState = rememberLazyListState()
 		val centered = style != DetailsUiMode.COMPACT
+		val showHeroExpansion = !centered && (heroExpanded || titleOverflow || creatorOverflow)
 		val topContentSpacing = if (palette.isModern) {
 			if (centered) 66.dp else 58.dp
 		} else {
@@ -270,6 +274,9 @@ fun DetailsExpressiveScreen(
 							imageLoader = imageLoader,
 							coverUrl = coverUrl,
 							actions = actions,
+							compactExpanded = heroExpanded,
+							onTitleOverflowChanged = { if (!heroExpanded) titleOverflow = it },
+							onCreatorOverflowChanged = { if (!heroExpanded) creatorOverflow = it },
 						)
 					}
 
@@ -305,6 +312,9 @@ fun DetailsExpressiveScreen(
 							isLoading = isLoading,
 							accent = accentColor,
 							onClick = actions.onChaptersClick,
+							showHeaderExpansion = showHeroExpansion,
+							headerExpanded = heroExpanded,
+							onHeaderExpansionClick = { heroExpanded = !heroExpanded },
 						)
 					}
 
