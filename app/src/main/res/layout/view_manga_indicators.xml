@@ -17,8 +17,8 @@
 		android:id="@+id/status_ribbon"
 		android:layout_width="wrap_content"
 		android:layout_height="@dimen/manga_status_ribbon_height"
-		android:background="@drawable/bg_manga_status_ribbon"
-		android:clipToOutline="true"
+		android:background="@drawable/bg_manga_status_corner"
+		android:gravity="top|end"
 		android:importantForAccessibility="yes"
 		android:layoutDirection="ltr"
 		android:orientation="horizontal">
@@ -27,9 +27,8 @@
 			android:id="@+id/status_library"
 			android:layout_width="@dimen/manga_status_ribbon_width"
 			android:layout_height="match_parent"
-			android:background="?attr/colorPrimary"
 			android:importantForAccessibility="no"
-			android:padding="3dp"
+			android:padding="6dp"
 			android:scaleType="centerInside"
 			android:src="@drawable/ic_bookmark"
 			android:tint="?attr/colorOnPrimary" />
@@ -38,12 +37,11 @@
 			android:id="@+id/status_downloaded"
 			android:layout_width="@dimen/manga_status_ribbon_width"
 			android:layout_height="match_parent"
-			android:background="?attr/colorTertiary"
 			android:importantForAccessibility="no"
-			android:padding="3dp"
+			android:padding="6dp"
 			android:scaleType="centerInside"
 			android:src="@drawable/ic_download"
-			android:tint="?attr/colorOnTertiary" />
+			android:tint="?attr/colorOnPrimary" />
 
 	</LinearLayout>
 
