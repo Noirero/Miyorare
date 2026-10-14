@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.list.ui
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.View
@@ -22,6 +23,7 @@ import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.history.ui.util.ReadingProgressView
 import com.google.android.material.R as materialR
 
@@ -116,9 +118,12 @@ class MangaIndicatorsView @JvmOverloads constructor(
 		if (prefs.getEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC) != MiyorareDesignStyle.MODERN) {
 			return false
 		}
-		val activity = context.findActivity() ?: return false
-		return activity.intent?.hasExtra(EXTRA_FAVOURITE_SPACE) == true &&
-			activity.intent.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue) == FavouriteSpace.NORMAL.dbValue
+		val activity = context.findActivity()
+		if (activity !is FavouritesActivity) return false
+		return activity.intent.getIntExtra(
+			EXTRA_FAVOURITE_SPACE,
+			FavouriteSpace.NORMAL.dbValue,
+		) == FavouriteSpace.NORMAL.dbValue
 	}
 
 	private fun applyModernGridPresentation(isLocalSource: Boolean) {
@@ -133,10 +138,10 @@ class MangaIndicatorsView @JvmOverloads constructor(
 		statusIcons.isVisible = false
 		isVisible = ribbon.isVisible
 		local?.isVisible = isLocalSource
-		local?.backgroundTintList = ColorStateList.valueOf(context.getThemeColor(materialR.attr.colorTertiary))
-		local?.setTextColor(context.getThemeColor(materialR.attr.colorOnTertiary))
+		local?.backgroundTintList = ColorStateList.valueOf(context.getThemeColor(materialR.attr.colorTertiary, Color.DKGRAY))
+		local?.setTextColor(context.getThemeColor(materialR.attr.colorOnTertiary, Color.WHITE))
 
-		reparent(root, language, modernLayout(Gravity.BOTTOM or Gravity.START, start = 8, bottom = 30))
+		reparent(root, language, modernLayout(Gravity.BOTTOM or Gravity.START, start = if (isLocalSource) 58 else 8, bottom = 30))
 		reparent(root, pin, modernLayout(Gravity.TOP or Gravity.END, end = statusRibbonWidthDp() + 10, top = 8))
 		reparent(root, progress, modernLayout(Gravity.BOTTOM or Gravity.START, start = 8, end = 8, bottom = 4, matchWidth = true))
 		reparent(root, continueView, modernLayout(Gravity.BOTTOM or Gravity.END, end = 8, bottom = 30))
