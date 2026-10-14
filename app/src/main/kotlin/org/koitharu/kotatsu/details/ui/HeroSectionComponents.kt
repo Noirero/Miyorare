@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,7 +28,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -182,20 +185,27 @@ internal fun HeroTexts(
 	accent: Color,
 	actions: DetailsExpressiveActions,
 	showAuthors: Boolean = true,
+	compactExpanded: Boolean = false,
+	onTitleLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
 	val align = if (centered) TextAlign.Center else TextAlign.Start
+	val titleStyle = if (centered) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall
+	val compactTitleHeight = with(LocalDensity.current) { titleStyle.lineHeight.toDp() * 3 }
 	Text(
 		text = manga.title,
-		style = if (centered) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall,
+		style = titleStyle,
 		fontWeight = FontWeight.Bold,
 		color = MaterialTheme.colorScheme.onSurface,
 		textAlign = align,
-		maxLines = 4,
+		maxLines = if (!centered && compactExpanded) Int.MAX_VALUE else if (!centered) 3 else 4,
 		overflow = TextOverflow.Ellipsis,
-		modifier = Modifier.clickable { actions.onTitleClick(manga.title) },
+		onTextLayout = { onTitleLayout?.invoke(it) },
+		modifier = Modifier
+			.then(if (!centered && !compactExpanded) Modifier.heightIn(min = compactTitleHeight) else Modifier)
+			.clickable { actions.onTitleClick(manga.title) },
 	)
 	val altTitle = manga.altTitles.firstOrNull()?.takeIf { it.isNotBlank() }
-	if (altTitle != null) {
+	if (centered && altTitle != null) {
 		Spacer(Modifier.height(6.dp))
 		Text(
 			text = altTitle,

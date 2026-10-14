@@ -9,6 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -50,6 +52,9 @@ internal fun ProgressCard(
 	isLoading: Boolean,
 	accent: Color,
 	onClick: (() -> Unit)? = null,
+	showHeaderExpansion: Boolean = false,
+	headerExpanded: Boolean = false,
+	onHeaderExpansionClick: (() -> Unit)? = null,
 ) {
 	val ctx = LocalContext.current
 	val res = ctx.resources
@@ -114,6 +119,27 @@ internal fun ProgressCard(
 					)
 				}
 				Spacer(Modifier.weight(1f))
+				if (showHeaderExpansion && onHeaderExpansionClick != null) {
+					Row(
+						verticalAlignment = Alignment.CenterVertically,
+						modifier = Modifier.clickable(onClick = onHeaderExpansionClick),
+					) {
+						Text(
+							text = stringResource(if (headerExpanded) R.string.collapse else R.string.expand),
+							style = MaterialTheme.typography.labelLarge,
+							fontWeight = FontWeight.SemiBold,
+							color = progressAccent,
+						)
+						Spacer(Modifier.width(4.dp))
+						Icon(
+							painter = painterResource(R.drawable.ic_chevron_right),
+							contentDescription = null,
+							tint = progressAccent,
+							modifier = Modifier.size(14.dp).rotate(if (headerExpanded) -90f else 90f),
+						)
+					}
+					Spacer(Modifier.width(10.dp))
+				}
 				Icon(
 					painter = painterResource(R.drawable.ic_chevron_right),
 					contentDescription = null,
