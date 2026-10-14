@@ -1,0 +1,140 @@
+package org.koitharu.kotatsu.readerjourney.theme
+
+import android.content.Context
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.stateIn
+import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRewardAccess
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
+import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
+import javax.inject.Inject
+import javax.inject.Singleton
+
+data class ReaderJourneyThemeRuntimeState(
+	val loadout: ReaderJourneyCosmeticLoadout = ReaderJourneyCosmeticLoadout(),
+	val lifetimeXp: Long = 0L,
+	val ledgerReady: Boolean = false,
+	val qaState: ExclusiveThemeQaState = ExclusiveThemeQaState(),
+) {
+	fun resolveExclusiveTheme(
+		explicitCustomAppearance: Boolean,
+		darkTheme: Boolean,
+		amoled: Boolean,
+		dynamicColorEnabled: Boolean = false,
+	): ResolvedExclusiveTheme? {
+		if (!ledgerReady) return null
+		val progress = ReaderJourneyRules.progress(lifetimeXp)
+		val variant = when {
+			darkTheme && amoled -> RankThemeVariant.OLED
+			darkTheme -> RankThemeVariant.DARK
+			else -> RankThemeVariant.LIGHT
+		}
+
+		// QA bypasses ownership sanitation only for this in-memory presentation snapshot.
+		// ReaderProfileStore and the progression ledger remain untouched.
+		if (qaState.isActive) {
+			val qaLoadout = qaState.effectiveLoadout(
+				production = loadout,
+				fallbackTheme = RankThemeId.forRank(progress.rank),
+			)
+			val foundation = RankThemeId.fromStableId(qaLoadout.selectedThemeId)
+				?: RankThemeId.forRank(progress.rank)
+			return ExclusiveThemeMixerResolver.resolve(
+				foundationTheme = foundation,
+				loadout = qaLoadout,
+				variant = variant,
+			)
+		}
+
+		val safeLoadout = ReaderJourneyCosmeticPolicy.sanitizeForRank(
+			loadout,
+			ReaderJourneyRewardAccess.cosmeticAccessRank(progress.rank),
+		)
+		val resolution = ReaderJourneyThemePresentationResolver.resolve(
+			ReaderJourneyThemePresentationRequest(
+				loadout = safeLoadout,
+				lifetimeXp = lifetimeXp,
+				explicitCustomAppearance = explicitCustomAppearance,
+				dynamicColorEnabled = dynamicColorEnabled,
+			),
+		)
+		val theme = resolution.theme ?: return null
+		return ExclusiveThemeMixerResolver.resolve(
+			foundationTheme = theme,
+			loadout = safeLoadout,
+			variant = variant,
+		)
+	}
+
+	fun resolveTokens(
+		explicitCustomAppearance: Boolean,
+		darkTheme: Boolean,
+		amoled: Boolean,
+		dynamicColorEnabled: Boolean = false,
+	): RankThemeTokens? = resolveExclusiveTheme(
+		explicitCustomAppearance = explicitCustomAppearance,
+		darkTheme = darkTheme,
+		amoled = amoled,
+		dynamicColorEnabled = dynamicColorEnabled,
+	)?.tokens
+}
+
+/**
+ * Shared local-first presentation state for Compose and legacy Android Views.
+ *
+ * Reader rank is observed from the Room ledger cache. Cosmetic intent is observed from the atomic
+ * ReaderProfileStore snapshot. Neither source stores a second copy of rank ownership.
+ */
+@Singleton
+class ReaderJourneyThemeRuntime @Inject constructor(
+	database: MangaDatabase,
+	profileStore: ReaderProfileStore,
+	qaStore: ExclusiveThemeQaStore,
+) {
+	private val dao = database.getReaderJourneyDao()
+
+	val state: StateFlow<ReaderJourneyThemeRuntimeState> = combine(
+		profileStore.profile,
+		dao.observeProfile(),
+		qaStore.state,
+	) { profile, journey, qaState ->
+		ReaderJourneyThemeRuntimeState(
+			loadout = profile.cosmetics,
+			lifetimeXp = journey?.totalXp ?: 0L,
+			ledgerReady = true,
+			qaState = qaState,
+		)
+	}
+		.distinctUntilChanged()
+		.stateIn(
+			scope = processLifecycleScope,
+			started = SharingStarted.Eagerly,
+			initialValue = ReaderJourneyThemeRuntimeState(
+				loadout = profileStore.profile.value.cosmetics,
+				lifetimeXp = 0L,
+			),
+		)
+}
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface ReaderJourneyThemeEntryPoint {
+	val readerJourneyThemeRuntime: ReaderJourneyThemeRuntime
+}
+
+fun Context.readerJourneyThemeRuntimeOrNull(): ReaderJourneyThemeRuntime? =
+	runCatching {
+		EntryPointAccessors.fromApplication<ReaderJourneyThemeEntryPoint>(
+			applicationContext,
+		).readerJourneyThemeRuntime
+	}.getOrNull()

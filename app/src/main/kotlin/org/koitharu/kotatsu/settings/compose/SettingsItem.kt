@@ -228,12 +228,14 @@ private fun SettingsIconModern(
 			.miyorareIconSurface(palette = palette, shape = shape, alpha = alpha),
 		contentAlignment = Alignment.Center,
 	) {
+		val iconTint = palette.exclusiveTheme?.settings?.interactiveText
+			?: lerp(palette.primary, palette.secondary, 0.18f)
 		androidx.compose.foundation.Image(
 			painter = rememberAnyDrawablePainter(iconRes),
 			contentDescription = null,
 			modifier = Modifier.size(21.dp),
 			colorFilter = if (tintIcon) {
-				ColorFilter.tint(lerp(palette.primary, palette.secondary, 0.18f).copy(alpha = alpha))
+				ColorFilter.tint(iconTint.copy(alpha = alpha))
 			} else null,
 			alpha = alpha,
 		)

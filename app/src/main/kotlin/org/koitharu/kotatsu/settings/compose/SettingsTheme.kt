@@ -7,6 +7,7 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
@@ -38,6 +39,8 @@ import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.main.ui.nav.composeColorSchemeFromTheme
+import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeRuntimeState
+import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
 
 private const val ROND_ROUNDED = 100f
 
@@ -165,6 +168,11 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	val ctx = LocalContext.current
 	val isDark = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
+	val journeyThemeRuntime = remember(ctx.applicationContext) {
+		ctx.applicationContext.readerJourneyThemeRuntimeOrNull()
+	}
+	val journeyThemeRuntimeState = journeyThemeRuntime?.state?.collectAsState()?.value
+		?: ReaderJourneyThemeRuntimeState()
 
 	val designStyleValue by rememberStringPref(
 		MiyorareAppearance.KEY_DESIGN_STYLE,
@@ -191,10 +199,14 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	val customBackgroundTertiary by rememberStringPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY, "")
 	val customBackgroundRevision by rememberIntPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0)
 	val amoled by rememberBooleanPref(AppSettings.KEY_THEME_AMOLED, false)
+	val rankThemeEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED, false)
 	val effectLevelValue by rememberStringPref(
 		VisualEffectPreferences.KEY_LEVEL,
 		VisualEffectLevel.BALANCED.name,
 	)
+	val rankThemeReduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
+	val rankThemeMinimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
+	val rankThemeWallpaperEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, true)
 
 	val designStyle = MiyorareDesignStyle.entries.firstOrNull { it.name == designStyleValue }
 		?: MiyorareDesignStyle.CLASSIC
@@ -236,21 +248,48 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		} else null
 	}
 
+	val resolvedExclusiveTheme = remember(
+		journeyThemeRuntimeState,
+		themePreset,
+		isDark,
+		amoled,
+		rankThemeEnabled,
+		rankThemeWallpaperEnabled,
+		rankThemeMinimalCosmetics,
+	) {
+		if (rankThemeEnabled || journeyThemeRuntimeState.qaState.isActive) {
+			journeyThemeRuntimeState.resolveExclusiveTheme(
+				explicitCustomAppearance = themePreset == MiyorareThemePreset.CUSTOM,
+				darkTheme = isDark,
+				amoled = amoled,
+			)
+		} else {
+			null
+		}
+	}
+	val effectiveEffectLevel = if (
+		resolvedExclusiveTheme != null && (rankThemeReduceGlow || rankThemeMinimalCosmetics)
+	) {
+		VisualEffectLevel.LIGHT
+	} else {
+		effectLevel
+	}
 	val modernColors = if (designStyle == MiyorareDesignStyle.MODERN) {
-		remember(themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel) {
+		remember(themePreset, customAccent, adaptivePalette, isDark, amoled, effectiveEffectLevel, resolvedExclusiveTheme) {
 			miyorareThemeColors(
 				preset = themePreset,
 				customAccent = customAccent,
 				adaptivePalette = adaptivePalette,
 				darkTheme = isDark,
 				amoled = amoled,
-				effectLevel = effectLevel,
+				effectLevel = effectiveEffectLevel,
+				exclusiveTheme = resolvedExclusiveTheme,
 			)
 		}
 	} else null
 	val scheme = modernColors?.colorScheme ?: remember(ctx, isDark) { composeColorSchemeFromTheme(ctx, isDark) }
-	val visualPalette = modernColors?.visualPalette ?: remember(scheme, effectLevel) {
-		classicMiyorareVisualPalette(scheme, effectLevel)
+	val visualPalette = modernColors?.visualPalette ?: remember(scheme, effectiveEffectLevel) {
+		classicMiyorareVisualPalette(scheme, effectiveEffectLevel)
 	}
 	val shapes = if (designStyle == MiyorareDesignStyle.MODERN) miyorareShapes else classicShapes
 	CompositionLocalProvider(LocalMiyorareVisualPalette provides visualPalette) {

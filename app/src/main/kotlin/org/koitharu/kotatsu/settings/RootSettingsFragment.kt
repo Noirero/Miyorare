@@ -52,7 +52,7 @@ import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
 import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
-import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
+import org.koitharu.kotatsu.sync.ui.LibrarySyncHubFragment
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -140,9 +140,9 @@ private enum class SettingsSection(
         BackupSettingsFragment::class.java,
     ),
     SYNC(
-        R.string.google_drive_sync, R.drawable.ic_cloud_sync, "sync",
-        intArrayOf(R.string.sync_sign_in_summary),
-        SyncSettingsFragment::class.java,
+        R.string.library_sync, R.drawable.ic_cloud_sync, "sync",
+        intArrayOf(R.string.library_sync_summary),
+        LibrarySyncHubFragment::class.java,
     ),
     PRIVACY_SECURITY(
         R.string.settings_privacy_security, R.drawable.ic_lock, "private",
@@ -252,7 +252,9 @@ private fun RootSettingsContent(
     onUpdateClick: () -> Unit,
 ) {
     val ctx = LocalContext.current
-    val modern = LocalMiyorareVisualPalette.current.isModern
+    val palette = LocalMiyorareVisualPalette.current
+    val modern = palette.isModern
+    val exclusiveSettings = palette.exclusiveTheme?.settings
     SettingsScaffold {
         if (updateAvailable) {
             item {
@@ -265,7 +267,11 @@ private fun RootSettingsContent(
                 SettingsGroup(
                     title = stringResource(group.titleRes),
                     titleIcon = group.iconRes,
-                    titleColor = group.accent.resolveColor(),
+                    titleColor = if (exclusiveSettings?.borderStops?.isNotEmpty() == true) {
+                        exclusiveSettings.borderStops[groupIndex % exclusiveSettings.borderStops.size]
+                    } else {
+                        group.accent.resolveColor()
+                    },
                 ) {
                     group.sections.forEach { section ->
                         item { pos ->
