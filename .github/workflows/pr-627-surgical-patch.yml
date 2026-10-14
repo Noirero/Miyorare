@@ -1,0 +1,51 @@
+name: PR 627 surgical patch
+on:
+  push:
+    branches:
+      - fix/amain2-details-flat-header-followup
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/amain2-details-flat-header-followup
+          fetch-depth: 0
+      - name: Apply exact compact geometry patch
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt')
+          s = p.read_text()
+          old = '''\t\t\t\tif (!manga.isLocal || manga.state != null) {
+          \t\t\t\t\tSpacer(Modifier.height(if (palette.isModern) 8.dp else 14.dp))
+          \t\t\t\t\tRow(
+          \t\t\t\t\t\tmodifier = Modifier
+          \t\t\t\t\t\t\t.fillMaxWidth()
+          \t\t\t\t\t\t\t.height(78.dp),'''.replace('          ', '')
+          new = '''\t\t\t\tif (!manga.isLocal || manga.state != null) {
+          \t\t\t\t\tSpacer(Modifier.height(if (compactExpanded) if (palette.isModern) 8.dp else 14.dp else 4.dp))
+          \t\t\t\t\tRow(
+          \t\t\t\t\t\tmodifier = Modifier
+          \t\t\t\t\t\t\t.fillMaxWidth()
+          \t\t\t\t\t\t\t.height(if (compactExpanded) 78.dp else 60.dp),'''.replace('          ', '')
+          if s.count(old) != 1:
+              raise SystemExit(f'Expected exactly one target block, found {s.count(old)}')
+          p.write_text(s.replace(old, new, 1))
+      - name: Validate surgical diff
+        run: |
+          test "$(git diff --name-only)" = "app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt"
+          git diff --check
+          git diff --exit-code -- . ':(exclude)app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt'
+          git diff -- app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt
+      - name: Remove temporary workflow and commit
+        run: |
+          rm .github/workflows/pr-627-surgical-patch.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt .github/workflows/pr-627-surgical-patch.yml
+          git commit -m "Keep compact details cards within cover"
+          git push origin HEAD:fix/amain2-details-flat-header-followup
