@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.sheet.SheetChip
 import org.koitharu.kotatsu.core.ui.sheet.SheetChips
 import org.koitharu.kotatsu.core.ui.sheet.SheetContentPadding
@@ -152,7 +153,7 @@ private fun FavouritesLayoutPreview(columns: Int, gridSize: Int) {
 					Surface(
 						modifier = Modifier
 							.fillMaxWidth()
-							.aspectRatio((2f / 3f) / scale.coerceIn(0.5f, 1.5f)),
+							.aspectRatio(MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO / scale.coerceIn(0.5f, 1.5f)),
 						shape = RoundedCornerShape(7.dp),
 						color = MaterialTheme.colorScheme.primaryContainer,
 					) {}
