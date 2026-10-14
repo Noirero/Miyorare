@@ -259,7 +259,7 @@ fun mangaGridItemAD(
 		}
 		val coverWidth = resolveActualCoverWidth(itemView, sizeResolver.cellWidth, margin)
 		val referenceHeight = if (isNormalModernFavourites && coverWidth > 0) {
-			(coverWidth / (MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO / visualScale)).roundToInt()
+			(coverWidth / MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO * visualScale).roundToInt()
 		} else {
 			0
 		}
