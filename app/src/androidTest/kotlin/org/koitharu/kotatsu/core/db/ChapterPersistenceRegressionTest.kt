@@ -598,10 +598,13 @@ class ChapterPersistenceRegressionTest {
 						view.layout(0, 0, view.measuredWidth, view.measuredHeight)
 						assertTrue(view.measuredWidth <= width)
 						if (saved || favorite) {
-							assertEquals(size * (if (saved && favorite) 2 else 1), ribbon.measuredWidth)
+							// The corner background has a 28dp intrinsic minimum; each icon still occupies
+							// its existing 24dp slot, including when only one status is visible.
+							val contentWidth = size * (if (saved && favorite) 2 else 1)
+							assertEquals(maxOf(contentWidth, ribbon.background.minimumWidth), ribbon.measuredWidth)
+							if (favorite) assertEquals(size, libraryIcon.measuredWidth)
+							if (saved) assertEquals(size, downloadIcon.measuredWidth)
 							if (saved && favorite) {
-								assertEquals(size, libraryIcon.measuredWidth)
-								assertEquals(size, downloadIcon.measuredWidth)
 								assertEquals(libraryIcon.right, downloadIcon.left)
 								assertEquals(0, libraryIcon.left)
 							}
@@ -701,7 +704,7 @@ class ChapterPersistenceRegressionTest {
 						indicators = MangaIndicatorsView(themed)
 						indicators.id = org.koitharu.kotatsu.R.id.iconsView
 						card.addView(indicators, android.widget.FrameLayout.LayoutParams(-2, -2))
-						controls = android.view.View(themed).apply { id = org.koitharu.kotatsu.R.id.layout_indicators }
+						controls = android.widget.LinearLayout(themed).apply { id = org.koitharu.kotatsu.R.id.layout_indicators }
 						card.addView(controls, android.widget.FrameLayout.LayoutParams(26, 26, android.view.Gravity.TOP or android.view.Gravity.END))
 						return object : androidx.recyclerview.widget.RecyclerView.ViewHolder(card) {}
 					}
