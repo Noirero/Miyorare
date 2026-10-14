@@ -50,6 +50,9 @@ class LocalFavouritesListFragment : MangaListFragment() {
 		listener = this,
 		sizeResolver = DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false),
 		titleTapToRead = settings.isTitleTapToReadEnabled,
+		// Non-null is the renderer authority for the Modern Normal-Favourites presentation.
+		// Local keeps its existing sizing authority; this only opts the shelf into the same card hierarchy.
+		gridVisualScaleProvider = { 1f },
 	)
 
 	override fun onScrolledToEnd() = viewModel.requestMoreItems()
