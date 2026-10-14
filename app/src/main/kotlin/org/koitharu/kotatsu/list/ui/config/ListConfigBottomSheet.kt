@@ -136,21 +136,18 @@ class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 			) {
 				Column {
 					if (viewModel.isFavouriteSection) {
-						SheetSection(
-							title = stringResource(R.string.favourites_items_per_row),
-							value = gridColumns.roundToInt().toString(),
-						) {
-							Slider(
-								value = gridColumns,
-								valueRange = GRID_COLUMNS_MIN..GRID_COLUMNS_MAX,
-								steps = GRID_COLUMNS_STEPS,
-								onValueChange = {
-									gridColumns = it.roundToInt().toFloat()
-									viewModel.gridColumns = gridColumns.roundToInt()
-								},
-								modifier = Modifier.padding(horizontal = SheetContentPadding),
-							)
-						}
+						FavouritesLayoutSizeControls(
+							gridColumns = gridColumns,
+							gridSize = gridSize,
+							onGridColumnsChange = {
+								gridColumns = it.roundToInt().toFloat()
+								viewModel.gridColumns = gridColumns.roundToInt()
+							},
+							onGridSizeChange = {
+								gridSize = it
+								viewModel.gridSize = it.roundToInt()
+							},
+						)
 					}
 
 					SheetSwitchRow(
@@ -172,19 +169,21 @@ class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 							viewModel.isGridSpacingIncreased = it
 						},
 					)
-					SheetSection(
-						title = stringResource(R.string.grid_size),
-						value = "${gridSize.roundToInt()}%",
-					) {
-						Slider(
-							value = gridSize,
-							valueRange = GRID_SIZE_MIN..GRID_SIZE_MAX,
-							onValueChange = {
-								gridSize = it
-								viewModel.gridSize = it.roundToInt()
-							},
-							modifier = Modifier.padding(horizontal = SheetContentPadding),
-						)
+					if (!viewModel.isFavouriteSection) {
+						SheetSection(
+							title = stringResource(R.string.grid_size),
+							value = "${gridSize.roundToInt()}%",
+						) {
+							Slider(
+								value = gridSize,
+								valueRange = GRID_SIZE_MIN..GRID_SIZE_MAX,
+								onValueChange = {
+									gridSize = it
+									viewModel.gridSize = it.roundToInt()
+								},
+								modifier = Modifier.padding(horizontal = SheetContentPadding),
+							)
+						}
 					}
 				}
 			}
@@ -304,9 +303,6 @@ class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 	private companion object {
 		const val GRID_SIZE_MIN = 50f
 		const val GRID_SIZE_MAX = 150f
-		const val GRID_COLUMNS_MIN = 2f
-		const val GRID_COLUMNS_MAX = 6f
-		const val GRID_COLUMNS_STEPS = 3
 
 		val LIST_MODES = listOf(
 			Triple(ListMode.LIST, R.string.compact, R.drawable.ic_list),
