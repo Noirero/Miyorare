@@ -7,16 +7,20 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -120,9 +125,15 @@ internal fun ProgressCard(
 				}
 				Spacer(Modifier.weight(1f))
 				if (showHeaderExpansion && onHeaderExpansionClick != null) {
+					val headerExpansionShape = RoundedCornerShape(50)
 					Row(
 						verticalAlignment = Alignment.CenterVertically,
-						modifier = Modifier.clickable(onClick = onHeaderExpansionClick),
+						modifier = Modifier
+							.clip(headerExpansionShape)
+							.background(progressAccent.copy(alpha = 0.08f), headerExpansionShape)
+							.border(BorderStroke(1.dp, progressAccent.copy(alpha = 0.72f)), headerExpansionShape)
+							.clickable(onClick = onHeaderExpansionClick)
+							.padding(horizontal = 10.dp, vertical = 5.dp),
 					) {
 						Text(
 							text = stringResource(if (headerExpanded) R.string.collapse else R.string.expand),
@@ -232,9 +243,6 @@ internal fun WavyProgressBar(progress: Float, color: Color, trackColor: Color, m
 		)
 		classicPhase
 	}
-	// Material 3 Expressive flattens the wave outside [0.1, 0.9]. Ramping the amplitude across
-	// those two bands instead of snapping lets the wave grow out of — and settle back into —
-	// the flat line as the progress animates.
 	val amplitudeFraction = when {
 		animatedProgress < FULL_AMPLITUDE_MIN -> animatedProgress / FULL_AMPLITUDE_MIN
 		animatedProgress > FULL_AMPLITUDE_MAX -> (1f - animatedProgress) / (1f - FULL_AMPLITUDE_MAX)
@@ -246,8 +254,6 @@ internal fun WavyProgressBar(progress: Float, color: Color, trackColor: Color, m
 		val amplitude = WAVE_AMPLITUDE.dp.toPx() * amplitudeFraction
 		val waveLength = WAVELENGTH.dp.toPx()
 		val stopRadius = STOP_INDICATOR_SIZE.dp.toPx() / 2f
-		// The gap between the active indicator and the track closes over the last percent,
-		// so a finished bar reads as one continuous line.
 		val gap = GAP_SIZE.dp.toPx() *
 			((1f - animatedProgress).coerceAtMost(GAP_RAMP_THRESHOLD) / GAP_RAMP_THRESHOLD)
 		val activeW = size.width * animatedProgress
@@ -281,7 +287,6 @@ internal fun WavyProgressBar(progress: Float, color: Color, trackColor: Color, m
 	}
 }
 
-// Material 3 Expressive linear wavy progress indicator tokens.
 private const val TRACK_THICKNESS = 4f
 private const val WAVE_AMPLITUDE = 3f
 private const val WAVELENGTH = 40f
