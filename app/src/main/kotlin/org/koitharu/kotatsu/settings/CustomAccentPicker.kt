@@ -1,14 +1,16 @@
 package org.koitharu.kotatsu.settings
 
 import android.graphics.Color as AndroidColor
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,8 +31,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
@@ -105,10 +111,32 @@ private fun CustomAccentPickerDialog(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(72.dp),
+                        .height(56.dp),
                     shape = RoundedCornerShape(18.dp),
                     color = previewColor,
                 ) {}
+
+                SaturationValuePicker(
+                    hue = hue,
+                    saturation = saturation,
+                    brightness = brightness,
+                    onValueChange = { newSaturation, newBrightness ->
+                        saturation = newSaturation
+                        brightness = newBrightness
+                        syncHexFromHsv()
+                    },
+                )
+
+                ColorSliderRow(
+                    label = "Hue",
+                    value = hue,
+                    valueRange = 0f..360f,
+                    preview = Color(AndroidColor.HSVToColor(floatArrayOf(hue, 1f, 1f))),
+                    onValueChange = {
+                        hue = it
+                        syncHexFromHsv()
+                    },
+                )
 
                 OutlinedTextField(
                     value = hexText,
@@ -133,37 +161,6 @@ private fun CustomAccentPickerDialog(
                         null
                     },
                 )
-
-                ColorSliderRow(
-                    label = "Hue",
-                    value = hue,
-                    valueRange = 0f..360f,
-                    preview = Color(AndroidColor.HSVToColor(floatArrayOf(hue, 1f, 1f))),
-                    onValueChange = {
-                        hue = it
-                        syncHexFromHsv()
-                    },
-                )
-                ColorSliderRow(
-                    label = "Saturation",
-                    value = saturation,
-                    valueRange = 0f..1f,
-                    preview = Color(AndroidColor.HSVToColor(floatArrayOf(hue, saturation, brightness.coerceAtLeast(0.5f)))),
-                    onValueChange = {
-                        saturation = it
-                        syncHexFromHsv()
-                    },
-                )
-                ColorSliderRow(
-                    label = "Brightness",
-                    value = brightness,
-                    valueRange = 0f..1f,
-                    preview = previewColor,
-                    onValueChange = {
-                        brightness = it
-                        syncHexFromHsv()
-                    },
-                )
             }
         },
         confirmButton = {
@@ -180,6 +177,69 @@ private fun CustomAccentPickerDialog(
             }
         },
     )
+}
+
+@Composable
+private fun SaturationValuePicker(
+    hue: Float,
+    saturation: Float,
+    brightness: Float,
+    onValueChange: (Float, Float) -> Unit,
+) {
+    val hueColor = Color(AndroidColor.HSVToColor(floatArrayOf(hue, 1f, 1f)))
+
+    fun updateFromOffset(offset: Offset, width: Float, height: Float) {
+        if (width <= 0f || height <= 0f) return
+        val newSaturation = (offset.x / width).coerceIn(0f, 1f)
+        val newBrightness = (1f - offset.y / height).coerceIn(0f, 1f)
+        onValueChange(newSaturation, newBrightness)
+    }
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp)
+            .pointerInput(hue) {
+                detectTapGestures { offset ->
+                    updateFromOffset(offset, size.width.toFloat(), size.height.toFloat())
+                }
+            }
+            .pointerInput(hue) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        updateFromOffset(offset, size.width.toFloat(), size.height.toFloat())
+                    },
+                    onDrag = { change, _ ->
+                        updateFromOffset(change.position, size.width.toFloat(), size.height.toFloat())
+                        change.consume()
+                    },
+                )
+            },
+    ) {
+        drawRect(
+            brush = Brush.horizontalGradient(listOf(Color.White, hueColor)),
+        )
+        drawRect(
+            brush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black)),
+        )
+
+        val marker = Offset(
+            x = saturation.coerceIn(0f, 1f) * size.width,
+            y = (1f - brightness.coerceIn(0f, 1f)) * size.height,
+        )
+        drawCircle(
+            color = Color.White,
+            radius = 8.dp.toPx(),
+            center = marker,
+            style = Stroke(width = 2.dp.toPx()),
+        )
+        drawCircle(
+            color = Color.Black.copy(alpha = 0.55f),
+            radius = 10.dp.toPx(),
+            center = marker,
+            style = Stroke(width = 1.dp.toPx()),
+        )
+    }
 }
 
 @Composable
