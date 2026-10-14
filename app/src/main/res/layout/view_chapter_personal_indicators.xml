@@ -19,6 +19,9 @@
 		android:id="@+id/imageView_personal_star"
 		android:layout_width="48dp"
 		android:layout_height="48dp"
-		android:padding="15dp"
+		android:paddingStart="2dp"
+		android:paddingTop="15dp"
+		android:paddingEnd="28dp"
+		android:paddingBottom="15dp"
 		app:srcCompat="@drawable/ic_star_rate" />
 </merge>
