@@ -3,8 +3,10 @@ package org.koitharu.kotatsu.history.ui.util
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.util.AttributeSet
 import android.util.TypedValue
@@ -184,8 +186,21 @@ class ReadingProgressView @JvmOverloads constructor(
 		val radius = modernTrackHeight / 2f
 		rectF.set(0f, top, width.toFloat(), height.toFloat())
 		canvas.drawRoundRect(rectF, radius, radius, trackPaint)
-		rectF.right = width * value.percent.coerceIn(0f, 1f)
+
+		val fillRight = width * value.percent.coerceIn(0f, 1f)
+		if (fillRight <= 0f) return
+		progressPaint.shader = LinearGradient(
+			0f,
+			0f,
+			fillRight,
+			0f,
+			RAINBOW_COLORS,
+			null,
+			Shader.TileMode.CLAMP,
+		)
+		rectF.right = fillRight
 		canvas.drawRoundRect(rectF, radius, radius, progressPaint)
+		progressPaint.shader = null
 	}
 
 	private fun dp(value: Float) = TypedValue.applyDimension(
@@ -198,5 +213,15 @@ class ReadingProgressView @JvmOverloads constructor(
 
 	companion object {
 		private const val SCRIM_COLOR = 0x99000000.toInt()
+		private val RAINBOW_COLORS = intArrayOf(
+			0xFFFF3B30.toInt(),
+			0xFFFF9500.toInt(),
+			0xFFFFCC00.toInt(),
+			0xFF34C759.toInt(),
+			0xFF00C7BE.toInt(),
+			0xFF007AFF.toInt(),
+			0xFF5856D6.toInt(),
+			0xFFAF52DE.toInt(),
+		)
 	}
 }
