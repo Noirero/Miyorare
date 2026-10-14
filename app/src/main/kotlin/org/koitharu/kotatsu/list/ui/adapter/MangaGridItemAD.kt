@@ -333,7 +333,13 @@ fun mangaGridItemAD(
 		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
 			gravity = Gravity.END or if (isTitleOverCover || item.isPinned) Gravity.TOP else Gravity.BOTTOM
 		}
-		binding.iconsView.bindGrid(item.isSaved, item.isLocalSource, item.isFavorite, item.counter)
+		binding.iconsView.bindGrid(
+			item.isSaved,
+			item.isLocalSource,
+			item.isFavorite,
+			item.counter,
+			isNormalModernFavourites,
+		)
 		// Reserve the corner without squeezing controls out of narrow covers. Reset on rebind.
 		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
 			topMargin = context.resources.getDimensionPixelSize(R.dimen.card_indicator_offset) +
