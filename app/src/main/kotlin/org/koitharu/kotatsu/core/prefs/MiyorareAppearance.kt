@@ -145,6 +145,9 @@ object MiyorareAppearance {
 		@androidx.annotation.ColorInt color: Int,
 		intensity: MiyorareCustomBackgroundIntensity,
 	): Int {
+		if (isNeutralArgb(color)) {
+			return tuneNeutralLightness(color, intensity)
+		}
 		val hsl = FloatArray(3)
 		ColorUtils.colorToHSL(color, hsl)
 		val saturationScale = when (intensity) {
@@ -161,4 +164,32 @@ object MiyorareAppearance {
 		hsl[2] = (hsl[2] * 0.45f + targetLightness * 0.55f).coerceIn(0.40f, 0.70f)
 		return ColorUtils.HSLToColor(hsl)
 	}
+
+	internal fun isNeutralArgb(@androidx.annotation.ColorInt color: Int): Boolean {
+		val red = color ushr 16 and 0xFF
+		val green = color ushr 8 and 0xFF
+		val blue = color and 0xFF
+		return maxOf(red, green, blue) - minOf(red, green, blue) <= NEUTRAL_CHANNEL_SPREAD
+	}
+
+	internal fun tuneNeutralLightness(
+		@androidx.annotation.ColorInt color: Int,
+		intensity: MiyorareCustomBackgroundIntensity,
+	): Int {
+		val red = color ushr 16 and 0xFF
+		val green = color ushr 8 and 0xFF
+		val blue = color and 0xFF
+		val source = (red + green + blue) / (3f * 255f)
+		val preserve = when (intensity) {
+			MiyorareCustomBackgroundIntensity.SOFT -> 0.78f
+			MiyorareCustomBackgroundIntensity.BALANCED -> 0.86f
+			MiyorareCustomBackgroundIntensity.VIVID -> 0.94f
+		}
+		val midpointPull = (1f - preserve) * 0.5f
+		val lightness = (source * preserve + midpointPull).coerceIn(0.04f, 0.96f)
+		val channel = (lightness * 255f).toInt().coerceIn(0, 255)
+		return (0xFF shl 24) or (channel shl 16) or (channel shl 8) or channel
+	}
+
+	private const val NEUTRAL_CHANNEL_SPREAD = 18
 }
