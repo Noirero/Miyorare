@@ -1,0 +1,84 @@
+name: Modern Favourites Follow-up Patch
+on:
+  push:
+    branches:
+      - fix/amain2-modern-favourites-neutral-hierarchy
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/amain2-modern-favourites-neutral-hierarchy
+          fetch-depth: 0
+      - name: Apply audited surgical patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          neon = Path('app/src/main/kotlin/org/koitharu/kotatsu/core/ui/MiyorareNeonGlass.kt')
+          text = neon.read_text()
+          old = '''\tval hsv = FloatArray(3)\n\tColor.colorToHSV(color, hsv)\n\thsv[1] = maxOf(hsv[1], saturationFloor).coerceIn(0f, 1f)\n\thsv[2] = maxOf(valueFloor, hsv[2] + valueBoost).coerceIn(0f, 1f)\n'''
+          new = '''\tval hsv = FloatArray(3)\n\tColor.colorToHSV(color, hsv)\n\t// Achromatic and near-achromatic theme colors have no meaningful hue. Keep them neutral instead\n\t// of inventing a saturated hue while still lifting value into the luminous range.\n\tif (hsv[1] > NEUTRAL_SATURATION_THRESHOLD) {\n\t\thsv[1] = maxOf(hsv[1], saturationFloor).coerceIn(0f, 1f)\n\t}\n\thsv[2] = maxOf(valueFloor, hsv[2] + valueBoost).coerceIn(0f, 1f)\n'''
+          assert text.count(old) == 1, 'unexpected luminousThemeColor shape'
+          text = text.replace(old, new)
+          text = text.rstrip() + '\n\nprivate const val NEUTRAL_SATURATION_THRESHOLD = 0.08f\n'
+          neon.write_text(text)
+
+          indicators = Path('app/src/main/kotlin/org/koitharu/kotatsu/list/ui/MangaIndicatorsView.kt')
+          text = indicators.read_text()
+          for imp in [
+              'import androidx.preference.PreferenceManager\n',
+              'import org.koitharu.kotatsu.core.prefs.MiyorareAppearance\n',
+              'import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle\n',
+              'import org.koitharu.kotatsu.core.util.ext.findActivity\n',
+              'import org.koitharu.kotatsu.core.util.ext.getEnumValue\n',
+              'import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE\n',
+              'import org.koitharu.kotatsu.favourites.data.FavouriteSpace\n',
+              'import org.koitharu.kotatsu.favourites.ui.FavouritesActivity\n',
+          ]:
+              assert text.count(imp) == 1, f'unexpected import shape: {imp}'
+              text = text.replace(imp, '')
+          old_sig = 'fun bindGrid(isSaved: Boolean, isLocalSource: Boolean, isFavorite: Boolean, counter: Int) {'
+          new_sig = 'fun bindGrid(isSaved: Boolean, isLocalSource: Boolean, isFavorite: Boolean, counter: Int, useModernFavouritesPresentation: Boolean = false) {'
+          assert text.count(old_sig) == 1
+          text = text.replace(old_sig, new_sig)
+          old_gate = '''\t\tmodernGridPresentation = shouldUseModernFavouritesPresentation()\n'''
+          assert text.count(old_gate) == 1
+          text = text.replace(old_gate, '\t\tmodernGridPresentation = useModernFavouritesPresentation\n')
+          start = text.index('\n\tprivate fun shouldUseModernFavouritesPresentation(): Boolean {')
+          end = text.index('\n\tprivate fun applyModernGridPresentation', start)
+          text = text[:start] + text[end:]
+          indicators.write_text(text)
+
+          adapter = Path('app/src/main/kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt')
+          text = adapter.read_text()
+          old_call = 'binding.iconsView.bindGrid(item.isSaved, item.isLocalSource, item.isFavorite, item.counter)'
+          new_call = '''binding.iconsView.bindGrid(\n\t\t\titem.isSaved,\n\t\t\titem.isLocalSource,\n\t\t\titem.isFavorite,\n\t\t\titem.counter,\n\t\t\tisNormalModernFavourites,\n\t\t)'''
+          assert text.count(old_call) == 1, 'unexpected bindGrid call shape'
+          adapter.write_text(text.replace(old_call, new_call))
+      - name: Validate surgical scope
+        run: |
+          git diff --check
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' \
+            app/src/main/kotlin/org/koitharu/kotatsu/core/ui/MiyorareNeonGlass.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/list/ui/MangaIndicatorsView.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt | sort)"
+          grep -q 'NEUTRAL_SATURATION_THRESHOLD' app/src/main/kotlin/org/koitharu/kotatsu/core/ui/MiyorareNeonGlass.kt
+          grep -q 'modernGridPresentation = useModernFavouritesPresentation' app/src/main/kotlin/org/koitharu/kotatsu/list/ui/MangaIndicatorsView.kt
+          grep -q 'isNormalModernFavourites,' app/src/main/kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt
+          ! grep -q 'shouldUseModernFavouritesPresentation' app/src/main/kotlin/org/koitharu/kotatsu/list/ui/MangaIndicatorsView.kt
+      - name: Commit patch and remove temporary runner
+        run: |
+          rm .github/workflows/modern-favourites-followup-patch.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app/src/main/kotlin/org/koitharu/kotatsu/core/ui/MiyorareNeonGlass.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/list/ui/MangaIndicatorsView.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt \
+                  .github/workflows/modern-favourites-followup-patch.yml
+          git commit -m 'Fix Modern Favorites neutral colors and indicator authority'
+          git push origin HEAD:fix/amain2-modern-favourites-neutral-hierarchy
