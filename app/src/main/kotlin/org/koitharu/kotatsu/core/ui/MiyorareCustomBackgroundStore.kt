@@ -102,9 +102,9 @@ object MiyorareCustomBackgroundStore {
 
     fun clear(context: Context) {
         val appContext = context.applicationContext
-        sharpFile(appContext).delete()
-        blurFile(appContext).delete()
-        previewFile(appContext).delete()
+        sharpFile(context).delete()
+        blurFile(context).delete()
+        previewFile(context).delete()
         val prefs = PreferenceManager.getDefaultSharedPreferences(appContext)
         prefs.edit {
             remove(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY)
@@ -173,7 +173,7 @@ object MiyorareCustomBackgroundStore {
             ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
             ExifInterface.ORIENTATION_TRANSVERSE -> {
                 matrix.setRotate(-90f)
-                matrix.postScale(-1f, 1f)
+                matrix.postScale(1f, -1f)
             }
             ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(-90f)
             else -> return source
@@ -204,8 +204,8 @@ object MiyorareCustomBackgroundStore {
     }
 
     /**
-     * Lightweight hue clustering. It preserves several strong colour families instead of averaging
-     * a colourful image into one muddy RGB value.
+     * Lightweight hue clustering. Colourful wallpapers keep the existing hue-family behaviour,
+     * while predominantly neutral wallpapers retain their actual black/white/grey character.
      */
     private fun extractDominantPalette(source: Bitmap): IntArray {
         val sample = Bitmap.createScaledBitmap(source, PALETTE_WIDTH, PALETTE_HEIGHT, true)
@@ -217,13 +217,17 @@ object MiyorareCustomBackgroundStore {
             val hsl = FloatArray(3)
             val pixels = IntArray(sample.width * sample.height)
             sample.getPixels(pixels, 0, sample.width, 0, 0, sample.width, sample.height)
+            var opaquePixels = 0
+            var chromaticPixels = 0
 
             for (pixel in pixels) {
                 if (Color.alpha(pixel) < 200) continue
+                opaquePixels++
                 ColorUtils.colorToHSL(pixel, hsl)
                 val saturation = hsl[1]
                 val lightness = hsl[2]
-                if (saturation < 0.14f || lightness < 0.08f || lightness > 0.94f) continue
+                if (saturation < CHROMATIC_SATURATION_MIN || lightness < 0.08f || lightness > 0.94f) continue
+                chromaticPixels++
                 val bucket = ((hsl[0] / 360f) * HUE_BUCKETS).toInt().coerceIn(0, HUE_BUCKETS - 1)
                 val centerBias = 1f - abs(lightness - 0.55f) * 0.65f
                 val weight = (0.22f + saturation * 0.78f) * centerBias.coerceAtLeast(0.35f)
@@ -231,6 +235,11 @@ object MiyorareCustomBackgroundStore {
                 reds[bucket] += Color.red(pixel) * weight
                 greens[bucket] += Color.green(pixel) * weight
                 blues[bucket] += Color.blue(pixel) * weight
+            }
+
+            if (shouldUseNeutralFallback(opaquePixels, chromaticPixels)) {
+                val neutral = averageOpaqueColor(pixels)
+                return intArrayOf(neutral, neutral, neutral)
             }
 
             val selected = ArrayList<Int>(3)
@@ -261,6 +270,28 @@ object MiyorareCustomBackgroundStore {
         } finally {
             sample.recycle()
         }
+    }
+
+    internal fun shouldUseNeutralFallback(opaquePixels: Int, chromaticPixels: Int): Boolean =
+        opaquePixels > 0 && chromaticPixels.toFloat() / opaquePixels < CHROMATIC_PIXEL_RATIO_MIN
+
+    internal fun averageOpaqueColor(pixels: IntArray): Int {
+        var count = 0
+        var red = 0L
+        var green = 0L
+        var blue = 0L
+        for (pixel in pixels) {
+            if ((pixel ushr 24 and 0xFF) < 200) continue
+            count++
+            red += pixel ushr 16 and 0xFF
+            green += pixel ushr 8 and 0xFF
+            blue += pixel and 0xFF
+        }
+        if (count == 0) return DEFAULT_PRIMARY
+        val r = (red / count).toInt().coerceIn(0, 255)
+        val g = (green / count).toInt().coerceIn(0, 255)
+        val b = (blue / count).toInt().coerceIn(0, 255)
+        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 
     private fun deriveCompanion(color: Int, hueShift: Float): Int {
@@ -367,5 +398,7 @@ object MiyorareCustomBackgroundStore {
     private const val PALETTE_HEIGHT = 160
     private const val HUE_BUCKETS = 18
     private const val MIN_BUCKET_DISTANCE = 2
+    private const val CHROMATIC_SATURATION_MIN = 0.14f
+    private const val CHROMATIC_PIXEL_RATIO_MIN = 0.20f
     private const val DEFAULT_PRIMARY = 0xFF5B6CFF.toInt()
 }
