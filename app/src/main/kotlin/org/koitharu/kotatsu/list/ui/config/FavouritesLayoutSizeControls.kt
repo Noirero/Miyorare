@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -147,7 +146,7 @@ private fun FavouritesLayoutPreview(columns: Int, gridSize: Int) {
 		) {
 			repeat(safeColumns) {
 				Column(
-					modifier = Modifier.weight(1f),
+					modifier = Modifier.fillMaxWidth(1f / safeColumns),
 					verticalArrangement = Arrangement.spacedBy(4.dp),
 				) {
 					Surface(
