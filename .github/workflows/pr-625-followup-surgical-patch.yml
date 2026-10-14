@@ -1,0 +1,75 @@
+name: Favorites sizing surgical patch
+on:
+  push:
+    branches:
+      - fix/amain2-favourites-cover-size-geometry
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/amain2-favourites-cover-size-geometry
+          fetch-depth: 0
+      - name: Apply deterministic sizing corrections
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt')
+          s = p.read_text()
+          replacements = [
+              ('''\tfun applyGridAppearance(isModern: Boolean) {\n\t\tbinding.imageViewCover.setAspectRatioOverride(\n\t\t\tMiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO.takeIf { isNormalModernFavourites },\n\t\t)''', '''\tfun applyGridAppearance(isModern: Boolean, visualScale: Float) {\n\t\tbinding.imageViewCover.setAspectRatioOverride(\n\t\t\t(MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO / visualScale)\n\t\t\t\t.takeIf { isNormalModernFavourites },\n\t\t)'''),
+              ('''\tfun applyGridSizing(margin: Int) {''', '''\tfun applyGridSizing(margin: Int, visualScale: Float) {'''),
+              ('''\t\tval referenceHeight = if (isNormalModernFavourites && coverWidth > 0) {\n\t\t\t(coverWidth / MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO).roundToInt()''', '''\t\tval referenceHeight = if (isNormalModernFavourites && coverWidth > 0) {\n\t\t\t(coverWidth / (MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO / visualScale)).roundToInt()'''),
+              ('''\t\tapplyGridAppearance(isModernFavouritesGrid)\n\t\tval baseMargin''', '''\t\tval visualScaleProvider = gridVisualScaleProvider\n\t\tval visualScale = visualScaleProvider?.invoke()?.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)\n\t\t\t?: DEFAULT_FIXED_GRID_SCALE\n\t\tapplyGridAppearance(isModernFavouritesGrid, visualScale)\n\t\tval baseMargin'''),
+              ('''\t\tval visualScaleProvider = gridVisualScaleProvider\n\t\tval initialMargin = visualScaleProvider?.invoke()?.let { scale ->\n\t\t\tresolveFixedGridMargin(itemView, styledBaseMargin, scale)\n\t\t} ?: styledBaseMargin\n\t\tapplyGridSizing(initialMargin)\n\t\tif (visualScaleProvider != null) {\n\t\t\tval boundId = item.id\n\t\t\titemView.doOnLayout {\n\t\t\t\tif (item.id != boundId) return@doOnLayout\n\t\t\t\tapplyGridSizing(\n\t\t\t\t\tresolveFixedGridMargin(itemView, styledBaseMargin, visualScaleProvider.invoke()),\n\t\t\t\t)\n\t\t\t}\n\t\t}''', '''\t\tapplyGridSizing(styledBaseMargin, visualScale)\n\t\tif (visualScaleProvider != null) {\n\t\t\tval boundId = item.id\n\t\t\titemView.doOnLayout {\n\t\t\t\tif (item.id != boundId) return@doOnLayout\n\t\t\t\tval currentScale = visualScaleProvider.invoke()\n\t\t\t\t\t.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)\n\t\t\t\tapplyGridAppearance(isModernFavouritesGrid, currentScale)\n\t\t\t\tapplyGridSizing(styledBaseMargin, currentScale)\n\t\t\t}\n\t\t}'''),
+          ]
+          for old, new in replacements:
+              if s.count(old) != 1:
+                  raise SystemExit(f'MangaGridItemAD target count {s.count(old)} for {old[:80]!r}')
+              s = s.replace(old, new, 1)
+          start = s.index('\nprivate fun resolveFixedGridMargin(')
+          end = s.index('\nprivate fun resolveActualCoverWidth(', start)
+          s = s[:start] + '\n' + s[end:]
+          s = s.replace('\nprivate const val MAX_FIXED_GRID_MARGIN_FRACTION = 0.2f\nprivate const val MIN_FIXED_GRID_MARGIN_FACTOR = 0.25f', '')
+          p.write_text(s)
+
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/list/ui/config/FavouritesLayoutSizeControls.kt')
+          s = p.read_text()
+          old_import = 'import org.koitharu.kotatsu.R\n'
+          new_import = 'import org.koitharu.kotatsu.R\nimport org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec\n'
+          if s.count(old_import) != 1:
+              raise SystemExit('Preview import target mismatch')
+          s = s.replace(old_import, new_import, 1)
+          old_ratio = '.aspectRatio((2f / 3f) / scale.coerceIn(0.5f, 1.5f))'
+          new_ratio = '.aspectRatio(MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO / scale.coerceIn(0.5f, 1.5f))'
+          if s.count(old_ratio) != 1:
+              raise SystemExit('Preview ratio target mismatch')
+          s = s.replace(old_ratio, new_ratio, 1)
+          p.write_text(s)
+
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt')
+          s = p.read_text()
+          old = '''\t\tviewModel.gridScale.observe(viewLifecycleOwner) {\n\t\t\tval adapter = binding.recyclerView.adapter ?: return@observe\n\t\t\tval layoutManager = binding.recyclerView.layoutManager as? GridLayoutManager ?: return@observe\n\t\t\tval first = layoutManager.findFirstVisibleItemPosition()\n\t\t\tval last = layoutManager.findLastVisibleItemPosition()\n\t\t\tif (first >= 0 && last >= first && first < adapter.itemCount) {\n\t\t\t\tadapter.notifyItemRangeChanged(first, (last - first + 1).coerceAtMost(adapter.itemCount - first))\n\t\t\t}\n\t\t}'''
+          new = '''\t\tviewModel.gridScale.observe(viewLifecycleOwner) {\n\t\t\tval adapter = binding.recyclerView.adapter ?: return@observe\n\t\t\tif (adapter.itemCount > 0) {\n\t\t\t\t// Mark the full adapter range changed so attached, cached, and recycled holders cannot\n\t\t\t\t// retain geometry from the previous Custom cover size. RecyclerView only rebinds\n\t\t\t\t// holders as needed; this also fixes off-screen stale cards after returning to a preset.\n\t\t\t\tadapter.notifyItemRangeChanged(0, adapter.itemCount)\n\t\t\t}\n\t\t}'''
+          if s.count(old) != 1:
+              raise SystemExit(f'Fragment target count {s.count(old)}')
+          p.write_text(s.replace(old, new, 1))
+      - name: Validate surgical diff
+        run: |
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt app/src/main/kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt app/src/main/kotlin/org/koitharu/kotatsu/list/ui/config/FavouritesLayoutSizeControls.kt | sort)"
+          git diff --check
+          git diff --stat
+          git diff -- app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt app/src/main/kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt app/src/main/kotlin/org/koitharu/kotatsu/list/ui/config/FavouritesLayoutSizeControls.kt
+      - name: Remove temporary workflow and commit
+        run: |
+          rm .github/workflows/pr-625-followup-surgical-patch.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt app/src/main/kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt app/src/main/kotlin/org/koitharu/kotatsu/list/ui/config/FavouritesLayoutSizeControls.kt .github/workflows/pr-625-followup-surgical-patch.yml
+          git commit -m "Fix Favorites custom cover sizing geometry"
+          git push origin HEAD:fix/amain2-favourites-cover-size-geometry
