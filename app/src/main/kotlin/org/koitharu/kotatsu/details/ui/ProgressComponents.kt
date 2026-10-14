@@ -243,6 +243,9 @@ internal fun WavyProgressBar(progress: Float, color: Color, trackColor: Color, m
 		)
 		classicPhase
 	}
+	// Material 3 Expressive flattens the wave outside [0.1, 0.9]. Ramping the amplitude across
+	// those two bands instead of snapping lets the wave grow out of — and settle back into —
+	// the flat line as the progress animates.
 	val amplitudeFraction = when {
 		animatedProgress < FULL_AMPLITUDE_MIN -> animatedProgress / FULL_AMPLITUDE_MIN
 		animatedProgress > FULL_AMPLITUDE_MAX -> (1f - animatedProgress) / (1f - FULL_AMPLITUDE_MAX)
@@ -254,6 +257,8 @@ internal fun WavyProgressBar(progress: Float, color: Color, trackColor: Color, m
 		val amplitude = WAVE_AMPLITUDE.dp.toPx() * amplitudeFraction
 		val waveLength = WAVELENGTH.dp.toPx()
 		val stopRadius = STOP_INDICATOR_SIZE.dp.toPx() / 2f
+		// The gap between the active indicator and the track closes over the last percent,
+		// so a finished bar reads as one continuous line.
 		val gap = GAP_SIZE.dp.toPx() *
 			((1f - animatedProgress).coerceAtMost(GAP_RAMP_THRESHOLD) / GAP_RAMP_THRESHOLD)
 		val activeW = size.width * animatedProgress
@@ -287,6 +292,7 @@ internal fun WavyProgressBar(progress: Float, color: Color, trackColor: Color, m
 	}
 }
 
+// Material 3 Expressive linear wavy progress indicator tokens.
 private const val TRACK_THICKNESS = 4f
 private const val WAVE_AMPLITUDE = 3f
 private const val WAVELENGTH = 40f
