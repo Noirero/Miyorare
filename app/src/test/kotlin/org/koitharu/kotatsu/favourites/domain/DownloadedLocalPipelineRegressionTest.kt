@@ -44,16 +44,16 @@ class DownloadedLocalPipelineRegressionTest {
 	}
 
 	@Test fun `every icon binding caller commits the final set`() {
-		// Card adapters now delegate to the manga-specific badge owner. Verify both callers
-		// carry the existing state, and that the actual nested IconsView binding still commits.
+		// Card adapters delegate to the manga-specific badge owner. The grid caller also passes
+		// the renderer's existing Modern Normal Favorites authority; the nested binding still commits.
 		assertTrue(source("list/ui/adapter/MangaGridItemAD.kt").contains(
-			"binding.iconsView.bindGrid(item.isSaved,item.isLocalSource,item.isFavorite,item.counter)",
+			"binding.iconsView.bindGrid(item.isSaved,item.isLocalSource,item.isFavorite,item.counter,isNormalModernFavourites)",
 		))
 		assertTrue(source("list/ui/adapter/MangaListDetailedItemAD.kt").contains(
 			"binding.iconsView.bind(item.isSaved,item.isLocalSource,item.isFavorite)",
 		))
 		val indicators = source("list/ui/MangaIndicatorsView.kt")
-		assertTrue(indicators.contains("funbindGrid(isSaved:Boolean,isLocalSource:Boolean,isFavorite:Boolean,counter:Int){bind(isSaved,isLocalSource,isFavorite)"))
+		assertTrue(indicators.contains("funbindGrid(isSaved:Boolean,isLocalSource:Boolean,isFavorite:Boolean,counter:Int,useModernFavouritesPresentation:Boolean=false){bind(isSaved,isLocalSource,isFavorite)"))
 		val binding = indicators.substringAfter("funbind(isSaved:Boolean,isLocalSource:Boolean,isFavorite:Boolean)")
 			.substringBefore("funapplySelectionPresentation")
 		assertTrue(binding.contains("statusIcons.clearIcons()"))
