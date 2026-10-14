@@ -206,11 +206,11 @@ internal fun ModernDetailsHero(
 					onOverflowChanged = onCreatorOverflowChanged,
 				)
 				if (!manga.isLocal || manga.state != null) {
-					Spacer(Modifier.height(if (palette.isModern) 8.dp else 14.dp))
+					Spacer(Modifier.height(if (compactExpanded) if (palette.isModern) 8.dp else 14.dp else 4.dp))
 					Row(
 						modifier = Modifier
 							.fillMaxWidth()
-							.height(78.dp),
+							.height(if (compactExpanded) 78.dp else 60.dp),
 						horizontalArrangement = Arrangement.spacedBy(8.dp),
 					) {
 						if (!manga.isLocal) {
