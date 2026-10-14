@@ -39,4 +39,17 @@ class DeviceAcceptanceFollowupRegressionTest {
 		assertTrue(layout.contains("android:paddingStart=\"2dp\""))
 		assertTrue(layout.contains("android:paddingEnd=\"28dp\""))
 	}
+
+	@Test
+	fun `modern reading progress uses static rainbow only for filled segment`() {
+		val source = File(
+			"src/main/kotlin/org/koitharu/kotatsu/history/ui/util/ReadingProgressView.kt",
+		).readText()
+		assertTrue(source.contains("val fillRight = width * value.percent.coerceIn(0f, 1f)"))
+		assertTrue(source.contains("LinearGradient("))
+		assertTrue(source.contains("fillRight,"))
+		assertTrue(source.contains("RAINBOW_COLORS"))
+		assertTrue(source.contains("canvas.drawRoundRect(rectF, radius, radius, trackPaint)"))
+		assertTrue(source.contains("progressPaint.shader = null"))
+	}
 }
