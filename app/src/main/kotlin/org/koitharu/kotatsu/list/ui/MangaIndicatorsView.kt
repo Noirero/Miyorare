@@ -39,6 +39,7 @@ class MangaIndicatorsView @JvmOverloads constructor(
 	private val ribbon: View
 	private val libraryIcon: ImageView
 	private val downloadIcon: ImageView
+	private val legacyLayoutParams = mutableMapOf<Int, LinearLayout.LayoutParams>()
 	private var modernGridPresentation = false
 	var status: MangaCardStatus = MangaCardStatus.NONE
 		private set
@@ -141,10 +142,10 @@ class MangaIndicatorsView @JvmOverloads constructor(
 		local?.backgroundTintList = ColorStateList.valueOf(context.getThemeColor(materialR.attr.colorTertiary, Color.DKGRAY))
 		local?.setTextColor(context.getThemeColor(materialR.attr.colorOnTertiary, Color.WHITE))
 
-		reparent(root, language, modernLayout(Gravity.BOTTOM or Gravity.START, start = if (isLocalSource) 58 else 8, bottom = 30))
-		reparent(root, pin, modernLayout(Gravity.TOP or Gravity.END, end = statusRibbonWidthDp() + 10, top = 8))
-		reparent(root, progress, modernLayout(Gravity.BOTTOM or Gravity.START, start = 8, end = 8, bottom = 4, matchWidth = true))
-		reparent(root, continueView, modernLayout(Gravity.BOTTOM or Gravity.END, end = 8, bottom = 30))
+		reparent(root, legacy, language, modernLayout(Gravity.BOTTOM or Gravity.START, start = if (isLocalSource) 58 else 8, bottom = 30))
+		reparent(root, legacy, pin, modernLayout(Gravity.TOP or Gravity.END, end = statusRibbonWidthDp() + 10, top = 8))
+		reparent(root, legacy, progress, modernLayout(Gravity.BOTTOM or Gravity.START, start = 8, end = 8, bottom = 4, matchWidth = true))
+		reparent(root, legacy, continueView, modernLayout(Gravity.BOTTOM or Gravity.END, end = 8, bottom = 30))
 		progress?.setModernBottomEdge(true)
 		legacy.isVisible = false
 	}
@@ -163,15 +164,34 @@ class MangaIndicatorsView @JvmOverloads constructor(
 		ordered.forEach { child ->
 			if (child != null && child.parent !== legacy) {
 				(child.parent as? ViewGroup)?.removeView(child)
-				legacy.addView(child)
+				val original = legacyLayoutParams[child.id]
+				if (original != null) {
+					legacy.addView(child, LinearLayout.LayoutParams(original))
+				} else {
+					legacy.addView(child)
+				}
 			}
+			child?.translationX = 0f
+			child?.translationY = 0f
+			child?.scaleX = 1f
+			child?.scaleY = 1f
 		}
 		root.findViewById<ReadingProgressView>(R.id.progressView)?.setModernBottomEdge(false)
 		legacy.isVisible = true
 	}
 
-	private fun reparent(root: FrameLayout, child: View?, params: FrameLayout.LayoutParams) {
+	private fun reparent(
+		root: FrameLayout,
+		legacy: LinearLayout,
+		child: View?,
+		params: FrameLayout.LayoutParams,
+	) {
 		if (child == null) return
+		if (child.parent === legacy && child.id != View.NO_ID && child.id !in legacyLayoutParams) {
+			(child.layoutParams as? LinearLayout.LayoutParams)?.let {
+				legacyLayoutParams[child.id] = LinearLayout.LayoutParams(it)
+			}
+		}
 		if (child.parent !== root) {
 			(child.parent as? ViewGroup)?.removeView(child)
 			root.addView(child, params)
