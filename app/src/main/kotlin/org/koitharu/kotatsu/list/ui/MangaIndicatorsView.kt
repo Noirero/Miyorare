@@ -1,16 +1,29 @@
 package org.koitharu.kotatsu.list.ui
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
+import androidx.preference.PreferenceManager
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.widgets.IconsView
+import org.koitharu.kotatsu.core.util.ext.findActivity
+import org.koitharu.kotatsu.core.util.ext.getEnumValue
+import org.koitharu.kotatsu.core.util.ext.getThemeColor
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.history.ui.util.ReadingProgressView
+import com.google.android.material.R as materialR
 
 enum class MangaCardStatus { NONE, LIBRARY, DOWNLOADED, LIBRARY_DOWNLOADED }
 
@@ -24,6 +37,7 @@ class MangaIndicatorsView @JvmOverloads constructor(
 	private val ribbon: View
 	private val libraryIcon: ImageView
 	private val downloadIcon: ImageView
+	private var modernGridPresentation = false
 	var status: MangaCardStatus = MangaCardStatus.NONE
 		private set
 
@@ -63,19 +77,132 @@ class MangaIndicatorsView @JvmOverloads constructor(
 		ribbon.alpha = if (selected) 0f else 1f
 		ribbon.importantForAccessibility = if (selected) IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
 			else IMPORTANT_FOR_ACCESSIBILITY_YES
+		if (modernGridPresentation) {
+			val root = parent as? FrameLayout
+			val pin = root?.findViewById<View>(R.id.imageView_pin)
+			pin?.translationY = if (selected) {
+				resources.getDimension(R.dimen.manga_status_ribbon_width) +
+					resources.getDimension(R.dimen.library_indicator_spacing)
+			} else 0f
+		}
 	}
 
 	fun bindGrid(isSaved: Boolean, isLocalSource: Boolean, isFavorite: Boolean, counter: Int) {
 		bind(isSaved, isLocalSource, isFavorite)
-		updateLayoutParams<FrameLayout.LayoutParams> {
-			gravity = if (status != MangaCardStatus.NONE) Gravity.TOP or Gravity.END else Gravity.TOP or Gravity.START
-			marginEnd = if (status != MangaCardStatus.NONE) resources.getDimensionPixelSize(R.dimen.card_indicator_offset) else 0
-			topMargin = when {
-				status != MangaCardStatus.NONE -> resources.getDimensionPixelSize(R.dimen.card_indicator_offset)
-				// Existing status-only offsets, preserving their pixel truncation.
-				counter > 0 -> resources.getDimensionPixelOffset(R.dimen.card_indicator_size)
-				else -> resources.getDimensionPixelOffset(R.dimen.margin_normal)
+		modernGridPresentation = shouldUseModernFavouritesPresentation()
+		if (modernGridPresentation) {
+			applyModernGridPresentation(isLocalSource)
+			updateLayoutParams<FrameLayout.LayoutParams> {
+				gravity = Gravity.TOP or Gravity.END
+				marginEnd = resources.getDimensionPixelSize(R.dimen.card_indicator_offset)
+				topMargin = resources.getDimensionPixelSize(R.dimen.card_indicator_offset)
+			}
+		} else {
+			restoreLegacyGridPresentation()
+			updateLayoutParams<FrameLayout.LayoutParams> {
+				gravity = if (status != MangaCardStatus.NONE) Gravity.TOP or Gravity.END else Gravity.TOP or Gravity.START
+				marginEnd = if (status != MangaCardStatus.NONE) resources.getDimensionPixelSize(R.dimen.card_indicator_offset) else 0
+				topMargin = when {
+					status != MangaCardStatus.NONE -> resources.getDimensionPixelSize(R.dimen.card_indicator_offset)
+					counter > 0 -> resources.getDimensionPixelOffset(R.dimen.card_indicator_size)
+					else -> resources.getDimensionPixelOffset(R.dimen.margin_normal)
+				}
 			}
 		}
+	}
+
+	private fun shouldUseModernFavouritesPresentation(): Boolean {
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		if (prefs.getEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC) != MiyorareDesignStyle.MODERN) {
+			return false
+		}
+		val activity = context.findActivity() ?: return false
+		return activity.intent?.hasExtra(EXTRA_FAVOURITE_SPACE) == true &&
+			activity.intent.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue) == FavouriteSpace.NORMAL.dbValue
+	}
+
+	private fun applyModernGridPresentation(isLocalSource: Boolean) {
+		val root = parent as? FrameLayout ?: return
+		val legacy = root.findViewById<LinearLayout>(R.id.layout_indicators) ?: return
+		val language = root.findViewById<TextView>(R.id.textView_language)
+		val pin = root.findViewById<ImageView>(R.id.imageView_pin)
+		val progress = root.findViewById<ReadingProgressView>(R.id.progressView)
+		val continueView = root.findViewById<ImageView>(R.id.imageView_continue)
+		val local = root.findViewById<TextView>(R.id.textView_local)
+
+		statusIcons.isVisible = false
+		isVisible = ribbon.isVisible
+		local?.isVisible = isLocalSource
+		local?.backgroundTintList = ColorStateList.valueOf(context.getThemeColor(materialR.attr.colorTertiary))
+		local?.setTextColor(context.getThemeColor(materialR.attr.colorOnTertiary))
+
+		reparent(root, language, modernLayout(Gravity.BOTTOM or Gravity.START, start = 8, bottom = 30))
+		reparent(root, pin, modernLayout(Gravity.TOP or Gravity.END, end = statusRibbonWidthDp() + 10, top = 8))
+		reparent(root, progress, modernLayout(Gravity.BOTTOM or Gravity.START, start = 8, end = 8, bottom = 4, matchWidth = true))
+		reparent(root, continueView, modernLayout(Gravity.BOTTOM or Gravity.END, end = 8, bottom = 30))
+		progress?.setModernBottomEdge(true)
+		legacy.isVisible = false
+	}
+
+	private fun restoreLegacyGridPresentation() {
+		val root = parent as? FrameLayout ?: return
+		val legacy = root.findViewById<LinearLayout>(R.id.layout_indicators) ?: return
+		val local = root.findViewById<TextView>(R.id.textView_local)
+		local?.isVisible = false
+		val ordered = listOf(
+			root.findViewById<View>(R.id.textView_language),
+			root.findViewById<View>(R.id.imageView_pin),
+			root.findViewById<View>(R.id.progressView),
+			root.findViewById<View>(R.id.imageView_continue),
+		)
+		ordered.forEach { child ->
+			if (child != null && child.parent !== legacy) {
+				(child.parent as? ViewGroup)?.removeView(child)
+				legacy.addView(child)
+			}
+		}
+		root.findViewById<ReadingProgressView>(R.id.progressView)?.setModernBottomEdge(false)
+		legacy.isVisible = true
+	}
+
+	private fun reparent(root: FrameLayout, child: View?, params: FrameLayout.LayoutParams) {
+		if (child == null) return
+		if (child.parent !== root) {
+			(child.parent as? ViewGroup)?.removeView(child)
+			root.addView(child, params)
+		} else {
+			child.layoutParams = params
+		}
+	}
+
+	private fun modernLayout(
+		gravity: Int,
+		start: Int = 0,
+		end: Int = 0,
+		top: Int = 0,
+		bottom: Int = 0,
+		matchWidth: Boolean = false,
+	): FrameLayout.LayoutParams {
+		val density = resources.displayMetrics.density
+		return FrameLayout.LayoutParams(
+			if (matchWidth) FrameLayout.LayoutParams.MATCH_PARENT else FrameLayout.LayoutParams.WRAP_CONTENT,
+			FrameLayout.LayoutParams.WRAP_CONTENT,
+			gravity,
+		).apply {
+			marginStart = (start * density).toInt()
+			marginEnd = (end * density).toInt()
+			topMargin = (top * density).toInt()
+			bottomMargin = (bottom * density).toInt()
+		}
+	}
+
+	private fun statusRibbonWidthDp(): Int {
+		val width = resources.getDimension(R.dimen.manga_status_ribbon_width)
+		val density = resources.displayMetrics.density
+		return ((width / density) * when (status) {
+			MangaCardStatus.LIBRARY_DOWNLOADED -> 2
+			MangaCardStatus.LIBRARY, MangaCardStatus.DOWNLOADED -> 1
+			MangaCardStatus.NONE -> 0
+		}).toInt()
 	}
 }
