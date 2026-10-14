@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.list.ui.config
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -50,6 +55,7 @@ internal fun FavouritesLayoutSizeControls(
 			FavouritesLayoutPreset.CLASSIC
 		else -> FavouritesLayoutPreset.CUSTOM
 	}
+	var selectedPreset by remember { mutableStateOf(derivedPreset) }
 	val presets = FavouritesLayoutPreset.entries
 	val labels = listOf(
 		stringResource(R.string.favourites_layout_modern),
@@ -60,10 +66,11 @@ internal fun FavouritesLayoutSizeControls(
 	SheetSection(title = stringResource(R.string.favourites_layout_size)) {
 		SheetChips(
 			chips = presets.mapIndexed { index, preset ->
-				SheetChip(title = labels[index], isChecked = preset == derivedPreset)
+				SheetChip(title = labels[index], isChecked = preset == selectedPreset)
 			},
 			onClick = { index ->
-				when (presets[index]) {
+				selectedPreset = presets[index]
+				when (selectedPreset) {
 					FavouritesLayoutPreset.MODERN -> {
 						onGridColumnsChange(MODERN_COLUMNS.toFloat())
 						onGridSizeChange(PRESET_GRID_SIZE.toFloat())
@@ -86,7 +93,7 @@ internal fun FavouritesLayoutSizeControls(
 		)
 	}
 
-	AnimatedVisibility(visible = derivedPreset == FavouritesLayoutPreset.CUSTOM) {
+	AnimatedVisibility(visible = selectedPreset == FavouritesLayoutPreset.CUSTOM) {
 		Column {
 			SheetSection(
 				title = stringResource(R.string.favourites_items_per_row),
@@ -96,7 +103,10 @@ internal fun FavouritesLayoutSizeControls(
 					value = gridColumns,
 					valueRange = GRID_COLUMNS_MIN..GRID_COLUMNS_MAX,
 					steps = GRID_COLUMNS_STEPS,
-					onValueChange = onGridColumnsChange,
+					onValueChange = {
+						selectedPreset = FavouritesLayoutPreset.CUSTOM
+						onGridColumnsChange(it)
+					},
 					modifier = Modifier.padding(horizontal = SheetContentPadding),
 				)
 			}
@@ -107,7 +117,10 @@ internal fun FavouritesLayoutSizeControls(
 				Slider(
 					value = gridSize,
 					valueRange = GRID_SIZE_MIN..GRID_SIZE_MAX,
-					onValueChange = onGridSizeChange,
+					onValueChange = {
+						selectedPreset = FavouritesLayoutPreset.CUSTOM
+						onGridSizeChange(it)
+					},
 					modifier = Modifier.padding(horizontal = SheetContentPadding),
 				)
 			}
@@ -118,7 +131,7 @@ internal fun FavouritesLayoutSizeControls(
 @Composable
 private fun FavouritesLayoutPreview(columns: Int, gridSize: Int) {
 	val safeColumns = columns.coerceIn(GRID_COLUMNS_MIN.toInt(), GRID_COLUMNS_MAX.toInt())
-	val scale = (gridSize.coerceIn(GRID_SIZE_MIN.toInt(), GRID_SIZE_MAX.toInt()) / 100f)
+	val scale = gridSize.coerceIn(GRID_SIZE_MIN.toInt(), GRID_SIZE_MAX.toInt()) / 100f
 	Surface(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -147,7 +160,11 @@ private fun FavouritesLayoutPreview(columns: Int, gridSize: Int) {
 					Box(
 						modifier = Modifier
 							.fillMaxWidth(0.82f)
-							.height(5.dp),
+							.height(5.dp)
+							.background(
+								MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+								RoundedCornerShape(3.dp),
+							),
 					)
 				}
 			}
