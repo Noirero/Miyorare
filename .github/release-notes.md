@@ -1,74 +1,66 @@
-## Miyorare v1.4.9
+## Miyorare v1.4.10
 
-This update improves chapter organization, release predictions, personal notes, recommendations, Favourites management, Source Pack performance, and overall stability.
+This update refreshes the modern Miyorare experience with a redesigned Details presentation, more flexible Favourites layouts, improved cover information, deeper appearance customization, and important fixes for chapter data and personal metadata.
 
 ### ✨ What's New
 
-- **Chapter Range Grouping** — long chapter lists can now be organized into expandable numeric ranges. Choose **Automatic, 25, 50, 100, or Off** while keeping existing search, filters, sorting, grid/list views, and chapter actions.
-- **Next Chapter Prediction Calendar** — tap a chapter release estimate in Details to open a calendar with the predicted date and available release-history information. Predictions can also be added to your calendar.
-- **Prediction Calendar Backgrounds** — customize the prediction calendar using the default theme, manga cover, or your own image. Cover backgrounds also support an optional blur effect.
-- **Improved Personal Notes** — chapter notes can now be opened in a selectable read-only viewer, with clickable HTTP(S) links.
-- **Search Notes Viewer** — open an individual matching note or browse all matching note results without losing your current Search Notes session.
-- **Redesigned Favourite Category Picker** — category selection now uses a wider and more adaptive layout, including compact rows, two-column layouts where appropriate, paging for large category collections, and an optional manga cover/title header.
+- **Modern Details experience** — Details now uses the latest Miyorare presentation with refined header and expansion behavior for a cleaner, more consistent manga information screen.
+- **Favourites layout size controls** — Modern Favourites gains dedicated layout sizing controls so the library presentation can better match your preferred cover and content density.
+- **Modern cover information system** — manga covers can now present reusable status, metadata, reading-progress, and Favourite information with a more consistent modern layout.
+- **Custom accent colors** — Appearance now includes a dedicated custom accent picker for more control over Miyorare's visual identity.
+- **Improved custom backgrounds** — custom backgrounds now integrate more consistently with Miyorare's surrounding colors and surfaces.
 
 ### 🚀 Improvements
 
-- **Faster Source Pack → Details navigation** — opening manga Details from Source Pack is now more responsive, with less unnecessary background work competing during navigation.
-- **Faster Source Pack chapter loading** — available chapter information can appear sooner when opening Details, especially during a cold open.
-- **More Accurate Similar Genres** — recommendations now prioritize titles with actual matching genres and handle sources with limited genre information more reliably.
-- **Improved Chapter Search** — Chapter Search and Search Notes now behave more consistently. Only one search mode can be active at a time, the active search field receives focus automatically, **X** clears the query, and **Back** exits search mode.
-- **Reader Personal Actions** — chapter ratings and Personal Notes in the Reader toolbox now behave consistently with the same actions available from Details.
-- **Chapter Sort Persistence** — your ascending or descending chapter order is preserved more consistently when reopening Details.
-- **Clickable Manga Notes Links** — HTTP(S) links inside read-only Manga Notes can now be opened while normal text remains selectable and copyable.
-- **Performance Diagnostics** — additional optional diagnostics were added to help investigate navigation, rendering, image loading, network activity, Details, and Favourites performance. These diagnostics remain disabled by default.
+- **Favourite category picker** — category selection received another layout and interaction pass for a cleaner experience across different screen sizes.
+- **Reading progress presentation** — reading progress visuals were refreshed and integrated with the modern cover/status presentation.
+- **Chapter personal indicators** — chapter rating, notes, and related personal information are displayed more reliably and consistently in Details.
+- **Modern cover consistency** — cover presentation was aligned across Favourites and other supported manga lists while preserving screens that intentionally keep the classic layout.
+- **Appearance color handling** — custom accent and background colors now produce more balanced surrounding palettes and neutral surfaces.
+- **Release validation** — additional runtime and regression coverage now protects modern covers, Favourite overlays, chapter persistence, personal metadata identity, appearance colors, and promotion to main.
 
 ### 🐞 Fixes
 
-- Fixed Search Notes behavior so tapping a chapter opens the Reader while the dedicated note action opens note results.
-- Fixed Chapter Search and Search Notes creating overlapping search sessions in the Reader.
-- Fixed Reader chapter rating and Personal Note actions that could fail to open correctly.
-- Fixed chapter sorting sometimes reverting after reopening Details.
-- Fixed Similar Genres showing titles without an actual shared genre.
-- Improved Similar Genres behavior for sources that provide incomplete genre information.
-- Fixed a Fragment state-related crash that could occur when a source refresh finished after leaving a manga list screen.
-- Fixed several Source Pack navigation and chapter-loading timing issues.
-- Improved Favourite category picker spacing, sizing, paging, and behavior on compact or short screens.
+- Fixed chapter reconciliation so freshly loaded chapter data can be matched with existing local chapter records earlier and more reliably.
+- Fixed cases where chapter personal metadata could become associated with the wrong chapter identity after chapter data changed or refreshed.
+- Fixed chapter rating and Personal Note indicators so their state stays aligned with the correct chapter.
+- Fixed live chapter download/delete state updates in Details.
+- Fixed several modern Details header and expansion geometry issues.
+- Fixed custom accent/background combinations that could produce unintended tinted neutral surfaces.
+- Fixed Favourites and cover overlay geometry across compact and supported modern layouts.
+- Improved Downloaded and Local Favourites state handling and regression coverage.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Pembaruan ini meningkatkan pengelolaan chapter, prediksi rilis, catatan pribadi, rekomendasi, pengelolaan Favourites, performa Source Pack, dan stabilitas aplikasi secara keseluruhan.
+Pembaruan ini menyegarkan pengalaman modern Miyorare dengan tampilan Details yang diperbarui, layout Favourites yang lebih fleksibel, informasi cover yang lebih lengkap, kustomisasi tampilan yang lebih dalam, serta perbaikan penting pada data chapter dan metadata pribadi.
 
 ### ✨ Yang Baru
 
-- **Pengelompokan Rentang Chapter** — daftar chapter yang panjang sekarang dapat dikelompokkan menjadi rentang angka yang bisa dibuka dan ditutup. Pilih **Automatic, 25, 50, 100, atau Off** tanpa menghilangkan pencarian, filter, sorting, tampilan grid/list, dan aksi chapter yang sudah ada.
-- **Kalender Prediksi Chapter Berikutnya** — tekan perkiraan rilis chapter di Details untuk membuka kalender yang menampilkan tanggal prediksi dan informasi riwayat rilis yang tersedia. Prediksi juga dapat ditambahkan ke kalender perangkat.
-- **Background Kalender Prediksi** — sesuaikan tampilan kalender prediksi menggunakan tema default, cover manga, atau gambar milikmu sendiri. Background cover juga mendukung efek blur opsional.
-- **Personal Notes yang Lebih Baik** — catatan chapter sekarang dapat dibuka melalui viewer read-only dengan teks yang dapat dipilih serta tautan HTTP(S) yang dapat ditekan.
-- **Viewer Search Notes** — buka satu catatan yang ditemukan atau lihat seluruh hasil catatan yang cocok tanpa kehilangan sesi Search Notes yang sedang aktif.
-- **Pemilih Kategori Favourite Baru** — pemilihan kategori sekarang menggunakan layout yang lebih lebar dan adaptif, termasuk baris yang lebih ringkas, dua kolom ketika sesuai, paging untuk kategori dalam jumlah besar, serta header cover/judul manga opsional.
+- **Tampilan Details modern** — Details sekarang menggunakan presentasi Miyorare terbaru dengan perilaku header dan expansion yang disempurnakan agar informasi manga tampil lebih bersih dan konsisten.
+- **Kontrol ukuran layout Favourites** — Modern Favourites mendapatkan kontrol ukuran layout khusus sehingga tampilan library dapat disesuaikan dengan ukuran cover dan kepadatan konten yang diinginkan.
+- **Sistem informasi cover modern** — cover manga sekarang dapat menampilkan status, metadata, progres membaca, dan informasi Favourite melalui layout modern yang lebih konsisten.
+- **Custom accent color** — Appearance sekarang memiliki pemilih warna accent khusus untuk memberikan kontrol lebih besar terhadap identitas visual Miyorare.
+- **Custom background yang lebih baik** — background kustom sekarang menyatu lebih konsisten dengan warna dan surface di sekitarnya.
 
 ### 🚀 Peningkatan
 
-- **Navigasi Source Pack → Details lebih cepat** — membuka Details manga dari Source Pack sekarang lebih responsif dengan mengurangi pekerjaan background yang tidak diperlukan saat navigasi.
-- **Chapter Source Pack tampil lebih cepat** — informasi chapter yang sudah tersedia dapat muncul lebih awal ketika membuka Details, terutama pada cold open.
-- **Similar Genres lebih akurat** — rekomendasi sekarang lebih memprioritaskan manga yang benar-benar memiliki genre yang sama dan menangani source dengan informasi genre terbatas secara lebih baik.
-- **Chapter Search lebih konsisten** — Chapter Search dan Search Notes tidak lagi aktif secara bersamaan. Field pencarian aktif otomatis mendapatkan fokus, tombol **X** membersihkan query, dan **Back** keluar dari mode pencarian.
-- **Personal Action di Reader** — rating chapter dan Personal Notes pada Reader toolbox sekarang bekerja secara konsisten dengan aksi yang sama pada Details.
-- **Sorting Chapter lebih konsisten** — pilihan urutan ascending atau descending lebih baik dipertahankan ketika Details dibuka kembali.
-- **Link pada Manga Notes** — tautan HTTP(S) pada Manga Notes read-only sekarang dapat ditekan sementara teks biasa tetap dapat dipilih dan disalin.
-- **Performance Diagnostics** — diagnostics opsional ditambahkan untuk membantu pemeriksaan performa navigasi, rendering, pemuatan gambar, network, Details, dan Favourites. Diagnostics tersebut tetap nonaktif secara default.
+- **Pemilih kategori Favourite** — pemilihan kategori mendapatkan penyempurnaan layout dan interaksi agar lebih nyaman pada berbagai ukuran layar.
+- **Tampilan progres membaca** — visual progres membaca diperbarui dan diintegrasikan dengan tampilan cover/status modern.
+- **Indikator personal chapter** — rating chapter, catatan, dan informasi pribadi terkait sekarang ditampilkan dengan lebih andal dan konsisten di Details.
+- **Konsistensi cover modern** — tampilan cover diselaraskan pada Favourites dan daftar manga lain yang didukung, tanpa mengubah layar yang memang sengaja mempertahankan layout klasik.
+- **Penanganan warna Appearance** — custom accent dan background sekarang menghasilkan palette sekitar dan neutral surface yang lebih seimbang.
+- **Validasi rilis** — coverage runtime dan regression tambahan sekarang melindungi modern cover, Favourite overlay, chapter persistence, identitas metadata pribadi, warna Appearance, dan proses promotion ke main.
 
 ### 🐞 Perbaikan
 
-- Memperbaiki Search Notes sehingga menekan chapter membuka Reader sementara aksi catatan khusus membuka hasil catatan.
-- Memperbaiki Chapter Search dan Search Notes yang dapat membuat sesi pencarian bertumpuk di Reader.
-- Memperbaiki aksi rating chapter dan Personal Note di Reader yang terkadang gagal terbuka.
-- Memperbaiki sorting chapter yang terkadang kembali ke urutan sebelumnya setelah Details dibuka ulang.
-- Memperbaiki Similar Genres yang dapat menampilkan manga tanpa genre yang benar-benar sama.
-- Meningkatkan Similar Genres untuk source dengan informasi genre yang tidak lengkap.
-- Memperbaiki crash terkait state Fragment yang dapat terjadi ketika refresh source selesai setelah pengguna meninggalkan layar daftar manga.
-- Memperbaiki beberapa masalah timing pada navigasi dan pemuatan chapter Source Pack.
-- Meningkatkan spacing, ukuran, paging, dan perilaku pemilih kategori Favourite pada layar compact atau pendek.
+- Memperbaiki rekonsiliasi chapter agar data chapter yang baru dimuat dapat dicocokkan lebih awal dan lebih andal dengan record chapter lokal yang sudah ada.
+- Memperbaiki kasus ketika metadata pribadi chapter dapat terhubung ke identitas chapter yang salah setelah data chapter berubah atau di-refresh.
+- Memperbaiki indikator rating chapter dan Personal Note agar state tetap terhubung dengan chapter yang benar.
+- Memperbaiki pembaruan langsung status download/delete chapter di Details.
+- Memperbaiki beberapa masalah geometri header dan expansion pada Details modern.
+- Memperbaiki kombinasi custom accent/background yang dapat menghasilkan neutral surface dengan tint yang tidak diinginkan.
+- Memperbaiki geometri Favourites dan cover overlay pada layout compact serta layout modern yang didukung.
+- Meningkatkan penanganan state dan regression coverage untuk Downloaded dan Local Favourites.
 
 </details>
