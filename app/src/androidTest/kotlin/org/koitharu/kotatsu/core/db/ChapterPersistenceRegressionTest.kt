@@ -99,6 +99,20 @@ class ChapterPersistenceRegressionTest {
 
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
+	@Test
+	fun favouriteCoverStatusesCompactAndRecycle() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			org.koitharu.kotatsu.list.ui.FavouriteCoverOverlayRuntimeChecks.compactStatusesAndRecycle(context)
+		}
+	}
+
+	@Test
+	fun favouriteCoverResizesWithoutCollisionsOrChangingCardHeight() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			org.koitharu.kotatsu.list.ui.FavouriteCoverOverlayRuntimeChecks.sizeChangesStayInsideCover(context)
+		}
+	}
+
 	@Before
 	fun setUp() {
 		hiltRule.inject()

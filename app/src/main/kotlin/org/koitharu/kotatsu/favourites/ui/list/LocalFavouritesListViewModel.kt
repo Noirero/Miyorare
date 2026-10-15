@@ -21,6 +21,8 @@ import org.koitharu.kotatsu.core.model.getLanguageCode
 import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.ListMode
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
@@ -28,6 +30,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouriteUnreadCounter
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchMatcher
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.debounceFavouritesSearch
@@ -66,6 +69,7 @@ class LocalFavouritesListViewModel @Inject constructor(
 	private val contentTypeStore: FavouriteContentTypeStore,
 	private val displayPreferences: FavouriteDisplayPreferences,
 	private val unreadCounter: FavouriteUnreadCounter,
+	private val favouritesRepository: FavouritesRepository,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges) {
 
 	private val favouriteSpace = FavouriteSpace.fromArgument(
@@ -152,6 +156,10 @@ class LocalFavouritesListViewModel @Inject constructor(
 			)
 		} else {
 			val visible = ordered.take(pageLimit)
+			val usePermanentStatus = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+				favouriteSpace == FavouriteSpace.NORMAL && (mode == ListMode.GRID || mode == ListMode.COVER_ONLY)
+			val libraryIds = if (usePermanentStatus) favouritesRepository.getMemberships(favouriteSpace)
+				.mapTo(HashSet()) { it.mangaId } else emptySet()
 			prefetchDetailsSnapshots(visible)
 			val cardSnapshot = unreadCounter.getSnapshot(
 				mangaIds = visible.map { it.id },
@@ -177,6 +185,7 @@ class LocalFavouritesListViewModel @Inject constructor(
 						is MangaGridModel -> model.copy(
 							counter = unreadCount,
 							progress = progress,
+							isFavorite = if (usePermanentStatus) mangaId in libraryIds else model.isFavorite,
 							isSaved = model.isSaved && display.showDownloaded,
 							isPinned = isPinned,
 							isTitleOverCover = display.titleOverCover,
