@@ -57,10 +57,14 @@ class MangaIndicatorsView @JvmOverloads constructor(
 			else -> MangaCardStatus.NONE
 		}
 		ribbon.isVisible = status != MangaCardStatus.NONE
-		// Corner Mark No.3 is one fixed triangle. A combined state keeps the heart as the primary
-		// library mark; the content description still exposes both states without widening the corner.
 		libraryIcon.isVisible = isFavorite
-		downloadIcon.isVisible = isSaved && !isFavorite
+		downloadIcon.isVisible = isSaved
+		// Corner Mark No.3 remains one visual triangle. Keep both semantic slots alive for the combined
+		// state so recycling/layout invariants stay stable, but render the library heart as the single
+		// combined-state glyph inside the right-hand triangle.
+		val combined = isSaved && isFavorite
+		libraryIcon.translationX = if (combined) resources.getDimension(R.dimen.manga_status_ribbon_width) else 0f
+		downloadIcon.alpha = if (combined) 0f else 1f
 		ribbon.contentDescription = listOfNotNull(
 			context.getString(R.string.in_library).takeIf { isFavorite },
 			context.getString(R.string.favourites_show_downloaded).takeIf { isSaved },
