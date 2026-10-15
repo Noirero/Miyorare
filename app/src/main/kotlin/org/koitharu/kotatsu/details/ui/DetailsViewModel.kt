@@ -63,6 +63,7 @@ import org.koitharu.kotatsu.details.domain.sourceReleasePredictionItem
 import org.koitharu.kotatsu.details.domain.RelatedMangaGroup
 import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.details.domain.resolveTrackerRecommendation
+import org.koitharu.kotatsu.details.domain.reconcileRoomChapters
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.model.MangaBranch
 import org.koitharu.kotatsu.details.ui.pager.ChapterListOptionsStore
@@ -752,36 +753,14 @@ class DetailsViewModel @Inject constructor(
 	}
 
 	private suspend fun syncCachedChaptersWhenLoadIdle(chapters: List<MangaChapter>) {
-		while (true) {
-			val observedLoad = loadingJob
-			if (observedLoad.isActive) {
-				observedLoad.join()
-				continue
-			}
-
-			val current = mangaDetails.value ?: return
-			if (current.isLocal) return
-
-			// Any concurrent Details load, override edit or download/local event gets priority. Retry from
-			// the newest state instead of replacing it with the Room snapshot emitted above.
-			if (loadingJob !== observedLoad || mangaDetails.value !== current) continue
-
-			val currentSourceChapters = current.sourceManga.chapters.orEmpty()
-			// A cache cleanup or other empty DB snapshot must not blank an already renderable Details list.
-			if (chapters.isEmpty() && currentSourceChapters.isNotEmpty()) return
-
-			var updated = current.copy(manga = current.sourceManga.copy(chapters = chapters))
-			if (mangaDataRepository.isScanlatorsMerged(mangaId)) {
-				updated = updated.withMergedBranches()
-			}
-			if (updated.sourceManga.chapters == current.sourceManga.chapters) return
-
-			mangaDetails.value = updated
-			val availableBranches = updated.chapters.keys
-			if (availableBranches.isNotEmpty() && selectedBranch.value !in availableBranches) {
-				selectedBranch.value = if (null in availableBranches) null else availableBranches.first()
-			}
-			return
+		val updated = mangaDetails.reconcileRoomChapters(
+			chapters = chapters,
+			loadingJob = { loadingJob },
+			isScanlatorsMerged = { mangaDataRepository.isScanlatorsMerged(mangaId) },
+		) ?: return
+		val availableBranches = updated.chapters.keys
+		if (availableBranches.isNotEmpty() && selectedBranch.value !in availableBranches) {
+			selectedBranch.value = if (null in availableBranches) null else availableBranches.first()
 		}
 	}
 

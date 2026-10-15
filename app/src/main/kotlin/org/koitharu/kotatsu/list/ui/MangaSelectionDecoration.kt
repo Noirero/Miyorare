@@ -14,6 +14,7 @@ import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.children
+import androidx.core.view.isVisible
 import com.google.android.material.imageview.ShapeableImageView
 import com.google.android.material.shape.ShapeAppearancePathProvider
 import androidx.recyclerview.widget.RecyclerView
@@ -67,6 +68,12 @@ open class MangaSelectionDecoration(context: Context) : AbstractSelectionItemDec
 		for (child in parent.children) {
 			val indicators = child.findViewById<View>(R.id.iconsView) as? MangaIndicatorsView ?: continue
 			val selected = getItemId(parent, child) in checkedItemsIds
+			val coverOverlays = child.findViewById<FavouriteCoverOverlayView>(R.id.favourite_cover_overlays)
+			if (coverOverlays?.isVisible == true) {
+				coverOverlays.isSelected = selected
+				child.isSelected = selected
+				continue
+			}
 			indicators.applySelectionPresentation(selected)
 			if (child.isSelected != selected) child.isSelected = selected
 			// Status cards already reserve this corner during binding. Normal cards need the
@@ -92,6 +99,7 @@ open class MangaSelectionDecoration(context: Context) : AbstractSelectionItemDec
 		for (child in parent.children) {
 			// Selection owns the stronger existing fill and border; never add status dimming to it.
 			if (getItemId(parent, child) in checkedItemsIds) continue
+			if (child.findViewById<View>(R.id.favourite_cover_overlays)?.visibility == View.VISIBLE) continue
 			val indicators = child.findViewById<View>(R.id.iconsView) as? MangaIndicatorsView ?: continue
 			if (indicators.status == MangaCardStatus.NONE) continue
 			val cover = child.findViewById<View>(R.id.imageView_cover) ?: continue
@@ -125,6 +133,8 @@ open class MangaSelectionDecoration(context: Context) : AbstractSelectionItemDec
 		paint.style = Paint.Style.STROKE
 		canvas.drawRoundRect(bounds, radius, radius, paint)
 		if (child.findViewById<View>(R.id.iconsView) !is MangaIndicatorsView) return
+		val overlays = child.findViewById<FavouriteCoverOverlayView>(R.id.favourite_cover_overlays)
+		if (overlays?.isVisible == true && !overlays.canShowSelectionMarker()) return
 		val cover = child.findViewById<View>(R.id.imageView_cover) ?: return
 		cover.getDrawingRect(coverBounds)
 		parent.offsetDescendantRectToMyCoords(cover, coverBounds)

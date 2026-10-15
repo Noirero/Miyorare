@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="favourites_layout_size">Favorites layout size</string>
+    <string name="favourites_layout_modern">Modern</string>
+    <string name="favourites_layout_classic">Classic</string>
+    <string name="favourites_layout_custom">Custom</string>
+    <string name="favourites_layout_preview">Preview</string>
+    <string name="favourites_cover_size">Cover size</string>
+</resources>

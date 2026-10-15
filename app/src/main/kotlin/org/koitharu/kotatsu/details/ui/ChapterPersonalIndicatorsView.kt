@@ -8,6 +8,7 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.withStyledAttributes
 import androidx.core.view.isVisible
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
@@ -19,6 +20,7 @@ class ChapterPersonalIndicatorsView @JvmOverloads constructor(context: Context, 
 	private val note: ImageView
 	private val number: TextView
 	private val star: ImageView
+	private var stackWhenNarrow = false
 
 	init {
 		orientation = HORIZONTAL
@@ -27,6 +29,30 @@ class ChapterPersonalIndicatorsView @JvmOverloads constructor(context: Context, 
 		note = findViewById(R.id.imageView_personal_note)
 		number = findViewById(R.id.textView_personal_rating)
 		star = findViewById(R.id.imageView_personal_star)
+		context.withStyledAttributes(attrs, R.styleable.ChapterPersonalIndicatorsView) {
+			stackWhenNarrow = getBoolean(R.styleable.ChapterPersonalIndicatorsView_stackWhenNarrow, false)
+		}
+		if (stackWhenNarrow) gravity = Gravity.CENTER_HORIZONTAL
+	}
+
+	override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+		if (stackWhenNarrow) {
+			// Measure the two actions at their natural widths before choosing rows. Recalculate on
+			// every bind/resize so a recycled narrow grid cell can become horizontal again.
+			val unconstrainedWidth = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+			var rowWidth = paddingLeft + paddingRight
+			for (index in 0 until childCount) {
+				val child = getChildAt(index)
+				if (child.visibility == GONE) continue
+				measureChildWithMargins(child, unconstrainedWidth, 0, heightMeasureSpec, 0)
+				val params = child.layoutParams as LayoutParams
+				rowWidth += child.measuredWidth + params.leftMargin + params.rightMargin
+			}
+			orientation = if (MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED &&
+				rowWidth > MeasureSpec.getSize(widthMeasureSpec)
+			) VERTICAL else HORIZONTAL
+		}
+		super.onMeasure(widthMeasureSpec, heightMeasureSpec)
 	}
 
 	fun setOnNoteClickListener(listener: View.OnClickListener?) {

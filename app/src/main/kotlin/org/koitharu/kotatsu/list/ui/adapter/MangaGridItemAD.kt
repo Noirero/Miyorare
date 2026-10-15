@@ -37,6 +37,8 @@ import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.ui.ListModelDiffCallback.Companion.PAYLOAD_PROGRESS_CHANGED
 import org.koitharu.kotatsu.list.ui.model.ListModel
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
+import org.koitharu.kotatsu.list.ui.model.ModernCoverState
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.ItemSizeResolver
@@ -49,6 +51,7 @@ fun mangaGridItemAD(
 	clickListener: MangaDetailsClickListener,
 	titleClickListener: OnListItemClickListener<MangaListModel>? = null,
 	gridVisualScaleProvider: (() -> Float)? = null,
+	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
 ) = adapterDelegateViewBinding<MangaGridModel, ListModel, ItemMangaGridBinding>(
 	{ inflater, parent -> ItemMangaGridBinding.inflate(inflater, parent, false) },
 ) {
@@ -58,6 +61,7 @@ fun mangaGridItemAD(
 		val onTitleClick: (View) -> Unit = { view -> titleClickListener.onItemClick(item, view) }
 		binding.textViewTitleOverlay.attachTitleClickToRead(itemView, onTitleClick)
 		binding.textViewTitle.attachTitleClickToRead(itemView, onTitleClick)
+		binding.favouriteCoverOverlays.titleView.attachTitleClickToRead(itemView, onTitleClick)
 	}
 	sizeResolver.attachToView(itemView, binding.textViewTitleOverlay, binding.progressView)
 
@@ -83,10 +87,12 @@ fun mangaGridItemAD(
 			.coerceIn(0, 255),
 	)
 	val modernCoverRadius = MiyorareVisualTokens.RADIUS_COVER_DP * density
-	val isModernFavouritesGrid = gridVisualScaleProvider != null && appearancePreferences.getEnumValue(
+	val designStyle = appearancePreferences.getEnumValue(
 		MiyorareAppearance.KEY_DESIGN_STYLE,
 		MiyorareDesignStyle.CLASSIC,
-	) == MiyorareDesignStyle.MODERN
+	)
+	val usesModernCover = coverContext.usesOverlay(designStyle)
+	val hasCollectionBorder = coverContext.usesCollectionBorder(designStyle)
 	val isPrivateFavouritesHost = context.findActivity()?.intent?.getIntExtra(
 		EXTRA_FAVOURITE_SPACE,
 		FavouriteSpace.NORMAL.dbValue,
@@ -94,8 +100,8 @@ fun mangaGridItemAD(
 	// Geometry must follow the Modern Normal-Favourites spec independently from whether a palette
 	// bridge is available at this exact bind moment. Palette lookup only controls colour/glass data;
 	// falling back to the legacy 2dp grid margin here made canonical cards ~130.5dp wide.
-	val isNormalModernFavourites = isModernFavouritesGrid && !isPrivateFavouritesHost
-	val normalGlass = if (isNormalModernFavourites) {
+	val isNormalModernFavourites = hasCollectionBorder && !isPrivateFavouritesHost
+	val normalGlass = if (hasCollectionBorder) {
 		context.miyorareViewPaletteFromPreferences()?.neonGlass()
 	} else {
 		null
@@ -161,17 +167,20 @@ fun mangaGridItemAD(
 		.setAllCornerSizes(modernCoverRadius)
 		.build()
 
-	fun applyGridAppearance(isModern: Boolean) {
+	fun applyGridAppearance(isModern: Boolean, visualScale: Float) {
 		binding.imageViewCover.setAspectRatioOverride(
-			MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO.takeIf { isNormalModernFavourites },
+			(MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO / visualScale)
+				.takeIf { isNormalModernFavourites },
 		)
 		if (isModern) {
 			val normalNeon = normalGlass != null
 			binding.imageViewCover.shapeAppearanceModel = modernCoverShape
-			binding.imageViewCover.strokeColor = if (normalNeon) normalBorderTint else modernBorderTint
-			binding.imageViewCover.strokeWidth = (
-				if (isNormalModernFavourites) MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP else 0.5f
-			) * density
+			binding.imageViewCover.strokeColor = if (hasCollectionBorder) {
+				if (normalNeon) normalBorderTint else modernBorderTint
+			} else defaultCoverStrokeColor
+			binding.imageViewCover.strokeWidth = if (hasCollectionBorder) {
+				MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP * density
+			} else defaultCoverStrokeWidth
 			binding.viewScrim.background = modernScrim
 			binding.textViewTitle.setTextColor(onSurface)
 			binding.textViewTitle.setTextSize(
@@ -245,7 +254,7 @@ fun mangaGridItemAD(
 
 	binding.viewScrim.background = classicScrim
 
-	fun applyGridSizing(margin: Int) {
+	fun applyGridSizing(margin: Int, visualScale: Float) {
 		itemView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
 			if (
 				leftMargin != margin ||
@@ -258,19 +267,20 @@ fun mangaGridItemAD(
 		}
 		val coverWidth = resolveActualCoverWidth(itemView, sizeResolver.cellWidth, margin)
 		val referenceHeight = if (isNormalModernFavourites && coverWidth > 0) {
-			(coverWidth / MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO).roundToInt()
+			(coverWidth / MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO * visualScale).roundToInt()
 		} else {
 			0
 		}
-		if (isNormalModernFavourites && referenceHeight > 0) {
+		val coverHeight = if (referenceHeight > 0) referenceHeight else coverWidth * 18 / 13
+		if (usesModernCover && coverHeight > 0) {
 			binding.viewScrim.updateLayoutParams<FrameLayout.LayoutParams> {
-				height = (MiyorareFavouritesVisualSpec.MANGA_CARD_SCRIM_HEIGHT_DP * density).roundToInt()
+				height = minOf(coverHeight, (MiyorareFavouritesVisualSpec.MANGA_CARD_SCRIM_HEIGHT_DP * density).roundToInt())
 			}
 		}
 		binding.imageViewCover.exactImageSize = if (coverWidth > 0) {
 			Size(
 				coverWidth,
-				if (referenceHeight > 0) referenceHeight else coverWidth * 18 / 13,
+				coverHeight,
 			)
 		} else {
 			null
@@ -279,7 +289,10 @@ fun mangaGridItemAD(
 
 	bind { payloads ->
 		itemView.setTooltipCompat(item.getSummary(context))
-		applyGridAppearance(isModernFavouritesGrid)
+		val visualScaleProvider = gridVisualScaleProvider
+		val visualScale = visualScaleProvider?.invoke()?.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
+			?: DEFAULT_FIXED_GRID_SCALE
+		applyGridAppearance(usesModernCover, visualScale)
 		val baseMargin = if (item.isGridSpacingIncreased) gridMarginIncreased else gridMargin
 		val styledBaseMargin = if (isNormalModernFavourites) {
 			val marginDp = if (item.isGridSpacingIncreased) {
@@ -291,38 +304,44 @@ fun mangaGridItemAD(
 		} else {
 			baseMargin
 		}
-		val visualScaleProvider = gridVisualScaleProvider
-		val initialMargin = visualScaleProvider?.invoke()?.let { scale ->
-			resolveFixedGridMargin(itemView, styledBaseMargin, scale)
-		} ?: styledBaseMargin
-		applyGridSizing(initialMargin)
+		applyGridSizing(styledBaseMargin, visualScale)
 		if (visualScaleProvider != null) {
 			val boundId = item.id
 			itemView.doOnLayout {
 				if (item.id != boundId) return@doOnLayout
-				applyGridSizing(
-					resolveFixedGridMargin(itemView, styledBaseMargin, visualScaleProvider.invoke()),
-				)
+				val currentScale = visualScaleProvider.invoke()
+					.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
+				applyGridAppearance(usesModernCover, currentScale)
+				applyGridSizing(styledBaseMargin, currentScale)
 			}
 		}
 
 		val isTitleOverCover = item.isTitleOverCover && !item.isTitleHidden
+		binding.favouriteCoverOverlays.isVisible = usesModernCover
+		if (usesModernCover) {
+			binding.layoutIndicators.apply {
+				translationX = 0f
+				translationY = 0f
+				alpha = 1f
+			}
+			binding.favouriteCoverOverlays.bind(
+				ModernCoverState.from(item, coverContext),
+			) { view ->
+				clickListener.onReadClick(item.toMangaWithOverride(), view)
+			}
+		}
 		binding.textViewTitleOverlay.text = item.title
 		binding.textViewTitle.text = item.title
-		binding.textViewTitleOverlay.isVisible = isTitleOverCover
+		binding.textViewTitleOverlay.isVisible = isTitleOverCover && !usesModernCover
 		binding.viewScrim.isVisible = isTitleOverCover
 		binding.textViewTitle.isVisible = !item.isTitleHidden && !isTitleOverCover
 		binding.progressView.setProgress(item.progress, PAYLOAD_PROGRESS_CHANGED in payloads)
-		binding.imageViewPin.isVisible = item.isPinned
+		binding.imageViewPin.isVisible = item.isPinned && !usesModernCover
 		binding.textViewLanguage.text = item.languageLabel
-		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank()
-		if (normalGlass != null) {
-			// Keep enabled language badges above the cover/scrim stack. Visibility still follows the
-			// existing user preference via item.languageLabel; this is presentation-only.
-			binding.layoutIndicators.bringToFront()
-		}
-		binding.imageViewContinue.isVisible = item.showContinueReading
-		if (item.showContinueReading) {
+		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank() && !usesModernCover
+
+		binding.imageViewContinue.isVisible = item.showContinueReading && !usesModernCover
+		if (item.showContinueReading && !usesModernCover) {
 			binding.imageViewContinue.setOnClickListener { view ->
 				clickListener.onReadClick(item.toMangaWithOverride(), view)
 			}
@@ -332,49 +351,27 @@ fun mangaGridItemAD(
 		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
 			gravity = Gravity.END or if (isTitleOverCover || item.isPinned) Gravity.TOP else Gravity.BOTTOM
 		}
-		binding.iconsView.bindGrid(item.isSaved, item.isLocalSource, item.isFavorite, item.counter)
-		// Reserve the corner without squeezing controls out of narrow covers. Reset on rebind.
+		binding.iconsView.bindGrid(
+			item.isSaved,
+			item.isLocalSource,
+			item.isFavorite,
+			item.counter,
+			useModernCoverOverlay = usesModernCover,
+		)
+		// Legacy Corner Mark offsets belong only to the legacy renderer.
 		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
 			topMargin = context.resources.getDimensionPixelSize(R.dimen.card_indicator_offset) +
-				if ((item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
+				if (!usesModernCover && (item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
 					context.resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_height) +
 						context.resources.getDimensionPixelSize(R.dimen.library_indicator_spacing)
 				} else 0
 		}
 		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
 		binding.badge.number = item.counter
-		binding.badge.isVisible = item.counter > 0
+		binding.badge.isVisible = item.counter > 0 && !usesModernCover
 	}
 }
 
-private fun resolveFixedGridMargin(itemView: View, baseMargin: Int, requestedScale: Float): Int {
-	val scale = requestedScale.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
-	if (scale == DEFAULT_FIXED_GRID_SCALE) return baseMargin
-
-	val recyclerView = itemView.parent as? RecyclerView
-	val layoutManager = recyclerView?.layoutManager as? GridLayoutManager
-	val slotWidth = if (recyclerView != null && layoutManager != null && layoutManager.spanCount > 0) {
-		(recyclerView.width - recyclerView.paddingStart - recyclerView.paddingEnd) / layoutManager.spanCount
-	} else {
-		0
-	}
-
-	return if (scale < DEFAULT_FIXED_GRID_SCALE) {
-		val maxMargin = if (slotWidth > 0) {
-			(slotWidth * MAX_FIXED_GRID_MARGIN_FRACTION).roundToInt().coerceAtLeast(baseMargin)
-		} else {
-			baseMargin
-		}
-		val progress = (scale - MIN_FIXED_GRID_SCALE) /
-			(DEFAULT_FIXED_GRID_SCALE - MIN_FIXED_GRID_SCALE)
-		(maxMargin + (baseMargin - maxMargin) * progress).roundToInt()
-	} else {
-		val minMargin = (baseMargin * MIN_FIXED_GRID_MARGIN_FACTOR).roundToInt().coerceAtLeast(1)
-		val progress = (scale - DEFAULT_FIXED_GRID_SCALE) /
-			(MAX_FIXED_GRID_SCALE - DEFAULT_FIXED_GRID_SCALE)
-		(baseMargin + (minMargin - baseMargin) * progress).roundToInt()
-	}
-}
 
 private fun resolveActualCoverWidth(itemView: View, fallbackWidth: Int, margin: Int): Int {
 	val recyclerView = itemView.parent as? RecyclerView
@@ -390,5 +387,3 @@ private fun resolveActualCoverWidth(itemView: View, fallbackWidth: Int, margin: 
 private const val MIN_FIXED_GRID_SCALE = 0.5f
 private const val DEFAULT_FIXED_GRID_SCALE = 1f
 private const val MAX_FIXED_GRID_SCALE = 1.5f
-private const val MAX_FIXED_GRID_MARGIN_FRACTION = 0.2f
-private const val MIN_FIXED_GRID_MARGIN_FACTOR = 0.25f

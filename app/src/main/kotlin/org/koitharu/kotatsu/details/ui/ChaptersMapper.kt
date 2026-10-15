@@ -31,7 +31,8 @@ fun MangaDetails.mapChapters(
 	if (remoteChapters.isEmpty() && localChapters.isEmpty()) {
 		return emptyList()
 	}
-	val sourceChaptersById = sourceManga.chapters.orEmpty().groupBy { it.id }
+	val sourceChapters = sourceManga.chapters.orEmpty()
+	val sourceChaptersById = sourceChapters.groupBy { it.id }
 	val bookmarked = bookmarks.mapToSet { it.chapterId }
 	val newFrom = if (newCount == 0 || remoteChapters.isEmpty()) Int.MAX_VALUE else remoteChapters.size - newCount
 	val remoteIds = remoteChapters.mapTo(HashSet(remoteChapters.size)) { it.id }
@@ -57,20 +58,24 @@ fun MangaDetails.mapChapters(
 			val local = localMap?.remove(chapter.id)
 				?: localMap?.findAndRemoveEquivalent(chapter, reservedIds = remoteIds)
 			val isCurrent = chapter.id == currentChapterId
-			// Swipe actions operate on the chapter object shown by the adapter. For downloaded chapters
-			// that object may be the local chapter and have a different ID from the remote source chapter.
-			// Accept an override saved under either identity so the visual read state always follows the swipe.
+			// Keep the source chapter id/title/number stable while ownership flips between remote and
+			// downloaded. Only the physical locator/source comes from the local artifact. This prevents
+			// download/delete reconciliation from replacing the row identity (and its personal metadata)
+			// with a transient local-only chapter id while still letting Reader open the local file.
+			val presentedChapter = if (local != null) {
+				chapter.copy(url = local.url, source = local.source)
+			} else {
+				chapter
+			}
 			val readOverride = readOverrides[local?.id] ?: readOverrides[chapter.id]
-			result += (local ?: chapter).toListItem(
+			result += presentedChapter.toListItem(
 				isCurrent = isCurrent,
 				isUnread = readOverride?.not() ?: (isUnread && !isCurrent),
 				isNew = !isCurrent && isUnread && result.size >= newFrom,
 				isDownloaded = local != null,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
-			).copy(personalKey = ChapterPersonalKey.of(
-				sourceChaptersById[chapter.id]?.singleOrNull() ?: chapter,
-			))
+			).copy(personalKey = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById))
 			if (isCurrent) {
 				isUnread = true
 			}
@@ -86,15 +91,28 @@ fun MangaDetails.mapChapters(
 				isDownloaded = !isLocal,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
-			).copy(personalKey = ChapterPersonalKey.of(
-				sourceChaptersById[chapter.id]?.singleOrNull() ?: chapter,
-			))
+			).copy(personalKey = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById))
 			if (isCurrent) {
 				isUnread = true
 			}
 		}
 	}
 	return result
+}
+
+internal fun resolveChapterPersonalKey(
+	chapter: MangaChapter,
+	sourceChapters: List<MangaChapter>,
+	sourceChaptersById: Map<Long, List<MangaChapter>> = sourceChapters.groupBy { it.id },
+): ChapterPersonalKey {
+	// Personal metadata is owned by the source chapter locator, not by the downloaded/local artifact.
+	// A sidecar-free download may be reparsed with a different local id, especially in an isolated
+	// Private root. Recover the unique source chapter with the same bounded equivalence rules used by
+	// download reconciliation so a transient local snapshot cannot hide an existing note/rating.
+	val canonical = sourceChaptersById[chapter.id]?.singleOrNull()
+		?: sourceChapters.singleOrNull { source -> source.isEquivalentDownloadOf(chapter) }
+		?: chapter
+	return ChapterPersonalKey.of(canonical)
 }
 
 private data class ChapterMappingIdentity(

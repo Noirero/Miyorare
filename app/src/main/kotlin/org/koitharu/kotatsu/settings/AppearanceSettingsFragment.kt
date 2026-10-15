@@ -65,7 +65,6 @@ import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.ColorSchemePickerRow
 import org.koitharu.kotatsu.settings.compose.ConfirmDialog
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
-import org.koitharu.kotatsu.settings.compose.EditTextSettingsItem
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.MiyorareChoiceSettingsItem
 import org.koitharu.kotatsu.settings.compose.MultiSelectSettingsItem
@@ -426,16 +425,9 @@ private fun AppearanceScreen(
                         }
                         if (!hasCustomBackground || !customBackgroundColorSync) {
                             item { pos ->
-                                EditTextSettingsItem(
-                                    title = stringResource(R.string.miyorare_custom_accent),
+                                CustomAccentSettingsItem(
                                     value = customAccent,
-                                    hint = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
-                                    onValueChange = { value ->
-                                        MiyorareAppearance.normalizeAccent(value)?.let { customAccent = it }
-                                    },
-                                    isValueValid = { MiyorareAppearance.normalizeAccent(it) != null },
-                                    invalidMessage = stringResource(R.string.miyorare_custom_accent_invalid),
-                                    icon = R.drawable.ic_appearance,
+                                    onValueChange = { customAccent = it },
                                     shape = pos.shape,
                                 )
                             }
@@ -774,7 +766,6 @@ private fun AppearanceScreen(
         )
     }
 }
-
 
 @Composable
 private fun CustomBackgroundPreview(

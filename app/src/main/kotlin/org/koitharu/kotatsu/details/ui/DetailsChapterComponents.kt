@@ -97,6 +97,9 @@ internal fun ModernDetailsHero(
 	imageLoader: ImageLoader,
 	coverUrl: String?,
 	actions: DetailsExpressiveActions,
+	compactExpanded: Boolean = false,
+	onTitleOverflowChanged: (Boolean) -> Unit = {},
+	onCreatorOverflowChanged: (Boolean) -> Unit = {},
 ) {
 	val palette = LocalMiyorareVisualPalette.current
 	val nsfwLabel = when (manga.contentRating) {
@@ -184,14 +187,30 @@ internal fun ModernDetailsHero(
 				actions = actions,
 			)
 			Column(modifier = Modifier.weight(1f)) {
-				HeroTexts(centered = false, manga = manga, accent = accent, actions = actions, showAuthors = false)
-				CreatorMetaText(centered = false, manga = manga, details = details, accent = accent, actions = actions)
+				HeroTexts(
+					centered = false,
+					manga = manga,
+					accent = accent,
+					actions = actions,
+					showAuthors = false,
+					compactExpanded = compactExpanded,
+					onTitleLayout = { if (!compactExpanded) onTitleOverflowChanged(it.hasVisualOverflow) },
+				)
+				CreatorMetaText(
+					centered = false,
+					manga = manga,
+					details = details,
+					accent = accent,
+					actions = actions,
+					compactExpanded = compactExpanded,
+					onOverflowChanged = onCreatorOverflowChanged,
+				)
 				if (!manga.isLocal || manga.state != null) {
-					Spacer(Modifier.height(if (palette.isModern) 8.dp else 14.dp))
+					Spacer(Modifier.height(if (compactExpanded) if (palette.isModern) 8.dp else 14.dp else 4.dp))
 					Row(
 						modifier = Modifier
 							.fillMaxWidth()
-							.height(78.dp),
+							.height(if (compactExpanded) 78.dp else 60.dp),
 						horizontalArrangement = Arrangement.spacedBy(8.dp),
 					) {
 						if (!manga.isLocal) {
@@ -592,6 +611,8 @@ private fun CreatorMetaText(
 	details: MangaDetails?,
 	accent: Color,
 	actions: DetailsExpressiveActions,
+	compactExpanded: Boolean = false,
+	onOverflowChanged: (Boolean) -> Unit = {},
 ) {
 	val authors = manga.authors
 		.map { it.trim() }
@@ -606,9 +627,16 @@ private fun CreatorMetaText(
 			stringResource(R.string.details_creator_split, authors.joinToString(", "), artist)
 		authors.isNotEmpty() -> authors.joinToString(", ")
 		artist != null -> stringResource(R.string.details_creator_art, artist)
-		else -> return
+		else -> null
 	}
-	val clickTarget = authors.firstOrNull() ?: artist ?: return
+	val clickTarget = authors.firstOrNull() ?: artist
+	if (creatorText == null || clickTarget == null) {
+		if (!centered && !compactExpanded) {
+			val creatorLineHeight = with(LocalDensity.current) { MaterialTheme.typography.labelLarge.lineHeight.toDp() }
+			Spacer(Modifier.height(5.dp + creatorLineHeight))
+		}
+		return
+	}
 
 	Spacer(Modifier.height(5.dp))
 	Row(
@@ -634,8 +662,9 @@ private fun CreatorMetaText(
 				style = MaterialTheme.typography.labelLarge,
 				fontWeight = FontWeight.Medium,
 				color = accent,
-				maxLines = 2,
+				maxLines = if (compactExpanded) Int.MAX_VALUE else 1,
 				overflow = TextOverflow.Ellipsis,
+				onTextLayout = { if (!compactExpanded) onOverflowChanged(it.hasVisualOverflow) },
 				modifier = Modifier.weight(1f),
 			)
 		}
@@ -1350,7 +1379,7 @@ internal fun InlineChapterCard(
 						tint = accent,
 						modifier = Modifier.size(16.dp),
 					)
-			}
+				}
 			}
 			val ratingDescription = item.personalMetadata.rating?.let {
 				stringResource(R.string.chapter_personal_rating_value, it)

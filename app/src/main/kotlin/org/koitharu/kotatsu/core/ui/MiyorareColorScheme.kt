@@ -325,6 +325,21 @@ fun classicMiyorareVisualPalette(
 
 private fun deriveCustomPaletteSeeds(primary: Color): PaletteSeeds {
 	val hsl = primary.toHsl()
+	if (hsl.saturation <= CUSTOM_NEUTRAL_SATURATION_THRESHOLD) {
+		return PaletteSeeds(
+			primary = primary,
+			secondary = hslColor(
+				hue = 0f,
+				saturation = 0f,
+				lightness = (hsl.lightness + 0.07f).coerceAtMost(0.72f),
+			),
+			accent = hslColor(
+				hue = 0f,
+				saturation = 0f,
+				lightness = (hsl.lightness + 0.11f).coerceAtMost(0.78f),
+			),
+		)
+	}
 	val secondary = hslColor(
 		hue = hsl.hue + 34f,
 		saturation = maxOf(hsl.saturation * 0.92f, 0.45f),
@@ -337,6 +352,8 @@ private fun deriveCustomPaletteSeeds(primary: Color): PaletteSeeds {
 	)
 	return PaletteSeeds(primary = primary, secondary = secondary, accent = accent)
 }
+
+private const val CUSTOM_NEUTRAL_SATURATION_THRESHOLD = 0.08f
 
 private data class HslColor(
 	val hue: Float,

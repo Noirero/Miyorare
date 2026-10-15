@@ -23,7 +23,6 @@
 		android:layout_width="0dp"
 		android:layout_height="wrap_content"
 		android:layout_marginVertical="8dp"
-		android:layout_marginEnd="?android:listPreferredItemPaddingEnd"
 		android:layout_weight="1"
 		android:orientation="vertical">
 
@@ -32,7 +31,10 @@
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
 			android:drawablePadding="8dp"
-			android:ellipsize="end"
+			android:ellipsize="marquee"
+			android:focusable="false"
+			android:focusableInTouchMode="false"
+			android:marqueeRepeatLimit="marquee_forever"
 			android:singleLine="true"
 			android:textAppearance="?attr/textAppearanceBodyLarge"
 			tools:text="@tools:sample/lorem[15]"
@@ -54,47 +56,52 @@
 		android:id="@+id/imageView_personal"
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
-		android:layout_marginEnd="8dp" />
+		android:layout_marginStart="4dp"
+		android:layout_marginEnd="4dp" />
 
 	<ImageView
 		android:id="@+id/imageView_bookmarked"
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
-		android:layout_marginEnd="?android:listPreferredItemPaddingEnd"
+		android:layout_marginEnd="4dp"
 		android:contentDescription="@string/bookmarks"
 		app:srcCompat="@drawable/ic_bookmark"
 		app:tint="?colorPrimary" />
 
-	<ImageView
-		android:id="@+id/imageView_downloaded"
-		android:layout_width="24dp"
-		android:layout_height="24dp"
-		android:layout_marginEnd="16dp"
-		android:contentDescription="@string/downloaded"
-		app:srcCompat="@drawable/ic_eye_check"
-		app:tint="?colorPrimary" />
-
-	<ProgressBar
-		android:id="@+id/progressBar_download"
-		style="?android:attr/progressBarStyleSmall"
+	<FrameLayout
 		android:layout_width="48dp"
 		android:layout_height="48dp"
-		android:layout_marginEnd="4dp"
-		android:indeterminate="true"
-		android:indeterminateTint="?colorOnSurfaceVariant"
-		android:padding="12dp"
-		android:visibility="gone"
-		tools:visibility="visible" />
+		android:layout_marginEnd="4dp">
 
-	<ImageButton
-		android:id="@+id/imageButton_download"
-		android:layout_width="48dp"
-		android:layout_height="48dp"
-		android:layout_marginEnd="4dp"
-		android:background="?attr/selectableItemBackgroundBorderless"
-		android:contentDescription="@string/save"
-		android:padding="12dp"
-		app:srcCompat="@drawable/ic_save"
-		app:tint="?colorOnSurfaceVariant" />
+		<ImageView
+			android:id="@+id/imageView_downloaded"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:contentDescription="@string/downloaded"
+			android:padding="12dp"
+			app:srcCompat="@drawable/ic_eye_check"
+			app:tint="?colorPrimary" />
+
+		<ProgressBar
+			android:id="@+id/progressBar_download"
+			style="?android:attr/progressBarStyleSmall"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:indeterminate="true"
+			android:indeterminateTint="?colorOnSurfaceVariant"
+			android:padding="12dp"
+			android:visibility="gone"
+			tools:visibility="visible" />
+
+		<ImageButton
+			android:id="@+id/imageButton_download"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:background="?attr/selectableItemBackgroundBorderless"
+			android:contentDescription="@string/save"
+			android:padding="12dp"
+			app:srcCompat="@drawable/ic_save"
+			app:tint="?colorOnSurfaceVariant" />
+	</FrameLayout>
 
 </LinearLayout>

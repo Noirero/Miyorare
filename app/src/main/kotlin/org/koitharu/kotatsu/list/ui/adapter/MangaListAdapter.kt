@@ -4,6 +4,7 @@ import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 import org.koitharu.kotatsu.list.ui.model.TipModel
 import org.koitharu.kotatsu.list.ui.size.ItemSizeResolver
 
@@ -18,6 +19,7 @@ open class MangaListAdapter(
 	 * the original width-driven behaviour.
 	 */
 	gridVisualScaleProvider: (() -> Float)? = null,
+	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
 ) : BaseListAdapter<ListModel>() {
 
 	init {
@@ -32,7 +34,7 @@ open class MangaListAdapter(
 		addDelegate(ListItemType.MANGA_LIST_DETAILED, mangaListDetailedItemAD(listener, titleClickListener))
 		addDelegate(
 			ListItemType.MANGA_GRID,
-			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider),
+			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider, coverContext),
 		)
 		addDelegate(ListItemType.FOOTER_LOADING, loadingFooterAD())
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())

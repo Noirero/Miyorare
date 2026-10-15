@@ -44,16 +44,26 @@ class DownloadedLocalPipelineRegressionTest {
 	}
 
 	@Test fun `every icon binding caller commits the final set`() {
-		// Card adapters now delegate to the manga-specific badge owner. Verify both callers
-		// carry the existing state, and that the actual nested IconsView binding still commits.
+		// Card adapters delegate to the manga-specific badge owner. The grid caller also passes
+		// the explicit Modern cover authority; the nested binding still commits.
 		assertTrue(source("list/ui/adapter/MangaGridItemAD.kt").contains(
-			"binding.iconsView.bindGrid(item.isSaved,item.isLocalSource,item.isFavorite,item.counter)",
+			"binding.iconsView.bindGrid(item.isSaved,item.isLocalSource,item.isFavorite,item.counter,useModernCoverOverlay=usesModernCover,)",
 		))
 		assertTrue(source("list/ui/adapter/MangaListDetailedItemAD.kt").contains(
 			"binding.iconsView.bind(item.isSaved,item.isLocalSource,item.isFavorite)",
 		))
 		val indicators = source("list/ui/MangaIndicatorsView.kt")
-		assertTrue(indicators.contains("funbindGrid(isSaved:Boolean,isLocalSource:Boolean,isFavorite:Boolean,counter:Int){bind(isSaved,isLocalSource,isFavorite)"))
+		val gridBinding = indicators.substringAfter("funbindGrid(")
+			.substringBefore("privatefunapplyModernGridPresentation")
+		val replacement = gridBinding.substringBefore("bind(isSaved,isLocalSource,isFavorite)")
+		// Approved cover groups bypass the legacy Corner Mark entirely, while still committing
+		// IconsView's empty final set. Other consumers retain the existing transactional bind.
+		assertTrue(replacement.contains("useModernCoverOverlay&&root?.findViewById<View>(R.id.favourite_cover_overlays)?.isVisible==true"))
+		assertTrue(replacement.contains("statusIcons.clearIcons()"))
+		assertTrue(replacement.contains("statusIcons.isVisible=statusIcons.iconsCount>0"))
+		assertTrue(replacement.contains("ribbon.isVisible=false"))
+		assertTrue(replacement.contains("return"))
+		assertTrue(gridBinding.substringAfter("return}").contains("bind(isSaved,isLocalSource,isFavorite)"))
 		val binding = indicators.substringAfter("funbind(isSaved:Boolean,isLocalSource:Boolean,isFavorite:Boolean)")
 			.substringBefore("funapplySelectionPresentation")
 		assertTrue(binding.contains("statusIcons.clearIcons()"))

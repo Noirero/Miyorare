@@ -73,6 +73,7 @@ import org.koitharu.kotatsu.favourites.groups.ui.libraryGroupAD
 import org.koitharu.kotatsu.favourites.groups.ui.libraryGroupGridAD
 import org.koitharu.kotatsu.list.ui.MangaListFragment
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
 import org.koitharu.kotatsu.list.ui.config.ListConfigSection
 import org.koitharu.kotatsu.list.ui.model.ListHeader
@@ -148,11 +149,11 @@ class FavouritesListFragment : MangaListFragment() {
 		}
 		viewModel.gridScale.observe(viewLifecycleOwner) {
 			val adapter = binding.recyclerView.adapter ?: return@observe
-			val layoutManager = binding.recyclerView.layoutManager as? GridLayoutManager ?: return@observe
-			val first = layoutManager.findFirstVisibleItemPosition()
-			val last = layoutManager.findLastVisibleItemPosition()
-			if (first >= 0 && last >= first && first < adapter.itemCount) {
-				adapter.notifyItemRangeChanged(first, (last - first + 1).coerceAtMost(adapter.itemCount - first))
+			if (adapter.itemCount > 0) {
+				// Mark the full adapter range changed so attached, cached, and recycled holders cannot
+				// retain geometry from the previous Custom cover size. RecyclerView only rebinds
+				// holders as needed; this also fixes off-screen stale cards after returning to a preset.
+				adapter.notifyItemRangeChanged(0, adapter.itemCount)
 			}
 		}
 		viewModel.content.observe(viewLifecycleOwner) { items ->
@@ -378,6 +379,7 @@ class FavouritesListFragment : MangaListFragment() {
 		val sizeResolver = DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false)
 		return MangaListAdapter(
 			listener = this,
+			coverContext = ModernCoverContext.COLLECTION,
 			sizeResolver = sizeResolver,
 			titleTapToRead = settings.isTitleTapToReadEnabled,
 			onTipClose = { viewModel.dismissScalingTip() },

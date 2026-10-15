@@ -31,7 +31,9 @@ import androidx.core.view.updatePadding
 import androidx.fragment.app.viewModels
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.createMiyorareOverlayBackground
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
@@ -46,6 +48,7 @@ import org.koitharu.kotatsu.core.util.ext.consume
 import org.koitharu.kotatsu.databinding.SheetListModeBinding
 import org.koitharu.kotatsu.favourites.domain.FavouriteCategoryNavigationMode
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import javax.inject.Inject
 import kotlin.math.roundToInt
 import com.google.android.material.R as materialR
 
@@ -53,6 +56,9 @@ import com.google.android.material.R as materialR
 class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 
 	private val viewModel by viewModels<ListConfigViewModel>()
+
+	@Inject
+	lateinit var settings: AppSettings
 
 	override fun onCreateViewBinding(
 		inflater: LayoutInflater,
@@ -112,6 +118,8 @@ class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 		var isGroupingEnabled by remember { mutableStateOf(viewModel.isGroupingEnabled) }
 		val isGroupingAvailable = viewModel.isGroupingAvailable
 		val isGridMode = mode == ListMode.GRID || mode == ListMode.COVER_ONLY
+		val useModernFavouritesLayout = viewModel.isFavouriteSection &&
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN
 
 		Column(modifier = Modifier.padding(bottom = 16.dp)) {
 			SheetSection(title = stringResource(R.string.list_mode)) {
@@ -135,7 +143,20 @@ class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 				exit = shrinkVertically() + fadeOut(),
 			) {
 				Column {
-					if (viewModel.isFavouriteSection) {
+					if (useModernFavouritesLayout) {
+						FavouritesLayoutSizeControls(
+							gridColumns = gridColumns,
+							gridSize = gridSize,
+							onGridColumnsChange = {
+								gridColumns = it.roundToInt().toFloat()
+								viewModel.gridColumns = gridColumns.roundToInt()
+							},
+							onGridSizeChange = {
+								gridSize = it
+								viewModel.gridSize = it.roundToInt()
+							},
+						)
+					} else if (viewModel.isFavouriteSection) {
 						SheetSection(
 							title = stringResource(R.string.favourites_items_per_row),
 							value = gridColumns.roundToInt().toString(),
@@ -172,19 +193,21 @@ class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 							viewModel.isGridSpacingIncreased = it
 						},
 					)
-					SheetSection(
-						title = stringResource(R.string.grid_size),
-						value = "${gridSize.roundToInt()}%",
-					) {
-						Slider(
-							value = gridSize,
-							valueRange = GRID_SIZE_MIN..GRID_SIZE_MAX,
-							onValueChange = {
-								gridSize = it
-								viewModel.gridSize = it.roundToInt()
-							},
-							modifier = Modifier.padding(horizontal = SheetContentPadding),
-						)
+					if (!useModernFavouritesLayout) {
+						SheetSection(
+							title = stringResource(R.string.grid_size),
+							value = "${gridSize.roundToInt()}%",
+						) {
+							Slider(
+								value = gridSize,
+								valueRange = GRID_SIZE_MIN..GRID_SIZE_MAX,
+								onValueChange = {
+									gridSize = it
+									viewModel.gridSize = it.roundToInt()
+								},
+								modifier = Modifier.padding(horizontal = SheetContentPadding),
+							)
+						}
 					}
 				}
 			}
