@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.list.ui
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Rect
 import android.view.ContextThemeWrapper
 import android.view.View
@@ -15,10 +17,13 @@ import org.junit.Assert.*
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.core.model.UnknownMangaSource
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode
 import org.koitharu.kotatsu.history.ui.util.ReadingProgressView
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ReadingProgress
 import org.koitharu.kotatsu.list.ui.adapter.MangaDetailsClickListener
 import org.koitharu.kotatsu.list.ui.adapter.mangaGridItemAD
@@ -86,14 +91,16 @@ internal object ModernCoverRuntimeChecks {
 		assertFalse(cover.titleView.contentDescription.toString().contains("78"))
 	}
 
-	fun actualAdapterGatingAndProgress(context: Context) {
-		val themed = ContextThemeWrapper(context, R.style.Theme_Kotatsu)
+	fun actualAdapterGatingAndProgress(activity: Activity) {
+		val themed = ContextThemeWrapper(activity, R.style.Theme_Kotatsu)
 		val preferences = PreferenceManager.getDefaultSharedPreferences(themed)
 		val oldStyle = preferences.getString(MiyorareAppearance.KEY_DESIGN_STYLE, null)
+		val oldIntent = Intent(activity.intent)
 		try {
 			for (style in MiyorareDesignStyle.entries) {
 				preferences.edit().putString(MiyorareAppearance.KEY_DESIGN_STYLE, style.name).commit()
-				for (overCover in listOf(false, true)) {
+				for (space in FavouriteSpace.entries) for (overCover in listOf(false, true)) {
+					activity.intent.putExtra(EXTRA_FAVOURITE_SPACE, space.dbValue)
 					val value = model().copy(isFavorite = true, isSaved = true, isTitleOverCover = overCover,
 						progress = ReadingProgress(0.5f, 20, ProgressIndicatorMode.PERCENT_READ))
 					val legacy = boundCard(themed, ModernCoverContext.LEGACY, value)
@@ -127,11 +134,17 @@ internal object ModernCoverRuntimeChecks {
 					if (modern) {
 						assertTrue(collection.findViewById<com.google.android.material.imageview.ShapeableImageView>(R.id.imageView_cover).strokeWidth > newCover.strokeWidth)
 						val p = collection.findViewById<ReadingProgressView>(R.id.progressView)
-						assertEquals((14 * themed.resources.displayMetrics.density).toInt(), p.height)
+						if (space == FavouriteSpace.NORMAL) {
+							assertEquals((14 * themed.resources.displayMetrics.density).toInt(), p.height)
+						} else {
+							assertSame(collection.findViewById<View>(R.id.layout_indicators), p.parent)
+							assertEquals(bounds(legacy, oldProgress), bounds(collection, p))
+						}
 					}
 				}
 			}
 		} finally {
+			activity.intent = oldIntent
 			preferences.edit().apply {
 				if (oldStyle == null) remove(MiyorareAppearance.KEY_DESIGN_STYLE) else putString(MiyorareAppearance.KEY_DESIGN_STYLE, oldStyle)
 			}.commit()
@@ -160,7 +173,7 @@ internal object ModernCoverRuntimeChecks {
 		root.offsetDescendantRectToMyCoords(child, it)
 	}
 
-	private fun model() = MangaGridModel(SampleData.manga.copy(coverUrl = null), null, 0, null, false, false)
+	private fun model() = MangaGridModel(SampleData.manga.copy(coverUrl = null, source = UnknownMangaSource), null, 0, null, false, false)
 
 	private fun layout(view: View) {
 		val density = view.resources.displayMetrics.density

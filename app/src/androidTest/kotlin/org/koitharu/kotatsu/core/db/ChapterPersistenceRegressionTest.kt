@@ -122,8 +122,13 @@ class ChapterPersistenceRegressionTest {
 
 	@Test
 	fun modernCoverAdapterSeparatesBorderAndPreservesHostProgress() {
-		InstrumentationRegistry.getInstrumentation().runOnMainSync {
-			org.koitharu.kotatsu.list.ui.ModernCoverRuntimeChecks.actualAdapterGatingAndProgress(context)
+		// The real card inflates a Hilt-injected CoverImageView, so it needs an EntryPoint Activity.
+		androidx.test.core.app.ActivityScenario.launch(
+			org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivity::class.java,
+		).use { scenario ->
+			scenario.onActivity { activity ->
+				org.koitharu.kotatsu.list.ui.ModernCoverRuntimeChecks.actualAdapterGatingAndProgress(activity)
+			}
 		}
 	}
 
