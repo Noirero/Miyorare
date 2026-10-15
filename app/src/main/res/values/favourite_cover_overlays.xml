@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<!-- Cover-local protection keeps white content readable over artwork in either app theme. -->
+	<color name="favourite_cover_protection">#DC101521</color>
+	<color name="favourite_cover_item">#CE252C3B</color>
+	<color name="favourite_cover_outline">#A8CED7EE</color>
+	<color name="favourite_cover_unread">#BB002C</color>
+	<color name="favourite_cover_unread_outline">#FFFF7697</color>
+	<color name="favourite_cover_local">#B0009858</color>
+	<color name="favourite_cover_local_outline">#FF55E5A3</color>
+	<color name="favourite_cover_action">#007AFF</color>
+	<color name="favourite_cover_action_outline">#FF70C5FF</color>
+	<color name="favourite_cover_pin">#FFFFCF42</color>
+</resources>

@@ -59,8 +59,8 @@
 			android:layout_width="wrap_content"
 			android:layout_height="22dp"
 			android:layout_gravity="bottom|start"
-			android:layout_marginStart="8dp"
-			android:layout_marginBottom="30dp"
+			android:layout_marginStart="4dp"
+			android:layout_marginBottom="4dp"
 			android:background="@drawable/bg_pin_badge"
 			android:gravity="center"
 			android:paddingHorizontal="6dp"
@@ -141,6 +141,12 @@
 				tools:visibility="visible" />
 
 		</LinearLayout>
+
+		<org.koitharu.kotatsu.list.ui.FavouriteCoverOverlayView
+			android:id="@+id/favourite_cover_overlays"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			android:visibility="gone" />
 
 	</FrameLayout>
 

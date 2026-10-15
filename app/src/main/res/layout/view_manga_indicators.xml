@@ -17,8 +17,7 @@
 		android:id="@+id/status_ribbon"
 		android:layout_width="wrap_content"
 		android:layout_height="@dimen/manga_status_ribbon_height"
-		android:background="@drawable/bg_manga_status_corner"
-		android:gravity="top|end"
+		android:background="@drawable/bg_manga_status_corner_container"
 		android:importantForAccessibility="yes"
 		android:layoutDirection="ltr"
 		android:orientation="horizontal">
@@ -30,7 +29,7 @@
 			android:importantForAccessibility="no"
 			android:padding="6dp"
 			android:scaleType="centerInside"
-			android:src="@drawable/ic_bookmark"
+			android:src="@drawable/ic_heart"
 			android:tint="?attr/colorOnPrimary" />
 
 		<ImageView

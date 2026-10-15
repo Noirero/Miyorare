@@ -127,6 +127,10 @@
 		<attr name="iconSpacing" format="dimension" />
 	</declare-styleable>
 
+	<declare-styleable name="ChapterPersonalIndicatorsView">
+		<attr name="stackWhenNarrow" format="boolean" />
+	</declare-styleable>
+
 	<declare-styleable name="FilterFieldLayout">
 		<attr name="title" />
 		<attr name="showMoreButton" format="boolean" />

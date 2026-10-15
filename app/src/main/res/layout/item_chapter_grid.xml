@@ -40,7 +40,11 @@
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
 			app:layout_constraintStart_toStartOf="@id/textView_title"
-			app:layout_constraintTop_toTopOf="@id/textView_title"
+			app:layout_constraintEnd_toEndOf="@id/textView_title"
+			app:layout_constraintTop_toBottomOf="@id/textView_title"
+			app:layout_constraintBottom_toBottomOf="parent"
+			app:layout_constrainedWidth="true"
+			app:stackWhenNarrow="true"
 			android:layout_margin="6dp" />
 
 		<ImageView

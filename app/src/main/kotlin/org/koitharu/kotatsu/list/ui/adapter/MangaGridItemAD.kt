@@ -58,6 +58,7 @@ fun mangaGridItemAD(
 		val onTitleClick: (View) -> Unit = { view -> titleClickListener.onItemClick(item, view) }
 		binding.textViewTitleOverlay.attachTitleClickToRead(itemView, onTitleClick)
 		binding.textViewTitle.attachTitleClickToRead(itemView, onTitleClick)
+		binding.favouriteCoverOverlays.titleView.attachTitleClickToRead(itemView, onTitleClick)
 	}
 	sizeResolver.attachToView(itemView, binding.textViewTitleOverlay, binding.progressView)
 
@@ -265,7 +266,7 @@ fun mangaGridItemAD(
 		}
 		if (isNormalModernFavourites && referenceHeight > 0) {
 			binding.viewScrim.updateLayoutParams<FrameLayout.LayoutParams> {
-				height = (MiyorareFavouritesVisualSpec.MANGA_CARD_SCRIM_HEIGHT_DP * density).roundToInt()
+				height = minOf(referenceHeight, (MiyorareFavouritesVisualSpec.MANGA_CARD_SCRIM_HEIGHT_DP * density).roundToInt())
 			}
 		}
 		binding.imageViewCover.exactImageSize = if (coverWidth > 0) {
@@ -308,22 +309,28 @@ fun mangaGridItemAD(
 		}
 
 		val isTitleOverCover = item.isTitleOverCover && !item.isTitleHidden
+		binding.favouriteCoverOverlays.isVisible = isNormalModernFavourites
+		if (isNormalModernFavourites) {
+			binding.favouriteCoverOverlays.bind(item) { view ->
+				clickListener.onReadClick(item.toMangaWithOverride(), view)
+			}
+		}
 		binding.textViewTitleOverlay.text = item.title
 		binding.textViewTitle.text = item.title
-		binding.textViewTitleOverlay.isVisible = isTitleOverCover
+		binding.textViewTitleOverlay.isVisible = isTitleOverCover && !isNormalModernFavourites
 		binding.viewScrim.isVisible = isTitleOverCover
 		binding.textViewTitle.isVisible = !item.isTitleHidden && !isTitleOverCover
 		binding.progressView.setProgress(item.progress, PAYLOAD_PROGRESS_CHANGED in payloads)
-		binding.imageViewPin.isVisible = item.isPinned
+		binding.imageViewPin.isVisible = item.isPinned && !isNormalModernFavourites
 		binding.textViewLanguage.text = item.languageLabel
-		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank()
+		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank() && !isNormalModernFavourites
 		if (normalGlass != null) {
 			// Keep enabled language badges above the cover/scrim stack. Visibility still follows the
 			// existing user preference via item.languageLabel; this is presentation-only.
 			binding.layoutIndicators.bringToFront()
 		}
-		binding.imageViewContinue.isVisible = item.showContinueReading
-		if (item.showContinueReading) {
+		binding.imageViewContinue.isVisible = item.showContinueReading && !isNormalModernFavourites
+		if (item.showContinueReading && !isNormalModernFavourites) {
 			binding.imageViewContinue.setOnClickListener { view ->
 				clickListener.onReadClick(item.toMangaWithOverride(), view)
 			}
@@ -340,17 +347,17 @@ fun mangaGridItemAD(
 			item.counter,
 			isNormalModernFavourites,
 		)
-		// Reserve the corner without squeezing controls out of narrow covers. Reset on rebind.
+		// Only legacy consumers reserve corner geometry. The new cover owner measures active children.
 		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
 			topMargin = context.resources.getDimensionPixelSize(R.dimen.card_indicator_offset) +
-				if ((item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
+				if (!isNormalModernFavourites && (item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
 					context.resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_height) +
 						context.resources.getDimensionPixelSize(R.dimen.library_indicator_spacing)
 				} else 0
 		}
 		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
 		binding.badge.number = item.counter
-		binding.badge.isVisible = item.counter > 0
+		binding.badge.isVisible = item.counter > 0 && !isNormalModernFavourites
 	}
 }
 

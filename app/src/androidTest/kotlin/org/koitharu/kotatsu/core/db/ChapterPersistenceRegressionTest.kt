@@ -99,6 +99,20 @@ class ChapterPersistenceRegressionTest {
 
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
+	@Test
+	fun favouriteCoverStatusesCompactAndRecycle() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			org.koitharu.kotatsu.list.ui.FavouriteCoverOverlayRuntimeChecks.compactStatusesAndRecycle(context)
+		}
+	}
+
+	@Test
+	fun favouriteCoverResizesWithoutCollisionsOrChangingCardHeight() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			org.koitharu.kotatsu.list.ui.FavouriteCoverOverlayRuntimeChecks.sizeChangesStayInsideCover(context)
+		}
+	}
+
 	@Before
 	fun setUp() {
 		hiltRule.inject()
@@ -414,13 +428,38 @@ class ChapterPersistenceRegressionTest {
 						view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageButton_download).performClick()
 						assertEquals(rows[position], downloaded)
 					}
-					val width = ((if (grid) 80 else 240) * themed.resources.displayMetrics.density).toInt()
-					view.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
-						android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
-					view.layout(0, 0, width, view.measuredHeight)
-					val indicators = view.findViewById<android.view.View>(org.koitharu.kotatsu.R.id.imageView_personal)
-					assertTrue(indicators.measuredWidth <= width - (12 * themed.resources.displayMetrics.density).toInt())
-					assertTrue(indicators.right <= width)
+					// Reuse the same holder across narrow/wide/narrow cells as well as metadata states.
+					for (widthDp in if (grid) listOf(80, 140, 80) else listOf(240)) {
+						val density = themed.resources.displayMetrics.density
+						val width = (widthDp * density).toInt()
+						view.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
+							android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
+						view.layout(0, 0, width, view.measuredHeight)
+						val indicators = view.findViewById<android.view.ViewGroup>(org.koitharu.kotatsu.R.id.imageView_personal)
+						assertTrue(indicators.measuredWidth <= width - (12 * density).toInt())
+						assertTrue(indicators.right <= width)
+						for (target in listOf(note, star).filter { it.visibility == android.view.View.VISIBLE }) {
+							assertTrue(target.measuredWidth >= (48 * density).toInt())
+							assertTrue(target.measuredHeight >= (48 * density).toInt())
+							val bounds = android.graphics.Rect(0, 0, target.width, target.height)
+							indicators.offsetDescendantRectToMyCoords(target, bounds)
+							assertTrue(bounds.left >= 0 && bounds.right <= indicators.width)
+							assertTrue(bounds.top >= 0 && bounds.bottom <= indicators.height)
+						}
+						if (grid) {
+							assertTrue(indicators.top >= title.bottom)
+							assertTrue(indicators.bottom <= (indicators.parent as android.view.View).height)
+							if (metadata.note != null) {
+								val noteBounds = android.graphics.Rect(0, 0, note.width, note.height)
+								val starBounds = android.graphics.Rect(0, 0, star.width, star.height)
+								indicators.offsetDescendantRectToMyCoords(note, noteBounds)
+								indicators.offsetDescendantRectToMyCoords(star, starBounds)
+								assertTrue(!android.graphics.Rect.intersects(noteBounds, starBounds))
+								if (widthDp == 80) assertTrue(noteBounds.bottom <= starBounds.top)
+								else assertEquals(noteBounds.top, starBounds.top)
+							}
+						}
+					}
 				}
 				if (!grid) {
 					adapter.bindViewHolder(holder, rows.size)
@@ -598,10 +637,13 @@ class ChapterPersistenceRegressionTest {
 						view.layout(0, 0, view.measuredWidth, view.measuredHeight)
 						assertTrue(view.measuredWidth <= width)
 						if (saved || favorite) {
-							assertEquals(size * (if (saved && favorite) 2 else 1), ribbon.measuredWidth)
+							// The corner background has a 28dp intrinsic minimum; each icon still occupies
+							// its existing 24dp slot, including when only one status is visible.
+							val contentWidth = size * (if (saved && favorite) 2 else 1)
+							assertEquals(maxOf(contentWidth, ribbon.background.minimumWidth), ribbon.measuredWidth)
+							if (favorite) assertEquals(size, libraryIcon.measuredWidth)
+							if (saved) assertEquals(size, downloadIcon.measuredWidth)
 							if (saved && favorite) {
-								assertEquals(size, libraryIcon.measuredWidth)
-								assertEquals(size, downloadIcon.measuredWidth)
 								assertEquals(libraryIcon.right, downloadIcon.left)
 								assertEquals(0, libraryIcon.left)
 							}
@@ -701,7 +743,7 @@ class ChapterPersistenceRegressionTest {
 						indicators = MangaIndicatorsView(themed)
 						indicators.id = org.koitharu.kotatsu.R.id.iconsView
 						card.addView(indicators, android.widget.FrameLayout.LayoutParams(-2, -2))
-						controls = android.view.View(themed).apply { id = org.koitharu.kotatsu.R.id.layout_indicators }
+						controls = android.widget.LinearLayout(themed).apply { id = org.koitharu.kotatsu.R.id.layout_indicators }
 						card.addView(controls, android.widget.FrameLayout.LayoutParams(26, 26, android.view.Gravity.TOP or android.view.Gravity.END))
 						return object : androidx.recyclerview.widget.RecyclerView.ViewHolder(card) {}
 					}

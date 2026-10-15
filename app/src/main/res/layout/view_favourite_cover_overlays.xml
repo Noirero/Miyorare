@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto">
+	<FrameLayout android:id="@+id/cover_unread"
+		android:layout_width="wrap_content" android:layout_height="wrap_content">
+		<org.koitharu.kotatsu.core.ui.widgets.BadgeView android:id="@+id/cover_unread_number"
+			android:layout_width="wrap_content" android:layout_height="wrap_content"
+			android:importantForAccessibility="no"
+			app:maxCharacterCount="@integer/manga_badge_max_character_count" />
+	</FrameLayout>
+	<LinearLayout android:id="@+id/cover_permanent_status"
+		android:layout_width="wrap_content" android:layout_height="wrap_content"
+		android:layoutDirection="ltr" android:orientation="horizontal">
+		<ImageView android:id="@+id/cover_library"
+			android:layout_width="wrap_content" android:layout_height="wrap_content"
+			android:importantForAccessibility="no" android:src="@drawable/ic_bookmark" />
+		<ImageView android:id="@+id/cover_downloaded"
+			android:layout_width="wrap_content" android:layout_height="wrap_content"
+			android:importantForAccessibility="no" android:src="@drawable/ic_download" />
+		<ImageView android:id="@+id/cover_pinned"
+			android:layout_width="wrap_content" android:layout_height="wrap_content"
+			android:importantForAccessibility="no" android:src="@drawable/ic_pin_small" />
+	</LinearLayout>
+	<LinearLayout android:id="@+id/cover_metadata"
+		android:layout_width="wrap_content" android:layout_height="wrap_content"
+		android:orientation="horizontal">
+		<TextView android:id="@+id/cover_local"
+			android:layout_width="wrap_content" android:layout_height="wrap_content"
+			android:gravity="center" android:singleLine="true" android:text="LOCAL"
+			android:textStyle="bold" />
+		<TextView android:id="@+id/cover_language"
+			android:layout_width="wrap_content" android:layout_height="wrap_content"
+			android:gravity="center" android:singleLine="true" android:textStyle="bold" />
+	</LinearLayout>
+	<TextView android:id="@+id/cover_title"
+		android:layout_width="match_parent" android:layout_height="wrap_content"
+		android:ellipsize="end" android:maxLines="2" android:includeFontPadding="false"
+		android:textAppearance="@style/TextAppearance.Kotatsu.GridTitle.Overlay" />
+	<ImageView android:id="@+id/cover_continue"
+		android:layout_width="48dp" android:layout_height="48dp"
+		android:contentDescription="@string/favourites_show_continue_reading"
+		android:src="@drawable/ic_play" android:focusable="true" />
+</merge>
