@@ -5,6 +5,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
+import android.text.StaticLayout
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.View
@@ -36,6 +37,9 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 	private val action: ImageView
 	private var model: MangaGridModel? = null
 	private var readClick: ((View) -> Unit)? = null
+	private var styledMetrics: FavouriteCoverOverlayMetrics? = null
+	private var styledWidth = -1
+	private var styledActionSize = -1
 	private val density get() = resources.displayMetrics.density
 
 	init {
@@ -54,6 +58,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 
 	fun bind(value: MangaGridModel, onReadClick: (View) -> Unit) {
 		model = value
+		styledMetrics = null
 		readClick = onReadClick.takeIf { value.showContinueReading }
 		number.number = value.counter
 		titleView.text = value.title
@@ -100,8 +105,8 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		// A MATCH_PARENT overlay contributes zero height in the FrameLayout's first wrap-content pass.
 		val h = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED) 0 else MeasureSpec.getSize(heightMeasureSpec)
 		setMeasuredDimension(w, h)
+		if (w <= 0 || h <= 0) return
 		val value = model ?: return
-		resetVisibility(value)
 		val metrics = FavouriteCoverOverlayMetrics.resolve(w / density, h / density)
 		fun px(dp: Float) = (dp * density).roundToInt()
 		val inset = px(metrics.inset)
@@ -113,93 +118,102 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		val top = inset + if (isSelected) resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_width) +
 			resources.getDimensionPixelSize(R.dimen.library_indicator_spacing) else 0
 
-		unread.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_unread_outline, radius)
-		unread.setPadding(padding, padding, padding, padding)
-		number.backgroundTintList = null
-		number.background = shape(R.color.favourite_cover_unread, R.color.favourite_cover_unread_outline, px(metrics.unreadSize) / 2f)
-		number.setTextColor(Color.WHITE)
-		number.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.badgeSp)
-		number.includeFontPadding = false
-		val diameter = max(px(metrics.unreadSize), number.paint.measureText(number.text.toString()).roundToInt() + padding * 2)
-		number.layoutParams = LayoutParams(diameter, diameter)
-		statuses.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_outline, radius)
-		statuses.setPadding(padding, padding, padding, padding)
-		val activeStatuses = statusItems.filter { it.isVisible }
-		val statusSize = px(metrics.statusSize)
-		statuses.orientation = if (activeStatuses.size * statusSize + max(0, activeStatuses.size - 1) * gap + padding * 2 <= innerWidth) {
-			LinearLayout.HORIZONTAL
-		} else LinearLayout.VERTICAL
-		statusItems.forEachIndexed { index, icon ->
-			icon.imageTintList = ColorStateList.valueOf(if (index == 2) color(R.color.favourite_cover_pin) else Color.WHITE)
-			icon.background = shape(R.color.favourite_cover_item, R.color.favourite_cover_outline, radius * 0.7f)
-			val iconPadding = px(3f * metrics.scale)
-			icon.setPadding(iconPadding, iconPadding, iconPadding, iconPadding)
-			icon.layoutParams = LinearLayout.LayoutParams(statusSize, statusSize).apply {
-				if (icon.isVisible && icon !== activeStatuses.firstOrNull()) {
-					if (statuses.orientation == LinearLayout.HORIZONTAL) leftMargin = gap else topMargin = gap
+		if (styledMetrics != metrics || styledWidth != innerWidth) {
+			unread.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_unread_outline, radius)
+			unread.setPadding(padding, padding, padding, padding)
+			number.backgroundTintList = null
+			number.background = shape(R.color.favourite_cover_unread, R.color.favourite_cover_unread_outline, px(metrics.unreadSize) / 2f)
+			number.setTextColor(Color.WHITE)
+			number.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.badgeSp)
+			number.includeFontPadding = false
+			val diameter = maxOf(px(metrics.unreadSize), number.paint.measureText(number.text.toString()).roundToInt() + padding * 2,
+				(number.paint.fontMetrics.descent - number.paint.fontMetrics.ascent).roundToInt() + padding * 2)
+			number.layoutParams = LayoutParams(diameter, diameter)
+			statuses.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_outline, radius)
+			statuses.setPadding(padding, padding, padding, padding)
+			val activeStatuses = statusItems.filter { it.isVisible }
+			val statusSize = px(metrics.statusSize)
+			statuses.orientation = if (activeStatuses.size * statusSize + max(0, activeStatuses.size - 1) * gap + padding * 2 <= innerWidth) {
+				LinearLayout.HORIZONTAL
+			} else LinearLayout.VERTICAL
+			statusItems.forEachIndexed { index, icon ->
+				icon.imageTintList = ColorStateList.valueOf(if (index == 2) color(R.color.favourite_cover_pin) else Color.WHITE)
+				icon.background = shape(R.color.favourite_cover_item, R.color.favourite_cover_outline, radius * 0.7f)
+				val iconPadding = px(3f * metrics.scale)
+				icon.setPadding(iconPadding, iconPadding, iconPadding, iconPadding)
+				icon.layoutParams = LinearLayout.LayoutParams(statusSize, statusSize).apply {
+					if (icon.isVisible && icon !== activeStatuses.firstOrNull()) {
+						if (statuses.orientation == LinearLayout.HORIZONTAL) leftMargin = gap else topMargin = gap
+					}
 				}
 			}
-		}
-		metadata.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_action_outline, radius)
-		metadata.setPadding(padding, padding, padding, padding)
-		listOf(local, language).forEach { badge ->
-			badge.setTextColor(Color.WHITE)
-			badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.metadataSp)
-			badge.includeFontPadding = false
-			badge.setPadding(padding * 2, padding, padding * 2, padding)
-			badge.background = if (badge === local) shape(R.color.favourite_cover_local, R.color.favourite_cover_local_outline, radius * 0.7f)
-				else shape(R.color.favourite_cover_item, R.color.favourite_cover_outline, radius * 0.7f)
-			badge.layoutParams = LinearLayout.LayoutParams(-2, -2).apply {
-				if (badge === language && local.isVisible) marginStart = gap
+			metadata.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_action_outline, radius)
+			metadata.setPadding(padding, padding, padding, padding)
+			listOf(local, language).forEach { badge ->
+				badge.setTextColor(Color.WHITE)
+				badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.metadataSp)
+				badge.includeFontPadding = false
+				badge.setPadding(padding * 2, padding, padding * 2, padding)
+				badge.background = if (badge === local) shape(R.color.favourite_cover_local, R.color.favourite_cover_local_outline, radius * 0.7f)
+					else shape(R.color.favourite_cover_item, R.color.favourite_cover_outline, radius * 0.7f)
+				badge.layoutParams = LinearLayout.LayoutParams(-2, -2).apply {
+					if (badge === language && local.isVisible) marginStart = gap
+				}
 			}
+			titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.titleSp)
+			titleView.setTextColor(Color.WHITE)
+			titleView.setLineSpacing(0f, 0.96f)
+			styledMetrics = metrics
+			styledWidth = innerWidth
 		}
-		titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.titleSp)
-		titleView.setTextColor(Color.WHITE)
-		titleView.setLineSpacing(0f, 0.96f)
-		titleView.maxLines = 2
-		measureNatural(titleView, innerWidth)
 		measureNatural(statuses, innerWidth)
-		// Keep a readable title line before sacrificing permanent-state visuals on short covers.
-		if (titleView.isVisible && (titleView.measuredHeight > bottom ||
-			(statuses.isVisible && top + statuses.measuredHeight + gap > bottom - titleView.measuredHeight))) {
-			titleView.maxLines = 1
-			measureNatural(titleView, innerWidth)
-		}
-		if (titleView.measuredHeight > bottom) titleView.isVisible = false
-		val titleTop = bottom - if (titleView.isVisible) titleView.measuredHeight else 0
+		var showStatuses = statusItems.any { it.isVisible }
+		var showTitle = value.isTitleOverCover && !value.isTitleHidden
+		val naturalTitle = StaticLayout.Builder.obtain(value.title, 0, value.title.length, titleView.paint, innerWidth.coerceAtLeast(1))
+			.setIncludePad(false).setLineSpacing(0f, 0.96f).setMaxLines(2).build()
+		val titleLines = if (naturalTitle.height > bottom ||
+			(showStatuses && top + statuses.measuredHeight + gap > bottom - naturalTitle.height)) 1 else 2
+		if (titleView.maxLines != titleLines) titleView.maxLines = titleLines
+		measureNatural(titleView, innerWidth)
+		if (titleView.measuredHeight > bottom) showTitle = false
+		val titleTop = bottom - if (showTitle) titleView.measuredHeight else 0
 		place(titleView, inset, titleTop)
 		val topLimit = titleTop - gap
-		if (statuses.measuredHeight + top > topLimit || statuses.measuredWidth > innerWidth) statuses.isVisible = false
+		if (statuses.measuredHeight + top > topLimit || statuses.measuredWidth > innerWidth) showStatuses = false
 		place(statuses, w - inset - statuses.measuredWidth, top)
-		var usedTop = if (statuses.isVisible) top + statuses.measuredHeight else inset
+		var usedTop = if (showStatuses) top + statuses.measuredHeight else inset
 		measureNatural(unread, innerWidth)
-		val unreadTop = if (statuses.isVisible && unread.measuredWidth + statuses.measuredWidth + gap > innerWidth) usedTop + gap else inset
-		if (unread.measuredWidth > innerWidth || unreadTop + unread.measuredHeight > topLimit) unread.isVisible = false
+		val unreadTop = if (showStatuses && unread.measuredWidth + statuses.measuredWidth + gap > innerWidth) usedTop + gap else inset
+		val showUnread = value.counter > 0 && unread.measuredWidth <= innerWidth && unreadTop + unread.measuredHeight <= topLimit
 		place(unread, inset, unreadTop)
-		if (unread.isVisible) usedTop = max(usedTop, unreadTop + unread.measuredHeight)
+		if (showUnread) usedTop = max(usedTop, unreadTop + unread.measuredHeight)
 
-		// Metadata precedes the action in compaction priority. Never retain an empty badge slot.
+		// Metadata precedes the action in compaction priority. Measure even a previously GONE group.
 		measureNatural(metadata, w)
-		if (metadata.measuredWidth > innerWidth && local.isVisible && language.isVisible) {
-			language.isVisible = false
-			measureNatural(metadata, w)
-		}
-		if (metadata.measuredWidth > innerWidth || usedTop + gap > titleTop - gap - metadata.measuredHeight) metadata.isVisible = false
+		val showMetadata = (value.isLocalSource || !value.languageLabel.isNullOrBlank()) &&
+			metadata.measuredWidth <= innerWidth && usedTop + gap <= titleTop - gap - metadata.measuredHeight
 		place(metadata, inset, titleTop - gap - metadata.measuredHeight)
 		val target = px(FavouriteCoverOverlayMetrics.ACTION_TOUCH_DP)
-		val circleInset = ((target - px(metrics.actionSize)) / 2).coerceAtLeast(0)
-		action.backgroundTintList = null
-		action.background = InsetDrawable(shape(R.color.favourite_cover_action, R.color.favourite_cover_action_outline, target / 2f), circleInset)
-		action.imageTintList = ColorStateList.valueOf(Color.WHITE)
-		val actionPadding = circleInset + px(metrics.actionSize * 0.20f)
-		action.setPadding(actionPadding, actionPadding, actionPadding, actionPadding)
-		action.measure(exact(target), exact(target))
-		if (target > innerWidth || usedTop + gap > titleTop - gap - target ||
-			(metadata.isVisible && metadata.measuredWidth + gap + target > innerWidth)) action.isVisible = false
-		if (!action.isVisible) {
-			action.setOnClickListener(null)
-			action.isClickable = false
+		if (styledActionSize != px(metrics.actionSize)) {
+			val circleInset = ((target - px(metrics.actionSize)) / 2).coerceAtLeast(0)
+			action.backgroundTintList = null
+			action.background = InsetDrawable(shape(R.color.favourite_cover_action, R.color.favourite_cover_action_outline, target / 2f), circleInset)
+			action.imageTintList = ColorStateList.valueOf(Color.WHITE)
+			val actionPadding = circleInset + px(metrics.actionSize * 0.20f)
+			action.setPadding(actionPadding, actionPadding, actionPadding, actionPadding)
+			styledActionSize = px(metrics.actionSize)
 		}
+		action.measure(exact(target), exact(target))
+		val showAction = value.showContinueReading && target <= innerWidth && usedTop + gap <= titleTop - gap - target &&
+			(!showMetadata || metadata.measuredWidth + gap + target <= innerWidth)
+		// Apply final visibility once; temporary visibility toggles during measure can cause layout loops.
+		titleView.isVisible = showTitle
+		statuses.isVisible = showStatuses
+		unread.isVisible = showUnread
+		metadata.isVisible = showMetadata
+		action.isVisible = showAction
+		action.setOnClickListener(if (showAction) OnClickListener { readClick?.invoke(it) } else null)
+		action.isClickable = showAction
 		place(action, w - inset - target, titleTop - gap - target)
 		updateAccessibility(value)
 	}
@@ -223,14 +237,19 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 	}
 
 	private fun measureNatural(view: View, maxWidth: Int) {
-		if (view.isVisible) view.measure(MeasureSpec.makeMeasureSpec(maxWidth.coerceAtLeast(0), MeasureSpec.AT_MOST),
+		view.measure(MeasureSpec.makeMeasureSpec(maxWidth.coerceAtLeast(0), MeasureSpec.AT_MOST),
 			MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
 	}
 
 	private fun place(view: View, left: Int, top: Int) {
-		view.layoutParams = LayoutParams(view.measuredWidth, view.measuredHeight).apply {
-			leftMargin = left.coerceAtLeast(0)
-			topMargin = top.coerceAtLeast(0)
+		val x = left.coerceAtLeast(0)
+		val y = top.coerceAtLeast(0)
+		val old = view.layoutParams as LayoutParams
+		if (old.width != view.measuredWidth || old.height != view.measuredHeight || old.leftMargin != x || old.topMargin != y) {
+			view.layoutParams = LayoutParams(view.measuredWidth, view.measuredHeight).apply {
+				leftMargin = x
+				topMargin = y
+			}
 		}
 	}
 

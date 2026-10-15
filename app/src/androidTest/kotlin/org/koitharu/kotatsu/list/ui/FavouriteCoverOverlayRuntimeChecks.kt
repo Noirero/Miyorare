@@ -68,6 +68,7 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 				assertTrue(number.paint.measureText(label) <= number.width)
 			}
 			assertTrue(action.measuredWidth >= (48 * density).roundToInt())
+			progressBoundsStayLocked(themed)
 		}
 	}
 
@@ -102,13 +103,57 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 			assertEquals(3, cover.findViewById<ViewGroup>(R.id.cover_permanent_status).children.count { it.isVisible })
 			assertTrue(cover.findViewById<View>(R.id.cover_permanent_status).isVisible)
 			// A wrap-content host takes its height from the cover, never from chrome intrinsic size.
-			val host = FrameLayout(themed)
+			val host = MeasureHost(themed)
 			val image = View(themed)
 			host.addView(image, FrameLayout.LayoutParams(-1, (35 * density).roundToInt()))
 			host.addView(cover, FrameLayout.LayoutParams(-1, -1))
 			host.measure(View.MeasureSpec.makeMeasureSpec((59 * density).roundToInt(), View.MeasureSpec.EXACTLY),
 				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
 			assertEquals((35 * density).roundToInt(), host.measuredHeight)
+			host.layout(0, 0, host.measuredWidth, host.measuredHeight)
+			host.requests = 0
+			cover.forceLayout()
+			layout(cover, 59, 35)
+			assertEquals("Stable repeated measurement must not schedule another parent layout", 0, host.requests)
+		}
+	}
+
+	private fun progressBoundsStayLocked(context: Context) {
+		val density = context.resources.displayMetrics.density
+		val root = FrameLayout(context)
+		val legacy = android.widget.LinearLayout(context).apply { id = R.id.layout_indicators }
+		val progress = org.koitharu.kotatsu.history.ui.util.ReadingProgressView(context).apply {
+			id = R.id.progressView
+			setProgress(org.koitharu.kotatsu.list.domain.ReadingProgress(0.5f, 20,
+				org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.PERCENT_READ), false)
+		}
+		legacy.addView(progress)
+		root.addView(legacy)
+		val oldLocal = android.widget.TextView(context).apply { id = R.id.textView_local }
+		root.addView(oldLocal)
+		val overlays = FavouriteCoverOverlayView(context).apply { id = R.id.favourite_cover_overlays }
+		overlays.bind(model().copy(isFavorite = true, isPinned = true)) {}
+		root.addView(overlays, FrameLayout.LayoutParams(-1, -1))
+		val old = MangaIndicatorsView(context)
+		root.addView(old)
+		old.bindGrid(true, true, true, 115, true)
+		layout(root, 194, 344)
+		assertFalse(old.isVisible)
+		assertFalse(oldLocal.isVisible)
+		assertFalse(legacy.isVisible)
+		assertSame(root, progress.parent)
+		assertEquals((8 * density).toInt(), progress.left)
+		assertEquals(root.width - (8 * density).toInt(), progress.right)
+		assertEquals(root.height - (4 * density).toInt(), progress.bottom)
+		assertEquals((14 * density).toInt(), progress.height)
+		assertTrue(overlays.titleView.bottom < progress.top)
+	}
+
+	private class MeasureHost(context: Context) : FrameLayout(context) {
+		var requests = 0
+		override fun requestLayout() {
+			super.requestLayout()
+			requests++
 		}
 	}
 
