@@ -60,6 +60,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		model = value
 		styledMetrics = null
 		styledActionSize = -1
+		contentDescription = null
 		readClick = onReadClick.takeIf { value.showContinueReading }
 		number.number = value.counter
 		titleView.text = value.title
@@ -103,8 +104,8 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 
 	override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
 		val w = MeasureSpec.getSize(widthMeasureSpec)
-		// A MATCH_PARENT overlay contributes zero height in the FrameLayout's first wrap-content pass.
-		val h = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED) 0 else MeasureSpec.getSize(heightMeasureSpec)
+		// Only the cover parent's final exact pass owns height; neither wrap-content pass may grow it.
+		val h = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY) MeasureSpec.getSize(heightMeasureSpec) else 0
 		setMeasuredDimension(w, h)
 		if (w <= 0 || h <= 0) return
 		val value = model ?: return
@@ -130,6 +131,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			number.includeFontPadding = false
 			val diameter = maxOf(px(metrics.unreadSize), number.paint.measureText(number.text.toString()).roundToInt() + padding * 2,
 				(number.paint.fontMetrics.descent - number.paint.fontMetrics.ascent).roundToInt() + padding * 2)
+			(number.background as GradientDrawable).cornerRadius = diameter / 2f
 			number.layoutParams = LayoutParams(diameter, diameter)
 			statuses.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_outline, radius)
 			statuses.setPadding(padding, padding, padding, padding)
@@ -183,7 +185,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		if (statuses.measuredHeight + top > topLimit || statuses.measuredWidth > innerWidth) showStatuses = false
 		place(statuses, w - inset - statuses.measuredWidth, top)
 		var usedTop = if (showStatuses) top + statuses.measuredHeight else if (isSelected) top else inset
-		measureNatural(unread, innerWidth)
+		measureNatural(unread, w)
 		val unreadTop = when {
 			showStatuses && unread.measuredWidth + statuses.measuredWidth + gap > innerWidth -> usedTop + gap
 			isSelected && unread.measuredWidth + selectionSize + gap > innerWidth -> top

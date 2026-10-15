@@ -110,18 +110,21 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 			assertEquals(3, cover.findViewById<ViewGroup>(R.id.cover_permanent_status).children.count { it.isVisible })
 			assertTrue(cover.findViewById<View>(R.id.cover_permanent_status).isVisible)
 			// A wrap-content host takes its height from the cover, never from chrome intrinsic size.
-			val host = MeasureHost(themed)
-			val image = View(themed)
-			host.addView(image, FrameLayout.LayoutParams(-1, (35 * density).roundToInt()))
-			host.addView(cover, FrameLayout.LayoutParams(-1, -1))
-			host.measure(View.MeasureSpec.makeMeasureSpec((59 * density).roundToInt(), View.MeasureSpec.EXACTLY),
-				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-			assertEquals((35 * density).roundToInt(), host.measuredHeight)
-			host.layout(0, 0, host.measuredWidth, host.measuredHeight)
-			host.requests = 0
-			cover.forceLayout()
-			layout(cover, 59, 35)
-			assertEquals("Stable repeated measurement must not schedule another parent layout", 0, host.requests)
+			for (mode in listOf(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.AT_MOST)) {
+				(cover.parent as? ViewGroup)?.removeView(cover)
+				val host = MeasureHost(themed)
+				val image = View(themed)
+				host.addView(image, FrameLayout.LayoutParams(-1, (35 * density).roundToInt()))
+				host.addView(cover, FrameLayout.LayoutParams(-1, -1))
+				host.measure(View.MeasureSpec.makeMeasureSpec((59 * density).roundToInt(), View.MeasureSpec.EXACTLY),
+					View.MeasureSpec.makeMeasureSpec((700 * density).roundToInt(), mode))
+				assertEquals((35 * density).roundToInt(), host.measuredHeight)
+				host.layout(0, 0, host.measuredWidth, host.measuredHeight)
+				host.requests = 0
+				cover.forceLayout()
+				layout(cover, 59, 35)
+				assertEquals("Stable repeated measurement must not schedule another parent layout", 0, host.requests)
+			}
 		}
 	}
 
