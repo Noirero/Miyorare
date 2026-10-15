@@ -205,8 +205,8 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			action.backgroundTintList = null
 			action.background = InsetDrawable(shape(R.color.favourite_cover_action, R.color.favourite_cover_action_outline, target / 2f), circleInset)
 			action.imageTintList = ColorStateList.valueOf(Color.WHITE)
-			val actionPadding = circleInset + px(metrics.actionSize * 0.20f)
-			action.setPadding(actionPadding, actionPadding, actionPadding, actionPadding)
+			// ic_play already contains optical insets; the glyph follows the blue circle's size.
+			action.setPadding(circleInset, circleInset, circleInset, circleInset)
 			styledActionSize = px(metrics.actionSize)
 		}
 		action.measure(exact(target), exact(target))
