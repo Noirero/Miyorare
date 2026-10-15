@@ -13,6 +13,8 @@ import org.junit.Assert.*
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
+import org.koitharu.kotatsu.list.ui.model.ModernCoverState
 import kotlin.math.roundToInt
 
 /** Invoked by the existing Android-runtime suite, without changing its workflow or chapter tests. */
@@ -62,7 +64,7 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 			assertEquals(metadata.paddingLeft, cover.findViewById<View>(R.id.cover_language).left)
 			val number = cover.findViewById<android.widget.TextView>(R.id.cover_unread_number)
 			for ((count, label) in listOf(999 to "999", 1000 to "99+")) {
-				cover.bind(model().copy(counter = count)) {}
+				cover.bind(model().copy(counter = count, unreadCount = count)) {}
 				layout(cover, 128, 170)
 				assertEquals(label, number.text.toString())
 				assertTrue(number.paint.measureText(label) <= number.width)
@@ -167,8 +169,11 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 		}
 	}
 
+	private fun FavouriteCoverOverlayView.bind(model: MangaGridModel, onReadClick: (View) -> Unit) =
+		bind(ModernCoverState.from(model, ModernCoverContext.COLLECTION), onReadClick = onReadClick)
+
 	private fun model() = MangaGridModel(SampleData.manga.copy(title = "A long manga title that must wrap and ellipsize safely"),
-		null, 115, null, false, false)
+		null, 115, null, false, false, unreadCount = 115)
 
 	private fun layout(view: View, widthDp: Int, heightDp: Int) {
 		val density = view.resources.displayMetrics.density

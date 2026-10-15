@@ -20,12 +20,15 @@ data class MangaGridModel(
 	val isLocalSource: Boolean = false,
 	val languageLabel: String? = null,
 	val showContinueReading: Boolean = false,
+	/** Cached chapter/history authority only; null means unread was not projected by this host. */
+	val unreadCount: Int? = null,
 ) : MangaListModel() {
 
 	override fun getChangePayload(previousState: ListModel): Any? = when {
 		previousState !is MangaGridModel || previousState.manga != manga -> null
 
 		previousState.progress != progress -> PAYLOAD_PROGRESS_CHANGED
+		previousState.unreadCount != unreadCount -> PAYLOAD_ANYTHING_CHANGED
 		previousState.isFavorite != isFavorite ||
 			previousState.isSaved != isSaved ||
 			previousState.isTitleHidden != isTitleHidden ||

@@ -8,6 +8,7 @@ import android.graphics.drawable.InsetDrawable
 import android.text.StaticLayout
 import android.util.AttributeSet
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -18,16 +19,17 @@ import androidx.core.view.children
 import androidx.core.view.isVisible
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.widgets.BadgeView
-import org.koitharu.kotatsu.list.ui.model.MangaGridModel
+import org.koitharu.kotatsu.list.ui.model.ModernCoverState
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** Normal Modern Favorites only. Measures inside the cover; never determines the card's size. */
+/** Shared Modern cover presentation. The historic name is retained to avoid resource churn. */
 class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
 	FrameLayout(context, attrs) {
 
 	private val unread: FrameLayout
 	private val number: BadgeView
+	private val legacyCounter: BadgeView
 	private val statuses: LinearLayout
 	private val statusItems: List<ImageView>
 	private val metadata: LinearLayout
@@ -35,7 +37,8 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 	private val language: TextView
 	val titleView: TextView
 	private val action: ImageView
-	private var model: MangaGridModel? = null
+	private var model: ModernCoverState? = null
+	private var preservedProgress: View? = null
 	private var readClick: ((View) -> Unit)? = null
 	private var styledMetrics: FavouriteCoverOverlayMetrics? = null
 	private var styledWidth = -1
@@ -46,6 +49,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		inflate(context, R.layout.view_favourite_cover_overlays, this)
 		unread = findViewById(R.id.cover_unread)
 		number = findViewById(R.id.cover_unread_number)
+		legacyCounter = findViewById(R.id.cover_legacy_counter)
 		statuses = findViewById(R.id.cover_permanent_status)
 		statusItems = listOf(R.id.cover_library, R.id.cover_downloaded, R.id.cover_pinned).map { findViewById<ImageView>(it) }
 		metadata = findViewById(R.id.cover_metadata)
@@ -56,13 +60,15 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		clipChildren = true
 	}
 
-	fun bind(value: MangaGridModel, onReadClick: (View) -> Unit) {
+	fun bind(value: ModernCoverState, preservedProgress: View? = null, onReadClick: (View) -> Unit) {
 		model = value
+		this.preservedProgress = preservedProgress
 		styledMetrics = null
 		styledActionSize = -1
 		contentDescription = null
 		readClick = onReadClick.takeIf { value.showContinueReading }
-		number.number = value.counter
+		number.number = value.unreadCount ?: 0
+		legacyCounter.number = value.legacyCounter
 		titleView.text = value.title
 		language.text = value.languageLabel
 		isSelected = false
@@ -81,12 +87,13 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		requestLayout()
 	}
 
-	private fun resetVisibility(value: MangaGridModel) {
+	private fun resetVisibility(value: ModernCoverState) {
 		listOf(value.isFavorite, value.isSaved, value.isPinned).forEachIndexed { index, active ->
 			statusItems[index].isVisible = active
 		}
 		statuses.isVisible = statusItems.any { it.isVisible }
-		unread.isVisible = value.counter > 0
+		unread.isVisible = (value.unreadCount ?: 0) > 0
+		legacyCounter.isVisible = value.legacyCounter > 0
 		local.isVisible = value.isLocalSource
 		language.isVisible = !value.languageLabel.isNullOrBlank()
 		metadata.isVisible = local.isVisible || language.isVisible
@@ -116,9 +123,17 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		val padding = px(metrics.padding)
 		val radius = px(metrics.radius).toFloat()
 		val innerWidth = (w - inset * 2).coerceAtLeast(0)
-		val bottom = h - px(FavouriteCoverOverlayMetrics.PROGRESS_RESERVED_DP) - gap
+		// Protect the host's existing progress bounds without moving or restyling that view.
+		val progress = preservedProgress?.takeIf { it.isVisible && it.measuredHeight > 0 }
+		val progressParams = progress?.layoutParams as? LayoutParams
+		val progressGravity = progressParams?.gravity?.and(Gravity.VERTICAL_GRAVITY_MASK)
+		val progressHeight = progress?.measuredHeight ?: 0
+		val bottomReserve = if (preservedProgress == null) px(FavouriteCoverOverlayMetrics.PROGRESS_RESERVED_DP)
+			else if (progressGravity == Gravity.BOTTOM) progressHeight + (progressParams?.bottomMargin ?: 0) else 0
+		val contentTop = inset + if (progressGravity == Gravity.TOP) progressHeight + (progressParams?.topMargin ?: 0) else 0
+		val bottom = h - bottomReserve - gap
 		val selectionSize = resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_width)
-		val top = inset + if (isSelected) selectionSize +
+		val top = contentTop + if (isSelected) selectionSize +
 			resources.getDimensionPixelSize(R.dimen.library_indicator_spacing) else 0
 
 		if (styledMetrics != metrics || styledWidth != innerWidth) {
@@ -176,24 +191,37 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		val naturalTitle = StaticLayout.Builder.obtain(value.title, 0, value.title.length, titleView.paint, innerWidth.coerceAtLeast(1))
 			.setIncludePad(false).setLineSpacing(0f, 0.96f).setMaxLines(2).build()
 		val titleLines = if (naturalTitle.height > bottom ||
+			(preservedProgress != null && naturalTitle.height > bottom - contentTop) ||
 			(showStatuses && top + statuses.measuredHeight + gap > bottom - naturalTitle.height)) 1 else 2
 		if (titleView.maxLines != titleLines) titleView.maxLines = titleLines
 		measureNatural(titleView, innerWidth)
-		if (titleView.measuredHeight > bottom) showTitle = false
+		if (titleView.measuredHeight > bottom ||
+			(preservedProgress != null && titleView.measuredHeight > bottom - contentTop)) showTitle = false
 		var titleTop = bottom - if (showTitle) titleView.measuredHeight else 0
 		val topLimit = titleTop - gap
 		if (statuses.measuredHeight + top > topLimit || statuses.measuredWidth > innerWidth) showStatuses = false
 		place(statuses, w - inset - statuses.measuredWidth, top)
-		var usedTop = if (showStatuses) top + statuses.measuredHeight else if (isSelected) top else inset
+		var usedTop = if (showStatuses) top + statuses.measuredHeight else if (isSelected) top else contentTop
 		measureNatural(unread, w)
 		val unreadTop = when {
 			showStatuses && unread.measuredWidth + statuses.measuredWidth + gap > innerWidth -> usedTop + gap
 			isSelected && unread.measuredWidth + selectionSize + gap > innerWidth -> top
-			else -> inset
+			else -> contentTop
 		}
-		val showUnread = value.counter > 0 && unread.measuredWidth <= innerWidth && unreadTop + unread.measuredHeight <= topLimit
+		val showUnread = (value.unreadCount ?: 0) > 0 && unread.measuredWidth <= innerWidth && unreadTop + unread.measuredHeight <= topLimit
 		place(unread, inset, unreadTop)
 		if (showUnread) usedTop = max(usedTop, unreadTop + unread.measuredHeight)
+		measureNatural(legacyCounter, w)
+		val legacyTop = when {
+			showUnread -> usedTop + gap
+			showStatuses && legacyCounter.measuredWidth + statuses.measuredWidth + gap > innerWidth -> usedTop + gap
+			isSelected && legacyCounter.measuredWidth + selectionSize + gap > innerWidth -> top
+			else -> contentTop
+		}
+		val showLegacyCounter = value.legacyCounter > 0 && legacyCounter.measuredWidth <= innerWidth &&
+			legacyTop + legacyCounter.measuredHeight <= topLimit
+		place(legacyCounter, inset, legacyTop)
+		if (showLegacyCounter) usedTop = max(usedTop, legacyTop + legacyCounter.measuredHeight)
 
 		// Metadata precedes the action in compaction priority. Measure even a previously GONE group.
 		measureNatural(metadata, w)
@@ -227,6 +255,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		titleView.isVisible = showTitle
 		statuses.isVisible = showStatuses
 		unread.isVisible = showUnread
+		legacyCounter.isVisible = showLegacyCounter
 		metadata.isVisible = showMetadata
 		action.isVisible = showAction
 		action.setOnClickListener(if (showAction) OnClickListener { readClick?.invoke(it) } else null)
@@ -237,17 +266,18 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		updateAccessibility(value)
 	}
 
-	private fun updateAccessibility(value: MangaGridModel) {
+	private fun updateAccessibility(value: ModernCoverState) {
 		val permanent = listOfNotNull(
 			context.getString(R.string.in_library).takeIf { value.isFavorite },
 			context.getString(R.string.favourites_show_downloaded).takeIf { value.isSaved },
 			context.getString(R.string.pin).takeIf { value.isPinned },
 		).joinToString(", ")
 		statuses.contentDescription = permanent.ifEmpty { null }
-		val unreadText = "${context.getString(R.string.unread)}: ${value.counter}"
+		val unreadText = "${context.getString(R.string.unread)}: ${value.unreadCount ?: 0}"
 		unread.contentDescription = unreadText
 		val omitted = listOfNotNull(permanent.takeIf { !statuses.isVisible && it.isNotEmpty() },
-			unreadText.takeIf { !unread.isVisible && value.counter > 0 },
+			unreadText.takeIf { !unread.isVisible && (value.unreadCount ?: 0) > 0 },
+			value.legacyCounter.toString().takeIf { !legacyCounter.isVisible && value.legacyCounter > 0 },
 			"LOCAL".takeIf { !metadata.isVisible && value.isLocalSource },
 			value.languageLabel.takeIf { !metadata.isVisible || !language.isVisible })
 		titleView.contentDescription = (listOf(value.title) + omitted).joinToString(", ")
@@ -260,6 +290,10 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		if (isLayoutRequested) return false
 		val markerBottom = resources.getDimensionPixelSize(R.dimen.card_indicator_offset) +
 			resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_width)
+		val progress = preservedProgress
+		val params = progress?.layoutParams as? LayoutParams
+		if (progress?.isVisible == true && progress.measuredHeight > 0 &&
+			params?.gravity?.and(Gravity.VERTICAL_GRAVITY_MASK) == Gravity.TOP && params.topMargin < markerBottom) return false
 		return markerBottom <= height - (FavouriteCoverOverlayMetrics.PROGRESS_RESERVED_DP * density).roundToInt() &&
 			(!titleView.isVisible || markerBottom < titleView.top)
 	}

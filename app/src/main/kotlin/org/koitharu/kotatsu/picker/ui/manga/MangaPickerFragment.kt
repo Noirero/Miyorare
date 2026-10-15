@@ -6,10 +6,13 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.list.ui.MangaListFragment
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 import org.koitharu.kotatsu.picker.ui.PageImagePickActivity
 
 @AndroidEntryPoint
 class MangaPickerFragment : MangaListFragment() {
+
+	override val coverContext = ModernCoverContext.LEGACY
 
 	override val isSwipeRefreshEnabled = false
 

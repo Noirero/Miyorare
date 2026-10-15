@@ -85,9 +85,13 @@ class MangaIndicatorsView @JvmOverloads constructor(
 		}
 	}
 
-	fun bindGrid(isSaved: Boolean, isLocalSource: Boolean, isFavorite: Boolean, counter: Int, useModernFavouritesPresentation: Boolean = false) {
+	fun bindGrid(
+		isSaved: Boolean, isLocalSource: Boolean, isFavorite: Boolean, counter: Int,
+		useModernFavouritesPresentation: Boolean = false,
+		useModernCoverOverlay: Boolean = useModernFavouritesPresentation,
+	) {
 		val root = parent as? FrameLayout
-		if (useModernFavouritesPresentation && root?.findViewById<View>(R.id.favourite_cover_overlays)?.isVisible == true) {
+		if (useModernCoverOverlay && root?.findViewById<View>(R.id.favourite_cover_overlays)?.isVisible == true) {
 			// The new owner replaces every old cover indicator. Keep exactly the accepted progress path.
 			modernGridPresentation = false
 			status = MangaCardStatus.NONE
@@ -98,11 +102,14 @@ class MangaIndicatorsView @JvmOverloads constructor(
 			root.findViewById<View>(R.id.textView_local)?.isVisible = false
 			val legacy = root.findViewById<LinearLayout>(R.id.layout_indicators)
 			val progress = root.findViewById<ReadingProgressView>(R.id.progressView)
-			if (legacy != null) {
+			if (useModernFavouritesPresentation && legacy != null) {
 				reparent(root, legacy, progress, modernLayout(Gravity.BOTTOM or Gravity.START, start = 8, end = 8, bottom = 4, matchWidth = true))
 				legacy.isVisible = false
+				progress?.setModernBottomEdge(true)
+			} else {
+				// Browsing and Private retain their existing progress parent, mode and dimensions.
+				restoreLegacyGridPresentation()
 			}
-			progress?.setModernBottomEdge(true)
 			return
 		}
 		bind(isSaved, isLocalSource, isFavorite)

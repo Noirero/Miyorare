@@ -14,6 +14,7 @@ import org.koitharu.kotatsu.core.util.ext.addMenuProvider
 import org.koitharu.kotatsu.databinding.FragmentListBinding
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.list.ui.MangaListFragment
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 
@@ -48,10 +49,10 @@ class LocalFavouritesListFragment : MangaListFragment() {
 
 	override fun onCreateAdapter() = MangaListAdapter(
 		listener = this,
+		coverContext = ModernCoverContext.COLLECTION,
 		sizeResolver = DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false),
 		titleTapToRead = settings.isTitleTapToReadEnabled,
-		// Non-null is the renderer authority for the Modern Normal-Favourites presentation.
-		// Local keeps its existing sizing authority; this only opts the shelf into the same card hierarchy.
+		// Local keeps its existing sizing authority independently of the collection presentation.
 		gridVisualScaleProvider = { 1f },
 	)
 

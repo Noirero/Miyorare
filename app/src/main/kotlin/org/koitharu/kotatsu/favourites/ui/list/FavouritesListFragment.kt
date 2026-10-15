@@ -73,6 +73,7 @@ import org.koitharu.kotatsu.favourites.groups.ui.libraryGroupAD
 import org.koitharu.kotatsu.favourites.groups.ui.libraryGroupGridAD
 import org.koitharu.kotatsu.list.ui.MangaListFragment
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
 import org.koitharu.kotatsu.list.ui.config.ListConfigSection
 import org.koitharu.kotatsu.list.ui.model.ListHeader
@@ -378,6 +379,7 @@ class FavouritesListFragment : MangaListFragment() {
 		val sizeResolver = DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false)
 		return MangaListAdapter(
 			listener = this,
+			coverContext = ModernCoverContext.COLLECTION,
 			sizeResolver = sizeResolver,
 			titleTapToRead = settings.isTitleTapToReadEnabled,
 			onTipClose = { viewModel.dismissScalingTip() },

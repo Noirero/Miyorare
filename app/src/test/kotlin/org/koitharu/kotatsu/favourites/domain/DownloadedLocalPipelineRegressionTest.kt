@@ -47,7 +47,7 @@ class DownloadedLocalPipelineRegressionTest {
 		// Card adapters delegate to the manga-specific badge owner. The grid caller also passes
 		// the renderer's existing Modern Normal Favorites authority; the nested binding still commits.
 		assertTrue(source("list/ui/adapter/MangaGridItemAD.kt").contains(
-			"binding.iconsView.bindGrid(item.isSaved,item.isLocalSource,item.isFavorite,item.counter,isNormalModernFavourites,)",
+			"binding.iconsView.bindGrid(item.isSaved,item.isLocalSource,item.isFavorite,item.counter,isNormalModernFavourites,useModernCoverOverlay=usesModernCover,)",
 		))
 		assertTrue(source("list/ui/adapter/MangaListDetailedItemAD.kt").contains(
 			"binding.iconsView.bind(item.isSaved,item.isLocalSource,item.isFavorite)",
@@ -58,7 +58,7 @@ class DownloadedLocalPipelineRegressionTest {
 		val replacement = gridBinding.substringBefore("bind(isSaved,isLocalSource,isFavorite)")
 		// Approved cover groups bypass the legacy Corner Mark entirely, while still committing
 		// IconsView's empty final set. Other consumers retain the existing transactional bind.
-		assertTrue(replacement.contains("useModernFavouritesPresentation&&root?.findViewById<View>(R.id.favourite_cover_overlays)?.isVisible==true"))
+		assertTrue(replacement.contains("useModernCoverOverlay&&root?.findViewById<View>(R.id.favourite_cover_overlays)?.isVisible==true"))
 		assertTrue(replacement.contains("statusIcons.clearIcons()"))
 		assertTrue(replacement.contains("statusIcons.isVisible=statusIcons.iconsCount>0"))
 		assertTrue(replacement.contains("ribbon.isVisible=false"))

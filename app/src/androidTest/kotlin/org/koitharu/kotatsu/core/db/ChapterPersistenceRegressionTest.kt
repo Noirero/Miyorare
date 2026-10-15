@@ -113,6 +113,20 @@ class ChapterPersistenceRegressionTest {
 		}
 	}
 
+	@Test
+	fun modernCoverProjectsOnlyHostAuthorizedState() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			org.koitharu.kotatsu.list.ui.ModernCoverRuntimeChecks.projectionAndRecycling(context)
+		}
+	}
+
+	@Test
+	fun modernCoverAdapterSeparatesBorderAndPreservesHostProgress() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			org.koitharu.kotatsu.list.ui.ModernCoverRuntimeChecks.actualAdapterGatingAndProgress(context)
+		}
+	}
+
 	@Before
 	fun setUp() {
 		hiltRule.inject()

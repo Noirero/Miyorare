@@ -957,7 +957,7 @@ class FavouritesListViewModel @Inject constructor(
 		)
 		val pinnedSet = pinned.toSet()
 		val usePermanentStatus = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
-			favouriteSpace == FavouriteSpace.NORMAL && (mode == ListMode.GRID || mode == ListMode.COVER_ONLY)
+			(mode == ListMode.GRID || mode == ListMode.COVER_ONLY)
 		// Read the existing space-scoped projection once per mapping, never from a recycled holder.
 		val libraryIds = if (usePermanentStatus) repository.getMemberships(favouriteSpace)
 			.mapTo(HashSet()) { it.mangaId } else emptySet()
@@ -980,6 +980,7 @@ class FavouritesListViewModel @Inject constructor(
 			val progress = cardSnapshot.getProgress(mangaId, settings.progressIndicatorMode)
 			result[i] = when (model) {
 				is MangaGridModel -> model.copy(
+					unreadCount = unreadCount,
 					counter = unreadCount,
 					progress = progress,
 					isFavorite = if (usePermanentStatus) mangaId in libraryIds else model.isFavorite,

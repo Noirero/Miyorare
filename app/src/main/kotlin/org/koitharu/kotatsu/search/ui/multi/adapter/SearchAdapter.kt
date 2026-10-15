@@ -14,6 +14,7 @@ import org.koitharu.kotatsu.list.ui.adapter.errorStateListAD
 import org.koitharu.kotatsu.list.ui.adapter.loadingFooterAD
 import org.koitharu.kotatsu.list.ui.adapter.loadingStateAD
 import org.koitharu.kotatsu.list.ui.adapter.mangaGridItemAD
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.size.ItemSizeResolver
 import org.koitharu.kotatsu.search.ui.multi.SearchResultsListModel
@@ -37,7 +38,7 @@ class SearchAdapter(
 				itemClickListener = itemClickListener,
 			),
 		)
-		addDelegate(ListItemType.MANGA_GRID, mangaGridItemAD(sizeResolver, listener))
+		addDelegate(ListItemType.MANGA_GRID, mangaGridItemAD(sizeResolver, listener, coverContext = ModernCoverContext.BROWSING))
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())
 		addDelegate(ListItemType.FOOTER_LOADING, loadingFooterAD())
 		addDelegate(ListItemType.STATE_EMPTY, emptyStateListAD(listener))
