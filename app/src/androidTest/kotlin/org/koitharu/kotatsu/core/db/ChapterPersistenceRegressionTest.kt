@@ -122,6 +122,8 @@ class ChapterPersistenceRegressionTest {
 
 	@Test
 	fun modernCoverAdapterSeparatesBorderAndPreservesHostProgress() {
+		// HiltTestApplication omits BaseApp's background warm-up; use the existing fixture pattern.
+		imageLoaderProvider.get()
 		// The real card inflates a Hilt-injected CoverImageView, so it needs an EntryPoint Activity.
 		androidx.test.core.app.ActivityScenario.launch(
 			org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivity::class.java,
