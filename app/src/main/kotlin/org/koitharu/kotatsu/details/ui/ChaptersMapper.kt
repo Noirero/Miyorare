@@ -58,11 +58,17 @@ fun MangaDetails.mapChapters(
 			val local = localMap?.remove(chapter.id)
 				?: localMap?.findAndRemoveEquivalent(chapter, reservedIds = remoteIds)
 			val isCurrent = chapter.id == currentChapterId
-			// Swipe actions operate on the chapter object shown by the adapter. For downloaded chapters
-			// that object may be the local chapter and have a different ID from the remote source chapter.
-			// Accept an override saved under either identity so the visual read state always follows the swipe.
+			// Keep the source chapter id/title/number stable while ownership flips between remote and
+			// downloaded. Only the physical locator/source comes from the local artifact. This prevents
+			// download/delete reconciliation from replacing the row identity (and its personal metadata)
+			// with a transient local-only chapter id while still letting Reader open the local file.
+			val presentedChapter = if (local != null) {
+				chapter.copy(url = local.url, source = local.source)
+			} else {
+				chapter
+			}
 			val readOverride = readOverrides[local?.id] ?: readOverrides[chapter.id]
-			result += (local ?: chapter).toListItem(
+			result += presentedChapter.toListItem(
 				isCurrent = isCurrent,
 				isUnread = readOverride?.not() ?: (isUnread && !isCurrent),
 				isNew = !isCurrent && isUnread && result.size >= newFrom,
