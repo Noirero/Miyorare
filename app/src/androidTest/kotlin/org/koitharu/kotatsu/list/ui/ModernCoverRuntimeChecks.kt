@@ -163,8 +163,8 @@ internal object ModernCoverRuntimeChecks {
 		}
 		val adapter = ListDelegationAdapter(mangaGridItemAD(resolver, listener, coverContext = host))
 		adapter.items = listOf(value)
-		val holder = adapter.onCreateViewHolder(FrameLayout(context), adapter.getItemViewType(0))
-		adapter.onBindViewHolder(holder, 0)
+		val holder = adapter.createViewHolder(FrameLayout(context), adapter.getItemViewType(0))
+		adapter.bindViewHolder(holder, 0)
 		return (holder.itemView as ViewGroup).also { layout(it) }
 	}
 
