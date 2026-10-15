@@ -14,7 +14,8 @@ class FavouriteCoverWiringRegressionTest {
 		for (mapping in listOf(favourites, local)) {
 			assertTrue(mapping.contains("getMemberships(favouriteSpace)"))
 			assertTrue(mapping.contains("isFavorite = if (usePermanentStatus) mangaId in libraryIds else model.isFavorite"))
-			assertTrue(mapping.contains("favouriteSpace == FavouriteSpace.NORMAL"))
+			assertTrue(mapping.contains("unreadCount = unreadCount"))
+			assertFalse(mapping.contains("favouriteSpace == FavouriteSpace.NORMAL && (mode == ListMode.GRID"))
 		}
 		assertTrue(favourites.contains("pinnedIds.value.toSet() else pinnedSet"))
 		assertTrue(favourites.contains("isPinned = mangaId in persistedPins"))
@@ -27,14 +28,16 @@ class FavouriteCoverWiringRegressionTest {
 	}
 
 	@Test
-	fun legacyGeometryIsBypassedOnlyForTheNewNormalModernOwner() {
+	fun legacyGeometryIsBypassedOnlyForTheExplicitModernOwner() {
 		val indicators = source("list/ui/MangaIndicatorsView.kt")
-		val replacement = indicators.substringAfter("if (useModernFavouritesPresentation && root?")
+		val replacement = indicators.substringAfter("if (useModernCoverOverlay && root?")
 			.substringBefore("bind(isSaved, isLocalSource, isFavorite)")
 		assertTrue(replacement.contains("ribbon.isVisible = false"))
 		assertTrue(replacement.contains("return"))
 		assertTrue(replacement.contains("start = 8, end = 8, bottom = 4, matchWidth = true"))
 		assertTrue(replacement.contains("progress?.setModernBottomEdge(true)"))
+		assertFalse(replacement.contains("if (useModernFavouritesPresentation"))
+		assertFalse(replacement.contains("restoreLegacyGridPresentation()"))
 		assertFalse(replacement.contains("translation"))
 	}
 

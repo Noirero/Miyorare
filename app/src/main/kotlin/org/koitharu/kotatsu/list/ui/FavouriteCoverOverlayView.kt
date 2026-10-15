@@ -18,16 +18,19 @@ import androidx.core.view.children
 import androidx.core.view.isVisible
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.widgets.BadgeView
-import org.koitharu.kotatsu.list.ui.model.MangaGridModel
+import org.koitharu.kotatsu.list.ui.model.ModernCoverState
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** Normal Modern Favorites only. Measures inside the cover; never determines the card's size. */
+/** Shared Modern cover presentation. The historic name is retained to avoid resource churn. */
 class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
 	FrameLayout(context, attrs) {
 
 	private val unread: FrameLayout
 	private val number: BadgeView
+	private val chapterCounter: LinearLayout
+	private val counterIcon: ImageView
+	private val counterNumber: BadgeView
 	private val statuses: LinearLayout
 	private val statusItems: List<ImageView>
 	private val metadata: LinearLayout
@@ -35,7 +38,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 	private val language: TextView
 	val titleView: TextView
 	private val action: ImageView
-	private var model: MangaGridModel? = null
+	private var model: ModernCoverState? = null
 	private var readClick: ((View) -> Unit)? = null
 	private var styledMetrics: FavouriteCoverOverlayMetrics? = null
 	private var styledWidth = -1
@@ -46,6 +49,9 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		inflate(context, R.layout.view_favourite_cover_overlays, this)
 		unread = findViewById(R.id.cover_unread)
 		number = findViewById(R.id.cover_unread_number)
+		chapterCounter = findViewById(R.id.cover_chapter_counter)
+		counterIcon = findViewById(R.id.cover_counter_icon)
+		counterNumber = findViewById(R.id.cover_legacy_counter)
 		statuses = findViewById(R.id.cover_permanent_status)
 		statusItems = listOf(R.id.cover_library, R.id.cover_downloaded, R.id.cover_pinned).map { findViewById<ImageView>(it) }
 		metadata = findViewById(R.id.cover_metadata)
@@ -56,18 +62,19 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		clipChildren = true
 	}
 
-	fun bind(value: MangaGridModel, onReadClick: (View) -> Unit) {
+	fun bind(value: ModernCoverState, onReadClick: (View) -> Unit) {
 		model = value
 		styledMetrics = null
 		styledActionSize = -1
 		contentDescription = null
 		readClick = onReadClick.takeIf { value.showContinueReading }
-		number.number = value.counter
+		number.number = value.unreadCount ?: 0
+		counterNumber.number = value.legacyCounter
 		titleView.text = value.title
 		language.text = value.languageLabel
 		isSelected = false
 		// Recycled views must not retain a listener, slot, selection transform or compacted visibility.
-		(children + statuses.children + metadata.children + sequenceOf(number)).forEach {
+		(children + statuses.children + metadata.children + chapterCounter.children + sequenceOf(number)).forEach {
 			it.translationX = 0f
 			it.translationY = 0f
 			it.scaleX = 1f
@@ -81,12 +88,13 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		requestLayout()
 	}
 
-	private fun resetVisibility(value: MangaGridModel) {
+	private fun resetVisibility(value: ModernCoverState) {
 		listOf(value.isFavorite, value.isSaved, value.isPinned).forEachIndexed { index, active ->
 			statusItems[index].isVisible = active
 		}
 		statuses.isVisible = statusItems.any { it.isVisible }
-		unread.isVisible = value.counter > 0
+		unread.isVisible = (value.unreadCount ?: 0) > 0
+		chapterCounter.isVisible = value.legacyCounter > 0
 		local.isVisible = value.isLocalSource
 		language.isVisible = !value.languageLabel.isNullOrBlank()
 		metadata.isVisible = local.isVisible || language.isVisible
@@ -116,6 +124,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		val padding = px(metrics.padding)
 		val radius = px(metrics.radius).toFloat()
 		val innerWidth = (w - inset * 2).coerceAtLeast(0)
+		// All Modern covers reserve the accepted 14dp Progress track plus its 4dp bottom inset.
 		val bottom = h - px(FavouriteCoverOverlayMetrics.PROGRESS_RESERVED_DP) - gap
 		val selectionSize = resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_width)
 		val top = inset + if (isSelected) selectionSize +
@@ -133,6 +142,19 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 				(number.paint.fontMetrics.descent - number.paint.fontMetrics.ascent).roundToInt() + padding * 2)
 			(number.background as GradientDrawable).cornerRadius = diameter / 2f
 			number.layoutParams = LayoutParams(diameter, diameter)
+			// Chapter/update counts retain their host meaning; a stack glyph and rectangular shield
+			// distinguish them from the red circular unread badge without restoring legacy chrome.
+			chapterCounter.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_outline, radius)
+			chapterCounter.setPadding(padding * 2, padding, padding * 2, padding)
+			counterIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
+			val counterIconSize = px(metrics.statusSize * 0.7f)
+			counterIcon.layoutParams = LinearLayout.LayoutParams(counterIconSize, counterIconSize).apply { marginEnd = gap }
+			counterNumber.backgroundTintList = null
+			counterNumber.background = null
+			counterNumber.setTextColor(Color.WHITE)
+			counterNumber.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.badgeSp)
+			counterNumber.includeFontPadding = false
+			counterNumber.setPadding(0, 0, 0, 0)
 			statuses.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_outline, radius)
 			statuses.setPadding(padding, padding, padding, padding)
 			val activeStatuses = statusItems.filter { it.isVisible }
@@ -191,9 +213,20 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			isSelected && unread.measuredWidth + selectionSize + gap > innerWidth -> top
 			else -> inset
 		}
-		val showUnread = value.counter > 0 && unread.measuredWidth <= innerWidth && unreadTop + unread.measuredHeight <= topLimit
+		val showUnread = (value.unreadCount ?: 0) > 0 && unread.measuredWidth <= innerWidth && unreadTop + unread.measuredHeight <= topLimit
 		place(unread, inset, unreadTop)
 		if (showUnread) usedTop = max(usedTop, unreadTop + unread.measuredHeight)
+		measureNatural(chapterCounter, w)
+		val counterTop = when {
+			showUnread -> usedTop + gap
+			showStatuses && chapterCounter.measuredWidth + statuses.measuredWidth + gap > innerWidth -> usedTop + gap
+			isSelected && chapterCounter.measuredWidth + selectionSize + gap > innerWidth -> top
+			else -> inset
+		}
+		val showCounter = value.legacyCounter > 0 && chapterCounter.measuredWidth <= innerWidth &&
+			counterTop + chapterCounter.measuredHeight <= topLimit
+		place(chapterCounter, inset, counterTop)
+		if (showCounter) usedTop = max(usedTop, counterTop + chapterCounter.measuredHeight)
 
 		// Metadata precedes the action in compaction priority. Measure even a previously GONE group.
 		measureNatural(metadata, w)
@@ -227,6 +260,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		titleView.isVisible = showTitle
 		statuses.isVisible = showStatuses
 		unread.isVisible = showUnread
+		chapterCounter.isVisible = showCounter
 		metadata.isVisible = showMetadata
 		action.isVisible = showAction
 		action.setOnClickListener(if (showAction) OnClickListener { readClick?.invoke(it) } else null)
@@ -237,17 +271,20 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		updateAccessibility(value)
 	}
 
-	private fun updateAccessibility(value: MangaGridModel) {
+	private fun updateAccessibility(value: ModernCoverState) {
 		val permanent = listOfNotNull(
 			context.getString(R.string.in_library).takeIf { value.isFavorite },
 			context.getString(R.string.favourites_show_downloaded).takeIf { value.isSaved },
 			context.getString(R.string.pin).takeIf { value.isPinned },
 		).joinToString(", ")
 		statuses.contentDescription = permanent.ifEmpty { null }
-		val unreadText = "${context.getString(R.string.unread)}: ${value.counter}"
+		val unreadText = "${context.getString(R.string.unread)}: ${value.unreadCount ?: 0}"
 		unread.contentDescription = unreadText
+		val counterText = "${context.getString(R.string.chapters)}: ${value.legacyCounter}"
+		chapterCounter.contentDescription = counterText.takeIf { value.legacyCounter > 0 }
 		val omitted = listOfNotNull(permanent.takeIf { !statuses.isVisible && it.isNotEmpty() },
-			unreadText.takeIf { !unread.isVisible && value.counter > 0 },
+			unreadText.takeIf { !unread.isVisible && (value.unreadCount ?: 0) > 0 },
+			counterText.takeIf { !chapterCounter.isVisible && value.legacyCounter > 0 },
 			"LOCAL".takeIf { !metadata.isVisible && value.isLocalSource },
 			value.languageLabel.takeIf { !metadata.isVisible || !language.isVisible })
 		titleView.contentDescription = (listOf(value.title) + omitted).joinToString(", ")

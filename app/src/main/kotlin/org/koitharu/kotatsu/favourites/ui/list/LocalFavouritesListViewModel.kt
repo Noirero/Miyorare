@@ -157,7 +157,7 @@ class LocalFavouritesListViewModel @Inject constructor(
 		} else {
 			val visible = ordered.take(pageLimit)
 			val usePermanentStatus = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
-				favouriteSpace == FavouriteSpace.NORMAL && (mode == ListMode.GRID || mode == ListMode.COVER_ONLY)
+				(mode == ListMode.GRID || mode == ListMode.COVER_ONLY)
 			val libraryIds = if (usePermanentStatus) favouritesRepository.getMemberships(favouriteSpace)
 				.mapTo(HashSet()) { it.mangaId } else emptySet()
 			prefetchDetailsSnapshots(visible)
@@ -183,6 +183,7 @@ class LocalFavouritesListViewModel @Inject constructor(
 					val languageLabel = if (display.showLanguage) model.manga.source.getLanguageCode() else null
 					result[i] = when (model) {
 						is MangaGridModel -> model.copy(
+							unreadCount = unreadCount,
 							counter = unreadCount,
 							progress = progress,
 							isFavorite = if (usePermanentStatus) mangaId in libraryIds else model.isFavorite,

@@ -8,6 +8,18 @@
 			android:importantForAccessibility="no"
 			app:maxCharacterCount="@integer/manga_badge_max_character_count" />
 	</FrameLayout>
+	<!-- Host chapter/update count: Modern shield + chapter glyph, separate from circular Unread. -->
+	<LinearLayout android:id="@+id/cover_chapter_counter"
+		android:layout_width="wrap_content" android:layout_height="wrap_content"
+		android:orientation="horizontal" android:gravity="center_vertical" android:visibility="gone">
+		<ImageView android:id="@+id/cover_counter_icon"
+			android:layout_width="wrap_content" android:layout_height="wrap_content"
+			android:importantForAccessibility="no" android:src="@drawable/ic_chapter_stack" />
+		<org.koitharu.kotatsu.core.ui.widgets.BadgeView android:id="@+id/cover_legacy_counter"
+			android:layout_width="wrap_content" android:layout_height="wrap_content"
+			android:importantForAccessibility="no"
+			app:maxCharacterCount="@integer/manga_badge_max_character_count" />
+	</LinearLayout>
 	<LinearLayout android:id="@+id/cover_permanent_status"
 		android:layout_width="wrap_content" android:layout_height="wrap_content"
 		android:layoutDirection="ltr" android:orientation="horizontal">

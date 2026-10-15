@@ -17,6 +17,7 @@ import org.koitharu.kotatsu.databinding.ItemListGroupBinding
 import org.koitharu.kotatsu.list.ui.MangaSelectionDecoration
 import org.koitharu.kotatsu.list.ui.adapter.MangaDetailsClickListener
 import org.koitharu.kotatsu.list.ui.adapter.mangaGridItemAD
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.ItemSizeResolver
@@ -34,7 +35,7 @@ fun searchResultsAD(
 ) {
 
 	binding.recyclerView.setRecycledViewPool(sharedPool)
-	val adapter = ListDelegationAdapter(mangaGridItemAD(sizeResolver, listener))
+	val adapter = ListDelegationAdapter(mangaGridItemAD(sizeResolver, listener, coverContext = ModernCoverContext.BROWSING))
 	binding.recyclerView.addItemDecoration(selectionDecoration)
 	binding.recyclerView.adapter = adapter
 	val spacing = context.resources.getDimensionPixelOffset(R.dimen.grid_spacing_outer)
