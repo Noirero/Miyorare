@@ -4,8 +4,9 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -307,53 +309,73 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		}
 	}
 
+	@OptIn(ExperimentalFoundationApi::class)
 	@Composable
 	private fun CategoryRow(item: MangaCategoryItem, enabled: Boolean) {
 		val checked = item.checkedState == MaterialCheckBox.STATE_CHECKED
 		val toggle = { if (enabled) viewModel.setChecked(item.category.id, !checked) }
-		Row(
-			modifier = Modifier.fillMaxWidth().height(CATEGORY_ROW_HEIGHT.dp)
-				.clip(RoundedCornerShape(CATEGORY_CORNER_RADIUS.dp))
-				.background(
-					if (checked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
-					else MaterialTheme.colorScheme.surfaceContainer,
+		var titleOverflow by remember(item.category.id) { mutableStateOf(false) }
+		var showFullTitle by remember(item.category.id) { mutableStateOf(false) }
+		Box(modifier = Modifier.fillMaxWidth().height(CATEGORY_ROW_HEIGHT.dp)) {
+			Row(
+				modifier = Modifier.fillMaxWidth().height(CATEGORY_ROW_HEIGHT.dp)
+					.clip(RoundedCornerShape(CATEGORY_CORNER_RADIUS.dp))
+					.background(
+						if (checked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
+						else MaterialTheme.colorScheme.surfaceContainer,
+					)
+					.combinedClickable(
+						enabled = enabled,
+						onClick = { toggle() },
+						onLongClick = { if (titleOverflow) showFullTitle = true },
+					)
+					.padding(horizontal = CATEGORY_HORIZONTAL_PADDING.dp),
+				verticalAlignment = Alignment.CenterVertically,
+			) {
+				TriStateCheckbox(
+					state = when (item.checkedState) {
+						MaterialCheckBox.STATE_CHECKED -> ToggleableState.On
+						MaterialCheckBox.STATE_INDETERMINATE -> ToggleableState.Indeterminate
+						else -> ToggleableState.Off
+					},
+					onClick = if (enabled) ({ toggle() }) else null,
+					modifier = Modifier.size(CATEGORY_CHECKBOX_SIZE.dp),
 				)
-				.clickable(enabled = enabled) { toggle() }
-				.padding(horizontal = CATEGORY_HORIZONTAL_PADDING.dp),
-			verticalAlignment = Alignment.CenterVertically,
-		) {
-			TriStateCheckbox(
-				state = when (item.checkedState) {
-					MaterialCheckBox.STATE_CHECKED -> ToggleableState.On
-					MaterialCheckBox.STATE_INDETERMINATE -> ToggleableState.Indeterminate
-					else -> ToggleableState.Off
-				},
-				onClick = if (enabled) ({ toggle() }) else null,
-				modifier = Modifier.size(CATEGORY_CHECKBOX_SIZE.dp),
-			)
-			Spacer(Modifier.width(CATEGORY_CHECKBOX_TEXT_GAP.dp))
-			Text(
-				text = item.category.title,
-				style = MaterialTheme.typography.bodySmall,
-				color = MaterialTheme.colorScheme.onSurface,
-				maxLines = 1,
-				overflow = TextOverflow.Ellipsis,
-				modifier = Modifier.weight(1f),
-			)
-			if (item.isTrackerEnabled && item.category.isTrackingEnabled) {
-				Icon(
-					painter = painterResource(R.drawable.ic_notification),
-					contentDescription = null,
-					tint = MaterialTheme.colorScheme.onSurfaceVariant,
-					modifier = Modifier.size(14.dp),
+				Spacer(Modifier.width(CATEGORY_CHECKBOX_TEXT_GAP.dp))
+				Text(
+					text = item.category.title,
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurface,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
+					onTextLayout = { titleOverflow = it.hasVisualOverflow },
+					modifier = Modifier.weight(1f),
 				)
+				if (item.isTrackerEnabled && item.category.isTrackingEnabled) {
+					Icon(
+						painter = painterResource(R.drawable.ic_notification),
+						contentDescription = null,
+						tint = MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.size(14.dp),
+					)
+				}
+				if (!item.category.isVisibleInLibrary) {
+					Icon(
+						painter = painterResource(R.drawable.ic_eye_off),
+						contentDescription = null,
+						tint = MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.size(14.dp),
+					)
+				}
 			}
-			if (!item.category.isVisibleInLibrary) {
-				Icon(
-					painter = painterResource(R.drawable.ic_eye_off),
-					contentDescription = null,
-					tint = MaterialTheme.colorScheme.onSurfaceVariant,
-					modifier = Modifier.size(14.dp),
+			DropdownMenu(
+				expanded = showFullTitle,
+				onDismissRequest = { showFullTitle = false },
+			) {
+				Text(
+					text = item.category.title,
+					style = MaterialTheme.typography.bodyMedium,
+					modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
 				)
 			}
 		}

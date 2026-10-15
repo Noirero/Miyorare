@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -182,20 +183,24 @@ internal fun HeroTexts(
 	accent: Color,
 	actions: DetailsExpressiveActions,
 	showAuthors: Boolean = true,
+	compactExpanded: Boolean = false,
+	onTitleLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
 	val align = if (centered) TextAlign.Center else TextAlign.Start
+	val titleStyle = if (centered) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall
 	Text(
 		text = manga.title,
-		style = if (centered) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall,
+		style = titleStyle,
 		fontWeight = FontWeight.Bold,
 		color = MaterialTheme.colorScheme.onSurface,
 		textAlign = align,
-		maxLines = 4,
+		maxLines = if (!centered && compactExpanded) Int.MAX_VALUE else if (!centered) 2 else 4,
 		overflow = TextOverflow.Ellipsis,
+		onTextLayout = { onTitleLayout?.invoke(it) },
 		modifier = Modifier.clickable { actions.onTitleClick(manga.title) },
 	)
 	val altTitle = manga.altTitles.firstOrNull()?.takeIf { it.isNotBlank() }
-	if (altTitle != null) {
+	if (centered && altTitle != null) {
 		Spacer(Modifier.height(6.dp))
 		Text(
 			text = altTitle,

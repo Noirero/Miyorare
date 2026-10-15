@@ -53,6 +53,7 @@ import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupUiModel
 import org.koitharu.kotatsu.list.ui.model.EmptyState
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
@@ -237,9 +238,12 @@ abstract class MangaListFragment :
 		}
 	}
 
+	protected open val coverContext = ModernCoverContext.BROWSING
+
 	protected open fun onCreateAdapter(): MangaListAdapter {
 		return MangaListAdapter(
 			listener = this,
+			coverContext = coverContext,
 			sizeResolver = DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false),
 		)
 	}
