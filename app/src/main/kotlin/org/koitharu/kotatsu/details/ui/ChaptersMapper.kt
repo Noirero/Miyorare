@@ -224,6 +224,7 @@ fun List<ChapterListItem>.withVolumeHeaders(
 				if (gap > 0) {
 					result.add(MissingChapters(id = "missing-${chapter.id}-${nextItem.chapter.id}", count = gap))
 				}
+			}
 		}
 	}
 	if (showMissingChapters) {
