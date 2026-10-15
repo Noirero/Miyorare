@@ -178,8 +178,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		if (titleView.maxLines != titleLines) titleView.maxLines = titleLines
 		measureNatural(titleView, innerWidth)
 		if (titleView.measuredHeight > bottom) showTitle = false
-		val titleTop = bottom - if (showTitle) titleView.measuredHeight else 0
-		place(titleView, inset, titleTop)
+		var titleTop = bottom - if (showTitle) titleView.measuredHeight else 0
 		val topLimit = titleTop - gap
 		if (statuses.measuredHeight + top > topLimit || statuses.measuredWidth > innerWidth) showStatuses = false
 		place(statuses, w - inset - statuses.measuredWidth, top)
@@ -198,7 +197,6 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		measureNatural(metadata, w)
 		val showMetadata = (value.isLocalSource || !value.languageLabel.isNullOrBlank()) &&
 			metadata.measuredWidth <= innerWidth && usedTop + gap <= titleTop - gap - metadata.measuredHeight
-		place(metadata, inset, titleTop - gap - metadata.measuredHeight)
 		val target = px(FavouriteCoverOverlayMetrics.ACTION_TOUCH_DP)
 		if (styledActionSize != px(metrics.actionSize)) {
 			val circleInset = ((target - px(metrics.actionSize)) / 2).coerceAtLeast(0)
@@ -210,8 +208,19 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			styledActionSize = px(metrics.actionSize)
 		}
 		action.measure(exact(target), exact(target))
-		val showAction = value.showContinueReading && target <= innerWidth && usedTop + gap <= titleTop - gap - target &&
-			(!showMetadata || metadata.measuredWidth + gap + target <= innerWidth)
+		val textWidthBesideAction = innerWidth - target - gap
+		var showAction = value.showContinueReading && target <= innerWidth && usedTop + gap <= bottom - target &&
+			(!showTitle || textWidthBesideAction >= px(FavouriteCoverOverlayMetrics.MIN_ACTION_TEXT_WIDTH_DP)) &&
+			(!showMetadata || metadata.measuredWidth <= textWidthBesideAction)
+		if (showAction && showTitle) {
+			measureNatural(titleView, textWidthBesideAction)
+			val candidateTop = bottom - titleView.measuredHeight
+			val contentTop = candidateTop - if (showMetadata) gap + metadata.measuredHeight else 0
+			if (usedTop + gap > contentTop) {
+				showAction = false
+				measureNatural(titleView, innerWidth)
+			} else titleTop = candidateTop
+		}
 		// Apply final visibility once; temporary visibility toggles during measure can cause layout loops.
 		titleView.isVisible = showTitle
 		statuses.isVisible = showStatuses
@@ -220,7 +229,9 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		action.isVisible = showAction
 		action.setOnClickListener(if (showAction) OnClickListener { readClick?.invoke(it) } else null)
 		action.isClickable = showAction
-		place(action, w - inset - target, titleTop - gap - target)
+		place(titleView, inset, titleTop)
+		place(metadata, inset, titleTop - gap - metadata.measuredHeight)
+		place(action, w - inset - target, bottom - target)
 		updateAccessibility(value)
 	}
 

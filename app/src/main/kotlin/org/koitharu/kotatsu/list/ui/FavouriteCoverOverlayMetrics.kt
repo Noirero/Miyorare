@@ -16,6 +16,7 @@ internal data class FavouriteCoverOverlayMetrics(val scale: Float) {
 	companion object {
 		const val PROGRESS_RESERVED_DP = 18f
 		const val ACTION_TOUCH_DP = 48f
+		const val MIN_ACTION_TEXT_WIDTH_DP = 64f
 
 		fun resolve(widthDp: Float, heightDp: Float) = FavouriteCoverOverlayMetrics(
 			minOf(widthDp / 128f, heightDp / 152f).coerceIn(0.8f, 1.4f),
