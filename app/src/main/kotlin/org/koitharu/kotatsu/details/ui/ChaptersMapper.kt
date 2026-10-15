@@ -48,18 +48,20 @@ fun MangaDetails.mapChapters(
 	var isUnread = currentChapterId !in ids
 	if (!isDownloadedOnly || local?.manga?.chapters == null) {
 		for (chapter in remoteChapters) {
-			// Canonical download resolution already re-keys a physical local artifact to the remote
-			// chapter id while preserving its Local URL. Keep that canonical chapter object authoritative
-			// for navigation. UI-only fallback matching may recognise an old sidecar-free artifact as
-			// downloaded, but must never replace the Reader identity with a local-only id.
+			// CBZ-only downloads intentionally have no index.json. Their locally parsed chapter IDs are
+			// therefore not guaranteed to equal the remote source IDs. Match by ID first, then by the
+			// chapter's visible/download-file identity so an existing CBZ is recognised as downloaded.
+			// Keep local IDs that still have a direct remote counterpart reserved for that counterpart;
+			// otherwise an earlier fuzzy match can consume the local chapter and later produce the exact
+			// same ChapterListItem twice, which violates Compose LazyColumn's unique-key requirement.
 			val local = localMap?.remove(chapter.id)
 				?: localMap?.findAndRemoveEquivalent(chapter, reservedIds = remoteIds)
-			val displayedChapter = if (local != null && local.id == chapter.id) local else chapter
 			val isCurrent = chapter.id == currentChapterId
-			val readOverride = readOverrides[displayedChapter.id]
-				?: readOverrides[local?.id]
-				?: readOverrides[chapter.id]
-			result += displayedChapter.toListItem(
+			// Swipe actions operate on the chapter object shown by the adapter. For downloaded chapters
+			// that object may be the local chapter and have a different ID from the remote source chapter.
+			// Accept an override saved under either identity so the visual read state always follows the swipe.
+			val readOverride = readOverrides[local?.id] ?: readOverrides[chapter.id]
+			result += (local ?: chapter).toListItem(
 				isCurrent = isCurrent,
 				isUnread = readOverride?.not() ?: (isUnread && !isCurrent),
 				isNew = !isCurrent && isUnread && result.size >= newFrom,
@@ -145,11 +147,9 @@ private fun MutableMap<Long, MangaChapter>.findAndRemoveEquivalent(
 		return entry.value
 	}
 
-	val equivalentEntries = entries.filter { (id, local) ->
+	val entry = entries.firstOrNull { (id, local) ->
 		id !in reservedIds && local.isEquivalentDownloadOf(remote)
-	}
-	if (equivalentEntries.size != 1) return null
-	val entry = equivalentEntries.single()
+	} ?: return null
 	remove(entry.key)
 	return entry.value
 }
@@ -212,6 +212,7 @@ fun List<ChapterListItem>.withVolumeHeaders(
 				if (gap > 0) {
 					result.add(MissingChapters(id = "missing-${chapter.id}-${nextItem.chapter.id}", count = gap))
 				}
+			}
 		}
 	}
 	if (showMissingChapters) {
