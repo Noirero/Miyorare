@@ -175,10 +175,12 @@ fun mangaGridItemAD(
 		if (isModern) {
 			val normalNeon = normalGlass != null
 			binding.imageViewCover.shapeAppearanceModel = modernCoverShape
-			binding.imageViewCover.strokeColor = if (normalNeon) normalBorderTint else modernBorderTint
-			binding.imageViewCover.strokeWidth = (
-				if (hasCollectionBorder) MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP else 0.5f
-			) * density
+			binding.imageViewCover.strokeColor = if (hasCollectionBorder) {
+				if (normalNeon) normalBorderTint else modernBorderTint
+			} else defaultCoverStrokeColor
+			binding.imageViewCover.strokeWidth = if (hasCollectionBorder) {
+				MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP * density
+			} else defaultCoverStrokeWidth
 			binding.viewScrim.background = modernScrim
 			binding.textViewTitle.setTextColor(onSurface)
 			binding.textViewTitle.setTextSize(
@@ -289,7 +291,7 @@ fun mangaGridItemAD(
 		val visualScaleProvider = gridVisualScaleProvider
 		val visualScale = visualScaleProvider?.invoke()?.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
 			?: DEFAULT_FIXED_GRID_SCALE
-		applyGridAppearance(hasCollectionBorder, visualScale)
+		applyGridAppearance(usesModernCover, visualScale)
 		val baseMargin = if (item.isGridSpacingIncreased) gridMarginIncreased else gridMargin
 		val styledBaseMargin = if (isNormalModernFavourites) {
 			val marginDp = if (item.isGridSpacingIncreased) {
@@ -308,7 +310,7 @@ fun mangaGridItemAD(
 				if (item.id != boundId) return@doOnLayout
 				val currentScale = visualScaleProvider.invoke()
 					.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
-				applyGridAppearance(hasCollectionBorder, currentScale)
+				applyGridAppearance(usesModernCover, currentScale)
 				applyGridSizing(styledBaseMargin, currentScale)
 			}
 		}
@@ -323,7 +325,6 @@ fun mangaGridItemAD(
 			}
 			binding.favouriteCoverOverlays.bind(
 				ModernCoverState.from(item, coverContext),
-				preservedProgress = binding.layoutIndicators.takeUnless { isNormalModernFavourites },
 			) { view ->
 				clickListener.onReadClick(item.toMangaWithOverride(), view)
 			}
@@ -354,13 +355,12 @@ fun mangaGridItemAD(
 			item.isLocalSource,
 			item.isFavorite,
 			item.counter,
-			isNormalModernFavourites,
 			useModernCoverOverlay = usesModernCover,
 		)
-		// Preserve the host progress container margins; they never position new status children.
+		// Legacy Corner Mark offsets belong only to the legacy renderer.
 		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
 			topMargin = context.resources.getDimensionPixelSize(R.dimen.card_indicator_offset) +
-				if (!isNormalModernFavourites && (item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
+				if (!usesModernCover && (item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
 					context.resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_height) +
 						context.resources.getDimensionPixelSize(R.dimen.library_indicator_spacing)
 				} else 0

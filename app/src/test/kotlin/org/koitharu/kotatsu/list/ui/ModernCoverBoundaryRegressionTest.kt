@@ -50,6 +50,20 @@ class ModernCoverBoundaryRegressionTest {
 		}
 	}
 
+	@Test fun modernAppearanceDoesNotDependOnCollectionBorderOrRestoreLegacyProgress() {
+		val grid = source("list/ui/adapter/MangaGridItemAD.kt")
+		assertTrue(grid.contains("applyGridAppearance(usesModernCover, visualScale)"))
+		assertTrue(grid.contains("applyGridAppearance(usesModernCover, currentScale)"))
+		assertFalse(grid.contains("applyGridAppearance(hasCollectionBorder"))
+		assertTrue(grid.contains("if (!usesModernCover && (item.isSaved || item.isFavorite)"))
+		val cover = source("list/ui/FavouriteCoverOverlayView.kt")
+		assertFalse(cover.contains("preservedProgress"))
+		assertTrue(cover.contains("h - px(FavouriteCoverOverlayMetrics.PROGRESS_RESERVED_DP) - gap"))
+		assertTrue(cover.contains("chapterCounter.background = shape(R.color.favourite_cover_protection"))
+		assertTrue(cover.contains("counterNumber.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.badgeSp)"))
+		assertTrue(cover.contains("context.getString(R.string.chapters)"))
+	}
+
 	private fun source(path: String) = sequenceOf(
 		File("src/main/kotlin/org/koitharu/kotatsu", path),
 		File("app/src/main/kotlin/org/koitharu/kotatsu", path),

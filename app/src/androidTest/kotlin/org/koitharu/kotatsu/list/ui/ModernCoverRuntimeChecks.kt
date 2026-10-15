@@ -3,7 +3,9 @@ package org.koitharu.kotatsu.list.ui
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Rect
+import android.graphics.drawable.GradientDrawable
 import android.view.ContextThemeWrapper
 import android.view.View
 import android.view.ViewGroup
@@ -68,8 +70,12 @@ internal object ModernCoverRuntimeChecks {
 				assertEquals(statuses.width - statuses.paddingRight, active.last().right)
 			}
 			assertFalse(cover.findViewById<View>(R.id.cover_unread).isVisible)
-			assertTrue(cover.findViewById<View>(R.id.cover_legacy_counter).isVisible)
+			assertTrue(cover.findViewById<View>(R.id.cover_chapter_counter).isVisible)
 			assertEquals("78", cover.findViewById<TextView>(R.id.cover_legacy_counter).text.toString())
+			val counter = cover.findViewById<View>(R.id.cover_chapter_counter)
+			assertTrue(counter.background is GradientDrawable)
+			assertEquals("${themed.getString(R.string.chapters)}: 78", counter.contentDescription)
+			assertTrue(cover.findViewById<View>(R.id.cover_counter_icon).isVisible)
 			assertFalse(cover.findViewById<View>(R.id.cover_continue).performClick())
 			assertEquals(1, clicks)
 			val metadata = cover.findViewById<ViewGroup>(R.id.cover_metadata)
@@ -86,9 +92,45 @@ internal object ModernCoverRuntimeChecks {
 		cover.bind(ModernCoverState.from(model().copy(counter = 0), ModernCoverContext.BROWSING)) {}
 		layout(cover)
 		assertFalse(cover.findViewById<View>(R.id.cover_metadata).isVisible)
-		assertFalse(cover.findViewById<View>(R.id.cover_legacy_counter).isVisible)
+		assertFalse(cover.findViewById<View>(R.id.cover_chapter_counter).isVisible)
 		assertNull(cover.contentDescription)
 		assertFalse(cover.titleView.contentDescription.toString().contains("78"))
+	}
+
+	fun counterCompactionAndThemes(context: Context) {
+		for (night in listOf(Configuration.UI_MODE_NIGHT_NO, Configuration.UI_MODE_NIGHT_YES)) {
+			for (fontScale in listOf(1f, 1.5f)) {
+				val config = Configuration(context.resources.configuration).apply {
+					uiMode = night
+					this.fontScale = fontScale
+				}
+				val themed = ContextThemeWrapper(context.createConfigurationContext(config), R.style.Theme_Kotatsu)
+				val cover = FavouriteCoverOverlayView(themed)
+				for (count in listOf(999, 1000, 0, 78)) {
+					cover.bind(ModernCoverState.from(model().copy(counter = count, unreadCount = 115,
+						isFavorite = true, isSaved = true), ModernCoverContext.BROWSING)) {}
+					for ((w, h) in listOf(194 to 344, 55 to 33, 59 to 105, 128 to 170, 194 to 344)) {
+						for (selected in listOf(false, true, false)) {
+							cover.isSelected = selected
+							layout(cover, w, h)
+							val children = cover.children.filter { it.isVisible }.toList()
+							val reserved = (18 * themed.resources.displayMetrics.density).roundToInt()
+							for (child in children) assertTrue("Modern counter compaction stays above Progress", child.left >= 0 &&
+								child.top >= 0 && child.right <= cover.width && child.bottom <= cover.height - reserved)
+							for (a in children.indices) for (b in a + 1 until children.size) {
+								assertFalse("Modern counter collision", Rect.intersects(bounds(cover, children[a]), bounds(cover, children[b])))
+							}
+						}
+					}
+					val counter = cover.findViewById<View>(R.id.cover_chapter_counter)
+					assertEquals(count > 0, counter.isVisible)
+					val label = cover.findViewById<TextView>(R.id.cover_legacy_counter)
+					assertEquals(if (count > 999) "99+" else if (count > 0) count.toString() else "", label.text.toString())
+					if (count == 0) assertNull(counter.contentDescription)
+					else assertEquals("${themed.getString(R.string.chapters)}: $count", counter.contentDescription)
+				}
+			}
+		}
 	}
 
 	fun actualAdapterGatingAndProgress(activity: Activity) {
@@ -110,13 +152,15 @@ internal object ModernCoverRuntimeChecks {
 					assertFalse(legacy.findViewById<View>(R.id.favourite_cover_overlays).isVisible)
 					val oldCover = legacy.findViewById<com.google.android.material.imageview.ShapeableImageView>(R.id.imageView_cover)
 					val newCover = browsing.findViewById<com.google.android.material.imageview.ShapeableImageView>(R.id.imageView_cover)
-					assertEquals(oldCover.strokeWidth, newCover.strokeWidth)
+					assertEquals("Browsing never acquires a collection border", oldCover.strokeWidth, newCover.strokeWidth)
 					assertEquals(oldCover.width, newCover.width)
 					assertEquals(oldCover.height, newCover.height)
 					val oldProgress = legacy.findViewById<ReadingProgressView>(R.id.progressView)
 					val progress = browsing.findViewById<ReadingProgressView>(R.id.progressView)
-					assertSame(browsing.findViewById<View>(R.id.layout_indicators), progress.parent)
-					assertEquals(bounds(legacy, oldProgress), bounds(browsing, progress))
+					if (modern) assertModernProgress(browsing, progress) else {
+						assertSame(browsing.findViewById<View>(R.id.layout_indicators), progress.parent)
+						assertEquals(bounds(legacy, oldProgress), bounds(browsing, progress))
+					}
 					assertEquals(oldProgress.progress, progress.progress)
 					if (modern) {
 						val overlays = browsing.findViewById<FavouriteCoverOverlayView>(R.id.favourite_cover_overlays)
@@ -134,12 +178,18 @@ internal object ModernCoverRuntimeChecks {
 					if (modern) {
 						assertTrue(collection.findViewById<com.google.android.material.imageview.ShapeableImageView>(R.id.imageView_cover).strokeWidth > newCover.strokeWidth)
 						val p = collection.findViewById<ReadingProgressView>(R.id.progressView)
-						if (space == FavouriteSpace.NORMAL) {
-							assertEquals((14 * themed.resources.displayMetrics.density).toInt(), p.height)
-						} else {
-							assertSame(collection.findViewById<View>(R.id.layout_indicators), p.parent)
-							assertEquals(bounds(legacy, oldProgress), bounds(collection, p))
-						}
+						assertModernProgress(collection, p)
+						assertEquals(value.progress, p.progress)
+						val collectionCover = collection.findViewById<com.google.android.material.imageview.ShapeableImageView>(R.id.imageView_cover)
+						assertEquals(collectionCover.shapeAppearanceModel.topLeftCornerSize, newCover.shapeAppearanceModel.topLeftCornerSize)
+						val collectionScrim = collection.findViewById<View>(R.id.view_scrim).background as GradientDrawable
+						val browsingScrim = browsing.findViewById<View>(R.id.view_scrim).background as GradientDrawable
+						assertArrayEquals(collectionScrim.colors, browsingScrim.colors)
+						assertFalse((legacy.findViewById<View>(R.id.view_scrim).background as GradientDrawable).colors.contentEquals(browsingScrim.colors))
+					} else {
+						val p = collection.findViewById<ReadingProgressView>(R.id.progressView)
+						assertSame(collection.findViewById<View>(R.id.layout_indicators), p.parent)
+						assertEquals(bounds(legacy, oldProgress), bounds(collection, p))
 					}
 				}
 			}
@@ -148,6 +198,21 @@ internal object ModernCoverRuntimeChecks {
 			preferences.edit().apply {
 				if (oldStyle == null) remove(MiyorareAppearance.KEY_DESIGN_STYLE) else putString(MiyorareAppearance.KEY_DESIGN_STYLE, oldStyle)
 			}.commit()
+		}
+	}
+
+	private fun assertModernProgress(card: ViewGroup, progress: ReadingProgressView) {
+		val cover = card.findViewById<View>(R.id.imageView_cover).parent as ViewGroup
+		val density = card.resources.displayMetrics.density
+		assertSame("Every opted-in Modern host uses the bottom-edge owner", cover, progress.parent)
+		assertFalse(card.findViewById<View>(R.id.layout_indicators).isVisible)
+		if (progress.progress == null || progress.progress?.mode == ProgressIndicatorMode.NONE) {
+			assertEquals(0, progress.height)
+		} else {
+			assertEquals((14 * density).toInt(), progress.height)
+			assertEquals((8 * density).toInt(), progress.left)
+			assertEquals(cover.width - (8 * density).toInt(), progress.right)
+			assertEquals(cover.height - (4 * density).toInt(), progress.bottom)
 		}
 	}
 
@@ -165,7 +230,21 @@ internal object ModernCoverRuntimeChecks {
 		adapter.items = listOf(value)
 		val holder = adapter.createViewHolder(FrameLayout(context), adapter.getItemViewType(0))
 		adapter.bindViewHolder(holder, 0)
-		return (holder.itemView as ViewGroup).also { layout(it) }
+		val root = holder.itemView as ViewGroup
+		for (progress in listOf(ReadingProgress(0.16f, 20, ProgressIndicatorMode.PERCENT_READ),
+			ReadingProgress(0f, 20, ProgressIndicatorMode.PERCENT_READ),
+			ReadingProgress(0.86f, 20, ProgressIndicatorMode.PERCENT_READ),
+			ReadingProgress(0.56f, 20, ProgressIndicatorMode.PERCENT_READ),
+			ReadingProgress(1f, 20, ProgressIndicatorMode.CHAPTERS_READ),
+			ReadingProgress(0.5f, 20, ProgressIndicatorMode.NONE), null, value.progress)) {
+			adapter.items = listOf(value.copy(progress = progress))
+			adapter.bindViewHolder(holder, 0)
+			layout(root)
+			val view = root.findViewById<ReadingProgressView>(R.id.progressView)
+			assertEquals(progress, view.progress)
+			if (root.findViewById<View>(R.id.favourite_cover_overlays).isVisible) assertModernProgress(root, view)
+		}
+		return root
 	}
 
 	private fun bounds(root: ViewGroup, child: View): Rect = Rect().also {
@@ -175,10 +254,10 @@ internal object ModernCoverRuntimeChecks {
 
 	private fun model() = MangaGridModel(SampleData.manga.copy(coverUrl = null, source = UnknownMangaSource), null, 0, null, false, false)
 
-	private fun layout(view: View) {
+	private fun layout(view: View, widthDp: Int = 194, heightDp: Int = 344) {
 		val density = view.resources.displayMetrics.density
-		view.measure(View.MeasureSpec.makeMeasureSpec((194 * density).roundToInt(), View.MeasureSpec.EXACTLY),
-			View.MeasureSpec.makeMeasureSpec((344 * density).roundToInt(), View.MeasureSpec.EXACTLY))
+		view.measure(View.MeasureSpec.makeMeasureSpec((widthDp * density).roundToInt(), View.MeasureSpec.EXACTLY),
+			View.MeasureSpec.makeMeasureSpec((heightDp * density).roundToInt(), View.MeasureSpec.EXACTLY))
 		view.layout(0, 0, view.measuredWidth, view.measuredHeight)
 	}
 }

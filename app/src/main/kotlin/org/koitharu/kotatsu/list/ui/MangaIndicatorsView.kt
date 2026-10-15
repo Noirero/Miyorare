@@ -102,13 +102,10 @@ class MangaIndicatorsView @JvmOverloads constructor(
 			root.findViewById<View>(R.id.textView_local)?.isVisible = false
 			val legacy = root.findViewById<LinearLayout>(R.id.layout_indicators)
 			val progress = root.findViewById<ReadingProgressView>(R.id.progressView)
-			if (useModernFavouritesPresentation && legacy != null) {
+			if (legacy != null) {
 				reparent(root, legacy, progress, modernLayout(Gravity.BOTTOM or Gravity.START, start = 8, end = 8, bottom = 4, matchWidth = true))
 				legacy.isVisible = false
 				progress?.setModernBottomEdge(true)
-			} else {
-				// Browsing and Private retain their existing progress parent, mode and dimensions.
-				restoreLegacyGridPresentation()
 			}
 			return
 		}

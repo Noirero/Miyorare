@@ -117,11 +117,12 @@ class ChapterPersistenceRegressionTest {
 	fun modernCoverProjectsOnlyHostAuthorizedState() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
 			org.koitharu.kotatsu.list.ui.ModernCoverRuntimeChecks.projectionAndRecycling(context)
+			org.koitharu.kotatsu.list.ui.ModernCoverRuntimeChecks.counterCompactionAndThemes(context)
 		}
 	}
 
 	@Test
-	fun modernCoverAdapterSeparatesBorderAndPreservesHostProgress() {
+	fun modernCoverAdapterSeparatesBorderAndUsesModernProgress() {
 		// HiltTestApplication omits BaseApp's background warm-up; use the existing fixture pattern.
 		imageLoaderProvider.get()
 		// The real card inflates a Hilt-injected CoverImageView, so it needs an EntryPoint Activity.

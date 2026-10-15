@@ -36,6 +36,8 @@ class FavouriteCoverWiringRegressionTest {
 		assertTrue(replacement.contains("return"))
 		assertTrue(replacement.contains("start = 8, end = 8, bottom = 4, matchWidth = true"))
 		assertTrue(replacement.contains("progress?.setModernBottomEdge(true)"))
+		assertFalse(replacement.contains("if (useModernFavouritesPresentation"))
+		assertFalse(replacement.contains("restoreLegacyGridPresentation()"))
 		assertFalse(replacement.contains("translation"))
 	}
 
