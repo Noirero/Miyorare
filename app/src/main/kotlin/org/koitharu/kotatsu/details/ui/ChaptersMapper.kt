@@ -31,7 +31,8 @@ fun MangaDetails.mapChapters(
 	if (remoteChapters.isEmpty() && localChapters.isEmpty()) {
 		return emptyList()
 	}
-	val sourceChaptersById = sourceManga.chapters.orEmpty().groupBy { it.id }
+	val sourceChapters = sourceManga.chapters.orEmpty()
+	val sourceChaptersById = sourceChapters.groupBy { it.id }
 	val bookmarked = bookmarks.mapToSet { it.chapterId }
 	val newFrom = if (newCount == 0 || remoteChapters.isEmpty()) Int.MAX_VALUE else remoteChapters.size - newCount
 	val remoteIds = remoteChapters.mapTo(HashSet(remoteChapters.size)) { it.id }
@@ -68,9 +69,7 @@ fun MangaDetails.mapChapters(
 				isDownloaded = local != null,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
-			).copy(personalKey = ChapterPersonalKey.of(
-				sourceChaptersById[chapter.id]?.singleOrNull() ?: chapter,
-			))
+			).copy(personalKey = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById))
 			if (isCurrent) {
 				isUnread = true
 			}
@@ -86,15 +85,28 @@ fun MangaDetails.mapChapters(
 				isDownloaded = !isLocal,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
-			).copy(personalKey = ChapterPersonalKey.of(
-				sourceChaptersById[chapter.id]?.singleOrNull() ?: chapter,
-			))
+			).copy(personalKey = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById))
 			if (isCurrent) {
 				isUnread = true
 			}
 		}
 	}
 	return result
+}
+
+internal fun resolveChapterPersonalKey(
+	chapter: MangaChapter,
+	sourceChapters: List<MangaChapter>,
+	sourceChaptersById: Map<Long, List<MangaChapter>> = sourceChapters.groupBy { it.id },
+): ChapterPersonalKey {
+	// Personal metadata is owned by the source chapter locator, not by the downloaded/local artifact.
+	// A sidecar-free download may be reparsed with a different local id, especially in an isolated
+	// Private root. Recover the unique source chapter with the same bounded equivalence rules used by
+	// download reconciliation so a transient local snapshot cannot hide an existing note/rating.
+	val canonical = sourceChaptersById[chapter.id]?.singleOrNull()
+		?: sourceChapters.singleOrNull { source -> source.isEquivalentDownloadOf(chapter) }
+		?: chapter
+	return ChapterPersonalKey.of(canonical)
 }
 
 private data class ChapterMappingIdentity(
