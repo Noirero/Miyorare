@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.core.model.UnknownMangaSource
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.history.ui.util.ReadingProgressView
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -206,6 +207,9 @@ internal object ModernCoverRuntimeChecks {
 		val density = card.resources.displayMetrics.density
 		assertSame("Every opted-in Modern host uses the bottom-edge owner", cover, progress.parent)
 		assertFalse(card.findViewById<View>(R.id.layout_indicators).isVisible)
+		assertEquals(minOf(cover.height,
+			(MiyorareFavouritesVisualSpec.MANGA_CARD_SCRIM_HEIGHT_DP * density).roundToInt()),
+			card.findViewById<View>(R.id.view_scrim).layoutParams.height)
 		if (progress.progress == null || progress.progress?.mode == ProgressIndicatorMode.NONE) {
 			assertEquals(0, progress.height)
 		} else {

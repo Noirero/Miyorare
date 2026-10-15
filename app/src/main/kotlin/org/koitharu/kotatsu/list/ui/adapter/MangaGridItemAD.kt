@@ -271,15 +271,16 @@ fun mangaGridItemAD(
 		} else {
 			0
 		}
-		if (isNormalModernFavourites && referenceHeight > 0) {
+		val coverHeight = if (referenceHeight > 0) referenceHeight else coverWidth * 18 / 13
+		if (usesModernCover && coverHeight > 0) {
 			binding.viewScrim.updateLayoutParams<FrameLayout.LayoutParams> {
-				height = minOf(referenceHeight, (MiyorareFavouritesVisualSpec.MANGA_CARD_SCRIM_HEIGHT_DP * density).roundToInt())
+				height = minOf(coverHeight, (MiyorareFavouritesVisualSpec.MANGA_CARD_SCRIM_HEIGHT_DP * density).roundToInt())
 			}
 		}
 		binding.imageViewCover.exactImageSize = if (coverWidth > 0) {
 			Size(
 				coverWidth,
-				if (referenceHeight > 0) referenceHeight else coverWidth * 18 / 13,
+				coverHeight,
 			)
 		} else {
 			null
