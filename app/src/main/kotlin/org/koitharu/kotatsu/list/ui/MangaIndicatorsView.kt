@@ -93,7 +93,7 @@ class MangaIndicatorsView @JvmOverloads constructor(
 			status = MangaCardStatus.NONE
 			ribbon.isVisible = false
 			statusIcons.clearIcons()
-			statusIcons.isVisible = false
+			statusIcons.isVisible = statusIcons.iconsCount > 0
 			isVisible = false
 			root.findViewById<View>(R.id.textView_local)?.isVisible = false
 			val legacy = root.findViewById<LinearLayout>(R.id.layout_indicators)

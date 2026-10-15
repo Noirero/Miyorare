@@ -53,7 +53,17 @@ class DownloadedLocalPipelineRegressionTest {
 			"binding.iconsView.bind(item.isSaved,item.isLocalSource,item.isFavorite)",
 		))
 		val indicators = source("list/ui/MangaIndicatorsView.kt")
-		assertTrue(indicators.contains("funbindGrid(isSaved:Boolean,isLocalSource:Boolean,isFavorite:Boolean,counter:Int,useModernFavouritesPresentation:Boolean=false){bind(isSaved,isLocalSource,isFavorite)"))
+		val gridBinding = indicators.substringAfter("funbindGrid(")
+			.substringBefore("privatefunapplyModernGridPresentation")
+		val replacement = gridBinding.substringBefore("bind(isSaved,isLocalSource,isFavorite)")
+		// Approved cover groups bypass the legacy Corner Mark entirely, while still committing
+		// IconsView's empty final set. Other consumers retain the existing transactional bind.
+		assertTrue(replacement.contains("useModernFavouritesPresentation&&root?.findViewById<View>(R.id.favourite_cover_overlays)?.isVisible==true"))
+		assertTrue(replacement.contains("statusIcons.clearIcons()"))
+		assertTrue(replacement.contains("statusIcons.isVisible=statusIcons.iconsCount>0"))
+		assertTrue(replacement.contains("ribbon.isVisible=false"))
+		assertTrue(replacement.contains("return"))
+		assertTrue(gridBinding.substringAfter("return}").contains("bind(isSaved,isLocalSource,isFavorite)"))
 		val binding = indicators.substringAfter("funbind(isSaved:Boolean,isLocalSource:Boolean,isFavorite:Boolean)")
 			.substringBefore("funapplySelectionPresentation")
 		assertTrue(binding.contains("statusIcons.clearIcons()"))
