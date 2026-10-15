@@ -27,7 +27,7 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 			val metadata = cover.findViewById<ViewGroup>(R.id.cover_metadata)
 			val action = cover.findViewById<View>(R.id.cover_continue)
 			var clicks = 0
-			for (mask in listOf(7, 6, 2, 4, 1, 0, 7, 0)) {
+			for (mask in (7 downTo 0).toList() + listOf(7, 0)) {
 				val model = model().copy(isFavorite = mask and 1 != 0, isSaved = mask and 2 != 0,
 					isPinned = mask and 4 != 0, isLocalSource = mask == 7,
 					languageLabel = if (mask == 7) "JA" else null, showContinueReading = mask != 0)
@@ -81,7 +81,7 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 			val rich = model().copy(isFavorite = true, isSaved = true, isPinned = true,
 				isLocalSource = true, languageLabel = "ZH-HANT", showContinueReading = true)
 			cover.bind(rich) {}
-			for ((w, h) in listOf(194 to 344, 59 to 35, 55 to 33, 59 to 105, 128 to 170, 194 to 344)) {
+			for ((w, h) in listOf(194 to 344, 59 to 35, 55 to 33, 55 to 98, 59 to 105, 128 to 170, 194 to 344)) {
 				for (selected in listOf(false, true)) {
 					cover.isSelected = selected
 					layout(cover, w, h)
@@ -95,6 +95,13 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 						val y = visible[b]
 						assertFalse("collision $w x $h: ${x.id}, ${y.id}", Rect.intersects(Rect(x.left, x.top, x.right, x.bottom), Rect(y.left, y.top, y.right, y.bottom)))
 					}
+					if (selected && cover.canShowSelectionMarker()) {
+						val markerSize = themed.resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_width)
+						val markerInset = themed.resources.getDimensionPixelSize(R.dimen.card_indicator_offset)
+						val marker = Rect(cover.width - markerInset - markerSize, markerInset, cover.width - markerInset, markerInset + markerSize)
+						for (view in visible) assertFalse("Selection marker collision $w x $h", Rect.intersects(marker, Rect(view.left, view.top, view.right, view.bottom)))
+					}
+					if (h <= 35) assertFalse(cover.canShowSelectionMarker())
 					if (w <= 59) assertFalse(cover.findViewById<View>(R.id.cover_continue).isVisible)
 				}
 			}

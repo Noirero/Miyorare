@@ -59,6 +59,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 	fun bind(value: MangaGridModel, onReadClick: (View) -> Unit) {
 		model = value
 		styledMetrics = null
+		styledActionSize = -1
 		readClick = onReadClick.takeIf { value.showContinueReading }
 		number.number = value.counter
 		titleView.text = value.title
@@ -115,7 +116,8 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		val radius = px(metrics.radius).toFloat()
 		val innerWidth = (w - inset * 2).coerceAtLeast(0)
 		val bottom = h - px(FavouriteCoverOverlayMetrics.PROGRESS_RESERVED_DP) - gap
-		val top = inset + if (isSelected) resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_width) +
+		val selectionSize = resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_width)
+		val top = inset + if (isSelected) selectionSize +
 			resources.getDimensionPixelSize(R.dimen.library_indicator_spacing) else 0
 
 		if (styledMetrics != metrics || styledWidth != innerWidth) {
@@ -181,9 +183,13 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		val topLimit = titleTop - gap
 		if (statuses.measuredHeight + top > topLimit || statuses.measuredWidth > innerWidth) showStatuses = false
 		place(statuses, w - inset - statuses.measuredWidth, top)
-		var usedTop = if (showStatuses) top + statuses.measuredHeight else inset
+		var usedTop = if (showStatuses) top + statuses.measuredHeight else if (isSelected) top else inset
 		measureNatural(unread, innerWidth)
-		val unreadTop = if (showStatuses && unread.measuredWidth + statuses.measuredWidth + gap > innerWidth) usedTop + gap else inset
+		val unreadTop = when {
+			showStatuses && unread.measuredWidth + statuses.measuredWidth + gap > innerWidth -> usedTop + gap
+			isSelected && unread.measuredWidth + selectionSize + gap > innerWidth -> top
+			else -> inset
+		}
 		val showUnread = value.counter > 0 && unread.measuredWidth <= innerWidth && unreadTop + unread.measuredHeight <= topLimit
 		place(unread, inset, unreadTop)
 		if (showUnread) usedTop = max(usedTop, unreadTop + unread.measuredHeight)
@@ -234,6 +240,15 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		titleView.contentDescription = (listOf(value.title) + omitted).joinToString(", ")
 		contentDescription = titleView.contentDescription.takeIf { !titleView.isVisible }
 		importantForAccessibility = if (titleView.isVisible) IMPORTANT_FOR_ACCESSIBILITY_NO else IMPORTANT_FOR_ACCESSIBILITY_YES
+	}
+
+	/** Selection retains its fill/outline even when its extra marker cannot fit above the title. */
+	fun canShowSelectionMarker(): Boolean {
+		if (isLayoutRequested) return false
+		val markerBottom = resources.getDimensionPixelSize(R.dimen.card_indicator_offset) +
+			resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_width)
+		return markerBottom <= height - (FavouriteCoverOverlayMetrics.PROGRESS_RESERVED_DP * density).roundToInt() &&
+			(!titleView.isVisible || markerBottom < titleView.top)
 	}
 
 	private fun measureNatural(view: View, maxWidth: Int) {

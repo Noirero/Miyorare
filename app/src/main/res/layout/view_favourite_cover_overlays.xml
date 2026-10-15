@@ -5,6 +5,7 @@
 		android:layout_width="wrap_content" android:layout_height="wrap_content">
 		<org.koitharu.kotatsu.core.ui.widgets.BadgeView android:id="@+id/cover_unread_number"
 			android:layout_width="wrap_content" android:layout_height="wrap_content"
+			android:importantForAccessibility="no"
 			app:maxCharacterCount="@integer/manga_badge_max_character_count" />
 	</FrameLayout>
 	<LinearLayout android:id="@+id/cover_permanent_status"

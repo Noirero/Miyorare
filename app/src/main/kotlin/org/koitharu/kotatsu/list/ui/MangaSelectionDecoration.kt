@@ -133,6 +133,8 @@ open class MangaSelectionDecoration(context: Context) : AbstractSelectionItemDec
 		paint.style = Paint.Style.STROKE
 		canvas.drawRoundRect(bounds, radius, radius, paint)
 		if (child.findViewById<View>(R.id.iconsView) !is MangaIndicatorsView) return
+		val overlays = child.findViewById<FavouriteCoverOverlayView>(R.id.favourite_cover_overlays)
+		if (overlays?.isVisible == true && !overlays.canShowSelectionMarker()) return
 		val cover = child.findViewById<View>(R.id.imageView_cover) ?: return
 		cover.getDrawingRect(coverBounds)
 		parent.offsetDescendantRectToMyCoords(cover, coverBounds)
