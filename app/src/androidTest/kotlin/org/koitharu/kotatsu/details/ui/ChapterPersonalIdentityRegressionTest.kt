@@ -2,9 +2,9 @@ package org.koitharu.kotatsu.details.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
-import org.koitharu.kotatsu.test.SampleData
 
 class ChapterPersonalIdentityRegressionTest {
 
