@@ -16,14 +16,15 @@ class CustomVisualIdentityRegressionTest {
 	}
 
 	@Test
-	fun `floating navigation preserves neutral identity instead of relighting it`() {
+	fun `floating navigation preserves only black identity instead of relighting it`() {
 		val navigation = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(navigation.contains("resolveNeonGlassIdentityColor(identity,Int.MIN_VALUE)==identity"))
-		assertTrue(navigation.contains("container=neutralCustomIdentity"))
-		assertTrue(navigation.contains("selectedContainer=neutralCustomIdentity"))
+		assertTrue(navigation.contains("identity==Color.Black.toArgb()"))
+		assertTrue(navigation.contains("container=blackCustomIdentity"))
+		assertTrue(navigation.contains("selectedContainer=blackCustomIdentity"))
 		assertTrue(navigation.contains("selectedContent=Color.White.toArgb()"))
+		assertTrue(navigation.contains("colors.container==Color.Black.toArgb()"))
 	}
 
 	private fun source(relativePath: String): String =
