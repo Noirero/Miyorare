@@ -36,11 +36,13 @@
 - 📚 Membaca **Manga dan Novel** dalam satu aplikasi.
 - 🌐 Mendukung **Miyorare Source Packs resmi** serta berbagai ekosistem source, extension, dan plugin pihak ketiga.
 - 💾 Download dan baca offline ketika source mendukungnya.
-- ❤️ Disukai, kategori, bookmark, catatan, dan history untuk menjaga koleksi tetap rapi.
+- ❤️ **Favourites modern**, kategori, bookmark, history, rating chapter, dan Personal Notes untuk menjaga koleksi tetap rapi.
+- 🧭 **Details modern** dengan informasi cover, status, metadata, dan progres membaca yang lebih terintegrasi.
+- 🗂️ Pengelolaan chapter dengan pencarian, sorting, pengelompokan rentang, dan informasi personal chapter.
+- 📅 Prediksi chapter berikutnya dan kalender prediksi untuk source/data yang mendukungnya.
 - 📦 Dukungan file lokal seperti CBZ, ZIP, EPUB, dan PDF.
 - 🔄 Backup dan restore untuk membantu memindahkan atau menjaga data pengguna.
-- 🎨 Antarmuka Android modern dengan arah desain Miyorare sendiri.
-- 🌙 Nyaman digunakan dalam mode terang maupun gelap.
+- 🎨 Appearance yang dapat disesuaikan, termasuk mode terang/gelap, accent color, dan background kustom.
 
 ## 🌐 Miyorare Source Packs
 
@@ -109,14 +111,14 @@ Source Pack resmi Miyorare melalui proses kurasi, build, dan verifikasi sebelum 
 
 ## 🔐 Verifikasi rilis terbaru
 
-Bagian ini diperbarui otomatis setiap kali workflow rilis `main` berhasil.
+Bagian ini dikelola otomatis dari GitHub Release stable terbaru. Data di bawah mengikat versi rilis ke source commit, workflow run, APK, dan SHA-256 APK yang dipublikasikan.
 
 <!-- RELEASE_README_START -->
-- **Versi:** [v1.4.3](https://github.com/Noirero/Miyorare/releases/tag/v1.4.3)
-- **Commit:** [`45c237a5887b0592a537ea36bd753b7d92886398`](https://github.com/Noirero/Miyorare/commit/45c237a5887b0592a537ea36bd753b7d92886398)
-- **GitHub Actions:** [run 35566551660](https://github.com/Noirero/Miyorare/actions/runs/35566551660)
+- **Versi:** [v1.4.10](https://github.com/Noirero/Miyorare/releases/tag/v1.4.10)
+- **Commit:** [`d55c6cb4a933959542d0a4b4384ec9ec368b2dad`](https://github.com/Noirero/Miyorare/commit/d55c6cb4a933959542d0a4b4384ec9ec368b2dad)
+- **GitHub Actions:** [run 38783075931](https://github.com/Noirero/Miyorare/actions/runs/38783075931)
 - **APK dan SHA-256:**
-  - `Miyorare-v1.4.3.apk` — `409778ffd14d8ee9988bd6167e28510a5fb05a1c9db2407cb228aca49f3aee0d`
+  - `Miyorare-v1.4.10.apk` — `10ca955a6b1dd4e37a008c0332da929ded1b321fe85ab6ff4c96534121e0b08d`
 <!-- RELEASE_README_END -->
 
 Detail signature dan informasi keamanan lainnya tersedia di [SECURITY.md](SECURITY.md).
