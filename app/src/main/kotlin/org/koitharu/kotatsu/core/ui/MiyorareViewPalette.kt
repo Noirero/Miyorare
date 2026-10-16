@@ -71,16 +71,25 @@ fun Context.miyorareViewPalette(
 	val customBackgroundActive = !privateFavourites &&
 		preset == MiyorareThemePreset.CUSTOM &&
 		MiyorareCustomBackgroundStore.hasBackground(this)
+	val adaptivePalette = if (customBackgroundActive) settings.miyorareAdaptivePalette else null
+	val customBackgroundIdentity = if (adaptivePalette != null) {
+		PreferenceManager.getDefaultSharedPreferences(applicationContext)
+			.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, null)
+			?.let(MiyorareAppearance::parseAccentArgb)
+	} else {
+		null
+	}
 	val palette = buildMiyorareViewPalette(
 		preset = preset,
 		customAccent = settings.miyorareCustomAccent,
-		adaptivePalette = if (customBackgroundActive) settings.miyorareAdaptivePalette else null,
+		adaptivePalette = adaptivePalette,
 		amoled = settings.isAmoledTheme,
 		effectLevel = effectLevel,
 		forceDark = privateSpec != null,
 		customBackgroundPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.sharpPathOrNull(this) else null,
 		customBackgroundBlurPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.blurPathOrNull(this) else null,
 		customBackgroundRevision = if (customBackgroundActive) settings.miyorareCustomBackgroundRevision else 0,
+		customBackgroundIdentity = customBackgroundIdentity,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
@@ -120,12 +129,17 @@ fun Context.miyorareViewPaletteFromPreferences(
 	val customIntensity = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY, null)
 		?.let { value -> MiyorareCustomBackgroundIntensity.entries.firstOrNull { it.name == value } }
 		?: MiyorareCustomBackgroundIntensity.BALANCED
+	val customBackgroundPrimary = if (customBackgroundActive) {
+		prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, null)
+	} else {
+		null
+	}
 	val adaptivePalette = if (
 		customBackgroundActive &&
 		prefs.getBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, true)
 	) {
 		MiyorareAppearance.resolveAdaptivePalette(
-			primary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, null),
+			primary = customBackgroundPrimary,
 			secondary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_SECONDARY, null),
 			tertiary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY, null),
 			intensity = customIntensity,
@@ -145,6 +159,11 @@ fun Context.miyorareViewPaletteFromPreferences(
 			prefs.getInt(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0)
 		} else {
 			0
+		},
+		customBackgroundIdentity = if (adaptivePalette != null) {
+			customBackgroundPrimary?.let(MiyorareAppearance::parseAccentArgb)
+		} else {
+			null
 		},
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
@@ -168,6 +187,7 @@ private fun Context.buildMiyorareViewPalette(
 	customBackgroundPath: String?,
 	customBackgroundBlurPath: String?,
 	customBackgroundRevision: Int,
+	customBackgroundIdentity: Int?,
 ): MiyorareViewPalette {
 	val darkTheme = forceDark || (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
@@ -214,8 +234,12 @@ private fun Context.buildMiyorareViewPalette(
 		customBackgroundPath = customBackgroundPath,
 		customBackgroundBlurPath = customBackgroundBlurPath,
 		customBackgroundRevision = customBackgroundRevision,
-		customAccentIdentity = if (preset == MiyorareThemePreset.CUSTOM && adaptivePalette == null) {
-			MiyorareAppearance.parseAccentArgb(customAccent)
+		customAccentIdentity = if (preset == MiyorareThemePreset.CUSTOM) {
+			customBackgroundIdentity ?: if (adaptivePalette == null) {
+				MiyorareAppearance.parseAccentArgb(customAccent)
+			} else {
+				null
+			}
 		} else {
 			null
 		},
