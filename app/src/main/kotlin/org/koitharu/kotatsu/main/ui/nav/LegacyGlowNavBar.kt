@@ -72,7 +72,11 @@ fun LegacyGlowNavBar(
 
 	val accent = MaterialTheme.colorScheme.primary
 	val lightMode = MaterialTheme.colorScheme.background.luminance() >= 0.5f
-	val luminousAccent = if (emphasizeFavourites) {
+	val preservesBlackIdentity = emphasizeFavourites &&
+		colors.container == Color.Black.toArgb() &&
+		colors.selectedContainer == Color.Black.toArgb() &&
+		colors.selectedContent == Color.White.toArgb()
+	val luminousAccent = if (preservesBlackIdentity) Color.Black else if (emphasizeFavourites) {
 		Color(
 			normalFavouritesLuminousAccent(
 				accent.toArgb(),
@@ -85,7 +89,9 @@ fun LegacyGlowNavBar(
 	val barShape = RoundedCornerShape(
 		if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp else 30.dp,
 	)
-	val darkNavyBase = if (lightMode) {
+	val darkNavyBase = if (preservesBlackIdentity) {
+		Color.Black.toArgb()
+	} else if (lightMode) {
 		ColorUtils.blendARGB(Color.White.toArgb(), luminousAccent.toArgb(), LIGHT_NAV_BASE_ACCENT_MIX)
 	} else {
 		ColorUtils.blendARGB(
@@ -100,52 +106,63 @@ fun LegacyGlowNavBar(
 		MiyorareFavouritesVisualSpec.BOTTOM_NAV_BASE_ACCENT_MIX,
 	)
 	val barContainer = Color(
-		if (emphasizeFavourites) {
-			ColorUtils.setAlphaComponent(favouritesBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA)
-		} else {
-			ColorUtils.blendARGB(colors.container, accent.toArgb(), BAR_ACCENT_MIX)
+		when {
+			preservesBlackIdentity -> Color.Black.toArgb()
+			emphasizeFavourites -> ColorUtils.setAlphaComponent(
+				favouritesBase,
+				MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA,
+			)
+			else -> ColorUtils.blendARGB(colors.container, accent.toArgb(), BAR_ACCENT_MIX)
 		},
 	)
 	val favouritesGlass = if (emphasizeFavourites) {
-		Brush.linearGradient(
-			listOf(
-				Color(
-					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(
-						darkNavyBase,
-						luminousAccent.toArgb(),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
+		if (preservesBlackIdentity) {
+			Brush.linearGradient(listOf(Color.Black, Color.Black))
+		} else {
+			Brush.linearGradient(
+				listOf(
+					Color(
+						ColorUtils.setAlphaComponent(
+							ColorUtils.blendARGB(
+								darkNavyBase,
+								luminousAccent.toArgb(),
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
+							),
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ALPHA,
+						),
 					),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ALPHA,
+					Color(
+						ColorUtils.setAlphaComponent(
+							ColorUtils.blendARGB(
+								darkNavyBase,
+								luminousAccent.toArgb(),
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
+							),
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ALPHA,
+						),
+					),
+					Color(
+						ColorUtils.setAlphaComponent(
+							ColorUtils.blendARGB(
+								darkNavyBase,
+								luminousAccent.toArgb(),
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
+							),
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ALPHA,
+						),
 					),
 				),
-				Color(
-					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(
-						darkNavyBase,
-						luminousAccent.toArgb(),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
-					),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ALPHA,
-					),
-				),
-				Color(
-					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(
-						darkNavyBase,
-						luminousAccent.toArgb(),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
-					),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ALPHA,
-					),
-				),
-			),
-		)
+			)
+		}
 	} else null
-	val barCore = if (emphasizeFavourites) {
-		if (lightMode) luminousAccent else Color(ColorUtils.blendARGB(luminousAccent.toArgb(), Color.White.toArgb(), 0.28f))
-	} else {
-		accent
+	val barCore = when {
+		preservesBlackIdentity -> Color.Black
+		emphasizeFavourites -> if (lightMode) {
+			luminousAccent
+		} else {
+			Color(ColorUtils.blendARGB(luminousAccent.toArgb(), Color.White.toArgb(), 0.28f))
+		}
+		else -> accent
 	}
 
 	// Legacy mode keeps the labelled layout while supporting the fixed fifth Reader Journey item. The renderer
@@ -259,7 +276,13 @@ private fun LegacyGlowNavItem(
 	} else {
 		if (showLabel) 58.dp else 48.dp
 	}
-	val selectedContainer = if (emphasizeFavourites) {
+	val preservesBlackIdentity = emphasizeFavourites &&
+		colors.container == Color.Black.toArgb() &&
+		colors.selectedContainer == Color.Black.toArgb() &&
+		colors.selectedContent == Color.White.toArgb()
+	val selectedContainer = if (preservesBlackIdentity) {
+		Color.Black
+	} else if (emphasizeFavourites) {
 		val selectedBase = if (lightMode) {
 			ColorUtils.blendARGB(Color.White.toArgb(), accent.toArgb(), LIGHT_NAV_SELECTED_ACCENT_MIX)
 		} else {
@@ -290,6 +313,7 @@ private fun LegacyGlowNavItem(
 		)
 	}
 	val content = when {
+		preservesBlackIdentity -> Color.White
 		selected && emphasizeFavourites && lightMode -> accent
 		selected && emphasizeFavourites -> Color.White
 		selected -> accent
@@ -297,10 +321,12 @@ private fun LegacyGlowNavItem(
 		emphasizeFavourites -> Color.White.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_INACTIVE_CONTENT_ALPHA)
 		else -> Color(colors.unselectedContent)
 	}
-	val selectedCore = if (lightMode && emphasizeFavourites) {
-		Color(ColorUtils.blendARGB(Color.White.toArgb(), accent.toArgb(), LIGHT_NAV_SELECTED_CORE_MIX))
-	} else {
-		Color(ColorUtils.blendARGB(accent.toArgb(), Color.White.toArgb(), 0.42f))
+	val selectedCore = when {
+		preservesBlackIdentity -> Color.Black
+		lightMode && emphasizeFavourites -> Color(
+			ColorUtils.blendARGB(Color.White.toArgb(), accent.toArgb(), LIGHT_NAV_SELECTED_CORE_MIX),
+		)
+		else -> Color(ColorUtils.blendARGB(accent.toArgb(), Color.White.toArgb(), 0.42f))
 	}
 
 	Box(

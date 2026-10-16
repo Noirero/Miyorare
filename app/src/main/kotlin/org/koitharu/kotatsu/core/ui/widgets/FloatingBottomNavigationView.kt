@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.core.ui.widgets
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
@@ -269,6 +271,16 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	}
 
 	private fun readNavColors(): FloatingNavBarColors {
+		val customAccentIdentity = context.miyorareViewPaletteFromPreferences()?.customAccentIdentity
+		if (customAccentIdentity == Color.BLACK) {
+			return FloatingNavBarColors(
+				container = Color.BLACK,
+				selectedContainer = Color.BLACK,
+				selectedContent = Color.WHITE,
+				unselectedContent = Color.WHITE,
+			)
+		}
+
 		val unselectedState = intArrayOf(android.R.attr.state_enabled, -android.R.attr.state_checked)
 		val fallbackContainer = context.getThemeColor(materialR.attr.colorSurfaceContainer)
 		val fallbackUnselectedContent = context.getThemeColor(materialR.attr.colorOnSurfaceVariant)
