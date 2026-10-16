@@ -1,0 +1,107 @@
+name: Release README Sync
+run-name: Release README Sync · ${{ github.event.release.tag_name }}
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-readme-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: ${{ !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Normalize release notes and refresh README verification
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+          SOURCE_SHA: ${{ github.event.release.target_commitish }}
+          REPOSITORY: ${{ github.repository }}
+      
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          RELEASE_JSON="$(mktemp)"
+          BODY_FILE="$(mktemp)"
+          NORMALIZED_BODY="$(mktemp)"
+
+          gh api "repos/${REPOSITORY}/releases/tags/${TAG}" > "$RELEASE_JSON"
+          python3 - "$RELEASE_JSON" "$BODY_FILE" <<'PY'
+          import json, sys
+          from pathlib import Path
+          release = json.load(open(sys.argv[1], encoding='utf-8'))
+          Path(sys.argv[2]).write_text(release.get('body') or '', encoding='utf-8')
+          PY
+
+          RUN_ID="$(python3 - "$BODY_FILE" <<'PY'
+          import re, sys
+          body = open(sys.argv[1], encoding='utf-8').read()
+          match = re.search(r'<!-- MIYORARE_RELEASE_RUN_ID:(\d+) -->', body)
+          if not match:
+              raise SystemExit('Release body does not contain MIYORARE_RELEASE_RUN_ID')
+          print(match.group(1))
+          PY
+          )"
+
+          python3 .github/scripts/sync_release_readme.py normalize-release-body \
+            --body "$BODY_FILE" \
+            --version "$VERSION" \
+            --output "$NORMALIZED_BODY"
+
+          # Preserve machine-readable provenance markers after normalization.
+          {
+            echo
+            echo "<!-- MIYORARE_RELEASE_RUN_ID:${RUN_ID} -->"
+            echo "<!-- MIYORARE_RELEASE_SOURCE_SHA:${SOURCE_SHA} -->"
+          } >> "$NORMALIZED_BODY"
+          gh release edit "$TAG" --notes-file "$NORMALIZED_BODY"
+
+          mapfile -t APK_ROWS < <(python3 - "$RELEASE_JSON" <<'PY'
+          import json, sys
+          release = json.load(open(sys.argv[1], encoding='utf-8'))
+          for asset in release.get('assets', []):
+              name = asset.get('name') or ''
+              digest = asset.get('digest') or ''
+              if name.endswith('.apk') and digest.startswith('sha256:'):
+                  print(f"{name}\t{digest.removeprefix('sha256:')}")
+          PY
+          )
+          if [[ ${#APK_ROWS[@]} -ne 1 ]]; then
+            echo "::error::Expected exactly one APK asset with a GitHub SHA-256 digest; found ${#APK_ROWS[@]}."
+            exit 1
+          fi
+          IFS=$'\t' read -r APK_NAME APK_SHA256 <<< "${APK_ROWS[0]}"
+
+          python3 .github/scripts/sync_release_readme.py update-readme \
+            --readme README.md \
+            --version "$VERSION" \
+            --source-sha "$SOURCE_SHA" \
+            --run-id "$RUN_ID" \
+            --apk-name "$APK_NAME" \
+            --apk-sha256 "$APK_SHA256" \
+            --repository "$REPOSITORY"
+
+          if git diff --quiet -- README.md; then
+            echo "README verification already matches ${TAG}."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "docs: sync README verification for ${TAG}"
+          git push origin HEAD:main
