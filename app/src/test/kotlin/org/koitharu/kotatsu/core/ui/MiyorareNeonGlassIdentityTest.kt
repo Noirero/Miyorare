@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.core.ui
 
-import android.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
@@ -9,18 +8,19 @@ class MiyorareNeonGlassIdentityTest {
 
 	@Test
 	fun `explicit black custom accent remains black instead of luminous`() {
-		val luminousFallback = Color.WHITE
+		val authoredBlack = 0xFF000000.toInt()
+		val luminousFallback = 0xFFFFFFFF.toInt()
 
 		assertEquals(
-			Color.BLACK,
-			resolveNeonGlassIdentityColor(Color.BLACK, luminousFallback),
+			authoredBlack,
+			resolveNeonGlassIdentityColor(authoredBlack, luminousFallback),
 		)
 	}
 
 	@Test
 	fun `neutral custom accent preserves its authored value`() {
-		val authoredGray = Color.rgb(96, 96, 96)
-		val luminousFallback = Color.WHITE
+		val authoredGray = 0xFF606060.toInt()
+		val luminousFallback = 0xFFFFFFFF.toInt()
 
 		assertEquals(
 			authoredGray,
@@ -30,8 +30,8 @@ class MiyorareNeonGlassIdentityTest {
 
 	@Test
 	fun `chromatic custom accent keeps existing luminous treatment`() {
-		val authoredBlue = Color.rgb(0, 64, 255)
-		val luminousFallback = Color.rgb(80, 180, 255)
+		val authoredBlue = 0xFF0040FF.toInt()
+		val luminousFallback = 0xFF50B4FF.toInt()
 
 		val resolved = resolveNeonGlassIdentityColor(authoredBlue, luminousFallback)
 
@@ -41,7 +41,7 @@ class MiyorareNeonGlassIdentityTest {
 
 	@Test
 	fun `non custom palette keeps existing luminous treatment`() {
-		val luminousFallback = Color.rgb(80, 180, 255)
+		val luminousFallback = 0xFF50B4FF.toInt()
 
 		assertEquals(
 			luminousFallback,
