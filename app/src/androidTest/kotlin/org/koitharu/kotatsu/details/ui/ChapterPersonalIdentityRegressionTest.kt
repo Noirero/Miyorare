@@ -9,7 +9,7 @@ import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 class ChapterPersonalIdentityRegressionTest {
 
 	@Test
-	fun `downloaded local chapter keeps authoritative source personal key when id changes`() {
+	fun downloadedLocalChapterKeepsAuthoritativeSourcePersonalKeyWhenIdChanges() {
 		val source = SampleData.chapter
 		val downloaded = source.copy(
 			id = source.id + 1000L,
@@ -24,7 +24,7 @@ class ChapterPersonalIdentityRegressionTest {
 	}
 
 	@Test
-	fun `source chapter keeps the same personal key before and after local ownership changes`() {
+	fun sourceChapterKeepsTheSamePersonalKeyBeforeAndAfterLocalOwnershipChanges() {
 		val source = SampleData.chapter
 		val downloaded = source.copy(
 			id = source.id + 1000L,
@@ -41,7 +41,7 @@ class ChapterPersonalIdentityRegressionTest {
 	}
 
 	@Test
-	fun `ambiguous reconciliation never invents a source personal key`() {
+	fun ambiguousReconciliationNeverInventsASourcePersonalKey() {
 		val source = SampleData.chapter
 		val secondSource = source.copy(id = source.id + 1L, url = source.url + "?alternate=1")
 		val downloaded = source.copy(
