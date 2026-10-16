@@ -47,6 +47,21 @@ internal fun normalFavouritesLuminousAccent(
 	valueBoost = 0.14f,
 )
 
+/**
+ * An explicitly authored neutral Custom accent is an identity color, not a luminance seed.
+ * Preserve it for glass identity tokens instead of turning black/gray/white into a luminous edge.
+ * Chromatic accents keep the existing luminous treatment.
+ */
+internal fun resolveNeonGlassIdentityColor(
+	authoredIdentity: Int?,
+	luminousFallback: Int,
+): Int {
+	val identity = authoredIdentity ?: return luminousFallback
+	val hsv = FloatArray(3)
+	Color.colorToHSV(identity, hsv)
+	return if (hsv[1] <= NEUTRAL_SATURATION_THRESHOLD) identity else luminousFallback
+}
+
 
 /**
  * Lightweight, theme-driven glass tokens used by Normal Favourites.
@@ -89,14 +104,19 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 
 	// Surface and light are deliberately separated. Surface stays dark/translucent while the
 	// luminous family keeps the active theme hue but restores saturation/value lost in Material
-	// container blending. This is what lets blue/pink/green/etc. stay adaptive without becoming gray.
-	val luminousPrimary = luminousThemeColor(primary)
-	val luminousAccent = normalFavouritesLuminousAccent(primary, secondary)
+	// container blending. Explicit neutral Custom accents retain their authored identity instead.
+	val luminousPrimary = resolveNeonGlassIdentityColor(customAccentIdentity, luminousThemeColor(primary))
+	val luminousAccent = resolveNeonGlassIdentityColor(
+		customAccentIdentity,
+		normalFavouritesLuminousAccent(primary, secondary),
+	)
 	val luminousEdge = luminousAccent
+	val authoredNeutralIdentity = customAccentIdentity == luminousEdge
 	// The target reads as a near-white cyan hot core over a darker blue-cyan bloom, not a thick
-	// saturated outline. Keep those two jobs separate so increasing luminance does not flatten glass.
-	val hotEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.42f)
-	val selectedEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.62f)
+	// saturated outline. For an authored neutral identity, however, whitening would destroy the
+	// user's selected black/gray/white border identity, so the edge family remains exact.
+	val hotEdge = if (authoredNeutralIdentity) luminousEdge else ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.42f)
+	val selectedEdge = if (authoredNeutralIdentity) luminousEdge else ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.62f)
 
 	// Keep glass dark enough for wallpaper contrast, but let more theme light live inside the
 	// material. The previous pass concentrated too much energy in the perimeter and read as a
