@@ -27,6 +27,18 @@ class CustomVisualIdentityRegressionTest {
 		assertTrue(navigation.contains("colors.container==Color.Black.toArgb()"))
 	}
 
+	@Test
+	fun `legacy navigation preserves black semantic colors instead of relighting them`() {
+		val navigation = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(navigation.contains("colors.container==Color.Black.toArgb()"))
+		assertTrue(navigation.contains("colors.selectedContainer==Color.Black.toArgb()"))
+		assertTrue(navigation.contains("colors.selectedContent==Color.White.toArgb()"))
+		assertTrue(navigation.contains("if(preservesBlackIdentity)Color.Black"))
+		assertTrue(navigation.contains("preservesBlackIdentity->Color.White"))
+	}
+
 	private fun source(relativePath: String): String =
 		File("src/main/$relativePath").readText()
 }
