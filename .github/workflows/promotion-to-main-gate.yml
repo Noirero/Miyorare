@@ -4,6 +4,9 @@ name: Promotion to Main Gate
 # - release/promote-main-* is a frozen, selectively constructed release candidate.
 # - The source integration branch may be Amain2; validation is against the current main base.
 # - This gate is intentionally independent from the legacy beta -> main gate.
+# - `skip-device-test` is an explicit owner override for low-risk promotions only. It skips the
+#   Android 15/device-APK job while keeping the verify/regression gate and change classification.
+# - Full Android 15 acceptance and the exact-head device-test APK remain the default.
 
 on:
   pull_request:
@@ -88,7 +91,7 @@ jobs:
   runtime-smoke:
     name: Promotion Android 15 acceptance
     needs: classify-runtime-smoke
-    if: needs.classify-runtime-smoke.outputs.run_smoke == 'true'
+    if: needs.classify-runtime-smoke.outputs.run_smoke == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-device-test')
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
