@@ -56,6 +56,7 @@ class ModernCoverBoundaryRegressionTest {
 		assertTrue(grid.contains("applyGridAppearance(usesModernCover, currentScale)"))
 		assertFalse(grid.contains("applyGridAppearance(hasCollectionBorder"))
 		assertTrue(grid.contains("if (usesModernCover && coverHeight > 0)"))
+		assertTrue(grid.contains("binding.textViewTitle.setTextColor(if (normalNeon) normalGlass!!.content else onSurface)"))
 		assertTrue(grid.contains("if (!usesModernCover && (item.isSaved || item.isFavorite)"))
 		val cover = source("list/ui/FavouriteCoverOverlayView.kt")
 		assertFalse(cover.contains("preservedProgress"))
