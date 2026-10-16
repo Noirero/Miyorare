@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.core.ui
 import android.graphics.Color
 import androidx.core.graphics.ColorUtils
 
+
 /**
  * Preserve the active theme hue while lifting saturation/value to the luminous range used by
  * the approved Favourites reference. This is pure color math; no blur, shader or animation.
@@ -15,6 +16,8 @@ internal fun luminousThemeColor(
 ): Int {
 	val hsv = FloatArray(3)
 	Color.colorToHSV(color, hsv)
+	// Achromatic and near-achromatic theme colors have no meaningful hue. Keep them neutral instead
+	// of inventing a saturated hue while still lifting value into the luminous range.
 	if (hsv[1] > NEUTRAL_SATURATION_THRESHOLD) {
 		hsv[1] = maxOf(hsv[1], saturationFloor).coerceIn(0f, 1f)
 	}
@@ -30,6 +33,10 @@ internal fun luminousThemeBlend(
 	ColorUtils.blendARGB(primary, accent, accentMix.coerceIn(0f, 1f)),
 )
 
+/**
+ * Canonical Normal-Favourites light color. For the default Miyorare seeds, 25% secondary lands
+ * around 221 degrees (blue-cyan), matching the approved reference without drifting into teal.
+ */
 internal fun normalFavouritesLuminousAccent(
 	primary: Int,
 	secondary: Int,
@@ -42,7 +49,10 @@ internal fun normalFavouritesLuminousAccent(
 
 /**
  * An explicitly authored neutral Custom accent is an identity color, not a luminance seed.
- * Preserve it for identity-bearing chrome instead of turning black/gray/white luminous.
+ * Preserve it for glass identity tokens instead of turning black/gray/white into a luminous edge.
+ * Chromatic accents keep the existing luminous treatment.
+ *
+ * Keep this boundary pure JVM color math so its identity contract can be covered by local tests.
  */
 internal fun resolveNeonGlassIdentityColor(
 	authoredIdentity: Int?,
@@ -58,12 +68,13 @@ internal fun resolveNeonGlassIdentityColor(
 	return if (saturation <= NEUTRAL_SATURATION_THRESHOLD) identity else luminousFallback
 }
 
-/** Exact authored neutral Custom identity, or null when normal luminous treatment should apply. */
-internal fun MiyorareViewPalette.neutralCustomAccentIdentityOrNull(): Int? {
-	val identity = customAccentIdentity ?: return null
-	return identity.takeIf { resolveNeonGlassIdentityColor(identity, Int.MIN_VALUE) == identity }
-}
 
+/**
+ * Lightweight, theme-driven glass tokens used by Normal Favourites.
+ *
+ * This deliberately uses only tinted translucent fills, alpha borders and static glow colors.
+ * It does not allocate blur effects, shaders or animations per item, keeping large library grids cheap.
+ */
 data class MiyorareNeonGlassColors(
 	val surface: Int,
 	val surfaceStrong: Int,
@@ -80,6 +91,12 @@ data class MiyorareNeonGlassColors(
 	val contentMuted: Int,
 )
 
+/**
+ * Derive a consistent glass family from the active Miyorare palette.
+ *
+ * The palette's glow alpha already reflects the user's Light / Balanced / Full visual-effect level,
+ * so custom Views that only have a [MiyorareViewPalette] stay in sync without reading preferences again.
+ */
 fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	val glowAlpha = Color.alpha(glow)
 	val strength = when {
@@ -91,6 +108,9 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	fun alpha(light: Int, full: Int): Int =
 		(light + ((full - light) * strength)).toInt().coerceIn(0, 255)
 
+	// Surface and light are deliberately separated. Surface stays dark/translucent while the
+	// luminous family keeps the active theme hue but restores saturation/value lost in Material
+	// container blending. Explicit neutral Custom accents retain their authored identity instead.
 	val luminousPrimary = resolveNeonGlassIdentityColor(customAccentIdentity, luminousThemeColor(primary))
 	val luminousAccent = resolveNeonGlassIdentityColor(
 		customAccentIdentity,
@@ -98,15 +118,23 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	)
 	val luminousEdge = luminousAccent
 	val authoredNeutralIdentity = customAccentIdentity == luminousEdge
+	// The target reads as a near-white cyan hot core over a darker blue-cyan bloom, not a thick
+	// saturated outline. For an authored neutral identity, however, whitening would destroy the
+	// user's selected black/gray/white border identity, so the edge family remains exact.
 	val hotEdge = if (authoredNeutralIdentity) luminousEdge else ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.42f)
 	val selectedEdge = if (authoredNeutralIdentity) luminousEdge else ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.62f)
 
+	// Keep glass dark enough for wallpaper contrast, but let more theme light live inside the
+	// material. The previous pass concentrated too much energy in the perimeter and read as a
+	// neon outline rather than illuminated glass.
 	val glassBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.30f)
 	val strongBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.40f)
 	val railBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.34f)
 	val selectedBase = ColorUtils.blendARGB(luminousAccent, Color.WHITE, 0.22f)
 
 	return MiyorareNeonGlassColors(
+		// Full mode targets the supplied golden reference. Lower effect levels reduce alpha/halo,
+		// not saturation, so the palette stays alive instead of returning to muddy navy.
 		surface = ColorUtils.setAlphaComponent(glassBase, alpha(62, 84)),
 		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(82, 108)),
 		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(82, 106)),
