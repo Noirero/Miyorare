@@ -9,16 +9,18 @@ from pathlib import Path
 
 START = "<!-- RELEASE_README_START -->"
 END = "<!-- RELEASE_README_END -->"
+PROVENANCE = re.compile(r"^<!-- MIYORARE_RELEASE_(?:RUN_ID|SOURCE_SHA):.*? -->$", re.MULTILINE)
 
 
 def normalize_release_body(body: str, version: str) -> str:
     heading = f"## Miyorare v{version}"
+    body = PROVENANCE.sub("", body).strip()
     lines = body.splitlines()
     while lines and not lines[0].strip():
         lines.pop(0)
 
-    # main-build owns the release heading. If release-notes.md also starts with
-    # the same heading, keep exactly one copy in the published release body.
+    # The stable release pipeline owns the version heading. Changelog files may
+    # still contain it for readability, so collapse repeated leading headings.
     while lines and lines[0].strip() == heading:
         lines.pop(0)
         while lines and not lines[0].strip():
