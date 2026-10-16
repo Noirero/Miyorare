@@ -76,9 +76,7 @@ fun LegacyGlowNavBar(
 		colors.container == Color.Black.toArgb() &&
 		colors.selectedContainer == Color.Black.toArgb() &&
 		colors.selectedContent == Color.White.toArgb()
-	val luminousAccent = if (preservesBlackIdentity) {
-		Color.Black
-	} else if (emphasizeFavourites) {
+	val luminousAccent = if (preservesBlackIdentity) Color.Black else if (emphasizeFavourites) {
 		Color(
 			normalFavouritesLuminousAccent(
 				accent.toArgb(),
@@ -117,44 +115,46 @@ fun LegacyGlowNavBar(
 			else -> ColorUtils.blendARGB(colors.container, accent.toArgb(), BAR_ACCENT_MIX)
 		},
 	)
-	val favouritesGlass = when {
-		preservesBlackIdentity -> Brush.linearGradient(listOf(Color.Black, Color.Black))
-		emphasizeFavourites -> Brush.linearGradient(
-			listOf(
-				Color(
-					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(
-							darkNavyBase,
-							luminousAccent.toArgb(),
-							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
+	val favouritesGlass = if (emphasizeFavourites) {
+		if (preservesBlackIdentity) {
+			Brush.linearGradient(listOf(Color.Black, Color.Black))
+		} else {
+			Brush.linearGradient(
+				listOf(
+					Color(
+						ColorUtils.setAlphaComponent(
+							ColorUtils.blendARGB(
+								darkNavyBase,
+								luminousAccent.toArgb(),
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
+							),
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ALPHA,
 						),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ALPHA,
+					),
+					Color(
+						ColorUtils.setAlphaComponent(
+							ColorUtils.blendARGB(
+								darkNavyBase,
+								luminousAccent.toArgb(),
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
+							),
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ALPHA,
+						),
+					),
+					Color(
+						ColorUtils.setAlphaComponent(
+							ColorUtils.blendARGB(
+								darkNavyBase,
+								luminousAccent.toArgb(),
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
+							),
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ALPHA,
+						),
 					),
 				),
-				Color(
-					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(
-							darkNavyBase,
-							luminousAccent.toArgb(),
-							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
-						),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ALPHA,
-					),
-				),
-				Color(
-					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(
-							darkNavyBase,
-							luminousAccent.toArgb(),
-							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
-						),
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ALPHA,
-					),
-				),
-			),
-		)
-		else -> null
-	}
+			)
+		}
+	} else null
 	val barCore = when {
 		preservesBlackIdentity -> Color.Black
 		emphasizeFavourites -> if (lightMode) {
