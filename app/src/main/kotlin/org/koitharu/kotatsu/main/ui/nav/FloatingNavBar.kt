@@ -73,7 +73,6 @@ import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.normalFavouritesLuminousAccent
-import org.koitharu.kotatsu.core.ui.resolveNeonGlassIdentityColor
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.rememberHapticEffect
@@ -131,17 +130,17 @@ fun FloatingNavBar(
 			MiyorareDesignStyle.CLASSIC,
 		) == MiyorareDesignStyle.MODERN
 	}
-	val neutralCustomIdentity = remember(context, colors.container) {
+	val blackCustomIdentity = remember(context, colors.container) {
 		context.miyorareViewPaletteFromPreferences()?.customAccentIdentity?.takeIf { identity ->
-			resolveNeonGlassIdentityColor(identity, Int.MIN_VALUE) == identity
+			identity == Color.Black.toArgb()
 		}
 	}
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
-		if (emphasizeFavourites && neutralCustomIdentity != null) {
+		if (emphasizeFavourites && blackCustomIdentity != null) {
 			FloatingNavBarColors(
-				container = neutralCustomIdentity,
-				selectedContainer = neutralCustomIdentity,
+				container = blackCustomIdentity,
+				selectedContainer = blackCustomIdentity,
 				selectedContent = Color.White.toArgb(),
 				unselectedContent = ColorUtils.setAlphaComponent(
 					Color.White.toArgb(),
@@ -210,7 +209,7 @@ fun FloatingNavBar(
 	}
 	val barOutline = if (isMiyorareModern) {
 		val borderBase = when {
-			emphasizeFavourites && neutralCustomIdentity != null -> neutralCustomIdentity
+			emphasizeFavourites && blackCustomIdentity != null -> blackCustomIdentity
 			emphasizeFavourites -> ColorUtils.blendARGB(
 				normalFavouritesLuminousAccent(cs.primary.toArgb(), cs.secondary.toArgb()),
 				Color.White.toArgb(),
@@ -235,12 +234,12 @@ fun FloatingNavBar(
 		)
 	} else null
 	val normalFavouritesGlassBrush = if (isMiyorareModern && emphasizeFavourites) {
-		if (neutralCustomIdentity != null) {
+		if (blackCustomIdentity != null) {
 			Brush.linearGradient(
 				listOf(
-					Color(neutralCustomIdentity),
-					Color(neutralCustomIdentity),
-					Color(neutralCustomIdentity),
+					Color(blackCustomIdentity),
+					Color(blackCustomIdentity),
+					Color(blackCustomIdentity),
 				),
 			)
 		} else {
@@ -302,7 +301,7 @@ fun FloatingNavBar(
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
 			// Two low-alpha static halos create bloom without making the perimeter a thick solid line.
 			val glowAccent = Color(
-				neutralCustomIdentity
+				blackCustomIdentity
 					?: normalFavouritesLuminousAccent(cs.primary.toArgb(), cs.secondary.toArgb()),
 			)
 			Modifier.drawBehind {
@@ -373,7 +372,7 @@ fun FloatingNavBar(
 						onClick = {
 							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
 						},
-							onLongClick = {
+						onLongClick = {
 							haptic(HapticEffect.LONG_PRESS)
 							onItemLongClick(item.id)
 						},
@@ -477,9 +476,11 @@ private fun FloatingNavItem(
 		CircleShape
 	}
 
-	val preservesNeutralIdentity = isMiyorareModern && emphasizeFavourites &&
-		colors.container == colors.selectedContainer && colors.selectedContent == Color.White.toArgb()
-	val selectedAccent = if (preservesNeutralIdentity) {
+	val preservesBlackIdentity = isMiyorareModern && emphasizeFavourites &&
+		colors.container == Color.Black.toArgb() &&
+		colors.selectedContainer == Color.Black.toArgb() &&
+		colors.selectedContent == Color.White.toArgb()
+	val selectedAccent = if (preservesBlackIdentity) {
 		Color(colors.selectedContainer)
 	} else {
 		Color(
@@ -489,7 +490,7 @@ private fun FloatingNavItem(
 			),
 		)
 	}
-	val selectedCore = if (preservesNeutralIdentity) {
+	val selectedCore = if (preservesBlackIdentity) {
 		selectedAccent
 	} else {
 		Color(
