@@ -53,6 +53,7 @@ data class MiyorareViewPalette(
 	val customBackgroundPath: String? = null,
 	val customBackgroundBlurPath: String? = null,
 	val customBackgroundRevision: Int = 0,
+	val customAccentIdentity: Int? = null,
 )
 
 /**
@@ -213,5 +214,10 @@ private fun Context.buildMiyorareViewPalette(
 		customBackgroundPath = customBackgroundPath,
 		customBackgroundBlurPath = customBackgroundBlurPath,
 		customBackgroundRevision = customBackgroundRevision,
+		customAccentIdentity = if (preset == MiyorareThemePreset.CUSTOM && adaptivePalette == null) {
+			MiyorareAppearance.parseAccentArgb(customAccent)
+		} else {
+			null
+		},
 	)
 }
