@@ -51,15 +51,21 @@ internal fun normalFavouritesLuminousAccent(
  * An explicitly authored neutral Custom accent is an identity color, not a luminance seed.
  * Preserve it for glass identity tokens instead of turning black/gray/white into a luminous edge.
  * Chromatic accents keep the existing luminous treatment.
+ *
+ * Keep this boundary pure JVM color math so its identity contract can be covered by local tests.
  */
 internal fun resolveNeonGlassIdentityColor(
 	authoredIdentity: Int?,
 	luminousFallback: Int,
 ): Int {
 	val identity = authoredIdentity ?: return luminousFallback
-	val hsv = FloatArray(3)
-	Color.colorToHSV(identity, hsv)
-	return if (hsv[1] <= NEUTRAL_SATURATION_THRESHOLD) identity else luminousFallback
+	val red = identity ushr 16 and 0xFF
+	val green = identity ushr 8 and 0xFF
+	val blue = identity and 0xFF
+	val max = maxOf(red, green, blue)
+	val min = minOf(red, green, blue)
+	val saturation = if (max == 0) 0f else (max - min).toFloat() / max.toFloat()
+	return if (saturation <= NEUTRAL_SATURATION_THRESHOLD) identity else luminousFallback
 }
 
 
