@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   sync:
@@ -23,15 +24,12 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Normalize release notes and refresh README verification
-        id: release
+      - name: Normalize release notes and prepare README verification update
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
-          SOURCE_SHA: ${{ github.event.release.target_commitish }}
           REPOSITORY: ${{ github.repository }}
-      
         run: |
           set -euo pipefail
           VERSION="${TAG#v}"
@@ -47,22 +45,21 @@ jobs:
           Path(sys.argv[2]).write_text(release.get('body') or '', encoding='utf-8')
           PY
 
-          RUN_ID="$(python3 - "$BODY_FILE" <<'PY'
+          read -r RUN_ID SOURCE_SHA < <(python3 - "$BODY_FILE" <<'PY'
           import re, sys
           body = open(sys.argv[1], encoding='utf-8').read()
-          match = re.search(r'<!-- MIYORARE_RELEASE_RUN_ID:(\d+) -->', body)
-          if not match:
-              raise SystemExit('Release body does not contain MIYORARE_RELEASE_RUN_ID')
-          print(match.group(1))
+          run = re.search(r'<!-- MIYORARE_RELEASE_RUN_ID:(\d+) -->', body)
+          source = re.search(r'<!-- MIYORARE_RELEASE_SOURCE_SHA:([0-9a-f]{40}) -->', body)
+          if not run or not source:
+              raise SystemExit('Release body is missing Miyorare provenance markers')
+          print(run.group(1), source.group(1))
           PY
-          )"
+          )
 
           python3 .github/scripts/sync_release_readme.py normalize-release-body \
             --body "$BODY_FILE" \
             --version "$VERSION" \
             --output "$NORMALIZED_BODY"
-
-          # Preserve machine-readable provenance markers after normalization.
           {
             echo
             echo "<!-- MIYORARE_RELEASE_RUN_ID:${RUN_ID} -->"
@@ -100,8 +97,24 @@ jobs:
             exit 0
           fi
 
+          # main has required status checks and no bypass actor. Publish the
+          # metadata-only README update through a tiny PR instead of bypassing
+          # the repository's promotion rules.
+          BRANCH="automation/release-readme-${TAG}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
           git add README.md
           git commit -m "docs: sync README verification for ${TAG}"
-          git push origin HEAD:main
+          git push --force-with-lease origin "$BRANCH"
+
+          if gh pr view "$BRANCH" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            echo "README sync PR already exists for ${TAG}."
+          else
+            gh pr create \
+              --repo "$REPOSITORY" \
+              --base main \
+              --head "$BRANCH" \
+              --title "Sync README verification for ${TAG}" \
+              --body "Automated metadata-only update after stable release ${TAG}. Updates the README release verification block from the published release asset digest and provenance markers. No application code or build behavior is changed."
+          fi
