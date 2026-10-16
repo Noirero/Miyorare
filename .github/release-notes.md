@@ -1,66 +1,50 @@
-## Miyorare v1.4.10
+## Miyorare v1.4.11
 
-This update refreshes the modern Miyorare experience with a redesigned Details presentation, more flexible Favourites layouts, improved cover information, deeper appearance customization, and important fixes for chapter data and personal metadata.
+This update focuses on visual consistency and release reliability. Custom neutral accent colors now keep their intended identity across Favourites glass and bottom navigation, light-mode Favourites titles are easier to read, and the stable release/README flow is more reliable.
 
 ### ✨ What's New
 
-- **Modern Details experience** — Details now uses the latest Miyorare presentation with refined header and expansion behavior for a cleaner, more consistent manga information screen.
-- **Favourites layout size controls** — Modern Favourites gains dedicated layout sizing controls so the library presentation can better match your preferred cover and content density.
-- **Modern cover information system** — manga covers can now present reusable status, metadata, reading-progress, and Favourite information with a more consistent modern layout.
-- **Custom accent colors** — Appearance now includes a dedicated custom accent picker for more control over Miyorare's visual identity.
-- **Improved custom backgrounds** — custom backgrounds now integrate more consistently with Miyorare's surrounding colors and surfaces.
+- **Faithful neutral custom accents** — explicitly selected neutral accents such as black and gray now keep their authored identity in Miyorare's glass styling instead of being transformed into a luminous color.
+- **Stable release README synchronization** — published stable releases can now automatically prepare a small metadata PR that keeps the README release verification block aligned with the released version, source commit, Actions run, APK name, and SHA-256.
 
 ### 🚀 Improvements
 
-- **Favourite category picker** — category selection received another layout and interaction pass for a cleaner experience across different screen sizes.
-- **Reading progress presentation** — reading progress visuals were refreshed and integrated with the modern cover/status presentation.
-- **Chapter personal indicators** — chapter rating, notes, and related personal information are displayed more reliably and consistently in Details.
-- **Modern cover consistency** — cover presentation was aligned across Favourites and other supported manga lists while preserving screens that intentionally keep the classic layout.
-- **Appearance color handling** — custom accent and background colors now produce more balanced surrounding palettes and neutral surfaces.
-- **Release validation** — additional runtime and regression coverage now protects modern covers, Favourite overlays, chapter persistence, personal metadata identity, appearance colors, and promotion to main.
+- **Custom background color identity** — when custom-background color synchronization is active, the background's primary identity can flow consistently into the Miyorare view palette.
+- **Bottom navigation theming** — modern and legacy bottom navigation now respect an explicitly selected black custom identity, including container, border, glow, selected state, and content contrast.
+- **Release-note maintenance** — stable release metadata handling now normalizes repeated release headings and preserves machine-readable release provenance.
+- **Promotion validation** — the main promotion gate can publish an exact-head APK for owner device testing, with an explicit low-risk `skip-device-test` override while retaining the non-device promotion checks.
 
 ### 🐞 Fixes
 
-- Fixed chapter reconciliation so freshly loaded chapter data can be matched with existing local chapter records earlier and more reliably.
-- Fixed cases where chapter personal metadata could become associated with the wrong chapter identity after chapter data changed or refreshed.
-- Fixed chapter rating and Personal Note indicators so their state stays aligned with the correct chapter.
-- Fixed live chapter download/delete state updates in Details.
-- Fixed several modern Details header and expansion geometry issues.
-- Fixed custom accent/background combinations that could produce unintended tinted neutral surfaces.
-- Fixed Favourites and cover overlay geometry across compact and supported modern layouts.
-- Improved Downloaded and Local Favourites state handling and regression coverage.
+- Fixed light-mode Favourites titles below modern covers so text uses the appropriate glass content color instead of losing contrast.
+- Fixed black/gray/white custom accents being relit or tinted by neon-glass color processing.
+- Fixed black custom accent styling in modern bottom navigation so it remains black instead of inheriting a luminous theme color.
+- Fixed legacy bottom navigation so a black custom identity remains black across its glass, selected state, and glow treatment.
+- Added regression coverage for neutral custom accent identity and modern-cover title contrast.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Pembaruan ini menyegarkan pengalaman modern Miyorare dengan tampilan Details yang diperbarui, layout Favourites yang lebih fleksibel, informasi cover yang lebih lengkap, kustomisasi tampilan yang lebih dalam, serta perbaikan penting pada data chapter dan metadata pribadi.
+Pembaruan ini berfokus pada konsistensi visual dan keandalan proses rilis. Warna accent netral kustom sekarang mempertahankan identitas warna yang dipilih pada glass Favourites dan navigasi bawah, judul Favourites di mode terang lebih mudah dibaca, dan alur stable release/README menjadi lebih andal.
 
 ### ✨ Yang Baru
 
-- **Tampilan Details modern** — Details sekarang menggunakan presentasi Miyorare terbaru dengan perilaku header dan expansion yang disempurnakan agar informasi manga tampil lebih bersih dan konsisten.
-- **Kontrol ukuran layout Favourites** — Modern Favourites mendapatkan kontrol ukuran layout khusus sehingga tampilan library dapat disesuaikan dengan ukuran cover dan kepadatan konten yang diinginkan.
-- **Sistem informasi cover modern** — cover manga sekarang dapat menampilkan status, metadata, progres membaca, dan informasi Favourite melalui layout modern yang lebih konsisten.
-- **Custom accent color** — Appearance sekarang memiliki pemilih warna accent khusus untuk memberikan kontrol lebih besar terhadap identitas visual Miyorare.
-- **Custom background yang lebih baik** — background kustom sekarang menyatu lebih konsisten dengan warna dan surface di sekitarnya.
+- **Accent netral kustom yang lebih akurat** — accent netral yang dipilih secara eksplisit seperti hitam dan abu-abu sekarang mempertahankan identitas warnanya pada gaya glass Miyorare, bukan diubah menjadi warna luminous.
+- **Sinkronisasi README stable release** — setelah stable release dipublikasikan, sistem sekarang dapat menyiapkan PR metadata kecil untuk menyelaraskan blok verifikasi README dengan versi rilis, source commit, Actions run, nama APK, dan SHA-256.
 
 ### 🚀 Peningkatan
 
-- **Pemilih kategori Favourite** — pemilihan kategori mendapatkan penyempurnaan layout dan interaksi agar lebih nyaman pada berbagai ukuran layar.
-- **Tampilan progres membaca** — visual progres membaca diperbarui dan diintegrasikan dengan tampilan cover/status modern.
-- **Indikator personal chapter** — rating chapter, catatan, dan informasi pribadi terkait sekarang ditampilkan dengan lebih andal dan konsisten di Details.
-- **Konsistensi cover modern** — tampilan cover diselaraskan pada Favourites dan daftar manga lain yang didukung, tanpa mengubah layar yang memang sengaja mempertahankan layout klasik.
-- **Penanganan warna Appearance** — custom accent dan background sekarang menghasilkan palette sekitar dan neutral surface yang lebih seimbang.
-- **Validasi rilis** — coverage runtime dan regression tambahan sekarang melindungi modern cover, Favourite overlay, chapter persistence, identitas metadata pribadi, warna Appearance, dan proses promotion ke main.
+- **Identitas warna custom background** — ketika sinkronisasi warna custom background aktif, warna primary background dapat diteruskan secara konsisten ke view palette Miyorare.
+- **Tema bottom navigation** — bottom navigation modern dan legacy sekarang menghormati identitas custom hitam yang dipilih secara eksplisit, termasuk container, border, glow, selected state, dan kontras konten.
+- **Pemeliharaan release notes** — penanganan metadata stable release sekarang menormalkan heading rilis yang berulang dan mempertahankan provenance rilis yang dapat dibaca mesin.
+- **Validasi promotion** — promotion gate menuju main dapat menyediakan APK exact-head untuk pengujian perangkat oleh owner, dengan override `skip-device-test` untuk promotion berisiko rendah tanpa melewati pengecekan promotion non-device.
 
 ### 🐞 Perbaikan
 
-- Memperbaiki rekonsiliasi chapter agar data chapter yang baru dimuat dapat dicocokkan lebih awal dan lebih andal dengan record chapter lokal yang sudah ada.
-- Memperbaiki kasus ketika metadata pribadi chapter dapat terhubung ke identitas chapter yang salah setelah data chapter berubah atau di-refresh.
-- Memperbaiki indikator rating chapter dan Personal Note agar state tetap terhubung dengan chapter yang benar.
-- Memperbaiki pembaruan langsung status download/delete chapter di Details.
-- Memperbaiki beberapa masalah geometri header dan expansion pada Details modern.
-- Memperbaiki kombinasi custom accent/background yang dapat menghasilkan neutral surface dengan tint yang tidak diinginkan.
-- Memperbaiki geometri Favourites dan cover overlay pada layout compact serta layout modern yang didukung.
-- Meningkatkan penanganan state dan regression coverage untuk Downloaded dan Local Favourites.
+- Memperbaiki judul Favourites mode terang di bawah cover modern agar menggunakan warna konten glass yang sesuai dan tetap mudah dibaca.
+- Memperbaiki custom accent hitam/abu-abu/putih yang sebelumnya dapat dibuat lebih terang atau berubah tint oleh pemrosesan warna neon-glass.
+- Memperbaiki custom accent hitam pada bottom navigation modern agar tetap hitam dan tidak berubah mengikuti warna luminous theme.
+- Memperbaiki bottom navigation legacy agar identitas custom hitam tetap hitam pada glass, selected state, dan efek glow.
+- Menambahkan regression coverage untuk identitas custom accent netral dan kontras judul modern cover.
 
 </details>
