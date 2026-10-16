@@ -182,7 +182,7 @@ fun mangaGridItemAD(
 				MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP * density
 			} else defaultCoverStrokeWidth
 			binding.viewScrim.background = modernScrim
-			binding.textViewTitle.setTextColor(onSurface)
+			binding.textViewTitle.setTextColor(if (normalNeon) normalGlass!!.content else onSurface)
 			binding.textViewTitle.setTextSize(
 				TypedValue.COMPLEX_UNIT_SP,
 				MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_TEXT_SP,
