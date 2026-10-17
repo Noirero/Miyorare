@@ -151,16 +151,23 @@ Closing a detour does not close the parent phase. The parent phase is closed onl
 
 ## 8. Delivery Gate
 
-Every Migration pull request must pass the same closure sequence before any subsequent Migration task begins:
+Every Migration pull request must follow this mandatory loop and closure sequence before any subsequent Migration task begins:
 
-1. The pull request's required exact-head CI/checks are green.
-2. Perform a full diff review and self-audit of the exact PR head.
-3. Perform the final post-CI audit, including PR/base/head state, mergeability, exact-head checks, review/comments/threads, base drift, and any relevant source changes.
-4. Merge only after the PR remains clean after the final post-CI audit.
-5. Perform post-merge verification on the target integration branch, confirming the expected merge commit/content is present and no unexpected branch movement or regression invalidates the closure.
-6. Only after post-merge verification is complete may work proceed to the next Migration task, detour, or phase.
+1. Run the required exact-head CI/checks for the current PR head.
+2. If CI/checks are red, audit the failure and determine the real cause.
+3. If the failure belongs to the current change and is within scope, fix it on the same branch/PR, then run the relevant exact-head validation again.
+4. Repeat the red → root-cause → fix → validate loop as many times as necessary. A red PR must not be abandoned merely because validation failed.
+5. Only when the required exact-head CI/checks are green, perform a full diff review and self-audit of the exact PR head.
+6. Perform the final post-CI audit, including PR/base/head state, mergeability, exact-head checks, review/comments/threads, base drift, and any relevant source changes.
+7. Merge only after the PR remains clean after the final post-CI audit.
+8. Perform post-merge verification on the target integration branch, confirming the expected merge commit/content is present and no unexpected branch movement or regression invalidates the closure.
+9. Only after post-merge verification is complete may work proceed to the next Migration task, detour, or phase.
 
-A green CI result alone is not sufficient permission to continue. Merge completion alone is also not sufficient closure. If a blocker prevents merge or post-merge verification, the work remains open at that gate and the next Migration task must not begin.
+Operational shorthand:
+
+`CI PROCESS → RED → ROOT-CAUSE/FIX → CI PROCESS → RED → ROOT-CAUSE/FIX → ... → GREEN → FULL DIFF/SELF-AUDIT → FINAL POST-CI AUDIT → MERGE → POST-MERGE VERIFICATION → NEXT WORK`
+
+A green CI result alone is not sufficient closure. Merge completion alone is also not sufficient closure. If CI is red, the current PR remains the active task until the failure is resolved, proven unrelated/infrastructure-only under the governing rules, or a genuine blocker makes progress impossible. If a blocker prevents merge or post-merge verification, the work remains open at that gate and the next Migration task must not begin.
 
 ## 9. Current Checkpoint
 
