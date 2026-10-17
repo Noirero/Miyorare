@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "packId": "miyorare-audio",
+  "displayName": "Miyorare Audio",
+  "mediaType": "audio",
+  "consumer": {
+    "application": "Hiraukan",
+    "repository": "Noirero/Hiraukan",
+    "extensionSchemaVersion": 1
+  },
+  "extensions": [
+    {
+      "id": "miyorare.audio.asmr_one",
+      "name": "ASMR.one",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "optional",
+      "languages": [
+        "ja"
+      ],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail",
+        "playback",
+        "download",
+        "subtitles"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.asmr_one"
+      }
+    },
+    {
+      "id": "miyorare.audio.hentai_asmr",
+      "name": "HentaiASMR",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "none",
+      "languages": [
+        "ja"
+      ],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail",
+        "playback",
+        "download"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.hentai_asmr"
+      }
+    },
+    {
+      "id": "miyorare.audio.ero_voice",
+      "name": "EroVoice",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "none",
+      "languages": [
+        "ja"
+      ],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail",
+        "download"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.ero_voice"
+      }
+    },
+    {
+      "id": "miyorare.audio.japanese_asmr",
+      "name": "JapaneseASMR",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "none",
+      "languages": [
+        "ja"
+      ],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail",
+        "playback",
+        "download"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.japanese_asmr"
+      }
+    },
+    {
+      "id": "miyorare.audio.asmr18",
+      "name": "ASMR+18",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "none",
+      "languages": [
+        "ja"
+      ],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail",
+        "playback"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.asmr18"
+      }
+    },
+    {
+      "id": "miyorare.audio.asmr_hentai_net",
+      "name": "ASMR Hentai",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "none",
+      "languages": [
+        "ja"
+      ],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail",
+        "playback",
+        "subtitles"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.asmr_hentai_net"
+      }
+    }
+  ]
+}
