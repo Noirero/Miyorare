@@ -149,7 +149,20 @@ Closing a detour does not close the parent phase. The parent phase is closed onl
 - Product-scope changes require an explicit owner decision and must be reflected here before subsequent implementation depends on them.
 - Before beginning a new phase, re-read the Mission, Locked Product Contract, current phase Definition of Done, and current checkpoint.
 
-## 8. Current Checkpoint
+## 8. Delivery Gate
+
+Every Migration pull request must pass the same closure sequence before any subsequent Migration task begins:
+
+1. The pull request's required exact-head CI/checks are green.
+2. Perform a full diff review and self-audit of the exact PR head.
+3. Perform the final post-CI audit, including PR/base/head state, mergeability, exact-head checks, review/comments/threads, base drift, and any relevant source changes.
+4. Merge only after the PR remains clean after the final post-CI audit.
+5. Perform post-merge verification on the target integration branch, confirming the expected merge commit/content is present and no unexpected branch movement or regression invalidates the closure.
+6. Only after post-merge verification is complete may work proceed to the next Migration task, detour, or phase.
+
+A green CI result alone is not sufficient permission to continue. Merge completion alone is also not sufficient closure. If a blocker prevents merge or post-merge verification, the work remains open at that gate and the next Migration task must not begin.
+
+## 9. Current Checkpoint
 
 Mission and product contract: LOCKED by owner.
 
@@ -168,6 +181,6 @@ Known read-only audit evidence from the current Amain2 baseline before P1:
 
 These findings are starting evidence for P1/P2. They do not change the Mission and must be revalidated against the exact current repository head before implementation.
 
-## 9. Next Intended Action
+## 10. Next Intended Action
 
 Begin **P1 — Migration Data Integrity** with a targeted ownership/persistence audit and regression probes for the migration contract, then implement the smallest correct fixes needed to satisfy P1. Temporary bugs found during that work must follow the Detour Rule and return to P1 until its Definition of Done is met.
