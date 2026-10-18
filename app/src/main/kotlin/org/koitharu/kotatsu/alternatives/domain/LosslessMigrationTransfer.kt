@@ -232,29 +232,34 @@ class LosslessMigrationTransfer @Inject constructor(
 		for (space in listOf(FavouriteSpace.NORMAL, FavouriteSpace.PRIVATE)) {
 			val oldMembers = groupsDao.findMembersByMangaIds(listOf(plan.oldManga.id), space.dbValue)
 			if (oldMembers.isEmpty()) continue
-			val targetMembers = groupsDao.findMembersByMangaIds(listOf(plan.newManga.id), space.dbValue).associateBy { it.groupId }
-			for (source in oldMembers) {
-				val target = targetMembers[source.groupId]
-				if (target != null && target.position != source.position) {
-					conflict("Library group ${source.groupId} has a different destination position")
-				}
-				if (target == null) groupsDao.insertMembers(listOf(source.copy(mangaId = plan.newManga.id)))
-
-				val timeline = groupsDao.findTimeline(source.groupId)
-				val targetTimeline = timeline.filter { it.mangaId == plan.newManga.id }.associateBy { it.chapterId }
-				val inserts = ArrayList<org.koitharu.kotatsu.favourites.groups.data.LibraryGroupTimelineItemEntity>()
-				for (item in timeline.filter { it.mangaId == plan.oldManga.id }) {
-					val mappedChapterId = mappedChapterId(plan.chapterTargets, item.chapterId, "library group timeline")
-					val migrated = item.copy(mangaId = plan.newManga.id, chapterId = mappedChapterId)
-					val existing = targetTimeline[mappedChapterId]
-					if (existing != null && existing.position != migrated.position) {
-						conflict("Library group ${source.groupId} timeline conflicts for chapter $mappedChapterId")
-					}
-					if (existing == null) inserts += migrated
-				}
-				if (inserts.isNotEmpty()) groupsDao.insertTimeline(inserts)
-				groupsDao.deleteMember(source.groupId, plan.oldManga.id)
+			if (oldMembers.size != 1) {
+				conflict("Source manga belongs to multiple library groups in ${space.name}")
 			}
+			val source = oldMembers.single()
+			val targetMembers = groupsDao.findMembersByMangaIds(listOf(plan.newManga.id), space.dbValue)
+			if (targetMembers.any { it.groupId != source.groupId }) {
+				conflict("Destination manga already belongs to a different library group in ${space.name}")
+			}
+			val target = targetMembers.singleOrNull()
+			if (target != null && target.position != source.position) {
+				conflict("Library group ${source.groupId} has a different destination position")
+			}
+			if (target == null) groupsDao.insertMembers(listOf(source.copy(mangaId = plan.newManga.id)))
+
+			val timeline = groupsDao.findTimeline(source.groupId)
+			val targetTimeline = timeline.filter { it.mangaId == plan.newManga.id }.associateBy { it.chapterId }
+			val inserts = ArrayList<org.koitharu.kotatsu.favourites.groups.data.LibraryGroupTimelineItemEntity>()
+			for (item in timeline.filter { it.mangaId == plan.oldManga.id }) {
+				val mappedChapterId = mappedChapterId(plan.chapterTargets, item.chapterId, "library group timeline")
+				val migrated = item.copy(mangaId = plan.newManga.id, chapterId = mappedChapterId)
+				val existing = targetTimeline[mappedChapterId]
+				if (existing != null && existing.position != migrated.position) {
+					conflict("Library group ${source.groupId} timeline conflicts for chapter $mappedChapterId")
+				}
+				if (existing == null) inserts += migrated
+			}
+			if (inserts.isNotEmpty()) groupsDao.insertTimeline(inserts)
+			groupsDao.deleteMember(source.groupId, plan.oldManga.id)
 		}
 	}
 
