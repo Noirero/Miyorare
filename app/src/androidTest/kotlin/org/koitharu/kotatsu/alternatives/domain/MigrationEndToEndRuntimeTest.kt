@@ -304,12 +304,14 @@ class MigrationEndToEndRuntimeTest {
     private suspend fun verifyDownloadedDestinationCollisions() {
         val source = manga(994001, "P5_OLD")
         val destination = manga(994002, "P5_NEW")
+        val aliasOwner = manga(994003, "P5_LOCAL")
         seed(source, destination)
         val sourcePath = createDownload("collision-source", source)
         val targetPath = createDownload("collision-target", destination)
+        val aliasPath = createDownload("collision-alias-target", aliasOwner)
         database.getLocalMangaIndexDao().upsert(LocalMangaIndexEntity(source.id, sourcePath.path))
         database.getLocalMangaIndexDao().upsert(LocalMangaIndexEntity(destination.id, targetPath.path))
-        val containers = listOf(sourcePath, targetPath).flatMap { directory ->
+        val containers = listOf(sourcePath, targetPath, aliasPath).flatMap { directory ->
             listOf(File(directory, "index.json"), File(directory, "chapter.cbz"))
         }.associateWith { it.readBytes() }
         // No favourite_download_index target exists: the local_index row itself must veto collision.
@@ -325,13 +327,18 @@ class MigrationEndToEndRuntimeTest {
         assertTrue(index.getDownloadAliasPaths(listOf(destination.id)).isEmpty())
         assertEquals(sourcePath.path, database.getLocalMangaIndexDao().findPath(source.id))
         assertEquals(targetPath.path, database.getLocalMangaIndexDao().findPath(destination.id))
-        // A pre-existing destination alias is never owned by source-attempt rollback either.
-        index.registerDownloadAlias(destination.id, destination.id, targetPath)
+
+        // Isolate the alias-only collision. A valid alias must map a remote id to a distinct local id;
+        // registerDownloadAlias intentionally no-ops when remoteMangaId == localMangaId.
+        database.getLocalMangaIndexDao().delete(destination.id)
+        assertNull(database.getLocalMangaIndexDao().findPath(destination.id))
+        index.registerDownloadAlias(destination.id, aliasOwner.id, aliasPath)
+        assertEquals(aliasPath.path, index.getDownloadAliasPaths(listOf(destination.id))[destination.id])
         val aliasCollision = runCatching {
             migrateProvider.get()(source, destination, lossless = true, requireLibraryEntry = true)
         }.exceptionOrNull()
         assertTrue(aliasCollision is IllegalStateException)
-        assertEquals(targetPath.path, index.getDownloadAliasPaths(listOf(destination.id))[destination.id])
+        assertEquals(aliasPath.path, index.getDownloadAliasPaths(listOf(destination.id))[destination.id])
         assertEquals("P5 note", notes.get(source.id))
         assertNull(notes.get(destination.id))
         for ((file, bytes) in containers) assertArrayEquals("Collision must not touch " + file.name, bytes, file.readBytes())
