@@ -30,6 +30,7 @@ class AutoFixUseCase @Inject constructor(
 		// are manual Alternatives preferences, not identity constraints for an automatic repair.
 		val sources = alternativesUseCase.getSources(seed, SearchSourceMode.ALL_SOURCES, emptySet())
 		val observations = ArrayList<MigrationCandidateObservation>()
+		var discoveryError: Throwable? = null
 		for (query in buildSearchQueries(seed)) {
 			alternativesUseCase(
 				manga = seed,
@@ -37,9 +38,15 @@ class AutoFixUseCase @Inject constructor(
 				preferredLanguages = emptySet(),
 				query = query,
 				precomputedSources = sources,
+				maxDetailCandidates = MAX_MIGRATION_DETAIL_CANDIDATES,
 			).collect { event ->
-				if (event is AlternativeSearchEvent.Result) {
-					observations += MigrationCandidateObservation(event.manga, setOf(query))
+				when (event) {
+					is AlternativeSearchEvent.Result -> {
+						observations += MigrationCandidateObservation(event.manga, setOf(query))
+					}
+					is AlternativeSearchEvent.SourceFinished -> {
+						if (event.error != null && discoveryError == null) discoveryError = event.error
+					}
 				}
 			}
 		}
@@ -59,7 +66,10 @@ class AutoFixUseCase @Inject constructor(
 				seed = ParcelableManga(seed),
 				candidates = assessment.candidates.map { ParcelableManga(it.manga) },
 			)
-			MigrationMatchState.NO_REPLACEMENT -> throw NoAlternativesException(ParcelableManga(seed))
+			MigrationMatchState.NO_REPLACEMENT -> {
+				discoveryError?.let { throw CandidateDiscoveryIncompleteException(ParcelableManga(seed), it) }
+				throw NoAlternativesException(ParcelableManga(seed))
+			}
 		}
 
 		migrateUseCase(
@@ -103,7 +113,7 @@ class AutoFixUseCase @Inject constructor(
 			.filter { (_, key) -> key.length >= MIN_ALIAS_QUERY_LENGTH && key != primaryKey }
 			.distinctBy { (_, key) -> key }
 			.sortedWith(compareByDescending<Pair<String, String>> { it.second.length }.thenBy { it.second })
-			.map(Pair<String, String>::first)
+			.map { it.first }
 			.take(MAX_AUTO_FIX_QUERIES - 1)
 			.toList()
 		return buildList(1 + aliases.size) {
@@ -123,8 +133,14 @@ class AutoFixUseCase @Inject constructor(
 		val candidates: List<ParcelableManga>,
 	) : IllegalStateException("Possible replacement requires review")
 
+	class CandidateDiscoveryIncompleteException(
+		val seed: ParcelableManga,
+		cause: Throwable,
+	) : IllegalStateException("Replacement search did not complete", cause)
+
 	private companion object {
 		const val MAX_AUTO_FIX_QUERIES = 6
+		const val MAX_MIGRATION_DETAIL_CANDIDATES = 5
 		const val MAX_HEALTH_CHECKS = 12
 		const val MIN_ALIAS_QUERY_LENGTH = 3
 	}
