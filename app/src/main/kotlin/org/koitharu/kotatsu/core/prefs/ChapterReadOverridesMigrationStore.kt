@@ -9,30 +9,29 @@ import javax.inject.Inject
 /**
  * Durability barrier for chapter read overrides during source migration.
  *
- * [AppSettings] remains the read/write authority and updates SharedPreferences in memory immediately.
- * Migration additionally needs the destination value to be on disk before the Room transaction can
- * commit, otherwise process death can strand the migrated manga without its read overrides. This
- * adapter rewrites the current AppSettings value with synchronous [android.content.SharedPreferences.Editor.commit].
+ * [AppSettings] remains the semantic read/write authority. Normal AppSettings writes update the
+ * SharedPreferences memory image immediately but may reach disk asynchronously. Migration calls this
+ * after such a write to synchronously persist that exact raw preference value before Room may commit.
+ * This class deliberately does not parse or re-encode override entries.
  */
 @Reusable
 class ChapterReadOverridesMigrationStore @Inject constructor(
 	@ApplicationContext context: Context,
-	private val settings: AppSettings,
 ) {
 	private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 
 	fun persistCurrent(mangaId: Long) {
-		val overrides = settings.getChapterReadOverrides(mangaId)
+		val key = key(mangaId)
+		val current = prefs.all[key]
 		val editor = prefs.edit()
-		if (overrides.isEmpty()) {
-			editor.remove(key(mangaId))
-		} else {
-			editor.putStringSet(
-				key(mangaId),
-				overrides.mapTo(LinkedHashSet(overrides.size)) { (chapterId, isRead) ->
-					"$chapterId:" + if (isRead) "1" else "0"
-				},
-			)
+		when (current) {
+			null -> editor.remove(key)
+			is Set<*> -> {
+				val strings = current.filterIsInstance<String>().toSet()
+				check(strings.size == current.size) { "Invalid chapter read override preference value" }
+				editor.putStringSet(key, strings)
+			}
+			else -> error("Invalid chapter read override preference type")
 		}
 		check(editor.commit()) { "Cannot persist chapter read override migration state" }
 	}
