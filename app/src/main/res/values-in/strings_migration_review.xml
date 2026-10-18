@@ -21,4 +21,5 @@
     <string name="migration_evidence_agrees">Author atau struktur chapter mendukung kecocokan</string>
     <string name="migration_review_list">Tinjau manga</string>
     <plurals name="migration_review_sources"><item quantity="one">Tinjau %d source</item><item quantity="other">Tinjau %d source</item></plurals>
+    <string name="manga_migration">Migrasi manga</string>
 </resources>

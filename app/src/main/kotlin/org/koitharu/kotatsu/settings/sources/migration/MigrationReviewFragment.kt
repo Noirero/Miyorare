@@ -17,6 +17,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
+import androidx.core.view.doOnDetach
+import androidx.core.view.updatePadding
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
+import com.google.android.material.appbar.AppBarLayout
+import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.MigrationMatchState
@@ -42,6 +48,16 @@ class MigrationReviewFragment : BaseComposeSettingsFragment(R.string.manga_migra
 			}
 		}
 
+	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+		super.onViewCreated(view, savedInstanceState)
+		val appBar = (requireActivity() as AppBarOwner).appBar
+		val listener = AppBarLayout.OnOffsetChangedListener { bar, offset ->
+			view.updatePadding(bottom = bar.totalScrollRange + offset)
+		}
+		appBar.addOnOffsetChangedListener(listener)
+		view.doOnDetach { appBar.removeOnOffsetChangedListener(listener) }
+	}
+
 	companion object {
 		const val ARG_MANGA_ID = "migration_manga_id"
 		fun args(mangaId: Long) = Bundle(1).apply { putLong(ARG_MANGA_ID, mangaId) }
@@ -65,7 +81,7 @@ internal fun MigrationReviewScreen(
 	val selected = candidates.firstOrNull { it.manga.id == selectedId && it.manga.source.name == selectedSource &&
 		org.koitharu.kotatsu.alternatives.domain.MigrationSelection.of(it.manga).fingerprint == selectedFingerprint }
 	val context = LocalContext.current
-	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(20.dp),
+	Column(Modifier.fillMaxSize().nestedScroll(rememberNestedScrollInteropConnection()).verticalScroll(rememberScrollState()).navigationBarsPadding().padding(20.dp),
 		verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		state.completedId?.let { id ->
 			Text(stringResource(R.string.migration_completed), style = MaterialTheme.typography.titleLarge)
