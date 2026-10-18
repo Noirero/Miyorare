@@ -16,7 +16,6 @@ import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.ui.config.MangaReaderProfileStore
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyChapterEntity
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
-import org.koitharu.kotatsu.stats.data.StatsEntity
 import org.koitharu.kotatsu.tracker.data.TrackEntity
 import org.koitharu.kotatsu.tracker.data.TrackLogEntity
 import java.io.File
@@ -30,7 +29,7 @@ import javax.inject.Inject
  * or incompatible destination state aborts before destructive source cleanup.
  */
 @Reusable
-internal class LosslessMigrationTransfer @Inject constructor(
+class LosslessMigrationTransfer @Inject constructor(
 	private val database: MangaDatabase,
 	private val settings: AppSettings,
 	private val notesRepository: MangaNotesRepository,
