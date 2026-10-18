@@ -159,7 +159,7 @@ class MigrationEndToEndRuntimeTest {
         assertTrue(notes.prepareMove(interruptedOld.id, interruptedTarget.id))
         assertTrue(transfer().prepareReadOverrides(plan))
         ChapterReadOverridesMigrationStore(context).persistCurrent(interruptedTarget.id)
-        assertNotNull(index.prepareDownloadIdentityMove(interruptedOld.id, interruptedTarget.id))
+        assertNotNull(index.prepareDownloadIdentityMove(interruptedOld.id, interruptedTarget.id, plan.chapterTargets.mapValues { it.value.id }))
         assertTrue(database.getMangaDao().isMigrationEntryVisible(interruptedOld.id))
         manifest.writeText(JSONObject().put("pid", Process.myPid()).put("normalGroup", normalGroup)
             .put("privateGroup", privateGroup).put("profile", expectedProfile).put("files", files)
@@ -216,6 +216,19 @@ class MigrationEndToEndRuntimeTest {
         assertEquals(mapOf(chapter(interruptedTarget).id to true), settings.getChapterReadOverrides(interruptedTarget.id))
         assertNotNull(index.getDownloadAliasPaths(listOf(interruptedTarget.id))[interruptedTarget.id])
         verifyReadable(interruptedTarget, File(root, "interrupted"))
+        // A second source replacement must compose physical -> first -> second chapter identity.
+        val secondTarget = manga(987004, "P5_FINAL")
+        persist(secondTarget)
+        val selectedAgain = checkNotNull(MigrationExecutionPolicy.select(
+            discovery(target, secondTarget), MigrationSelection.of(secondTarget), false))
+        migrateProvider.get()(target, selectedAgain, lossless = true, requireLibraryEntry = true)
+        assertTrue(index.getDownloadAliasPaths(listOf(target.id)).isEmpty())
+        assertNull(database.getHistoryDao().find(target.id))
+        assertNull(notes.get(target.id))
+        assertNull(profiles.get(target.id))
+        assertTrue(settings.getChapterReadOverrides(target.id).isEmpty())
+        verifyFullState(saved.getLong("normalGroup"), saved.getLong("privateGroup"), saved.getString("profile"), secondTarget)
+        verifyDownloads(saved.getJSONObject("files"), secondTarget)
         println("P5_CHECKPOINT_REOPENED pid=" + Process.myPid() + " previous-pid=" + saved.getInt("pid") + " durable-state-and-retry=verified")
         cleanup(listOf(saved.getLong("normalGroup"), saved.getLong("privateGroup"), saved.getLong("sourceGroup")))
     }
@@ -335,7 +348,8 @@ class MigrationEndToEndRuntimeTest {
         database.getReaderJourneyDao().mergeChapterAward(ReaderJourneyChapterEntity(manga.id, chapter(manga).id, false, 12, 1, 13, 90, 90))
     }
 
-    private suspend fun verifyFullState(normalGroup: Long, privateGroup: Long, expectedProfile: String) {
+    private suspend fun verifyFullState(normalGroup: Long, privateGroup: Long, expectedProfile: String, destination: Manga = this.target) {
+        val target = destination
         assertTrue(database.getFavouritesDao().findAllRaw(old.id).isEmpty())
         assertEquals(listOf(favourite(target.id, NORMAL_A), favourite(target.id, NORMAL_B)),
             database.getFavouritesDao().findAllRaw(target.id).sortedBy { it.categoryId })
@@ -396,7 +410,8 @@ class MigrationEndToEndRuntimeTest {
         }
     }
 
-    private suspend fun verifyDownloads(expected: JSONObject) {
+    private suspend fun verifyDownloads(expected: JSONObject, destination: Manga = this.target) {
+        val target = destination
         val actual = physicalSnapshot()
         assertEquals(expected.length(), actual.length())
         val keys = expected.keys()
@@ -515,7 +530,7 @@ class MigrationEndToEndRuntimeTest {
 
     private suspend fun cleanup(groups: List<Long>) {
         groups.forEach { database.getLibraryGroupsDao().deleteGroup(it) }
-        val ids = listOf(987001L, 987002L, 987003L, 988001L, 988002L, 989001L, 989002L,
+        val ids = listOf(987001L, 987002L, 987003L, 987004L, 988001L, 988002L, 989001L, 989002L,
             990001L, 990002L, 991001L, 991002L, 992001L, 992002L, 993001L, 993002L, 994001L, 994002L)
         for (id in ids) {
             notes.set(id, null); profiles.clear(id)

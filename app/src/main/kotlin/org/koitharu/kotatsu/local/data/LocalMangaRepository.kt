@@ -646,12 +646,13 @@ class LocalMangaRepository @Inject constructor(
 		)
 	}
 
-	private fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
-		LegacySplitChapterCompat.linkToRemote(remoteManga, localManga)?.let { return it }
+	private suspend fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
+		val migrated = localMangaIndex.linkMigratedDownloadChapters(remoteManga.id, localManga)
+		LegacySplitChapterCompat.linkToRemote(remoteManga, migrated)?.let { return it }
 		// Keep Details, downloaded badges and Reader on one canonical matcher. In particular, a
 		// sidecar-free CBZ that the UI recognises must also be re-keyed to the remote chapter id before
 		// Reader navigation, otherwise offline opens can select a local-only id that Room never knew.
-		return LegacyChapterDownloadCompat.linkToRemote(remoteManga, localManga)
+		return LegacyChapterDownloadCompat.linkToRemote(remoteManga, migrated)
 	}
 
 	private fun expectedChapterBaseName(chapter: MangaChapter, branchIndex: Int, isNovel: Boolean): String {
