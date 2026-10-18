@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.alternatives.work
 
 import androidx.work.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -71,6 +72,7 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 					destinationId = snapshot.outcome.destinationId,
 				)))
 				.keepResultsForAtLeast(30, TimeUnit.DAYS)
+				.addTag(markerBatch)
 				.apply {
 					MigrationBatchWork.tags(
 						snapshot.mangaId,
@@ -82,6 +84,11 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 				}
 				.build()
 		}
-		if (markers.isNotEmpty()) workManager.enqueue(markers).await()
+		if (markers.isNotEmpty()) {
+			workManager.enqueue(markers).await()
+			workManager.getWorkInfosByTagFlow(markerBatch).first { infos ->
+				infos.size == markers.size && infos.all { it.state.isFinished }
+			}
+		}
 	}
 }
