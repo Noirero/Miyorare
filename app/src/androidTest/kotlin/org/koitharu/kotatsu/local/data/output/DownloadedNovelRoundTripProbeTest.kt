@@ -26,9 +26,20 @@ class DownloadedNovelRoundTripProbeTest {
 
 	@Test
 	fun downloadedNovelXhtmlSurvivesEpubLocalParserAndReaderParse() = runTest {
+		assertRoundTrip("Chapter 1.epub")
+	}
+
+	@Test
+	fun downloadedNovelXhtmlSurvivesReservedCharactersInEpubPath() = runTest {
+		// LocalNovelDirOutput deliberately keeps '#' and '%' in readable chapter filenames today.
+		// Exercise those real filename characters through the same URI/archive boundary as the reader.
+		assertRoundTrip("Chapter #1 100%.epub")
+	}
+
+	private suspend fun assertRoundTrip(epubName: String) {
 		val dir = Files.createTempDirectory("miyorare-novel-roundtrip").toFile()
 		try {
-			val epub = File(dir, "Chapter 1.epub")
+			val epub = File(dir, epubName)
 			val htmlFile = File(dir, "source.html").apply {
 				writeText("<article><h1>Chapter 1</h1><p>Round trip sentinel &amp; readable text.</p></article>")
 			}
