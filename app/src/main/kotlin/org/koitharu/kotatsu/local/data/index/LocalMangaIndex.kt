@@ -401,6 +401,62 @@ class LocalMangaIndex @Inject constructor(
 		}
 	}
 
+	/**
+	 * Prepare a source-replacement identity alias without rewriting [local_index] or touching files.
+	 * The source identity remains readable until [finishPreparedDownloadIdentityMove], so process death
+	 * cannot strand an already-downloaded container between remote ids. A persisted local_index row for
+	 * the old remote id is also sufficient evidence: the new remote id receives an alias back to that
+	 * exact physical identity instead of re-keying the local row.
+	 */
+	internal suspend fun prepareDownloadIdentityMove(
+		oldRemoteMangaId: Long,
+		newRemoteMangaId: Long,
+	): PreparedDownloadIdentityMove? = mutex.withLock {
+		if (oldRemoteMangaId == newRemoteMangaId) return@withLock null
+		val oldAlias = readDownloadAlias(oldRemoteMangaId)
+		val sourceAlias = oldAlias ?: db.getLocalMangaIndexDao().findPath(oldRemoteMangaId)?.let { path ->
+			DownloadPathAlias(
+				localMangaId = oldRemoteMangaId,
+				path = normalizePath(File(path)),
+			)
+		} ?: return@withLock null
+		val targetAlias = readDownloadAlias(newRemoteMangaId)
+		check(targetAlias == null || targetAlias == sourceAlias) {
+			"Migration target already points to a different downloaded container"
+		}
+		val createdTarget = targetAlias == null
+		if (createdTarget) {
+			prefs.edit { putString(aliasKey(newRemoteMangaId), sourceAlias.serialize()) }
+			cachedList = null
+			_rebuildEvents.tryEmit(Unit)
+		}
+		PreparedDownloadIdentityMove(
+			alias = sourceAlias,
+			createdTargetAlias = createdTarget,
+			sourceHadAlias = oldAlias != null,
+		)
+	}
+
+	internal suspend fun rollbackPreparedDownloadIdentityMove(
+		newRemoteMangaId: Long,
+		move: PreparedDownloadIdentityMove?,
+	) = mutex.withLock {
+		if (move == null || !move.createdTargetAlias) return@withLock
+		if (readDownloadAlias(newRemoteMangaId) == move.alias) {
+			removeDownloadAlias(newRemoteMangaId)
+		}
+	}
+
+	internal suspend fun finishPreparedDownloadIdentityMove(
+		oldRemoteMangaId: Long,
+		move: PreparedDownloadIdentityMove?,
+	) = mutex.withLock {
+		if (move == null || !move.sourceHadAlias) return@withLock
+		if (readDownloadAlias(oldRemoteMangaId) == move.alias) {
+			removeDownloadAlias(oldRemoteMangaId)
+		}
+	}
+
 	suspend fun put(manga: LocalManga) = mutex.withLock {
 		val alias = readDownloadAlias(manga.manga.id)
 		if (alias?.path == manga.file.path) {
@@ -537,3 +593,9 @@ class LocalMangaIndex @Inject constructor(
 		private const val VERSION = 3
 	}
 }
+
+internal data class PreparedDownloadIdentityMove(
+	val alias: DownloadPathAlias,
+	val createdTargetAlias: Boolean,
+	val sourceHadAlias: Boolean,
+)
