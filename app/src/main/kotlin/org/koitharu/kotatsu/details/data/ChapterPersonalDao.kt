@@ -21,4 +21,7 @@ interface ChapterPersonalDao {
 
 	@Query("DELETE FROM chapter_personal WHERE manga_id = :mangaId AND source = :source AND url = :url")
 	suspend fun delete(mangaId: Long, source: String, url: String)
+
+	@Query("DELETE FROM chapter_personal WHERE manga_id = :mangaId")
+	suspend fun deleteAll(mangaId: Long)
 }
