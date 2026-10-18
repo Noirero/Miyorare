@@ -28,6 +28,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.platform.testTag
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +51,12 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
+import androidx.core.view.doOnDetach
+import androidx.core.view.updatePadding
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
+import com.google.android.material.appbar.AppBarLayout
+import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -87,7 +97,11 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 				SourceMangaListScreen(
 					state = state,
 					imageLoader = imageLoader,
-					onRetry = viewModel::refresh,
+					onRetry = viewModel::retry,
+					onCheck = viewModel::checkAll,
+					onMigrateReady = viewModel::migrateReady,
+					onCancel = viewModel::cancelBatch,
+					onFilter = viewModel::setFilter,
 					onMangaClick = { manga ->
 						if (state.selectedIds.isEmpty()) {
 							(requireActivity() as org.koitharu.kotatsu.settings.SettingsActivity).openFragment(
@@ -105,6 +119,10 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
+		val appBar = (requireActivity() as AppBarOwner).appBar
+		val listener = AppBarLayout.OnOffsetChangedListener { bar, offset -> view.updatePadding(bottom = bar.totalScrollRange + offset) }
+		appBar.addOnOffsetChangedListener(listener)
+		view.doOnDetach { appBar.removeOnOffsetChangedListener(listener) }
 		viewLifecycleOwner.lifecycleScope.launch {
 			viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
 				viewModel.state
@@ -217,6 +235,10 @@ private fun SourceMangaListScreen(
 	state: SourceMangaListState,
 	imageLoader: ImageLoader,
 	onRetry: () -> Unit,
+	onCheck: () -> Unit,
+	onMigrateReady: () -> Unit,
+	onCancel: () -> Unit,
+	onFilter: (MigrationBatchStatus?) -> Unit,
 	onMangaClick: (Manga) -> Unit,
 	onMangaLongClick: (Manga) -> Unit,
 ) {
@@ -227,18 +249,26 @@ private fun SourceMangaListScreen(
 		return
 	}
 	LazyColumn(
-		modifier = Modifier.fillMaxSize().navigationBarsPadding(),
+		modifier = Modifier.fillMaxSize().nestedScroll(rememberNestedScrollInteropConnection()).navigationBarsPadding(),
 	) {
 		if (state.failed) item {
+			Text(stringResource(R.string.error_occurred), modifier = Modifier.padding(horizontal = 16.dp))
 			androidx.compose.material3.TextButton(onClick = onRetry) {
 				Text(androidx.compose.ui.res.stringResource(org.koitharu.kotatsu.R.string.migration_retry))
 			}
 		}
-		items(state.manga, key = Manga::id) { manga ->
+		if (state.manga.size > 1 || state.batchItems.size > 1) item {
+			MigrationBatchControls(state, onCheck, onMigrateReady, onCancel, onFilter)
+		}
+		if (state.manga.isEmpty() && !state.failed) item {
+			Text(stringResource(R.string.migration_batch_empty), modifier = Modifier.padding(20.dp))
+		}
+		items(state.visibleManga, key = Manga::id) { manga ->
 			SourceMangaRow(
 				manga = manga,
 				imageLoader = imageLoader,
 				isSelected = manga.id in state.selectedIds,
+				status = state.status(manga.id),
 				onClick = { onMangaClick(manga) },
 				onLongClick = { onMangaLongClick(manga) },
 			)
@@ -256,6 +286,7 @@ private fun SourceMangaRow(
 	manga: Manga,
 	imageLoader: ImageLoader,
 	isSelected: Boolean,
+	status: MigrationBatchStatus,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
 ) {
@@ -336,6 +367,9 @@ private fun SourceMangaRow(
 					maxLines = 1,
 				)
 			}
+			Text(stringResource(status.labelRes()), style = MaterialTheme.typography.bodySmall,
+				color = MaterialTheme.colorScheme.primary)
+
 		}
 	}
 }

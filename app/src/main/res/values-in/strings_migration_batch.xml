@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="migration_batch_cancel">Batalkan batch berjalan</string>
+    <string name="migration_batch_check">Periksa pengganti / coba lagi yang tersisa</string>
+    <string name="migration_batch_safety">Hanya hasil siap yang dimigrasikan dalam batch. Manga yang perlu ditinjau atau belum selesai tetap disimpan. Kandidat diperiksa lagi sebelum transfer.</string>
+    <string name="migration_batch_unchecked">Belum diperiksa — ketuk untuk meninjau</string>
+    <string name="migration_batch_queued">Dalam antrean / menunggu jaringan</string>
+    <string name="migration_batch_migrating">Sedang dimigrasikan…</string>
+    <string name="migration_batch_ready">Siap dimigrasikan</string>
+    <string name="migration_batch_review">Perlu ditinjau</string>
+    <string name="migration_batch_no_replacement">Belum ditemukan pengganti</string>
+    <string name="migration_batch_incomplete">Pencarian belum lengkap — coba lagi</string>
+    <string name="migration_batch_healthy">Source saat ini berfungsi</string>
+    <string name="migration_batch_interrupted">Terputus — periksa koleksi sebelum mencoba lagi</string>
+    <string name="migration_batch_error">Belum dapat dimigrasikan dengan aman — tinjau atau coba lagi</string>
+    <string name="migration_batch_empty">Tidak ada entri koleksi atau riwayat yang tersisa untuk source ini.</string>
+    <string name="migration_batch_progress">%1$d dari %2$d manga diperiksa / ditangani</string>
+    <string name="migration_batch_done">%1$d manga dimigrasikan melalui batch baru-baru ini</string>
+    <string name="migration_batch_check_library">Manga yang terputus mungkin sudah berada di penggantinya. Periksa koleksi; migrasi tidak akan diulang secara buta.</string>
+    <string name="migration_batch_other_active">Batch migrasi sedang berjalan pada koleksi source lain.</string>
+    <string name="migration_batch_all">Semua status</string>
+    <string name="migration_batch_filter_count">%1$s · %2$d</string>
+    <plurals name="migration_batch_migrate_ready"><item quantity="one">Migrasikan %d manga yang siap</item><item quantity="other">Migrasikan %d manga yang siap</item></plurals>
+    <string name="migration_batch_summary">%1$d siap · %2$d perlu ditinjau · %3$d belum ada pengganti</string>
+</resources>

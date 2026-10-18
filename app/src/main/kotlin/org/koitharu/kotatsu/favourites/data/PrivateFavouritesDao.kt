@@ -212,6 +212,14 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	)
 	abstract fun observePrivateOnly(mangaId: Long): Flow<Boolean>
 
+	/** Public migration projections must react to privacy changes, including destination privacy. */
+	@Query(
+		"SELECT DISTINCT pf.manga_id FROM private_favourites pf WHERE pf.deleted_at = 0 " +
+			"AND NOT EXISTS(SELECT 1 FROM favourite_categories WHERE category_id = -2147483000 AND space = -1 AND deleted_at = 0) " +
+			"AND NOT EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = pf.manga_id AND f.deleted_at = 0)",
+	)
+	abstract fun observePrivateOnlyIds(): Flow<List<Long>>
+
 	@Query(
 		"SELECT manga.source AS count FROM private_favourites LEFT JOIN manga ON manga.manga_id = private_favourites.manga_id " +
 			"WHERE private_favourites.deleted_at = 0 AND EXISTS(SELECT 1 FROM favourite_categories c WHERE c.category_id = private_favourites.category_id AND c.space = 1 AND c.show_in_lib = 1 AND c.deleted_at = 0) " +
