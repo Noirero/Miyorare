@@ -1,32 +1,21 @@
 package org.koitharu.kotatsu.alternatives.domain
 
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.lastOrNull
-import kotlinx.coroutines.flow.runningFold
-import kotlinx.coroutines.flow.transformWhile
-import kotlinx.coroutines.flow.withIndex
-import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import org.koitharu.kotatsu.core.model.chaptersCount
 import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
-import java.util.concurrent.TimeUnit
+import org.koitharu.kotatsu.search.domain.SearchSourceMode
 import javax.inject.Inject
-import kotlin.coroutines.cancellation.CancellationException
 
 class AutoFixUseCase @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val alternativesUseCase: AlternativesUseCase,
 	private val migrateUseCase: MigrateUseCase,
 	private val mangaDataRepository: MangaDataRepository,
+	private val candidateMatcher: MigrationCandidateMatcher,
 ) {
 
 	suspend operator fun invoke(mangaId: Long): Pair<Manga, Manga?> {
@@ -36,67 +25,107 @@ class AutoFixUseCase @Inject constructor(
 		if (seed.isHealthy()) {
 			return seed to null // no fix required
 		}
-		val replacement = alternativesUseCase(seed)
-			.filter { it.isHealthy() }
-			.runningFold<Manga, Manga?>(null) { best, candidate ->
-				if (best == null || best < candidate) {
-					candidate
-				} else {
-					best
+
+		// Broken-source migration must search the whole enabled source domain. Pinned/language filters
+		// are manual Alternatives preferences, not identity constraints for an automatic repair.
+		val sources = alternativesUseCase.getSources(seed, SearchSourceMode.ALL_SOURCES, emptySet())
+		val observations = ArrayList<MigrationCandidateObservation>()
+		for (query in buildSearchQueries(seed)) {
+			alternativesUseCase(
+				manga = seed,
+				mode = SearchSourceMode.ALL_SOURCES,
+				preferredLanguages = emptySet(),
+				query = query,
+				precomputedSources = sources,
+			).collect { event ->
+				if (event is AlternativeSearchEvent.Result) {
+					observations += MigrationCandidateObservation(event.manga, setOf(query))
 				}
-			}.selectLastWithTimeout(4, 40, TimeUnit.SECONDS)
+			}
+		}
+
+		// Rank identity evidence before doing the more expensive page-serving health checks. The cap is
+		// deterministic and large enough to keep multiple plausible sources available for ambiguity
+		// detection without reverting to the old timing-dependent "first few arrivals" behaviour.
+		val healthy = ArrayList<MigrationCandidateObservation>()
+		for (candidate in candidateMatcher.rank(seed, observations).take(MAX_HEALTH_CHECKS)) {
+			val details = candidate.manga.getHealthyDetailsOrNull() ?: continue
+			healthy += MigrationCandidateObservation(details, candidate.matchedQueries)
+		}
+		val assessment = candidateMatcher.assess(seed, healthy)
+		val replacement = when (assessment.state) {
+			MigrationMatchState.READY -> checkNotNull(assessment.best).manga
+			MigrationMatchState.NEEDS_REVIEW -> throw NeedsReviewException(
+				seed = ParcelableManga(seed),
+				candidates = assessment.candidates.map { ParcelableManga(it.manga) },
+			)
+			MigrationMatchState.NO_REPLACEMENT -> throw NoAlternativesException(ParcelableManga(seed))
+		}
+
 		migrateUseCase(
 			oldManga = seed,
-			newManga = replacement ?: throw NoAlternativesException(ParcelableManga(seed)),
+			newManga = replacement,
 			lossless = true,
 		)
 		return seed to replacement
 	}
 
-	private suspend fun Manga.isHealthy(): Boolean = runCatchingCancellable {
+	private suspend fun Manga.isHealthy(): Boolean = getHealthyDetailsOrNull() != null
+
+	private suspend fun Manga.getHealthyDetailsOrNull(): Manga? = runCatchingCancellable {
 		val repo = mangaRepositoryFactory.create(source)
 		val details = if (this.chapters != null) this else repo.getDetails(this)
-		val firstChapter = details.chapters?.firstOrNull() ?: return@runCatchingCancellable false
-		val pageUrl = repo.getPageUrl(repo.getPages(firstChapter).first())
+		val firstChapter = details.chapters?.firstOrNull() ?: return@runCatchingCancellable null
+		val firstPage = repo.getPages(firstChapter).firstOrNull() ?: return@runCatchingCancellable null
+		val pageUrl = repo.getPageUrl(firstPage)
 		// Most sources expose a fetchable http(s) page url. Some extensions (e.g. MangaDex) return a
 		// relative imageUrl whose host is resolved internally by getImage(), so a non-blank url from
 		// an external source still indicates a healthy, page-serving source.
-		pageUrl.toHttpUrlOrNull() != null || (source.isExternalSource() && pageUrl.isNotEmpty())
-	}.getOrDefault(false)
+		if (pageUrl.toHttpUrlOrNull() != null || (source.isExternalSource() && pageUrl.isNotEmpty())) {
+			details
+		} else {
+			null
+		}
+	}.getOrNull()
 
 	private suspend fun Manga.getDetailsSafe() = runCatchingCancellable {
 		mangaRepositoryFactory.create(source).getDetails(this)
 	}.getOrDefault(this)
 
-	private operator fun Manga.compareTo(other: Manga) = chaptersCount().compareTo(other.chaptersCount())
+	private fun buildSearchQueries(seed: Manga): List<String> {
+		val primary = seed.title.trim()
+		val primaryKey = normalizeQuery(primary)
+		val aliases = seed.altTitles
+			.asSequence()
+			.map(String::trim)
+			.filter(String::isNotEmpty)
+			.map { it to normalizeQuery(it) }
+			.filter { (_, key) -> key.length >= MIN_ALIAS_QUERY_LENGTH && key != primaryKey }
+			.distinctBy { (_, key) -> key }
+			.sortedWith(compareByDescending<Pair<String, String>> { it.second.length }.thenBy { it.second })
+			.map(Pair<String, String>::first)
+			.take(MAX_AUTO_FIX_QUERIES - 1)
+			.toList()
+		return buildList(1 + aliases.size) {
+			if (primary.isNotEmpty()) add(primary)
+			addAll(aliases)
+		}
+	}
 
-	@Suppress("UNCHECKED_CAST", "OPT_IN_USAGE")
-	private suspend fun <T> Flow<T>.selectLastWithTimeout(
-		minCount: Int,
-		timeout: Long,
-		timeUnit: TimeUnit
-	): T? = channelFlow<T?> {
-		var lastValue: T? = null
-		launch {
-			delay(timeUnit.toMillis(timeout))
-			close(InternalTimeoutException(lastValue))
-		}
-		withIndex().transformWhile { (index, value) ->
-			lastValue = value
-			emit(value)
-			index < minCount && !isClosedForSend
-		}.collect {
-			send(it)
-		}
-	}.catch { e ->
-		if (e is InternalTimeoutException) {
-			emit(e.value as T?)
-		} else {
-			throw e
-		}
-	}.lastOrNull()
+	private fun normalizeQuery(value: String): String = buildString(value.length) {
+		for (char in value.lowercase()) if (char.isLetterOrDigit()) append(char)
+	}
 
 	class NoAlternativesException(val seed: ParcelableManga) : NoSuchElementException()
 
-	private class InternalTimeoutException(val value: Any?) : CancellationException()
+	class NeedsReviewException(
+		val seed: ParcelableManga,
+		val candidates: List<ParcelableManga>,
+	) : IllegalStateException("Possible replacement requires review")
+
+	private companion object {
+		const val MAX_AUTO_FIX_QUERIES = 6
+		const val MAX_HEALTH_CHECKS = 12
+		const val MIN_ALIAS_QUERY_LENGTH = 3
+	}
 }
