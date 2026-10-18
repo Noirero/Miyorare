@@ -31,7 +31,7 @@ fi
 
 instrumentation_component="$(find_instrumentation_component)"
 if [[ -z "$instrumentation_component" ]]; then
-  test_apk="$(find app/build/outputs/apk/androidTest -type f -name '*.apk' -print 2>/dev/null | sort | head -n 1)"
+  test_apk="$(find app/build/outputs/apk/androidTest -type f -name '*.apk' -print -quit 2>/dev/null)"
   if [[ -z "$test_apk" || ! -f "$test_apk" ]]; then
     echo "P5 runtime harness cannot find the built AndroidTest APK" >&2
     exit 1
