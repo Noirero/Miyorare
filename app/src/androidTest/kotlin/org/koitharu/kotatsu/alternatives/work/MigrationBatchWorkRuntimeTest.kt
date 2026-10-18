@@ -82,7 +82,9 @@ class MigrationBatchWorkRuntimeTest {
 			assertEquals(3, results.size)
 			assertTrue(results.values.all { it.outcome.status == MigrationBatchStatus.NO_REPLACEMENT })
 			// A fresh SQLite connection reads committed WorkManager data, not the ViewModel's memory.
-			val path = (manager as WorkManagerImpl).workDatabase.openHelper.writableDatabase.path
+			val path = checkNotNull((manager as WorkManagerImpl).workDatabase.openHelper.writableDatabase.path) {
+				"Durability fixture requires a file-backed WorkManager database"
+			}
 			SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY).use { reopened ->
 				for (info in finished.filter { MigrationBatchWork.snapshot(it)?.source == "BATCH_RUNTIME" }) {
 					reopened.rawQuery("SELECT state, input, output FROM workspec WHERE id = ?", arrayOf(info.id.toString())).use { cursor ->
