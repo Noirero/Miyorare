@@ -317,6 +317,7 @@ class LocalMangaIndex @Inject constructor(
 		if (localMangaIds.isEmpty()) return@withContext emptyMap()
 		val localIds = localMangaIds.toHashSet()
 		val candidates = HashMap<Long, MutableSet<Long>>()
+		val migrationLocalIds = HashSet<Long>()
 
 		fun addCandidate(localId: Long, remoteId: Long) {
 			if (localId == remoteId || localId !in localIds) return
@@ -327,6 +328,7 @@ class LocalMangaIndex @Inject constructor(
 			if (!key.startsWith(KEY_ALIAS_PREFIX)) continue
 			val remoteId = key.removePrefix(KEY_ALIAS_PREFIX).toLongOrNull() ?: continue
 			val alias = DownloadPathAlias.parse(rawValue as? String) ?: continue
+			if (alias.chapterIds.isNotEmpty() && alias.localMangaId in localIds) migrationLocalIds += alias.localMangaId
 			addCandidate(alias.localMangaId, remoteId)
 		}
 
@@ -365,9 +367,20 @@ class LocalMangaIndex @Inject constructor(
 			}
 		}
 
+		// A durable prepare copy is not a Room ownership commit. For lossless aliases, prefer the
+		// current owner over prepared/obsolete aliases; ordinary reconnect semantics stay unchanged.
+		val ownedIds = HashSet<Long>()
+		val migrationCandidates = migrationLocalIds.flatMap { candidates[it].orEmpty() + it }.distinct()
+		for (chunk in migrationCandidates.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			ownedIds += db.getMangaDao().findMigrationOwnedIds(chunk)
+		}
 		buildMap {
 			for ((localId, remoteIds) in candidates) {
-				if (remoteIds.size == 1) put(localId, remoteIds.first())
+				if (localId in migrationLocalIds) {
+					val owners = (remoteIds + localId).filter { it in ownedIds }
+					if (owners.size == 1 && owners.single() != localId) put(localId, owners.single())
+					else if (owners.isEmpty() && remoteIds.size == 1) put(localId, remoteIds.first())
+				} else if (remoteIds.size == 1) put(localId, remoteIds.first())
 			}
 		}
 	}
@@ -468,14 +481,15 @@ class LocalMangaIndex @Inject constructor(
 		oldRemoteMangaId: Long,
 		move: PreparedDownloadIdentityMove?,
 	) = mutex.withLock {
-		if (move == null || !move.sourceHadAlias) return@withLock
-		if (readDownloadAlias(oldRemoteMangaId) == move.sourceAlias) {
+		if (move == null) return@withLock
+		if (move.sourceHadAlias && readDownloadAlias(oldRemoteMangaId) == move.sourceAlias) {
 			check(prefs.edit().remove(aliasKey(oldRemoteMangaId)).commit()) {
 				"Cannot finalize downloaded identity migration"
 			}
-			cachedList = null
-			_rebuildEvents.tryEmit(Unit)
 		}
+		// Room ownership is now committed even when the source used only a local_index row.
+		cachedList = null
+		_rebuildEvents.tryEmit(Unit)
 	}
 
 	/** Apply only redirects persisted by lossless migration, never ordinary title/filename relevance. */

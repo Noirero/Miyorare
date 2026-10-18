@@ -191,6 +191,7 @@ class MigrationEndToEndRuntimeTest {
         assertEquals(mapOf(chapter(interruptedOld).id to true), settings.getChapterReadOverrides(interruptedOld.id))
         assertEquals(mapOf(chapter(interruptedTarget).id to true), settings.getChapterReadOverrides(interruptedTarget.id))
         assertTrue(database.getMangaDao().isMigrationEntryVisible(interruptedOld.id))
+        assertFalse(index.getCanonicalRemoteIds(listOf(interruptedOld.id)).containsKey(interruptedOld.id))
         assertEquals(File(root, "interrupted").canonicalPath, index.getDownloadAliasPaths(listOf(interruptedTarget.id))[interruptedTarget.id])
         val failedRetry = runCatching {
             migrateProvider.get()(interruptedOld, interruptedTarget, lossless = true, requireLibraryEntry = true)
@@ -221,6 +222,9 @@ class MigrationEndToEndRuntimeTest {
         persist(secondTarget)
         val selectedAgain = checkNotNull(MigrationExecutionPolicy.select(
             discovery(target, secondTarget), MigrationSelection.of(secondTarget), false))
+        val nextPlan = transfer().prepare(target, selectedAgain)
+        assertNotNull(index.prepareDownloadIdentityMove(target.id, selectedAgain.id, nextPlan.chapterTargets.mapValues { it.value.id }))
+        assertEquals(target.id, index.getCanonicalRemoteIds(listOf(old.id))[old.id])
         migrateProvider.get()(target, selectedAgain, lossless = true, requireLibraryEntry = true)
         assertTrue(index.getDownloadAliasPaths(listOf(target.id)).isEmpty())
         assertNull(database.getHistoryDao().find(target.id))
@@ -423,6 +427,7 @@ class MigrationEndToEndRuntimeTest {
         assertEquals(File(root, "normal").canonicalPath, database.getLocalMangaIndexDao().findPath(old.id))
         assertNull(database.getLocalMangaIndexDao().findPath(target.id))
         assertEquals(File(root, "normal").canonicalPath, index.getDownloadAliasPaths(listOf(target.id))[target.id])
+        assertEquals(target.id, index.getCanonicalRemoteIds(listOf(old.id))[old.id])
         for ((space, folder) in listOf(0 to "normal", 1 to "private")) {
             val path = File(root, folder)
             assertNull(database.getFavouriteDownloadIndexDao().findEntry(space, old.id))
