@@ -234,6 +234,7 @@ class MigrationEndToEndRuntimeTest {
         val privateOld = manga(990001, "P5_OLD")
         val privateNew = manga(990002, "P5_NEW")
         seed(privateOld, privateNew, privateMembership = true)
+        database.getHistoryDao().insert(history(privateOld))
         database.getFavouritesDao().delete(privateOld.id)
         assertFalse(database.getMangaDao().isMigrationEntryVisible(privateOld.id))
         val veto = runCatching { migrateProvider.get()(privateOld, privateNew, lossless = true, requireLibraryEntry = true) }.exceptionOrNull()
@@ -245,6 +246,9 @@ class MigrationEndToEndRuntimeTest {
         assertTrue(database.getPrivateFavouritesDao().isPrivateOnly(privateNew.id))
         assertTrue(database.getFavouritesDao().findAllRaw(privateNew.id).isEmpty())
         assertEquals("P5 note", notes.get(privateNew.id))
+        assertEquals(history(privateNew), database.getHistoryDao().find(privateNew.id))
+        assertNull(database.getHistoryDao().find(privateOld.id))
+        assertFalse(database.getMangaDao().isMigrationEntryVisible(privateNew.id))
 
         val publicOld = manga(993001, "P5_OLD")
         val privateDestination = manga(993002, "P5_NEW")
