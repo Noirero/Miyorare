@@ -3,7 +3,7 @@ name: Downloaded Novel Round Trip Probe
 on:
   push:
     branches:
-      - test/amain2-downloaded-novel-roundtrip-probe
+      - test/amain2-downloaded-novel-consumer-probe
 
 permissions:
   contents: read
