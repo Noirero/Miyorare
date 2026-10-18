@@ -19,11 +19,37 @@ class AutoFixUseCase @Inject constructor(
 ) {
 
 	suspend operator fun invoke(mangaId: Long): Pair<Manga, Manga?> {
+		val discovery = discover(mangaId)
+		val seed = discovery.seed
+		if (discovery.sourceHealthy) return seed to null
+		if (discovery.incomplete) throw CandidateDiscoveryIncompleteException(ParcelableManga(seed))
+		val assessment = checkNotNull(discovery.assessment)
+		val replacement = when (assessment.state) {
+			MigrationMatchState.READY -> checkNotNull(assessment.best).manga
+			MigrationMatchState.NEEDS_REVIEW -> throw NeedsReviewException(
+				seed = ParcelableManga(seed),
+				candidates = assessment.candidates.map { ParcelableManga(it.manga) },
+			)
+			MigrationMatchState.NO_REPLACEMENT -> {
+				throw NoAlternativesException(ParcelableManga(seed))
+			}
+		}
+
+		migrateUseCase(
+			oldManga = seed,
+			newManga = replacement,
+			lossless = true,
+		)
+		return seed to replacement
+	}
+
+	/** Discovery is a preview, never permission to mutate user data. */
+	suspend fun discover(mangaId: Long): MigrationDiscovery {
 		val seed = checkNotNull(
 			mangaDataRepository.findMangaById(mangaId, withChapters = true),
 		) { "Manga $mangaId not found" }.getDetailsSafe()
 		if (seed.isHealthy()) {
-			return seed to null // no fix required
+			return MigrationDiscovery(seed, sourceHealthy = true)
 		}
 
 		// Broken-source migration must search the whole enabled source domain. Pinned/language filters
@@ -56,33 +82,30 @@ class AutoFixUseCase @Inject constructor(
 		// detection without reverting to the old timing-dependent "first few arrivals" behaviour.
 		val healthy = ArrayList<MigrationCandidateObservation>()
 		for (candidate in candidateMatcher.rank(seed, observations).take(MAX_HEALTH_CHECKS)) {
-			val details = candidate.manga.getHealthyDetailsOrNull() ?: continue
+			val probe = candidate.manga.probeHealth()
+			if (probe.isFailure && discoveryError == null) discoveryError = probe.exceptionOrNull()
+			val details = probe.getOrNull() ?: continue
 			healthy += MigrationCandidateObservation(details, candidate.matchedQueries)
 		}
 		val assessment = candidateMatcher.assess(seed, healthy)
-		val replacement = when (assessment.state) {
-			MigrationMatchState.READY -> checkNotNull(assessment.best).manga
-			MigrationMatchState.NEEDS_REVIEW -> throw NeedsReviewException(
-				seed = ParcelableManga(seed),
-				candidates = assessment.candidates.map { ParcelableManga(it.manga) },
-			)
-			MigrationMatchState.NO_REPLACEMENT -> {
-				discoveryError?.let { throw CandidateDiscoveryIncompleteException(ParcelableManga(seed), it) }
-				throw NoAlternativesException(ParcelableManga(seed))
-			}
-		}
+		return MigrationDiscovery(seed, assessment, incomplete = discoveryError != null)
+	}
 
-		migrateUseCase(
-			oldManga = seed,
-			newManga = replacement,
-			lossless = true,
-		)
-		return seed to replacement
+	/** Re-discover immediately before executing; a UI snapshot is never identity authority. */
+	suspend fun migrateSelected(mangaId: Long, selection: MigrationSelection, reviewed: Boolean): Manga? {
+		val current = discover(mangaId)
+		if (current.sourceHealthy) return null
+		val replacement = MigrationExecutionPolicy.select(current, selection, reviewed)
+			?: throw SelectionChangedException(current)
+		migrateUseCase(oldManga = current.seed, newManga = replacement, lossless = true)
+		return replacement
 	}
 
 	private suspend fun Manga.isHealthy(): Boolean = getHealthyDetailsOrNull() != null
 
-	private suspend fun Manga.getHealthyDetailsOrNull(): Manga? = runCatchingCancellable {
+	private suspend fun Manga.getHealthyDetailsOrNull(): Manga? = probeHealth().getOrNull()
+
+	private suspend fun Manga.probeHealth(): Result<Manga?> = runCatchingCancellable {
 		val repo = mangaRepositoryFactory.create(source)
 		val details = if (this.chapters != null) this else repo.getDetails(this)
 		val firstChapter = details.chapters?.firstOrNull() ?: return@runCatchingCancellable null
@@ -96,7 +119,7 @@ class AutoFixUseCase @Inject constructor(
 		} else {
 			null
 		}
-	}.getOrNull()
+	}
 
 	private suspend fun Manga.getDetailsSafe() = runCatchingCancellable {
 		mangaRepositoryFactory.create(source).getDetails(this)
@@ -135,8 +158,10 @@ class AutoFixUseCase @Inject constructor(
 
 	class CandidateDiscoveryIncompleteException(
 		val seed: ParcelableManga,
-		cause: Throwable,
+		cause: Throwable? = null,
 	) : IllegalStateException("Replacement search did not complete", cause)
+
+	class SelectionChangedException(val discovery: MigrationDiscovery) : IllegalStateException("Replacement changed; review again")
 
 	private companion object {
 		const val MAX_AUTO_FIX_QUERIES = 6

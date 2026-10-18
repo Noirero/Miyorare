@@ -250,6 +250,10 @@ class SettingsActivity :
 			AppRouter.ACTION_SUGGESTIONS -> SuggestionsSettingsFragment()
 			AppRouter.ACTION_TRACKER -> TrackerSettingsFragment()
 			AppRouter.ACTION_SYNC -> SyncSettingsFragment()
+			AppRouter.ACTION_MIGRATION_REVIEW -> org.koitharu.kotatsu.settings.sources.migration.MigrationReviewFragment().apply {
+				arguments = org.koitharu.kotatsu.settings.sources.migration.MigrationReviewFragment.args(intent.getLongExtra(AppRouter.KEY_ID, 0L))
+			}
+			AppRouter.ACTION_MIGRATION -> org.koitharu.kotatsu.settings.sources.migration.BrokenSourcesMigrationFragment()
 			AppRouter.ACTION_SOURCES -> ExtensionsSettingsFragment()
 			AppRouter.ACTION_MANAGE_DISCORD -> DiscordSettingsFragment()
 			AppRouter.ACTION_PROXY -> ProxySettingsFragment()

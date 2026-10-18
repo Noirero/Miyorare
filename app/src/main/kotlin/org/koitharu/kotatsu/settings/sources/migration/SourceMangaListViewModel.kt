@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,9 +33,8 @@ class SourceMangaListViewModel @Inject constructor(
 	private val _state = MutableStateFlow(SourceMangaListState())
 	val state: StateFlow<SourceMangaListState> = _state.asStateFlow()
 
-	init {
-		load()
-	}
+	private var loadJob: Job? = null
+
 
 	fun toggleSelection(mangaId: Long) {
 		_state.update { current ->
@@ -89,18 +90,24 @@ class SourceMangaListViewModel @Inject constructor(
 		}
 	}
 
-	private fun load() {
-		viewModelScope.launch {
-			val manga = withContext(Dispatchers.IO) {
-				database.getMangaDao().findLibraryMangaBySources(sourceKeys).toMangaList()
-			}
-			_state.value = SourceMangaListState(isLoading = false, manga = manga)
+	fun refresh() {
+		if (loadJob?.isActive == true) return
+		loadJob = viewModelScope.launch {
+			runCatchingCancellable {
+				withContext(Dispatchers.IO) {
+					database.getMangaDao().findLibraryMangaBySources(sourceKeys).toMangaList()
+				}
+			}.onSuccess { manga ->
+				_state.update { it.copy(isLoading = false, manga = manga,
+					selectedIds = it.selectedIds.intersect(manga.mapTo(hashSetOf()) { item -> item.id }), failed = false) }
+			}.onFailure { _state.update { it.copy(isLoading = false, failed = true) } }
 		}
 	}
 }
 
 data class SourceMangaListState(
 	val isLoading: Boolean = true,
+	val failed: Boolean = false,
 	val manga: List<Manga> = emptyList(),
 	val selectedIds: Set<Long> = emptySet(),
 )

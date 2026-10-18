@@ -79,7 +79,7 @@ class AutoFixService : CoroutineIntentService() {
 
 	@SuppressLint("InlinedApi")
 	private fun startForeground(jobContext: IntentJobContext) {
-		val title = getString(R.string.fixing_manga)
+		val title = getString(R.string.manga_migration)
 		val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_MIN)
 			.setName(title)
 			.setShowBadge(false)
@@ -132,8 +132,8 @@ class AutoFixService : CoroutineIntentService() {
 			if (privateNotification) {
 				notification
 					.setSubText(null)
-					.setContentTitle(getString(if (replacement != null) R.string.fixed else R.string.fixing_manga))
-					.setContentText(getString(if (replacement != null) R.string.fixed else R.string.fixing_manga))
+					.setContentTitle(getString(if (replacement != null) R.string.migration_completed else R.string.manga_migration))
+					.setContentText(getString(if (replacement != null) R.string.migration_completed else R.string.manga_migration))
 					.setSmallIcon(R.drawable.general_notification)
 				return@onSuccess
 			}
@@ -160,7 +160,7 @@ class AutoFixService : CoroutineIntentService() {
 					if (replacement.isNsfw()) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PUBLIC,
 				)
 				notification
-					.setContentTitle(getString(R.string.fixed))
+					.setContentTitle(getString(R.string.migration_completed))
 					.setContentText(
 						getString(
 							R.string.manga_replaced,
@@ -173,7 +173,7 @@ class AutoFixService : CoroutineIntentService() {
 					.setSmallIcon(R.drawable.general_notification)
 			} else {
 				notification
-					.setContentTitle(getString(R.string.fixing_manga))
+					.setContentTitle(getString(R.string.manga_migration))
 					.setContentText(getString(R.string.no_fix_required, seed.title))
 					.setSmallIcon(R.drawable.general_notification)
 			}
@@ -183,19 +183,31 @@ class AutoFixService : CoroutineIntentService() {
 				.setContentText(
 					if (privateNotification) {
 						getString(R.string.error_occurred)
+					} else if (error is AutoFixUseCase.NeedsReviewException) {
+						getString(R.string.migration_review)
+					} else if (error is AutoFixUseCase.CandidateDiscoveryIncompleteException) {
+						getString(R.string.migration_incomplete)
 					} else if (error is NoAlternativesException) {
-						getString(R.string.no_alternatives_found, error.seed.manga.title)
+						getString(R.string.migration_no_replacement)
 					} else {
 						error.getDisplayMessage(resources)
 					},
 				).setSmallIcon(R.drawable.general_notification)
 		}
 
+		if (result.isFailure && mangaId != null) {
+			notification.setContentIntent(PendingIntentCompat.getActivity(
+				this, notificationId,
+				Intent(this, org.koitharu.kotatsu.settings.SettingsActivity::class.java)
+					.setAction(AppRouter.ACTION_MIGRATION_REVIEW).putExtra(AppRouter.KEY_ID, mangaId),
+				PendingIntent.FLAG_UPDATE_CURRENT, false,
+			))
+		}
 		if (privateBeforeFix || (privacyMangaId != null && isPrivateOnly(privacyMangaId))) {
 			val titleRes = when {
 				result.isFailure -> R.string.error_occurred
-				result.getOrNull()?.second != null -> R.string.fixed
-				else -> R.string.fixing_manga
+				result.getOrNull()?.second != null -> R.string.migration_completed
+				else -> R.string.manga_migration
 			}
 			return NotificationCompat.Builder(this, CHANNEL_ID)
 				.setPriority(NotificationCompat.PRIORITY_DEFAULT)
