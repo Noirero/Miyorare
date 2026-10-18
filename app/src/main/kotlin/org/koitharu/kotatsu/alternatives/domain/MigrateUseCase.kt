@@ -5,6 +5,7 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.getPreferredBranch
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
+import org.koitharu.kotatsu.core.prefs.ChapterReadOverridesMigrationStore
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.details.data.MangaNotesRepository
 import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
@@ -30,6 +31,7 @@ class MigrateUseCase @Inject constructor(
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
 	private val mangaReaderProfileStore: MangaReaderProfileStore,
 	private val mangaNotesRepository: MangaNotesRepository,
+	private val chapterReadOverridesMigrationStore: ChapterReadOverridesMigrationStore,
 	private val localMangaIndex: LocalMangaIndex,
 	private val losslessMigrationTransfer: LosslessMigrationTransfer,
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
@@ -80,6 +82,11 @@ class MigrateUseCase @Inject constructor(
 			preparedReaderProfile = mangaReaderProfileStore.prepareMove(oldDetails.id, newDetails.id)
 			preparedNote = mangaNotesRepository.prepareMove(oldDetails.id, newDetails.id)
 			preparedReadOverrides = losslessPlan?.let(losslessMigrationTransfer::prepareReadOverrides) ?: false
+			if (losslessPlan != null && losslessPlan.oldReadOverrides.isNotEmpty()) {
+				// AppSettings uses apply() for normal UI writes. Migration needs a synchronous disk barrier
+				// before Room may commit so process death cannot lose the destination override copy.
+				chapterReadOverridesMigrationStore.persistCurrent(newDetails.id)
+			}
 			preparedDownloadIdentity = if (losslessPlan != null) {
 				localMangaIndex.prepareDownloadIdentityMove(oldDetails.id, newDetails.id)
 			} else {
@@ -197,6 +204,10 @@ class MigrateUseCase @Inject constructor(
 			if (losslessPlan != null) {
 				runCatching { losslessMigrationTransfer.rollbackReadOverrides(losslessPlan, preparedReadOverrides) }
 					.onFailure { rollbackError -> error.addSuppressed(rollbackError) }
+				if (preparedReadOverrides) {
+					runCatching { chapterReadOverridesMigrationStore.persistCurrent(newDetails.id) }
+						.onFailure { rollbackError -> error.addSuppressed(rollbackError) }
+				}
 				runCatching {
 					localMangaIndex.rollbackPreparedDownloadIdentityMove(newDetails.id, preparedDownloadIdentity)
 				}.onFailure { rollbackError -> error.addSuppressed(rollbackError) }
@@ -206,11 +217,13 @@ class MigrateUseCase @Inject constructor(
 
 		// Room now points at the new id and the destination copies are already durable. Source cleanup
 		// can happen afterwards without creating a process-death window where the new manga has no
-		// Notes/Profile/read/download-identity state.
+		// Notes/Profile/read/download-identity state. A crash during cleanup can leave a duplicate source
+		// copy, but not a missing destination copy; a later retry may safely finish that cleanup.
 		mangaReaderProfileStore.finishPreparedMove(oldDetails.id, newDetails.id)
 		mangaNotesRepository.finishPreparedMove(oldDetails.id, newDetails.id)
 		losslessPlan?.let {
 			losslessMigrationTransfer.finishReadOverrides(it)
+			chapterReadOverridesMigrationStore.persistCurrent(oldDetails.id)
 			localMangaIndex.finishPreparedDownloadIdentityMove(oldDetails.id, preparedDownloadIdentity)
 		}
 
