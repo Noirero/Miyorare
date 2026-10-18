@@ -21,6 +21,8 @@ class MigrationLosslessContractTest {
 	@Test
 	fun `lossless transfer covers durable migration state discovered by P1 audit`() {
 		val transfer = source("org/koitharu/kotatsu/alternatives/domain/LosslessMigrationTransfer.kt")
+		val migrate = source("org/koitharu/kotatsu/alternatives/domain/MigrateUseCase.kt")
+		val localIndex = source("org/koitharu/kotatsu/local/data/index/LocalMangaIndex.kt")
 
 		for (required in listOf(
 			"getChapterPersonalDao()",
@@ -35,6 +37,11 @@ class MigrationLosslessContractTest {
 		)) {
 			assertTrue("Missing lossless migration authority: $required", transfer.contains(required))
 		}
+		assertTrue(migrate.contains("prepareDownloadIdentityMove(oldDetails.id,newDetails.id)"))
+		assertTrue(migrate.contains("rollbackPreparedDownloadIdentityMove(newDetails.id,preparedDownloadIdentity)"))
+		assertTrue(migrate.contains("finishPreparedDownloadIdentityMove(oldDetails.id,preparedDownloadIdentity)"))
+		assertTrue(localIndex.contains("findPath(oldRemoteMangaId)"))
+		assertTrue(localIndex.contains("Migrationtargetalreadypointstoadifferentdownloadedcontainer"))
 	}
 
 	@Test
@@ -51,11 +58,13 @@ class MigrationLosslessContractTest {
 	@Test
 	fun `source replacement never performs physical download deletion or local index rekey`() {
 		val transfer = source("org/koitharu/kotatsu/alternatives/domain/LosslessMigrationTransfer.kt")
+		val localIndex = source("org/koitharu/kotatsu/local/data/index/LocalMangaIndex.kt")
 
 		assertFalse(transfer.contains("File.delete"))
 		assertFalse(transfer.contains("deleteAwait"))
 		assertFalse(transfer.contains("getLocalMangaIndexDao().upsert"))
 		assertTrue(transfer.contains("local_indexisintentionallynotre-keyedhere"))
+		assertFalse(localIndex.substringAfter("prepareDownloadIdentityMove").substringBefore("suspendfunput").contains("dao.upsert"))
 	}
 
 	private fun source(relativePath: String): String {
