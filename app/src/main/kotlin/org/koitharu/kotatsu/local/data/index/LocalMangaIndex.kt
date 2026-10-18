@@ -178,7 +178,7 @@ class LocalMangaIndex @Inject constructor(
 			parsed == null -> null
 			alias == null -> parsed
 			parsed.manga.id != alias.localMangaId -> null
-			else -> parsed.copy(manga = parsed.manga.copy(id = mangaId))
+			else -> rekeyMigrationChapters(parsed, alias, mangaId)
 		}
 		if (result == null && file.isOnReadableRoot()) {
 			// A parse failure on reachable storage means the exact row/alias is stale. Unavailable SD
@@ -317,6 +317,7 @@ class LocalMangaIndex @Inject constructor(
 		if (localMangaIds.isEmpty()) return@withContext emptyMap()
 		val localIds = localMangaIds.toHashSet()
 		val candidates = HashMap<Long, MutableSet<Long>>()
+		val migrationLocalIds = HashSet<Long>()
 
 		fun addCandidate(localId: Long, remoteId: Long) {
 			if (localId == remoteId || localId !in localIds) return
@@ -327,6 +328,7 @@ class LocalMangaIndex @Inject constructor(
 			if (!key.startsWith(KEY_ALIAS_PREFIX)) continue
 			val remoteId = key.removePrefix(KEY_ALIAS_PREFIX).toLongOrNull() ?: continue
 			val alias = DownloadPathAlias.parse(rawValue as? String) ?: continue
+			if (alias.chapterIds.isNotEmpty() && alias.localMangaId in localIds) migrationLocalIds += alias.localMangaId
 			addCandidate(alias.localMangaId, remoteId)
 		}
 
@@ -365,9 +367,20 @@ class LocalMangaIndex @Inject constructor(
 			}
 		}
 
+		// A durable prepare copy is not a Room ownership commit. For lossless aliases, prefer the
+		// current owner over prepared/obsolete aliases; ordinary reconnect semantics stay unchanged.
+		val ownedIds = HashSet<Long>()
+		val migrationCandidates = migrationLocalIds.flatMap { candidates[it].orEmpty() + it }.distinct()
+		for (chunk in migrationCandidates.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			ownedIds += db.getMangaDao().findMigrationOwnedIds(chunk)
+		}
 		buildMap {
 			for ((localId, remoteIds) in candidates) {
-				if (remoteIds.size == 1) put(localId, remoteIds.first())
+				if (localId in migrationLocalIds) {
+					val owners = (remoteIds + localId).filter { it in ownedIds }
+					if (owners.size == 1 && owners.single() != localId) put(localId, owners.single())
+					else if (owners.isEmpty() && remoteIds.size == 1) put(localId, remoteIds.first())
+				} else if (remoteIds.size == 1) put(localId, remoteIds.first())
 			}
 		}
 	}
@@ -392,9 +405,11 @@ class LocalMangaIndex @Inject constructor(
 	 */
 	suspend fun registerDownloadAlias(remoteMangaId: Long, localMangaId: Long, file: File) {
 		if (remoteMangaId == localMangaId) return
-		val alias = DownloadPathAlias(localMangaId = localMangaId, path = normalizePath(file))
 		mutex.withLock {
-			if (readDownloadAlias(remoteMangaId) == alias) return@withLock
+			val previous = readDownloadAlias(remoteMangaId)
+			val alias = DownloadPathAlias(localMangaId = localMangaId, path = normalizePath(file),
+				chapterIds = previous?.takeIf { it.localMangaId == localMangaId }?.chapterIds.orEmpty())
+			if (previous == alias) return@withLock
 			prefs.edit { putString(aliasKey(remoteMangaId), alias.serialize()) }
 			cachedList = null
 			_rebuildEvents.tryEmit(Unit)
@@ -411,6 +426,7 @@ class LocalMangaIndex @Inject constructor(
 	internal suspend fun prepareDownloadIdentityMove(
 		oldRemoteMangaId: Long,
 		newRemoteMangaId: Long,
+		chapterTargets: Map<Long, Long> = emptyMap(),
 	): PreparedDownloadIdentityMove? = mutex.withLock {
 		if (oldRemoteMangaId == newRemoteMangaId) return@withLock null
 		val oldAlias = readDownloadAlias(oldRemoteMangaId)
@@ -420,22 +436,30 @@ class LocalMangaIndex @Inject constructor(
 				path = normalizePath(File(path)),
 			)
 		} ?: return@withLock null
+		val migrationAlias = sourceAlias.forMigration(chapterTargets)
 		val targetAlias = readDownloadAlias(newRemoteMangaId)
-		check(targetAlias == null || targetAlias == sourceAlias) {
-			"Migration target already points to a different downloaded container"
+		// An indexed row takes precedence over aliases during lookup. It must describe the same
+		// physical identity too, otherwise preparing an alias would hide contradictory ownership.
+		val targetIndexedAlias = db.getLocalMangaIndexDao().findPath(newRemoteMangaId)?.let { path ->
+			DownloadPathAlias(localMangaId = newRemoteMangaId, path = normalizePath(File(path)))
+		}
+		check((targetAlias == null || targetAlias == migrationAlias) &&
+			(targetIndexedAlias == null || targetIndexedAlias.sameContainer(sourceAlias))) {
+			"Migration target already points to a different downloaded container or chapter mapping"
 		}
 		val createdTarget = targetAlias == null
 		if (createdTarget) {
 			check(
-				prefs.edit().putString(aliasKey(newRemoteMangaId), sourceAlias.serialize()).commit(),
+				prefs.edit().putString(aliasKey(newRemoteMangaId), migrationAlias.serialize()).commit(),
 			) { "Cannot persist downloaded identity migration preparation" }
 			cachedList = null
 			_rebuildEvents.tryEmit(Unit)
 		}
 		PreparedDownloadIdentityMove(
-			alias = sourceAlias,
+			alias = migrationAlias,
 			createdTargetAlias = createdTarget,
 			sourceHadAlias = oldAlias != null,
+			sourceAlias = oldAlias,
 		)
 	}
 
@@ -457,15 +481,32 @@ class LocalMangaIndex @Inject constructor(
 		oldRemoteMangaId: Long,
 		move: PreparedDownloadIdentityMove?,
 	) = mutex.withLock {
-		if (move == null || !move.sourceHadAlias) return@withLock
-		if (readDownloadAlias(oldRemoteMangaId) == move.alias) {
+		if (move == null) return@withLock
+		if (move.sourceHadAlias && readDownloadAlias(oldRemoteMangaId) == move.sourceAlias) {
 			check(prefs.edit().remove(aliasKey(oldRemoteMangaId)).commit()) {
 				"Cannot finalize downloaded identity migration"
 			}
-			cachedList = null
-			_rebuildEvents.tryEmit(Unit)
 		}
+		// Room ownership is now committed even when the source used only a local_index row.
+		cachedList = null
+		_rebuildEvents.tryEmit(Unit)
 	}
+
+	/** Apply only redirects persisted by lossless migration, never ordinary title/filename relevance. */
+	internal suspend fun linkMigratedDownloadChapters(remoteId: Long, local: LocalManga): LocalManga {
+		val alias = readDownloadAlias(remoteId) ?: return local
+		if (alias.chapterIds.isEmpty() || local.manga.id != alias.localMangaId) return local
+		val path = normalizePath(local.file)
+		if (path != alias.path && db.getFavouriteDownloadIndexDao().findEntries(listOf(remoteId))
+			.none { normalizePath(File(it.path)) == path }) return local
+		return rekeyMigrationChapters(local, alias, remoteId)
+	}
+
+	private fun rekeyMigrationChapters(local: LocalManga, alias: DownloadPathAlias, remoteId: Long): LocalManga =
+		local.copy(manga = local.manga.copy(id = remoteId, chapters = local.manga.chapters?.map { chapter ->
+			alias.chapterIds[chapter.id]?.let { chapter.copy(id = it) } ?: chapter
+		}))
+
 
 	suspend fun put(manga: LocalManga) = mutex.withLock {
 		val alias = readDownloadAlias(manga.manga.id)
@@ -608,4 +649,5 @@ internal data class PreparedDownloadIdentityMove(
 	val alias: DownloadPathAlias,
 	val createdTargetAlias: Boolean,
 	val sourceHadAlias: Boolean,
+	val sourceAlias: DownloadPathAlias? = null,
 )

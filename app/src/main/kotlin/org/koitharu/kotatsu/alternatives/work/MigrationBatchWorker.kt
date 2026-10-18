@@ -68,3 +68,15 @@ class MigrationBatchWorker @AssistedInject constructor(
 		return ForegroundInfo(47, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
 	}
 }
+
+/**
+ * Durable WorkManager record used for explicit terminal cancellation state.
+ * The scheduler keeps terminal markers blocked behind one delayed sentinel so a fresh WorkManager
+ * process cannot prune never-started cancellation identities before the UI reconstructs them.
+ */
+class MigrationBatchCancellationMarkerWorker(
+	context: Context,
+	parameters: WorkerParameters,
+) : CoroutineWorker(context, parameters) {
+	override suspend fun doWork(): Result = Result.success(inputData)
+}

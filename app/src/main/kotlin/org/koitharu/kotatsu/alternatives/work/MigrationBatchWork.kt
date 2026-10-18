@@ -12,12 +12,23 @@ internal object MigrationBatchWork {
 	private const val GENERATION = "migration_generation:"
 	private const val BATCH = "migration_batch_name:"
 	private const val TARGET = "migration_target:"
+	private const val TERMINAL = "migration_terminal:"
 
-	fun tags(request: MigrationBatchRequest, generation: Long, batch: String): List<String> = buildList {
-		add(TAG); add(ID + request.mangaId); add(SOURCE + request.source)
+	fun tags(request: MigrationBatchRequest, generation: Long, batch: String): List<String> =
+		tags(request.mangaId, request.source, generation, batch, request.selection?.id)
+
+	fun tags(mangaId: Long, source: String, generation: Long, batch: String, destinationId: Long? = null): List<String> = buildList {
+		add(TAG); add(ID + mangaId); add(SOURCE + source)
 		add(GENERATION + generation); add(BATCH + batch)
-		request.selection?.let { add(TARGET + it.id) }
+		destinationId?.let { add(TARGET + it) }
 	}
+
+	fun terminalTag(status: MigrationBatchStatus): String {
+		require(status == MigrationBatchStatus.INTERRUPTED)
+		return TERMINAL + status.name
+	}
+
+	fun isTerminal(info: WorkInfo): Boolean = info.tags.any { it.startsWith(TERMINAL) }
 
 	fun input(request: MigrationBatchRequest): Data = Data.Builder()
 		.putLong("request_id", request.mangaId).putString("request_source", request.source)
@@ -47,8 +58,10 @@ internal object MigrationBatchWork {
 		val mangaId = info.tags.firstOrNull { it.startsWith(ID) }?.removePrefix(ID)?.toLongOrNull() ?: return null
 		val source = info.tags.firstOrNull { it.startsWith(SOURCE) }?.removePrefix(SOURCE) ?: return null
 		val batch = info.tags.firstOrNull { it.startsWith(BATCH) }?.removePrefix(BATCH) ?: return null
+		val terminalStatus = info.tags.firstOrNull { it.startsWith(TERMINAL) }
+			?.removePrefix(TERMINAL)?.let { raw -> MigrationBatchStatus.entries.find { it.name == raw } }
 		val data = if (info.state == WorkInfo.State.RUNNING) info.progress else info.outputData
-		val status = when (info.state) {
+		val status = terminalStatus ?: when (info.state) {
 			WorkInfo.State.CANCELLED, WorkInfo.State.FAILED -> MigrationBatchStatus.INTERRUPTED
 			WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> MigrationBatchStatus.QUEUED
 			else -> data.getString("result_status")?.let { raw -> MigrationBatchStatus.entries.find { it.name == raw } }
@@ -60,6 +73,6 @@ internal object MigrationBatchWork {
 		val destinationId = data.getLong("result_target_id", 0L).takeIf { it != 0L }
 			?: info.tags.firstOrNull { it.startsWith(TARGET) }?.removePrefix(TARGET)?.toLongOrNull()
 		return MigrationBatchSnapshot(mangaId, source, generation(info.tags), batch,
-			MigrationBatchOutcome(status, selection, destinationId), running = !info.state.isFinished)
+			MigrationBatchOutcome(status, selection, destinationId), running = terminalStatus == null && !info.state.isFinished)
 	}
 }

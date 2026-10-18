@@ -316,6 +316,17 @@ abstract class MangaDao {
 	)
 	abstract suspend fun isMigrationEntryVisible(mangaId: Long): Boolean
 
+	/** Internal ownership evidence for prepared/obsolete lossless download aliases, including Private. */
+	@Query("""
+		SELECT manga_id FROM (
+			SELECT manga_id FROM favourites WHERE deleted_at = 0
+			UNION SELECT manga_id FROM private_favourites WHERE deleted_at = 0
+			UNION SELECT manga_id FROM history WHERE deleted_at = 0
+			UNION SELECT manga_id FROM favourite_download_index
+		) WHERE manga_id IN (:ids)
+	""")
+	abstract suspend fun findMigrationOwnedIds(ids: Collection<Long>): List<Long>
+
 	@Transaction
 	@Query(
 		"""

@@ -104,7 +104,9 @@ class MigrateUseCase @Inject constructor(
 				chapterReadOverridesMigrationStore.persistCurrent(newDetails.id)
 			}
 			preparedDownloadIdentity = if (losslessPlan != null) {
-				localMangaIndex.prepareDownloadIdentityMove(oldDetails.id, newDetails.id)
+				localMangaIndex.prepareDownloadIdentityMove(
+					oldDetails.id, newDetails.id, chapterTargets = losslessPlan.chapterTargets.mapValues { it.value.id },
+				)
 			} else {
 				null
 			}
@@ -274,8 +276,13 @@ class MigrateUseCase @Inject constructor(
 			}
 		}
 
-		runCatchingCancellable { progressUpdateUseCase(newManga) }
-			.onFailure { it.printStackTraceDebug() }
+		// Lossless transfer already preserved the exact reading/resume state. Recalculating it from
+		// replacement chapter coverage can turn partial progress into completion after Room commits.
+		// Ordinary Alternatives/Duplicates/Downloads consumers retain their compatibility behavior.
+		if (!lossless) {
+			runCatchingCancellable { progressUpdateUseCase(newManga) }
+				.onFailure { it.printStackTraceDebug() }
+		}
 	}
 
 	/**

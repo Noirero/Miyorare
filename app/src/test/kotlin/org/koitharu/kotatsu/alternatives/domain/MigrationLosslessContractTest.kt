@@ -37,7 +37,8 @@ class MigrationLosslessContractTest {
 		)) {
 			assertTrue("Missing lossless migration authority: $required", transfer.contains(required))
 		}
-		assertTrue(migrate.contains("prepareDownloadIdentityMove(oldDetails.id,newDetails.id)"))
+		assertTrue(migrate.contains("prepareDownloadIdentityMove(oldDetails.id,newDetails.id,"))
+		assertTrue(migrate.contains("chapterTargets=losslessPlan.chapterTargets.mapValues{it.value.id}"))
 		assertTrue(migrate.contains("rollbackPreparedDownloadIdentityMove(newDetails.id,preparedDownloadIdentity)"))
 		assertTrue(migrate.contains("finishPreparedDownloadIdentityMove(oldDetails.id,preparedDownloadIdentity)"))
 		assertTrue(localIndex.contains("findPath(oldRemoteMangaId)"))
