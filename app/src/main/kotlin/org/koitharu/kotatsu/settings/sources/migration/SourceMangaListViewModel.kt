@@ -144,7 +144,7 @@ class SourceMangaListViewModel @Inject constructor(
 					val owned = snapshots.firstOrNull { it.running }?.batchName
 					val batch = snapshots.filter { it.batchName == owned }
 					SourceMangaListState(isLoading = false, manga = manga, batchItems = latest,
-						batchBusy = works.any { !it.state.isFinished }, ownedBatchName = owned,
+						batchBusy = works.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) }, ownedBatchName = owned,
 						batchCompleted = batch.count { !it.running }, batchTotal = batch.size,
 						migratedCount = latest.values.count { it.outcome.status == MigrationBatchStatus.MIGRATED },
 						unconfirmedCount = latest.values.count { it.mangaId !in visible && it.outcome.status == MigrationBatchStatus.INTERRUPTED })
