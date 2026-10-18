@@ -45,7 +45,11 @@ class AutoFixUseCase @Inject constructor(
 					best
 				}
 			}.selectLastWithTimeout(4, 40, TimeUnit.SECONDS)
-		migrateUseCase(seed, replacement ?: throw NoAlternativesException(ParcelableManga(seed)))
+		migrateUseCase(
+			oldManga = seed,
+			newManga = replacement ?: throw NoAlternativesException(ParcelableManga(seed)),
+			lossless = true,
+		)
 		return seed to replacement
 	}
 
