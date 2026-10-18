@@ -127,7 +127,9 @@ class AlternativesUseCase @Inject constructor(
 
 					val candidates = list
 						?.asSequence()
-						?.filter { it.id != manga.id }
+						// Source is part of manga identity. Different providers may legitimately generate the
+						// same numeric id, so id equality alone must never hide a cross-source replacement.
+						?.filter { it.source != manga.source || it.id != manga.id }
 						?.distinctBy { it.dedupeKey() }
 						?.take(MAX_DETAIL_CANDIDATES)
 						?.toList()
