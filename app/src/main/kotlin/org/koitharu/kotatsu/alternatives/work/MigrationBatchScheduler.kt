@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.koitharu.kotatsu.alternatives.domain.MigrationBatchRequest
+import org.koitharu.kotatsu.alternatives.domain.*
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -42,8 +42,46 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 		true
 	}
 
-	suspend fun cancel(batchName: String) {
+	suspend fun cancel(batchName: String) = schedulingMutex.withLock {
 		require(batchName.startsWith(MigrationBatchWork.TAG + ":"))
+		val before = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
+		val batch = before.mapNotNull { info ->
+			MigrationBatchWork.snapshot(info)?.takeIf { it.batchName == batchName }?.let { snapshot -> info to snapshot }
+		}
+		val pendingBlocked = batch.filter { (info, _) -> !info.state.isFinished && info.state != WorkInfo.State.RUNNING }
+		if (batch.none { (info, _) -> !info.state.isFinished }) return@withLock
+
 		workManager.cancelUniqueWork(batchName).await()
+		if (pendingBlocked.isEmpty()) return@withLock
+
+		// Dependency-chain nodes that never started can be pruned when WorkManager is initialized in a
+		// fresh process even when a retention duration was requested. Persist the real cancellation as
+		// independent completed WorkManager records so batch status remains reconstructable after restart.
+		val afterById = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await().associateBy(WorkInfo::id)
+		val currentGeneration = before.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
+		check(currentGeneration < Long.MAX_VALUE)
+		val markerGeneration = currentGeneration + 1L
+		val markerBatch = "$batchName:cancelled:$markerGeneration"
+		val markers = pendingBlocked.mapNotNull { (info, snapshot) ->
+			val after = afterById[info.id]
+			if (after != null && after.state != WorkInfo.State.CANCELLED) return@mapNotNull null
+			OneTimeWorkRequestBuilder<MigrationBatchCancellationMarkerWorker>()
+				.setInputData(MigrationBatchWork.output(MigrationBatchOutcome(
+					MigrationBatchStatus.INTERRUPTED,
+					destinationId = snapshot.outcome.destinationId,
+				)))
+				.keepResultsForAtLeast(30, TimeUnit.DAYS)
+				.apply {
+					MigrationBatchWork.tags(
+						snapshot.mangaId,
+						snapshot.source,
+						markerGeneration,
+						markerBatch,
+						snapshot.outcome.destinationId,
+					).forEach { addTag(it) }
+				}
+				.build()
+		}
+		if (markers.isNotEmpty()) workManager.enqueue(markers).await()
 	}
 }
