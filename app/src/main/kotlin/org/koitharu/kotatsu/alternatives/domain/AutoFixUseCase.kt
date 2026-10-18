@@ -97,7 +97,7 @@ class AutoFixUseCase @Inject constructor(
 		if (current.sourceHealthy) return null
 		val replacement = MigrationExecutionPolicy.select(current, selection, reviewed)
 			?: throw SelectionChangedException(current)
-		migrateUseCase(oldManga = current.seed, newManga = replacement, lossless = true)
+		migrateUseCase(oldManga = current.seed, newManga = replacement, lossless = true, requireLibraryEntry = true)
 		return replacement
 	}
 

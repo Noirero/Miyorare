@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="migration_batch_cancel">Cancel running batch</string>
+    <string name="migration_batch_check">Check replacements / retry remaining</string>
+    <string name="migration_batch_safety">Only ready results migrate in a batch. Review and unresolved items stay in place. Candidates are checked again before transfer.</string>
+    <string name="migration_batch_unchecked">Not checked yet — tap to review</string>
+    <string name="migration_batch_queued">Queued / waiting for network</string>
+    <string name="migration_batch_migrating">Migrating…</string>
+    <string name="migration_batch_ready">Ready to migrate</string>
+    <string name="migration_batch_review">Needs review</string>
+    <string name="migration_batch_no_replacement">No replacement found</string>
+    <string name="migration_batch_incomplete">Search incomplete — retry</string>
+    <string name="migration_batch_healthy">Current source is working</string>
+    <string name="migration_batch_interrupted">Interrupted — check library before retry</string>
+    <string name="migration_batch_error">Could not migrate safely — review or retry</string>
+    <string name="migration_batch_empty">No remaining library or history entries for these sources.</string>
+    <string name="migration_batch_progress">%1$d of %2$d items checked / handled</string>
+    <string name="migration_batch_done">%1$d manga migrated in recent batches</string>
+    <string name="migration_batch_check_library">An interrupted item may already be in its replacement. Check the library; it will not be migrated again blindly.</string>
+    <string name="migration_batch_other_active">A migration batch is running in another source collection.</string>
+    <string name="migration_batch_all">All states</string>
+    <string name="migration_batch_filter_count">%1$s · %2$d</string>
+    <plurals name="migration_batch_migrate_ready"><item quantity="one">Migrate %d ready manga</item><item quantity="other">Migrate %d ready manga</item></plurals>
+    <string name="migration_batch_summary">%1$d ready · %2$d need review · %3$d no replacement</string>
+</resources>

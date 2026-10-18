@@ -298,6 +298,42 @@ abstract class MangaDao {
 		""",
 	)
 	abstract suspend fun findLibraryMangaBySources(sources: Collection<String>): List<MangaWithTags>
+	@Query(
+		"""
+		SELECT EXISTS(SELECT 1 FROM manga
+		WHERE manga_id = :mangaId AND source NOT IN ('LOCAL', 'UNKNOWN')
+			AND manga_id IN (
+				SELECT manga_id FROM favourites WHERE deleted_at = 0
+				UNION SELECT manga_id FROM history WHERE deleted_at = 0
+			)
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		)
+		""",
+	)
+	abstract suspend fun isMigrationEntryVisible(mangaId: Long): Boolean
+
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM manga
+		WHERE source IN (:sources)
+			AND manga_id IN (
+				SELECT manga_id FROM favourites WHERE deleted_at = 0
+				UNION SELECT manga_id FROM history WHERE deleted_at = 0
+			)
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY title COLLATE NOCASE
+		""",
+	)
+	abstract fun observeLibraryMangaBySources(sources: Collection<String>): Flow<List<MangaWithTags>>
 
 	/** Private-only rows contribute to global author suggestions only when isolation is disabled. */
 	@Query(

@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.alternatives.domain
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.getPreferredBranch
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
@@ -42,7 +44,21 @@ class MigrateUseCase @Inject constructor(
 		newManga: Manga,
 		migrateProgress: Boolean = true,
 		lossless: Boolean = false,
-	) {
+		requireLibraryEntry: Boolean = false,
+	) = transferMutex.withLock {
+		// Serialize all consumers across instances: SharedPreferences preparation cannot join Room.
+		// Only the new public Migration paths opt into the live library/privacy admission check.
+		if (requireLibraryEntry) checkLibraryAdmission(oldManga.id, newManga.id)
+		performMigration(oldManga, newManga, migrateProgress, lossless, requireLibraryEntry)
+	}
+
+	private suspend fun checkLibraryAdmission(oldId: Long, newId: Long) {
+		if (!database.getMangaDao().isMigrationEntryVisible(oldId) || database.getPrivateFavouritesDao().isPrivateOnly(newId)) {
+			throw SourceChangedException()
+		}
+	}
+
+	private suspend fun performMigration(oldManga: Manga, newManga: Manga, migrateProgress: Boolean, lossless: Boolean, requireLibraryEntry: Boolean) {
 		require(!lossless || migrateProgress) {
 			"Lossless source replacement requires progress/state migration"
 		}
@@ -94,6 +110,9 @@ class MigrateUseCase @Inject constructor(
 			}
 
 			database.withTransaction {
+				// Recheck in the transaction that commits membership; privacy cannot change between this
+				// snapshot and applyRoom. A failure uses the existing prepared-state rollback boundary.
+				if (requireLibraryEntry) checkLibraryAdmission(oldDetails.id, newDetails.id)
 				if (losslessPlan != null) {
 					val result = losslessMigrationTransfer.applyRoom(losslessPlan)
 					return@withTransaction MigrationState(
@@ -375,4 +394,10 @@ class MigrateUseCase @Inject constructor(
 		val newHistory: HistoryEntity?,
 		val migratedScrobblers: Set<Int>,
 	)
+	class SourceChangedException : IllegalStateException("Migration library or privacy state changed")
+
+	private companion object {
+		val transferMutex = Mutex()
+	}
+
 }
