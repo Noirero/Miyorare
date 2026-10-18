@@ -13,10 +13,13 @@ internal object MigrationBatchWork {
 	private const val BATCH = "migration_batch_name:"
 	private const val TARGET = "migration_target:"
 
-	fun tags(request: MigrationBatchRequest, generation: Long, batch: String): List<String> = buildList {
-		add(TAG); add(ID + request.mangaId); add(SOURCE + request.source)
+	fun tags(request: MigrationBatchRequest, generation: Long, batch: String): List<String> =
+		tags(request.mangaId, request.source, generation, batch, request.selection?.id)
+
+	fun tags(mangaId: Long, source: String, generation: Long, batch: String, destinationId: Long? = null): List<String> = buildList {
+		add(TAG); add(ID + mangaId); add(SOURCE + source)
 		add(GENERATION + generation); add(BATCH + batch)
-		request.selection?.let { add(TARGET + it.id) }
+		destinationId?.let { add(TARGET + it) }
 	}
 
 	fun input(request: MigrationBatchRequest): Data = Data.Builder()
