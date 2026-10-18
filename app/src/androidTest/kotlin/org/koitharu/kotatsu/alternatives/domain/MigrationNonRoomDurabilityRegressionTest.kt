@@ -30,7 +30,7 @@ class MigrationNonRoomDurabilityRegressionTest {
 	@Test
 	fun preparedReadOverrideCopySurvivesStoreRecreationAndRetryCleanup() {
 		val settings = AppSettings(context)
-		val durability = ChapterReadOverridesMigrationStore(context, settings)
+		val durability = ChapterReadOverridesMigrationStore(context)
 
 		settings.setChapterReadOverrides(oldId, mapOf(oldChapterId to true))
 		durability.persistCurrent(oldId)
@@ -47,7 +47,7 @@ class MigrationNonRoomDurabilityRegressionTest {
 
 		// A retry that did not create the destination copy must leave it intact. Successful cleanup may
 		// then remove only the obsolete source copy and make that removal durable as well.
-		val retryDurability = ChapterReadOverridesMigrationStore(context, reopened)
+		val retryDurability = ChapterReadOverridesMigrationStore(context)
 		reopened.setChapterReadOverrides(oldId, emptyMap())
 		retryDurability.persistCurrent(oldId)
 
@@ -59,7 +59,7 @@ class MigrationNonRoomDurabilityRegressionTest {
 	@Test
 	fun failedRoomAttemptCanDurablyRollbackOnlyItsPreparedDestinationCopy() {
 		val settings = AppSettings(context)
-		val durability = ChapterReadOverridesMigrationStore(context, settings)
+		val durability = ChapterReadOverridesMigrationStore(context)
 
 		settings.setChapterReadOverrides(oldId, mapOf(oldChapterId to false))
 		durability.persistCurrent(oldId)
