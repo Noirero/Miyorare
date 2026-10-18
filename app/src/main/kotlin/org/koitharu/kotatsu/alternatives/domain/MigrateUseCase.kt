@@ -28,6 +28,7 @@ class MigrateUseCase @Inject constructor(
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
 	private val mangaReaderProfileStore: MangaReaderProfileStore,
 	private val mangaNotesRepository: MangaNotesRepository,
+	private val losslessMigrationTransfer: LosslessMigrationTransfer,
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 ) {
 
@@ -35,7 +36,11 @@ class MigrateUseCase @Inject constructor(
 		oldManga: Manga,
 		newManga: Manga,
 		migrateProgress: Boolean = true,
+		lossless: Boolean = false,
 	) {
+		require(!lossless || migrateProgress) {
+			"Lossless source replacement requires progress/state migration"
+		}
 		val oldDetails = if (migrateProgress && oldManga.chapters.isNullOrEmpty()) {
 			runCatchingCancellable {
 				mangaRepositoryFactory.create(oldManga.source).getDetails(oldManga)
@@ -48,6 +53,16 @@ class MigrateUseCase @Inject constructor(
 		} else {
 			newManga
 		}
+
+		// The lossless plan is intentionally prepared before any user-state mutation. Ambiguous chapter
+		// identity or incompatible destination metadata aborts the replacement rather than dropping one
+		// side silently. Legacy callers keep the historical compatibility path below.
+		val losslessPlan = if (lossless) {
+			losslessMigrationTransfer.prepare(oldDetails, newDetails)
+		} else {
+			null
+		}
+
 		mangaDataRepository.storeManga(newDetails, replaceExisting = true)
 
 		// SharedPreferences cannot join the Room transaction. Prepare durable destination copies first
@@ -55,91 +70,101 @@ class MigrateUseCase @Inject constructor(
 		// created; if the process dies, either id still has the metadata and a retry can finish cleanup.
 		val preparedReaderProfile = mangaReaderProfileStore.prepareMove(oldDetails.id, newDetails.id)
 		val preparedNote = mangaNotesRepository.prepareMove(oldDetails.id, newDetails.id)
+		val preparedReadOverrides = losslessPlan?.let(losslessMigrationTransfer::prepareReadOverrides) ?: false
 
 		val state = try {
 			database.withTransaction {
-			val favoritesDao = database.getFavouritesDao()
-			val privateFavoritesDao = database.getPrivateFavouritesDao()
-			val oldFavourites = favoritesDao.findAllRaw(oldDetails.id)
-			val oldPrivateFavourites = privateFavoritesDao.findAllRaw(oldDetails.id)
-			val wasPrivateOnly = oldPrivateFavourites.isNotEmpty() && oldFavourites.isEmpty()
-
-			if (oldFavourites.isNotEmpty()) {
-				favoritesDao.delete(oldDetails.id)
-				for (f in oldFavourites) favoritesDao.upsert(f.copy(mangaId = newDetails.id))
-			}
-			if (oldPrivateFavourites.isNotEmpty()) {
-				privateFavoritesDao.delete(oldDetails.id)
-				for (f in oldPrivateFavourites) privateFavoritesDao.upsert(f.copy(mangaId = newDetails.id))
-			}
-
-			// Move tracker rows locally before any network request. This keeps every row attached to the
-			// new membership even if the tracker is offline or privacy changes while migration continues.
-			// Plain Normal replacement intentionally drops tracker state when progress migration is off;
-			// Private-only keeps it locally so an old link remains safely unlinkable inside the vault.
-			val migratedScrobblers = moveScrobblingRows(
-				oldMangaId = oldDetails.id,
-				newMangaId = newDetails.id,
-				keep = migrateProgress || wasPrivateOnly,
-			)
-
-			val preferencesDao = database.getPreferencesDao()
-			preferencesDao.find(oldDetails.id)?.let { prefs ->
-				preferencesDao.delete(oldDetails.id)
-				preferencesDao.upsert(prefs.copy(mangaId = newDetails.id))
-			}
-
-			if (!migrateProgress) {
-				database.getBookmarksDao().deleteAll(oldDetails.id)
-				database.getHistoryDao().delete(oldDetails.id)
-				database.getTracksDao().delete(oldDetails.id)
-				return@withTransaction MigrationState(
-					wasPrivateOnly = wasPrivateOnly,
-					newHistory = null,
-					migratedScrobblers = migratedScrobblers,
-				)
-			}
-
-			val bookmarksDao = database.getBookmarksDao()
-			val oldBookmarks = bookmarksDao.findAll(oldDetails.id)
-			if (oldBookmarks.isNotEmpty()) {
-				val chapterIds = mapChapterIds(oldDetails, newDetails)
-				val migrated = oldBookmarks.mapNotNull { bookmark ->
-					val newChapterId = chapterIds[bookmark.chapterId] ?: return@mapNotNull null
-					bookmark.copy(mangaId = newDetails.id, chapterId = newChapterId)
+				if (losslessPlan != null) {
+					val result = losslessMigrationTransfer.applyRoom(losslessPlan)
+					return@withTransaction MigrationState(
+						wasPrivateOnly = result.wasPrivateOnly,
+						newHistory = result.newHistory,
+						migratedScrobblers = result.migratedScrobblers,
+					)
 				}
-				bookmarksDao.deleteAll(oldDetails.id)
-				if (migrated.isNotEmpty()) bookmarksDao.upsert(migrated)
-			}
 
-			val historyDao = database.getHistoryDao()
-			val oldHistory = historyDao.find(oldDetails.id)
-			val newHistory = if (oldHistory != null) {
-				val migrated = makeNewHistory(oldDetails, newDetails, oldHistory)
-				historyDao.delete(oldDetails.id)
-				historyDao.upsert(migrated)
-				migrated
-			} else {
-				null
-			}
+				val favoritesDao = database.getFavouritesDao()
+				val privateFavoritesDao = database.getPrivateFavouritesDao()
+				val oldFavourites = favoritesDao.findAllRaw(oldDetails.id)
+				val oldPrivateFavourites = privateFavoritesDao.findAllRaw(oldDetails.id)
+				val wasPrivateOnly = oldPrivateFavourites.isNotEmpty() && oldFavourites.isEmpty()
 
-			val tracksDao = database.getTracksDao()
-			val oldTrack = tracksDao.find(oldDetails.id)
-			if (oldTrack != null) {
-				val lastChapter = newDetails.chapters?.lastOrNull()
-				tracksDao.delete(oldDetails.id)
-				tracksDao.upsert(
-					TrackEntity(
-						mangaId = newDetails.id,
-						lastChapterId = lastChapter?.id ?: 0L,
-						newChapters = 0,
-						lastCheckTime = System.currentTimeMillis(),
-						lastChapterDate = lastChapter?.uploadDate ?: 0L,
-						lastResult = TrackEntity.RESULT_EXTERNAL_MODIFICATION,
-						lastError = null,
-					),
+				if (oldFavourites.isNotEmpty()) {
+					favoritesDao.delete(oldDetails.id)
+					for (f in oldFavourites) favoritesDao.upsert(f.copy(mangaId = newDetails.id))
+				}
+				if (oldPrivateFavourites.isNotEmpty()) {
+					privateFavoritesDao.delete(oldDetails.id)
+					for (f in oldPrivateFavourites) privateFavoritesDao.upsert(f.copy(mangaId = newDetails.id))
+				}
+
+				// Move tracker rows locally before any network request. This keeps every row attached to the
+				// new membership even if the tracker is offline or privacy changes while migration continues.
+				// Plain Normal replacement intentionally drops tracker state when progress migration is off;
+				// Private-only keeps it locally so an old link remains safely unlinkable inside the vault.
+				val migratedScrobblers = moveScrobblingRows(
+					oldMangaId = oldDetails.id,
+					newMangaId = newDetails.id,
+					keep = migrateProgress || wasPrivateOnly,
 				)
-			}
+
+				val preferencesDao = database.getPreferencesDao()
+				preferencesDao.find(oldDetails.id)?.let { prefs ->
+					preferencesDao.delete(oldDetails.id)
+					preferencesDao.upsert(prefs.copy(mangaId = newDetails.id))
+				}
+
+				if (!migrateProgress) {
+					database.getBookmarksDao().deleteAll(oldDetails.id)
+					database.getHistoryDao().delete(oldDetails.id)
+					database.getTracksDao().delete(oldDetails.id)
+					return@withTransaction MigrationState(
+						wasPrivateOnly = wasPrivateOnly,
+						newHistory = null,
+						migratedScrobblers = migratedScrobblers,
+					)
+				}
+
+				val bookmarksDao = database.getBookmarksDao()
+				val oldBookmarks = bookmarksDao.findAll(oldDetails.id)
+				if (oldBookmarks.isNotEmpty()) {
+					val chapterIds = mapChapterIds(oldDetails, newDetails)
+					val migrated = oldBookmarks.mapNotNull { bookmark ->
+						val newChapterId = chapterIds[bookmark.chapterId] ?: return@mapNotNull null
+						bookmark.copy(mangaId = newDetails.id, chapterId = newChapterId)
+					}
+					bookmarksDao.deleteAll(oldDetails.id)
+					if (migrated.isNotEmpty()) bookmarksDao.upsert(migrated)
+				}
+
+				val historyDao = database.getHistoryDao()
+				val oldHistory = historyDao.find(oldDetails.id)
+				val newHistory = if (oldHistory != null) {
+					val migrated = makeNewHistory(oldDetails, newDetails, oldHistory)
+					historyDao.delete(oldDetails.id)
+					historyDao.upsert(migrated)
+					migrated
+				} else {
+					null
+				}
+
+				val tracksDao = database.getTracksDao()
+				val oldTrack = tracksDao.find(oldDetails.id)
+				if (oldTrack != null) {
+					val lastChapter = newDetails.chapters?.lastOrNull()
+					tracksDao.delete(oldDetails.id)
+					tracksDao.upsert(
+						TrackEntity(
+							mangaId = newDetails.id,
+							lastChapterId = lastChapter?.id ?: 0L,
+							newChapters = 0,
+							lastCheckTime = System.currentTimeMillis(),
+							lastChapterDate = lastChapter?.uploadDate ?: 0L,
+							lastResult = TrackEntity.RESULT_EXTERNAL_MODIFICATION,
+							lastError = null,
+						),
+					)
+				}
 
 				MigrationState(
 					wasPrivateOnly = wasPrivateOnly,
@@ -156,6 +181,10 @@ class MigrateUseCase @Inject constructor(
 				runCatching { mangaNotesRepository.rollbackPreparedMove(newDetails.id) }
 					.onFailure { rollbackError -> error.addSuppressed(rollbackError) }
 			}
+			if (losslessPlan != null) {
+				runCatching { losslessMigrationTransfer.rollbackReadOverrides(losslessPlan, preparedReadOverrides) }
+					.onFailure { rollbackError -> error.addSuppressed(rollbackError) }
+			}
 			throw error
 		}
 
@@ -164,6 +193,7 @@ class MigrateUseCase @Inject constructor(
 		// Notes/Profile state.
 		mangaReaderProfileStore.finishPreparedMove(oldDetails.id, newDetails.id)
 		mangaNotesRepository.finishPreparedMove(oldDetails.id, newDetails.id)
+		losslessPlan?.let(losslessMigrationTransfer::finishReadOverrides)
 
 		// All Room state is committed before tracker/source I/O starts. Private-only skips this entire
 		// block; Normal+Private remains public by design. Each Scrobbler also re-checks privacy at its
