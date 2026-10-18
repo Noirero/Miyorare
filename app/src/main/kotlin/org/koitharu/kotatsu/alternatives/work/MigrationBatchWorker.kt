@@ -68,3 +68,16 @@ class MigrationBatchWorker @AssistedInject constructor(
 		return ForegroundInfo(47, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
 	}
 }
+
+/**
+ * Persists an explicit terminal cancellation outcome inside WorkManager itself.
+ * Blocked nodes in a dependency chain may be pruned on a later WorkManager initialization before
+ * their retention window can protect them, so cancellation snapshots for those nodes are rewritten
+ * as independent completed WorkManager records. This is not a second source of truth.
+ */
+class MigrationBatchCancellationMarkerWorker(
+	context: Context,
+	parameters: WorkerParameters,
+) : CoroutineWorker(context, parameters) {
+	override suspend fun doWork(): Result = Result.success(inputData)
+}
