@@ -426,7 +426,9 @@ class LocalMangaIndex @Inject constructor(
 		}
 		val createdTarget = targetAlias == null
 		if (createdTarget) {
-			prefs.edit { putString(aliasKey(newRemoteMangaId), sourceAlias.serialize()) }
+			check(
+				prefs.edit().putString(aliasKey(newRemoteMangaId), sourceAlias.serialize()).commit(),
+			) { "Cannot persist downloaded identity migration preparation" }
 			cachedList = null
 			_rebuildEvents.tryEmit(Unit)
 		}
@@ -443,7 +445,11 @@ class LocalMangaIndex @Inject constructor(
 	) = mutex.withLock {
 		if (move == null || !move.createdTargetAlias) return@withLock
 		if (readDownloadAlias(newRemoteMangaId) == move.alias) {
-			removeDownloadAlias(newRemoteMangaId)
+			check(prefs.edit().remove(aliasKey(newRemoteMangaId)).commit()) {
+				"Cannot roll back downloaded identity migration preparation"
+			}
+			cachedList = null
+			_rebuildEvents.tryEmit(Unit)
 		}
 	}
 
@@ -453,7 +459,11 @@ class LocalMangaIndex @Inject constructor(
 	) = mutex.withLock {
 		if (move == null || !move.sourceHadAlias) return@withLock
 		if (readDownloadAlias(oldRemoteMangaId) == move.alias) {
-			removeDownloadAlias(oldRemoteMangaId)
+			check(prefs.edit().remove(aliasKey(oldRemoteMangaId)).commit()) {
+				"Cannot finalize downloaded identity migration"
+			}
+			cachedList = null
+			_rebuildEvents.tryEmit(Unit)
 		}
 	}
 
