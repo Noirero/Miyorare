@@ -43,7 +43,7 @@
     <string name="manage_stores">Kelola repositori</string>
     <string name="manage_stores_summary">Tambah, hapus, atau atur repositori ekstensi</string>
     <string name="migrate_broken_sources">Pulihkan sumber bermasalah</string>
-    <string name="migrate_broken_sources_summary">Pindahkan judul dari sumber yang tidak lagi tersedia ke sumber pengganti</string>
+    <string name="migrate_broken_sources_summary">Tinjau masalah source dan migrasikan manga yang sama dengan aman ke source lain</string>
     <string name="migrate_from_kotatsu">Migrasikan koleksi Kotatsu</string>
     <string name="migrate_from_kotatsu_confirm">Tindakan ini memindahkan koleksi Kotatsu yang dipulihkan ke ekstensi terpasang yang cocok serta membawa Disukai, riwayat, markah, dan pelacakan. Bab tiap manga akan dimuat saat pertama kali dibuka. Pasang ekstensi yang cocok terlebih dahulu. Lanjutkan?</string>
     <string name="migrate_from_kotatsu_summary">Pindahkan koleksi hasil pemulihan Kotatsu ke ekstensi terpasang yang cocok</string>

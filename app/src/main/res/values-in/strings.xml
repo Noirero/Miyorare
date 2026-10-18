@@ -786,6 +786,4 @@
     <string name="chapter_personal_note_title">Catatan pribadi</string>
     <string name="chapter_personal_clear_note">Hapus catatan</string>
     <string name="chapter_personal_unrated">Belum diberi rating</string>
-    <string name="migrate_broken_sources_description">Pilih source, lalu tinjau setiap manga dan penggantinya sebelum migrasi. Bukti kecocokan dan data yang dipertahankan ditampilkan untuk setiap manga. Source yang tidak tersedia mungkin memerlukan pemasangan ekstensi.</string>
-    <string name="migrate_broken_sources_summary">Tinjau masalah source dan migrasikan manga yang sama dengan aman ke source lain</string>
 </resources>
