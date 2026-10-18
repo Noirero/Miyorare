@@ -421,7 +421,13 @@ class LocalMangaIndex @Inject constructor(
 			)
 		} ?: return@withLock null
 		val targetAlias = readDownloadAlias(newRemoteMangaId)
-		check(targetAlias == null || targetAlias == sourceAlias) {
+		// An indexed row takes precedence over aliases during lookup. It must describe the same
+		// physical identity too, otherwise preparing an alias would hide contradictory ownership.
+		val targetIndexedAlias = db.getLocalMangaIndexDao().findPath(newRemoteMangaId)?.let { path ->
+			DownloadPathAlias(localMangaId = newRemoteMangaId, path = normalizePath(File(path)))
+		}
+		check((targetAlias == null || targetAlias == sourceAlias) &&
+			(targetIndexedAlias == null || targetIndexedAlias == sourceAlias)) {
 			"Migration target already points to a different downloaded container"
 		}
 		val createdTarget = targetAlias == null

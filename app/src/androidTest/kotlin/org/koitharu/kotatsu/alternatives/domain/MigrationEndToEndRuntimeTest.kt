@@ -145,6 +145,7 @@ class MigrationEndToEndRuntimeTest {
 
         verifyManualReviewAndPrivateBoundary()
         verifyLegacyProgressAndAmbiguousRollback()
+        verifyDownloadedDestinationCollisions()
 
         // Stop at the real non-Room preparation boundary. Room still owns the old manga.
         seed(interruptedOld, interruptedTarget)
@@ -281,6 +282,42 @@ class MigrationEndToEndRuntimeTest {
         assertEquals(chapter(ambiguousOld).id, database.getBookmarksDao().findAll(ambiguousOld.id).single().chapterId)
         assertEquals("P5 note", notes.get(ambiguousOld.id))
         assertNull(notes.get(ambiguousTarget.id))
+    }
+
+    private suspend fun verifyDownloadedDestinationCollisions() {
+        val source = manga(994001, "P5_OLD")
+        val destination = manga(994002, "P5_NEW")
+        seed(source, destination)
+        val sourcePath = createDownload("collision-source", source)
+        val targetPath = createDownload("collision-target", destination)
+        database.getLocalMangaIndexDao().upsert(LocalMangaIndexEntity(source.id, sourcePath.path))
+        database.getLocalMangaIndexDao().upsert(LocalMangaIndexEntity(destination.id, targetPath.path))
+        val containers = listOf(sourcePath, targetPath).flatMap { directory ->
+            listOf(File(directory, "index.json"), File(directory, "chapter.cbz"))
+        }.associateWith { it.readBytes() }
+        // No favourite_download_index target exists: the local_index row itself must veto collision.
+        val indexedCollision = runCatching {
+            migrateProvider.get()(source, destination, lossless = true, requireLibraryEntry = true)
+        }.exceptionOrNull()
+        assertTrue(indexedCollision is IllegalStateException)
+        assertTrue(indexedCollision?.message?.contains("different downloaded container") == true)
+        assertTrue(database.getMangaDao().isMigrationEntryVisible(source.id))
+        assertTrue(database.getFavouritesDao().findAllRaw(destination.id).isEmpty())
+        assertEquals("P5 note", notes.get(source.id))
+        assertNull(notes.get(destination.id))
+        assertTrue(index.getDownloadAliasPaths(listOf(destination.id)).isEmpty())
+        assertEquals(sourcePath.path, database.getLocalMangaIndexDao().findPath(source.id))
+        assertEquals(targetPath.path, database.getLocalMangaIndexDao().findPath(destination.id))
+        // A pre-existing destination alias is never owned by source-attempt rollback either.
+        index.registerDownloadAlias(destination.id, destination.id, targetPath)
+        val aliasCollision = runCatching {
+            migrateProvider.get()(source, destination, lossless = true, requireLibraryEntry = true)
+        }.exceptionOrNull()
+        assertTrue(aliasCollision is IllegalStateException)
+        assertEquals(targetPath.path, index.getDownloadAliasPaths(listOf(destination.id))[destination.id])
+        assertEquals("P5 note", notes.get(source.id))
+        assertNull(notes.get(destination.id))
+        for ((file, bytes) in containers) assertArrayEquals("Collision must not touch " + file.name, bytes, file.readBytes())
     }
 
     private suspend fun seedFullState(manga: Manga) {
@@ -479,7 +516,7 @@ class MigrationEndToEndRuntimeTest {
     private suspend fun cleanup(groups: List<Long>) {
         groups.forEach { database.getLibraryGroupsDao().deleteGroup(it) }
         val ids = listOf(987001L, 987002L, 987003L, 988001L, 988002L, 989001L, 989002L,
-            990001L, 990002L, 991001L, 991002L, 992001L, 992002L, 993001L, 993002L)
+            990001L, 990002L, 991001L, 991002L, 992001L, 992002L, 993001L, 993002L, 994001L, 994002L)
         for (id in ids) {
             notes.set(id, null); profiles.clear(id)
             settings.setChapterReadOverrides(id, emptyMap())
