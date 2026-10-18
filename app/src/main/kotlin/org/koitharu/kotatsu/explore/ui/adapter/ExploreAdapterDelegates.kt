@@ -55,12 +55,25 @@ fun exploreButtonsAD(
 	binding.buttonLocal.setOnClickListener(clickListener)
 	binding.buttonMigration.setOnClickListener {
 		buildAlertDialog(context) {
-			setTitle(R.string.migrate_from_kotatsu)
-			setMessage(R.string.migrate_from_kotatsu_confirm)
-			setNegativeButton(android.R.string.cancel, null)
-			setPositiveButton(R.string.migrate_from_kotatsu) { _, _ ->
-				if (KotatsuMigrationService.start(context)) {
-					Toast.makeText(context, R.string.kotatsu_migration_running, Toast.LENGTH_SHORT).show()
+			setTitle(R.string.explore_migration)
+			setItems(arrayOf(context.getString(R.string.migrate_broken_sources), context.getString(R.string.migrate_from_kotatsu))) { _, which ->
+				if (which == 0) {
+					context.startActivity(android.content.Intent(context, org.koitharu.kotatsu.settings.SettingsActivity::class.java)
+						.setAction(org.koitharu.kotatsu.core.nav.AppRouter.ACTION_MIGRATION))
+				} else {
+					buildAlertDialog(context) {
+						setTitle(R.string.migrate_from_kotatsu)
+						setMessage(R.string.migrate_from_kotatsu_confirm)
+						setNegativeButton(android.R.string.cancel, null)
+						setPositiveButton(R.string.migrate_from_kotatsu) { _, _ ->
+							if (KotatsuMigrationService.start(context)) {
+								Toast.makeText(context, R.string.kotatsu_migration_running, Toast.LENGTH_SHORT).show()
+							}
+						}
+					}.show()
+				}
+			}
+		}.show()
 				}
 			}
 		}.show()

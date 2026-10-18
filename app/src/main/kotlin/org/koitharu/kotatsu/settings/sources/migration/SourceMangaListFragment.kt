@@ -87,9 +87,12 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 				SourceMangaListScreen(
 					state = state,
 					imageLoader = imageLoader,
+					onRetry = viewModel::refresh,
 					onMangaClick = { manga ->
 						if (state.selectedIds.isEmpty()) {
-							router.openDetails(manga)
+							(requireActivity() as org.koitharu.kotatsu.settings.SettingsActivity).openFragment(
+								MigrationReviewFragment::class.java, MigrationReviewFragment.args(manga.id), false,
+							)
 						} else {
 							viewModel.toggleSelection(manga.id)
 						}
@@ -115,6 +118,7 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 	override fun onResume() {
 		super.onResume()
 		requireActivity().title = viewModel.sourceTitle
+		viewModel.refresh()
 	}
 
 	private fun syncActionMode(selectedIds: Set<Long>) {
@@ -212,6 +216,7 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 private fun SourceMangaListScreen(
 	state: SourceMangaListState,
 	imageLoader: ImageLoader,
+	onRetry: () -> Unit,
 	onMangaClick: (Manga) -> Unit,
 	onMangaLongClick: (Manga) -> Unit,
 ) {
@@ -224,6 +229,11 @@ private fun SourceMangaListScreen(
 	LazyColumn(
 		modifier = Modifier.fillMaxSize().navigationBarsPadding(),
 	) {
+		if (state.failed) item {
+			androidx.compose.material3.TextButton(onClick = onRetry) {
+				Text(androidx.compose.ui.res.stringResource(org.koitharu.kotatsu.R.string.migration_retry))
+			}
+		}
 		items(state.manga, key = Manga::id) { manga ->
 			SourceMangaRow(
 				manga = manga,
