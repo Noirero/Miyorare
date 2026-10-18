@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.local.data.output
 
+import androidx.core.net.toUri
+import androidx.core.text.HtmlCompat
 import kotlinx.coroutines.test.runTest
 import org.jsoup.Jsoup
 import org.junit.Assert.assertEquals
@@ -8,6 +10,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.util.ext.isZipUri
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
@@ -17,7 +20,7 @@ import java.util.zip.ZipFile
 
 /**
  * Android integration probe for the exact downloaded-novel boundary:
- * source HTML -> LocalNovelEpubOutput -> LocalMangaParser -> file+zip URL -> reader-style HTML parse.
+ * source HTML -> LocalNovelEpubOutput -> LocalMangaParser -> file+zip URL -> reader HTML parse.
  */
 class DownloadedNovelRoundTripProbeTest {
 
@@ -45,12 +48,17 @@ class DownloadedNovelRoundTripProbeTest {
 			val chapterUrl = requireNotNull(localChapter).url
 			assertTrue("downloaded chapter must point back into its EPUB", chapterUrl.startsWith("file+zip://"))
 
-			val archivePath = chapterUrl.substringAfter("file+zip://").substringBeforeLast('#')
-			val entryName = chapterUrl.substringAfterLast('#')
+			// Exercise the same Android Uri interpretation and archive lookup used by
+			// EpubReaderFragment.HybridContentSource instead of manually splitting the URL.
+			val uri = chapterUrl.toUri()
+			assertTrue("reader must classify downloaded chapter as a ZIP URI", uri.isZipUri())
+			val archive = File(uri.schemeSpecificPart)
+			val entryName = uri.fragment.orEmpty()
+			assertEquals("reader archive path must resolve to the generated EPUB", epub.canonicalFile, archive.canonicalFile)
 			assertTrue("chapter URL must preserve the generated XHTML entry", entryName.endsWith(".xhtml"))
-			val xhtml = ZipFile(File(archivePath)).use { zip ->
-				val entry = zip.getEntry(entryName)
-				assertNotNull("chapter URL must resolve to a real EPUB entry", entry)
+			val xhtml = ZipFile(archive).use { zip ->
+				val entry = zip.getEntry(entryName) ?: zip.getEntry(entryName.removePrefix("/"))
+				assertNotNull("reader ZIP lookup must resolve the generated XHTML entry", entry)
 				zip.getInputStream(requireNotNull(entry)).bufferedReader().use { it.readText() }
 			}
 			assertTrue("reader must receive nonblank XHTML", xhtml.isNotBlank())
@@ -60,8 +68,14 @@ class DownloadedNovelRoundTripProbeTest {
 			val body = document.body()
 			assertNotNull("reader parse must expose an HTML body", body)
 			val parsedText = requireNotNull(body).text()
-			assertFalse("reader parse must not collapse the downloaded chapter to blank", parsedText.isBlank())
+			assertFalse("Jsoup parse must not collapse the downloaded chapter to blank", parsedText.isBlank())
 			assertEquals("Chapter 1 Round trip sentinel & readable text.", parsedText)
+
+			// Exercise the Android renderer stage used by EpubReaderFragment.parseChapter().
+			val rendered = HtmlCompat.fromHtml(document.body().html(), HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim()
+			assertFalse("HtmlCompat must not collapse valid downloaded XHTML to blank", rendered.isBlank())
+			assertTrue("HtmlCompat output must retain the chapter heading", rendered.contains("Chapter 1"))
+			assertTrue("HtmlCompat output must retain the chapter body", rendered.contains("Round trip sentinel & readable text."))
 		} finally {
 			dir.deleteRecursively()
 		}
