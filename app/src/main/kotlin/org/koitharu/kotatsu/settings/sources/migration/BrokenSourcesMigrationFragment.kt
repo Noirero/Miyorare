@@ -172,7 +172,7 @@ private fun BrokenSourcesMigrationScreen(
 					modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
 				) {
 					Text(
-						text = stringResource(R.string.migrate_broken_sources_description),
+						text = stringResource(R.string.migration_review_description),
 						style = MaterialTheme.typography.bodyMedium,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 					)

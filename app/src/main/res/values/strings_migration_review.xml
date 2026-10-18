@@ -21,4 +21,5 @@
     <string name="migration_evidence_agrees">Author or chapter structure corroborates the match</string>
     <string name="migration_review_list">Review manga</string>
     <plurals name="migration_review_sources"><item quantity="one">Review %d source</item><item quantity="other">Review %d sources</item></plurals>
+    <string name="migration_review_description">Choose a source, then review each affected manga and its replacement before migrating. Matching evidence and preserved data are shown for each manga. Sources listed as unavailable may need an extension installed.</string>
 </resources>

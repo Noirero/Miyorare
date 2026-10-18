@@ -22,4 +22,5 @@
     <string name="migration_review_list">Tinjau manga</string>
     <plurals name="migration_review_sources"><item quantity="one">Tinjau %d source</item><item quantity="other">Tinjau %d source</item></plurals>
     <string name="manga_migration">Migrasi manga</string>
+    <string name="migration_review_description">Pilih source, lalu tinjau setiap manga dan penggantinya sebelum migrasi. Bukti kecocokan dan data yang dipertahankan ditampilkan untuk setiap manga. Source yang tidak tersedia mungkin memerlukan pemasangan ekstensi.</string>
 </resources>

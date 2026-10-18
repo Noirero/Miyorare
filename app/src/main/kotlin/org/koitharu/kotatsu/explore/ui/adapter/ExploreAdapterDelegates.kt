@@ -50,7 +50,6 @@ fun exploreButtonsAD(
 ) = adapterDelegateViewBinding<ExploreButtons, ListModel, ItemExploreButtonsBinding>(
 	{ layoutInflater, parent -> ItemExploreButtonsBinding.inflate(layoutInflater, parent, false) },
 ) {
-
 	binding.buttonDownloads.setOnClickListener(clickListener)
 	binding.buttonLocal.setOnClickListener(clickListener)
 	binding.buttonMigration.setOnClickListener {
@@ -71,9 +70,6 @@ fun exploreButtonsAD(
 							}
 						}
 					}.show()
-				}
-			}
-		}.show()
 				}
 			}
 		}.show()
