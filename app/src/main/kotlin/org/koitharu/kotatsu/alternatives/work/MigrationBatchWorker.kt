@@ -70,10 +70,9 @@ class MigrationBatchWorker @AssistedInject constructor(
 }
 
 /**
- * Persists an explicit terminal cancellation outcome inside WorkManager itself.
- * Blocked nodes in a dependency chain may be pruned on a later WorkManager initialization before
- * their retention window can protect them, so cancellation snapshots for those nodes are rewritten
- * as independent completed WorkManager records. This is not a second source of truth.
+ * Durable WorkManager record used for explicit terminal cancellation state.
+ * The scheduler keeps terminal markers blocked behind one delayed sentinel so a fresh WorkManager
+ * process cannot prune never-started cancellation identities before the UI reconstructs them.
  */
 class MigrationBatchCancellationMarkerWorker(
 	context: Context,
