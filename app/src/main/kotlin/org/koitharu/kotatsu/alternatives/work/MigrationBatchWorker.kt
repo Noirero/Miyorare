@@ -65,6 +65,6 @@ class MigrationBatchWorker @AssistedInject constructor(
 			.addAction(R.drawable.ic_delete, applicationContext.getString(R.string.migration_batch_cancel),
 				WorkManager.getInstance(applicationContext).createCancelPendingIntent(id))
 			.build()
-		return ForegroundInfo(42, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+		return ForegroundInfo(47, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
 	}
 }

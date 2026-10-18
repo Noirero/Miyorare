@@ -15,7 +15,7 @@
     <string name="migration_batch_error">Belum dapat dimigrasikan dengan aman — tinjau atau coba lagi</string>
     <string name="migration_batch_empty">Tidak ada entri koleksi atau riwayat yang tersisa untuk source ini.</string>
     <string name="migration_batch_progress">%1$d dari %2$d manga diperiksa / ditangani</string>
-    <string name="migration_batch_done">%1$d manga dimigrasikan dalam batch terbaru</string>
+    <string name="migration_batch_done">%1$d manga dimigrasikan melalui batch baru-baru ini</string>
     <string name="migration_batch_check_library">Manga yang terputus mungkin sudah berada di penggantinya. Periksa koleksi; migrasi tidak akan diulang secara buta.</string>
     <string name="migration_batch_other_active">Batch migrasi sedang berjalan pada koleksi source lain.</string>
     <string name="migration_batch_all">Semua status</string>
