@@ -55,7 +55,7 @@ class MigrationReviewScreenTest {
 		compose.onNodeWithTag("migration-execute").performScrollTo().assertIsNotEnabled()
 		compose.onNodeWithTag("migration-retry").performScrollTo().assertIsEnabled()
 	}
-	@Test fun busyAndCompletedStatesDoNotOfferDuplicateExecution() {
+	@Test fun busyStateDoesNotOfferDuplicateExecution() {
 		compose.setContent { MaterialTheme { MigrationReviewScreen(MigrationReviewState(loading = true), {}, { _, _ -> fail() }, {}) } }
 		compose.onNodeWithTag("migration-loading").assertExists()
 		compose.onNodeWithTag("migration-execute").assertDoesNotExist()
@@ -70,4 +70,18 @@ class MigrationReviewScreenTest {
 		compose.onNodeWithTag("migration-retry").performScrollTo().performClick()
 		assertEquals(1, retries)
 	}
+	@Test fun completedStateOffersOnlyThePersistedDestination() {
+		var opened: Long? = null
+		compose.setContent { MaterialTheme { MigrationReviewScreen(MigrationReviewState(loading = false, completedId = 42L), {}, { _, _ -> fail() }, { opened = it }) } }
+		compose.onNodeWithTag("migration-execute").assertDoesNotExist()
+		compose.onNodeWithText(context.getString(R.string.migration_open_result)).performClick()
+		assertEquals(42L, opened)
+	}
+	@Test fun recoveredSourceDoesNotOfferMigration() {
+		val healthy = MigrationReviewState(loading = false, discovery = MigrationDiscovery(seed, sourceHealthy = true))
+		compose.setContent { MaterialTheme { MigrationReviewScreen(healthy, {}, { _, _ -> fail() }, {}) } }
+		compose.onNodeWithText(context.getString(R.string.migration_source_healthy)).assertExists()
+		compose.onNodeWithTag("migration-execute").assertDoesNotExist()
+	}
+
 }

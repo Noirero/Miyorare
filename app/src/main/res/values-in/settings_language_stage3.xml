@@ -52,7 +52,7 @@
     <string name="lock_method_pin">PIN khusus</string>
     <string name="lock_method_title">Pilih metode kunci</string>
     <string name="mal">MyAnimeList</string>
-    <string name="migrate_broken_sources_description">Pilih source, lalu tinjau setiap manga dan penggantinya sebelum migrasi. Bukti kecocokan dan data yang dipertahankan ditampilkan untuk setiap manga. Source yang tidak tersedia mungkin memerlukan pemasangan ekstensi.</string>
+    <string name="migrate_broken_sources_description">Pilih sumber yang ingin diperbaiki. Setiap manga dari sumber tersebut di Disukai atau Riwayat akan diperiksa dan, jika rusak, dimigrasikan ke alternatif terbaik yang berfungsi. Migrasi berlanjut di latar belakang.\n\nSumber yang disarankan tidak tersedia atau tidak dipasang melalui store ekstensi dan paling mungkin memerlukan migrasi.</string>
     <string name="migration_information">Informasi migrasi</string>
     <string name="mihon_sources">Sumber Mihon</string>
     <string name="miyorare_source_pack_detail_not_installed">Source Pack ini belum dipasang.</string>
