@@ -22,6 +22,8 @@ import org.koitharu.kotatsu.details.data.ChapterPersonalEntity
 import org.koitharu.kotatsu.details.data.MangaNotesRepository
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
+import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
@@ -165,6 +167,74 @@ class LosslessMigrationTransferRegressionTest {
 			)
 			assertTrue(settings.getChapterReadOverrides(oldId).isEmpty())
 			assertEquals(mapOf(newChapter.id to true), settings.getChapterReadOverrides(newId))
+		} finally {
+			settings.setChapterReadOverrides(oldId, emptyMap())
+			settings.setChapterReadOverrides(newId, emptyMap())
+			database.close()
+		}
+	}
+
+	@Test
+	fun sourceReplacementRejectsDestinationAlreadyInDifferentLibraryGroup() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+		val settings = AppSettings(context)
+		val oldId = 982_001L
+		val newId = 982_002L
+		settings.setChapterReadOverrides(oldId, emptyMap())
+		settings.setChapterReadOverrides(newId, emptyMap())
+		try {
+			val oldChapter = chapter(id = 982_101L, number = 3f, sourceName = "MIGRATION_OLD", url = "/old/chapter-3")
+			val newChapter = chapter(id = 982_201L, number = 3f, sourceName = "MIGRATION_NEW", url = "/new/chapter-3")
+			val oldManga = manga(oldId, "MIGRATION_OLD", "/old/title", oldChapter)
+			val newManga = manga(newId, "MIGRATION_NEW", "/new/title", newChapter)
+			persistManga(database, oldManga)
+			persistManga(database, newManga)
+
+			val groupsDao = database.getLibraryGroupsDao()
+			val sourceGroupId = groupsDao.insertGroup(
+				LibraryGroupEntity(
+					title = "Source group",
+					coverUrl = null,
+					createdAt = 1L,
+					space = FavouriteSpace.NORMAL.dbValue,
+				),
+			)
+			val destinationGroupId = groupsDao.insertGroup(
+				LibraryGroupEntity(
+					title = "Destination group",
+					coverUrl = null,
+					createdAt = 2L,
+					space = FavouriteSpace.NORMAL.dbValue,
+				),
+			)
+			groupsDao.insertMembers(
+				listOf(
+					LibraryGroupMemberEntity(sourceGroupId, oldId, position = 0),
+					LibraryGroupMemberEntity(destinationGroupId, newId, position = 0),
+				),
+			)
+
+			val transfer = LosslessMigrationTransfer(
+				database = database,
+				settings = settings,
+				notesRepository = MangaNotesRepository(context),
+				readerProfileStore = MangaReaderProfileStore(context),
+			)
+			val plan = transfer.prepare(oldManga, newManga)
+			val error = runCatching {
+				database.withTransaction { transfer.applyRoom(plan) }
+			}.exceptionOrNull()
+
+			assertTrue(error is LosslessMigrationConflictException)
+			assertTrue(error?.message?.contains("different library group") == true)
+			assertEquals(
+				sourceGroupId,
+				groupsDao.findMembersByMangaIds(listOf(oldId), FavouriteSpace.NORMAL.dbValue).single().groupId,
+			)
+			assertEquals(
+				destinationGroupId,
+				groupsDao.findMembersByMangaIds(listOf(newId), FavouriteSpace.NORMAL.dbValue).single().groupId,
+			)
 		} finally {
 			settings.setChapterReadOverrides(oldId, emptyMap())
 			settings.setChapterReadOverrides(newId, emptyMap())
