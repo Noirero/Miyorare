@@ -9,17 +9,39 @@ mkdir -p "$migration_evidence_dir"
 
 # The preceding P4 WorkManager instrumentation invocation owns useful durable state. A second
 # Gradle connectedDebugAndroidTest invocation reinstalls/clears the target boundary, so run the
-# already-installed instrumentation component directly for both P5 processes instead.
+# already-built instrumentation component directly for both P5 processes instead.
 cp -R app/build/outputs/androidTest-results/connected "$migration_evidence_dir/batch-work-results"
-instrumentation_component="$({ adb shell pm list instrumentation || true; } | tr -d '\r' | awk -v target="(target=$target_package)" '
-  index($0, target) {
-    sub(/^instrumentation:/, "", $1)
-    print $1
-    exit
-  }
-')"
+
+find_instrumentation_component() {
+  { adb shell pm list instrumentation || true; } | tr -d '\r' | awk -v target="(target=$target_package)" '
+    index($0, target) {
+      sub(/^instrumentation:/, "", $1)
+      print $1
+      exit
+    }
+  '
+}
+
+# connectedDebugAndroidTest may remove only the instrumentation package after a successful run.
+# The target app (and its P4 WorkManager/private data) must still exist; never reinstall/clear it here.
+if ! adb shell pm path "$target_package" | tr -d '\r' | grep -q '^package:'; then
+  echo "P5 runtime harness lost target app/data after the P4 runtime test; refusing to recreate state" >&2
+  exit 1
+fi
+
+instrumentation_component="$(find_instrumentation_component)"
 if [[ -z "$instrumentation_component" ]]; then
-  echo "P5 runtime harness cannot find installed instrumentation for $target_package" >&2
+  test_apk="$(find app/build/outputs/apk/androidTest -type f -name '*.apk' -print 2>/dev/null | sort | head -n 1)"
+  if [[ -z "$test_apk" || ! -f "$test_apk" ]]; then
+    echo "P5 runtime harness cannot find the built AndroidTest APK" >&2
+    exit 1
+  fi
+  # Reinstall only the test package. This restores the runner without touching target app data.
+  adb install -r -t "$test_apk"
+  instrumentation_component="$(find_instrumentation_component)"
+fi
+if [[ -z "$instrumentation_component" ]]; then
+  echo "P5 runtime harness cannot find installed instrumentation for $target_package after test-APK reinstall" >&2
   exit 1
 fi
 
