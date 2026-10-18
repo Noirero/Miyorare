@@ -2,7 +2,6 @@ package org.koitharu.kotatsu.alternatives.work
 
 import androidx.work.*
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -22,8 +21,9 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 		val unique = requests.distinctBy { it.mangaId }
 		if (unique.isEmpty()) return@withLock false
 		val existing = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
-		// A single migration batch owns the queue. Another screen cannot replace or interleave it.
-		if (existing.any { !it.state.isFinished }) return@withLock false
+		// Durable terminal markers are intentionally kept unfinished behind a delayed sentinel so
+		// WorkManager cannot prune them across process restart. They do not own the active queue.
+		if (existing.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) }) return@withLock false
 		val previous = existing.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
 		check(previous < Long.MAX_VALUE)
 		val generation = previous + 1L
@@ -55,9 +55,10 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 		workManager.cancelUniqueWork(batchName).await()
 		if (pendingBlocked.isEmpty()) return@withLock
 
-		// Dependency-chain nodes that never started can be pruned when WorkManager is initialized in a
-		// fresh process even when a retention duration was requested. Persist the real cancellation as
-		// independent completed WorkManager records so batch status remains reconstructable after restart.
+		// Cancelled dependency-chain nodes that never started can disappear when WorkManager is opened
+		// by a fresh process. Preserve their terminal identity as new WorkManager records. The marker
+		// records remain BLOCKED behind one delayed sentinel; this prevents pruning without introducing
+		// another persistence authority or scheduling hundreds of active timers.
 		val afterById = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await().associateBy(WorkInfo::id)
 		val currentGeneration = before.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
 		check(currentGeneration < Long.MAX_VALUE)
@@ -72,7 +73,7 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 					destinationId = snapshot.outcome.destinationId,
 				)))
 				.keepResultsForAtLeast(30, TimeUnit.DAYS)
-				.addTag(markerBatch)
+				.addTag(MigrationBatchWork.terminalTag(MigrationBatchStatus.INTERRUPTED))
 				.apply {
 					MigrationBatchWork.tags(
 						snapshot.mangaId,
@@ -85,10 +86,10 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 				.build()
 		}
 		if (markers.isNotEmpty()) {
-			workManager.enqueue(markers).await()
-			workManager.getWorkInfosByTagFlow(markerBatch).first { infos ->
-				infos.size == markers.size && infos.all { it.state.isFinished }
-			}
+			val sentinel = OneTimeWorkRequestBuilder<MigrationBatchCancellationMarkerWorker>()
+				.setInitialDelay(30, TimeUnit.DAYS)
+				.build()
+			workManager.beginWith(sentinel).then(markers).enqueue().await()
 		}
 	}
 }
