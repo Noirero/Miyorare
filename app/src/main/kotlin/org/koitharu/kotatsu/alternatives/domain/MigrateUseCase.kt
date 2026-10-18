@@ -10,6 +10,8 @@ import org.koitharu.kotatsu.details.data.MangaNotesRepository
 import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.history.data.toMangaHistory
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
+import org.koitharu.kotatsu.local.data.index.PreparedDownloadIdentityMove
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -28,6 +30,7 @@ class MigrateUseCase @Inject constructor(
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
 	private val mangaReaderProfileStore: MangaReaderProfileStore,
 	private val mangaNotesRepository: MangaNotesRepository,
+	private val localMangaIndex: LocalMangaIndex,
 	private val losslessMigrationTransfer: LosslessMigrationTransfer,
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 ) {
@@ -65,14 +68,24 @@ class MigrateUseCase @Inject constructor(
 
 		mangaDataRepository.storeManga(newDetails, replaceExisting = true)
 
-		// SharedPreferences cannot join the Room transaction. Prepare durable destination copies first
-		// while keeping the source copies intact. If Room fails normally we roll back only copies we
-		// created; if the process dies, either id still has the metadata and a retry can finish cleanup.
-		val preparedReaderProfile = mangaReaderProfileStore.prepareMove(oldDetails.id, newDetails.id)
-		val preparedNote = mangaNotesRepository.prepareMove(oldDetails.id, newDetails.id)
-		val preparedReadOverrides = losslessPlan?.let(losslessMigrationTransfer::prepareReadOverrides) ?: false
+		var preparedReaderProfile = false
+		var preparedNote = false
+		var preparedReadOverrides = false
+		var preparedDownloadIdentity: PreparedDownloadIdentityMove? = null
 
 		val state = try {
+			// SharedPreferences cannot join the Room transaction. Prepare durable destination copies first
+			// while keeping source copies intact. Every preparation is covered by the same rollback boundary,
+			// so a later preparation failure cannot leave a half-owned destination copy behind.
+			preparedReaderProfile = mangaReaderProfileStore.prepareMove(oldDetails.id, newDetails.id)
+			preparedNote = mangaNotesRepository.prepareMove(oldDetails.id, newDetails.id)
+			preparedReadOverrides = losslessPlan?.let(losslessMigrationTransfer::prepareReadOverrides) ?: false
+			preparedDownloadIdentity = if (losslessPlan != null) {
+				localMangaIndex.prepareDownloadIdentityMove(oldDetails.id, newDetails.id)
+			} else {
+				null
+			}
+
 			database.withTransaction {
 				if (losslessPlan != null) {
 					val result = losslessMigrationTransfer.applyRoom(losslessPlan)
@@ -184,16 +197,22 @@ class MigrateUseCase @Inject constructor(
 			if (losslessPlan != null) {
 				runCatching { losslessMigrationTransfer.rollbackReadOverrides(losslessPlan, preparedReadOverrides) }
 					.onFailure { rollbackError -> error.addSuppressed(rollbackError) }
+				runCatching {
+					localMangaIndex.rollbackPreparedDownloadIdentityMove(newDetails.id, preparedDownloadIdentity)
+				}.onFailure { rollbackError -> error.addSuppressed(rollbackError) }
 			}
 			throw error
 		}
 
 		// Room now points at the new id and the destination copies are already durable. Source cleanup
 		// can happen afterwards without creating a process-death window where the new manga has no
-		// Notes/Profile state.
+		// Notes/Profile/read/download-identity state.
 		mangaReaderProfileStore.finishPreparedMove(oldDetails.id, newDetails.id)
 		mangaNotesRepository.finishPreparedMove(oldDetails.id, newDetails.id)
-		losslessPlan?.let(losslessMigrationTransfer::finishReadOverrides)
+		losslessPlan?.let {
+			losslessMigrationTransfer.finishReadOverrides(it)
+			localMangaIndex.finishPreparedDownloadIdentityMove(oldDetails.id, preparedDownloadIdentity)
+		}
 
 		// All Room state is committed before tracker/source I/O starts. Private-only skips this entire
 		// block; Normal+Private remains public by design. Each Scrobbler also re-checks privacy at its
