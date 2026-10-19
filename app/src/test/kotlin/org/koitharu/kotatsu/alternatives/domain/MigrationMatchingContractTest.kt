@@ -32,6 +32,21 @@ class MigrationMatchingContractTest {
 	}
 
 	@Test
+	fun `selected migration refreshes only approved identity before lossless execution`() {
+		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val migrateSelected = source.substringAfter("suspendfunmigrateSelected(").substringBefore("privatesuspendfunvalidateSelection(")
+		val validation = source.substringAfter("privatesuspendfunvalidateSelection(").substringBefore("privatesuspendfunloadSeed(")
+
+		assertTrue(migrateSelected.contains("validateSelection(mangaId,selection)"))
+		assertFalse(migrateSelected.contains("discover(mangaId)"))
+		assertTrue(validation.contains("filter{it.name==selection.source}"))
+		assertTrue(validation.contains("MigrationSelection.of(event.manga)==selection"))
+		assertTrue(validation.contains("valfresh=probe.getOrNull()"))
+		assertTrue(validation.contains("MigrationSelection.of(fresh)!=selection"))
+		assertTrue(validation.contains("candidateMatcher.assess"))
+	}
+
+	@Test
 	fun `manual alternatives keep user preference mode while cross-source id collisions remain discoverable`() {
 		val source = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
 
