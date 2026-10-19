@@ -30,27 +30,54 @@ class AutoFixUseCase @Inject constructor(
 				seed = ParcelableManga(seed),
 				candidates = assessment.candidates.map { ParcelableManga(it.manga) },
 			)
-			MigrationMatchState.NO_REPLACEMENT -> throw NoAlternativesException(ParcelableManga(seed))
+			MigrationMatchState.NO_REPLACEMENT -> {
+				throw NoAlternativesException(ParcelableManga(seed))
+			}
 		}
-		migrateUseCase(oldManga = seed, newManga = replacement, lossless = true)
+
+		migrateUseCase(
+			oldManga = seed,
+			newManga = replacement,
+			lossless = true,
+		)
 		return seed to replacement
 	}
 
 	/** Discovery is a preview, never permission to mutate user data. */
 	suspend fun discover(mangaId: Long): MigrationDiscovery {
 		val seed = loadSeed(mangaId)
-		if (seed.isHealthy()) return MigrationDiscovery(seed, sourceHealthy = true)
+		if (seed.isHealthy()) {
+			return MigrationDiscovery(seed, sourceHealthy = true)
+		}
+
+		// Broken-source migration must search the whole enabled source domain. Pinned/language filters
+		// are manual Alternatives preferences, not identity constraints for an automatic repair.
 		val sources = alternativesUseCase.getSources(seed, SearchSourceMode.ALL_SOURCES, emptySet())
 		val observations = ArrayList<MigrationCandidateObservation>()
 		var discoveryError: Throwable? = null
 		for (query in buildSearchQueries(seed)) {
-			alternativesUseCase(seed, SearchSourceMode.ALL_SOURCES, emptySet(), query, sources, MAX_MIGRATION_DETAIL_CANDIDATES).collect { event ->
+			alternativesUseCase(
+				manga = seed,
+				mode = SearchSourceMode.ALL_SOURCES,
+				preferredLanguages = emptySet(),
+				query = query,
+				precomputedSources = sources,
+				maxDetailCandidates = MAX_MIGRATION_DETAIL_CANDIDATES,
+			).collect { event ->
 				when (event) {
-					is AlternativeSearchEvent.Result -> observations += MigrationCandidateObservation(event.manga, setOf(query))
-					is AlternativeSearchEvent.SourceFinished -> if (event.error != null && discoveryError == null) discoveryError = event.error
+					is AlternativeSearchEvent.Result -> {
+						observations += MigrationCandidateObservation(event.manga, setOf(query))
+					}
+					is AlternativeSearchEvent.SourceFinished -> {
+						if (event.error != null && discoveryError == null) discoveryError = event.error
+					}
 				}
 			}
 		}
+
+		// Rank identity evidence before doing the more expensive page-serving health checks. The cap is
+		// deterministic and large enough to keep multiple plausible sources available for ambiguity
+		// detection without reverting to the old timing-dependent "first few arrivals" behaviour.
 		val healthy = ArrayList<MigrationCandidateObservation>()
 		for (candidate in candidateMatcher.rank(seed, observations).take(MAX_HEALTH_CHECKS)) {
 			val probe = candidate.manga.probeHealth()
@@ -58,10 +85,11 @@ class AutoFixUseCase @Inject constructor(
 			val details = probe.getOrNull() ?: continue
 			healthy += MigrationCandidateObservation(details, candidate.matchedQueries)
 		}
-		return MigrationDiscovery(seed, candidateMatcher.assess(seed, healthy), incomplete = discoveryError != null)
+		val assessment = candidateMatcher.assess(seed, healthy)
+		return MigrationDiscovery(seed, assessment, incomplete = discoveryError != null)
 	}
 
-	/** Refresh only the approved identity; full discovery already established the candidate set. */
+	/** Refresh the approved identity before executing; a UI snapshot is never identity authority. */
 	suspend fun migrateSelected(mangaId: Long, selection: MigrationSelection, reviewed: Boolean): Manga? {
 		val current = validateSelection(mangaId, selection)
 		if (current.sourceHealthy) return null
@@ -81,10 +109,21 @@ class AutoFixUseCase @Inject constructor(
 		var selected: Manga? = null
 		var validationError: Throwable? = null
 		for (query in buildSearchQueries(seed)) {
-			alternativesUseCase(seed, SearchSourceMode.ALL_SOURCES, emptySet(), query, selectedSources, MAX_MIGRATION_DETAIL_CANDIDATES).collect { event ->
+			alternativesUseCase(
+				manga = seed,
+				mode = SearchSourceMode.ALL_SOURCES,
+				preferredLanguages = emptySet(),
+				query = query,
+				precomputedSources = selectedSources,
+				maxDetailCandidates = MAX_MIGRATION_DETAIL_CANDIDATES,
+			).collect { event ->
 				when (event) {
-					is AlternativeSearchEvent.Result -> if (MigrationSelection.of(event.manga) == selection) selected = event.manga
-					is AlternativeSearchEvent.SourceFinished -> if (event.error != null && validationError == null) validationError = event.error
+					is AlternativeSearchEvent.Result -> {
+						if (MigrationSelection.of(event.manga) == selection) selected = event.manga
+					}
+					is AlternativeSearchEvent.SourceFinished -> {
+						if (event.error != null && validationError == null) validationError = event.error
+					}
 				}
 			}
 		}
@@ -104,7 +143,9 @@ class AutoFixUseCase @Inject constructor(
 		mangaDataRepository.findMangaById(mangaId, withChapters = true),
 	) { "Manga $mangaId not found" }.getDetailsSafe()
 
-	private suspend fun Manga.isHealthy(): Boolean = probeHealth().getOrNull() != null
+	private suspend fun Manga.isHealthy(): Boolean = getHealthyDetailsOrNull() != null
+
+	private suspend fun Manga.getHealthyDetailsOrNull(): Manga? = probeHealth().getOrNull()
 
 	private suspend fun Manga.probeHealth(): Result<Manga?> = runCatchingCancellable {
 		val repo = mangaRepositoryFactory.create(source)
@@ -112,7 +153,14 @@ class AutoFixUseCase @Inject constructor(
 		val firstChapter = details.chapters?.firstOrNull() ?: return@runCatchingCancellable null
 		val firstPage = repo.getPages(firstChapter).firstOrNull() ?: return@runCatchingCancellable null
 		val pageUrl = repo.getPageUrl(firstPage)
-		if (pageUrl.toHttpUrlOrNull() != null || (source.isExternalSource() && pageUrl.isNotEmpty())) details else null
+		// Most sources expose a fetchable http(s) page url. Some extensions (e.g. MangaDex) return a
+		// relative imageUrl whose host is resolved internally by getImage(), so a non-blank url from
+		// an external source still indicates a healthy, page-serving source.
+		if (pageUrl.toHttpUrlOrNull() != null || (source.isExternalSource() && pageUrl.isNotEmpty())) {
+			details
+		} else {
+			null
+		}
 	}
 
 	private suspend fun Manga.getDetailsSafe() = runCatchingCancellable {
@@ -122,13 +170,21 @@ class AutoFixUseCase @Inject constructor(
 	private fun buildSearchQueries(seed: Manga): List<String> {
 		val primary = seed.title.trim()
 		val primaryKey = normalizeQuery(primary)
-		val aliases = seed.altTitles.asSequence().map(String::trim).filter(String::isNotEmpty)
+		val aliases = seed.altTitles
+			.asSequence()
+			.map(String::trim)
+			.filter(String::isNotEmpty)
 			.map { it to normalizeQuery(it) }
 			.filter { (_, key) -> key.length >= MIN_ALIAS_QUERY_LENGTH && key != primaryKey }
 			.distinctBy { (_, key) -> key }
 			.sortedWith(compareByDescending<Pair<String, String>> { it.second.length }.thenBy { it.second })
-			.map { it.first }.take(MAX_AUTO_FIX_QUERIES - 1).toList()
-		return buildList(1 + aliases.size) { if (primary.isNotEmpty()) add(primary); addAll(aliases) }
+			.map { it.first }
+			.take(MAX_AUTO_FIX_QUERIES - 1)
+			.toList()
+		return buildList(1 + aliases.size) {
+			if (primary.isNotEmpty()) add(primary)
+			addAll(aliases)
+		}
 	}
 
 	private fun normalizeQuery(value: String): String = buildString(value.length) {
@@ -136,8 +192,17 @@ class AutoFixUseCase @Inject constructor(
 	}
 
 	class NoAlternativesException(val seed: ParcelableManga) : NoSuchElementException()
-	class NeedsReviewException(val seed: ParcelableManga, val candidates: List<ParcelableManga>) : IllegalStateException("Possible replacement requires review")
-	class CandidateDiscoveryIncompleteException(val seed: ParcelableManga, cause: Throwable? = null) : IllegalStateException("Replacement search did not complete", cause)
+
+	class NeedsReviewException(
+		val seed: ParcelableManga,
+		val candidates: List<ParcelableManga>,
+	) : IllegalStateException("Possible replacement requires review")
+
+	class CandidateDiscoveryIncompleteException(
+		val seed: ParcelableManga,
+		cause: Throwable? = null,
+	) : IllegalStateException("Replacement search did not complete", cause)
+
 	class SelectionChangedException(val discovery: MigrationDiscovery) : IllegalStateException("Replacement changed; review again")
 
 	private companion object {
