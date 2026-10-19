@@ -78,9 +78,62 @@ Kotatsu, Mihon, Keiyoushi, UMA, and Gekkoushi are independently maintained third
 
 ## 📱 A Glimpse of Miyorare
 
-The full visual showcase is organized by feature so you can explore the parts of Miyorare that interest you without turning the README into one long wall of screenshots.
+Explore Miyorare by feature. Each section can be expanded independently, keeping the README compact while preserving the original screenshots.
 
-<!-- SHOWCASE_ASSETS_PENDING -->
+<details>
+<summary><strong>❤️ Favourites & Personalization</strong></summary>
+<br>
+<p align="center">
+  <img src="assets/showcase/IMG_20261019_165035.jpg" alt="Favourites with a pure black theme" width="24%" />
+  <img src="assets/showcase/IMG_20261019_165044.jpg" alt="Favourites with a purple theme" width="24%" />
+  <img src="assets/showcase/IMG_20261019_165052.jpg" alt="Manga favourites with an orange custom background" width="24%" />
+  <img src="assets/showcase/IMG_20261019_165101.jpg" alt="Novel favourites with an orange custom background" width="24%" />
+</p>
+</details>
+
+<details>
+<summary><strong>🔐 Private Favourites</strong></summary>
+<br>
+<p align="center">
+  <img src="assets/showcase/IMG_20261019_165144.jpg" alt="Private Favourites collection" width="48%" />
+  <img src="assets/showcase/IMG_20261019_165201.jpg" alt="Private Favourites settings and privacy controls" width="48%" />
+</p>
+</details>
+
+<details>
+<summary><strong>📚 Manga Details & Chapter Intelligence</strong></summary>
+<br>
+<p align="center">
+  <img src="assets/showcase/IMG_20261019_165110.jpg" alt="Fire Force modern manga details" width="32%" />
+  <img src="assets/showcase/IMG_20261019_165121.jpg" alt="One Punch-Man modern manga details" width="32%" />
+  <img src="assets/showcase/IMG_20261019_165129.jpg" alt="Next Chapter Release Prediction" width="32%" />
+</p>
+</details>
+
+<details>
+<summary><strong>📥 On-device Library</strong></summary>
+<br>
+<p align="center">
+  <img src="assets/showcase/IMG_20261019_165136.jpg" alt="On-device collection and local reading progress" width="48%" />
+</p>
+</details>
+
+<details>
+<summary><strong>🧭 Explore & Sources</strong></summary>
+<br>
+<p align="center">
+  <img src="assets/showcase/Screenshot_20261019_164958.jpg" alt="Explore and source extensions" width="48%" />
+</p>
+</details>
+
+<details>
+<summary><strong>📖 Reading Experience</strong></summary>
+<br>
+<p align="center">
+  <img src="assets/showcase/IMG_20261019_165016.jpg" alt="Novel reading experience" width="48%" />
+  <img src="assets/showcase/Screenshot_20261019_164918.jpg" alt="Manga reading experience" width="48%" />
+</p>
+</details>
 
 ## 📦 Installation
 
