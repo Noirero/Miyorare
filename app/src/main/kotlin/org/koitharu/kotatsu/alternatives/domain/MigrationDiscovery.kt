@@ -2,7 +2,7 @@ package org.koitharu.kotatsu.alternatives.domain
 
 import org.koitharu.kotatsu.parsers.model.Manga
 
-/** Transient network evidence; always rediscovered after process recreation and before execution. */
+/** Transient network evidence; rediscovered after process recreation and freshly revalidated before execution. */
 data class MigrationDiscovery(
 	val seed: Manga,
 	val assessment: MigrationMatchAssessment? = null,

@@ -45,9 +45,7 @@ class AutoFixUseCase @Inject constructor(
 
 	/** Discovery is a preview, never permission to mutate user data. */
 	suspend fun discover(mangaId: Long): MigrationDiscovery {
-		val seed = checkNotNull(
-			mangaDataRepository.findMangaById(mangaId, withChapters = true),
-		) { "Manga $mangaId not found" }.getDetailsSafe()
+		val seed = loadSeed(mangaId)
 		if (seed.isHealthy()) {
 			return MigrationDiscovery(seed, sourceHealthy = true)
 		}
@@ -91,15 +89,62 @@ class AutoFixUseCase @Inject constructor(
 		return MigrationDiscovery(seed, assessment, incomplete = discoveryError != null)
 	}
 
-	/** Re-discover immediately before executing; a UI snapshot is never identity authority. */
+	/** Refresh the approved identity before executing; a UI snapshot is never identity authority. */
 	suspend fun migrateSelected(mangaId: Long, selection: MigrationSelection, reviewed: Boolean): Manga? {
-		val current = discover(mangaId)
+		val current = validateSelection(mangaId, selection)
 		if (current.sourceHealthy) return null
 		val replacement = MigrationExecutionPolicy.select(current, selection, reviewed)
 			?: throw SelectionChangedException(current)
 		migrateUseCase(oldManga = current.seed, newManga = replacement, lossless = true, requireLibraryEntry = true)
 		return replacement
 	}
+
+	private suspend fun validateSelection(mangaId: Long, selection: MigrationSelection): MigrationDiscovery {
+		val seed = loadSeed(mangaId)
+		if (seed.isHealthy()) return MigrationDiscovery(seed, sourceHealthy = true)
+		val selectedSources = alternativesUseCase.getSources(seed, SearchSourceMode.ALL_SOURCES, emptySet())
+			.filter { it.name == selection.source }
+		if (selectedSources.isEmpty()) return MigrationDiscovery(seed)
+
+		var selected: Manga? = null
+		var validationError: Throwable? = null
+		for (query in buildSearchQueries(seed)) {
+			alternativesUseCase(
+				manga = seed,
+				mode = SearchSourceMode.ALL_SOURCES,
+				preferredLanguages = emptySet(),
+				query = query,
+				precomputedSources = selectedSources,
+				maxDetailCandidates = MAX_MIGRATION_DETAIL_CANDIDATES,
+			).collect { event ->
+				when (event) {
+					is AlternativeSearchEvent.Result -> {
+						if (event.manga.source.name == selection.source && event.manga.id == selection.id) {
+							selected = event.manga
+						}
+					}
+					is AlternativeSearchEvent.SourceFinished -> {
+						if (event.error != null && validationError == null) validationError = event.error
+					}
+				}
+			}
+			if (selected != null) break
+		}
+		val approved = selected ?: return MigrationDiscovery(seed, incomplete = validationError != null)
+		val probe = approved.probeHealth()
+		if (probe.isFailure && validationError == null) validationError = probe.exceptionOrNull()
+		val fresh = probe.getOrNull() ?: return MigrationDiscovery(seed, incomplete = validationError != null)
+		if (MigrationSelection.of(fresh) != selection) return MigrationDiscovery(seed)
+		return MigrationDiscovery(
+			seed = seed,
+			assessment = candidateMatcher.assess(seed, listOf(MigrationCandidateObservation(fresh))),
+			incomplete = validationError != null,
+		)
+	}
+
+	private suspend fun loadSeed(mangaId: Long): Manga = checkNotNull(
+		mangaDataRepository.findMangaById(mangaId, withChapters = true),
+	) { "Manga $mangaId not found" }.getDetailsSafe()
 
 	private suspend fun Manga.isHealthy(): Boolean = getHealthyDetailsOrNull() != null
 

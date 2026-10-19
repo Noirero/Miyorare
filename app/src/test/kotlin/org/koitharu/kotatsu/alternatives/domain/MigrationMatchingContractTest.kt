@@ -32,6 +32,27 @@ class MigrationMatchingContractTest {
 	}
 
 	@Test
+	fun `selected migration refreshes only approved identity before lossless execution`() {
+		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val migrateSelected = source.substringAfter("suspendfunmigrateSelected(").substringBefore("privatesuspendfunvalidateSelection(")
+		val validation = source.substringAfter("privatesuspendfunvalidateSelection(").substringBefore("privatesuspendfunloadSeed(")
+
+		assertTrue(migrateSelected.contains("validateSelection(mangaId,selection)"))
+		assertFalse(migrateSelected.contains("discover(mangaId)"))
+		assertTrue(migrateSelected.contains("lossless=true,requireLibraryEntry=true"))
+		assertTrue(validation.contains("filter{it.name==selection.source}"))
+		assertTrue(validation.contains("if(selectedSources.isEmpty())returnMigrationDiscovery(seed)"))
+		assertTrue(validation.contains("precomputedSources=selectedSources"))
+		assertTrue(validation.contains("event.manga.source.name==selection.source&&event.manga.id==selection.id"))
+		assertFalse(validation.contains("MigrationSelection.of(event.manga)==selection"))
+		assertTrue(validation.contains("if(selected!=null)break"))
+		assertTrue(validation.contains("selected?:returnMigrationDiscovery(seed,incomplete=validationError!=null)"))
+		assertTrue(validation.contains("probe.getOrNull()?:returnMigrationDiscovery(seed,incomplete=validationError!=null)"))
+		assertTrue(validation.contains("MigrationSelection.of(fresh)!=selection"))
+		assertTrue(validation.contains("candidateMatcher.assess"))
+	}
+
+	@Test
 	fun `manual alternatives keep user preference mode while cross-source id collisions remain discoverable`() {
 		val source = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
 
