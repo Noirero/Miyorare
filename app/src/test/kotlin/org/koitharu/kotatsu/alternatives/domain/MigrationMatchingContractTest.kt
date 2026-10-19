@@ -39,9 +39,15 @@ class MigrationMatchingContractTest {
 
 		assertTrue(migrateSelected.contains("validateSelection(mangaId,selection)"))
 		assertFalse(migrateSelected.contains("discover(mangaId)"))
+		assertTrue(migrateSelected.contains("lossless=true,requireLibraryEntry=true"))
 		assertTrue(validation.contains("filter{it.name==selection.source}"))
-		assertTrue(validation.contains("MigrationSelection.of(event.manga)==selection"))
-		assertTrue(validation.contains("valfresh=probe.getOrNull()"))
+		assertTrue(validation.contains("if(selectedSources.isEmpty())returnMigrationDiscovery(seed)"))
+		assertTrue(validation.contains("precomputedSources=selectedSources"))
+		assertTrue(validation.contains("event.manga.source.name==selection.source&&event.manga.id==selection.id"))
+		assertFalse(validation.contains("MigrationSelection.of(event.manga)==selection"))
+		assertTrue(validation.contains("if(selected!=null)break"))
+		assertTrue(validation.contains("selected?:returnMigrationDiscovery(seed,incomplete=validationError!=null)"))
+		assertTrue(validation.contains("probe.getOrNull()?:returnMigrationDiscovery(seed,incomplete=validationError!=null)"))
 		assertTrue(validation.contains("MigrationSelection.of(fresh)!=selection"))
 		assertTrue(validation.contains("candidateMatcher.assess"))
 	}
