@@ -1,0 +1,101 @@
+name: COMIX Extension Validation
+
+on:
+  push:
+    branches:
+      - fix/comix-html-recovery
+
+permissions:
+  contents: read
+
+concurrency:
+  group: comix-extension-validation
+  cancel-in-progress: true
+
+jobs:
+  build-comix:
+    name: Build COMIX in Miyorare-EN Gekkoushi shard
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Resolve pinned providers
+        id: pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          data = json.loads(Path('extensions/miyorare-sources/packs.json').read_text(encoding='utf-8'))
+          print(f"uma={data['upstream']['commit']}")
+          print(f"gekkoushi={data['additionalUpstreams']['gekkoushi']['commit']}")
+          PY
+
+      - name: Checkout pinned UMA
+        uses: actions/checkout@v5
+        with:
+          repository: InvalidDavid/UMA
+          ref: ${{ steps.pins.outputs.uma }}
+          path: _upstream/uma
+          fetch-depth: 1
+
+      - name: Checkout pinned Gekkoushi
+        uses: actions/checkout@v5
+        with:
+          repository: Gekkoushi/plugin-source
+          ref: ${{ steps.pins.outputs.gekkoushi }}
+          path: _upstream/gekkoushi
+          fetch-depth: 1
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Prepare Miyorare-EN shards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 extensions/miyorare-sources/tools/prepare_pack.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --upstream _upstream/uma \
+            --pack en
+          python3 extensions/miyorare-sources/tools/prepare_gekkoushi_shard.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --uma-upstream _upstream/uma \
+            --gekkoushi-upstream _upstream/gekkoushi \
+            --pack en
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('_upstream/gekkoushi/miyorare-pack.json').read_text(encoding='utf-8'))
+          if 'COMIX' not in set(data.get('sourceNames') or []):
+              raise SystemExit('COMIX is not exposed by the prepared Miyorare-EN Gekkoushi shard')
+          overlays = set(data.get('miyorareOverlayFiles') or [])
+          if 'comix/Comix.kt' not in overlays:
+              raise SystemExit(f'COMIX overlay missing from prepared shard: {sorted(overlays)}')
+          print('Prepared COMIX overlay:', sorted(overlays))
+          PY
+
+      - name: Compile Gekkoushi shard
+        working-directory: _upstream/gekkoushi
+        run: |
+          set -o pipefail
+          chmod +x gradlew
+          ./gradlew buildJar --rerun-tasks --no-daemon --stacktrace
