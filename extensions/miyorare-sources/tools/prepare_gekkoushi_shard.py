@@ -18,6 +18,7 @@ import subprocess
 from pathlib import Path
 from typing import NoReturn
 
+from gekkoushi_overlay import apply_miyorare_overlays as apply_overlay_files
 from source_icon_metadata import extract_source_icon_urls
 
 
@@ -41,19 +42,9 @@ def git_head(repo: Path) -> str:
 
 
 def apply_miyorare_overlays(gekkoushi_upstream: Path, pack_name: str) -> list[str]:
-    """Copy first-party parser overlays into the disposable pinned Gekkoushi checkout."""
-    source_root = Path(__file__).resolve().parents[1] / "overlays" / "gekkoushi" / pack_name
-    if not source_root.is_dir():
-        return []
-    target_root = gekkoushi_upstream / "src/main/kotlin/tsuki/site" / pack_name
-    copied: list[str] = []
-    for source in sorted(source_root.rglob("*.kt")):
-        relative = source.relative_to(source_root)
-        target = target_root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-        copied.append(relative.as_posix())
-    return copied
+    """Apply first-party additive/replacement overlays to the disposable pinned checkout."""
+    miyorare_sources_root = Path(__file__).resolve().parents[1]
+    return apply_overlay_files(miyorare_sources_root, gekkoushi_upstream, pack_name)
 
 
 def annotation_blocks(content: str, file_name: str) -> list[str]:
