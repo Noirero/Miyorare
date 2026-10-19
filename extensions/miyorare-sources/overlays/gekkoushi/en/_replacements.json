@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "replacements": [
+    {
+      "source": "_replacements/Novelcrow.kt",
+      "target": "madara/en/Novelcrow.kt",
+      "expectedBlobSha": "31d43c8696c6630d105cf2fc3afd1ee91832744e"
+    }
+  ]
+}
