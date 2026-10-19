@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - beta
+      - Amain2
     paths:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/sources/compat/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/**'
@@ -32,18 +33,25 @@ jobs:
       - name: Checkout Miyorare
         uses: actions/checkout@v5
 
+      - name: Read pinned upstream revisions
+        id: pins
+        shell: bash
+        run: |
+          echo "uma=$(jq -r '.upstreams.uma.commit' extensions/miyorare-sources/multi-upstream.json)" >> "$GITHUB_OUTPUT"
+          echo "keiyoushi=$(jq -r '.upstreams.keiyoushi.commit' extensions/miyorare-sources/multi-upstream.json)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout pinned UMA
         uses: actions/checkout@v5
         with:
           repository: InvalidDavid/UMA
-          ref: a0ebc9ffc7de02b7b50cbcb620092d0a9263c785
+          ref: ${{ steps.pins.outputs.uma }}
           path: _upstream/uma
 
       - name: Checkout pinned Keiyoushi
         uses: actions/checkout@v5
         with:
           repository: keiyoushi/extensions-source
-          ref: 2025891752e4705effc28e87a043f7205014cde3
+          ref: ${{ steps.pins.outputs.keiyoushi }}
           path: _upstream/keiyoushi
 
       - name: Verify normalized multi-upstream aliases
