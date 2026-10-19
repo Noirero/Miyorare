@@ -1,0 +1,77 @@
+name: Apply fast novel resolution fix
+
+on:
+  push:
+    branches:
+      - fix/amain2-fast-downloaded-novel-reader
+    paths:
+      - .github/workflows/apply-fast-novel-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/amain2-fast-downloaded-novel-reader
+          fetch-depth: 1
+      - name: Apply guarded source edit
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaRepository.kt')
+          text = path.read_text()
+
+          import_anchor = 'import org.koitharu.kotatsu.core.util.ext.takeIfWriteable\n'
+          if 'import org.koitharu.kotatsu.core.util.ext.toZipUri\n' not in text:
+              assert import_anchor in text
+              text = text.replace(import_anchor, import_anchor + 'import org.koitharu.kotatsu.core.util.ext.toZipUri\n', 1)
+
+          zip_anchor = 'import java.util.Locale\n'
+          if 'import java.util.zip.ZipFile\n' not in text:
+              assert zip_anchor in text
+              text = text.replace(zip_anchor, zip_anchor + 'import java.util.zip.ZipFile\n', 1)
+
+          start = text.index('\tprivate fun buildFastNovelDirectoryCopy(')
+          end = text.index('\n\tprivate suspend fun linkDownloadedChapters', start)
+          block = text[start:end]
+          old = '\t\t\tval file = filesByName[fileName.lowercase(Locale.ROOT)] ?: continue\n\t\t\tlinked += chapter.copy(url = file.toUri().toString(), source = LocalMangaSource)'
+          new = '\t\t\tval file = filesByName[fileName.lowercase(Locale.ROOT)] ?: continue\n\t\t\tval chapterUrl = resolveIndexedNovelChapterUrl(file, remoteManga.id, chapter.id) ?: return null\n\t\t\tlinked += chapter.copy(url = chapterUrl, source = LocalMangaSource)'
+          assert block.count(old) == 1, block.count(old)
+          block = block.replace(old, new, 1)
+
+          helper = '''
+
+\t/**
+\t * The fast path only opens EPUBs whose deterministic filename already matched a remote chapter.
+\t * Read the tiny embedded index to recover the exact XHTML entry without parsing OPF/NCX.
+\t */
+\tprivate fun resolveIndexedNovelChapterUrl(file: File, mangaId: Long, chapterId: Long): String? = runCatching {
+\t\tZipFile(file).use { zip ->
+\t\t\tval entry = zip.getEntry(LocalMangaOutput.ENTRY_NAME_INDEX) ?: return@use null
+\t\t\tval index = MangaIndex(zip.getInputStream(entry).bufferedReader().use { it.readText() })
+\t\t\tif (index.getMangaInfo()?.id != mangaId) return@use null
+\t\t\tval contentEntry = index.getChapterFileName(chapterId) ?: return@use null
+\t\t\tif (zip.getEntry(contentEntry) == null) return@use null
+\t\t\tfile.toZipUri(contentEntry).toString()
+\t\t}
+\t}.onFailure { it.printStackTraceDebug() }.getOrNull()
+'''
+          assert 'resolveIndexedNovelChapterUrl(file: File' not in text
+          text = text[:start] + block + helper + text[end:]
+          path.write_text(text)
+          PY
+      - name: Commit production fix and remove one-shot workflow
+        run: |
+          rm .github/workflows/apply-fast-novel-fix.yml
+          git config user.name 'LatishaLIFE'
+          git config user.email '149634319+Noirero@users.noreply.github.com'
+          git add app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaRepository.kt .github/workflows/apply-fast-novel-fix.yml
+          git diff --cached --check
+          git diff --cached
+          git commit -m 'Resolve fast novel chapters to EPUB content'
+          git push origin HEAD:fix/amain2-fast-downloaded-novel-reader
