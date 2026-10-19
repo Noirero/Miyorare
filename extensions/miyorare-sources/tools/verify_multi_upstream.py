@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify Miyorare's first multi-upstream source aliases against pinned UMA and Keiyoushi trees.
+"""Verify Miyorare multi-upstream aliases against pinned UMA and Keiyoushi trees.
 
 This is an intake/compatibility adapter, not a source-code transpiler. It proves that an alias points
 at the same selected Miyorare pack source, the expected UMA parser identity, and a Keiyoushi source
@@ -23,7 +23,6 @@ UMA_ANNOTATION_RE = re.compile(
     re.DOTALL,
 )
 EXTENSION_NAME_RE = re.compile(r'(?m)^\s*name\s*=\s*"([^"]+)"')
-SOURCE_BLOCK_RE = re.compile(r'\bsource\s*\{(.*?)\}', re.DOTALL)
 FIELD_STRING_RE = {
     "name": re.compile(r'(?m)^\s*name\s*=\s*"([^"]+)"'),
     "lang": re.compile(r'(?m)^\s*lang\s*=\s*"([^"]+)"'),
@@ -72,7 +71,39 @@ def host(value: str) -> str:
     return hostname
 
 
-def parse_keiyoushi_source(module: Path) -> dict:
+def extract_blocks(text: str, keyword: str) -> list[str]:
+    """Return brace-balanced Kotlin blocks introduced by `keyword {`."""
+    result: list[str] = []
+    pattern = re.compile(rf"\b{re.escape(keyword)}\s*\{{")
+    for match in pattern.finditer(text):
+        start = match.end()
+        depth = 1
+        i = start
+        in_string = False
+        escaped = False
+        while i < len(text) and depth:
+            ch = text[i]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+            i += 1
+        if depth == 0:
+            result.append(text[start : i - 1])
+    return result
+
+
+def parse_keiyoushi_sources(module: Path) -> list[dict]:
     build_file = module / "build.gradle.kts"
     if not build_file.is_file():
         fail(f"Keiyoushi module build file missing: {build_file}")
@@ -83,35 +114,49 @@ def parse_keiyoushi_source(module: Path) -> dict:
         fail(f"Could not parse extension name from {build_file}")
     extension_name = extension_name_match.group(1)
 
-    blocks = SOURCE_BLOCK_RE.findall(text)
-    if len(blocks) != 1:
-        fail(f"M2 POC expects exactly one source block in {build_file}, found {len(blocks)}")
-    block = blocks[0]
+    sources: list[dict] = []
+    for block in extract_blocks(text, "source"):
+        lang_match = FIELD_STRING_RE["lang"].search(block)
+        base_url_match = BASE_URL_RE.search(block)
+        if lang_match is None or base_url_match is None:
+            continue
+        source_name_match = FIELD_STRING_RE["name"].search(block)
+        source_name = source_name_match.group(1) if source_name_match else extension_name
+        version_id_match = VERSION_ID_RE.search(block)
+        version_id = int(version_id_match.group(1)) if version_id_match else 1
+        explicit_id_match = SOURCE_ID_RE.search(block)
+        source_id = (
+            int(explicit_id_match.group(1))
+            if explicit_id_match
+            else compute_keiyoushi_source_id(source_name, lang_match.group(1), version_id)
+        )
+        sources.append(
+            {
+                "name": source_name,
+                "lang": lang_match.group(1),
+                "baseUrl": base_url_match.group(1),
+                "sourceId": source_id,
+                "sourceIdKind": "explicit" if explicit_id_match else "computed",
+                "versionId": version_id,
+            }
+        )
+    if not sources:
+        fail(f"Could not parse any source blocks from {build_file}")
+    return sources
 
-    lang_match = FIELD_STRING_RE["lang"].search(block)
-    base_url_match = BASE_URL_RE.search(block)
-    if lang_match is None or base_url_match is None:
-        fail(f"Could not parse lang/baseUrl from {build_file}")
 
-    source_name_match = FIELD_STRING_RE["name"].search(block)
-    source_name = source_name_match.group(1) if source_name_match else extension_name
-    version_id_match = VERSION_ID_RE.search(block)
-    version_id = int(version_id_match.group(1)) if version_id_match else 1
-    explicit_id_match = SOURCE_ID_RE.search(block)
-    source_id = (
-        int(explicit_id_match.group(1))
-        if explicit_id_match
-        else compute_keiyoushi_source_id(source_name, lang_match.group(1), version_id)
-    )
-
-    return {
-        "name": source_name,
-        "lang": lang_match.group(1),
-        "baseUrl": base_url_match.group(1),
-        "sourceId": source_id,
-        "sourceIdKind": "explicit" if explicit_id_match else "computed",
-        "versionId": version_id,
-    }
+def parse_keiyoushi_source(module: Path, expected_name: str, expected_domain: str) -> dict:
+    candidates = [
+        source
+        for source in parse_keiyoushi_sources(module)
+        if source["name"] == expected_name and host(source["baseUrl"]) == expected_domain
+    ]
+    if len(candidates) != 1:
+        fail(
+            f"Expected exactly one Keiyoushi source {expected_name!r} at {expected_domain} "
+            f"in {module}, found {len(candidates)}"
+        )
+    return candidates[0]
 
 
 def parse_uma_source(path: Path) -> dict:
@@ -127,6 +172,15 @@ def parse_uma_source(path: Path) -> dict:
         "lang": match.group(3),
         "text": text,
     }
+
+
+def selected_uma_path(uma_file: str, language: str) -> str:
+    path = Path(uma_file)
+    site_root = Path("src/main/kotlin/tsuki/site") / language
+    try:
+        return path.relative_to(site_root).as_posix()
+    except ValueError:
+        fail(f"UMA file {uma_file} is outside the expected {site_root} source tree")
 
 
 def apply_structural_adapter_if_available(manifest_path: Path, uma_root: Path, keiyoushi_root: Path) -> None:
@@ -220,8 +274,9 @@ def verify(manifest_path: Path, packs_path: Path, uma_root: Path, keiyoushi_root
             fail(f"Official pack metadata mismatch for {canonical}")
 
         uma_file = uma_root / uma["file"]
-        if Path(uma["file"]).name not in set(pack.get("sources") or []):
-            fail(f"{canonical}: UMA file is not selected by official pack {pack_name}")
+        selected_path = selected_uma_path(uma["file"], language)
+        if selected_path not in set(pack.get("sources") or []):
+            fail(f"{canonical}: UMA file {selected_path} is not selected by official pack {pack_name}")
         uma_source = parse_uma_source(uma_file)
         if uma_source["sourceName"] != uma["sourceName"] or uma_source["sourceName"] != official["sourceName"]:
             fail(f"{canonical}: UMA source identity mismatch")
@@ -231,16 +286,9 @@ def verify(manifest_path: Path, packs_path: Path, uma_root: Path, keiyoushi_root
             fail(f"{canonical}: verified domain {verified_domain} not found in UMA source")
 
         kei_module = keiyoushi_root / kei["module"]
-        kei_source = parse_keiyoushi_source(kei_module)
-        if kei_source["name"] != kei["sourceName"]:
-            fail(f"{canonical}: Keiyoushi source name mismatch: {kei_source['name']!r}")
+        kei_source = parse_keiyoushi_source(kei_module, kei["sourceName"], verified_domain)
         if kei_source["lang"] != language:
             fail(f"{canonical}: Keiyoushi language mismatch")
-        if host(kei_source["baseUrl"]) != verified_domain:
-            fail(
-                f"{canonical}: Keiyoushi host {host(kei_source['baseUrl'])} "
-                f"does not match verified host {verified_domain}"
-            )
         if kei_source["sourceId"] != int(kei["sourceId"]):
             fail(
                 f"{canonical}: Keiyoushi source id mismatch: "
