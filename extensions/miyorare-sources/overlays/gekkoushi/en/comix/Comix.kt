@@ -12,6 +12,7 @@ import tsuki.MangaSourceParser
 import tsuki.bitmap.Rect
 import tsuki.config.ConfigKey
 import tsuki.core.PagedMangaParser
+import tsuki.exception.ParseException
 import tsuki.model.*
 import tsuki.network.CommonHeaders
 import tsuki.util.*
@@ -164,16 +165,16 @@ internal class Comix(
         parseStaticPages(doc).takeIf { it.isNotEmpty() }?.let { return it }
 
         val chapterId = chapter.url.substringAfterLast('/').substringBefore("-chapter-")
-            .toIntOrNull() ?: parseFailed("Could not find Comix chapter id", chapter.url)
+            .toIntOrNull() ?: readerError("Could not find Comix chapter id", chapter.url)
         val raw = loaderContext.evaluateJs(
             chapterUrl,
             PAGE_NAVIGATION_MARKER + chapterPagesScript(chapterId),
-        ) ?: parseFailed("Comix reader did not return page data", chapter.url)
+        ) ?: readerError("Comix reader did not return page data", chapter.url)
         val payload = JSONObject(decodeJavascriptValue(raw))
-        payload.optString("error").nullIfEmpty()?.let { parseFailed(it, chapter.url) }
+        payload.optString("error").nullIfEmpty()?.let { readerError(it, chapter.url) }
 
         val base = payload.optString("baseUrl").trimEnd('/')
-        val items = payload.optJSONArray("items") ?: parseFailed("Comix reader returned no pages", chapter.url)
+        val items = payload.optJSONArray("items") ?: readerError("Comix reader returned no pages", chapter.url)
         return buildList(items.length()) {
             for (index in 0 until items.length()) {
                 val item = items.optJSONObject(index) ?: continue
@@ -185,7 +186,7 @@ internal class Comix(
                     else -> continue
                 }
                 val parsed = absolute.toHttpUrlOrNull() ?: continue
-                val withReaderFlags = parsed.newBuilder().apply {
+                val marked = parsed.newBuilder().apply {
                     if (item.optInt("s", 0) == 1 && "v3" !in parsed.queryParameterNames) {
                         addQueryParameter("v3", null)
                     }
@@ -193,13 +194,15 @@ internal class Comix(
                 }.build().toString()
                 add(
                     MangaPage(
-                        id = generateUid(withReaderFlags),
-                        url = withReaderFlags,
+                        id = generateUid(marked),
+                        url = marked,
                         preview = null,
                         source = source,
                     ),
                 )
             }
+        }.ifEmpty {
+            readerError("Comix reader returned an empty page list", chapter.url)
         }
     }
 
@@ -211,7 +214,12 @@ internal class Comix(
                 if (!url.startsWith("http") || !seen.add(url)) return@mapNotNull null
                 val marked = url.toHttpUrlOrNull()?.newBuilder()?.fragment(PAGE_FRAGMENT)?.build()?.toString()
                     ?: return@mapNotNull null
-                MangaPage(generateUid(marked), marked, null, source)
+                MangaPage(
+                    id = generateUid(marked),
+                    url = marked,
+                    preview = null,
+                    source = source,
+                )
             }
     }
 
@@ -233,8 +241,7 @@ internal class Comix(
         val response = chain.proceed(request)
         if (!response.isSuccessful || original.url.fragment != PAGE_FRAGMENT) return response
 
-        val rawEncSeed = response.header("x-enc-seed")
-        val encSeed = rawEncSeed?.toLongOrNull()?.toInt()
+        val encSeed = response.header("x-enc-seed")?.toLongOrNull()?.toInt()
         val encLen = response.header("x-enc-len")?.toIntOrNull()
         val scrambleSeed = response.header("x-scramble-seed")?.toLongOrNull()?.toInt()
         val scrambleHash = decodeScrambleHash(response.header("x-scramble-hash"))
@@ -249,7 +256,12 @@ internal class Comix(
         val mediaType = response.body.contentType()
         val originalBytes = response.body.bytes()
         val decoded = if (needsXor) {
-            decodeEncodedBytes(originalBytes, requireNotNull(encSeed), requireNotNull(encLen), response.header("x-enc-algo"))
+            decodeEncodedBytes(
+                originalBytes,
+                requireNotNull(encSeed),
+                requireNotNull(encLen),
+                response.header("x-enc-algo"),
+            )
         } else {
             originalBytes
         }
@@ -261,7 +273,8 @@ internal class Comix(
         if (!needsGrid) return decodedResponse
 
         val seed = requireNotNull(scrambleSeed) xor scrambleHash
-        return loaderContext.redrawImageResponse(decodedResponse) { bitmap ->
+        val redrawBase = decodedResponse.newBuilder().removeHeader("Content-Type").build()
+        return loaderContext.redrawImageResponse(redrawBase) { bitmap ->
             val width = bitmap.width
             val height = bitmap.height
             val tileWidth = width / GRID_COLS
@@ -309,13 +322,11 @@ internal class Comix(
     private fun firstNonBlank(vararg values: String?): String? =
         values.firstOrNull { !it.isNullOrBlank() }?.trim()
 
+    private fun readerError(message: String, url: String): Nothing = throw ParseException(message, url)
+
     private fun decodeJavascriptValue(value: String): String {
         val trimmed = value.trim()
-        return if (trimmed.startsWith('"')) {
-            JSONArray("[$trimmed]").getString(0)
-        } else {
-            trimmed
-        }
+        return if (trimmed.startsWith('"')) JSONArray("[$trimmed]").getString(0) else trimmed
     }
 
     private fun chapterPagesScript(chapterId: Int): String = """
