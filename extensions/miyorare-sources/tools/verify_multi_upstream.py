@@ -22,6 +22,8 @@ UMA_ANNOTATION_RE = re.compile(
     r'@MangaSourceParser\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"',
     re.DOTALL,
 )
+QUOTED_STRING_RE = re.compile(r'"([^"\r\n]+)"')
+PLAIN_HOST_RE = re.compile(r'^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$')
 EXTENSION_NAME_RE = re.compile(r'(?m)^\s*name\s*=\s*"([^"]+)"')
 FIELD_STRING_RE = {
     "name": re.compile(r'(?m)^\s*name\s*=\s*"([^"]+)"'),
@@ -69,6 +71,28 @@ def host(value: str) -> str:
     if not hostname:
         fail(f"Invalid URL/domain: {value!r}")
     return hostname
+
+
+def comparable_host(value: str) -> str:
+    value = host(value)
+    return value[4:] if value.startswith("www.") else value
+
+
+def literal_hosts(text: str) -> set[str]:
+    """Return concrete host literals from the parser; interpolation is deliberately ignored."""
+    result: set[str] = set()
+    for raw in QUOTED_STRING_RE.findall(text):
+        value = raw.strip()
+        if "$" in value or "{" in value or "}" in value:
+            continue
+        try:
+            if value.startswith(("https://", "http://")):
+                result.add(host(value))
+            elif PLAIN_HOST_RE.fullmatch(value):
+                result.add(host(value))
+        except SystemExit:
+            continue
+    return result
 
 
 def extract_blocks(text: str, keyword: str) -> list[str]:
@@ -146,10 +170,11 @@ def parse_keiyoushi_sources(module: Path) -> list[dict]:
 
 
 def parse_keiyoushi_source(module: Path, expected_name: str, expected_domain: str) -> dict:
+    expected_host = comparable_host(expected_domain)
     candidates = [
         source
         for source in parse_keiyoushi_sources(module)
-        if source["name"] == expected_name and host(source["baseUrl"]) == expected_domain
+        if source["name"] == expected_name and comparable_host(source["baseUrl"]) == expected_host
     ]
     if len(candidates) != 1:
         fail(
@@ -254,6 +279,7 @@ def verify(manifest_path: Path, packs_path: Path, uma_root: Path, keiyoushi_root
         canonical = raw["canonicalId"]
         language = raw["language"]
         verified_domain = host(raw["verifiedDomain"])
+        verified_host = comparable_host(verified_domain)
         official = raw["official"]
         uma = raw["uma"]
         kei = raw["keiyoushi"]
@@ -282,13 +308,16 @@ def verify(manifest_path: Path, packs_path: Path, uma_root: Path, keiyoushi_root
             fail(f"{canonical}: UMA source identity mismatch")
         if uma_source["lang"] != language:
             fail(f"{canonical}: UMA language mismatch")
-        if f'"{verified_domain}"' not in uma_source["text"]:
-            fail(f"{canonical}: verified domain {verified_domain} not found in UMA source")
+        uma_hosts = {comparable_host(value) for value in literal_hosts(uma_source["text"])}
+        if verified_host not in uma_hosts:
+            fail(f"{canonical}: verified domain {verified_domain} not found as a concrete UMA host literal")
 
         kei_module = keiyoushi_root / kei["module"]
         kei_source = parse_keiyoushi_source(kei_module, kei["sourceName"], verified_domain)
         if kei_source["lang"] != language:
             fail(f"{canonical}: Keiyoushi language mismatch")
+        if comparable_host(kei_source["baseUrl"]) != verified_host:
+            fail(f"{canonical}: Keiyoushi host no longer matches verified host {verified_domain}")
         if kei_source["sourceId"] != int(kei["sourceId"]):
             fail(
                 f"{canonical}: Keiyoushi source id mismatch: "
