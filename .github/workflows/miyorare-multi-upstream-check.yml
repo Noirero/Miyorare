@@ -12,6 +12,7 @@ on:
       - 'extensions/miyorare-sources/packs.json'
       - 'extensions/miyorare-sources/tools/verify_multi_upstream.py'
       - 'extensions/miyorare-sources/tools/discover_keiyoushi_en_aliases.py'
+      - 'extensions/miyorare-sources/tools/audit_keiyoushi_en_unmapped.py'
       - 'extensions/miyorare-sources/README.md'
       - '.github/workflows/miyorare-multi-upstream-check.yml'
   workflow_dispatch:
@@ -55,7 +56,7 @@ jobs:
           ref: ${{ steps.pins.outputs.keiyoushi }}
           path: _upstream/keiyoushi
 
-      - name: Inventory exact EN overlap
+      - name: Inventory proven EN overlap
         run: |
           python3 extensions/miyorare-sources/tools/discover_keiyoushi_en_aliases.py \
             --manifest extensions/miyorare-sources/multi-upstream.json \
@@ -63,6 +64,23 @@ jobs:
             --uma _upstream/uma \
             --keiyoushi _upstream/keiyoushi \
             --output build/miyorare-multi-upstream/en-overlap.json
+
+      - name: Require complete proven EN coverage
+        shell: bash
+        run: |
+          exact=$(jq -r '.summary.missingExactAliases' build/miyorare-multi-upstream/en-overlap.json)
+          literal=$(jq -r '.summary.missingNameAndLiteralHostAliases' build/miyorare-multi-upstream/en-overlap.json)
+          test "$exact" -eq 0
+          test "$literal" -eq 0
+
+      - name: Audit unmapped EN sources
+        run: |
+          python3 extensions/miyorare-sources/tools/audit_keiyoushi_en_unmapped.py \
+            --manifest extensions/miyorare-sources/multi-upstream.json \
+            --packs extensions/miyorare-sources/packs.json \
+            --uma _upstream/uma \
+            --keiyoushi _upstream/keiyoushi \
+            --output build/miyorare-multi-upstream/en-unmapped-review.json
 
       - name: Verify normalized multi-upstream aliases
         run: |
@@ -81,4 +99,5 @@ jobs:
           path: |
             build/miyorare-multi-upstream/intake.json
             build/miyorare-multi-upstream/en-overlap.json
+            build/miyorare-multi-upstream/en-unmapped-review.json
           if-no-files-found: error
