@@ -11,6 +11,7 @@ on:
       - 'extensions/miyorare-sources/multi-upstream.json'
       - 'extensions/miyorare-sources/packs.json'
       - 'extensions/miyorare-sources/tools/verify_multi_upstream.py'
+      - 'extensions/miyorare-sources/tools/discover_keiyoushi_en_aliases.py'
       - 'extensions/miyorare-sources/README.md'
       - '.github/workflows/miyorare-multi-upstream-check.yml'
   workflow_dispatch:
@@ -54,6 +55,15 @@ jobs:
           ref: ${{ steps.pins.outputs.keiyoushi }}
           path: _upstream/keiyoushi
 
+      - name: Inventory exact EN overlap
+        run: |
+          python3 extensions/miyorare-sources/tools/discover_keiyoushi_en_aliases.py \
+            --manifest extensions/miyorare-sources/multi-upstream.json \
+            --packs extensions/miyorare-sources/packs.json \
+            --uma _upstream/uma \
+            --keiyoushi _upstream/keiyoushi \
+            --output build/miyorare-multi-upstream/en-overlap.json
+
       - name: Verify normalized multi-upstream aliases
         run: |
           python3 extensions/miyorare-sources/tools/verify_multi_upstream.py \
@@ -63,9 +73,12 @@ jobs:
             --keiyoushi _upstream/keiyoushi \
             --output build/miyorare-multi-upstream/intake.json
 
-      - name: Upload normalized intake metadata
+      - name: Upload multi-upstream evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: miyorare-multi-upstream-intake
-          path: build/miyorare-multi-upstream/intake.json
+          path: |
+            build/miyorare-multi-upstream/intake.json
+            build/miyorare-multi-upstream/en-overlap.json
           if-no-files-found: error
