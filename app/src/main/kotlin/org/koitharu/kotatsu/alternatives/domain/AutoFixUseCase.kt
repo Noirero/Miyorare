@@ -119,13 +119,16 @@ class AutoFixUseCase @Inject constructor(
 			).collect { event ->
 				when (event) {
 					is AlternativeSearchEvent.Result -> {
-						if (MigrationSelection.of(event.manga) == selection) selected = event.manga
+						if (event.manga.source.name == selection.source && event.manga.id == selection.id) {
+							selected = event.manga
+						}
 					}
 					is AlternativeSearchEvent.SourceFinished -> {
 						if (event.error != null && validationError == null) validationError = event.error
 					}
 				}
 			}
+			if (selected != null) break
 		}
 		val approved = selected ?: return MigrationDiscovery(seed, incomplete = validationError != null)
 		val probe = approved.probeHealth()
