@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Discover provable EN overlap between the curated Miyorare/UMA shard and Keiyoushi.
 
-This tool is intentionally read-only. It proposes a canonical alias only when one selected
-Miyorare EN source and one Keiyoushi EN source resolve to the same unique website host.
-Name-only or ambiguous matches are reported for manual review and are never auto-promoted.
+This tool is intentionally read-only. It proposes canonical aliases only when provider identity can be
+proven conservatively: either a unique exact configured host, or a matching source name plus a host
+that is literally present in the UMA parser. Ambiguous/name-only matches stay manual-review only.
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ UMA_ANNOTATION_RE = re.compile(
     re.DOTALL,
 )
 UMA_DOMAIN_RE = re.compile(r'ConfigKey\.Domain\s*\(\s*"([^"]+)"')
+QUOTED_STRING_RE = re.compile(r'"([^"\r\n]+)"')
+PLAIN_HOST_RE = re.compile(r'^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$')
 EXTENSION_NAME_RE = re.compile(r'(?m)^\s*name\s*=\s*"([^"]+)"')
 FIELD_STRING_RE = {
     "name": re.compile(r'(?m)^\s*name\s*=\s*"([^"]+)"'),
@@ -44,6 +46,28 @@ def host(value: str) -> str:
     if not hostname:
         raise ValueError(f"Invalid URL/domain: {value!r}")
     return hostname
+
+
+def comparable_host(value: str) -> str:
+    value = host(value)
+    return value[4:] if value.startswith("www.") else value
+
+
+def literal_hosts(text: str) -> list[str]:
+    """Extract only concrete host literals, never interpolated/runtime-generated values."""
+    result: set[str] = set()
+    for raw in QUOTED_STRING_RE.findall(text):
+        value = raw.strip()
+        if "$" in value or "{" in value or "}" in value:
+            continue
+        try:
+            if value.startswith(("https://", "http://")):
+                result.add(host(value))
+            elif PLAIN_HOST_RE.fullmatch(value):
+                result.add(host(value))
+        except ValueError:
+            continue
+    return sorted(result)
 
 
 def normalize_name(value: str) -> str:
@@ -111,6 +135,7 @@ def read_miyorare_en(packs: dict, uma_root: Path) -> list[dict]:
                 "displayName": display_name,
                 "language": language,
                 "domains": domains,
+                "literalHosts": literal_hosts(text),
                 "nameKeys": sorted(
                     {
                         normalize_name(source_name),
@@ -173,6 +198,29 @@ def read_keiyoushi_en(keiyoushi_root: Path) -> list[dict]:
     return result
 
 
+def proposed_alias(uma: dict, source: dict, verified_domain: str) -> dict:
+    return {
+        "canonicalId": f"miyorare:miyorare-en:{uma['sourceName']}",
+        "language": "en",
+        "verifiedDomain": verified_domain,
+        "official": {
+            "pack": "en",
+            "pluginId": "miyorare-en",
+            "sourceName": uma["sourceName"],
+        },
+        "uma": {
+            "pluginId": "uma",
+            "sourceName": uma["sourceName"],
+            "file": uma["file"],
+        },
+        "keiyoushi": {
+            "module": source["module"],
+            "sourceName": source["sourceName"],
+            "sourceId": source["sourceId"],
+        },
+    }
+
+
 def discover(manifest: dict, packs: dict, uma_root: Path, keiyoushi_root: Path) -> dict:
     official = read_miyorare_en(packs, uma_root)
     kei = read_keiyoushi_en(keiyoushi_root)
@@ -198,50 +246,52 @@ def discover(manifest: dict, packs: dict, uma_root: Path, keiyoushi_root: Path) 
         if len(uma_items) == 1 and len(kei_items) == 1:
             uma = uma_items[0]
             source = kei_items[0]
-            alias = {
-                "canonicalId": f"miyorare:miyorare-en:{uma['sourceName']}",
-                "language": "en",
-                "verifiedDomain": domain,
-                "official": {
-                    "pack": "en",
-                    "pluginId": "miyorare-en",
-                    "sourceName": uma["sourceName"],
-                },
-                "uma": {
-                    "pluginId": "uma",
-                    "sourceName": uma["sourceName"],
-                    "file": uma["file"],
-                },
-                "keiyoushi": {
-                    "module": source["module"],
-                    "sourceName": source["sourceName"],
-                    "sourceId": source["sourceId"],
-                },
-            }
             exact.append(
                 {
                     "domain": domain,
                     "miyorare": uma,
                     "keiyoushi": source,
                     "alreadyMapped": uma["sourceName"] in existing,
-                    "proposedAlias": alias,
+                    "proposedAlias": proposed_alias(uma, source, domain),
                 }
             )
         else:
             ambiguous.append({"domain": domain, "miyorare": uma_items, "keiyoushi": kei_items})
 
     exact_source_names = {item["miyorare"]["sourceName"] for item in exact}
+    name_literal: list[dict] = []
     name_review: list[dict] = []
     for uma in official:
         if uma.get("sourceName") in exact_source_names or uma.get("error"):
             continue
-        matches = [
+        name_matches = [
             source
             for source in kei
             if set(uma.get("nameKeys") or []) & set(source.get("nameKeys") or [])
         ]
-        if matches:
-            name_review.append({"miyorare": uma, "keiyoushi": matches})
+        if not name_matches:
+            continue
+        literal_keys = {comparable_host(value) for value in uma.get("literalHosts") or []}
+        proven = [source for source in name_matches if comparable_host(source["domain"]) in literal_keys]
+        if len(proven) == 1:
+            source = proven[0]
+            name_literal.append(
+                {
+                    "domain": source["domain"],
+                    "miyorare": uma,
+                    "keiyoushi": source,
+                    "alreadyMapped": uma["sourceName"] in existing,
+                    "proposedAlias": proposed_alias(uma, source, source["domain"]),
+                }
+            )
+        else:
+            name_review.append(
+                {
+                    "miyorare": uma,
+                    "keiyoushi": name_matches,
+                    "literalHostMatches": proven,
+                }
+            )
 
     mapped_names = set(existing)
     return {
@@ -253,13 +303,19 @@ def discover(manifest: dict, packs: dict, uma_root: Path, keiyoushi_root: Path) 
             "existingEnAliases": len(existing),
             "exactUniqueDomainMatches": len(exact),
             "missingExactAliases": sum(not item["alreadyMapped"] for item in exact),
+            "nameAndLiteralHostMatches": len(name_literal),
+            "missingNameAndLiteralHostAliases": sum(not item["alreadyMapped"] for item in name_literal),
             "ambiguousSharedDomains": len(ambiguous),
-            "nameOnlyReviewCandidates": len(name_review),
+            "manualReviewCandidates": len(name_review),
         },
         "missingExactAliases": [item["proposedAlias"] for item in exact if not item["alreadyMapped"]],
+        "missingNameAndLiteralHostAliases": [
+            item["proposedAlias"] for item in name_literal if not item["alreadyMapped"]
+        ],
         "exactMatches": exact,
+        "nameAndLiteralHostMatches": name_literal,
         "ambiguousDomains": ambiguous,
-        "nameOnlyReview": name_review,
+        "manualReview": name_review,
         "unmappedMiyorareSourceNames": sorted(
             item["sourceName"]
             for item in official
@@ -290,10 +346,12 @@ def main() -> None:
     print(
         "EN overlap inventory: "
         f"{summary['miyorareSelectedEn']} Miyorare / {summary['keiyoushiEnSources']} Keiyoushi; "
-        f"{summary['exactUniqueDomainMatches']} exact-domain matches, "
-        f"{summary['missingExactAliases']} missing aliases, "
+        f"{summary['exactUniqueDomainMatches']} exact-domain matches "
+        f"({summary['missingExactAliases']} missing), "
+        f"{summary['nameAndLiteralHostMatches']} name+literal-host matches "
+        f"({summary['missingNameAndLiteralHostAliases']} missing), "
         f"{summary['ambiguousSharedDomains']} ambiguous domains, "
-        f"{summary['nameOnlyReviewCandidates']} name-only review candidates"
+        f"{summary['manualReviewCandidates']} manual-review candidates"
     )
 
 
