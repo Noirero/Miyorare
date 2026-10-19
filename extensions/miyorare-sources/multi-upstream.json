@@ -3,12 +3,12 @@
   "upstreams": {
     "uma": {
       "repository": "InvalidDavid/UMA",
-      "commit": "a0ebc9ffc7de02b7b50cbcb620092d0a9263c785",
+      "commit": "52185ec4faada143f57dcfb41c6fa49aa346b4db",
       "license": "GPL-3.0"
     },
     "keiyoushi": {
       "repository": "keiyoushi/extensions-source",
-      "commit": "2025891752e4705effc28e87a043f7205014cde3",
+      "commit": "24bd7e69e54020079298d19bf808ccc0961b0a69",
       "license": "Apache-2.0"
     }
   },
