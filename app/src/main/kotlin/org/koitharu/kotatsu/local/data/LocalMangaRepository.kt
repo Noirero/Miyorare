@@ -25,6 +25,7 @@ import org.koitharu.kotatsu.core.util.ext.deleteAwait
 import org.koitharu.kotatsu.core.util.ext.isImage
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.takeIfWriteable
+import org.koitharu.kotatsu.core.util.ext.toZipUri
 import org.koitharu.kotatsu.core.util.ext.withChildren
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -53,6 +54,7 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.io.File
 import java.util.EnumSet
 import java.util.Locale
+import java.util.zip.ZipFile
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -630,7 +632,8 @@ class LocalMangaRepository @Inject constructor(
 				append(".epub")
 			}
 			val file = filesByName[fileName.lowercase(Locale.ROOT)] ?: continue
-			linked += chapter.copy(url = file.toUri().toString(), source = LocalMangaSource)
+			val chapterUrl = resolveIndexedNovelChapterUrl(file, remoteManga.id, chapter.id) ?: return null
+			linked += chapter.copy(url = chapterUrl, source = LocalMangaSource)
 		}
 		if (linked.isEmpty()) return null
 		val rootUri = root.toUri().toString()
@@ -645,6 +648,22 @@ class LocalMangaRepository @Inject constructor(
 			file = root,
 		)
 	}
+
+
+	/**
+	 * The fast path only opens EPUBs whose deterministic filename already matched a remote chapter.
+	 * Read the tiny embedded index to recover the exact XHTML entry without parsing OPF/NCX.
+	 */
+	private fun resolveIndexedNovelChapterUrl(file: File, mangaId: Long, chapterId: Long): String? = runCatching {
+		ZipFile(file).use { zip ->
+			val entry = zip.getEntry(LocalMangaOutput.ENTRY_NAME_INDEX) ?: return@use null
+			val index = MangaIndex(zip.getInputStream(entry).bufferedReader().use { it.readText() })
+			if (index.getMangaInfo()?.id != mangaId) return@use null
+			val contentEntry = index.getChapterFileName(chapterId) ?: return@use null
+			if (zip.getEntry(contentEntry) == null) return@use null
+			file.toZipUri(contentEntry).toString()
+		}
+	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
 	private suspend fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
 		val migrated = localMangaIndex.linkMigratedDownloadChapters(remoteManga.id, localManga)
