@@ -59,7 +59,12 @@ internal class MiyorareTsukiLoaderContext(
 		webViewExecutor.evaluateJs(null, script)
 
 	override suspend fun evaluateJs(baseUrl: String, script: String): String? =
-		webViewExecutor.evaluateJs(baseUrl, script)
+		if (script.startsWith(PAGE_NAVIGATION_MARKER)) {
+			require(baseUrl.isNotBlank()) { "Page navigation requires a URL" }
+			webViewExecutor.evaluatePageJs(baseUrl, script.removePrefix(PAGE_NAVIGATION_MARKER))
+		} else {
+			webViewExecutor.evaluateJs(baseUrl, script)
+		}
 
 	override fun requestBrowserAction(parser: MangaParser, url: String): Nothing {
 		val descriptor = plugin.sources.firstOrNull { it.name == parser.source.name }
@@ -82,4 +87,9 @@ internal class MiyorareTsukiLoaderContext(
 	): Response = TsukiBitmapBridge.redraw(response, redraw)
 
 	override fun createBitmap(width: Int, height: Int): Bitmap = TsukiBitmapBridge.create(width, height)
+
+	private companion object {
+		/** Opt-in bridge used only by Miyorare-owned overlays; ordinary Tsuki evaluateJs stays unchanged. */
+		const val PAGE_NAVIGATION_MARKER = "/*miyorare:navigate-page*/"
+	}
 }
