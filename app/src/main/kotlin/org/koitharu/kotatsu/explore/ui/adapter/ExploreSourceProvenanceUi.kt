@@ -110,15 +110,15 @@ internal fun formatExploreSourceListSummary(
 	if (origin != ExploreSourceOrigin.EXTENSION_STORE) return compactSummary
 	val parts = rawSummary
 		?.split(" • ")
-		?.map(String::trim)
-		?.filter(String::isNotBlank)
+		?.map { it.trim() }
+		?.filter { it.isNotBlank() }
 		.orEmpty()
-	if (parts.size < 3) return rawSummary?.takeIf(String::isNotBlank) ?: compactSummary
+	if (parts.size < 3) return rawSummary?.takeIf { it.isNotBlank() } ?: compactSummary
 
 	val language = parts.first()
 	val version = parts[1].removePrefix("v").removePrefix("V").trim()
 	val repository = parts.drop(2).joinToString(" • ")
-	if (version.isBlank() || repository.isBlank()) return rawSummary?.takeIf(String::isNotBlank) ?: compactSummary
+	if (version.isBlank() || repository.isBlank()) return rawSummary?.takeIf { it.isNotBlank() } ?: compactSummary
 	return "$language • $repository • v$version"
 }
 
