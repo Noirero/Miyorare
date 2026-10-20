@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.core.model
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -22,13 +23,28 @@ class NovelSourceRoutingRegressionTest {
 	}
 
 	@Test
-	fun `novel download streams chapter html instead of treating it as an image url`() {
+	fun `novel reader preserves source page contract before fetching text`() {
 		val repository = source("org/koitharu/kotatsu/mihon/MihonMangaRepository.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(repository.contains("if(source.isNovel)return@withContextpage.url"))
-		assertTrue(repository.contains("if(source.isNovel){valhtml=fetchChapterText(page.url)"))
-		assertTrue(repository.contains("Request.Builder().url(novelRequestUrl(page.url)).build()"))
+		assertTrue(repository.contains("mihonSource.getPageList(chapter.toSourceChapter())"))
+		assertTrue(repository.contains("valpages=getSourcePages(chapter)"))
+		assertTrue(repository.contains("for((index,page)inpages.withIndex())"))
+		assertTrue(repository.contains("html.append(fetchPageText(page))"))
+		assertTrue(repository.contains("mihonSource.fetchPageText(page)"))
+		assertFalse(repository.contains("fetchPageText(Page(index=0,url=chapterUrl))"))
+	}
+
+	@Test
+	fun `novel download preserves source page metadata while streaming xhtml`() {
+		val repository = source("org/koitharu/kotatsu/mihon/MihonMangaRepository.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(repository.contains("host=MIHON_TEXT_HOST"))
+		assertTrue(repository.contains("index=page.index"))
+		assertTrue(repository.contains("imageUrl=page.imageUrl"))
+		assertTrue(repository.contains("valsourcePage=page.toNovelPage(pageUrl)"))
+		assertTrue(repository.contains("Request.Builder().url(novelRequestUrl(sourcePage.url)).build()"))
 		assertTrue(repository.contains("body(html.toResponseBody(\"application/xhtml+xml\".toMediaType()))"))
 	}
 
