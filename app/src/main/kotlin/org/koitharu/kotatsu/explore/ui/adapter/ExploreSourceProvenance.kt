@@ -88,7 +88,7 @@ fun ExploreSourceOriginFilter.titleRes(): Int = when (this) {
 	ExploreSourceOriginFilter.ALL -> R.string.explore_content_filter_all
 	ExploreSourceOriginFilter.MIYORARE_PACKS -> R.string.explore_source_family_miyorare_packs
 	ExploreSourceOriginFilter.EXTENSION_STORE -> R.string.explore_source_family_extension_store
-	ExploreSourceOriginFilter.PLUGINS -> R.string.explore_source_family_plugins
+	ExploreSourceOriginFilter.PLUGINS -> R.string.explore_source_filter_all_plugins
 	ExploreSourceOriginFilter.UMA -> R.string.explore_source_origin_uma
 	ExploreSourceOriginFilter.GEKKOUSHI -> R.string.explore_source_origin_gekkoushi
 	ExploreSourceOriginFilter.LNREADER -> R.string.explore_source_origin_lnreader
