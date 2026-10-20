@@ -10,6 +10,8 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.explore.ui.adapter.exploreSourceOrigin
+import org.koitharu.kotatsu.explore.ui.adapter.titleRes
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 
 class ExploreMenuProvider(
@@ -22,7 +24,7 @@ class ExploreMenuProvider(
 		menuInflater.inflate(R.menu.opt_explore, menu)
 		menu.findItem(R.id.action_show_nsfw_sources)?.isChecked = viewModel.isNsfwVisible.value
 		(menu.findItem(R.id.action_source_search)?.actionView as? SearchView)?.let { searchView ->
-			searchView.queryHint = searchView.context.getString(R.string.search_extensions)
+			searchView.queryHint = searchView.context.getString(R.string.explore_search_sources)
 			searchView.maxWidth = Int.MAX_VALUE
 			searchView.setOnQueryTextListener(
 				object : SearchView.OnQueryTextListener {
@@ -89,7 +91,13 @@ class ExploreMenuProvider(
 
 			else -> MaterialAlertDialogBuilder(context)
 				.setTitle(R.string.search_results)
-				.setItems(matches.map { it.source.getTitle(context) }.toTypedArray()) { _, which ->
+				.setItems(
+					matches.map { item ->
+						val title = item.source.getTitle(context)
+						val origin = context.getString(item.exploreSourceOrigin().titleRes())
+						"$title — $origin"
+					}.toTypedArray(),
+				) { _, which ->
 					searchView.clearFocus()
 					router.openList(matches[which].source, null, null)
 				}
