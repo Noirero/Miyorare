@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="explore_sources_title">Sources</string>
+	<string name="explore_source_origin_filter">Origin</string>
+	<string name="explore_source_family_miyorare_packs">Miyorare Packs</string>
+	<string name="explore_source_family_extension_store">Extension Store</string>
+	<string name="explore_source_family_plugins">Plugins</string>
+	<string name="explore_source_filter_all_plugins">All plugins</string>
+	<string name="explore_source_origin_miyorare_pack">Miyorare</string>
+	<string name="explore_source_origin_extension_store">Store</string>
+	<string name="explore_source_origin_uma">UMA</string>
+	<string name="explore_source_origin_gekkoushi">Gekkoushi</string>
+	<string name="explore_source_origin_lnreader">LNReader</string>
+	<string name="explore_source_origin_custom">Custom / Other</string>
+	<string name="explore_search_sources">Search sources</string>
+</resources>

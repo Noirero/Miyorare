@@ -43,6 +43,7 @@ class TypedListSpacingDecoration(
 			ListItemType.HEADER,
 			ListItemType.SMART_LOCAL_COLLECTION_HEADER,
 			ListItemType.FEED,
+			ListItemType.EXPLORE_SOURCE_FILTERS,
 			ListItemType.EXPLORE_SOURCE_LIST,
 			ListItemType.MANGA_SCROBBLING,
 			ListItemType.MANGA_LIST,
