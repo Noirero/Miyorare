@@ -8,6 +8,7 @@ import org.koitharu.kotatsu.explore.ui.adapter.ExploreSourceFamily
 import org.koitharu.kotatsu.explore.ui.adapter.ExploreSourceOrigin
 import org.koitharu.kotatsu.explore.ui.adapter.ExploreSourceOriginFilter
 import org.koitharu.kotatsu.explore.ui.adapter.family
+import org.koitharu.kotatsu.explore.ui.adapter.formatExploreSourceListSummary
 import org.koitharu.kotatsu.explore.ui.adapter.matches
 import org.koitharu.kotatsu.explore.ui.adapter.toExploreSourceOrigin
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
@@ -40,5 +41,61 @@ class ExploreSourceProvenanceTest {
 		assertTrue(ExploreSourceOrigin.GEKKOUSHI.matches(ExploreSourceOriginFilter.GEKKOUSHI))
 		assertFalse(ExploreSourceOrigin.UMA.matches(ExploreSourceOriginFilter.GEKKOUSHI))
 		assertFalse(ExploreSourceOrigin.EXTENSION_STORE.matches(ExploreSourceOriginFilter.PLUGINS))
+	}
+
+	@Test
+	fun `store summary shows language repository and version`() {
+		assertEquals(
+			"Indonesia • Kei • v1.2.3",
+			formatExploreSourceListSummary(
+				ExploreSourceOrigin.EXTENSION_STORE,
+				"Indonesia • 1.2.3 • Kei",
+				"Indonesia",
+			),
+		)
+	}
+
+	@Test
+	fun `store summary normalizes an existing version prefix`() {
+		assertEquals(
+			"Indonesia • Yuzuno • v2.4.0",
+			formatExploreSourceListSummary(
+				ExploreSourceOrigin.EXTENSION_STORE,
+				"Indonesia • v2.4.0 • Yuzuno",
+				"Indonesia",
+			),
+		)
+	}
+
+	@Test
+	fun `malformed store summary falls back safely`() {
+		assertEquals(
+			"Indonesia",
+			formatExploreSourceListSummary(
+				ExploreSourceOrigin.EXTENSION_STORE,
+				"Indonesia",
+				"Indonesia",
+			),
+		)
+	}
+
+	@Test
+	fun `non store sources keep the compact summary`() {
+		assertEquals(
+			"Indonesia",
+			formatExploreSourceListSummary(
+				ExploreSourceOrigin.MIYORARE_PACK,
+				"Indonesia • 1.2.3 • Miyorare",
+				"Indonesia",
+			),
+		)
+		assertEquals(
+			"English",
+			formatExploreSourceListSummary(
+				ExploreSourceOrigin.UMA,
+				"English • UMA",
+				"English",
+			),
+		)
 	}
 }

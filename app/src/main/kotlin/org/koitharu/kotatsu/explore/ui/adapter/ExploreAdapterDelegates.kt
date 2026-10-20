@@ -272,10 +272,12 @@ fun exploreSourceListItemAD(
 	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)
 
 	bind {
+		val origin = item.exploreSourceOrigin()
+		val compactSummary = item.summary.toCompactExploreSourceSummary()
 		binding.textViewTitle.text = item.source.getTitle(context)
 		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
-		binding.textViewSubtitle.text = item.summary.toCompactExploreSourceSummary()
-		binding.textViewOrigin.setText(item.exploreSourceOrigin().titleRes())
+		binding.textViewSubtitle.text = formatExploreSourceListSummary(origin, item.summary, compactSummary)
+		binding.textViewOrigin.bindExploreSourceOriginBadge(origin)
 		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
@@ -310,23 +312,26 @@ fun exploreSourceGridItemAD(
 		} else {
 			baseTitle
 		}
-		val originLabel = context.getString(item.exploreSourceOrigin().titleRes())
+		val origin = item.exploreSourceOrigin()
+		val originLabel = context.getString(origin.titleRes())
+		val compactSummary = item.summary.toCompactExploreSourceSummary()
+		val detailSummary = formatExploreSourceListSummary(origin, item.summary, compactSummary)
 		itemView.setTooltipCompat(
 			buildSpannedString {
 				bold {
 					append(title)
 				}
-				item.summary.toCompactExploreSourceSummary()?.let { language ->
+				detailSummary?.let { details ->
 					appendLine()
-					append(language)
-					append(" • ")
-					append(originLabel)
+					append(details)
 				}
+				appendLine()
+				append(originLabel)
 			},
 		)
 		binding.textViewTitle.text = title
 		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
-		binding.textViewOrigin.setText(item.exploreSourceOrigin().titleRes())
+		binding.textViewOrigin.bindExploreSourceOriginBadge(origin)
 		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
