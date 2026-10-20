@@ -28,7 +28,9 @@ class NovelSourceRoutingRegressionTest {
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(repository.contains("mihonSource.getPageList(chapter.toSourceChapter())"))
-		assertTrue(repository.contains("getSourcePages(chapter).joinToString(separator=\"\\n\"){page->fetchPageText(page)}"))
+		assertTrue(repository.contains("valpages=getSourcePages(chapter)"))
+		assertTrue(repository.contains("for((index,page)inpages.withIndex())"))
+		assertTrue(repository.contains("html.append(fetchPageText(page))"))
 		assertTrue(repository.contains("mihonSource.fetchPageText(page)"))
 		assertFalse(repository.contains("fetchPageText(Page(index=0,url=chapterUrl))"))
 	}

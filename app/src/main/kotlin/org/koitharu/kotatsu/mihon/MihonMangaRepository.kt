@@ -324,7 +324,13 @@ class MihonMangaRepository(
 	override suspend fun getChapterHtml(chapter: MangaChapter): String? {
 		if (!source.isNovel) return null
 		return withContext(Dispatchers.IO) {
-			getSourcePages(chapter).joinToString(separator = "\n") { page -> fetchPageText(page) }
+			val pages = getSourcePages(chapter)
+			val html = StringBuilder()
+			for ((index, page) in pages.withIndex()) {
+				if (index > 0) html.append('\n')
+				html.append(fetchPageText(page))
+			}
+			html.toString()
 		}
 	}
 
