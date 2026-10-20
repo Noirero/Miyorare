@@ -35,7 +35,7 @@ class ExploreSourceProvenanceInfoButton @JvmOverloads constructor(
 		val horizontalPadding = dp(24)
 		val verticalPadding = dp(8)
 		val rowGap = dp(10)
-		val badgeWidth = dp(96)
+		val badgeWidth = dp(120)
 
 		val content = LinearLayout(context).apply {
 			orientation = LinearLayout.VERTICAL
