@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.util.ext.drawableStart
 import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
 import org.koitharu.kotatsu.databinding.ItemExploreButtonsBinding
+import org.koitharu.kotatsu.databinding.ItemExploreSourceFiltersBinding
 import org.koitharu.kotatsu.databinding.ItemExploreSourceGridBinding
 import org.koitharu.kotatsu.databinding.ItemExploreSourceListBinding
 import org.koitharu.kotatsu.databinding.ItemExploreSuggestionsHeaderBinding
@@ -34,6 +35,8 @@ import org.koitharu.kotatsu.databinding.ItemRecommendationBinding
 import org.koitharu.kotatsu.explore.ui.model.ExploreButtons
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 import org.koitharu.kotatsu.explore.ui.model.RecommendationsItem
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageFlag
 import org.koitharu.kotatsu.kotatsumigration.ui.KotatsuMigrationService
 import org.koitharu.kotatsu.list.ui.adapter.ListHeaderClickListener
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
@@ -76,6 +79,23 @@ fun exploreButtonsAD(
 	}
 }
 
+fun exploreSourceFiltersAD(
+	onOriginClick: (View) -> Unit,
+	onLanguageClick: (View) -> Unit,
+) = adapterDelegateViewBinding<ExploreSourceFiltersItem, ListModel, ItemExploreSourceFiltersBinding>(
+	{ layoutInflater, parent -> ItemExploreSourceFiltersBinding.inflate(layoutInflater, parent, false) },
+) {
+	binding.buttonOrigin.setOnClickListener(onOriginClick)
+	binding.buttonLanguage.setOnClickListener(onLanguageClick)
+	bind {
+		val origin = context.getString(item.origin.titleRes())
+		binding.buttonOrigin.text = "${context.getString(R.string.explore_source_origin_filter)}: $origin"
+		val language = item.language?.let(::buildExploreLanguageLabel)
+			?: context.getString(R.string.explore_content_filter_all)
+		binding.buttonLanguage.text = "${context.getString(R.string.language)}: $language"
+	}
+}
+
 fun exploreListHeaderAD(
 	listener: ListHeaderClickListener?,
 ) = adapterDelegateViewBinding<ListHeader, ListModel, ItemExploreSuggestionsHeaderBinding>(
@@ -87,11 +107,6 @@ fun exploreListHeaderAD(
 	binding.buttonMore.setOnClickListener {
 		listener?.onListHeaderClick(item, it)
 	}
-	binding.textViewTitle.setOnClickListener {
-		if (item.payload is ExploreSourceLanguageFilterHeaderPayload) {
-			listener?.onListHeaderClick(item, it)
-		}
-	}
 	binding.buttonVisibility.setOnClickListener {
 		when (item.payload) {
 			R.id.nav_suggestions -> {
@@ -102,8 +117,8 @@ fun exploreListHeaderAD(
 
 			is ExplorePinnedHeaderPayload -> listener?.onListHeaderClick(item, it)
 			is ExploreSourceSectionHeaderPayload -> listener?.onListHeaderClick(item, it)
+			is ExploreSourceOriginHeaderPayload -> listener?.onListHeaderClick(item, it)
 			is ExploreSourceLanguageHeaderPayload -> listener?.onListHeaderClick(item, it)
-			is ExploreSourceLanguageFilterHeaderPayload -> listener?.onListHeaderClick(item, it)
 		}
 	}
 
@@ -111,17 +126,20 @@ fun exploreListHeaderAD(
 		val currentItem = item
 		val pinnedSection = currentItem.payload as? ExplorePinnedHeaderPayload
 		val sourceSection = currentItem.payload as? ExploreSourceSectionHeaderPayload
+		val sourceOrigin = currentItem.payload as? ExploreSourceOriginHeaderPayload
 		val sourceLanguage = currentItem.payload as? ExploreSourceLanguageHeaderPayload
-		val sourceLanguageFilter = currentItem.payload as? ExploreSourceLanguageFilterHeaderPayload
 		binding.textViewTitle.text = currentItem.getText(context)
-		binding.textViewCount.isVisible = pinnedSection != null || sourceLanguage != null
+		binding.textViewCount.isVisible =
+			pinnedSection != null || sourceSection != null || sourceOrigin != null || sourceLanguage != null
 		binding.textViewCount.text = when {
 			pinnedSection != null -> pinnedSection.sourceCount.toString()
+			sourceSection != null -> sourceSection.sourceCount.toString()
+			sourceOrigin != null -> sourceOrigin.sourceCount.toString()
 			sourceLanguage != null -> sourceLanguage.sourceCount.toString()
 			else -> ""
 		}
 		val isSourceAccordion =
-			pinnedSection != null || sourceSection != null || sourceLanguage != null || sourceLanguageFilter != null
+			pinnedSection != null || sourceSection != null || sourceOrigin != null || sourceLanguage != null
 		itemView.setOnClickListener(
 			if (isSourceAccordion) {
 				View.OnClickListener { listener?.onListHeaderClick(currentItem, it) }
@@ -129,7 +147,7 @@ fun exploreListHeaderAD(
 				null
 			},
 		)
-		binding.root.background = if (sourceLanguage != null || sourceLanguageFilter != null) {
+		binding.root.background = if (sourceLanguage != null) {
 			ContextCompat.getDrawable(context, R.drawable.bg_explore_language_header)
 		} else {
 			null
@@ -151,7 +169,7 @@ fun exploreListHeaderAD(
 		} else {
 			0
 		}
-		if (sourceSection?.section == ExploreSourceSection.MIYORARE) {
+		if (sourceSection?.section == ExploreSourceSection.MIYORARE_PACKS) {
 			binding.textViewTitle.setTextColor(
 				MaterialColors.getColor(binding.textViewTitle, androidx.appcompat.R.attr.colorPrimary),
 			)
@@ -160,8 +178,8 @@ fun exploreListHeaderAD(
 		}
 
 		val isSuggestions = currentItem.payload == R.id.nav_suggestions
-		val expanded = pinnedSection?.expanded ?: sourceSection?.expanded ?: sourceLanguage?.expanded
-		binding.buttonVisibility.isVisible = isSuggestions || expanded != null || sourceLanguageFilter != null
+		val expanded = pinnedSection?.expanded ?: sourceSection?.expanded ?: sourceOrigin?.expanded ?: sourceLanguage?.expanded
+		binding.buttonVisibility.isVisible = isSuggestions || expanded != null
 		when {
 			isSuggestions -> {
 				val isVisible = preferences.getBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, true)
@@ -169,13 +187,6 @@ fun exploreListHeaderAD(
 				binding.buttonVisibility.setIconResource(if (isVisible) R.drawable.ic_eye else R.drawable.ic_eye_off)
 				binding.buttonVisibility.contentDescription = context.getString(if (isVisible) R.string.hide else R.string.show)
 				binding.buttonVisibility.setTooltipCompat(if (isVisible) R.string.hide else R.string.show)
-			}
-
-			sourceLanguageFilter != null -> {
-				binding.buttonVisibility.setIconResource(R.drawable.ic_expand_more)
-				binding.buttonVisibility.rotation = 0f
-				binding.buttonVisibility.contentDescription = context.getString(R.string.language)
-				binding.buttonVisibility.setTooltipCompat(R.string.language)
 			}
 
 			expanded != null -> {
@@ -263,7 +274,8 @@ fun exploreSourceListItemAD(
 	bind {
 		binding.textViewTitle.text = item.source.getTitle(context)
 		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
-		binding.textViewSubtitle.text = item.summary.toCompactExploreSourceSummary()
+		binding.textViewSubtitle.text = item.summary.toExploreLanguageSummary()
+		binding.textViewOrigin.setText(item.exploreSourceOrigin().titleRes())
 		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
@@ -298,19 +310,23 @@ fun exploreSourceGridItemAD(
 		} else {
 			baseTitle
 		}
+		val originLabel = context.getString(item.exploreSourceOrigin().titleRes())
 		itemView.setTooltipCompat(
 			buildSpannedString {
 				bold {
 					append(title)
 				}
-				item.summary.toCompactExploreSourceSummary()?.let { summary ->
+				item.summary.toExploreLanguageSummary()?.let { language ->
 					appendLine()
-					append(summary)
+					append(language)
+					append(" • ")
+					append(originLabel)
 				}
 			},
 		)
 		binding.textViewTitle.text = title
 		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
+		binding.textViewOrigin.setText(item.exploreSourceOrigin().titleRes())
 		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
@@ -321,13 +337,18 @@ fun exploreSourceGridItemAD(
 	}
 }
 
-private fun String?.toCompactExploreSourceSummary(): String? {
-	val summary = this?.takeIf { it.isNotBlank() } ?: return this
-	val parts = summary.split(" • ").map(String::trim)
-	if (parts.size < 2 || parts.drop(1).none { it.contains("miyorare", ignoreCase = true) }) {
-		return summary
+private fun String?.toExploreLanguageSummary(): String? =
+	this?.takeIf { it.isNotBlank() }?.substringBefore(" • ")?.trim()?.takeIf { it.isNotBlank() }
+
+private fun buildExploreLanguageLabel(language: String): String {
+	val flag = getExternalExtensionLanguageFlag(language)
+	return buildString {
+		if (flag.isNotBlank()) {
+			append(flag)
+			append(' ')
+		}
+		append(getExternalExtensionLanguageDisplayName(language))
 	}
-	return "${parts.first()} • Miyorare"
 }
 
 internal fun sourceIconInsetPx(iconSizePx: Int, isNovel: Boolean): Int =
