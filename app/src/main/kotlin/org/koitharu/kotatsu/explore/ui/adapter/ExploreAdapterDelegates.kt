@@ -274,7 +274,7 @@ fun exploreSourceListItemAD(
 	bind {
 		binding.textViewTitle.text = item.source.getTitle(context)
 		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
-		binding.textViewSubtitle.text = item.summary.toExploreLanguageSummary()
+		binding.textViewSubtitle.text = item.summary.toCompactExploreSourceSummary()
 		binding.textViewOrigin.setText(item.exploreSourceOrigin().titleRes())
 		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
 		val inset = sourceIconInsetPx(
@@ -316,7 +316,7 @@ fun exploreSourceGridItemAD(
 				bold {
 					append(title)
 				}
-				item.summary.toExploreLanguageSummary()?.let { language ->
+				item.summary.toCompactExploreSourceSummary()?.let { language ->
 					appendLine()
 					append(language)
 					append(" • ")
@@ -337,7 +337,7 @@ fun exploreSourceGridItemAD(
 	}
 }
 
-private fun String?.toExploreLanguageSummary(): String? =
+private fun String?.toCompactExploreSourceSummary(): String? =
 	this?.takeIf { it.isNotBlank() }?.substringBefore(" • ")?.trim()?.takeIf { it.isNotBlank() }
 
 private fun buildExploreLanguageLabel(language: String): String {
