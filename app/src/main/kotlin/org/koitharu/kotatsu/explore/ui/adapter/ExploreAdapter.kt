@@ -221,9 +221,20 @@ class ExploreAdapter(
 		} ?: originFiltered
 		val pinned = filteredSources.filter { it.source.isPinned }
 		val sources = filteredSources.filterNot { it.source.isPinned }
-		val miyorare = sources.filter { it.exploreSourceOrigin().family == ExploreSourceFamily.MIYORARE_PACKS }
-		val store = sources.filter { it.exploreSourceOrigin().family == ExploreSourceFamily.EXTENSION_STORE }
-		val plugins = sources.filter { it.exploreSourceOrigin().family == ExploreSourceFamily.PLUGINS }
+
+		// Preserve the existing cached Miyorare split as a cheap ordering hint. Structured provenance
+		// remains authoritative below, so a stale presentation hint can never hide or misclassify a source.
+		val (miyorareHinted, otherHinted) = sources.partition { it.isMiyorareSource }
+		val provenanceOrdered = miyorareHinted + otherHinted
+		val miyorare = provenanceOrdered.filter {
+			it.exploreSourceOrigin().family == ExploreSourceFamily.MIYORARE_PACKS
+		}
+		val store = provenanceOrdered.filter {
+			it.exploreSourceOrigin().family == ExploreSourceFamily.EXTENSION_STORE
+		}
+		val plugins = provenanceOrdered.filter {
+			it.exploreSourceOrigin().family == ExploreSourceFamily.PLUGINS
+		}
 		val trailingItems = items.filterNot { item -> item is MangaSourceItem || item is ListHeader }
 
 		return buildList(items.size + 18) {
