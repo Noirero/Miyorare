@@ -85,8 +85,8 @@ fun exploreSourceFiltersAD(
 ) = adapterDelegateViewBinding<ExploreSourceFiltersItem, ListModel, ItemExploreSourceFiltersBinding>(
 	{ layoutInflater, parent -> ItemExploreSourceFiltersBinding.inflate(layoutInflater, parent, false) },
 ) {
-	binding.buttonOrigin.setOnClickListener(onOriginClick)
-	binding.buttonLanguage.setOnClickListener(onLanguageClick)
+	binding.buttonOrigin.setOnClickListener { view -> onOriginClick(view) }
+	binding.buttonLanguage.setOnClickListener { view -> onLanguageClick(view) }
 	bind {
 		val origin = context.getString(item.origin.titleRes())
 		binding.buttonOrigin.text = "${context.getString(R.string.explore_source_origin_filter)}: $origin"
