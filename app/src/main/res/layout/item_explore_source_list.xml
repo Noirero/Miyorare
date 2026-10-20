@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
 	xmlns:android="http://schemas.android.com/apk/res/android"
-	xmlns:app="http://schemas.android.com/apk/res-auto"
 	xmlns:tools="http://schemas.android.com/tools"
 	android:layout_width="match_parent"
 	android:layout_height="wrap_content"
@@ -24,15 +23,14 @@
 		android:layout_marginBottom="7dp"
 		android:background="?colorSurfaceContainer"
 		android:scaleType="centerCrop"
-		app:iconStyle="@style/FaviconDrawable.Small"
-		app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Kotatsu.Cover.Small"
 		tools:src="@tools:sample/backgrounds/scenic" />
 
 	<LinearLayout
-		android:layout_width="match_parent"
+		android:layout_width="0dp"
 		android:layout_height="wrap_content"
 		android:layout_marginStart="12dp"
-		android:layout_marginEnd="10dp"
+		android:layout_marginEnd="8dp"
+		android:layout_weight="1"
 		android:orientation="vertical">
 
 		<TextView
@@ -54,8 +52,23 @@
 			android:ellipsize="end"
 			android:singleLine="true"
 			android:textAppearance="?attr/textAppearanceBodySmall"
-			tools:text="@tools:sample/lorem[2]" />
+			tools:text="Indonesia" />
 
 	</LinearLayout>
+
+	<TextView
+		android:id="@+id/textView_origin"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_marginEnd="10dp"
+		android:background="@drawable/bg_extension_store_kind"
+		android:ellipsize="end"
+		android:maxLines="1"
+		android:paddingStart="8dp"
+		android:paddingTop="4dp"
+		android:paddingEnd="8dp"
+		android:paddingBottom="4dp"
+		android:textAppearance="?attr/textAppearanceLabelSmall"
+		tools:text="UMA" />
 
 </LinearLayout>
