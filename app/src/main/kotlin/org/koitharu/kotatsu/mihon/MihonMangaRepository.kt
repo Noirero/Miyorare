@@ -57,6 +57,7 @@ class MihonMangaRepository(
 		private const val MIHON_URL_SCHEME = "mihon"
 		private const val MIHON_RESOLVE_HOST = "resolve"
 		private const val MIHON_IMAGE_HOST = "image"
+		private const val MIHON_TEXT_HOST = "text"
 		private const val QUERY_PAGE_URL = "page_url"
 		private const val QUERY_IMAGE_URL = "image_url"
 		private const val QUERY_INDEX = "index"
@@ -267,26 +268,20 @@ class MihonMangaRepository(
 	}
 
 	override suspend fun getPagesImpl(chapter: MangaChapter): List<MangaPage> = withContext(Dispatchers.IO) {
-		// A novel chapter is one "page" of prose, fetched later by getChapterHtml. Same shape as the
-		// LNReader repository so the text reader treats both kinds of novel identically, and no
-		// network call happens here.
+		val pages = getSourcePages(chapter)
 		if (source.isNovel) {
-			return@withContext listOf(
-				MangaPage(id = chapter.id, url = chapter.url, preview = null, source = source),
-			)
+			return@withContext pages.map { page ->
+				page.toMangaPage(source, chapter.url).copy(
+					url = buildMihonPageUrl(
+						host = MIHON_TEXT_HOST,
+						pageUrl = page.url,
+						imageUrl = page.imageUrl,
+						index = page.index,
+					),
+					preview = null,
+				)
+			}
 		}
-		val sChapter = chapter.toSourceChapter()
-		// Match Mihon and delegate retry policy to the source's own OkHttp client.
-		val rawPages = try {
-			mihonSource.getPageList(sChapter)
-		} catch (e: Exception) {
-			throw translateExtensionException(e)
-		}
-		// Some extensions (compiled from Java or with internal bugs) return a List<Page> that
-		// contains null elements at runtime despite the non-null Kotlin type. Filtering here
-		// prevents the "Attempt to invoke virtual method on a null object reference" NPE.
-		@Suppress("UNCHECKED_CAST")
-		val pages = (rawPages as List<Page?>).filterNotNull()
 		pages.mapIndexed { index, page ->
 			val mapped = page.toMangaPage(source, chapter.url)
 			when {
@@ -313,20 +308,37 @@ class MihonMangaRepository(
 		}
 	}
 
+	private suspend fun getSourcePages(chapter: MangaChapter): List<Page> {
+		val rawPages = try {
+			mihonSource.getPageList(chapter.toSourceChapter())
+		} catch (e: Exception) {
+			throw translateExtensionException(e)
+		}
+		// Some extensions (compiled from Java or with internal bugs) return a List<Page> that
+		// contains null elements at runtime despite the non-null Kotlin type.
+		@Suppress("UNCHECKED_CAST")
+		return (rawPages as List<Page?>).filterNotNull()
+	}
+
 	/** A novel chapter's body. Null for a manga source, which is what the text reader checks. */
 	override suspend fun getChapterHtml(chapter: MangaChapter): String? {
 		if (!source.isNovel) return null
-		return withContext(Dispatchers.IO) { fetchChapterText(chapter.url) }
+		return withContext(Dispatchers.IO) {
+			getSourcePages(chapter).joinToString(separator = "\n") { page -> fetchPageText(page) }
+		}
 	}
 
-	private suspend fun fetchChapterText(chapterUrl: String): String = try {
-		mihonSource.fetchPageText(Page(index = 0, url = chapterUrl))
+	private suspend fun fetchPageText(page: Page): String = try {
+		mihonSource.fetchPageText(page)
 	} catch (e: Exception) {
 		throw translateExtensionException(e)
 	}
 
 	override suspend fun getPageUrl(page: MangaPage): String = withContext(Dispatchers.IO) {
-		if (source.isNovel) return@withContext page.url
+		if (source.isNovel) {
+			val ref = page.url.toMihonPageRef()
+			return@withContext if (ref?.host == MIHON_TEXT_HOST) ref.pageUrl else page.url
+		}
 		val httpSource = mihonSource as? HttpSource ?: return@withContext page.url
 		val ref = page.url.toMihonPageRef() ?: return@withContext page.url
 		try {
@@ -362,9 +374,10 @@ class MihonMangaRepository(
 			// synthetic response carrying the chapter html downloads a novel with no changes to the
 			// worker — same trick as the LNReader repository.
 			if (source.isNovel) {
-				val html = fetchChapterText(page.url)
+				val sourcePage = page.toNovelPage(pageUrl)
+				val html = fetchPageText(sourcePage)
 				return@withContext Response.Builder()
-					.request(Request.Builder().url(novelRequestUrl(page.url)).build())
+					.request(Request.Builder().url(novelRequestUrl(sourcePage.url)).build())
 					.protocol(Protocol.HTTP_1_1)
 					.code(200)
 					.message("OK")
@@ -379,11 +392,11 @@ class MihonMangaRepository(
 			}
 		}
 
-	/** OkHttp requires an absolute url on the synthetic response above; chapter paths are relative. */
-	private fun novelRequestUrl(chapterUrl: String): String = when {
-		chapterUrl.startsWith("http://") || chapterUrl.startsWith("https://") -> chapterUrl
-		else -> (mihonSource as? HttpSource)?.baseUrl?.trimEnd('/')?.plus("/" + chapterUrl.trimStart('/'))
-			?: "https://localhost/" + chapterUrl.trimStart('/')
+	/** OkHttp requires an absolute url on the synthetic response above; source pages may be relative. */
+	private fun novelRequestUrl(pageUrl: String): String = when {
+		pageUrl.startsWith("http://") || pageUrl.startsWith("https://") -> pageUrl
+		else -> (mihonSource as? HttpSource)?.baseUrl?.trimEnd('/')?.plus("/" + pageUrl.trimStart('/'))
+			?: "https://localhost/" + pageUrl.trimStart('/')
 	}
 
 	/**
@@ -410,6 +423,15 @@ class MihonMangaRepository(
 			url = pageUrl,
 			imageUrl = imageUrl,
 		)
+	}
+
+	private fun MangaPage.toNovelPage(pageUrl: String): Page {
+		val ref = url.toMihonPageRef()
+		return if (ref?.host == MIHON_TEXT_HOST) {
+			Page(index = ref.index, url = ref.pageUrl, imageUrl = ref.imageUrl)
+		} else {
+			Page(index = 0, url = pageUrl)
+		}
 	}
 
 	private fun buildMihonPageUrl(
