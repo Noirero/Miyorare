@@ -118,7 +118,8 @@ jobs:
           test -n "$runtime_cert"
           test "$runtime_cert" = "$host_cert"
 
-      - name: Prepare manifest and artifact
+      - name: Prepare manifest and immutable artifact
+        id: payload
         if: ${{ github.event_name == 'schedule' || inputs.publish }}
         env:
           REVISION: ${{ steps.upstream.outputs.revision }}
@@ -128,18 +129,20 @@ jobs:
           mkdir -p "$RUNNER_TEMP/runtime-release"
           apk="$(find kotatsu-runtime/build/outputs/apk/release -name '*.apk' -type f | head -n1)"
           test -f "$apk"
-          cp "$apk" "$RUNNER_TEMP/runtime-release/kotatsu-runtime.apk"
-          sha="$(sha256sum "$RUNNER_TEMP/runtime-release/kotatsu-runtime.apk" | awk '{print $1}')"
-          python3 - "$RUNNER_TEMP/runtime-release/manifest.json" "$REVISION" "$SOURCE_COUNT" "$sha" <<'PY'
+          sha="$(sha256sum "$apk" | awk '{print $1}')"
+          asset_name="kotatsu-runtime-${REVISION}-${sha}.apk"
+          cp "$apk" "$RUNNER_TEMP/runtime-release/$asset_name"
+          printf 'asset_name=%s\n' "$asset_name" >> "$GITHUB_OUTPUT"
+          python3 - "$RUNNER_TEMP/runtime-release/manifest.json" "$REVISION" "$SOURCE_COUNT" "$sha" "$asset_name" <<'PY'
           import json,sys
-          path, revision, count, sha = sys.argv[1:]
+          path, revision, count, sha, asset_name = sys.argv[1:]
           data = {
               "protocolVersion": 1,
               "packVersion": f"1-{revision[:10]}",
               "upstreamRevision": revision,
               "sourceCount": int(count),
               "sha256": sha,
-              "downloadUrl": "https://github.com/Noirero/Miyorare/releases/download/kotatsu-runtime-latest/kotatsu-runtime.apk",
+              "downloadUrl": f"https://github.com/Noirero/Miyorare/releases/download/kotatsu-runtime-latest/{asset_name}",
           }
           with open(path, "w", encoding="utf-8") as f:
               json.dump(data, f, separators=(",", ":"))
@@ -149,15 +152,21 @@ jobs:
         if: ${{ github.event_name == 'schedule' || inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
+          ASSET_NAME: ${{ steps.payload.outputs.asset_name }}
         run: |
           set -euo pipefail
-          # Publication is intentionally last. Any build, Android E2E, signer, or manifest failure
-          # exits before this point, so the existing kotatsu-runtime-latest remains last-known-good.
+          # The APK is immutable/content-addressed and uploaded before the pointer manifest. Until
+          # manifest.json is replaced, clients keep resolving the previous known-good immutable APK.
+          # Any build, Android E2E, signer, payload, or APK-upload failure therefore leaves the old
+          # manifest+APK pair valid. Replacing manifest.json is the only latest-pointer transition.
           if ! gh release view kotatsu-runtime-latest >/dev/null 2>&1; then
             gh release create kotatsu-runtime-latest --title 'Kotatsu Runtime Pack' --notes 'Miyorare-managed Kotatsu parser runtime. Do not install manually.'
           fi
+          test -n "$ASSET_NAME"
           gh release upload kotatsu-runtime-latest \
-            "$RUNNER_TEMP/runtime-release/kotatsu-runtime.apk" \
+            "$RUNNER_TEMP/runtime-release/$ASSET_NAME" \
+            --clobber
+          gh release upload kotatsu-runtime-latest \
             "$RUNNER_TEMP/runtime-release/manifest.json" \
             --clobber
 
@@ -171,6 +180,7 @@ jobs:
             kotatsu-runtime/build/outputs/apk/release/*.apk
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
+            ${{ runner.temp }}/runtime-release/*.apk
             ${{ runner.temp }}/runtime-release/manifest.json
           if-no-files-found: warn
           retention-days: 14
