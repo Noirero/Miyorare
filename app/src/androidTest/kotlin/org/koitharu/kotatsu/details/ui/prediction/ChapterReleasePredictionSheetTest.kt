@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.details.domain.ChapterReleasePredictionItem
 import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
+import org.koitharu.kotatsu.details.domain.NextChapterReleaseState
 import java.io.File
 import java.io.IOException
 import java.time.LocalDate
@@ -105,6 +106,25 @@ class ChapterReleasePredictionSheetTest {
 		assertEquals(start + 86400000L, intent.getLongExtra(CalendarContract.EXTRA_EVENT_END_TIME, 0))
 		assertEquals(context.getString(R.string.release_calendar_event_title, item.manga.title), intent.getStringExtra(CalendarContract.Events.TITLE))
 		assertTrue(intent.getStringExtra(CalendarContract.Events.DESCRIPTION).orEmpty().contains("not an official"))
+	}
+
+	@Test fun overdueGraceKeepsOriginalDateShowsAnyDayNowAndCannotCreatePastCalendarEvent() {
+		val expected = date.minusDays(1)
+		val overdue = original.copy(
+			prediction = NextChapterReleasePrediction(expected, 0, NextChapterReleaseState.OVERDUE_GRACE),
+		)
+		compose.setContent { MaterialTheme {
+			ChapterReleasePredictionSheet(1, overdue, UpcomingPredictions(listOf(overdue), loading = false), loader) {}
+		} }
+		compose.onNodeWithText(context.getString(R.string.release_calendar_overdue)).assertIsDisplayed()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_today)).assertDoesNotExist()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_add)).assertDoesNotExist()
+		compose.onNodeWithTag("release-prediction-date").assertTextEquals(
+			expected.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.FULL)),
+		)
+		assertThrows(IllegalArgumentException::class.java) {
+			releasePredictionCalendarIntent(context, overdue)
+		}
 	}
 
 	@Test fun backgroundSurfacesOwnTextColorsAcrossTheLightDarkAndBlurMatrix() {
