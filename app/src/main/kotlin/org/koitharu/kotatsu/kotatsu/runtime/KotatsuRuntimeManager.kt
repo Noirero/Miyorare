@@ -21,7 +21,11 @@ class KotatsuRuntimeManager @Inject constructor(
 	private val verifier = KotatsuRuntimePackVerifier(context)
 	private val prefs = context.getSharedPreferences("kotatsu_runtime_sources", Context.MODE_PRIVATE)
 	private val sourceState = MutableStateFlow<List<KotatsuMangaSource>>(emptyList())
+	private val enabledSourceState = MutableStateFlow(
+		prefs.getStringSet(KEY_ENABLED, emptySet()).orEmpty().toSet(),
+	)
 	val sources: StateFlow<List<KotatsuMangaSource>> = sourceState
+	val enabledSourceKeys: StateFlow<Set<String>> = enabledSourceState
 
 	@Volatile private var initialized = false
 	@Volatile private var session: Session? = null
@@ -55,21 +59,26 @@ class KotatsuRuntimeManager @Inject constructor(
 	}
 
 	fun getAvailableSources(): List<KotatsuMangaSource> { initialize(); return sourceState.value }
+
 	fun getEnabledSources(): List<KotatsuMangaSource> {
-		val enabled = prefs.getStringSet(KEY_ENABLED, emptySet()).orEmpty()
+		val enabled = enabledSourceState.value
 		// Keep disappeared keys in preferences: a temporary upstream removal must not erase the user's
 		// enablement choice. Only sources present in the active runtime are exposed to the app.
 		return getAvailableSources().filter { it.sourceKey in enabled && !it.isBroken }
 	}
+
 	fun resolveSource(storedName: String): KotatsuMangaSource? {
 		val key = KotatsuMangaSource.sourceKeyOf(storedName) ?: return null
 		return getAvailableSources().firstOrNull { it.sourceKey == key }
 	}
+
 	fun setSourceEnabled(sourceKey: String, enabled: Boolean) {
 		require(getAvailableSources().any { it.sourceKey == sourceKey }) { "Unknown Kotatsu source: $sourceKey" }
-		val values = prefs.getStringSet(KEY_ENABLED, emptySet()).orEmpty().toMutableSet()
+		val values = enabledSourceState.value.toMutableSet()
 		if (enabled) values += sourceKey else values -= sourceKey
-		prefs.edit().putStringSet(KEY_ENABLED, values).apply()
+		val snapshot = values.toSet()
+		prefs.edit().putStringSet(KEY_ENABLED, snapshot).apply()
+		enabledSourceState.value = snapshot
 	}
 
 	fun status(): RuntimeStatus {
@@ -156,17 +165,27 @@ class KotatsuRuntimeManager @Inject constructor(
 
 		fun protocolVersion() = protocol.invoke(target) as Int
 		fun healthCheck() = health.invoke(target) as Boolean
+
 		fun catalog(): List<KotatsuMangaSource> {
 			val array = JSONArray(catalog.invoke(target) as String)
 			val result = buildList(array.length()) {
 				for (i in 0 until array.length()) {
 					val item = array.getJSONObject(i)
-					add(KotatsuMangaSource(item.getString("key"), item.optString("title", item.getString("key")), item.optString("locale"), item.optString("contentType", "OTHER"), item.optBoolean("broken")))
+					add(
+						KotatsuMangaSource(
+							item.getString("key"),
+							item.optString("title", item.getString("key")),
+							item.optString("locale"),
+							item.optString("contentType", "OTHER"),
+							item.optBoolean("broken"),
+						),
+					)
 				}
 			}
 			require(result.map { it.sourceKey }.toSet().size == result.size) { "Kotatsu runtime catalog contains duplicate source keys" }
 			return result
 		}
+
 		fun getList(source: String, offset: Int, order: String, filterJson: String) = list.invoke(target, source, offset, order, filterJson) as String
 		fun getDetails(source: String, manga: String) = details.invoke(target, source, manga) as String
 		fun getPages(source: String, chapter: String) = pages.invoke(target, source, chapter) as String
