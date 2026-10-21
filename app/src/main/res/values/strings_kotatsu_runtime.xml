@@ -22,4 +22,16 @@
     <string name="kotatsu_parsers_search_sources">Search sources</string>
     <string name="kotatsu_parsers_enabled_count">%1$d of %2$d enabled</string>
     <string name="kotatsu_parsers_broken_source">Unavailable in this runtime revision</string>
+    <string name="kotatsu_source_config_title">Source settings</string>
+    <string name="kotatsu_source_config_empty">This source does not expose configurable options.</string>
+    <string name="kotatsu_source_config_error">Could not load source settings: %1$s</string>
+    <string name="kotatsu_source_config_save">Save</string>
+    <string name="kotatsu_source_config_domain">Domain</string>
+    <string name="kotatsu_source_config_show_suspicious">Show suspicious content</string>
+    <string name="kotatsu_source_config_user_agent">User agent</string>
+    <string name="kotatsu_source_config_split_translations">Split translations</string>
+    <string name="kotatsu_source_config_image_server">Preferred image server</string>
+    <string name="kotatsu_source_config_disable_updates">Disable automatic chapter checks</string>
+    <string name="kotatsu_source_config_intercept_cloudflare">Enable Cloudflare interception</string>
+    <string name="kotatsu_source_config_default">Default</string>
 </resources>
