@@ -32,7 +32,8 @@ class KotatsuRuntimeUpdateWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, params) {
 
 	override suspend fun doWork(): Result = try {
-		updater.updateIfNeeded()
+		// null means the installed pack already matches the latest compatible manifest.
+		updater.updateLatest()
 		Result.success()
 	} catch (error: CancellationException) {
 		throw error
