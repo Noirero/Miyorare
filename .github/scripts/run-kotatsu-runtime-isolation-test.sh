@@ -24,6 +24,15 @@ if [[ ! "$upstream_revision" =~ ^[0-9a-f]{40}$ ]]; then
   exit 1
 fi
 
+runtime_catalog_args=()
+if [[ -n "${KOTATSU_EXPECTED_SOURCE_COUNT:-}" ]]; then
+  if [[ ! "$KOTATSU_EXPECTED_SOURCE_COUNT" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Invalid KOTATSU_EXPECTED_SOURCE_COUNT: $KOTATSU_EXPECTED_SOURCE_COUNT" >&2
+    exit 1
+  fi
+  runtime_catalog_args+=("-Pandroid.testInstrumentationRunnerArguments.runtimeExpectedSourceCount=$KOTATSU_EXPECTED_SOURCE_COUNT")
+fi
+
 # The host currently has a pre-existing Tsuki JAR repack task that is not configuration-cache safe.
 # Keep this Android acceptance invocation isolated from that unrelated Gradle limitation; the Kotatsu
 # runtime build itself remains configuration-cache compatible and is validated by the normal compile job.
@@ -32,4 +41,5 @@ bash .github/scripts/collect-on-device-cover-evidence.sh \
   -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest,org.koitharu.kotatsu.core.image.MiyorareImageDiskCacheTest,org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeIsolationTest,org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeRealSourceTest \
   -Pandroid.testInstrumentationRunnerArguments.runtimeFixtureApk="$fixture_apk" \
   -Pandroid.testInstrumentationRunnerArguments.runtimePackApk="$runtime_apk" \
-  -Pandroid.testInstrumentationRunnerArguments.runtimeUpstreamRevision="$upstream_revision"
+  -Pandroid.testInstrumentationRunnerArguments.runtimeUpstreamRevision="$upstream_revision" \
+  "${runtime_catalog_args[@]}"
