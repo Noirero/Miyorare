@@ -8,8 +8,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import org.json.JSONArray
 import org.json.JSONObject
+import org.koitharu.kotatsu.core.exceptions.InteractiveActionRequiredException
 import org.koitharu.kotatsu.kotatsu.model.KotatsuMangaSource
 import java.io.File
+import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -99,6 +101,11 @@ class KotatsuRuntimeManager @Inject constructor(
 		)
 	}
 
+	internal fun activeManifestSha256(): String? {
+		initialize()
+		return session?.manifest?.sha256
+	}
+
 	@Synchronized
 	fun install(candidate: File, manifest: KotatsuRuntimePackManifest) {
 		store.install(candidate, manifest, verifier)
@@ -169,11 +176,11 @@ class KotatsuRuntimeManager @Inject constructor(
 		private val setSourceConfig: Method = clazz.getMethod(methods.SET_SOURCE_CONFIG_JSON, String::class.java, String::class.java)
 		private val headers: Method = clazz.getMethod(methods.REQUEST_HEADERS_JSON, String::class.java)
 
-		fun protocolVersion() = protocol.invoke(target) as Int
-		fun healthCheck() = health.invoke(target) as Boolean
+		fun protocolVersion() = invoke(protocol) as Int
+		fun healthCheck() = invoke(health) as Boolean
 
 		fun catalog(): List<KotatsuMangaSource> {
-			val array = JSONArray(catalog.invoke(target) as String)
+			val array = JSONArray(invoke(catalog) as String)
 			val result = buildList(array.length()) {
 				for (i in 0 until array.length()) {
 					val item = array.getJSONObject(i)
@@ -192,17 +199,44 @@ class KotatsuRuntimeManager @Inject constructor(
 			return result
 		}
 
-		fun getList(source: String, offset: Int, order: String, filterJson: String) = list.invoke(target, source, offset, order, filterJson) as String
-		fun getDetails(source: String, manga: String) = details.invoke(target, source, manga) as String
-		fun getPages(source: String, chapter: String) = pages.invoke(target, source, chapter) as String
-		fun getPageUrl(source: String, page: String) = pageUrl.invoke(target, source, page) as String
-		fun getRelated(source: String, manga: String) = related.invoke(target, source, manga) as String
-		fun sortOrders(source: String): Set<String> = JSONArray(sortOrders.invoke(target, source) as String).let { array -> buildSet { for (i in 0 until array.length()) add(array.getString(i)) } }
-		fun filterCapabilities(source: String): JSONObject = JSONObject(filterCapabilities.invoke(target, source) as String)
-		fun filterOptions(source: String): JSONObject = JSONObject(filterOptions.invoke(target, source) as String)
-		fun sourceConfig(source: String): JSONObject = JSONObject(sourceConfig.invoke(target, source) as String)
-		fun setSourceConfig(source: String, valuesJson: String): JSONObject = JSONObject(setSourceConfig.invoke(target, source, valuesJson) as String)
-		fun requestHeaders(source: String): JSONObject = JSONObject(headers.invoke(target, source) as String)
+		fun getList(source: String, offset: Int, order: String, filterJson: String) = invoke(list, source, offset, order, filterJson) as String
+		fun getDetails(source: String, manga: String) = invoke(details, source, manga) as String
+		fun getPages(source: String, chapter: String) = invoke(pages, source, chapter) as String
+		fun getPageUrl(source: String, page: String) = invoke(pageUrl, source, page) as String
+		fun getRelated(source: String, manga: String) = invoke(related, source, manga) as String
+		fun sortOrders(source: String): Set<String> = JSONArray(invoke(sortOrders, source) as String).let { array -> buildSet { for (i in 0 until array.length()) add(array.getString(i)) } }
+		fun filterCapabilities(source: String): JSONObject = JSONObject(invoke(filterCapabilities, source) as String)
+		fun filterOptions(source: String): JSONObject = JSONObject(invoke(filterOptions, source) as String)
+		fun sourceConfig(source: String): JSONObject = JSONObject(invoke(sourceConfig, source) as String)
+		fun setSourceConfig(source: String, valuesJson: String): JSONObject = JSONObject(invoke(setSourceConfig, source, valuesJson) as String)
+		fun requestHeaders(source: String): JSONObject = JSONObject(invoke(headers, source) as String)
+
+		private fun invoke(method: Method, vararg args: Any?): Any? = try {
+			method.invoke(target, *args)
+		} catch (error: InvocationTargetException) {
+			throw translateRuntimeFailure(error.targetException ?: error)
+		}
+
+		private fun translateRuntimeFailure(error: Throwable): Throwable {
+			val message = error.message ?: return error
+			if (!message.startsWith(INTERACTIVE_ACTION_PREFIX)) return error
+			val payload = runCatching { JSONObject(message.removePrefix(INTERACTIVE_ACTION_PREFIX)) }.getOrNull() ?: return error
+			val sourceKey = payload.optString("source")
+			val url = payload.optString("url")
+			if (sourceKey.isBlank() || url.isBlank()) return error
+			val source = runCatching {
+				KotatsuMangaSource(sourceKey, sourceKey, "", "OTHER")
+			}.getOrNull() ?: return error
+			return InteractiveActionRequiredException(
+				source = source,
+				url = url,
+				userAgent = payload.optString("userAgent").takeIf { it.isNotBlank() },
+			)
+		}
+
+		private companion object {
+			const val INTERACTIVE_ACTION_PREFIX = "MIYORARE_INTERACTIVE|"
+		}
 	}
 
 	data class RuntimeStatus(
