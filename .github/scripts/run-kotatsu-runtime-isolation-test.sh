@@ -24,8 +24,11 @@ if [[ ! "$upstream_revision" =~ ^[0-9a-f]{40}$ ]]; then
   exit 1
 fi
 
+# The host currently has a pre-existing Tsuki JAR repack task that is not configuration-cache safe.
+# Keep this Android acceptance invocation isolated from that unrelated Gradle limitation; the Kotatsu
+# runtime build itself remains configuration-cache compatible and is validated by the normal compile job.
 bash .github/scripts/collect-on-device-cover-evidence.sh \
-  ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace \
+  ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --no-configuration-cache --stacktrace \
   -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest,org.koitharu.kotatsu.core.image.MiyorareImageDiskCacheTest,org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeIsolationTest,org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeRealSourceTest \
   -Pandroid.testInstrumentationRunnerArguments.runtimeFixtureApk="$fixture_apk" \
   -Pandroid.testInstrumentationRunnerArguments.runtimePackApk="$runtime_apk" \
