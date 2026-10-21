@@ -15,11 +15,13 @@ import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
+import org.koitharu.kotatsu.details.domain.NextChapterReleaseState
 import org.koitharu.kotatsu.details.ui.ChapterHeaderTitle
 import java.time.LocalDate
 
 class ReleasePredictionHeaderTest {
 	@get:Rule val compose = createComposeRule()
+
 	@Test fun predictionAloneIsClickableAndYieldsToManageOnNarrowHeaders() {
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		val width = mutableStateOf(350.dp)
@@ -35,5 +37,20 @@ class ReleasePredictionHeaderTest {
 		compose.runOnIdle { width.value = 130.dp }
 		compose.onNodeWithContentDescription(description).assertDoesNotExist()
 		compose.onNodeWithText("Manage").assertIsDisplayed()
+	}
+
+	@Test fun overdueGraceHasDedicatedLabelAndAccessibilityInsteadOfExpectedToday() {
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val prediction = NextChapterReleasePrediction(
+			expectedDate = LocalDate.of(2026, 10, 10),
+			daysUntilNext = 0,
+			state = NextChapterReleaseState.OVERDUE_GRACE,
+		)
+		compose.setContent { MaterialTheme {
+			ChapterHeaderTitle("12 chapters", prediction, Modifier.width(500.dp))
+		} }
+		compose.onNodeWithText(context.getString(R.string.chapter_release_expected_overdue)).assertIsDisplayed()
+		compose.onNodeWithText(context.getString(R.string.chapter_release_expected_today)).assertDoesNotExist()
+		compose.onNodeWithContentDescription(context.getString(R.string.chapter_release_accessibility_overdue)).assertExists()
 	}
 }
