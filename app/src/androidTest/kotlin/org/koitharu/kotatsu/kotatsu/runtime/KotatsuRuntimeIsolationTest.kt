@@ -133,6 +133,7 @@ class KotatsuRuntimeIsolationTest {
 				if (count <= 0) break
 				digest.update(buffer, 0, count)
 			}
+		}
 		return digest.digest().joinToString("") { "%02x".format(it) }
 	}
 
