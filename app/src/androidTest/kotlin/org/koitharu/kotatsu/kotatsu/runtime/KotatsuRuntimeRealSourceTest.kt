@@ -1,7 +1,12 @@
 package org.koitharu.kotatsu.kotatsu.runtime
 
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.android.components.ActivityComponent
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.runBlocking
@@ -9,6 +14,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -17,6 +23,8 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.kotatsu.KotatsuMangaRepository
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
+import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivity
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
@@ -28,7 +36,7 @@ import javax.inject.Inject
  * DANKE is deliberately used as the canary because its upstream parser is a small, public Guya API
  * implementation without login or Cloudflare bootstrap. This test crosses the real host boundary:
  * signed APK -> verifier -> store -> child-first DexClassLoader -> runtime entrypoint -> upstream
- * parser -> host MangaRepository -> details -> chapters -> pages -> Reader-compatible page URL.
+ * parser -> host MangaRepository -> details -> chapters -> pages -> the Reader's real PageLoader.
  */
 @HiltAndroidTest
 @RunWith(AndroidJUnit4::class)
@@ -127,6 +135,24 @@ class KotatsuRuntimeRealSourceTest {
 
 		val pageUrl = withTimeout(NETWORK_TIMEOUT_MS) { repository.getPageUrl(pages.first()) }
 		assertTrue("Reader page URL must be an absolute HTTPS URL", pageUrl.startsWith("https://"))
+
+		// Cross the actual Reader data path as well: PageLoader resolves the page's KOTATSU source
+		// through MangaRepository.Factory, fetches the full page and materializes it into the reader
+		// cache. A Hilt activity is only used to obtain the real ActivityRetained-scoped PageLoader.
+		ActivityScenario.launch(MangaUpdatesAuthActivity::class.java).use { scenario ->
+			lateinit var pageLoader: PageLoader
+			scenario.onActivity { activity ->
+				pageLoader = EntryPointAccessors.fromActivity(
+					activity,
+					ReaderPageLoaderTestEntryPoint::class.java,
+				).pageLoader()
+			}
+			val readerPageUri = withTimeout(NETWORK_TIMEOUT_MS) {
+				pageLoader.loadPage(pages.first(), force = false)
+			}
+			assertNotNull("Reader PageLoader must materialize a readable page URI", readerPageUri.scheme)
+			assertTrue("Reader PageLoader must return a non-empty page URI", readerPageUri.toString().isNotBlank())
+		}
 	}
 
 	private fun sha256(file: File): String {
@@ -149,4 +175,10 @@ class KotatsuRuntimeRealSourceTest {
 		const val CANARY_SOURCE = "DANKE"
 		const val NETWORK_TIMEOUT_MS = 90_000L
 	}
+}
+
+@EntryPoint
+@InstallIn(ActivityComponent::class)
+internal interface ReaderPageLoaderTestEntryPoint {
+	fun pageLoader(): PageLoader
 }
