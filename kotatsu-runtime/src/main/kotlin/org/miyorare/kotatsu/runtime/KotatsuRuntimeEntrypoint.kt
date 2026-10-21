@@ -103,9 +103,17 @@ class KotatsuRuntimeEntrypoint(context: Context) {
 		val parser = parser(source)
 		val keys = ArrayList<ConfigKey<*>>().also(parser::onCreateConfig)
 		val config = loader.getConfig(source)
-		return JSONObject().apply {
-			for (key in keys) put(key.key, JSONObject.wrap(configValue(config, key)))
-		}.toString()
+		return JSONObject().put(
+			"items",
+			JSONArray(keys.map { key ->
+				JSONObject()
+					.put("key", key.key)
+					.put("type", configType(key))
+					.put("value", jsonValue(configValue(config, key)))
+					.put("defaultValue", jsonValue(key.defaultValue))
+					.put("options", configOptions(key))
+			}),
+		).toString()
 	}
 
 	fun setSourceConfigJson(sourceKey: String, valuesJson: String): String {
@@ -132,6 +140,30 @@ class KotatsuRuntimeEntrypoint(context: Context) {
 	@Suppress("UNCHECKED_CAST")
 	private fun configValue(config: org.koitharu.kotatsu.parsers.config.MangaSourceConfig, key: ConfigKey<*>): Any? =
 		config[key as ConfigKey<Any?>]
+
+	private fun configType(key: ConfigKey<*>): String = when (key) {
+		is ConfigKey.Domain,
+		is ConfigKey.PreferredImageServer -> "choice"
+		is ConfigKey.ShowSuspiciousContent,
+		is ConfigKey.SplitByTranslations,
+		is ConfigKey.DisableUpdateChecking,
+		is ConfigKey.InterceptCloudflare -> "boolean"
+		else -> "string"
+	}
+
+	private fun configOptions(key: ConfigKey<*>): JSONArray = when (key) {
+		is ConfigKey.Domain -> JSONArray(key.presetValues.map { value ->
+			JSONObject().put("value", value).put("title", value)
+		})
+		is ConfigKey.PreferredImageServer -> JSONArray(key.presetValues.map { (value, title) ->
+			JSONObject()
+				.put("value", jsonValue(value))
+				.put("title", title ?: value ?: "Default")
+		})
+		else -> JSONArray()
+	}
+
+	private fun jsonValue(value: Any?): Any = value ?: JSONObject.NULL
 
 	private fun coerceConfigValue(key: ConfigKey<*>, raw: Any?): Any? = when (key.defaultValue) {
 		is Boolean -> raw as? Boolean ?: raw?.toString()?.toBooleanStrictOrNull()
