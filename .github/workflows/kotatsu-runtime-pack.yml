@@ -1,0 +1,188 @@
+name: Kotatsu Runtime Pack
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_revision:
+        description: Exact Kotatsu-Redo revision; blank uses upstream HEAD
+        required: false
+        type: string
+      publish:
+        description: Publish verified runtime to kotatsu-runtime-latest
+        required: true
+        default: false
+        type: boolean
+  schedule:
+    - cron: '17 3 * * *'
+
+concurrency:
+  group: kotatsu-runtime-pack
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-verify-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Resolve exact upstream revision
+        id: upstream
+        env:
+          INPUT_REVISION: ${{ inputs.upstream_revision }}
+        run: |
+          set -euo pipefail
+          revision="$INPUT_REVISION"
+          if [ -z "$revision" ]; then
+            revision="$(curl --fail --silent --show-error https://api.github.com/repos/Kotatsu-Redo/kotatsu-parsers-redo/commits/master | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')"
+          fi
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+          printf 'revision=%s\n' "$revision" > kotatsu-runtime/upstream.properties
+
+      - name: Count exact upstream parser catalog
+        id: catalog
+        env:
+          REVISION: ${{ steps.upstream.outputs.revision }}
+        run: |
+          set -euo pipefail
+          git clone --quiet --filter=blob:none https://github.com/Kotatsu-Redo/kotatsu-parsers-redo.git "$RUNNER_TEMP/kotatsu-redo"
+          git -C "$RUNNER_TEMP/kotatsu-redo" fetch --quiet --depth=1 origin "$REVISION"
+          git -C "$RUNNER_TEMP/kotatsu-redo" checkout --quiet FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/kotatsu-redo" rev-parse HEAD)" = "$REVISION"
+          count="$(grep -R --include='*.kt' -h '@MangaSourceParser' "$RUNNER_TEMP/kotatsu-redo/src/main/kotlin" | wc -l | tr -d ' ')"
+          test "$count" -gt 0
+          printf 'count=%s\n' "$count" >> "$GITHUB_OUTPUT"
+
+      - name: Build runtime candidate
+        run: ./gradlew :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
+
+      - name: Validate real parser boundary on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          KOTATSU_EXPECTED_SOURCE_COUNT: ${{ steps.catalog.outputs.count }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/run-kotatsu-runtime-isolation-test.sh
+
+      - name: Build release host and release-signed runtime
+        if: ${{ github.event_name == 'schedule' || inputs.publish }}
+        env:
+          RELEASE_STORE_B64: ${{ secrets.RELEASE_STORE_B64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_STORE_B64"
+          test -n "$RELEASE_STORE_PASSWORD"
+          test -n "$RELEASE_KEY_ALIAS"
+          test -n "$RELEASE_KEY_PASSWORD"
+          printf '%s' "$RELEASE_STORE_B64" | base64 --decode > "$RUNNER_TEMP/miyorare-release.jks"
+          ./gradlew :kotatsu-runtime:assembleRelease :app:assembleRelease --max-workers=4 --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE="$RUNNER_TEMP/miyorare-release.jks" \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+
+      - name: Verify runtime uses the current Miyorare release signer
+        if: ${{ github.event_name == 'schedule' || inputs.publish }}
+        run: |
+          set -euo pipefail
+          runtime_apk="$(find kotatsu-runtime/build/outputs/apk/release -name '*.apk' -type f | head -n1)"
+          host_apk="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n1)"
+          test -f "$runtime_apk"
+          test -f "$host_apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n1)"
+          test -x "$apksigner"
+          runtime_cert="$($apksigner verify --print-certs "$runtime_apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1)"
+          host_cert="$($apksigner verify --print-certs "$host_apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1)"
+          test -n "$runtime_cert"
+          test "$runtime_cert" = "$host_cert"
+
+      - name: Prepare manifest and immutable artifact
+        id: payload
+        if: ${{ github.event_name == 'schedule' || inputs.publish }}
+        env:
+          REVISION: ${{ steps.upstream.outputs.revision }}
+          SOURCE_COUNT: ${{ steps.catalog.outputs.count }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/runtime-release"
+          apk="$(find kotatsu-runtime/build/outputs/apk/release -name '*.apk' -type f | head -n1)"
+          test -f "$apk"
+          sha="$(sha256sum "$apk" | awk '{print $1}')"
+          asset_name="kotatsu-runtime-${REVISION}-${sha}.apk"
+          cp "$apk" "$RUNNER_TEMP/runtime-release/$asset_name"
+          printf 'asset_name=%s\n' "$asset_name" >> "$GITHUB_OUTPUT"
+          python3 - "$RUNNER_TEMP/runtime-release/manifest.json" "$REVISION" "$SOURCE_COUNT" "$sha" "$asset_name" <<'PY'
+          import json,sys
+          path, revision, count, sha, asset_name = sys.argv[1:]
+          data = {
+              "protocolVersion": 1,
+              "packVersion": f"1-{revision[:10]}",
+              "upstreamRevision": revision,
+              "sourceCount": int(count),
+              "sha256": sha,
+              "downloadUrl": f"https://github.com/Noirero/Miyorare/releases/download/kotatsu-runtime-latest/{asset_name}",
+          }
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(data, f, separators=(",", ":"))
+          PY
+
+      - name: Publish latest-compatible runtime
+        if: ${{ github.event_name == 'schedule' || inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET_NAME: ${{ steps.payload.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+          # The APK is immutable/content-addressed and uploaded before the pointer manifest. Until
+          # manifest.json is replaced, clients keep resolving the previous known-good immutable APK.
+          # Any build, Android E2E, signer, payload, or APK-upload failure therefore leaves the old
+          # manifest+APK pair valid. Replacing manifest.json is the only latest-pointer transition.
+          if ! gh release view kotatsu-runtime-latest >/dev/null 2>&1; then
+            gh release create kotatsu-runtime-latest --title 'Kotatsu Runtime Pack' --notes 'Miyorare-managed Kotatsu parser runtime. Do not install manually.'
+          fi
+          test -n "$ASSET_NAME"
+          gh release upload kotatsu-runtime-latest \
+            "$RUNNER_TEMP/runtime-release/$ASSET_NAME" \
+            --clobber
+          gh release upload kotatsu-runtime-latest \
+            "$RUNNER_TEMP/runtime-release/manifest.json" \
+            --clobber
+
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotatsu-runtime-pack-evidence
+          path: |
+            kotatsu-runtime/build/outputs/apk/debug/*.apk
+            kotatsu-runtime/build/outputs/apk/release/*.apk
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+            ${{ runner.temp }}/runtime-release/*.apk
+            ${{ runner.temp }}/runtime-release/manifest.json
+          if-no-files-found: warn
+          retention-days: 14

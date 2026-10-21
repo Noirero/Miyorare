@@ -1,0 +1,83 @@
+plugins {
+	id 'com.android.application'
+}
+
+def upstreamPin = new Properties()
+file('upstream.properties').withInputStream { upstreamPin.load(it) }
+def upstreamRevision = upstreamPin.getProperty('revision')
+if (!(upstreamRevision ==~ /[0-9a-f]{40}/)) {
+	throw new GradleException("kotatsu-runtime upstream revision must be a full 40-character SHA")
+}
+
+def upstreamJitPackVersion = upstreamRevision
+
+android {
+	namespace = 'org.miyorare.kotatsu.runtime'
+	compileSdk = 37
+
+	defaultConfig {
+		applicationId = 'org.noirero.miyorare.kotatsu.runtime'
+		minSdk = 26
+		targetSdk = 37
+		versionCode = 1
+		versionName = "1-${upstreamRevision.substring(0, 10)}"
+		buildConfigField 'String', 'UPSTREAM_REVISION', "\"${upstreamRevision}\""
+	}
+
+	signingConfigs {
+		if (project.hasProperty('RELEASE_STORE_FILE')) {
+			release {
+				storeFile file(project.property('RELEASE_STORE_FILE'))
+				storePassword project.property('RELEASE_STORE_PASSWORD')
+				keyAlias project.property('RELEASE_KEY_ALIAS')
+				keyPassword project.property('RELEASE_KEY_PASSWORD')
+			}
+		}
+	}
+
+	buildTypes {
+		debug {
+			minifyEnabled = false
+		}
+		release {
+			minifyEnabled = false
+			if (signingConfigs.findByName('release')) {
+				signingConfig signingConfigs.release
+			}
+		}
+	}
+
+	buildFeatures {
+		buildConfig = true
+	}
+
+	compileOptions {
+		sourceCompatibility JavaVersion.VERSION_17
+		targetCompatibility JavaVersion.VERSION_17
+	}
+
+	packaging {
+		resources {
+			excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE*', 'META-INF/NOTICE*']
+		}
+	}
+}
+
+dependencies {
+	// This dependency exists only in the isolated runtime APK. Never add it to :app: Gekkoushi
+	// intentionally owns the same org.koitharu.kotatsu.parsers namespace in the host process.
+	// Use the full immutable upstream commit so the runtime artifact is reproducible.
+	implementation("com.github.Kotatsu-Redo:kotatsu-parsers-redo:${upstreamJitPackVersion}") {
+		exclude group: 'org.json', module: 'json'
+	}
+
+	// Kotatsu-Redo intentionally keeps several runtime libraries as implementation dependencies.
+	// The isolated APK uses them directly in RuntimeLoaderContext and must package them itself;
+	// none of these dependencies are added to the Miyorare host application's compile classpath.
+	implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
+	implementation 'com.squareup.okhttp3:okhttp:5.1.0'
+	implementation 'com.squareup.okhttp3:okhttp-dnsoverhttps:5.1.0'
+	implementation 'com.squareup.okio:okio:3.16.0'
+	implementation 'org.jsoup:jsoup:1.21.2'
+	implementation 'androidx.collection:collection:1.5.0'
+}
