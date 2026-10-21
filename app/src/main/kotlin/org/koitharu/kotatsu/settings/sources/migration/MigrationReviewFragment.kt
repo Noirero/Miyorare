@@ -151,7 +151,7 @@ internal fun MigrationReviewScreen(
 						onSelect = {
 							selectedSource = candidate.manga.source.name
 							selectedId = candidate.manga.id
-							selectedFingerprint = org.koitharu.kotatsu.alternatives.domain.MigrationSelection.of(it = candidate.manga).fingerprint
+							selectedFingerprint = org.koitharu.kotatsu.alternatives.domain.MigrationSelection.of(candidate.manga).fingerprint
 						},
 						onOpenDetails = { onOpenCandidate(candidate.manga) },
 					)
