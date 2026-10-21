@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -29,10 +30,11 @@ import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.kotatsu.model.KotatsuMangaSource
 import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeManager
+import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
-import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
+import org.koitharu.kotatsu.settings.compose.SettingsItem
 import java.util.Locale
 import javax.inject.Inject
 
@@ -55,6 +57,7 @@ class KotatsuSourcesSettingsFragment : BaseComposeSettingsFragment(R.string.kota
 					sources = sources,
 					enabledSourceKeys = enabledSourceKeys,
 					onSourceEnabled = runtimeManager::setSourceEnabled,
+					onSourceOpen = ::openSourceSettings,
 				)
 			}
 		}
@@ -66,6 +69,16 @@ class KotatsuSourcesSettingsFragment : BaseComposeSettingsFragment(R.string.kota
 			runtimeManager.initialize()
 		}
 	}
+
+	private fun openSourceSettings(source: KotatsuMangaSource) {
+		(requireActivity() as SettingsActivity).openFragment(
+			KotatsuSourceConfigSettingsFragment::class.java,
+			args = Bundle().apply {
+				putString(KotatsuSourceConfigSettingsFragment.ARG_SOURCE_KEY, source.sourceKey)
+			},
+			isFromRoot = false,
+		)
+	}
 }
 
 @Composable
@@ -73,6 +86,7 @@ private fun KotatsuSourcesScreen(
 	sources: List<KotatsuMangaSource>,
 	enabledSourceKeys: Set<String>,
 	onSourceEnabled: (String, Boolean) -> Unit,
+	onSourceOpen: (KotatsuMangaSource) -> Unit,
 ) {
 	var query by rememberSaveable { mutableStateOf("") }
 	val normalizedQuery = query.trim().lowercase(Locale.ROOT)
@@ -129,13 +143,20 @@ private fun KotatsuSourcesScreen(
 					append(stringResource(R.string.kotatsu_parsers_broken_source))
 				}
 			}
-			SwitchSettingsItem(
+			val enabled = source.sourceKey in enabledSourceKeys && !source.isBroken
+			SettingsItem(
 				title = source.displayName,
 				subtitle = metadata,
-				checked = source.sourceKey in enabledSourceKeys && !source.isBroken,
-				onCheckedChange = { checked -> onSourceEnabled(source.sourceKey, checked) },
 				icon = R.drawable.ic_manga_source,
 				enabled = !source.isBroken,
+				onClick = { onSourceOpen(source) },
+				trailing = {
+					Switch(
+						checked = enabled,
+						onCheckedChange = { checked -> onSourceEnabled(source.sourceKey, checked) },
+						enabled = !source.isBroken,
+					)
+				},
 			)
 		}
 	}
