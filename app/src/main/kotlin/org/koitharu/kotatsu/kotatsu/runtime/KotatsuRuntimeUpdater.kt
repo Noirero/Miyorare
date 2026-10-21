@@ -19,7 +19,6 @@ class KotatsuRuntimeUpdater @Inject constructor(
 	@BaseHttpClient private val httpClient: OkHttpClient,
 	private val runtimeManager: KotatsuRuntimeManager,
 ) {
-	private val store = KotatsuRuntimePackStore(context)
 
 	suspend fun checkForUpdate(): KotatsuRuntimePackManifest? = withContext(Dispatchers.IO) {
 		val request = Request.Builder().url(KotatsuRuntimePackContract.DEFAULT_MANIFEST_URL).build()
@@ -31,8 +30,10 @@ class KotatsuRuntimeUpdater @Inject constructor(
 		require(remote.isHostCompatible) {
 			"Latest Kotatsu runtime requires host protocol ${remote.protocolVersion}"
 		}
-		val current = store.currentManifest()
-		remote.takeUnless { current?.sha256.equals(remote.sha256, ignoreCase = true) }
+		// Compare against whichever verified slot is actually active, including the immutable bundled
+		// last-known-good. A fresh install must not redownload the exact runtime already embedded in it.
+		val activeSha256 = runtimeManager.activeManifestSha256()
+		remote.takeUnless { activeSha256.equals(remote.sha256, ignoreCase = true) }
 	}
 
 	suspend fun updateLatest(): KotatsuRuntimePackManifest? = withContext(Dispatchers.IO) {
