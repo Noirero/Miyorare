@@ -31,6 +31,15 @@ data class KotatsuRuntimePackManifest(
 	val isHostCompatible: Boolean
 		get() = protocolVersion == KotatsuRuntimePackContract.PROTOCOL_VERSION
 
+	fun toJson(): String = JSONObject()
+		.put("protocolVersion", protocolVersion)
+		.put("packVersion", packVersion)
+		.put("upstreamRevision", upstreamRevision)
+		.put("sourceCount", sourceCount)
+		.put("sha256", sha256.lowercase())
+		.put("downloadUrl", downloadUrl)
+		.toString()
+
 	companion object {
 		fun parse(json: String): KotatsuRuntimePackManifest {
 			val root = JSONObject(json)
