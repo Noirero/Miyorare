@@ -73,9 +73,12 @@ class AutoFixUseCase @Inject constructor(
 		val sources = alternativesUseCase.getSources(seed, SearchSourceMode.ALL_SOURCES, emptySet())
 		val observations = ArrayList<MigrationCandidateObservation>()
 		var lastPreviewSignature: List<Triple<String, Long, Int>> = emptyList()
+		var previewDirty = false
 		var discoveryError: Throwable? = null
 
 		fun publishPreview() {
+			if (!previewDirty) return
+			previewDirty = false
 			val assessment = candidateMatcher.assess(seed, observations)
 			if (assessment.candidates.isEmpty()) return
 			val signature = assessment.candidates.map { candidate ->
@@ -98,10 +101,13 @@ class AutoFixUseCase @Inject constructor(
 				when (event) {
 					is AlternativeSearchEvent.Result -> {
 						observations += MigrationCandidateObservation(event.manga, setOf(query))
-						publishPreview()
+						previewDirty = true
 					}
 					is AlternativeSearchEvent.SourceFinished -> {
 						if (event.error != null && discoveryError == null) discoveryError = event.error
+						// Results from one source are emitted before its SourceFinished event. Coalesce that
+						// burst into one matcher/UI update instead of rescoring after every individual row.
+						publishPreview()
 					}
 				}
 			}
