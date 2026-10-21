@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kotatsu_parsers">Kotatsu Parsers</string>
+    <string name="kotatsu_parsers_summary">Built-in Kotatsu-Redo parsers with an isolated, independently updated runtime</string>
+    <string name="kotatsu_parsers_runtime_status">Runtime status</string>
+    <string name="kotatsu_parsers_source_count">%1$d sources</string>
+    <string name="kotatsu_parsers_revision">Revision: %1$s</string>
+    <string name="kotatsu_parsers_origin_bundled">Bundled known-good</string>
+    <string name="kotatsu_parsers_origin_current">Current</string>
+    <string name="kotatsu_parsers_origin_rolled_back">Previous known-good (rollback)</string>
+    <string name="kotatsu_parsers_unavailable">Runtime unavailable</string>
+    <string name="kotatsu_parsers_auto_update">Automatically keep parsers up to date</string>
+    <string name="kotatsu_parsers_auto_update_summary">Only Miyorare-published packs that pass protocol, hash, signature, and health checks are activated</string>
+    <string name="kotatsu_parsers_check_updates">Check for updates</string>
+    <string name="kotatsu_parsers_checking">Checking for updates…</string>
+    <string name="kotatsu_parsers_up_to_date">Up to date</string>
+    <string name="kotatsu_parsers_updated">Updated to %1$s</string>
+    <string name="kotatsu_parsers_update_failed">Update failed: %1$s</string>
+    <string name="kotatsu_parsers_manage_sources">Manage Kotatsu sources</string>
+    <string name="kotatsu_parsers_manage_sources_summary">Choose which Kotatsu sources appear in Explore and global search</string>
+    <string name="kotatsu_parsers_sources">Kotatsu sources</string>
+    <string name="kotatsu_parsers_search_sources">Search sources</string>
+    <string name="kotatsu_parsers_enabled_count">%1$d of %2$d enabled</string>
+    <string name="kotatsu_parsers_broken_source">Unavailable in this runtime revision</string>
+</resources>
