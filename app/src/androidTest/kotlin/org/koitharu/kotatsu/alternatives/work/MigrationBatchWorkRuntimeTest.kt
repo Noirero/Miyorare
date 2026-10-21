@@ -1,22 +1,21 @@
 package org.koitharu.kotatsu.alternatives.work
 
+import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.Configuration
 import androidx.work.Data
-import androidx.work.WorkManager
-import androidx.work.WorkerFactory
 import androidx.work.ListenableWorker
-import androidx.work.CoroutineWorker
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.Worker
+import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
-import android.content.Context
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.awaitCancellation
-import java.util.concurrent.atomic.AtomicInteger
 import androidx.work.impl.WorkManagerImpl
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.runBlocking
@@ -32,6 +31,8 @@ import org.koitharu.kotatsu.core.model.MissingMangaSource
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -47,6 +48,7 @@ class MigrationBatchWorkRuntimeTest {
 	@Test fun actualWorkersPersistResultsRejectOverlappingBatchesAndRecoverCancellationAndReplay() = runBlocking {
 		hilt.inject()
 		LargeBatchGate.started = CompletableDeferred()
+		LargeBatchGate.blocker = CountDownLatch(1)
 		LargeBatchGate.starts.set(0)
 		val testFactory = object : WorkerFactory() {
 			override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? {
@@ -109,15 +111,22 @@ class MigrationBatchWorkRuntimeTest {
 			} }
 			assertEquals(MigrationBatchStatus.INTERRUPTED, MigrationBatchPolicy.latest(replay.mapNotNull(MigrationBatchWork::snapshot))[ids.first()]?.outcome?.status)
 			assertNull(database.getMangaDao().find(target.id))
-			// Exercise a large graph; no giant Data payload and no second batch can interleave it.
+			// Exercise a large graph while the root worker is guaranteed to remain RUNNING. The
+			// cancellation durability contract is specifically one current item + 499 never-started items.
 			val large = (1L..500L).map { MigrationBatchRequest(9_860_000L + it, "BATCH_LARGE", MigrationBatchAction.CHECK) }
 			assertTrue(scheduler.enqueue(large))
 			withTimeout(60000) { LargeBatchGate.started.await() }
-			assertEquals(1, LargeBatchGate.starts.get())
-			assertFalse(scheduler.enqueue(requests))
-			val queued = withTimeout(60000) { scheduler.observe().first { works -> works.count { MigrationBatchWork.snapshot(it)?.source == "BATCH_LARGE" } == 500 } }
+			val queued = withTimeout(60000) { scheduler.observe().first { works ->
+				val largeWorks = works.filter { MigrationBatchWork.snapshot(it)?.source == "BATCH_LARGE" }
+				largeWorks.size == 500 &&
+					largeWorks.count { it.state == WorkInfo.State.RUNNING } == 1 &&
+					largeWorks.count { it.state == WorkInfo.State.BLOCKED } == 499
+			} }
 			val queuedLarge = queued.filter { MigrationBatchWork.snapshot(it)?.source == "BATCH_LARGE" }
-			println("P4_BEFORE_CANCEL count=${queuedLarge.size} states=${queuedLarge.groupingBy { it.state }.eachCount()}")
+			assertEquals(1, LargeBatchGate.starts.get())
+			assertEquals(1, queuedLarge.count { it.state == WorkInfo.State.RUNNING })
+			assertEquals(499, queuedLarge.count { it.state == WorkInfo.State.BLOCKED })
+			assertFalse(scheduler.enqueue(requests))
 			val batchName = queued.mapNotNull(MigrationBatchWork::snapshot).first { it.source == "BATCH_LARGE" }.batchName
 			scheduler.cancel(batchName)
 			val cancelled = withTimeout(60000) { scheduler.observe().first { works ->
@@ -156,13 +165,14 @@ class MigrationBatchWorkRuntimeTest {
 				}
 			}
 			val beforeStates = queuedLarge.groupingBy { it.state }.eachCount()
-			val pendingBefore = queuedLarge.count { !it.state.isFinished && it.state != androidx.work.WorkInfo.State.RUNNING }
+			val pendingBefore = queuedLarge.count { !it.state.isFinished && it.state != WorkInfo.State.RUNNING }
 			val originalAfterStates = originalAfter.groupingBy { it.state }.eachCount()
-			val cancelledAfter = originalAfter.count { it.state == androidx.work.WorkInfo.State.CANCELLED }
+			val cancelledAfter = originalAfter.count { it.state == WorkInfo.State.CANCELLED }
 			val evidence = "before=$beforeStates pendingBefore=$pendingBefore afterCount=${originalAfter.size} afterStates=$originalAfterStates cancelledAfter=$cancelledAfter apiMarkers=${markerInfos.size} dbMarkers=$markerRows dbStates=$markerDbStates zeroEnqueueTimes=$zeroEnqueueTimes"
 			assertEquals(evidence, 499, markerRows)
 			assertEquals(evidence, 499, markerInfos.size)
 		} finally {
+			LargeBatchGate.blocker.countDown()
 			for (id in ids) database.getMangaDao().find(id)?.let { database.getMangaDao().delete(listOf(it.manga)) }
 		}
 	}
@@ -170,13 +180,20 @@ class MigrationBatchWorkRuntimeTest {
 
 private object LargeBatchGate {
 	var started = CompletableDeferred<Unit>()
+	var blocker = CountDownLatch(1)
 	val starts = AtomicInteger()
 }
 
-private class LargeBatchGateWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
-	override suspend fun doWork(): Result {
+private class LargeBatchGateWorker(context: Context, parameters: WorkerParameters) : Worker(context, parameters) {
+	override fun doWork(): Result {
 		LargeBatchGate.starts.incrementAndGet()
 		LargeBatchGate.started.complete(Unit)
-		awaitCancellation()
+		return try {
+			LargeBatchGate.blocker.await()
+			Result.success()
+		} catch (_: InterruptedException) {
+			Thread.currentThread().interrupt()
+			Result.failure()
+		}
 	}
 }
