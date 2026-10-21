@@ -5,9 +5,20 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
+enum class NextChapterReleaseState {
+	UPCOMING,
+	EXPECTED_TODAY,
+	OVERDUE_GRACE,
+}
+
 data class NextChapterReleasePrediction(
 	val expectedDate: LocalDate,
 	val daysUntilNext: Long,
+	val state: NextChapterReleaseState = if (daysUntilNext == 0L) {
+		NextChapterReleaseState.EXPECTED_TODAY
+	} else {
+		NextChapterReleaseState.UPCOMING
+	},
 )
 
 /** Internal evidence quality used only to rank already-valid prediction lineages. */
@@ -31,6 +42,7 @@ object NextChapterReleaseEstimator {
 
 	private const val MAX_EVENTS = 12
 	private const val MIN_EVENTS = 4
+	private const val MAX_GRACE_DAYS = 2L
 
 	fun predict(uploadDates: Iterable<Long>, nowMillis: Long, zone: ZoneId): NextChapterReleasePrediction? =
 		assess(uploadDates, nowMillis, zone)?.prediction
@@ -65,10 +77,19 @@ object NextChapterReleaseEstimator {
 		if (elapsed > cadence * 3L) return null
 		val expected = latest.plusDays(cadence)
 		val remaining = ChronoUnit.DAYS.between(today, expected)
-		// A missed estimate is not a new countdown. Fail closed even before the hiatus-like limit.
-		if (remaining < 0L) return null
+		val graceDays = (cadence - 1L).coerceIn(0L, MAX_GRACE_DAYS)
+		val state = when {
+			remaining > 0L -> NextChapterReleaseState.UPCOMING
+			remaining == 0L -> NextChapterReleaseState.EXPECTED_TODAY
+			-remaining <= graceDays -> NextChapterReleaseState.OVERDUE_GRACE
+			else -> return null
+		}
 		return NextChapterReleaseAssessment(
-			prediction = NextChapterReleasePrediction(expected, remaining),
+			prediction = NextChapterReleasePrediction(
+				expectedDate = expected,
+				daysUntilNext = remaining.coerceAtLeast(0L),
+				state = state,
+			),
 			releaseDates = events,
 			consistentIntervals = consistent,
 			intervalCount = intervals.size,
