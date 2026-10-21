@@ -49,7 +49,7 @@ class KotatsuSourcesSettingsFragment : BaseComposeSettingsFragment(R.string.kota
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
 			MiyorareTheme {
-				val sources by runtimeManager.sources.collectAsState()
+				val sources by runtimeManager.sources.collectAsState(initial = emptyList())
 				val enabledSourceKeys by runtimeManager.enabledSourceKeys.collectAsState()
 				KotatsuSourcesScreen(
 					sources = sources,
