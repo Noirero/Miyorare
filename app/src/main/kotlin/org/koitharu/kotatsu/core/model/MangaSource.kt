@@ -13,6 +13,8 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLangCode
 import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
+import org.koitharu.kotatsu.kotatsu.model.KotatsuMangaSource
+import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeManager
 import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.lnreader.model.LnMangaSource
 import org.koitharu.kotatsu.mihon.MihonExtensionLoader
@@ -43,12 +45,8 @@ class MissingMangaSource(
 	val cachedTitle: String? = null,
 ) : MangaSource {
 
-	// Equality intentionally ignores cachedTitle so a source matches regardless of whether the
-	// display name happened to be cached — matching has always been by name only.
 	override fun equals(other: Any?): Boolean = other is MissingMangaSource && other.name == name
-
 	override fun hashCode(): Int = name.hashCode()
-
 	override fun toString(): String = "MissingMangaSource(name=$name, cachedTitle=$cachedTitle)"
 }
 
@@ -59,32 +57,18 @@ fun MangaSource(name: String?): MangaSource {
 	}
 	if (name.startsWith("MIHON_")) {
 		val sourceId = name.removePrefix("MIHON_").substringBefore(':').toLongOrNull()
-		if (sourceId != null) {
-			return MihonExtensionManager.getById(sourceId) ?: MissingMangaSource(name)
-		}
+		if (sourceId != null) return MihonExtensionManager.getById(sourceId) ?: MissingMangaSource(name)
 		return MihonExtensionManager.getByName(name) ?: MissingMangaSource(name)
 	}
-	if (name.startsWith("LN_")) {
-		return LnPluginManager.getByName(name) ?: MissingMangaSource(name)
-	}
-	if (name.startsWith(TsukiSourceIdentity.PREFIX)) {
-		return TsukiPluginManager.getByName(name) ?: MissingMangaSource(name)
-	}
+	if (name.startsWith("LN_")) return LnPluginManager.getByName(name) ?: MissingMangaSource(name)
+	if (name.startsWith(TsukiSourceIdentity.PREFIX)) return TsukiPluginManager.getByName(name) ?: MissingMangaSource(name)
+	if (name.startsWith(KotatsuMangaSource.PREFIX)) return KotatsuRuntimeManager.getByName(name) ?: MissingMangaSource(name)
 	return MissingMangaSource(name)
 }
 
-/**
- * Resolves a source from its stored name, but when the extension is not installed it returns a
- * [MissingMangaSource] carrying [sourceTitle] (the cached `source_title` column) so the original
- * extension name is still displayed. Used when mapping DB entities back to [Manga].
- */
 fun MangaSource(name: String?, sourceTitle: String?): MangaSource {
 	val source = MangaSource(name)
-	return if (source is MissingMangaSource && !sourceTitle.isNullOrBlank()) {
-		MissingMangaSource(source.name, sourceTitle)
-	} else {
-		source
-	}
+	return if (source is MissingMangaSource && !sourceTitle.isNullOrBlank()) MissingMangaSource(source.name, sourceTitle) else source
 }
 
 fun Collection<String>.toMangaSources() = map(::MangaSource)
@@ -93,11 +77,13 @@ fun MangaSource.isNsfw(): Boolean = when (this) {
 	is MangaSourceInfo -> mangaSource.isNsfw()
 	is MihonMangaSource -> isNsfw
 	is TsukiMangaSource -> descriptor.contentType.equals("HENTAI", ignoreCase = true)
+	is KotatsuMangaSource -> contentType.equals("HENTAI", ignoreCase = true)
 	else -> false
 }
 
 val MangaSource.isBroken: Boolean
-	get() = when (unwrap()) {
+	get() = when (val source = unwrap()) {
+		is KotatsuMangaSource -> source.isBroken
 		is MissingMangaSource -> true
 		UnknownMangaSource -> true
 		else -> false
@@ -110,19 +96,17 @@ val MangaSource.isLocal: Boolean
  * True for native text sources: an LNReader JS plugin or a Tsundoku novel extension APK.
  * Missing LNReader sources keep their Novel identity from the reserved `LN_` namespace so restored
  * history, downloads, favourites, and search state cannot silently fall back into Manga behavior.
- * Tsuki's 1.0.x contract exposes page-image APIs, not Miyorare's chapter-HTML contract, so Tsuki
- * content deliberately stays on the normal parser/reader path even when its metadata says NOVEL.
+ * Tsuki and Kotatsu Runtime expose page-image APIs, not Miyorare's chapter-HTML contract, so they
+ * deliberately stay on the normal parser/reader path even when source metadata says NOVEL.
  */
 val MangaSource.isNovelSource: Boolean
 	get() = when (val source = unwrap()) {
 		is LnMangaSource -> true
 		is MihonMangaSource -> source.isNovel
-		// Extension/plugin not loaded yet (or uninstalled): preserve known Novel namespaces/ids.
 		is MissingMangaSource -> source.name.startsWith("LN_") ||
 			(source.name.startsWith("MIHON_") &&
 				source.name.removePrefix("MIHON_").substringBefore(':').toLongOrNull()
 					?.let { MihonExtensionManager.isNovelSourceId(it) } == true)
-
 		else -> false
 	}
 
@@ -143,78 +127,51 @@ val ContentType.titleResId
 		ContentType.GAME_CG -> R.string.content_type_game_cg
 	}
 
-tailrec fun MangaSource.unwrap(): MangaSource = if (this is MangaSourceInfo) {
-	mangaSource.unwrap()
-} else {
-	this
-}
+tailrec fun MangaSource.unwrap(): MangaSource = if (this is MangaSourceInfo) mangaSource.unwrap() else this
 
 fun MangaSource.getLocale(): Locale? = when (val source = unwrap()) {
-	is MihonMangaSource -> getExternalExtensionLangCode(source.language)
-		.takeIf { it.isNotBlank() }
-		?.let(Locale::forLanguageTag)
-	is LnMangaSource -> getExternalExtensionLangCode(source.plugin.lang)
-		.takeIf { it.isNotBlank() }
-		?.let(Locale::forLanguageTag)
-	is TsukiMangaSource -> getExternalExtensionLangCode(source.language)
-		.takeIf { it.isNotBlank() }
-		?.let(Locale::forLanguageTag)
+	is MihonMangaSource -> getExternalExtensionLangCode(source.language).takeIf { it.isNotBlank() }?.let(Locale::forLanguageTag)
+	is LnMangaSource -> getExternalExtensionLangCode(source.plugin.lang).takeIf { it.isNotBlank() }?.let(Locale::forLanguageTag)
+	is TsukiMangaSource -> getExternalExtensionLangCode(source.language).takeIf { it.isNotBlank() }?.let(Locale::forLanguageTag)
+	is KotatsuMangaSource -> getExternalExtensionLangCode(source.language).takeIf { it.isNotBlank() }?.let(Locale::forLanguageTag)
 	else -> null
 }
 
-/** Short language code suitable for compact library card overlays (ID, EN, JA, ...). */
 fun MangaSource.getLanguageCode(): String? = when (val source = unwrap()) {
-	is MihonMangaSource -> getExternalExtensionLangCode(source.language)
-		.takeIf { it.isNotBlank() }
-		?.uppercase(Locale.ROOT)
-	is LnMangaSource -> getExternalExtensionLangCode(source.plugin.lang)
-		.takeIf { it.isNotBlank() }
-		?.uppercase(Locale.ROOT)
-	is TsukiMangaSource -> getExternalExtensionLangCode(source.language)
-		.takeIf { it.isNotBlank() }
-		?.uppercase(Locale.ROOT)
+	is MihonMangaSource -> getExternalExtensionLangCode(source.language).takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+	is LnMangaSource -> getExternalExtensionLangCode(source.plugin.lang).takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+	is TsukiMangaSource -> getExternalExtensionLangCode(source.language).takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+	is KotatsuMangaSource -> getExternalExtensionLangCode(source.language).takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
 	else -> null
 }
 
 fun MangaSource.getSummary(context: Context): String? = when (val source = unwrap()) {
-	// Same info the extension manager shows under each extension: language • version • repo.
 	is MihonMangaSource -> buildString {
 		append(getExternalExtensionLanguageDisplayName(source.language))
-		runCatching { context.packageManager.getPackageInfo(source.pkgName, 0).versionName }
-			.getOrNull()
-			?.let { append(" • ").append(it) }
+		runCatching { context.packageManager.getPackageInfo(source.pkgName, 0).versionName }.getOrNull()?.let { append(" • ").append(it) }
 		val settings = AppSettings(context.applicationContext)
-		val repoLabel = settings.getExtensionStoreLabel(
-			source.pkgName,
-			MihonExtensionLoader.getPackageSignatures(context, source.pkgName),
-		)
-		repoLabel?.let { append(" • ").append(it) }
+		settings.getExtensionStoreLabel(source.pkgName, MihonExtensionLoader.getPackageSignatures(context, source.pkgName))
+			?.let { append(" • ").append(it) }
 	}
-	// language • version, mirroring the Mihon line above. Novel plugins have no repo signature.
 	is LnMangaSource -> buildString {
 		append(getExternalExtensionLanguageDisplayName(source.plugin.lang))
 		source.plugin.version.takeIf { it.isNotEmpty() }?.let { append(" • ").append(it) }
 	}
 	is TsukiMangaSource -> buildString {
-		source.language.takeIf { it.isNotBlank() }
-			?.let { append(getExternalExtensionLanguageDisplayName(it)) }
+		source.language.takeIf { it.isNotBlank() }?.let { append(getExternalExtensionLanguageDisplayName(it)) }
 		if (isNotEmpty()) append(" • ")
 		append(source.plugin.provider.wireName)
-		source.plugin.version.takeIf { it.isNotBlank() && it != "unknown" }
-			?.let { append(" • ").append(it) }
+		source.plugin.version.takeIf { it.isNotBlank() && it != "unknown" }?.let { append(" • ").append(it) }
 	}
-
-	is MissingMangaSource -> {
-		if (source.name.startsWith("MIHON_") ||
-			source.name.startsWith("LN_") ||
-			source.name.startsWith(TsukiSourceIdentity.PREFIX)
-		) {
-			context.getString(R.string.external_source)
-		} else {
-			null
-		}
+	is KotatsuMangaSource -> buildString {
+		source.language.takeIf { it.isNotBlank() }?.let { append(getExternalExtensionLanguageDisplayName(it)) }
+		if (isNotEmpty()) append(" • ")
+		append("Kotatsu Runtime")
 	}
-
+	is MissingMangaSource -> if (source.name.startsWith("MIHON_") || source.name.startsWith("LN_") ||
+		source.name.startsWith(TsukiSourceIdentity.PREFIX) || source.name.startsWith(KotatsuMangaSource.PREFIX)) {
+		context.getString(R.string.external_source)
+	} else null
 	else -> null
 }
 
@@ -223,15 +180,15 @@ fun MangaSource.getTitle(context: Context): String = when (val source = unwrap()
 	is MihonMangaSource -> source.displayName
 	is LnMangaSource -> source.displayName
 	is TsukiMangaSource -> source.displayName
+	is KotatsuMangaSource -> source.displayName
 	is MissingMangaSource -> source.resolveDisplayName(context)
 	else -> context.getString(R.string.unknown)
 }
 
 fun MangaSource.isExternalSource(): Boolean = when (val source = unwrap()) {
-	is MihonMangaSource, is LnMangaSource, is TsukiMangaSource -> true
-	is MissingMangaSource -> source.name.startsWith("MIHON_") ||
-		source.name.startsWith("LN_") ||
-		source.name.startsWith(TsukiSourceIdentity.PREFIX)
+	is MihonMangaSource, is LnMangaSource, is TsukiMangaSource, is KotatsuMangaSource -> true
+	is MissingMangaSource -> source.name.startsWith("MIHON_") || source.name.startsWith("LN_") ||
+		source.name.startsWith(TsukiSourceIdentity.PREFIX) || source.name.startsWith(KotatsuMangaSource.PREFIX)
 	else -> false
 }
 
@@ -239,39 +196,34 @@ fun MangaSource.getStoredTitleOrNull(): String? = when (val source = unwrap()) {
 	is MihonMangaSource -> source.displayName
 	is LnMangaSource -> source.displayName
 	is TsukiMangaSource -> source.displayName
+	is KotatsuMangaSource -> source.displayName
 	is MissingMangaSource -> source.cachedDisplayNameOrNull() ?: source.liveDisplayNameOrNull()
 	LocalMangaSource -> null
 	else -> null
 }
 
-/** Resolve a display name from a live optional extension/plugin without loading parser code. */
 private fun MissingMangaSource.liveDisplayNameOrNull(): String? {
 	if (name.startsWith("MIHON_")) {
 		val id = name.removePrefix("MIHON_").substringBefore(':').toLongOrNull() ?: return null
 		return MihonExtensionManager.getById(id)?.displayName
 	}
-	if (name.startsWith(TsukiSourceIdentity.PREFIX)) {
-		return TsukiPluginManager.getByName(name)?.displayName
-	}
+	if (name.startsWith(TsukiSourceIdentity.PREFIX)) return TsukiPluginManager.getByName(name)?.displayName
+	if (name.startsWith(KotatsuMangaSource.PREFIX)) return KotatsuRuntimeManager.getByName(name)?.displayName
 	return null
 }
 
 private fun MissingMangaSource.resolveDisplayName(context: Context): String {
 	if (name.startsWith("MIHON_")) {
 		val cachedName = cachedDisplayNameOrNull()
-		return if (cachedName != null) {
-			context.getString(R.string.missing_extension_source_pattern, cachedName)
-		} else {
-			context.getString(R.string.missing_extension_source_pattern, context.getString(R.string.unknown))
-		}
+		return context.getString(R.string.missing_extension_source_pattern, cachedName ?: context.getString(R.string.unknown))
 	}
-	if (name.startsWith("LN_")) {
-		return context.getString(R.string.missing_extension_source_pattern, name.removePrefix("LN_"))
-	}
+	if (name.startsWith("LN_")) return context.getString(R.string.missing_extension_source_pattern, name.removePrefix("LN_"))
 	if (name.startsWith(TsukiSourceIdentity.PREFIX)) {
-		val title = cachedDisplayNameOrNull()
-			?: TsukiSourceIdentity.parse(name)?.sourceName
-			?: context.getString(R.string.unknown)
+		val title = cachedDisplayNameOrNull() ?: TsukiSourceIdentity.parse(name)?.sourceName ?: context.getString(R.string.unknown)
+		return context.getString(R.string.missing_extension_source_pattern, title)
+	}
+	if (name.startsWith(KotatsuMangaSource.PREFIX)) {
+		val title = cachedDisplayNameOrNull() ?: KotatsuMangaSource.sourceKeyOf(name) ?: context.getString(R.string.unknown)
 		return context.getString(R.string.missing_extension_source_pattern, title)
 	}
 	return name
@@ -289,10 +241,6 @@ fun SpannableStringBuilder.appendIcon(textView: TextView, @DrawableRes resId: In
 	icon.setTintList(textView.textColors)
 	val size = textView.lineHeight
 	icon.setBounds(0, 0, size, size)
-	val alignment = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-		ImageSpan.ALIGN_CENTER
-	} else {
-		ImageSpan.ALIGN_BOTTOM
-	}
+	val alignment = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ImageSpan.ALIGN_CENTER else ImageSpan.ALIGN_BOTTOM
 	return inSpans(ImageSpan(icon, alignment)) { append(' ') }
 }
