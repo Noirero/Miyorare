@@ -96,6 +96,18 @@ class KotatsuRuntimeManager @Inject constructor(
 		enabledSourceState.value = snapshot
 	}
 
+	fun getSourceConfig(sourceKey: String): JSONObject {
+		require(getAvailableSources().any { it.sourceKey == sourceKey }) { "Unknown Kotatsu source: $sourceKey" }
+		return runtime().sourceConfig(sourceKey)
+	}
+
+	fun setSourceConfigValue(sourceKey: String, key: String, value: Any?): JSONObject {
+		require(getAvailableSources().any { it.sourceKey == sourceKey }) { "Unknown Kotatsu source: $sourceKey" }
+		require(key.isNotBlank()) { "Kotatsu source config key is blank" }
+		val values = JSONObject().put(key, value ?: JSONObject.NULL)
+		return runtime().setSourceConfig(sourceKey, values.toString())
+	}
+
 	fun status(): RuntimeStatus {
 		initialize()
 		val active = session
