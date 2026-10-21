@@ -107,6 +107,7 @@ class AlternativesUseCase @Inject constructor(
 		query: String = manga.title,
 		precomputedSources: List<MangaSource>? = null,
 		maxDetailCandidates: Int = MAX_DETAIL_CANDIDATES,
+		excludedCandidateKeys: Set<Pair<String, Long>> = emptySet(),
 	): Flow<AlternativeSearchEvent> {
 		val normalizedQuery = query.trim().ifEmpty { manga.title }
 		val sources = precomputedSources ?: getSources(manga, mode, preferredLanguages)
@@ -133,6 +134,10 @@ class AlternativesUseCase @Inject constructor(
 						// Source is part of manga identity. Different providers may legitimately generate the
 						// same numeric id, so id equality alone must never hide a cross-source replacement.
 						?.filter { it.source != manga.source || it.id != manga.id }
+						// Migration can search the primary title plus several aliases. Once an exact source/id
+						// has already been detailed by an earlier query, repeating getDetails() cannot add new
+						// identity evidence. Filter it before the per-source cap so a new candidate can use the slot.
+						?.filter { (it.source.name to it.id) !in excludedCandidateKeys }
 						?.distinctBy { it.dedupeKey() }
 						?.take(detailCandidateLimit)
 						?.toList()
