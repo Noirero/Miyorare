@@ -8,23 +8,27 @@ import java.io.InputStream
 /** Owns verified bundled/current/previous runtime slots and their matching manifests. */
 internal class KotatsuRuntimePackStore(private val context: Context) {
 	private val root = File(context.noBackupFilesDir, "kotatsu-runtime")
-	val bundledFile: File get() = File(root, "bundled.apk")
-	val currentFile: File get() = File(root, "current.apk")
-	val previousFile: File get() = File(root, "previous.apk")
-	private val bundledManifestFile get() = File(root, "bundled.json")
-	private val currentManifestFile get() = File(root, "current.json")
-	private val previousManifestFile get() = File(root, "previous.json")
-	private val stagingFile get() = File(root, "staging.apk")
-	private val stagingManifestFile get() = File(root, "staging.json")
+	private val bundledDir get() = File(root, "bundled")
+	private val currentDir get() = File(root, "current")
+	private val previousDir get() = File(root, "previous")
+	private val stagingDir get() = File(root, "staging.tmp")
+	private val failedDir get() = File(root, "failed.tmp")
+
+	val bundledFile: File get() = runtimeFile(bundledDir)
+	val currentFile: File get() = runtimeFile(currentDir)
+	val previousFile: File get() = runtimeFile(previousDir)
+	private val bundledManifestFile get() = manifestFile(bundledDir)
+	private val currentManifestFile get() = manifestFile(currentDir)
+	private val previousManifestFile get() = manifestFile(previousDir)
 
 	fun bundledManifest(): KotatsuRuntimePackManifest? = readManifest(bundledManifestFile)
 	fun currentManifest(): KotatsuRuntimePackManifest? = readManifest(currentManifestFile)
 	fun previousManifest(): KotatsuRuntimePackManifest? = readManifest(previousManifestFile)
 
 	/**
-	 * Materializes the immutable runtime embedded in the host APK into app-private storage. The
-	 * embedded asset is rechecked on every host version: when its manifest hash changes the local
-	 * bundled slot is replaced atomically. A missing/corrupt bundled asset is fail-closed.
+	 * Materializes the immutable runtime embedded in the host APK. Runtime + manifest live in one
+	 * directory so activation is a single same-filesystem directory rename rather than two unrelated
+	 * file renames that can leave a torn pair after process/device interruption.
 	 */
 	@Synchronized
 	fun ensureBundled(verifier: KotatsuRuntimePackVerifier): RuntimeSlot? = runCatching {
@@ -37,66 +41,88 @@ internal class KotatsuRuntimePackStore(private val context: Context) {
 			return@runCatching RuntimeSlot(bundledFile, manifest)
 		}
 
-		val apkTemp = File(root, "bundled.tmp.apk")
-		val manifestTemp = File(root, "bundled.tmp.json")
-		apkTemp.delete(); manifestTemp.delete()
-		context.assets.open(BUNDLED_APK_ASSET).use { input -> copyDurably(input, apkTemp) }
-		manifestTemp.writeText(manifest.toJson())
-		require(apkTemp.setReadOnly()) { "Could not make bundled Kotatsu runtime read-only" }
-		require(manifestTemp.setReadOnly()) { "Could not make bundled Kotatsu manifest read-only" }
-		verifier.verify(apkTemp, manifest).getOrThrow()
+		val incoming = File(root, "bundled.tmp")
+		incoming.deleteRecursively()
+		writeSlot(
+			directory = incoming,
+			manifest = manifest,
+			verifier = verifier,
+		) { target -> context.assets.open(BUNDLED_APK_ASSET).use { input -> copyDurably(input, target) } }
 
-		bundledFile.delete(); bundledManifestFile.delete()
-		require(apkTemp.renameTo(bundledFile)) { "Could not activate bundled Kotatsu runtime" }
-		require(manifestTemp.renameTo(bundledManifestFile)) { "Could not activate bundled Kotatsu manifest" }
+		val old = File(root, "bundled.old")
+		old.deleteRecursively()
+		if (bundledDir.exists()) require(bundledDir.renameTo(old)) { "Could not stage previous bundled Kotatsu runtime" }
+		try {
+			require(incoming.renameTo(bundledDir)) { "Could not activate bundled Kotatsu runtime" }
+		} catch (error: Throwable) {
+			bundledDir.deleteRecursively()
+			old.renameTo(bundledDir)
+			throw error
+		}
+		old.deleteRecursively()
 		RuntimeSlot(bundledFile, manifest)
 	}.getOrNull()
 
+	/** Stage + verify first, then atomically swap the entire runtime/manifest directory. */
 	@Synchronized
 	fun install(candidate: File, manifest: KotatsuRuntimePackManifest, verifier: KotatsuRuntimePackVerifier) {
 		root.mkdirs()
-		stagingFile.delete(); stagingManifestFile.delete()
-		copyDurably(candidate, stagingFile)
-		stagingManifestFile.writeText(manifest.toJson())
-		require(stagingFile.setReadOnly()) { "Could not make staged Kotatsu runtime read-only" }
-		require(stagingManifestFile.setReadOnly()) { "Could not make staged Kotatsu manifest read-only" }
-		verifier.verify(stagingFile, manifest).getOrThrow()
+		stagingDir.deleteRecursively()
+		writeSlot(stagingDir, manifest, verifier) { target -> copyDurably(candidate, target) }
 
-		val backupApk = File(root, "previous.tmp.apk")
-		val backupManifest = File(root, "previous.tmp.json")
-		backupApk.delete(); backupManifest.delete()
-		if (currentFile.exists()) require(currentFile.renameTo(backupApk)) { "Could not stage current Kotatsu runtime" }
-		if (currentManifestFile.exists()) require(currentManifestFile.renameTo(backupManifest)) { "Could not stage current Kotatsu manifest" }
+		val hadCurrent = currentDir.isDirectory
+		if (hadCurrent) {
+			previousDir.deleteRecursively()
+			require(currentDir.renameTo(previousDir)) { "Could not stage current Kotatsu runtime as previous" }
+		}
 		try {
-			require(stagingFile.renameTo(currentFile)) { "Could not activate Kotatsu runtime pack" }
-			require(stagingManifestFile.renameTo(currentManifestFile)) { "Could not activate Kotatsu runtime manifest" }
+			require(stagingDir.renameTo(currentDir)) { "Could not atomically activate Kotatsu runtime pack" }
 		} catch (error: Throwable) {
-			currentFile.delete(); currentManifestFile.delete()
-			backupApk.renameTo(currentFile); backupManifest.renameTo(currentManifestFile)
+			currentDir.deleteRecursively()
+			if (hadCurrent) previousDir.renameTo(currentDir)
 			throw error
 		}
-		previousFile.delete(); previousManifestFile.delete()
-		if (backupApk.exists()) backupApk.renameTo(previousFile)
-		if (backupManifest.exists()) backupManifest.renameTo(previousManifestFile)
 	}
 
+	/**
+	 * Restore the previous verified slot using directory renames. This also recovers the interrupted
+	 * state where current disappeared after being renamed to previous but before staging became current.
+	 */
 	@Synchronized
 	fun rollback(): Boolean {
 		if (!previousFile.isFile || !previousManifestFile.isFile) return false
-		val failedApk = File(root, "failed.apk")
-		val failedManifest = File(root, "failed.json")
-		failedApk.delete(); failedManifest.delete()
-		if (currentFile.exists() && !currentFile.renameTo(failedApk)) return false
-		if (currentManifestFile.exists() && !currentManifestFile.renameTo(failedManifest)) {
-			failedApk.renameTo(currentFile); return false
-		}
-		if (!previousFile.renameTo(currentFile) || !previousManifestFile.renameTo(currentManifestFile)) {
-			currentFile.delete(); currentManifestFile.delete()
-			failedApk.renameTo(currentFile); failedManifest.renameTo(currentManifestFile)
+		failedDir.deleteRecursively()
+		val hadCurrent = currentDir.exists()
+		if (hadCurrent && !currentDir.renameTo(failedDir)) return false
+		if (!previousDir.renameTo(currentDir)) {
+			if (hadCurrent) failedDir.renameTo(currentDir)
 			return false
 		}
-		failedApk.delete(); failedManifest.delete(); return true
+		failedDir.deleteRecursively()
+		return true
 	}
+
+	private fun writeSlot(
+		directory: File,
+		manifest: KotatsuRuntimePackManifest,
+		verifier: KotatsuRuntimePackVerifier,
+		writeRuntime: (File) -> Unit,
+	) {
+		require(directory.mkdirs() || directory.isDirectory) { "Could not create Kotatsu runtime slot" }
+		val runtime = runtimeFile(directory)
+		val manifestTarget = manifestFile(directory)
+		writeRuntime(runtime)
+		FileOutputStream(manifestTarget).use { output ->
+			output.write(manifest.toJson().toByteArray(Charsets.UTF_8))
+			output.fd.sync()
+		}
+		require(runtime.setReadOnly()) { "Could not make staged Kotatsu runtime read-only" }
+		require(manifestTarget.setReadOnly()) { "Could not make staged Kotatsu manifest read-only" }
+		verifier.verify(runtime, manifest).getOrThrow()
+	}
+
+	private fun runtimeFile(directory: File) = File(directory, "runtime.apk")
+	private fun manifestFile(directory: File) = File(directory, "manifest.json")
 
 	private fun readManifest(file: File): KotatsuRuntimePackManifest? =
 		file.takeIf(File::isFile)?.let { runCatching { KotatsuRuntimePackManifest.parse(it.readText()) }.getOrNull() }
