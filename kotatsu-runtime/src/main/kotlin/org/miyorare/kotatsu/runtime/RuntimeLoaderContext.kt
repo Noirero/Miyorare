@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.graphics.Rect as AndroidRect
 import android.os.Handler
 import android.os.Looper
+import android.webkit.CookieManager
 import android.webkit.WebView
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
@@ -19,6 +20,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.json.JSONArray
+import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParser
 import org.koitharu.kotatsu.parsers.bitmap.Bitmap
@@ -80,18 +82,29 @@ internal class RuntimeLoaderContext(private val appContext: Context) : MangaLoad
 		}
 	}
 
-	override fun requestBrowserAction(parser: MangaParser, url: String): Nothing {
-		throw UnsupportedOperationException("MIYORARE_BROWSER_ACTION|${parser.source.name}|$url")
-	}
+	override fun requestBrowserAction(parser: MangaParser, url: String): Nothing =
+		interactiveAction("browser", parser, url)
 
-	override fun requestCloudflareVerification(parser: MangaParser, url: String): Nothing {
-		throw UnsupportedOperationException("MIYORARE_CLOUDFLARE|${parser.source.name}|$url")
+	override fun requestCloudflareVerification(parser: MangaParser, url: String): Nothing =
+		interactiveAction("cloudflare", parser, url)
+
+	private fun interactiveAction(kind: String, parser: MangaParser, url: String): Nothing {
+		val payload = JSONObject()
+			.put("kind", kind)
+			.put("source", parser.source.name)
+			.put("url", url)
+			.put("userAgent", getDefaultUserAgent())
+		throw UnsupportedOperationException(INTERACTIVE_ACTION_PREFIX + payload)
 	}
 
 	override fun redrawImageResponse(response: Response, redraw: (Bitmap) -> Bitmap): Response =
 		RuntimeBitmapBridge.redraw(response, redraw)
 
 	override fun createBitmap(width: Int, height: Int): Bitmap = RuntimeBitmapBridge.create(width, height)
+
+	private companion object {
+		const val INTERACTIVE_ACTION_PREFIX = "MIYORARE_INTERACTIVE|"
+	}
 }
 
 private class RuntimeSourceConfig(context: Context, sourceName: String) : MangaSourceConfig {
@@ -126,16 +139,28 @@ private class RuntimeSourceConfig(context: Context, sourceName: String) : MangaS
 	}
 }
 
+/**
+ * Runtime HTTP cookies are durable, while WebView cookies are the bridge used when the host asks the
+ * user to complete an interactive browser/Cloudflare step. Keeping the two stores synchronized means
+ * a successful BrowserActivity challenge is visible to the isolated parser on the retry.
+ */
 private class PersistentCookieJar(context: Context) : CookieJar {
 	private val prefs = context.getSharedPreferences("kotatsu_runtime_cookies", Context.MODE_PRIVATE)
+	private val webCookies = CookieManager.getInstance()
 
 	override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
 		val editor = prefs.edit()
 		for (cookie in cookies) {
 			val key = "${cookie.domain}|${cookie.path}|${cookie.name}"
-			if (cookie.expiresAt <= System.currentTimeMillis()) editor.remove(key) else editor.putString(key, cookie.toString())
+			if (cookie.expiresAt <= System.currentTimeMillis()) {
+				editor.remove(key)
+			} else {
+				editor.putString(key, cookie.toString())
+				webCookies.setCookie(url.toString(), cookie.toString())
+			}
 		}
 		editor.apply()
+		webCookies.flush()
 	}
 
 	override fun loadForRequest(url: HttpUrl): List<Cookie> {
@@ -150,6 +175,23 @@ private class PersistentCookieJar(context: Context) : CookieJar {
 			if (cookie.expiresAt <= now) expired += key else if (cookie.matches(url)) result += cookie
 		}
 		if (expired.isNotEmpty()) prefs.edit().also { edit -> expired.forEach(edit::remove) }.apply()
+
+		// BrowserActivity writes successful interactive/challenge cookies to Android CookieManager.
+		// Prefer those values by cookie name on the next parser request so stale HTTP-jar values cannot
+		// immediately overwrite a freshly solved challenge.
+		val browserHeader = runCatching { webCookies.getCookie(url.toString()) }.getOrNull()
+		if (!browserHeader.isNullOrBlank()) {
+			for (pair in browserHeader.split(';')) {
+				val name = pair.substringBefore('=', "").trim()
+				val value = pair.substringAfter('=', "").trim()
+				if (name.isEmpty()) continue
+				val browserCookie = runCatching {
+					Cookie.Builder().name(name).value(value).hostOnlyDomain(url.host).path("/").build()
+				}.getOrNull() ?: continue
+				result.removeAll { it.name == name }
+				result += browserCookie
+			}
+		}
 		return result
 	}
 }
