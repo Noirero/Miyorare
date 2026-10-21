@@ -12,7 +12,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import dagger.hilt.android.qualifiers.ApplicationContext
 
-/** Lazy host for the isolated Kotatsu Runtime Pack. No runtime classes cross this boundary. */
+/** Lazy host for the isolated Kotatsu Runtime Pack. No runtime Kotatsu classes cross this boundary. */
 @Singleton
 class KotatsuRuntimeManager @Inject constructor(
 	@ApplicationContext private val context: Context,
@@ -94,6 +94,8 @@ class KotatsuRuntimeManager @Inject constructor(
 		val optimized = File(context.codeCacheDir, "kotatsu-runtime").apply { mkdirs() }
 		val loader = KotatsuRuntimeClassLoader(file.absolutePath, optimized.absolutePath, context.classLoader)
 		val clazz = loader.loadClass(KotatsuRuntimePackContract.ENTRYPOINT_CLASS)
+		// Context is an Android platform type, not a Kotatsu parser type. The executable pack is already
+		// trusted by signature; protocol v1 uses Context only as its bootstrap capability.
 		val instance = clazz.getConstructor(Context::class.java).newInstance(context.applicationContext)
 		val result = Session(instance, clazz, manifest)
 		require(result.protocolVersion() == KotatsuRuntimePackContract.PROTOCOL_VERSION) { "Kotatsu runtime protocol mismatch" }
@@ -102,36 +104,45 @@ class KotatsuRuntimeManager @Inject constructor(
 	}
 
 	internal class Session(private val target: Any, clazz: Class<*>, val manifest: KotatsuRuntimePackManifest) {
-		private val protocol: Method = clazz.getMethod("protocolVersion")
-		private val health: Method = clazz.getMethod("healthCheck")
-		private val catalog: Method = clazz.getMethod("catalogJson")
-		private val list: Method = clazz.getMethod("getListJson", String::class.java, Integer.TYPE, String::class.java, String::class.java)
-		private val details: Method = clazz.getMethod("getDetailsJson", String::class.java, String::class.java)
-		private val pages: Method = clazz.getMethod("getPagesJson", String::class.java, String::class.java)
-		private val pageUrl: Method = clazz.getMethod("getPageUrl", String::class.java, String::class.java)
-		private val related: Method = clazz.getMethod("getRelatedJson", String::class.java, String::class.java)
-		private val sortOrders: Method = clazz.getMethod("sortOrdersJson", String::class.java)
-		private val searchSupported: Method = clazz.getMethod("isSearchSupported", String::class.java)
-		private val headers: Method = clazz.getMethod("requestHeadersJson", String::class.java)
+		private val methods = KotatsuRuntimePackContract.Methods
+		private val protocol: Method = clazz.getMethod(methods.PROTOCOL_VERSION)
+		private val health: Method = clazz.getMethod(methods.HEALTH_CHECK)
+		private val catalog: Method = clazz.getMethod(methods.CATALOG_JSON)
+		private val list: Method = clazz.getMethod(methods.GET_LIST_JSON, String::class.java, Integer.TYPE, String::class.java, String::class.java)
+		private val details: Method = clazz.getMethod(methods.GET_DETAILS_JSON, String::class.java, String::class.java)
+		private val pages: Method = clazz.getMethod(methods.GET_PAGES_JSON, String::class.java, String::class.java)
+		private val pageUrl: Method = clazz.getMethod(methods.GET_PAGE_URL, String::class.java, String::class.java)
+		private val related: Method = clazz.getMethod(methods.GET_RELATED_JSON, String::class.java, String::class.java)
+		private val sortOrders: Method = clazz.getMethod(methods.SORT_ORDERS_JSON, String::class.java)
+		private val filterCapabilities: Method = clazz.getMethod(methods.FILTER_CAPABILITIES_JSON, String::class.java)
+		private val filterOptions: Method = clazz.getMethod(methods.FILTER_OPTIONS_JSON, String::class.java)
+		private val sourceConfig: Method = clazz.getMethod(methods.SOURCE_CONFIG_JSON, String::class.java)
+		private val setSourceConfig: Method = clazz.getMethod(methods.SET_SOURCE_CONFIG_JSON, String::class.java, String::class.java)
+		private val headers: Method = clazz.getMethod(methods.REQUEST_HEADERS_JSON, String::class.java)
 
 		fun protocolVersion() = protocol.invoke(target) as Int
 		fun healthCheck() = health.invoke(target) as Boolean
 		fun catalog(): List<KotatsuMangaSource> {
 			val array = JSONArray(catalog.invoke(target) as String)
-			return buildList(array.length()) {
+			val result = buildList(array.length()) {
 				for (i in 0 until array.length()) {
 					val item = array.getJSONObject(i)
 					add(KotatsuMangaSource(item.getString("key"), item.optString("title", item.getString("key")), item.optString("locale"), item.optString("contentType", "OTHER"), item.optBoolean("broken")))
 				}
 			}
+			require(result.map { it.sourceKey }.toSet().size == result.size) { "Kotatsu runtime catalog contains duplicate source keys" }
+			return result
 		}
-		fun getList(source: String, offset: Int, order: String, query: String?) = list.invoke(target, source, offset, order, query.orEmpty()) as String
+		fun getList(source: String, offset: Int, order: String, filterJson: String) = list.invoke(target, source, offset, order, filterJson) as String
 		fun getDetails(source: String, manga: String) = details.invoke(target, source, manga) as String
 		fun getPages(source: String, chapter: String) = pages.invoke(target, source, chapter) as String
 		fun getPageUrl(source: String, page: String) = pageUrl.invoke(target, source, page) as String
 		fun getRelated(source: String, manga: String) = related.invoke(target, source, manga) as String
 		fun sortOrders(source: String): Set<String> = JSONArray(sortOrders.invoke(target, source) as String).let { array -> buildSet { for (i in 0 until array.length()) add(array.getString(i)) } }
-		fun isSearchSupported(source: String) = searchSupported.invoke(target, source) as Boolean
+		fun filterCapabilities(source: String): JSONObject = JSONObject(filterCapabilities.invoke(target, source) as String)
+		fun filterOptions(source: String): JSONObject = JSONObject(filterOptions.invoke(target, source) as String)
+		fun sourceConfig(source: String): JSONObject = JSONObject(sourceConfig.invoke(target, source) as String)
+		fun setSourceConfig(source: String, valuesJson: String): JSONObject = JSONObject(setSourceConfig.invoke(target, source, valuesJson) as String)
 		fun requestHeaders(source: String): JSONObject = JSONObject(headers.invoke(target, source) as String)
 	}
 

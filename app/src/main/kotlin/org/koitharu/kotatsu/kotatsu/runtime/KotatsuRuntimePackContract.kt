@@ -9,6 +9,27 @@ object KotatsuRuntimePackContract {
 	const val DEFAULT_MANIFEST_URL =
 		"https://github.com/Noirero/Miyorare/releases/download/kotatsu-runtime-latest/manifest.json"
 	const val MAX_PACK_BYTES = 128L * 1024L * 1024L
+
+	/**
+	 * Reflection names are part of protocol v1. Runtime implementations may use any internal Kotatsu
+	 * parser ABI, but these methods and their primitive/String/JSON boundary remain Miyorare-owned.
+	 */
+	object Methods {
+		const val PROTOCOL_VERSION = "protocolVersion"
+		const val HEALTH_CHECK = "healthCheck"
+		const val CATALOG_JSON = "catalogJson"
+		const val GET_LIST_JSON = "getListJson"
+		const val GET_DETAILS_JSON = "getDetailsJson"
+		const val GET_PAGES_JSON = "getPagesJson"
+		const val GET_PAGE_URL = "getPageUrl"
+		const val GET_RELATED_JSON = "getRelatedJson"
+		const val SORT_ORDERS_JSON = "sortOrdersJson"
+		const val FILTER_CAPABILITIES_JSON = "filterCapabilitiesJson"
+		const val FILTER_OPTIONS_JSON = "filterOptionsJson"
+		const val SOURCE_CONFIG_JSON = "sourceConfigJson"
+		const val SET_SOURCE_CONFIG_JSON = "setSourceConfigJson"
+		const val REQUEST_HEADERS_JSON = "requestHeadersJson"
+	}
 }
 
 data class KotatsuRuntimePackManifest(
