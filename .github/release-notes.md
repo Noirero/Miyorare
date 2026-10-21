@@ -1,50 +1,72 @@
-## Miyorare v1.4.11
+## Miyorare v1.4.12
 
-This update focuses on visual consistency and release reliability. Custom neutral accent colors now keep their intended identity across Favourites glass and bottom navigation, light-mode Favourites titles are easier to read, and the stable release/README flow is more reliable.
+This release is a major reliability and source-management update. Miyorare now has a more capable migration system for broken or changing sources, a dedicated Kotatsu runtime foundation, clearer source provenance in Explore, and stronger handling of local and downloaded content.
 
 ### ✨ What's New
 
-- **Faithful neutral custom accents** — explicitly selected neutral accents such as black and gray now keep their authored identity in Miyorare's glass styling instead of being transformed into a luminous color.
-- **Stable release README synchronization** — published stable releases can now automatically prepare a small metadata PR that keeps the README release verification block aligned with the released version, source commit, Actions run, APK name, and SHA-256.
+- **Redesigned source migration** — broken or unavailable sources can now be handled through a more complete migration flow with candidate discovery, matching, review, and controlled execution.
+- **Migration review screen** — review migration candidates before applying changes instead of relying on a blind replacement flow.
+- **Batch migration support** — migration work can be grouped and scheduled with dedicated batch controls and background execution.
+- **Lossless migration transfer** — migration now has dedicated transfer logic designed to preserve user state and related manga data while moving an entry to its replacement source.
+- **Kotatsu runtime foundation** — Miyorare now includes dedicated infrastructure for loading, managing, verifying, and updating its Kotatsu parser runtime separately.
+- **Kotatsu source settings** — new settings infrastructure provides dedicated management and configuration for Kotatsu sources and parsers.
+- **Source provenance in Explore** — source entries can expose clearer information about where a source comes from and which ecosystem provides it.
 
 ### 🚀 Improvements
 
-- **Custom background color identity** — when custom-background color synchronization is active, the background's primary identity can flow consistently into the Miyorare view palette.
-- **Bottom navigation theming** — modern and legacy bottom navigation now respect an explicitly selected black custom identity, including container, border, glow, selected state, and content contrast.
-- **Release-note maintenance** — stable release metadata handling now normalizes repeated release headings and preserves machine-readable release provenance.
-- **Promotion validation** — the main promotion gate can publish an exact-head APK for owner device testing, with an explicit low-risk `skip-device-test` override while retaining the non-device promotion checks.
+- **Smarter migration matching** — migration candidate selection now uses dedicated discovery and matching logic instead of relying on the older simplified path.
+- **Background migration reliability** — batch migration work is integrated with WorkManager and retains its state more reliably across process restarts.
+- **Migration data preservation** — additional persistence handling protects reading-related state that is not represented solely by the main Room records.
+- **Explore source presentation** — source cards and source filtering have been expanded to support provenance information and the newer source architecture.
+- **Kotatsu runtime verification** — runtime packs have an explicit contract, storage layer, verifier, updater, preferences, and update worker.
+- **Local library resolution** — local/downloaded manga and novel lookup has been strengthened, including download-path alias handling.
+- **Novel source routing** — source capability and routing behavior for novels has been refined to better distinguish supported source behavior.
+- **README showcase** — the project README is now fully available in English and includes a categorized, collapsible visual showcase of Miyorare.
 
 ### 🐞 Fixes
 
-- Fixed light-mode Favourites titles below modern covers so text uses the appropriate glass content color instead of losing contrast.
-- Fixed black/gray/white custom accents being relit or tinted by neon-glass color processing.
-- Fixed black custom accent styling in modern bottom navigation so it remains black instead of inheriting a luminous theme color.
-- Fixed legacy bottom navigation so a black custom identity remains black across its glass, selected state, and glow treatment.
-- Added regression coverage for neutral custom accent identity and modern-cover title contrast.
+- Fixed migration background state being vulnerable to loss when the application process is restarted.
+- Fixed several migration paths that could fail to preserve associated user data when changing sources.
+- Improved durability for migration state stored outside the primary Room-backed records.
+- Improved downloaded novel resolution and local index handling.
+- Fixed handling of reserved characters in ZIP/local URI paths.
+- Improved download path alias resolution for local content.
+- Added broader regression and runtime coverage for migration matching, lossless transfer, batch execution, process persistence, novel routing, local downloads, and Kotatsu runtime isolation.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Pembaruan ini berfokus pada konsistensi visual dan keandalan proses rilis. Warna accent netral kustom sekarang mempertahankan identitas warna yang dipilih pada glass Favourites dan navigasi bawah, judul Favourites di mode terang lebih mudah dibaca, dan alur stable release/README menjadi lebih andal.
+Rilis ini merupakan pembaruan besar untuk keandalan dan pengelolaan source. Miyorare sekarang memiliki sistem migrasi yang lebih lengkap untuk menangani source yang rusak atau berubah, fondasi runtime Kotatsu khusus, informasi asal source yang lebih jelas di Explore, serta penanganan konten lokal dan hasil download yang lebih kuat.
 
 ### ✨ Yang Baru
 
-- **Accent netral kustom yang lebih akurat** — accent netral yang dipilih secara eksplisit seperti hitam dan abu-abu sekarang mempertahankan identitas warnanya pada gaya glass Miyorare, bukan diubah menjadi warna luminous.
-- **Sinkronisasi README stable release** — setelah stable release dipublikasikan, sistem sekarang dapat menyiapkan PR metadata kecil untuk menyelaraskan blok verifikasi README dengan versi rilis, source commit, Actions run, nama APK, dan SHA-256.
+- **Redesign migrasi source** — source yang rusak atau tidak lagi tersedia sekarang dapat ditangani melalui alur migrasi yang lebih lengkap, mulai dari pencarian kandidat, pencocokan, review, hingga eksekusi terkontrol.
+- **Layar review migrasi** — kandidat pengganti dapat diperiksa sebelum migrasi diterapkan, sehingga perpindahan source tidak lagi bergantung pada penggantian secara buta.
+- **Batch migration** — pekerjaan migrasi dapat dikelompokkan dan dijadwalkan dengan kontrol batch serta eksekusi background khusus.
+- **Lossless migration transfer** — tersedia mekanisme transfer khusus yang dirancang untuk mempertahankan state pengguna dan data manga terkait ketika sebuah entri dipindahkan ke source pengganti.
+- **Fondasi Kotatsu runtime** — Miyorare sekarang memiliki infrastruktur khusus untuk memuat, mengelola, memverifikasi, dan memperbarui runtime parser Kotatsu secara terpisah.
+- **Pengaturan source Kotatsu** — tersedia infrastruktur settings khusus untuk pengelolaan dan konfigurasi source serta parser Kotatsu.
+- **Source provenance di Explore** — source dapat menampilkan informasi yang lebih jelas mengenai asal dan ekosistem penyedianya.
 
 ### 🚀 Peningkatan
 
-- **Identitas warna custom background** — ketika sinkronisasi warna custom background aktif, warna primary background dapat diteruskan secara konsisten ke view palette Miyorare.
-- **Tema bottom navigation** — bottom navigation modern dan legacy sekarang menghormati identitas custom hitam yang dipilih secara eksplisit, termasuk container, border, glow, selected state, dan kontras konten.
-- **Pemeliharaan release notes** — penanganan metadata stable release sekarang menormalkan heading rilis yang berulang dan mempertahankan provenance rilis yang dapat dibaca mesin.
-- **Validasi promotion** — promotion gate menuju main dapat menyediakan APK exact-head untuk pengujian perangkat oleh owner, dengan override `skip-device-test` untuk promotion berisiko rendah tanpa melewati pengecekan promotion non-device.
+- **Pencocokan migrasi lebih pintar** — pemilihan kandidat migrasi sekarang menggunakan discovery dan matching khusus dibanding alur sederhana sebelumnya.
+- **Background migration lebih andal** — batch migration terintegrasi dengan WorkManager dan state pekerjaannya lebih tahan terhadap restart process aplikasi.
+- **Perlindungan data saat migrasi** — persistence tambahan membantu mempertahankan state membaca yang tidak hanya tersimpan di record utama Room.
+- **Tampilan source di Explore** — kartu source dan filtering diperluas untuk mendukung provenance dan arsitektur source yang baru.
+- **Verifikasi Kotatsu runtime** — runtime pack memiliki contract, storage, verifier, updater, preferences, dan update worker khusus.
+- **Resolusi local library** — pencarian manga/novel lokal dan hasil download diperkuat, termasuk penanganan alias path download.
+- **Routing source novel** — capability dan routing source novel diperbaiki agar perilaku source yang didukung dapat dibedakan dengan lebih tepat.
+- **Showcase README** — README proyek sekarang tersedia penuh dalam bahasa Inggris dan memiliki showcase visual Miyorare yang dikelompokkan serta dapat dibuka/tutup.
 
 ### 🐞 Perbaikan
 
-- Memperbaiki judul Favourites mode terang di bawah cover modern agar menggunakan warna konten glass yang sesuai dan tetap mudah dibaca.
-- Memperbaiki custom accent hitam/abu-abu/putih yang sebelumnya dapat dibuat lebih terang atau berubah tint oleh pemrosesan warna neon-glass.
-- Memperbaiki custom accent hitam pada bottom navigation modern agar tetap hitam dan tidak berubah mengikuti warna luminous theme.
-- Memperbaiki bottom navigation legacy agar identitas custom hitam tetap hitam pada glass, selected state, dan efek glow.
-- Menambahkan regression coverage untuk identitas custom accent netral dan kontras judul modern cover.
+- Memperbaiki state background migration yang sebelumnya dapat hilang ketika process aplikasi dimulai ulang.
+- Memperbaiki beberapa jalur migrasi yang berisiko tidak mempertahankan seluruh data pengguna terkait ketika berpindah source.
+- Meningkatkan durability state migrasi yang disimpan di luar record utama berbasis Room.
+- Meningkatkan resolusi downloaded novel dan penanganan local index.
+- Memperbaiki penanganan karakter khusus/reserved pada URI ZIP dan file lokal.
+- Meningkatkan resolusi alias path download untuk konten lokal.
+- Menambahkan regression dan runtime coverage yang lebih luas untuk migration matching, lossless transfer, batch execution, process persistence, novel routing, local downloads, dan isolasi Kotatsu runtime.
 
 </details>
