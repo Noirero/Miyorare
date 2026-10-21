@@ -8,7 +8,8 @@ def upstreamRevision = upstreamPin.getProperty('revision')
 if (!(upstreamRevision ==~ /[0-9a-f]{40}/)) {
 	throw new GradleException("kotatsu-runtime upstream revision must be a full 40-character SHA")
 }
-def upstreamJitPackVersion = upstreamRevision.substring(0, 10)
+
+def upstreamJitPackVersion = upstreamRevision
 
 android {
 	namespace = 'org.miyorare.kotatsu.runtime'
@@ -19,7 +20,7 @@ android {
 		minSdk = 26
 		targetSdk = 37
 		versionCode = 1
-		versionName = "1-${upstreamJitPackVersion}"
+		versionName = "1-${upstreamRevision.substring(0, 10)}"
 		buildConfigField 'String', 'UPSTREAM_REVISION', "\"${upstreamRevision}\""
 	}
 
@@ -51,8 +52,8 @@ android {
 	}
 
 	compileOptions {
-		sourceCompatibility JavaVersion.VERSION_11
-		targetCompatibility JavaVersion.VERSION_11
+		sourceCompatibility JavaVersion.VERSION_17
+		targetCompatibility JavaVersion.VERSION_17
 	}
 
 	packaging {
@@ -65,7 +66,18 @@ android {
 dependencies {
 	// This dependency exists only in the isolated runtime APK. Never add it to :app: Gekkoushi
 	// intentionally owns the same org.koitharu.kotatsu.parsers namespace in the host process.
+	// Use the full immutable upstream commit so the runtime artifact is reproducible.
 	implementation("com.github.Kotatsu-Redo:kotatsu-parsers-redo:${upstreamJitPackVersion}") {
 		exclude group: 'org.json', module: 'json'
 	}
+
+	// Kotatsu-Redo intentionally keeps several runtime libraries as implementation dependencies.
+	// The isolated APK uses them directly in RuntimeLoaderContext and must package them itself;
+	// none of these dependencies are added to the Miyorare host application's compile classpath.
+	implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
+	implementation 'com.squareup.okhttp3:okhttp:5.1.0'
+	implementation 'com.squareup.okhttp3:okhttp-dnsoverhttps:5.1.0'
+	implementation 'com.squareup.okio:okio:3.16.0'
+	implementation 'org.jsoup:jsoup:1.21.2'
+	implementation 'androidx.collection:collection:1.5.0'
 }
