@@ -73,6 +73,13 @@ Keiyoushi's `src/id/inazumanga` module is intentionally not duplicated in this i
 represents ReYume (`www.re-yume.my.id`), which Miyorare-ID already provides through its existing
 Tsuki sources.
 
+### New XTOON reference
+
+The Miyorare-Global `NEWXTOON` Tsuki overlay targets `https://newxtoon3.com/`. Catalogue/search
+paths, detail selectors, paginated chapter JSON, and reader image selectors are implemented natively
+for Tsuki and cross-checked against Keiyoushi's Apache-2.0 `src/ko/newxtoon` implementation. The
+Keiyoushi APK/runtime itself is not embedded in Miyorare-Global.
+
 ## Content providers
 
 Parser/source support does not imply affiliation with, endorsement by, or ownership of the websites
