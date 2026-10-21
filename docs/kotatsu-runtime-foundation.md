@@ -20,7 +20,7 @@ The inspected upstream is `Kotatsu-Redo/kotatsu-parsers-redo` master at:
 
 `dc223c3d8098415b29cf1acfedc401a88d01c9fe`
 
-It is a JVM parser library (Java/Kotlin library + KSP-generated sources), not a ready-to-download Android runtime APK. Therefore Miyorare must build its own runtime artifact around a pinned upstream revision.
+It is a JVM parser library (Java/Kotlin library + KSP-generated sources), not a ready-to-download Android runtime APK. The GitHub Releases endpoint for the upstream repository returned an empty release list at this checkpoint. Therefore Miyorare must build its own runtime artifact around a pinned upstream revision rather than consuming an upstream runtime APK/release.
 
 Relevant upstream dependency versions at this checkpoint include Kotlin 2.2.10, coroutines 1.10.2, OkHttp 5.1.0, Okio 3.16.0, AndroidX Collection 1.5.0, and Jsoup 1.21.2. The Miyorare app currently uses newer/different versions for several of these. This is another reason not to link the upstream parser library directly into the app process class path.
 

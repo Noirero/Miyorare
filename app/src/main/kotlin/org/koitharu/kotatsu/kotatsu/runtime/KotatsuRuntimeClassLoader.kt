@@ -17,10 +17,20 @@ internal class KotatsuRuntimeClassLoader(
 ) : DexClassLoader(dexPath, optimizedDirectory, null, parent) {
 
 	override fun loadClass(name: String, resolve: Boolean): Class<*> {
-		if (isRuntimeOwned(name)) {
-			return runCatching { findClass(name) }.getOrElse { super.loadClass(name, resolve) }
+		if (!isRuntimeOwned(name)) return super.loadClass(name, resolve)
+		return synchronized(getClassLoadingLock(name)) {
+			findLoadedClass(name)?.also { loaded ->
+				if (resolve) resolveClass(loaded)
+			} ?: try {
+				findClass(name).also { loaded ->
+					if (resolve) resolveClass(loaded)
+				}
+			} catch (_: ClassNotFoundException) {
+				// A runtime-owned namespace may intentionally omit a dependency and inherit the host copy.
+				// Only absence falls back; linkage/verification errors must remain visible and fail closed.
+				super.loadClass(name, resolve)
+			}
 		}
-		return super.loadClass(name, resolve)
 	}
 
 	private fun isRuntimeOwned(name: String): Boolean = CHILD_FIRST_PREFIXES.any(name::startsWith)
