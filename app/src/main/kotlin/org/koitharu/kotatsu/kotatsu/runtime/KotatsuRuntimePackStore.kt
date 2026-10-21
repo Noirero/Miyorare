@@ -63,13 +63,24 @@ internal class KotatsuRuntimePackStore(private val context: Context) {
 		RuntimeSlot(bundledFile, manifest)
 	}.getOrNull()
 
-	/** Stage + verify first, then atomically swap the entire runtime/manifest directory. */
+	/** Copy and cryptographically verify a candidate without making it the active runtime. */
 	@Synchronized
-	fun install(candidate: File, manifest: KotatsuRuntimePackManifest, verifier: KotatsuRuntimePackVerifier) {
+	fun stage(candidate: File, manifest: KotatsuRuntimePackManifest, verifier: KotatsuRuntimePackVerifier): RuntimeSlot {
 		root.mkdirs()
 		stagingDir.deleteRecursively()
 		writeSlot(stagingDir, manifest, verifier) { target -> copyDurably(candidate, target) }
+		return RuntimeSlot(runtimeFile(stagingDir), manifest)
+	}
 
+	/**
+	 * Atomically promote an already verified and health-checked staged slot. The outgoing current
+	 * slot becomes previous, so previous always represents a runtime that was active and healthy.
+	 */
+	@Synchronized
+	fun activateStaged() {
+		require(runtimeFile(stagingDir).isFile && manifestFile(stagingDir).isFile) {
+			"No staged Kotatsu runtime is ready for activation"
+		}
 		val hadCurrent = currentDir.isDirectory
 		if (hadCurrent) {
 			previousDir.deleteRecursively()
@@ -82,6 +93,16 @@ internal class KotatsuRuntimePackStore(private val context: Context) {
 			if (hadCurrent) previousDir.renameTo(currentDir)
 			throw error
 		}
+	}
+
+	@Synchronized
+	fun discardStaged() {
+		stagingDir.deleteRecursively()
+	}
+
+	@Synchronized
+	fun discardCurrent() {
+		currentDir.deleteRecursively()
 	}
 
 	/**
