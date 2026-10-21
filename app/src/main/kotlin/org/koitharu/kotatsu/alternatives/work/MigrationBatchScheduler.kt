@@ -21,8 +21,8 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 		val unique = requests.distinctBy { it.mangaId }
 		if (unique.isEmpty()) return@withLock false
 		val existing = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
-		// Durable terminal markers are intentionally kept unfinished behind a delayed sentinel so
-		// WorkManager cannot prune them across process restart. They do not own the active queue.
+		// Durable terminal markers are completed WorkManager records protected by one unfinished
+		// delayed dependent, so they do not own the active queue and cannot be pruned on reopen.
 		if (existing.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) }) return@withLock false
 		val previous = existing.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
 		check(previous < Long.MAX_VALUE)
@@ -84,9 +84,13 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 				}
 				.build()
 		}
+		// A finished WorkSpec is only prune-eligible when it has no unfinished dependents. Run the
+		// lightweight markers first, then keep one delayed sentinel unfinished as their shared
+		// dependent. This preserves marker output across process reopen without scheduling hundreds
+		// of long-lived timers.
 		val sentinel = OneTimeWorkRequestBuilder<MigrationBatchCancellationMarkerWorker>()
 			.setInitialDelay(30, TimeUnit.DAYS)
 			.build()
-		workManager.beginWith(sentinel).then(markers).enqueue().await()
+		workManager.beginWith(markers).then(sentinel).enqueue().await()
 	}
 }
