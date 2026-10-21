@@ -1,0 +1,5 @@
+<resources>
+    <string name="chapter_release_expected_overdue">Expected any day now</string>
+    <string name="chapter_release_accessibility_overdue">Estimated next chapter availability from this source: expected any day now; the original estimate has passed.</string>
+    <string name="release_calendar_overdue">Expected any day now</string>
+</resources>
