@@ -48,7 +48,23 @@ jobs:
 
       # Temporary exact reproduction for PR #695. Removed after release task-graph proof.
       - name: Validate Kotatsu release asset task graph
-        run: ./gradlew assembleRelease --max-workers=4 --no-daemon --stacktrace
+        run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/kotatsu-release-validation.jks"
+          keytool -genkeypair -noprompt \
+            -keystore "$keystore" \
+            -storepass android \
+            -alias validation \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 3650 \
+            -dname 'CN=Miyorare CI,O=Miyorare,C=ID'
+          ./gradlew assembleRelease --max-workers=4 --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE="$keystore" \
+            -PRELEASE_STORE_PASSWORD=android \
+            -PRELEASE_KEY_ALIAS=validation \
+            -PRELEASE_KEY_PASSWORD=android
 
       - name: Run JVM unit tests
         run: ./gradlew testDebugUnitTest --max-workers=4 --no-daemon --stacktrace
