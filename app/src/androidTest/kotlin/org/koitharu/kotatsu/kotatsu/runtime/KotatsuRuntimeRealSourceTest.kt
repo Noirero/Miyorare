@@ -23,9 +23,9 @@ import java.security.MessageDigest
 import javax.inject.Inject
 
 /**
- * Production-pack smoke test for one genuine parser from the exact pinned Kotatsu-Redo revision.
+ * Production-pack smoke test for one genuine parser from the exact runtime revision being tested.
  *
- * DANKE is deliberately used as the canary because the pinned parser is a small, public Guya API
+ * DANKE is deliberately used as the canary because its upstream parser is a small, public Guya API
  * implementation without login or Cloudflare bootstrap. This test crosses the real host boundary:
  * signed APK -> verifier -> store -> child-first DexClassLoader -> runtime entrypoint -> upstream
  * parser -> host MangaRepository -> details -> chapters -> pages -> Reader-compatible page URL.
@@ -59,9 +59,12 @@ class KotatsuRuntimeRealSourceTest {
 	}
 
 	@Test
-	fun pinnedDankeParserCrossesProductionRuntimeBoundaryToReaderPage() = runBlocking {
+	fun dankeParserCrossesProductionRuntimeBoundaryToReaderPage() = runBlocking {
 		val runtimeApkPath = instrumentation.arguments.getString(ARG_RUNTIME_PACK_APK)
 			requireNotNull(runtimeApkPath) { "Missing instrumentation argument: $ARG_RUNTIME_PACK_APK" }
+		val upstreamRevision = instrumentation.arguments.getString(ARG_RUNTIME_UPSTREAM_REVISION)
+			requireNotNull(upstreamRevision) { "Missing instrumentation argument: $ARG_RUNTIME_UPSTREAM_REVISION" }
+		require(upstreamRevision.matches(Regex("[0-9a-f]{40}"))) { "Invalid runtime upstream revision: $upstreamRevision" }
 		val runtimeApk = File(runtimeApkPath)
 		assertTrue("The separately installed production runtime APK must be readable", runtimeApk.isFile)
 
@@ -70,7 +73,7 @@ class KotatsuRuntimeRealSourceTest {
 			KotatsuRuntimePackManifest(
 				protocolVersion = KotatsuRuntimePackContract.PROTOCOL_VERSION,
 				packVersion = "android-real-source-smoke",
-				upstreamRevision = PINNED_UPSTREAM_REVISION,
+				upstreamRevision = upstreamRevision,
 				sourceCount = 0,
 				sha256 = sha256(runtimeApk),
 				downloadUrl = "https://example.invalid/kotatsu-runtime-real-source.apk",
@@ -78,7 +81,7 @@ class KotatsuRuntimeRealSourceTest {
 		)
 
 		val source = runtimeManager.getAvailableSources().firstOrNull { it.sourceKey == CANARY_SOURCE }
-			requireNotNull(source) { "Pinned runtime catalog does not contain $CANARY_SOURCE" }
+			requireNotNull(source) { "Runtime catalog does not contain $CANARY_SOURCE" }
 		assertFalse("The E2E canary must not be marked broken", source.isBroken)
 		assertEquals("KOTATSU:$CANARY_SOURCE", source.name)
 
@@ -128,8 +131,8 @@ class KotatsuRuntimeRealSourceTest {
 
 	private companion object {
 		const val ARG_RUNTIME_PACK_APK = "runtimePackApk"
+		const val ARG_RUNTIME_UPSTREAM_REVISION = "runtimeUpstreamRevision"
 		const val CANARY_SOURCE = "DANKE"
-		const val PINNED_UPSTREAM_REVISION = "dc223c3d8098415b29cf1acfedc401a88d01c9fe"
 		const val NETWORK_TIMEOUT_MS = 90_000L
 	}
 }
