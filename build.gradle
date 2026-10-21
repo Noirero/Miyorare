@@ -49,6 +49,16 @@ project(':app') {
             appProject.tasks.matching { it.name == "merge${sourceSetCap}Assets" }.configureEach {
                 dependsOn prepare
             }
+            // The generated assets are registered as a static source-set directory, so AGP lint
+            // tasks do not automatically inherit the producer dependency from merge*Assets. Gradle
+            // 9 rejects that implicit read during release builds. Keep every lint consumer for this
+            // variant behind the same producer so lint sees a fully materialized runtime bundle.
+            appProject.tasks.matching { task ->
+                task.name.contains(sourceSetCap) &&
+                    task.name.toLowerCase(java.util.Locale.ROOT).contains('lint')
+            }.configureEach {
+                dependsOn prepare
+            }
         }
 
         registerKotatsuBundle('debug', 'debug')
