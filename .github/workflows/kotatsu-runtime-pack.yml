@@ -1,0 +1,139 @@
+name: Kotatsu Runtime Pack
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_revision:
+        description: Exact Kotatsu-Redo revision; blank uses upstream HEAD
+        required: false
+        type: string
+      publish:
+        description: Publish verified runtime to kotatsu-runtime-latest
+        required: true
+        default: false
+        type: boolean
+  schedule:
+    - cron: '17 3 * * *'
+
+concurrency:
+  group: kotatsu-runtime-pack
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-verify-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Resolve exact upstream revision
+        id: upstream
+        env:
+          INPUT_REVISION: ${{ inputs.upstream_revision }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          revision="$INPUT_REVISION"
+          if [ -z "$revision" ]; then
+            revision="$(curl --fail --silent --show-error https://api.github.com/repos/Kotatsu-Redo/kotatsu-parsers-redo/commits/master | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')"
+          fi
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+          printf 'revision=%s\n' "$revision" > kotatsu-runtime/upstream.properties
+
+      - name: Build runtime candidate
+        run: ./gradlew :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
+
+      - name: Count upstream parser catalog
+        id: catalog
+        env:
+          REVISION: ${{ steps.upstream.outputs.revision }}
+        run: |
+          set -euo pipefail
+          git clone --quiet --filter=blob:none https://github.com/Kotatsu-Redo/kotatsu-parsers-redo.git "$RUNNER_TEMP/kotatsu-redo"
+          git -C "$RUNNER_TEMP/kotatsu-redo" fetch --quiet --depth=1 origin "$REVISION"
+          git -C "$RUNNER_TEMP/kotatsu-redo" checkout --quiet FETCH_HEAD
+          count="$(grep -R --include='*.kt' -h '@MangaSourceParser' "$RUNNER_TEMP/kotatsu-redo/src/main/kotlin" | wc -l | tr -d ' ')"
+          test "$count" -gt 0
+          printf 'count=%s\n' "$count" >> "$GITHUB_OUTPUT"
+
+      - name: Build release-signed runtime
+        if: ${{ github.event_name == 'schedule' || inputs.publish }}
+        env:
+          RELEASE_STORE_B64: ${{ secrets.RELEASE_STORE_B64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_STORE_B64"
+          printf '%s' "$RELEASE_STORE_B64" | base64 --decode > "$RUNNER_TEMP/miyorare-release.jks"
+          ./gradlew :kotatsu-runtime:assembleRelease --max-workers=4 --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE="$RUNNER_TEMP/miyorare-release.jks" \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+
+      - name: Prepare manifest and artifact
+        if: ${{ github.event_name == 'schedule' || inputs.publish }}
+        env:
+          REVISION: ${{ steps.upstream.outputs.revision }}
+          SOURCE_COUNT: ${{ steps.catalog.outputs.count }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/runtime-release"
+          apk="$(find kotatsu-runtime/build/outputs/apk/release -name '*.apk' -type f | head -n1)"
+          test -f "$apk"
+          cp "$apk" "$RUNNER_TEMP/runtime-release/kotatsu-runtime.apk"
+          sha="$(sha256sum "$RUNNER_TEMP/runtime-release/kotatsu-runtime.apk" | awk '{print $1}')"
+          python3 - "$RUNNER_TEMP/runtime-release/manifest.json" "$REVISION" "$SOURCE_COUNT" "$sha" <<'PY'
+          import json,sys
+          path, revision, count, sha = sys.argv[1:]
+          data = {
+              "protocolVersion": 1,
+              "packVersion": f"1-{revision[:10]}",
+              "upstreamRevision": revision,
+              "sourceCount": int(count),
+              "sha256": sha,
+              "downloadUrl": "https://github.com/Noirero/Miyorare/releases/download/kotatsu-runtime-latest/kotatsu-runtime.apk",
+          }
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(data, f, separators=(",", ":"))
+          PY
+
+      - name: Publish latest-compatible runtime
+        if: ${{ github.event_name == 'schedule' || inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view kotatsu-runtime-latest >/dev/null 2>&1; then
+            gh release create kotatsu-runtime-latest --title 'Kotatsu Runtime Pack' --notes 'Miyorare-managed Kotatsu parser runtime. Do not install manually.'
+          fi
+          gh release upload kotatsu-runtime-latest \
+            "$RUNNER_TEMP/runtime-release/kotatsu-runtime.apk" \
+            "$RUNNER_TEMP/runtime-release/manifest.json" \
+            --clobber
+
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotatsu-runtime-pack-evidence
+          path: |
+            kotatsu-runtime/build/outputs/apk/debug/*.apk
+            ${{ runner.temp }}/runtime-release/manifest.json
+          if-no-files-found: warn
+          retention-days: 14
