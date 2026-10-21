@@ -60,9 +60,10 @@ class KotatsuRuntimeRealSourceTest {
 
 	@Test
 	fun dankeParserCrossesProductionRuntimeBoundaryToReaderPage() = runBlocking {
-		val runtimeApkPath = instrumentation.arguments.getString(ARG_RUNTIME_PACK_APK)
+		val arguments = InstrumentationRegistry.getArguments()
+		val runtimeApkPath = arguments.getString(ARG_RUNTIME_PACK_APK)
 			requireNotNull(runtimeApkPath) { "Missing instrumentation argument: $ARG_RUNTIME_PACK_APK" }
-		val upstreamRevision = instrumentation.arguments.getString(ARG_RUNTIME_UPSTREAM_REVISION)
+		val upstreamRevision = arguments.getString(ARG_RUNTIME_UPSTREAM_REVISION)
 			requireNotNull(upstreamRevision) { "Missing instrumentation argument: $ARG_RUNTIME_UPSTREAM_REVISION" }
 		require(upstreamRevision.matches(Regex("[0-9a-f]{40}"))) { "Invalid runtime upstream revision: $upstreamRevision" }
 		val runtimeApk = File(runtimeApkPath)
