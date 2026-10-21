@@ -7,3 +7,62 @@ plugins {
     alias(libs.plugins.kotlinx.serialization) apply false
     alias(libs.plugins.compose.compiler) apply false
 }
+
+// Bundle one self-contained Kotatsu Runtime APK as the immutable last-known-good bootstrap without
+// ever adding its parser classes to :app's classpath. Debug embeds the debug-signed runtime; official
+// Preview/Release builds embed the release-signed runtime built with the same signing properties.
+project(':app') {
+    afterEvaluate { appProject ->
+        def runtimeProject = project(':kotatsu-runtime')
+        def pin = new Properties()
+        runtimeProject.file('upstream.properties').withInputStream { pin.load(it) }
+        def revision = pin.getProperty('revision')
+        if (!(revision ==~ /[0-9a-f]{40}/)) {
+            throw new GradleException('kotatsu-runtime upstream revision must be a full SHA')
+        }
+
+        def bundleScript = rootProject.file('.github/scripts/prepare-bundled-kotatsu-runtime.py')
+        def registerKotatsuBundle = { String sourceSetName, String runtimeVariant ->
+            def sourceSetCap = sourceSetName.capitalize()
+            def runtimeCap = runtimeVariant.capitalize()
+            // Resolve all paths during configuration. The Exec task then carries only concrete
+            // serializable inputs, avoiding Project access from task execution under config cache.
+            def outputDir = appProject.layout.buildDirectory.dir("generated/kotatsu-runtime-assets/${sourceSetName}").get().asFile
+            def runtimeApk = runtimeProject.layout.buildDirectory
+                .file("outputs/apk/${runtimeVariant}/kotatsu-runtime-${runtimeVariant}.apk")
+                .get().asFile
+            def prepare = appProject.tasks.register("prepareBundledKotatsuRuntime${sourceSetCap}", Exec) {
+                dependsOn ":kotatsu-runtime:assemble${runtimeCap}"
+                inputs.file(runtimeApk)
+                inputs.file(bundleScript)
+                inputs.property('kotatsuRuntimeRevision', revision)
+                outputs.dir(outputDir)
+                commandLine(
+                    'python3',
+                    bundleScript.absolutePath,
+                    '--apk', runtimeApk.absolutePath,
+                    '--output-dir', outputDir.absolutePath,
+                    '--revision', revision,
+                )
+            }
+            appProject.android.sourceSets[sourceSetName].assets.srcDir(outputDir)
+            appProject.tasks.matching { it.name == "merge${sourceSetCap}Assets" }.configureEach {
+                dependsOn prepare
+            }
+            // The generated assets are registered as a static source-set directory, so AGP lint
+            // tasks do not automatically inherit the producer dependency from merge*Assets. Gradle
+            // 9 rejects that implicit read during release builds. Keep every lint consumer for this
+            // variant behind the same producer so lint sees a fully materialized runtime bundle.
+            appProject.tasks.matching { task ->
+                task.name.contains(sourceSetCap) &&
+                    task.name.toLowerCase(java.util.Locale.ROOT).contains('lint')
+            }.configureEach {
+                dependsOn prepare
+            }
+        }
+
+        registerKotatsuBundle('debug', 'debug')
+        registerKotatsuBundle('preview', 'release')
+        registerKotatsuBundle('release', 'release')
+    }
+}

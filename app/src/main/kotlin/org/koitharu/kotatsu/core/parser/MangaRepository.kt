@@ -10,6 +10,9 @@ import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
 import org.koitharu.kotatsu.core.model.MissingMangaSource
 import org.koitharu.kotatsu.core.model.MangaSourceInfo
 import org.koitharu.kotatsu.core.model.UnknownMangaSource
+import org.koitharu.kotatsu.kotatsu.KotatsuMangaRepository
+import org.koitharu.kotatsu.kotatsu.model.KotatsuMangaSource
+import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeManager
 import org.koitharu.kotatsu.local.data.LocalRoutingMangaRepository
 import org.koitharu.kotatsu.lnreader.LnMangaRepository
 import org.koitharu.kotatsu.lnreader.LnPluginManager
@@ -103,6 +106,7 @@ interface MangaRepository {
 		private val jsHost: JsHost,
 		private val tsukiPluginManager: TsukiPluginManager,
 		private val tsukiPluginRuntimeProvider: Provider<TsukiPluginRuntime>,
+		private val kotatsuRuntimeManager: KotatsuRuntimeManager,
 		@ApplicationContext private val context: Context,
 	) {
 
@@ -118,6 +122,7 @@ interface MangaRepository {
 				is MihonMangaSource -> mihonExtensionManager.initialize()
 				is LnMangaSource -> lnPluginManager.initialize()
 				is TsukiMangaSource -> tsukiPluginManager.initialize()
+				is KotatsuMangaSource -> kotatsuRuntimeManager.initialize()
 			}
 			if (isExternalMissing) {
 				// Don't reuse a stale `EmptyMangaRepository`: it would throw forever. The
@@ -141,13 +146,13 @@ interface MangaRepository {
 				}
 			}
 			cache[unwrapped]?.get()?.let { cached ->
-				// A stored TSUKI:* row may have been mapped while its plugin was absent. Once the
-				// metadata appears, never let that old Empty repository shadow the now-live source.
-				if (unwrapped !is TsukiMangaSource || cached !is EmptyMangaRepository) return cached
+				// A stored TSUKI:/KOTATSU: row may have been mapped while its provider was absent.
+				// Once metadata appears, never let that old Empty repository shadow the live source.
+				if (!isRecoverableOptionalSource(unwrapped) || cached !is EmptyMangaRepository) return cached
 			}
 			return synchronized(cache) {
 				cache[unwrapped]?.get()?.let { cached ->
-					if (unwrapped !is TsukiMangaSource || cached !is EmptyMangaRepository) return cached
+					if (!isRecoverableOptionalSource(unwrapped) || cached !is EmptyMangaRepository) return cached
 				}
 				val repository = createRepository(unwrapped)
 				if (repository != null) {
@@ -160,6 +165,9 @@ interface MangaRepository {
 				}
 			}
 		}
+
+		private fun isRecoverableOptionalSource(source: MangaSource): Boolean =
+			source is TsukiMangaSource || source is KotatsuMangaSource
 
 		private fun unwrap(source: MangaSource): MangaSource = when (source) {
 			is MangaSourceInfo -> source.mangaSource
@@ -181,6 +189,10 @@ interface MangaRepository {
 				// Metadata-only scan; this never opens a JAR or creates a class loader.
 				tsukiPluginManager.initialize()
 				return tsukiPluginManager.resolveSource(source.name) ?: source
+			}
+			if (source is MissingMangaSource && source.name.startsWith(KotatsuMangaSource.PREFIX)) {
+				kotatsuRuntimeManager.initialize()
+				return kotatsuRuntimeManager.resolveSource(source.name) ?: source
 			}
 			return source
 		}
@@ -204,6 +216,13 @@ interface MangaRepository {
 				cache = contentCache,
 				context = context,
 				runtime = tsukiPluginRuntimeProvider.get(),
+			)
+
+			is KotatsuMangaSource -> KotatsuMangaRepository(
+				source = source,
+				cache = contentCache,
+				context = context,
+				runtimeManager = kotatsuRuntimeManager,
 			)
 
 			else -> null

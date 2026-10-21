@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="explore_sources_title">Sumber</string>
+	<string name="explore_source_origin_filter">Asal</string>
+	<string name="explore_source_family_miyorare_packs">Miyorare Packs</string>
+	<string name="explore_source_family_extension_store">Extension Store</string>
+	<string name="explore_source_family_plugins">Plugin</string>
+	<string name="explore_source_filter_all_plugins">Semua plugin</string>
+	<string name="explore_source_origin_miyorare_pack">Miyorare</string>
+	<string name="explore_source_origin_extension_store">Store</string>
+	<string name="explore_source_origin_uma">UMA</string>
+	<string name="explore_source_origin_gekkoushi">Gekkoushi</string>
+	<string name="explore_source_origin_lnreader">LNReader</string>
+	<string name="explore_source_origin_custom">Custom / Lainnya</string>
+	<string name="explore_search_sources">Cari sumber</string>
+	<string name="explore_source_badge_info_button">Tentang badge asal sumber</string>
+	<string name="explore_source_badge_info_title">Arti Badge Asal Sumber</string>
+	<string name="explore_source_badge_info_miyorare">Sumber resmi dari Miyorare Source Packs</string>
+	<string name="explore_source_badge_info_store">Extension dari repo atau store yang kompatibel dengan Mihon</string>
+	<string name="explore_source_badge_info_uma">Plugin dari ekosistem UMA</string>
+	<string name="explore_source_badge_info_gekkoushi">Plugin dari ekosistem Gekkoushi</string>
+	<string name="explore_source_badge_info_lnreader">Sumber novel dari ekosistem LNReader</string>
+	<string name="explore_source_badge_info_custom">Plugin custom, impor GitHub, atau sumber lainnya</string>
+</resources>

@@ -10,6 +10,8 @@ import org.koitharu.kotatsu.backup.local.ui.periodical.PeriodicalBackupWorker
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.extensions.install.ExtensionUpdateWorker
+import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimePreferences
+import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeUpdateWorker
 import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.suggestions.ui.SuggestionsWorker
 import org.koitharu.kotatsu.sync.data.SyncSettings
@@ -30,8 +32,13 @@ class WorkScheduleManager @Inject constructor(
 	private val syncScheduler: SyncWorker.Scheduler,
 	private val extensionUpdateScheduler: ExtensionUpdateWorker.Scheduler,
 	private val sourcePackUpdateScheduler: MiyorareSourcePackUpdateWorker.Scheduler,
+	private val kotatsuRuntimeUpdateScheduler: KotatsuRuntimeUpdateWorker.Scheduler,
+	private val kotatsuRuntimePreferences: KotatsuRuntimePreferences,
 	@ApplicationContext private val context: Context,
 ) : SharedPreferences.OnSharedPreferenceChangeListener {
+
+	val isKotatsuRuntimeAutoUpdateEnabled: Boolean
+		get() = kotatsuRuntimePreferences.isAutoUpdateEnabled
 
 	override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
 		when (key) {
@@ -83,6 +90,17 @@ class WorkScheduleManager @Inject constructor(
 		}
 	}
 
+	fun setKotatsuRuntimeAutoUpdatesEnabled(enabled: Boolean) {
+		if (kotatsuRuntimePreferences.isAutoUpdateEnabled == enabled) return
+		kotatsuRuntimePreferences.isAutoUpdateEnabled = enabled
+		updateWorker(kotatsuRuntimeUpdateScheduler, enabled, force = false)
+		if (enabled) {
+			processLifecycleScope.launch(Dispatchers.Default) {
+				kotatsuRuntimeUpdateScheduler.startNow()
+			}
+		}
+	}
+
 	fun init() {
 		settings.subscribe(this)
 		processLifecycleScope.launch(Dispatchers.Default) {
@@ -111,6 +129,13 @@ class WorkScheduleManager @Inject constructor(
 			if (sourcePackUpdatesEnabled) {
 				sourcePackUpdateScheduler.startNow()
 			}
+
+			val runtimeUpdatesEnabled = kotatsuRuntimePreferences.isAutoUpdateEnabled
+			updateWorkerImpl(kotatsuRuntimeUpdateScheduler, runtimeUpdatesEnabled, force = false)
+			if (runtimeUpdatesEnabled) {
+				kotatsuRuntimeUpdateScheduler.startNow()
+			}
+
 			if (syncSettings.isSignedIn && syncSettings.isSyncOnStart) {
 				SyncWorker.enqueueManual(workManager)
 			}

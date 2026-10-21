@@ -28,6 +28,7 @@ import javax.inject.Inject
 private const val MAX_PARALLEL_SOURCES = 5
 private const val MAX_PARALLEL_DETAILS = 5
 private const val MAX_DETAIL_CANDIDATES = 3
+private const val MAX_DETAIL_CANDIDATES_HARD_LIMIT = 10
 private const val POPULAR_SOURCE_LIMIT = 100
 
 sealed interface AlternativeSearchEvent {
@@ -105,10 +106,12 @@ class AlternativesUseCase @Inject constructor(
 		preferredLanguages: Set<String>,
 		query: String = manga.title,
 		precomputedSources: List<MangaSource>? = null,
+		maxDetailCandidates: Int = MAX_DETAIL_CANDIDATES,
 	): Flow<AlternativeSearchEvent> {
 		val normalizedQuery = query.trim().ifEmpty { manga.title }
 		val sources = precomputedSources ?: getSources(manga, mode, preferredLanguages)
 		if (sources.isEmpty()) return emptyFlow()
+		val detailCandidateLimit = maxDetailCandidates.coerceIn(1, MAX_DETAIL_CANDIDATES_HARD_LIMIT)
 
 		val sourceSemaphore = Semaphore(MAX_PARALLEL_SOURCES)
 		val detailsSemaphore = Semaphore(MAX_PARALLEL_DETAILS)
@@ -127,9 +130,11 @@ class AlternativesUseCase @Inject constructor(
 
 					val candidates = list
 						?.asSequence()
-						?.filter { it.id != manga.id }
+						// Source is part of manga identity. Different providers may legitimately generate the
+						// same numeric id, so id equality alone must never hide a cross-source replacement.
+						?.filter { it.source != manga.source || it.id != manga.id }
 						?.distinctBy { it.dedupeKey() }
-						?.take(MAX_DETAIL_CANDIDATES)
+						?.take(detailCandidateLimit)
 						?.toList()
 						.orEmpty()
 

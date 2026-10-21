@@ -17,6 +17,8 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLangCode
+import org.koitharu.kotatsu.kotatsu.model.KotatsuMangaSource
+import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeManager
 import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.lnreader.model.LnMangaSource
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
@@ -62,6 +64,7 @@ class MangaSourcesRepository @Inject constructor(
 	private val mihonExtensionManager: MihonExtensionManager? = null,
 	private val lnPluginManager: LnPluginManager? = null,
 	private val tsukiPluginManager: TsukiPluginManager? = null,
+	private val kotatsuRuntimeManager: KotatsuRuntimeManager? = null,
 ) {
 
 	private val usageRefresh = MutableStateFlow(0)
@@ -83,7 +86,13 @@ class MangaSourcesRepository @Inject constructor(
 	}
 
 	fun observeEnabledSources(): Flow<List<MangaSourceInfo>> {
-		val optionalPlugins = combine(observeLnSources(), observeTsukiSources()) { ln, tsuki -> ln + tsuki }
+		val optionalPlugins = combine(
+			observeLnSources(),
+			observeTsukiSources(),
+			observeKotatsuSources(),
+		) { ln, tsuki, kotatsu ->
+			ln + tsuki + kotatsu
+		}
 		return combine(
 			observeMihonSources(),
 			optionalPlugins,
@@ -96,8 +105,13 @@ class MangaSourcesRepository @Inject constructor(
 	}
 
 	fun observeAll(): Flow<List<Pair<MangaSource, Boolean>>> =
-		combine(observeMihonSources(), observeLnSources(), observeTsukiSources()) { mihon, ln, tsuki ->
-			(mihon + ln + tsuki).map { it to true }
+		combine(
+			observeMihonSources(),
+			observeLnSources(),
+			observeTsukiSources(),
+			observeKotatsuSources(),
+		) { mihon, ln, tsuki, kotatsu ->
+			(mihon + ln + tsuki + kotatsu).map { it to true }
 		}
 
 	fun setIsPinned(sources: Collection<MangaSource>, isPinned: Boolean): ReversibleHandle {
@@ -162,6 +176,7 @@ class MangaSourcesRepository @Inject constructor(
 		is MihonMangaSource -> "mihon:${source.sourceId}"
 		is LnMangaSource -> "ln:${source.pluginId}"
 		is TsukiMangaSource -> "tsuki:${source.name}"
+		is KotatsuMangaSource -> "kotatsu:${source.sourceKey}"
 		else -> {
 			val matched = getMihonSources().firstOrNull { it.name == source.name }
 			if (matched != null) {
@@ -336,7 +351,33 @@ class MangaSourcesRepository @Inject constructor(
 		}
 	}
 
-	private fun getAllEnabledSources(): List<MangaSource> = getMihonSources() + getLnSources() + getTsukiSources()
+	/** Only explicitly enabled Kotatsu Runtime sources participate in Explore/global search. */
+	fun getKotatsuSources(): List<KotatsuMangaSource> {
+		val manager = kotatsuRuntimeManager ?: return emptyList()
+		manager.initialize()
+		val hideNsfw = settings.isNsfwContentDisabled
+		return manager.getEnabledSources().filterNot { source ->
+			hideNsfw && source.contentType.equals("HENTAI", ignoreCase = true)
+		}
+	}
+
+	fun observeKotatsuSources(): Flow<List<KotatsuMangaSource>> {
+		val manager = kotatsuRuntimeManager ?: return kotlinx.coroutines.flow.flowOf(emptyList())
+		return flow {
+			manager.initialize()
+			emitAll(
+				combine(
+					manager.sources,
+					settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled },
+				) { _: Any?, _: Any? ->
+					getKotatsuSources()
+				}.distinctUntilChanged(),
+			)
+		}
+	}
+
+	private fun getAllEnabledSources(): List<MangaSource> =
+		getMihonSources() + getLnSources() + getTsukiSources() + getKotatsuSources()
 
 	private fun MangaSource.unwrapLn(): LnMangaSource? = when (this) {
 		is LnMangaSource -> this
@@ -444,11 +485,12 @@ class MangaSourcesRepository @Inject constructor(
 		mihonExtensionManager?.loadExtensions()
 	}
 
-	/** Waits for eager extension discovery without touching optional Tsuki JAR bytecode. */
+	/** Waits for eager extension discovery without touching optional Tsuki/Kotatsu parser bytecode. */
 	suspend fun ensureExternalSourcesReady() {
 		mihonExtensionManager?.ensureReady()
 		lnPluginManager?.initialize()
 		tsukiPluginManager?.initialize()
+		kotatsuRuntimeManager?.initialize()
 	}
 
 	private fun normalizeLegacyPinnedSourceKeys(keys: List<String>, sources: List<MangaSource>): List<String> {

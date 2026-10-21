@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.mihon.model
 
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.isNovelSource
 import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLangCode
 import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageAutonym
 import org.koitharu.kotatsu.parsers.model.MangaSource
@@ -40,13 +41,12 @@ data class MihonMangaSource(
 		get() = catalogueSource.supportsLatest
 
 	/**
-	 * True for a Tsundoku novel extension. Read from the source itself rather than from the APK's
-	 * manifest flag: a package may ship several sources, and it is the source that knows whether its
-	 * chapters are prose. The package name is a fallback for a source that ships in a novel package
-	 * but forgets to declare the flag, which would otherwise land it in the image reader.
+	 * True for a prose extension. Prefer the source-api compatibility contract because newer
+	 * extensions may implement the NovelSource marker without overriding the legacy property.
+	 * The package name remains a fallback for malformed novel packages that declare neither signal.
 	 */
 	val isNovel: Boolean
-		get() = catalogueSource.isNovelSource || pkgName.contains(NOVEL_PACKAGE_MARKER)
+		get() = catalogueSource.isNovelSource() || pkgName.contains(NOVEL_PACKAGE_MARKER)
 
 	override fun equals(other: Any?): Boolean {
 		if (this === other) return true

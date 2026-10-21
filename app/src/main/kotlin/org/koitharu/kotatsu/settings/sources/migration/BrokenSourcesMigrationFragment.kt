@@ -7,7 +7,6 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -62,7 +61,6 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.alternatives.ui.AutoFixService
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.core.exceptions.resolve.CaptchaHandler.Companion.suppressCaptchaErrors
@@ -111,16 +109,10 @@ class BrokenSourcesMigrationFragment :
 						val rawSources = state.sources
 							.filter { it.key in state.selectedSources }
 							.flatMapTo(linkedSetOf()) { it.sourceKeys }
-						if (AutoFixService.startForSources(requireContext(), rawSources)) {
-							Toast.makeText(
-								requireContext(),
-								R.string.broken_sources_migration_started,
-								Toast.LENGTH_LONG,
-							).show()
-							viewModel.clearSelection()
-						} else {
-							Toast.makeText(requireContext(), R.string.error_occurred, Toast.LENGTH_SHORT).show()
-						}
+						(requireActivity() as SettingsActivity).openFragment(
+							SourceMangaListFragment::class.java,
+							SourceMangaListFragment.args(rawSources, getString(R.string.manga_migration)), false,
+						)
 					},
 				)
 			}
@@ -180,7 +172,7 @@ private fun BrokenSourcesMigrationScreen(
 					modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
 				) {
 					Text(
-						text = stringResource(R.string.migrate_broken_sources_description),
+						text = stringResource(R.string.migration_review_description),
 						style = MaterialTheme.typography.bodyMedium,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 					)
@@ -280,10 +272,10 @@ private fun BrokenSourcesMigrationScreen(
 				) {
 					Text(
 						if (state.selectedSources.isEmpty()) {
-							stringResource(R.string.fix)
+							stringResource(R.string.migration_review_list)
 						} else {
 							pluralStringResource(
-								R.plurals.fix_selected_sources,
+								R.plurals.migration_review_sources,
 								state.selectedSources.size,
 								state.selectedSources.size,
 							)

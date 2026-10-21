@@ -22,6 +22,5 @@ dependencyResolutionManagement {
 	}
 }
 
-
-include ':app'
+include ':app', ':kotatsu-runtime-fixture', ':kotatsu-runtime'
 rootProject.name = "Miyorare"

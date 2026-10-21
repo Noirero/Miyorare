@@ -41,4 +41,19 @@
 		tools:drawableStart="@drawable/ic_pin_small"
 		tools:text="@tools:sample/lorem[0]" />
 
+	<TextView
+		android:id="@+id/textView_origin"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="4dp"
+		android:background="@drawable/bg_extension_store_kind"
+		android:ellipsize="end"
+		android:maxLines="1"
+		android:paddingStart="8dp"
+		android:paddingTop="3dp"
+		android:paddingEnd="8dp"
+		android:paddingBottom="3dp"
+		android:textAppearance="?attr/textAppearanceLabelSmall"
+		tools:text="Miyorare" />
+
 </LinearLayout>

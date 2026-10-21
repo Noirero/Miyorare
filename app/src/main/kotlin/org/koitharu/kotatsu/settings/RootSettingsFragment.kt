@@ -51,6 +51,7 @@ import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
 import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
+import org.koitharu.kotatsu.settings.sources.KotatsuParsersSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
 import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
 import javax.inject.Inject
@@ -118,6 +119,11 @@ private enum class SettingsSection(
         R.string.settings_sources_extensions, R.drawable.ic_manga_source, "extensions",
         intArrayOf(R.string.manage_extensions, R.string.nsfw_filter, R.string.sort_order),
         ExtensionsSettingsFragment::class.java,
+    ),
+    KOTATSU_PARSERS(
+        R.string.kotatsu_parsers, R.drawable.ic_manga_source, "extensions",
+        intArrayOf(R.string.kotatsu_parsers_summary),
+        KotatsuParsersSettingsFragment::class.java,
     ),
     DOWNLOADS(
         R.string.downloads, R.drawable.ic_download, "downloads",
@@ -216,7 +222,12 @@ private val settingsSectionGroups = listOf(
         titleRes = R.string.settings_group_content_sources,
         iconRes = R.drawable.ic_grid,
         accent = SettingsGroupAccent.CONTENT,
-        sections = listOf(SettingsSection.EXTENSIONS, SettingsSection.DOWNLOADS, SettingsSection.TRACKER),
+        sections = listOf(
+            SettingsSection.EXTENSIONS,
+            SettingsSection.KOTATSU_PARSERS,
+            SettingsSection.DOWNLOADS,
+            SettingsSection.TRACKER,
+        ),
     ),
     SettingsSectionGroup(
         titleRes = R.string.settings_group_data_sync,

@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.core.model
 
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.NovelSource
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,6 +9,7 @@ import org.koitharu.kotatsu.lnreader.model.LnMangaSource
 import org.koitharu.kotatsu.lnreader.model.LnPlugin
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 
+@Suppress("DEPRECATION")
 class NovelSourceCapabilitiesTest {
 
 	@Test
@@ -57,20 +59,64 @@ class NovelSourceCapabilitiesTest {
 
 	@Test
 	fun `Mihon novel capabilities follow source contract`() {
-		val source = MihonMangaSource(
-			catalogueSource = object : CatalogueSource {
-				override val id = 7L
-				override val name = "Novel Test"
-				override val lang = "en"
-				override val supportsLatest = true
-				override val isNovelSource = true
-			},
-			pkgName = "test.novelextension.en.example",
-		)
+		val source = mihonSource(isNovelProperty = true, pkgName = "test.extension.en.example")
 
 		assertTrue(source.supportsNovelCapability(NovelSourceCapability.SEARCH))
 		assertTrue(source.supportsNovelCapability(NovelSourceCapability.LATEST))
 		assertTrue(source.supportsNovelCapability(NovelSourceCapability.TEXT_CONTENT))
 		assertFalse(source.supportsNovelCapability(NovelSourceCapability.FILTERS))
 	}
+
+	@Test
+	fun `compatibility NovelSource marker classifies prose without legacy property or package marker`() {
+		val source = MihonMangaSource(
+			catalogueSource = object : CatalogueSource, NovelSource {
+				override val id = 8L
+				override val name = "Marker Novel"
+				override val lang = "en"
+				override val supportsLatest = false
+			},
+			pkgName = "test.extension.en.marker",
+		)
+
+		assertTrue(source.isNovel)
+		assertTrue(source.isNovelSource)
+		assertTrue(source.isNovelContentSource)
+		assertTrue(source.supportsNovelCapability(NovelSourceCapability.TEXT_CONTENT))
+	}
+
+	@Test
+	fun `novel package marker remains a fallback when source contract is missing`() {
+		val source = mihonSource(
+			isNovelProperty = false,
+			pkgName = "test.novelextension.en.fallback",
+		)
+
+		assertTrue(source.isNovel)
+		assertTrue(source.isNovelContentSource)
+	}
+
+	@Test
+	fun `ordinary manga source remains outside novel pipeline`() {
+		val source = mihonSource(
+			isNovelProperty = false,
+			pkgName = "test.extension.en.manga",
+		)
+
+		assertFalse(source.isNovel)
+		assertFalse(source.isNovelSource)
+		assertFalse(source.isNovelContentSource)
+		assertFalse(source.supportsNovelCapability(NovelSourceCapability.TEXT_CONTENT))
+	}
+
+	private fun mihonSource(isNovelProperty: Boolean, pkgName: String) = MihonMangaSource(
+		catalogueSource = object : CatalogueSource {
+			override val id = 7L
+			override val name = "Test Source"
+			override val lang = "en"
+			override val supportsLatest = true
+			override val isNovelSource = isNovelProperty
+		},
+		pkgName = pkgName,
+	)
 }

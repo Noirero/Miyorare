@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="explore_sources_title">Sources</string>
+	<string name="explore_source_origin_filter">Origin</string>
+	<string name="explore_source_family_miyorare_packs">Miyorare Packs</string>
+	<string name="explore_source_family_extension_store">Extension Store</string>
+	<string name="explore_source_family_plugins">Plugins</string>
+	<string name="explore_source_filter_all_plugins">All plugins</string>
+	<string name="explore_source_origin_miyorare_pack">Miyorare</string>
+	<string name="explore_source_origin_extension_store">Store</string>
+	<string name="explore_source_origin_uma">UMA</string>
+	<string name="explore_source_origin_gekkoushi">Gekkoushi</string>
+	<string name="explore_source_origin_lnreader">LNReader</string>
+	<string name="explore_source_origin_custom">Custom / Other</string>
+	<string name="explore_search_sources">Search sources</string>
+	<string name="explore_source_badge_info_button">About source badges</string>
+	<string name="explore_source_badge_info_title">Source badge meanings</string>
+	<string name="explore_source_badge_info_miyorare">Official source from Miyorare Source Packs</string>
+	<string name="explore_source_badge_info_store">Extension from a Mihon-compatible repository or store</string>
+	<string name="explore_source_badge_info_uma">Plugin from the UMA ecosystem</string>
+	<string name="explore_source_badge_info_gekkoushi">Plugin from the Gekkoushi ecosystem</string>
+	<string name="explore_source_badge_info_lnreader">Novel source from the LNReader ecosystem</string>
+	<string name="explore_source_badge_info_custom">Custom plugin, GitHub import, or another source</string>
+</resources>
