@@ -55,18 +55,17 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 		workManager.cancelUniqueWork(batchName).await()
 		if (pendingBlocked.isEmpty()) return@withLock
 
-		// Cancelled dependency-chain nodes that never started can disappear when WorkManager is opened
-		// by a fresh process. Preserve their terminal identity as new WorkManager records. The marker
-		// records remain BLOCKED behind one delayed sentinel; this prevents pruning without introducing
-		// another persistence authority or scheduling hundreds of active timers.
-		val afterById = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await().associateBy(WorkInfo::id)
+		// Dependency-chain nodes that had not started can disappear when WorkManager is reopened in a
+		// fresh process. Cancellation state propagation is asynchronous with respect to the operation
+		// returned by cancelUniqueWork(), so deciding whether to create a marker from an immediate
+		// post-cancel WorkInfo snapshot races that propagation. Preserve every node that was pending
+		// before cancellation instead; the newer generation lets normal snapshot reduction prefer the
+		// durable terminal marker without introducing another persistence authority.
 		val currentGeneration = before.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
 		check(currentGeneration < Long.MAX_VALUE)
 		val markerGeneration = currentGeneration + 1L
 		val markerBatch = "$batchName:cancelled:$markerGeneration"
-		val markers = pendingBlocked.mapNotNull { (info, snapshot) ->
-			val after = afterById[info.id]
-			if (after != null && after.state != WorkInfo.State.CANCELLED) return@mapNotNull null
+		val markers = pendingBlocked.map { (_, snapshot) ->
 			OneTimeWorkRequestBuilder<MigrationBatchCancellationMarkerWorker>()
 				.setInputData(MigrationBatchWork.output(MigrationBatchOutcome(
 					MigrationBatchStatus.INTERRUPTED,
@@ -85,11 +84,9 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 				}
 				.build()
 		}
-		if (markers.isNotEmpty()) {
-			val sentinel = OneTimeWorkRequestBuilder<MigrationBatchCancellationMarkerWorker>()
-				.setInitialDelay(30, TimeUnit.DAYS)
-				.build()
-			workManager.beginWith(sentinel).then(markers).enqueue().await()
-		}
+		val sentinel = OneTimeWorkRequestBuilder<MigrationBatchCancellationMarkerWorker>()
+			.setInitialDelay(30, TimeUnit.DAYS)
+			.build()
+		workManager.beginWith(sentinel).then(markers).enqueue().await()
 	}
 }
