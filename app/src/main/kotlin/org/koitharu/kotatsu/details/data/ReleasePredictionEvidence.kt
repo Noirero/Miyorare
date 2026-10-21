@@ -24,26 +24,43 @@ data class ReleasePredictionManga(
 	)
 }
 
-data class ReleasePredictionBranch(val mangaId: Long, val source: String, val branch: String?)
+data class ReleasePredictionBranch(
+	val mangaId: Long,
+	val source: String,
+	val branch: String?,
+	val scanlator: String? = null,
+)
 
-data class ReleasePredictionDate(val mangaId: Long, val branch: String?, val uploadDate: Long)
+data class ReleasePredictionDate(
+	val mangaId: Long,
+	val branch: String?,
+	val uploadDate: Long,
+	val scanlator: String? = null,
+)
 
 /**
  * SQLite on Android uses the device's local calendar, as does the estimator. Group before LIMIT:
  * a burst of chapters on one day must not crowd out the twelve distinct release events.
  * Each subquery uses the existing manga_id primary-key prefix. Keep compound/bind counts bounded
  * for Android 8 SQLite (no window functions). The representative timestamp is real source evidence.
+ *
+ * Scanlator is normalized only by trim/blank-to-null. Do not fuzzy-merge publisher/group names:
+ * multiple named scanlators are independent prediction lineages, while missing metadata remains a
+ * safe fallback only when the branch does not expose multiple named lineages.
  */
 internal fun releasePredictionDatesQuery(branches: List<ReleasePredictionBranch>, nowMillis: Long): SimpleSQLiteQuery {
 	require(branches.isNotEmpty() && branches.size <= 100)
-	val arguments = ArrayList<Any?>(branches.size * 4)
+	val arguments = ArrayList<Any?>(branches.size * 5)
+	val normalizedScanlator = "CASE WHEN TRIM(scanlator) = '' THEN NULL ELSE TRIM(scanlator) END"
 	val sql = branches.joinToString(" UNION ALL ") { branch ->
-		arguments.addAll(listOf(branch.mangaId, branch.source, branch.branch, nowMillis))
+		arguments.addAll(listOf(branch.mangaId, branch.source, branch.branch, branch.scanlator, nowMillis))
 		"""
 		SELECT * FROM (
-			SELECT manga_id AS mangaId, branch, MAX(upload_date) AS uploadDate
+			SELECT manga_id AS mangaId, branch, MAX(upload_date) AS uploadDate,
+				$normalizedScanlator AS scanlator
 			FROM chapters
-			WHERE manga_id = ? AND source = ? AND branch IS ? AND upload_date > 0 AND upload_date <= ?
+			WHERE manga_id = ? AND source = ? AND branch IS ?
+				AND $normalizedScanlator IS ? AND upload_date > 0 AND upload_date <= ?
 			GROUP BY date(upload_date / 1000, 'unixepoch', 'localtime')
 			ORDER BY uploadDate DESC
 			LIMIT 12
