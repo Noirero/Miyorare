@@ -7,3 +7,59 @@ plugins {
     alias(libs.plugins.kotlinx.serialization) apply false
     alias(libs.plugins.compose.compiler) apply false
 }
+
+// Bundle one self-contained Kotatsu Runtime APK as the immutable last-known-good bootstrap without
+// ever adding its parser classes to :app's classpath. Debug embeds the debug-signed runtime; official
+// Preview/Release builds embed the release-signed runtime built with the same signing properties.
+project(':app') {
+    afterEvaluate { appProject ->
+        def runtimeProject = project(':kotatsu-runtime')
+        def pin = new Properties()
+        runtimeProject.file('upstream.properties').withInputStream { pin.load(it) }
+        def revision = pin.getProperty('revision')
+        if (!(revision ==~ /[0-9a-f]{40}/)) {
+            throw new GradleException('kotatsu-runtime upstream revision must be a full SHA')
+        }
+
+        def registerKotatsuBundle = { String sourceSetName, String runtimeVariant ->
+            def sourceSetCap = sourceSetName.capitalize()
+            def runtimeCap = runtimeVariant.capitalize()
+            def outputDir = appProject.layout.buildDirectory.dir("generated/kotatsu-runtime-assets/${sourceSetName}")
+            def prepare = appProject.tasks.register("prepareBundledKotatsuRuntime${sourceSetCap}") {
+                dependsOn ":kotatsu-runtime:assemble${runtimeCap}"
+                outputs.dir(outputDir)
+                doLast {
+                    def runtimeDir = runtimeProject.file("build/outputs/apk/${runtimeVariant}")
+                    def apk = runtimeDir.listFiles()?.find { it.isFile() && it.name.endsWith('.apk') }
+                    if (apk == null) {
+                        throw new GradleException("Kotatsu runtime ${runtimeVariant} APK was not produced")
+                    }
+                    def assetDir = new File(outputDir.get().asFile, 'kotatsu-runtime')
+                    project.delete(assetDir)
+                    assetDir.mkdirs()
+                    def bundledApk = new File(assetDir, 'bundled.apk')
+                    bundledApk.bytes = apk.bytes
+                    def digest = java.security.MessageDigest.getInstance('SHA-256').digest(bundledApk.bytes)
+                    def sha = digest.collect { String.format('%02x', it & 0xff) }.join()
+                    def manifest = [
+                        protocolVersion: 1,
+                        packVersion: "1-${revision.substring(0, 10)}-bundled",
+                        upstreamRevision: revision,
+                        sourceCount: 0,
+                        sha256: sha,
+                        downloadUrl: 'https://github.com/Noirero/Miyorare/releases/download/kotatsu-runtime-latest/kotatsu-runtime.apk',
+                    ]
+                    new File(assetDir, 'manifest.json').text = groovy.json.JsonOutput.toJson(manifest)
+                }
+            }
+            appProject.android.sourceSets[sourceSetName].assets.srcDir(outputDir)
+            appProject.tasks.matching { it.name == "merge${sourceSetCap}Assets" }.configureEach {
+                dependsOn prepare
+            }
+        }
+
+        registerKotatsuBundle('debug', 'debug')
+        registerKotatsuBundle('preview', 'release')
+        registerKotatsuBundle('release', 'release')
+    }
+}
