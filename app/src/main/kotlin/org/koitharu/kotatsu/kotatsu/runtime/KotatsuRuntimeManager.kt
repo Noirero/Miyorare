@@ -2,8 +2,10 @@ package org.koitharu.kotatsu.kotatsu.runtime
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.kotatsu.model.KotatsuMangaSource
@@ -24,7 +26,11 @@ class KotatsuRuntimeManager @Inject constructor(
 	private val enabledSourceState = MutableStateFlow(
 		prefs.getStringSet(KEY_ENABLED, emptySet()).orEmpty().toSet(),
 	)
-	val sources: StateFlow<List<KotatsuMangaSource>> = sourceState
+	/**
+	 * Emit the catalog again when enablement changes. Explore combines this stream with its own
+	 * filters, so a source switch becomes visible immediately without mutating source identity.
+	 */
+	val sources: Flow<List<KotatsuMangaSource>> = combine(sourceState, enabledSourceState) { sources, _ -> sources }
 	val enabledSourceKeys: StateFlow<Set<String>> = enabledSourceState
 
 	@Volatile private var initialized = false
