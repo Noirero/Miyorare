@@ -23,8 +23,8 @@ internal class KotatsuRuntimePackVerifier(private val context: Context) {
 		val archive = pm.getPackageArchiveInfo(file.absolutePath, signatureFlags())
 			requireNotNull(archive) { "Kotatsu runtime pack is not a valid APK" }
 		val host = pm.getPackageInfo(context.packageName, signatureFlags())
-		val archiveSigners = signerDigests(archive)
-		val hostSigners = signerDigests(host)
+		val archiveSigners = currentSignerDigests(archive)
+		val hostSigners = currentSignerDigests(host)
 		require(archiveSigners.isNotEmpty() && archiveSigners == hostSigners) {
 			"Kotatsu runtime pack is not signed by the Miyorare signing identity"
 		}
@@ -38,10 +38,9 @@ internal class KotatsuRuntimePackVerifier(private val context: Context) {
 	}
 
 	@Suppress("DEPRECATION")
-	private fun signerDigests(info: PackageInfo): Set<String> {
+	private fun currentSignerDigests(info: PackageInfo): Set<String> {
 		val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-			val signingInfo = info.signingInfo ?: return emptySet()
-			if (signingInfo.hasMultipleSigners()) signingInfo.apkContentsSigners else signingInfo.signingCertificateHistory
+			info.signingInfo?.apkContentsSigners.orEmpty()
 		} else {
 			info.signatures.orEmpty()
 		}
