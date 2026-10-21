@@ -133,8 +133,6 @@ class MigrationBatchWorkRuntimeTest {
 			val afterLarge = afterCancel.filter { MigrationBatchWork.snapshot(it)?.source == "BATCH_LARGE" }
 			val originalAfter = afterLarge.filter { MigrationBatchWork.snapshot(it)?.batchName == batchName }
 			val markerInfos = afterLarge.filter { terminalTag in it.tags }
-			println("P4_AFTER_ORIGINAL count=${originalAfter.size} states=${originalAfter.groupingBy { it.state }.eachCount()}")
-			println("P4_MARKERS_DIRECT workinfo=${markerInfos.size} states=${markerInfos.groupingBy { it.state }.eachCount()}")
 
 			var markerRows = 0
 			var zeroEnqueueTimes = 0
@@ -157,9 +155,13 @@ class MigrationBatchWorkRuntimeTest {
 					}
 				}
 			}
-			println("P4_MARKER_DB rows=$markerRows zeroEnqueueTimes=$zeroEnqueueTimes states=$markerDbStates")
-			assertEquals("Every never-started large item needs one terminal marker", 499, markerInfos.size)
-			assertEquals("Terminal markers must be committed in WorkDatabase before process death", 499, markerRows)
+			val beforeStates = queuedLarge.groupingBy { it.state }.eachCount()
+			val pendingBefore = queuedLarge.count { !it.state.isFinished && it.state != androidx.work.WorkInfo.State.RUNNING }
+			val originalAfterStates = originalAfter.groupingBy { it.state }.eachCount()
+			val cancelledAfter = originalAfter.count { it.state == androidx.work.WorkInfo.State.CANCELLED }
+			val evidence = "before=$beforeStates pendingBefore=$pendingBefore afterCount=${originalAfter.size} afterStates=$originalAfterStates cancelledAfter=$cancelledAfter apiMarkers=${markerInfos.size} dbMarkers=$markerRows dbStates=$markerDbStates zeroEnqueueTimes=$zeroEnqueueTimes"
+			assertEquals(evidence, 499, markerRows)
+			assertEquals(evidence, 499, markerInfos.size)
 		} finally {
 			for (id in ids) database.getMangaDao().find(id)?.let { database.getMangaDao().delete(listOf(it.manga)) }
 		}
