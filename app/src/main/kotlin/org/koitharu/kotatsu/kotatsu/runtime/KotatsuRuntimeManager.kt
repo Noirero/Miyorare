@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.kotatsu.runtime
 
 import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -10,7 +11,6 @@ import java.io.File
 import java.lang.reflect.Method
 import javax.inject.Inject
 import javax.inject.Singleton
-import dagger.hilt.android.qualifiers.ApplicationContext
 
 /** Lazy host for the isolated Kotatsu Runtime Pack. No runtime Kotatsu classes cross this boundary. */
 @Singleton
@@ -33,24 +33,32 @@ class KotatsuRuntimeManager @Inject constructor(
 		synchronized(this) {
 			if (initialized) return
 			initialized = true
-			val manifest = store.currentManifest()
-			if (manifest != null && store.currentFile.isFile) {
-				runCatching { openSession(store.currentFile, manifest) }
-					.onSuccess(::publishSession)
-					.onFailure {
-						if (store.rollback()) {
-							store.currentManifest()?.let { previous ->
-								runCatching { openSession(store.currentFile, previous) }.onSuccess(::publishSession)
-							}
-						}
+			val currentManifest = store.currentManifest()
+			if (currentManifest != null && store.currentFile.isFile) {
+				val current = runCatching { openSession(store.currentFile, currentManifest, RuntimeOrigin.CURRENT) }.getOrNull()
+				if (current != null) {
+					publishSession(current)
+					return
+				}
+				if (store.rollback()) {
+					val previous = store.currentManifest()?.let { manifest ->
+						runCatching { openSession(store.currentFile, manifest, RuntimeOrigin.ROLLED_BACK) }.getOrNull()
 					}
+					if (previous != null) {
+						publishSession(previous)
+						return
+					}
+				}
 			}
+			loadBundledFallback()?.let(::publishSession)
 		}
 	}
 
 	fun getAvailableSources(): List<KotatsuMangaSource> { initialize(); return sourceState.value }
 	fun getEnabledSources(): List<KotatsuMangaSource> {
 		val enabled = prefs.getStringSet(KEY_ENABLED, emptySet()).orEmpty()
+		// Keep disappeared keys in preferences: a temporary upstream removal must not erase the user's
+		// enablement choice. Only sources present in the active runtime are exposed to the app.
 		return getAvailableSources().filter { it.sourceKey in enabled && !it.isBroken }
 	}
 	fun resolveSource(storedName: String): KotatsuMangaSource? {
@@ -64,16 +72,33 @@ class KotatsuRuntimeManager @Inject constructor(
 		prefs.edit().putStringSet(KEY_ENABLED, values).apply()
 	}
 
+	fun status(): RuntimeStatus {
+		initialize()
+		val active = session
+		return RuntimeStatus(
+			isAvailable = active != null,
+			origin = active?.origin,
+			packVersion = active?.manifest?.packVersion,
+			upstreamRevision = active?.manifest?.upstreamRevision,
+			sourceCount = sourceState.value.size,
+		)
+	}
+
 	@Synchronized
 	fun install(candidate: File, manifest: KotatsuRuntimePackManifest) {
 		store.install(candidate, manifest, verifier)
 		try {
-			publishSession(openSession(store.currentFile, manifest))
+			publishSession(openSession(store.currentFile, manifest, RuntimeOrigin.CURRENT))
 		} catch (error: Throwable) {
-			if (store.rollback()) {
+			val recovered = if (store.rollback()) {
 				store.currentManifest()?.let { previous ->
-					runCatching { openSession(store.currentFile, previous) }.onSuccess(::publishSession)
+					runCatching { openSession(store.currentFile, previous, RuntimeOrigin.ROLLED_BACK) }.getOrNull()
 				}
+			} else null
+			if (recovered != null) {
+				publishSession(recovered)
+			} else {
+				loadBundledFallback()?.let(::publishSession)
 			}
 			throw error
 		}
@@ -84,12 +109,16 @@ class KotatsuRuntimeManager @Inject constructor(
 		return checkNotNull(session) { "Kotatsu Runtime Pack is not installed or could not be loaded" }
 	}
 
+	private fun loadBundledFallback(): Session? = store.ensureBundled(verifier)?.let { bundled ->
+		runCatching { openSession(bundled.file, bundled.manifest, RuntimeOrigin.BUNDLED) }.getOrNull()
+	}
+
 	private fun publishSession(value: Session) {
 		session = value
 		sourceState.value = value.catalog()
 	}
 
-	private fun openSession(file: File, manifest: KotatsuRuntimePackManifest): Session {
+	private fun openSession(file: File, manifest: KotatsuRuntimePackManifest, origin: RuntimeOrigin): Session {
 		verifier.verify(file, manifest).getOrThrow()
 		val optimized = File(context.codeCacheDir, "kotatsu-runtime").apply { mkdirs() }
 		val loader = KotatsuRuntimeClassLoader(file.absolutePath, optimized.absolutePath, context.classLoader)
@@ -97,13 +126,18 @@ class KotatsuRuntimeManager @Inject constructor(
 		// Context is an Android platform type, not a Kotatsu parser type. The executable pack is already
 		// trusted by signature; protocol v1 uses Context only as its bootstrap capability.
 		val instance = clazz.getConstructor(Context::class.java).newInstance(context.applicationContext)
-		val result = Session(instance, clazz, manifest)
+		val result = Session(instance, clazz, manifest, origin)
 		require(result.protocolVersion() == KotatsuRuntimePackContract.PROTOCOL_VERSION) { "Kotatsu runtime protocol mismatch" }
 		require(result.healthCheck()) { "Kotatsu runtime health check failed" }
 		return result
 	}
 
-	internal class Session(private val target: Any, clazz: Class<*>, val manifest: KotatsuRuntimePackManifest) {
+	internal class Session(
+		private val target: Any,
+		clazz: Class<*>,
+		val manifest: KotatsuRuntimePackManifest,
+		val origin: RuntimeOrigin,
+	) {
 		private val methods = KotatsuRuntimePackContract.Methods
 		private val protocol: Method = clazz.getMethod(methods.PROTOCOL_VERSION)
 		private val health: Method = clazz.getMethod(methods.HEALTH_CHECK)
@@ -145,6 +179,16 @@ class KotatsuRuntimeManager @Inject constructor(
 		fun setSourceConfig(source: String, valuesJson: String): JSONObject = JSONObject(setSourceConfig.invoke(target, source, valuesJson) as String)
 		fun requestHeaders(source: String): JSONObject = JSONObject(headers.invoke(target, source) as String)
 	}
+
+	data class RuntimeStatus(
+		val isAvailable: Boolean,
+		val origin: RuntimeOrigin?,
+		val packVersion: String?,
+		val upstreamRevision: String?,
+		val sourceCount: Int,
+	)
+
+	enum class RuntimeOrigin { BUNDLED, CURRENT, ROLLED_BACK }
 
 	companion object {
 		private const val KEY_ENABLED = "enabled_sources"
