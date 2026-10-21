@@ -25,7 +25,7 @@ permissions:
 jobs:
   build-verify-publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
         with:
@@ -38,11 +38,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+
       - name: Resolve exact upstream revision
         id: upstream
         env:
           INPUT_REVISION: ${{ inputs.upstream_revision }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           revision="$INPUT_REVISION"
@@ -53,10 +55,7 @@ jobs:
           printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
           printf 'revision=%s\n' "$revision" > kotatsu-runtime/upstream.properties
 
-      - name: Build runtime candidate
-        run: ./gradlew :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
-
-      - name: Count upstream parser catalog
+      - name: Count exact upstream parser catalog
         id: catalog
         env:
           REVISION: ${{ steps.upstream.outputs.revision }}
@@ -65,11 +64,26 @@ jobs:
           git clone --quiet --filter=blob:none https://github.com/Kotatsu-Redo/kotatsu-parsers-redo.git "$RUNNER_TEMP/kotatsu-redo"
           git -C "$RUNNER_TEMP/kotatsu-redo" fetch --quiet --depth=1 origin "$REVISION"
           git -C "$RUNNER_TEMP/kotatsu-redo" checkout --quiet FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/kotatsu-redo" rev-parse HEAD)" = "$REVISION"
           count="$(grep -R --include='*.kt' -h '@MangaSourceParser' "$RUNNER_TEMP/kotatsu-redo/src/main/kotlin" | wc -l | tr -d ' ')"
           test "$count" -gt 0
           printf 'count=%s\n' "$count" >> "$GITHUB_OUTPUT"
 
-      - name: Build release-signed runtime
+      - name: Build runtime candidate
+        run: ./gradlew :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
+
+      - name: Validate real parser boundary on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/run-kotatsu-runtime-isolation-test.sh
+
+      - name: Build release host and release-signed runtime
         if: ${{ github.event_name == 'schedule' || inputs.publish }}
         env:
           RELEASE_STORE_B64: ${{ secrets.RELEASE_STORE_B64 }}
@@ -79,12 +93,30 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$RELEASE_STORE_B64"
+          test -n "$RELEASE_STORE_PASSWORD"
+          test -n "$RELEASE_KEY_ALIAS"
+          test -n "$RELEASE_KEY_PASSWORD"
           printf '%s' "$RELEASE_STORE_B64" | base64 --decode > "$RUNNER_TEMP/miyorare-release.jks"
-          ./gradlew :kotatsu-runtime:assembleRelease --max-workers=4 --no-daemon --stacktrace \
+          ./gradlew :kotatsu-runtime:assembleRelease :app:assembleRelease --max-workers=4 --no-daemon --stacktrace \
             -PRELEASE_STORE_FILE="$RUNNER_TEMP/miyorare-release.jks" \
             -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
             -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
             -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+
+      - name: Verify runtime uses the current Miyorare release signer
+        if: ${{ github.event_name == 'schedule' || inputs.publish }}
+        run: |
+          set -euo pipefail
+          runtime_apk="$(find kotatsu-runtime/build/outputs/apk/release -name '*.apk' -type f | head -n1)"
+          host_apk="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n1)"
+          test -f "$runtime_apk"
+          test -f "$host_apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n1)"
+          test -x "$apksigner"
+          runtime_cert="$($apksigner verify --print-certs "$runtime_apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1)"
+          host_cert="$($apksigner verify --print-certs "$host_apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1)"
+          test -n "$runtime_cert"
+          test "$runtime_cert" = "$host_cert"
 
       - name: Prepare manifest and artifact
         if: ${{ github.event_name == 'schedule' || inputs.publish }}
@@ -119,6 +151,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Publication is intentionally last. Any build, Android E2E, signer, or manifest failure
+          # exits before this point, so the existing kotatsu-runtime-latest remains last-known-good.
           if ! gh release view kotatsu-runtime-latest >/dev/null 2>&1; then
             gh release create kotatsu-runtime-latest --title 'Kotatsu Runtime Pack' --notes 'Miyorare-managed Kotatsu parser runtime. Do not install manually.'
           fi
@@ -134,6 +168,9 @@ jobs:
           name: kotatsu-runtime-pack-evidence
           path: |
             kotatsu-runtime/build/outputs/apk/debug/*.apk
+            kotatsu-runtime/build/outputs/apk/release/*.apk
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
             ${{ runner.temp }}/runtime-release/manifest.json
           if-no-files-found: warn
           retention-days: 14
