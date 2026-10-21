@@ -168,7 +168,7 @@ class ChapterReleasePredictionSheetTest {
 				compose.onNodeWithText(context.getString(R.string.release_calendar_recent_history)).assertTextColor(scheme.onSurfaceVariant)
 				compose.onNodeWithText(context.getString(R.string.release_calendar_details)).performClick()
 				val dialogDate = date.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM))
-				compose.onNode(hasText(dialogDate) and hasAnyAncestor(isDialog())).assertTextColor(scheme.onPrimaryContainer)
+				compose.onNode(hasTextExactly(dialogDate) and hasAnyAncestor(isDialog())).assertTextColor(scheme.onPrimaryContainer)
 				compose.onNode(hasText(context.getString(R.string.close)) and hasAnyAncestor(isDialog())).performClick()
 				compose.onNodeWithTag("release-prediction-pager").performTouchInput { swipeLeft() }
 				compose.onNodeWithText(context.getString(R.string.release_calendar_upcoming)).assertTextColor(scheme.onSurface)
