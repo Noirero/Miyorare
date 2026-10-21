@@ -66,6 +66,10 @@ class KotatsuRuntimeRealSourceTest {
 		val upstreamRevision = arguments.getString(ARG_RUNTIME_UPSTREAM_REVISION)
 			requireNotNull(upstreamRevision) { "Missing instrumentation argument: $ARG_RUNTIME_UPSTREAM_REVISION" }
 		require(upstreamRevision.matches(Regex("[0-9a-f]{40}"))) { "Invalid runtime upstream revision: $upstreamRevision" }
+		val expectedSourceCount = arguments.getString(ARG_RUNTIME_EXPECTED_SOURCE_COUNT)?.let { value ->
+			value.toIntOrNull()?.takeIf { it > 0 }
+				?: error("Invalid runtime expected source count: $value")
+		}
 		val runtimeApk = File(runtimeApkPath)
 		assertTrue("The separately installed production runtime APK must be readable", runtimeApk.isFile)
 
@@ -75,13 +79,21 @@ class KotatsuRuntimeRealSourceTest {
 				protocolVersion = KotatsuRuntimePackContract.PROTOCOL_VERSION,
 				packVersion = "android-real-source-smoke",
 				upstreamRevision = upstreamRevision,
-				sourceCount = 0,
+				sourceCount = expectedSourceCount ?: 0,
 				sha256 = sha256(runtimeApk),
 				downloadUrl = "https://example.invalid/kotatsu-runtime-real-source.apk",
 			),
 		)
 
-		val source = runtimeManager.getAvailableSources().firstOrNull { it.sourceKey == CANARY_SOURCE }
+		val availableSources = runtimeManager.getAvailableSources()
+		if (expectedSourceCount != null) {
+			assertEquals(
+				"Production runtime catalog must match the parser catalog generated from the exact upstream revision",
+				expectedSourceCount,
+				availableSources.size,
+			)
+		}
+		val source = availableSources.firstOrNull { it.sourceKey == CANARY_SOURCE }
 			requireNotNull(source) { "Runtime catalog does not contain $CANARY_SOURCE" }
 		assertFalse("The E2E canary must not be marked broken", source.isBroken)
 		assertEquals("KOTATSU:$CANARY_SOURCE", source.name)
@@ -133,6 +145,7 @@ class KotatsuRuntimeRealSourceTest {
 	private companion object {
 		const val ARG_RUNTIME_PACK_APK = "runtimePackApk"
 		const val ARG_RUNTIME_UPSTREAM_REVISION = "runtimeUpstreamRevision"
+		const val ARG_RUNTIME_EXPECTED_SOURCE_COUNT = "runtimeExpectedSourceCount"
 		const val CANARY_SOURCE = "DANKE"
 		const val NETWORK_TIMEOUT_MS = 90_000L
 	}
