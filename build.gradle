@@ -24,7 +24,9 @@ project(':app') {
         def registerKotatsuBundle = { String sourceSetName, String runtimeVariant ->
             def sourceSetCap = sourceSetName.capitalize()
             def runtimeCap = runtimeVariant.capitalize()
-            def outputDir = appProject.layout.buildDirectory.dir("generated/kotatsu-runtime-assets/${sourceSetName}")
+            // AGP 9 rejects Provider<Directory> through the legacy SourceSet API. Resolve the
+            // generated output to a concrete File here and keep the producer dependency explicit.
+            def outputDir = appProject.layout.buildDirectory.dir("generated/kotatsu-runtime-assets/${sourceSetName}").get().asFile
             def prepare = appProject.tasks.register("prepareBundledKotatsuRuntime${sourceSetCap}") {
                 dependsOn ":kotatsu-runtime:assemble${runtimeCap}"
                 outputs.dir(outputDir)
@@ -34,7 +36,7 @@ project(':app') {
                     if (apk == null) {
                         throw new GradleException("Kotatsu runtime ${runtimeVariant} APK was not produced")
                     }
-                    def assetDir = new File(outputDir.get().asFile, 'kotatsu-runtime')
+                    def assetDir = new File(outputDir, 'kotatsu-runtime')
                     project.delete(assetDir)
                     assetDir.mkdirs()
                     def bundledApk = new File(assetDir, 'bundled.apk')
