@@ -21,8 +21,8 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 		val unique = requests.distinctBy { it.mangaId }
 		if (unique.isEmpty()) return@withLock false
 		val existing = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
-		// Durable terminal markers remain unfinished for their retention window. They reconstruct
-		// cancellation state but do not own the active migration queue.
+		// Durable terminal markers are intentionally kept unfinished behind a delayed sentinel so
+		// WorkManager cannot prune them across process restart. They do not own the active queue.
 		if (existing.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) }) return@withLock false
 		val previous = existing.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
 		check(previous < Long.MAX_VALUE)
@@ -55,20 +55,19 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 		workManager.cancelUniqueWork(batchName).await()
 		if (pendingBlocked.isEmpty()) return@withLock
 
-		// A cancelled dependency that never became runnable can have last_enqueue_time == 0 in
-		// WorkManager. Its normal retention window is therefore already expired from the database's
-		// point of view and it can be pruned as soon as a fresh process opens WorkDatabase. Preserve
-		// each never-started identity as an independent delayed terminal WorkRequest instead of another
-		// BLOCKED dependency: an independent request receives a real last_enqueue_time immediately,
-		// remains unfinished for the retention window, and is ignored by active-queue ownership because
-		// of its terminal tag.
+		// Cancelled dependency-chain nodes that never started can disappear when WorkManager is opened
+		// by a fresh process. Preserve their terminal identity as new WorkManager records. The marker
+		// records remain BLOCKED behind one delayed sentinel; this prevents pruning without introducing
+		// another persistence authority or scheduling hundreds of active timers.
+		val afterById = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await().associateBy(WorkInfo::id)
 		val currentGeneration = before.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
 		check(currentGeneration < Long.MAX_VALUE)
 		val markerGeneration = currentGeneration + 1L
 		val markerBatch = "$batchName:cancelled:$markerGeneration"
-		val markers = pendingBlocked.map { (_, snapshot) ->
+		val markers = pendingBlocked.mapNotNull { (info, snapshot) ->
+			val after = afterById[info.id]
+			if (after != null && after.state != WorkInfo.State.CANCELLED) return@mapNotNull null
 			OneTimeWorkRequestBuilder<MigrationBatchCancellationMarkerWorker>()
-				.setInitialDelay(30, TimeUnit.DAYS)
 				.setInputData(MigrationBatchWork.output(MigrationBatchOutcome(
 					MigrationBatchStatus.INTERRUPTED,
 					destinationId = snapshot.outcome.destinationId,
@@ -86,6 +85,11 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 				}
 				.build()
 		}
-		workManager.enqueue(markers).await()
+		if (markers.isNotEmpty()) {
+			val sentinel = OneTimeWorkRequestBuilder<MigrationBatchCancellationMarkerWorker>()
+				.setInitialDelay(30, TimeUnit.DAYS)
+				.build()
+			workManager.beginWith(sentinel).then(markers).enqueue().await()
+		}
 	}
 }
