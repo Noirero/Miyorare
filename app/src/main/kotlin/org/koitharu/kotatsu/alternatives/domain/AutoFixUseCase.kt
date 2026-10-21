@@ -72,7 +72,6 @@ class AutoFixUseCase @Inject constructor(
 		// are manual Alternatives preferences, not identity constraints for an automatic repair.
 		val sources = alternativesUseCase.getSources(seed, SearchSourceMode.ALL_SOURCES, emptySet())
 		val observations = ArrayList<MigrationCandidateObservation>()
-		val seenCandidateKeys = HashSet<Pair<String, Long>>()
 		var lastPreviewSignature: List<Triple<String, Long, Int>> = emptyList()
 		var discoveryError: Throwable? = null
 
@@ -88,9 +87,6 @@ class AutoFixUseCase @Inject constructor(
 		}
 
 		for (query in buildSearchQueries(seed)) {
-			// Snapshot exclusions per query. The active channelFlow can emit from several source coroutines,
-			// so it must never observe a HashSet that the collector is mutating concurrently.
-			val alreadyDetailed = seenCandidateKeys.toSet()
 			alternativesUseCase(
 				manga = seed,
 				mode = SearchSourceMode.ALL_SOURCES,
@@ -98,11 +94,9 @@ class AutoFixUseCase @Inject constructor(
 				query = query,
 				precomputedSources = sources,
 				maxDetailCandidates = MAX_MIGRATION_DETAIL_CANDIDATES,
-				excludedCandidateKeys = alreadyDetailed,
 			).collect { event ->
 				when (event) {
 					is AlternativeSearchEvent.Result -> {
-						seenCandidateKeys += event.manga.source.name to event.manga.id
 						observations += MigrationCandidateObservation(event.manga, setOf(query))
 						publishPreview()
 					}
