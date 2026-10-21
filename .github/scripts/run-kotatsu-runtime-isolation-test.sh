@@ -18,8 +18,15 @@ if [[ -z "$runtime_apk" ]]; then
   exit 1
 fi
 
+upstream_revision="$(sed -n 's/^revision=//p' kotatsu-runtime/upstream.properties | tr -d '\r' | head -n 1)"
+if [[ ! "$upstream_revision" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "Invalid Kotatsu upstream revision in kotatsu-runtime/upstream.properties" >&2
+  exit 1
+fi
+
 bash .github/scripts/collect-on-device-cover-evidence.sh \
   ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace \
   -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest,org.koitharu.kotatsu.core.image.MiyorareImageDiskCacheTest,org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeIsolationTest,org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeRealSourceTest \
   -Pandroid.testInstrumentationRunnerArguments.runtimeFixtureApk="$fixture_apk" \
-  -Pandroid.testInstrumentationRunnerArguments.runtimePackApk="$runtime_apk"
+  -Pandroid.testInstrumentationRunnerArguments.runtimePackApk="$runtime_apk" \
+  -Pandroid.testInstrumentationRunnerArguments.runtimeUpstreamRevision="$upstream_revision"
