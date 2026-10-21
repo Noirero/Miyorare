@@ -12,10 +12,12 @@ import org.koitharu.kotatsu.core.db.TABLE_CHAPTERS
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
 import org.koitharu.kotatsu.core.db.TABLE_MANGA
 import org.koitharu.kotatsu.core.db.TABLE_PRIVATE_FAVOURITES
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.details.data.ReleasePredictionDate
 import org.koitharu.kotatsu.details.data.releasePredictionDatesQuery
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaState
 import java.time.ZoneId
 import javax.inject.Inject
 
@@ -87,7 +89,7 @@ internal fun persistedReleasePredictionItem(
 	nowMillis: Long,
 	zone: ZoneId,
 ): ChapterReleasePredictionItem? {
-	if (manga.isLocal || (manga.state != null && manga.state != org.koitharu.kotatsu.parsers.model.MangaState.ONGOING)) return null
+	if (manga.isLocal || (manga.state != null && manga.state != MangaState.ONGOING)) return null
 	return dates.asSequence()
 		.filter { it.mangaId == manga.id }
 		.groupBy { it.branch }
