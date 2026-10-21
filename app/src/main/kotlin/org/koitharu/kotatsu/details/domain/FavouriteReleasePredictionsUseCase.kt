@@ -67,8 +67,16 @@ class FavouriteReleasePredictionsUseCase @Inject constructor(private val databas
 	private companion object { const val BATCH_SIZE = 100 }
 }
 
-internal val releasePredictionOrder = compareBy<ChapterReleasePredictionItem> { it.prediction.expectedDate }
-	.thenBy { it.manga.title }.thenBy { it.manga.id }
+private fun releasePredictionStateOrder(state: NextChapterReleaseState): Int = when (state) {
+	NextChapterReleaseState.OVERDUE_GRACE -> 0
+	NextChapterReleaseState.EXPECTED_TODAY -> 1
+	NextChapterReleaseState.UPCOMING -> 2
+}
+
+internal val releasePredictionOrder = compareBy<ChapterReleasePredictionItem> { releasePredictionStateOrder(it.prediction.state) }
+	.thenBy { it.prediction.expectedDate }
+	.thenBy { it.manga.title }
+	.thenBy { it.manga.id }
 
 private data class PersistedReleasePredictionCandidate(
 	val item: ChapterReleasePredictionItem,
