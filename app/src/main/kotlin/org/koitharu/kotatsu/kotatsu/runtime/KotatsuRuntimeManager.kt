@@ -229,6 +229,7 @@ class KotatsuRuntimeManager @Inject constructor(
 							item.optBoolean("broken"),
 						),
 					)
+				}
 			}
 			require(result.map { it.sourceKey }.toSet().size == result.size) { "Kotatsu runtime catalog contains duplicate source keys" }
 			return result
