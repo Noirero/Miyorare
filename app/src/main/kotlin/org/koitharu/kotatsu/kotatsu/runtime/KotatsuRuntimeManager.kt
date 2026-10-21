@@ -45,23 +45,30 @@ class KotatsuRuntimeManager @Inject constructor(
 		synchronized(this) {
 			if (initialized) return
 			initialized = true
-			val currentManifest = store.currentManifest()
-			if (currentManifest != null && store.currentFile.isFile) {
-				val current = runCatching { openSession(store.currentFile, currentManifest, RuntimeOrigin.CURRENT) }.getOrNull()
-				if (current != null) {
-					publishSession(current)
+
+			val current = store.currentManifest()?.takeIf { store.currentFile.isFile }?.let { manifest ->
+				runCatching { openSession(store.currentFile, manifest, RuntimeOrigin.CURRENT) }.getOrNull()
+			}
+			if (current != null) {
+				publishSession(current)
+				return
+			}
+
+			// Also covers an interrupted activation where current was already renamed to previous but the
+			// staged directory had not yet become current. Never require a broken/missing current slot in
+			// order to recover the previous known-good runtime.
+			if (store.rollback()) {
+				val previous = store.currentManifest()?.let { manifest ->
+					runCatching { openSession(store.currentFile, manifest, RuntimeOrigin.ROLLED_BACK) }.getOrNull()
+				}
+				if (previous != null) {
+					publishSession(previous)
 					return
 				}
-				if (store.rollback()) {
-					val previous = store.currentManifest()?.let { manifest ->
-						runCatching { openSession(store.currentFile, manifest, RuntimeOrigin.ROLLED_BACK) }.getOrNull()
-					}
-					if (previous != null) {
-						publishSession(previous)
-						return
-					}
-				}
 			}
+
+			// Do not let an invalid legacy/current slot become the next "previous known-good" candidate.
+			store.discardCurrent()
 			loadBundledFallback()?.let(::publishSession)
 		}
 	}
@@ -108,19 +115,30 @@ class KotatsuRuntimeManager @Inject constructor(
 
 	@Synchronized
 	fun install(candidate: File, manifest: KotatsuRuntimePackManifest) {
-		store.install(candidate, manifest, verifier)
+		val staged = store.stage(candidate, manifest, verifier)
+		var activated = false
 		try {
+			// Health-check the exact staged bytes before changing current/previous ownership. The staged
+			// class loader is intentionally disposable; activation renames the APK and a fresh loader is
+			// created from the final current path afterwards.
+			openSession(staged.file, staged.manifest, RuntimeOrigin.CURRENT)
+			store.activateStaged()
+			activated = true
 			publishSession(openSession(store.currentFile, manifest, RuntimeOrigin.CURRENT))
 		} catch (error: Throwable) {
-			val recovered = if (store.rollback()) {
-				store.currentManifest()?.let { previous ->
-					runCatching { openSession(store.currentFile, previous, RuntimeOrigin.ROLLED_BACK) }.getOrNull()
+			store.discardStaged()
+			if (activated) {
+				val recovered = if (store.rollback()) {
+					store.currentManifest()?.let { previous ->
+						runCatching { openSession(store.currentFile, previous, RuntimeOrigin.ROLLED_BACK) }.getOrNull()
+					}
+				} else null
+				if (recovered != null) {
+					publishSession(recovered)
+				} else {
+					store.discardCurrent()
+					loadBundledFallback()?.let(::publishSession)
 				}
-			} else null
-			if (recovered != null) {
-				publishSession(recovered)
-			} else {
-				loadBundledFallback()?.let(::publishSession)
 			}
 			throw error
 		}
@@ -193,7 +211,6 @@ class KotatsuRuntimeManager @Inject constructor(
 							item.optBoolean("broken"),
 						),
 					)
-				}
 			}
 			require(result.map { it.sourceKey }.toSet().size == result.size) { "Kotatsu runtime catalog contains duplicate source keys" }
 			return result
