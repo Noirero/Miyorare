@@ -28,6 +28,8 @@ import org.koitharu.kotatsu.parsers.bitmap.Rect
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.config.MangaSourceConfig
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.parsers.webview.InterceptedRequest
+import org.koitharu.kotatsu.parsers.webview.InterceptionConfig
 import java.io.ByteArrayOutputStream
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -36,6 +38,9 @@ import kotlin.coroutines.resume
 internal class RuntimeLoaderContext(private val appContext: Context) : MangaLoaderContext() {
 	private val cookies = PersistentCookieJar(appContext)
 	private val configs = ConcurrentHashMap<String, RuntimeSourceConfig>()
+	private val webViewInterceptor by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+		RuntimeWebViewInterceptor(appContext, getDefaultUserAgent())
+	}
 
 	override val cookieJar: CookieJar = cookies
 	override val httpClient: OkHttpClient = OkHttpClient.Builder().cookieJar(cookies).build()
@@ -81,6 +86,30 @@ internal class RuntimeLoaderContext(private val appContext: Context) : MangaLoad
 			}
 		}
 	}
+
+	override suspend fun interceptWebViewRequests(
+		url: String,
+		interceptorScript: String,
+		timeout: Long,
+	): List<InterceptedRequest> = webViewInterceptor.intercept(
+		url,
+		InterceptionConfig(
+			timeoutMs = timeout,
+			maxRequests = 100,
+			filterScript = interceptorScript,
+		),
+	)
+
+	override suspend fun interceptWebViewRequests(
+		url: String,
+		config: InterceptionConfig,
+	): List<InterceptedRequest> = webViewInterceptor.intercept(url, config)
+
+	override suspend fun captureWebViewUrls(
+		pageUrl: String,
+		urlPattern: Regex,
+		timeout: Long,
+	): List<String> = webViewInterceptor.captureUrls(pageUrl, urlPattern, timeout)
 
 	override fun requestBrowserAction(parser: MangaParser, url: String): Nothing =
 		interactiveAction("browser", parser, url)
