@@ -31,7 +31,7 @@ class MigrationReviewViewModel @Inject constructor(
 	private val autoFix: AutoFixUseCase,
 ) : ViewModel() {
 	private val mangaId: Long = checkNotNull(savedStateHandle[MigrationReviewFragment.ARG_MANGA_ID])
-	private val mutableState = MutableStateFlow(MigrationReviewState(searching = true))
+	private val mutableState = MutableStateFlow(MigrationReviewState())
 	val state = mutableState.asStateFlow()
 
 	init {
