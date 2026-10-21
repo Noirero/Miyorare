@@ -31,7 +31,8 @@ class MigrationReviewViewModel @Inject constructor(
 	private val autoFix: AutoFixUseCase,
 ) : ViewModel() {
 	private val mangaId: Long = checkNotNull(savedStateHandle[MigrationReviewFragment.ARG_MANGA_ID])
-	private val mutableState = MutableStateFlow(MigrationReviewState())
+	// Start idle so init can enter retry(); every actual network/execution operation flips loading=true.
+	private val mutableState = MutableStateFlow(MigrationReviewState(loading = false))
 	val state = mutableState.asStateFlow()
 
 	init {
@@ -41,7 +42,7 @@ class MigrationReviewViewModel @Inject constructor(
 	}
 
 	fun retry() {
-		if (mutableState.value.loading && mutableState.value.searching) return
+		if (mutableState.value.loading) return
 		mutableState.value = MigrationReviewState(searching = true)
 		viewModelScope.launch {
 			runCatchingCancellable {
