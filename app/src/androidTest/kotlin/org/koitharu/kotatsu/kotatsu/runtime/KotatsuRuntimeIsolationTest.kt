@@ -5,6 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -38,14 +39,25 @@ class KotatsuRuntimeIsolationTest {
 	fun signedRuntimeApkCanShadowHostParserAbiWithoutLeakingRuntimeTypes() {
 		val hostParser = targetContext.classLoader.loadClass("org.koitharu.kotatsu.parsers.MangaLoaderContext")
 		assertFalse(
-			"The host parser ABI must not contain the runtime-only fixture marker",
+			"The target APK parser ABI must not contain the runtime-only fixture marker",
 			hostParser.methods.any { it.name == "runtimeFixtureMarker" },
 		)
 
-		// The instrumentation APK is a real, independently dexed APK signed by the same debug identity
-		// as the target APK. It deliberately carries the same parser FQCN with a different definition.
-		val runtimeApk = File(instrumentation.context.applicationInfo.sourceDir)
-		assertTrue(runtimeApk.isFile)
+		val runtimeApkPath = InstrumentationRegistry.getArguments().getString(ARG_RUNTIME_FIXTURE_APK)
+			requireNotNull(runtimeApkPath) { "Missing instrumentation argument: $ARG_RUNTIME_FIXTURE_APK" }
+		val runtimeApk = File(runtimeApkPath)
+		assertTrue("The separately installed runtime fixture APK must be readable", runtimeApk.isFile)
+		assertNotEquals(
+			"The runtime fixture must not be the instrumentation APK",
+			File(instrumentation.context.applicationInfo.sourceDir).canonicalPath,
+			runtimeApk.canonicalPath,
+		)
+		assertNotEquals(
+			"The runtime fixture must not be the target APK",
+			File(targetContext.applicationInfo.sourceDir).canonicalPath,
+			runtimeApk.canonicalPath,
+		)
+
 		val manager = KotatsuRuntimeManager(targetContext)
 		manager.install(
 			runtimeApk,
@@ -79,5 +91,9 @@ class KotatsuRuntimeIsolationTest {
 			}
 		}
 		return digest.digest().joinToString("") { "%02x".format(it) }
+	}
+
+	companion object {
+		private const val ARG_RUNTIME_FIXTURE_APK = "runtimeFixtureApk"
 	}
 }

@@ -20,7 +20,7 @@ The inspected upstream is `Kotatsu-Redo/kotatsu-parsers-redo` master at:
 
 `dc223c3d8098415b29cf1acfedc401a88d01c9fe`
 
-It is a JVM parser library (Java/Kotlin library + KSP-generated sources), not a ready-to-download Android runtime APK. The GitHub Releases endpoint for the upstream repository returned an empty release list at this checkpoint. Therefore Miyorare must build its own runtime artifact around a pinned upstream revision rather than consuming an upstream runtime APK/release.
+It is a JVM parser library (Java/Kotlin library + KSP-generated sources), not a ready-to-download Android runtime APK. Its GitHub Releases list was empty at this checkpoint. Therefore Miyorare must build its own runtime artifact around a pinned upstream revision.
 
 Relevant upstream dependency versions at this checkpoint include Kotlin 2.2.10, coroutines 1.10.2, OkHttp 5.1.0, Okio 3.16.0, AndroidX Collection 1.5.0, and Jsoup 1.21.2. The Miyorare app currently uses newer/different versions for several of these. This is another reason not to link the upstream parser library directly into the app process class path.
 
@@ -54,7 +54,9 @@ Decision: do not add Kotatsu-Redo as a second raw app dependency, do not suppres
 
 ## 5. Android isolation proof
 
-`KotatsuRuntimeIsolationTest` is an on-device instrumentation proof, not a JVM simulation. The instrumentation APK deliberately contains a second class named `org.koitharu.kotatsu.parsers.MangaLoaderContext` plus the runtime entry point. The test then installs that APK as a candidate runtime pack through the real verifier/store/manager path.
+`KotatsuRuntimeIsolationTest` is an on-device instrumentation proof, not a JVM simulation. A dedicated `:kotatsu-runtime-fixture` Android application module builds a separate debug-signed APK that deliberately contains a second class named `org.koitharu.kotatsu.parsers.MangaLoaderContext` plus the runtime entry point. CI installs that fixture as its own package before running the instrumentation test and passes the installed APK path as an instrumentation argument.
+
+Keeping the fixture out of `androidTest` is important: Android instrumentation can make test-APK classes visible through the test process class-loader hierarchy, which would contaminate the supposed host side of the proof. The dedicated installed fixture prevents that false overlap and lets the target APK retain its real Gekkoushi-backed `MangaLoaderContext` while `KotatsuRuntimeClassLoader` loads the colliding fixture definition child-first.
 
 The runtime entry point's health check succeeds only when:
 

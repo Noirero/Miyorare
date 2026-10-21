@@ -2,7 +2,7 @@ package org.miyorare.kotatsu.runtime;
 
 import android.content.Context;
 
-/** Test-only runtime-pack entry point loaded from the instrumentation APK by DexClassLoader. */
+/** Dedicated runtime-pack fixture loaded from a separately installed APK by DexClassLoader. */
 public final class KotatsuRuntimeEntrypoint {
     @SuppressWarnings("unused")
     private final Context context;
