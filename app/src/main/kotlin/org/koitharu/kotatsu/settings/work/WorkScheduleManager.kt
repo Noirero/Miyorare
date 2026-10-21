@@ -10,6 +10,7 @@ import org.koitharu.kotatsu.backup.local.ui.periodical.PeriodicalBackupWorker
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.extensions.install.ExtensionUpdateWorker
+import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeUpdateWorker
 import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.suggestions.ui.SuggestionsWorker
 import org.koitharu.kotatsu.sync.data.SyncSettings
@@ -30,6 +31,7 @@ class WorkScheduleManager @Inject constructor(
 	private val syncScheduler: SyncWorker.Scheduler,
 	private val extensionUpdateScheduler: ExtensionUpdateWorker.Scheduler,
 	private val sourcePackUpdateScheduler: MiyorareSourcePackUpdateWorker.Scheduler,
+	private val kotatsuRuntimeUpdateScheduler: KotatsuRuntimeUpdateWorker.Scheduler,
 	@ApplicationContext private val context: Context,
 ) : SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -37,25 +39,17 @@ class WorkScheduleManager @Inject constructor(
 		when (key) {
 			AppSettings.KEY_TRACKER_ENABLED,
 			AppSettings.KEY_TRACKER_FREQUENCY,
-			AppSettings.KEY_TRACKER_WIFI_ONLY -> updateWorker(
-				scheduler = trackerScheduler,
-				isEnabled = settings.isTrackerEnabled,
-				force = key != AppSettings.KEY_TRACKER_ENABLED,
-			)
+			AppSettings.KEY_TRACKER_WIFI_ONLY -> updateWorker(trackerScheduler, settings.isTrackerEnabled, key != AppSettings.KEY_TRACKER_ENABLED)
 
 			AppSettings.KEY_SUGGESTIONS,
-			AppSettings.KEY_SUGGESTIONS_WIFI_ONLY -> updateWorker(
-				scheduler = suggestionScheduler,
-				isEnabled = settings.isSuggestionsEnabled,
-				force = key != AppSettings.KEY_SUGGESTIONS,
-			)
+			AppSettings.KEY_SUGGESTIONS_WIFI_ONLY -> updateWorker(suggestionScheduler, settings.isSuggestionsEnabled, key != AppSettings.KEY_SUGGESTIONS)
 
 			AppSettings.KEY_BACKUP_PERIODICAL_ENABLED,
 			AppSettings.KEY_BACKUP_PERIODICAL_FREQ,
 			AppSettings.KEY_BACKUP_PERIODICAL_OUTPUT -> updateWorker(
-				scheduler = backupScheduler,
-				isEnabled = settings.isPeriodicalBackupEnabled && settings.periodicalBackupDirectory != null,
-				force = key != AppSettings.KEY_BACKUP_PERIODICAL_ENABLED,
+				backupScheduler,
+				settings.isPeriodicalBackupEnabled && settings.periodicalBackupDirectory != null,
+				key != AppSettings.KEY_BACKUP_PERIODICAL_ENABLED,
 			)
 
 			AppSettings.KEY_AUTO_UPDATE_EXTENSIONS,
@@ -63,22 +57,17 @@ class WorkScheduleManager @Inject constructor(
 			AppSettings.KEY_EXTENSION_UPDATE_NOTIFICATIONS,
 			AppSettings.KEY_PRIVATE_INSTALLER -> {
 				val extensionEnabled = isExtensionUpdateWorkerNeeded()
-				updateWorker(extensionUpdateScheduler, extensionEnabled, force = false)
-				if (extensionEnabled) {
-					processLifecycleScope.launch(Dispatchers.Default) {
-						extensionUpdateScheduler.startNow()
-					}
-				}
+				updateWorker(extensionUpdateScheduler, extensionEnabled, false)
+				if (extensionEnabled) processLifecycleScope.launch(Dispatchers.Default) { extensionUpdateScheduler.startNow() }
 
-				// Official Source Packs are internal JARs and do not depend on Package Installer or
-				// Shizuku. They follow the user's existing extension auto-update/notification policy.
 				val sourcePackEnabled = isSourcePackUpdateWorkerNeeded()
-				updateWorker(sourcePackUpdateScheduler, sourcePackEnabled, force = false)
-				if (sourcePackEnabled) {
-					processLifecycleScope.launch(Dispatchers.Default) {
-						sourcePackUpdateScheduler.startNow()
-					}
-				}
+				updateWorker(sourcePackUpdateScheduler, sourcePackEnabled, false)
+				if (sourcePackEnabled) processLifecycleScope.launch(Dispatchers.Default) { sourcePackUpdateScheduler.startNow() }
+
+				// Kotatsu Runtime lives in app-private storage and has an independent signer/hash verifier.
+				val runtimeEnabled = settings.isAutoUpdateExtensionsEnabled
+				updateWorker(kotatsuRuntimeUpdateScheduler, runtimeEnabled, false)
+				if (runtimeEnabled) processLifecycleScope.launch(Dispatchers.Default) { kotatsuRuntimeUpdateScheduler.startNow() }
 			}
 		}
 	}
@@ -88,62 +77,41 @@ class WorkScheduleManager @Inject constructor(
 		processLifecycleScope.launch(Dispatchers.Default) {
 			updateWorkerImpl(trackerScheduler, settings.isTrackerEnabled, true)
 			updateWorkerImpl(suggestionScheduler, settings.isSuggestionsEnabled, true)
-			updateWorkerImpl(
-				scheduler = backupScheduler,
-				isEnabled = settings.isPeriodicalBackupEnabled && settings.periodicalBackupDirectory != null,
-				force = false,
-			)
-			// Sync interval lives in its own prefs file (not observed here); just re-assert the
-			// schedule on app start, and optionally kick off a one-shot sync if the user opted in.
-			updateWorkerImpl(
-				scheduler = syncScheduler,
-				isEnabled = syncSettings.isSignedIn && syncSettings.intervalMinutes > 0,
-				force = false,
-			)
+			updateWorkerImpl(backupScheduler, settings.isPeriodicalBackupEnabled && settings.periodicalBackupDirectory != null, false)
+			updateWorkerImpl(syncScheduler, syncSettings.isSignedIn && syncSettings.intervalMinutes > 0, false)
+
 			val extensionUpdatesEnabled = isExtensionUpdateWorkerNeeded()
-			updateWorkerImpl(extensionUpdateScheduler, extensionUpdatesEnabled, force = false)
-			if (extensionUpdatesEnabled) {
-				extensionUpdateScheduler.startNow()
-			}
+			updateWorkerImpl(extensionUpdateScheduler, extensionUpdatesEnabled, false)
+			if (extensionUpdatesEnabled) extensionUpdateScheduler.startNow()
 
 			val sourcePackUpdatesEnabled = isSourcePackUpdateWorkerNeeded()
-			updateWorkerImpl(sourcePackUpdateScheduler, sourcePackUpdatesEnabled, force = false)
-			if (sourcePackUpdatesEnabled) {
-				sourcePackUpdateScheduler.startNow()
-			}
-			if (syncSettings.isSignedIn && syncSettings.isSyncOnStart) {
-				SyncWorker.enqueueManual(workManager)
-			}
+			updateWorkerImpl(sourcePackUpdateScheduler, sourcePackUpdatesEnabled, false)
+			if (sourcePackUpdatesEnabled) sourcePackUpdateScheduler.startNow()
+
+			val runtimeUpdatesEnabled = settings.isAutoUpdateExtensionsEnabled
+			updateWorkerImpl(kotatsuRuntimeUpdateScheduler, runtimeUpdatesEnabled, false)
+			if (runtimeUpdatesEnabled) kotatsuRuntimeUpdateScheduler.startNow()
+
+			if (syncSettings.isSignedIn && syncSettings.isSyncOnStart) SyncWorker.enqueueManual(workManager)
 		}
 	}
 
-	// The worker checks for updates when either auto-install (Shizuku) or the update notification
-	// is turned on — either one needs the periodic repo check to run. Installed novel plugins need it
-	// unconditionally: updating them is just writing a file, so there is nothing to opt into.
 	private fun isExtensionUpdateWorkerNeeded(): Boolean =
 		settings.isPrivateInstallEnabled ||
 			(settings.isAutoUpdateExtensionsEnabled && settings.isShizukuInstallerEnabled) ||
 			settings.isExtensionUpdateNotificationsEnabled ||
 			LnPluginManager.hasInstalledPlugins(context)
 
-	// Official Miyorare Source Packs are installed into app-private storage, so they can safely use
-	// the same user policy without requiring Shizuku or Android Package Installer confirmation.
 	private fun isSourcePackUpdateWorkerNeeded(): Boolean =
 		settings.isAutoUpdateExtensionsEnabled || settings.isExtensionUpdateNotificationsEnabled
 
 	private fun updateWorker(scheduler: PeriodicWorkScheduler, isEnabled: Boolean, force: Boolean) {
-		processLifecycleScope.launch(Dispatchers.Default) {
-			updateWorkerImpl(scheduler, isEnabled, force)
-		}
+		processLifecycleScope.launch(Dispatchers.Default) { updateWorkerImpl(scheduler, isEnabled, force) }
 	}
 
 	private suspend fun updateWorkerImpl(scheduler: PeriodicWorkScheduler, isEnabled: Boolean, force: Boolean) {
 		if (force || scheduler.isScheduled() != isEnabled) {
-			if (isEnabled) {
-				scheduler.schedule()
-			} else {
-				scheduler.unschedule()
-			}
+			if (isEnabled) scheduler.schedule() else scheduler.unschedule()
 		}
 	}
 }
