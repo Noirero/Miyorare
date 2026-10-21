@@ -18,7 +18,7 @@ internal class KotatsuRuntimeClassLoader(
 
 	override fun loadClass(name: String, resolve: Boolean): Class<*> {
 		if (!isRuntimeOwned(name)) return super.loadClass(name, resolve)
-		return synchronized(getClassLoadingLock(name)) {
+		return synchronized(this) {
 			findLoadedClass(name)?.also { loaded ->
 				if (resolve) resolveClass(loaded)
 			} ?: try {
