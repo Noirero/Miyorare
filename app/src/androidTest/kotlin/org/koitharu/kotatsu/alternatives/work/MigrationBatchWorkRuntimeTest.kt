@@ -122,6 +122,40 @@ class MigrationBatchWorkRuntimeTest {
 			} }
 			assertTrue(cancelled.mapNotNull(MigrationBatchWork::snapshot).filter { it.batchName == batchName }
 				.all { it.outcome.status == MigrationBatchStatus.INTERRUPTED })
+
+			// Diagnostic proof: cancellation markers must exist before this instrumentation process dies.
+			// The fresh-process assertion can then tell us whether they were never persisted or were
+			// discarded while WorkDatabase reopened.
+			val terminalTag = MigrationBatchWork.terminalTag(MigrationBatchStatus.INTERRUPTED)
+			val markerInfos = cancelled.filter { info ->
+				terminalTag in info.tags && MigrationBatchWork.snapshot(info)?.source == "BATCH_LARGE"
+			}
+			println("P4_MARKERS workinfo=${markerInfos.size} states=${markerInfos.groupingBy { it.state }.eachCount()}")
+			assertEquals("Every never-started large item needs one terminal marker", 499, markerInfos.size)
+
+			SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY).use { reopened ->
+				reopened.rawQuery(
+					"""
+					SELECT w.state, w.last_enqueue_time, w.minimum_retention_duration
+					FROM workspec AS w
+					INNER JOIN worktag AS t ON t.work_spec_id = w.id
+					WHERE t.tag = ?
+					""".trimIndent(),
+					arrayOf(terminalTag),
+				).use { cursor ->
+					var rows = 0
+					var zeroEnqueueTimes = 0
+					val states = linkedMapOf<Int, Int>()
+					while (cursor.moveToNext()) {
+						rows++
+						val state = cursor.getInt(0)
+						states[state] = (states[state] ?: 0) + 1
+						if (cursor.getLong(1) <= 0L) zeroEnqueueTimes++
+					}
+					println("P4_MARKER_DB rows=$rows zeroEnqueueTimes=$zeroEnqueueTimes states=$states")
+					assertEquals("Terminal markers must be committed in WorkDatabase before process death", 499, rows)
+				}
+			}
 		} finally {
 			for (id in ids) database.getMangaDao().find(id)?.let { database.getMangaDao().delete(listOf(it.manga)) }
 		}
