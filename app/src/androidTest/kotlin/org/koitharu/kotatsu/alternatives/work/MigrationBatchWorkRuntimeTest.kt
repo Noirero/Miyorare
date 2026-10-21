@@ -1,23 +1,23 @@
 package org.koitharu.kotatsu.alternatives.work
 
+import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.Configuration
+import androidx.work.CoroutineWorker
 import androidx.work.Data
+import androidx.work.ListenableWorker
 import androidx.work.WorkManager
 import androidx.work.WorkerFactory
-import androidx.work.ListenableWorker
-import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import android.content.Context
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.awaitCancellation
-import java.util.concurrent.atomic.AtomicInteger
 import androidx.work.impl.WorkManagerImpl
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.core.model.MissingMangaSource
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -122,6 +123,39 @@ class MigrationBatchWorkRuntimeTest {
 			} }
 			assertTrue(cancelled.mapNotNull(MigrationBatchWork::snapshot).filter { it.batchName == batchName }
 				.all { it.outcome.status == MigrationBatchStatus.INTERRUPTED })
+
+			// Prove the replacement terminal identities are durably committed before this process exits.
+			// Without this assertion P5 cannot distinguish "markers never persisted" from "markers were
+			// pruned on the next WorkDatabase open".
+			val afterCancel = manager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
+			val markers = afterCancel.filter { info ->
+				MigrationBatchWork.isTerminal(info) && MigrationBatchWork.snapshot(info)?.source == "BATCH_LARGE"
+			}
+			println("P4_MARKERS workinfo=${markers.size}")
+			assertEquals("Every never-started large item needs one durable terminal marker", 499, markers.size)
+
+			SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY).use { reopened ->
+				reopened.rawQuery(
+					"SELECT state, last_enqueue_time, minimum_retention_duration FROM workspec WHERE worker_class_name = ?",
+					arrayOf(MigrationBatchCancellationMarkerWorker::class.java.name),
+				).use { cursor ->
+					var rows = 0
+					var zeroEnqueueTimes = 0
+					var wrongStates = 0
+					var shortRetention = 0
+					while (cursor.moveToNext()) {
+						rows++
+						if (cursor.getLong(1) <= 0L) zeroEnqueueTimes++
+						if (cursor.getInt(0) != 0) wrongStates++ // ENQUEUED
+						if (cursor.getLong(2) < java.util.concurrent.TimeUnit.DAYS.toMillis(30)) shortRetention++
+					}
+					println("P4_MARKER_DB rows=$rows zeroEnqueueTimes=$zeroEnqueueTimes wrongStates=$wrongStates shortRetention=$shortRetention")
+					assertEquals("Terminal markers must exist in WorkDatabase before process death", 499, rows)
+					assertEquals("Independent markers must receive a real enqueue timestamp", 0, zeroEnqueueTimes)
+					assertEquals("Terminal markers must remain ENQUEUED until their delayed sentinel time", 0, wrongStates)
+					assertEquals("Terminal markers must retain their evidence for 30 days", 0, shortRetention)
+				}
+			}
 		} finally {
 			for (id in ids) database.getMangaDao().find(id)?.let { database.getMangaDao().delete(listOf(it.manga)) }
 		}
