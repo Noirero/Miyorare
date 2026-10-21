@@ -1,0 +1,71 @@
+plugins {
+	id 'com.android.application'
+}
+
+def upstreamPin = new Properties()
+file('upstream.properties').withInputStream { upstreamPin.load(it) }
+def upstreamRevision = upstreamPin.getProperty('revision')
+if (!(upstreamRevision ==~ /[0-9a-f]{40}/)) {
+	throw new GradleException("kotatsu-runtime upstream revision must be a full 40-character SHA")
+}
+def upstreamJitPackVersion = upstreamRevision.substring(0, 10)
+
+android {
+	namespace = 'org.miyorare.kotatsu.runtime'
+	compileSdk = 37
+
+	defaultConfig {
+		applicationId = 'org.noirero.miyorare.kotatsu.runtime'
+		minSdk = 26
+		targetSdk = 37
+		versionCode = 1
+		versionName = "1-${upstreamJitPackVersion}"
+		buildConfigField 'String', 'UPSTREAM_REVISION', "\"${upstreamRevision}\""
+	}
+
+	signingConfigs {
+		if (project.hasProperty('RELEASE_STORE_FILE')) {
+			release {
+				storeFile file(project.property('RELEASE_STORE_FILE'))
+				storePassword project.property('RELEASE_STORE_PASSWORD')
+				keyAlias project.property('RELEASE_KEY_ALIAS')
+				keyPassword project.property('RELEASE_KEY_PASSWORD')
+			}
+		}
+	}
+
+	buildTypes {
+		debug {
+			minifyEnabled = false
+		}
+		release {
+			minifyEnabled = false
+			if (signingConfigs.findByName('release')) {
+				signingConfig signingConfigs.release
+			}
+		}
+	}
+
+	buildFeatures {
+		buildConfig = true
+	}
+
+	compileOptions {
+		sourceCompatibility JavaVersion.VERSION_11
+		targetCompatibility JavaVersion.VERSION_11
+	}
+
+	packaging {
+		resources {
+			excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE*', 'META-INF/NOTICE*']
+		}
+	}
+}
+
+dependencies {
+	// This dependency exists only in the isolated runtime APK. Never add it to :app: Gekkoushi
+	// intentionally owns the same org.koitharu.kotatsu.parsers namespace in the host process.
+	implementation("com.github.Kotatsu-Redo:kotatsu-parsers-redo:${upstreamJitPackVersion}") {
+		exclude group: 'org.json', module: 'json'
+	}
+}
