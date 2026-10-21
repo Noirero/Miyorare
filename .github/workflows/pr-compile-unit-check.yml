@@ -46,6 +46,10 @@ jobs:
       - name: Build production Kotatsu Runtime Pack
         run: ./gradlew :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
 
+      # Temporary exact reproduction for PR #695. Removed after release task-graph proof.
+      - name: Validate Kotatsu release asset task graph
+        run: ./gradlew assembleRelease --max-workers=4 --no-daemon --stacktrace
+
       - name: Run JVM unit tests
         run: ./gradlew testDebugUnitTest --max-workers=4 --no-daemon --stacktrace
 
