@@ -43,7 +43,7 @@ data class KotatsuRuntimePackManifest(
 	init {
 		require(protocolVersion > 0) { "Invalid Kotatsu runtime protocol" }
 		require(packVersion.isNotBlank()) { "Missing Kotatsu runtime pack version" }
-		require(upstreamRevision.matches(Regex("[0-9a-fA-F]{7,64}"))) { "Invalid upstream revision" }
+		require(upstreamRevision.matches(Regex("[0-9a-fA-F]{40}"))) { "Kotatsu runtime upstream revision must be an exact 40-character commit SHA" }
 		require(sourceCount >= 0) { "Invalid source count" }
 		require(sha256.matches(Regex("[0-9a-fA-F]{64}"))) { "Invalid SHA-256" }
 		require(downloadUrl.startsWith("https://")) { "Kotatsu runtime download must use HTTPS" }
