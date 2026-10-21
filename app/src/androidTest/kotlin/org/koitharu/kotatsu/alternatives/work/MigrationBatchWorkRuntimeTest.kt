@@ -18,6 +18,7 @@ import androidx.work.impl.WorkManagerImpl
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
@@ -115,6 +116,8 @@ class MigrationBatchWorkRuntimeTest {
 			assertEquals(1, LargeBatchGate.starts.get())
 			assertFalse(scheduler.enqueue(requests))
 			val queued = withTimeout(60000) { scheduler.observe().first { works -> works.count { MigrationBatchWork.snapshot(it)?.source == "BATCH_LARGE" } == 500 } }
+			val queuedLarge = queued.filter { MigrationBatchWork.snapshot(it)?.source == "BATCH_LARGE" }
+			println("P4_BEFORE_CANCEL count=${queuedLarge.size} states=${queuedLarge.groupingBy { it.state }.eachCount()}")
 			val batchName = queued.mapNotNull(MigrationBatchWork::snapshot).first { it.source == "BATCH_LARGE" }.batchName
 			scheduler.cancel(batchName)
 			val cancelled = withTimeout(60000) { scheduler.observe().first { works ->
@@ -123,16 +126,19 @@ class MigrationBatchWorkRuntimeTest {
 			assertTrue(cancelled.mapNotNull(MigrationBatchWork::snapshot).filter { it.batchName == batchName }
 				.all { it.outcome.status == MigrationBatchStatus.INTERRUPTED })
 
-			// Diagnostic proof: cancellation markers must exist before this instrumentation process dies.
-			// The fresh-process assertion can then tell us whether they were never persisted or were
-			// discarded while WorkDatabase reopened.
+			// Force fresh reads after cancel. The flow above can legally emit an older snapshot, so it is
+			// not sufficient evidence that the marker enqueue transaction committed.
 			val terminalTag = MigrationBatchWork.terminalTag(MigrationBatchStatus.INTERRUPTED)
-			val markerInfos = cancelled.filter { info ->
-				terminalTag in info.tags && MigrationBatchWork.snapshot(info)?.source == "BATCH_LARGE"
-			}
-			println("P4_MARKERS workinfo=${markerInfos.size} states=${markerInfos.groupingBy { it.state }.eachCount()}")
-			assertEquals("Every never-started large item needs one terminal marker", 499, markerInfos.size)
+			val afterCancel = manager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
+			val afterLarge = afterCancel.filter { MigrationBatchWork.snapshot(it)?.source == "BATCH_LARGE" }
+			val originalAfter = afterLarge.filter { MigrationBatchWork.snapshot(it)?.batchName == batchName }
+			val markerInfos = afterLarge.filter { terminalTag in it.tags }
+			println("P4_AFTER_ORIGINAL count=${originalAfter.size} states=${originalAfter.groupingBy { it.state }.eachCount()}")
+			println("P4_MARKERS_DIRECT workinfo=${markerInfos.size} states=${markerInfos.groupingBy { it.state }.eachCount()}")
 
+			var markerRows = 0
+			var zeroEnqueueTimes = 0
+			val markerDbStates = linkedMapOf<Int, Int>()
 			SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY).use { reopened ->
 				reopened.rawQuery(
 					"""
@@ -143,19 +149,17 @@ class MigrationBatchWorkRuntimeTest {
 					""".trimIndent(),
 					arrayOf(terminalTag),
 				).use { cursor ->
-					var rows = 0
-					var zeroEnqueueTimes = 0
-					val states = linkedMapOf<Int, Int>()
 					while (cursor.moveToNext()) {
-						rows++
+						markerRows++
 						val state = cursor.getInt(0)
-						states[state] = (states[state] ?: 0) + 1
+						markerDbStates[state] = (markerDbStates[state] ?: 0) + 1
 						if (cursor.getLong(1) <= 0L) zeroEnqueueTimes++
 					}
-					println("P4_MARKER_DB rows=$rows zeroEnqueueTimes=$zeroEnqueueTimes states=$states")
-					assertEquals("Terminal markers must be committed in WorkDatabase before process death", 499, rows)
 				}
 			}
+			println("P4_MARKER_DB rows=$markerRows zeroEnqueueTimes=$zeroEnqueueTimes states=$markerDbStates")
+			assertEquals("Every never-started large item needs one terminal marker", 499, markerInfos.size)
+			assertEquals("Terminal markers must be committed in WorkDatabase before process death", 499, markerRows)
 		} finally {
 			for (id in ids) database.getMangaDao().find(id)?.let { database.getMangaDao().delete(listOf(it.manga)) }
 		}
