@@ -96,7 +96,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
+            set -eu
             ./gradlew :kotatsu-runtime-fixture:assembleDebug --max-workers=2 --no-daemon --stacktrace
             adb install -r kotatsu-runtime-fixture/build/outputs/apk/debug/kotatsu-runtime-fixture-debug.apk
             FIXTURE_APK="$(adb shell pm path org.noirero.miyorare.kotatsu.runtimefixture | head -n 1 | cut -d: -f2 | tr -d '\r')"
