@@ -20,6 +20,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.koitharu.kotatsu.core.model.MissingMangaSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.kotatsu.KotatsuMangaRepository
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
@@ -112,6 +113,13 @@ class KotatsuRuntimeRealSourceTest {
 		val repository = repositories.create(source)
 		assertTrue("Factory must route KOTATSU:* through KotatsuMangaRepository", repository is KotatsuMangaRepository)
 
+		// DB/history/favourite/download rows may be materialized while the optional runtime is absent,
+		// producing MissingMangaSource with the same stored KOTATSU identity. The factory must resolve
+		// that stale wrapper back to the live source without changing the persisted source name.
+		val recoveredRepository = repositories.create(MissingMangaSource(source.name, source.displayName))
+		assertTrue("Stored missing KOTATSU:* source must recover through the live runtime", recoveredRepository is KotatsuMangaRepository)
+		assertEquals(source.name, recoveredRepository.source.name)
+
 		val listing = withTimeout(NETWORK_TIMEOUT_MS) {
 			repository.getList(0, repository.defaultSortOrder, null)
 		}
@@ -164,7 +172,6 @@ class KotatsuRuntimeRealSourceTest {
 				if (count <= 0) break
 				digest.update(buffer, 0, count)
 			}
-		}
 		return digest.digest().joinToString("") { "%02x".format(it) }
 	}
 
