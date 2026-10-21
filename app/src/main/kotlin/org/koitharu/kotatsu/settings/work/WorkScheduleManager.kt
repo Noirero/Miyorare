@@ -10,6 +10,7 @@ import org.koitharu.kotatsu.backup.local.ui.periodical.PeriodicalBackupWorker
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.extensions.install.ExtensionUpdateWorker
+import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimePreferences
 import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeUpdateWorker
 import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.suggestions.ui.SuggestionsWorker
@@ -32,8 +33,12 @@ class WorkScheduleManager @Inject constructor(
 	private val extensionUpdateScheduler: ExtensionUpdateWorker.Scheduler,
 	private val sourcePackUpdateScheduler: MiyorareSourcePackUpdateWorker.Scheduler,
 	private val kotatsuRuntimeUpdateScheduler: KotatsuRuntimeUpdateWorker.Scheduler,
+	private val kotatsuRuntimePreferences: KotatsuRuntimePreferences,
 	@ApplicationContext private val context: Context,
 ) : SharedPreferences.OnSharedPreferenceChangeListener {
+
+	val isKotatsuRuntimeAutoUpdateEnabled: Boolean
+		get() = kotatsuRuntimePreferences.isAutoUpdateEnabled
 
 	override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
 		when (key) {
@@ -63,13 +68,21 @@ class WorkScheduleManager @Inject constructor(
 				val sourcePackEnabled = isSourcePackUpdateWorkerNeeded()
 				updateWorker(sourcePackUpdateScheduler, sourcePackEnabled, false)
 				if (sourcePackEnabled) processLifecycleScope.launch(Dispatchers.Default) { sourcePackUpdateScheduler.startNow() }
-
-				// Kotatsu Runtime lives in app-private storage and has an independent signer/hash verifier.
-				val runtimeEnabled = settings.isAutoUpdateExtensionsEnabled
-				updateWorker(kotatsuRuntimeUpdateScheduler, runtimeEnabled, false)
-				if (runtimeEnabled) processLifecycleScope.launch(Dispatchers.Default) { kotatsuRuntimeUpdateScheduler.startNow() }
 			}
 		}
+	}
+
+	fun setKotatsuRuntimeAutoUpdatesEnabled(enabled: Boolean) {
+		if (kotatsuRuntimePreferences.isAutoUpdateEnabled == enabled) return
+		kotatsuRuntimePreferences.isAutoUpdateEnabled = enabled
+		updateWorker(kotatsuRuntimeUpdateScheduler, enabled, false)
+		if (enabled) {
+			processLifecycleScope.launch(Dispatchers.Default) { kotatsuRuntimeUpdateScheduler.startNow() }
+		}
+	}
+
+	fun checkKotatsuRuntimeUpdateNow() {
+		processLifecycleScope.launch(Dispatchers.Default) { kotatsuRuntimeUpdateScheduler.startNow() }
 	}
 
 	fun init() {
@@ -88,7 +101,7 @@ class WorkScheduleManager @Inject constructor(
 			updateWorkerImpl(sourcePackUpdateScheduler, sourcePackUpdatesEnabled, false)
 			if (sourcePackUpdatesEnabled) sourcePackUpdateScheduler.startNow()
 
-			val runtimeUpdatesEnabled = settings.isAutoUpdateExtensionsEnabled
+			val runtimeUpdatesEnabled = kotatsuRuntimePreferences.isAutoUpdateEnabled
 			updateWorkerImpl(kotatsuRuntimeUpdateScheduler, runtimeUpdatesEnabled, false)
 			if (runtimeUpdatesEnabled) kotatsuRuntimeUpdateScheduler.startNow()
 
