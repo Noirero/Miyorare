@@ -10,13 +10,16 @@ import android.webkit.WebViewClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.webview.InterceptedRequest
 import org.koitharu.kotatsu.parsers.webview.InterceptionConfig
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.resume
 
-/** Minimal WebView request-capture capability owned entirely by the isolated runtime. */
+/** WebView request-capture capability owned entirely by the isolated runtime. */
 internal class RuntimeWebViewInterceptor(
 	private val context: Context,
 	private val userAgent: String,
@@ -28,6 +31,8 @@ internal class RuntimeWebViewInterceptor(
 				val maxRequests = config.maxRequests.coerceAtLeast(1)
 				val captured = Collections.synchronizedList(mutableListOf<InterceptedRequest>())
 				val finished = AtomicBoolean(false)
+				val timeoutReached = AtomicBoolean(false)
+				val pendingFilters = AtomicInteger(0)
 				val scriptInjected = AtomicBoolean(false)
 				val handler = Handler(Looper.getMainLooper())
 				var webView: WebView? = null
@@ -47,23 +52,69 @@ internal class RuntimeWebViewInterceptor(
 					if (continuation.isActive) continuation.resume(result)
 				}
 
-				fun capture(request: WebResourceRequest): Boolean {
-					if (finished.get()) return false
-					val intercepted = InterceptedRequest(
-						url = request.url.toString(),
-						method = request.method,
-						headers = request.requestHeaders.orEmpty(),
-						timestamp = System.currentTimeMillis(),
-					)
-					if (config.urlPattern?.containsMatchIn(intercepted.url) == false) return false
-					if (!matchesFilterScript(config.filterScript, intercepted.url)) return false
+				fun finishAfterPendingFilters() {
+					if (timeoutReached.get() && pendingFilters.get() == 0) finish()
+				}
+
+				fun record(intercepted: InterceptedRequest) {
+					if (finished.get()) return
 					val reachedLimit = synchronized(captured) {
 						if (captured.size >= maxRequests) return@synchronized true
 						captured += intercepted
 						captured.size >= maxRequests
 					}
 					if (reachedLimit) handler.post(::finish)
-					return true
+				}
+
+				fun evaluateFilter(intercepted: InterceptedRequest) {
+					if (finished.get()) return
+					val script = config.filterScript
+					if (script.isNullOrBlank()) {
+						record(intercepted)
+						return
+					}
+					val view = webView ?: return
+					pendingFilters.incrementAndGet()
+					val requestJson = JSONObject()
+						.put("url", intercepted.url)
+						.put("method", intercepted.method)
+						.put("headers", JSONObject(intercepted.headers))
+						.put("timestamp", intercepted.timestamp)
+						.put("body", intercepted.body ?: JSONObject.NULL)
+						.toString()
+					val predicate = """
+						(function() {
+							const request = $requestJson;
+							const url = request.url;
+							try {
+								return !!(function() { $script }).call(null);
+							} catch (error) {
+								return false;
+							}
+						})()
+					""".trimIndent()
+					view.evaluateJavascript(predicate) { raw ->
+						try {
+							if (!finished.get() && raw == "true") record(intercepted)
+						} finally {
+							pendingFilters.decrementAndGet()
+							finishAfterPendingFilters()
+						}
+					}
+				}
+
+				fun capture(request: WebResourceRequest) {
+					if (finished.get()) return
+					val intercepted = InterceptedRequest(
+						url = request.url.toString(),
+						method = request.method,
+						headers = request.requestHeaders.orEmpty(),
+						timestamp = System.currentTimeMillis(),
+					)
+					if (config.urlPattern?.containsMatchIn(intercepted.url) == false) return
+					// WebResourceRequest callbacks may arrive off-main. The predicate is real JavaScript and must
+					// execute in the WebView context; posting also keeps all capture state serialized on main.
+					handler.post { evaluateFilter(intercepted) }
 				}
 
 				try {
@@ -77,7 +128,10 @@ internal class RuntimeWebViewInterceptor(
 							}
 
 							override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-								return request != null && capture(request)
+								if (request != null) capture(request)
+								// Capturing is observational. Returning true would cancel a matching navigation and alter
+								// the page behaviour the parser is trying to inspect.
+								return false
 							}
 
 							override fun onPageFinished(view: WebView, pageUrl: String) {
@@ -90,7 +144,10 @@ internal class RuntimeWebViewInterceptor(
 						}
 						loadUrl(url)
 					}
-					timeoutRunnable = Runnable(::finish)
+					timeoutRunnable = Runnable {
+						timeoutReached.set(true)
+						finishAfterPendingFilters()
+					}
 					handler.postDelayed(timeoutRunnable, config.timeoutMs.coerceAtLeast(1L))
 					continuation.invokeOnCancellation {
 						handler.post {
@@ -120,30 +177,4 @@ internal class RuntimeWebViewInterceptor(
 				urlPattern = pattern,
 			),
 		).map { it.url }
-
-	private fun matchesFilterScript(script: String?, requestUrl: String): Boolean {
-		if (script.isNullOrBlank()) return true
-		val returnIndex = script.lastIndexOf("return")
-		if (returnIndex < 0) return true
-		val expression = script.substring(returnIndex + "return".length)
-			.trim()
-			.removeSuffix(";")
-			.trim()
-		if (expression.isEmpty() || expression == "true") return true
-		if (expression == "false") return false
-
-		return expression.split("||").any { rawClause ->
-			val clause = rawClause.trim().trim('(', ')').trim()
-			val terms = clause.split("&&").map(String::trim).filter(String::isNotEmpty)
-			terms.isNotEmpty() && terms.all { rawTerm ->
-				val term = rawTerm.trim().trim('(', ')').trim()
-				val match = URL_INCLUDES.matchEntire(term) ?: return@all false
-				requestUrl.contains(match.groupValues[2])
-			}
-		}
-	}
-
-	private companion object {
-		val URL_INCLUDES = Regex("""url\.includes\(\s*(['\"])(.*?)\1\s*\)""")
-	}
 }
