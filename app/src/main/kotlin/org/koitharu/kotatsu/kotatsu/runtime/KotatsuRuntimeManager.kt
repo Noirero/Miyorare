@@ -169,6 +169,12 @@ class KotatsuRuntimeManager @Inject constructor(
 		val result = Session(instance, clazz, manifest, origin)
 		require(result.protocolVersion() == KotatsuRuntimePackContract.PROTOCOL_VERSION) { "Kotatsu runtime protocol mismatch" }
 		require(result.healthCheck()) { "Kotatsu runtime health check failed" }
+		if (manifest.sourceCount > 0) {
+			val actualSourceCount = result.catalog().size
+			require(actualSourceCount == manifest.sourceCount) {
+				"Kotatsu runtime catalog mismatch: manifest=${manifest.sourceCount}, actual=$actualSourceCount"
+			}
+		}
 		return result
 	}
 
