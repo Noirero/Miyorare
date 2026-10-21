@@ -21,38 +21,29 @@ project(':app') {
             throw new GradleException('kotatsu-runtime upstream revision must be a full SHA')
         }
 
+        def bundleScript = rootProject.file('.github/scripts/prepare-bundled-kotatsu-runtime.py')
         def registerKotatsuBundle = { String sourceSetName, String runtimeVariant ->
             def sourceSetCap = sourceSetName.capitalize()
             def runtimeCap = runtimeVariant.capitalize()
-            // AGP 9 rejects Provider<Directory> through the legacy SourceSet API. Resolve the
-            // generated output to a concrete File here and keep the producer dependency explicit.
+            // Resolve all paths during configuration. The Exec task then carries only concrete
+            // serializable inputs, avoiding Project access from task execution under config cache.
             def outputDir = appProject.layout.buildDirectory.dir("generated/kotatsu-runtime-assets/${sourceSetName}").get().asFile
-            def prepare = appProject.tasks.register("prepareBundledKotatsuRuntime${sourceSetCap}") {
+            def runtimeApk = runtimeProject.layout.buildDirectory
+                .file("outputs/apk/${runtimeVariant}/kotatsu-runtime-${runtimeVariant}.apk")
+                .get().asFile
+            def prepare = appProject.tasks.register("prepareBundledKotatsuRuntime${sourceSetCap}", Exec) {
                 dependsOn ":kotatsu-runtime:assemble${runtimeCap}"
+                inputs.file(runtimeApk)
+                inputs.file(bundleScript)
+                inputs.property('kotatsuRuntimeRevision', revision)
                 outputs.dir(outputDir)
-                doLast {
-                    def runtimeDir = runtimeProject.file("build/outputs/apk/${runtimeVariant}")
-                    def apk = runtimeDir.listFiles()?.find { it.isFile() && it.name.endsWith('.apk') }
-                    if (apk == null) {
-                        throw new GradleException("Kotatsu runtime ${runtimeVariant} APK was not produced")
-                    }
-                    def assetDir = new File(outputDir, 'kotatsu-runtime')
-                    project.delete(assetDir)
-                    assetDir.mkdirs()
-                    def bundledApk = new File(assetDir, 'bundled.apk')
-                    bundledApk.bytes = apk.bytes
-                    def digest = java.security.MessageDigest.getInstance('SHA-256').digest(bundledApk.bytes)
-                    def sha = digest.collect { String.format('%02x', it & 0xff) }.join()
-                    def manifest = [
-                        protocolVersion: 1,
-                        packVersion: "1-${revision.substring(0, 10)}-bundled",
-                        upstreamRevision: revision,
-                        sourceCount: 0,
-                        sha256: sha,
-                        downloadUrl: 'https://github.com/Noirero/Miyorare/releases/download/kotatsu-runtime-latest/kotatsu-runtime.apk',
-                    ]
-                    new File(assetDir, 'manifest.json').text = groovy.json.JsonOutput.toJson(manifest)
-                }
+                commandLine(
+                    'python3',
+                    bundleScript.absolutePath,
+                    '--apk', runtimeApk.absolutePath,
+                    '--output-dir', outputDir.absolutePath,
+                    '--revision', revision,
+                )
             }
             appProject.android.sourceSets[sourceSetName].assets.srcDir(outputDir)
             appProject.tasks.matching { it.name == "merge${sourceSetCap}Assets" }.configureEach {
