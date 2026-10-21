@@ -39,6 +39,15 @@ class MigrationReviewScreenTest {
 		compose.onNodeWithTag("migration-execute").performScrollTo().performClick()
 		assertTrue(executed)
 	}
+	@Test fun progressiveDiscoveryShowsCandidatesBeforeFinalDecisionWithoutExecution() {
+		val progress = state(review = true).copy(loading = true, searching = true)
+		compose.setContent { MaterialTheme { MigrationReviewScreen(progress, imageLoader, {}, { _, _ -> fail("Provisional candidate must not execute") }, {}, {}) } }
+		compose.onNodeWithTag("migration-loading").assertExists()
+		compose.onNodeWithTag("migration-candidate:NEW:2").performScrollTo().assertExists()
+		compose.onNodeWithText(context.getString(R.string.migration_replacement_source, "NEW")).assertExists()
+		compose.onNodeWithTag("migration-execute").assertDoesNotExist()
+		compose.onNodeWithTag("migration-retry").assertDoesNotExist()
+	}
 	@Test fun reviewSelectionSurvivesSavedStateRecreationButNeverExecutesItself() {
 		val restore = StateRestorationTester(compose)
 		var executions = 0

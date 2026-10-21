@@ -18,6 +18,7 @@ import javax.inject.Inject
 
 data class MigrationReviewState(
 	val loading: Boolean = true,
+	val searching: Boolean = false,
 	val discovery: MigrationDiscovery? = null,
 	val failed: Boolean = false,
 	val changed: Boolean = false,
@@ -30,7 +31,8 @@ class MigrationReviewViewModel @Inject constructor(
 	private val autoFix: AutoFixUseCase,
 ) : ViewModel() {
 	private val mangaId: Long = checkNotNull(savedStateHandle[MigrationReviewFragment.ARG_MANGA_ID])
-	private val mutableState = MutableStateFlow(MigrationReviewState())
+	// Start idle so init can enter retry(); every actual network/execution operation flips loading=true.
+	private val mutableState = MutableStateFlow(MigrationReviewState(loading = false))
 	val state = mutableState.asStateFlow()
 
 	init {
@@ -40,10 +42,20 @@ class MigrationReviewViewModel @Inject constructor(
 	}
 
 	fun retry() {
-		if (mutableState.value.loading && mutableState.value.discovery != null) return
-		mutableState.value = MigrationReviewState()
+		if (mutableState.value.loading) return
+		mutableState.value = MigrationReviewState(searching = true)
 		viewModelScope.launch {
-			runCatchingCancellable { withContext(Dispatchers.IO) { autoFix.discover(mangaId) } }
+			runCatchingCancellable {
+				withContext(Dispatchers.IO) {
+					autoFix.discover(mangaId) { progress ->
+						mutableState.value = MigrationReviewState(
+							loading = true,
+							searching = true,
+							discovery = progress,
+						)
+					}
+				}
+			}
 				.onSuccess { mutableState.value = MigrationReviewState(loading = false, discovery = it) }
 				.onFailure { mutableState.value = MigrationReviewState(loading = false, failed = true) }
 		}
@@ -51,7 +63,7 @@ class MigrationReviewViewModel @Inject constructor(
 
 	fun migrate(candidate: Manga, reviewed: Boolean) {
 		if (mutableState.value.loading) return
-		mutableState.value = mutableState.value.copy(loading = true, failed = false, changed = false)
+		mutableState.value = mutableState.value.copy(loading = true, searching = false, failed = false, changed = false)
 		viewModelScope.launch {
 			runCatchingCancellable { withContext(Dispatchers.IO) { autoFix.migrateSelected(mangaId, MigrationSelection.of(candidate), reviewed) } }
 				.onSuccess { replacement ->
@@ -65,7 +77,7 @@ class MigrationReviewViewModel @Inject constructor(
 				.onFailure { error ->
 					mutableState.value = if (error is AutoFixUseCase.SelectionChangedException) {
 						MigrationReviewState(loading = false, discovery = error.discovery, changed = true)
-					} else mutableState.value.copy(loading = false, failed = true)
+					} else mutableState.value.copy(loading = false, searching = false, failed = true)
 				}
 		}
 	}
