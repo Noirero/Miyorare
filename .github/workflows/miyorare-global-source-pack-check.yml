@@ -123,7 +123,7 @@ jobs:
           logical = json.loads((output / 'miyorare-global-pack.json').read_text(encoding='utf-8'))
           shard = json.loads((output / 'miyorare-global-pack-shard.json').read_text(encoding='utf-8'))
 
-          expected_sources = {'EXHENTAI', 'GELBOORU'}
+          expected_sources = {'EXHENTAI', 'GELBOORU', 'NEWXTOON'}
           logical_names = set(logical['sourceNames'])
           shard_names = set(shard['sourceNames'])
           assert logical_names == expected_sources, sorted(logical_names)
