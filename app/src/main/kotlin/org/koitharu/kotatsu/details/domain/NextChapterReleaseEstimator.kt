@@ -10,6 +10,17 @@ data class NextChapterReleasePrediction(
 	val daysUntilNext: Long,
 )
 
+/** Internal evidence quality used only to rank already-valid prediction lineages. */
+internal data class NextChapterReleaseAssessment(
+	val prediction: NextChapterReleasePrediction,
+	val releaseDates: List<LocalDate>,
+	val consistentIntervals: Int,
+	val intervalCount: Int,
+) {
+	val latestEvent: LocalDate
+		get() = releaseDates.last()
+}
+
 /**
  * Estimates availability at the current source, not an official publication schedule.
  * uploadDate is milliseconds, but native/Mihon/Tsuki parsers do not carry date precision or
@@ -21,7 +32,10 @@ object NextChapterReleaseEstimator {
 	private const val MAX_EVENTS = 12
 	private const val MIN_EVENTS = 4
 
-	fun predict(uploadDates: Iterable<Long>, nowMillis: Long, zone: ZoneId): NextChapterReleasePrediction? {
+	fun predict(uploadDates: Iterable<Long>, nowMillis: Long, zone: ZoneId): NextChapterReleasePrediction? =
+		assess(uploadDates, nowMillis, zone)?.prediction
+
+	internal fun assess(uploadDates: Iterable<Long>, nowMillis: Long, zone: ZoneId): NextChapterReleaseAssessment? {
 		if (nowMillis <= 0L) return null
 		val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
 		val events = uploadDates.asSequence()
@@ -53,6 +67,11 @@ object NextChapterReleaseEstimator {
 		val remaining = ChronoUnit.DAYS.between(today, expected)
 		// A missed estimate is not a new countdown. Fail closed even before the hiatus-like limit.
 		if (remaining < 0L) return null
-		return NextChapterReleasePrediction(expected, remaining)
+		return NextChapterReleaseAssessment(
+			prediction = NextChapterReleasePrediction(expected, remaining),
+			releaseDates = events,
+			consistentIntervals = consistent,
+			intervalCount = intervals.size,
+		)
 	}
 }

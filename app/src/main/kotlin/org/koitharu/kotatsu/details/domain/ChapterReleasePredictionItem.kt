@@ -8,4 +8,5 @@ data class ChapterReleasePredictionItem(
 	val prediction: NextChapterReleasePrediction,
 	val releaseDates: List<LocalDate>,
 	val branch: String?,
+	val scanlator: String? = null,
 )

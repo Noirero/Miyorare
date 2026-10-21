@@ -76,6 +76,47 @@ class FavouriteReleasePredictionsTest {
 		assertEquals(12, item.releaseDates.size)
 	}
 
+	@Test fun scanlatorEvidenceIsNormalizedBoundedAndIsolatedBeforePrediction() = runBlocking {
+		store(1)
+		val base = db.getChaptersDao().findAll(1)
+		val groupA = base.mapIndexed { index, chapter ->
+			chapter.copy(chapterId = 100L + index, scanlator = "  Group A  ", url = "/a/$index")
+		}
+		val burstTime = latest.atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+		val groupB = (0 until 20).map { index ->
+			base.first().copy(
+				chapterId = 200L + index,
+				scanlator = "Group B",
+				url = "/b/$index",
+				uploadDate = burstTime + index * 1000L,
+				index = 100 + index,
+			)
+		}
+		db.getChaptersDao().replaceAll(1, groupA + groupB)
+
+		val branches = db.getChaptersDao().findReleasePredictionBranches(listOf(1), now)
+		assertEquals(setOf("Group A", "Group B"), branches.mapNotNull { it.scanlator }.toSet())
+		val dates = branches.chunked(100).flatMap { batch ->
+			db.getChaptersDao().findReleasePredictionDates(releasePredictionDatesQuery(batch, now))
+		}
+		assertEquals(4, dates.count { it.scanlator == "Group A" })
+		assertEquals(1, dates.count { it.scanlator == "Group B" })
+
+		val item = FavouriteReleasePredictionsUseCase(db)(FavouriteSpace.NORMAL, now).single()
+		assertEquals("Group A", item.scanlator)
+		assertEquals(latest.plusDays(7), item.prediction.expectedDate)
+	}
+
+	@Test fun blankScanlatorNormalizesToMissingWithoutCreatingFakeLineage() = runBlocking {
+		store(1)
+		val blank = db.getChaptersDao().findAll(1).map { it.copy(scanlator = "   ") }
+		db.getChaptersDao().replaceAll(1, blank)
+		val branches = db.getChaptersDao().findReleasePredictionBranches(listOf(1), now)
+		assertEquals(1, branches.size)
+		assertNull(branches.single().scanlator)
+		assertNull(FavouriteReleasePredictionsUseCase(db)(FavouriteSpace.NORMAL, now).single().scanlator)
+	}
+
 	@Test fun keysetBatchesIncludeNegativeIdsAndCrossBatchBoundariesWithoutDuplicates() = runBlocking {
 		for (id in -2L..103L) store(id)
 		val results = FavouriteReleasePredictionsUseCase(db)(FavouriteSpace.NORMAL, now)

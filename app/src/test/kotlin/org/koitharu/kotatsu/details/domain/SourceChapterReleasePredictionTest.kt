@@ -20,13 +20,7 @@ class SourceChapterReleasePredictionTest {
 	private val zone = ZoneId.of("UTC")
 	private val latest = LocalDate.of(2026, 10, 3)
 	private val now = latest.plusDays(4).atStartOfDay(zone).toInstant().toEpochMilli()
-	private val chapters = (0L..3L).map { index ->
-		MangaChapter(
-			id = index + 1L, title = null, number = index + 1f, volume = 0,
-			url = "/chapter-$index", scanlator = null, branch = "English", source = source,
-			uploadDate = latest.minusDays((3L - index) * 7L).atStartOfDay(zone).toInstant().toEpochMilli(),
-		)
-	}
+	private val chapters = chaptersFor(scanlator = null, latestDate = latest, cadence = 7L)
 	private val manga = Manga(
 		id = 1L, title = "Title", altTitles = emptySet(), state = MangaState.ONGOING,
 		rating = 0f, contentRating = null, url = "/manga", publicUrl = "https://example.invalid/manga",
@@ -35,12 +29,65 @@ class SourceChapterReleasePredictionTest {
 	)
 	private val details = MangaDetails(manga, null, null, null, true)
 
+	private fun chaptersFor(
+		scanlator: String?,
+		latestDate: LocalDate,
+		cadence: Long,
+		count: Int = 4,
+		idBase: Long = 0L,
+		branch: String? = "English",
+	): List<MangaChapter> = (0 until count).map { index ->
+		MangaChapter(
+			id = idBase + index + 1L, title = null, number = index + 1f, volume = 0,
+			url = "/chapter-${idBase + index}", scanlator = scanlator, branch = branch, source = source,
+			uploadDate = latestDate.minusDays((count - 1L - index) * cadence).atStartOfDay(zone).toInstant().toEpochMilli(),
+		)
+	}
+
 	@Test
 	fun `active source and branch own prediction`() {
 		assertEquals(3L, predictSourceChapterRelease(details, "English", now, zone)?.daysUntilNext)
 		assertNull(predictSourceChapterRelease(details, "Spanish", now, zone))
 		val foreign = chapters.map { it.copy(source = MangaSource("MIHON_2")) }
 		assertNull(predictSourceChapterRelease(MangaDetails(manga.copy(chapters = foreign), null, null, null, true), "English", now, zone))
+	}
+
+	@Test
+	fun `single named scanlator keeps branch fallback including missing metadata`() {
+		val split = chapters.take(2).map { it.copy(scanlator = "  Group A  ") } + chapters.drop(2)
+		val splitDetails = MangaDetails(manga.copy(chapters = split), null, null, null, true)
+		val item = checkNotNull(sourceReleasePredictionItem(splitDetails, "English", now, zone))
+		assertEquals(3L, item.prediction.daysUntilNext)
+		assertNull(item.scanlator)
+	}
+
+	@Test
+	fun `multiple named scanlators never mix and selected scanlator owns Details prediction`() {
+		val groupA = chaptersFor("Group A", latest, 7L, idBase = 100L)
+		val groupB = chaptersFor("Group B", latest.minusDays(1), 14L, idBase = 200L)
+		val mixed = MangaDetails(manga.copy(chapters = groupA + groupB), null, null, null, true)
+
+		val automatic = checkNotNull(sourceReleasePredictionItem(mixed, "English", now, zone))
+		assertEquals("Group A", automatic.scanlator)
+		assertEquals(latest.plusDays(7), automatic.prediction.expectedDate)
+
+		val selectedB = checkNotNull(sourceReleasePredictionItem(mixed, "English", " Group B ", now, zone))
+		assertEquals("Group B", selectedB.scanlator)
+		assertEquals(latest.minusDays(1).plusDays(14), selectedB.prediction.expectedDate)
+		assertNull(sourceReleasePredictionItem(mixed, "English", "Missing", now, zone))
+	}
+
+	@Test
+	fun `bulk reupload from another scanlator cannot corrupt regular lineage`() {
+		val groupA = chaptersFor("Group A", latest, 7L, idBase = 300L)
+		val burstMillis = latest.atStartOfDay(zone).toInstant().toEpochMilli()
+		val groupB = (0 until 20).map { index ->
+			chapters.first().copy(id = 400L + index, url = "/burst/$index", scanlator = "Group B", uploadDate = burstMillis + index * 1000L)
+		}
+		val mixed = MangaDetails(manga.copy(chapters = groupA + groupB), null, null, null, true)
+		val item = checkNotNull(sourceReleasePredictionItem(mixed, "English", now, zone))
+		assertEquals("Group A", item.scanlator)
+		assertEquals(latest.plusDays(7), item.prediction.expectedDate)
 	}
 
 	@Test
