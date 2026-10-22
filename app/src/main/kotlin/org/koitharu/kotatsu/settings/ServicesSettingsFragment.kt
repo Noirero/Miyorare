@@ -60,7 +60,7 @@ import org.koitharu.kotatsu.settings.discord.DiscordSettingsFragment
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class InsightsSettingsFragment : BaseComposeSettingsFragment(R.string.settings_insights_recommendations) {
+class ServicesSettingsFragment : BaseComposeSettingsFragment(R.string.settings_insights_recommendations) {
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -84,6 +84,8 @@ class InsightsSettingsFragment : BaseComposeSettingsFragment(R.string.settings_i
         }
     }
 }
+
+typealias InsightsSettingsFragment = ServicesSettingsFragment
 
 @AndroidEntryPoint
 class ConnectedServicesSettingsFragment : BaseComposeSettingsFragment(R.string.settings_connected_services) {
