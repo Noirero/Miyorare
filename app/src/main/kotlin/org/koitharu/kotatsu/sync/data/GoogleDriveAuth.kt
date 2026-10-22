@@ -50,6 +50,9 @@ class GoogleDriveAuth @Inject constructor(
 
 	fun lastAccount(): GoogleSignInAccount? = GoogleSignIn.getLastSignedInAccount(context)
 
+	/** True only when Google Play Services still exposes an account usable by [GoogleAuthUtil]. */
+	fun hasSignedInAccount(): Boolean = lastAccount()?.account != null
+
 	suspend fun signOut() {
 		runCatching { signInClient.signOut().await() }
 		// revokeAccess so the next sign-in prompts for consent / a different account.
@@ -62,7 +65,7 @@ class GoogleDriveAuth @Inject constructor(
 		try {
 			GoogleAuthUtil.getToken(context, account, OAUTH2_SCOPE)
 		} catch (e: UserRecoverableAuthException) {
-			throw SyncSignInRequiredException(e.message ?: "Authorization required")
+			throw e.toSyncSignInRequiredException()
 		}
 	}
 
@@ -84,3 +87,9 @@ class GoogleDriveAuth @Inject constructor(
 		private const val OAUTH2_SCOPE = "oauth2:$SCOPE_APPDATA $SCOPE_FILE"
 	}
 }
+
+internal fun UserRecoverableAuthException.toSyncSignInRequiredException(): SyncSignInRequiredException =
+	SyncSignInRequiredException(
+		message = message ?: "Google Drive authorization is required",
+		recoveryIntent = intent,
+	)

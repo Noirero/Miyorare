@@ -18,7 +18,7 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-	/** Email of the signed-in Google account, or null when signed out. */
+	/** Email cached for display/bookkeeping. This is metadata, not proof that Google auth is usable. */
 	var accountEmail: String?
 		get() = prefs.getString(KEY_ACCOUNT_EMAIL, null)
 		set(value) = prefs.edit { putString(KEY_ACCOUNT_EMAIL, value) }
@@ -37,7 +37,8 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getBoolean(KEY_EMAIL_HIDDEN, false)
 		set(value) = prefs.edit { putBoolean(KEY_EMAIL_HIDDEN, value) }
 
-	val isSignedIn: Boolean
+	/** Whether account display metadata exists. Always pair with the live Google account state. */
+	val hasAccountMetadata: Boolean
 		get() = !accountEmail.isNullOrEmpty()
 
 	/** Stable per-install id, used to decide whether the remote snapshot came from this device. */
