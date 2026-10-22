@@ -39,6 +39,7 @@ import org.koitharu.kotatsu.settings.sources.KotatsuParsersSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerDiagnosticsSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
 import org.koitharu.kotatsu.settings.userdata.storage.DataCleanupSettingsFragment
+import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
 import javax.inject.Inject
 
 @Reusable
@@ -226,6 +227,19 @@ class SettingsSearchHelper @Inject constructor(
                 addItem(AppSettings.KEY_READER_BACKGROUND, R.string.background, breadcrumbs = crumbs, fragmentClass = ReaderSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.reader_backgrounds))
                 addItem(AppSettings.KEY_PAGES_NUMBERS, R.string.show_pages_numbers, R.string.show_pages_numbers_summary, crumbs, ReaderSettingsFragment::class.java)
             }
+        }
+
+        section(R.string.google_drive_sync) { sectionCrumbs ->
+            addItem("google_drive_sync_sign_in", R.string.sync_sign_in, R.string.sync_sign_in_summary, sectionCrumbs, SyncSettingsFragment::class.java)
+            addItem("google_drive_sync_now", R.string.sync_now, breadcrumbs = sectionCrumbs, fragmentClass = SyncSettingsFragment::class.java)
+            group(sectionCrumbs, R.string.options) { crumbs ->
+                addItem("google_drive_sync_frequency", R.string.sync_frequency, breadcrumbs = crumbs, fragmentClass = SyncSettingsFragment::class.java)
+                addItem("google_drive_sync_wifi_only", R.string.sync_wifi_only, breadcrumbs = crumbs, fragmentClass = SyncSettingsFragment::class.java)
+                addItem("google_drive_sync_on_start", R.string.sync_on_start, R.string.sync_on_start_summary, crumbs, SyncSettingsFragment::class.java)
+                addItem("google_drive_sync_disable_deletion", R.string.sync_disable_deletion, R.string.sync_disable_deletion_summary, crumbs, SyncSettingsFragment::class.java)
+                addItem("google_drive_sync_what", R.string.sync_what, breadcrumbs = crumbs, fragmentClass = SyncSettingsFragment::class.java)
+            }
+            addItem("google_drive_sync_delete_data", R.string.sync_delete_data, R.string.sync_delete_data_summary, sectionCrumbs, SyncSettingsFragment::class.java)
         }
 
         section(R.string.settings_storage_data) { sectionCrumbs ->
