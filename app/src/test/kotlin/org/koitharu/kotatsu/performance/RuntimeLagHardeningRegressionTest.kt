@@ -396,6 +396,7 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
 	@Test
 	fun `private workspace owns toolbar title so settings label cannot leak across tabs`() {
 		val workspace = source("kotlin/org/koitharu/kotatsu/favourites/ui/PrivateWorkspaceFragment.kt")
@@ -408,6 +409,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(workspace.contains("findViewById<CollapsingToolbarLayout>(R.id.collapsingToolbarLayout)?.title=titleText"))
 		assertTrue(workspace.contains("R.id.private_nav_settings->R.string.private_workspace_settings"))
 	}
+
 
 
 	@Test
@@ -444,6 +446,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(drawable.contains("palette.customBackgroundBlurPath?.let(::loadCustomBlurredArtwork)"))
 		assertTrue(drawable.contains("custom-user-full-\${palette.customBackgroundRevision}"))
 	}
+
 
 
 	@Test
@@ -493,6 +496,7 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
 	@Test
 	fun `Modern overlays and Group details share adaptive glass in light and dark`() {
 		val overlay = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareOverlayPopup.kt")
@@ -522,6 +526,7 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
 	@Test
 	fun `Details follows adaptive custom wallpaper colors in both light and dark modes`() {
 		val colors = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt")
@@ -545,6 +550,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(content.contains("valadaptiveCustom=palette.adaptiveCustomBackground"))
 		assertTrue(content.contains("if(adaptiveCustom)9.dpelse7.dp"))
 	}
+
 
 
 	@Test
@@ -577,6 +583,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(listConfig.contains("materialR.id.design_bottom_sheet"))
 	}
 
+
 	@Test
 	fun `normal main tabs keep favourites navigation container while active item still moves`() {
 		val navigation = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
@@ -587,6 +594,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(navigation.split("selectedId=selectedId").size - 1 >= 2)
 		assertTrue(navigation.contains("emphasizeFavourites=emphasizeFavourites"))
 	}
+
 
 	@Test
 	fun `light mode uses milky wallpaper and glass treatment while dark path stays intact`() {
@@ -616,6 +624,7 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
 	@Test
 	fun `root settings exposes Google Drive login and keeps existing sync implementation wired`() {
 		val root = source("kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt")
@@ -632,6 +641,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(sync.contains("title=stringResource(R.string.sync_sign_in)"))
 		assertTrue(sync.contains("onClick=onSignIn"))
 	}
+
 
 	@Test
 	fun `secondary modern screens inherit blurred favourites backdrop without leaking into private surfaces`() {
@@ -659,6 +669,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(detailsScreen.contains(".background(if(palette.isModern)Color.TransparentelsescreenSurface)"))
 		assertTrue("Manga-specific details backdrop must remain available above the shared fallback", detailsScreen.contains("ExpressiveBackdrop("))
 	}
+
 
 	@Test
 	fun `downloads scrolling stays off chapter hydration and app bar bounce paths`() {
