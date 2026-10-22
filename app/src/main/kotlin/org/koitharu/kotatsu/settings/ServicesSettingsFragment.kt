@@ -16,13 +16,13 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
-import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -47,8 +47,8 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.ui.ScrobblerAuthHelper
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
@@ -60,323 +60,341 @@ import org.koitharu.kotatsu.settings.discord.DiscordSettingsFragment
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class ServicesSettingsFragment : BaseComposeSettingsFragment(R.string.services) {
+class InsightsSettingsFragment : BaseComposeSettingsFragment(R.string.settings_insights_recommendations) {
 
-	@Inject
-	lateinit var settings: AppSettings
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = ComposeView(requireContext()).apply {
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        setContent {
+            MiyorareTheme {
+                InsightsSettingsScreen(
+                    onOpenSuggestions = {
+                        (activity as? SettingsActivity)?.openFragment(
+                            SuggestionsSettingsFragment::class.java,
+                            null,
+                            isFromRoot = false,
+                        )
+                    },
+                    onOpenStatistics = router::openStatistic,
+                )
+            }
+        }
+    }
+}
 
-	@Inject
-	lateinit var scrobblerAuthHelper: ScrobblerAuthHelper
+@AndroidEntryPoint
+class ConnectedServicesSettingsFragment : BaseComposeSettingsFragment(R.string.settings_connected_services) {
 
-	private val scrobblerSummary = MutableStateFlow<Map<ScrobblerService, String?>>(emptyMap())
+    @Inject
+    lateinit var scrobblerAuthHelper: ScrobblerAuthHelper
 
-	override fun onCreateView(
-		inflater: LayoutInflater,
-		container: ViewGroup?,
-		savedInstanceState: Bundle?,
-	): View = ComposeView(requireContext()).apply {
-		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-		setContent {
-			MiyorareTheme {
-				val summaries by scrobblerSummary.asStateFlow().collectAsState()
-				ServicesScreen(
-					scrobblerSummaries = summaries,
-					onOpenSuggestions = {
-						(activity as? SettingsActivity)?.openFragment(
-							SuggestionsSettingsFragment::class.java,
-							null,
-							isFromRoot = false,
-						)
-					},
-					onOpenStatistics = router::openStatistic,
-					onScrobblerClick = ::handleScrobblerClick,
-					onOpenDiscord = {
-						(activity as? SettingsActivity)?.openFragment(
-							DiscordSettingsFragment::class.java,
-							null,
-							isFromRoot = false,
-						)
-					},
-				)
-			}
-		}
-	}
+    private val scrobblerSummary = MutableStateFlow<Map<ScrobblerService, String?>>(emptyMap())
 
-	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-		super.onViewCreated(view, savedInstanceState)
-	}
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = ComposeView(requireContext()).apply {
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        setContent {
+            MiyorareTheme {
+                val summaries by scrobblerSummary.asStateFlow().collectAsState()
+                ConnectedServicesSettingsScreen(
+                    scrobblerSummaries = summaries,
+                    onScrobblerClick = ::handleScrobblerClick,
+                    onOpenDiscord = {
+                        (activity as? SettingsActivity)?.openFragment(
+                            DiscordSettingsFragment::class.java,
+                            null,
+                            isFromRoot = false,
+                        )
+                    },
+                )
+            }
+        }
+    }
 
-	override fun onResume() {
-		super.onResume()
-		refreshScrobblers()
-	}
+    override fun onResume() {
+        super.onResume()
+        refreshScrobblers()
+    }
 
-	private fun refreshScrobblers() {
-		ScrobblerService.values().forEach { svc -> refreshScrobblerSummary(svc) }
-	}
+    private fun refreshScrobblers() {
+        ScrobblerService.values().forEach { svc -> refreshScrobblerSummary(svc) }
+    }
 
-	private fun refreshScrobblerSummary(service: ScrobblerService) {
-		val current = scrobblerSummary.value.toMutableMap()
-		if (!scrobblerAuthHelper.isAuthorized(service)) {
-			current[service] = getString(R.string.disabled)
-			scrobblerSummary.value = current
-			return
-		}
-		val cached = scrobblerAuthHelper.getCachedUser(service)?.nickname
-		if (cached != null) {
-			current[service] = getString(R.string.logged_in_as, cached)
-			scrobblerSummary.value = current
-			return
-		}
-		current[service] = getString(R.string.loading_)
-		scrobblerSummary.value = current
-		lifecycleScope.launch {
-			val text = withContext(Dispatchers.Default) {
-				runCatching {
-					val user = scrobblerAuthHelper.getUser(service)
-					getString(R.string.logged_in_as, user.nickname)
-				}.getOrElse {
-					it.printStackTraceDebug()
-					it.getDisplayMessage(resources)
-				}
-			}
-			scrobblerSummary.value = scrobblerSummary.value + (service to text)
-		}
-	}
+    private fun refreshScrobblerSummary(service: ScrobblerService) {
+        val current = scrobblerSummary.value.toMutableMap()
+        if (!scrobblerAuthHelper.isAuthorized(service)) {
+            current[service] = getString(R.string.disabled)
+            scrobblerSummary.value = current
+            return
+        }
+        val cached = scrobblerAuthHelper.getCachedUser(service)?.nickname
+        if (cached != null) {
+            current[service] = getString(R.string.logged_in_as, cached)
+            scrobblerSummary.value = current
+            return
+        }
+        current[service] = getString(R.string.loading_)
+        scrobblerSummary.value = current
+        lifecycleScope.launch {
+            val text = withContext(Dispatchers.Default) {
+                runCatching {
+                    val user = scrobblerAuthHelper.getUser(service)
+                    getString(R.string.logged_in_as, user.nickname)
+                }.getOrElse {
+                    it.printStackTraceDebug()
+                    it.getDisplayMessage(resources)
+                }
+            }
+            scrobblerSummary.value = scrobblerSummary.value + (service to text)
+        }
+    }
 
-	private fun handleScrobblerClick(service: ScrobblerService) {
-		if (!scrobblerAuthHelper.isAuthorized(service)) {
-			confirmScrobblerAuth(service)
-		} else {
-			router.openScrobblerSettings(service)
-		}
-	}
+    private fun handleScrobblerClick(service: ScrobblerService) {
+        if (!scrobblerAuthHelper.isAuthorized(service)) {
+            confirmScrobblerAuth(service)
+        } else {
+            router.openScrobblerSettings(service)
+        }
+    }
 
-	private fun confirmScrobblerAuth(service: ScrobblerService) {
-		buildAlertDialog(context ?: return, isCentered = true) {
-			setIcon(service.iconResId)
-			setTitle(service.titleResId)
-			setMessage(context.getString(R.string.scrobbler_auth_intro, context.getString(service.titleResId)))
-			setPositiveButton(R.string.sign_in) { _, _ ->
-				scrobblerAuthHelper.startAuth(context, service).onFailure {
-					Snackbar.make(
-						requireView(),
-						it.getDisplayMessage(resources),
-						Snackbar.LENGTH_LONG,
-					).show()
-				}
-			}
-			setNegativeButton(android.R.string.cancel, null)
-		}.show()
-	}
+    private fun confirmScrobblerAuth(service: ScrobblerService) {
+        buildAlertDialog(context ?: return, isCentered = true) {
+            setIcon(service.iconResId)
+            setTitle(service.titleResId)
+            setMessage(context.getString(R.string.scrobbler_auth_intro, context.getString(service.titleResId)))
+            setPositiveButton(R.string.sign_in) { _, _ ->
+                scrobblerAuthHelper.startAuth(context, service).onFailure {
+                    Snackbar.make(
+                        requireView(),
+                        it.getDisplayMessage(resources),
+                        Snackbar.LENGTH_LONG,
+                    ).show()
+                }
+            }
+            setNegativeButton(android.R.string.cancel, null)
+        }.show()
+    }
 }
 
 @Composable
-private fun ServicesScreen(
-	scrobblerSummaries: Map<ScrobblerService, String?>,
-	onOpenSuggestions: () -> Unit,
-	onOpenStatistics: () -> Unit,
-	onScrobblerClick: (ScrobblerService) -> Unit,
-	onOpenDiscord: () -> Unit,
+private fun InsightsSettingsScreen(
+    onOpenSuggestions: () -> Unit,
+    onOpenStatistics: () -> Unit,
 ) {
-	var suggestionsEnabled by rememberBooleanPref(AppSettings.KEY_SUGGESTIONS, false)
-	var relatedManga by rememberBooleanPref(AppSettings.KEY_RELATED_MANGA, true)
-	var statsEnabled by rememberBooleanPref(AppSettings.KEY_STATS_ENABLED, true)
-	var readerJourneyEnabled by rememberBooleanPref(AppSettings.KEY_READER_JOURNEY_ENABLED, true)
-	var readerJourneyCelebration by rememberStringPref(
-		AppSettings.KEY_READER_JOURNEY_CELEBRATION,
-		ReaderJourneyCelebrationMode.SUBTLE.name,
-	)
-	var statsMatureMode by rememberStringPref(AppSettings.KEY_STATS_MATURE_MODE, "PRIVATE")
-	var statsMatureMenuExpanded by remember { mutableStateOf(false) }
-	var readingTime by rememberBooleanPref(AppSettings.KEY_READING_TIME, true)
-	var syncTrackingProgress by rememberBooleanPref(AppSettings.KEY_SCROBBLING_PROGRESS_SYNC, true)
+    var suggestionsEnabled by rememberBooleanPref(AppSettings.KEY_SUGGESTIONS, false)
+    var relatedManga by rememberBooleanPref(AppSettings.KEY_RELATED_MANGA, true)
+    var statsEnabled by rememberBooleanPref(AppSettings.KEY_STATS_ENABLED, true)
+    var readerJourneyEnabled by rememberBooleanPref(AppSettings.KEY_READER_JOURNEY_ENABLED, true)
+    var readerJourneyCelebration by rememberStringPref(
+        AppSettings.KEY_READER_JOURNEY_CELEBRATION,
+        ReaderJourneyCelebrationMode.SUBTLE.name,
+    )
+    var statsMatureMode by rememberStringPref(AppSettings.KEY_STATS_MATURE_MODE, "PRIVATE")
+    var statsMatureMenuExpanded by remember { mutableStateOf(false) }
+    var readingTime by rememberBooleanPref(AppSettings.KEY_READING_TIME, true)
 
-	val enabledLabel = stringResource(R.string.enabled)
-	val disabledLabel = stringResource(R.string.disabled)
-	val celebrationEntries = ReaderJourneyCelebrationMode.entries.map { mode ->
-		stringResource(
-			when (mode) {
-				ReaderJourneyCelebrationMode.OFF -> R.string.reader_journey_celebration_off
-				ReaderJourneyCelebrationMode.SUBTLE -> R.string.reader_journey_celebration_subtle
-				ReaderJourneyCelebrationMode.FULL -> R.string.reader_journey_celebration_full
-			},
-		)
-	}
-	val celebrationValues = ReaderJourneyCelebrationMode.entries.map { it.name }
+    val enabledLabel = stringResource(R.string.enabled)
+    val disabledLabel = stringResource(R.string.disabled)
+    val celebrationEntries = ReaderJourneyCelebrationMode.entries.map { mode ->
+        stringResource(
+            when (mode) {
+                ReaderJourneyCelebrationMode.OFF -> R.string.reader_journey_celebration_off
+                ReaderJourneyCelebrationMode.SUBTLE -> R.string.reader_journey_celebration_subtle
+                ReaderJourneyCelebrationMode.FULL -> R.string.reader_journey_celebration_full
+            },
+        )
+    }
+    val celebrationValues = ReaderJourneyCelebrationMode.entries.map { it.name }
 
-	SettingsScaffold {
-		item {
-			SettingsGroup(title = stringResource(R.string.settings_group_general)) {
-				item { pos ->
-					NavigationSettingsItem(
-						title = stringResource(R.string.suggestions),
-						subtitle = if (suggestionsEnabled) enabledLabel else disabledLabel,
-						icon = R.drawable.ic_suggestion,
-						shape = pos.shape,
-						onClick = onOpenSuggestions,
-					)
-				}
-				item { pos ->
-					SwitchSettingsItem(
-						title = stringResource(R.string.related_manga),
-						subtitle = stringResource(R.string.related_manga_summary),
-						checked = relatedManga,
-						onCheckedChange = { relatedManga = it },
-						icon = R.drawable.ic_heart_outline,
-						shape = pos.shape,
-					)
-				}
-				item { pos ->
-					SettingsItem(
-						title = stringResource(R.string.reading_stats),
-						subtitle = if (statsEnabled) enabledLabel else disabledLabel,
-						icon = R.drawable.ic_timelapse,
-						shape = pos.shape,
-						onClick = onOpenStatistics,
-						trailing = {
-							Row(verticalAlignment = Alignment.CenterVertically) {
-								VerticalDivider(modifier = Modifier.height(32.dp))
-								Spacer(Modifier.width(14.dp))
-								Switch(
-									checked = statsEnabled,
-									onCheckedChange = { statsEnabled = it },
-								)
-							}
-						},
-					)
-				}
-				item { pos ->
-					SwitchSettingsItem(
-						title = stringResource(R.string.reader_journey_enabled),
-						subtitle = stringResource(R.string.reader_journey_enabled_summary),
-						checked = readerJourneyEnabled,
-						onCheckedChange = { readerJourneyEnabled = it },
-						icon = R.drawable.ic_auto_stories,
-						shape = pos.shape,
-					)
-				}
-				item { pos ->
-					ListSettingsItem(
-						title = stringResource(R.string.reader_journey_celebration),
-						entries = celebrationEntries,
-						entryValues = celebrationValues,
-						selectedValue = readerJourneyCelebration,
-						onValueChange = { readerJourneyCelebration = it },
-						icon = R.drawable.ic_auto_stories,
-						shape = pos.shape,
-						enabled = readerJourneyEnabled,
-					)
-				}
-				item { pos ->
-					Box {
-						SettingsItem(
-							title = stringResource(R.string.stats_mature_content),
-							subtitle = when (statsMatureMode) {
-								"EXCLUDE" -> stringResource(R.string.stats_privacy_summary_exclude)
-								"INCLUDE" -> stringResource(R.string.stats_privacy_summary_include)
-								else -> stringResource(R.string.stats_privacy_summary_private)
-							},
-							icon = R.drawable.ic_lock,
-							shape = pos.shape,
-							onClick = { statsMatureMenuExpanded = true },
-							trailing = {
-								Text(
-									text = when (statsMatureMode) {
-										"EXCLUDE" -> stringResource(R.string.stats_privacy_exclude)
-										"INCLUDE" -> stringResource(R.string.stats_privacy_include)
-										else -> stringResource(R.string.stats_privacy_private)
-									},
-								)
-							},
-						)
-						DropdownMenu(
-							expanded = statsMatureMenuExpanded,
-							onDismissRequest = { statsMatureMenuExpanded = false },
-						) {
-							listOf(
-								"PRIVATE" to R.string.stats_privacy_private,
-								"EXCLUDE" to R.string.stats_privacy_exclude,
-								"INCLUDE" to R.string.stats_privacy_include,
-							).forEach { (value, label) ->
-								DropdownMenuItem(
-									text = { Text(stringResource(label)) },
-									onClick = {
-										statsMatureMode = value
-										statsMatureMenuExpanded = false
-									},
-								)
-							}
-						}
-					}
-				}
-				item { pos ->
-					SwitchSettingsItem(
-						title = stringResource(R.string.reading_time_estimation),
-						subtitle = stringResource(R.string.reading_time_estimation_summary),
-						checked = readingTime,
-						onCheckedChange = { readingTime = it },
-						icon = R.drawable.ic_timer,
-						shape = pos.shape,
-					)
-				}
-			}
-		}
-		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
-		item {
-			Column {
-				SettingsGroup(title = stringResource(R.string.tracking)) {
-					item { pos ->
-						SwitchSettingsItem(
-							title = stringResource(R.string.sync_progress_from_tracking),
-							subtitle = stringResource(R.string.sync_progress_from_tracking_summary),
-							checked = syncTrackingProgress,
-							onCheckedChange = { syncTrackingProgress = it },
-							icon = R.drawable.ic_sync_alt,
-							shape = pos.shape,
-						)
-					}
-				}
-				Spacer(Modifier.height(8.dp).fillMaxWidth())
-				val services = listOf(
-					ScrobblerService.ANILIST to R.drawable.ic_anilist,
-					ScrobblerService.KITSU to R.drawable.ic_kitsu,
-					ScrobblerService.MAL to R.drawable.ic_mal,
-					ScrobblerService.MANGABAKA to R.drawable.ic_mangabaka,
-					ScrobblerService.MANGAUPDATES to R.drawable.ic_mangaupdates,
-					ScrobblerService.SHIKIMORI to R.drawable.ic_shikimori,
-				)
-				SettingsGroup {
-					services.forEach { (svc, icon) ->
-						item { pos ->
-							ActionSettingsItem(
-								title = stringResource(svc.titleResId),
-								subtitle = scrobblerSummaries[svc],
-								icon = icon,
-								tintIcon = svc != ScrobblerService.MANGABAKA,
-								shape = pos.shape,
-								onClick = { onScrobblerClick(svc) },
-							)
-						}
-					}
-				}
-			}
-		}
-		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
-		item {
-			SettingsGroup(title = stringResource(R.string.settings_group_external)) {
-				item { pos ->
-					NavigationSettingsItem(
-						title = stringResource(R.string.discord_rpc),
-						subtitle = stringResource(R.string.discord_rpc_summary),
-						icon = R.drawable.ic_discord,
-						shape = pos.shape,
-						onClick = onOpenDiscord,
-					)
-				}
-			}
-		}
-		item { Spacer(Modifier.height(24.dp).fillMaxWidth()) }
-	}
+    SettingsScaffold {
+        item {
+            SettingsGroup(title = stringResource(R.string.settings_insights_recommendations)) {
+                item { pos ->
+                    NavigationSettingsItem(
+                        title = stringResource(R.string.suggestions),
+                        subtitle = if (suggestionsEnabled) enabledLabel else disabledLabel,
+                        icon = R.drawable.ic_suggestion,
+                        shape = pos.shape,
+                        onClick = onOpenSuggestions,
+                    )
+                }
+                item { pos ->
+                    SwitchSettingsItem(
+                        title = stringResource(R.string.related_manga),
+                        subtitle = stringResource(R.string.related_manga_summary),
+                        checked = relatedManga,
+                        onCheckedChange = { relatedManga = it },
+                        icon = R.drawable.ic_heart_outline,
+                        shape = pos.shape,
+                    )
+                }
+                item { pos ->
+                    SettingsItem(
+                        title = stringResource(R.string.reading_stats),
+                        subtitle = if (statsEnabled) enabledLabel else disabledLabel,
+                        icon = R.drawable.ic_timelapse,
+                        shape = pos.shape,
+                        onClick = onOpenStatistics,
+                        trailing = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                VerticalDivider(modifier = Modifier.height(32.dp))
+                                Spacer(Modifier.width(14.dp))
+                                Switch(
+                                    checked = statsEnabled,
+                                    onCheckedChange = { statsEnabled = it },
+                                )
+                            }
+                        },
+                    )
+                }
+                item { pos ->
+                    SwitchSettingsItem(
+                        title = stringResource(R.string.reader_journey_enabled),
+                        subtitle = stringResource(R.string.reader_journey_enabled_summary),
+                        checked = readerJourneyEnabled,
+                        onCheckedChange = { readerJourneyEnabled = it },
+                        icon = R.drawable.ic_auto_stories,
+                        shape = pos.shape,
+                    )
+                }
+                item { pos ->
+                    ListSettingsItem(
+                        title = stringResource(R.string.reader_journey_celebration),
+                        entries = celebrationEntries,
+                        entryValues = celebrationValues,
+                        selectedValue = readerJourneyCelebration,
+                        onValueChange = { readerJourneyCelebration = it },
+                        icon = R.drawable.ic_auto_stories,
+                        shape = pos.shape,
+                        enabled = readerJourneyEnabled,
+                    )
+                }
+                item { pos ->
+                    Box {
+                        SettingsItem(
+                            title = stringResource(R.string.stats_mature_content),
+                            subtitle = when (statsMatureMode) {
+                                "EXCLUDE" -> stringResource(R.string.stats_privacy_summary_exclude)
+                                "INCLUDE" -> stringResource(R.string.stats_privacy_summary_include)
+                                else -> stringResource(R.string.stats_privacy_summary_private)
+                            },
+                            icon = R.drawable.ic_lock,
+                            shape = pos.shape,
+                            onClick = { statsMatureMenuExpanded = true },
+                            trailing = {
+                                Text(
+                                    text = when (statsMatureMode) {
+                                        "EXCLUDE" -> stringResource(R.string.stats_privacy_exclude)
+                                        "INCLUDE" -> stringResource(R.string.stats_privacy_include)
+                                        else -> stringResource(R.string.stats_privacy_private)
+                                    },
+                                )
+                            },
+                        )
+                        DropdownMenu(
+                            expanded = statsMatureMenuExpanded,
+                            onDismissRequest = { statsMatureMenuExpanded = false },
+                        ) {
+                            listOf(
+                                "PRIVATE" to R.string.stats_privacy_private,
+                                "EXCLUDE" to R.string.stats_privacy_exclude,
+                                "INCLUDE" to R.string.stats_privacy_include,
+                            ).forEach { (value, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(label)) },
+                                    onClick = {
+                                        statsMatureMode = value
+                                        statsMatureMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                item { pos ->
+                    SwitchSettingsItem(
+                        title = stringResource(R.string.reading_time_estimation),
+                        subtitle = stringResource(R.string.reading_time_estimation_summary),
+                        checked = readingTime,
+                        onCheckedChange = { readingTime = it },
+                        icon = R.drawable.ic_timer,
+                        shape = pos.shape,
+                    )
+                }
+            }
+        }
+        item { Spacer(Modifier.height(24.dp).fillMaxWidth()) }
+    }
 }
 
+@Composable
+private fun ConnectedServicesSettingsScreen(
+    scrobblerSummaries: Map<ScrobblerService, String?>,
+    onScrobblerClick: (ScrobblerService) -> Unit,
+    onOpenDiscord: () -> Unit,
+) {
+    var syncTrackingProgress by rememberBooleanPref(AppSettings.KEY_SCROBBLING_PROGRESS_SYNC, true)
+
+    SettingsScaffold {
+        item {
+            Column {
+                SettingsGroup(title = stringResource(R.string.settings_group_tracking_accounts)) {
+                    item { pos ->
+                        SwitchSettingsItem(
+                            title = stringResource(R.string.sync_progress_from_tracking),
+                            subtitle = stringResource(R.string.sync_progress_from_tracking_summary),
+                            checked = syncTrackingProgress,
+                            onCheckedChange = { syncTrackingProgress = it },
+                            icon = R.drawable.ic_sync_alt,
+                            shape = pos.shape,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp).fillMaxWidth())
+                val services = listOf(
+                    ScrobblerService.ANILIST to R.drawable.ic_anilist,
+                    ScrobblerService.KITSU to R.drawable.ic_kitsu,
+                    ScrobblerService.MAL to R.drawable.ic_mal,
+                    ScrobblerService.MANGABAKA to R.drawable.ic_mangabaka,
+                    ScrobblerService.MANGAUPDATES to R.drawable.ic_mangaupdates,
+                    ScrobblerService.SHIKIMORI to R.drawable.ic_shikimori,
+                )
+                SettingsGroup {
+                    services.forEach { (svc, icon) ->
+                        item { pos ->
+                            ActionSettingsItem(
+                                title = stringResource(svc.titleResId),
+                                subtitle = scrobblerSummaries[svc],
+                                icon = icon,
+                                tintIcon = svc != ScrobblerService.MANGABAKA,
+                                shape = pos.shape,
+                                onClick = { onScrobblerClick(svc) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+        item {
+            SettingsGroup(title = stringResource(R.string.settings_group_external)) {
+                item { pos ->
+                    NavigationSettingsItem(
+                        title = stringResource(R.string.discord_rpc),
+                        subtitle = stringResource(R.string.discord_rpc_summary),
+                        icon = R.drawable.ic_discord,
+                        shape = pos.shape,
+                        onClick = onOpenDiscord,
+                    )
+                }
+            }
+        }
+        item { Spacer(Modifier.height(24.dp).fillMaxWidth()) }
+    }
+}
