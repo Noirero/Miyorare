@@ -31,12 +31,5 @@
 
     <string name="settings_group_downloads">Unduhan</string>
     <string name="settings_group_on_device_files">File di perangkat</string>
-    <string name="settings_group_reader_mode">Mode</string>
-    <string name="settings_group_reader_zoom">Zoom</string>
-    <string name="settings_group_reader_controls">Kontrol</string>
-    <string name="settings_group_reader_image">Gambar</string>
-    <string name="settings_group_reader_display">Tampilan</string>
-    <string name="settings_group_reader_info">Info membaca</string>
-    <string name="settings_group_reader_background">Latar belakang</string>
     <string name="settings_group_tracking_accounts">Akun pelacakan</string>
 </resources>
