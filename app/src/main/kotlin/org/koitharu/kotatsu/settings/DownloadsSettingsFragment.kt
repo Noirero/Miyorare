@@ -85,7 +85,7 @@ import kotlin.coroutines.resume
 
 @AndroidEntryPoint
 class DownloadsSettingsFragment :
-	BaseComposeSettingsFragment(R.string.downloads),
+	BaseComposeSettingsFragment(R.string.settings_downloads_local_files),
 	SharedPreferences.OnSharedPreferenceChangeListener {
 
 	@Inject
@@ -574,23 +574,12 @@ private fun DownloadsScreen(
 
 	SettingsScaffold {
 		item {
-			SettingsGroup(title = stringResource(R.string.settings_group_general)) {
-				item { pos ->
-					ActionSettingsItem(
-						title = stringResource(R.string.local_manga_directories),
-						subtitle = ctx.resources.getQuantityStringSafe(R.plurals.items, dirCount, dirCount),
-						icon = R.drawable.ic_folder_file,
-						
-						shape = pos.shape,
-						onClick = onPickLocalManga,
-					)
-				}
+			SettingsGroup(title = stringResource(R.string.settings_group_downloads)) {
 				item { pos ->
 					ActionSettingsItem(
 						title = stringResource(R.string.manga_save_location),
 						subtitle = storage,
 						icon = R.drawable.ic_storage,
-						
 						shape = pos.shape,
 						onClick = onPickLocalStorage,
 					)
@@ -603,7 +592,6 @@ private fun DownloadsScreen(
 						selectedValue = downloadFormat,
 						onValueChange = { downloadFormat = it },
 						icon = R.drawable.ic_file_zip,
-						
 						shape = pos.shape,
 					)
 				}
@@ -615,12 +603,74 @@ private fun DownloadsScreen(
 						selectedValue = metered,
 						onValueChange = { metered = it },
 						icon = R.drawable.ic_network_cellular,
-						
 						shape = pos.shape,
 					)
 				}
 			}
 		}
+		item { DownloadStructureInfoItem(DownloadStructureInfo.DOWNLOADS) }
+		item {
+			PlainInfoSettingsItem(
+				text = stringResource(R.string.downloads_settings_info),
+				icon = R.drawable.ic_info_outline,
+			)
+		}
+		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+		item {
+			SettingsGroup(title = stringResource(R.string.settings_group_on_device_files)) {
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.local_manga_directories),
+						subtitle = ctx.resources.getQuantityStringSafe(R.plurals.items, dirCount, dirCount),
+						icon = R.drawable.ic_folder_file,
+						shape = pos.shape,
+						onClick = onPickLocalManga,
+					)
+				}
+			}
+		}
+		item { DownloadStructureInfoItem(DownloadStructureInfo.LOCAL) }
+		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+		item {
+			SettingsGroup(title = stringResource(R.string.notifications)) {
+				item { pos ->
+					SwitchSettingsItem(
+						title = stringResource(R.string.private_download_notification_details),
+						subtitle = stringResource(R.string.private_download_notification_details_summary),
+						checked = privateNotificationDetails,
+						onCheckedChange = { privateNotificationDetails = it },
+						icon = R.drawable.ic_notification,
+						shape = pos.shape,
+					)
+				}
+			}
+		}
+		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+		item { DownloadPerformanceSettingsSection() }
+		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+		item {
+			SettingsGroup(title = stringResource(R.string.pages_saving)) {
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.default_page_save_dir),
+						subtitle = pagesDir ?: stringResource(androidx.preference.R.string.not_set),
+						icon = R.drawable.ic_save,
+						shape = pos.shape,
+						onClick = onPickPagesDir,
+					)
+				}
+				item { pos ->
+					SwitchSettingsItem(
+						title = stringResource(R.string.ask_for_dest_dir_every_time),
+						checked = pagesDirAsk,
+						onCheckedChange = { pagesDirAsk = it },
+						icon = R.drawable.ic_alert_outline,
+						shape = pos.shape,
+					)
+				}
+			}
+		}
+		item { DownloadStructureInfoItem(DownloadStructureInfo.SAVED_PAGES) }
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
 			SettingsGroup(title = stringResource(R.string.settings_download_maintenance)) {
@@ -639,7 +689,6 @@ private fun DownloadsScreen(
 							title = stringResource(R.string.disable_battery_optimization),
 							subtitle = stringResource(R.string.disable_battery_optimization_summary_downloads),
 							icon = R.drawable.ic_battery_outline,
-							
 							shape = pos.shape,
 							onClick = onIgnoreDoze,
 						)
@@ -647,57 +696,6 @@ private fun DownloadsScreen(
 				}
 			}
 		}
-		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
-		item {
-			SettingsGroup(title = stringResource(R.string.notifications)) {
-				item { pos ->
-					SwitchSettingsItem(
-						title = stringResource(R.string.private_download_notification_details),
-						subtitle = stringResource(R.string.private_download_notification_details_summary),
-						checked = privateNotificationDetails,
-						onCheckedChange = { privateNotificationDetails = it },
-						icon = R.drawable.ic_notification,
-						shape = pos.shape,
-					)
-				}
-			}
-		}
-		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
-		item { DownloadPerformanceSettingsSection() }
-		item { DownloadStructureInfoItem(DownloadStructureInfo.DOWNLOADS) }
-		item {
-			PlainInfoSettingsItem(
-				text = stringResource(R.string.downloads_settings_info),
-				icon = R.drawable.ic_info_outline,
-			)
-		}
-		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
-		item {
-			SettingsGroup(title = stringResource(R.string.pages_saving)) {
-				item { pos ->
-					ActionSettingsItem(
-						title = stringResource(R.string.default_page_save_dir),
-						subtitle = pagesDir ?: stringResource(androidx.preference.R.string.not_set),
-						icon = R.drawable.ic_save,
-						
-						shape = pos.shape,
-						onClick = onPickPagesDir,
-					)
-				}
-				item { pos ->
-					SwitchSettingsItem(
-						title = stringResource(R.string.ask_for_dest_dir_every_time),
-						checked = pagesDirAsk,
-						onCheckedChange = { pagesDirAsk = it },
-						icon = R.drawable.ic_alert_outline,
-						
-						shape = pos.shape,
-					)
-				}
-			}
-		}
-		item { DownloadStructureInfoItem(DownloadStructureInfo.SAVED_PAGES) }
-		item { DownloadStructureInfoItem(DownloadStructureInfo.LOCAL) }
 		item { Spacer(Modifier.height(24.dp).fillMaxWidth()) }
 	}
 }
