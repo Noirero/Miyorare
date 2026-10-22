@@ -53,7 +53,7 @@ import rikka.shizuku.Shizuku
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensions) {
+class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.settings_sources_extensions) {
 
 	@Inject
 	lateinit var installerPreferences: ExtensionInstallerPreferences
