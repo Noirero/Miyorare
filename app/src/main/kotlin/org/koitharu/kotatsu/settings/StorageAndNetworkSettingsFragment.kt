@@ -48,7 +48,7 @@ import java.net.Proxy
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class StorageSettingsFragment : BaseComposeSettingsFragment(R.string.settings_storage_data) {
+class StorageAndNetworkSettingsFragment : BaseComposeSettingsFragment(R.string.settings_storage_data) {
 
     private val viewModel by viewModels<StorageAndNetworkSettingsViewModel>()
 
@@ -82,6 +82,8 @@ class StorageSettingsFragment : BaseComposeSettingsFragment(R.string.settings_st
         }
     }
 }
+
+typealias StorageSettingsFragment = StorageAndNetworkSettingsFragment
 
 @AndroidEntryPoint
 class NetworkSettingsFragment : BaseComposeSettingsFragment(R.string.settings_network) {
