@@ -51,7 +51,6 @@ import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
 import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
-import org.koitharu.kotatsu.settings.sources.KotatsuParsersSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
 import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
 import javax.inject.Inject
@@ -106,8 +105,8 @@ private enum class SettingsSection(
     val tintIcon: Boolean = true,
 ) {
     APPEARANCE(
-        R.string.appearance, R.drawable.ic_appearance, "appearance",
-        intArrayOf(R.string.theme, R.string.list_mode, R.string.language),
+        R.string.settings_appearance_navigation, R.drawable.ic_appearance, "appearance",
+        intArrayOf(R.string.settings_appearance_navigation_summary),
         AppearanceSettingsFragment::class.java,
     ),
     READER(
@@ -120,45 +119,50 @@ private enum class SettingsSection(
         intArrayOf(R.string.manage_extensions, R.string.nsfw_filter, R.string.sort_order),
         ExtensionsSettingsFragment::class.java,
     ),
-    KOTATSU_PARSERS(
-        R.string.kotatsu_parsers, R.drawable.ic_manga_source, "extensions",
-        intArrayOf(R.string.kotatsu_parsers_summary),
-        KotatsuParsersSettingsFragment::class.java,
-    ),
-    DOWNLOADS(
-        R.string.downloads, R.drawable.ic_download, "downloads",
-        intArrayOf(R.string.manga_save_location, R.string.downloads_wifi_only),
-        DownloadsSettingsFragment::class.java,
-    ),
     TRACKER(
         R.string.settings_chapter_updates, R.drawable.ic_feed, "tracker",
         intArrayOf(R.string.track_sources, R.string.notifications_settings),
         TrackerSettingsFragment::class.java,
     ),
-    STORAGE(
-        R.string.storage_and_network, R.drawable.ic_usage, "storage",
-        intArrayOf(R.string.storage_usage, R.string.proxy, R.string.prefetch_content),
-        StorageAndNetworkSettingsFragment::class.java,
-    ),
-    BACKUP(
-        R.string.backup_restore, R.drawable.ic_backup_restore, "backup",
-        intArrayOf(R.string.restore_backup),
-        BackupSettingsFragment::class.java,
+    DOWNLOADS(
+        R.string.settings_downloads_local_files, R.drawable.ic_download, "downloads",
+        intArrayOf(R.string.settings_downloads_local_files_summary),
+        DownloadsSettingsFragment::class.java,
     ),
     SYNC(
         R.string.google_drive_sync, R.drawable.ic_cloud_sync, "sync",
         intArrayOf(R.string.sync_sign_in_summary),
         SyncSettingsFragment::class.java,
     ),
+    STORAGE(
+        R.string.settings_storage_data, R.drawable.ic_usage, "storage",
+        intArrayOf(R.string.settings_storage_data_summary),
+        StorageSettingsFragment::class.java,
+    ),
+    NETWORK(
+        R.string.settings_network, R.drawable.ic_web, "storage",
+        intArrayOf(R.string.settings_network_summary),
+        NetworkSettingsFragment::class.java,
+    ),
+    BACKUP(
+        R.string.backup_restore, R.drawable.ic_backup_restore, "backup",
+        intArrayOf(R.string.restore_backup),
+        BackupSettingsFragment::class.java,
+    ),
     PRIVACY_SECURITY(
         R.string.settings_privacy_security, R.drawable.ic_lock, "private",
         intArrayOf(R.string.settings_privacy_security_summary),
         PrivacySecuritySettingsFragment::class.java,
     ),
-    SERVICES(
-        R.string.settings_services_tracking, R.drawable.ic_services, "services",
-        intArrayOf(R.string.suggestions, R.string.tracking),
-        ServicesSettingsFragment::class.java,
+    INSIGHTS(
+        R.string.settings_insights_recommendations, R.drawable.ic_suggestion, "services",
+        intArrayOf(R.string.settings_insights_recommendations_summary),
+        InsightsSettingsFragment::class.java,
+    ),
+    CONNECTED_SERVICES(
+        R.string.settings_connected_services, R.drawable.ic_services, "services",
+        intArrayOf(R.string.settings_connected_services_summary),
+        ConnectedServicesSettingsFragment::class.java,
     ),
     ABOUT(
         R.string.about, R.drawable.ic_info_outline, "about",
@@ -186,10 +190,6 @@ private enum class SettingsGroupAccent(
     PRIVACY(
         lightColor = Color(0xFF7E57C2),
         darkColor = Color(0xFFB388FF),
-    ),
-    SERVICES(
-        lightColor = Color(0xFF00897B),
-        darkColor = Color(0xFF5EEAD4),
     ),
     APP(
         lightColor = Color(0xFF1976D2),
@@ -224,28 +224,30 @@ private val settingsSectionGroups = listOf(
         accent = SettingsGroupAccent.CONTENT,
         sections = listOf(
             SettingsSection.EXTENSIONS,
-            SettingsSection.KOTATSU_PARSERS,
-            SettingsSection.DOWNLOADS,
             SettingsSection.TRACKER,
+            SettingsSection.DOWNLOADS,
         ),
     ),
     SettingsSectionGroup(
         titleRes = R.string.settings_group_data_sync,
         iconRes = R.drawable.ic_cloud_sync,
         accent = SettingsGroupAccent.DATA,
-        sections = listOf(SettingsSection.SYNC, SettingsSection.STORAGE, SettingsSection.BACKUP),
+        sections = listOf(
+            SettingsSection.SYNC,
+            SettingsSection.STORAGE,
+            SettingsSection.NETWORK,
+            SettingsSection.BACKUP,
+        ),
     ),
     SettingsSectionGroup(
         titleRes = R.string.settings_group_privacy_services,
         iconRes = R.drawable.ic_lock,
         accent = SettingsGroupAccent.PRIVACY,
-        sections = listOf(SettingsSection.PRIVACY_SECURITY),
-    ),
-    SettingsSectionGroup(
-        titleRes = R.string.settings_group_services,
-        iconRes = R.drawable.ic_services,
-        accent = SettingsGroupAccent.SERVICES,
-        sections = listOf(SettingsSection.SERVICES),
+        sections = listOf(
+            SettingsSection.PRIVACY_SECURITY,
+            SettingsSection.INSIGHTS,
+            SettingsSection.CONNECTED_SERVICES,
+        ),
     ),
     SettingsSectionGroup(
         titleRes = R.string.settings_group_app,
