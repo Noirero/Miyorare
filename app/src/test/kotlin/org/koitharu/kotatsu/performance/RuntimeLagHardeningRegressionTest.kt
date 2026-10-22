@@ -29,6 +29,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(source.contains("sourceHealthRepository.snapshotForScheduling(tracking.manga.source).state"))
 	}
 
+
 	@Test
 	fun `per manga reader profile owns the first ReaderSettings emission`() {
 		val settings = source("kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderSettings.kt")
@@ -101,6 +102,8 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(manager.contains("remove(AppSettings.KEY_MIHON_USER_AGENT)"))
 		assertFalse(settings.contains("valmihonUserAgentOverride:"))
 	}
+
+
 
 	@Test
 	fun `startup update schedulers remain unique across repeated cold starts`() {
@@ -341,6 +344,7 @@ class RuntimeLagHardeningRegressionTest {
 		)
 	}
 
+
 	@Test
 	fun `main destinations share one wallpaper owner without live scroll blur`() {
 		val drawable = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderShapeDrawable.kt")
@@ -364,6 +368,11 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(explore.contains("binding.root.setBackgroundColor(Color.TRANSPARENT)"))
 	}
 
+
+
+
+
+
 	@Test
 	fun `Normal Favourites in MainActivity has one sharp wallpaper owner while Private keeps dedicated renderer`() {
 		val main = source("kotlin/org/koitharu/kotatsu/main/ui/MainActivity.kt")
@@ -386,6 +395,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue("Private must keep its dedicated stable renderer", privateDrawable.contains("classMiyorarePrivateFavouritesHeaderDrawable"))
 	}
 
+
 	@Test
 	fun `private workspace owns toolbar title so settings label cannot leak across tabs`() {
 		val workspace = source("kotlin/org/koitharu/kotatsu/favourites/ui/PrivateWorkspaceFragment.kt")
@@ -398,6 +408,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(workspace.contains("findViewById<CollapsingToolbarLayout>(R.id.collapsingToolbarLayout)?.title=titleText"))
 		assertTrue(workspace.contains("R.id.private_nav_settings->R.string.private_workspace_settings"))
 	}
+
 
 	@Test
 	fun `custom adaptive background preprocesses once and never leaks into Private`() {
@@ -431,8 +442,9 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(palette.contains("customBackgroundPath=if(customBackgroundActive)"))
 		assertTrue(colors.contains("adaptivePalette?.let{palette->PaletteSeeds("))
 		assertTrue(drawable.contains("palette.customBackgroundBlurPath?.let(::loadCustomBlurredArtwork)"))
-		assertTrue(drawable.contains("custom-user-full-${palette.customBackgroundRevision}"))
+		assertTrue(drawable.contains("custom-user-full-\${palette.customBackgroundRevision}"))
 	}
+
 
 	@Test
 	fun `modern main chrome stays consistent across Explore Updates and History`() {
@@ -480,6 +492,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(exploreLayout.contains("android:background=\"@android:color/transparent\""))
 	}
 
+
 	@Test
 	fun `Modern overlays and Group details share adaptive glass in light and dark`() {
 		val overlay = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareOverlayPopup.kt")
@@ -508,6 +521,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(group.contains("GroupGlassSurface(modifier=Modifier.fillMaxWidth(),radius=26.dp)"))
 	}
 
+
 	@Test
 	fun `Details follows adaptive custom wallpaper colors in both light and dark modes`() {
 		val colors = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt")
@@ -531,6 +545,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(content.contains("valadaptiveCustom=palette.adaptiveCustomBackground"))
 		assertTrue(content.contains("if(adaptiveCustom)9.dpelse7.dp"))
 	}
+
 
 	@Test
 	fun `Group details tracking and secondary Favourites UI stay Modern and actionable`() {
@@ -599,6 +614,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(legacyNav.contains("LIGHT_NAV_BASE_ACCENT_MIX=0.055f"))
 		assertTrue(floatingNav.contains("LIGHT_NAV_BASE_ACCENT_MIX=0.055f"))
 	}
+
 
 	@Test
 	fun `root settings exposes Google Drive login and keeps existing sync implementation wired`() {
