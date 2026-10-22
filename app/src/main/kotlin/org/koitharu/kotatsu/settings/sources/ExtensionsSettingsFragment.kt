@@ -53,7 +53,7 @@ import rikka.shizuku.Shizuku
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensions) {
+class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.settings_sources_extensions) {
 
 	@Inject
 	lateinit var installerPreferences: ExtensionInstallerPreferences
@@ -91,6 +91,13 @@ class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensio
 					onOpenMiyorareSourcePacks = {
 						(requireActivity() as SettingsActivity).openFragment(
 							MiyorareSourcePacksSettingsFragment::class.java,
+							args = null,
+							isFromRoot = false,
+						)
+					},
+					onOpenKotatsuParsers = {
+						(requireActivity() as SettingsActivity).openFragment(
+							KotatsuParsersSettingsFragment::class.java,
 							args = null,
 							isFromRoot = false,
 						)
@@ -227,6 +234,7 @@ private fun ExtensionsScreen(
 	onOpenCatalog: () -> Unit,
 	onOpenStores: () -> Unit,
 	onOpenMiyorareSourcePacks: () -> Unit,
+	onOpenKotatsuParsers: () -> Unit,
 	onOpenTsukiPlugins: () -> Unit,
 	onOpenBrokenSourcesMigration: () -> Unit,
 ) {
@@ -290,6 +298,15 @@ private fun ExtensionsScreen(
 						icon = R.drawable.ic_storefront,
 						shape = pos.shape,
 						onClick = onOpenStores,
+					)
+				}
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.kotatsu_parsers),
+						subtitle = stringResource(R.string.kotatsu_parsers_summary),
+						icon = R.drawable.ic_manga_source,
+						shape = pos.shape,
+						onClick = onOpenKotatsuParsers,
 					)
 				}
 				item { pos ->

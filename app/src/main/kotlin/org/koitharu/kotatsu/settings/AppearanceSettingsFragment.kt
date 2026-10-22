@@ -82,7 +82,7 @@ import org.koitharu.kotatsu.settings.nav.NavConfigFragment
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearance) {
+class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings_appearance_navigation) {
 
     @Inject
     lateinit var settings: AppSettings

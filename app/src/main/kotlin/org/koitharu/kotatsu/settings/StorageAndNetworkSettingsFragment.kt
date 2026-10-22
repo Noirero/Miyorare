@@ -32,9 +32,9 @@ import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.EditTextSettingsItem
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
@@ -48,10 +48,7 @@ import java.net.Proxy
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class StorageAndNetworkSettingsFragment : BaseComposeSettingsFragment(R.string.storage_and_network) {
-
-    @Inject
-    lateinit var settings: AppSettings
+class StorageAndNetworkSettingsFragment : BaseComposeSettingsFragment(R.string.settings_storage_data) {
 
     private val viewModel by viewModels<StorageAndNetworkSettingsViewModel>()
 
@@ -64,7 +61,7 @@ class StorageAndNetworkSettingsFragment : BaseComposeSettingsFragment(R.string.s
         setContent {
             MiyorareTheme {
                 val usage by viewModel.storageUsage.collectAsState(null)
-                StorageNetworkScreen(
+                StorageSettingsScreen(
                     usage = usage,
                     onDataRemoval = {
                         (activity as? SettingsActivity)?.openFragment(
@@ -73,6 +70,36 @@ class StorageAndNetworkSettingsFragment : BaseComposeSettingsFragment(R.string.s
                             isFromRoot = false,
                         )
                     },
+                )
+            }
+        }
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        viewModel.onError.observeEvent(viewLifecycleOwner) { err ->
+            Snackbar.make(requireView(), err.message ?: "", Snackbar.LENGTH_SHORT).show()
+        }
+    }
+}
+
+typealias StorageSettingsFragment = StorageAndNetworkSettingsFragment
+
+@AndroidEntryPoint
+class NetworkSettingsFragment : BaseComposeSettingsFragment(R.string.settings_network) {
+
+    @Inject
+    lateinit var settings: AppSettings
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = ComposeView(requireContext()).apply {
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        setContent {
+            MiyorareTheme {
+                NetworkSettingsScreen(
                     onOpenProxy = {
                         (activity as? SettingsActivity)?.openFragment(
                             ProxySettingsFragment::class.java,
@@ -93,13 +120,6 @@ class StorageAndNetworkSettingsFragment : BaseComposeSettingsFragment(R.string.s
         }
     }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        viewModel.onError.observeEvent(viewLifecycleOwner) { err ->
-            Snackbar.make(requireView(), err.message ?: "", Snackbar.LENGTH_SHORT).show()
-        }
-    }
-
     private fun buildProxySummary(): String {
         val type = settings.proxyType
         val address = settings.proxyAddress
@@ -113,41 +133,12 @@ class StorageAndNetworkSettingsFragment : BaseComposeSettingsFragment(R.string.s
 }
 
 @Composable
-private fun StorageNetworkScreen(
+private fun StorageSettingsScreen(
     usage: StorageUsage?,
     onDataRemoval: () -> Unit,
-    onOpenProxy: () -> Unit,
-    onOpenAdvanced: () -> Unit,
-    proxySummary: String,
 ) {
-    val ctx = LocalContext.current
     val palette = LocalMiyorareVisualPalette.current
     val modern = palette.isModern
-
-    val networkPolicyEntries = remember { ctx.resources.getStringArray(R.array.network_policy).toList() }
-    val networkPolicyValues = remember { ctx.resources.getStringArray(R.array.values_network_policy).toList() }
-    val dohEntries = remember { ctx.resources.getStringArray(R.array.doh_providers).toList() }
-    val dohValues = remember { DoHProvider.entries.names().toList() }
-
-    var prefetchContent by rememberStringPref(AppSettings.KEY_PREFETCH_CONTENT, "1")
-    var doh by rememberStringPref(AppSettings.KEY_DOH, DoHProvider.NONE.name)
-    var customDohUrl by rememberStringPref(DoHManager.KEY_CUSTOM_URL, "")
-    var adblock by rememberBooleanPref(AppSettings.KEY_ADBLOCK, false)
-
-    val selectedDohProvider = remember(doh) {
-        DoHProvider.entries.firstOrNull { it.name == doh } ?: DoHProvider.NONE
-    }
-    val customDohIsValid = remember(customDohUrl) {
-        customDohUrl.trim().toHttpUrlOrNull()?.scheme == "https"
-    }
-    val enabledLabel = stringResource(R.string.enabled)
-    val disabledLabel = stringResource(R.string.disabled)
-    val invalidLabel = stringResource(R.string.settings_status_invalid)
-    val dohStatus = when {
-        selectedDohProvider == DoHProvider.NONE -> disabledLabel
-        selectedDohProvider == DoHProvider.CUSTOM && !customDohIsValid -> "⚠ $invalidLabel"
-        else -> "✓ $enabledLabel"
-    }
     val storageShape = if (modern) {
         RoundedCornerShape(MiyorareVisualTokens.RADIUS_CARD_DP.dp)
     } else {
@@ -194,7 +185,43 @@ private fun StorageNetworkScreen(
                 }
             }
         }
-        item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+        item { Spacer(Modifier.height(24.dp).fillMaxWidth()) }
+    }
+}
+
+@Composable
+private fun NetworkSettingsScreen(
+    onOpenProxy: () -> Unit,
+    onOpenAdvanced: () -> Unit,
+    proxySummary: String,
+) {
+    val ctx = LocalContext.current
+    val networkPolicyEntries = remember { ctx.resources.getStringArray(R.array.network_policy).toList() }
+    val networkPolicyValues = remember { ctx.resources.getStringArray(R.array.values_network_policy).toList() }
+    val dohEntries = remember { ctx.resources.getStringArray(R.array.doh_providers).toList() }
+    val dohValues = remember { DoHProvider.entries.names().toList() }
+
+    var prefetchContent by rememberStringPref(AppSettings.KEY_PREFETCH_CONTENT, "1")
+    var doh by rememberStringPref(AppSettings.KEY_DOH, DoHProvider.NONE.name)
+    var customDohUrl by rememberStringPref(DoHManager.KEY_CUSTOM_URL, "")
+    var adblock by rememberBooleanPref(AppSettings.KEY_ADBLOCK, false)
+
+    val selectedDohProvider = remember(doh) {
+        DoHProvider.entries.firstOrNull { it.name == doh } ?: DoHProvider.NONE
+    }
+    val customDohIsValid = remember(customDohUrl) {
+        customDohUrl.trim().toHttpUrlOrNull()?.scheme == "https"
+    }
+    val enabledLabel = stringResource(R.string.enabled)
+    val disabledLabel = stringResource(R.string.disabled)
+    val invalidLabel = stringResource(R.string.settings_status_invalid)
+    val dohStatus = when {
+        selectedDohProvider == DoHProvider.NONE -> disabledLabel
+        selectedDohProvider == DoHProvider.CUSTOM && !customDohIsValid -> "⚠ $invalidLabel"
+        else -> "✓ $enabledLabel"
+    }
+
+    SettingsScaffold {
         item {
             SettingsGroup(title = stringResource(R.string.settings_group_network)) {
                 item { pos ->

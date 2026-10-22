@@ -636,7 +636,7 @@ class RuntimeLagHardeningRegressionTest {
 
 		assertTrue(root.contains("SYNC(R.string.google_drive_sync,R.drawable.ic_cloud_sync,\"sync\""))
 		assertTrue(root.contains("SyncSettingsFragment::class.java"))
-		assertTrue(root.contains("sections=listOf(SettingsSection.SYNC,SettingsSection.STORAGE,SettingsSection.BACKUP)"))
+		assertTrue(root.contains("sections=listOf(SettingsSection.SYNC,SettingsSection.STORAGE,SettingsSection.NETWORK,SettingsSection.BACKUP)"))
 		assertTrue(activity.contains("AppRouter.ACTION_SYNC->SyncSettingsFragment()"))
 		assertTrue(sync.contains("title=stringResource(R.string.sync_sign_in)"))
 		assertTrue(sync.contains("onClick=onSignIn"))

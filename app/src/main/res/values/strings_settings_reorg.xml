@@ -15,4 +15,21 @@
     <string name="settings_download_maintenance">Download maintenance</string>
     <string name="settings_download_maintenance_summary">Rebuild download indexes and troubleshoot background downloads</string>
     <string name="settings_diagnostics">Diagnostics</string>
+
+    <string name="settings_appearance_navigation">Appearance &amp; navigation</string>
+    <string name="settings_appearance_navigation_summary">Theme, language, lists and navigation</string>
+    <string name="settings_downloads_local_files">Downloads &amp; local files</string>
+    <string name="settings_downloads_local_files_summary">Downloads, on-device files, saved pages and performance</string>
+    <string name="settings_storage_data">Storage &amp; data</string>
+    <string name="settings_storage_data_summary">Storage usage and data removal</string>
+    <string name="settings_network">Network</string>
+    <string name="settings_network_summary">Prefetch, proxy, DNS and ad blocking</string>
+    <string name="settings_insights_recommendations">Insights &amp; recommendations</string>
+    <string name="settings_insights_recommendations_summary">Suggestions, reading statistics and Reader Journey</string>
+    <string name="settings_connected_services">Connected services</string>
+    <string name="settings_connected_services_summary">Tracking accounts and Discord integration</string>
+
+    <string name="settings_group_downloads">Downloads</string>
+    <string name="settings_group_on_device_files">On-device files</string>
+    <string name="settings_group_tracking_accounts">Tracking accounts</string>
 </resources>
