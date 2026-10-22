@@ -228,6 +228,7 @@ private fun SyncScreen(
 					item { pos ->
 						val subtitle = when {
 							isSyncing -> stringResource(R.string.sync_syncing)
+							state.authorizationRequired -> stringResource(R.string.sync_sign_in_required)
 							state.lastError != null -> stringResource(R.string.sync_error)
 							state.lastSyncTimestamp > 0L -> stringResource(
 								R.string.sync_last,

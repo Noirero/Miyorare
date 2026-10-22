@@ -33,8 +33,10 @@ import org.koitharu.kotatsu.core.util.ext.checkNotificationPermission
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.trySetForeground
 import org.koitharu.kotatsu.settings.work.PeriodicWorkScheduler
+import org.koitharu.kotatsu.sync.data.GoogleDriveAuth
 import org.koitharu.kotatsu.sync.data.SyncSettings
 import org.koitharu.kotatsu.sync.domain.GoogleDriveSyncRepository
+import org.koitharu.kotatsu.sync.domain.SyncAuthPolicy
 import org.koitharu.kotatsu.sync.domain.SyncResult
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -49,6 +51,10 @@ class SyncWorker @AssistedInject constructor(
 
 	override suspend fun doWork(): Result {
 		trySetForeground()
+		if (syncSettings.isAuthorizationRequired) {
+			pausePeriodicSyncForAuthorization()
+			return Result.failure()
+		}
 		return try {
 			val result = repository.sync()
 			// Repository versions predating explicit cancellation propagation can translate a caught
@@ -56,11 +62,13 @@ class SyncWorker @AssistedInject constructor(
 			// it before converting the result into retry/failure and never resurrect cancelled work.
 			currentCoroutineContext().ensureActive()
 			when (result) {
-				is SyncResult.Success -> Result.success()
+				is SyncResult.Success -> {
+					syncSettings.isAuthorizationRequired = false
+					Result.success()
+				}
 				is SyncResult.SignInRequired -> {
-					if (syncSettings.isSignedIn) {
-						showSignInRequiredNotification()
-					}
+					syncSettings.isAuthorizationRequired = true
+					pausePeriodicSyncForAuthorization()
 					Result.failure()
 				}
 				is SyncResult.Error ->
@@ -71,6 +79,15 @@ class SyncWorker @AssistedInject constructor(
 		} catch (e: Exception) {
 			e.printStackTraceDebug()
 			if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
+		}
+	}
+
+	private fun pausePeriodicSyncForAuthorization() {
+		// PeriodicWorkRequest keeps recurring even after Result.failure(); explicitly cancel the
+		// periodic lane until foreground authorization succeeds and the scheduler re-enables it.
+		WorkManager.getInstance(applicationContext).cancelUniqueWork(TAG_PERIODIC)
+		if (syncSettings.hasAccountMetadata) {
+			showSignInRequiredNotification()
 		}
 	}
 
@@ -123,11 +140,18 @@ class SyncWorker @AssistedInject constructor(
 	class Scheduler @Inject constructor(
 		private val workManager: WorkManager,
 		private val syncSettings: SyncSettings,
+		private val auth: GoogleDriveAuth,
 	) : PeriodicWorkScheduler {
+
+		fun isAccountReady(): Boolean = SyncAuthPolicy.isAccountReady(
+			hasAccountMetadata = syncSettings.hasAccountMetadata,
+			hasGoogleAccount = auth.hasSignedInAccount(),
+			authorizationRequired = syncSettings.isAuthorizationRequired,
+		)
 
 		override suspend fun schedule() {
 			val intervalMinutes = syncSettings.intervalMinutes
-			if (intervalMinutes <= 0 || !syncSettings.isSignedIn) {
+			if (intervalMinutes <= 0 || !isAccountReady()) {
 				return unschedule()
 			}
 			val constraints = Constraints.Builder()

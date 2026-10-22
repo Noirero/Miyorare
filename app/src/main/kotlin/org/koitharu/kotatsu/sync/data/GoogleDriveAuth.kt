@@ -35,7 +35,8 @@ class GoogleDriveAuth @Inject constructor(
 	private val signInClient by lazy {
 		val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
 			.requestEmail()
-			.requestScopes(Scope(SCOPE_APPDATA), Scope(SCOPE_FILE))
+			// Sync data lives exclusively in Drive's hidden appDataFolder; no ordinary Drive file access.
+			.requestScopes(Scope(SCOPE_APPDATA))
 			.build()
 		GoogleSignIn.getClient(context, options)
 	}
@@ -50,19 +51,22 @@ class GoogleDriveAuth @Inject constructor(
 
 	fun lastAccount(): GoogleSignInAccount? = GoogleSignIn.getLastSignedInAccount(context)
 
+	/** True only when Google Play Services still exposes an account usable by [GoogleAuthUtil]. */
+	fun hasSignedInAccount(): Boolean = lastAccount()?.account != null
+
 	suspend fun signOut() {
 		runCatching { signInClient.signOut().await() }
 		// revokeAccess so the next sign-in prompts for consent / a different account.
 		runCatching { signInClient.revokeAccess().await() }
 	}
 
-	/** Returns a valid OAuth2 access token for the Drive scopes, or throws [SyncSignInRequiredException]. */
+	/** Returns a valid OAuth2 access token for the appDataFolder scope, or requests foreground recovery. */
 	suspend fun requireAccessToken(): String = withContext(Dispatchers.IO) {
 		val account = lastAccount()?.account ?: throw SyncSignInRequiredException()
 		try {
 			GoogleAuthUtil.getToken(context, account, OAUTH2_SCOPE)
 		} catch (e: UserRecoverableAuthException) {
-			throw SyncSignInRequiredException(e.message ?: "Authorization required")
+			throw e.toSyncSignInRequiredException()
 		}
 	}
 
@@ -80,7 +84,12 @@ class GoogleDriveAuth @Inject constructor(
 	companion object {
 
 		const val SCOPE_APPDATA = "https://www.googleapis.com/auth/drive.appdata"
-		const val SCOPE_FILE = "https://www.googleapis.com/auth/drive.file"
-		private const val OAUTH2_SCOPE = "oauth2:$SCOPE_APPDATA $SCOPE_FILE"
+		private const val OAUTH2_SCOPE = "oauth2:$SCOPE_APPDATA"
 	}
 }
+
+internal fun UserRecoverableAuthException.toSyncSignInRequiredException(): SyncSignInRequiredException =
+	SyncSignInRequiredException(
+		message = message ?: "Google Drive authorization is required",
+		recoveryIntent = intent,
+	)

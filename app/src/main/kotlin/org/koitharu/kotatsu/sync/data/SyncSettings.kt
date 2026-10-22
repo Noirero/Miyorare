@@ -18,7 +18,7 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-	/** Email of the signed-in Google account, or null when signed out. */
+	/** Email cached for display/bookkeeping. This is metadata, not proof that Google auth is usable. */
 	var accountEmail: String?
 		get() = prefs.getString(KEY_ACCOUNT_EMAIL, null)
 		set(value) = prefs.edit { putString(KEY_ACCOUNT_EMAIL, value) }
@@ -37,8 +37,25 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getBoolean(KEY_EMAIL_HIDDEN, false)
 		set(value) = prefs.edit { putBoolean(KEY_EMAIL_HIDDEN, value) }
 
-	val isSignedIn: Boolean
+	/** Whether account display metadata exists. Always pair with the live Google account state. */
+	val hasAccountMetadata: Boolean
 		get() = !accountEmail.isNullOrEmpty()
+
+	/**
+	 * Set after Google reports that user interaction is required. Background work stays paused until
+	 * a foreground token preflight succeeds or the account is signed out/reselected.
+	 */
+	var isAuthorizationRequired: Boolean
+		get() = prefs.getBoolean(KEY_AUTHORIZATION_REQUIRED, false)
+		set(value) = prefs.edit { putBoolean(KEY_AUTHORIZATION_REQUIRED, value) }
+
+	/**
+	 * Legacy metadata-only compatibility for the repository's preflight guard. This must never be
+	 * used by UI/scheduling code as proof that Google authorization is actually usable.
+	 */
+	@Deprecated("Metadata only; pair with GoogleDriveAuth.hasSignedInAccount()")
+	val isSignedIn: Boolean
+		get() = hasAccountMetadata
 
 	/** Stable per-install id, used to decide whether the remote snapshot came from this device. */
 	val deviceId: String
@@ -101,6 +118,7 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 		remove(KEY_ACCOUNT_EMAIL)
 		remove(KEY_ACCOUNT_NAME)
 		remove(KEY_ACCOUNT_PHOTO)
+		remove(KEY_AUTHORIZATION_REQUIRED)
 		remove(KEY_LAST_SYNC)
 		remove(KEY_LAST_ERROR)
 		remove(KEY_CONFIG_REVISION)
@@ -115,6 +133,7 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 		private const val KEY_ACCOUNT_NAME = "account_name"
 		private const val KEY_ACCOUNT_PHOTO = "account_photo"
 		private const val KEY_EMAIL_HIDDEN = "email_hidden"
+		private const val KEY_AUTHORIZATION_REQUIRED = "authorization_required"
 		private const val KEY_DEVICE_ID = "device_id"
 		const val KEY_INTERVAL = "interval"
 		const val KEY_WIFI_ONLY = "wifi_only"
