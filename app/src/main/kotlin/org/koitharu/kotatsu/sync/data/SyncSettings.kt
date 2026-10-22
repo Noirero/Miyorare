@@ -41,6 +41,14 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 	val hasAccountMetadata: Boolean
 		get() = !accountEmail.isNullOrEmpty()
 
+	/**
+	 * Legacy metadata-only compatibility for the repository's preflight guard. This must never be
+	 * used by UI/scheduling code as proof that Google authorization is actually usable.
+	 */
+	@Deprecated("Metadata only; pair with GoogleDriveAuth.hasSignedInAccount()")
+	val isSignedIn: Boolean
+		get() = hasAccountMetadata
+
 	/** Stable per-install id, used to decide whether the remote snapshot came from this device. */
 	val deviceId: String
 		get() = prefs.getString(KEY_DEVICE_ID, null) ?: UUID.randomUUID().toString().also {

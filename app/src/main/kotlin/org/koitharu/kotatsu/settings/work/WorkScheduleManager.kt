@@ -111,11 +111,11 @@ class WorkScheduleManager @Inject constructor(
 				isEnabled = settings.isPeriodicalBackupEnabled && settings.periodicalBackupDirectory != null,
 				force = false,
 			)
-			// Sync interval lives in its own prefs file (not observed here); just re-assert the
-			// schedule on app start, and optionally kick off a one-shot sync if the user opted in.
+			// Sync metadata can outlive the Google grant. Only schedule work when both still agree.
+			val syncAccountReady = syncScheduler.isAccountReady()
 			updateWorkerImpl(
 				scheduler = syncScheduler,
-				isEnabled = syncSettings.isSignedIn && syncSettings.intervalMinutes > 0,
+				isEnabled = syncAccountReady && syncSettings.intervalMinutes > 0,
 				force = false,
 			)
 			val extensionUpdatesEnabled = isExtensionUpdateWorkerNeeded()
@@ -136,7 +136,7 @@ class WorkScheduleManager @Inject constructor(
 				kotatsuRuntimeUpdateScheduler.startNow()
 			}
 
-			if (syncSettings.isSignedIn && syncSettings.isSyncOnStart) {
+			if (syncAccountReady && syncSettings.isSyncOnStart) {
 				SyncWorker.enqueueManual(workManager)
 			}
 		}

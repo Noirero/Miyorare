@@ -33,8 +33,10 @@ import org.koitharu.kotatsu.core.util.ext.checkNotificationPermission
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.trySetForeground
 import org.koitharu.kotatsu.settings.work.PeriodicWorkScheduler
+import org.koitharu.kotatsu.sync.data.GoogleDriveAuth
 import org.koitharu.kotatsu.sync.data.SyncSettings
 import org.koitharu.kotatsu.sync.domain.GoogleDriveSyncRepository
+import org.koitharu.kotatsu.sync.domain.SyncAuthPolicy
 import org.koitharu.kotatsu.sync.domain.SyncResult
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -58,7 +60,8 @@ class SyncWorker @AssistedInject constructor(
 			when (result) {
 				is SyncResult.Success -> Result.success()
 				is SyncResult.SignInRequired -> {
-					if (syncSettings.isSignedIn) {
+					// Metadata may survive a revoked Google grant. Notify rather than retrying doomed work.
+					if (syncSettings.hasAccountMetadata) {
 						showSignInRequiredNotification()
 					}
 					Result.failure()
@@ -123,11 +126,17 @@ class SyncWorker @AssistedInject constructor(
 	class Scheduler @Inject constructor(
 		private val workManager: WorkManager,
 		private val syncSettings: SyncSettings,
+		private val auth: GoogleDriveAuth,
 	) : PeriodicWorkScheduler {
+
+		fun isAccountReady(): Boolean = SyncAuthPolicy.isAccountReady(
+			hasAccountMetadata = syncSettings.hasAccountMetadata,
+			hasGoogleAccount = auth.hasSignedInAccount(),
+		)
 
 		override suspend fun schedule() {
 			val intervalMinutes = syncSettings.intervalMinutes
-			if (intervalMinutes <= 0 || !syncSettings.isSignedIn) {
+			if (intervalMinutes <= 0 || !isAccountReady()) {
 				return unschedule()
 			}
 			val constraints = Constraints.Builder()
