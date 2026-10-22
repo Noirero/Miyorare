@@ -95,6 +95,13 @@ class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensio
 							isFromRoot = false,
 						)
 					},
+					onOpenKotatsuParsers = {
+						(requireActivity() as SettingsActivity).openFragment(
+							KotatsuParsersSettingsFragment::class.java,
+							args = null,
+							isFromRoot = false,
+						)
+					},
 					onOpenTsukiPlugins = {
 						(requireActivity() as SettingsActivity).openFragment(
 							TsukiPluginsSettingsFragment::class.java,
@@ -227,6 +234,7 @@ private fun ExtensionsScreen(
 	onOpenCatalog: () -> Unit,
 	onOpenStores: () -> Unit,
 	onOpenMiyorareSourcePacks: () -> Unit,
+	onOpenKotatsuParsers: () -> Unit,
 	onOpenTsukiPlugins: () -> Unit,
 	onOpenBrokenSourcesMigration: () -> Unit,
 ) {
@@ -290,6 +298,15 @@ private fun ExtensionsScreen(
 						icon = R.drawable.ic_storefront,
 						shape = pos.shape,
 						onClick = onOpenStores,
+					)
+				}
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.kotatsu_parsers),
+						subtitle = stringResource(R.string.kotatsu_parsers_summary),
+						icon = R.drawable.ic_manga_source,
+						shape = pos.shape,
+						onClick = onOpenKotatsuParsers,
 					)
 				}
 				item { pos ->
