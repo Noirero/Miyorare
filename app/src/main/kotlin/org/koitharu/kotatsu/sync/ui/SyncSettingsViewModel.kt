@@ -25,6 +25,7 @@ import javax.inject.Inject
 
 data class SyncUiState(
 	val isSignedIn: Boolean = false,
+	val authorizationRequired: Boolean = false,
 	val accountEmail: String? = null,
 	val accountName: String? = null,
 	val accountPhotoUrl: String? = null,
@@ -115,6 +116,7 @@ class SyncSettingsViewModel @Inject constructor(
 		action: ForegroundAction,
 		recoveryAlreadyAttempted: Boolean,
 	) {
+		val schedulerWasPausedForAuthorization = syncSettings.isAuthorizationRequired
 		if (!ensureDriveAuthorization(action, recoveryAlreadyAttempted)) return
 
 		if (action == ForegroundAction.SYNC_AFTER_SIGN_IN) {
@@ -125,6 +127,9 @@ class SyncSettingsViewModel @Inject constructor(
 			repository.onSignedIn(account.email, account.displayName, account.photoUrl)
 			pendingAccount = null
 			refresh()
+			scheduler.schedule()
+		} else if (action == ForegroundAction.SYNC && schedulerWasPausedForAuthorization) {
+			// A foreground recovery unpauses the user's existing periodic-sync preference.
 			scheduler.schedule()
 		}
 
@@ -146,8 +151,10 @@ class SyncSettingsViewModel @Inject constructor(
 		recoveryAlreadyAttempted: Boolean,
 	): Boolean = try {
 		auth.requireAccessToken()
+		syncSettings.isAuthorizationRequired = false
 		true
 	} catch (e: SyncSignInRequiredException) {
+		syncSettings.isAuthorizationRequired = true
 		val recoveryIntent = e.recoveryIntent
 		if (recoveryIntent != null && SyncAuthPolicy.canLaunchInteractiveRecovery(recoveryAlreadyAttempted)) {
 			pendingRecoveryAction = action
@@ -177,20 +184,28 @@ class SyncSettingsViewModel @Inject constructor(
 	/** Runs a sync in the foreground and reports the outcome to the user. */
 	private suspend fun runSync() {
 		when (val result = repository.sync()) {
-			is SyncResult.Success -> events.call(SyncEvent.Message(R.string.sync_completed))
-			is SyncResult.SignInRequired -> events.call(
-				SyncEvent.Error(context.getString(R.string.sync_sign_in_required)),
-			)
+			is SyncResult.Success -> {
+				syncSettings.isAuthorizationRequired = false
+				events.call(SyncEvent.Message(R.string.sync_completed))
+			}
+			is SyncResult.SignInRequired -> {
+				syncSettings.isAuthorizationRequired = true
+				events.call(SyncEvent.Error(context.getString(R.string.sync_sign_in_required)))
+			}
 			is SyncResult.Error -> events.call(SyncEvent.Error(result.message))
 		}
 	}
 
 	private suspend fun runDeleteRemote() {
 		when (val result = repository.deleteRemoteData()) {
-			is SyncResult.Success -> events.call(SyncEvent.Message(R.string.sync_data_deleted))
-			is SyncResult.SignInRequired -> events.call(
-				SyncEvent.Error(context.getString(R.string.sync_sign_in_required)),
-			)
+			is SyncResult.Success -> {
+				syncSettings.isAuthorizationRequired = false
+				events.call(SyncEvent.Message(R.string.sync_data_deleted))
+			}
+			is SyncResult.SignInRequired -> {
+				syncSettings.isAuthorizationRequired = true
+				events.call(SyncEvent.Error(context.getString(R.string.sync_sign_in_required)))
+			}
 			is SyncResult.Error -> events.call(SyncEvent.Error(result.message))
 		}
 	}
@@ -206,7 +221,7 @@ class SyncSettingsViewModel @Inject constructor(
 	}
 
 	fun syncNow() {
-		if (!SyncAuthPolicy.isAccountReady(syncSettings.hasAccountMetadata, auth.hasSignedInAccount())) return
+		if (!SyncAuthPolicy.hasAccountSession(syncSettings.hasAccountMetadata, auth.hasSignedInAccount())) return
 		launchLoadingJob(Dispatchers.Default) {
 			performForegroundAction(ForegroundAction.SYNC, recoveryAlreadyAttempted = false)
 		}
@@ -245,7 +260,7 @@ class SyncSettingsViewModel @Inject constructor(
 	}
 
 	fun deleteAllData() {
-		if (!SyncAuthPolicy.isAccountReady(syncSettings.hasAccountMetadata, auth.hasSignedInAccount())) return
+		if (!SyncAuthPolicy.hasAccountSession(syncSettings.hasAccountMetadata, auth.hasSignedInAccount())) return
 		launchLoadingJob(Dispatchers.Default) {
 			performForegroundAction(ForegroundAction.DELETE_REMOTE, recoveryAlreadyAttempted = false)
 		}
@@ -256,7 +271,8 @@ class SyncSettingsViewModel @Inject constructor(
 	}
 
 	private fun readState() = SyncUiState(
-		isSignedIn = SyncAuthPolicy.isAccountReady(syncSettings.hasAccountMetadata, auth.hasSignedInAccount()),
+		isSignedIn = SyncAuthPolicy.hasAccountSession(syncSettings.hasAccountMetadata, auth.hasSignedInAccount()),
+		authorizationRequired = syncSettings.isAuthorizationRequired,
 		accountEmail = syncSettings.accountEmail,
 		accountName = syncSettings.accountName,
 		accountPhotoUrl = syncSettings.accountPhotoUrl,

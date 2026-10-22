@@ -7,11 +7,29 @@ import org.junit.Test
 class SyncAuthPolicyTest {
 
 	@Test
-	fun accountReadyRequiresMetadataAndLiveGoogleAccount() {
-		assertTrue(SyncAuthPolicy.isAccountReady(hasAccountMetadata = true, hasGoogleAccount = true))
-		assertFalse(SyncAuthPolicy.isAccountReady(hasAccountMetadata = true, hasGoogleAccount = false))
-		assertFalse(SyncAuthPolicy.isAccountReady(hasAccountMetadata = false, hasGoogleAccount = true))
-		assertFalse(SyncAuthPolicy.isAccountReady(hasAccountMetadata = false, hasGoogleAccount = false))
+	fun accountSessionRequiresMetadataAndLiveGoogleAccount() {
+		assertTrue(SyncAuthPolicy.hasAccountSession(hasAccountMetadata = true, hasGoogleAccount = true))
+		assertFalse(SyncAuthPolicy.hasAccountSession(hasAccountMetadata = true, hasGoogleAccount = false))
+		assertFalse(SyncAuthPolicy.hasAccountSession(hasAccountMetadata = false, hasGoogleAccount = true))
+		assertFalse(SyncAuthPolicy.hasAccountSession(hasAccountMetadata = false, hasGoogleAccount = false))
+	}
+
+	@Test
+	fun backgroundReadinessAlsoRequiresNoPendingAuthorization() {
+		assertTrue(
+			SyncAuthPolicy.isAccountReady(
+				hasAccountMetadata = true,
+				hasGoogleAccount = true,
+				authorizationRequired = false,
+			),
+		)
+		assertFalse(
+			SyncAuthPolicy.isAccountReady(
+				hasAccountMetadata = true,
+				hasGoogleAccount = true,
+				authorizationRequired = true,
+			),
+		)
 	}
 
 	@Test

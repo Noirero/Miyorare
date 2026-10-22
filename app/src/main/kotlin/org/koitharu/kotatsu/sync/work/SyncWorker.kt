@@ -51,6 +51,10 @@ class SyncWorker @AssistedInject constructor(
 
 	override suspend fun doWork(): Result {
 		trySetForeground()
+		if (syncSettings.isAuthorizationRequired) {
+			pausePeriodicSyncForAuthorization()
+			return Result.failure()
+		}
 		return try {
 			val result = repository.sync()
 			// Repository versions predating explicit cancellation propagation can translate a caught
@@ -58,12 +62,13 @@ class SyncWorker @AssistedInject constructor(
 			// it before converting the result into retry/failure and never resurrect cancelled work.
 			currentCoroutineContext().ensureActive()
 			when (result) {
-				is SyncResult.Success -> Result.success()
+				is SyncResult.Success -> {
+					syncSettings.isAuthorizationRequired = false
+					Result.success()
+				}
 				is SyncResult.SignInRequired -> {
-					// Metadata may survive a revoked Google grant. Notify rather than retrying doomed work.
-					if (syncSettings.hasAccountMetadata) {
-						showSignInRequiredNotification()
-					}
+					syncSettings.isAuthorizationRequired = true
+					pausePeriodicSyncForAuthorization()
 					Result.failure()
 				}
 				is SyncResult.Error ->
@@ -74,6 +79,15 @@ class SyncWorker @AssistedInject constructor(
 		} catch (e: Exception) {
 			e.printStackTraceDebug()
 			if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
+		}
+	}
+
+	private fun pausePeriodicSyncForAuthorization() {
+		// PeriodicWorkRequest keeps recurring even after Result.failure(); explicitly cancel the
+		// periodic lane until foreground authorization succeeds and the scheduler re-enables it.
+		WorkManager.getInstance(applicationContext).cancelUniqueWork(TAG_PERIODIC)
+		if (syncSettings.hasAccountMetadata) {
+			showSignInRequiredNotification()
 		}
 	}
 
@@ -132,6 +146,7 @@ class SyncWorker @AssistedInject constructor(
 		fun isAccountReady(): Boolean = SyncAuthPolicy.isAccountReady(
 			hasAccountMetadata = syncSettings.hasAccountMetadata,
 			hasGoogleAccount = auth.hasSignedInAccount(),
+			authorizationRequired = syncSettings.isAuthorizationRequired,
 		)
 
 		override suspend fun schedule() {

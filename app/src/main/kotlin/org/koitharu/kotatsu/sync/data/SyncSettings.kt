@@ -42,6 +42,14 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = !accountEmail.isNullOrEmpty()
 
 	/**
+	 * Set after Google reports that user interaction is required. Background work stays paused until
+	 * a foreground token preflight succeeds or the account is signed out/reselected.
+	 */
+	var isAuthorizationRequired: Boolean
+		get() = prefs.getBoolean(KEY_AUTHORIZATION_REQUIRED, false)
+		set(value) = prefs.edit { putBoolean(KEY_AUTHORIZATION_REQUIRED, value) }
+
+	/**
 	 * Legacy metadata-only compatibility for the repository's preflight guard. This must never be
 	 * used by UI/scheduling code as proof that Google authorization is actually usable.
 	 */
@@ -110,6 +118,7 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 		remove(KEY_ACCOUNT_EMAIL)
 		remove(KEY_ACCOUNT_NAME)
 		remove(KEY_ACCOUNT_PHOTO)
+		remove(KEY_AUTHORIZATION_REQUIRED)
 		remove(KEY_LAST_SYNC)
 		remove(KEY_LAST_ERROR)
 		remove(KEY_CONFIG_REVISION)
@@ -124,6 +133,7 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 		private const val KEY_ACCOUNT_NAME = "account_name"
 		private const val KEY_ACCOUNT_PHOTO = "account_photo"
 		private const val KEY_EMAIL_HIDDEN = "email_hidden"
+		private const val KEY_AUTHORIZATION_REQUIRED = "authorization_required"
 		private const val KEY_DEVICE_ID = "device_id"
 		const val KEY_INTERVAL = "interval"
 		const val KEY_WIFI_ONLY = "wifi_only"
