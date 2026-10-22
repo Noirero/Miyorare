@@ -232,12 +232,7 @@ private val settingsSectionGroups = listOf(
         titleRes = R.string.settings_group_data_sync,
         iconRes = R.drawable.ic_cloud_sync,
         accent = SettingsGroupAccent.DATA,
-        sections = listOf(
-            SettingsSection.SYNC,
-            SettingsSection.STORAGE,
-            SettingsSection.NETWORK,
-            SettingsSection.BACKUP,
-        ),
+        sections = listOf(SettingsSection.SYNC, SettingsSection.STORAGE, SettingsSection.NETWORK, SettingsSection.BACKUP),
     ),
     SettingsSectionGroup(
         titleRes = R.string.settings_group_privacy_services,
