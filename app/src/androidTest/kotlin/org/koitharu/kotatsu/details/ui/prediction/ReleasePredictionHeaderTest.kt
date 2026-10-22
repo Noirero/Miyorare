@@ -15,11 +15,13 @@ import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
+import org.koitharu.kotatsu.details.domain.NextChapterReleaseState
 import org.koitharu.kotatsu.details.ui.ChapterHeaderTitle
 import java.time.LocalDate
 
 class ReleasePredictionHeaderTest {
 	@get:Rule val compose = createComposeRule()
+
 	@Test fun predictionAloneIsClickableAndYieldsToManageOnNarrowHeaders() {
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		val width = mutableStateOf(350.dp)
@@ -35,5 +37,24 @@ class ReleasePredictionHeaderTest {
 		compose.runOnIdle { width.value = 130.dp }
 		compose.onNodeWithContentDescription(description).assertDoesNotExist()
 		compose.onNodeWithText("Manage").assertIsDisplayed()
+	}
+
+	@Test fun overdueGraceHasDedicatedHeaderSemanticsInsteadOfExpectedToday() {
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val prediction = NextChapterReleasePrediction(
+			expectedDate = LocalDate.of(2026, 10, 10),
+			daysUntilNext = 0,
+			state = NextChapterReleaseState.OVERDUE_GRACE,
+		)
+		compose.setContent { MaterialTheme {
+			ChapterHeaderTitle("12 chapters", prediction, Modifier.width(500.dp))
+		} }
+		val overdueDescription = context.getString(R.string.chapter_release_accessibility_overdue)
+		val todayDescription = context.getString(R.string.chapter_release_accessibility_today)
+		compose.onNodeWithContentDescription(overdueDescription).assertIsDisplayed()
+		compose.onNodeWithContentDescription(todayDescription).assertDoesNotExist()
+		// clearAndSetSemantics intentionally owns the merged header semantics; verify the visual copy
+		// remains present in the unmerged tree without relying on its merged-node visibility.
+		compose.onNodeWithText(context.getString(R.string.chapter_release_expected_overdue), useUnmergedTree = true).assertExists()
 	}
 }

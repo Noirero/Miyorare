@@ -66,6 +66,7 @@ import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.tryLaunch
 import org.koitharu.kotatsu.details.domain.ChapterReleasePredictionItem
 import org.koitharu.kotatsu.details.domain.FavouriteReleasePredictionsUseCase
+import org.koitharu.kotatsu.details.domain.NextChapterReleaseState
 import org.koitharu.kotatsu.details.domain.releasePredictionOrder
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -406,7 +407,9 @@ private fun PredictionActions(item: ChapterReleasePredictionItem, onDetails: () 
 		Legend(stringResource(R.string.release_calendar_predicted), formatDate(item.prediction.expectedDate), predictionRainbowBrush(), true)
 		Legend(stringResource(R.string.release_calendar_previous), item.releaseDates.maxOrNull()?.let(::formatDate).orEmpty(), SolidColor(MaterialTheme.colorScheme.secondary), true)
 		Legend(stringResource(R.string.release_calendar_history), stringResource(R.string.release_calendar_recent_history), SolidColor(MaterialTheme.colorScheme.tertiary), false)
-		Button(onClick = { addToCalendar(context, item) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.release_calendar_add)) }
+		if (item.prediction.state != NextChapterReleaseState.OVERDUE_GRACE) {
+			Button(onClick = { addToCalendar(context, item) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.release_calendar_add)) }
+		}
 		OutlinedButton(onClick = onDetails, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.release_calendar_details)) }
 	}
 }
@@ -457,10 +460,20 @@ private fun PredictionMangaList(items: List<ChapterReleasePredictionItem>, selec
 private fun formatDate(date: LocalDate) = date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
 
 @Composable
-private fun expectedLabel(item: ChapterReleasePredictionItem): String = if (item.prediction.daysUntilNext == 0L) stringResource(R.string.release_calendar_today)
-	else pluralStringResource(R.plurals.release_calendar_expected_days, item.prediction.daysUntilNext.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), item.prediction.daysUntilNext)
+private fun expectedLabel(item: ChapterReleasePredictionItem): String = when (item.prediction.state) {
+	NextChapterReleaseState.OVERDUE_GRACE -> stringResource(R.string.release_calendar_overdue)
+	NextChapterReleaseState.EXPECTED_TODAY -> stringResource(R.string.release_calendar_today)
+	NextChapterReleaseState.UPCOMING -> pluralStringResource(
+		R.plurals.release_calendar_expected_days,
+		item.prediction.daysUntilNext.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+		item.prediction.daysUntilNext,
+	)
+}
 
 internal fun releasePredictionCalendarIntent(context: Context, item: ChapterReleasePredictionItem): Intent {
+	require(item.prediction.state != NextChapterReleaseState.OVERDUE_GRACE) {
+		"Overdue prediction dates must not create past calendar events"
+	}
 	val start = item.prediction.expectedDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 	val end = item.prediction.expectedDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 	return Intent(Intent.ACTION_INSERT).setData(CalendarContract.Events.CONTENT_URI)

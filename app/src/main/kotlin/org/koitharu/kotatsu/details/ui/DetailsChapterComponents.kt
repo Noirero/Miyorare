@@ -894,17 +894,21 @@ internal fun ChapterHeaderTitle(
 	val secondaryStyle = MaterialTheme.typography.bodySmall
 	val measurer = rememberTextMeasurer()
 	val density = LocalDensity.current
-	val days = prediction?.daysUntilNext
-	val label = when {
-		days == null -> null
-		days == 0L -> stringResource(R.string.chapter_release_expected_today)
-		days >= 14L -> stringResource(R.string.chapter_release_expected_weeks, (days + 3L) / 7L)
-		else -> stringResource(R.string.chapter_release_expected_days, days)
+	val days = prediction?.daysUntilNext ?: 0L
+	val label = when (prediction?.state) {
+		null -> null
+		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.OVERDUE_GRACE -> stringResource(R.string.chapter_release_expected_overdue)
+		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.EXPECTED_TODAY -> stringResource(R.string.chapter_release_expected_today)
+		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.UPCOMING -> when {
+			days >= 14L -> stringResource(R.string.chapter_release_expected_weeks, (days + 3L) / 7L)
+			else -> stringResource(R.string.chapter_release_expected_days, days)
+		}
 	}
-	val description = when {
-		days == null -> null
-		days == 0L -> stringResource(R.string.chapter_release_accessibility_today)
-		else -> pluralStringResource(R.plurals.chapter_release_accessibility_days, days.toInt(), days)
+	val description = when (prediction?.state) {
+		null -> null
+		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.OVERDUE_GRACE -> stringResource(R.string.chapter_release_accessibility_overdue)
+		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.EXPECTED_TODAY -> stringResource(R.string.chapter_release_accessibility_today)
+		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.UPCOMING -> pluralStringResource(R.plurals.chapter_release_accessibility_days, days.toInt(), days)
 	}
 	val openCalendarLabel = stringResource(R.string.release_calendar_title)
 	BoxWithConstraints(modifier) {

@@ -28,6 +28,7 @@ class NextChapterReleaseEstimatorTest {
 		val result = checkNotNull(predict(dates, dates.last().plusDays(4)))
 		assertEquals(dates.last().plusDays(7), result.expectedDate)
 		assertEquals(3L, result.daysUntilNext)
+		assertEquals(NextChapterReleaseState.UPCOMING, result.state)
 	}
 
 	@Test
@@ -105,12 +106,58 @@ class NextChapterReleaseEstimatorTest {
 	}
 
 	@Test
-	fun `predicted day is today and never a negative countdown after it passes`() {
+	fun `weekly prediction transitions from today through two day grace then disappears`() {
 		val dates = events(7, 7, 7)
-		assertEquals(0L, predict(dates, dates.last().plusDays(7))?.daysUntilNext)
-		assertNull(predict(dates, dates.last().plusDays(8)))
-		assertNull(predict(dates, dates.last().plusDays(21)))
-		assertNull(predict(dates, dates.last().plusDays(22)))
+		val expected = dates.last().plusDays(7)
+		val today = checkNotNull(predict(dates, expected))
+		assertEquals(expected, today.expectedDate)
+		assertEquals(0L, today.daysUntilNext)
+		assertEquals(NextChapterReleaseState.EXPECTED_TODAY, today.state)
+		for (lateDays in 1L..2L) {
+			val late = checkNotNull(predict(dates, expected.plusDays(lateDays)))
+			assertEquals(expected, late.expectedDate)
+			assertEquals(0L, late.daysUntilNext)
+			assertEquals(NextChapterReleaseState.OVERDUE_GRACE, late.state)
+		}
+		assertNull(predict(dates, expected.plusDays(3)))
+	}
+
+	@Test
+	fun `daily cadence has no overdue grace`() {
+		val dates = events(1, 1, 1, 1)
+		val expected = dates.last().plusDays(1)
+		assertEquals(NextChapterReleaseState.EXPECTED_TODAY, predict(dates, expected)?.state)
+		assertNull(predict(dates, expected.plusDays(1)))
+	}
+
+	@Test
+	fun `two day cadence has exactly one overdue grace day`() {
+		val dates = events(2, 2, 2, 2)
+		val expected = dates.last().plusDays(2)
+		assertEquals(NextChapterReleaseState.OVERDUE_GRACE, predict(dates, expected.plusDays(1))?.state)
+		assertNull(predict(dates, expected.plusDays(2)))
+	}
+
+	@Test
+	fun `biweekly and monthly cadence cap grace at two days`() {
+		for (interval in listOf(14L, 30L)) {
+			val dates = events(interval, interval, interval, interval)
+			val expected = dates.last().plusDays(interval)
+			assertEquals(NextChapterReleaseState.OVERDUE_GRACE, predict(dates, expected.plusDays(2))?.state)
+			assertNull(predict(dates, expected.plusDays(3)))
+		}
+	}
+
+	@Test
+	fun `new release during grace immediately replaces the overdue estimate`() {
+		val dates = events(7, 7, 7, 7)
+		val oldExpected = dates.last().plusDays(7)
+		assertEquals(NextChapterReleaseState.OVERDUE_GRACE, predict(dates, oldExpected.plusDays(1))?.state)
+		val refreshed = dates + oldExpected.plusDays(1)
+		val next = checkNotNull(predict(refreshed, refreshed.last()))
+		assertEquals(NextChapterReleaseState.UPCOMING, next.state)
+		assertEquals(refreshed.last().plusDays(7), next.expectedDate)
+		assertEquals(7L, next.daysUntilNext)
 	}
 
 	@Test
@@ -125,6 +172,7 @@ class NextChapterReleaseEstimatorTest {
 		for (first in listOf(LocalDate.of(2026, 2, 22), LocalDate.of(2026, 10, 18))) {
 			val dates = (0L..4L).map { first.plusDays(it * 7L) }
 			assertEquals(3L, predict(dates, dates.last().plusDays(4), zone)?.daysUntilNext)
+			assertEquals(NextChapterReleaseState.OVERDUE_GRACE, predict(dates, dates.last().plusDays(8), zone)?.state)
 		}
 	}
 
@@ -133,6 +181,7 @@ class NextChapterReleaseEstimatorTest {
 		for (zone in listOf(ZoneId.of("Asia/Jakarta"), ZoneId.of("Pacific/Honolulu"))) {
 			val dates = events(7, 7, 7, 7)
 			assertEquals(dates.last().plusDays(7), predict(dates, dates.last().plusDays(2), zone)?.expectedDate)
+			assertEquals(NextChapterReleaseState.OVERDUE_GRACE, predict(dates, dates.last().plusDays(8), zone)?.state)
 		}
 	}
 
