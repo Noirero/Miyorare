@@ -44,12 +44,11 @@ internal data class BrowserAuthCallbackProof(
 /**
  * Process-local credential store for browser Drive authorization.
  *
- * The Google access token and app-side proof verifier deliberately never leave memory. Persistent
- * sync preferences may contain non-secret account display metadata and the selected auth mode, but
- * never browser OAuth credentials.
+ * The class is public only because Hilt injects it into public Android components. Its credential
+ * API remains module-internal so access tokens cannot accidentally become an application-wide API.
  */
 @Singleton
-internal class BrowserDriveAuthSession @Inject constructor() {
+class BrowserDriveAuthSession @Inject constructor() {
 
 	private class PendingTransaction(
 		val transactionId: String,
@@ -70,7 +69,7 @@ internal class BrowserDriveAuthSession @Inject constructor() {
 	private var credential: Credential? = null
 	private var expiredSinceLastLogin = false
 
-	fun begin(origin: BrowserAuthOrigin, now: Long = System.currentTimeMillis()): BrowserAuthLaunch = synchronized(lock) {
+	internal fun begin(origin: BrowserAuthOrigin, now: Long = System.currentTimeMillis()): BrowserAuthLaunch = synchronized(lock) {
 		val transactionId = randomUrlSafe(32)
 		val verifier = randomUrlSafe(48)
 		pending = PendingTransaction(
@@ -85,11 +84,8 @@ internal class BrowserDriveAuthSession @Inject constructor() {
 		)
 	}
 
-	/**
-	 * Consumes the pending app transaction exactly once. A duplicate callback, wrong transaction,
-	 * stale callback, or callback after process death is rejected before any exchange request occurs.
-	 */
-	fun consumeCallback(
+	/** Consumes the pending app transaction exactly once before any exchange request occurs. */
+	internal fun consumeCallback(
 		transactionId: String,
 		code: String,
 		now: Long = System.currentTimeMillis(),
@@ -114,11 +110,11 @@ internal class BrowserDriveAuthSession @Inject constructor() {
 		)
 	}
 
-	fun cancelPending() = synchronized(lock) {
+	internal fun cancelPending() = synchronized(lock) {
 		pending = null
 	}
 
-	fun install(
+	internal fun install(
 		accessToken: String,
 		expiresAt: Long,
 		account: DriveAccountInfo?,
@@ -133,7 +129,7 @@ internal class BrowserDriveAuthSession @Inject constructor() {
 		expiredSinceLastLogin = false
 	}
 
-	fun snapshot(now: Long = System.currentTimeMillis()): BrowserSessionSnapshot = synchronized(lock) {
+	internal fun snapshot(now: Long = System.currentTimeMillis()): BrowserSessionSnapshot = synchronized(lock) {
 		pruneExpiredLocked(now)
 		val current = credential
 		BrowserSessionSnapshot(
@@ -144,7 +140,7 @@ internal class BrowserDriveAuthSession @Inject constructor() {
 		)
 	}
 
-	fun requireAccessToken(
+	internal fun requireAccessToken(
 		minimumRemainingMs: Long = 0L,
 		now: Long = System.currentTimeMillis(),
 	): String = synchronized(lock) {
@@ -158,14 +154,14 @@ internal class BrowserDriveAuthSession @Inject constructor() {
 		current.accessToken
 	}
 
-	fun invalidate(accessToken: String) = synchronized(lock) {
+	internal fun invalidate(accessToken: String) = synchronized(lock) {
 		if (credential?.accessToken == accessToken) {
 			credential = null
 			expiredSinceLastLogin = true
 		}
 	}
 
-	fun clear() = synchronized(lock) {
+	internal fun clear() = synchronized(lock) {
 		pending = null
 		credential = null
 		expiredSinceLastLogin = false
