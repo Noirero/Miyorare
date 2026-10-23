@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -49,6 +50,7 @@ internal fun DownloadMaintenanceSettingsItem(stateFlow: StateFlow<DownloadMainte
 	Column {
 		ActionSettingsItem(
 			title = stringResource(R.string.download_maintenance_title),
+			modifier = Modifier.semantics(mergeDescendants = true) { if (state.running) disabled() },
 			subtitle = if (state.running) phase else stringResource(R.string.download_maintenance_description),
 			icon = R.drawable.ic_sync,
 			shape = shape,
