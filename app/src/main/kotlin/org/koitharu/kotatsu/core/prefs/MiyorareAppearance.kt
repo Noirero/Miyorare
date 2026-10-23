@@ -66,6 +66,20 @@ enum class MiyorareThemePreset(
 }
 
 /**
+ * Semantic colour source for the Modern renderer. Batch 1 intentionally exposes only MATCH_THEME:
+ * it creates the persistence/resolution boundary without changing existing authored colours.
+ */
+enum class MiyorareModernPaletteSource {
+	MATCH_THEME,
+	;
+
+	companion object {
+		fun fromStoredValue(value: String?): MiyorareModernPaletteSource =
+			entries.firstOrNull { it.name == value } ?: MATCH_THEME
+	}
+}
+
+/**
  * Private Favourites owns a separate visual choice. FOLLOW_NORMAL is intentionally the default so
  * existing users keep the current look until they explicitly opt into one of the Private variants.
  */
@@ -101,6 +115,7 @@ data class MiyorareAdaptivePalette(
 object MiyorareAppearance {
 	const val KEY_DESIGN_STYLE = "miyorare_design_style"
 	const val KEY_THEME_PRESET = "miyorare_theme_preset"
+	const val KEY_MODERN_PALETTE_SOURCE = "miyorare_modern_palette_source"
 	const val KEY_PRIVATE_FAVOURITES_THEME = "miyorare_private_favourites_theme"
 	const val KEY_CUSTOM_ACCENT = "miyorare_custom_accent"
 	const val KEY_CUSTOM_BACKGROUND_COLOR_SYNC = "miyorare_custom_background_color_sync"
