@@ -34,6 +34,7 @@ import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.classicMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.resolveMiyorareClassicDerivedColorScheme
 import org.koitharu.kotatsu.core.ui.resolveMiyorareThemeColors
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
@@ -243,7 +244,11 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	}
 
 	val modernColors = if (designStyle == MiyorareDesignStyle.MODERN) {
-		remember(paletteSource, themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel) {
+		remember(ctx, paletteSource, themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel) {
+			val classicDerivedScheme = ctx.resolveMiyorareClassicDerivedColorScheme(
+				paletteSource = paletteSource,
+				darkTheme = isDark,
+			)
 			resolveMiyorareThemeColors(
 				paletteSource = paletteSource,
 				preset = themePreset,
@@ -252,6 +257,7 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 				darkTheme = isDark,
 				amoled = amoled,
 				effectLevel = effectLevel,
+				classicDerivedColorScheme = classicDerivedScheme,
 			)
 		}
 	} else null
