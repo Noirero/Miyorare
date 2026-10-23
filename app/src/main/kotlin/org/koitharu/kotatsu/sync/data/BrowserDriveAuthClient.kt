@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.sync.data
 import android.net.Uri
 import eu.kanade.tachiyomi.network.await
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -49,43 +50,75 @@ class BrowserDriveAuthClient @Inject constructor(
 		val base = configuredBaseUrl()
 			?: throw BrowserAuthException("Browser sign-in is not configured for this build")
 		val launch = session.begin(origin)
-		val url = base.newBuilder()
-			.addPathSegments("v1/google/start")
-			.addQueryParameter("transaction_id", launch.transactionId)
-			.addQueryParameter("code_challenge", launch.codeChallenge)
-			.build()
-		return Uri.parse(url.toString())
+		return Uri.parse(
+			base.newBuilder()
+				.addPathSegments("v1/google/start")
+				.addQueryParameter("transaction_id", launch.transactionId)
+				.addQueryParameter("code_challenge", launch.codeChallenge)
+				.build()
+				.toString(),
+		)
 	}
 
 	internal fun cancelPending() = session.cancelPending()
 
 	/**
-	 * Validates the app callback, consumes the local transaction once, then exchanges the one-time
-	 * app code over HTTPS. The Google access token is never accepted from the callback URI itself.
+	 * Waits for the HTTPS broker callback to finish. The app proves possession of its process-local
+	 * verifier before the broker reveals the short-lived one-time app code. This fallback avoids
+	 * putting either the Google token or app code in a browser/deep-link URL when no verified App Link
+	 * domain is configured yet.
 	 */
-	internal suspend fun completeCallback(uri: Uri?): BrowserAuthCompletion = withContext(Dispatchers.IO) {
+	internal suspend fun awaitCompletion(): BrowserAuthCompletion = withContext(Dispatchers.IO) {
 		val base = configuredBaseUrl()
 			?: throw BrowserAuthException("Browser sign-in is not configured for this build")
-		if (uri == null || uri.scheme != CALLBACK_SCHEME || uri.host != CALLBACK_HOST) {
-			throw BrowserAuthException("Invalid browser sign-in callback")
+		while (true) {
+			val proof = session.pendingProof()
+			val payload = json.encodeToString(
+				PollRequest.serializer(),
+				PollRequest(proof.transactionId, proof.codeVerifier),
+			)
+			val request = Request.Builder()
+				.url(base.newBuilder().addPathSegments("v1/google/poll").build())
+				.post(payload.toRequestBody(JSON_MEDIA_TYPE))
+				.header("Accept", "application/json")
+				.build()
+			val oneTimeCode = httpClient.newCall(request).await().use { response ->
+				if (response.code == 202) return@use null
+				if (!response.isSuccessful) {
+					throw BrowserAuthException(
+						if (response.code in setOf(400, 401, 403, 404, 409, 410)) {
+							"Browser sign-in session is no longer valid"
+						} else {
+							"Browser sign-in service is temporarily unavailable"
+						},
+					)
+				}
+				val body = response.body.string()
+				val poll = runCatching { json.decodeFromString(PollResponse.serializer(), body) }
+					.getOrElse { throw BrowserAuthException("Browser sign-in returned an invalid response", it) }
+				poll.error?.takeIf { it.isNotBlank() }?.let {
+					session.cancelPending()
+					throw BrowserAuthException(it.toUserMessage())
+				}
+				poll.code?.takeIf { it.isNotBlank() }
+					?: throw BrowserAuthException("Browser sign-in response is missing its one-time code")
+			}
+			if (oneTimeCode == null) {
+				delay(POLL_INTERVAL_MS)
+				continue
+			}
+			val exchangeProof = session.consumeOneTimeCode(proof.transactionId, oneTimeCode)
+			return@withContext exchange(base, exchangeProof)
 		}
-		val transactionId = uri.getQueryParameter("transaction_id")
-			?: throw BrowserAuthException("Browser sign-in callback is missing its transaction")
-		val providerError = uri.getQueryParameter("error")
-		if (!providerError.isNullOrBlank()) {
-			session.cancelPending()
-			throw BrowserAuthException(providerError.toUserMessage())
-		}
-		val oneTimeCode = uri.getQueryParameter("code")
-			?: throw BrowserAuthException("Browser sign-in callback is missing its one-time code")
-		val proof = session.consumeCallback(transactionId, oneTimeCode)
+	}
+
+	private suspend fun exchange(
+		base: okhttp3.HttpUrl,
+		proof: BrowserAuthCallbackProof,
+	): BrowserAuthCompletion {
 		val payload = json.encodeToString(
 			ExchangeRequest.serializer(),
-			ExchangeRequest(
-				code = proof.code,
-				transactionId = proof.transactionId,
-				codeVerifier = proof.codeVerifier,
-			),
+			ExchangeRequest(proof.code, proof.transactionId, proof.codeVerifier),
 		)
 		val request = Request.Builder()
 			.url(base.newBuilder().addPathSegments("v1/google/exchange").build())
@@ -95,9 +128,10 @@ class BrowserDriveAuthClient @Inject constructor(
 		val response = httpClient.newCall(request).await().use { httpResponse ->
 			if (!httpResponse.isSuccessful) {
 				throw BrowserAuthException(
-					when (httpResponse.code) {
-						400, 401, 403, 404, 409, 410 -> "Browser sign-in session is no longer valid"
-						else -> "Browser sign-in service is temporarily unavailable"
+					if (httpResponse.code in setOf(400, 401, 403, 404, 409, 410)) {
+						"Browser sign-in session is no longer valid"
+					} else {
+						"Browser sign-in service is temporarily unavailable"
 					},
 				)
 			}
@@ -108,10 +142,9 @@ class BrowserDriveAuthClient @Inject constructor(
 		}
 		val token = response.accessToken.takeIf { it.isNotBlank() }
 			?: throw BrowserAuthException("Browser sign-in response did not contain an access token")
-		val expiresIn = response.expiresIn
-		if (expiresIn <= 0L) throw BrowserAuthException("Browser sign-in returned an invalid expiry")
+		if (response.expiresIn <= 0L) throw BrowserAuthException("Browser sign-in returned an invalid expiry")
 		val now = System.currentTimeMillis()
-		val expiresAt = runCatching { Math.addExact(now, Math.multiplyExact(expiresIn, 1000L)) }
+		val expiresAt = runCatching { Math.addExact(now, Math.multiplyExact(response.expiresIn, 1000L)) }
 			.getOrElse { throw BrowserAuthException("Browser sign-in returned an invalid expiry", it) }
 		val account = response.account?.let {
 			DriveAccountInfo(
@@ -121,13 +154,13 @@ class BrowserDriveAuthClient @Inject constructor(
 			)
 		}
 		session.install(token, expiresAt, account, now)
-		// Non-secret display metadata may remain for UX/bookkeeping, but is never used as proof of auth.
+		// Non-secret display metadata may remain for UX/bookkeeping, but is never proof of auth.
 		syncSettings.accountEmail = account?.email ?: "Google Drive"
 		syncSettings.accountName = account?.displayName
 		syncSettings.accountPhotoUrl = account?.photoUrl
 		syncSettings.authMode = DriveAuthMode.BROWSER_TEMPORARY
 		syncSettings.isAuthorizationRequired = false
-		BrowserAuthCompletion(proof.origin, account, expiresAt)
+		return BrowserAuthCompletion(proof.origin, account, expiresAt)
 	}
 
 	private fun configuredBaseUrl() = BrowserDriveAuthConfig.BASE_URL
@@ -140,8 +173,21 @@ class BrowserDriveAuthClient @Inject constructor(
 	private fun String.toUserMessage(): String = when (this) {
 		"access_denied" -> "Google sign-in was cancelled or access was denied"
 		"temporarily_unavailable" -> "Google sign-in is temporarily unavailable"
+		"expired" -> "Browser sign-in session expired"
 		else -> "Google sign-in could not be completed"
 	}
+
+	@Serializable
+	private data class PollRequest(
+		@SerialName("transaction_id") val transactionId: String,
+		@SerialName("code_verifier") val codeVerifier: String,
+	)
+
+	@Serializable
+	private data class PollResponse(
+		@SerialName("code") val code: String? = null,
+		@SerialName("error") val error: String? = null,
+	)
 
 	@Serializable
 	private data class ExchangeRequest(
@@ -165,10 +211,8 @@ class BrowserDriveAuthClient @Inject constructor(
 	)
 
 	companion object {
-		const val CALLBACK_SCHEME = "miyorare"
-		const val CALLBACK_HOST = "google-drive-auth"
-		const val CALLBACK_URI = "$CALLBACK_SCHEME://$CALLBACK_HOST"
 		const val MIN_SYNC_START_REMAINING_MS = 2L * 60L * 1000L
+		private const val POLL_INTERVAL_MS = 1_500L
 		private val JSON_MEDIA_TYPE = "application/json; charset=UTF-8".toMediaType()
 	}
 }
