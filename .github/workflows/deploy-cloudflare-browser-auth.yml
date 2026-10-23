@@ -2,6 +2,12 @@ name: Deploy Cloudflare browser auth helper
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - Amain2
+    paths:
+      - 'browser-auth-helper/**'
+      - '.github/workflows/deploy-cloudflare-browser-auth.yml'
 
 permissions:
   contents: read
