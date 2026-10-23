@@ -252,7 +252,10 @@ private fun Context.buildMiyorareViewPalette(
 		customBackgroundPath = customBackgroundPath,
 		customBackgroundBlurPath = customBackgroundBlurPath,
 		customBackgroundRevision = customBackgroundRevision,
-		customAccentIdentity = if (preset == MiyorareThemePreset.CUSTOM) {
+		customAccentIdentity = if (
+			paletteSource == MiyorareModernPaletteSource.MATCH_THEME &&
+			preset == MiyorareThemePreset.CUSTOM
+		) {
 			customBackgroundIdentity ?: if (adaptivePalette == null) {
 				MiyorareAppearance.parseAccentArgb(customAccent)
 			} else {
