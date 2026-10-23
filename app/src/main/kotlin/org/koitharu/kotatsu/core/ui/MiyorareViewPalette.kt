@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.core.ui
 import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
+import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.toArgb
 import androidx.preference.PreferenceManager
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -24,6 +25,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 data class MiyorareViewPalette(
 	val resources: Resources,
 	val preset: MiyorareThemePreset,
+	val semanticScheme: ColorScheme,
 	val background: Int,
 	val surface: Int,
 	val surfaceContainer: Int,
@@ -217,6 +219,7 @@ private fun Context.buildMiyorareViewPalette(
 	return MiyorareViewPalette(
 		resources = resources,
 		preset = preset,
+		semanticScheme = scheme,
 		background = scheme.background.toArgb(),
 		surface = scheme.surface.toArgb(),
 		surfaceContainer = scheme.surfaceContainer.toArgb(),
