@@ -47,7 +47,7 @@ class BrowserDriveAuthSessionTest {
 		session.clear()
 		assertFalse(session.snapshot(now = 2_000L).isUsable)
 		assertThrows(BrowserAuthException::class.java) {
-			session.consumeCallback(launch.transactionId, "one-time", now = 2_000L)
+			session.consumeCallback(launch.transactionId, VALID_CODE, now = 2_000L)
 		}
 	}
 
@@ -58,22 +58,22 @@ class BrowserDriveAuthSessionTest {
 		val second = session.begin(now = 2_000L)
 		assertFalse(first.transactionId == second.transactionId)
 		assertThrows(BrowserAuthException::class.java) {
-			session.consumeCallback(first.transactionId, "stale-code", now = 2_000L)
+			session.consumeCallback(first.transactionId, STALE_CODE, now = 2_000L)
 		}
-		val proof = session.consumeCallback(second.transactionId, "fresh-code", now = 2_000L)
+		val proof = session.consumeCallback(second.transactionId, VALID_CODE, now = 2_000L)
 		assertEquals(second.transactionId, proof.transactionId)
-		assertEquals("fresh-code", proof.code)
+		assertEquals(VALID_CODE, proof.code)
 	}
 
 	@Test
 	fun callbackConsumesLocalTransactionExactlyOnce() {
 		val session = BrowserDriveAuthSession()
 		val launch = session.begin(now = 1_000L)
-		val proof = session.consumeCallback(launch.transactionId, "one-time", now = 2_000L)
-		assertEquals("one-time", proof.code)
+		val proof = session.consumeCallback(launch.transactionId, VALID_CODE, now = 2_000L)
+		assertEquals(VALID_CODE, proof.code)
 		assertTrue(proof.codeVerifier.isNotBlank())
 		assertThrows(BrowserAuthException::class.java) {
-			session.consumeCallback(launch.transactionId, "one-time", now = 2_000L)
+			session.consumeCallback(launch.transactionId, VALID_CODE, now = 2_000L)
 		}
 	}
 
@@ -83,10 +83,10 @@ class BrowserDriveAuthSessionTest {
 		val launch = session.begin(now = 1_000L)
 
 		assertThrows(BrowserAuthException::class.java) {
-			session.consumeErrorCallback("other-transaction", now = 2_000L)
+			session.consumeErrorCallback(OTHER_TRANSACTION, now = 2_000L)
 		}
 
-		val proof = session.consumeCallback(launch.transactionId, "valid-code", now = 2_000L)
+		val proof = session.consumeCallback(launch.transactionId, VALID_CODE, now = 2_000L)
 		assertEquals(launch.transactionId, proof.transactionId)
 	}
 
@@ -97,7 +97,26 @@ class BrowserDriveAuthSessionTest {
 		session.consumeErrorCallback(launch.transactionId, now = 2_000L)
 
 		assertThrows(BrowserAuthException::class.java) {
-			session.consumeCallback(launch.transactionId, "late-code", now = 2_000L)
+			session.consumeCallback(launch.transactionId, VALID_CODE, now = 2_000L)
 		}
+	}
+
+	@Test
+	fun malformedCallbackTokenIsRejectedWithoutConsumingPendingLogin() {
+		val session = BrowserDriveAuthSession()
+		val launch = session.begin(now = 1_000L)
+
+		assertThrows(BrowserAuthException::class.java) {
+			session.consumeCallback(launch.transactionId, "bad code with spaces", now = 2_000L)
+		}
+
+		val proof = session.consumeCallback(launch.transactionId, VALID_CODE, now = 2_000L)
+		assertEquals(VALID_CODE, proof.code)
+	}
+
+	private companion object {
+		val VALID_CODE = "c".repeat(43)
+		val STALE_CODE = "s".repeat(43)
+		val OTHER_TRANSACTION = "x".repeat(43)
 	}
 }
