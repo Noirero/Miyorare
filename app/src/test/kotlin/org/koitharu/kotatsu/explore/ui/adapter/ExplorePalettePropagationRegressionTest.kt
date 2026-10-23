@@ -13,9 +13,9 @@ class ExplorePalettePropagationRegressionTest {
 		val palette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareViewPalette.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(delegates.contains("binding.applyModernResolvedPalette()"))
-		assertTrue(delegates.contains("binding.applyModernResolvedPalette(isExternal)"))
-		assertTrue(delegates.contains("root.context.miyorareViewPaletteFromPreferences()?:return"))
+		assertTrue(delegates.contains("valmodernPalette=context.miyorareViewPaletteFromPreferences()"))
+		assertTrue(delegates.contains("binding.applyModernResolvedPalette(modernPalette)"))
+		assertTrue(delegates.contains("binding.applyModernResolvedPalette(modernPalette,isExternal)"))
 		assertTrue(delegates.contains("palette.surfaceContainerHigh"))
 		assertTrue(delegates.contains("palette.surfaceContainerLow"))
 		assertTrue(delegates.contains("palette.surfaceContainerHighest"))
