@@ -91,14 +91,6 @@
     <string name="reader_controls_in_bottom_bar_summary">Pilih tombol dan urutannya</string>
     <string name="reader_upscale">Peningkatan resolusi AI</string>
     <string name="reader_upscale_summary">Pertajam halaman beresolusi rendah di GPU menggunakan shader berbasis Anime4K. Android 13+</string>
-    <string name="rebuild_downloads_index">Bangun ulang indeks unduhan</string>
-    <string name="rebuild_downloads_index_completed">Indeks unduhan selesai dibangun ulang: %1$d folder diperbarui</string>
-    <string name="rebuild_downloads_index_started">Membangun ulang indeks unduhan…</string>
-    <string name="rebuild_downloads_index_summary">Pindai folder unduhan untuk memverifikasi unduhan lama dan membuat berkas indeks kompatibilitas.</string>
-    <string name="rebuild_keep_on">Tetap di %1$s</string>
-    <string name="rebuild_migrate_to">Migrasikan ke %1$s</string>
-    <string name="rebuild_source_mismatch_message">Manga lokal "%1$s" berasal dari %2$s, sedangkan Disukai berasal dari %3$s. Migrasikan ke %2$s atau tetap di %3$s?</string>
-    <string name="rebuild_source_mismatch_title">Sumber tidak cocok</string>
     <string name="require_unlock">Wajibkan buka kunci</string>
     <string name="require_unlock_after">Wajibkan buka kunci setelah</string>
     <string name="require_unlock_summary">Kunci aplikasi dengan autentikasi perangkat atau PIN khusus</string>

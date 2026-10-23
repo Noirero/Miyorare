@@ -38,11 +38,12 @@ abstract class ChaptersDao {
 
 	@Query(
 		"""
-		SELECT DISTINCT c.manga_id AS mangaId, c.source, c.branch
+		SELECT DISTINCT c.manga_id AS mangaId, c.source, c.branch,
+			CASE WHEN TRIM(c.scanlator) = '' THEN NULL ELSE TRIM(c.scanlator) END AS scanlator
 		FROM chapters c INNER JOIN manga m ON m.manga_id = c.manga_id
 		WHERE c.manga_id IN (:mangaIds) AND c.source = m.source
 			AND c.upload_date > 0 AND c.upload_date <= :nowMillis
-		ORDER BY c.manga_id, c.branch
+		ORDER BY c.manga_id, c.branch, scanlator
 		""",
 	)
 	abstract suspend fun findReleasePredictionBranches(

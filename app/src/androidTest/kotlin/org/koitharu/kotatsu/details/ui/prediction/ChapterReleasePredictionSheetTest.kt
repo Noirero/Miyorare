@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.details.domain.ChapterReleasePredictionItem
 import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
+import org.koitharu.kotatsu.details.domain.NextChapterReleaseState
 import java.io.File
 import java.io.IOException
 import java.time.LocalDate
@@ -107,6 +108,25 @@ class ChapterReleasePredictionSheetTest {
 		assertTrue(intent.getStringExtra(CalendarContract.Events.DESCRIPTION).orEmpty().contains("not an official"))
 	}
 
+	@Test fun overdueGraceKeepsOriginalDateShowsAnyDayNowAndCannotCreatePastCalendarEvent() {
+		val expected = date.minusDays(1)
+		val overdue = original.copy(
+			prediction = NextChapterReleasePrediction(expected, 0, NextChapterReleaseState.OVERDUE_GRACE),
+		)
+		compose.setContent { MaterialTheme {
+			ChapterReleasePredictionSheet(1, overdue, UpcomingPredictions(listOf(overdue), loading = false), loader) {}
+		} }
+		compose.onNodeWithText(context.getString(R.string.release_calendar_overdue)).assertIsDisplayed()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_today)).assertDoesNotExist()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_add)).assertDoesNotExist()
+		compose.onNodeWithTag("release-prediction-date").assertTextEquals(
+			expected.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.FULL)),
+		)
+		assertThrows(IllegalArgumentException::class.java) {
+			releasePredictionCalendarIntent(context, overdue)
+		}
+	}
+
 	@Test fun backgroundSurfacesOwnTextColorsAcrossTheLightDarkAndBlurMatrix() {
 		val prefs = context.getSharedPreferences(PREDICTION_PREFS, android.content.Context.MODE_PRIVATE)
 		val previous = prefs.all
@@ -148,7 +168,16 @@ class ChapterReleasePredictionSheetTest {
 				compose.onNodeWithText(context.getString(R.string.release_calendar_recent_history)).assertTextColor(scheme.onSurfaceVariant)
 				compose.onNodeWithText(context.getString(R.string.release_calendar_details)).performClick()
 				val dialogDate = date.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM))
-				compose.onNode(hasText(dialogDate) and hasAnyAncestor(isDialog())).assertTextColor(scheme.onPrimaryContainer)
+				val dialogExpected = context.resources.getQuantityString(
+					R.plurals.release_calendar_expected_days,
+					original.prediction.daysUntilNext.toInt(),
+					original.prediction.daysUntilNext,
+				)
+				compose.onNode(
+					hasTextExactly(dialogDate) and
+						hasAnySibling(hasTextExactly(dialogExpected)) and
+						hasAnyAncestor(isDialog()),
+				).assertTextColor(scheme.onPrimaryContainer)
 				compose.onNode(hasText(context.getString(R.string.close)) and hasAnyAncestor(isDialog())).performClick()
 				compose.onNodeWithTag("release-prediction-pager").performTouchInput { swipeLeft() }
 				compose.onNodeWithText(context.getString(R.string.release_calendar_upcoming)).assertTextColor(scheme.onSurface)

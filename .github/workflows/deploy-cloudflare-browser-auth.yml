@@ -1,0 +1,49 @@
+name: Deploy Cloudflare browser auth helper
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - Amain2
+    paths:
+      - 'browser-auth-helper/**'
+      - '.github/workflows/deploy-cloudflare-browser-auth.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy miyorare-drive-auth
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Install helper tooling
+        working-directory: browser-auth-helper
+        run: npm install --ignore-scripts
+
+      - name: Validate helper tests
+        working-directory: browser-auth-helper
+        run: npm test
+
+      - name: Validate Cloudflare bundle
+        working-directory: browser-auth-helper
+        run: npm run check:cloudflare
+
+      - name: Deploy Worker
+        working-directory: browser-auth-helper
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'CLOUDFLARE_API_TOKEN secret is missing'; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'CLOUDFLARE_ACCOUNT_ID secret is missing'; exit 1; }
+          npm run deploy:cloudflare

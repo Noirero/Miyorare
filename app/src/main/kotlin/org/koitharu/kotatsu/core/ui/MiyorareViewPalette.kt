@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
@@ -25,8 +26,10 @@ data class MiyorareViewPalette(
 	val preset: MiyorareThemePreset,
 	val background: Int,
 	val surface: Int,
+	val surfaceContainerLow: Int,
 	val surfaceContainer: Int,
 	val surfaceContainerHigh: Int,
+	val surfaceContainerHighest: Int,
 	val primary: Int,
 	val onPrimary: Int,
 	val primaryContainer: Int,
@@ -64,22 +67,27 @@ fun Context.miyorareViewPalette(
 	settings: AppSettings,
 	effectLevel: VisualEffectLevel,
 ): MiyorareViewPalette {
+	val prefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
 	val privateFavourites = isPrivateFavouritesHost()
 	val privateTheme = if (privateFavourites) privateFavouritesThemeFromPreferences() else PrivateFavouritesThemePreset.FOLLOW_NORMAL
 	val privateSpec = if (privateFavourites) PrivateFavouritesVisualResolver.resolve(privateTheme) else null
 	val preset = if (privateFavourites) privateTheme.resolve(settings.miyorareThemePreset) else settings.miyorareThemePreset
+	val normalPaletteSource = MiyorareModernPaletteSource.fromStoredValue(
+		prefs.getString(MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE, null),
+	)
+	val paletteSource = if (privateSpec != null) MiyorareModernPaletteSource.MATCH_THEME else normalPaletteSource
 	val customBackgroundActive = !privateFavourites &&
 		preset == MiyorareThemePreset.CUSTOM &&
 		MiyorareCustomBackgroundStore.hasBackground(this)
 	val adaptivePalette = if (customBackgroundActive) settings.miyorareAdaptivePalette else null
 	val customBackgroundIdentity = if (adaptivePalette != null) {
-		PreferenceManager.getDefaultSharedPreferences(applicationContext)
-			.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, null)
+		prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, null)
 			?.let(MiyorareAppearance::parseAccentArgb)
 	} else {
 		null
 	}
 	val palette = buildMiyorareViewPalette(
+		paletteSource = paletteSource,
 		preset = preset,
 		customAccent = settings.miyorareCustomAccent,
 		adaptivePalette = adaptivePalette,
@@ -112,9 +120,13 @@ fun Context.miyorareViewPaletteFromPreferences(
 	val normalPreset = prefs.getString(MiyorareAppearance.KEY_THEME_PRESET, null)
 		?.let { value -> MiyorareThemePreset.entries.firstOrNull { it.name == value } }
 		?: MiyorareThemePreset.MIYORARE
+	val normalPaletteSource = MiyorareModernPaletteSource.fromStoredValue(
+		prefs.getString(MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE, null),
+	)
 	val privateTheme = if (privateFavourites) privateFavouritesThemeFromPreferences() else PrivateFavouritesThemePreset.FOLLOW_NORMAL
 	val privateSpec = if (privateFavourites) PrivateFavouritesVisualResolver.resolve(privateTheme) else null
 	val preset = if (privateFavourites) privateTheme.resolve(normalPreset) else normalPreset
+	val paletteSource = if (privateSpec != null) MiyorareModernPaletteSource.MATCH_THEME else normalPaletteSource
 	val customAccent = prefs.getString(
 		MiyorareAppearance.KEY_CUSTOM_ACCENT,
 		MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
@@ -147,6 +159,7 @@ fun Context.miyorareViewPaletteFromPreferences(
 	} else null
 
 	val palette = buildMiyorareViewPalette(
+		paletteSource = paletteSource,
 		preset = preset,
 		customAccent = customAccent,
 		adaptivePalette = adaptivePalette,
@@ -178,6 +191,7 @@ private fun Context.isPrivateFavouritesHost(): Boolean {
 }
 
 private fun Context.buildMiyorareViewPalette(
+	paletteSource: MiyorareModernPaletteSource,
 	preset: MiyorareThemePreset,
 	customAccent: String,
 	adaptivePalette: MiyorareAdaptivePalette?,
@@ -191,13 +205,19 @@ private fun Context.buildMiyorareViewPalette(
 ): MiyorareViewPalette {
 	val darkTheme = forceDark || (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
-	val colors = miyorareThemeColors(
+	val classicDerivedScheme = resolveMiyorareClassicDerivedColorScheme(
+		paletteSource = paletteSource,
+		darkTheme = darkTheme,
+	)
+	val colors = resolveMiyorareThemeColors(
+		paletteSource = paletteSource,
 		preset = preset,
 		customAccent = customAccent,
 		adaptivePalette = adaptivePalette,
 		darkTheme = darkTheme,
 		amoled = amoled,
 		effectLevel = effectLevel,
+		classicDerivedColorScheme = classicDerivedScheme,
 	)
 	val scheme = colors.colorScheme
 	val palette = colors.visualPalette
@@ -206,8 +226,10 @@ private fun Context.buildMiyorareViewPalette(
 		preset = preset,
 		background = scheme.background.toArgb(),
 		surface = scheme.surface.toArgb(),
+		surfaceContainerLow = scheme.surfaceContainerLow.toArgb(),
 		surfaceContainer = scheme.surfaceContainer.toArgb(),
 		surfaceContainerHigh = scheme.surfaceContainerHigh.toArgb(),
+		surfaceContainerHighest = scheme.surfaceContainerHighest.toArgb(),
 		primary = scheme.primary.toArgb(),
 		onPrimary = scheme.onPrimary.toArgb(),
 		primaryContainer = scheme.primaryContainer.toArgb(),
@@ -234,7 +256,7 @@ private fun Context.buildMiyorareViewPalette(
 		customBackgroundPath = customBackgroundPath,
 		customBackgroundBlurPath = customBackgroundBlurPath,
 		customBackgroundRevision = customBackgroundRevision,
-		customAccentIdentity = if (preset == MiyorareThemePreset.CUSTOM) {
+		customAccentIdentity = if (shouldUseMiyorareCustomAccentIdentity(paletteSource, preset)) {
 			customBackgroundIdentity ?: if (adaptivePalette == null) {
 				MiyorareAppearance.parseAccentArgb(customAccent)
 			} else {
@@ -245,3 +267,8 @@ private fun Context.buildMiyorareViewPalette(
 		},
 	)
 }
+
+internal fun shouldUseMiyorareCustomAccentIdentity(
+	paletteSource: MiyorareModernPaletteSource,
+	preset: MiyorareThemePreset,
+): Boolean = paletteSource == MiyorareModernPaletteSource.MATCH_THEME && preset == MiyorareThemePreset.CUSTOM

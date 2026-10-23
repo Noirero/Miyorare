@@ -8,6 +8,7 @@ import okio.Closeable
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.prefs.DownloadFormat
+import org.koitharu.kotatsu.core.util.ext.toFileNameSafe
 import org.koitharu.kotatsu.core.util.ext.MimeType
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -114,6 +115,21 @@ sealed class LocalMangaOutput(
 			format: DownloadFormat,
 			prepareForDownload: Boolean,
 		): LocalMangaOutput? {
+			val candidates = legacySourceDirectories(root, manga)
+
+			for (candidate in candidates) {
+				getImpl(
+					candidate,
+					manga,
+					onlyIfExists = true,
+					format = format,
+					prepareForDownload = prepareForDownload,
+				)?.let { return it }
+			}
+			return null
+		}
+
+		private fun legacySourceDirectories(root: File, manga: Manga): Set<File> {
 			val isNovel = manga.source.isNovelSource
 			val downloadsRoot = File(root, DOWNLOADS_DIR_NAME)
 			val contentRoot = if (isNovel) File(downloadsRoot, NOVEL_DIR_NAME) else downloadsRoot
@@ -133,16 +149,22 @@ sealed class LocalMangaOutput(
 			candidates += legacyContentRoot
 			if (legacyContentRoot != root) candidates += root
 
-			for (candidate in candidates) {
-				getImpl(
-					candidate,
-					manga,
-					onlyIfExists = true,
-					format = format,
-					prepareForDownload = prepareForDownload,
-				)?.let { return it }
-			}
-			return null
+			return candidates
+		}
+
+		/** Candidate paths only, never identity proof. No output is opened, recovered, or modified. */
+		internal fun maintenanceCandidates(root: File, manga: Manga, directoryCache: MutableMap<String, List<File>> = HashMap()): List<File> {
+			val downloads = File(root, DOWNLOADS_DIR_NAME)
+			val current = getSourceDirectory(if (manga.source.isNovelSource) File(downloads, NOVEL_DIR_NAME) else downloads, manga)
+			val parents = linkedSetOf(current).apply { addAll(legacySourceDirectories(root, manga)) }
+			val bases = setOf(manga.title.toReadableFileName(), manga.title.toFileNameSafe())
+			return parents.flatMap { parent ->
+				directoryCache.getOrPut(parent.canonicalPath) { parent.listFiles().orEmpty().toList() }.filter { file ->
+					val stem = if (file.isDirectory) file.name else file.nameWithoutExtension
+					(bases.any { base -> stem == base || stem.removePrefix(base + "_").toIntOrNull()?.let { stem.startsWith(base + "_") && it > 0 } == true }) &&
+						(file.isDirectory || file.extension.lowercase(Locale.ROOT) in setOf("cbz", "zip", "epub", "pdf"))
+				}.orEmpty()
+			}.distinctBy { it.canonicalPath }
 		}
 
 		/**

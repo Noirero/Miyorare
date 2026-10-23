@@ -12,11 +12,12 @@ import org.koitharu.kotatsu.core.db.TABLE_CHAPTERS
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
 import org.koitharu.kotatsu.core.db.TABLE_MANGA
 import org.koitharu.kotatsu.core.db.TABLE_PRIVATE_FAVOURITES
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.details.data.ReleasePredictionDate
 import org.koitharu.kotatsu.details.data.releasePredictionDatesQuery
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.parsers.model.Manga
-import java.time.Instant
+import org.koitharu.kotatsu.parsers.model.MangaState
 import java.time.ZoneId
 import javax.inject.Inject
 
@@ -66,14 +67,57 @@ class FavouriteReleasePredictionsUseCase @Inject constructor(private val databas
 	private companion object { const val BATCH_SIZE = 100 }
 }
 
-internal val releasePredictionOrder = compareBy<ChapterReleasePredictionItem> { it.prediction.expectedDate }
-	.thenBy { it.manga.title }.thenBy { it.manga.id }
+private fun releasePredictionStateOrder(state: NextChapterReleaseState): Int = when (state) {
+	NextChapterReleaseState.OVERDUE_GRACE -> 0
+	NextChapterReleaseState.EXPECTED_TODAY -> 1
+	NextChapterReleaseState.UPCOMING -> 2
+}
 
-internal fun persistedReleasePredictionItem(manga: Manga, dates: List<ReleasePredictionDate>, nowMillis: Long, zone: ZoneId): ChapterReleasePredictionItem? =
-	dates.filter { it.mangaId == manga.id }.groupBy { it.branch }.mapNotNull { (branch, evidence) ->
-		val timestamps = evidence.map { it.uploadDate }
-		val prediction = predictSourceChapterRelease(manga, timestamps, nowMillis, zone) ?: return@mapNotNull null
-		val releases = timestamps.asSequence().filter { it > 0L && it <= nowMillis }
-			.map { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }.distinct().sorted().toList().takeLast(12)
-		ChapterReleasePredictionItem(manga, prediction, releases, branch)
-	}.minWithOrNull(compareBy<ChapterReleasePredictionItem> { it.prediction.expectedDate }.thenBy { it.branch })
+internal val releasePredictionOrder = compareBy<ChapterReleasePredictionItem> { releasePredictionStateOrder(it.prediction.state) }
+	.thenBy { it.prediction.expectedDate }
+	.thenBy { it.manga.title }
+	.thenBy { it.manga.id }
+
+private data class PersistedReleasePredictionCandidate(
+	val item: ChapterReleasePredictionItem,
+	val lineage: ReleasePredictionLineage,
+)
+
+private val persistedReleasePredictionPreference = Comparator<PersistedReleasePredictionCandidate> { left, right ->
+	val lineage = releasePredictionLineagePreference.compare(left.lineage, right.lineage)
+	if (lineage != 0) return@Comparator lineage
+	val branch = compareValues(left.item.branch.orEmpty(), right.item.branch.orEmpty())
+	if (branch != 0) return@Comparator branch
+	compareValues(left.item.scanlator.orEmpty(), right.item.scanlator.orEmpty())
+}
+
+internal fun persistedReleasePredictionItem(
+	manga: Manga,
+	dates: List<ReleasePredictionDate>,
+	nowMillis: Long,
+	zone: ZoneId,
+): ChapterReleasePredictionItem? {
+	if (manga.isLocal || (manga.state != null && manga.state != MangaState.ONGOING)) return null
+	return dates.asSequence()
+		.filter { it.mangaId == manga.id }
+		.groupBy { it.branch }
+		.mapNotNull { (branch, evidence) ->
+			val lineage = selectReleasePredictionLineage(
+				points = evidence.map { ReleasePredictionEvidencePoint(it.uploadDate, it.scanlator) },
+				nowMillis = nowMillis,
+				zone = zone,
+			) ?: return@mapNotNull null
+			PersistedReleasePredictionCandidate(
+				item = ChapterReleasePredictionItem(
+					manga = manga,
+					prediction = lineage.prediction,
+					releaseDates = lineage.releaseDates,
+					branch = branch,
+					scanlator = lineage.scanlator,
+				),
+				lineage = lineage,
+			)
+		}
+		.minWithOrNull(persistedReleasePredictionPreference)
+		?.item
+}

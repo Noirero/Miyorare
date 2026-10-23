@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
@@ -45,6 +46,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.miyorareReadableAccentContentColor
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
@@ -297,12 +299,19 @@ private fun MiyorareSourcePackStatusPill(
 	latestKnown: Boolean,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
+	val lightSurface = MaterialTheme.colorScheme.background.luminance() >= 0.5f
 	val containerColor = when {
 		!installed -> palette.primary.copy(alpha = 0.16f)
 		updateAvailable -> MaterialTheme.colorScheme.tertiaryContainer
 		else -> MaterialTheme.colorScheme.primaryContainer
 	}
 	val contentColor = when {
+		!installed && palette.isModern -> miyorareReadableAccentContentColor(
+			colorScheme = MaterialTheme.colorScheme,
+			preferredAccent = palette.primary,
+			lightSurface = lightSurface,
+			emphasized = true,
+		)
 		!installed -> palette.primary
 		updateAvailable -> MaterialTheme.colorScheme.onTertiaryContainer
 		else -> MaterialTheme.colorScheme.onPrimaryContainer

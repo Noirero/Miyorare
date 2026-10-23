@@ -26,14 +26,17 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.classicMiyorareVisualPalette
-import org.koitharu.kotatsu.core.ui.miyorareThemeColors
+import org.koitharu.kotatsu.core.ui.resolveMiyorareClassicDerivedColorScheme
+import org.koitharu.kotatsu.core.ui.resolveMiyorareThemeColors
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -174,6 +177,14 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		MiyorareAppearance.KEY_THEME_PRESET,
 		MiyorareThemePreset.MIYORARE.name,
 	)
+	val paletteSourceValue by rememberStringPref(
+		MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
+		MiyorareModernPaletteSource.MATCH_THEME.name,
+	)
+	val privateThemeValue by rememberStringPref(
+		MiyorareAppearance.KEY_PRIVATE_FAVOURITES_THEME,
+		PrivateFavouritesThemePreset.FOLLOW_NORMAL.name,
+	)
 	val customAccent by rememberStringPref(
 		MiyorareAppearance.KEY_CUSTOM_ACCENT,
 		MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
@@ -200,6 +211,9 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		?: MiyorareDesignStyle.CLASSIC
 	val themePreset = MiyorareThemePreset.entries.firstOrNull { it.name == themePresetValue }
 		?: MiyorareThemePreset.MIYORARE
+	val normalPaletteSource = MiyorareModernPaletteSource.fromStoredValue(paletteSourceValue)
+	val privateTheme = PrivateFavouritesThemePreset.entries.firstOrNull { it.name == privateThemeValue }
+		?: PrivateFavouritesThemePreset.FOLLOW_NORMAL
 	val effectLevel = VisualEffectLevel.entries.firstOrNull { it.name == effectLevelValue }
 		?: VisualEffectLevel.BALANCED
 	val customBackgroundIntensity = MiyorareCustomBackgroundIntensity.entries.firstOrNull {
@@ -212,6 +226,11 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	) == FavouriteSpace.PRIVATE.dbValue ||
 		hostActivity?.intent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
 		hostActivity?.intent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
+	val paletteSource = if (privateHost && privateTheme != PrivateFavouritesThemePreset.FOLLOW_NORMAL) {
+		MiyorareModernPaletteSource.MATCH_THEME
+	} else {
+		normalPaletteSource
+	}
 	val customBackgroundAvailable = remember(customBackgroundRevision, themePreset, privateHost) {
 		!privateHost &&
 			themePreset == MiyorareThemePreset.CUSTOM &&
@@ -237,14 +256,20 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	}
 
 	val modernColors = if (designStyle == MiyorareDesignStyle.MODERN) {
-		remember(themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel) {
-			miyorareThemeColors(
+		remember(ctx, paletteSource, themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel) {
+			val classicDerivedScheme = ctx.resolveMiyorareClassicDerivedColorScheme(
+				paletteSource = paletteSource,
+				darkTheme = isDark,
+			)
+			resolveMiyorareThemeColors(
+				paletteSource = paletteSource,
 				preset = themePreset,
 				customAccent = customAccent,
 				adaptivePalette = adaptivePalette,
 				darkTheme = isDark,
 				amoled = amoled,
 				effectLevel = effectLevel,
+				classicDerivedColorScheme = classicDerivedScheme,
 			)
 		}
 	} else null

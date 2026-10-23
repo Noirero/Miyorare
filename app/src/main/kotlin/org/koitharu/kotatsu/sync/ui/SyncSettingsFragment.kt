@@ -1,8 +1,10 @@
 package org.koitharu.kotatsu.sync.ui
 
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.text.format.DateUtils
 import android.view.LayoutInflater
@@ -42,11 +44,11 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
@@ -58,11 +60,11 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
+import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.CategoryPalette
 import org.koitharu.kotatsu.settings.compose.ConfirmDialog
-import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.MultiSelectSettingsItem
 import org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
@@ -100,6 +102,7 @@ class SyncSettingsFragment : BaseComposeSettingsFragment(R.string.google_drive_s
 					isSyncing = isSyncing,
 					imageLoader = coilImageLoader,
 					onSignIn = viewModel::signIn,
+					onBrowserSignIn = viewModel::signInBrowser,
 					onSignOut = viewModel::signOut,
 					onSyncNow = viewModel::syncNow,
 					onIntervalChange = viewModel::setInterval,
@@ -123,12 +126,28 @@ class SyncSettingsFragment : BaseComposeSettingsFragment(R.string.google_drive_s
 		viewModel.events.observeEvent(viewLifecycleOwner) { event ->
 			when (event) {
 				is SyncEvent.LaunchSignIn -> signInLauncher.launch(event.intent)
-
+				is SyncEvent.OpenBrowser -> openBrowser(event)
 				is SyncEvent.Message ->
 					Snackbar.make(requireView(), event.resId, Snackbar.LENGTH_SHORT).show()
-
 				is SyncEvent.Error -> showErrorDialog(event.message ?: getString(R.string.sync_error))
 			}
+		}
+	}
+
+	override fun onResume() {
+		super.onResume()
+		viewModel.refreshAuthState()
+	}
+
+	private fun openBrowser(event: SyncEvent.OpenBrowser) {
+		try {
+			startActivity(
+				Intent(Intent.ACTION_VIEW, event.uri).apply {
+					addCategory(Intent.CATEGORY_BROWSABLE)
+				},
+			)
+		} catch (e: ActivityNotFoundException) {
+			viewModel.onBrowserLaunchFailed(getString(R.string.sync_browser_unavailable))
 		}
 	}
 
@@ -152,6 +171,7 @@ private fun SyncScreen(
 	isSyncing: Boolean,
 	imageLoader: ImageLoader,
 	onSignIn: () -> Unit,
+	onBrowserSignIn: () -> Unit,
 	onSignOut: () -> Unit,
 	onSyncNow: () -> Unit,
 	onIntervalChange: (Int) -> Unit,
@@ -178,7 +198,6 @@ private fun SyncScreen(
 	val contentEntries = SyncContent.entries.map { stringResource(it.titleRes()) }
 
 	SettingsScaffold {
-		// Account group
 		item {
 			SettingsGroup {
 				if (state.isSignedIn) {
@@ -193,6 +212,32 @@ private fun SyncScreen(
 							onToggleHidden = onToggleEmailHidden,
 						)
 					}
+					if (state.isBrowserMode) {
+						item {
+							PlainInfoSettingsItem(
+								text = buildAnnotatedString {
+									append(stringResource(R.string.sync_browser_connected))
+									append("\n")
+									val expiry = state.browserExpiresAt
+									if (expiry != null) {
+										append(
+											stringResource(
+												R.string.sync_browser_expires_in,
+												DateUtils.getRelativeTimeSpanString(
+													expiry,
+													System.currentTimeMillis(),
+													DateUtils.MINUTE_IN_MILLIS,
+												).toString(),
+											),
+										)
+									} else {
+										append(stringResource(R.string.sync_browser_connected_summary))
+									}
+								},
+								icon = R.drawable.ic_info_outline,
+							)
+						}
+					}
 					item { pos ->
 						ActionSettingsItem(
 							title = stringResource(R.string.sync_sign_out),
@@ -202,38 +247,67 @@ private fun SyncScreen(
 						)
 					}
 				} else {
+					if (state.browserSessionExpired) {
+						item {
+							PlainInfoSettingsItem(
+								text = buildAnnotatedString { append(stringResource(R.string.sync_browser_session_expired)) },
+								icon = R.drawable.ic_info_outline,
+							)
+						}
+					}
 					item { pos ->
 						ActionSettingsItem(
 							title = stringResource(R.string.sync_sign_in),
-							subtitle = stringResource(R.string.sync_sign_in_summary),
-							icon = R.drawable.ic_cloud_sync,
+							subtitle = stringResource(R.string.sync_sign_in_gms_summary),
+							icon = R.drawable.ic_google_g,
 							iconColors = colors,
 							shape = pos.shape,
 							onClick = onSignIn,
+						)
+					}
+					item { pos ->
+						ActionSettingsItem(
+							title = stringResource(R.string.sync_sign_in_browser),
+							subtitle = stringResource(
+								if (state.isBrowserConfigured) R.string.sync_sign_in_browser_summary
+								else R.string.sync_browser_not_configured,
+							),
+							icon = R.drawable.ic_web,
+							iconColors = colors,
+							shape = pos.shape,
+							enabled = state.isBrowserConfigured,
+							onClick = onBrowserSignIn,
 						)
 					}
 				}
 			}
 		}
 
-		if (state.isSignedIn) {
+		if (!state.isSignedIn) {
 			item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 			item {
-				LocalBackupSafetyNote(onOpenLocalBackup)
+				PlainInfoSettingsItem(
+					text = buildAnnotatedString { append(stringResource(R.string.sync_browser_security_summary)) },
+					icon = R.drawable.ic_lock,
+				)
 			}
+		}
+
+		if (state.isSignedIn) {
 			item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
-			// Sync now + status
+			item { LocalBackupSafetyNote(onOpenLocalBackup) }
+			item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 			item {
 				SettingsGroup {
 					item { pos ->
 						val subtitle = when {
 							isSyncing -> stringResource(R.string.sync_syncing)
+							state.authorizationRequired -> stringResource(R.string.sync_sign_in_required)
 							state.lastError != null -> stringResource(R.string.sync_error)
 							state.lastSyncTimestamp > 0L -> stringResource(
 								R.string.sync_last,
 								DateUtils.getRelativeTimeSpanString(state.lastSyncTimestamp).toString(),
 							)
-
 							else -> stringResource(R.string.sync_never)
 						}
 						ActionSettingsItem(
@@ -249,38 +323,46 @@ private fun SyncScreen(
 			}
 
 			item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
-			// Options
 			item {
 				SettingsGroup(title = stringResource(R.string.options)) {
-					item { pos ->
-						ListSettingsItem(
-							title = stringResource(R.string.sync_frequency),
-							entries = freqEntries,
-							entryValues = freqValues,
-							selectedValue = state.intervalMinutes.toString(),
-							onValueChange = { onIntervalChange(it.toIntOrNull() ?: 0) },
-							icon = R.drawable.ic_timelapse,
-							shape = pos.shape,
-						)
-					}
-					item { pos ->
-						SwitchSettingsItem(
-							title = stringResource(R.string.sync_wifi_only),
-							checked = state.isWifiOnly,
-							onCheckedChange = onWifiOnlyChange,
-							icon = R.drawable.ic_network_cellular,
-							shape = pos.shape,
-						)
-					}
-					item { pos ->
-						SwitchSettingsItem(
-							title = stringResource(R.string.sync_on_start),
-							subtitle = stringResource(R.string.sync_on_start_summary),
-							checked = state.isSyncOnStart,
-							onCheckedChange = onSyncOnStartChange,
-							icon = R.drawable.ic_play,
-							shape = pos.shape,
-						)
+					if (state.backgroundSyncAvailable) {
+						item { pos ->
+							ListSettingsItem(
+								title = stringResource(R.string.sync_frequency),
+								entries = freqEntries,
+								entryValues = freqValues,
+								selectedValue = state.intervalMinutes.toString(),
+								onValueChange = { onIntervalChange(it.toIntOrNull() ?: 0) },
+								icon = R.drawable.ic_timelapse,
+								shape = pos.shape,
+							)
+						}
+						item { pos ->
+							SwitchSettingsItem(
+								title = stringResource(R.string.sync_wifi_only),
+								checked = state.isWifiOnly,
+								onCheckedChange = onWifiOnlyChange,
+								icon = R.drawable.ic_network_cellular,
+								shape = pos.shape,
+							)
+						}
+						item { pos ->
+							SwitchSettingsItem(
+								title = stringResource(R.string.sync_on_start),
+								subtitle = stringResource(R.string.sync_on_start_summary),
+								checked = state.isSyncOnStart,
+								onCheckedChange = onSyncOnStartChange,
+								icon = R.drawable.ic_play,
+								shape = pos.shape,
+							)
+						}
+					} else if (state.isBrowserMode) {
+						item {
+							PlainInfoSettingsItem(
+								text = buildAnnotatedString { append(stringResource(R.string.sync_browser_manual_only)) },
+								icon = R.drawable.ic_info_outline,
+							)
+						}
 					}
 					item { pos ->
 						SwitchSettingsItem(
@@ -307,7 +389,6 @@ private fun SyncScreen(
 			}
 
 			item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
-			// Danger zone
 			item {
 				SettingsGroup {
 					item { pos ->

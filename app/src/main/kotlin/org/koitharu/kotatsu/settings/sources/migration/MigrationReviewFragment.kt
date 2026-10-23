@@ -98,7 +98,9 @@ internal fun MigrationReviewScreen(
 	var selectedId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
 	var selectedFingerprint by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
 	val discovery = state.discovery
-	val ready = discovery != null && !discovery.incomplete && discovery.assessment?.state == MigrationMatchState.READY
+	val finalDecision = !state.loading
+	val ready = finalDecision && discovery != null && !discovery.incomplete &&
+		discovery.assessment?.state == MigrationMatchState.READY
 	val candidates = if (ready) listOfNotNull(discovery?.assessment?.best) else discovery?.assessment?.candidates.orEmpty()
 	val selected = candidates.firstOrNull { it.manga.id == selectedId && it.manga.source.name == selectedSource &&
 		org.koitharu.kotatsu.alternatives.domain.MigrationSelection.of(it.manga).fingerprint == selectedFingerprint }
@@ -117,22 +119,30 @@ internal fun MigrationReviewScreen(
 		if (state.loading) {
 			CircularProgressIndicator(Modifier.testTag("migration-loading"))
 			Text(stringResource(R.string.migration_checking))
-			return@Column
+			// Execution keeps the historical blocking screen. Only discovery is allowed to surface
+			// provisional evidence, and no migration action is exposed until final health checks finish.
+			if (!state.searching || candidates.isEmpty()) return@Column
 		}
-		if (state.changed) Text(stringResource(R.string.migration_changed))
-		if (state.failed) Text(stringResource(R.string.migration_blocked), color = MaterialTheme.colorScheme.error)
+		if (!state.loading) {
+			if (state.changed) Text(stringResource(R.string.migration_changed))
+			if (state.failed) Text(stringResource(R.string.migration_blocked), color = MaterialTheme.colorScheme.error)
+		}
 		when {
 			discovery == null -> Unit
-			discovery.sourceHealthy -> Text(stringResource(R.string.migration_source_healthy))
+			discovery.sourceHealthy -> if (!state.loading) {
+				Text(stringResource(R.string.migration_source_healthy))
+			}
 			else -> {
-				Text(stringResource(R.string.migration_source_problem))
-				val status = when {
-					discovery.incomplete -> R.string.migration_incomplete
-					discovery.assessment?.state == MigrationMatchState.READY -> R.string.migration_ready
-					discovery.assessment?.state == MigrationMatchState.NEEDS_REVIEW -> R.string.migration_review
-					else -> R.string.migration_no_replacement
+				if (!state.loading) {
+					Text(stringResource(R.string.migration_source_problem))
+					val status = when {
+						discovery.incomplete -> R.string.migration_incomplete
+						discovery.assessment?.state == MigrationMatchState.READY -> R.string.migration_ready
+						discovery.assessment?.state == MigrationMatchState.NEEDS_REVIEW -> R.string.migration_review
+						else -> R.string.migration_no_replacement
+					}
+					Text(stringResource(status), style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("migration-status"))
 				}
-				Text(stringResource(status), style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("migration-status"))
 				for (candidate in candidates) {
 					MigrationCandidateCard(
 						candidate = candidate,
@@ -146,7 +156,7 @@ internal fun MigrationReviewScreen(
 						onOpenDetails = { onOpenCandidate(candidate.manga) },
 					)
 				}
-				if (candidates.isNotEmpty()) {
+				if (!state.loading && candidates.isNotEmpty()) {
 					Text(stringResource(R.string.migration_preservation), style = MaterialTheme.typography.bodySmall)
 					val chosen = if (ready) discovery.assessment?.best else selected
 					Button(onClick = { chosen?.let { onMigrate(it.manga, !ready) } },
@@ -156,7 +166,9 @@ internal fun MigrationReviewScreen(
 				}
 			}
 		}
-		TextButton(onClick = onRetry, modifier = Modifier.testTag("migration-retry")) { Text(stringResource(R.string.migration_retry)) }
+		if (!state.loading) {
+			TextButton(onClick = onRetry, modifier = Modifier.testTag("migration-retry")) { Text(stringResource(R.string.migration_retry)) }
+		}
 	}
 }
 

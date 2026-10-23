@@ -1035,14 +1035,6 @@
     <string name="chapters_all">All</string>
     <string name="download_over_cellular">Downloading over cellular network</string>
     <string name="download_cellular_confirm">Allow downloads over cellular network?</string>
-    <string name="rebuild_downloads_index">Rebuild Downloads Index</string>
-    <string name="rebuild_downloads_index_summary">Scan download folders to verify previous downloads and build index files for compatibility.</string>
-    <string name="rebuild_downloads_index_started">Rebuilding downloads index…</string>
-    <string name="rebuild_downloads_index_completed">Downloads index rebuilt: %1$d folders updated</string>
-    <string name="rebuild_source_mismatch_title">Source Mismatch</string>
-    <string name="rebuild_source_mismatch_message">This local manga \"%1$s\" comes from %2$s, while your favorite comes from %3$s. Do you wish to migrate to %2$s or keep on %3$s?</string>
-    <string name="rebuild_migrate_to">Migrate to %1$s</string>
-    <string name="rebuild_keep_on">Keep on %1$s</string>
     <string name="dont_allow">Don\'t allow</string>
     <string name="allow_always">Allow always</string>
     <string name="allow_once">Allow once</string>

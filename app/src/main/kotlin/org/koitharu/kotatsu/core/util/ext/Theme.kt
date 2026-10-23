@@ -11,7 +11,6 @@ import androidx.annotation.AttrRes
 import androidx.annotation.ColorInt
 import androidx.annotation.FloatRange
 import androidx.annotation.Px
-import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.use
 import androidx.core.graphics.ColorUtils
@@ -22,16 +21,18 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
 import org.koitharu.kotatsu.core.ui.MiyorareThemeColors
-import org.koitharu.kotatsu.core.ui.miyorareThemeColors
+import org.koitharu.kotatsu.core.ui.miyorareColorForViewAttr
+import org.koitharu.kotatsu.core.ui.resolveMiyorareClassicDerivedColorScheme
+import org.koitharu.kotatsu.core.ui.resolveMiyorareThemeColors
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
-import androidx.appcompat.R as appcompatR
-import com.google.android.material.R as materialR
 
 val Resources.isNightMode: Boolean
 	get() = configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
@@ -46,9 +47,8 @@ fun Context.getThemeDrawable(
  * Resolve semantic Modern colors from the same preset engine used by Compose before falling back to
  * the Android theme. Classic never enters this path, so its existing theme resolution is untouched.
  *
- * The XML Modern overlay stays as a safe inflation fallback, while code-driven View surfaces now
- * react to Sakura/Violet/Cyan/Emerald/Amber/Custom instead of always reading the static Miyorare
- * violet/cyan resources.
+ * The XML Modern overlay stays as a safe inflation fallback, while code-driven View surfaces react
+ * to the same semantic Material roles and palette-source boundary as Compose.
  */
 @ColorInt
 fun Context.getThemeColor(
@@ -107,6 +107,7 @@ fun TypedArray.getDrawableCompat(context: Context, index: Int): Drawable? {
 }
 
 private data class ModernThemePaletteKey(
+	val paletteSource: MiyorareModernPaletteSource,
 	val preset: MiyorareThemePreset,
 	val customAccent: String,
 	val adaptivePalette: MiyorareAdaptivePalette?,
@@ -123,30 +124,7 @@ private object ModernThemePaletteCache {
 
 private fun Context.getMiyorareModernThemeColor(@AttrRes resId: Int): Int? {
 	val colors = getMiyorareModernThemeColors() ?: return null
-	val scheme = colors.colorScheme
-	return when (resId) {
-		android.R.attr.colorBackground -> scheme.background.toArgb()
-		appcompatR.attr.colorPrimary -> scheme.primary.toArgb()
-		appcompatR.attr.colorAccent -> scheme.primary.toArgb()
-		materialR.attr.colorOnPrimary -> scheme.onPrimary.toArgb()
-		materialR.attr.colorPrimaryContainer -> scheme.primaryContainer.toArgb()
-		materialR.attr.colorOnPrimaryContainer -> scheme.onPrimaryContainer.toArgb()
-		materialR.attr.colorSecondary -> scheme.secondary.toArgb()
-		materialR.attr.colorOnSecondary -> scheme.onSecondary.toArgb()
-		materialR.attr.colorSecondaryContainer -> scheme.secondaryContainer.toArgb()
-		materialR.attr.colorOnSecondaryContainer -> scheme.onSecondaryContainer.toArgb()
-		materialR.attr.colorTertiary -> scheme.tertiary.toArgb()
-		materialR.attr.colorOnTertiary -> scheme.onTertiary.toArgb()
-		materialR.attr.colorSurface -> scheme.surface.toArgb()
-		materialR.attr.colorOnSurface -> scheme.onSurface.toArgb()
-		materialR.attr.colorSurfaceVariant -> scheme.surfaceVariant.toArgb()
-		materialR.attr.colorOnSurfaceVariant -> scheme.onSurfaceVariant.toArgb()
-		materialR.attr.colorSurfaceContainer -> scheme.surfaceContainer.toArgb()
-		materialR.attr.colorSurfaceContainerHigh -> scheme.surfaceContainerHigh.toArgb()
-		materialR.attr.colorOutline -> scheme.outline.toArgb()
-		materialR.attr.colorOutlineVariant -> scheme.outlineVariant.toArgb()
-		else -> null
-	}
+	return colors.colorScheme.miyorareColorForViewAttr(resId)
 }
 
 private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
@@ -157,6 +135,9 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 	)
 	if (designStyle != MiyorareDesignStyle.MODERN.name) return null
 
+	val normalPaletteSource = MiyorareModernPaletteSource.fromStoredValue(
+		prefs.getString(MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE, null),
+	)
 	val preset = MiyorareThemePreset.entries.firstOrNull {
 		it.name == prefs.getString(MiyorareAppearance.KEY_THEME_PRESET, null)
 	} ?: MiyorareThemePreset.MIYORARE
@@ -174,6 +155,18 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 	) == FavouriteSpace.PRIVATE.dbValue ||
 		hostIntent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
 		hostIntent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
+	val privateTheme = if (privateHost) {
+		prefs.getString(MiyorareAppearance.KEY_PRIVATE_FAVOURITES_THEME, null)
+			?.let { value -> PrivateFavouritesThemePreset.entries.firstOrNull { it.name == value } }
+			?: PrivateFavouritesThemePreset.FOLLOW_NORMAL
+	} else {
+		PrivateFavouritesThemePreset.FOLLOW_NORMAL
+	}
+	val paletteSource = if (privateTheme == PrivateFavouritesThemePreset.FOLLOW_NORMAL) {
+		normalPaletteSource
+	} else {
+		MiyorareModernPaletteSource.MATCH_THEME
+	}
 	val customBackgroundActive = !privateHost &&
 		preset == MiyorareThemePreset.CUSTOM &&
 		MiyorareCustomBackgroundStore.hasBackground(this)
@@ -197,6 +190,7 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 		0
 	}
 	val key = ModernThemePaletteKey(
+		paletteSource = paletteSource,
 		preset = preset,
 		customAccent = customAccent,
 		adaptivePalette = adaptivePalette,
@@ -210,13 +204,19 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 		if (ModernThemePaletteCache.key == key) {
 			return ModernThemePaletteCache.colors
 		}
-		val colors = miyorareThemeColors(
+		val classicDerivedScheme = resolveMiyorareClassicDerivedColorScheme(
+			paletteSource = key.paletteSource,
+			darkTheme = key.darkTheme,
+		)
+		val colors = resolveMiyorareThemeColors(
+			paletteSource = key.paletteSource,
 			preset = key.preset,
 			customAccent = key.customAccent,
 			adaptivePalette = key.adaptivePalette,
 			darkTheme = key.darkTheme,
 			amoled = key.amoled,
 			effectLevel = key.effectLevel,
+			classicDerivedColorScheme = classicDerivedScheme,
 		)
 		ModernThemePaletteCache.key = key
 		ModernThemePaletteCache.colors = colors

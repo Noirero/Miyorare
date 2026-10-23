@@ -21,8 +21,19 @@ class FavouriteReleasePredictionEvidenceTest {
 		contentRating = null, url = "/manga", publicUrl = "https://example.invalid/manga", coverUrl = null,
 		largeCoverUrl = null, authors = emptySet(), description = null, source = MangaSource("MIHON_1"), tags = emptySet(), chapters = null,
 	)
-	private fun evidence(branch: String? = "English", latestDate: LocalDate = latest, count: Int = 4) = (0 until count).map {
-		ReleasePredictionDate(1L, branch, latestDate.minusDays(it * 7L).atStartOfDay(zone).toInstant().toEpochMilli())
+	private fun evidence(
+		branch: String? = "English",
+		latestDate: LocalDate = latest,
+		count: Int = 4,
+		scanlator: String? = null,
+		cadence: Long = 7L,
+	) = (0 until count).map {
+		ReleasePredictionDate(
+			1L,
+			branch,
+			latestDate.minusDays(it * cadence).atStartOfDay(zone).toInstant().toEpochMilli(),
+			scanlator,
+		)
 	}
 
 	@Test fun `valid persisted history produces the existing estimate and exact history`() {
@@ -31,7 +42,9 @@ class FavouriteReleasePredictionEvidenceTest {
 		assertEquals(NextChapterReleaseEstimator.predict(dates.map { it.uploadDate }, now, zone), item.prediction)
 		assertEquals(latest.plusDays(7), item.prediction.expectedDate)
 		assertEquals(3L, item.prediction.daysUntilNext)
+		assertEquals(NextChapterReleaseState.UPCOMING, item.prediction.state)
 		assertEquals("English", item.branch)
+		assertNull(item.scanlator)
 		assertEquals((0L..3L).map { latest.minusDays((3L - it) * 7L) }, item.releaseDates)
 	}
 
@@ -47,20 +60,67 @@ class FavouriteReleasePredictionEvidenceTest {
 		}
 	}
 
-	@Test fun `branches and manga ids cannot fill each others missing evidence`() {
-		// The union would be a valid weekly cadence; neither two-event branch is sufficient.
+	@Test fun `branches manga ids and named scanlators cannot fill each others missing evidence`() {
+		// Each group is insufficient even though combining them would manufacture a valid cadence.
 		assertNull(persistedReleasePredictionItem(manga, evidence("English", count = 2) + evidence("Spanish", latest.minusDays(14), 2), now, zone))
 		assertNull(persistedReleasePredictionItem(manga, evidence().map { it.copy(mangaId = 2) }, now, zone))
+		val groupA = evidence(count = 3, scanlator = "Group A")
+		val groupB = evidence(latestDate = latest.minusDays(21), count = 3, scanlator = "Group B")
+		assertNull(persistedReleasePredictionItem(manga, groupA + groupB, now, zone))
 	}
 
-	@Test fun `chosen nearest valid branch exclusively owns release markers`() {
+	@Test fun `single named scanlator and missing rows keep branch fallback`() {
+		val dates = evidence().mapIndexed { index, item ->
+			item.copy(scanlator = if (index < 2) "  Group A  " else if (index == 2) "   " else null)
+		}
+		val item = checkNotNull(persistedReleasePredictionItem(manga, dates, now, zone))
+		assertNull(item.scanlator)
+		assertEquals(latest.plusDays(7), item.prediction.expectedDate)
+	}
+
+	@Test fun `bulk reupload scanlator does not corrupt regular Favorite lineage`() {
+		val regular = evidence(scanlator = "Group A")
+		val burstTime = latest.atStartOfDay(zone).toInstant().toEpochMilli()
+		val burst = (0 until 20).map { index -> ReleasePredictionDate(1L, "English", burstTime + index * 1000L, "Group B") }
+		val item = checkNotNull(persistedReleasePredictionItem(manga, regular + burst, now, zone))
+		assertEquals("Group A", item.scanlator)
+		assertEquals(latest.plusDays(7), item.prediction.expectedDate)
+	}
+
+	@Test fun `Favorite lineage prefers recency before predicted date`() {
 		val english = evidence("English")
 		val spanish = evidence("Spanish", latest.minusDays(1))
 		val item = checkNotNull(persistedReleasePredictionItem(manga, english + spanish, now, zone))
-		assertEquals("Spanish", item.branch)
-		assertEquals(latest.plusDays(6), item.prediction.expectedDate)
-		assertEquals(spanish.map { java.time.Instant.ofEpochMilli(it.uploadDate).atZone(zone).toLocalDate() }.sorted(), item.releaseDates)
-		assertFalse(item.releaseDates.contains(latest))
+		assertEquals("English", item.branch)
+		assertEquals(latest.plusDays(7), item.prediction.expectedDate)
+		assertTrue(item.releaseDates.contains(latest))
+	}
+
+	@Test fun `Favorite lineage prefers stronger reliability when recency ties`() {
+		val regular = evidence("English", count = 5)
+		val noisyDates = listOf(
+			latest.minusDays(41), latest.minusDays(34), latest.minusDays(27), latest.minusDays(20), latest,
+		).map { ReleasePredictionDate(1L, "Spanish", it.atStartOfDay(zone).toInstant().toEpochMilli()) }
+		val item = checkNotNull(persistedReleasePredictionItem(manga, noisyDates + regular, now, zone))
+		assertEquals("English", item.branch)
+	}
+
+	@Test fun `Favorite lineage tie break is deterministic regardless of input order`() {
+		val english = evidence("English")
+		val spanish = evidence("Spanish")
+		val forward = checkNotNull(persistedReleasePredictionItem(manga, english + spanish, now, zone))
+		val reversed = checkNotNull(persistedReleasePredictionItem(manga, (english + spanish).reversed(), now, zone))
+		assertEquals("English", forward.branch)
+		assertEquals(forward.branch, reversed.branch)
+		assertEquals(forward.prediction, reversed.prediction)
+	}
+
+	@Test fun `persisted Favorite prediction keeps original expected date during overdue grace`() {
+		val lateNow = latest.plusDays(8).atStartOfDay(zone).toInstant().toEpochMilli()
+		val item = checkNotNull(persistedReleasePredictionItem(manga, evidence(), lateNow, zone))
+		assertEquals(latest.plusDays(7), item.prediction.expectedDate)
+		assertEquals(0L, item.prediction.daysUntilNext)
+		assertEquals(NextChapterReleaseState.OVERDUE_GRACE, item.prediction.state)
 	}
 
 	@Test fun `original Details marker context uses source branch rather than merged display chapters`() {
@@ -78,10 +138,24 @@ class FavouriteReleasePredictionEvidenceTest {
 		assertEquals(predictSourceChapterRelease(details, "English", now, zone), original.prediction)
 	}
 
-	@Test fun `upcoming ordering uses expected dates with deterministic ties instead of countdowns`() {
-		val original = checkNotNull(persistedReleasePredictionItem(manga, evidence(), now, zone))
-		val sooner = original.copy(manga = manga.copy(id = 2, title = "Z"), prediction = NextChapterReleasePrediction(latest.plusDays(6), 99))
-		val tie = original.copy(manga = manga.copy(id = 3, title = "Original"))
-		assertEquals(listOf(2L, 1L, 3L), listOf(tie, original, sooner).sortedWith(releasePredictionOrder).map { it.manga.id })
+	@Test fun `prediction ordering is explicit across overdue today upcoming and deterministic ties`() {
+		val base = checkNotNull(persistedReleasePredictionItem(manga, evidence(), now, zone))
+		val overdue = base.copy(
+			manga = manga.copy(id = 4, title = "Overdue"),
+			prediction = NextChapterReleasePrediction(latest.plusDays(2), 0, NextChapterReleaseState.OVERDUE_GRACE),
+		)
+		val today = base.copy(
+			manga = manga.copy(id = 5, title = "Today"),
+			prediction = NextChapterReleasePrediction(latest.plusDays(4), 0, NextChapterReleaseState.EXPECTED_TODAY),
+		)
+		val sooner = base.copy(
+			manga = manga.copy(id = 2, title = "Z"),
+			prediction = NextChapterReleasePrediction(latest.plusDays(6), 99, NextChapterReleaseState.UPCOMING),
+		)
+		val tie = base.copy(manga = manga.copy(id = 3, title = "Original"))
+		assertEquals(
+			listOf(4L, 5L, 2L, 1L, 3L),
+			listOf(tie, today, base, sooner, overdue).sortedWith(releasePredictionOrder).map { it.manga.id },
+		)
 	}
 }

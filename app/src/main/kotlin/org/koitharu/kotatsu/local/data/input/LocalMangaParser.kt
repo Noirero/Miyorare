@@ -57,9 +57,12 @@ import java.util.zip.ZipFile
  * :
  * L--- Page x.png
  */
-class LocalMangaParser(private val uri: Uri) {
+class LocalMangaParser(
+	private val uri: Uri,
+	private val ignoreDirectoryIndex: Boolean = false,
+) {
 
-	constructor(file: File) : this(file.toUri())
+	constructor(file: File, ignoreDirectoryIndex: Boolean = false) : this(file.toUri(), ignoreDirectoryIndex)
 
 	private val rootFile: File = File(uri.schemeSpecificPart)
 
@@ -84,7 +87,7 @@ class LocalMangaParser(private val uri: Uri) {
 			return@runInterruptible getEpubManga(epubFiles, withDetails)
 		}
 		(uri.resolveFsAndPath()).use { (fileSystem, rootPath) ->
-			val index = MangaIndex.read(fileSystem, rootPath / ENTRY_NAME_INDEX)
+			val index = if (ignoreDirectoryIndex && rootFile.isDirectory) null else MangaIndex.read(fileSystem, rootPath / ENTRY_NAME_INDEX)
 			val mangaInfo = index?.getMangaInfo()
 			if (mangaInfo != null) {
 				val coverEntry: Path? = index.getCoverEntry()?.let { rootPath / it }?.takeIf {
@@ -136,7 +139,8 @@ class LocalMangaParser(private val uri: Uri) {
 							.mapNotNullTo(HashSet()) { path ->
 								when {
 									!fileSystem.isRegularFile(path) -> null
-									path.isImage() -> path.parent
+									path.isImage() -> if (ignoreDirectoryIndex && path.parent == rootPath &&
+										path.name.lowercase() in setOf("cover.jpg", "cover.jpeg", "cover.png", "cover.webp", "cover.gif")) null else path.parent
 									hasZipExtension(path.name) || hasPdfExtension(path.name) -> path
 									else -> null
 								}

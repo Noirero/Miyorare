@@ -1,5 +1,10 @@
 package org.koitharu.kotatsu.alternatives.domain
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
@@ -43,9 +48,22 @@ class AutoFixUseCase @Inject constructor(
 		return seed to replacement
 	}
 
-	/** Discovery is a preview, never permission to mutate user data. */
-	suspend fun discover(mangaId: Long): MigrationDiscovery {
-		val seed = loadSeed(mangaId)
+	/**
+	 * Discovery is a preview, never permission to mutate user data.
+	 *
+	 * [onProgress] receives provisional, search-derived evidence while discovery is still running.
+	 * Callers must keep execution disabled until this suspend function returns its final, health-checked
+	 * result. This lets review UI surface credible candidates early without weakening migration safety.
+	 */
+	suspend fun discover(
+		mangaId: Long,
+		onProgress: (MigrationDiscovery) -> Unit = {},
+	): MigrationDiscovery {
+		// Show the locally persisted identity before any broken-source network call can stall the screen.
+		val storedSeed = loadStoredSeed(mangaId)
+		onProgress(MigrationDiscovery(storedSeed))
+		val seed = storedSeed.getDetailsSafe()
+		if (seed != storedSeed) onProgress(MigrationDiscovery(seed))
 		if (seed.isHealthy()) {
 			return MigrationDiscovery(seed, sourceHealthy = true)
 		}
@@ -54,7 +72,23 @@ class AutoFixUseCase @Inject constructor(
 		// are manual Alternatives preferences, not identity constraints for an automatic repair.
 		val sources = alternativesUseCase.getSources(seed, SearchSourceMode.ALL_SOURCES, emptySet())
 		val observations = ArrayList<MigrationCandidateObservation>()
+		var lastPreviewSignature: List<Triple<String, Long, Int>> = emptyList()
+		var previewDirty = false
 		var discoveryError: Throwable? = null
+
+		fun publishPreview() {
+			if (!previewDirty) return
+			previewDirty = false
+			val assessment = candidateMatcher.assess(seed, observations)
+			if (assessment.candidates.isEmpty()) return
+			val signature = assessment.candidates.map { candidate ->
+				Triple(candidate.manga.source.name, candidate.manga.id, candidate.evidence.score)
+			}
+			if (signature == lastPreviewSignature) return
+			lastPreviewSignature = signature
+			onProgress(MigrationDiscovery(seed, assessment))
+		}
+
 		for (query in buildSearchQueries(seed)) {
 			alternativesUseCase(
 				manga = seed,
@@ -67,20 +101,34 @@ class AutoFixUseCase @Inject constructor(
 				when (event) {
 					is AlternativeSearchEvent.Result -> {
 						observations += MigrationCandidateObservation(event.manga, setOf(query))
+						previewDirty = true
 					}
 					is AlternativeSearchEvent.SourceFinished -> {
 						if (event.error != null && discoveryError == null) discoveryError = event.error
+						// Results from one source are emitted before its SourceFinished event. Coalesce that
+						// burst into one matcher/UI update instead of rescoring after every individual row.
+						publishPreview()
 					}
 				}
 			}
 		}
 
-		// Rank identity evidence before doing the more expensive page-serving health checks. The cap is
-		// deterministic and large enough to keep multiple plausible sources available for ambiguity
-		// detection without reverting to the old timing-dependent "first few arrivals" behaviour.
-		val healthy = ArrayList<MigrationCandidateObservation>()
-		for (candidate in candidateMatcher.rank(seed, observations).take(MAX_HEALTH_CHECKS)) {
-			val probe = candidate.manga.probeHealth()
+		// Rank identity evidence before the page-serving health checks. Probe several candidates in
+		// bounded parallel: the final order remains the deterministic matcher order, while one slow
+		// provider no longer serially blocks every other health check.
+		val ranked = candidateMatcher.rank(seed, observations).take(MAX_HEALTH_CHECKS)
+		val healthSemaphore = Semaphore(MAX_PARALLEL_HEALTH_CHECKS)
+		val probes = coroutineScope {
+			ranked.map { candidate ->
+				async {
+					healthSemaphore.withPermit {
+						candidate to candidate.manga.probeHealth()
+					}
+				}
+			}.awaitAll()
+		}
+		val healthy = ArrayList<MigrationCandidateObservation>(probes.size)
+		for ((candidate, probe) in probes) {
 			if (probe.isFailure && discoveryError == null) discoveryError = probe.exceptionOrNull()
 			val details = probe.getOrNull() ?: continue
 			healthy += MigrationCandidateObservation(details, candidate.matchedQueries)
@@ -142,9 +190,11 @@ class AutoFixUseCase @Inject constructor(
 		)
 	}
 
-	private suspend fun loadSeed(mangaId: Long): Manga = checkNotNull(
+	private suspend fun loadStoredSeed(mangaId: Long): Manga = checkNotNull(
 		mangaDataRepository.findMangaById(mangaId, withChapters = true),
-	) { "Manga $mangaId not found" }.getDetailsSafe()
+	) { "Manga $mangaId not found" }
+
+	private suspend fun loadSeed(mangaId: Long): Manga = loadStoredSeed(mangaId).getDetailsSafe()
 
 	private suspend fun Manga.isHealthy(): Boolean = getHealthyDetailsOrNull() != null
 
@@ -212,6 +262,7 @@ class AutoFixUseCase @Inject constructor(
 		const val MAX_AUTO_FIX_QUERIES = 6
 		const val MAX_MIGRATION_DETAIL_CANDIDATES = 5
 		const val MAX_HEALTH_CHECKS = 12
+		const val MAX_PARALLEL_HEALTH_CHECKS = 4
 		const val MIN_ALIAS_QUERY_LENGTH = 3
 	}
 }

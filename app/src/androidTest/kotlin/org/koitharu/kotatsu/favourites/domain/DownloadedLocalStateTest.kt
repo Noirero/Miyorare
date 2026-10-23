@@ -311,6 +311,8 @@ class DownloadedLocalStateTest {
 				detailsCache, downloadedSort, groups, duplicates,
 			)
 			viewModels.put("favourites", vm)
+			// Mirror the visible Fragment: list production is suspended until its UI is active.
+			vm.setWorkActive(true)
 		}
 		return vm
 	}

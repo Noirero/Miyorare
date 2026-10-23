@@ -60,10 +60,35 @@ import org.koitharu.kotatsu.settings.discord.DiscordSettingsFragment
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class ServicesSettingsFragment : BaseComposeSettingsFragment(R.string.services) {
+class ServicesSettingsFragment : BaseComposeSettingsFragment(R.string.settings_insights_recommendations) {
 
-	@Inject
-	lateinit var settings: AppSettings
+	override fun onCreateView(
+		inflater: LayoutInflater,
+		container: ViewGroup?,
+		savedInstanceState: Bundle?,
+	): View = ComposeView(requireContext()).apply {
+		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+		setContent {
+			MiyorareTheme {
+				InsightsSettingsScreen(
+					onOpenSuggestions = {
+						(activity as? SettingsActivity)?.openFragment(
+							SuggestionsSettingsFragment::class.java,
+							null,
+							isFromRoot = false,
+						)
+					},
+					onOpenStatistics = router::openStatistic,
+				)
+			}
+		}
+	}
+}
+
+typealias InsightsSettingsFragment = ServicesSettingsFragment
+
+@AndroidEntryPoint
+class ConnectedServicesSettingsFragment : BaseComposeSettingsFragment(R.string.settings_connected_services) {
 
 	@Inject
 	lateinit var scrobblerAuthHelper: ScrobblerAuthHelper
@@ -79,16 +104,8 @@ class ServicesSettingsFragment : BaseComposeSettingsFragment(R.string.services) 
 		setContent {
 			MiyorareTheme {
 				val summaries by scrobblerSummary.asStateFlow().collectAsState()
-				ServicesScreen(
+				ConnectedServicesSettingsScreen(
 					scrobblerSummaries = summaries,
-					onOpenSuggestions = {
-						(activity as? SettingsActivity)?.openFragment(
-							SuggestionsSettingsFragment::class.java,
-							null,
-							isFromRoot = false,
-						)
-					},
-					onOpenStatistics = router::openStatistic,
 					onScrobblerClick = ::handleScrobblerClick,
 					onOpenDiscord = {
 						(activity as? SettingsActivity)?.openFragment(
@@ -100,10 +117,6 @@ class ServicesSettingsFragment : BaseComposeSettingsFragment(R.string.services) 
 				)
 			}
 		}
-	}
-
-	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-		super.onViewCreated(view, savedInstanceState)
 	}
 
 	override fun onResume() {
@@ -172,12 +185,9 @@ class ServicesSettingsFragment : BaseComposeSettingsFragment(R.string.services) 
 }
 
 @Composable
-private fun ServicesScreen(
-	scrobblerSummaries: Map<ScrobblerService, String?>,
+private fun InsightsSettingsScreen(
 	onOpenSuggestions: () -> Unit,
 	onOpenStatistics: () -> Unit,
-	onScrobblerClick: (ScrobblerService) -> Unit,
-	onOpenDiscord: () -> Unit,
 ) {
 	var suggestionsEnabled by rememberBooleanPref(AppSettings.KEY_SUGGESTIONS, false)
 	var relatedManga by rememberBooleanPref(AppSettings.KEY_RELATED_MANGA, true)
@@ -190,7 +200,6 @@ private fun ServicesScreen(
 	var statsMatureMode by rememberStringPref(AppSettings.KEY_STATS_MATURE_MODE, "PRIVATE")
 	var statsMatureMenuExpanded by remember { mutableStateOf(false) }
 	var readingTime by rememberBooleanPref(AppSettings.KEY_READING_TIME, true)
-	var syncTrackingProgress by rememberBooleanPref(AppSettings.KEY_SCROBBLING_PROGRESS_SYNC, true)
 
 	val enabledLabel = stringResource(R.string.enabled)
 	val disabledLabel = stringResource(R.string.disabled)
@@ -207,7 +216,7 @@ private fun ServicesScreen(
 
 	SettingsScaffold {
 		item {
-			SettingsGroup(title = stringResource(R.string.settings_group_general)) {
+			SettingsGroup(title = stringResource(R.string.settings_insights_recommendations)) {
 				item { pos ->
 					NavigationSettingsItem(
 						title = stringResource(R.string.suggestions),
@@ -322,10 +331,22 @@ private fun ServicesScreen(
 				}
 			}
 		}
-		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+		item { Spacer(Modifier.height(24.dp).fillMaxWidth()) }
+	}
+}
+
+@Composable
+private fun ConnectedServicesSettingsScreen(
+	scrobblerSummaries: Map<ScrobblerService, String?>,
+	onScrobblerClick: (ScrobblerService) -> Unit,
+	onOpenDiscord: () -> Unit,
+) {
+	var syncTrackingProgress by rememberBooleanPref(AppSettings.KEY_SCROBBLING_PROGRESS_SYNC, true)
+
+	SettingsScaffold {
 		item {
 			Column {
-				SettingsGroup(title = stringResource(R.string.tracking)) {
+				SettingsGroup(title = stringResource(R.string.settings_group_tracking_accounts)) {
 					item { pos ->
 						SwitchSettingsItem(
 							title = stringResource(R.string.sync_progress_from_tracking),
@@ -379,4 +400,3 @@ private fun ServicesScreen(
 		item { Spacer(Modifier.height(24.dp).fillMaxWidth()) }
 	}
 }
-

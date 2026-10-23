@@ -66,6 +66,56 @@ enum class MiyorareThemePreset(
 }
 
 /**
+ * Semantic colour source for the Modern renderer.
+ *
+ * MATCH_THEME preserves the authored Modern palette. Classic-derived entries intentionally use an
+ * explicit CLASSIC_ prefix so stored values cannot be confused with authored Modern Sakura/Amber
+ * identities. User-facing naming remains the responsibility of the separate palette selector.
+ */
+enum class MiyorareModernPaletteSource(
+	val classicScheme: ColorScheme? = null,
+) {
+	MATCH_THEME,
+	CLASSIC_TOTORO(ColorScheme.DEFAULT),
+	CLASSIC_EXPRESSIVE(ColorScheme.EXPRESSIVE),
+	CLASSIC_MIKU(ColorScheme.MIKU),
+	CLASSIC_ASUKA(ColorScheme.RENA),
+	CLASSIC_MION(ColorScheme.FROG),
+	CLASSIC_RIKKA(ColorScheme.BLUEBERRY),
+	CLASSIC_SAKURA(ColorScheme.SAKURA),
+	CLASSIC_MAMIMI(ColorScheme.MAMIMI),
+	CLASSIC_KANADE(ColorScheme.KANADE),
+	CLASSIC_ITSUKA(ColorScheme.ITSUKA),
+	CLASSIC_SHANA(ColorScheme.SHANA),
+	CLASSIC_LIME(ColorScheme.LIME),
+	CLASSIC_AMBER(ColorScheme.AMBER),
+	CLASSIC_SKY(ColorScheme.SKY),
+	;
+
+	val isClassicDerived: Boolean
+		get() = classicScheme != null
+
+	fun isAvailable(): Boolean = classicScheme == null || classicScheme in ColorScheme.getAvailableList()
+
+	internal fun normalizeForAvailableClassic(available: Set<ColorScheme>): MiyorareModernPaletteSource =
+		if (classicScheme == null || classicScheme in available) this else MATCH_THEME
+
+	companion object {
+		fun fromStoredValue(value: String?): MiyorareModernPaletteSource =
+			(entries.firstOrNull { it.name == value } ?: MATCH_THEME)
+				.normalizeForAvailableClassic(ColorScheme.getAvailableList().toSet())
+
+		fun fromClassicScheme(scheme: ColorScheme): MiyorareModernPaletteSource? =
+			entries.firstOrNull { it.classicScheme == scheme }
+
+		fun getAvailableList(): List<MiyorareModernPaletteSource> = buildList {
+			add(MATCH_THEME)
+			ColorScheme.getAvailableList().mapNotNullTo(this, ::fromClassicScheme)
+		}
+	}
+}
+
+/**
  * Private Favourites owns a separate visual choice. FOLLOW_NORMAL is intentionally the default so
  * existing users keep the current look until they explicitly opt into one of the Private variants.
  */
@@ -101,6 +151,7 @@ data class MiyorareAdaptivePalette(
 object MiyorareAppearance {
 	const val KEY_DESIGN_STYLE = "miyorare_design_style"
 	const val KEY_THEME_PRESET = "miyorare_theme_preset"
+	const val KEY_MODERN_PALETTE_SOURCE = "miyorare_modern_palette_source"
 	const val KEY_PRIVATE_FAVOURITES_THEME = "miyorare_private_favourites_theme"
 	const val KEY_CUSTOM_ACCENT = "miyorare_custom_accent"
 	const val KEY_CUSTOM_BACKGROUND_COLOR_SYNC = "miyorare_custom_background_color_sync"

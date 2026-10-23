@@ -11,14 +11,14 @@
     <string name="release_calendar_recent_history">Recent persisted source history</string>
     <string name="release_calendar_add">Add to calendar</string>
     <string name="release_calendar_details">View prediction details</string>
-    <string name="release_calendar_upcoming">Manga with Upcoming Predictions</string>
+    <string name="release_calendar_upcoming">Manga with Active Predictions</string>
     <string name="release_calendar_selected">Selected</string>
     <string name="release_calendar_loading">Loading Favorite predictions…</string>
     <string name="release_calendar_empty">No Favorites currently have a valid prediction from persisted chapter history.</string>
     <string name="release_calendar_error">Favorite predictions could not be loaded.</string>
     <string name="release_calendar_locked">Unlock Private Favorites to view these predictions.</string>
-    <string name="release_calendar_unavailable">This prediction is no longer available. Choose another manga from the upcoming predictions list.</string>
-    <string name="release_calendar_estimate">Estimated from chapter release history on the current source. This is not an official publication schedule. Irregular, insufficient or missed predictions are omitted.</string>
+    <string name="release_calendar_unavailable">This prediction is no longer available. Choose another manga from the predictions list.</string>
+    <string name="release_calendar_estimate">Estimated from chapter release history on the current source. This is not an official publication schedule. Irregular, insufficient or stale predictions are omitted; a recent missed estimate may remain briefly as “Expected any day now”.</string>
     <string name="release_calendar_source">Source: %1$s</string>
     <string name="release_calendar_branch">Branch: %1$s</string>
     <string name="release_calendar_event_title">Expected chapter release — %1$s</string>

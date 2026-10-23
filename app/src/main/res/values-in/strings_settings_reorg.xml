@@ -13,6 +13,23 @@
     <string name="settings_advanced_network_summary">Kompatibilitas Mihon, agen pengguna, proksi gambar, dan pemecahan masalah</string>
     <string name="settings_feed">Feed</string>
     <string name="settings_download_maintenance">Pemeliharaan unduhan</string>
-    <string name="settings_download_maintenance_summary">Bangun ulang indeks unduhan dan atasi masalah unduhan latar belakang</string>
+    <string name="settings_download_maintenance_summary">Periksa unduhan dan atasi masalah unduhan latar belakang</string>
     <string name="settings_diagnostics">Diagnostik</string>
+
+    <string name="settings_appearance_navigation">Tampilan &amp; navigasi</string>
+    <string name="settings_appearance_navigation_summary">Tema, bahasa, daftar, dan navigasi</string>
+    <string name="settings_downloads_local_files">Unduhan &amp; file di perangkat</string>
+    <string name="settings_downloads_local_files_summary">Unduhan, file di perangkat, halaman tersimpan, dan performa</string>
+    <string name="settings_storage_data">Penyimpanan &amp; data</string>
+    <string name="settings_storage_data_summary">Penggunaan penyimpanan dan penghapusan data</string>
+    <string name="settings_network">Jaringan</string>
+    <string name="settings_network_summary">Prefetch, proksi, DNS, dan pemblokiran iklan</string>
+    <string name="settings_insights_recommendations">Wawasan &amp; rekomendasi</string>
+    <string name="settings_insights_recommendations_summary">Saran, statistik membaca, dan Reader Journey</string>
+    <string name="settings_connected_services">Layanan terhubung</string>
+    <string name="settings_connected_services_summary">Akun pelacakan dan integrasi Discord</string>
+
+    <string name="settings_group_downloads">Unduhan</string>
+    <string name="settings_group_on_device_files">File di perangkat</string>
+    <string name="settings_group_tracking_accounts">Akun pelacakan</string>
 </resources>

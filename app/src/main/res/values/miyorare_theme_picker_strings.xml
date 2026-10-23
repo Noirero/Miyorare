@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="miyorare_modern_visual_theme">Modern visual theme</string>
+    <string name="miyorare_modern_visual_theme_summary">Choose the authored Modern identity, artwork and decorative character</string>
+    <string name="miyorare_colour_palette">Colour palette</string>
+    <string name="miyorare_colour_palette_summary">Changes semantic UI colours while keeping the selected Modern identity and artwork</string>
+    <string name="miyorare_palette_match_theme">Match theme</string>
+    <string name="miyorare_palette_classic_format">Classic · %1$s</string>
+    <string name="miyorare_theme_preview_sample">Aa</string>
+</resources>

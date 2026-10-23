@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="miyorare_modern_visual_theme">Tema visual Modern</string>
+    <string name="miyorare_modern_visual_theme_summary">Pilih identitas Modern, ilustrasi, dan karakter dekoratif yang dirancang khusus</string>
+    <string name="miyorare_colour_palette">Palet warna</string>
+    <string name="miyorare_colour_palette_summary">Mengubah warna semantik UI tanpa mengganti identitas dan ilustrasi Modern yang dipilih</string>
+    <string name="miyorare_palette_match_theme">Ikuti tema</string>
+    <string name="miyorare_palette_classic_format">Klasik · %1$s</string>
+    <string name="miyorare_theme_preview_sample">Aa</string>
+</resources>
