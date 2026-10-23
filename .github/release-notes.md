@@ -1,72 +1,80 @@
-## Miyorare v1.4.12
+## Miyorare v1.4.13
 
-This release is a major reliability and source-management update. Miyorare now has a more capable migration system for broken or changing sources, a dedicated Kotatsu runtime foundation, clearer source provenance in Explore, and stronger handling of local and downloaded content.
+This release focuses on reliability, recovery, and visual consistency. Miyorare now provides a browser-based Google Drive sign-in flow, dedicated maintenance tools for downloaded content, a stronger theme and semantic color foundation, and more reliable chapter release predictions.
 
 ### ✨ What's New
 
-- **Redesigned source migration** — broken or unavailable sources can now be handled through a more complete migration flow with candidate discovery, matching, review, and controlled execution.
-- **Migration review screen** — review migration candidates before applying changes instead of relying on a blind replacement flow.
-- **Batch migration support** — migration work can be grouped and scheduled with dedicated batch controls and background execution.
-- **Lossless migration transfer** — migration now has dedicated transfer logic designed to preserve user state and related manga data while moving an entry to its replacement source.
-- **Kotatsu runtime foundation** — Miyorare now includes dedicated infrastructure for loading, managing, verifying, and updating its Kotatsu parser runtime separately.
-- **Kotatsu source settings** — new settings infrastructure provides dedicated management and configuration for Kotatsu sources and parsers.
-- **Source provenance in Explore** — source entries can expose clearer information about where a source comes from and which ecosystem provides it.
+- **Google Drive browser sign-in** — Google Drive sync now has a dedicated browser-based authentication flow with callback handling and session recovery.
+- **Download Maintenance** — a new maintenance system can inspect and repair downloaded-content metadata and local download indexes.
+- **Dedicated maintenance controls** — download repair and maintenance actions are now available from Settings with their own status and progress handling.
+- **New Miyorare theme picker** — appearance settings now include a dedicated theme-selection experience built specifically for Miyorare.
+- **Semantic color system** — Miyorare now has a broader semantic palette foundation that keeps colors and contrast more consistent across modern and classic UI surfaces.
+- **Release prediction lineage** — chapter release predictions can now retain clearer evidence and lineage about how an estimate was produced.
 
 ### 🚀 Improvements
 
-- **Smarter migration matching** — migration candidate selection now uses dedicated discovery and matching logic instead of relying on the older simplified path.
-- **Background migration reliability** — batch migration work is integrated with WorkManager and retains its state more reliably across process restarts.
-- **Migration data preservation** — additional persistence handling protects reading-related state that is not represented solely by the main Room records.
-- **Explore source presentation** — source cards and source filtering have been expanded to support provenance information and the newer source architecture.
-- **Kotatsu runtime verification** — runtime packs have an explicit contract, storage layer, verifier, updater, preferences, and update worker.
-- **Local library resolution** — local/downloaded manga and novel lookup has been strengthened, including download-path alias handling.
-- **Novel source routing** — source capability and routing behavior for novels has been refined to better distinguish supported source behavior.
-- **README showcase** — the project README is now fully available in English and includes a categorized, collapsible visual showcase of Miyorare.
+- **More reliable chapter predictions** — prediction evidence, source-based estimates, favourite predictions, and next-chapter estimation have been refined for more dependable results.
+- **Prediction grace handling** — chapter prediction logic now handles release timing and grace periods more carefully.
+- **Stronger light-mode contrast** — the modern Miyorare palette includes dedicated contrast handling to keep content readable on light backgrounds.
+- **Classic/modern palette consistency** — classic views can now derive their colors through a dedicated bridge so they remain visually aligned with Miyorare's newer theme system.
+- **Explore color propagation** — Explore cards and related surfaces now follow the active Miyorare palette more consistently.
+- **Settings organization** — root, services, storage/network, downloads, appearance, and source settings have been reorganized and cleaned up for easier navigation.
+- **Settings search** — settings discovery has been expanded and reworked to better match the reorganized settings structure.
+- **Google Drive authentication recovery** — sync settings can retain and recover authentication state more safely when browser login is interrupted or the app lifecycle changes.
+- **Sync authentication policy** — Drive synchronization now has clearer authentication-state handling before background sync work proceeds.
+- **Migration review reliability** — the migration review flow received additional state and UI handling improvements.
+- **Local download scanning** — downloaded/local content discovery now uses a more dedicated scanner and cleaner compatibility path.
 
 ### 🐞 Fixes
 
-- Fixed migration background state being vulnerable to loss when the application process is restarted.
-- Fixed several migration paths that could fail to preserve associated user data when changing sources.
-- Improved durability for migration state stored outside the primary Room-backed records.
-- Improved downloaded novel resolution and local index handling.
-- Fixed handling of reserved characters in ZIP/local URI paths.
-- Improved download path alias resolution for local content.
-- Added broader regression and runtime coverage for migration matching, lossless transfer, batch execution, process persistence, novel routing, local downloads, and Kotatsu runtime isolation.
+- Fixed several cases where downloaded-content metadata or indexes could become inconsistent with files that still exist on device.
+- Added safer repair handling for downloaded covers and local download indexes.
+- Improved compatibility with legacy chapter download layouts while simplifying the old fallback path.
+- Improved local manga parsing and output handling for downloaded/local content.
+- Fixed authentication-state edge cases that could cause Google Drive sync to behave incorrectly after browser login or process recovery.
+- Improved callback routing for Google Drive browser authentication.
+- Improved migration review state handling after candidate changes.
+- Fixed additional light-theme contrast and custom neutral-accent edge cases.
+- Added extensive regression coverage for download maintenance, Drive authentication, semantic palettes, release predictions, local content, migration review, and Explore theme propagation.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Rilis ini merupakan pembaruan besar untuk keandalan dan pengelolaan source. Miyorare sekarang memiliki sistem migrasi yang lebih lengkap untuk menangani source yang rusak atau berubah, fondasi runtime Kotatsu khusus, informasi asal source yang lebih jelas di Explore, serta penanganan konten lokal dan hasil download yang lebih kuat.
+Rilis ini berfokus pada keandalan, pemulihan, dan konsistensi visual. Miyorare sekarang memiliki alur login Google Drive melalui browser, alat maintenance khusus untuk konten hasil download, fondasi theme dan semantic color yang lebih kuat, serta prediksi rilis chapter yang lebih andal.
 
 ### ✨ Yang Baru
 
-- **Redesign migrasi source** — source yang rusak atau tidak lagi tersedia sekarang dapat ditangani melalui alur migrasi yang lebih lengkap, mulai dari pencarian kandidat, pencocokan, review, hingga eksekusi terkontrol.
-- **Layar review migrasi** — kandidat pengganti dapat diperiksa sebelum migrasi diterapkan, sehingga perpindahan source tidak lagi bergantung pada penggantian secara buta.
-- **Batch migration** — pekerjaan migrasi dapat dikelompokkan dan dijadwalkan dengan kontrol batch serta eksekusi background khusus.
-- **Lossless migration transfer** — tersedia mekanisme transfer khusus yang dirancang untuk mempertahankan state pengguna dan data manga terkait ketika sebuah entri dipindahkan ke source pengganti.
-- **Fondasi Kotatsu runtime** — Miyorare sekarang memiliki infrastruktur khusus untuk memuat, mengelola, memverifikasi, dan memperbarui runtime parser Kotatsu secara terpisah.
-- **Pengaturan source Kotatsu** — tersedia infrastruktur settings khusus untuk pengelolaan dan konfigurasi source serta parser Kotatsu.
-- **Source provenance di Explore** — source dapat menampilkan informasi yang lebih jelas mengenai asal dan ekosistem penyedianya.
+- **Login Google Drive melalui browser** — Google Drive sync sekarang memiliki alur autentikasi berbasis browser dengan callback handling dan pemulihan sesi.
+- **Download Maintenance** — sistem maintenance baru dapat memeriksa dan memperbaiki metadata konten hasil download serta local download index.
+- **Kontrol maintenance khusus** — tindakan repair dan maintenance download sekarang tersedia melalui Settings dengan status dan progress tersendiri.
+- **Miyorare theme picker baru** — Appearance Settings sekarang memiliki pengalaman pemilihan theme khusus yang dibuat untuk Miyorare.
+- **Semantic color system** — Miyorare sekarang memiliki fondasi semantic palette yang lebih luas agar warna dan kontras lebih konsisten pada UI modern maupun classic.
+- **Release prediction lineage** — prediksi rilis chapter sekarang dapat menyimpan evidence dan lineage yang lebih jelas mengenai bagaimana sebuah perkiraan dihasilkan.
 
 ### 🚀 Peningkatan
 
-- **Pencocokan migrasi lebih pintar** — pemilihan kandidat migrasi sekarang menggunakan discovery dan matching khusus dibanding alur sederhana sebelumnya.
-- **Background migration lebih andal** — batch migration terintegrasi dengan WorkManager dan state pekerjaannya lebih tahan terhadap restart process aplikasi.
-- **Perlindungan data saat migrasi** — persistence tambahan membantu mempertahankan state membaca yang tidak hanya tersimpan di record utama Room.
-- **Tampilan source di Explore** — kartu source dan filtering diperluas untuk mendukung provenance dan arsitektur source yang baru.
-- **Verifikasi Kotatsu runtime** — runtime pack memiliki contract, storage, verifier, updater, preferences, dan update worker khusus.
-- **Resolusi local library** — pencarian manga/novel lokal dan hasil download diperkuat, termasuk penanganan alias path download.
-- **Routing source novel** — capability dan routing source novel diperbaiki agar perilaku source yang didukung dapat dibedakan dengan lebih tepat.
-- **Showcase README** — README proyek sekarang tersedia penuh dalam bahasa Inggris dan memiliki showcase visual Miyorare yang dikelompokkan serta dapat dibuka/tutup.
+- **Prediksi chapter lebih andal** — prediction evidence, perkiraan berbasis source, favourite predictions, dan estimasi chapter berikutnya telah disempurnakan.
+- **Prediction grace handling** — logika prediksi sekarang menangani waktu rilis dan grace period dengan lebih hati-hati.
+- **Kontras light mode lebih kuat** — palette modern Miyorare memiliki penanganan kontras khusus agar konten tetap mudah dibaca pada background terang.
+- **Konsistensi palette classic/modern** — view classic sekarang dapat memperoleh warna melalui bridge khusus agar tetap selaras dengan sistem theme Miyorare yang lebih baru.
+- **Propagasi warna Explore** — card dan surface terkait di Explore sekarang mengikuti palette aktif Miyorare dengan lebih konsisten.
+- **Organisasi Settings** — root, services, storage/network, downloads, appearance, dan source settings ditata ulang dan dibersihkan agar lebih mudah dinavigasi.
+- **Settings search** — pencarian pengaturan diperluas dan disesuaikan dengan struktur Settings yang baru.
+- **Pemulihan autentikasi Google Drive** — Sync Settings dapat mempertahankan dan memulihkan state autentikasi dengan lebih aman ketika browser login terputus atau lifecycle aplikasi berubah.
+- **Sync authentication policy** — Drive sync sekarang memiliki penanganan authentication state yang lebih jelas sebelum background sync dijalankan.
+- **Migration review lebih andal** — alur migration review mendapat peningkatan tambahan pada state dan UI.
+- **Local download scanning** — discovery konten downloaded/local sekarang menggunakan scanner yang lebih khusus dengan compatibility path yang lebih bersih.
 
 ### 🐞 Perbaikan
 
-- Memperbaiki state background migration yang sebelumnya dapat hilang ketika process aplikasi dimulai ulang.
-- Memperbaiki beberapa jalur migrasi yang berisiko tidak mempertahankan seluruh data pengguna terkait ketika berpindah source.
-- Meningkatkan durability state migrasi yang disimpan di luar record utama berbasis Room.
-- Meningkatkan resolusi downloaded novel dan penanganan local index.
-- Memperbaiki penanganan karakter khusus/reserved pada URI ZIP dan file lokal.
-- Meningkatkan resolusi alias path download untuk konten lokal.
-- Menambahkan regression dan runtime coverage yang lebih luas untuk migration matching, lossless transfer, batch execution, process persistence, novel routing, local downloads, dan isolasi Kotatsu runtime.
+- Memperbaiki beberapa kondisi ketika metadata atau index download dapat tidak sinkron dengan file yang sebenarnya masih tersedia di perangkat.
+- Menambahkan repair yang lebih aman untuk cover hasil download dan local download index.
+- Meningkatkan kompatibilitas dengan layout chapter download lama sekaligus menyederhanakan fallback lama.
+- Meningkatkan parsing dan output local manga untuk konten downloaded/local.
+- Memperbaiki edge case authentication state yang dapat menyebabkan Google Drive sync berperilaku salah setelah browser login atau process recovery.
+- Meningkatkan callback routing untuk autentikasi Google Drive melalui browser.
+- Meningkatkan state handling migration review setelah kandidat berubah.
+- Memperbaiki edge case tambahan pada kontras light theme dan custom neutral accent.
+- Menambahkan regression coverage yang lebih luas untuk download maintenance, autentikasi Drive, semantic palette, release prediction, local content, migration review, dan propagasi theme Explore.
 
 </details>
