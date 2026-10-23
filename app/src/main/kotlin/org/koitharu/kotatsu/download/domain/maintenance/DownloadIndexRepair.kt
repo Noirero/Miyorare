@@ -64,12 +64,28 @@ internal object DownloadIndexRepair {
 		if (incomplete || unrepresented || entries.isEmpty() || linkedChapters.size != physicalChapters.size) return Plan(null, false, recognized, physicalChapters.size)
 		val oldMappings = oldInfo?.chapters.orEmpty().associate { it.id to old?.getChapterFileName(it.id) }
 		val mappings = entries.mapValues { it.value.second }
-		if (oldInfo != null && oldMappings == mappings) return Plan(null, true, recognized, physicalChapters.size)
-		val result = if (oldInfo != null) MangaIndex(requireNotNull(oldText)) else MangaIndex(null).apply { setMangaInfo(identity) }
+		val oldCoverEntry = old?.getCoverEntry()
+		val oldCoverIsValid = oldCoverEntry?.let { safeChild(root, it)?.isFile == true } == true
+		val fallbackCoverEntry = listOf("cover.jpg", "cover.jpeg", "cover.png", "cover.webp", "cover.gif")
+			.firstOrNull { safeChild(root, it)?.isFile == true }
+		val coverNeedsRepair = when {
+			oldInfo == null -> false
+			oldCoverEntry != null -> !oldCoverIsValid
+			else -> fallbackCoverEntry != null
+		}
+		if (oldInfo != null && oldMappings == mappings && !coverNeedsRepair) return Plan(null, true, recognized, physicalChapters.size)
+		// An invalid legacy cover_entry must never be copied into a replacement index. Reconstruct from
+		// validated manga metadata instead; chapter mappings are re-added below and physical files stay untouched.
+		val result = when {
+			oldInfo == null -> MangaIndex(null).apply { setMangaInfo(identity) }
+			oldCoverEntry != null && !oldCoverIsValid && fallbackCoverEntry == null -> MangaIndex(null).apply { setMangaInfo(oldInfo) }
+			else -> MangaIndex(requireNotNull(oldText))
+		}
 		oldInfo?.chapters.orEmpty().forEach { result.removeChapter(it.id) }
 		entries.values.forEachIndexed { index, (chapter, path) -> result.addChapter(IndexedValue(index, chapter), path) }
-		if (result.getCoverEntry()?.let { safeChild(root, it)?.isFile } != true) {
-			listOf("cover.jpg", "cover.png", "cover.webp").firstOrNull { safeChild(root, it)?.isFile == true }?.let(result::setCoverEntry)
+		when {
+			oldCoverIsValid -> Unit
+			fallbackCoverEntry != null -> result.setCoverEntry(fallbackCoverEntry)
 		}
 		return Plan(result.toString(), true, recognized, physicalChapters.size)
 	}
