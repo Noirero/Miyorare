@@ -52,14 +52,22 @@ export function createServer(config, { fetchImpl = fetch, store = new BrowserAut
           return html(res, 200, 'Sign-in not completed', 'Return to Miyorare and try again when you are ready.');
         }
         const authCode = url.searchParams.get('code');
-        if (!authCode) throw new AuthStoreError('missing_authorization_code');
-        const token = await exchangeGoogleCode(fetchImpl, config, redirectUri, authCode);
-        const account = await fetchDriveAccount(fetchImpl, token.accessToken);
-        store.complete(tx.transactionId, {
-          accessToken: token.accessToken,
-          tokenExpiresAt: Date.now() + token.expiresIn * 1000,
-          account,
-        });
+        if (!authCode) {
+          store.fail(tx.transactionId, 'provider_error');
+          return html(res, 400, 'Sign-in not completed', 'The Google response was incomplete. Return to Miyorare and try again.');
+        }
+        try {
+          const token = await exchangeGoogleCode(fetchImpl, config, redirectUri, authCode);
+          const account = await fetchDriveAccount(fetchImpl, token.accessToken);
+          store.complete(tx.transactionId, {
+            accessToken: token.accessToken,
+            tokenExpiresAt: Date.now() + token.expiresIn * 1000,
+            account,
+          });
+        } catch (error) {
+          store.fail(tx.transactionId, 'provider_error');
+          throw error;
+        }
         return html(res, 200, 'Connected temporarily', 'Return to Miyorare. The app will finish the secure one-time exchange automatically.');
       }
       if (req.method === 'POST' && url.pathname === '/v1/google/poll') {
