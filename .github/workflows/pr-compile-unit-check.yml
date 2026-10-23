@@ -49,7 +49,7 @@ jobs:
         run: npm test --prefix browser-auth-helper
 
       - name: Compile debug sources and validate Android resources
-        run: ./gradlew compileDebugSources --max-workers=4 --no-daemon --stacktrace
+        run: ./gradlew compileDebugSources processPreviewMainManifest processReleaseMainManifest --max-workers=4 --no-daemon --stacktrace
 
       - name: Build production Kotatsu Runtime Pack
         run: ./gradlew :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
