@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.ui
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
@@ -80,7 +81,7 @@ class MiyorareClassicDerivedPaletteTest {
 			effectLevel = VisualEffectLevel.BALANCED,
 			classicDerivedColorScheme = foreign,
 		)
-		assertEquals(expected, restored)
+		assertThemeSemanticallyEquals(expected, restored)
 	}
 
 	@Test
@@ -94,7 +95,7 @@ class MiyorareClassicDerivedPaletteTest {
 			preset = MiyorareThemePreset.AMBER,
 			classicScheme = null,
 		)
-		assertEquals(expected, fallback)
+		assertThemeSemanticallyEquals(expected, fallback)
 	}
 
 	@Test
@@ -129,7 +130,7 @@ class MiyorareClassicDerivedPaletteTest {
 	private fun resolve(
 		paletteSource: MiyorareModernPaletteSource,
 		preset: MiyorareThemePreset,
-		classicScheme: androidx.compose.material3.ColorScheme? = null,
+		classicScheme: ColorScheme? = null,
 	) = resolveMiyorareThemeColors(
 		paletteSource = paletteSource,
 		preset = preset,
@@ -138,5 +139,49 @@ class MiyorareClassicDerivedPaletteTest {
 		amoled = false,
 		effectLevel = VisualEffectLevel.BALANCED,
 		classicDerivedColorScheme = classicScheme,
+	)
+
+	private fun assertThemeSemanticallyEquals(expected: MiyorareThemeColors, actual: MiyorareThemeColors) {
+		assertEquals(expected.visualPalette, actual.visualPalette)
+		assertEquals(semanticRoles(expected.colorScheme), semanticRoles(actual.colorScheme))
+	}
+
+	private fun semanticRoles(scheme: ColorScheme): List<Color> = listOf(
+		scheme.primary,
+		scheme.onPrimary,
+		scheme.primaryContainer,
+		scheme.onPrimaryContainer,
+		scheme.inversePrimary,
+		scheme.secondary,
+		scheme.onSecondary,
+		scheme.secondaryContainer,
+		scheme.onSecondaryContainer,
+		scheme.tertiary,
+		scheme.onTertiary,
+		scheme.tertiaryContainer,
+		scheme.onTertiaryContainer,
+		scheme.error,
+		scheme.onError,
+		scheme.errorContainer,
+		scheme.onErrorContainer,
+		scheme.background,
+		scheme.onBackground,
+		scheme.surface,
+		scheme.onSurface,
+		scheme.surfaceVariant,
+		scheme.onSurfaceVariant,
+		scheme.outline,
+		scheme.outlineVariant,
+		scheme.inverseSurface,
+		scheme.inverseOnSurface,
+		scheme.surfaceTint,
+		scheme.scrim,
+		scheme.surfaceBright,
+		scheme.surfaceDim,
+		scheme.surfaceContainerLowest,
+		scheme.surfaceContainerLow,
+		scheme.surfaceContainer,
+		scheme.surfaceContainerHigh,
+		scheme.surfaceContainerHighest,
 	)
 }
