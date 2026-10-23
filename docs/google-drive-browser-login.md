@@ -29,18 +29,19 @@ The account name/email/photo cached for display are metadata only. They are neve
 
 ## Browser return flow
 
-Until an owner-controlled verified Android App Link domain is configured, Miyorare uses a safe HTTPS completion fallback:
+Until an owner-controlled verified Android App Link is configured, Miyorare uses a proof-bound custom-scheme app return **after** Google's HTTPS web-server callback:
 
-1. Miyorare creates a random transaction and process-local verifier and opens the helper's HTTPS start URL.
-2. The helper redirects to Google with a random single-use OAuth `state` and an exact registered HTTPS callback.
-3. Google returns to the helper over HTTPS. The helper exchanges Google's authorization code server-side.
-4. The helper page tells the user to return to Miyorare. No Google token or one-time app code is placed in that page URL.
-5. Miyorare polls the helper over HTTPS and proves possession of the process-local verifier.
-6. The helper reveals a short-lived one-time app code only after proof succeeds.
-7. Miyorare exchanges that code once over HTTPS for the temporary access token and its actual remaining lifetime.
-8. Miyorare then talks directly to the Google Drive REST API.
+1. Miyorare creates a random transaction and process-local verifier and opens the helper's HTTPS start URL with only the transaction id and verifier challenge.
+2. The helper redirects to Google with a random single-use OAuth `state`, `access_type=online`, the `drive.appdata` scope, and its exact registered HTTPS callback.
+3. Google returns its authorization code or provider error to the helper over HTTPS. Google is never configured to redirect directly to Miyorare's custom scheme.
+4. The helper validates `state`, exchanges the Google authorization code server-side, resolves minimal account identity, and retains the temporary Google grant only in helper process memory.
+5. The helper creates a short-lived single-use **Miyorare app code** and redirects the browser to `miyorare://google-drive-auth` with only the transaction id plus that app code. A provider denial uses a sanitized error instead.
+6. The dedicated Android callback activity validates the scheme/host and matches the transaction against the process-local pending login. Unrelated or stale callbacks are rejected.
+7. Miyorare sends the app code, transaction id, and process-local verifier to the helper's HTTPS exchange endpoint.
+8. Only after the verifier matches does the helper consume the app code and return the temporary Google access token, actual remaining lifetime, and account metadata over HTTPS.
+9. Miyorare keeps that access token only in memory and then talks directly to the Google Drive REST API.
 
-A future verified HTTPS Android App Link may make the return automatic without changing the credential boundary. Do not replace this with an unverified custom-scheme token callback.
+The app code in the custom-scheme URL is not a Google credential and cannot be exchanged without the verifier that stays in Miyorare process memory. A future verified HTTPS Android App Link may replace the final custom-scheme app-return hop without changing the server-side Google callback or one-time exchange boundary.
 
 ## Onboarding
 
