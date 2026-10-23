@@ -25,7 +25,7 @@ internal data class BrowserAuthCompletion(
 
 /** Android side of the temporary browser-auth broker contract. */
 @Singleton
-internal class BrowserDriveAuthClient @Inject constructor(
+class BrowserDriveAuthClient @Inject constructor(
 	@BaseHttpClient baseHttpClient: OkHttpClient,
 	private val session: BrowserDriveAuthSession,
 	private val syncSettings: SyncSettings,
@@ -43,9 +43,9 @@ internal class BrowserDriveAuthClient @Inject constructor(
 
 	private val json = Json { ignoreUnknownKeys = true }
 
-	fun isConfigured(): Boolean = configuredBaseUrl() != null
+	internal fun isConfigured(): Boolean = configuredBaseUrl() != null
 
-	fun createLoginUri(origin: BrowserAuthOrigin): Uri {
+	internal fun createLoginUri(origin: BrowserAuthOrigin): Uri {
 		val base = configuredBaseUrl()
 			?: throw BrowserAuthException("Browser sign-in is not configured for this build")
 		val launch = session.begin(origin)
@@ -57,13 +57,13 @@ internal class BrowserDriveAuthClient @Inject constructor(
 		return Uri.parse(url.toString())
 	}
 
-	fun cancelPending() = session.cancelPending()
+	internal fun cancelPending() = session.cancelPending()
 
 	/**
 	 * Validates the app callback, consumes the local transaction once, then exchanges the one-time
 	 * app code over HTTPS. The Google access token is never accepted from the callback URI itself.
 	 */
-	suspend fun completeCallback(uri: Uri?): BrowserAuthCompletion = withContext(Dispatchers.IO) {
+	internal suspend fun completeCallback(uri: Uri?): BrowserAuthCompletion = withContext(Dispatchers.IO) {
 		val base = configuredBaseUrl()
 			?: throw BrowserAuthException("Browser sign-in is not configured for this build")
 		if (uri == null || uri.scheme != CALLBACK_SCHEME || uri.host != CALLBACK_HOST) {
