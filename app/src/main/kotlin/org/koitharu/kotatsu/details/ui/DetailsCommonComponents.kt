@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.miyorareReadableAccentContentColor
 
 internal val SCREEN_PADDING = 20.dp
 internal val CARD_CORNER = 26.dp
@@ -137,6 +138,7 @@ internal fun SectionCard(
 @Composable
 internal fun SectionHeader(title: String, action: String, accent: Color, onAction: () -> Unit) {
 	val palette = LocalMiyorareVisualPalette.current
+	val lightSurface = MaterialTheme.colorScheme.background.luminanceIsLight()
 	Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
 	Row(
 		modifier = Modifier
@@ -154,8 +156,7 @@ internal fun SectionHeader(title: String, action: String, accent: Color, onActio
 		Surface(
 			shape = RoundedCornerShape(50),
 			color = if (palette.isModern && palette.adaptiveCustomBackground) {
-				val light = MaterialTheme.colorScheme.background.luminanceIsLight()
-				val target = if (light) palette.primary else palette.secondary
+				val target = if (lightSurface) palette.primary else palette.secondary
 				lerp(
 					MaterialTheme.colorScheme.surfaceContainer,
 					target,
@@ -204,11 +205,17 @@ internal fun SectionHeader(title: String, action: String, accent: Color, onActio
 				style = MaterialTheme.typography.labelMedium,
 				fontWeight = FontWeight.Medium,
 				color = if (palette.isModern) {
-					when (palette.effectLevel) {
+					val preferredAccent = when (palette.effectLevel) {
 						VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.90f)
 						VisualEffectLevel.BALANCED -> palette.primary
 						VisualEffectLevel.FULL -> lerp(palette.primary, palette.secondary, 0.22f)
 					}
+					miyorareReadableAccentContentColor(
+						colorScheme = MaterialTheme.colorScheme,
+						preferredAccent = preferredAccent,
+						lightSurface = lightSurface,
+						emphasized = false,
+					)
 				} else {
 					accent
 				},
@@ -231,12 +238,12 @@ internal fun Pill(
 	leading: (@Composable () -> Unit)? = null,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
+	val lightSurface = MaterialTheme.colorScheme.background.luminanceIsLight()
 	val container = if (palette.isModern && palette.adaptiveCustomBackground) {
-		val light = MaterialTheme.colorScheme.background.luminanceIsLight()
 		val target = if (highlighted) {
-			if (light) lerp(palette.primary, palette.accent, 0.24f) else lerp(palette.primary, palette.secondary, 0.38f)
+			if (lightSurface) lerp(palette.primary, palette.accent, 0.24f) else lerp(palette.primary, palette.secondary, 0.38f)
 		} else {
-			if (light) palette.secondary else palette.primary
+			if (lightSurface) palette.secondary else palette.primary
 		}
 		lerp(
 			MaterialTheme.colorScheme.surfaceContainer,
@@ -254,7 +261,7 @@ internal fun Pill(
 					VisualEffectLevel.FULL -> 0.08f
 				}
 			},
-		).copy(alpha = if (light) 0.82f else 0.78f)
+		).copy(alpha = if (lightSurface) 0.82f else 0.78f)
 	} else if (palette.isModern) {
 		if (highlighted) {
 			lerp(
@@ -284,7 +291,13 @@ internal fun Pill(
 	}
 	val content = if (palette.isModern) {
 		if (highlighted) {
-			if (palette.effectLevel == VisualEffectLevel.LIGHT) palette.primary else accent
+			val preferredAccent = if (palette.effectLevel == VisualEffectLevel.LIGHT) palette.primary else accent
+			miyorareReadableAccentContentColor(
+				colorScheme = MaterialTheme.colorScheme,
+				preferredAccent = preferredAccent,
+				lightSurface = lightSurface,
+				emphasized = true,
+			)
 		} else {
 			MaterialTheme.colorScheme.onSurfaceVariant
 		}
