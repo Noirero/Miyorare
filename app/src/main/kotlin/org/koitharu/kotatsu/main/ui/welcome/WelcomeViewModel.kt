@@ -7,12 +7,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.backup.MihonBackupManager
 import org.koitharu.kotatsu.backup.MihonBackupManager.RestoreReport
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ColorScheme
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
-import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.local.data.LocalStorageManager
+import org.koitharu.kotatsu.sync.data.BrowserAuthOrigin
+import org.koitharu.kotatsu.sync.data.BrowserDriveAuthClient
 import org.koitharu.kotatsu.sync.data.GoogleDriveAuth
 import org.koitharu.kotatsu.sync.domain.GoogleDriveSyncRepository
 import org.koitharu.kotatsu.sync.work.SyncWorker
@@ -29,6 +31,7 @@ class WelcomeViewModel @Inject constructor(
 	private val storageManager: LocalStorageManager,
 	private val backupManager: MihonBackupManager,
 	private val googleDriveAuth: GoogleDriveAuth,
+	private val browserDriveAuth: BrowserDriveAuthClient,
 	private val syncRepository: GoogleDriveSyncRepository,
 	private val syncScheduler: SyncWorker.Scheduler,
 ) : BaseViewModel() {
@@ -39,6 +42,7 @@ class WelcomeViewModel @Inject constructor(
 	val storageSummary = MutableStateFlow<String?>(null)
 	val onBackupRestored = MutableEventFlow<RestoreBackupResult>()
 	val onGoogleSignInLaunch = MutableEventFlow<Intent>()
+	val onBrowserSignInLaunch = MutableEventFlow<Uri>()
 	val onGoogleSignInCompleted = MutableEventFlow<Boolean>()
 
 	init {
@@ -48,25 +52,19 @@ class WelcomeViewModel @Inject constructor(
 	}
 
 	fun setTheme(mode: Int) {
-		if (selectedTheme.value == mode) {
-			return
-		}
+		if (selectedTheme.value == mode) return
 		selectedTheme.value = mode
 		settings.setTheme(mode)
 	}
 
 	fun setColorScheme(colorScheme: ColorScheme) {
-		if (selectedColorScheme.value == colorScheme) {
-			return
-		}
+		if (selectedColorScheme.value == colorScheme) return
 		selectedColorScheme.value = colorScheme
 		settings.setColorScheme(colorScheme)
 	}
 
 	fun setAmoledTheme(isEnabled: Boolean) {
-		if (isAmoledEnabled.value == isEnabled) {
-			return
-		}
+		if (isAmoledEnabled.value == isEnabled) return
 		isAmoledEnabled.value = isEnabled
 		settings.setAmoledTheme(isEnabled)
 	}
@@ -95,8 +93,24 @@ class WelcomeViewModel @Inject constructor(
 	}
 
 	fun launchGoogleSignIn() {
-		onGoogleSignInLaunch.call(googleDriveAuth.signInIntent)
+		val intent = runCatching { googleDriveAuth.signInIntent }.getOrNull()
+		if (intent == null) {
+			onGoogleSignInCompleted.call(false)
+		} else {
+			onGoogleSignInLaunch.call(intent)
+		}
 	}
+
+	fun launchBrowserSignIn() {
+		val uri = runCatching { browserDriveAuth.createLoginUri(BrowserAuthOrigin.ONBOARDING) }.getOrNull()
+		if (uri == null) {
+			onGoogleSignInCompleted.call(false)
+		} else {
+			onBrowserSignInLaunch.call(uri)
+		}
+	}
+
+	fun cancelBrowserSignIn() = browserDriveAuth.cancelPending()
 
 	fun handleGoogleSignInResult(data: Intent?) {
 		launchLoadingJob(Dispatchers.Default) {
