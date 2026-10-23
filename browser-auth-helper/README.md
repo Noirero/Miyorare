@@ -34,6 +34,12 @@ ${PUBLIC_BASE_URL}/v1/google/callback
 
 Enable the Google Drive API for the OAuth project and configure the consent screen according to Google's current requirements.
 
+## Deployment topology
+
+The helper intentionally keeps pending OAuth transactions, one-time codes, and temporary Google grants **in process memory only**. Deploy this implementation as a **single active replica**. If horizontal scaling is later required, first replace the in-memory transaction store with a shared short-TTL store that preserves the same atomic single-use/replay semantics; do not run independent replicas behind round-robin routing because callback, poll, and exchange may otherwise land on different state owners.
+
+Restarting the helper invalidates in-flight browser login transactions. That is safe: the user simply starts browser sign-in again, and no long-term Google credential has been persisted.
+
 ## Android configuration
 
 After the helper has an approved stable HTTPS URL, set `BrowserDriveAuthConfig.BASE_URL` in the Android app to that exact origin. It is intentionally blank in source until infrastructure ownership and the OAuth redirect are approved; the app disables the browser-login action rather than guessing a domain.
