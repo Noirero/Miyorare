@@ -3,7 +3,6 @@ package org.koitharu.kotatsu.sync.data
 import android.net.Uri
 import eu.kanade.tachiyomi.network.await
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -19,7 +18,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 internal data class BrowserAuthCompletion(
-	val origin: BrowserAuthOrigin,
 	val account: DriveAccountInfo?,
 	val expiresAt: Long,
 )
@@ -46,10 +44,10 @@ class BrowserDriveAuthClient @Inject constructor(
 
 	internal fun isConfigured(): Boolean = configuredBaseUrl() != null
 
-	internal fun createLoginUri(origin: BrowserAuthOrigin): Uri {
+	internal fun createLoginUri(): Uri {
 		val base = configuredBaseUrl()
 			?: throw BrowserAuthException("Browser sign-in is not configured for this build")
-		val launch = session.begin(origin)
+		val launch = session.begin()
 		return Uri.parse(
 			base.newBuilder()
 				.addPathSegments("v1/google/start")
@@ -63,59 +61,26 @@ class BrowserDriveAuthClient @Inject constructor(
 	internal fun cancelPending() = session.cancelPending()
 
 	/**
-	 * Waits for the HTTPS broker callback to finish. The app proves possession of its process-local
-	 * verifier before the broker reveals the short-lived one-time app code. This fallback avoids
-	 * putting either the Google token or app code in a browser/deep-link URL when no verified App Link
-	 * domain is configured yet.
+	 * Accepts only the controlled app-return URI containing a short-lived one-time app code.
+	 * Google access tokens are never accepted from a browser/deep-link URL. A stolen app code alone
+	 * is insufficient because exchange also requires the proof verifier kept only in this process.
 	 */
-	internal suspend fun awaitCompletion(): BrowserAuthCompletion = withContext(Dispatchers.IO) {
+	internal suspend fun completeCallback(uri: Uri?): BrowserAuthCompletion = withContext(Dispatchers.IO) {
 		val base = configuredBaseUrl()
 			?: throw BrowserAuthException("Browser sign-in is not configured for this build")
-		while (true) {
-			val proof = session.pendingProof()
-			val payload = json.encodeToString(
-				PollRequest.serializer(),
-				PollRequest(proof.transactionId, proof.codeVerifier),
-			)
-			val request = Request.Builder()
-				.url(base.newBuilder().addPathSegments("v1/google/poll").build())
-				.post(payload.toRequestBody(JSON_MEDIA_TYPE))
-				.header("Accept", "application/json")
-				.build()
-			val oneTimeCode = httpClient.newCall(request).await().use { response ->
-				if (response.code == 202) return@use null
-				if (!response.isSuccessful) {
-					throw BrowserAuthException(
-						if (response.code in setOf(400, 401, 403, 404, 409, 410)) {
-							"Browser sign-in session is no longer valid"
-						} else {
-							"Browser sign-in service is temporarily unavailable"
-						},
-					)
-				}
-				val body = response.body.string()
-				val poll = runCatching { json.decodeFromString(PollResponse.serializer(), body) }
-					.getOrElse { throw BrowserAuthException("Browser sign-in returned an invalid response", it) }
-				poll.error?.takeIf { it.isNotBlank() }?.let {
-					session.cancelPending()
-					throw BrowserAuthException(it.toUserMessage())
-				}
-				poll.code?.takeIf { it.isNotBlank() }
-					?: throw BrowserAuthException("Browser sign-in response is missing its one-time code")
-			}
-			if (oneTimeCode == null) {
-				delay(POLL_INTERVAL_MS)
-				continue
-			}
-			val exchangeProof = session.consumeOneTimeCode(proof.transactionId, oneTimeCode)
-			return@withContext exchange(base, exchangeProof)
+		if (uri == null || uri.scheme != CALLBACK_SCHEME || uri.host != CALLBACK_HOST) {
+			throw BrowserAuthException("Invalid browser sign-in callback")
 		}
-	}
-
-	private suspend fun exchange(
-		base: okhttp3.HttpUrl,
-		proof: BrowserAuthCallbackProof,
-	): BrowserAuthCompletion {
+		val transactionId = uri.getQueryParameter("transaction_id")
+			?: throw BrowserAuthException("Browser sign-in callback is missing its transaction")
+		val providerError = uri.getQueryParameter("error")
+		if (!providerError.isNullOrBlank()) {
+			session.cancelPending()
+			throw BrowserAuthException(providerError.toUserMessage())
+		}
+		val oneTimeCode = uri.getQueryParameter("code")
+			?: throw BrowserAuthException("Browser sign-in callback is missing its one-time code")
+		val proof = session.consumeCallback(transactionId, oneTimeCode)
 		val payload = json.encodeToString(
 			ExchangeRequest.serializer(),
 			ExchangeRequest(proof.code, proof.transactionId, proof.codeVerifier),
@@ -160,7 +125,7 @@ class BrowserDriveAuthClient @Inject constructor(
 		syncSettings.accountPhotoUrl = account?.photoUrl
 		syncSettings.authMode = DriveAuthMode.BROWSER_TEMPORARY
 		syncSettings.isAuthorizationRequired = false
-		return BrowserAuthCompletion(proof.origin, account, expiresAt)
+		BrowserAuthCompletion(account, expiresAt)
 	}
 
 	private fun configuredBaseUrl() = BrowserDriveAuthConfig.BASE_URL
@@ -176,18 +141,6 @@ class BrowserDriveAuthClient @Inject constructor(
 		"expired" -> "Browser sign-in session expired"
 		else -> "Google sign-in could not be completed"
 	}
-
-	@Serializable
-	private data class PollRequest(
-		@SerialName("transaction_id") val transactionId: String,
-		@SerialName("code_verifier") val codeVerifier: String,
-	)
-
-	@Serializable
-	private data class PollResponse(
-		@SerialName("code") val code: String? = null,
-		@SerialName("error") val error: String? = null,
-	)
 
 	@Serializable
 	private data class ExchangeRequest(
@@ -211,8 +164,9 @@ class BrowserDriveAuthClient @Inject constructor(
 	)
 
 	companion object {
+		const val CALLBACK_SCHEME = "miyorare"
+		const val CALLBACK_HOST = "google-drive-auth"
 		const val MIN_SYNC_START_REMAINING_MS = 2L * 60L * 1000L
-		private const val POLL_INTERVAL_MS = 1_500L
 		private val JSON_MEDIA_TYPE = "application/json; charset=UTF-8".toMediaType()
 	}
 }
