@@ -99,10 +99,9 @@ class GoogleDriveSyncRepository @Inject constructor(
 			try {
 				performSync(token)
 			} catch (e: SyncApiException) {
-				// A cached token can be stale → 401. Invalidate once, then let the active auth provider
-				// either mint a fresh GMS token or require foreground browser sign-in again.
+				// A cached token can be stale → 401. Refresh once and retry.
 				if (e.code == 401) {
-					Log.w(TAG, "token rejected (401), invalidating and retrying authorization once")
+					Log.w(TAG, "token rejected (401), refreshing and retrying")
 					auth.invalidateToken(token)
 					token = auth.requireAccessToken()
 					performSync(token)
@@ -179,270 +178,819 @@ class GoogleDriveSyncRepository @Inject constructor(
 			val remote = scrubbedRemote?.let { snapshot ->
 				if (SyncContent.FAVOURITES in enabled) remapRemoteCategories(snapshot) else snapshot
 			}
+			Log.i(
+				TAG,
+				"remote: files=${files.size} readable=${remotes.size} fav=${remote?.favourites?.size} " +
+					"hist=${remote?.history?.size} cat=${remote?.categories?.size} privacyScrubbed=$privacyScrubbed",
+			)
 
-			val local = buildLocalSnapshot(now)
-			val merged = SyncMerger.merge(local, remote, enabled, syncSettings.isDeletionSyncDisabled)
-			applyMergedSnapshot(merged, enabled)
+			val configResult = buildMergedConfig(remote?.config, enabled, now)
+			val merged = buildMergedSnapshot(remote, configResult.config, now)
+			Log.i(
+				TAG,
+				"merged: fav=${merged.favourites.size} hist=${merged.history.size} cat=${merged.categories.size} " +
+					"feed=${merged.feed.size} cfgRev=${merged.config?.revision} remoteCfgWon=${configResult.remoteWon}",
+			)
+			applyToDatabase(merged, configResult.remoteWon, enabled)
 
-			val outgoing = merged.scrubPrivateOnly(privateOnlyMangaIds())
-			val outgoingBytes = json.encodeToString(SyncSnapshot.serializer(), outgoing).encodeToByteArray()
-			val remoteBytes = remote?.let { json.encodeToString(SyncSnapshot.serializer(), it).encodeToByteArray() }
-			if (!privacyScrubbed && remoteBytes != null && remoteBytes.contentEquals(outgoingBytes)) {
-				Log.i(TAG, "sync unchanged; no upload needed")
-				if (migratingStoredSnapshot) {
-					// A migration candidate existed but the merged value was equal. Still create the canonical
-					// file so subsequent runs do not repeatedly scan legacy filenames.
-					api.upload(token, outgoingBytes, null)
-					deleteMigrationCandidates(token, files, decodedIds)
+			// Trim tombstones past the retention horizon from what we upload so the file can't grow
+			// without bound; local rows are GC'd to match just below.
+			val upload = pruneTombstones(merged, now)
+
+			// Nothing to push (single readable file, byte-identical content)? Skip the upload entirely.
+			// A privacy scrub MUST force a write even if the sanitized in-memory snapshots are otherwise
+			// identical, because the canonical file on Drive still contains the removed rows.
+			val unchanged = !migratingStoredSnapshot && !privacyScrubbed && files.size == 1 && remote != null &&
+				normalizedJson(upload) == normalizedJson(remote)
+			if (unchanged) {
+				Log.i(TAG, "no changes to push; skipping upload")
+			} else {
+				// Concurrency re-check immediately before writing: if the canonical file's version moved
+				// since we read it, another device wrote concurrently → re-merge before overwriting.
+				if (canonical != null && baseVersion != null && attempt < MAX_CONFLICT_RETRIES) {
+					val current = api.getFileVersion(token, canonical.id)
+					if (current != null && current != baseVersion) {
+						Log.w(TAG, "remote changed during sync (v$baseVersion → v$current); retrying merge")
+						attempt++
+						continue
+					}
 				}
-				return
+				val payload = json.encodeToString(SyncSnapshot.serializer(), upload).encodeToByteArray()
+				val fileId = api.upload(token, payload, canonical?.id)
+				Log.i(TAG, "uploaded ${payload.size} bytes to $fileId")
+				// Collapse first-run duplicates, but ONLY ones we decoded — their data is now merged into
+				// this write. An unreadable duplicate is left untouched rather than risk losing data we
+				// couldn't parse.
+				for (file in files) {
+					if (file.id != fileId && file.id in decodedIds) {
+						runCatchingCancellable { api.delete(token, file.id) }
+							.onSuccess { Log.i(TAG, "removed duplicate sync file ${file.id}") }
+							.onFailure { Log.w(TAG, "failed to remove duplicate ${file.id}", it) }
+					}
+				}
 			}
 
-			if (canonical != null && attempt < MAX_CONFLICT_RETRIES) {
-				val currentVersion = api.getFileVersion(token, canonical.id)
-				if (currentVersion != baseVersion) {
-					attempt++
-					Log.i(TAG, "remote changed during sync; re-reading (attempt=$attempt)")
-					continue
-				}
-			}
+			// Shed old tombstones locally so the next snapshot we build is already trimmed.
+			gcOldTombstones(now)
 
-			api.upload(token, outgoingBytes, canonical?.id)
-			if (migratingStoredSnapshot) deleteMigrationCandidates(token, files, decodedIds)
+			syncSettings.lastSyncTimestamp = now
+			syncSettings.lastSyncError = null
+			syncSettings.configRevision = configResult.config.revision
+			// Re-hash the ACTUAL local config after applying, so the next sync's change-detection has a
+			// truthful baseline (a freshly-adopted remote config must not look "locally changed").
+			syncSettings.configHash = configContentHash(dumpLocalConfig(enabled))
+			// Record the feed we just converged on as the baseline; next sync diffs against it to tell
+			// which feed items were deleted locally. Set only on success so retries keep detecting them.
+			syncSettings.lastSyncedFeedIds = merged.feed.mapTo(HashSet(merged.feed.size)) { SyncMerger.feedIdentity(it) }
 			return
 		}
 	}
 
-	private suspend fun deleteMigrationCandidates(
-		token: String,
-		files: List<GoogleDriveApi.DriveFile>,
-		decodedIds: Set<String>,
-	) {
-		for (file in files) {
-			if (file.id in decodedIds) runCatchingCancellable { api.delete(token, file.id) }
+	/** Deletes the remote snapshot(s) from Drive and forgets local sync bookkeeping. */
+	suspend fun deleteRemoteData(): SyncResult = try {
+		val token = auth.requireAccessToken()
+		for (file in api.findSyncFiles(token)) {
+			runCatchingCancellable { api.delete(token, file.id) }
+		}
+		syncSettings.lastSyncTimestamp = 0L
+		syncSettings.configRevision = 0L
+		syncSettings.configHash = null
+		SyncResult.Success
+	} catch (e: SyncSignInRequiredException) {
+		SyncResult.SignInRequired
+	} catch (e: Exception) {
+		SyncResult.Error(e.message)
+	}
+
+	/**
+	 * Decodes a downloaded snapshot. Throws [SyncSchemaException] when the file declares a newer schema
+	 * than this build understands — so we abort rather than overwrite newer data. Returns null for
+	 * same-schema corruption, which the caller safely treats as "no usable remote".
+	 */
+	private fun decodeSnapshot(bytes: ByteArray): SyncSnapshot? {
+		val text = bytes.decodeToString()
+		if (text.isBlank()) return null
+		// Probe the schema first: a newer format may also fail the full decode, but we still must
+		// recognise it as "newer" rather than "corrupt" to avoid clobbering it.
+		val version = runCatching {
+			json.decodeFromString(SchemaProbe.serializer(), text).schemaVersion
+		}.getOrNull()
+		if (version != null && version > SyncSnapshot.SCHEMA_VERSION) {
+			throw SyncSchemaException(version)
+		}
+		return try {
+			json.decodeFromString(SyncSnapshot.serializer(), text)
+		} catch (e: Exception) {
+			Log.w(TAG, "remote file unreadable (${e.message}); will overwrite with local data")
+			null
 		}
 	}
 
-	private suspend fun buildLocalSnapshot(now: Long): SyncSnapshot {
-		val enabled = SyncContent.fromKeys(syncSettings.enabledContent)
-		val prefs = database.getMangaPrefsDao().observeAll().toList().firstOrNull().orEmpty()
-		val manga = database.getMangaDao().findAll().associateBy { it.id }
-		val privateIds = privateOnlyMangaIds()
-		val favourites = if (SyncContent.FAVOURITES in enabled) {
-			database.getFavouritesDao().observeAll().toList().firstOrNull().orEmpty()
-				.filterNot { it.mangaId in privateIds }
-				.map { item ->
-					SyncFavourite(
-						mangaId = item.mangaId,
-						categoryId = item.categoryId,
-						createdAt = item.createdAt,
-						updatedAt = item.updatedAt,
-						deletedAt = item.deletedAt,
-					)
-				}
-		} else emptyList()
-		val categories = if (SyncContent.FAVOURITES in enabled) {
-			database.getCategoriesDao().observeAll().toList().firstOrNull().orEmpty().map { category ->
-				SyncCategory(
-					id = category.id,
-					name = category.name,
-					order = category.order,
-					isTrackingEnabled = category.isTrackingEnabled,
-					showInLibrary = category.showInLibrary,
-					createdAt = category.createdAt,
-					updatedAt = category.updatedAt,
-					deletedAt = category.deletedAt,
-				)
-			}
-		} else emptyList()
-		val history = if (SyncContent.HISTORY in enabled) {
-			database.getHistoryDao().observeAll().toList().firstOrNull().orEmpty()
-				.filterNot { it.mangaId in privateIds }
-				.map { item -> SyncHistory.fromEntity(item) }
-		} else emptyList()
-		val feed = if (SyncContent.FEED in enabled) {
-			database.getFeedDao().observeAll().toList().firstOrNull().orEmpty()
-				.filterNot { it.mangaId in privateIds }
-				.map { item -> SyncFeedEntry.fromEntity(item) }
-		} else emptyList()
-		val track = if (SyncContent.TRACK in enabled) {
-			database.getTrackDao().observeAll().toList().firstOrNull().orEmpty()
-				.filterNot { it.mangaId in privateIds }
-				.map { item -> SyncTrack.fromEntity(item) }
-		} else emptyList()
-		val mangaPrefs = if (SyncContent.MANGA_PREFS in enabled) prefs
-			.filterNot { it.mangaId in privateIds }
-			.map { SyncMangaPrefs.fromEntity(it) } else emptyList()
-		val config = if (SyncContent.SETTINGS in enabled) buildConfig(now) else null
+	/** Serialized form with volatile per-sync fields zeroed, for an exact "did anything change?" compare. */
+	private fun normalizedJson(snapshot: SyncSnapshot): String = json.encodeToString(
+		SyncSnapshot.serializer(),
+		SyncSnapshot(
+			schemaVersion = snapshot.schemaVersion,
+			deviceId = "",
+			syncedAt = 0L,
+			categories = snapshot.categories,
+			favourites = snapshot.favourites,
+			history = snapshot.history,
+			bookmarks = snapshot.bookmarks,
+			scrobblings = snapshot.scrobblings,
+			tracks = snapshot.tracks,
+			feed = snapshot.feed,
+			stats = snapshot.stats,
+			readerJourney = snapshot.readerJourney,
+			readerAchievements = snapshot.readerAchievements,
+			config = snapshot.config,
+		),
+	)
+
+	/** Returns a copy with tombstones older than [TOMBSTONE_TTL_MS] dropped from the row sections. */
+	private fun pruneTombstones(snapshot: SyncSnapshot, now: Long): SyncSnapshot {
+		val cutoff = now - TOMBSTONE_TTL_MS
+		val categories = snapshot.categories.filter { it.deletedAt == 0L || it.deletedAt >= cutoff }
+		val favourites = snapshot.favourites.filter { it.deletedAt == 0L || it.deletedAt >= cutoff }
+		val history = snapshot.history.filter { it.deletedAt == 0L || it.deletedAt >= cutoff }
+		if (categories.size == snapshot.categories.size &&
+			favourites.size == snapshot.favourites.size &&
+			history.size == snapshot.history.size
+		) {
+			return snapshot
+		}
+		Log.i(TAG, "pruned tombstones older than ${TOMBSTONE_TTL_MS}ms from upload")
 		return SyncSnapshot(
-			schemaVersion = SyncSnapshot.CURRENT_SCHEMA,
-			deviceId = syncSettings.deviceId,
-			updatedAt = now,
-			favourites = favourites,
+			schemaVersion = snapshot.schemaVersion,
+			deviceId = snapshot.deviceId,
+			syncedAt = snapshot.syncedAt,
 			categories = categories,
+			favourites = favourites,
 			history = history,
+			bookmarks = snapshot.bookmarks,
+			scrobblings = snapshot.scrobblings,
+			tracks = snapshot.tracks,
+			feed = snapshot.feed,
+			stats = snapshot.stats,
+			readerJourney = snapshot.readerJourney,
+			readerAchievements = snapshot.readerAchievements,
+			config = snapshot.config,
+		)
+	}
+
+	private suspend fun gcOldTombstones(now: Long) {
+		if (syncSettings.isDeletionSyncDisabled) {
+			// These rows are the local-only "hidden" markers that stop a cloud pull from restoring an
+			// item the user deliberately deleted on this device.
+			return
+		}
+		val cutoff = now - TOMBSTONE_TTL_MS
+		runCatchingCancellable {
+			database.getFavouritesDao().gc(cutoff)
+			database.getFavouriteCategoriesDao().gc(cutoff)
+			database.getHistoryDao().gc(cutoff)
+		}.onFailure { Log.w(TAG, "local tombstone gc failed", it) }
+	}
+
+	suspend fun signOut() {
+		// signOut + revokeAccess so the next sign-in shows the account chooser / consent again.
+		auth.signOut()
+		syncSettings.clearAccount()
+	}
+
+	// region snapshot building / merging
+
+	/** See [SyncMerger.remapRemoteCategories] — rewrites remote category ids into the local id space. */
+	private suspend fun remapRemoteCategories(remote: SyncSnapshot): SyncSnapshot {
+		val (categories, favourites) = SyncMerger.remapRemoteCategories(
+			remoteCategories = remote.categories,
+			remoteFavourites = remote.favourites,
+			localCategories = localCategories(),
+		)
+		return if (categories === remote.categories && favourites === remote.favourites) {
+			remote
+		} else {
+			remote.copy(categories = categories, favourites = favourites)
+		}
+	}
+
+	/**
+	 * Active Private membership minus active Normal membership. A manga that intentionally exists in
+	 * both spaces retains normal sync behaviour; only a genuinely Private-only title is cloud-hidden.
+	 */
+	private suspend fun privateOnlyMangaIds(): Set<Long> {
+		val result = database.getPrivateFavouritesDao().findActiveMangaIds().toMutableSet()
+		if (result.isEmpty()) return emptySet()
+		for (membership in database.getFavouritesDao().findMemberships()) {
+			result.remove(membership.mangaId)
+		}
+		return result
+	}
+
+	/**
+	 * Removes legacy/stale cloud rows for Private-only manga without deleting their local internal
+	 * history/bookmarks/stats/etc. Categories and global settings are intentionally untouched because
+	 * they carry no manga identity and guessing by title would risk deleting a legitimate Normal row.
+	 * Returning `this` by identity when unchanged lets performSync know whether Drive needs rewriting.
+	 */
+	private fun SyncSnapshot.scrubPrivateOnly(privateOnlyIds: Set<Long>): SyncSnapshot {
+		if (privateOnlyIds.isEmpty()) return this
+		val favourites = favourites.filterNot { it.mangaId in privateOnlyIds }
+		val history = history.filterNot { it.mangaId in privateOnlyIds }
+		val bookmarks = bookmarks.filterNot { it.manga.id in privateOnlyIds }
+		val scrobblings = scrobblings.filterNot { it.mangaId in privateOnlyIds }
+		val tracks = tracks.filterNot { it.mangaId in privateOnlyIds }
+		val feed = feed.filterNot { it.mangaId in privateOnlyIds }
+		val stats = stats.filterNot { it.mangaId in privateOnlyIds }
+		val readerJourney = readerJourney.filterNot { it.mangaId in privateOnlyIds }
+		val oldConfig = config
+		val mangaPrefs = oldConfig?.mangaPrefs?.filterNot { it.mangaId in privateOnlyIds }
+		val configChanged = oldConfig != null && mangaPrefs != null && mangaPrefs.size != oldConfig.mangaPrefs.size
+		val newConfig = if (configChanged) {
+			SyncConfig(
+				revision = oldConfig!!.revision,
+				settings = oldConfig.settings,
+				readerGrid = oldConfig.readerGrid,
+				sourceSettings = oldConfig.sourceSettings,
+				mangaPrefs = checkNotNull(mangaPrefs),
+			)
+		} else {
+			oldConfig
+		}
+		val changed = favourites.size != this.favourites.size ||
+			history.size != this.history.size ||
+			bookmarks.size != this.bookmarks.size ||
+			scrobblings.size != this.scrobblings.size ||
+			tracks.size != this.tracks.size ||
+			feed.size != this.feed.size ||
+			stats.size != this.stats.size ||
+			readerJourney.size != this.readerJourney.size ||
+			configChanged
+		if (!changed) return this
+		Log.i(
+			TAG,
+			"privacy scrub: hidden=${privateOnlyIds.size} " +
+				"fav=${this.favourites.size - favourites.size} hist=${this.history.size - history.size} " +
+				"bookmarks=${this.bookmarks.size - bookmarks.size} tracking=${this.scrobblings.size - scrobblings.size} " +
+				"tracks=${this.tracks.size - tracks.size} feed=${this.feed.size - feed.size} " +
+				"stats=${this.stats.size - stats.size} journey=${this.readerJourney.size - readerJourney.size} " +
+				"prefs=${if (configChanged) oldConfig!!.mangaPrefs.size - mangaPrefs!!.size else 0}",
+		)
+		return copy(
+			favourites = favourites,
+			history = history,
+			bookmarks = bookmarks,
+			scrobblings = scrobblings,
+			tracks = tracks,
 			feed = feed,
-			track = track,
-			mangaPrefs = mangaPrefs,
+			stats = stats,
+			readerJourney = readerJourney,
+			config = newConfig,
+		)
+	}
+
+	private suspend fun buildMergedSnapshot(
+		remote: SyncSnapshot?,
+		config: SyncConfig,
+		now: Long,
+	): SyncSnapshot {
+		val enabled = SyncContent.fromKeys(syncSettings.enabledContent)
+		val favEnabled = SyncContent.FAVOURITES in enabled
+		val histEnabled = SyncContent.HISTORY in enabled
+		val propagateDeletions = !syncSettings.isDeletionSyncDisabled
+
+		val categories = if (favEnabled) {
+			SyncMerger.mergeCategories(
+				localCategories(),
+				remote?.categories.orEmpty(),
+				propagateDeletions,
+			)
+		} else {
+			remote?.categories.orEmpty()
+		}
+		val favourites = if (favEnabled) {
+			SyncMerger.mergeFavourites(
+				localFavourites(),
+				remote?.favourites.orEmpty(),
+				propagateDeletions,
+			)
+		} else {
+			remote?.favourites.orEmpty()
+		}
+		val history = if (histEnabled) {
+			SyncMerger.mergeHistory(
+				localHistory(),
+				remote?.history.orEmpty(),
+				propagateDeletions,
+			)
+		} else {
+			remote?.history.orEmpty()
+		}
+		val bookmarks = if (SyncContent.BOOKMARKS in enabled) {
+			SyncMerger.mergeBookmarks(localBookmarks(), remote?.bookmarks.orEmpty())
+		} else {
+			remote?.bookmarks.orEmpty()
+		}
+		val scrobblings = if (SyncContent.TRACKING in enabled) {
+			SyncMerger.mergeScrobblings(localScrobblings(), remote?.scrobblings.orEmpty())
+		} else {
+			remote?.scrobblings.orEmpty()
+		}
+		val tracks = if (SyncContent.FEED in enabled) {
+			SyncMerger.mergeTracks(localTracks(), remote?.tracks.orEmpty())
+		} else {
+			remote?.tracks.orEmpty()
+		}
+		val feed = if (SyncContent.FEED in enabled) {
+			val localFeedList = localFeed()
+			// Entries present at last sync but gone now were deleted on this device (feed has no
+			// tombstones); honour those deletions instead of letting the remote copy resurrect them.
+			val localFeedIds = localFeedList.mapTo(HashSet(localFeedList.size)) { SyncMerger.feedIdentity(it) }
+			val deletedHere = syncSettings.lastSyncedFeedIds - localFeedIds
+			SyncMerger.mergeFeed(localFeedList, remote?.feed.orEmpty(), deletedHere, propagateDeletions)
+		} else {
+			remote?.feed.orEmpty()
+		}
+		val stats = if (SyncContent.STATS in enabled) {
+			SyncMerger.mergeStats(localStats(), remote?.stats.orEmpty())
+		} else {
+			remote?.stats.orEmpty()
+		}
+		val readerJourney = if (SyncContent.STATS in enabled) {
+			SyncMerger.mergeReaderJourney(localReaderJourney(), remote?.readerJourney.orEmpty())
+		} else {
+			remote?.readerJourney.orEmpty()
+		}
+		val readerAchievements = if (SyncContent.STATS in enabled) {
+			SyncMerger.mergeReaderAchievements(localReaderAchievements(), remote?.readerAchievements.orEmpty())
+		} else {
+			remote?.readerAchievements.orEmpty()
+		}
+		return SyncSnapshot(
+			deviceId = syncSettings.deviceId,
+			syncedAt = now,
+			categories = categories,
+			favourites = favourites,
+			history = history,
+			bookmarks = bookmarks,
+			scrobblings = scrobblings,
+			tracks = tracks,
+			feed = feed,
+			stats = stats,
+			readerJourney = readerJourney,
+			readerAchievements = readerAchievements,
 			config = config,
 		)
 	}
 
-	private suspend fun privateOnlyMangaIds(): Set<Long> {
-		val favourites = database.getFavouritesDao().observeAll().toList().firstOrNull().orEmpty()
-		return favourites.groupBy { it.mangaId }
-			.filterValues { entries -> entries.any { it.categoryId == PRIVATE_CATEGORY_ID } }
-			.keys
+	private class ConfigMergeResult(val config: SyncConfig, val remoteWon: Boolean)
+
+	/**
+	 * Merges the config bundle. Two important safety properties:
+	 *  1. A device with no baseline hash (never synced) is treated as having made NO local change, so
+	 *     it ADOPTS any existing remote config instead of overwriting the cloud with local defaults —
+	 *     this is the bug that wiped settings when signing in on a second device.
+	 *  2. Additive sections (app settings, source settings, manga prefs) are unioned by key — they are
+	 *     applied without clearing, keys accumulate across app versions, and an absent key just means
+	 *     "no opinion". The reader tap grid is the exception; see [mergeReaderGrid].
+	 *     Disabled sections dump empty locally and so pass remote through.
+	 *
+	 * The whole bundle still resolves by [SyncConfig.revision] (last-writer-wins) when both sides edited
+	 * overlapping keys concurrently — a rare case given the multi-hour sync cadence.
+	 */
+	private suspend fun buildMergedConfig(
+		remote: SyncConfig?,
+		enabled: Set<SyncContent>,
+		now: Long,
+	): ConfigMergeResult {
+		val settingsEnabled = SyncContent.SETTINGS in enabled
+		val coversEnabled = SyncContent.CUSTOM_COVERS in enabled
+
+		val local = dumpLocalConfig(enabled)
+		val currentHash = configContentHash(local)
+
+		val hasBaseline = syncSettings.configHash != null
+		val localChanged = hasBaseline && (settingsEnabled || coversEnabled) && currentHash != syncSettings.configHash
+		val localRevision = if (localChanged) now else syncSettings.configRevision
+		val remoteRevision = remote?.revision ?: -1L
+		// Remote wins if it exists and either we made no deliberate local change (adopt the cloud) or
+		// its revision is strictly newer. A tie with an unchanged local always goes to remote.
+		val remoteWon = remote != null && (!localChanged || remoteRevision > localRevision)
+
+		val merged = SyncConfig(
+			revision = maxOf(localRevision, remoteRevision, 0L),
+			settings = mergeConfigMap(local.settings, remote?.settings, remoteWon)
+				.filterKeys { it !in EXCLUDED_SETTINGS_KEYS },
+			readerGrid = mergeReaderGrid(local.readerGrid, remote?.readerGrid, remoteWon),
+			sourceSettings = mergeConfigList(local.sourceSettings, remote?.sourceSettings, remoteWon) { it.source },
+			mangaPrefs = mergeConfigList(local.mangaPrefs, remote?.mangaPrefs, remoteWon) { it.mangaId },
+		)
+		return ConfigMergeResult(merged, remoteWon)
 	}
 
-	private suspend fun buildConfig(now: Long): SyncConfig {
-		val prefs = context.getSharedPreferences("sync-config", Context.MODE_PRIVATE)
-		val revision = prefs.getLong(KEY_CONFIG_REVISION, 0L).takeIf { it > 0 } ?: now.also {
-			prefs.edit { putLong(KEY_CONFIG_REVISION, it) }
-		}
+	private suspend fun dumpLocalConfig(enabled: Set<SyncContent>): SyncConfig {
+		val settingsEnabled = SyncContent.SETTINGS in enabled
+		val coversEnabled = SyncContent.CUSTOM_COVERS in enabled
 		return SyncConfig(
-			revision = revision,
-			appSettings = BackupPrimitive.dumpPrefs(appSettings.prefs),
-			readerTapGrid = TapGridSettingsBackup.from(tapGridSettings),
-			sourceSettings = SourceSettingsBackup.from(SourceSettings(context)),
-			customCovers = coverCodec.exportAll(),
-			stats = StatsBackup.from(database),
-			readerJourney = ReaderJourneyBackup.from(database),
-			readerAchievements = ReaderAchievementBackup.from(database),
-			bookmarks = BookmarkBackup.from(database),
-			manga = MangaBackup.from(database),
-			scrobbling = ScrobblingBackup.from(database),
+			revision = 0L,
+			settings = if (settingsEnabled) dumpAppSettings() else emptyMap(),
+			readerGrid = if (settingsEnabled) dumpReaderGrid() else emptyMap(),
+			sourceSettings = if (settingsEnabled) dumpSourceSettings() else emptyList(),
+			mangaPrefs = if (coversEnabled) dumpMangaPrefs() else emptyList(),
 		)
 	}
 
-	private suspend fun applyMergedSnapshot(snapshot: SyncSnapshot, enabled: Set<SyncContent>) {
-		database.withTransaction {
-			if (SyncContent.FAVOURITES in enabled) applyFavourites(snapshot.favourites, snapshot.categories)
-			if (SyncContent.HISTORY in enabled) applyHistory(snapshot.history)
-			if (SyncContent.FEED in enabled) applyFeed(snapshot.feed)
-			if (SyncContent.TRACK in enabled) applyTrack(snapshot.track)
-			if (SyncContent.MANGA_PREFS in enabled) applyMangaPrefs(snapshot.mangaPrefs)
+	/** Union of two maps; the winning side overrides on a shared key. A null remote yields local as-is. */
+	private fun <V> mergeConfigMap(local: Map<String, V>, remote: Map<String, V>?, remoteWon: Boolean): Map<String, V> {
+		if (remote == null) return local
+		val out = LinkedHashMap<String, V>(local.size + remote.size)
+		if (remoteWon) {
+			out.putAll(local)
+			out.putAll(remote)
+		} else {
+			out.putAll(remote)
+			out.putAll(local)
 		}
-		if (SyncContent.SETTINGS in enabled) snapshot.config?.let { applyConfig(it) }
+		return out
 	}
 
-	private suspend fun applyFavourites(items: List<SyncFavourite>, categories: List<SyncCategory>) {
-		val categoryDao = database.getCategoriesDao()
-		val favouriteDao = database.getFavouritesDao()
-		for (category in categories) {
-			if (category.deletedAt != null) {
-				categoryDao.deleteById(category.id)
+	/**
+	 * The tap grid is the one config section stored as a whole: applying it wipes the prefs file and
+	 * writes the bundle verbatim, and turning an area off *removes* its key (`putString(key, null)` is
+	 * a delete). So a missing key means "the user disabled this area", not "no opinion" — unioning it
+	 * like [mergeConfigMap] resurrects every area that was ever turned on, which is how tap actions
+	 * crawled back to their defaults a sync or two after being changed. Take the winner's bundle whole.
+	 *
+	 * An empty side carries no data at all (settings sync off, or a remote written before tap-grid sync
+	 * existed) and passes the other side through — a local grid always has at least its `_init` marker.
+	 */
+	private fun mergeReaderGrid(
+		local: Map<String, BackupPrimitive>,
+		remote: Map<String, BackupPrimitive>?,
+		remoteWon: Boolean,
+	): Map<String, BackupPrimitive> = when {
+		remote.isNullOrEmpty() -> local
+		local.isEmpty() -> remote
+		remoteWon -> remote
+		else -> local
+	}
+
+	/** Union of two lists keyed by [key]; the winning side overrides on a shared key. */
+	private inline fun <T, K> mergeConfigList(
+		local: List<T>,
+		remote: List<T>?,
+		remoteWon: Boolean,
+		key: (T) -> K,
+	): List<T> {
+		if (remote == null) return local
+		val out = LinkedHashMap<K, T>(local.size + remote.size)
+		val first = if (remoteWon) local else remote
+		val second = if (remoteWon) remote else local
+		for (item in first) out[key(item)] = item
+		for (item in second) out[key(item)] = item
+		return out.values.toList()
+	}
+
+	// endregion
+
+	// region apply to DB
+
+	private suspend fun applyToDatabase(
+		merged: SyncSnapshot,
+		remoteConfigWon: Boolean,
+		enabled: Set<SyncContent>,
+	) {
+		if (SyncContent.FAVOURITES in enabled) {
+			val locallyDeletedCategories = if (syncSettings.isDeletionSyncDisabled) {
+				database.getFavouriteCategoriesDao().findAllForSync()
+					.filterTo(HashSet()) { it.deletedAt != 0L }
+					.mapTo(HashSet()) { it.categoryId }
 			} else {
-				categoryDao.upsert(category.toEntity())
+				emptySet()
+			}
+			val locallyDeletedFavourites = if (syncSettings.isDeletionSyncDisabled) {
+				database.getFavouritesDao().findAllForSync()
+					.filter { it.deletedAt != 0L }
+					.mapTo(HashSet()) { it.mangaId to it.categoryId }
+			} else {
+				emptySet()
+			}
+			database.withTransaction {
+				for (category in merged.categories) {
+					if (category.categoryId !in locallyDeletedCategories) {
+						database.getFavouriteCategoriesDao().upsert(category.toEntity())
+					}
+				}
+				for (favourite in merged.favourites) {
+					if ((favourite.mangaId to favourite.categoryId) !in locallyDeletedFavourites) {
+						upsertManga(favourite.manga)
+						database.getFavouritesDao().upsert(favourite.toEntity())
+					}
+				}
 			}
 		}
-		for (item in items) {
-			if (item.deletedAt != null) {
-				favouriteDao.delete(item.mangaId, item.categoryId)
+		if (SyncContent.HISTORY in enabled) {
+			val locallyDeletedHistory = if (syncSettings.isDeletionSyncDisabled) {
+				database.getHistoryDao().findAllForSync()
+					.filterTo(HashSet()) { it.deletedAt != 0L }
+					.mapTo(HashSet()) { it.mangaId }
 			} else {
-				favouriteDao.upsert(item.toEntity())
+				emptySet()
+			}
+			database.withTransaction {
+				for (entry in merged.history) {
+					if (entry.mangaId !in locallyDeletedHistory) {
+						upsertManga(entry.manga)
+						database.getHistoryDao().upsertForSync(entry.toEntity())
+					}
+				}
+			}
+		}
+		if (SyncContent.BOOKMARKS in enabled) {
+			for (group in merged.bookmarks) {
+				runCatchingCancellable {
+					database.withTransaction {
+						upsertManga(group.manga)
+						if (group.bookmarks.isNotEmpty()) {
+							database.getBookmarksDao().upsert(group.bookmarks.map { it.toEntity() })
+						}
+					}
+				}
+			}
+		}
+		if (SyncContent.FEED in enabled) {
+			for (track in merged.tracks) {
+				runCatchingCancellable {
+					database.withTransaction {
+						upsertManga(track.manga)
+						database.getTracksDao().upsert(track.toEntity())
+					}
+				}
+			}
+			applyFeed(merged.feed)
+		}
+		if (SyncContent.TRACKING in enabled) {
+			for (entry in merged.scrobblings) {
+				runCatchingCancellable { database.getScrobblingDao().upsert(entry.toEntity()) }
+			}
+		}
+		if (SyncContent.STATS in enabled) {
+			// FK to history.manga_id — applied after history; tolerate rows whose history is absent.
+			for (entry in merged.stats) {
+				runCatchingCancellable { database.getStatsDao().upsert(entry.toEntity()) }
+			}
+		}
+		if (SyncContent.STATS in enabled) {
+			val journeyDao = database.getReaderJourneyDao()
+			for (entry in merged.readerJourney) {
+				runCatchingCancellable { journeyDao.mergeChapterAward(entry.toEntity()) }
+			}
+			for (entry in merged.readerAchievements) {
+				runCatchingCancellable { journeyDao.mergeAchievement(entry.toEntity()) }
+			}
+			runCatchingCancellable { journeyDao.rebuildProfileFromLedger() }
+		}
+		// Apply config locally only when the remote bundle won the merge; otherwise local already holds
+		// the newest config. We apply the MERGED config (not raw remote) so locally-unique keys survive.
+		if (remoteConfigWon) {
+			merged.config?.let { applyConfig(it, enabled) }
+		}
+	}
+
+	private suspend fun applyConfig(config: SyncConfig, enabled: Set<SyncContent>) {
+		if (SyncContent.SETTINGS in enabled) {
+			val settings = config.settings.toMutableMap()
+			EXCLUDED_SETTINGS_KEYS.forEach { settings.remove(it) }
+			appSettings.upsertAll(settings.mapValues { it.value.rawValue() })
+			tapGridSettings.upsertAll(config.readerGrid.mapValues { it.value.rawValue() })
+			applySourceSettings(config.sourceSettings)
+		}
+		if (SyncContent.CUSTOM_COVERS in enabled) {
+			for (pref in config.mangaPrefs) {
+				val currentCover = database.getPreferencesDao().find(pref.mangaId)?.coverUrlOverride
+				val resolvedCover = when {
+					pref.coverData != null -> coverCodec.materialize(
+						mangaId = pref.mangaId,
+						coverData = pref.coverData,
+						coverFileExtension = pref.coverFileExtension,
+						previousUrl = currentCover,
+					) ?: currentCover
+
+					coverCodec.isPortableCoverUrl(pref.coverUrlOverride) -> pref.coverUrlOverride
+					// Schema-1 snapshots only contain the source device's local file URI. Do not
+					// replace a working local cover with that unusable path.
+					else -> currentCover
+				}
+				database.getPreferencesDao().upsert(pref.toEntity(resolvedCover))
 			}
 		}
 	}
 
-	private suspend fun applyHistory(items: List<SyncHistory>) {
-		val dao = database.getHistoryDao()
-		for (item in items) {
-			if (item.deletedAt != null) dao.deleteById(item.mangaId) else dao.upsert(item.toEntity())
+	private suspend fun applyFeed(feed: List<SyncFeedEntry>) {
+		val dao = database.getTrackLogsDao()
+		val localByIdentity = dao.findAllForSync().groupBy { entity ->
+			SyncMerger.feedIdentity(entity.mangaId, entity.chapters)
+		}.toMutableMap()
+		for (entry in feed) {
+			runCatchingCancellable {
+				database.withTransaction {
+					upsertManga(entry.manga)
+					val identity = SyncMerger.feedIdentity(entry)
+					val matches = localByIdentity.remove(identity).orEmpty()
+					val keepId = matches.minOfOrNull { it.id } ?: 0L
+					dao.insert(entry.toEntity(keepId))
+					for (duplicate in matches) {
+						if (duplicate.id != keepId) {
+							dao.delete(duplicate.id)
+						}
+					}
+				}
+			}
 		}
 	}
 
-	private suspend fun applyFeed(items: List<SyncFeedEntry>) {
-		val dao = database.getFeedDao()
-		for (item in items) {
-			if (item.deletedAt != null) dao.deleteById(item.mangaId) else dao.upsert(item.toEntity())
+	private suspend fun upsertManga(manga: MangaBackup) {
+		val tags = manga.tags.map { it.toEntity() }
+		if (tags.isNotEmpty()) {
+			database.getTagsDao().upsert(tags)
+		}
+		database.getMangaDao().upsert(manga.toEntity(), tags)
+	}
+
+	private suspend fun applySourceSettings(list: List<SourceSettingsBackup>) {
+		val knownSources = database.getSourcesDao().findAll().mapTo(HashSet()) { it.source }
+		for (entry in list) {
+			if (entry.source !in knownSources) {
+				Log.d(TAG, "sync: skipping source settings for '${entry.source}' — source not installed")
+				continue
+			}
+			val prefsName = SourceSettings.getStorageName(entry.source)
+			val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+			prefs.edit {
+				entry.values.forEach { (key, primitive) ->
+					when (primitive) {
+						is BackupPrimitive.StringValue -> putString(key, primitive.value)
+						is BackupPrimitive.BoolValue -> putBoolean(key, primitive.value)
+						is BackupPrimitive.IntValue -> putInt(key, primitive.value)
+						is BackupPrimitive.LongValue -> putLong(key, primitive.value)
+						is BackupPrimitive.FloatValue -> putFloat(key, primitive.value)
+						is BackupPrimitive.StringSetValue -> putStringSet(key, primitive.value)
+					}
+				}
+			}
 		}
 	}
 
-	private suspend fun applyTrack(items: List<SyncTrack>) {
-		val dao = database.getTrackDao()
-		for (item in items) {
-			if (item.deletedAt != null) dao.deleteById(item.mangaId) else dao.upsert(item.toEntity())
+	// endregion
+
+	// region local readers
+
+	private suspend fun localCategories(): List<SyncCategory> =
+		database.getFavouriteCategoriesDao().findAllForSync().map(::SyncCategory)
+
+	private suspend fun localFavourites(): List<SyncFavourite> {
+		val mangaCache = HashMap<Long, MangaBackup>()
+		return database.getFavouritesDao().findAllForSync().mapNotNull { entity ->
+			val manga = mangaCache.getOrPut(entity.mangaId) {
+				database.getMangaDao().find(entity.mangaId)?.toBackup() ?: run {
+					Log.w(TAG, "sync: skipping favourite(mangaId=${entity.mangaId}) — manga row missing")
+					return@mapNotNull null
+				}
+			}
+			SyncFavourite(entity, manga)
 		}
 	}
 
-	private suspend fun applyMangaPrefs(items: List<SyncMangaPrefs>) {
-		val dao = database.getMangaPrefsDao()
-		for (item in items) {
-			if (item.deletedAt != null) dao.deleteByMangaId(item.mangaId) else dao.upsert(item.toEntity())
+	private suspend fun localHistory(): List<SyncHistory> {
+		val mangaCache = HashMap<Long, MangaBackup>()
+		return database.getHistoryDao().findAllForSync().mapNotNull { entity ->
+			val manga = mangaCache.getOrPut(entity.mangaId) {
+				database.getMangaDao().find(entity.mangaId)?.toBackup() ?: run {
+					Log.w(TAG, "sync: skipping history(mangaId=${entity.mangaId}) — manga row missing")
+					return@mapNotNull null
+				}
+			}
+			SyncHistory(entity, manga)
 		}
 	}
 
-	private suspend fun applyConfig(config: SyncConfig) {
-		val prefs = context.getSharedPreferences("sync-config", Context.MODE_PRIVATE)
-		val localRevision = prefs.getLong(KEY_CONFIG_REVISION, 0L)
-		if (config.revision < localRevision) return
-		BackupPrimitive.restorePrefs(appSettings.prefs, config.appSettings)
-		TapGridSettingsBackup.restore(tapGridSettings, config.readerTapGrid)
-		SourceSettingsBackup.restore(SourceSettings(context), config.sourceSettings)
-		coverCodec.restoreAll(config.customCovers)
-		StatsBackup.restore(database, config.stats)
-		ReaderJourneyBackup.restore(database, config.readerJourney)
-		ReaderAchievementBackup.restore(database, config.readerAchievements)
-		BookmarkBackup.restore(database, config.bookmarks)
-		MangaBackup.restore(database, config.manga)
-		ScrobblingBackup.restore(database, config.scrobbling)
-		prefs.edit { putLong(KEY_CONFIG_REVISION, config.revision) }
+	private suspend fun localBookmarks(): List<BookmarkBackup> =
+		database.getBookmarksDao().dump().toList().map { (manga, items) -> BookmarkBackup(manga, items) }
+
+	private suspend fun localScrobblings(): List<ScrobblingBackup> =
+		database.getScrobblingDao().dumpEnabled().toList().map(::ScrobblingBackup)
+
+	private suspend fun localStats(): List<StatsBackup> =
+		database.getStatsDao().dumpEnabled().toList().map(::StatsBackup)
+
+	private suspend fun localReaderJourney(): List<ReaderJourneyBackup> =
+		database.getReaderJourneyDao().getAllChapterAwards().map(::ReaderJourneyBackup)
+
+	private suspend fun localReaderAchievements(): List<ReaderAchievementBackup> =
+		database.getReaderJourneyDao().getAllAchievements().map(::ReaderAchievementBackup)
+
+	private suspend fun localTracks(): List<SyncTrack> {
+		val mangaCache = HashMap<Long, MangaBackup>()
+		return database.getTracksDao().findAllForSync().mapNotNull { entity ->
+			val manga = mangaCache.getOrPut(entity.mangaId) {
+				database.getMangaDao().find(entity.mangaId)?.toBackup() ?: run {
+					Log.w(TAG, "sync: skipping track(mangaId=${entity.mangaId}) — manga row missing")
+					return@mapNotNull null
+				}
+			}
+			SyncTrack(entity, manga)
+		}
 	}
 
-	private suspend fun remapRemoteCategories(snapshot: SyncSnapshot): SyncSnapshot {
-		val localCategories = database.getCategoriesDao().observeAll().toList().firstOrNull().orEmpty()
-		if (snapshot.categories.isEmpty()) return snapshot
-		val localByName = localCategories.associateBy { it.name.trim().lowercase() }
-		val remap = HashMap<Long, Long>()
-		val remappedCategories = snapshot.categories.map { remote ->
-			val local = localByName[remote.name.trim().lowercase()]
-			if (local != null && local.id != remote.id) {
-				remap[remote.id] = local.id
-				remote.copy(id = local.id)
-			} else remote
+	private suspend fun localFeed(): List<SyncFeedEntry> {
+		val mangaCache = HashMap<Long, MangaBackup>()
+		return database.getTrackLogsDao().findAllForSync().mapNotNull { entity ->
+			val manga = mangaCache.getOrPut(entity.mangaId) {
+				database.getMangaDao().find(entity.mangaId)?.toBackup() ?: run {
+					Log.w(TAG, "sync: skipping feed entry(id=${entity.id}) — manga row missing")
+					return@mapNotNull null
+				}
+			}
+			SyncFeedEntry(entity, manga)
 		}
-		if (remap.isEmpty()) return snapshot
-		return snapshot.copy(
-			categories = remappedCategories,
-			favourites = snapshot.favourites.map { item ->
-				item.copy(categoryId = remap[item.categoryId] ?: item.categoryId)
-			},
+	}
+
+	private fun MangaWithTags.toBackup(): MangaBackup = MangaBackup(this)
+
+	private fun dumpAppSettings(): Map<String, BackupPrimitive> {
+		val map = appSettings.getAllValues().toMutableMap()
+		EXCLUDED_SETTINGS_KEYS.forEach { map.remove(it) }
+		return map.toSortedMap().mapNotNullValuesToBackup()
+	}
+
+	private fun dumpReaderGrid(): Map<String, BackupPrimitive> =
+		tapGridSettings.getAllValues().toSortedMap().mapNotNullValuesToBackup()
+
+	private suspend fun dumpSourceSettings(): List<SourceSettingsBackup> {
+		val sources = database.getSourcesDao().findAll()
+		val result = ArrayList<SourceSettingsBackup>(sources.size)
+		for (source in sources.sortedBy { it.source }) {
+			val prefsName = SourceSettings.getStorageName(source.source)
+			val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+			val values = prefs.all.toSortedMap().mapNotNullValuesToBackup()
+			if (values.isNotEmpty()) {
+				result += SourceSettingsBackup(source = source.source, values = values)
+			}
+		}
+		return result
+	}
+
+	private suspend fun dumpMangaPrefs(): List<SyncMangaPrefs> =
+		database.getPreferencesDao().getOverrides().sortedBy { it.mangaId }.map { entity ->
+			val cover = coverCodec.read(entity.coverUrlOverride)
+			SyncMangaPrefs(
+				entity = entity,
+				coverData = cover?.data,
+				coverFileExtension = cover?.extension,
+			)
+		}
+
+	private fun Map<String, *>.mapNotNullValuesToBackup(): Map<String, BackupPrimitive> {
+		val out = LinkedHashMap<String, BackupPrimitive>(size)
+		for ((key, value) in this) {
+			BackupPrimitive.of(value)?.let { out[key] = it }
+		}
+		return out
+	}
+
+	private fun configContentHash(config: SyncConfig): String {
+		val normalized = SyncConfig(
+			revision = 0L,
+			settings = config.settings.toSortedMap(),
+			readerGrid = config.readerGrid.toSortedMap(),
+			sourceSettings = config.sourceSettings.sortedBy { it.source },
+			mangaPrefs = config.mangaPrefs.sortedBy { it.mangaId },
 		)
+		return json.encodeToString(SyncConfig.serializer(), normalized).hashCode().toString()
 	}
 
-	private fun SyncSnapshot.scrubPrivateOnly(privateIds: Set<Long>): SyncSnapshot {
-		if (privateIds.isEmpty()) return this
-		val favourites = favourites.filterNot { it.mangaId in privateIds }
-		val history = history.filterNot { it.mangaId in privateIds }
-		val feed = feed.filterNot { it.mangaId in privateIds }
-		val track = track.filterNot { it.mangaId in privateIds }
-		val mangaPrefs = mangaPrefs.filterNot { it.mangaId in privateIds }
-		if (
-			favourites.size == this.favourites.size &&
-			history.size == this.history.size &&
-			feed.size == this.feed.size &&
-			track.size == this.track.size &&
-			mangaPrefs.size == this.mangaPrefs.size
-		) return this
-		return copy(
-			favourites = favourites,
-			history = history,
-			feed = feed,
-			track = track,
-			mangaPrefs = mangaPrefs,
-		)
-	}
+	// endregion
+
+	/** Lightweight probe to read just the schema version before attempting a full decode. */
+	@Serializable
+	private class SchemaProbe(@SerialName("schema") val schemaVersion: Int = 0)
 
 	private companion object {
-		const val TAG = "DriveSync"
-		const val PRIVATE_CATEGORY_ID = -1000L
-		const val MAX_CONFLICT_RETRIES = 2
-		const val KEY_CONFIG_REVISION = "config_revision"
-	}
-}
 
-private object TapGridSettingsBackup {
-	fun from(settings: TapGridSettings): Map<String, String> = settings.export()
-	fun restore(settings: TapGridSettings, values: Map<String, String>) = settings.import(values)
+		const val TAG = "GDriveSync"
+
+		/**
+		 * How long soft-deleted rows (tombstones) are retained in the snapshot and locally before being
+		 * garbage-collected. Must comfortably exceed the longest realistic gap between a device's syncs
+		 * so every device sees a deletion before its tombstone is dropped; a device offline longer than
+		 * this may resurrect an item it never learned was deleted (the accepted trade-off for bounding
+		 * the file size).
+		 */
+		const val TOMBSTONE_TTL_MS = 60L * 24 * 60 * 60 * 1000 // 60 days
+
+		/** Max times to re-merge when another device writes the file mid-sync, before a best-effort write. */
+		const val MAX_CONFLICT_RETRIES = 3
+
+		val EXCLUDED_SETTINGS_KEYS = AppSettings.SENSITIVE_BACKUP_KEYS
+	}
 }
