@@ -77,19 +77,25 @@ class BrowserDriveAuthSession @Inject constructor() {
 		code: String,
 		now: Long = System.currentTimeMillis(),
 	): BrowserAuthCallbackProof = synchronized(lock) {
-		val current = pending ?: throw BrowserAuthException("No browser sign-in is pending")
-		if (current.expiresAt <= now) {
-			pending = null
-			throw BrowserAuthException("Browser sign-in session expired")
-		}
-		if (transactionId != current.transactionId) {
-			throw BrowserAuthException("Browser sign-in transaction mismatch")
-		}
+		val current = requirePendingLocked(transactionId, now)
 		if (code.isBlank()) {
 			throw BrowserAuthException("Browser sign-in response is missing its one-time code")
 		}
 		pending = null
 		BrowserAuthCallbackProof(transactionId, code, current.codeVerifier)
+	}
+
+	/**
+	 * Provider denial/error callbacks may clear the transaction only when they belong to the exact
+	 * process-local login attempt. A forged callback with another transaction id must not cancel the
+	 * user's real pending login.
+	 */
+	internal fun consumeErrorCallback(
+		transactionId: String,
+		now: Long = System.currentTimeMillis(),
+	) = synchronized(lock) {
+		requirePendingLocked(transactionId, now)
+		pending = null
 	}
 
 	internal fun cancelPending() = synchronized(lock) {
@@ -147,6 +153,18 @@ class BrowserDriveAuthSession @Inject constructor() {
 		pending = null
 		credential = null
 		expiredSinceLastLogin = false
+	}
+
+	private fun requirePendingLocked(transactionId: String, now: Long): PendingTransaction {
+		val current = pending ?: throw BrowserAuthException("No browser sign-in is pending")
+		if (current.expiresAt <= now) {
+			pending = null
+			throw BrowserAuthException("Browser sign-in session expired")
+		}
+		if (transactionId != current.transactionId) {
+			throw BrowserAuthException("Browser sign-in transaction mismatch")
+		}
+		return current
 	}
 
 	private fun pruneExpiredLocked(now: Long) {
