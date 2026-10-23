@@ -203,6 +203,10 @@ private fun Context.buildMiyorareViewPalette(
 ): MiyorareViewPalette {
 	val darkTheme = forceDark || (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
+	val classicDerivedScheme = resolveMiyorareClassicDerivedColorScheme(
+		paletteSource = paletteSource,
+		darkTheme = darkTheme,
+	)
 	val colors = resolveMiyorareThemeColors(
 		paletteSource = paletteSource,
 		preset = preset,
@@ -211,6 +215,7 @@ private fun Context.buildMiyorareViewPalette(
 		darkTheme = darkTheme,
 		amoled = amoled,
 		effectLevel = effectLevel,
+		classicDerivedColorScheme = classicDerivedScheme,
 	)
 	val scheme = colors.colorScheme
 	val palette = colors.visualPalette
