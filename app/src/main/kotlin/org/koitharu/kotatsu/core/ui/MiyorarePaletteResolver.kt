@@ -66,12 +66,12 @@ private fun ColorScheme.toModernVisualPalette(
 	darkTheme: Boolean,
 	amoled: Boolean,
 ): MiyorareVisualPalette {
-	val primary = primary
-	val secondary = secondary
-	val accent = tertiary
+	val primaryColor = primary
+	val secondaryColor = secondary
+	val accentColor = tertiary
 	val selectedSurface = primaryContainer
-	val chip = secondaryContainer
-	val border = outline
+	val chipColor = secondaryContainer
+	val borderColor = outline
 	val gradientStrength = authored.gradientStrength
 	val useAmoled = darkTheme && amoled
 
@@ -83,56 +83,56 @@ private fun ColorScheme.toModernVisualPalette(
 		backgroundGradientMiddle = Color.Black
 		backgroundGradientEnd = Color.Black
 	} else {
-		backgroundGradientStart = lerp(background, primary, gradientStrength * 0.22f)
-		backgroundGradientMiddle = lerp(background, secondary, gradientStrength * 0.12f)
-		backgroundGradientEnd = lerp(background, accent, gradientStrength * 0.18f)
+		backgroundGradientStart = lerp(background, primaryColor, gradientStrength * 0.22f)
+		backgroundGradientMiddle = lerp(background, secondaryColor, gradientStrength * 0.12f)
+		backgroundGradientEnd = lerp(background, accentColor, gradientStrength * 0.18f)
 	}
 
 	val surfaceGradientStart = lerp(
 		surfaceContainer,
-		primary,
+		primaryColor,
 		gradientStrength * MiyorareVisualTokens.SURFACE_GRADIENT_MIX,
 	)
 	val surfaceGradientMiddle = lerp(
 		surfaceContainerHigh,
-		accent,
+		accentColor,
 		gradientStrength * 0.10f,
 	)
 	val surfaceGradientEnd = lerp(
 		surfaceContainerHigh,
-		secondary,
+		secondaryColor,
 		gradientStrength * 0.32f,
 	)
 	val iconGradientStart = lerp(
 		selectedSurface,
-		primary,
+		primaryColor,
 		MiyorareVisualTokens.ICON_GRADIENT_MIX + gradientStrength * 0.22f,
 	)
 	val iconGradientEnd = lerp(
 		selectedSurface,
-		secondary,
+		secondaryColor,
 		0.10f + gradientStrength * 0.34f,
 	)
-	val accentGradientMiddle = lerp(primary, secondary, 0.34f + gradientStrength * 0.32f)
-	val accentGradientEnd = lerp(secondary, accent, 0.12f + gradientStrength * 0.40f)
+	val accentGradientMiddle = lerp(primaryColor, secondaryColor, 0.34f + gradientStrength * 0.32f)
+	val accentGradientEnd = lerp(secondaryColor, accentColor, 0.12f + gradientStrength * 0.40f)
 	val activeGradientStart = lerp(
-		primary,
-		secondary,
+		primaryColor,
+		secondaryColor,
 		gradientStrength * MiyorareVisualTokens.ACTIVE_GRADIENT_MIX,
 	)
-	val activeGradientEnd = lerp(secondary, accent, 0.08f + gradientStrength * 0.44f)
+	val activeGradientEnd = lerp(secondaryColor, accentColor, 0.08f + gradientStrength * 0.44f)
 
 	return authored.copy(
-		primary = primary,
-		secondary = secondary,
-		accent = accent,
+		primary = primaryColor,
+		secondary = secondaryColor,
+		accent = accentColor,
 		selectedSurface = selectedSurface,
-		border = border,
-		borderHighlight = lerp(border, secondary, 0.22f + gradientStrength * 0.26f)
+		border = borderColor,
+		borderHighlight = lerp(borderColor, secondaryColor, 0.22f + gradientStrength * 0.26f)
 			.copy(alpha = authored.borderHighlight.alpha),
-		glow = lerp(primary, secondary, 0.34f).copy(alpha = authored.glow.alpha),
-		chip = chip,
-		button = primary,
+		glow = lerp(primaryColor, secondaryColor, 0.34f).copy(alpha = authored.glow.alpha),
+		chip = chipColor,
+		button = primaryColor,
 		onButton = onPrimary,
 		backgroundGradientStart = backgroundGradientStart,
 		backgroundGradientMiddle = backgroundGradientMiddle,
@@ -142,7 +142,7 @@ private fun ColorScheme.toModernVisualPalette(
 		surfaceGradientEnd = surfaceGradientEnd,
 		iconGradientStart = iconGradientStart,
 		iconGradientEnd = iconGradientEnd,
-		accentGradientStart = primary,
+		accentGradientStart = primaryColor,
 		accentGradientMiddle = accentGradientMiddle,
 		accentGradientEnd = accentGradientEnd,
 		activeGradientStart = activeGradientStart,
