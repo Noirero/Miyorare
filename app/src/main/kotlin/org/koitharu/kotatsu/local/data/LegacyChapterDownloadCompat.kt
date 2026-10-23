@@ -66,6 +66,10 @@ internal object LegacyChapterDownloadCompat {
 			}
 		}
 
+		val remoteBaseOwners = HashMap<String, MutableSet<Long>>()
+		for (chapter in remoteChapters) for (base in generatedDownloadBases(chapter)) {
+			remoteBaseOwners.getOrPut(base.normalizedFileIdentity()) { HashSet() }.add(chapter.id)
+		}
 		val linked = ArrayList<MangaChapter>(localChapters.size)
 		val branchIndexes = HashMap<String?, Int>()
 		val duplicateNames = HashMap<String, Int>()
@@ -84,35 +88,20 @@ internal object LegacyChapterDownloadCompat {
 				append(if (isNovel) ".epub" else ".cbz")
 			}
 
-			val localCandidate = takeFirstActive(byId[remoteChapter.id])
-				?: takeFirstActive(byFileName[expectedFileName.lowercase(Locale.ROOT)])
-				?: if (!isNovel) {
-					findBestArtifactMatch(
-						candidatesByBase = byArtifactBase,
-						remote = remoteChapter,
-						expectedBaseName = baseName,
-					)
-				} else {
-					null
-				}
+			val uniqueBase = generatedDownloadBases(remoteChapter).all { remoteBaseOwners[it.normalizedFileIdentity()].orEmpty().size <= 1 }
+			val localCandidate = takeUniqueActive(byId[remoteChapter.id])
+				?: (if (uniqueBase) takeUniqueActive(byFileName[expectedFileName.lowercase(Locale.ROOT)]) else null)
+				?: (if (!isNovel) {
+					findBestArtifactMatch(byArtifactBase, remoteChapter, baseName, allowBasename = uniqueBase)
+				} else null)
 				?: continue
 
 			localCandidate.active = false
-			linked += remoteChapter.copy(
-				url = localCandidate.chapter.url,
-				source = LocalMangaSource,
-			)
+			linked += remoteChapter.copy(url = localCandidate.chapter.url, source = LocalMangaSource)
 		}
 
-		candidates.asSequence()
-			.filter { it.active }
-			.mapTo(linked) { it.chapter }
-		return localManga.copy(
-			manga = localManga.manga.copy(
-				id = remoteManga.id,
-				chapters = linked,
-			),
-		)
+		candidates.asSequence().filter { it.active }.mapTo(linked) { it.chapter }
+		return localManga.copy(manga = localManga.manga.copy(id = remoteManga.id, chapters = linked))
 	}
 
 	/**
@@ -126,14 +115,15 @@ internal object LegacyChapterDownloadCompat {
 		return artifactMatchScore(local, remote, expectedBases)
 	}
 
-	private fun takeFirstActive(candidates: List<LocalCandidate>?): LocalCandidate? {
-		return candidates?.firstOrNull { it.active }
+	private fun takeUniqueActive(candidates: List<LocalCandidate>?): LocalCandidate? {
+		return candidates?.filter { it.active }?.singleOrNull()
 	}
 
 	private fun findBestArtifactMatch(
 		candidatesByBase: Map<String, List<LocalCandidate>>,
 		remote: MangaChapter,
 		expectedBaseName: String,
+		allowBasename: Boolean = true,
 	): LocalCandidate? {
 		val expectedBases = generatedDownloadBases(remote).toMutableSet().apply { add(expectedBaseName) }
 		val matchingCandidates = LinkedHashSet<LocalCandidate>()
@@ -146,7 +136,7 @@ internal object LegacyChapterDownloadCompat {
 		var bestScore = 0
 		var bestScoreCount = 0
 		for (candidate in matchingCandidates) {
-			val score = artifactMatchScore(candidate.chapter, remote, expectedBases)
+			val score = artifactMatchScore(candidate.chapter, remote, expectedBases).takeIf { allowBasename || it == 2 } ?: 0
 			when {
 				score > bestScore -> {
 					bestCandidate = candidate

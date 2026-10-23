@@ -321,7 +321,7 @@ class SettingsSearchHelper @Inject constructor(
                 addItem(AppSettings.KEY_PAGES_SAVE_ASK, R.string.ask_for_dest_dir_every_time, breadcrumbs = crumbs, fragmentClass = DownloadsSettingsFragment::class.java)
             }
             group(sectionCrumbs, R.string.settings_download_maintenance) { crumbs ->
-                addItem("rebuild_downloads_index", R.string.rebuild_downloads_index, R.string.rebuild_downloads_index_summary, crumbs, DownloadsSettingsFragment::class.java)
+                addItem("download_maintenance", R.string.download_maintenance_title, R.string.download_maintenance_description, crumbs, DownloadsSettingsFragment::class.java)
                 addItem("ignore_dose", R.string.disable_battery_optimization, R.string.disable_battery_optimization_summary_downloads, crumbs, DownloadsSettingsFragment::class.java)
             }
         }

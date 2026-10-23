@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_maintenance_title">Check &amp; repair downloads</string>
+    <string name="download_maintenance_description">Check current and older downloads and repair compatibility and indexes without deleting files.</string>
+    <string name="download_maintenance_reassurance">Files are never deleted or moved. Ambiguous items are left untouched.</string>
+    <string name="download_maintenance_preparing">Preparing…</string>
+    <string name="download_maintenance_scanning">Scanning storage…</string>
+    <string name="download_maintenance_identifying">Identifying downloads…</string>
+    <string name="download_maintenance_verifying">Verifying chapters…</string>
+    <string name="download_maintenance_repairing">Repairing compatibility…</string>
+    <string name="download_maintenance_refreshing">Refreshing indexes…</string>
+    <string name="download_maintenance_finalizing">Finalizing…</string>
+    <string name="download_maintenance_completed">Completed</string>
+    <string name="download_maintenance_progress">%1$d of %2$d items checked</string>
+    <string name="download_maintenance_checked">%1$d downloads checked</string>
+    <string name="download_maintenance_summary">%1$d repaired · %2$d already correct · %3$d need attention · %4$d failed</string>
+    <string name="download_maintenance_details">View details</string>
+    <string name="download_maintenance_no_problems">No problems found.</string>
+    <string name="download_maintenance_private_item">Private download (path hidden)</string>
+    <string name="download_maintenance_chapter_counts">%1$d of %2$d physical chapters recognized</string>
+    <string name="download_maintenance_verified">Verified successfully.</string>
+    <string name="download_maintenance_local_content">Local or imported content; unchanged.</string>
+    <string name="download_maintenance_identity_unknown">Identity could not be proven safely; unchanged.</string>
+    <string name="download_maintenance_source_mismatch">Conflicting source identity; unchanged.</string>
+    <string name="download_maintenance_duplicate_container">Multiple download folders share this identity. Automatic relinking was skipped.</string>
+    <string name="download_maintenance_partial_match">Some physical chapters could not be linked safely. Existing files and index are preserved.</string>
+    <string name="download_maintenance_corrupt_index">The index is corrupt and a complete safe replacement could not be proven.</string>
+    <string name="download_maintenance_unsupported">Unrecognized content; unchanged.</string>
+    <string name="download_maintenance_storage_unavailable">Storage is unavailable. Existing records are preserved; reconnect storage and try again.</string>
+    <string name="download_maintenance_provider_unavailable">The provider could not supply missing metadata. Local files are preserved.</string>
+    <string name="download_maintenance_metadata_unavailable">Required metadata is unavailable; unchanged.</string>
+    <string name="download_maintenance_ownership_unknown">Normal/Private ownership could not be proven. Files remain accessible through their existing identity.</string>
+    <string name="download_maintenance_storage_changed">Storage changed during verification. No replacement index was installed; try again.</string>
+    <string name="download_maintenance_cancelled">The check was interrupted. Completed atomic repairs remain valid.</string>
+    <string name="download_maintenance_io_error">The item could not be processed. Check storage access and try again.</string>
+</resources>

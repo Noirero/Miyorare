@@ -407,6 +407,12 @@ abstract class MangaDao {
 	)
 	abstract suspend fun searchByTitle(query: String, source: String, limit: Int): List<MangaWithTags>
 
+	/** Explicit download maintenance only; includes Private and cached offline identities. */
+	@Transaction
+	@Query("SELECT * FROM manga WHERE source NOT IN ('LOCAL', 'UNKNOWN')")
+	abstract suspend fun findDownloadMaintenanceCandidates(): List<MangaWithTags>
+
+
 	@Upsert
 	protected abstract suspend fun upsertRaw(manga: MangaEntity)
 
