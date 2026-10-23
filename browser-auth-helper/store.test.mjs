@@ -18,24 +18,26 @@ function readyStore() {
   return { store, advance: (ms) => { now += ms; } };
 }
 
-test('pending transaction does not reveal a code before OAuth callback', () => {
+test('one-time app code is only issued after the provider grant exists', () => {
   const store = new BrowserAuthStore(() => 1000);
   store.begin(transactionId, challengeForVerifier(verifier));
-  assert.deepEqual(store.poll(transactionId, verifier), { status: 'pending' });
+  assert.throws(() => store.issueCode(transactionId), AuthStoreError);
 });
 
-test('wrong proof cannot poll or exchange a transaction', () => {
+test('wrong proof cannot exchange a transaction', () => {
   const { store } = readyStore();
-  assert.throws(() => store.poll(transactionId, 'x'.repeat(64)), AuthStoreError);
+  const code = store.issueCode(transactionId);
+  assert.throws(() => store.exchange(code, transactionId, 'x'.repeat(64)), AuthStoreError);
+  const grant = store.exchange(code, transactionId, verifier);
+  assert.equal(grant.accessToken, 'temporary-access-token');
 });
 
 test('one-time app code is single-use', () => {
   const { store } = readyStore();
-  const poll = store.poll(transactionId, verifier);
-  assert.equal(poll.status, 'ready');
-  const grant = store.exchange(poll.code, transactionId, verifier);
+  const code = store.issueCode(transactionId);
+  const grant = store.exchange(code, transactionId, verifier);
   assert.equal(grant.accessToken, 'temporary-access-token');
-  assert.throws(() => store.exchange(poll.code, transactionId, verifier), AuthStoreError);
+  assert.throws(() => store.exchange(code, transactionId, verifier), AuthStoreError);
 });
 
 test('OAuth state is single-use', () => {
@@ -45,7 +47,7 @@ test('OAuth state is single-use', () => {
   assert.throws(() => store.consumeState(state), AuthStoreError);
 });
 
-test('expired transaction and one-time code are rejected', () => {
+test('expired one-time code is rejected', () => {
   let now = 1000;
   const store = new BrowserAuthStore(() => now);
   const { state } = store.begin(transactionId, challengeForVerifier(verifier));
@@ -55,16 +57,14 @@ test('expired transaction and one-time code are rejected', () => {
     tokenExpiresAt: now + 3_600_000,
     account: null,
   });
-  const poll = store.poll(transactionId, verifier);
+  const code = store.issueCode(transactionId);
   now += 2 * 60 * 1000 + 1;
-  assert.throws(() => store.exchange(poll.code, transactionId, verifier), AuthStoreError);
+  assert.throws(() => store.exchange(code, transactionId, verifier), AuthStoreError);
 });
 
-test('provider error is returned once and then invalidated', () => {
-  const store = new BrowserAuthStore(() => 1000);
-  const { state } = store.begin(transactionId, challengeForVerifier(verifier));
-  const tx = store.consumeState(state);
-  store.fail(tx.transactionId, 'access_denied');
-  assert.deepEqual(store.poll(transactionId, verifier), { status: 'error', error: 'access_denied' });
-  assert.throws(() => store.poll(transactionId, verifier), AuthStoreError);
+test('deleting a transaction invalidates its app code and grant', () => {
+  const { store } = readyStore();
+  const code = store.issueCode(transactionId);
+  store.deleteTransaction(transactionId);
+  assert.throws(() => store.exchange(code, transactionId, verifier), AuthStoreError);
 });
