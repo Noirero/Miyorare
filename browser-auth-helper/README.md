@@ -13,20 +13,45 @@ This service exists only to complete **temporary Google Drive OAuth authorizatio
 - After a successful provider exchange, the helper creates a short-lived **one-time app code** and redirects the browser to `miyorare://google-drive-auth` with only that app code and transaction id.
 - The one-time app code is not a Google credential. Miyorare must still prove possession of the process-local verifier when it exchanges the app code over HTTPS.
 - The app code is consumed exactly once. Replay, stale state, stale code, wrong transaction, and wrong verifier are rejected.
-- Google access tokens are held only in helper process memory long enough for the app exchange. They are not logged or written to disk.
-- If Google unexpectedly returns a refresh token, this implementation deliberately ignores it and never persists it.
-- The Android app then keeps the access token only in process memory.
+- If Google unexpectedly returns a refresh token, the implementation ignores it and never persists it.
+- The Android app keeps the resulting access token only in process memory.
 
-The custom-scheme hop is **not** the Google OAuth redirect URI; Google always returns to the registered HTTPS helper endpoint. The custom scheme is only an app-return fallback carrying a proof-bound one-time Miyorare code. If an owner-controlled verified HTTPS Android App Link becomes available later, it can replace this final app-return hop without changing the token-exchange boundary.
+The custom-scheme hop is **not** the Google OAuth redirect URI. Google always returns to the registered HTTPS helper endpoint.
 
-## Required configuration
+## Cloudflare Workers deployment
 
-Set these as deployment secrets/environment variables; **never commit their values**:
+Cloudflare Workers is the preferred low-cost deployment for this helper. `worker.mjs` implements the same OAuth protocol as the Node helper, while a SQLite-backed Durable Object stores only short-lived pending transactions, one-time codes, and temporary access grants. This avoids relying on one long-running server process and keeps replay/TTL state coherent across Worker invocations.
 
-- `GOOGLE_OAUTH_CLIENT_ID` — Google Cloud OAuth 2.0 Web client id.
-- `GOOGLE_OAUTH_CLIENT_SECRET` — corresponding Web client secret.
-- `PUBLIC_BASE_URL` — owner-controlled public HTTPS origin for this helper, with no trailing slash.
-- `PORT` — optional; defaults to `8080` (platforms such as Railway normally provide it).
+The Durable Object is **not** Miyorare sync storage. No library, history, favourites, covers, snapshots, or Drive payloads pass through it.
+
+The Worker configuration is in `wrangler.jsonc` and intentionally uses the Worker name:
+
+```text
+miyorare-drive-auth
+```
+
+When connecting the GitHub repository in Cloudflare, use:
+
+```text
+Repository: Noirero/Miyorare
+Production branch: Amain2
+Root directory: browser-auth-helper
+Deploy command: npx wrangler deploy
+```
+
+The Worker name in the Cloudflare dashboard must match `miyorare-drive-auth` from `wrangler.jsonc`.
+
+After the first deployment, Cloudflare provides a stable HTTPS `workers.dev` origin. Use that exact origin as `PUBLIC_BASE_URL`.
+
+## Required runtime variables / secrets
+
+Configure these in the Worker runtime settings; **never commit their values**:
+
+- `PUBLIC_BASE_URL` — exact public Worker HTTPS origin, for example `https://miyorare-drive-auth.<account-subdomain>.workers.dev`.
+- `GOOGLE_OAUTH_CLIENT_ID` — Google Cloud OAuth 2.0 **Web application** client id.
+- `GOOGLE_OAUTH_CLIENT_SECRET` — corresponding Web client secret; store as a Cloudflare secret.
+
+The legacy Node server also accepts `PORT`, defaulting to `8080`, but Cloudflare Workers does not use `PORT`.
 
 In Google Cloud Console, authorize exactly:
 
@@ -34,31 +59,37 @@ In Google Cloud Console, authorize exactly:
 ${PUBLIC_BASE_URL}/v1/google/callback
 ```
 
-Enable the Google Drive API for the OAuth project and configure the consent screen according to Google's current requirements.
-
-## Deployment topology
-
-The helper intentionally keeps pending OAuth transactions, one-time codes, and temporary Google grants **in process memory only**. Deploy this implementation as a **single active replica**. If horizontal scaling is later required, first replace the in-memory transaction store with a shared short-TTL store that preserves the same atomic single-use/replay semantics; do not run independent replicas behind round-robin routing because callback and exchange may otherwise land on different state owners.
-
-Restarting the helper invalidates in-flight browser login transactions. That is safe: the user simply starts browser sign-in again, and no long-term Google credential has been persisted.
+Enable the Google Drive API for the OAuth project and configure the OAuth consent screen according to Google's current requirements.
 
 ## Android configuration
 
-After the helper has an approved stable HTTPS URL, set `BrowserDriveAuthConfig.BASE_URL` in the Android app to that exact origin. It is intentionally blank in source until infrastructure ownership and the OAuth redirect are approved; the app disables the browser-login action rather than guessing a domain.
+Only after the Worker has a stable production HTTPS origin and Google OAuth is configured, set `BrowserDriveAuthConfig.BASE_URL` in the Android app to that exact origin. It remains blank until then so an APK cannot silently point at an unowned or incomplete OAuth deployment.
 
-The Android manifest must route only `miyorare://google-drive-auth` to the dedicated browser-auth callback activity. The callback accepts only the transaction id, one-time app code, or sanitized provider error; it must never accept a Google access token or Google authorization code.
+The Android manifest routes only `miyorare://google-drive-auth` to the dedicated browser-auth callback activity. The callback accepts only the transaction id, one-time app code, or sanitized provider error; it never accepts a Google access token or Google authorization code.
 
-## Run
+## Local / regression validation
 
-Requires Node.js 20+ and no third-party runtime dependencies.
+Node.js 20+:
 
 ```bash
 npm test
+```
+
+Validate Cloudflare bundling when dependencies are installed:
+
+```bash
+npm install
+npm run check:cloudflare
+```
+
+The original Node implementation remains available for protocol regression tests and local server testing:
+
+```bash
 npm start
 ```
 
-A health endpoint is available at `GET /healthz` and contains no credential data.
+A health endpoint is available at `GET /healthz`. On Cloudflare it returns whether required OAuth runtime configuration is present without exposing credential values.
 
 ## Provider contract
 
-The Google-facing portion follows Google's web-server OAuth flow: exact registered HTTPS redirect URI, state validation, server-side client secret, authorization-code exchange, and online access. Google's native-app documentation says custom URI schemes are not supported as the Google OAuth redirect on Android; this implementation does not use one for that purpose. Re-check Google's current OAuth documentation before changing endpoint or redirect behavior.
+The Google-facing portion follows Google's web-server OAuth flow: exact registered HTTPS redirect URI, state validation, server-side client secret, authorization-code exchange, and online access. The custom Android URI scheme is only the post-exchange app-return hop and is never registered as Google's OAuth redirect URI.
