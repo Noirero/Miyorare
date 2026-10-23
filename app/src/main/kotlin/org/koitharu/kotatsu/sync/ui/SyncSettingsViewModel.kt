@@ -6,9 +6,7 @@ import android.net.Uri
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
@@ -17,7 +15,6 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
-import org.koitharu.kotatsu.sync.data.BrowserAuthOrigin
 import org.koitharu.kotatsu.sync.data.BrowserDriveAuthClient
 import org.koitharu.kotatsu.sync.data.DriveAuthMode
 import org.koitharu.kotatsu.sync.data.GoogleDriveAuth
@@ -79,7 +76,6 @@ class SyncSettingsViewModel @Inject constructor(
 
 	private var pendingRecoveryAction: ForegroundAction? = null
 	private var pendingAccount: PendingAccount? = null
-	private var browserCompletionJob: Job? = null
 
 	init {
 		viewModelScope.launch {
@@ -104,33 +100,16 @@ class SyncSettingsViewModel @Inject constructor(
 	}
 
 	fun signInBrowser() {
-		browserCompletionJob?.cancel()
 		pendingRecoveryAction = null
 		pendingAccount = null
-		val uri = runCatching { browserAuth.createLoginUri(BrowserAuthOrigin.SYNC_SETTINGS) }.getOrElse { error ->
+		val uri = runCatching { browserAuth.createLoginUri() }.getOrElse { error ->
 			events.call(SyncEvent.Error(error.message ?: context.getString(R.string.sync_error)))
 			return
 		}
 		events.call(SyncEvent.OpenBrowser(uri))
-		browserCompletionJob = viewModelScope.launch(Dispatchers.IO) {
-			try {
-				browserAuth.awaitCompletion()
-				// Browser credentials must never inherit the periodic lane from a previous GMS login.
-				scheduler.unschedule()
-				refresh()
-				performForegroundAction(ForegroundAction.SYNC, recoveryAlreadyAttempted = false)
-			} catch (e: CancellationException) {
-				throw e
-			} catch (e: Exception) {
-				browserAuth.cancelPending()
-				refresh()
-				events.call(SyncEvent.Error(e.message ?: context.getString(R.string.sync_error)))
-			}
-		}
 	}
 
 	fun onBrowserLaunchFailed(message: String?) {
-		browserCompletionJob?.cancel()
 		browserAuth.cancelPending()
 		events.call(SyncEvent.Error(message ?: context.getString(R.string.sync_browser_unavailable)))
 	}
@@ -257,7 +236,6 @@ class SyncSettingsViewModel @Inject constructor(
 	}
 
 	fun signOut() {
-		browserCompletionJob?.cancel()
 		launchJob(Dispatchers.Default) {
 			pendingRecoveryAction = null
 			pendingAccount = null
