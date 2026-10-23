@@ -180,7 +180,7 @@ class SettingsSearchHelper @Inject constructor(
                 addItem("sources_catalog", R.string.manage_extensions, R.string.manage_extensions_summary, crumbs, ExtensionsSettingsFragment::class.java)
                 addItem("extension_stores", R.string.manage_stores, R.string.manage_stores_summary, crumbs, ExtensionsSettingsFragment::class.java)
                 addItem("kotatsu_parsers", R.string.kotatsu_parsers, R.string.kotatsu_parsers_summary, crumbs, KotatsuParsersSettingsFragment::class.java)
-                addItem("tsuki_plugins", R.string.tsuki_plugins_manage, breadcrumbs = crumbs, fragmentClass = ExtensionsSettingsFragment::class.java)
+                addItem("tsuki_plugins", R.string.tsuki_plugins_manage, R.string.tsuki_plugins_manage_summary, crumbs, ExtensionsSettingsFragment::class.java)
                 addItem("extension_installer_method", R.string.extension_installer_method, breadcrumbs = crumbs, fragmentClass = ExtensionsSettingsFragment::class.java)
                 addItem("migrate_broken_sources", R.string.migrate_broken_sources, R.string.migrate_broken_sources_summary, crumbs, ExtensionsSettingsFragment::class.java)
             }
@@ -233,7 +233,7 @@ class SettingsSearchHelper @Inject constructor(
             group(sectionCrumbs, R.string.settings_group_reader_display) { crumbs ->
                 addItem(AppSettings.KEY_READER_FULLSCREEN, R.string.fullscreen_mode, R.string.reader_fullscreen_summary, crumbs, ReaderSettingsFragment::class.java)
                 addItem(AppSettings.KEY_READER_ORIENTATION, R.string.screen_orientation, breadcrumbs = crumbs, fragmentClass = ReaderSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.screen_orientations))
-                addItem(AppSettings.KEY_READER_SCREEN_ON, R.string.keep_screen_on, R.string.keep_screen_on_summary, crumbs, ReaderSettingsFragment::class.java)
+                addItem(AppSettings.KEY_READER_SCREEN_ON, R.string.keep_screen_on, R.string.reader_screen_on_summary, crumbs, ReaderSettingsFragment::class.java)
                 addItem(AppSettings.KEY_READER_MULTITASK, R.string.reader_multitask, R.string.reader_multitask_summary, crumbs, ReaderSettingsFragment::class.java)
             }
             group(sectionCrumbs, R.string.settings_group_reader_info) { crumbs ->
