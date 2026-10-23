@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="sync_sign_in_gms">Continue with Google</string>
+	<string name="sync_sign_in_gms_summary">Requires Google Play Services · Supports automatic/background sync</string>
+	<string name="sync_sign_in_browser">Continue in browser</string>
+	<string name="sync_sign_in_browser_summary">Works without Google Play Services · Temporary session</string>
+	<string name="sync_browser_connected">Connected temporarily</string>
+	<string name="sync_browser_connected_summary">Browser sign-in expires automatically. Miyorare does not keep long-term Google access.</string>
+	<string name="sync_browser_expires_in">Temporary Google session · Expires in %1$s</string>
+	<string name="sync_browser_session_expired">Session expired. Sign in through your browser again to sync.</string>
+	<string name="sync_browser_manual_only">Browser mode is for manual sync. Automatic/background sync requires the persistent Google Play Services login.</string>
+	<string name="sync_browser_security_summary">Browser login works without Google Play Services. Access is temporary, no long-term browser refresh credential is kept, and you may need to sign in again later.</string>
+	<string name="sync_browser_unavailable">No browser is available to open Google sign-in.</string>
+	<string name="sync_browser_not_configured">Browser sign-in infrastructure is not configured for this build.</string>
+	<string name="modern_onboarding_google_browser_title">Continue in browser</string>
+	<string name="modern_onboarding_google_browser_summary">Works without Google Play Services · Temporary manual sync session</string>
+</resources>
