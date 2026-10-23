@@ -70,11 +70,12 @@ internal object DownloadIndexRepair {
 		return Plan(result.toString(), true, recognized, physicalChapters.size)
 	}
 
-	fun write(file: File, content: String) {
+	fun write(file: File, content: String, beforeCommit: () -> Unit = {}) {
 		val atomic = AtomicFile(file)
 		val stream = atomic.startWrite()
 		try {
 			stream.write(content.toByteArray(Charsets.UTF_8))
+			beforeCommit()
 			atomic.finishWrite(stream)
 		} catch (error: Throwable) {
 			atomic.failWrite(stream)

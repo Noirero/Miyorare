@@ -153,13 +153,13 @@ sealed class LocalMangaOutput(
 		}
 
 		/** Candidate paths only, never identity proof. No output is opened, recovered, or modified. */
-		internal fun maintenanceCandidates(root: File, manga: Manga): List<File> {
+		internal fun maintenanceCandidates(root: File, manga: Manga, directoryCache: MutableMap<String, List<File>> = HashMap()): List<File> {
 			val downloads = File(root, DOWNLOADS_DIR_NAME)
 			val current = getSourceDirectory(if (manga.source.isNovelSource) File(downloads, NOVEL_DIR_NAME) else downloads, manga)
 			val parents = linkedSetOf(current).apply { addAll(legacySourceDirectories(root, manga)) }
 			val bases = setOf(manga.title.toReadableFileName(), manga.title.toFileNameSafe())
 			return parents.flatMap { parent ->
-				parent.listFiles()?.filter { file ->
+				directoryCache.getOrPut(parent.canonicalPath) { parent.listFiles().orEmpty().toList() }.filter { file ->
 					val stem = if (file.isDirectory) file.name else file.nameWithoutExtension
 					(bases.any { base -> stem == base || stem.removePrefix(base + "_").toIntOrNull()?.let { stem.startsWith(base + "_") && it > 0 } == true }) &&
 						(file.isDirectory || file.extension.lowercase(Locale.ROOT) in setOf("cbz", "zip", "epub", "pdf"))

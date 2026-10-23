@@ -251,7 +251,7 @@ class LocalMangaRepository @Inject constructor(
 					FileSystem.SYSTEM, File(root, LocalMangaOutput.ENTRY_NAME_INDEX).toOkioPath(),
 				)?.getCoverEntry()
 				check(root.listFiles()?.none {
-					it.isDirectory || it.isSupportedDownloadArtifact() ||
+					it.isDirectory || LocalDownloadScanner.isSupportedArtifact(it) ||
 						(it.name != coverEntry && MimeTypes.getMimeTypeFromExtension(it.name)?.isImage == true)
 				} == true) {
 					"Chapter artifacts remain in manga container: $root"

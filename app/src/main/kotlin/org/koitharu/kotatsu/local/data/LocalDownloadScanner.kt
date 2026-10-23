@@ -65,14 +65,14 @@ internal object LocalDownloadScanner {
 		// Structural fallback keeps downloads from older Miyorare builds readable after marker renames.
 		return withChildren { titles ->
 			val sample = titles.filterNot { it.isHidden || it.shouldSkip() }.take(LEGACY_SOURCE_PROBE_LIMIT).toList()
-			if (sample.any { it.isFile && it.isSupportedDownloadArtifact() }) return@withChildren false
+			if (sample.any { it.isFile && isSupportedArtifact(it) }) return@withChildren false
 			sample.any { title ->
-				title.isDirectory && title.withChildren { artifacts -> artifacts.any { it.isFile && it.isSupportedDownloadArtifact() } }
+				title.isDirectory && title.withChildren { artifacts -> artifacts.any { it.isFile && isSupportedArtifact(it) } }
 			} || sample.isNotEmpty() && sample.all { it.isDirectory }
 		}
 	}
 
-	private fun File.isSupportedDownloadArtifact(): Boolean = when (extension.lowercase(Locale.ROOT)) {
+	fun isSupportedArtifact(file: File): Boolean = when (file.extension.lowercase(Locale.ROOT)) {
 		"cbz", "zip", "epub", "pdf" -> true
 		else -> false
 	}

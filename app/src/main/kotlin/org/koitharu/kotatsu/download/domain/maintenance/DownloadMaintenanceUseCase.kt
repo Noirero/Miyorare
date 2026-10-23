@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toManga
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -78,12 +79,14 @@ class DownloadMaintenanceUseCase @Inject constructor(
 				fun remember(id: Long, path: String) { knownPaths.getOrPut(File(path).canonicalPath) { LinkedHashSet() }.add(id) }
 				localIndex.getDownloadAliasPaths(byId.keys).forEach { (id, path) -> remember(id, path) }
 				database.getLocalMangaIndexDao().findAllEntries().forEach { if (it.mangaId in byId) remember(it.mangaId, it.path) }
-				for (space in FavouriteSpace.entries) database.getFavouriteDownloadIndexDao().findEntries(space.dbValue).forEach { remember(it.mangaId, it.path) }
+				val ownershipRows = FavouriteSpace.entries.flatMap { database.getFavouriteDownloadIndexDao().findEntries(it.dbValue) }
+				ownershipRows.forEach { remember(it.mangaId, it.path) }
 				// These are canonical path candidates, never source identity inferred from a similar name.
 				val expected = HashMap<String, MutableList<Manga>>()
+				val directoryCache = HashMap<String, List<File>>()
 				for (manga in candidates) {
 					currentCoroutineContext().ensureActive()
-					for (root in roots) for (file in LocalMangaOutput.maintenanceCandidates(root, manga)) {
+					for (root in roots) for (file in LocalMangaOutput.maintenanceCandidates(root, manga, directoryCache)) {
 						expected.getOrPut(file.canonicalPath) { ArrayList() }.add(manga)
 					}
 				}
@@ -93,15 +96,20 @@ class DownloadMaintenanceUseCase @Inject constructor(
 					currentCoroutineContext().ensureActive()
 					phase(DownloadMaintenancePhase.VERIFYING)
 					val path = file.canonicalPath
-					val isPrivate = (expected[path].orEmpty().map { it.id } + knownPaths[path].orEmpty()).any {
+					val pathIds = expected[path].orEmpty().map { it.id } + knownPaths[path].orEmpty()
+					val pathOwners = ownershipRows.filter { File(it.path).canonicalPath == path }.map { it.space }.toSet()
+					val provenNormal = FavouriteSpace.NORMAL.dbValue in pathOwners || pathIds.any {
+						it in memberships.getValue(FavouriteSpace.NORMAL) && it !in memberships.getValue(FavouriteSpace.PRIVATE)
+					}
+					val isPrivate = FavouriteSpace.PRIVATE.dbValue in pathOwners || pathIds.any {
 						it in memberships.getValue(FavouriteSpace.PRIVATE) && it !in memberships.getValue(FavouriteSpace.NORMAL)
-					} || (rootsBySpace.getValue(FavouriteSpace.PRIVATE).any { file.inside(it) } &&
-						!rootsBySpace.getValue(FavouriteSpace.NORMAL).any { file.inside(it) })
+					} || (!provenNormal && rootsBySpace.getValue(FavouriteSpace.PRIVATE).any { file.inside(it) })
 					val result = try {
 						verify(file, byId, knownPaths[path].orEmpty(), expected[path].orEmpty().distinctBy { it.id }, duplicateIds, memberships, rootsBySpace)
 					} catch (cancelled: CancellationException) {
 						throw cancelled
-					} catch (_: Exception) {
+					} catch (error: Exception) {
+						error.printStackTraceDebug()
 						DownloadMaintenanceItem(path, DownloadMaintenanceStatus.FAILED, DownloadMaintenanceReason.IO_ERROR)
 					}
 					items += result.copy(isPrivate = isPrivate)
@@ -112,7 +120,8 @@ class DownloadMaintenanceUseCase @Inject constructor(
 		} catch (cancelled: CancellationException) {
 			items += DownloadMaintenanceItem("", DownloadMaintenanceStatus.UNRESOLVED, DownloadMaintenanceReason.CANCELLED)
 			throw cancelled
-		} catch (_: Exception) {
+		} catch (error: Exception) {
+			error.printStackTraceDebug()
 			items += DownloadMaintenanceItem("", DownloadMaintenanceStatus.FAILED, DownloadMaintenanceReason.IO_ERROR)
 		} finally {
 			mutableState.value = mutableState.value.copy(running = false, phase = DownloadMaintenancePhase.COMPLETED, result = DownloadMaintenanceResult(items.toList()))
@@ -164,25 +173,14 @@ class DownloadMaintenanceUseCase @Inject constructor(
 		if (selected.id in duplicateIds && knownIds.isEmpty() && storedInfo == null) return item(DownloadMaintenanceStatus.AMBIGUOUS, DownloadMaintenanceReason.DUPLICATE_CONTAINER)
 		return mangaLock.withLock(selected) {
 			if (file.isDirectory && initialSnapshot != snapshot(file)) return@withLock item(DownloadMaintenanceStatus.UNRESOLVED, DownloadMaintenanceReason.STORAGE_CHANGED)
-			var remote = data.findMangaById(selected.id, withChapters = true)?.takeIf { sameSource(it.source.name, selected.source.name) } ?: selected
-			var metadataFailure: DownloadMaintenanceReason? = null
-			if (remote.chapters.isNullOrEmpty()) {
-				// Existing valid offline chapter identity outranks any network refresh.
-				remote = storedInfo?.takeIf { it.id == remote.id && !it.chapters.isNullOrEmpty() } ?: remote
-				if (remote.chapters.isNullOrEmpty()) {
-					val fetched = runCatchingCancellable { repositories.create(remote.source).getDetails(remote) }
-					val details = fetched.getOrNull()
-					if (details != null && details.id == remote.id && sameSource(details.source.name, remote.source.name)) {
-						remote = details
-						data.storeManga(details, replaceExisting = true, detailsFetched = true)
-					}
-					else metadataFailure = if (fetched.isFailure) DownloadMaintenanceReason.PROVIDER_UNAVAILABLE else DownloadMaintenanceReason.METADATA_UNAVAILABLE
-				}
-			}
+			val cached = data.findMangaById(selected.id, withChapters = true)?.takeIf { sameSource(it.source.name, selected.source.name) } ?: selected
+			val metadata = DownloadMaintenanceMetadata.resolve(cached, storedInfo) { repositories.create(it.source).getDetails(it) }
+			val remote = metadata.manga
+			if (metadata.fetched) data.storeManga(remote, replaceExisting = true, detailsFetched = true)
 			val linked = localRepository.linkDownloadedChapters(remote, physical)
 			val remoteIds = remote.chapters.orEmpty().mapTo(HashSet()) { it.id }
 			val recognized = linked.manga.chapters.orEmpty().count { it.id in remoteIds }
-			if (recognized == 0 && storedInfo == null) return@withLock item(DownloadMaintenanceStatus.UNRESOLVED, metadataFailure ?: DownloadMaintenanceReason.PARTIAL_MATCH, 0, physical.manga.chapters.orEmpty().size)
+			if (recognized == 0 && storedInfo == null) return@withLock item(DownloadMaintenanceStatus.UNRESOLVED, metadata.failure ?: DownloadMaintenanceReason.PARTIAL_MATCH, 0, physical.manga.chapters.orEmpty().size)
 			phase(DownloadMaintenancePhase.REPAIRING)
 			var changed = false
 			if (oldText != null && file.isDirectory) {
@@ -193,7 +191,8 @@ class DownloadMaintenanceUseCase @Inject constructor(
 					// Guard external writers/storage changes between verification and atomic publication.
 					if (indexFile.readText() != oldText || initialSnapshot != snapshot(file)) return@withLock item(DownloadMaintenanceStatus.UNRESOLVED, DownloadMaintenanceReason.STORAGE_CHANGED)
 					currentCoroutineContext().ensureActive()
-					DownloadIndexRepair.write(indexFile, plan.content)
+					val commitContext = currentCoroutineContext()
+					DownloadIndexRepair.write(indexFile, plan.content) { commitContext.ensureActive() }
 					changed = true
 				}
 			}

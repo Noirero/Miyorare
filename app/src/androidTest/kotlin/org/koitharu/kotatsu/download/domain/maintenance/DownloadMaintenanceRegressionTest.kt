@@ -9,6 +9,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -68,6 +69,7 @@ class DownloadMaintenanceRegressionTest {
 			remove("private_download_legacy_roots")
 		}
 		File(root, "private").mkdirs()
+		Unit
 	}
 
 	@After fun tearDown() = runBlocking {
@@ -280,6 +282,100 @@ class DownloadMaintenanceRegressionTest {
 		assertEquals(DownloadMaintenanceStatus.UNRESOLVED, result(folder).status)
 		assertEquals(DownloadMaintenanceReason.PROVIDER_UNAVAILABLE, result(folder).reason)
 		assertFalse(File(folder, "index.json").exists())
+	}
+
+	@Test fun cancellationBeforeAtomicCommitRestoresPreviousIndex() {
+		val file = File(root, "index.json").apply { writeText("previous") }
+		val result = runCatching { DownloadIndexRepair.write(file, "replacement") { throw kotlinx.coroutines.CancellationException("cancel") } }
+		assertTrue(result.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+		assertEquals("previous", file.readText())
+		assertFalse(File(root, "index.json.new").exists())
+	}
+
+	@Test fun normalAndPrivateCopiesKeepIndependentOwnership() = runBlocking {
+		val remote = remote()
+		val normal = folder("downloads/Maintenance")
+		val privateFolder = folder("private/downloads/Maintenance")
+		chapterFile(normal, "Chapter 1.cbz")
+		chapterFile(privateFolder, "Chapter 1.cbz")
+		register(remote, normal)
+		// Both explicit ownership rows are legitimate even though the global alias has one path.
+		db.getFavouriteDownloadIndexDao().upsert(listOf(
+			FavouriteDownloadIndexEntity(remote.id, 0, normal.path),
+			FavouriteDownloadIndexEntity(remote.id, 1, privateFolder.path),
+		))
+		maintenance.run()
+		assertEquals(normal.path, db.getFavouriteDownloadIndexDao().findEntry(0, remote.id)?.path)
+		assertEquals(privateFolder.path, db.getFavouriteDownloadIndexDao().findEntry(1, remote.id)?.path)
+		assertFalse(File(normal, "index.json").exists())
+		assertFalse(File(privateFolder, "index.json").exists())
+	}
+
+	@Test fun conflictingSourceIdentityLeavesIndexAndOwnershipUntouched() = runBlocking {
+		val remote = remote()
+		val folder = folder("downloads/Maintenance")
+		chapterFile(folder, "Chapter 1.cbz")
+		register(remote, folder)
+		val other = remote.copy(id = remote.id + 1, source = MissingMangaSource("MAINTENANCE_TEST_PLUS"))
+		val indexFile = File(folder, "index.json").apply { writeText(MangaIndex(null).apply {
+			setMangaInfo(other); addChapter(IndexedValue(0, other.chapters!!.single()), "Chapter 1.cbz")
+		}.toString()) }
+		val before = indexFile.readBytes()
+		maintenance.run()
+		assertArrayEquals(before, indexFile.readBytes())
+		assertEquals(DownloadMaintenanceReason.SOURCE_MISMATCH, result(folder).reason)
+		assertTrue(db.getFavouriteDownloadIndexDao().findEntries(listOf(remote.id)).isEmpty())
+	}
+
+	@Test fun duplicateTitleFoldersWithoutDurableIdentityRemainAmbiguous() = runBlocking {
+		val remote = remote()
+		data.storeManga(remote, replaceExisting = true, detailsFetched = true)
+		val one = folder("downloads/Maintenance")
+		val two = folder("Maintenance")
+		chapterFile(one, "Chapter 1.cbz")
+		chapterFile(two, "Chapter 1.cbz")
+		maintenance.run()
+		assertEquals(DownloadMaintenanceStatus.AMBIGUOUS, result(one).status)
+		assertEquals(DownloadMaintenanceStatus.AMBIGUOUS, result(two).status)
+		assertTrue(db.getFavouriteDownloadIndexDao().findEntries(listOf(remote.id)).isEmpty())
+	}
+
+	@Test fun metadataRecoveryUsesOfflineEvidenceAndValidatesProviderResponses() = runBlocking {
+		val remote = remote()
+		var calls = 0
+		val cached = DownloadMaintenanceMetadata.resolve(remote, null) { calls++; error("network must not run") }
+		assertEquals(0, calls)
+		assertEquals(remote, cached.manga)
+		val fromIndex = DownloadMaintenanceMetadata.resolve(remote.copy(chapters = null), remote) { calls++; error("network must not run") }
+		assertEquals(remote, fromIndex.manga)
+		assertEquals(0, calls)
+		val fetched = DownloadMaintenanceMetadata.resolve(remote.copy(chapters = null), null) { calls++; remote }
+		assertTrue(fetched.fetched)
+		assertEquals(1, calls)
+		val failed = DownloadMaintenanceMetadata.resolve(remote.copy(chapters = null), null) { throw java.io.IOException("offline") }
+		assertEquals(DownloadMaintenanceReason.PROVIDER_UNAVAILABLE, failed.failure)
+		val mismatch = DownloadMaintenanceMetadata.resolve(remote.copy(chapters = null), null) { remote.copy(id = remote.id + 1) }
+		assertEquals(DownloadMaintenanceReason.METADATA_UNAVAILABLE, mismatch.failure)
+	}
+
+	@Test fun recreatedViewModelOwnerKeepsProgressAndResult() = runBlocking {
+		val remote = remote()
+		val folder = folder("downloads/Maintenance")
+		chapterFile(folder, "Chapter 1.cbz")
+		register(remote, folder)
+		val store = androidx.lifecycle.ViewModelStore()
+		val factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+			@Suppress("UNCHECKED_CAST")
+			override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T = org.koitharu.kotatsu.settings.DownloadMaintenanceViewModel(maintenance) as T
+		}
+		val first = androidx.lifecycle.ViewModelProvider(store, factory)[org.koitharu.kotatsu.settings.DownloadMaintenanceViewModel::class.java]
+		val recreated = androidx.lifecycle.ViewModelProvider(store, factory)[org.koitharu.kotatsu.settings.DownloadMaintenanceViewModel::class.java]
+		assertSame(first, recreated)
+		InstrumentationRegistry.getInstrumentation().runOnMainSync { first.start(); recreated.start() }
+		kotlinx.coroutines.withTimeout(30_000) { maintenance.state.first { !it.running && it.result != null } }
+		assertSame(first.state, recreated.state)
+		assertEquals(1, recreated.state.value.result!!.items.count { it.path == folder.path })
+		InstrumentationRegistry.getInstrumentation().runOnMainSync { store.clear() }
 	}
 
 	@Test fun atomicFailureLeavesPreviousValidIndexUntouched() {
