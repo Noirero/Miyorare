@@ -68,16 +68,18 @@ async function mockGoogleFetch(url, options = {}) {
   throw new Error(`Unexpected provider request: ${url}`);
 }
 
-test('configuration requires HTTPS and server-only OAuth values', () => {
-  assert.throws(() => loadConfig({
-    PUBLIC_BASE_URL: 'http://auth.example.test',
+test('configuration requires an exact HTTPS origin and server-only OAuth values', () => {
+  const credentials = {
     GOOGLE_OAUTH_CLIENT_ID: 'id',
     GOOGLE_OAUTH_CLIENT_SECRET: 'secret',
-  }));
+  };
+  assert.throws(() => loadConfig({ ...credentials, PUBLIC_BASE_URL: 'http://auth.example.test' }));
+  assert.throws(() => loadConfig({ ...credentials, PUBLIC_BASE_URL: 'https://auth.example.test/oauth' }));
+  assert.throws(() => loadConfig({ ...credentials, PUBLIC_BASE_URL: 'https://auth.example.test/?query=1' }));
+  assert.throws(() => loadConfig({ ...credentials, PUBLIC_BASE_URL: 'https://user:pass@auth.example.test/' }));
   const parsed = loadConfig({
+    ...credentials,
     PUBLIC_BASE_URL: 'https://auth.example.test/',
-    GOOGLE_OAUTH_CLIENT_ID: 'id',
-    GOOGLE_OAUTH_CLIENT_SECRET: 'secret',
   });
   assert.equal(parsed.publicBaseUrl, 'https://auth.example.test');
 });
