@@ -10,7 +10,9 @@ import org.koitharu.kotatsu.backup.local.ui.periodical.PeriodicalBackupSettingsF
 import org.koitharu.kotatsu.core.LocalizedAppContext
 import org.koitharu.kotatsu.core.network.DoHManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.ColorScheme
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.download.ui.worker.DownloadPerformanceSettings
 import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode
@@ -94,7 +96,22 @@ class SettingsSearchHelper @Inject constructor(
         section(R.string.settings_appearance_navigation) { sectionCrumbs ->
             group(sectionCrumbs, R.string.miyorare_appearance_group) { crumbs ->
                 addItem(MiyorareAppearance.KEY_DESIGN_STYLE, R.string.miyorare_design_style, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
-                addItem(MiyorareAppearance.KEY_THEME_PRESET, R.string.miyorare_modern_theme, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
+                addItem(
+                    MiyorareAppearance.KEY_THEME_PRESET,
+                    R.string.miyorare_modern_visual_theme,
+                    breadcrumbs = crumbs,
+                    fragmentClass = AppearanceSettingsFragment::class.java,
+                    keywordText = MiyorareThemePreset.entries.map { ctx.getString(it.titleResId) },
+                )
+                addItem(
+                    MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
+                    R.string.miyorare_colour_palette,
+                    R.string.miyorare_colour_palette_summary,
+                    crumbs,
+                    AppearanceSettingsFragment::class.java,
+                    keywordRes = intArrayOf(R.string.miyorare_palette_match_theme),
+                    keywordText = ColorScheme.getAvailableList().map { ctx.getString(it.titleResId) },
+                )
                 addItem(MiyorareAppearance.KEY_CUSTOM_ACCENT, R.string.miyorare_custom_accent, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
                 addItem(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, R.string.miyorare_custom_background_choose, R.string.miyorare_custom_background_choose_summary, crumbs, AppearanceSettingsFragment::class.java)
                 addItem(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, R.string.miyorare_custom_background_use_colors, R.string.miyorare_custom_background_use_colors_summary, crumbs, AppearanceSettingsFragment::class.java)

@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import androidx.preference.PreferenceManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -44,6 +45,7 @@ import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.SearchSuggestionType
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
@@ -64,7 +66,9 @@ import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.ColorSchemePickerRow
 import org.koitharu.kotatsu.settings.compose.ConfirmDialog
+import org.koitharu.kotatsu.settings.compose.MiyorarePalettePickerRow
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareVisualThemePickerRow
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.MiyorareChoiceSettingsItem
 import org.koitharu.kotatsu.settings.compose.MultiSelectSettingsItem
@@ -115,6 +119,7 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
             AppSettings.KEY_UI_SCALE,
             MiyorareAppearance.KEY_DESIGN_STYLE,
             MiyorareAppearance.KEY_THEME_PRESET,
+            MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
             MiyorareAppearance.KEY_CUSTOM_ACCENT,
             MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC,
             MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
@@ -216,6 +221,10 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
     private fun resetAppearance() {
         val previousTheme = settings.theme
         isResettingAppearance = true
+        PreferenceManager.getDefaultSharedPreferences(requireContext())
+            .edit()
+            .putString(MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE, MiyorareModernPaletteSource.MATCH_THEME.name)
+            .apply()
         settings.resetMiyorareAppearance()
         val resetTheme = settings.theme
         if (previousTheme != resetTheme) {
@@ -233,6 +242,7 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
             AppSettings.KEY_THEME_AMOLED,
             MiyorareAppearance.KEY_DESIGN_STYLE,
             MiyorareAppearance.KEY_THEME_PRESET,
+            MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
             MiyorareAppearance.KEY_CUSTOM_ACCENT,
             MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC,
             MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
@@ -252,6 +262,7 @@ private fun AppearanceScreen(
     onResetAppearance: () -> Unit,
 ) {
     val ctx = LocalContext.current
+    val systemDark = isSystemInDarkTheme()
 
     val themeEntries = remember { ctx.resources.getStringArray(R.array.themes).toList() }
     val themeValues = remember { ctx.resources.getStringArray(R.array.values_theme).toList() }
@@ -259,8 +270,6 @@ private fun AppearanceScreen(
     val visualEffectValues = remember { VisualEffectLevel.entries.map { it.name } }
     val designStyleEntries = remember { MiyorareDesignStyle.entries.map { ctx.getString(it.titleResId) } }
     val designStyleValues = remember { MiyorareDesignStyle.entries.map { it.name } }
-    val modernThemeEntries = remember { MiyorareThemePreset.entries.map { ctx.getString(it.titleResId) } }
-    val modernThemeValues = remember { MiyorareThemePreset.entries.map { it.name } }
     val customBackgroundIntensityEntries = remember {
         MiyorareCustomBackgroundIntensity.entries.map { ctx.getString(it.titleResId) }
     }
@@ -293,6 +302,10 @@ private fun AppearanceScreen(
     var visualEffects by rememberStringPref(VisualEffectPreferences.KEY_LEVEL, VisualEffectLevel.BALANCED.name)
     var designStyle by rememberStringPref(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC.name)
     var modernTheme by rememberStringPref(MiyorareAppearance.KEY_THEME_PRESET, MiyorareThemePreset.MIYORARE.name)
+    var modernPaletteSource by rememberStringPref(
+        MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
+        MiyorareModernPaletteSource.MATCH_THEME.name,
+    )
     var customAccent by rememberStringPref(MiyorareAppearance.KEY_CUSTOM_ACCENT, MiyorareAppearance.DEFAULT_CUSTOM_ACCENT)
     var customBackgroundColorSync by rememberBooleanPref(
         MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC,
@@ -302,12 +315,46 @@ private fun AppearanceScreen(
         MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
         MiyorareCustomBackgroundIntensity.BALANCED.name,
     )
+    val customBackgroundPrimary by rememberStringPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, "")
+    val customBackgroundSecondary by rememberStringPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_SECONDARY, "")
+    val customBackgroundTertiary by rememberStringPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY, "")
     val customBackgroundRevision by rememberIntPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0)
     val hasCustomBackground = remember(customBackgroundRevision) {
         MiyorareCustomBackgroundStore.hasBackground(ctx)
     }
     val customBackgroundPreviewPath = remember(customBackgroundRevision) {
         MiyorareCustomBackgroundStore.previewPathOrNull(ctx)
+    }
+    val activeDark = when (theme.toIntOrNull()) {
+        AppCompatDelegate.MODE_NIGHT_YES -> true
+        AppCompatDelegate.MODE_NIGHT_NO -> false
+        else -> systemDark
+    }
+    val selectedModernPreset = MiyorareThemePreset.entries.firstOrNull { it.name == modernTheme }
+        ?: MiyorareThemePreset.MIYORARE
+    val selectedEffectLevel = VisualEffectLevel.entries.firstOrNull { it.name == visualEffects }
+        ?: VisualEffectLevel.BALANCED
+    val customAdaptivePalette = remember(
+        hasCustomBackground,
+        customBackgroundColorSync,
+        customBackgroundPrimary,
+        customBackgroundSecondary,
+        customBackgroundTertiary,
+        customBackgroundIntensity,
+    ) {
+        if (hasCustomBackground && customBackgroundColorSync) {
+            val intensity = MiyorareCustomBackgroundIntensity.entries.firstOrNull {
+                it.name == customBackgroundIntensity
+            } ?: MiyorareCustomBackgroundIntensity.BALANCED
+            MiyorareAppearance.resolveAdaptivePalette(
+                primary = customBackgroundPrimary,
+                secondary = customBackgroundSecondary,
+                tertiary = customBackgroundTertiary,
+                intensity = intensity,
+            )
+        } else {
+            null
+        }
     }
     var showResetDialog by remember { mutableStateOf(false) }
     var uiScale by rememberIntPref(AppSettings.KEY_UI_SCALE, 100)
@@ -367,13 +414,27 @@ private fun AppearanceScreen(
                 }
                 if (designStyle == MiyorareDesignStyle.MODERN.name) {
                     item { pos ->
-                        ListSettingsItem(
-                            title = stringResource(R.string.miyorare_modern_theme),
-                            entries = modernThemeEntries,
-                            entryValues = modernThemeValues,
+                        MiyorareVisualThemePickerRow(
                             selectedValue = modernTheme,
                             onValueChange = { modernTheme = it },
-                            icon = R.drawable.ic_appearance,
+                            customAccent = customAccent,
+                            adaptivePalette = customAdaptivePalette,
+                            darkTheme = activeDark,
+                            amoled = amoled,
+                            effectLevel = selectedEffectLevel,
+                            shape = pos.shape,
+                        )
+                    }
+                    item { pos ->
+                        MiyorarePalettePickerRow(
+                            selectedValue = modernPaletteSource,
+                            onValueChange = { modernPaletteSource = it },
+                            visualPreset = selectedModernPreset,
+                            customAccent = customAccent,
+                            adaptivePalette = customAdaptivePalette,
+                            darkTheme = activeDark,
+                            amoled = amoled,
+                            effectLevel = selectedEffectLevel,
                             shape = pos.shape,
                         )
                     }
@@ -446,19 +507,13 @@ private fun AppearanceScreen(
                     }
                 }
                 item { pos ->
-                    val isSystemDark = isSystemInDarkTheme()
-                    val isDarkActive = when (theme.toIntOrNull()) {
-                        AppCompatDelegate.MODE_NIGHT_YES -> true
-                        AppCompatDelegate.MODE_NIGHT_NO -> false
-                        else -> isSystemDark
-                    }
                     SwitchSettingsItem(
                         title = stringResource(R.string.black_dark_theme),
                         subtitle = stringResource(R.string.black_dark_theme_summary),
                         checked = amoled,
                         onCheckedChange = { amoled = it },
                         icon = R.drawable.ic_eye_off,
-                        enabled = isDarkActive,
+                        enabled = activeDark,
                         shape = pos.shape,
                     )
                 }
