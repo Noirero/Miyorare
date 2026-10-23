@@ -25,8 +25,8 @@ import org.koitharu.kotatsu.core.util.ext.deleteAwait
 import org.koitharu.kotatsu.core.util.ext.isImage
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.takeIfWriteable
-import org.koitharu.kotatsu.core.util.ext.toZipUri
 import org.koitharu.kotatsu.core.util.ext.withChildren
+import org.koitharu.kotatsu.core.util.ext.toZipUri
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
@@ -61,7 +61,6 @@ import javax.inject.Singleton
 private const val MAX_PARALLELISM = 4
 private const val LOCAL_PAGE_SIZE = 100
 private const val FILE_SCAN_QUEUE_CAPACITY = MAX_PARALLELISM * 2
-private const val FILENAME_SKIP = ".notamanga"
 private const val MAX_MANGA_CHAPTER_FILENAME_LENGTH = 96
 private const val MAX_NOVEL_CHAPTER_FILENAME_LENGTH = 120
 
@@ -252,7 +251,7 @@ class LocalMangaRepository @Inject constructor(
 					FileSystem.SYSTEM, File(root, LocalMangaOutput.ENTRY_NAME_INDEX).toOkioPath(),
 				)?.getCoverEntry()
 				check(root.listFiles()?.none {
-					it.isDirectory || it.isSupportedDownloadArtifact() ||
+					it.isDirectory || LocalDownloadScanner.isSupportedArtifact(it) ||
 						(it.name != coverEntry && MimeTypes.getMimeTypeFromExtension(it.name)?.isImage == true)
 				} == true) {
 					"Chapter artifacts remain in manga container: $root"
@@ -513,6 +512,9 @@ class LocalMangaRepository @Inject constructor(
 			}
 		}
 		val indexedInfo = index.getMangaInfo()?.takeIf { it.id == remoteManga.id } ?: return null
+		val represented = indexedInfo.chapters.orEmpty().mapNotNull { index.getChapterFileName(it.id) }.toSet()
+		if (root.listFiles()?.any { it.isFile && it.extension.lowercase(Locale.ROOT) in setOf("cbz", "zip", "epub", "pdf") && it.name !in represented } == true) return null
+
 		val linked = ArrayList<MangaChapter>()
 		val remoteIds = HashSet<Long>()
 		for (chapter in remoteManga.chapters.orEmpty()) {
@@ -588,7 +590,7 @@ class LocalMangaRepository @Inject constructor(
 				source = LocalMangaSource,
 			)
 		}
-		if (linked.isEmpty()) return null
+		if (linked.isEmpty() || linked.size != filesByName.size) return null
 		val rootUri = root.toUri().toString()
 		return LocalManga(
 			manga = remoteManga.copy(
@@ -635,7 +637,7 @@ class LocalMangaRepository @Inject constructor(
 			val chapterUrl = resolveIndexedNovelChapterUrl(file, remoteManga.id, chapter.id) ?: return null
 			linked += chapter.copy(url = chapterUrl, source = LocalMangaSource)
 		}
-		if (linked.isEmpty()) return null
+		if (linked.isEmpty() || linked.size != filesByName.size) return null
 		val rootUri = root.toUri().toString()
 		return LocalManga(
 			manga = remoteManga.copy(
@@ -665,7 +667,7 @@ class LocalMangaRepository @Inject constructor(
 		}
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
-	private suspend fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
+	internal suspend fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
 		val migrated = localMangaIndex.linkMigratedDownloadChapters(remoteManga.id, localManga)
 		LegacySplitChapterCompat.linkToRemote(remoteManga, migrated)?.let { return it }
 		// Keep Details, downloaded badges and Reader on one canonical matcher. In particular, a
@@ -721,69 +723,7 @@ class LocalMangaRepository @Inject constructor(
 		}
 	}
 
-	private suspend fun getAllFiles() = storageManager.getReadableDirs()
-		.asSequence()
-		.flatMap { dir ->
-			dir.withChildren { children ->
-				val result = ArrayList<File>()
-				children.filterNot { it.isHidden || it.shouldSkip() }.forEach { child ->
-					if (child.isDirectory && child.name == LocalMangaOutput.DOWNLOADS_DIR_NAME) scanDownloadRoot(child, result)
-					else scanLegacyEntry(child, result)
-				}
-				result
-			}
-		}
-
-	private fun scanDownloadRoot(downloads: File, result: MutableList<File>) {
-		downloads.withChildren { children ->
-			children.filterNot { it.isHidden || it.shouldSkip() }.forEach { child ->
-				when {
-					child.isDirectory && child.name == LocalMangaOutput.NOVEL_DIR_NAME -> scanNovelRoot(child, result)
-					child.isDirectory && child.isDownloadSourceDirectory() -> child.withChildren { mangaDirs ->
-						mangaDirs.filterNot { it.isHidden || it.shouldSkip() }.forEach(result::add)
-					}
-					else -> result.add(child)
-				}
-			}
-		}
-	}
-
-	private fun scanNovelRoot(novelRoot: File, result: MutableList<File>) {
-		novelRoot.withChildren { children ->
-			children.filterNot { it.isHidden || it.shouldSkip() }.forEach { child ->
-				if (child.isDirectory && child.isDownloadSourceDirectory()) {
-					child.withChildren { novels -> novels.filterNot { it.isHidden || it.shouldSkip() }.forEach(result::add) }
-				} else result.add(child)
-			}
-		}
-	}
-
-	private fun scanLegacyEntry(child: File, result: MutableList<File>) {
-		when {
-			child.isDirectory && child.name == LocalMangaOutput.NOVEL_DIR_NAME -> scanNovelRoot(child, result)
-			child.isDirectory && child.isDownloadSourceDirectory() -> child.withChildren { sourceChildren ->
-				sourceChildren.filterNot { it.isHidden || it.shouldSkip() }.forEach(result::add)
-			}
-			else -> result.add(child)
-		}
-	}
-
-	private fun File.isDownloadSourceDirectory(): Boolean {
-		if (File(this, LocalMangaOutput.SOURCE_DIR_MARKER).isFile) return true
-		// Structural fallback keeps downloads from older Miyorare builds readable after marker renames.
-		return withChildren { titles ->
-			val sample = titles.filterNot { it.isHidden || it.shouldSkip() }.take(LEGACY_SOURCE_PROBE_LIMIT).toList()
-			if (sample.any { it.isFile && it.isSupportedDownloadArtifact() }) return@withChildren false
-			sample.any { title ->
-				title.isDirectory && title.withChildren { artifacts -> artifacts.any { it.isFile && it.isSupportedDownloadArtifact() } }
-			} || sample.isNotEmpty() && sample.all { it.isDirectory }
-		}
-	}
-
-	private fun File.isSupportedDownloadArtifact(): Boolean = when (extension.lowercase(Locale.ROOT)) {
-		"cbz", "zip", "epub", "pdf" -> true
-		else -> false
-	}
+	private suspend fun getAllFiles(): List<File> = LocalDownloadScanner.scan(storageManager.getReadableDirs())
 
 	private fun Collection<LocalManga>.unwrap(): List<Manga> = map { it.manga }
 
@@ -793,8 +733,6 @@ class LocalMangaRepository @Inject constructor(
 		tagsExclude = this?.tagsExclude.orEmpty().mapToSet { it.title },
 		contentRating = this?.contentRating?.singleOrNull(),
 	)
-
-	private fun File.shouldSkip(): Boolean = isDirectory && File(this, FILENAME_SKIP).exists()
 
 	private data class LocalFilterKey(
 		val query: String?,
@@ -811,7 +749,4 @@ class LocalMangaRepository @Inject constructor(
 		val result: List<LocalManga>,
 	)
 
-	private companion object {
-		const val LEGACY_SOURCE_PROBE_LIMIT = 8
-	}
 }

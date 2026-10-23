@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_maintenance_title">Periksa &amp; perbaiki unduhan</string>
+    <string name="download_maintenance_description">Periksa unduhan lama dan baru, perbaiki kompatibilitas serta indeks yang bermasalah tanpa menghapus file.</string>
+    <string name="download_maintenance_reassurance">File tidak dihapus atau dipindahkan. Item ambigu dibiarkan utuh.</string>
+    <string name="download_maintenance_preparing">Menyiapkan…</string>
+    <string name="download_maintenance_scanning">Memindai penyimpanan…</string>
+    <string name="download_maintenance_identifying">Mengidentifikasi unduhan…</string>
+    <string name="download_maintenance_verifying">Memeriksa chapter…</string>
+    <string name="download_maintenance_repairing">Memperbaiki kompatibilitas…</string>
+    <string name="download_maintenance_refreshing">Memperbarui indeks…</string>
+    <string name="download_maintenance_finalizing">Menyelesaikan…</string>
+    <string name="download_maintenance_completed">Selesai</string>
+    <string name="download_maintenance_progress">%1$d dari %2$d item diperiksa</string>
+    <string name="download_maintenance_checked">%1$d unduhan diperiksa</string>
+    <string name="download_maintenance_summary">%1$d diperbaiki · %2$d sudah benar · %3$d perlu perhatian · %4$d gagal</string>
+    <string name="download_maintenance_details">Lihat detail</string>
+    <string name="download_maintenance_no_problems">Tidak ditemukan masalah.</string>
+    <string name="download_maintenance_private_item">Unduhan Privat (path disembunyikan)</string>
+    <string name="download_maintenance_chapter_counts">%1$d dari %2$d chapter fisik dikenali</string>
+    <string name="download_maintenance_verified">Berhasil diverifikasi.</string>
+    <string name="download_maintenance_local_content">Konten lokal atau impor; dibiarkan utuh.</string>
+    <string name="download_maintenance_identity_unknown">Identitas belum dapat dibuktikan dengan aman; dibiarkan utuh.</string>
+    <string name="download_maintenance_source_mismatch">Identitas sumber bertentangan; dibiarkan utuh.</string>
+    <string name="download_maintenance_duplicate_container">Beberapa folder unduhan memiliki identitas yang sama. Penautan ulang otomatis dilewati.</string>
+    <string name="download_maintenance_partial_match">Sebagian chapter fisik belum dapat ditautkan dengan aman. File dan indeks yang ada dipertahankan.</string>
+    <string name="download_maintenance_corrupt_index">Indeks rusak dan pengganti lengkap yang aman belum dapat dibuktikan.</string>
+    <string name="download_maintenance_unsupported">Konten belum dikenali; dibiarkan utuh.</string>
+    <string name="download_maintenance_storage_unavailable">Penyimpanan tidak tersedia. Data indeks dipertahankan; sambungkan kembali penyimpanan lalu coba lagi.</string>
+    <string name="download_maintenance_provider_unavailable">Provider tidak dapat memberikan metadata yang diperlukan. File lokal dipertahankan.</string>
+    <string name="download_maintenance_metadata_unavailable">Metadata yang diperlukan belum tersedia; dibiarkan utuh.</string>
+    <string name="download_maintenance_ownership_unknown">Kepemilikan Normal/Privat belum dapat dibuktikan. File tetap tersedia melalui identitas sebelumnya.</string>
+    <string name="download_maintenance_storage_changed">Penyimpanan berubah saat pemeriksaan. Indeks pengganti tidak dipasang; coba lagi.</string>
+    <string name="download_maintenance_cancelled">Pemeriksaan terputus. Perbaikan atomik yang selesai tetap berlaku.</string>
+    <string name="download_maintenance_io_error">Item gagal diproses. Periksa akses penyimpanan lalu coba lagi.</string>
+</resources>
