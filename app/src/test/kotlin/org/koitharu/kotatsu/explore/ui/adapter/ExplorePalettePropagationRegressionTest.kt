@@ -8,18 +8,22 @@ class ExplorePalettePropagationRegressionTest {
 
 	@Test
 	fun `Modern Explore XML surfaces are rebound through the resolved runtime palette`() {
-		val source = source("kotlin/org/koitharu/kotatsu/explore/ui/adapter/ExploreAdapterDelegates.kt")
+		val delegates = source("kotlin/org/koitharu/kotatsu/explore/ui/adapter/ExploreAdapterDelegates.kt")
+			.replace(Regex("\\s+"), "")
+		val palette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareViewPalette.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(source.contains("binding.applyModernResolvedPalette()"))
-		assertTrue(source.contains("binding.applyModernResolvedPalette(isExternal)"))
-		assertTrue(source.contains("context.miyorareViewPaletteFromPreferences()==null"))
-		assertTrue(source.contains("getThemeColor(materialR.attr.colorSurfaceContainerHigh)"))
-		assertTrue(source.contains("getThemeColor(materialR.attr.colorSurfaceContainerLow)"))
-		assertTrue(source.contains("getThemeColor(materialR.attr.colorSurfaceContainerHighest)"))
-		assertTrue(source.contains("getThemeColor(materialR.attr.colorOutlineVariant)"))
-		assertTrue(source.contains("createExploreSourceRowBackground("))
-		assertTrue(source.contains("imageViewIcon.strokeColor=ColorStateList.valueOf(outline)"))
+		assertTrue(delegates.contains("binding.applyModernResolvedPalette()"))
+		assertTrue(delegates.contains("binding.applyModernResolvedPalette(isExternal)"))
+		assertTrue(delegates.contains("root.context.miyorareViewPaletteFromPreferences()?:return"))
+		assertTrue(delegates.contains("palette.surfaceContainerHigh"))
+		assertTrue(delegates.contains("palette.surfaceContainerLow"))
+		assertTrue(delegates.contains("palette.surfaceContainerHighest"))
+		assertTrue(delegates.contains("palette.outlineVariant"))
+		assertTrue(delegates.contains("createExploreSourceRowBackground("))
+		assertTrue(delegates.contains("imageViewIcon.strokeColor=ColorStateList.valueOf(palette.outline)"))
+		assertTrue(palette.contains("surfaceContainerLow=scheme.surfaceContainerLow.toArgb()"))
+		assertTrue(palette.contains("surfaceContainerHighest=scheme.surfaceContainerHighest.toArgb()"))
 	}
 
 	private fun source(relativePath: String): String {
