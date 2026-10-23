@@ -34,11 +34,19 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Node 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
       - name: Grant execute permission
         run: chmod +x gradlew
+
+      - name: Validate temporary browser auth helper
+        run: npm test --prefix browser-auth-helper
 
       - name: Compile debug sources and validate Android resources
         run: ./gradlew compileDebugSources --max-workers=4 --no-daemon --stacktrace
