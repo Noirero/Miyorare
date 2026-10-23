@@ -36,10 +36,11 @@ export class BrowserAuthStore {
 
   complete(transactionId, grant) {
     const tx = this.requireTransaction(transactionId);
+    if (!grant?.accessToken || !Number.isFinite(grant.tokenExpiresAt)) throw new AuthStoreError('invalid_grant');
     this.grants.set(transactionId, {
       ...grant,
       codeChallenge: tx.codeChallenge,
-      expiresAt: Math.min(grant.expiresAt ?? tx.expiresAt, tx.expiresAt),
+      storeExpiresAt: Math.min(grant.tokenExpiresAt, tx.expiresAt),
     });
   }
 
@@ -48,7 +49,7 @@ export class BrowserAuthStore {
     this.grants.set(transactionId, {
       error,
       codeChallenge: tx.codeChallenge,
-      expiresAt: tx.expiresAt,
+      storeExpiresAt: tx.expiresAt,
     });
   }
 
@@ -61,7 +62,7 @@ export class BrowserAuthStore {
       this.deleteTransaction(transactionId);
       return { status: 'error', error: grant.error };
     }
-    if (grant.expiresAt <= this.now()) {
+    if (grant.storeExpiresAt <= this.now()) {
       this.deleteTransaction(transactionId);
       throw new AuthStoreError('expired');
     }
@@ -70,7 +71,7 @@ export class BrowserAuthStore {
       const code = randomUrlSafe(32);
       this.codes.set(code, {
         transactionId,
-        expiresAt: Math.min(this.now() + CODE_TTL_MS, grant.expiresAt),
+        expiresAt: Math.min(this.now() + CODE_TTL_MS, grant.storeExpiresAt),
       });
       codeEntry = [code, this.codes.get(code)];
     }
@@ -87,7 +88,7 @@ export class BrowserAuthStore {
       throw new AuthStoreError('invalid_code');
     }
     const grant = this.grants.get(transactionId);
-    if (!grant || grant.error || grant.expiresAt <= this.now()) {
+    if (!grant || grant.error || grant.storeExpiresAt <= this.now()) {
       this.deleteTransaction(transactionId);
       throw new AuthStoreError('expired');
     }
