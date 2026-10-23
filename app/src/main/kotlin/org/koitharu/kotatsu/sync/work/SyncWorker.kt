@@ -33,10 +33,10 @@ import org.koitharu.kotatsu.core.util.ext.checkNotificationPermission
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.trySetForeground
 import org.koitharu.kotatsu.settings.work.PeriodicWorkScheduler
+import org.koitharu.kotatsu.sync.data.DriveAuthMode
 import org.koitharu.kotatsu.sync.data.GoogleDriveAuth
 import org.koitharu.kotatsu.sync.data.SyncSettings
 import org.koitharu.kotatsu.sync.domain.GoogleDriveSyncRepository
-import org.koitharu.kotatsu.sync.domain.SyncAuthPolicy
 import org.koitharu.kotatsu.sync.domain.SyncResult
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -47,14 +47,25 @@ class SyncWorker @AssistedInject constructor(
 	@Assisted workerParams: WorkerParameters,
 	private val repository: GoogleDriveSyncRepository,
 	private val syncSettings: SyncSettings,
+	private val auth: GoogleDriveAuth,
 ) : CoroutineWorker(context, workerParams) {
 
 	override suspend fun doWork(): Result {
-		trySetForeground()
 		if (syncSettings.isAuthorizationRequired) {
 			pausePeriodicSyncForAuthorization()
 			return Result.failure()
 		}
+		// WorkManager is a persistent/background lane. Browser credentials are deliberately
+		// process-local and manual-only, so even stale work left over from a previous GMS session must
+		// never be allowed to consume a temporary browser token.
+		if (!auth.isBackgroundCapable()) {
+			cancelPeriodicSync()
+			if (auth.activeMode() != DriveAuthMode.BROWSER_TEMPORARY && syncSettings.hasAccountMetadata) {
+				showSignInRequiredNotification()
+			}
+			return Result.failure()
+		}
+		trySetForeground()
 		return try {
 			val result = repository.sync()
 			// Repository versions predating explicit cancellation propagation can translate a caught
@@ -85,10 +96,14 @@ class SyncWorker @AssistedInject constructor(
 	private fun pausePeriodicSyncForAuthorization() {
 		// PeriodicWorkRequest keeps recurring even after Result.failure(); explicitly cancel the
 		// periodic lane until foreground authorization succeeds and the scheduler re-enables it.
-		WorkManager.getInstance(applicationContext).cancelUniqueWork(TAG_PERIODIC)
+		cancelPeriodicSync()
 		if (syncSettings.hasAccountMetadata) {
 			showSignInRequiredNotification()
 		}
+	}
+
+	private fun cancelPeriodicSync() {
+		WorkManager.getInstance(applicationContext).cancelUniqueWork(TAG_PERIODIC)
 	}
 
 	override suspend fun getForegroundInfo(): ForegroundInfo {
@@ -143,11 +158,8 @@ class SyncWorker @AssistedInject constructor(
 		private val auth: GoogleDriveAuth,
 	) : PeriodicWorkScheduler {
 
-		fun isAccountReady(): Boolean = SyncAuthPolicy.isAccountReady(
-			hasAccountMetadata = syncSettings.hasAccountMetadata,
-			hasGoogleAccount = auth.hasSignedInAccount(),
-			authorizationRequired = syncSettings.isAuthorizationRequired,
-		)
+		/** Browser credentials are deliberately process-local/manual; only GMS can back periodic work. */
+		fun isAccountReady(): Boolean = auth.isBackgroundCapable()
 
 		override suspend fun schedule() {
 			val intervalMinutes = syncSettings.intervalMinutes

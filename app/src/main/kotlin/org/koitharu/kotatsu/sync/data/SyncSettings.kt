@@ -10,8 +10,7 @@ import javax.inject.Singleton
 
 /**
  * Persistent settings for Google Drive sync, kept in their own prefs file so they don't get caught
- * up in the app-settings backup/restore. No OAuth tokens are stored here — those are managed by
- * Google Play Services and fetched on demand.
+ * up in the app-settings backup/restore. OAuth access/refresh tokens are never stored here.
  */
 @Singleton
 class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
@@ -32,12 +31,25 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getString(KEY_ACCOUNT_PHOTO, null)
 		set(value) = prefs.edit { putString(KEY_ACCOUNT_PHOTO, value) }
 
+	/**
+	 * Last explicitly selected Drive auth mode. This is non-secret bookkeeping only: browser access
+	 * tokens and app proof verifiers remain process-local. A persisted browser mode with no live
+	 * in-memory credential therefore means "sign in again", never "restore browser access".
+	 */
+	internal var authMode: DriveAuthMode?
+		get() = prefs.getString(KEY_AUTH_MODE, null)?.let { stored ->
+			DriveAuthMode.entries.firstOrNull { it.name == stored }
+		}
+		set(value) = prefs.edit {
+			if (value == null) remove(KEY_AUTH_MODE) else putString(KEY_AUTH_MODE, value.name)
+		}
+
 	/** When true the account email is blurred in the UI. */
 	var isEmailHidden: Boolean
 		get() = prefs.getBoolean(KEY_EMAIL_HIDDEN, false)
 		set(value) = prefs.edit { putBoolean(KEY_EMAIL_HIDDEN, value) }
 
-	/** Whether account display metadata exists. Always pair with the live Google account state. */
+	/** Whether account display metadata exists. Always pair with the live auth-provider state. */
 	val hasAccountMetadata: Boolean
 		get() = !accountEmail.isNullOrEmpty()
 
@@ -53,7 +65,7 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 	 * Legacy metadata-only compatibility for the repository's preflight guard. This must never be
 	 * used by UI/scheduling code as proof that Google authorization is actually usable.
 	 */
-	@Deprecated("Metadata only; pair with GoogleDriveAuth.hasSignedInAccount()")
+	@Deprecated("Metadata only; pair with GoogleDriveAuth live session state")
 	val isSignedIn: Boolean
 		get() = hasAccountMetadata
 
@@ -118,6 +130,7 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 		remove(KEY_ACCOUNT_EMAIL)
 		remove(KEY_ACCOUNT_NAME)
 		remove(KEY_ACCOUNT_PHOTO)
+		remove(KEY_AUTH_MODE)
 		remove(KEY_AUTHORIZATION_REQUIRED)
 		remove(KEY_LAST_SYNC)
 		remove(KEY_LAST_ERROR)
@@ -132,6 +145,7 @@ class SyncSettings @Inject constructor(@ApplicationContext context: Context) {
 		private const val KEY_ACCOUNT_EMAIL = "account_email"
 		private const val KEY_ACCOUNT_NAME = "account_name"
 		private const val KEY_ACCOUNT_PHOTO = "account_photo"
+		private const val KEY_AUTH_MODE = "auth_mode"
 		private const val KEY_EMAIL_HIDDEN = "email_hidden"
 		private const val KEY_AUTHORIZATION_REQUIRED = "authorization_required"
 		private const val KEY_DEVICE_ID = "device_id"
