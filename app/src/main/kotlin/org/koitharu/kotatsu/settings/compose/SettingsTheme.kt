@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
@@ -33,7 +34,7 @@ import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.classicMiyorareVisualPalette
-import org.koitharu.kotatsu.core.ui.miyorareThemeColors
+import org.koitharu.kotatsu.core.ui.resolveMiyorareThemeColors
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -174,6 +175,10 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		MiyorareAppearance.KEY_THEME_PRESET,
 		MiyorareThemePreset.MIYORARE.name,
 	)
+	val paletteSourceValue by rememberStringPref(
+		MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
+		MiyorareModernPaletteSource.MATCH_THEME.name,
+	)
 	val customAccent by rememberStringPref(
 		MiyorareAppearance.KEY_CUSTOM_ACCENT,
 		MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
@@ -200,6 +205,7 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		?: MiyorareDesignStyle.CLASSIC
 	val themePreset = MiyorareThemePreset.entries.firstOrNull { it.name == themePresetValue }
 		?: MiyorareThemePreset.MIYORARE
+	val paletteSource = MiyorareModernPaletteSource.fromStoredValue(paletteSourceValue)
 	val effectLevel = VisualEffectLevel.entries.firstOrNull { it.name == effectLevelValue }
 		?: VisualEffectLevel.BALANCED
 	val customBackgroundIntensity = MiyorareCustomBackgroundIntensity.entries.firstOrNull {
@@ -237,8 +243,9 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	}
 
 	val modernColors = if (designStyle == MiyorareDesignStyle.MODERN) {
-		remember(themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel) {
-			miyorareThemeColors(
+		remember(paletteSource, themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel) {
+			resolveMiyorareThemeColors(
+				paletteSource = paletteSource,
 				preset = themePreset,
 				customAccent = customAccent,
 				adaptivePalette = adaptivePalette,
