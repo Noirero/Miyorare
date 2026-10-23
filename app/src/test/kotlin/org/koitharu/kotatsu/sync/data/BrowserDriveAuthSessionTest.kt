@@ -76,4 +76,28 @@ class BrowserDriveAuthSessionTest {
 			session.consumeCallback(launch.transactionId, "one-time", now = 2_000L)
 		}
 	}
+
+	@Test
+	fun mismatchedProviderErrorDoesNotCancelRealPendingLogin() {
+		val session = BrowserDriveAuthSession()
+		val launch = session.begin(now = 1_000L)
+
+		assertThrows(BrowserAuthException::class.java) {
+			session.consumeErrorCallback("other-transaction", now = 2_000L)
+		}
+
+		val proof = session.consumeCallback(launch.transactionId, "valid-code", now = 2_000L)
+		assertEquals(launch.transactionId, proof.transactionId)
+	}
+
+	@Test
+	fun matchingProviderErrorConsumesPendingLogin() {
+		val session = BrowserDriveAuthSession()
+		val launch = session.begin(now = 1_000L)
+		session.consumeErrorCallback(launch.transactionId, now = 2_000L)
+
+		assertThrows(BrowserAuthException::class.java) {
+			session.consumeCallback(launch.transactionId, "late-code", now = 2_000L)
+		}
+	}
 }
