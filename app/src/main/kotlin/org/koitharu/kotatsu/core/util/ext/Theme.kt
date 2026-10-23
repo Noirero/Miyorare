@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
 import org.koitharu.kotatsu.core.ui.MiyorareThemeColors
 import org.koitharu.kotatsu.core.ui.miyorareColorForViewAttr
+import org.koitharu.kotatsu.core.ui.resolveMiyorareClassicDerivedColorScheme
 import org.koitharu.kotatsu.core.ui.resolveMiyorareThemeColors
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -190,6 +191,10 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 		if (ModernThemePaletteCache.key == key) {
 			return ModernThemePaletteCache.colors
 		}
+		val classicDerivedScheme = resolveMiyorareClassicDerivedColorScheme(
+			paletteSource = key.paletteSource,
+			darkTheme = key.darkTheme,
+		)
 		val colors = resolveMiyorareThemeColors(
 			paletteSource = key.paletteSource,
 			preset = key.preset,
@@ -198,6 +203,7 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 			darkTheme = key.darkTheme,
 			amoled = key.amoled,
 			effectLevel = key.effectLevel,
+			classicDerivedColorScheme = classicDerivedScheme,
 		)
 		ModernThemePaletteCache.key = key
 		ModernThemePaletteCache.colors = colors
