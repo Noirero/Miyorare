@@ -12,11 +12,19 @@ const MAX_BODY_BYTES = 16 * 1024;
 export function loadConfig(env = process.env) {
   const publicBaseUrl = new URL(required(env.PUBLIC_BASE_URL, 'PUBLIC_BASE_URL'));
   if (publicBaseUrl.protocol !== 'https:') throw new Error('PUBLIC_BASE_URL must use HTTPS');
-  publicBaseUrl.pathname = publicBaseUrl.pathname.replace(/\/$/, '');
+  if (
+    publicBaseUrl.username ||
+    publicBaseUrl.password ||
+    publicBaseUrl.search ||
+    publicBaseUrl.hash ||
+    publicBaseUrl.pathname !== '/'
+  ) {
+    throw new Error('PUBLIC_BASE_URL must be an HTTPS origin without credentials, path, query, or fragment');
+  }
   return {
     clientId: required(env.GOOGLE_OAUTH_CLIENT_ID, 'GOOGLE_OAUTH_CLIENT_ID'),
     clientSecret: required(env.GOOGLE_OAUTH_CLIENT_SECRET, 'GOOGLE_OAUTH_CLIENT_SECRET'),
-    publicBaseUrl: publicBaseUrl.toString().replace(/\/$/, ''),
+    publicBaseUrl: publicBaseUrl.origin,
     port: Number(env.PORT || 8080),
   };
 }
