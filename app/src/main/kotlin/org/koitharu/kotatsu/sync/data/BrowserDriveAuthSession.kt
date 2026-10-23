@@ -77,10 +77,9 @@ class BrowserDriveAuthSession @Inject constructor() {
 		code: String,
 		now: Long = System.currentTimeMillis(),
 	): BrowserAuthCallbackProof = synchronized(lock) {
+		validateCallbackToken(transactionId, "transaction")
 		val current = requirePendingLocked(transactionId, now)
-		if (code.isBlank()) {
-			throw BrowserAuthException("Browser sign-in response is missing its one-time code")
-		}
+		validateCallbackToken(code, "one-time code")
 		pending = null
 		BrowserAuthCallbackProof(transactionId, code, current.codeVerifier)
 	}
@@ -94,6 +93,7 @@ class BrowserDriveAuthSession @Inject constructor() {
 		transactionId: String,
 		now: Long = System.currentTimeMillis(),
 	) = synchronized(lock) {
+		validateCallbackToken(transactionId, "transaction")
 		requirePendingLocked(transactionId, now)
 		pending = null
 	}
@@ -167,6 +167,12 @@ class BrowserDriveAuthSession @Inject constructor() {
 		return current
 	}
 
+	private fun validateCallbackToken(value: String, label: String) {
+		if (value.length !in CALLBACK_TOKEN_LENGTH || !CALLBACK_TOKEN_PATTERN.matches(value)) {
+			throw BrowserAuthException("Browser sign-in callback contains an invalid $label")
+		}
+	}
+
 	private fun pruneExpiredLocked(now: Long) {
 		if (credential?.expiresAt?.let { it <= now } == true) {
 			credential = null
@@ -188,6 +194,8 @@ class BrowserDriveAuthSession @Inject constructor() {
 
 	private companion object {
 		const val TRANSACTION_TTL_MS = 10L * 60L * 1000L
+		val CALLBACK_TOKEN_LENGTH = 32..128
+		val CALLBACK_TOKEN_PATTERN = Regex("^[A-Za-z0-9_-]+$")
 	}
 }
 
