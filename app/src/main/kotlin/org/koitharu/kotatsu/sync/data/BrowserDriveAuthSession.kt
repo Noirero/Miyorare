@@ -11,11 +11,6 @@ enum class DriveAuthMode {
 	BROWSER_TEMPORARY,
 }
 
-internal enum class BrowserAuthOrigin {
-	SYNC_SETTINGS,
-	ONBOARDING,
-}
-
 internal data class DriveAccountInfo(
 	val email: String?,
 	val displayName: String?,
@@ -34,17 +29,10 @@ internal data class BrowserAuthLaunch(
 	val codeChallenge: String,
 )
 
-internal data class BrowserAuthPollProof(
-	val transactionId: String,
-	val codeVerifier: String,
-	val origin: BrowserAuthOrigin,
-)
-
 internal data class BrowserAuthCallbackProof(
 	val transactionId: String,
 	val code: String,
 	val codeVerifier: String,
-	val origin: BrowserAuthOrigin,
 )
 
 /**
@@ -57,7 +45,6 @@ class BrowserDriveAuthSession @Inject constructor() {
 	private class PendingTransaction(
 		val transactionId: String,
 		val codeVerifier: String,
-		val origin: BrowserAuthOrigin,
 		val expiresAt: Long,
 	)
 
@@ -73,26 +60,19 @@ class BrowserDriveAuthSession @Inject constructor() {
 	private var credential: Credential? = null
 	private var expiredSinceLastLogin = false
 
-	internal fun begin(origin: BrowserAuthOrigin, now: Long = System.currentTimeMillis()): BrowserAuthLaunch = synchronized(lock) {
+	internal fun begin(now: Long = System.currentTimeMillis()): BrowserAuthLaunch = synchronized(lock) {
 		val transactionId = randomUrlSafe(32)
 		val verifier = randomUrlSafe(48)
 		pending = PendingTransaction(
 			transactionId = transactionId,
 			codeVerifier = verifier,
-			origin = origin,
 			expiresAt = now + TRANSACTION_TTL_MS,
 		)
 		BrowserAuthLaunch(transactionId, sha256UrlSafe(verifier))
 	}
 
-	internal fun pendingProof(now: Long = System.currentTimeMillis()): BrowserAuthPollProof = synchronized(lock) {
-		pruneExpiredLocked(now)
-		val current = pending ?: throw BrowserAuthException("No browser sign-in is pending")
-		BrowserAuthPollProof(current.transactionId, current.codeVerifier, current.origin)
-	}
-
 	/** Consumes the local transaction exactly once when the broker returns its one-time app code. */
-	internal fun consumeOneTimeCode(
+	internal fun consumeCallback(
 		transactionId: String,
 		code: String,
 		now: Long = System.currentTimeMillis(),
@@ -109,7 +89,7 @@ class BrowserDriveAuthSession @Inject constructor() {
 			throw BrowserAuthException("Browser sign-in response is missing its one-time code")
 		}
 		pending = null
-		BrowserAuthCallbackProof(transactionId, code, current.codeVerifier, current.origin)
+		BrowserAuthCallbackProof(transactionId, code, current.codeVerifier)
 	}
 
 	internal fun cancelPending() = synchronized(lock) {
