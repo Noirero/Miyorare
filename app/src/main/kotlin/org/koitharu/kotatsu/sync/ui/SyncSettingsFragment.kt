@@ -257,7 +257,7 @@ private fun SyncScreen(
 					}
 					item { pos ->
 						ActionSettingsItem(
-							title = stringResource(R.string.sync_sign_in_gms),
+							title = stringResource(R.string.sync_sign_in),
 							subtitle = stringResource(R.string.sync_sign_in_gms_summary),
 							icon = R.drawable.ic_google_g,
 							iconColors = colors,
