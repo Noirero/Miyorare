@@ -34,6 +34,12 @@ internal data class BrowserAuthLaunch(
 	val codeChallenge: String,
 )
 
+internal data class BrowserAuthPollProof(
+	val transactionId: String,
+	val codeVerifier: String,
+	val origin: BrowserAuthOrigin,
+)
+
 internal data class BrowserAuthCallbackProof(
 	val transactionId: String,
 	val code: String,
@@ -42,10 +48,8 @@ internal data class BrowserAuthCallbackProof(
 )
 
 /**
- * Process-local credential store for browser Drive authorization.
- *
- * The class is public only because Hilt injects it into public Android components. Its credential
- * API remains module-internal so access tokens cannot accidentally become an application-wide API.
+ * Process-local credential and browser-transaction store.
+ * Access tokens and proof verifiers never enter preferences, database, Intent extras, or URLs.
  */
 @Singleton
 class BrowserDriveAuthSession @Inject constructor() {
@@ -78,14 +82,17 @@ class BrowserDriveAuthSession @Inject constructor() {
 			origin = origin,
 			expiresAt = now + TRANSACTION_TTL_MS,
 		)
-		BrowserAuthLaunch(
-			transactionId = transactionId,
-			codeChallenge = sha256UrlSafe(verifier),
-		)
+		BrowserAuthLaunch(transactionId, sha256UrlSafe(verifier))
 	}
 
-	/** Consumes the pending app transaction exactly once before any exchange request occurs. */
-	internal fun consumeCallback(
+	internal fun pendingProof(now: Long = System.currentTimeMillis()): BrowserAuthPollProof = synchronized(lock) {
+		pruneExpiredLocked(now)
+		val current = pending ?: throw BrowserAuthException("No browser sign-in is pending")
+		BrowserAuthPollProof(current.transactionId, current.codeVerifier, current.origin)
+	}
+
+	/** Consumes the local transaction exactly once when the broker returns its one-time app code. */
+	internal fun consumeOneTimeCode(
 		transactionId: String,
 		code: String,
 		now: Long = System.currentTimeMillis(),
@@ -102,12 +109,7 @@ class BrowserDriveAuthSession @Inject constructor() {
 			throw BrowserAuthException("Browser sign-in response is missing its one-time code")
 		}
 		pending = null
-		BrowserAuthCallbackProof(
-			transactionId = transactionId,
-			code = code,
-			codeVerifier = current.codeVerifier,
-			origin = current.origin,
-		)
+		BrowserAuthCallbackProof(transactionId, code, current.codeVerifier, current.origin)
 	}
 
 	internal fun cancelPending() = synchronized(lock) {
@@ -172,9 +174,7 @@ class BrowserDriveAuthSession @Inject constructor() {
 			credential = null
 			expiredSinceLastLogin = true
 		}
-		if (pending?.expiresAt?.let { it <= now } == true) {
-			pending = null
-		}
+		if (pending?.expiresAt?.let { it <= now } == true) pending = null
 	}
 
 	private fun randomUrlSafe(bytes: Int): String {
