@@ -1,5 +1,10 @@
 package org.koitharu.kotatsu.explore.ui.adapter
 
+import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
+import android.graphics.drawable.StateListDrawable
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
@@ -10,6 +15,7 @@ import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.carousel.CarouselLayoutManager
 import com.google.android.material.carousel.MultiBrowseCarouselStrategy
 import com.google.android.material.color.MaterialColors
@@ -23,7 +29,9 @@ import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.drawableStart
+import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
 import org.koitharu.kotatsu.databinding.ItemExploreButtonsBinding
 import org.koitharu.kotatsu.databinding.ItemExploreSourceFiltersBinding
@@ -45,6 +53,7 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
+import com.google.android.material.R as materialR
 
 private const val PREF_EXPLORE_SUGGESTIONS_VISIBLE = "explore_suggestions_visible"
 
@@ -76,6 +85,9 @@ fun exploreButtonsAD(
 				}
 			}
 		}.show()
+	}
+	bind {
+		binding.applyModernResolvedPalette()
 	}
 }
 
@@ -157,7 +169,7 @@ fun exploreListHeaderAD(
 				icon.setTint(
 					MaterialColors.getColor(
 						binding.textViewTitle,
-						com.google.android.material.R.attr.colorSecondary,
+						materialR.attr.colorSecondary,
 					),
 				)
 			}
@@ -274,11 +286,13 @@ fun exploreSourceListItemAD(
 	bind {
 		val origin = item.exploreSourceOrigin()
 		val compactSummary = item.summary.toCompactExploreSourceSummary()
+		val isExternal = item.source.mangaSource.isExternalSource()
 		binding.textViewTitle.text = item.source.getTitle(context)
 		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
 		binding.textViewSubtitle.text = formatExploreSourceListSummary(origin, item.summary, compactSummary)
 		binding.textViewOrigin.bindExploreSourceOriginBadge(origin)
-		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
+		binding.imageViewIcon.applyExternalSourceStyle(isExternal)
+		binding.applyModernResolvedPalette(isExternal)
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
 			item.source.mangaSource.isNovelSource,
@@ -340,6 +354,77 @@ fun exploreSourceGridItemAD(
 		binding.imageViewIcon.setPadding(inset, inset, inset, inset)
 		binding.imageViewIcon.setImageAsync(item.source)
 	}
+}
+
+private fun ItemExploreButtonsBinding.applyModernResolvedPalette() {
+	val context = root.context
+	if (context.miyorareViewPaletteFromPreferences() == null) return
+	val container = context.getThemeColor(materialR.attr.colorSurfaceContainerHigh)
+	val content = context.getThemeColor(materialR.attr.colorOnSurfaceVariant)
+	for (button in listOf(buttonLocal, buttonDownloads, buttonMigration)) {
+		button.applyResolvedExploreButtonPalette(container, content)
+	}
+}
+
+private fun MaterialButton.applyResolvedExploreButtonPalette(container: Int, content: Int) {
+	backgroundTintList = ColorStateList.valueOf(container)
+	setTextColor(content)
+	iconTint = ColorStateList.valueOf(content)
+}
+
+private fun ItemExploreSourceListBinding.applyModernResolvedPalette(isExternalSource: Boolean) {
+	val context = root.context
+	if (context.miyorareViewPaletteFromPreferences() == null) return
+	val surfaceLow = context.getThemeColor(materialR.attr.colorSurfaceContainerLow)
+	val surfaceHigh = context.getThemeColor(materialR.attr.colorSurfaceContainerHigh)
+	val surface = context.getThemeColor(materialR.attr.colorSurfaceContainer)
+	val surfaceHighest = context.getThemeColor(materialR.attr.colorSurfaceContainerHighest)
+	val outline = context.getThemeColor(materialR.attr.colorOutline)
+	val outlineVariant = context.getThemeColor(materialR.attr.colorOutlineVariant)
+	val onSurface = context.getThemeColor(materialR.attr.colorOnSurface)
+	val onSurfaceVariant = context.getThemeColor(materialR.attr.colorOnSurfaceVariant)
+
+	root.background = createExploreSourceRowBackground(
+		context = context,
+		normalColor = surfaceLow,
+		pressedColor = surfaceHigh,
+		outlineColor = outlineVariant,
+	)
+	textViewTitle.setTextColor(onSurface)
+	textViewSubtitle.setTextColor(onSurfaceVariant)
+	textViewOrigin.setTextColor(onSurfaceVariant)
+	textViewOrigin.background = GradientDrawable().apply {
+		shape = GradientDrawable.RECTANGLE
+		setColor(surfaceHighest)
+		cornerRadius = 999f * context.resources.displayMetrics.density
+	}
+	if (!isExternalSource) {
+		imageViewIcon.setBackgroundColor(surface)
+		imageViewIcon.strokeColor = ColorStateList.valueOf(outline)
+	}
+}
+
+private fun createExploreSourceRowBackground(
+	context: Context,
+	normalColor: Int,
+	pressedColor: Int,
+	outlineColor: Int,
+): RippleDrawable {
+	val density = context.resources.displayMetrics.density
+	val radius = 12f * density
+	val strokeWidth = density.toInt().coerceAtLeast(1)
+	fun shape(color: Int, stroke: Boolean): GradientDrawable = GradientDrawable().apply {
+		shape = GradientDrawable.RECTANGLE
+		setColor(color)
+		cornerRadius = radius
+		if (stroke) setStroke(strokeWidth, outlineColor)
+	}
+	val states = StateListDrawable().apply {
+		addState(intArrayOf(android.R.attr.state_pressed), shape(pressedColor, false))
+		addState(intArrayOf(), shape(normalColor, true))
+	}
+	val ripple = context.getThemeColor(materialR.attr.colorPrimary, alphaFactor = 0.12f)
+	return RippleDrawable(ColorStateList.valueOf(ripple), states, null)
 }
 
 private fun String?.toCompactExploreSourceSummary(): String? =
