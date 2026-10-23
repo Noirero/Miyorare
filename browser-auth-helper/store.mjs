@@ -17,6 +17,7 @@ export class BrowserAuthStore {
   begin(transactionId, codeChallenge) {
     validateToken(transactionId, 'transaction_id', 32, 128);
     validateToken(codeChallenge, 'code_challenge', 43, 128);
+    this.deleteTransaction(transactionId);
     const expiresAt = this.now() + TX_TTL_MS;
     const state = randomUrlSafe(32);
     this.transactions.set(transactionId, { codeChallenge, expiresAt });
@@ -44,38 +45,22 @@ export class BrowserAuthStore {
     });
   }
 
-  fail(transactionId, error) {
+  issueCode(transactionId) {
     const tx = this.requireTransaction(transactionId);
-    this.grants.set(transactionId, {
-      error,
-      codeChallenge: tx.codeChallenge,
-      storeExpiresAt: tx.expiresAt,
-    });
-  }
-
-  poll(transactionId, verifier) {
-    const tx = this.requireTransaction(transactionId);
-    verifyProof(verifier, tx.codeChallenge);
     const grant = this.grants.get(transactionId);
-    if (!grant) return { status: 'pending' };
-    if (grant.error) {
-      this.deleteTransaction(transactionId);
-      return { status: 'error', error: grant.error };
-    }
-    if (grant.storeExpiresAt <= this.now()) {
+    if (!grant || grant.storeExpiresAt <= this.now()) {
       this.deleteTransaction(transactionId);
       throw new AuthStoreError('expired');
     }
-    let codeEntry = [...this.codes.entries()].find(([, entry]) => entry.transactionId === transactionId);
-    if (!codeEntry) {
-      const code = randomUrlSafe(32);
-      this.codes.set(code, {
-        transactionId,
-        expiresAt: Math.min(this.now() + CODE_TTL_MS, grant.storeExpiresAt),
-      });
-      codeEntry = [code, this.codes.get(code)];
+    for (const [code, entry] of this.codes) {
+      if (entry.transactionId === transactionId) this.codes.delete(code);
     }
-    return { status: 'ready', code: codeEntry[0] };
+    const code = randomUrlSafe(32);
+    this.codes.set(code, {
+      transactionId,
+      expiresAt: Math.min(this.now() + CODE_TTL_MS, grant.storeExpiresAt, tx.expiresAt),
+    });
+    return code;
   }
 
   exchange(code, transactionId, verifier) {
@@ -83,12 +68,14 @@ export class BrowserAuthStore {
     const tx = this.requireTransaction(transactionId);
     verifyProof(verifier, tx.codeChallenge);
     const entry = this.codes.get(code);
-    this.codes.delete(code);
     if (!entry || entry.transactionId !== transactionId || entry.expiresAt <= this.now()) {
+      if (entry?.expiresAt <= this.now()) this.codes.delete(code);
       throw new AuthStoreError('invalid_code');
     }
+    // Consume the app code before returning the grant. A second exchange must always fail.
+    this.codes.delete(code);
     const grant = this.grants.get(transactionId);
-    if (!grant || grant.error || grant.storeExpiresAt <= this.now()) {
+    if (!grant || grant.storeExpiresAt <= this.now()) {
       this.deleteTransaction(transactionId);
       throw new AuthStoreError('expired');
     }
