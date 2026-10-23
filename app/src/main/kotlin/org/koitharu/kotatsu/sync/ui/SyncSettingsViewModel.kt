@@ -6,7 +6,9 @@ import android.net.Uri
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
@@ -47,12 +49,12 @@ data class SyncUiState(
 	val enabledContent: Set<String> = SyncContent.DEFAULT,
 	val lastSyncTimestamp: Long = 0L,
 	val lastError: String? = null,
-)
+) {
+	val isBrowserMode: Boolean get() = authMode == DriveAuthMode.BROWSER_TEMPORARY
+}
 
 sealed interface SyncEvent {
-	/** Launches either the GMS account chooser or a Google-provided recoverable authorization Intent. */
 	data class LaunchSignIn(val intent: Intent) : SyncEvent
-	/** Opens the temporary OAuth flow in the user's external browser. */
 	data class OpenBrowser(val uri: Uri) : SyncEvent
 	data class Message(val resId: Int) : SyncEvent
 	data class Error(val message: String?) : SyncEvent
@@ -68,17 +70,8 @@ class SyncSettingsViewModel @Inject constructor(
 	private val scheduler: SyncWorker.Scheduler,
 ) : BaseViewModel() {
 
-	private enum class ForegroundAction {
-		SYNC,
-		SYNC_AFTER_SIGN_IN,
-		DELETE_REMOTE,
-	}
-
-	private data class PendingAccount(
-		val email: String?,
-		val displayName: String?,
-		val photoUrl: String?,
-	)
+	private enum class ForegroundAction { SYNC, SYNC_AFTER_SIGN_IN, DELETE_REMOTE }
+	private data class PendingAccount(val email: String?, val displayName: String?, val photoUrl: String?)
 
 	val uiState = MutableStateFlow(readState())
 	val isSyncing = repository.isSyncing
@@ -86,15 +79,12 @@ class SyncSettingsViewModel @Inject constructor(
 
 	private var pendingRecoveryAction: ForegroundAction? = null
 	private var pendingAccount: PendingAccount? = null
+	private var browserCompletionJob: Job? = null
 
 	init {
-		// Refresh the displayed "last synced" / error info whenever a sync finishes.
 		viewModelScope.launch {
-			isSyncing.drop(1).collect { running ->
-				if (!running) refresh()
-			}
+			isSyncing.drop(1).collect { if (!it) refresh() }
 		}
-		// Browser expiry only needs coarse UI updates; there is intentionally no second-by-second timer.
 		viewModelScope.launch {
 			while (true) {
 				delay(BROWSER_STATE_REFRESH_MS)
@@ -114,6 +104,7 @@ class SyncSettingsViewModel @Inject constructor(
 	}
 
 	fun signInBrowser() {
+		browserCompletionJob?.cancel()
 		pendingRecoveryAction = null
 		pendingAccount = null
 		val uri = runCatching { browserAuth.createLoginUri(BrowserAuthOrigin.SYNC_SETTINGS) }.getOrElse { error ->
@@ -121,9 +112,25 @@ class SyncSettingsViewModel @Inject constructor(
 			return
 		}
 		events.call(SyncEvent.OpenBrowser(uri))
+		browserCompletionJob = viewModelScope.launch(Dispatchers.IO) {
+			try {
+				browserAuth.awaitCompletion()
+				// Browser credentials must never inherit the periodic lane from a previous GMS login.
+				scheduler.unschedule()
+				refresh()
+				performForegroundAction(ForegroundAction.SYNC, recoveryAlreadyAttempted = false)
+			} catch (e: CancellationException) {
+				throw e
+			} catch (e: Exception) {
+				browserAuth.cancelPending()
+				refresh()
+				events.call(SyncEvent.Error(e.message ?: context.getString(R.string.sync_error)))
+			}
+		}
 	}
 
 	fun onBrowserLaunchFailed(message: String?) {
+		browserCompletionJob?.cancel()
 		browserAuth.cancelPending()
 		events.call(SyncEvent.Error(message ?: context.getString(R.string.sync_browser_unavailable)))
 	}
@@ -137,7 +144,6 @@ class SyncSettingsViewModel @Inject constructor(
 			}
 			return
 		}
-
 		launchLoadingJob(Dispatchers.Default) {
 			val account = try {
 				auth.accountFromIntent(data)
@@ -145,19 +151,14 @@ class SyncSettingsViewModel @Inject constructor(
 				events.call(SyncEvent.Error(e.message ?: e.javaClass.simpleName))
 				return@launchLoadingJob
 			}
-			// Do not persist "signed in" metadata until Drive authorization itself is proven usable.
 			pendingAccount = PendingAccount(account.email, account.displayName, account.photoUrl?.toString())
 			performForegroundAction(ForegroundAction.SYNC_AFTER_SIGN_IN, recoveryAlreadyAttempted = false)
 		}
 	}
 
-	private suspend fun performForegroundAction(
-		action: ForegroundAction,
-		recoveryAlreadyAttempted: Boolean,
-	) {
+	private suspend fun performForegroundAction(action: ForegroundAction, recoveryAlreadyAttempted: Boolean) {
 		val schedulerWasPausedForAuthorization = syncSettings.isAuthorizationRequired
 		if (!ensureDriveAuthorization(action, recoveryAlreadyAttempted)) return
-
 		if (action == ForegroundAction.SYNC_AFTER_SIGN_IN) {
 			val account = pendingAccount ?: run {
 				events.call(SyncEvent.Error(context.getString(R.string.sync_sign_in_required)))
@@ -172,22 +173,15 @@ class SyncSettingsViewModel @Inject constructor(
 			schedulerWasPausedForAuthorization &&
 			auth.isBackgroundCapable()
 		) {
-			// A foreground GMS recovery unpauses the user's existing periodic-sync preference.
 			scheduler.schedule()
 		}
-
 		when (action) {
-			ForegroundAction.SYNC,
-			ForegroundAction.SYNC_AFTER_SIGN_IN -> runSync()
+			ForegroundAction.SYNC, ForegroundAction.SYNC_AFTER_SIGN_IN -> runSync()
 			ForegroundAction.DELETE_REMOTE -> runDeleteRemote()
 		}
 		refresh()
 	}
 
-	/**
-	 * Foreground-only preflight. GMS may surface Google's recoverable consent Intent; browser mode
-	 * never silently renews and instead asks the user to start a new browser session.
-	 */
 	private suspend fun ensureDriveAuthorization(
 		action: ForegroundAction,
 		recoveryAlreadyAttempted: Boolean,
@@ -208,7 +202,6 @@ class SyncSettingsViewModel @Inject constructor(
 			events.call(SyncEvent.LaunchSignIn(recoveryIntent))
 		} else {
 			if (action == ForegroundAction.SYNC_AFTER_SIGN_IN) {
-				// The GMS account chooser completed but Drive consent did not. Do not leave a half-signed-in UI.
 				pendingAccount = null
 				repository.signOut()
 				scheduler.unschedule()
@@ -228,23 +221,19 @@ class SyncSettingsViewModel @Inject constructor(
 		false
 	}
 
-	/** Runs a sync in the foreground and reports the outcome to the user. */
 	private suspend fun runSync() {
 		when (val result = repository.sync()) {
-			is SyncResult.Success -> {
+			SyncResult.Success -> {
 				syncSettings.isAuthorizationRequired = false
 				events.call(SyncEvent.Message(R.string.sync_completed))
 			}
-			is SyncResult.SignInRequired -> {
+			SyncResult.SignInRequired -> {
 				syncSettings.isAuthorizationRequired = true
 				events.call(
 					SyncEvent.Error(
 						context.getString(
-							if (auth.activeMode() == DriveAuthMode.BROWSER_TEMPORARY) {
-								R.string.sync_browser_session_expired
-							} else {
-								R.string.sync_sign_in_required
-							},
+							if (auth.activeMode() == DriveAuthMode.BROWSER_TEMPORARY) R.string.sync_browser_session_expired
+							else R.string.sync_sign_in_required,
 						),
 					),
 				)
@@ -255,11 +244,11 @@ class SyncSettingsViewModel @Inject constructor(
 
 	private suspend fun runDeleteRemote() {
 		when (val result = repository.deleteRemoteData()) {
-			is SyncResult.Success -> {
+			SyncResult.Success -> {
 				syncSettings.isAuthorizationRequired = false
 				events.call(SyncEvent.Message(R.string.sync_data_deleted))
 			}
-			is SyncResult.SignInRequired -> {
+			SyncResult.SignInRequired -> {
 				syncSettings.isAuthorizationRequired = true
 				events.call(SyncEvent.Error(context.getString(R.string.sync_sign_in_required)))
 			}
@@ -268,6 +257,7 @@ class SyncSettingsViewModel @Inject constructor(
 	}
 
 	fun signOut() {
+		browserCompletionJob?.cancel()
 		launchJob(Dispatchers.Default) {
 			pendingRecoveryAction = null
 			pendingAccount = null
@@ -339,9 +329,8 @@ class SyncSettingsViewModel @Inject constructor(
 	private fun readState(): SyncUiState {
 		val mode = auth.activeMode()
 		val browser = auth.browserSnapshot()
-		val usable = auth.hasUsableSession()
 		return SyncUiState(
-			isSignedIn = usable,
+			isSignedIn = auth.hasUsableSession(),
 			authorizationRequired = syncSettings.isAuthorizationRequired,
 			authMode = mode,
 			isBrowserConfigured = browserAuth.isConfigured(),
