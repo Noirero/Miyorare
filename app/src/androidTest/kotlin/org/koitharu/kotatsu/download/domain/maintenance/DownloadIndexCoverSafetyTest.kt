@@ -50,7 +50,8 @@ class DownloadIndexCoverSafetyTest {
 		val plan = plan(remote, old)
 
 		assertTrue(plan.complete)
-		val content = assertNotNull(plan.content)
+		assertNotNull(plan.content)
+		val content = requireNotNull(plan.content)
 		assertNull(MangaIndex(content).getCoverEntry())
 		assertArrayEquals(before, outsideCover.readBytes())
 	}
@@ -65,7 +66,8 @@ class DownloadIndexCoverSafetyTest {
 		val plan = plan(remote, old)
 
 		assertTrue(plan.complete)
-		val content = assertNotNull(plan.content)
+		assertNotNull(plan.content)
+		val content = requireNotNull(plan.content)
 		assertEquals("cover.jpeg", MangaIndex(content).getCoverEntry())
 	}
 
