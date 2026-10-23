@@ -75,7 +75,7 @@ class BrowserDriveAuthClient @Inject constructor(
 			?: throw BrowserAuthException("Browser sign-in callback is missing its transaction")
 		val providerError = uri.getQueryParameter("error")
 		if (!providerError.isNullOrBlank()) {
-			session.cancelPending()
+			session.consumeErrorCallback(transactionId)
 			throw BrowserAuthException(providerError.toUserMessage())
 		}
 		val oneTimeCode = uri.getQueryParameter("code")
@@ -164,9 +164,9 @@ class BrowserDriveAuthClient @Inject constructor(
 	)
 
 	companion object {
-		const val CALLBACK_SCHEME = "miyorare"
-		const val CALLBACK_HOST = "google-drive-auth"
 		const val MIN_SYNC_START_REMAINING_MS = 2L * 60L * 1000L
+		private const val CALLBACK_SCHEME = "miyorare"
+		private const val CALLBACK_HOST = "google-drive-auth"
 		private val JSON_MEDIA_TYPE = "application/json; charset=UTF-8".toMediaType()
 	}
 }
