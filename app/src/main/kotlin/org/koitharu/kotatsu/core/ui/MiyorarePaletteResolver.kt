@@ -8,9 +8,9 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 /**
  * Canonical Modern semantic-palette source boundary.
  *
- * Batch 1 intentionally has only MATCH_THEME, which delegates to the existing authored Modern
- * renderer without changing any colour math. Later palette sources extend this resolver rather than
- * overloading [MiyorareThemePreset] or duplicating palette derivation in screens.
+ * MATCH_THEME delegates authored identity to the existing Modern renderer, then completes semantic
+ * Material roles without changing the authored core palette. Later palette sources extend this
+ * resolver rather than overloading [MiyorareThemePreset] or duplicating derivation in screens.
  */
 fun resolveMiyorareThemeColors(
 	paletteSource: MiyorareModernPaletteSource,
@@ -21,12 +21,31 @@ fun resolveMiyorareThemeColors(
 	amoled: Boolean,
 	effectLevel: VisualEffectLevel,
 ): MiyorareThemeColors = when (paletteSource) {
-	MiyorareModernPaletteSource.MATCH_THEME -> miyorareThemeColors(
-		preset = preset,
-		customAccent = customAccent,
-		adaptivePalette = adaptivePalette,
-		darkTheme = darkTheme,
-		amoled = amoled,
-		effectLevel = effectLevel,
-	)
+	MiyorareModernPaletteSource.MATCH_THEME -> {
+		val authored = miyorareThemeColors(
+			preset = preset,
+			customAccent = customAccent,
+			adaptivePalette = adaptivePalette,
+			darkTheme = darkTheme,
+			amoled = amoled,
+			effectLevel = effectLevel,
+		)
+		val fixedReference = if (darkTheme) {
+			miyorareThemeColors(
+				preset = preset,
+				customAccent = customAccent,
+				adaptivePalette = adaptivePalette,
+				darkTheme = false,
+				amoled = false,
+				effectLevel = effectLevel,
+			).colorScheme
+		} else {
+			authored.colorScheme
+		}
+		authored.withCompleteSemanticRoles(
+			darkTheme = darkTheme,
+			amoled = amoled,
+			fixedReference = fixedReference,
+		)
+	}
 }
