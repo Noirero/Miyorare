@@ -12,7 +12,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.network.BaseHttpClient
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -131,7 +130,7 @@ internal class BrowserDriveAuthClient @Inject constructor(
 		BrowserAuthCompletion(proof.origin, account, expiresAt)
 	}
 
-	private fun configuredBaseUrl() = BuildConfig.BROWSER_AUTH_BASE_URL
+	private fun configuredBaseUrl() = BrowserDriveAuthConfig.BASE_URL
 		.trim()
 		.trimEnd('/')
 		.takeIf { it.isNotEmpty() }
