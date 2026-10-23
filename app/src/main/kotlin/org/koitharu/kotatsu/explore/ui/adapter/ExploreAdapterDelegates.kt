@@ -1,5 +1,10 @@
 package org.koitharu.kotatsu.explore.ui.adapter
 
+import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
+import android.graphics.drawable.StateListDrawable
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
@@ -10,6 +15,7 @@ import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.carousel.CarouselLayoutManager
 import com.google.android.material.carousel.MultiBrowseCarouselStrategy
 import com.google.android.material.color.MaterialColors
@@ -20,9 +26,11 @@ import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
+import org.koitharu.kotatsu.core.ui.MiyorareViewPalette
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.drawableStart
 import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
 import org.koitharu.kotatsu.databinding.ItemExploreButtonsBinding
@@ -53,6 +61,7 @@ fun exploreButtonsAD(
 ) = adapterDelegateViewBinding<ExploreButtons, ListModel, ItemExploreButtonsBinding>(
 	{ layoutInflater, parent -> ItemExploreButtonsBinding.inflate(layoutInflater, parent, false) },
 ) {
+	val modernPalette = context.miyorareViewPaletteFromPreferences()
 	binding.buttonDownloads.setOnClickListener(clickListener)
 	binding.buttonLocal.setOnClickListener(clickListener)
 	binding.buttonMigration.setOnClickListener {
@@ -76,6 +85,9 @@ fun exploreButtonsAD(
 				}
 			}
 		}.show()
+	}
+	bind {
+		binding.applyModernResolvedPalette(modernPalette)
 	}
 }
 
@@ -270,15 +282,18 @@ fun exploreSourceListItemAD(
 
 	AdapterDelegateClickListenerAdapter(this, listener).attach(itemView)
 	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)
+	val modernPalette = context.miyorareViewPaletteFromPreferences()
 
 	bind {
 		val origin = item.exploreSourceOrigin()
 		val compactSummary = item.summary.toCompactExploreSourceSummary()
+		val isExternal = item.source.mangaSource.isExternalSource()
 		binding.textViewTitle.text = item.source.getTitle(context)
 		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
 		binding.textViewSubtitle.text = formatExploreSourceListSummary(origin, item.summary, compactSummary)
 		binding.textViewOrigin.bindExploreSourceOriginBadge(origin)
-		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
+		binding.imageViewIcon.applyExternalSourceStyle(isExternal)
+		binding.applyModernResolvedPalette(modernPalette, isExternal)
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
 			item.source.mangaSource.isNovelSource,
@@ -340,6 +355,69 @@ fun exploreSourceGridItemAD(
 		binding.imageViewIcon.setPadding(inset, inset, inset, inset)
 		binding.imageViewIcon.setImageAsync(item.source)
 	}
+}
+
+private fun ItemExploreButtonsBinding.applyModernResolvedPalette(palette: MiyorareViewPalette?) {
+	palette ?: return
+	for (button in listOf(buttonLocal, buttonDownloads, buttonMigration)) {
+		button.applyResolvedExploreButtonPalette(palette.surfaceContainerHigh, palette.onSurfaceVariant)
+	}
+}
+
+private fun MaterialButton.applyResolvedExploreButtonPalette(container: Int, content: Int) {
+	backgroundTintList = ColorStateList.valueOf(container)
+	setTextColor(content)
+	iconTint = ColorStateList.valueOf(content)
+}
+
+private fun ItemExploreSourceListBinding.applyModernResolvedPalette(
+	palette: MiyorareViewPalette?,
+	isExternalSource: Boolean,
+) {
+	palette ?: return
+	val context = root.context
+	root.background = createExploreSourceRowBackground(
+		context = context,
+		normalColor = palette.surfaceContainerLow,
+		pressedColor = palette.surfaceContainerHigh,
+		outlineColor = palette.outlineVariant,
+		rippleColor = palette.glow,
+	)
+	textViewTitle.setTextColor(palette.onSurface)
+	textViewSubtitle.setTextColor(palette.onSurfaceVariant)
+	textViewOrigin.setTextColor(palette.onSurfaceVariant)
+	textViewOrigin.background = GradientDrawable().apply {
+		shape = GradientDrawable.RECTANGLE
+		setColor(palette.surfaceContainerHighest)
+		cornerRadius = 999f * context.resources.displayMetrics.density
+	}
+	if (!isExternalSource) {
+		imageViewIcon.setBackgroundColor(palette.surfaceContainer)
+		imageViewIcon.strokeColor = ColorStateList.valueOf(palette.outline)
+	}
+}
+
+private fun createExploreSourceRowBackground(
+	context: Context,
+	normalColor: Int,
+	pressedColor: Int,
+	outlineColor: Int,
+	rippleColor: Int,
+): RippleDrawable {
+	val density = context.resources.displayMetrics.density
+	val radius = 12f * density
+	val strokeWidth = density.toInt().coerceAtLeast(1)
+	fun shape(color: Int, stroke: Boolean): GradientDrawable = GradientDrawable().apply {
+		shape = GradientDrawable.RECTANGLE
+		setColor(color)
+		cornerRadius = radius
+		if (stroke) setStroke(strokeWidth, outlineColor)
+	}
+	val states = StateListDrawable().apply {
+		addState(intArrayOf(android.R.attr.state_pressed), shape(pressedColor, false))
+		addState(intArrayOf(), shape(normalColor, true))
+	}
+	return RippleDrawable(ColorStateList.valueOf(rippleColor), states, null)
 }
 
 private fun String?.toCompactExploreSourceSummary(): String? =

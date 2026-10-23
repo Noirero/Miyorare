@@ -26,8 +26,10 @@ data class MiyorareViewPalette(
 	val preset: MiyorareThemePreset,
 	val background: Int,
 	val surface: Int,
+	val surfaceContainerLow: Int,
 	val surfaceContainer: Int,
 	val surfaceContainerHigh: Int,
+	val surfaceContainerHighest: Int,
 	val primary: Int,
 	val onPrimary: Int,
 	val primaryContainer: Int,
@@ -224,8 +226,10 @@ private fun Context.buildMiyorareViewPalette(
 		preset = preset,
 		background = scheme.background.toArgb(),
 		surface = scheme.surface.toArgb(),
+		surfaceContainerLow = scheme.surfaceContainerLow.toArgb(),
 		surfaceContainer = scheme.surfaceContainer.toArgb(),
 		surfaceContainerHigh = scheme.surfaceContainerHigh.toArgb(),
+		surfaceContainerHighest = scheme.surfaceContainerHighest.toArgb(),
 		primary = scheme.primary.toArgb(),
 		onPrimary = scheme.onPrimary.toArgb(),
 		primaryContainer = scheme.primaryContainer.toArgb(),
@@ -252,7 +256,7 @@ private fun Context.buildMiyorareViewPalette(
 		customBackgroundPath = customBackgroundPath,
 		customBackgroundBlurPath = customBackgroundBlurPath,
 		customBackgroundRevision = customBackgroundRevision,
-		customAccentIdentity = if (preset == MiyorareThemePreset.CUSTOM) {
+		customAccentIdentity = if (shouldUseMiyorareCustomAccentIdentity(paletteSource, preset)) {
 			customBackgroundIdentity ?: if (adaptivePalette == null) {
 				MiyorareAppearance.parseAccentArgb(customAccent)
 			} else {
@@ -263,3 +267,8 @@ private fun Context.buildMiyorareViewPalette(
 		},
 	)
 }
+
+internal fun shouldUseMiyorareCustomAccentIdentity(
+	paletteSource: MiyorareModernPaletteSource,
+	preset: MiyorareThemePreset,
+): Boolean = paletteSource == MiyorareModernPaletteSource.MATCH_THEME && preset == MiyorareThemePreset.CUSTOM
