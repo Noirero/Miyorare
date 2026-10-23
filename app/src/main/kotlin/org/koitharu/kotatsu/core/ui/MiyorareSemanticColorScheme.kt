@@ -1,30 +1,29 @@
 package org.koitharu.kotatsu.core.ui
 
-import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 
 /**
- * Completes the Material semantic role set without changing the authored Modern core palette.
- * Existing primary/secondary/tertiary, background/surface, authored containers, outlines, and all
- * decorative tokens remain owned by [miyorareThemeColors]. This layer only fills roles that would
- * otherwise fall back to generic Material defaults.
+ * Completes the Material semantic role set supported by the Compose dependency in this repository
+ * without changing the authored Modern core palette. Existing primary/secondary/tertiary,
+ * background/surface, authored containers, outlines, and all decorative tokens remain owned by
+ * [miyorareThemeColors]. This layer only fills supported roles that would otherwise fall back to
+ * generic Material defaults.
  */
 internal fun MiyorareThemeColors.withCompleteSemanticRoles(
 	darkTheme: Boolean,
 	amoled: Boolean,
-	fixedReference: ColorScheme,
 ): MiyorareThemeColors {
 	val scheme = colorScheme
 	val inverseSurface = if (darkTheme) {
-		lerp(Color(0xFFF2EEF4), fixedReference.primary, 0.025f)
+		lerp(Color(0xFFF2EEF4), scheme.primary, 0.025f)
 	} else {
-		lerp(Color(0xFF2E2B31), fixedReference.primary, 0.035f)
+		lerp(Color(0xFF2E2B31), scheme.primary, 0.035f)
 	}
 	val inverseOnSurface = bestSemanticContentColor(inverseSurface)
 	val inversePrimary = ensureSemanticContrast(
-		color = fixedReference.primary,
+		color = scheme.primary,
 		background = inverseSurface,
 		minimumRatio = 3f,
 	)
@@ -75,10 +74,6 @@ internal fun MiyorareThemeColors.withCompleteSemanticRoles(
 	val errorContainer = if (darkTheme) Color(0xFF93000A) else Color(0xFFFFDAD6)
 	val onErrorContainer = if (darkTheme) Color(0xFFFFDAD6) else Color(0xFF410002)
 
-	val primaryFixed = fixedSemanticRoles(fixedReference.primary)
-	val secondaryFixed = fixedSemanticRoles(fixedReference.secondary)
-	val tertiaryFixed = fixedSemanticRoles(fixedReference.tertiary)
-
 	return copy(
 		colorScheme = scheme.copy(
 			inversePrimary = inversePrimary,
@@ -97,37 +92,7 @@ internal fun MiyorareThemeColors.withCompleteSemanticRoles(
 			surfaceContainerLowest = surfaceContainerLowest,
 			surfaceContainerLow = surfaceContainerLow,
 			surfaceContainerHighest = surfaceContainerHighest,
-			primaryFixed = primaryFixed.fixed,
-			primaryFixedDim = primaryFixed.fixedDim,
-			onPrimaryFixed = primaryFixed.onFixed,
-			onPrimaryFixedVariant = primaryFixed.onFixedVariant,
-			secondaryFixed = secondaryFixed.fixed,
-			secondaryFixedDim = secondaryFixed.fixedDim,
-			onSecondaryFixed = secondaryFixed.onFixed,
-			onSecondaryFixedVariant = secondaryFixed.onFixedVariant,
-			tertiaryFixed = tertiaryFixed.fixed,
-			tertiaryFixedDim = tertiaryFixed.fixedDim,
-			onTertiaryFixed = tertiaryFixed.onFixed,
-			onTertiaryFixedVariant = tertiaryFixed.onFixedVariant,
 		),
-	)
-}
-
-private data class FixedSemanticRoles(
-	val fixed: Color,
-	val fixedDim: Color,
-	val onFixed: Color,
-	val onFixedVariant: Color,
-)
-
-private fun fixedSemanticRoles(seed: Color): FixedSemanticRoles {
-	val fixed = lerp(Color.White, seed, 0.30f)
-	val fixedDim = lerp(Color.White, seed, 0.50f)
-	return FixedSemanticRoles(
-		fixed = fixed,
-		fixedDim = fixedDim,
-		onFixed = bestSemanticContentColor(fixed),
-		onFixedVariant = bestSemanticContentColor(fixedDim),
 	)
 }
 
