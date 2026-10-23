@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
@@ -180,6 +181,10 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
 		MiyorareModernPaletteSource.MATCH_THEME.name,
 	)
+	val privateThemeValue by rememberStringPref(
+		MiyorareAppearance.KEY_PRIVATE_FAVOURITES_THEME,
+		PrivateFavouritesThemePreset.FOLLOW_NORMAL.name,
+	)
 	val customAccent by rememberStringPref(
 		MiyorareAppearance.KEY_CUSTOM_ACCENT,
 		MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
@@ -206,7 +211,9 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		?: MiyorareDesignStyle.CLASSIC
 	val themePreset = MiyorareThemePreset.entries.firstOrNull { it.name == themePresetValue }
 		?: MiyorareThemePreset.MIYORARE
-	val paletteSource = MiyorareModernPaletteSource.fromStoredValue(paletteSourceValue)
+	val normalPaletteSource = MiyorareModernPaletteSource.fromStoredValue(paletteSourceValue)
+	val privateTheme = PrivateFavouritesThemePreset.entries.firstOrNull { it.name == privateThemeValue }
+		?: PrivateFavouritesThemePreset.FOLLOW_NORMAL
 	val effectLevel = VisualEffectLevel.entries.firstOrNull { it.name == effectLevelValue }
 		?: VisualEffectLevel.BALANCED
 	val customBackgroundIntensity = MiyorareCustomBackgroundIntensity.entries.firstOrNull {
@@ -219,6 +226,11 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	) == FavouriteSpace.PRIVATE.dbValue ||
 		hostActivity?.intent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
 		hostActivity?.intent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
+	val paletteSource = if (privateHost && privateTheme != PrivateFavouritesThemePreset.FOLLOW_NORMAL) {
+		MiyorareModernPaletteSource.MATCH_THEME
+	} else {
+		normalPaletteSource
+	}
 	val customBackgroundAvailable = remember(customBackgroundRevision, themePreset, privateHost) {
 		!privateHost &&
 			themePreset == MiyorareThemePreset.CUSTOM &&
