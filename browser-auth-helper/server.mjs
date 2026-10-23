@@ -6,6 +6,7 @@ const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const DRIVE_ABOUT_ENDPOINT = 'https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress,photoLink)';
+const APP_CALLBACK = 'miyorare://google-drive-auth';
 const MAX_BODY_BYTES = 16 * 1024;
 
 export function loadConfig(env = process.env) {
@@ -48,13 +49,13 @@ export function createServer(config, { fetchImpl = fetch, store = new BrowserAut
         const tx = store.consumeState(state);
         const providerError = url.searchParams.get('error');
         if (providerError) {
-          store.fail(tx.transactionId, sanitizeProviderError(providerError));
-          return html(res, 200, 'Sign-in not completed', 'Return to Miyorare and try again when you are ready.');
+          store.deleteTransaction(tx.transactionId);
+          return redirectToApp(res, tx.transactionId, { error: sanitizeProviderError(providerError) });
         }
         const authCode = url.searchParams.get('code');
         if (!authCode) {
-          store.fail(tx.transactionId, 'provider_error');
-          return html(res, 400, 'Sign-in not completed', 'The Google response was incomplete. Return to Miyorare and try again.');
+          store.deleteTransaction(tx.transactionId);
+          return redirectToApp(res, tx.transactionId, { error: 'provider_error' });
         }
         try {
           const token = await exchangeGoogleCode(fetchImpl, config, redirectUri, authCode);
@@ -64,18 +65,13 @@ export function createServer(config, { fetchImpl = fetch, store = new BrowserAut
             tokenExpiresAt: Date.now() + token.expiresIn * 1000,
             account,
           });
+          const appCode = store.issueCode(tx.transactionId);
+          return redirectToApp(res, tx.transactionId, { code: appCode });
         } catch (error) {
-          store.fail(tx.transactionId, 'provider_error');
-          throw error;
+          store.deleteTransaction(tx.transactionId);
+          console.error('browser-auth provider exchange failed', error?.name || 'Error');
+          return redirectToApp(res, tx.transactionId, { error: 'provider_error' });
         }
-        return html(res, 200, 'Connected temporarily', 'Return to Miyorare. The app will finish the secure one-time exchange automatically.');
-      }
-      if (req.method === 'POST' && url.pathname === '/v1/google/poll') {
-        const body = await readJson(req);
-        const result = store.poll(body.transaction_id, body.code_verifier);
-        if (result.status === 'pending') return json(res, 202, { status: 'pending' });
-        if (result.status === 'error') return json(res, 200, { error: result.error });
-        return json(res, 200, { code: result.code });
       }
       if (req.method === 'POST' && url.pathname === '/v1/google/exchange') {
         const body = await readJson(req);
@@ -152,22 +148,26 @@ async function readJson(req) {
   }
 }
 
+function redirectToApp(res, transactionId, result) {
+  const callback = new URL(APP_CALLBACK);
+  callback.searchParams.set('transaction_id', transactionId);
+  if (result.code) callback.searchParams.set('code', result.code);
+  if (result.error) callback.searchParams.set('error', result.error);
+  res.writeHead(302, { Location: callback.toString() });
+  res.end();
+}
+
 function setSecurityHeaders(res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'");
+  res.setHeader('Content-Security-Policy', "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
 }
 
 function json(res, status, payload) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(payload));
-}
-
-function html(res, status, title, message) {
-  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(`<!doctype html><meta name="viewport" content="width=device-width"><title>${escapeHtml(title)}</title><style>body{font:16px system-ui;max-width:36rem;margin:15vh auto;padding:24px;line-height:1.5}h1{font-size:1.5rem}</style><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>`);
 }
 
 function mapStoreStatus(error) {
@@ -176,10 +176,6 @@ function mapStoreStatus(error) {
 
 function sanitizeProviderError(error) {
   return ['access_denied', 'temporarily_unavailable'].includes(error) ? error : 'provider_error';
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 }
 
 function required(value, name) {
