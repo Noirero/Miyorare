@@ -3,31 +3,75 @@ package org.koitharu.kotatsu.sync.domain
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.koitharu.kotatsu.sync.data.DriveAuthMode
 
 class SyncAuthPolicyTest {
 
 	@Test
-	fun accountSessionRequiresMetadataAndLiveGoogleAccount() {
-		assertTrue(SyncAuthPolicy.hasAccountSession(hasAccountMetadata = true, hasGoogleAccount = true))
-		assertFalse(SyncAuthPolicy.hasAccountSession(hasAccountMetadata = true, hasGoogleAccount = false))
-		assertFalse(SyncAuthPolicy.hasAccountSession(hasAccountMetadata = false, hasGoogleAccount = true))
-		assertFalse(SyncAuthPolicy.hasAccountSession(hasAccountMetadata = false, hasGoogleAccount = false))
+	fun accountSessionRequiresProviderSpecificLiveCredential() {
+		assertTrue(
+			SyncAuthPolicy.hasAccountSession(
+				DriveAuthMode.GMS,
+				hasAccountMetadata = true,
+				hasGoogleAccount = true,
+				hasBrowserSession = false,
+			),
+		)
+		assertTrue(
+			SyncAuthPolicy.hasAccountSession(
+				DriveAuthMode.BROWSER_TEMPORARY,
+				hasAccountMetadata = true,
+				hasGoogleAccount = false,
+				hasBrowserSession = true,
+			),
+		)
+		assertFalse(
+			SyncAuthPolicy.hasAccountSession(
+				DriveAuthMode.BROWSER_TEMPORARY,
+				hasAccountMetadata = true,
+				hasGoogleAccount = false,
+				hasBrowserSession = false,
+			),
+		)
 	}
 
 	@Test
-	fun backgroundReadinessAlsoRequiresNoPendingAuthorization() {
+	fun onlyGmsSessionCanBeBackgroundReady() {
 		assertTrue(
-			SyncAuthPolicy.isAccountReady(
+			SyncAuthPolicy.isBackgroundReady(
+				DriveAuthMode.GMS,
 				hasAccountMetadata = true,
 				hasGoogleAccount = true,
 				authorizationRequired = false,
 			),
 		)
 		assertFalse(
-			SyncAuthPolicy.isAccountReady(
+			SyncAuthPolicy.isBackgroundReady(
+				DriveAuthMode.BROWSER_TEMPORARY,
+				hasAccountMetadata = true,
+				hasGoogleAccount = true,
+				authorizationRequired = false,
+			),
+		)
+		assertFalse(
+			SyncAuthPolicy.isBackgroundReady(
+				DriveAuthMode.GMS,
 				hasAccountMetadata = true,
 				hasGoogleAccount = true,
 				authorizationRequired = true,
+			),
+		)
+	}
+
+	@Test
+	fun legacyGmsHelpersPreservePreviousBehavior() {
+		assertTrue(SyncAuthPolicy.hasAccountSession(hasAccountMetadata = true, hasGoogleAccount = true))
+		assertFalse(SyncAuthPolicy.hasAccountSession(hasAccountMetadata = true, hasGoogleAccount = false))
+		assertTrue(
+			SyncAuthPolicy.isAccountReady(
+				hasAccountMetadata = true,
+				hasGoogleAccount = true,
+				authorizationRequired = false,
 			),
 		)
 	}
