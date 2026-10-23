@@ -150,6 +150,7 @@ class DownloadMaintenanceUseCase @Inject constructor(
 		val oldText = if (file.isDirectory && indexFile.isFile) indexFile.readText() else null
 		val old = oldText?.let { runCatching { MangaIndex(it) }.getOrNull() }
 		val storedInfo = old?.getMangaInfo() ?: runCatchingCancellable { parser.getMangaInfo() }.getOrNull()
+			?: readEmbeddedNovelIdentity(file)
 		val rawPhysical = LocalMangaParser(file, ignoreDirectoryIndex = true).getManga(withDetails = true)
 		val physical = DownloadIndexRepair.restoreValidMappings(file, old, rawPhysical)
 		if (physical.manga.chapters.isNullOrEmpty()) return item(DownloadMaintenanceStatus.UNRESOLVED, DownloadMaintenanceReason.UNSUPPORTED_ARTIFACT)
@@ -224,6 +225,17 @@ class DownloadMaintenanceUseCase @Inject constructor(
 				else -> item(if (changed) DownloadMaintenanceStatus.REPAIRED else DownloadMaintenanceStatus.HEALTHY, DownloadMaintenanceReason.VERIFIED, recognized, physical.manga.chapters.orEmpty().size)
 			}
 		}
+	}
+
+	/** Per-chapter EPUBs already carry remote identity; a cold/offline cache needs no provider call. */
+	private suspend fun readEmbeddedNovelIdentity(file: File): Manga? {
+		if (!file.isDirectory) return null
+		val epubs = file.listFiles { child -> child.isFile && child.extension.equals("epub", ignoreCase = true) }.orEmpty()
+		if (epubs.isEmpty()) return null
+		val snapshots = epubs.map { epub -> runCatchingCancellable { LocalMangaParser(epub).getMangaInfo() }.getOrNull() ?: return null }
+		val first = snapshots.first()
+		if (first.isLocal || snapshots.any { it.id != first.id || !sameSource(it.source.name, first.source.name) }) return null
+		return first.copy(chapters = snapshots.flatMap { it.chapters.orEmpty() }.distinctBy { it.id })
 	}
 
 	private suspend fun repairOwnership(id: Long, file: File, membership: Map<FavouriteSpace, Set<Long>>, roots: Map<FavouriteSpace, List<File>>): Pair<Boolean, Boolean> = database.withTransaction {

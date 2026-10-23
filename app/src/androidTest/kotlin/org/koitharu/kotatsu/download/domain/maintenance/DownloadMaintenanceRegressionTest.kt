@@ -255,7 +255,7 @@ class DownloadMaintenanceRegressionTest {
 	@Test fun novelPerChapterEpubKeepsEmbeddedIdentityWithoutDirectorySidecar() = runBlocking {
 		val source = MissingMangaSource("LN_MAINTENANCE_TEST")
 		val remote = remote().let { it.copy(source = source, chapters = it.chapters!!.map { ch -> ch.copy(source = source) }) }
-		data.storeManga(remote, replaceExisting = true, detailsFetched = true)
+		data.storeManga(remote.copy(chapters = null), replaceExisting = true, detailsFetched = false)
 		val folder = folder("downloads/00.Novel/Source (EN)/Maintenance")
 		val epub = File(folder, "Chapter 1.epub")
 		val embedded = MangaIndex(null).apply { setMangaInfo(remote); addChapter(IndexedValue(0, remote.chapters!!.single()), "OEBPS/chapter.xhtml") }
@@ -266,6 +266,7 @@ class DownloadMaintenanceRegressionTest {
 		}
 		val before = epub.readBytes()
 		maintenance.run()
+		assertTrue(result(folder).status in setOf(DownloadMaintenanceStatus.HEALTHY, DownloadMaintenanceStatus.REPAIRED))
 		assertFalse(File(folder, "index.json").exists())
 		assertArrayEquals(before, epub.readBytes())
 		val chapter = LocalMangaParser(folder).getManga(true).manga.chapters!!.single()

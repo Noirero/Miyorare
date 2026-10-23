@@ -508,18 +508,6 @@ class LocalMangaIndex @Inject constructor(
 		}))
 
 
-	/** Maintenance has already verified this identity. Keep remote metadata and other copies intact. */
-	internal suspend fun rememberVerifiedPath(mangaId: Long, file: File) = mutex.withLock {
-		val path = normalizePath(file)
-		val dao = db.getLocalMangaIndexDao()
-		val previous = dao.findPath(mangaId)
-		if (previous == null) {
-			dao.upsert(LocalMangaIndexEntity(mangaId, path))
-			cachedList = null
-			_rebuildEvents.tryEmit(Unit)
-		}
-	}
-
 	suspend fun put(manga: LocalManga) = mutex.withLock {
 		val alias = readDownloadAlias(manga.manga.id)
 		if (alias?.path == manga.file.path) {
@@ -536,6 +524,19 @@ class LocalMangaIndex @Inject constructor(
 		}
 		cachedList = null
 	}
+
+	/** Maintenance has already verified this identity. Keep remote metadata and other copies intact. */
+	internal suspend fun rememberVerifiedPath(mangaId: Long, file: File) = mutex.withLock {
+		val path = normalizePath(file)
+		val dao = db.getLocalMangaIndexDao()
+		val previous = dao.findPath(mangaId)
+		if (previous == null) {
+			dao.upsert(LocalMangaIndexEntity(mangaId, path))
+			cachedList = null
+			_rebuildEvents.tryEmit(Unit)
+		}
+	}
+
 
 	/**
 	 * Deletion must not queue behind a full filesystem/PDF rebuild. The file is already gone when this

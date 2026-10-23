@@ -18,7 +18,7 @@ data class DownloadMaintenanceItem(
 )
 
 data class DownloadMaintenanceResult(val items: List<DownloadMaintenanceItem>) {
-	val checked: Int get() = items.count { it.status != DownloadMaintenanceStatus.UNAVAILABLE_STORAGE }
+	val checked: Int get() = items.count { it.path.isNotEmpty() && it.status != DownloadMaintenanceStatus.UNAVAILABLE_STORAGE }
 	val repaired: Int get() = items.count { it.status == DownloadMaintenanceStatus.REPAIRED }
 	val healthy: Int get() = items.count { it.status == DownloadMaintenanceStatus.HEALTHY || it.status == DownloadMaintenanceStatus.NO_CHANGE_REQUIRED }
 	val failed: Int get() = items.count { it.status == DownloadMaintenanceStatus.FAILED }
