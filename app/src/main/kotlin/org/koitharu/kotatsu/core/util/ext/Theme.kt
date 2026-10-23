@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
@@ -134,7 +135,7 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 	)
 	if (designStyle != MiyorareDesignStyle.MODERN.name) return null
 
-	val paletteSource = MiyorareModernPaletteSource.fromStoredValue(
+	val normalPaletteSource = MiyorareModernPaletteSource.fromStoredValue(
 		prefs.getString(MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE, null),
 	)
 	val preset = MiyorareThemePreset.entries.firstOrNull {
@@ -154,6 +155,18 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 	) == FavouriteSpace.PRIVATE.dbValue ||
 		hostIntent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
 		hostIntent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
+	val privateTheme = if (privateHost) {
+		prefs.getString(MiyorareAppearance.KEY_PRIVATE_FAVOURITES_THEME, null)
+			?.let { value -> PrivateFavouritesThemePreset.entries.firstOrNull { it.name == value } }
+			?: PrivateFavouritesThemePreset.FOLLOW_NORMAL
+	} else {
+		PrivateFavouritesThemePreset.FOLLOW_NORMAL
+	}
+	val paletteSource = if (privateTheme == PrivateFavouritesThemePreset.FOLLOW_NORMAL) {
+		normalPaletteSource
+	} else {
+		MiyorareModernPaletteSource.MATCH_THEME
+	}
 	val customBackgroundActive = !privateHost &&
 		preset == MiyorareThemePreset.CUSTOM &&
 		MiyorareCustomBackgroundStore.hasBackground(this)
