@@ -6,7 +6,7 @@ import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
 
-internal enum class DriveAuthMode {
+enum class DriveAuthMode {
 	GMS,
 	BROWSER_TEMPORARY,
 }
