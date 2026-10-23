@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -50,7 +51,7 @@ class BrowserDriveAuthCallbackActivity : ComponentActivity() {
 		}
 		handledCallback = key
 		lifecycleScope.launch {
-			val message = runCatching {
+			val message = try {
 				browserAuth.completeCallback(uri)
 				// Temporary browser credentials must never inherit a periodic lane from GMS.
 				scheduler.unschedule()
@@ -59,8 +60,10 @@ class BrowserDriveAuthCallbackActivity : ComponentActivity() {
 					SyncResult.SignInRequired -> getString(R.string.sync_browser_session_expired)
 					is SyncResult.Error -> result.message ?: getString(R.string.sync_error)
 				}
-			}.getOrElse { error ->
-				error.message ?: getString(R.string.sync_error)
+			} catch (e: CancellationException) {
+				throw e
+			} catch (e: Exception) {
+				e.message ?: getString(R.string.sync_error)
 			}
 			Toast.makeText(this@BrowserDriveAuthCallbackActivity, message, Toast.LENGTH_LONG).show()
 			startActivity(
