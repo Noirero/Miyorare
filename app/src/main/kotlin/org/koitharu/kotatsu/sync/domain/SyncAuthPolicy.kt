@@ -1,16 +1,30 @@
 package org.koitharu.kotatsu.sync.domain
 
+import org.koitharu.kotatsu.sync.data.DriveAuthMode
+
 /** Small, pure policy helpers shared by foreground and background sync auth state. */
 internal object SyncAuthPolicy {
 
-	fun hasAccountSession(hasAccountMetadata: Boolean, hasGoogleAccount: Boolean): Boolean =
-		hasAccountMetadata && hasGoogleAccount
+	fun hasAccountSession(
+		mode: DriveAuthMode?,
+		hasAccountMetadata: Boolean,
+		hasGoogleAccount: Boolean,
+		hasBrowserSession: Boolean,
+	): Boolean = when (mode) {
+		DriveAuthMode.GMS -> hasAccountMetadata && hasGoogleAccount
+		DriveAuthMode.BROWSER_TEMPORARY -> hasAccountMetadata && hasBrowserSession
+		null -> false
+	}
 
-	fun isAccountReady(
+	fun isBackgroundReady(
+		mode: DriveAuthMode?,
 		hasAccountMetadata: Boolean,
 		hasGoogleAccount: Boolean,
 		authorizationRequired: Boolean = false,
-	): Boolean = hasAccountSession(hasAccountMetadata, hasGoogleAccount) && !authorizationRequired
+	): Boolean = mode == DriveAuthMode.GMS &&
+		hasAccountMetadata &&
+		hasGoogleAccount &&
+		!authorizationRequired
 
 	fun canLaunchInteractiveRecovery(recoveryAlreadyAttempted: Boolean): Boolean =
 		!recoveryAlreadyAttempted
