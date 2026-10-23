@@ -27,7 +27,7 @@ export class OAuthStore extends DurableObject {
         code: null,
       });
       await this.ctx.storage.put(`state:${state}`, { transactionId, expiresAt });
-      await this.ctx.storage.setAlarm(expiresAt);
+      await this.#scheduleAlarm(expiresAt);
       return { state, expiresAt };
     });
   }
@@ -56,12 +56,14 @@ export class OAuthStore extends DurableObject {
       if (!grant?.accessToken || !Number.isFinite(grant.tokenExpiresAt)) {
         throw new AuthStoreError('invalid_grant');
       }
+      const storeExpiresAt = Math.min(grant.tokenExpiresAt, tx.expiresAt);
       await this.ctx.storage.put(`grant:${transactionId}`, {
         accessToken: grant.accessToken,
         tokenExpiresAt: grant.tokenExpiresAt,
         account: grant.account ?? null,
-        storeExpiresAt: Math.min(grant.tokenExpiresAt, tx.expiresAt),
+        storeExpiresAt,
       });
+      await this.#scheduleAlarm(storeExpiresAt);
       return null;
     });
   }
@@ -80,6 +82,7 @@ export class OAuthStore extends DurableObject {
       tx.code = code;
       await this.ctx.storage.put(`tx:${transactionId}`, tx);
       await this.ctx.storage.put(`code:${code}`, { transactionId, expiresAt });
+      await this.#scheduleAlarm(expiresAt);
       return code;
     });
   }
@@ -114,7 +117,38 @@ export class OAuthStore extends DurableObject {
   }
 
   async alarm() {
-    await this.ctx.storage.deleteAll();
+    const now = Date.now();
+    let nextExpiry = Number.POSITIVE_INFINITY;
+
+    const transactions = await this.ctx.storage.list({ prefix: 'tx:' });
+    for (const [key, tx] of transactions) {
+      if (!tx || tx.expiresAt <= now) {
+        await this.#deleteTransaction(key.slice(3));
+      } else {
+        nextExpiry = Math.min(nextExpiry, tx.expiresAt);
+      }
+    }
+
+    const states = await this.ctx.storage.list({ prefix: 'state:' });
+    for (const [key, state] of states) {
+      if (!state || state.expiresAt <= now) await this.ctx.storage.delete(key);
+      else nextExpiry = Math.min(nextExpiry, state.expiresAt);
+    }
+
+    const codes = await this.ctx.storage.list({ prefix: 'code:' });
+    for (const [key, code] of codes) {
+      if (!code || code.expiresAt <= now) await this.ctx.storage.delete(key);
+      else nextExpiry = Math.min(nextExpiry, code.expiresAt);
+    }
+
+    const grants = await this.ctx.storage.list({ prefix: 'grant:' });
+    for (const [key, grant] of grants) {
+      if (!grant || grant.storeExpiresAt <= now) await this.ctx.storage.delete(key);
+      else nextExpiry = Math.min(nextExpiry, grant.storeExpiresAt);
+    }
+
+    if (Number.isFinite(nextExpiry)) await this.ctx.storage.setAlarm(nextExpiry);
+    else await this.ctx.storage.deleteAlarm();
   }
 
   async #run(block) {
@@ -143,6 +177,11 @@ export class OAuthStore extends DurableObject {
     if (tx?.state) keys.push(`state:${tx.state}`);
     if (tx?.code) keys.push(`code:${tx.code}`);
     await Promise.all(keys.map((key) => this.ctx.storage.delete(key)));
+  }
+
+  async #scheduleAlarm(expiresAt) {
+    const current = await this.ctx.storage.getAlarm();
+    if (current === null || expiresAt < current) await this.ctx.storage.setAlarm(expiresAt);
   }
 }
 
