@@ -82,7 +82,7 @@ test('configuration requires HTTPS and server-only OAuth values', () => {
   assert.equal(parsed.publicBaseUrl, 'https://auth.example.test');
 });
 
-test('start requests only appDataFolder online access with exact HTTPS callback and state', async () => {
+test('start requests only appDataFolder online access with exact HTTPS Google callback and state', async () => {
   await withServer(async (base) => {
     const auth = await start(base);
     assert.equal(auth.origin + auth.pathname, 'https://accounts.google.com/o/oauth2/v2/auth');
@@ -97,40 +97,38 @@ test('start requests only appDataFolder online access with exact HTTPS callback 
   });
 });
 
-test('pending poll reveals nothing before provider callback', async () => {
-  await withServer(async (base) => {
-    await start(base);
-    const response = await postJson(base, '/v1/google/poll', {
-      transaction_id: transactionId,
-      code_verifier: verifier,
-    });
-    assert.equal(response.status, 202);
-    assert.deepEqual(await response.json(), { status: 'pending' });
-  });
-});
-
-test('callback to poll to exchange returns temporary token once and never exposes refresh token', async () => {
+test('Google callback returns only a one-time app code, then HTTPS exchange returns temporary token once', async () => {
   await withServer(async (base) => {
     const auth = await start(base);
     const state = auth.searchParams.get('state');
-    const callback = await fetch(`${base}/v1/google/callback?state=${encodeURIComponent(state)}&code=google-code`);
-    assert.equal(callback.status, 200);
-    const callbackHtml = await callback.text();
-    assert.equal(callbackHtml.includes('temporary-google-token'), false);
-    assert.equal(callbackHtml.includes('must-be-discarded'), false);
+    const callback = await fetch(
+      `${base}/v1/google/callback?state=${encodeURIComponent(state)}&code=google-authorization-code`,
+      { redirect: 'manual' },
+    );
+    assert.equal(callback.status, 302);
+    const appReturn = new URL(callback.headers.get('location'));
+    assert.equal(appReturn.protocol, 'miyorare:');
+    assert.equal(appReturn.host, 'google-drive-auth');
+    assert.equal(appReturn.searchParams.get('transaction_id'), transactionId);
+    const appCode = appReturn.searchParams.get('code');
+    assert.ok(appCode);
+    assert.equal(appReturn.searchParams.has('access_token'), false);
+    assert.equal(appReturn.searchParams.has('refresh_token'), false);
+    assert.equal(appReturn.toString().includes('google-authorization-code'), false);
+    assert.equal(appReturn.toString().includes('temporary-google-token'), false);
+    assert.equal(appReturn.toString().includes('must-be-discarded'), false);
 
-    const poll = await postJson(base, '/v1/google/poll', {
+    const wrongProof = await postJson(base, '/v1/google/exchange', {
       transaction_id: transactionId,
-      code_verifier: verifier,
+      code_verifier: 'x'.repeat(64),
+      code: appCode,
     });
-    assert.equal(poll.status, 200);
-    const { code } = await poll.json();
-    assert.ok(code);
+    assert.equal(wrongProof.status, 400);
 
     const exchange = await postJson(base, '/v1/google/exchange', {
       transaction_id: transactionId,
       code_verifier: verifier,
-      code,
+      code: appCode,
     });
     assert.equal(exchange.status, 200);
     const payload = await exchange.json();
@@ -142,36 +140,80 @@ test('callback to poll to exchange returns temporary token once and never expose
     const replay = await postJson(base, '/v1/google/exchange', {
       transaction_id: transactionId,
       code_verifier: verifier,
-      code,
+      code: appCode,
     });
     assert.ok(replay.status === 400 || replay.status === 410);
   });
 });
 
-test('wrong verifier, replayed state, and malformed callback fail safely', async () => {
+test('provider denial returns a sanitized app error and replayed state fails', async () => {
   await withServer(async (base) => {
-    const firstAuth = await start(base, 'a'.repeat(48));
-    const firstState = firstAuth.searchParams.get('state');
-    const wrongProof = await postJson(base, '/v1/google/poll', {
-      transaction_id: 'a'.repeat(48),
-      code_verifier: 'x'.repeat(64),
-    });
-    assert.equal(wrongProof.status, 400);
+    const auth = await start(base, 'a'.repeat(48));
+    const state = auth.searchParams.get('state');
+    const denial = await fetch(
+      `${base}/v1/google/callback?state=${encodeURIComponent(state)}&error=access_denied`,
+      { redirect: 'manual' },
+    );
+    assert.equal(denial.status, 302);
+    const appReturn = new URL(denial.headers.get('location'));
+    assert.equal(appReturn.protocol, 'miyorare:');
+    assert.equal(appReturn.host, 'google-drive-auth');
+    assert.equal(appReturn.searchParams.get('transaction_id'), 'a'.repeat(48));
+    assert.equal(appReturn.searchParams.get('error'), 'access_denied');
+    assert.equal(appReturn.searchParams.has('code'), false);
 
-    const denial = await fetch(`${base}/v1/google/callback?state=${encodeURIComponent(firstState)}&error=access_denied`);
-    assert.equal(denial.status, 200);
-    const replayState = await fetch(`${base}/v1/google/callback?state=${encodeURIComponent(firstState)}&error=access_denied`);
+    const replayState = await fetch(
+      `${base}/v1/google/callback?state=${encodeURIComponent(state)}&error=access_denied`,
+      { redirect: 'manual' },
+    );
     assert.equal(replayState.status, 410);
-
-    const secondAuth = await start(base, 'b'.repeat(48));
-    const secondState = secondAuth.searchParams.get('state');
-    const malformed = await fetch(`${base}/v1/google/callback?state=${encodeURIComponent(secondState)}`);
-    assert.equal(malformed.status, 400);
-    const poll = await postJson(base, '/v1/google/poll', {
-      transaction_id: 'b'.repeat(48),
-      code_verifier: verifier,
-    });
-    assert.equal(poll.status, 200);
-    assert.deepEqual(await poll.json(), { error: 'provider_error' });
   });
+});
+
+test('missing provider code returns safe app error and malformed state never routes into the app', async () => {
+  await withServer(async (base) => {
+    const auth = await start(base, 'b'.repeat(48));
+    const state = auth.searchParams.get('state');
+    const missingCode = await fetch(
+      `${base}/v1/google/callback?state=${encodeURIComponent(state)}`,
+      { redirect: 'manual' },
+    );
+    assert.equal(missingCode.status, 302);
+    const appReturn = new URL(missingCode.headers.get('location'));
+    assert.equal(appReturn.searchParams.get('error'), 'provider_error');
+    assert.equal(appReturn.searchParams.has('code'), false);
+
+    const invalidState = await fetch(
+      `${base}/v1/google/callback?state=${'z'.repeat(48)}&code=google-code`,
+      { redirect: 'manual' },
+    );
+    assert.equal(invalidState.status, 410);
+    assert.equal(invalidState.headers.has('location'), false);
+  });
+});
+
+test('provider exchange failure returns sanitized app error without exposing provider response', async () => {
+  const failingFetch = async (url) => {
+    if (String(url) === 'https://oauth2.googleapis.com/token') {
+      return new Response(JSON.stringify({ error: 'invalid_grant', secret_detail: 'do-not-leak' }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    throw new Error(`Unexpected provider request: ${url}`);
+  };
+  await withServer(async (base) => {
+    const auth = await start(base, 'c'.repeat(48));
+    const state = auth.searchParams.get('state');
+    const callback = await fetch(
+      `${base}/v1/google/callback?state=${encodeURIComponent(state)}&code=provider-code`,
+      { redirect: 'manual' },
+    );
+    assert.equal(callback.status, 302);
+    const appReturn = new URL(callback.headers.get('location'));
+    assert.equal(appReturn.searchParams.get('error'), 'provider_error');
+    assert.equal(appReturn.toString().includes('invalid_grant'), false);
+    assert.equal(appReturn.toString().includes('do-not-leak'), false);
+    assert.equal(appReturn.toString().includes('provider-code'), false);
+  }, failingFetch);
 });
