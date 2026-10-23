@@ -10,6 +10,9 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -50,6 +53,7 @@ class DownloadMaintenanceRegressionTest {
 	@Inject lateinit var data: MangaDataRepository
 	@Inject lateinit var index: LocalMangaIndex
 	@Inject lateinit var local: LocalMangaRepository
+	@Inject @org.koitharu.kotatsu.local.data.LocalStorageChanges lateinit var events: kotlinx.coroutines.flow.MutableSharedFlow<LocalManga?>
 	private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 	private lateinit var root: File
 	private lateinit var prefs: SharedPreferences
@@ -305,7 +309,12 @@ class DownloadMaintenanceRegressionTest {
 			FavouriteDownloadIndexEntity(remote.id, 0, normal.path),
 			FavouriteDownloadIndexEntity(remote.id, 1, privateFolder.path),
 		))
+		val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+			events.take(2).collect { value -> if (value != null) index.emit(value) }
+		}
 		maintenance.run()
+		kotlinx.coroutines.withTimeout(30_000) { collector.join() }
+		assertEquals(normal.path, index.getDownloadAliasPaths(listOf(remote.id))[remote.id])
 		assertEquals(normal.path, db.getFavouriteDownloadIndexDao().findEntry(0, remote.id)?.path)
 		assertEquals(privateFolder.path, db.getFavouriteDownloadIndexDao().findEntry(1, remote.id)?.path)
 		assertFalse(File(normal, "index.json").exists())

@@ -218,7 +218,9 @@ class DownloadMaintenanceUseCase @Inject constructor(
 			}
 			val ownership = repairOwnership(remote.id, file, memberships, rootsBySpace)
 			changed = changed || ownership.first
-			if (changed) changes.emit(linked.copy(file = file.canonicalFile))
+			// Match DownloadWorker: publish the physical identity, not the temporary remote re-key.
+			// Otherwise the incremental Local collector can replace an alias belonging to another copy.
+			if (changed) changes.emit(published.copy(file = file.canonicalFile))
 			when {
 				recognized < physical.manga.chapters.orEmpty().size && oldText == null -> item(DownloadMaintenanceStatus.UNRESOLVED, DownloadMaintenanceReason.PARTIAL_MATCH, recognized, physical.manga.chapters.orEmpty().size)
 				!ownership.second -> item(DownloadMaintenanceStatus.UNRESOLVED, DownloadMaintenanceReason.OWNERSHIP_UNKNOWN, recognized, physical.manga.chapters.orEmpty().size)
