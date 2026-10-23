@@ -36,7 +36,6 @@ import org.koitharu.kotatsu.settings.work.PeriodicWorkScheduler
 import org.koitharu.kotatsu.sync.data.GoogleDriveAuth
 import org.koitharu.kotatsu.sync.data.SyncSettings
 import org.koitharu.kotatsu.sync.domain.GoogleDriveSyncRepository
-import org.koitharu.kotatsu.sync.domain.SyncAuthPolicy
 import org.koitharu.kotatsu.sync.domain.SyncResult
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -143,11 +142,8 @@ class SyncWorker @AssistedInject constructor(
 		private val auth: GoogleDriveAuth,
 	) : PeriodicWorkScheduler {
 
-		fun isAccountReady(): Boolean = SyncAuthPolicy.isAccountReady(
-			hasAccountMetadata = syncSettings.hasAccountMetadata,
-			hasGoogleAccount = auth.hasSignedInAccount(),
-			authorizationRequired = syncSettings.isAuthorizationRequired,
-		)
+		/** Browser credentials are deliberately process-local/manual; only GMS can back periodic work. */
+		fun isAccountReady(): Boolean = auth.isBackgroundCapable()
 
 		override suspend fun schedule() {
 			val intervalMinutes = syncSettings.intervalMinutes
