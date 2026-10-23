@@ -26,6 +26,17 @@ internal object SyncAuthPolicy {
 		hasGoogleAccount &&
 		!authorizationRequired
 
+	/** Legacy GMS-only helper retained for callers while the provider-aware boundary is adopted. */
+	fun hasAccountSession(hasAccountMetadata: Boolean, hasGoogleAccount: Boolean): Boolean =
+		hasAccountMetadata && hasGoogleAccount
+
+	/** Legacy GMS-only background helper. */
+	fun isAccountReady(
+		hasAccountMetadata: Boolean,
+		hasGoogleAccount: Boolean,
+		authorizationRequired: Boolean = false,
+	): Boolean = hasAccountSession(hasAccountMetadata, hasGoogleAccount) && !authorizationRequired
+
 	fun canLaunchInteractiveRecovery(recoveryAlreadyAttempted: Boolean): Boolean =
 		!recoveryAlreadyAttempted
 }
