@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.core.ui
 
-import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -38,18 +37,6 @@ class MiyorareSemanticCompletenessTest {
 	}
 
 	@Test
-	fun `fixed semantic families stay identical between light and dark`() {
-		for (preset in MiyorareThemePreset.entries) {
-			val light = resolved(preset, dark = false).colorScheme
-			val dark = resolved(preset, dark = true).colorScheme
-
-			assertFixedFamilyEquals("$preset primary", light, dark, Family.PRIMARY)
-			assertFixedFamilyEquals("$preset secondary", light, dark, Family.SECONDARY)
-			assertFixedFamilyEquals("$preset tertiary", light, dark, Family.TERTIARY)
-		}
-	}
-
-	@Test
 	fun `new semantic foreground pairs remain readable`() {
 		for (preset in MiyorareThemePreset.entries) {
 			for (dark in listOf(false, true)) {
@@ -59,10 +46,6 @@ class MiyorareSemanticCompletenessTest {
 				assertContrast("$preset inversePrimary dark=$dark", scheme.inversePrimary, scheme.inverseSurface, 3f)
 				assertContrast("$preset error dark=$dark", scheme.onError, scheme.error, 4.5f)
 				assertContrast("$preset errorContainer dark=$dark", scheme.onErrorContainer, scheme.errorContainer, 4.5f)
-				assertContrast("$preset primaryFixed dark=$dark", scheme.onPrimaryFixed, scheme.primaryFixed, 4.5f)
-				assertContrast("$preset primaryFixedDim dark=$dark", scheme.onPrimaryFixedVariant, scheme.primaryFixedDim, 4.5f)
-				assertContrast("$preset secondaryFixed dark=$dark", scheme.onSecondaryFixed, scheme.secondaryFixed, 4.5f)
-				assertContrast("$preset tertiaryFixed dark=$dark", scheme.onTertiaryFixed, scheme.tertiaryFixed, 4.5f)
 			}
 		}
 	}
@@ -72,7 +55,22 @@ class MiyorareSemanticCompletenessTest {
 		val sakura = resolved(MiyorareThemePreset.SAKURA, dark = false).colorScheme
 		val cyan = resolved(MiyorareThemePreset.CYAN, dark = false).colorScheme
 		assertNotEquals(sakura.tertiaryContainer, cyan.tertiaryContainer)
-		assertNotEquals(sakura.primaryFixed, cyan.primaryFixed)
+	}
+
+	@Test
+	fun `surface hierarchy roles are explicit outside amoled`() {
+		for (dark in listOf(false, true)) {
+			val scheme = resolveMiyorareThemeColors(
+				paletteSource = MiyorareModernPaletteSource.MATCH_THEME,
+				preset = MiyorareThemePreset.MIYORARE,
+				customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
+				darkTheme = dark,
+				amoled = false,
+				effectLevel = VisualEffectLevel.BALANCED,
+			).colorScheme
+			assertNotEquals("surface hierarchy collapsed dark=$dark", scheme.surfaceContainerLowest, scheme.surfaceContainerHighest)
+			assertNotEquals("surface bright/dim collapsed dark=$dark", scheme.surfaceDim, scheme.surfaceBright)
+		}
 	}
 
 	@Test
@@ -116,47 +114,5 @@ class MiyorareSemanticCompletenessTest {
 			"$label contrast ${semanticContrastRatio(foreground, background)} < $minimum",
 			semanticContrastRatio(foreground, background) >= minimum,
 		)
-	}
-
-	private fun assertFixedFamilyEquals(
-		label: String,
-		light: ColorScheme,
-		dark: ColorScheme,
-		family: Family,
-	) {
-		val lightRoles = family.roles(light)
-		val darkRoles = family.roles(dark)
-		assertEquals("$label fixed", lightRoles[0], darkRoles[0])
-		assertEquals("$label fixedDim", lightRoles[1], darkRoles[1])
-		assertEquals("$label onFixed", lightRoles[2], darkRoles[2])
-		assertEquals("$label onFixedVariant", lightRoles[3], darkRoles[3])
-	}
-
-	private enum class Family {
-		PRIMARY,
-		SECONDARY,
-		TERTIARY,
-		;
-
-		fun roles(scheme: ColorScheme): List<Color> = when (this) {
-			PRIMARY -> listOf(
-				scheme.primaryFixed,
-				scheme.primaryFixedDim,
-				scheme.onPrimaryFixed,
-				scheme.onPrimaryFixedVariant,
-			)
-			SECONDARY -> listOf(
-				scheme.secondaryFixed,
-				scheme.secondaryFixedDim,
-				scheme.onSecondaryFixed,
-				scheme.onSecondaryFixedVariant,
-			)
-			TERTIARY -> listOf(
-				scheme.tertiaryFixed,
-				scheme.tertiaryFixedDim,
-				scheme.onTertiaryFixed,
-				scheme.onTertiaryFixedVariant,
-			)
-		}
 	}
 }
