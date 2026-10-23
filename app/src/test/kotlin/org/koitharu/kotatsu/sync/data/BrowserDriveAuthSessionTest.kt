@@ -42,33 +42,38 @@ class BrowserDriveAuthSessionTest {
 	@Test
 	fun logoutClearsCredentialAndPendingTransaction() {
 		val session = BrowserDriveAuthSession()
-		session.begin(BrowserAuthOrigin.SYNC_SETTINGS, now = 1_000L)
+		val launch = session.begin(now = 1_000L)
 		session.install("token", expiresAt = 10_000L, account = null, now = 1_000L)
 		session.clear()
 		assertFalse(session.snapshot(now = 2_000L).isUsable)
-		assertThrows(BrowserAuthException::class.java) { session.pendingProof(now = 2_000L) }
+		assertThrows(BrowserAuthException::class.java) {
+			session.consumeCallback(launch.transactionId, "one-time", now = 2_000L)
+		}
 	}
 
 	@Test
 	fun startingSecondLoginReplacesStalePendingTransaction() {
 		val session = BrowserDriveAuthSession()
-		val first = session.begin(BrowserAuthOrigin.SYNC_SETTINGS, now = 1_000L)
-		val second = session.begin(BrowserAuthOrigin.SYNC_SETTINGS, now = 2_000L)
+		val first = session.begin(now = 1_000L)
+		val second = session.begin(now = 2_000L)
 		assertFalse(first.transactionId == second.transactionId)
-		assertEquals(second.transactionId, session.pendingProof(now = 2_000L).transactionId)
 		assertThrows(BrowserAuthException::class.java) {
-			session.consumeOneTimeCode(first.transactionId, "code", now = 2_000L)
+			session.consumeCallback(first.transactionId, "stale-code", now = 2_000L)
 		}
+		val proof = session.consumeCallback(second.transactionId, "fresh-code", now = 2_000L)
+		assertEquals(second.transactionId, proof.transactionId)
+		assertEquals("fresh-code", proof.code)
 	}
 
 	@Test
-	fun oneTimeCodeConsumesLocalTransaction() {
+	fun callbackConsumesLocalTransactionExactlyOnce() {
 		val session = BrowserDriveAuthSession()
-		val launch = session.begin(BrowserAuthOrigin.SYNC_SETTINGS, now = 1_000L)
-		val proof = session.consumeOneTimeCode(launch.transactionId, "one-time", now = 2_000L)
+		val launch = session.begin(now = 1_000L)
+		val proof = session.consumeCallback(launch.transactionId, "one-time", now = 2_000L)
 		assertEquals("one-time", proof.code)
+		assertTrue(proof.codeVerifier.isNotBlank())
 		assertThrows(BrowserAuthException::class.java) {
-			session.consumeOneTimeCode(launch.transactionId, "one-time", now = 2_000L)
+			session.consumeCallback(launch.transactionId, "one-time", now = 2_000L)
 		}
 	}
 }
