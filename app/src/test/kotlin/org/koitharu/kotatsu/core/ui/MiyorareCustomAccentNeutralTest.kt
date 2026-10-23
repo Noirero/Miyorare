@@ -1,8 +1,10 @@
 package org.koitharu.kotatsu.core.ui
 
 import androidx.compose.ui.graphics.Color
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 
@@ -38,6 +40,28 @@ class MiyorareCustomAccentNeutralTest {
 			assertTrue("$accent secondary should remain chromatic", channelSpread(scheme.secondary) > 0.10f)
 			assertTrue("$accent tertiary should remain chromatic", channelSpread(scheme.tertiary) > 0.10f)
 		}
+	}
+
+	@Test
+	fun `custom identity colour only overrides Match Theme palette`() {
+		assertTrue(
+			shouldUseMiyorareCustomAccentIdentity(
+				MiyorareModernPaletteSource.MATCH_THEME,
+				MiyorareThemePreset.CUSTOM,
+			),
+		)
+		assertFalse(
+			shouldUseMiyorareCustomAccentIdentity(
+				MiyorareModernPaletteSource.CLASSIC_MIKU,
+				MiyorareThemePreset.CUSTOM,
+			),
+		)
+		assertFalse(
+			shouldUseMiyorareCustomAccentIdentity(
+				MiyorareModernPaletteSource.MATCH_THEME,
+				MiyorareThemePreset.MIYORARE,
+			),
+		)
 	}
 
 	private fun customScheme(accent: String, dark: Boolean) = miyorareThemeColors(
