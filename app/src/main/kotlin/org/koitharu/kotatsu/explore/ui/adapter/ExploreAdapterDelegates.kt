@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
+import org.koitharu.kotatsu.core.ui.MiyorareViewPalette
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
@@ -60,6 +61,7 @@ fun exploreButtonsAD(
 ) = adapterDelegateViewBinding<ExploreButtons, ListModel, ItemExploreButtonsBinding>(
 	{ layoutInflater, parent -> ItemExploreButtonsBinding.inflate(layoutInflater, parent, false) },
 ) {
+	val modernPalette = context.miyorareViewPaletteFromPreferences()
 	binding.buttonDownloads.setOnClickListener(clickListener)
 	binding.buttonLocal.setOnClickListener(clickListener)
 	binding.buttonMigration.setOnClickListener {
@@ -85,7 +87,7 @@ fun exploreButtonsAD(
 		}.show()
 	}
 	bind {
-		binding.applyModernResolvedPalette()
+		binding.applyModernResolvedPalette(modernPalette)
 	}
 }
 
@@ -280,6 +282,7 @@ fun exploreSourceListItemAD(
 
 	AdapterDelegateClickListenerAdapter(this, listener).attach(itemView)
 	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)
+	val modernPalette = context.miyorareViewPaletteFromPreferences()
 
 	bind {
 		val origin = item.exploreSourceOrigin()
@@ -290,7 +293,7 @@ fun exploreSourceListItemAD(
 		binding.textViewSubtitle.text = formatExploreSourceListSummary(origin, item.summary, compactSummary)
 		binding.textViewOrigin.bindExploreSourceOriginBadge(origin)
 		binding.imageViewIcon.applyExternalSourceStyle(isExternal)
-		binding.applyModernResolvedPalette(isExternal)
+		binding.applyModernResolvedPalette(modernPalette, isExternal)
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
 			item.source.mangaSource.isNovelSource,
@@ -354,8 +357,8 @@ fun exploreSourceGridItemAD(
 	}
 }
 
-private fun ItemExploreButtonsBinding.applyModernResolvedPalette() {
-	val palette = root.context.miyorareViewPaletteFromPreferences() ?: return
+private fun ItemExploreButtonsBinding.applyModernResolvedPalette(palette: MiyorareViewPalette?) {
+	palette ?: return
 	for (button in listOf(buttonLocal, buttonDownloads, buttonMigration)) {
 		button.applyResolvedExploreButtonPalette(palette.surfaceContainerHigh, palette.onSurfaceVariant)
 	}
@@ -367,9 +370,12 @@ private fun MaterialButton.applyResolvedExploreButtonPalette(container: Int, con
 	iconTint = ColorStateList.valueOf(content)
 }
 
-private fun ItemExploreSourceListBinding.applyModernResolvedPalette(isExternalSource: Boolean) {
+private fun ItemExploreSourceListBinding.applyModernResolvedPalette(
+	palette: MiyorareViewPalette?,
+	isExternalSource: Boolean,
+) {
+	palette ?: return
 	val context = root.context
-	val palette = context.miyorareViewPaletteFromPreferences() ?: return
 	root.background = createExploreSourceRowBackground(
 		context = context,
 		normalColor = palette.surfaceContainerLow,
