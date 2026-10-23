@@ -378,6 +378,19 @@ class DownloadMaintenanceRegressionTest {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync { store.clear() }
 	}
 
+	@Test fun providerRemapCannotRewriteAValidLegacyChapterIdentity() = runBlocking {
+		val oldRemote = remote()
+		val folder = folder("LegacyStable")
+		chapterFile(folder, "Chapter 1.cbz")
+		val old = MangaIndex(null).apply { setMangaInfo(oldRemote); addChapter(IndexedValue(0, oldRemote.chapters!!.single()), "Chapter 1.cbz") }
+		val physical = DownloadIndexRepair.restoreValidMappings(folder, old, LocalMangaParser(folder, true).getManga(true))
+		val changedRemote = oldRemote.copy(chapters = oldRemote.chapters!!.map { it.copy(id = 999) })
+		val linked = LegacyChapterDownloadCompat.linkToRemote(changedRemote, physical)
+		val plan = DownloadIndexRepair.plan(folder, old.toString(), changedRemote, physical, linked)
+		assertTrue(plan.complete)
+		assertNull(plan.content)
+	}
+
 	@Test fun atomicFailureLeavesPreviousValidIndexUntouched() {
 		val index = File(root, "index.json").apply { writeText("previous") }
 		// AtomicFile cannot create its .new file when a directory occupies that name.

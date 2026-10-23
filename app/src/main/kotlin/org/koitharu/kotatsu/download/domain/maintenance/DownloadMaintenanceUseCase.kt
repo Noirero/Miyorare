@@ -144,6 +144,9 @@ class DownloadMaintenanceUseCase @Inject constructor(
 		val initialSnapshot = if (file.isDirectory) snapshot(file) else emptyList()
 		val parser = LocalMangaParser.getOrNull(file) ?: return item(DownloadMaintenanceStatus.NO_CHANGE_REQUIRED, DownloadMaintenanceReason.UNSUPPORTED_ARTIFACT)
 		val indexFile = File(file, LocalMangaOutput.ENTRY_NAME_INDEX)
+		if (file.isDirectory && indexFile.exists() && indexFile.canonicalFile.parentFile != file.canonicalFile) {
+			return item(DownloadMaintenanceStatus.AMBIGUOUS, DownloadMaintenanceReason.IDENTITY_UNKNOWN)
+		}
 		val oldText = if (file.isDirectory && indexFile.isFile) indexFile.readText() else null
 		val old = oldText?.let { runCatching { MangaIndex(it) }.getOrNull() }
 		val storedInfo = old?.getMangaInfo() ?: runCatchingCancellable { parser.getMangaInfo() }.getOrNull()

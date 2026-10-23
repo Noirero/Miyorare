@@ -30,20 +30,24 @@ internal object DownloadIndexRepair {
 		val linkedChapters = linked.manga.chapters.orEmpty()
 		val old = oldText?.let { runCatching { MangaIndex(it) }.getOrNull() }
 		val oldInfo = old?.getMangaInfo()
+		val oldPaths = oldInfo?.chapters.orEmpty().mapNotNull { old?.getChapterFileName(it.id) }
+		if (oldPaths.distinct().size != oldPaths.size) return Plan(null, false, 0, physicalChapters.size)
 		val oldByPath = oldInfo?.chapters.orEmpty().mapNotNull { chapter ->
 			old?.getChapterFileName(chapter.id)?.let { safeChild(root, it) }?.takeIf { it.exists() }?.let { it.canonicalPath to chapter }
 		}.toMap()
 		val remoteIds = identity.chapters.orEmpty().mapTo(HashSet()) { it.id }
 		var recognized = 0
+		var incomplete = false
 		val entries = LinkedHashMap<Long, Pair<MangaChapter, String>>()
 		for (chapter in linkedChapters) {
 			// Split chapters are a virtual multi-artifact mapping. They stay sidecar-free; never encode a
 			// composite URL as a single file field in a legacy index.
 			if (LegacySplitChapterCompat.componentUrls(chapter.url) != null) return Plan(null, false, recognized, physicalChapters.size)
-			val file = artifact(root, chapter) ?: return Plan(null, false, recognized, physicalChapters.size)
+			val file = artifact(root, chapter)
+			if (file == null) { incomplete = true; continue }
 			val retained = oldByPath[file.canonicalPath]
-			val mapped = if (chapter.id in remoteIds) chapter else retained
-			if (mapped == null || entries.containsKey(mapped.id)) return Plan(null, false, recognized, physicalChapters.size)
+			val mapped = retained ?: chapter.takeIf { it.id in remoteIds }
+			if (mapped == null || entries.containsKey(mapped.id)) { incomplete = true; continue }
 			recognized++
 			entries[mapped.id] = mapped to file.relativeTo(root).path
 		}
@@ -57,7 +61,7 @@ internal object DownloadIndexRepair {
 				file.extension.lowercase() !in setOf("jpg", "jpeg", "png", "webp", "gif") &&
 				file.canonicalPath !in represented
 		}
-		if (unrepresented || entries.isEmpty() || linkedChapters.size != physicalChapters.size) return Plan(null, false, recognized, physicalChapters.size)
+		if (incomplete || unrepresented || entries.isEmpty() || linkedChapters.size != physicalChapters.size) return Plan(null, false, recognized, physicalChapters.size)
 		val oldMappings = oldInfo?.chapters.orEmpty().associate { it.id to old?.getChapterFileName(it.id) }
 		val mappings = entries.mapValues { it.value.second }
 		if (oldInfo != null && oldMappings == mappings) return Plan(null, true, recognized, physicalChapters.size)
