@@ -24,14 +24,19 @@ class FavouriteUnreadCounter @Inject constructor(
 	data class Snapshot internal constructor(
 		private val histories: Map<Long, HistoryEntity>,
 		val unreadCounts: Map<Long, Int>,
+		private val unreadAuthority: Set<Long> = emptySet(),
 	) {
 		fun hasHistory(mangaId: Long): Boolean = mangaId in histories
 
 		fun getHistory(mangaId: Long) = histories[mangaId]?.toMangaHistory()
 
+		fun getUnreadCountOrNull(mangaId: Long): Int? =
+			if (mangaId in unreadAuthority) unreadCounts[mangaId] else null
+
 		internal fun merge(other: Snapshot): Snapshot = Snapshot(
 			histories = histories + other.histories,
 			unreadCounts = unreadCounts + other.unreadCounts,
+			unreadAuthority = unreadAuthority + other.unreadAuthority,
 		)
 
 		fun getProgress(mangaId: Long, mode: ProgressIndicatorMode): ReadingProgress? {
@@ -41,6 +46,7 @@ class FavouriteUnreadCounter @Inject constructor(
 				percent = fixedPercent,
 				totalChapters = history.chaptersCount,
 				mode = mode,
+				hasUnreadAuthority = mangaId in unreadAuthority,
 			).takeIf { it.isValid() }
 		}
 	}
@@ -74,17 +80,23 @@ class FavouriteUnreadCounter @Inject constructor(
 			.associateBy { it.mangaId to it.chapterId }
 
 		val unread = HashMap<Long, Int>(ids.size)
+		val authority = HashSet<Long>(ids.size)
 		for (mangaId in ids) {
 			val logicalCount = logicalCounts[mangaId] ?: 0
 			val history = histories[mangaId]
-			unread[mangaId] = when {
-				history == null -> logicalCount
-				logicalCount <= 0 -> 0
-				else -> exactUnread[mangaId to history.chapterId]?.unreadCount
+			if (logicalCount <= 0) {
+				unread[mangaId] = 0
+				continue
+			}
+			authority += mangaId
+			unread[mangaId] = if (history == null) {
+				logicalCount
+			} else {
+				exactUnread[mangaId to history.chapterId]?.unreadCount
 					?: calculateFallbackUnread(logicalCount, history)
 			}
 		}
-		return Snapshot(histories, unread)
+		return Snapshot(histories, unread, authority)
 	}
 
 	suspend fun getUnreadCount(mangaId: Long): Int =

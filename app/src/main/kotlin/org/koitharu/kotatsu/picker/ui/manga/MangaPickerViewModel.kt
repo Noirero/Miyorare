@@ -47,14 +47,24 @@ class MangaPickerViewModel @Inject constructor(
 		val history = historyRepository.getList(0, Int.MAX_VALUE)
 		if (history.isNotEmpty()) {
 			add(ListHeader(R.string.history))
-			mangaListMapper.toListModelList(this, history, settings.listMode)
+			mangaListMapper.toListModelList(
+				destination = this,
+				manga = history,
+				mode = settings.listMode,
+				flags = MangaListMapper.NO_MODERN_READING_STATE,
+			)
 		}
 		val categories = favouritesRepository.observeCategoriesForLibrary().first()
 		for (category in categories) {
 			val favorites = favouritesRepository.getManga(category.id)
 			if (favorites.isNotEmpty()) {
 				add(ListHeader(category.title))
-				mangaListMapper.toListModelList(this, favorites, settings.listMode)
+				mangaListMapper.toListModelList(
+					destination = this,
+					manga = favorites,
+					mode = settings.listMode,
+					flags = MangaListMapper.NO_MODERN_READING_STATE,
+				)
 			}
 		}
 	}

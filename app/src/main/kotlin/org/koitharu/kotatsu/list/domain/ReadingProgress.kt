@@ -9,6 +9,8 @@ data class ReadingProgress(
 	val percent: Float,
 	val totalChapters: Int,
 	val mode: ProgressIndicatorMode,
+	/** True only when a zero unread projection is authoritative enough to claim caught-up. */
+	val hasUnreadAuthority: Boolean = true,
 ) {
 
 	fun isValid() = when (mode) {

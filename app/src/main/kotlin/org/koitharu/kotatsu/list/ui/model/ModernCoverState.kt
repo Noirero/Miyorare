@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.list.ui.model
 import org.koitharu.kotatsu.core.model.getLanguageCode
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.list.domain.ReadingProgress
 
 /** Explicit host opt-in: utility/picker adapters keep their existing presentation. */
 enum class ModernCoverContext {
@@ -10,6 +11,23 @@ enum class ModernCoverContext {
 
 	fun usesOverlay(style: MiyorareDesignStyle) = this != LEGACY && style == MiyorareDesignStyle.MODERN
 	fun usesCollectionBorder(style: MiyorareDesignStyle) = this == COLLECTION && usesOverlay(style)
+}
+
+enum class ModernCoverReadingState {
+	NONE,
+	UNREAD,
+	IN_PROGRESS,
+	CAUGHT_UP,
+}
+
+internal fun resolveModernCoverReadingState(
+	unreadCount: Int?,
+	progress: ReadingProgress?,
+): ModernCoverReadingState = when {
+	unreadCount == 0 && progress?.isCompleted() == true && progress.hasUnreadAuthority -> ModernCoverReadingState.CAUGHT_UP
+	(unreadCount ?: 0) > 0 && progress != null -> ModernCoverReadingState.IN_PROGRESS
+	(unreadCount ?: 0) > 0 -> ModernCoverReadingState.UNREAD
+	else -> ModernCoverReadingState.NONE
 }
 
 /** Presentation projection only. A generic counter is never evidence of unread chapters. */
@@ -23,6 +41,7 @@ data class ModernCoverState(
 	val isLocalSource: Boolean,
 	val languageLabel: String?,
 	val unreadCount: Int?,
+	val readingState: ModernCoverReadingState,
 	val showContinueReading: Boolean,
 	/** Preserve the host's original counter (tracker updates, Local chapter total, etc.). */
 	val legacyCounter: Int,
@@ -41,6 +60,7 @@ data class ModernCoverState(
 				isLocalSource = if (collection) model.isLocalSource else model.source.isLocal,
 				languageLabel = if (collection) model.languageLabel else model.source.getLanguageCode(),
 				unreadCount = model.unreadCount,
+				readingState = resolveModernCoverReadingState(model.unreadCount, model.progress),
 				showContinueReading = collection && model.showContinueReading,
 				legacyCounter = if (collection) 0 else model.counter,
 			)
