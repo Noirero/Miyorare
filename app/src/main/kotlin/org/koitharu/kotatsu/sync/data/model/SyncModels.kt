@@ -12,6 +12,8 @@ import org.koitharu.kotatsu.backup.local.data.model.SourceSettingsBackup
 import org.koitharu.kotatsu.backup.local.data.model.StatsBackup
 import org.koitharu.kotatsu.core.db.entity.MangaPrefsEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity
+import org.koitharu.kotatsu.favourites.domain.CategorySetIdentity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.tracker.data.TrackEntity
@@ -28,6 +30,7 @@ data class SyncSnapshot(
 	@SerialName("schema") val schemaVersion: Int = SCHEMA_VERSION,
 	@SerialName("device_id") val deviceId: String = "",
 	@SerialName("synced_at") val syncedAt: Long = 0L,
+	@SerialName("category_sets") val categorySets: List<SyncCategorySet> = emptyList(),
 	@SerialName("categories") val categories: List<SyncCategory> = emptyList(),
 	@SerialName("favourites") val favourites: List<SyncFavourite> = emptyList(),
 	@SerialName("history") val history: List<SyncHistory> = emptyList(),
@@ -43,7 +46,7 @@ data class SyncSnapshot(
 
 	companion object {
 
-		const val SCHEMA_VERSION = 4
+		const val SCHEMA_VERSION = 5
 	}
 }
 
@@ -116,6 +119,20 @@ class SyncTrack(
 }
 
 @Serializable
+data class SyncCategorySet(
+	@SerialName("sync_key") val syncKey: String,
+	@SerialName("title") val title: String,
+	@SerialName("sort_key") val sortKey: Int,
+	@SerialName("created_at") val createdAt: Long,
+	@SerialName("updated_at") val updatedAt: Long,
+	@SerialName("deleted_at") val deletedAt: Long = 0,
+	@SerialName("space") val space: Int = 0,
+) {
+	constructor(entity: FavouriteCategorySetEntity) : this(entity.syncKey, entity.title, entity.sortKey, entity.createdAt, entity.updatedAt, entity.deletedAt, entity.space)
+	fun toEntity(id: Long = 0) = FavouriteCategorySetEntity(id, syncKey, title, sortKey, createdAt, updatedAt, deletedAt, space)
+}
+
+@Serializable
 data class SyncCategory(
 	@SerialName("category_id") val categoryId: Int,
 	@SerialName("created_at") val createdAt: Long,
@@ -126,6 +143,10 @@ data class SyncCategory(
 	@SerialName("download_new_chapters") val downloadNewChapters: Boolean,
 	@SerialName("show_in_lib") val isVisibleInLibrary: Boolean,
 	@SerialName("deleted_at") val deletedAt: Long,
+	@SerialName("sync_key") val syncKey: String = "",
+	@SerialName("set_sync_key") val setSyncKey: String = CategorySetIdentity.defaultSet(0),
+	@SerialName("updated_at") val updatedAt: Long = createdAt,
+	@SerialName("content_type") val contentType: String? = null,
 ) {
 
 	constructor(entity: FavouriteCategoryEntity) : this(

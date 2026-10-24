@@ -1,7 +1,10 @@
 package org.koitharu.kotatsu.favourites.domain
 
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.FlowCollector
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.entity.toEntities
+import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -44,7 +47,15 @@ class FavouriteDownloadOwnershipIndex @Inject constructor(
 				null
 			}
 		}
-		if (entries.isNotEmpty()) {
+		if (entries.isNotEmpty()) db.withTransaction {
+			// BaseApp collects ownership and LocalMangaIndex independently. Either consumer can win
+			// the completion event, so persist a missing parent atomically with its ownership rows.
+			// Existing remote/local metadata must not be replaced by this secondary index writer.
+			if (value.manga.id !in db.getMangaDao()) {
+				val tags = value.manga.tags.toEntities()
+				db.getTagsDao().upsert(tags)
+				db.getMangaDao().upsert(value.manga.toEntity(), tags)
+			}
 			val dao = db.getFavouriteDownloadIndexDao()
 			val existingBySpace = dao.findEntries(listOf(value.manga.id)).associateBy { it.space }
 			val changed = entries.filter { entry -> existingBySpace[entry.space]?.path != entry.path }

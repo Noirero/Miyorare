@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -137,12 +138,20 @@ class FavouritesListViewModel @Inject constructor(
 	private val downloadedSortPreferences: DownloadedFavouritesSortPreferences,
 	private val libraryGroupsRepository: LibraryGroupsRepository,
 	private val libraryDuplicateScanUseCase: LibraryDuplicateScanUseCase,
+	private val setSelection: org.koitharu.kotatsu.favourites.domain.FavouriteSetSelectionStore,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), QuickFilterListener {
 
 	val categoryId: Long = savedStateHandle[AppRouter.KEY_ID] ?: NO_ID
 	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
+	private val activeSetCategoryIds: StateFlow<List<Long>?> = if (categoryId == NO_ID) setSelection.observe(favouriteSpace, contentTypeStore.selectedType(favouriteSpace))
+		.flatMapLatest { set ->
+			combine(repository.observeCategoriesForLibrary(set.setId, favouriteSpace), contentTypeStore.selectedType(favouriteSpace), contentTypeStore.novelCategoryIds) { categories, type, _ ->
+				categories.filter { contentTypeStore.isCategoryForType(it.id, type) }.map { it.id }
+			}
+		}.stateIn(viewModelScope, SharingStarted.Eagerly, null) else MutableStateFlow(emptyList())
+
 	private val isDownloadedShelf = categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID
 	private val isLocalShelf = categoryId == LOCAL_FAVOURITES_CATEGORY_ID
 	private val usesSpaceScopedDownloadStatus = !isLocalShelf
@@ -652,7 +661,11 @@ class FavouritesListViewModel @Inject constructor(
 				limit = Int.MAX_VALUE,
 				space = favouriteSpace,
 			).first()
-			NO_ID, PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_ID -> repository.observeAll(
+			NO_ID -> repository.observeInCategories(
+				categoryIds = activeSetCategoryIds.filterNotNull().first(), order = order, filters = queryFilters,
+				limit = Int.MAX_VALUE, pinned = emptyList(), space = favouriteSpace,
+			).first()
+			PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_ID -> repository.observeAll(
 				order = order,
 				filterOptions = queryFilters,
 				limit = Int.MAX_VALUE,
@@ -1095,8 +1108,9 @@ class FavouritesListViewModel @Inject constructor(
 		effectiveFilters.combineWithSettings(),
 		combine(pinnedIds, fromBottom) { pinned, bottom -> pinned to bottom },
 		effectiveDatabaseWindow,
-		combine(contentTypeStore.selectedType, refreshTrigger) { contentType, _ -> contentType },
-	) { order, filters, pinnedAndBottom, queryLimit, contentType ->
+		combine(contentTypeStore.selectedType(favouriteSpace), refreshTrigger, activeSetCategoryIds.filterNotNull()) { contentType, _, ids -> contentType to ids },
+	) { order, filters, pinnedAndBottom, queryLimit, scope ->
+		val (contentType, setCategoryIds) = scope
 		val (pinned, bottom) = pinnedAndBottom
 		val configurationChanged =
 			(lastSortOrder != null && lastSortOrder != order) ||
@@ -1135,7 +1149,8 @@ class FavouritesListViewModel @Inject constructor(
 				effectivePinned,
 				favouriteSpace,
 			)
-			NO_ID, PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_ID -> repository.observeAll(
+			NO_ID -> repository.observeInCategories(setCategoryIds, queryOrder, queryFilters, effectiveLimit, effectivePinned, favouriteSpace)
+			PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_ID -> repository.observeAll(
 				queryOrder,
 				queryFilters,
 				effectiveLimit,

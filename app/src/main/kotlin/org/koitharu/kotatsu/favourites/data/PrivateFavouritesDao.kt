@@ -124,6 +124,18 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT * FROM private_favourites WHERE category_id = :categoryId AND deleted_at = 0 GROUP BY manga_id ORDER BY created_at DESC")
 	abstract suspend fun findAll(categoryId: Long): List<PrivateFavouriteManga>
 
+	fun observeInCategories(
+		categoryIds: Collection<Long>, order: ListSortOrder, filterOptions: Set<ListFilterOption>,
+		limit: Int, pinned: List<Long> = emptyList(),
+	): Flow<List<PrivateFavouriteManga>> = observeAllImpl(
+		MangaQueryBuilder("private_favourites", this)
+			.join("LEFT JOIN manga ON private_favourites.manga_id = manga.manga_id")
+			.where("private_favourites.deleted_at = 0")
+			.where(if (categoryIds.isEmpty()) "0" else "private_favourites.category_id IN (${categoryIds.joinToString(",")})")
+			.filters(filterOptions).groupBy("private_favourites.manga_id")
+			.orderBy(getOrderBy(order, pinned)).limit(limit).build(),
+	)
+
 	fun observeAll(
 		categoryId: Long,
 		order: ListSortOrder,

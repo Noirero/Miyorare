@@ -5,6 +5,8 @@ import androidx.sqlite.db.SimpleSQLiteQuery
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.favourites.data.ensureCategorySets
+import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
@@ -195,14 +197,18 @@ class TransferFavouritesToPrivateUseCase @Inject constructor(
 		val mapping = LinkedHashMap<Long, Long>(normal.size)
 		val targetTypes = LinkedHashMap<Long, FavouriteContentType>()
 		var createdCount = 0
-		var nextSortKey = dao.getNextSortKey(FavouriteSpace.PRIVATE)
+		val targetSets = HashMap<Long, FavouriteCategorySetEntity>()
+		val targetAssignments = db.getFavouriteCategorySetsDao().getAssignments(FavouriteSpace.PRIVATE.dbValue).associateBy { it.categoryId }.toMutableMap()
+		val nextPositions = HashMap<Long, Int>()
 
 		db.withTransaction {
 			for (source in normal) {
+				val sourceSetId = checkNotNull(db.getFavouriteCategorySetsDao().getAssignment(source.categoryId.toLong())).setId
+				val targetSet = targetSets.getOrPut(sourceSetId) { resolveTransferSet(sourceSetId, FavouriteSpace.PRIVATE) }
 				val type = categoryType(source.categoryId.toLong())
 				val key = categoryKey(source.title, type)
 				val existing = privateCategories.firstOrNull {
-					categoryKey(it.title, categoryType(it.categoryId.toLong())) == key
+					targetAssignments[it.categoryId.toLong()]?.setId == targetSet.setId && categoryKey(it.title, categoryType(it.categoryId.toLong())) == key
 				}
 				val targetId = if (existing != null) {
 					existing.categoryId.toLong()
@@ -210,7 +216,9 @@ class TransferFavouritesToPrivateUseCase @Inject constructor(
 					val clone = FavouriteCategoryEntity(
 						categoryId = 0,
 						createdAt = source.createdAt,
-						sortKey = nextSortKey++,
+						sortKey = nextPositions.getOrPut(targetSet.setId) {
+							(db.getFavouriteCategorySetsDao().getCategories(targetSet.setId, FavouriteSpace.PRIVATE.dbValue).maxOfOrNull { it.sortKey } ?: -1) + 1
+						}.also { nextPositions[targetSet.setId] = it + 1 },
 						title = source.title,
 						order = source.order,
 						track = false,
@@ -220,6 +228,9 @@ class TransferFavouritesToPrivateUseCase @Inject constructor(
 						space = FavouriteSpace.PRIVATE.dbValue,
 					)
 					val id = dao.insert(clone)
+					val assignment = checkNotNull(db.getFavouriteCategorySetsDao().getAssignment(id)).copy(setId = targetSet.setId)
+					db.getFavouriteCategorySetsDao().assign(assignment)
+					targetAssignments[id] = assignment
 					privateCategories += clone.copy(categoryId = id.toInt())
 					createdCount++
 					id
@@ -232,6 +243,22 @@ class TransferFavouritesToPrivateUseCase @Inject constructor(
 		// Content type is preference-backed rather than a Room column. Apply it after the DB transaction.
 		for ((targetId, type) in targetTypes) contentTypeStore.setCategoryType(targetId, type)
 		return CategoryMapping(mapping, createdCount)
+	}
+
+	/** Explicit cross-space copying matches placement by title, while creating independent UUIDs.
+	 * Category matching is then scoped to that target Set, so same-title categories cannot collapse.
+	 * This is a copy operation; neither space shares a persistent Set/category identity with the other.
+	 */
+	private suspend fun resolveTransferSet(sourceId: Long, targetSpace: FavouriteSpace): FavouriteCategorySetEntity {
+		val dao = db.getFavouriteCategorySetsDao()
+		val source = checkNotNull(dao.findSet(sourceId))
+		require(source.space != targetSpace.dbValue && source.deletedAt == 0L)
+		val targets = db.ensureCategorySets(targetSpace)
+		targets.firstOrNull { CategorySetIdentity.normalizeTitle(it.title) == CategorySetIdentity.normalizeTitle(source.title) }?.let { return it }
+		val now = System.currentTimeMillis()
+		val entity = FavouriteCategorySetEntity(syncKey = java.util.UUID.randomUUID().toString(), title = source.title,
+			sortKey = (targets.maxOfOrNull { it.sortKey } ?: -1) + 1, createdAt = now, updatedAt = now, space = targetSpace.dbValue)
+		return entity.copy(setId = dao.insert(entity))
 	}
 
 	private suspend fun validatePrivateCategories(ids: Set<Long>): Set<Long> {
@@ -372,14 +399,18 @@ class TransferFavouritesToPrivateUseCase @Inject constructor(
 		val mapping = LinkedHashMap<Long, Long>(sourceCategories.size)
 		val targetTypes = LinkedHashMap<Long, FavouriteContentType>()
 		var createdCount = 0
-		var nextSortKey = dao.getNextSortKey(FavouriteSpace.NORMAL)
+		val targetSets = HashMap<Long, FavouriteCategorySetEntity>()
+		val targetAssignments = db.getFavouriteCategorySetsDao().getAssignments(FavouriteSpace.NORMAL.dbValue).associateBy { it.categoryId }.toMutableMap()
+		val nextPositions = HashMap<Long, Int>()
 
 		db.withTransaction {
 			for (source in sourceCategories) {
+				val sourceSetId = checkNotNull(db.getFavouriteCategorySetsDao().getAssignment(source.categoryId.toLong())).setId
+				val targetSet = targetSets.getOrPut(sourceSetId) { resolveTransferSet(sourceSetId, FavouriteSpace.NORMAL) }
 				val type = categoryType(source.categoryId.toLong())
 				val key = categoryKey(source.title, type)
 				val existing = normalCategories.firstOrNull {
-					categoryKey(it.title, categoryType(it.categoryId.toLong())) == key
+					targetAssignments[it.categoryId.toLong()]?.setId == targetSet.setId && categoryKey(it.title, categoryType(it.categoryId.toLong())) == key
 				}
 				val targetId = if (existing != null) {
 					existing.categoryId.toLong()
@@ -387,7 +418,9 @@ class TransferFavouritesToPrivateUseCase @Inject constructor(
 					val clone = FavouriteCategoryEntity(
 						categoryId = 0,
 						createdAt = source.createdAt,
-						sortKey = nextSortKey++,
+						sortKey = nextPositions.getOrPut(targetSet.setId) {
+							(db.getFavouriteCategorySetsDao().getCategories(targetSet.setId, FavouriteSpace.NORMAL.dbValue).maxOfOrNull { it.sortKey } ?: -1) + 1
+						}.also { nextPositions[targetSet.setId] = it + 1 },
 						title = source.title,
 						order = source.order,
 						track = false,
@@ -397,6 +430,9 @@ class TransferFavouritesToPrivateUseCase @Inject constructor(
 						space = FavouriteSpace.NORMAL.dbValue,
 					)
 					val id = dao.insert(clone)
+					val assignment = checkNotNull(db.getFavouriteCategorySetsDao().getAssignment(id)).copy(setId = targetSet.setId)
+					db.getFavouriteCategorySetsDao().assign(assignment)
+					targetAssignments[id] = assignment
 					normalCategories += clone.copy(categoryId = id.toInt())
 					createdCount++
 					id
