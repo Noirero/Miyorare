@@ -113,6 +113,16 @@ class ExhentaiCursorRecoveryTest(unittest.TestCase):
         self.assertIn('url.addQueryParameter("f_sr", "on")', source)
         self.assertIn('url.addQueryParameter("f_srdd", "5")', source)
 
+    def test_generated_patch_recovers_compact_display_mode(self):
+        source = Path(__file__).with_name("prepare_global_gekkoushi_shard.py").read_text(encoding="utf-8")
+        self.assertIn("val rows = root.children().filter { tr ->", source)
+        self.assertIn('tr.childrenSize() == 2 && tr.children()[1].selectFirst("div.glink") != null', source)
+        self.assertIn("if (rows.isEmpty())", source)
+        self.assertIn('if (!updateDm && body.getElementsContainingText("No hits found").isEmpty())', source)
+        self.assertIn("return getListPage(page, order, filter, updateDm = true)", source)
+        self.assertIn('body.parseFailed("Cannot find parseable ExHentai gallery rows")', source)
+        self.assertIn("return rows.map { tr ->", source)
+
 
 if __name__ == "__main__":
     unittest.main()
