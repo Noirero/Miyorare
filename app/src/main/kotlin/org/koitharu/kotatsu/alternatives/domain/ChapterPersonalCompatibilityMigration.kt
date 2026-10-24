@@ -18,6 +18,7 @@ internal suspend fun migrateChapterPersonalCompatibility(
 	newManga: Manga,
 	chapterIds: Map<Long, Long>,
 ) {
+	if (oldManga.id == newManga.id) return
 	val dao = database.getChapterPersonalDao()
 	val sourceEntries = dao.findAll(listOf(oldManga.id))
 	if (sourceEntries.isEmpty()) return
