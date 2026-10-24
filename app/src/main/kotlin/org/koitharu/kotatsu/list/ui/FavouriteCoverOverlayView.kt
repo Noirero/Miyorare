@@ -18,6 +18,7 @@ import androidx.core.view.children
 import androidx.core.view.isVisible
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.widgets.BadgeView
+import org.koitharu.kotatsu.list.ui.model.ModernCoverReadingState
 import org.koitharu.kotatsu.list.ui.model.ModernCoverState
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -28,6 +29,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 
 	private val unread: FrameLayout
 	private val number: BadgeView
+	private val caughtUp: ImageView
 	private val chapterCounter: LinearLayout
 	private val counterIcon: ImageView
 	private val counterNumber: BadgeView
@@ -49,6 +51,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		inflate(context, R.layout.view_favourite_cover_overlays, this)
 		unread = findViewById(R.id.cover_unread)
 		number = findViewById(R.id.cover_unread_number)
+		caughtUp = findViewById(R.id.cover_caught_up)
 		chapterCounter = findViewById(R.id.cover_chapter_counter)
 		counterIcon = findViewById(R.id.cover_counter_icon)
 		counterNumber = findViewById(R.id.cover_legacy_counter)
@@ -74,7 +77,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		language.text = value.languageLabel
 		isSelected = false
 		// Recycled views must not retain a listener, slot, selection transform or compacted visibility.
-		(children + statuses.children + metadata.children + chapterCounter.children + sequenceOf(number)).forEach {
+		(children + statuses.children + metadata.children + chapterCounter.children + sequenceOf(number, caughtUp)).forEach {
 			it.translationX = 0f
 			it.translationY = 0f
 			it.scaleX = 1f
@@ -93,7 +96,11 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			statusItems[index].isVisible = active
 		}
 		statuses.isVisible = statusItems.any { it.isVisible }
-		unread.isVisible = (value.unreadCount ?: 0) > 0
+		val hasReadingState = value.readingState != ModernCoverReadingState.NONE
+		unread.isVisible = hasReadingState
+		number.isVisible = value.readingState == ModernCoverReadingState.UNREAD ||
+			value.readingState == ModernCoverReadingState.IN_PROGRESS
+		caughtUp.isVisible = value.readingState == ModernCoverReadingState.CAUGHT_UP
 		chapterCounter.isVisible = value.legacyCounter > 0
 		local.isVisible = value.isLocalSource
 		language.isVisible = !value.languageLabel.isNullOrBlank()
@@ -131,10 +138,20 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			resources.getDimensionPixelSize(R.dimen.library_indicator_spacing) else 0
 
 		if (styledMetrics != metrics || styledWidth != innerWidth) {
-			unread.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_unread_outline, radius)
+			val readingOutline = when (value.readingState) {
+				ModernCoverReadingState.IN_PROGRESS -> R.color.cover_reading_in_progress_outline
+				ModernCoverReadingState.CAUGHT_UP -> R.color.cover_caught_up_outline
+				else -> R.color.favourite_cover_unread_outline
+			}
+			val readingFill = if (value.readingState == ModernCoverReadingState.IN_PROGRESS) {
+				R.color.cover_reading_in_progress
+			} else {
+				R.color.favourite_cover_unread
+			}
+			unread.background = shape(R.color.favourite_cover_protection, readingOutline, radius)
 			unread.setPadding(padding, padding, padding, padding)
 			number.backgroundTintList = null
-			number.background = shape(R.color.favourite_cover_unread, R.color.favourite_cover_unread_outline, px(metrics.unreadSize) / 2f)
+			number.background = shape(readingFill, readingOutline, px(metrics.unreadSize) / 2f)
 			number.setTextColor(Color.WHITE)
 			number.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.badgeSp)
 			number.includeFontPadding = false
@@ -142,8 +159,13 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 				(number.paint.fontMetrics.descent - number.paint.fontMetrics.ascent).roundToInt() + padding * 2)
 			(number.background as GradientDrawable).cornerRadius = diameter / 2f
 			number.layoutParams = LayoutParams(diameter, diameter)
+			caughtUp.backgroundTintList = null
+			caughtUp.background = shape(R.color.cover_caught_up, R.color.cover_caught_up_outline, diameter / 2f)
+			caughtUp.imageTintList = ColorStateList.valueOf(Color.WHITE)
+			caughtUp.setPadding(padding, padding, padding, padding)
+			caughtUp.layoutParams = LayoutParams(diameter, diameter)
 			// Chapter/update counts retain their host meaning; a stack glyph and rectangular shield
-			// distinguish them from the red circular unread badge without restoring legacy chrome.
+			// distinguish them from the circular reading-state badge without restoring legacy chrome.
 			chapterCounter.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_outline, radius)
 			chapterCounter.setPadding(padding * 2, padding, padding * 2, padding)
 			counterIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
@@ -213,7 +235,8 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			isSelected && unread.measuredWidth + selectionSize + gap > innerWidth -> top
 			else -> inset
 		}
-		val showUnread = (value.unreadCount ?: 0) > 0 && unread.measuredWidth <= innerWidth && unreadTop + unread.measuredHeight <= topLimit
+		val showUnread = value.readingState != ModernCoverReadingState.NONE &&
+			unread.measuredWidth <= innerWidth && unreadTop + unread.measuredHeight <= topLimit
 		place(unread, inset, unreadTop)
 		if (showUnread) usedTop = max(usedTop, unreadTop + unread.measuredHeight)
 		measureNatural(chapterCounter, w)
@@ -278,15 +301,23 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			context.getString(R.string.pin).takeIf { value.isPinned },
 		).joinToString(", ")
 		statuses.contentDescription = permanent.ifEmpty { null }
-		val unreadText = "${context.getString(R.string.unread)}: ${value.unreadCount ?: 0}"
-		unread.contentDescription = unreadText
+		val readingText = when (value.readingState) {
+			ModernCoverReadingState.CAUGHT_UP -> context.getString(R.string.done)
+			ModernCoverReadingState.UNREAD,
+			ModernCoverReadingState.IN_PROGRESS,
+			-> "${context.getString(R.string.unread)}: ${value.unreadCount ?: 0}"
+			ModernCoverReadingState.NONE -> null
+		}
+		unread.contentDescription = readingText
 		val counterText = "${context.getString(R.string.chapters)}: ${value.legacyCounter}"
 		chapterCounter.contentDescription = counterText.takeIf { value.legacyCounter > 0 }
-		val omitted = listOfNotNull(permanent.takeIf { !statuses.isVisible && it.isNotEmpty() },
-			unreadText.takeIf { !unread.isVisible && (value.unreadCount ?: 0) > 0 },
+		val omitted = listOfNotNull(
+			permanent.takeIf { !statuses.isVisible && it.isNotEmpty() },
+			readingText.takeIf { !unread.isVisible },
 			counterText.takeIf { !chapterCounter.isVisible && value.legacyCounter > 0 },
 			"LOCAL".takeIf { !metadata.isVisible && value.isLocalSource },
-			value.languageLabel.takeIf { !metadata.isVisible || !language.isVisible })
+			value.languageLabel.takeIf { !metadata.isVisible || !language.isVisible },
+		)
 		titleView.contentDescription = (listOf(value.title) + omitted).joinToString(", ")
 		contentDescription = titleView.contentDescription.takeIf { !titleView.isVisible }
 		importantForAccessibility = if (titleView.isVisible) IMPORTANT_FOR_ACCESSIBILITY_NO else IMPORTANT_FOR_ACCESSIBILITY_YES
