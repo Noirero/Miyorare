@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.discovery
 import android.content.Intent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.lifecycle.Lifecycle
 import androidx.preference.PreferenceManager
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -19,6 +20,7 @@ import org.koitharu.kotatsu.core.prefs.*
 import org.koitharu.kotatsu.discovery.data.*
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.discovery.ui.DiscoveryHubFragment
+import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.main.ui.nav.MainUtilitiesSheet
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -86,6 +88,14 @@ class DiscoveryNavigationRuntimeTest {
 		scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_discovery_hub }
 		compose.waitUntil(10000) { compose.onAllNodesWithTag("catalog_spotlight").fetchSemanticsNodes().isNotEmpty() }
 	}
+	private fun assertFavoritesRoot(activity: MainActivity) {
+		activity.supportFragmentManager.executePendingTransactions()
+		assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+		val favourites = activity.supportFragmentManager.findFragmentByTag(FavouritesContainerFragment::class.java.name)
+		assertNotNull(favourites)
+		assertFalse(favourites!!.isHidden)
+		assertEquals(Lifecycle.State.RESUMED, favourites.lifecycle.currentState)
+	}
 	@Test fun modernRootKeepsHubViewAndScrollAcrossTabSwitchAndGearDismissal() {
 		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
 		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, false).commit()
@@ -133,11 +143,40 @@ class DiscoveryNavigationRuntimeTest {
 			compose.waitForIdle(); compose.onNodeWithTag("catalog_provider_selector").assertIsDisplayed(); assertEquals(1, calls.get())
 		}
 	}
-	@Test fun utilityActionsOpenExistingJourneyAndSettingsWithoutChangingHubRoot() {
+	@Test fun removingActiveConfigurableSlotWhileResumedMovesFragmentAndSelectionTogether() {
 		val instrumentation = InstrumentationRegistry.getInstrumentation()
 		launch().use { scenario ->
 			scenario.onActivity { activity ->
+				activity.bottomNav!!.selectedItemId = R.id.nav_history
 				activity.supportFragmentManager.executePendingTransactions()
+			}
+			settings.mainNavItems = listOf(NavItem.FEED, NavItem.EXPLORE, NavItem.LOCAL)
+			instrumentation.waitForIdleSync()
+			scenario.onActivity(::assertFavoritesRoot)
+		}
+	}
+	@Test fun removingActiveConfigurableSlotWhileStateSavedReconcilesOnResume() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		launch().use { scenario ->
+			scenario.onActivity { activity ->
+				activity.bottomNav!!.selectedItemId = R.id.nav_history
+				activity.supportFragmentManager.executePendingTransactions()
+			}
+			scenario.moveToState(Lifecycle.State.CREATED)
+			settings.mainNavItems = listOf(NavItem.FEED, NavItem.EXPLORE, NavItem.LOCAL)
+			instrumentation.waitForIdleSync()
+			scenario.moveToState(Lifecycle.State.RESUMED)
+			instrumentation.waitForIdleSync()
+			scenario.onActivity(::assertFavoritesRoot)
+		}
+	}
+	@Test fun utilityActionsOpenExistingJourneyAndSettingsWithoutChangingHubRoot() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		launch().use { scenario ->
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { it.supportFragmentManager.executePendingTransactions() }
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
 				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
 				activity.viewBinding.searchBar.performClick()
 				assertEquals(activity.getString(R.string.close), activity.viewBinding.buttonSettings.contentDescription)

@@ -138,6 +138,9 @@ class MainNavigationDelegate(
 		}
 		installNativePrivateLongClick()
 		observeSettings(lifecycleOwner)
+		lifecycleOwner.lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+			override fun onResume(owner: LifecycleOwner) = syncSelectedItem()
+		})
 		val fragment = primaryFragment
 		if (fragment != null && navBar.menu.findItem(getItemId(fragment))?.isVisible == true) {
 			normalizeFragmentLifecycles(fragment)
@@ -173,11 +176,16 @@ class MainNavigationDelegate(
 
 	fun syncSelectedItem() {
 		val fragment = primaryFragment ?: return
-		onFragmentChanged(fragment, fromUser = false)
 		val itemId = getItemId(fragment)
-		if (navBar.selectedItemId != itemId) {
-			navBar.selectedItemId = itemId
+		if (navBar.menu.findItem(itemId)?.isVisible == true) {
+			onFragmentChanged(fragment, fromUser = false)
+			selectItemSilently(itemId)
+			return
 		}
+		if (fragmentManager.isStateSaved) return
+		val fallbackId = firstItem()?.itemId ?: return
+		onNavigationItemSelected(fallbackId)
+		selectItemSilently(fallbackId)
 	}
 
 	private fun setCounter(@IdRes id: Int, counter: Int) {
@@ -382,18 +390,28 @@ class MainNavigationDelegate(
 					createMenu(items, navBar.menu)
 					(navBar as? FloatingBottomNavigationView)?.setComposeItems(items)
 					installNativePrivateLongClick()
+					val fallbackId = items.firstOrNull()?.id ?: return@onEach
 					if (items.any { item -> item.id == selected }) {
-						// Restore the checked item without treating a settings update as a reselection.
-						navBar.setOnItemSelectedListener(null)
-						navBar.setOnItemReselectedListener(null)
-						navBar.selectedItemId = selected
-						navBar.setOnItemSelectedListener(this@MainNavigationDelegate)
-						navBar.setOnItemReselectedListener(this@MainNavigationDelegate)
-					} else navBar.selectedItemId = items.first().id
+						selectItemSilently(selected)
+					} else if (fragmentManager.isStateSaved) {
+						selectItemSilently(fallbackId)
+					} else {
+						onNavigationItemSelected(fallbackId)
+						selectItemSilently(fallbackId)
+					}
 				}
 				setNavbarIsLabeled(settings.isNavLabelsVisible)
 				(navBar as? FloatingBottomNavigationView)?.setUseLegacyNavigation(settings.isLegacyNavigationBar)
 			}.launchIn(lifecycleOwner.lifecycleScope)
+	}
+
+	private fun selectItemSilently(@IdRes itemId: Int) {
+		if (navBar.selectedItemId == itemId) return
+		navBar.setOnItemSelectedListener(null)
+		navBar.setOnItemReselectedListener(null)
+		navBar.selectedItemId = itemId
+		navBar.setOnItemSelectedListener(this)
+		navBar.setOnItemReselectedListener(this)
 	}
 
 	private fun firstItem(): MenuItem? {
