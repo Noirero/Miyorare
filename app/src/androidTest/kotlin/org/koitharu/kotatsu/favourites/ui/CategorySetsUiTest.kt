@@ -104,7 +104,16 @@ class CategorySetsUiTest {
 				putInt(EXTRA_FAVOURITE_SPACE, space.dbValue)
 			} }.showNow(activity.supportFragmentManager, "category_sets_picker")
 		}
+		awaitPickerWindow(scenario)
 		await { compose.onAllNodesWithTag("category-pages").fetchSemanticsNodes().isNotEmpty() }
+	}
+	private fun awaitPickerWindow(scenario: ActivityScenario<FavouriteCategoriesActivity>) = await {
+		var ready = false
+		scenario.onActivity { activity ->
+			val picker = activity.supportFragmentManager.findFragmentByTag("category_sets_picker") as? FavoriteDialog
+			ready = picker?.dialog?.window?.decorView?.hasWindowFocus() == true && picker.isResumed
+		}
+		ready
 	}
 	private fun await(condition: () -> Boolean) = compose.waitUntil(30_000, condition)
 	private fun checkbox(id: Long) = compose.onNodeWithTag("category-checkbox:$id", useUnmergedTree = true)
@@ -114,7 +123,25 @@ class CategorySetsUiTest {
 	}
 	private fun pages(): List<Int> = Regex("\\d+").findAll(compose.onNodeWithTag("category-pages").fetchSemanticsNode().config[SemanticsProperties.ContentDescription].joinToString()).map { it.value.toInt() }.toList()
 	private fun memberships(space: FavouriteSpace = FavouriteSpace.NORMAL) = runBlocking { repository.getCategoriesIds(manga.id, space) }
-	private fun closed() = await { compose.onAllNodesWithTag("category-pages").fetchSemanticsNodes().isEmpty() }
+	private fun closed(scenario: ActivityScenario<FavouriteCategoriesActivity>) {
+		try {
+			await {
+				var removed = false
+				scenario.onActivity { removed = it.supportFragmentManager.findFragmentByTag("category_sets_picker") == null }
+				removed
+			}
+		} catch (error: ComposeTimeoutException) {
+			var state = ""
+			scenario.onActivity { activity ->
+				val picker = activity.supportFragmentManager.findFragmentByTag("category_sets_picker") as? FavoriteDialog
+				if (picker != null) {
+					val model = ViewModelProvider(picker)[org.koitharu.kotatsu.favourites.ui.categories.select.FavoriteDialogViewModel::class.java]
+					state = "resumed=${picker.isResumed}, focus=${picker.dialog?.window?.decorView?.hasWindowFocus()}, saving=${model.isSaving.value}, saved=${model.onSaved.value}, error=${model.onError.value}"
+				}
+			}
+			throw AssertionError("Picker did not dismiss: $state", error)
+		}
+	}
 
 	@Test fun ownerScenarioPendingStateIndependentPagesOkCancelAndRecreation() {
 		val space = FavouriteSpace.NORMAL
@@ -138,10 +165,11 @@ class CategorySetsUiTest {
 			await { pages().first() == 1 }
 			checkbox(first[0]).assertIsOn()
 			scenario.recreate()
+			awaitPickerWindow(scenario)
 			await { compose.onAllNodesWithTag("category-checkbox:${first[0]}", true).fetchSemanticsNodes().isNotEmpty() }
 			checkbox(first[0]).assertIsOn()
-			compose.onNodeWithText(context.getString(android.R.string.ok)).performClick()
-			closed()
+			compose.onNodeWithText(context.getString(android.R.string.ok)).assertIsDisplayed().assertIsEnabled().performClick()
+			closed(scenario)
 			assertEquals(setOf(first[0], second[0]), memberships())
 			showPicker(scenario, space)
 			checkbox(first[0]).assertIsOn()
@@ -151,7 +179,7 @@ class CategorySetsUiTest {
 			checkbox(second[0]).assertIsOn()
 			checkbox(second[1]).performClick()
 			compose.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
-			closed()
+			closed(scenario)
 			assertEquals(setOf(first[0], second[0]), memberships())
 		}
 	}
@@ -172,8 +200,8 @@ class CategorySetsUiTest {
 			await { compose.onAllNodesWithTag("category-checkbox:$second", true).fetchSemanticsNodes().isNotEmpty() }
 			assertEquals(listOf(1, 1), pages())
 			checkbox(second).performClick()
-			compose.onNodeWithText(context.getString(android.R.string.ok)).performClick()
-			closed()
+			compose.onNodeWithText(context.getString(android.R.string.ok)).assertIsDisplayed().assertIsEnabled().performClick()
+			closed(scenario)
 			assertEquals(setOf(first, second), memberships(space))
 			assertTrue(memberships(FavouriteSpace.NORMAL).isEmpty())
 		}
@@ -195,8 +223,8 @@ class CategorySetsUiTest {
 			choose("Second", "Utama")
 			await { compose.onAllNodesWithTag("category-checkbox:$second", true).fetchSemanticsNodes().isNotEmpty() }
 			checkbox(second).performClick()
-			compose.onNodeWithText(context.getString(android.R.string.ok)).performClick()
-			closed()
+			compose.onNodeWithText(context.getString(android.R.string.ok)).assertIsDisplayed().assertIsEnabled().performClick()
+			closed(scenario)
 			assertEquals(setOf(first, second), memberships())
 			assertEquals(setOf(first, second), runBlocking { repository.getCategoriesIds(otherManga.id) })
 		}
@@ -325,9 +353,16 @@ class CategorySetsUiTest {
 			assertTrue(before.any { it.id == LOCAL_FAVOURITES_CATEGORY_ID })
 			scenario.onActivity { it.findViewById<android.view.View>(R.id.button_category_set).performClick() }
 			await { instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText("Second")?.any { it.text?.toString() == "Second" } == true }
-			var node = instrumentation.uiAutomation.rootInActiveWindow.findAccessibilityNodeInfosByText("Second").first { it.text?.toString() == "Second" }
-			while (!node.isClickable && node.parent != null) node = node.parent
-			assertTrue(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
+			val node = instrumentation.uiAutomation.rootInActiveWindow.findAccessibilityNodeInfosByText("Second").first { it.text?.toString() == "Second" }
+			val bounds = android.graphics.Rect().also(node::getBoundsInScreen)
+			assertFalse("The native Set menu item must be on screen", bounds.isEmpty)
+			val downTime = android.os.SystemClock.uptimeMillis()
+			for (action in listOf(android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_UP)) {
+				val event = android.view.MotionEvent.obtain(downTime, android.os.SystemClock.uptimeMillis(), action, bounds.exactCenterX(), bounds.exactCenterY(), 0)
+				event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+				try { instrumentation.sendPointerSync(event) } finally { event.recycle() }
+			}
+			instrumentation.waitForIdleSync()
 			val after = runBlocking { withTimeout(30_000) { model.get().categories.first { it.count { row -> row.id > 0 } == 15 && it.firstOrNull { row -> row.id == 0L }?.count == 1 } } }
 			assertEquals(second.toSet(), after.filter { it.id > 0 }.map { it.id }.toSet())
 			assertTrue(after.any { it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID })

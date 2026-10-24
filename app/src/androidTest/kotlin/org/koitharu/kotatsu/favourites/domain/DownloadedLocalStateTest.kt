@@ -187,6 +187,23 @@ class DownloadedLocalStateTest {
 		}
 	}
 
+	@Test fun ownershipCompletionCanPrecedeLocalIndexWithoutLosingMetadataOrMembership() = runBlocking {
+		val remote = remote(810_017L)
+		favourite(remote)
+		val memberships = repository.getCategoriesIds(remote.id)
+		val copy = download(root, remote)
+		assertNotEquals(remote.id, copy.manga.id)
+		assertFalse(copy.manga.id in db.getMangaDao())
+		// Deterministically exercise the order that independent BaseApp collectors can take.
+		ownership.emit(copy)
+		assertNotNull(db.getMangaDao().find(copy.manga.id))
+		assertEquals(copy.file.canonicalPath, db.getFavouriteDownloadIndexDao().findEntry(0, copy.manga.id)?.path)
+		index.emit(copy)
+		assertEquals(memberships, repository.getCategoriesIds(remote.id))
+		assertEquals(remote.title, db.getMangaDao().find(remote.id)?.manga?.title)
+		assertNotNull(db.getLocalMangaIndexDao().findPath(copy.manga.id))
+	}
+
 	@Test fun genericListRemapsConcreteCompletionAndNullInvalidation() = runBlocking {
 		val remote = remote(810_012L)
 		data.storeManga(remote, replaceExisting = true)
