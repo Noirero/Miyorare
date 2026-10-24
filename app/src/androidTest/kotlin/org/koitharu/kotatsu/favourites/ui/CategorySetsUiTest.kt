@@ -58,6 +58,7 @@ class CategorySetsUiTest {
 	@Inject lateinit var quickFilters: FavouriteQuickFilterStore
 	@Inject lateinit var sourceFilters: FavouriteSourceFilterStore
 	@Inject lateinit var display: FavouriteDisplayPreferences
+	@Inject lateinit var imageLoaderProvider: javax.inject.Provider<coil3.ImageLoader>
 	private val instrumentation = InstrumentationRegistry.getInstrumentation()
 	private val context get() = instrumentation.targetContext
 	private val manga get() = SampleData.manga.copy(id = 9_900_001L, title = "SET_ONLY_MAIN", source = MangaSource("MIHON_123"), coverUrl = "", tags = emptySet(), contentRating = null)
@@ -67,6 +68,9 @@ class CategorySetsUiTest {
 
 	@Before fun prepare() = runBlocking {
 		hilt.inject()
+		// HiltTestApplication omits the production background warm-up. Build the real image/network
+		// graph on the instrumentation thread before an Activity injects it on the main thread.
+		imageLoaderProvider.get()
 		runCatching { WorkManager.getInstance(context) }.getOrElse { WorkManager.initialize(context, Configuration.Builder().build()) }
 		database.clearAllTables()
 		context.getSharedPreferences("normal_favourite_category_memory", 0).edit().clear().commit()
