@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Regression coverage for ExHentai cursor recovery semantics.
+"""Regression coverage for ExHentai cursor and display-mode recovery semantics.
 
-This test models the exact failure fixed in the generated Gekkoushi parser:
+This test models the exact failures fixed in the generated Gekkoushi parser:
 page > 0 used to require an in-memory cursor populated by earlier requests.
 After parser recreation/eviction that table is empty, so upstream returned [].
 The fixed parser rebuilds missing cursors by following the website's own next
 cursor chain and keeps independent state per effective request signature.
+It also guards the Compact-layout case where `table.itg` exists but no row
+matches the Extended two-column parser contract, requiring one `dm_e` retry.
 """
 
 from pathlib import Path
@@ -112,6 +114,16 @@ class ExhentaiCursorRecoveryTest(unittest.TestCase):
         self.assertIn("if (order == SortOrder.POPULARITY)", source)
         self.assertIn('url.addQueryParameter("f_sr", "on")', source)
         self.assertIn('url.addQueryParameter("f_srdd", "5")', source)
+
+    def test_generated_patch_recovers_compact_display_mode(self):
+        source = Path(__file__).with_name("prepare_global_gekkoushi_shard.py").read_text(encoding="utf-8")
+        self.assertIn("val rows = root.children().filter { tr ->", source)
+        self.assertIn('tr.childrenSize() == 2 && tr.children()[1].selectFirst("div.glink") != null', source)
+        self.assertIn("if (rows.isEmpty())", source)
+        self.assertIn('if (!updateDm && body.getElementsContainingText("No hits found").isEmpty())', source)
+        self.assertIn("return getListPage(page, order, filter, updateDm = true)", source)
+        self.assertIn('body.parseFailed("Cannot find parseable ExHentai gallery rows")', source)
+        self.assertIn("return rows.map { tr ->", source)
 
 
 if __name__ == "__main__":

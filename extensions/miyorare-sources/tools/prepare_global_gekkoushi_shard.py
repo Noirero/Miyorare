@@ -197,13 +197,28 @@ import androidx.collection.MutableIntObjectMap
             }
         }
 
+        val rows = root.children().filter { tr ->
+            tr.childrenSize() == 2 && tr.children()[1].selectFirst("div.glink") != null
+        }
+        if (rows.isEmpty()) {
+            if (!updateDm && body.getElementsContainingText("No hits found").isEmpty()) {
+                // Compact/thumbnail display modes still expose table.itg, so root != null is not
+                // enough to prove that the two-column parser contract is satisfied. Retry once in
+                // Extended mode before treating an apparently empty page as a real empty result.
+                return getListPage(page, order, filter, updateDm = true)
+            }
+            if (body.getElementsContainingText("No hits found").isNotEmpty()) {
+                return emptyList()
+            }
+            body.parseFailed("Cannot find parseable ExHentai gallery rows")
+        }
+
         val nextTimestamp = getNextTimestamp(body)
         synchronized(nextPages) {
             nextPages.getOrPut(key, ::mutableMapOf)[page + 1] = nextTimestamp
         }
 
-        return root.children().mapNotNull { tr ->
-            if (tr.childrenSize() != 2) return@mapNotNull null
+        return rows.map { tr ->
             val (td1, td2) = tr.children()
             val gLink = td2.selectFirstOrThrow("div.glink")
             val a = gLink.parents().select("a").first() ?: gLink.parseFailed("link not found")
