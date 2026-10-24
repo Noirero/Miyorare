@@ -33,7 +33,7 @@ class ModernCoverBoundaryRegressionTest {
 		}
 	}
 
-	@Test fun stateProjectionCannotInventUnreadPinOrContinueAuthority() {
+	@Test fun stateProjectionUsesExplicitUnreadAuthorityWithoutReusingTrackerCounter() {
 		val state = source("list/ui/model/ModernCoverState.kt")
 		assertTrue(state.contains("unreadCount = model.unreadCount"))
 		assertTrue(state.contains("legacyCounter = if (collection) 0 else model.counter"))
@@ -42,7 +42,10 @@ class ModernCoverBoundaryRegressionTest {
 		assertTrue(state.contains("model.source.isLocal"))
 		assertTrue(state.contains("model.source.getLanguageCode()"))
 		val mapper = source("list/domain/MangaListMapper.kt")
-		assertFalse(mapper.contains("unreadCount ="))
+		assertTrue(mapper.contains("favouriteUnreadCounter.getSnapshot"))
+		assertTrue(mapper.contains("unreadCount = unreadSnapshot?.unreadCounts?.get(it.id)"))
+		assertFalse(mapper.contains("unreadCount = getCounter"))
+		assertFalse(mapper.contains("unreadCount = trackingRepository"))
 		assertTrue(mapper.contains("trackingRepository.getNewChaptersCount(mangaId)"))
 		val cover = source("list/ui/FavouriteCoverOverlayView.kt")
 		for (forbidden in listOf("AppSettings", "Repository", "getLanguageCode", "getPinned", "getSnapshot")) {
