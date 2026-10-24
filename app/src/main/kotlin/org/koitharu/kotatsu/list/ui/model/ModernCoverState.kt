@@ -24,7 +24,7 @@ internal fun resolveModernCoverReadingState(
 	unreadCount: Int?,
 	progress: ReadingProgress?,
 ): ModernCoverReadingState = when {
-	unreadCount == 0 && progress?.isCompleted() == true -> ModernCoverReadingState.CAUGHT_UP
+	unreadCount == 0 && progress?.isCompleted() == true && progress.hasUnreadAuthority -> ModernCoverReadingState.CAUGHT_UP
 	(unreadCount ?: 0) > 0 && progress != null -> ModernCoverReadingState.IN_PROGRESS
 	(unreadCount ?: 0) > 0 -> ModernCoverReadingState.UNREAD
 	else -> ModernCoverReadingState.NONE

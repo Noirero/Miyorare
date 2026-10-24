@@ -74,7 +74,7 @@ class MangaListMapper @Inject constructor(
 				mode = mode,
 				options = options,
 				override = overrides[it.id],
-				unreadCount = unreadSnapshot?.unreadCounts?.get(it.id),
+				unreadCount = unreadSnapshot?.getUnreadCountOrNull(it.id),
 			)
 		}
 	}
@@ -91,7 +91,7 @@ class MangaListMapper @Inject constructor(
 			mode = mode,
 			options = options,
 			override = dataRepository.getOverride(manga.id),
-			unreadCount = unreadSnapshot?.unreadCounts?.get(manga.id),
+			unreadCount = unreadSnapshot?.getUnreadCountOrNull(manga.id),
 		)
 	}
 

@@ -48,10 +48,10 @@ class ModernCoverReadingStateTest {
 	}
 
 	@Test
-	fun `unknown cached chapter authority never becomes caught up`() {
+	fun `completed progress without unread authority never becomes caught up`() {
 		assertEquals(
 			ModernCoverReadingState.NONE,
-			resolveModernCoverReadingState(-1, progress(1f)),
+			resolveModernCoverReadingState(0, progress(1f, hasUnreadAuthority = false)),
 		)
 	}
 
@@ -63,9 +63,10 @@ class ModernCoverReadingStateTest {
 		)
 	}
 
-	private fun progress(percent: Float) = ReadingProgress(
+	private fun progress(percent: Float, hasUnreadAuthority: Boolean = true) = ReadingProgress(
 		percent = percent,
 		totalChapters = 10,
 		mode = ProgressIndicatorMode.PERCENT_READ,
+		hasUnreadAuthority = hasUnreadAuthority,
 	)
 }
