@@ -84,6 +84,14 @@ detail selectors, paginated chapter JSON requests, and reader image selectors we
 adapted to Tsuki and cross-checked against Keiyoushi's Apache-2.0 `src/ko/newxtoon` implementation.
 The Keiyoushi APK/runtime itself is not embedded in Miyorare-Global.
 
+### Comic Asura reference
+
+The Miyorare-owned `COMICASURA` Tsuki overlay targets `https://comicasura.net/official` and uses the
+site's native `advanced-search` catalogue for Latest, Popular and Search. Detail, chapter and reader
+selectors were independently adapted to Tsuki and cross-checked against Keiyoushi's Apache-2.0
+`src/en/comicasura` MangaThemesia implementation. The Keiyoushi APK/runtime itself is not embedded in
+Miyorare-Global.
+
 ## Content providers
 
 Parser/source support does not imply affiliation with, endorsement by, or ownership of the websites
