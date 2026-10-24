@@ -676,18 +676,14 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		if (translations.isEmpty()) return SpannedString(original)
 		val output = SpannableStringBuilder(original)
 		translations.sortedBy { it.start }.asReversed().forEach { item ->
-			val insertAt = item.end.coerceIn(0, original.length)
-			val block = inlineTranslationBlock(item)
-			output.insert(insertAt, block)
-			val end = insertAt + block.length
-			output.setSpan(RelativeSizeSpan(0.94f), insertAt, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-			output.setSpan(StyleSpan(Typeface.ITALIC), insertAt, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			val start = item.start.coerceIn(0, original.length)
+			val end = item.end.coerceIn(start, original.length)
+			output.replace(start, end, inlineTranslationText(item))
 		}
 		return SpannedString(output)
 	}
 
-	private fun inlineTranslationBlock(item: InlineTranslation): String =
-		"\n${item.translatedText.trim()}\n"
+	private fun inlineTranslationText(item: InlineTranslation): String = item.translatedText.trim()
 
 	private fun sourceText(chapter: NativeChapter): Spanned =
 		translationOriginals[chapter.id] ?: chapter.text
@@ -700,8 +696,16 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val clamped = sourceLength?.let { sourceOffset.coerceIn(0, it) } ?: sourceOffset.coerceAtLeast(0)
 		var delta = 0
 		inlineTranslations[chapterId].orEmpty().sortedBy { it.start }.forEach { item ->
-			if (item.end > clamped || (!afterBoundary && item.end == clamped)) return@forEach
-			delta += inlineTranslationBlock(item).length
+			val sourceStart = item.start
+			val sourceEnd = item.end.coerceAtLeast(sourceStart)
+			val replacementLength = inlineTranslationText(item).length
+			if (clamped < sourceStart || (!afterBoundary && clamped == sourceStart)) return clamped + delta
+			if (clamped <= sourceEnd) {
+				val sourceSpan = (sourceEnd - sourceStart).coerceAtLeast(1)
+				val relative = (clamped - sourceStart).coerceIn(0, sourceSpan)
+				return sourceStart + delta + (relative.toLong() * replacementLength / sourceSpan).toInt()
+			}
+			delta += replacementLength - (sourceEnd - sourceStart)
 		}
 		return clamped + delta
 	}
@@ -728,25 +732,33 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val sourceLength = translationOriginals[chapterId]?.length
 		var delta = 0
 		inlineTranslations[chapterId].orEmpty().sortedBy { it.start }.forEach { item ->
-			val insertionStart = item.end + delta
-			val insertionEnd = insertionStart + inlineTranslationBlock(item).length
-			if (displayOffset < insertionStart) {
-				return (displayOffset - delta).let { value -> sourceLength?.let { value.coerceIn(0, it) } ?: value.coerceAtLeast(0) }
+			val sourceStart = item.start
+			val sourceEnd = item.end.coerceAtLeast(sourceStart)
+			val replacementLength = inlineTranslationText(item).length
+			val replacementStart = sourceStart + delta
+			val replacementEnd = replacementStart + replacementLength
+			if (displayOffset < replacementStart) return clampSourceOffset(displayOffset - delta, sourceLength)
+			if (displayOffset <= replacementEnd) {
+				val sourceSpan = sourceEnd - sourceStart
+				if (replacementLength == 0 || sourceSpan == 0) return sourceEnd
+				val relative = (displayOffset - replacementStart).coerceIn(0, replacementLength)
+				return clampSourceOffset(sourceStart + (relative.toLong() * sourceSpan / replacementLength).toInt(), sourceLength)
 			}
-			if (displayOffset <= insertionEnd) return item.end
-			delta = insertionEnd - item.end
+			delta += replacementLength - sourceSpan
 		}
-		val mapped = displayOffset - delta
-		return sourceLength?.let { mapped.coerceIn(0, it) } ?: mapped.coerceAtLeast(0)
+		return clampSourceOffset(displayOffset - delta, sourceLength)
 	}
+
+	private fun clampSourceOffset(value: Int, sourceLength: Int?): Int =
+		sourceLength?.let { value.coerceIn(0, it) } ?: value.coerceAtLeast(0)
 
 	private fun displayRangeTouchesInlineTranslation(chapterId: Long, displayStart: Int, displayEnd: Int): Boolean {
 		var delta = 0
 		inlineTranslations[chapterId].orEmpty().sortedBy { it.start }.forEach { item ->
-			val insertionStart = item.end + delta
-			val insertionEnd = insertionStart + inlineTranslationBlock(item).length
-			if (displayStart < insertionEnd && displayEnd > insertionStart) return true
-			delta = insertionEnd - item.end
+			val replacementStart = item.start + delta
+			val replacementEnd = replacementStart + inlineTranslationText(item).length
+			if (displayStart < replacementEnd && displayEnd > replacementStart) return true
+			delta += inlineTranslationText(item).length - (item.end - item.start)
 		}
 		return false
 	}
