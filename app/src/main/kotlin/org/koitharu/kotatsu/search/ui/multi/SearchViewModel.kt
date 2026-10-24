@@ -72,7 +72,7 @@ class SearchViewModel @Inject constructor(
 
 	val query = savedStateHandle.get<String>(AppRouter.KEY_QUERY).orEmpty()
 	val kind = savedStateHandle.get<SearchKind>(AppRouter.KEY_KIND) ?: SearchKind.SIMPLE
-	private val isNovelScope = settings.isGlobalSearchNovelScope
+	private val isNovelScope = savedStateHandle.get<Boolean>(AppRouter.KEY_CATALOG_NOVEL_SCOPE) ?: settings.isGlobalSearchNovelScope
 
 	private val sourceModeState = MutableStateFlow(
 		if (settings.isSearchPinnedOnly) SearchSourceMode.PINNED_ONLY else searchPreferences.globalMode,

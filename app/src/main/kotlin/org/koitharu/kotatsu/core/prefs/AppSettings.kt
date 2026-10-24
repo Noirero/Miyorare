@@ -207,44 +207,22 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		}
 
 	var mainNavItems: List<NavItem>
-		get() {
-			val defaults = listOf(NavItem.FAVORITES, NavItem.FEED, NavItem.HISTORY, NavItem.EXPLORE)
-			val raw = prefs.getString(KEY_NAV_MAIN, null)?.split(',')
-			val configured = if (raw.isNullOrEmpty()) {
-				defaults
-			} else {
-				raw.mapNotNull { x -> NavItem.entries.find(x) }.ifEmpty { listOf(NavItem.EXPLORE) }
-			}
-			val primaryItems = configured
-				.asSequence()
-				.filterNot { it == NavItem.READER_JOURNEY }
-				.distinct()
-				.take(4)
-				.toMutableList()
-			for (fallback in defaults) {
-				if (primaryItems.size >= 4) break
-				if (fallback !in primaryItems) primaryItems += fallback
-			}
-			return primaryItems + NavItem.READER_JOURNEY
-		}
+		get() = MainNavigationPreferences.primary(
+			runCatching { prefs.getString(KEY_NAV_MAIN, null) }.getOrNull()?.split(','),
+			NavItem.entries.filter { it.isAvailable(this) }.toSet(),
+		)
 		set(value) {
-			val defaults = listOf(NavItem.FAVORITES, NavItem.FEED, NavItem.HISTORY, NavItem.EXPLORE)
-			val primaryItems = value
-				.asSequence()
-				.filterNot { it == NavItem.READER_JOURNEY }
-				.distinct()
-				.take(4)
-				.toMutableList()
-			for (fallback in defaults) {
-				if (primaryItems.size >= 4) break
-				if (fallback !in primaryItems) primaryItems += fallback
-			}
-			prefs.edit {
-				// Reader Journey is a fixed fifth destination and therefore is not stored as a
-				// user-configurable slot. Older preferences that contain it are normalized above.
-				putString(KEY_NAV_MAIN, primaryItems.joinToString(",") { it.name })
-			}
+			val slots = MainNavigationPreferences.configurable(value.map { it.name })
+			prefs.edit { putString(KEY_NAV_MAIN, slots.joinToString(",") { it.name }) }
 		}
+
+	var discoveryProvider: String
+		get() = runCatching { prefs.getString("discovery_provider", "ANILIST") }.getOrNull() ?: "ANILIST"
+		set(value) { prefs.edit { putString("discovery_provider", value) } }
+
+	var discoveryFilter: String
+		get() = runCatching { prefs.getString("discovery_filter", "ALL") }.getOrNull() ?: "ALL"
+		set(value) { prefs.edit { putString("discovery_filter", value) } }
 
 	val isNavLabelsVisible: Boolean
 		get() = prefs.getBoolean(KEY_NAV_LABELS, true)

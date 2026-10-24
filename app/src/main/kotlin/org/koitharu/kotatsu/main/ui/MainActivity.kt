@@ -162,8 +162,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		viewBinding.bottomNav?.setOnContinueLongClickListener { viewModel.openLastDetails() }
 		viewBinding.buttonOverflow.setOnClickListener(this::showMainOverflowMenu)
 		viewBinding.buttonSettings.setOnClickListener {
-			router.openSettings()
+			if (supportFragmentManager.findFragmentByTag("main_utilities") == null) {
+				org.koitharu.kotatsu.main.ui.nav.MainUtilitiesSheet().show(supportFragmentManager, "main_utilities")
+			}
 		}
+		viewBinding.buttonSettings.setContentDescription(getString(R.string.main_utilities))
 		viewBinding.buttonUpdate.setOnClickListener { router.openAppUpdate(autoDownload = true) }
 		viewBinding.buttonUpdateDismiss.setOnClickListener {
 			viewModel.appUpdate.value?.let { settings.dismissedUpdateVersion = it.name }

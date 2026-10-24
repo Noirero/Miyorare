@@ -59,7 +59,8 @@ class MigrationMatchingContractTest {
 		assertTrue(source.contains("SearchSourceMode.PINNED_ONLY"))
 		assertTrue(source.contains("SearchSourceMode.PREFERRED_LANGUAGES"))
 		assertTrue(source.contains("SearchSourceMode.ALL_SOURCES"))
-		assertTrue(source.contains("it.source!=manga.source||it.id!=manga.id"))
+		assertTrue(source.contains("searchSources(normalizedQuery,sources,manga.sourcetomanga.id,maxDetailCandidates)"))
+		assertTrue(source.contains("excluded==null||it.source!=excluded.first||it.id!=excluded.second"))
 		assertFalse(source.contains("filter{it.id!=manga.id}"))
 	}
 
