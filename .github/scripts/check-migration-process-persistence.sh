@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# P5: run P4 durable-state setup and the two P5 process checks on one installed app data boundary.
+# P5: run P4 durable-state setup and the migration process checks on one installed app data boundary.
 set -euo pipefail
 
 batch_test_class=org.koitharu.kotatsu.alternatives.work.MigrationBatchWorkRuntimeTest
 batch_test_method=actualWorkersPersistResultsRejectOverlappingBatchesAndRecoverCancellationAndReplay
+annotation_test_class=org.koitharu.kotatsu.alternatives.domain.ChapterPersonalCompatibilityMigrationRuntimeTest
+annotation_test_method=compatibilityMigrationPersistsChapterNoteAndRatingOnReplacementIdentity
 migration_test_class=org.koitharu.kotatsu.alternatives.domain.MigrationEndToEndRuntimeTest
 migration_evidence_dir=app/build/reports/migration-process
 target_package=org.noirero.miyorare.debug
@@ -37,7 +39,7 @@ fi
 
 # Gradle connectedDebugAndroidTest removes the target/test packages after each invocation. P4 state
 # therefore cannot be handed to P5 across two Gradle invocations. Start a deliberate clean boundary
-# here, then keep this one installation intact while P4 and both P5 processes run via am instrument.
+# here, then keep this one installation intact while P4 and all migration process checks run via am instrument.
 adb uninstall "$target_package" >/dev/null 2>&1 || true
 adb install -r -t "$target_apk"
 adb install -r -t "$test_apk"
@@ -73,6 +75,8 @@ if ! adb shell pm path "$target_package" | tr -d '\r' | grep -q '^package:'; the
   exit 1
 fi
 
+# Prove the compatibility path writes chapter notes/ratings through Room using the replacement identity.
+run_case annotation "$annotation_test_class" "$annotation_test_method"
 run_case prepare "$migration_test_class" prepareCommittedAndInterruptedCheckpoints
 
 # Prove the checkpoint exists in target-private storage, then force a genuinely fresh app process.

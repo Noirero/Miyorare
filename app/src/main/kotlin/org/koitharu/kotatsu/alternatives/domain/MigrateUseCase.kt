@@ -177,6 +177,12 @@ class MigrateUseCase @Inject constructor(
 					bookmarksDao.deleteAll(oldDetails.id)
 					if (migrated.isNotEmpty()) bookmarksDao.upsert(migrated)
 				}
+				migrateChapterPersonalCompatibility(
+					database = database,
+					oldManga = oldDetails,
+					newManga = newDetails,
+					chapterIds = mapChapterIds(oldDetails, newDetails),
+				)
 
 				val historyDao = database.getHistoryDao()
 				val oldHistory = historyDao.find(oldDetails.id)
