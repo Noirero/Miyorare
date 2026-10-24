@@ -660,31 +660,23 @@ class GoogleDriveSyncRepository @Inject constructor(
 		enabled: Set<SyncContent>,
 	) {
 		if (SyncContent.FAVOURITES in enabled) {
-			val locallyDeletedCategories = if (syncSettings.isDeletionSyncDisabled) {
-				database.getFavouriteCategoriesDao().findAllForSync()
-					.filterTo(HashSet()) { it.deletedAt != 0L }
-					.mapTo(HashSet()) { it.categoryId }
-			} else {
-				emptySet()
-			}
-			val locallyDeletedFavourites = if (syncSettings.isDeletionSyncDisabled) {
-				database.getFavouritesDao().findAllForSync()
-					.filter { it.deletedAt != 0L }
-					.mapTo(HashSet()) { it.mangaId to it.categoryId }
-			} else {
-				emptySet()
-			}
 			val typesToApply = LinkedHashMap<Long, FavouriteContentType>()
 			database.withTransaction {
 				val dao = database.getFavouriteCategorySetsDao()
 				// Re-read inside the write transaction: a local edit or a Private insert may have happened
 				// while Drive was in flight. Reserve those IDs and keep newer local category state.
+				val preserveLocalDeletions = syncSettings.isDeletionSyncDisabled
 				val currentSets = localCategorySets()
+				val currentCategories = localCategories()
+				val locallyDeletedCategories = if (preserveLocalDeletions) currentCategories
+					.filter { it.deletedAt != 0L }.mapTo(HashSet()) { it.categoryId } else emptySet()
+				val locallyDeletedFavourites = if (preserveLocalDeletions) database.getFavouritesDao().findAllForSync()
+					.filter { it.deletedAt != 0L }.mapTo(HashSet()) { it.mangaId to it.categoryId } else emptySet()
 				val state = SyncMerger.mergeFavouriteState(
-					SyncSnapshot(categorySets = currentSets, categories = localCategories()), merged,
-					!syncSettings.isDeletionSyncDisabled, database.getFavouriteCategoriesDao().getAllIds().toHashSet(),
+					SyncSnapshot(categorySets = currentSets, categories = currentCategories), merged,
+					!preserveLocalDeletions, database.getFavouriteCategoriesDao().getAllIds().toHashSet(),
 				)
-				val locallyDeletedSetKeys = if (syncSettings.isDeletionSyncDisabled) currentSets.filter { it.deletedAt != 0L }.mapTo(HashSet()) { it.syncKey } else emptySet()
+				val locallyDeletedSetKeys = if (preserveLocalDeletions) currentSets.filter { it.deletedAt != 0L }.mapTo(HashSet()) { it.syncKey } else emptySet()
 				for (set in state.sets) {
 					val existing = dao.findSetByKey(set.syncKey, 0)
 					if (existing == null || (set.deletedAt == 0L && set.syncKey !in locallyDeletedSetKeys)) dao.upsert(set.toEntity(existing?.setId ?: 0))
