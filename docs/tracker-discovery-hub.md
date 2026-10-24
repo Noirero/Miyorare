@@ -6,7 +6,7 @@ Home is a public tracker catalogue. Favorites remains the saved-content surface;
 
 The five roots are `[Favorites, slot 1, Home, slot 2, slot 3]`. The preference normalizer keeps the first three distinct, available, non-fixed entries from an old configuration. It removes unknown values, duplicates, Favorites, Home and Reader Journey from editable slots, then fills gaps using Feed, History, Explore and other available roots. A malformed stored preference type recovers to defaults. The settings editor replaces/reorders exactly three slots.
 
-The existing 48dp header gear opens a utility sheet containing the existing Reader Journey and Settings routes. This preserves space for the bottom navigation's existing Continue control. Opening/dismissing the sheet does not select a root. Root navigation retains Fragment instances and view state; Home reselection scrolls to the top without reloading its provider.
+The existing 48dp header gear opens a utility sheet containing the existing Reader Journey and Settings routes. This preserves space for the bottom navigation's existing Continue control. Opening/dismissing the sheet does not select a root. Favorites still temporarily uses this control as Back during inline search; closing/hiding that search restores Main's utility action, while other/private hosts keep their existing action. Root navigation retains Fragment instances and view state; Home reselection scrolls to the top without reloading its provider.
 
 ## Data and lifecycle
 

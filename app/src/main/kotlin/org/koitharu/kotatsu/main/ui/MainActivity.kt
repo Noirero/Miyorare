@@ -161,12 +161,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		viewBinding.bottomNav?.setOnContinueClickListener { viewModel.openLastReader() }
 		viewBinding.bottomNav?.setOnContinueLongClickListener { viewModel.openLastDetails() }
 		viewBinding.buttonOverflow.setOnClickListener(this::showMainOverflowMenu)
-		viewBinding.buttonSettings.setOnClickListener {
-			if (supportFragmentManager.findFragmentByTag("main_utilities") == null) {
-				org.koitharu.kotatsu.main.ui.nav.MainUtilitiesSheet().show(supportFragmentManager, "main_utilities")
-			}
-		}
-		viewBinding.buttonSettings.setContentDescription(getString(R.string.main_utilities))
+		restoreMainUtilityButton()
 		viewBinding.buttonUpdate.setOnClickListener { router.openAppUpdate(autoDownload = true) }
 		viewBinding.buttonUpdateDismiss.setOnClickListener {
 			viewModel.appUpdate.value?.let { settings.dismissedUpdateVersion = it.name }
@@ -351,6 +346,19 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			providers.forEach { it.onMenuClosed(menu) }
 		}
 		popup.show()
+	}
+
+	/** Restores the shared header action after Favorites temporarily uses it as search Back. */
+	fun restoreMainUtilityButton() {
+		viewBinding.buttonSettings.apply {
+			setIconResource(R.drawable.ic_settings)
+			contentDescription = getString(R.string.main_utilities)
+			setOnClickListener {
+				if (supportFragmentManager.findFragmentByTag("main_utilities") == null) {
+					org.koitharu.kotatsu.main.ui.nav.MainUtilitiesSheet().show(supportFragmentManager, "main_utilities")
+				}
+			}
+		}
 	}
 
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {

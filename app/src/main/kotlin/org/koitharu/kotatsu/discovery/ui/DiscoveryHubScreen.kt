@@ -39,7 +39,7 @@ fun DiscoveryHubScreen(
 	val sections = state.home?.sections.orEmpty()
 	val spotlightSection = sections.firstOrNull { it.key.type == CatalogSectionType.TRENDING && it.items.isNotEmpty() } ?: sections.firstOrNull { it.items.isNotEmpty() }
 	PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize().testTag("discovery_hub")) {
-		LazyColumn(state = list, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+		LazyColumn(state = list, modifier = Modifier.testTag("catalog_home_list"), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
 			item(key = "header") {
 				Row(verticalAlignment = Alignment.CenterVertically) {
 					Text(stringResource(R.string.discovery_hub), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))

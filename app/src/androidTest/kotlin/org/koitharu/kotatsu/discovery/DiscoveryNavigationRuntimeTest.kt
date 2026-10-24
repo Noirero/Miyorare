@@ -71,6 +71,7 @@ class DiscoveryNavigationRuntimeTest {
 		settings.isOnboardingCompleted = true
 		settings.mainNavItems = listOf(NavItem.HISTORY, NavItem.EXPLORE, NavItem.LOCAL)
 		settings.discoveryProvider = Service.ANILIST.name; settings.discoveryFilter = CatalogFilter.ALL.name
+		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_TRACKER_ENABLED, true).commit()
 	}
 	@After fun cleanup() {
 		val edit = PreferenceManager.getDefaultSharedPreferences(app).edit().clear()
@@ -90,7 +91,8 @@ class DiscoveryNavigationRuntimeTest {
 		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, false).commit()
 		launch().use { scenario ->
 			showHub(scenario)
-			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").performScrollTo().assertIsDisplayed()
+			compose.onNodeWithTag("catalog_home_list").performScrollToNode(hasTestTag("catalog_section_NOVEL_TOP_RATED"))
+			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed()
 			var fragment: DiscoveryHubFragment? = null
 			scenario.onActivity { activity ->
 				fragment = activity.supportFragmentManager.findFragmentByTag(DiscoveryHubFragment::class.java.name) as DiscoveryHubFragment
@@ -101,6 +103,7 @@ class DiscoveryNavigationRuntimeTest {
 			}
 			compose.waitForIdle(); scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_discovery_hub }; compose.waitForIdle()
 			scenario.onActivity { assertSame(fragment, it.supportFragmentManager.findFragmentByTag(DiscoveryHubFragment::class.java.name)); it.viewBinding.buttonSettings.performClick() }
+			compose.waitUntil(5000) { compose.onAllNodesWithTag("main_utilities_sheet").fetchSemanticsNodes().isNotEmpty() }
 			compose.onNodeWithTag("main_utilities_sheet").assertExists()
 			scenario.onActivity { activity ->
 				(activity.supportFragmentManager.findFragmentByTag("main_utilities") as MainUtilitiesSheet).dismiss()
@@ -125,7 +128,7 @@ class DiscoveryNavigationRuntimeTest {
 	}
 	@Test fun hubReselectionScrollsToTopWithoutASecondProviderRequest() {
 		launch().use { scenario ->
-			showHub(scenario); compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").performScrollTo()
+			showHub(scenario); compose.onNodeWithTag("catalog_home_list").performScrollToNode(hasTestTag("catalog_section_NOVEL_TOP_RATED"))
 			scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_discovery_hub }
 			compose.waitForIdle(); compose.onNodeWithTag("catalog_provider_selector").assertIsDisplayed(); assertEquals(1, calls.get())
 		}
@@ -133,11 +136,21 @@ class DiscoveryNavigationRuntimeTest {
 	@Test fun utilityActionsOpenExistingJourneyAndSettingsWithoutChangingHubRoot() {
 		val instrumentation = InstrumentationRegistry.getInstrumentation()
 		launch().use { scenario ->
+			scenario.onActivity { activity ->
+				activity.supportFragmentManager.executePendingTransactions()
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+				activity.viewBinding.searchBar.performClick()
+				assertEquals(activity.getString(R.string.close), activity.viewBinding.buttonSettings.contentDescription)
+				activity.viewBinding.buttonSettings.performClick()
+				assertEquals(activity.getString(R.string.main_utilities), activity.viewBinding.buttonSettings.contentDescription)
+			}
 			showHub(scenario)
 			for ((tag, target) in listOf("utility_journey" to org.koitharu.kotatsu.stats.ui.StatsActivity::class.java, "utility_settings" to org.koitharu.kotatsu.settings.SettingsActivity::class.java)) {
 				val monitor = instrumentation.addMonitor(target.name, null, false)
 				try {
 					scenario.onActivity { it.viewBinding.buttonSettings.performClick() }
+					compose.waitUntil(5000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
+					compose.onNodeWithTag(tag).assertIsDisplayed()
 					compose.onNodeWithTag(tag).performClick()
 					val opened = instrumentation.waitForMonitorWithTimeout(monitor, 5000)
 					assertNotNull("Utility must open existing ${target.simpleName}", opened)
