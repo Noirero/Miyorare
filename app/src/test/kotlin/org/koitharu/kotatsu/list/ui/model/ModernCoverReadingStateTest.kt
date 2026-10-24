@@ -24,6 +24,14 @@ class ModernCoverReadingStateTest {
 	}
 
 	@Test
+	fun `started history at zero percent with unread chapters is still in progress`() {
+		assertEquals(
+			ModernCoverReadingState.IN_PROGRESS,
+			resolveModernCoverReadingState(3, progress(0f)),
+		)
+	}
+
+	@Test
 	fun `unread without reading progress stays unread`() {
 		assertEquals(
 			ModernCoverReadingState.UNREAD,
