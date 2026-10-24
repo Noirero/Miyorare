@@ -77,12 +77,20 @@ Tsuki sources.
 
 Miyorare-Global replaces the pinned Gekkoushi legacy `RAWDEX` Madara parser with a narrowly scoped,
 Miyorare-owned Tsuki overlay because the live RawDEX layout moved to `rdx-*` markup. The replacement
-keeps the same `RAWDEX` runtime identity so Global has one authoritative RawDEX implementation.
+keeps the same `RAWDEX` runtime identity so Global has one authoritative RawDex implementation.
 
 The Miyorare-owned `NEWXTOON` Tsuki overlay targets `https://newxtoon1.com/`. Catalogue/search paths,
 detail selectors, paginated chapter JSON requests, and reader image selectors were independently
 adapted to Tsuki and cross-checked against Keiyoushi's Apache-2.0 `src/ko/newxtoon` implementation.
 The Keiyoushi APK/runtime itself is not embedded in Miyorare-Global.
+
+### Comic Asura reference
+
+The Miyorare-owned `COMICASURA` Tsuki overlay targets `https://comicasura.net/official` and uses the
+site's native `advanced-search` catalogue for Latest, Popular and Search. Detail, chapter and reader
+selectors were independently adapted to Tsuki and cross-checked against Keiyoushi's Apache-2.0
+`src/en/comicasura` MangaThemesia implementation. The Keiyoushi APK/runtime itself is not embedded in
+Miyorare-Global.
 
 ## Content providers
 
