@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Regression coverage for ExHentai cursor recovery semantics.
+"""Regression coverage for ExHentai cursor and display-mode recovery semantics.
 
-This test models the exact failure fixed in the generated Gekkoushi parser:
+This test models the exact failures fixed in the generated Gekkoushi parser:
 page > 0 used to require an in-memory cursor populated by earlier requests.
 After parser recreation/eviction that table is empty, so upstream returned [].
 The fixed parser rebuilds missing cursors by following the website's own next
 cursor chain and keeps independent state per effective request signature.
+It also guards the Compact-layout case where `table.itg` exists but no row
+matches the Extended two-column parser contract, requiring one `dm_e` retry.
 """
 
 from pathlib import Path
