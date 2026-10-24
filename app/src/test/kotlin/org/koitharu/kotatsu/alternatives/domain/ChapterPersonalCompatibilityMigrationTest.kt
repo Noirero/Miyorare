@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.alternatives.domain
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 import org.koitharu.kotatsu.core.model.MissingMangaSource
 import org.koitharu.kotatsu.details.data.ChapterPersonalEntity
