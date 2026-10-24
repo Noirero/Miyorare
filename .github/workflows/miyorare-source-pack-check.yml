@@ -19,6 +19,8 @@ concurrency:
 
 jobs:
   build-pack:
+    if: >-
+      github.event_name != 'pull_request' || github.base_ref == 'Amain2' || (!startsWith(github.head_ref, 'fix/') && !startsWith(github.head_ref, 'bugfix/') && !startsWith(github.head_ref, 'hotfix/'))
     name: Build Miyorare-${{ matrix.pack }}
     runs-on: ubuntu-latest
     strategy:
