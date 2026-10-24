@@ -67,7 +67,7 @@ class MangaListMapper @Inject constructor(
 	) {
 		val options = getOptions(flags)
 		val overrides = dataRepository.getOverrides()
-		val unreadSnapshot = getUnreadSnapshot(manga, mode, options)
+		val unreadSnapshot = getUnreadSnapshot(manga, mode, options, flags)
 		manga.mapTo(destination) {
 			toListModelImpl(
 				manga = it,
@@ -85,7 +85,7 @@ class MangaListMapper @Inject constructor(
 		@Flags flags: Int = DEFAULTS,
 	): MangaListModel {
 		val options = getOptions(flags)
-		val unreadSnapshot = getUnreadSnapshot(listOf(manga), mode, options)
+		val unreadSnapshot = getUnreadSnapshot(listOf(manga), mode, options, flags)
 		return toListModelImpl(
 			manga = manga,
 			mode = mode,
@@ -212,7 +212,9 @@ class MangaListMapper @Inject constructor(
 		manga: Collection<Manga>,
 		mode: ListMode,
 		@Options options: Int,
+		@Flags flags: Int,
 	): FavouriteUnreadCounter.Snapshot? {
+		if (flags and NO_MODERN_READING_STATE != 0) return null
 		if (settings.miyorareDesignStyle != MiyorareDesignStyle.MODERN || !options.isBadgeEnabled(PROGRESS)) {
 			return null
 		}
@@ -260,7 +262,7 @@ class MangaListMapper @Inject constructor(
 		return options
 	}
 
-	@IntDef(DEFAULTS, NO_SAVED, NO_PROGRESS, NO_FAVORITE, NO_COUNTER, flag = true)
+	@IntDef(DEFAULTS, NO_SAVED, NO_PROGRESS, NO_FAVORITE, NO_COUNTER, NO_MODERN_READING_STATE, flag = true)
 	@Retention(AnnotationRetention.SOURCE)
 	annotation class Flags
 
@@ -281,5 +283,6 @@ class MangaListMapper @Inject constructor(
 		const val NO_PROGRESS = PROGRESS
 		const val NO_FAVORITE = FAVORITE
 		const val NO_COUNTER = COUNTER
+		const val NO_MODERN_READING_STATE = 16
 	}
 }

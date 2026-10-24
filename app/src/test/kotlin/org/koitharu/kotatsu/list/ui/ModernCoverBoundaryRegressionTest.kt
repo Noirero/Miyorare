@@ -24,6 +24,8 @@ class ModernCoverBoundaryRegressionTest {
 		assertTrue(adapter.contains("mangaListItemAD(listener, titleClickListener)"))
 		assertTrue(adapter.contains("mangaListDetailedItemAD(listener, titleClickListener)"))
 		assertTrue(source("picker/ui/manga/MangaPickerFragment.kt").contains("coverContext = ModernCoverContext.LEGACY"))
+		val picker = source("picker/ui/manga/MangaPickerViewModel.kt")
+		assertTrue(picker.contains("flags = MangaListMapper.NO_MODERN_READING_STATE"))
 		for (path in listOf("list/ui/MangaListFragment.kt", "history/ui/HistoryListAdapter.kt",
 			"search/ui/multi/adapter/SearchAdapter.kt", "search/ui/multi/adapter/SearchResultsAD.kt")) {
 			assertTrue(path, source(path).contains("ModernCoverContext.BROWSING"))
@@ -44,6 +46,7 @@ class ModernCoverBoundaryRegressionTest {
 		val mapper = source("list/domain/MangaListMapper.kt")
 		assertTrue(mapper.contains("favouriteUnreadCounter.getSnapshot"))
 		assertTrue(mapper.contains("unreadCount = unreadSnapshot?.getUnreadCountOrNull(it.id)"))
+		assertTrue(mapper.contains("flags and NO_MODERN_READING_STATE != 0"))
 		assertFalse(mapper.contains("unreadCount = getCounter"))
 		assertFalse(mapper.contains("unreadCount = trackingRepository"))
 		assertTrue(mapper.contains("trackingRepository.getNewChaptersCount(mangaId)"))
