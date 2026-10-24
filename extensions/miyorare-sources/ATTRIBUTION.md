@@ -77,7 +77,7 @@ Tsuki sources.
 
 Miyorare-Global replaces the pinned Gekkoushi legacy `RAWDEX` Madara parser with a narrowly scoped,
 Miyorare-owned Tsuki overlay because the live RawDEX layout moved to `rdx-*` markup. The replacement
-keeps the same `RAWDEX` runtime identity so Global has one authoritative RawDex implementation.
+keeps the same `RAWDEX` runtime identity so Global has one authoritative RawDEX implementation.
 
 The Miyorare-owned `NEWXTOON` Tsuki overlay targets `https://newxtoon1.com/`. Catalogue/search paths,
 detail selectors, paginated chapter JSON requests, and reader image selectors were independently
