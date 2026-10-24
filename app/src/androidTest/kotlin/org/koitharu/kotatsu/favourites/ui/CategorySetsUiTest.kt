@@ -151,6 +151,12 @@ class CategorySetsUiTest {
 			showPicker(scenario, space)
 			val count = pages().last()
 			assertTrue(count >= 4)
+			compose.onNodeWithText(context.getString(android.R.string.ok)).assertIsDisplayed().assertIsEnabled()
+			compose.onNodeWithContentDescription(context.getString(R.string.title_over_cover)).performClick()
+			await { pages().last() >= count }
+			compose.onNodeWithText(context.getString(android.R.string.ok)).assertIsDisplayed().assertIsEnabled()
+			compose.onNodeWithContentDescription(context.getString(R.string.title_over_cover)).performClick()
+			await { pages().last() == count }
 			checkbox(first[0]).performClick()
 			compose.onNodeWithTag("category-pages").performTouchInput { swipeLeft() }
 			await { pages().first() == 2 }

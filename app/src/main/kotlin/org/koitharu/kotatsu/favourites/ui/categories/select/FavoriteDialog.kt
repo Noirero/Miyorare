@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -51,7 +52,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -105,7 +105,6 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 	@Composable
 	override fun Content() {
 		val context = LocalContext.current
-		val configuration = LocalConfiguration.current
 		val content by viewModel.content.collectAsState()
 		val isSaving by viewModel.isSaving.collectAsState()
 		val sets by viewModel.sets.collectAsState()
@@ -113,9 +112,6 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		val query by viewModel.searchQuery.collectAsState()
 		val title = remember { viewModel.manga.joinToStringWithLimit(context, 92) { it.title } }
 		var showHeader by rememberSaveable { mutableStateOf(false) }
-		val pageSize = remember(configuration.screenHeightDp, showHeader) {
-			calculatePageSize(configuration.screenHeightDp, showHeader)
-		}
 
 		Box(
 			modifier = Modifier.fillMaxWidth().padding(horizontal = DIALOG_OUTER_PADDING.dp),
@@ -143,7 +139,15 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 						label = { Text(stringResource(R.string.category_set_search)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
 					)
 					Spacer(Modifier.height(8.dp))
-					key(activeSet?.setId, query) { CategoryContent(content, !isSaving, pageSize) }
+					// Measure the controls first, then paginate inside the actual remaining window
+					// height. Screen-height estimates can push OK/Cancel outside a restored dialog.
+					BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false)) {
+						val categoryCount = content.count { it is MangaCategoryItem }
+						val pageSize = calculatePageSize(maxHeight.value.toInt(), categoryCount)
+						Column {
+							key(activeSet?.setId, query) { CategoryContent(content, !isSaving, pageSize) }
+						}
+					}
 					Spacer(Modifier.height(12.dp))
 					ActionRow(isSaving)
 				}
@@ -402,12 +406,15 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		}
 	}
 
-	private fun calculatePageSize(screenHeightDp: Int, showHeader: Boolean): Int {
-		val reservedHeight = if (showHeader) 336 else 260
-		val available = (screenHeightDp - reservedHeight).coerceAtLeast(CATEGORY_ROW_HEIGHT)
-		val rows = ((available + CATEGORY_ROW_GAP) / (CATEGORY_ROW_HEIGHT + CATEGORY_ROW_GAP))
-			.coerceIn(MIN_ROWS_PER_PAGE, MAX_ROWS_PER_PAGE)
-		return (rows * 2).coerceAtMost(PAGE_SIZE)
+	private fun calculatePageSize(availableHeightDp: Int, categoryCount: Int): Int {
+		val columns = if (categoryCount > SINGLE_COLUMN_LIMIT) 2 else 1
+		fun capacity(height: Int): Int {
+			val rows = ((height + CATEGORY_ROW_GAP) / (CATEGORY_ROW_HEIGHT + CATEGORY_ROW_GAP))
+				.coerceIn(MIN_ROWS_PER_PAGE, MAX_ROWS_PER_PAGE)
+			return (rows * columns).coerceAtMost(PAGE_SIZE)
+		}
+		val withoutDots = capacity(availableHeightDp)
+		return if (categoryCount > withoutDots) capacity(availableHeightDp - PAGE_INDICATOR_HEIGHT) else withoutDots
 	}
 
 	private companion object {
@@ -415,6 +422,7 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		const val PAGE_SIZE = 20
 		const val MIN_ROWS_PER_PAGE = 1
 		const val MAX_ROWS_PER_PAGE = 10
+		const val PAGE_INDICATOR_HEIGHT = 16
 		const val DIALOG_OUTER_PADDING = 8
 		const val DIALOG_INNER_PADDING = 14
 		const val HEADER_CONTENT_GAP = 10
