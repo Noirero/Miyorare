@@ -23,6 +23,7 @@ enum class NavItem(
 	UPDATED(R.id.nav_updated, R.string.updated, R.drawable.ic_updated_selector, R.string.updated_nav),
 	BOOKMARKS(R.id.nav_bookmarks, R.string.bookmarks, R.drawable.ic_bookmark_selector, R.string.bookmarks),
 	READER_JOURNEY(R.id.nav_reader_journey, R.string.reader_journey, R.drawable.ic_auto_stories, R.string.reader_journey_nav),
+	DISCOVERY_HUB(R.id.nav_discovery_hub, R.string.discovery_hub, R.drawable.ic_discovery_hub, R.string.discovery_hub),
 	;
 
 	fun isAvailable(settings: AppSettings): Boolean = when (this) {

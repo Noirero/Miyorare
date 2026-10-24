@@ -35,24 +35,24 @@
 		<com.google.android.material.button.MaterialButton
 			android:id="@+id/imageView_remove"
 			style="?attr/materialIconButtonStyle"
-			android:layout_width="40dp"
-			android:layout_height="40dp"
-			android:contentDescription="@string/remove"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:contentDescription="@string/hub_replace_destination"
 			android:insetBottom="0dp"
 			android:insetLeft="0dp"
 			android:insetRight="0dp"
 			android:insetTop="0dp"
-			android:tooltipText="@string/remove"
-			app:icon="@drawable/ic_delete"
+			android:tooltipText="@string/hub_replace_destination"
+			app:icon="@drawable/ic_edit"
 			app:iconGravity="textStart"
 			app:iconPadding="0dp"
 			app:iconSize="20dp"
-			app:iconTint="?attr/colorError" />
+			app:iconTint="?attr/colorOnSurfaceVariant" />
 
 		<ImageView
 			android:id="@+id/imageView_reorder"
-			android:layout_width="40dp"
-			android:layout_height="40dp"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
 			android:contentDescription="@string/reorder"
 			android:padding="8dp"
 			android:pointerIcon="grab"

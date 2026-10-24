@@ -75,11 +75,14 @@ class AlternativesUseCase @Inject constructor(
 		manga: Manga,
 		mode: SearchSourceMode,
 		preferredLanguages: Set<String>,
+	): List<MangaSource> = getSources(manga.isNovelContent, manga.source, mode, preferredLanguages)
+
+	private suspend fun getSources(
+		isNovel: Boolean, excludedSource: MangaSource?, mode: SearchSourceMode, preferredLanguages: Set<String>,
 	): List<MangaSource> {
 		sourcesRepository.ensureExternalSourcesReady()
-		val isNovel = manga.isNovelContent
 		val enabled = sourcesRepository.getEnabledSources()
-			.filter { it != manga.source && it.isNovelContentSource == isNovel }
+			.filter { it != excludedSource && it.isNovelContentSource == isNovel }
 		val pinned = sourcesRepository.getPinnedSources().toSet()
 		val popularOrder = historyRepository.getPopularSources(POPULAR_SOURCE_LIMIT)
 			.withIndex().associate { (index, source) -> source to index }
@@ -110,6 +113,19 @@ class AlternativesUseCase @Inject constructor(
 	): Flow<AlternativeSearchEvent> {
 		val normalizedQuery = query.trim().ifEmpty { manga.title }
 		val sources = precomputedSources ?: getSources(manga, mode, preferredLanguages)
+		return searchSources(normalizedQuery, sources, manga.source to manga.id, maxDetailCandidates)
+	}
+
+	/** Metadata supplies a title and kind, never a fabricated parser Manga. */
+	suspend fun searchTitle(title: String, isNovel: Boolean, mode: SearchSourceMode, preferredLanguages: Set<String>): Flow<AlternativeSearchEvent> {
+		val query = title.trim()
+		require(query.isNotEmpty())
+		return searchSources(query, getSources(isNovel, null, mode, preferredLanguages), null, MAX_DETAIL_CANDIDATES)
+	}
+
+	private fun searchSources(
+		normalizedQuery: String, sources: List<MangaSource>, excluded: Pair<MangaSource, Long>?, maxDetailCandidates: Int,
+	): Flow<AlternativeSearchEvent> {
 		if (sources.isEmpty()) return emptyFlow()
 		val detailCandidateLimit = maxDetailCandidates.coerceIn(1, MAX_DETAIL_CANDIDATES_HARD_LIMIT)
 
@@ -132,7 +148,7 @@ class AlternativesUseCase @Inject constructor(
 						?.asSequence()
 						// Source is part of manga identity. Different providers may legitimately generate the
 						// same numeric id, so id equality alone must never hide a cross-source replacement.
-						?.filter { it.source != manga.source || it.id != manga.id }
+						?.filter { excluded == null || it.source != excluded.first || it.id != excluded.second }
 						?.distinctBy { it.dedupeKey() }
 						?.take(detailCandidateLimit)
 						?.toList()

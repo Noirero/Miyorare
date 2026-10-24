@@ -156,11 +156,12 @@ class AppRouter private constructor(
 
     fun openList(tag: MangaTag) = openList(tag.source, MangaListFilter(tags = setOf(tag)), null)
 
-    fun openSearch(query: String, kind: SearchKind = SearchKind.SIMPLE) {
+    fun openSearch(query: String, kind: SearchKind = SearchKind.SIMPLE, novelScope: Boolean? = null) {
         startActivity(
             Intent(contextOrNull() ?: return, SearchActivity::class.java)
                 .putExtra(KEY_QUERY, query)
-                .putExtra(KEY_KIND, kind),
+                .putExtra(KEY_KIND, kind)
+                .apply { novelScope?.let { putExtra(KEY_CATALOG_NOVEL_SCOPE, it) } },
         )
     }
 
@@ -796,6 +797,8 @@ class AppRouter private constructor(
 	private fun detailsActivityClassInstance() = DetailsExpressiveActivity::class.java
 
     companion object {
+        const val KEY_CATALOG_NOVEL_SCOPE = "catalog_novel_scope"
+
 
         fun from(view: View): AppRouter? = runCatching {
             AppRouter(view.findFragment())
