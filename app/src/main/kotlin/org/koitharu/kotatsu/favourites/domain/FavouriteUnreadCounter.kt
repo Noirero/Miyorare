@@ -78,8 +78,8 @@ class FavouriteUnreadCounter @Inject constructor(
 			val logicalCount = logicalCounts[mangaId] ?: 0
 			val history = histories[mangaId]
 			unread[mangaId] = when {
+				logicalCount <= 0 -> UNKNOWN_UNREAD_COUNT
 				history == null -> logicalCount
-				logicalCount <= 0 -> 0
 				else -> exactUnread[mangaId to history.chapterId]?.unreadCount
 					?: calculateFallbackUnread(logicalCount, history)
 			}
@@ -87,8 +87,9 @@ class FavouriteUnreadCounter @Inject constructor(
 		return Snapshot(histories, unread)
 	}
 
+	/** Public callers keep the historic non-negative contract; the negative sentinel is snapshot-only. */
 	suspend fun getUnreadCount(mangaId: Long): Int =
-		getSnapshot(listOf(mangaId), includeUnread = true).unreadCounts[mangaId] ?: 0
+		(getSnapshot(listOf(mangaId), includeUnread = true).unreadCounts[mangaId] ?: 0).coerceAtLeast(0)
 
 	private fun calculateFallbackUnread(logicalCount: Int, history: HistoryEntity): Int {
 		val total = history.chaptersCount.takeIf { it > 0 } ?: logicalCount
@@ -100,6 +101,8 @@ class FavouriteUnreadCounter @Inject constructor(
 	}
 
 	private companion object {
+		// Snapshot consumers need to distinguish "known zero unread" from "no cached chapter authority".
+		const val UNKNOWN_UNREAD_COUNT = -1
 		// SQLite versions used by older supported Android releases can cap host parameters at 999.
 		// Keep headroom for generated statements and future query changes.
 		const val DB_QUERY_BATCH_SIZE = 500

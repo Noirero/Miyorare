@@ -32,10 +32,18 @@ class ModernCoverReadingStateTest {
 	}
 
 	@Test
-	fun `unknown unread authority never becomes caught up`() {
+	fun `missing unread projection never becomes caught up`() {
 		assertEquals(
 			ModernCoverReadingState.NONE,
 			resolveModernCoverReadingState(null, progress(1f)),
+		)
+	}
+
+	@Test
+	fun `unknown cached chapter authority never becomes caught up`() {
+		assertEquals(
+			ModernCoverReadingState.NONE,
+			resolveModernCoverReadingState(-1, progress(1f)),
 		)
 	}
 
