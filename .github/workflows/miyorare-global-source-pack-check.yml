@@ -66,6 +66,16 @@ jobs:
           root = Path('extensions/miyorare-sources/overlays/gekkoushi/all')
           if not root.is_dir():
               raise SystemExit(0)
+
+          # The pinned Gekkoushi revision still contains a legacy Madara RawDEX parser. When the
+          # Miyorare-owned RawDEX overlay is present, replace that obsolete implementation instead
+          # of compiling two RAWDEX runtime identities.
+          legacy_rawdex = Path('_upstream/gekkoushi/src/main/kotlin/tsuki/site/madara/ko/RawDex.kt')
+          rawdex_overlay = root / 'RawDex.kt'
+          if rawdex_overlay.is_file() and legacy_rawdex.is_file():
+              legacy_rawdex.unlink()
+              print(f'removed obsolete upstream parser: {legacy_rawdex}')
+
           for file in root.rglob('*.kt'):
               rel = file.relative_to(root)
               target = Path('_upstream/gekkoushi/src/main/kotlin/tsuki/site/all') / rel
@@ -122,8 +132,12 @@ jobs:
           output = Path('build/miyorare-source-packs/global')
           logical = json.loads((output / 'miyorare-global-pack.json').read_text(encoding='utf-8'))
           shard = json.loads((output / 'miyorare-global-pack-shard.json').read_text(encoding='utf-8'))
+          manifest = json.loads(Path('extensions/miyorare-sources/packs.json').read_text(encoding='utf-8'))
 
-          expected_sources = {'EXHENTAI', 'GELBOORU'}
+          expected_list = manifest['packs']['global'].get('gekkoushiSources') or []
+          assert expected_list, 'Global manifest must expose at least one Gekkoushi source'
+          assert len(expected_list) == len(set(expected_list)), expected_list
+          expected_sources = set(expected_list)
           logical_names = set(logical['sourceNames'])
           shard_names = set(shard['sourceNames'])
           assert logical_names == expected_sources, sorted(logical_names)
