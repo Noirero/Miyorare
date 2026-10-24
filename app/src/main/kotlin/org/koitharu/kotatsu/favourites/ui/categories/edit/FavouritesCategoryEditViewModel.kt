@@ -22,19 +22,44 @@ import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.ui.categories.edit.FavouritesCategoryEditActivity.Companion.NO_ID
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import javax.inject.Inject
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SET_ID
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_CONTENT_TYPE
+import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity
+import org.koitharu.kotatsu.favourites.domain.FavouriteSetSelectionStore
+import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 
 @HiltViewModel
 class FavouritesCategoryEditViewModel @Inject constructor(
-	savedStateHandle: SavedStateHandle,
+	private val savedStateHandle: SavedStateHandle,
 	private val repository: FavouritesRepository,
 	private val settings: AppSettings,
 	private val contentTypeStore: FavouriteContentTypeStore,
+	private val setSelection: FavouriteSetSelectionStore,
 ) : BaseViewModel() {
 
 	private val categoryId = savedStateHandle[AppRouter.KEY_ID] ?: NO_ID
 	val favouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
+
+	private val requestedSetId: Long? = savedStateHandle[EXTRA_FAVOURITE_SET_ID]
+	private val createType = FavouriteContentType.entries.firstOrNull { it.name == savedStateHandle.get<String>(EXTRA_FAVOURITE_CONTENT_TYPE) }
+		?: contentTypeStore.selectedType(favouriteSpace).value
+	val sets = repository.observeSets(favouriteSpace).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+	val currentSet = MutableStateFlow<FavouriteCategorySetEntity?>(null)
+
+	fun moveToSet(set: FavouriteCategorySetEntity) {
+		launchLoadingJob(Dispatchers.IO) {
+			if (categoryId != NO_ID) repository.moveCategoriesToSet(listOf(categoryId), set.setId, favouriteSpace)
+			withContext(Dispatchers.Main.immediate) {
+				currentSet.value = set
+				savedStateHandle[EXTRA_FAVOURITE_SET_ID] = set.setId
+			}
+		}
+	}
 
 	val onSaved = MutableEventFlow<Unit>()
 	val category = MutableStateFlow<FavouriteCategory?>(null)
@@ -51,6 +76,8 @@ class FavouritesCategoryEditViewModel @Inject constructor(
 
 	init {
 		launchLoadingJob(Dispatchers.Default) {
+			currentSet.value = if (categoryId != NO_ID) repository.getCategorySet(categoryId, favouriteSpace)
+			else repository.resolveSet(requestedSetId ?: setSelection.observe(favouriteSpace, flowOf(createType)).first().setId, favouriteSpace)
 			category.value = if (categoryId != NO_ID) {
 				repository.getCategory(categoryId)
 			} else {
@@ -76,10 +103,11 @@ class FavouritesCategoryEditViewModel @Inject constructor(
 					isNewChaptersDownloadEnabled = isNewChaptersDownloadEnabled,
 					isVisibleOnShelf = isVisibleOnShelf,
 					space = favouriteSpace,
+					setId = currentSet.value?.setId,
 				)
 				contentTypeStore.setCategoryType(
 					category.id,
-					contentTypeStore.selectedType(favouriteSpace).value,
+					createType,
 				)
 			} else {
 				repository.updateCategory(

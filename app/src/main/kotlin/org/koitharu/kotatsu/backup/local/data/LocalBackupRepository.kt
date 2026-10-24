@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.collectIndexed
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
@@ -31,6 +32,11 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.backup.local.data.model.BackupIndex
 import org.koitharu.kotatsu.backup.local.data.model.BackupPrimitive
 import org.koitharu.kotatsu.backup.local.data.model.BookmarkBackup
+import org.koitharu.kotatsu.backup.local.data.model.CategorySetBackup
+import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetAssignmentEntity
+import org.koitharu.kotatsu.favourites.domain.CategorySetIdentity
+import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity
+import org.koitharu.kotatsu.favourites.data.ensureCategorySets
 import org.koitharu.kotatsu.backup.local.data.model.CategoryBackup
 import org.koitharu.kotatsu.backup.local.data.model.ChapterBackup
 import org.koitharu.kotatsu.backup.local.data.model.FavouriteBackup
@@ -111,6 +117,7 @@ class LocalBackupRepository @Inject constructor(
 		val includePrivateFavourites = privateFavouritesSecurity.includePrivateInBackup
 		progress?.emit(Progress.INDETERMINATE)
 		var commonProgress = Progress(0, sections.size + if (includePrivateFavourites) 1 else 0)
+		var exportedNormalCategoryIds = emptySet<Long>()
 		for (section in sections) {
 			when (section) {
 				BackupSection.INDEX -> {
@@ -131,17 +138,29 @@ class LocalBackupRepository @Inject constructor(
 					serializer = serializer(),
 				)
 
-				BackupSection.CATEGORIES -> output.writeJsonArray(
-					section = BackupSection.CATEGORIES,
-					data = database.getFavouriteCategoriesDao().findAll().asFlow().map { category ->
-						CategoryBackup(category, categoryContentType(category.categoryId.toLong()))
-					},
-					serializer = serializer(),
-				)
+				BackupSection.CATEGORIES -> {
+					val state = categoryBackupState(FavouriteSpace.NORMAL)
+					val sets = state.sets
+					val setKeys = state.setKeys
+					val assignments = state.assignments
+					exportedNormalCategoryIds = state.categoryIds
+					output.putNextEntry(ZipEntry(CATEGORY_SETS_ENTRY))
+					json.encodeToStream(serializer<List<CategorySetBackup>>(), sets.map(::CategorySetBackup), output)
+					output.closeEntry()
+					output.writeJsonArray(
+						section = BackupSection.CATEGORIES,
+						data = state.categories.asFlow().map { category ->
+							val assignment = checkNotNull(assignments[category.categoryId.toLong()])
+							CategoryBackup(category, categoryContentType(category.categoryId.toLong()), assignment.categorySyncKey, checkNotNull(setKeys[assignment.setId]))
+						},
+						serializer = serializer(),
+					)
+				}
+
 
 				BackupSection.FAVOURITES -> output.writeJsonArray(
 					section = BackupSection.FAVOURITES,
-					data = database.getFavouritesDao().dump().map(::FavouriteBackup),
+					data = database.getFavouritesDao().dump().map(::FavouriteBackup).filter { it.categoryId in exportedNormalCategoryIds },
 					serializer = serializer(),
 				)
 
@@ -243,6 +262,15 @@ class LocalBackupRepository @Inject constructor(
 		val restoredMangaIds = HashSet<Long>()
 		val normalCategoryIdMap = HashMap<Long, Long>()
 		while (entry != null) {
+			if (entry.name.equals(CATEGORY_SETS_ENTRY, ignoreCase = true)) {
+				if (BackupSection.CATEGORIES in sections) result += CompositeResult.EMPTY + runCatchingCancellable {
+					restoreSets(input.readJsonArray<CategorySetBackup>(serializer()).toList(), FavouriteSpace.NORMAL)
+				}
+				input.closeEntry()
+				entry = input.nextEntry
+				continue
+			}
+
 			if (entry.name.equals(MIYORARE_METADATA_ENTRY, ignoreCase = true)) {
 				input.closeEntry()
 				entry = input.nextEntry
@@ -493,19 +521,38 @@ class LocalBackupRepository @Inject constructor(
 		}
 	}
 
+	private class CategoryBackupState(
+		val sets: List<FavouriteCategorySetEntity>,
+		val categories: List<FavouriteCategoryEntity>,
+		val assignments: Map<Long, FavouriteCategorySetAssignmentEntity>,
+	) {
+		val setKeys = sets.associate { it.setId to it.syncKey }
+		val categoryIds = categories.mapTo(HashSet()) { it.categoryId.toLong() }
+	}
+
+	private suspend fun categoryBackupState(space: FavouriteSpace): CategoryBackupState = database.withTransaction {
+		CategoryBackupState(database.ensureCategorySets(space), database.getFavouriteCategoriesDao().findAllInSpace(space.dbValue),
+			database.getFavouriteCategorySetsDao().getAssignments(space.dbValue).associateBy { it.categoryId })
+	}
+
 	private suspend fun ZipOutputStream.writePrivateFavourites() {
 		putNextEntry(ZipEntry(PRIVATE_FAVOURITES_ENTRY))
 		try {
-			val categories = database.getFavouriteCategoriesDao()
-				.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+			val state = categoryBackupState(FavouriteSpace.PRIVATE)
+			val sets = state.sets
+			val keys = state.setKeys
+			val assignments = state.assignments
+			val categories = state.categories
 				.map { category ->
-					PrivateCategoryBackup(category, categoryContentType(category.categoryId.toLong()))
+					PrivateCategoryBackup(category, categoryContentType(category.categoryId.toLong()), checkNotNull(assignments[category.categoryId.toLong()]).categorySyncKey, checkNotNull(keys[checkNotNull(assignments[category.categoryId.toLong()]).setId]))
 				}
-			write("{\"categories\":")
+			write("{\"sets\":")
+			json.encodeToStream(serializer<List<CategorySetBackup>>(), sets.map(::CategorySetBackup), this)
+			write(",\"categories\":")
 			json.encodeToStream(serializer<List<PrivateCategoryBackup>>(), categories, this)
 			write(",\"favourites\":")
 			writeJsonArrayPayload(
-				data = dumpPrivateFavouritesWithPersonalMetadata(),
+				data = dumpPrivateFavouritesWithPersonalMetadata().filter { it.categoryId in state.categoryIds },
 				serializer = serializer(),
 			)
 			write(",\"library_groups\":")
@@ -570,6 +617,8 @@ class LocalBackupRepository @Inject constructor(
 				type = categoryContentTypeValue(category.categoryId.toLong()),
 			)
 		}
+		val legacyOccurrences = HashMap<String, Int>()
+		val claimedIds = HashSet<Int>()
 		var categoriesSeen = false
 		var result = CompositeResult.EMPTY
 		val reader = JsonReader(InputStreamReader(input, Charsets.UTF_8))
@@ -577,6 +626,9 @@ class LocalBackupRepository @Inject constructor(
 			reader.beginObject()
 			while (reader.hasNext()) {
 				when (reader.nextName()) {
+					"sets" -> reader.readJsonArrayBatches(serializer<CategorySetBackup>()) { batch ->
+						restoreSets(batch, FavouriteSpace.PRIVATE)
+					}
 					"categories" -> {
 						categoriesSeen = true
 						reader.readJsonArrayBatches(serializer<PrivateCategoryBackup>()) { batch ->
@@ -586,26 +638,34 @@ class LocalBackupRepository @Inject constructor(
 										val oldId = category.categoryId.toLong()
 										val type = parseContentType(category.contentType) ?: FavouriteContentType.MANGA
 										val identity = categoryRestoreIdentity(category.createdAt, category.title, type)
-										val sameIdentity = privateById[category.categoryId]
+										val normalizedTitle = CategorySetIdentity.normalizeTitle(category.title)
+										val legacy = category.syncKey?.let { it to (legacyOccurrences[normalizedTitle] ?: 0) }
+											?: legacyRestoreKey(FavouriteSpace.PRIVATE, category.title, category.createdAt, type, legacyOccurrences[normalizedTitle] ?: 0, claimedIds)
+										legacyOccurrences[normalizedTitle] = legacy.second + 1
+										var syncKey = category.syncKey ?: legacy.first
+										val sameIdentity = if (category.syncKey != null) database.getFavouriteCategorySetsDao().findCategoryByKey(category.syncKey, 1)
+										else database.getFavouriteCategorySetsDao().findCategoryByKey(syncKey, 1) ?: privateById[category.categoryId]
 											?.takeIf { existing ->
 												categoryRestoreIdentity(
 													existing.createdAt,
 													existing.title,
 													categoryContentTypeValue(existing.categoryId.toLong()),
-												) == identity
+												) == identity && existing.categoryId !in claimedIds
 											}
-											?: privateByIdentity[identity]
+											?: privateByIdentity[identity].takeIf { category.syncKey == null && it?.categoryId !in claimedIds }
+										if (category.syncKey == null && sameIdentity != null) syncKey = database.getFavouriteCategorySetsDao().getAssignment(sameIdentity.categoryId.toLong())?.categorySyncKey ?: syncKey
 										val mappedId: Long
 										val restoredEntity: FavouriteCategoryEntity
 										if (sameIdentity != null) {
 											mappedId = sameIdentity.categoryId.toLong()
 											restoredEntity = category.toEntity().copy(
 												categoryId = sameIdentity.categoryId,
-												sortKey = sameIdentity.sortKey,
+												sortKey = if (category.syncKey != null) category.sortKey else sameIdentity.sortKey,
 											)
+											restoreCategoryAssignment(mappedId, syncKey, category.setSyncKey, FavouriteSpace.PRIVATE)
 											categoriesDao.upsert(restoredEntity)
 										} else {
-											val sortKey = categoriesDao.getNextSortKey(FavouriteSpace.PRIVATE)
+											val sortKey = if (category.syncKey != null) category.sortKey else categoriesDao.getNextSortKey(FavouriteSpace.PRIVATE)
 											mappedId = categoriesDao.insert(
 												category.toEntity().copy(categoryId = 0, sortKey = sortKey),
 											)
@@ -614,6 +674,8 @@ class LocalBackupRepository @Inject constructor(
 												sortKey = sortKey,
 											)
 										}
+										restoreCategoryAssignment(mappedId, syncKey, category.setSyncKey, FavouriteSpace.PRIVATE)
+										claimedIds += restoredEntity.categoryId
 										privateById[restoredEntity.categoryId] = restoredEntity
 										privateByIdentity[identity] = restoredEntity
 										idMap[oldId] = mappedId
@@ -713,33 +775,43 @@ class LocalBackupRepository @Inject constructor(
 				type = categoryContentTypeValue(category.categoryId.toLong()),
 			)
 		}
+		val legacyOccurrences = HashMap<String, Int>()
+		val claimedIds = HashSet<Int>()
 		for (item in items) {
 			result += runCatchingCancellable {
 				val oldId = item.categoryId.toLong()
 				val type = parseContentType(item.contentType) ?: FavouriteContentType.MANGA
 				val identity = categoryRestoreIdentity(item.createdAt, item.title, type)
-				val sameIdentity = normalById[item.categoryId]
+				val normalizedTitle = CategorySetIdentity.normalizeTitle(item.title)
+				val legacy = item.syncKey?.let { it to (legacyOccurrences[normalizedTitle] ?: 0) }
+					?: legacyRestoreKey(FavouriteSpace.NORMAL, item.title, item.createdAt, type, legacyOccurrences[normalizedTitle] ?: 0, claimedIds)
+				legacyOccurrences[normalizedTitle] = legacy.second + 1
+				var syncKey = item.syncKey ?: legacy.first
+				val sameIdentity = if (item.syncKey != null) database.getFavouriteCategorySetsDao().findCategoryByKey(item.syncKey, 0)
+				else database.getFavouriteCategorySetsDao().findCategoryByKey(syncKey, 0) ?: normalById[item.categoryId]
 					?.takeIf { existing ->
 						categoryRestoreIdentity(
 							existing.createdAt,
 							existing.title,
 							categoryContentTypeValue(existing.categoryId.toLong()),
-						) == identity
+						) == identity && existing.categoryId !in claimedIds
 					}
-					?: normalByIdentity[identity]
+					?: normalByIdentity[identity].takeIf { item.syncKey == null && it?.categoryId !in claimedIds }
+				if (item.syncKey == null && sameIdentity != null) syncKey = database.getFavouriteCategorySetsDao().getAssignment(sameIdentity.categoryId.toLong())?.categorySyncKey ?: syncKey
 				var restoredEntity: FavouriteCategoryEntity? = null
 				val mappedId = database.withTransaction {
 					if (sameIdentity != null) {
 						val entity = item.toEntity().copy(
 							categoryId = sameIdentity.categoryId,
-							sortKey = sameIdentity.sortKey,
+							sortKey = if (item.syncKey != null) item.sortKey else sameIdentity.sortKey,
 							space = FavouriteSpace.NORMAL.dbValue,
 						)
+						restoreCategoryAssignment(sameIdentity.categoryId.toLong(), syncKey, item.setSyncKey, FavouriteSpace.NORMAL)
 						categoriesDao.upsert(entity)
 						restoredEntity = entity
-						sameIdentity.categoryId.toLong()
+						sameIdentity.categoryId.toLong().also { restoreCategoryAssignment(it, syncKey, item.setSyncKey, FavouriteSpace.NORMAL) }
 					} else {
-						val sortKey = categoriesDao.getNextSortKey(FavouriteSpace.NORMAL)
+						val sortKey = if (item.syncKey != null) item.sortKey else categoriesDao.getNextSortKey(FavouriteSpace.NORMAL)
 						val insertedId = categoriesDao.insert(
 							item.toEntity().copy(
 								categoryId = 0,
@@ -752,10 +824,12 @@ class LocalBackupRepository @Inject constructor(
 							sortKey = sortKey,
 							space = FavouriteSpace.NORMAL.dbValue,
 						)
+						restoreCategoryAssignment(insertedId, syncKey, item.setSyncKey, FavouriteSpace.NORMAL)
 						insertedId
 					}
 				}
 				restoredEntity?.let { entity ->
+					claimedIds += entity.categoryId
 					normalById[entity.categoryId] = entity
 					normalByIdentity[identity] = entity
 				}
@@ -765,6 +839,42 @@ class LocalBackupRepository @Inject constructor(
 			onItemProcessed(1)
 		}
 		return result
+	}
+
+	/** Legacy native backup identity also includes creation time/type. Never overwrite an unrelated
+	 * existing category merely because its deterministic migration key has the same old title.
+	 */
+	private suspend fun legacyRestoreKey(space: FavouriteSpace, title: String, createdAt: Long, type: FavouriteContentType,
+		startOccurrence: Int, claimedIds: Set<Int>): Pair<String, Int> {
+		var occurrence = startOccurrence
+		val identity = categoryRestoreIdentity(createdAt, title, type)
+		while (true) {
+			val key = CategorySetIdentity.legacyCategory(space.dbValue, title, occurrence)
+			val existing = database.getFavouriteCategorySetsDao().findCategoryByKey(key, space.dbValue)
+			if (existing == null || (existing.categoryId !in claimedIds && categoryRestoreIdentity(existing.createdAt, existing.title, categoryContentTypeValue(existing.categoryId.toLong())) == identity)) return key to occurrence
+			occurrence++
+		}
+	}
+
+	private suspend fun restoreSets(items: List<CategorySetBackup>, space: FavouriteSpace) = database.withTransaction {
+		val dao = database.getFavouriteCategorySetsDao()
+		for (item in items) {
+			require(item.space == space.dbValue && item.syncKey.isNotBlank() && item.title.isNotBlank()) { "Invalid backup Set space or identity" }
+			val existing = dao.findSetByKey(item.syncKey, space.dbValue)
+			dao.upsert(item.toEntity(existing?.setId ?: 0).copy(updatedAt = maxOf(item.updatedAt, (existing?.updatedAt ?: 0) + 1, System.currentTimeMillis())))
+		}
+	}
+
+	private suspend fun restoreCategoryAssignment(id: Long, key: String?, setKey: String?, space: FavouriteSpace) {
+		val dao = database.getFavouriteCategorySetsDao()
+		val target = if (setKey != null) {
+			checkNotNull(dao.findSetByKey(setKey, space.dbValue)).also { require(it.deletedAt == 0L) }
+		} else {
+			dao.findSetByKey(CategorySetIdentity.defaultSet(space.dbValue), space.dbValue)?.takeIf { it.deletedAt == 0L }
+				?: checkNotNull(dao.getSets(space.dbValue).firstOrNull())
+		}
+		val existing = dao.getAssignment(id)
+		dao.assign(FavouriteCategorySetAssignmentEntity(id, target.setId, key ?: existing?.categorySyncKey ?: java.util.UUID.randomUUID().toString(), System.currentTimeMillis()))
 	}
 
 	private fun requireMangaReference(section: String, embeddedMangaId: Long, referenceMangaId: Long) {
@@ -1300,6 +1410,7 @@ class LocalBackupRepository @Inject constructor(
 		internal const val MIYORARE_METADATA_ENTRY = "miyorare_metadata"
 		internal const val READER_JOURNEY_ENTRY = "reader_journey"
 		internal const val READER_ACHIEVEMENTS_ENTRY = "reader_journey_achievements"
+		internal const val CATEGORY_SETS_ENTRY = "category_sets"
 		internal const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
 		private const val BACKUP_DB_BATCH_SIZE = 256
 		private const val RESTORE_DB_BATCH_SIZE = 256

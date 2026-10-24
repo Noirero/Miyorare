@@ -326,8 +326,21 @@ class AppRouter private constructor(
         )
     }
 
-    fun openFavoriteCategoryCreate(space: FavouriteSpace = FavouriteSpace.NORMAL) =
-        openFavoriteCategoryEdit(FavouritesCategoryEditActivity.NO_ID, space)
+    fun openFavoriteCategoryCreate(
+        space: FavouriteSpace = FavouriteSpace.NORMAL,
+        setId: Long? = null,
+        contentType: org.koitharu.kotatsu.favourites.domain.FavouriteContentType? = null,
+    ) {
+        startActivity(
+            Intent(contextOrNull() ?: return, FavouritesCategoryEditActivity::class.java)
+                .putExtra(KEY_ID, FavouritesCategoryEditActivity.NO_ID)
+                .putExtra(EXTRA_FAVOURITE_SPACE, space.dbValue)
+                .apply {
+                    setId?.let { putExtra(org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SET_ID, it) }
+                    contentType?.let { putExtra(org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_CONTENT_TYPE, it.name) }
+                },
+        )
+    }
 
     fun openMangaUpdates() {
         startActivity(mangaUpdatesIntent(contextOrNull() ?: return))

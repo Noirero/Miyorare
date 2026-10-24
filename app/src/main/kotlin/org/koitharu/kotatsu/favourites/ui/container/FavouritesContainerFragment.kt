@@ -150,6 +150,16 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			),
 		).attach()
 		binding.buttonCategoryPicker.setOnClickListener { showCategoryPicker() }
+		binding.buttonCategorySet.setOnClickListener { anchor ->
+			org.koitharu.kotatsu.favourites.ui.sets.showCategorySetMenu(anchor, childFragmentManager, viewModel.sets.value, viewModel.activeSet.value?.setId, viewModel.favouriteSpace) { set ->
+				rememberCurrentCategory()
+				viewModel.selectSet(set)
+			}
+		}
+		viewModel.activeSet.observe(viewLifecycleOwner) { set ->
+			binding.buttonCategorySet.text = getString(R.string.category_set_selector, set?.title.orEmpty())
+		}
+
 		setupPrivateHub(binding)
 		binding.stubEmpty.setOnInflateListener(this)
 		binding.toggleContentType.addOnButtonCheckedListener { _, checkedId, isChecked ->
@@ -431,6 +441,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			}
 		}
 		binding.buttonCategoryPicker.isEnabled = !isActionModeActive
+		binding.buttonCategorySet.isEnabled = !isActionModeActive
 		binding.buttonCategoryPicker.isClickable = canTap
 		binding.buttonCategoryPicker.isFocusable = canTap
 	}

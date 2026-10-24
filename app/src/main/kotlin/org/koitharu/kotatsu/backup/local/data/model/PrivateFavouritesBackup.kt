@@ -15,6 +15,7 @@ import org.koitharu.kotatsu.favourites.data.PrivateFavouriteManga
  */
 @Serializable
 data class PrivateFavouritesBackup(
+	@SerialName("sets") val sets: List<CategorySetBackup> = emptyList(),
 	@SerialName("categories") val categories: List<PrivateCategoryBackup> = emptyList(),
 	@SerialName("favourites") val favourites: List<PrivateFavouriteItemBackup> = emptyList(),
 	@SerialName("library_groups") val libraryGroups: List<LibraryGroupBackup> = emptyList(),
@@ -31,8 +32,10 @@ data class PrivateCategoryBackup(
 	@SerialName("download_new_chapters") val downloadNewChapters: Boolean = false,
 	@SerialName("show_in_lib") val isVisibleInLibrary: Boolean = true,
 	@SerialName("content_type") val contentType: String? = null,
+	@SerialName("sync_key") val syncKey: String? = null,
+	@SerialName("set_sync_key") val setSyncKey: String? = null,
 ) {
-	constructor(entity: FavouriteCategoryEntity, contentType: String? = null) : this(
+	constructor(entity: FavouriteCategoryEntity, contentType: String? = null, syncKey: String? = null, setSyncKey: String? = null) : this(
 		categoryId = entity.categoryId,
 		createdAt = entity.createdAt,
 		sortKey = entity.sortKey,
@@ -42,6 +45,8 @@ data class PrivateCategoryBackup(
 		downloadNewChapters = entity.downloadNewChapters,
 		isVisibleInLibrary = entity.isVisibleInLibrary,
 		contentType = contentType,
+		syncKey = syncKey,
+		setSyncKey = setSyncKey,
 	)
 
 	fun toEntity() = FavouriteCategoryEntity(

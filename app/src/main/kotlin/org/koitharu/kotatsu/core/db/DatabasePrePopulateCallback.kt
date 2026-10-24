@@ -9,6 +9,7 @@ import org.koitharu.kotatsu.parsers.model.SortOrder
 class DatabasePrePopulateCallback(private val resources: Resources) : RoomDatabase.Callback() {
 
 	override fun onCreate(db: SupportSQLiteDatabase) {
+		org.koitharu.kotatsu.core.db.migrations.CategorySetsSchema.initialize(db)
 		db.execSQL(
 			"INSERT INTO favourite_categories (created_at, sort_key, title, `order`, track, download_new_chapters, show_in_lib, `deleted_at`) VALUES (?,?,?,?,?,?,?,?)",
 			arrayOf<Any?>(

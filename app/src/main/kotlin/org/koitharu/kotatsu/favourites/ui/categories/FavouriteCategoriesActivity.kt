@@ -78,6 +78,13 @@ class FavouriteCategoriesActivity :
 		viewBinding.recyclerView.adapter = adapter
 		viewBinding.recyclerView.addItemDecoration(TypedListSpacingDecoration(this, false))
 		viewBinding.fabAdd.setOnClickListener(this)
+		viewBinding.buttonCategorySet.setOnClickListener { anchor ->
+			org.koitharu.kotatsu.favourites.ui.sets.showCategorySetMenu(anchor, supportFragmentManager, viewModel.sets.value, viewModel.activeSet.value?.setId, viewModel.favouriteSpace, viewModel::selectSet)
+		}
+		viewModel.activeSet.observe(this) { set ->
+			selectionController.clear()
+			viewBinding.buttonCategorySet.text = getString(R.string.category_set_selector, set?.title.orEmpty())
+		}
 
 		reorderHelper = ItemTouchHelper(ReorderHelperCallback()).apply {
 			attachToRecyclerView(viewBinding.recyclerView)
@@ -111,11 +118,8 @@ class FavouriteCategoriesActivity :
 
 	override fun onClick(v: View) {
 		when (v.id) {
-			R.id.fab_add -> if (viewModel.favouriteSpace == FavouriteSpace.NORMAL) {
-				router.openFavoriteCategoryCreate()
-			} else {
-				startActivity(privateCategoryEditIntent(FavouritesCategoryEditActivity.NO_ID))
-			}
+			R.id.fab_add -> router.openFavoriteCategoryCreate(viewModel.favouriteSpace, viewModel.activeSet.value?.setId, viewModel.selectedContentType)
+
 		}
 	}
 

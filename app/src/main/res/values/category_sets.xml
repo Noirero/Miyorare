@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="category_sets">Category sets</string>
+	<string name="category_set_selector">Set: %1$s</string>
+	<string name="category_set_create">Create Set</string>
+	<string name="category_set_manage">Manage Sets</string>
+	<string name="category_set_rename">Rename Set</string>
+	<string name="category_set_move">Move to Set</string>
+	<string name="category_set_move_delete">Move categories &amp; delete Set</string>
+	<string name="category_set_delete">Delete Set</string>
+	<string name="category_set_delete_categories">Delete Set and categories</string>
+	<string name="category_set_delete_confirm">Delete “%1$s”? Move its %2$d categories (%3$d distinct titles) to another Set.</string>
+	<string name="category_set_destructive_confirm">Permanently remove Set “%1$s” and its %2$d categories (%3$d distinct titles)? Favourite memberships in these categories will be removed.</string>
+	<string name="category_set_last">The last Set cannot be deleted. You can rename it.</string>
+	<string name="category_set_duplicate_title">This name already exists here. Choose another name.</string>
+	<string name="category_set_search">Search categories in this Set</string>
+	<string name="category_set_empty">No matching categories in this Set</string>
+	<string name="category_set_up">Move Set up</string>
+	<string name="category_set_down">Move Set down</string>
+	<string name="category_set_page">Page %1$d of %2$d</string>
+	<string name="category_set_target">Destination Set</string>
+	<string name="category_set_name">Set name</string>
+</resources>
