@@ -1,12 +1,15 @@
 <resources>
     <item name="nav_discovery_hub" type="id" />
     <item name="discovery_hub_compose" type="id" />
+    <item name="shared_search_owner" type="id" />
     <string name="discovery_hub">Home</string>
     <string name="main_utilities">Reader Journey and settings</string>
     <string name="hub_navigation_fixed_info">Favorites stays at the left and Home stays in the center. Configure the three slots below: the first appears before Home, the other two after it.</string>
     <string name="hub_replace_destination">Replace destination</string>
     <string name="hub_provider">Catalogue provider</string>
     <string name="hub_search_catalogue">Search catalogue</string>
+    <string name="hub_search_hint_provider">Search manga &amp; novels on %1$s</string>
+    <string name="hub_discovery_subtitle">Discover new manga &amp; novels</string>
     <string name="hub_all">All</string>
     <string name="hub_manga">Manga</string>
     <string name="hub_novel">Novel</string>
@@ -18,8 +21,12 @@
     <string name="hub_most_favorited">Most favorited</string>
     <string name="hub_section_title">%1$s · %2$s</string>
     <string name="hub_see_all">See all</string>
+    <string name="hub_view_details">View details</string>
     <string name="hub_refresh">Refresh catalogue</string>
     <string name="hub_loading">Loading catalogue</string>
+    <string name="hub_cached_refreshing">Saved data · updating…</string>
+    <string name="hub_offline_cached">Offline · showing saved data</string>
+    <string name="hub_partial_update">Some catalogue sections could not be updated</string>
     <string name="hub_empty">No titles found</string>
     <string name="hub_search_hint">Search titles in %1$s</string>
     <string name="hub_search_start">Search for a manga or novel title.</string>
@@ -44,9 +51,13 @@
     <string name="hub_provider_page">Open in %1$s</string>
     <string name="hub_attribution">Catalogue data: %1$s</string>
     <string name="hub_score">Score: %1$s</string>
+    <string name="hub_score_compact">★ %1$s</string>
     <string name="hub_rank">Rank: %1$d</string>
+    <string name="hub_rank_label">Rank</string>
     <string name="hub_popularity">Popularity rank: %1$d</string>
+    <string name="hub_popularity_label">Popularity</string>
     <string name="hub_readers">Readers: %1$d</string>
+    <string name="hub_readers_label">Readers</string>
     <string name="hub_genres">Genres</string>
     <string name="hub_staff">Authors and staff</string>
     <string name="hub_alternative_titles">Alternative titles</string>

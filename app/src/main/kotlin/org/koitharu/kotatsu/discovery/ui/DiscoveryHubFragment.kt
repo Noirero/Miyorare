@@ -10,11 +10,20 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.main.ui.MainActivity
+import org.koitharu.kotatsu.main.ui.hasSharedSearchBar
+import org.koitharu.kotatsu.main.ui.installSharedSearchBarOwner
+import org.koitharu.kotatsu.main.ui.releaseSharedSearchBarOwner
+import org.koitharu.kotatsu.main.ui.updateSharedSearchBarHint
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import javax.inject.Inject
@@ -24,19 +33,83 @@ class DiscoveryHubFragment : Fragment() {
 	@Inject lateinit var imageLoader: ImageLoader
 	private val viewModel by viewModels<DiscoveryHubViewModel>()
 	private val scrollRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
 	fun scrollToTop() { scrollRequests.tryEmit(Unit) }
+
 	override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View = ComposeView(requireContext()).apply {
 		id = R.id.discovery_hub_compose
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent { MiyorareTheme {
 			val state by viewModel.state.collectAsState()
-			DiscoveryHubScreen(state, viewModel.services, imageLoader, viewModel::selectProvider, viewModel::selectFilter, viewModel::refresh,
-				onSearch = { startActivity(TrackerCatalogActivity.searchIntent(requireContext(), state.request.service, state.request.filter)) },
+			DiscoveryHubScreen(
+				state = state,
+				services = viewModel.services,
+				imageLoader = imageLoader,
+				onProvider = viewModel::selectProvider,
+				onFilter = viewModel::selectFilter,
+				onRefresh = viewModel::refresh,
+				onSearch = ::openTrackerSearch,
 				onItem = { startActivity(TrackerCatalogActivity.detailsIntent(requireContext(), it)) },
 				onSection = { startActivity(TrackerCatalogActivity.sectionIntent(requireContext(), it)) },
 				onAttribution = { router.openExternalBrowser(when (state.request.service) { ScrobblerService.ANILIST -> "https://anilist.co"; ScrobblerService.MAL -> "https://myanimelist.net"; else -> "https://kitsu.app" }) },
 				scrollRequests = scrollRequests,
+				showLocalSearch = (activity as? MainActivity)?.hasSharedSearchBar() != true,
 			)
 		} }
+	}
+
+	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+		super.onViewCreated(view, savedInstanceState)
+		viewLifecycleOwner.lifecycleScope.launch {
+			viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+				viewModel.state.collect { state ->
+					if (!isHidden) {
+						(activity as? MainActivity)?.updateSharedSearchBarHint(this@DiscoveryHubFragment, searchHint(state.request.service))
+					}
+				}
+			}
+		}
+		if (!isHidden) installDiscoverySearchHandler()
+	}
+
+	override fun onResume() {
+		super.onResume()
+		if (!isHidden) installDiscoverySearchHandler()
+	}
+
+	override fun onHiddenChanged(hidden: Boolean) {
+		super.onHiddenChanged(hidden)
+		if (hidden) {
+			releaseDiscoverySearchHandler()
+		} else if (view != null) {
+			installDiscoverySearchHandler()
+		}
+	}
+
+	override fun onDestroyView() {
+		releaseDiscoverySearchHandler()
+		super.onDestroyView()
+	}
+
+	private fun installDiscoverySearchHandler() {
+		val host = activity as? MainActivity ?: return
+		val request = viewModel.state.value.request
+		host.installSharedSearchBarOwner(
+			owner = this,
+			hint = searchHint(request.service),
+			onClick = ::openTrackerSearch,
+		)
+	}
+
+	private fun releaseDiscoverySearchHandler() {
+		(activity as? MainActivity)?.releaseSharedSearchBarOwner(this)
+	}
+
+	private fun searchHint(service: ScrobblerService): String =
+		getString(R.string.hub_search_hint_provider, catalogProviderName(service))
+
+	private fun openTrackerSearch() {
+		val request = viewModel.state.value.request
+		startActivity(TrackerCatalogActivity.searchIntent(requireContext(), request.service, request.filter))
 	}
 }

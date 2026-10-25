@@ -5,6 +5,8 @@
     <string name="hub_replace_destination">Ganti tujuan</string>
     <string name="hub_provider">Provider katalog</string>
     <string name="hub_search_catalogue">Cari katalog</string>
+    <string name="hub_search_hint_provider">Cari manga &amp; novel di %1$s</string>
+    <string name="hub_discovery_subtitle">Temukan manga &amp; novel baru</string>
     <string name="hub_all">Semua</string>
     <string name="hub_manga">Manga</string>
     <string name="hub_novel">Novel</string>
@@ -16,8 +18,12 @@
     <string name="hub_most_favorited">Paling difavoritkan</string>
     <string name="hub_section_title">%1$s · %2$s</string>
     <string name="hub_see_all">Lihat semua</string>
+    <string name="hub_view_details">Lihat detail</string>
     <string name="hub_refresh">Segarkan katalog</string>
     <string name="hub_loading">Memuat katalog</string>
+    <string name="hub_cached_refreshing">Data tersimpan · memperbarui…</string>
+    <string name="hub_offline_cached">Offline · menampilkan data tersimpan</string>
+    <string name="hub_partial_update">Sebagian data katalog belum dapat diperbarui</string>
     <string name="hub_empty">Tidak ada judul ditemukan</string>
     <string name="hub_search_hint">Cari judul di %1$s</string>
     <string name="hub_search_start">Cari judul manga atau novel.</string>
@@ -42,9 +48,13 @@
     <string name="hub_provider_page">Buka di %1$s</string>
     <string name="hub_attribution">Data katalog: %1$s</string>
     <string name="hub_score">Nilai: %1$s</string>
+    <string name="hub_score_compact">★ %1$s</string>
     <string name="hub_rank">Peringkat: %1$d</string>
+    <string name="hub_rank_label">Peringkat</string>
     <string name="hub_popularity">Peringkat popularitas: %1$d</string>
+    <string name="hub_popularity_label">Popularitas</string>
     <string name="hub_readers">Pembaca: %1$d</string>
+    <string name="hub_readers_label">Pembaca</string>
     <string name="hub_genres">Genre</string>
     <string name="hub_staff">Penulis dan staf</string>
     <string name="hub_alternative_titles">Judul alternatif</string>
