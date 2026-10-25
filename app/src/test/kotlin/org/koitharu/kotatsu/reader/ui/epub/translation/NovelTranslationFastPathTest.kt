@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.reader.ui.epub.translation
 import java.io.IOException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -70,6 +71,48 @@ class NovelTranslationFastPathTest {
 		assertEquals(text, result.translatedText)
 		assertEquals(0, singleCalls)
 		assertEquals(2, batchCalls)
+	}
+
+	@Test
+	fun `task pool provides at least double deterministic throughput`() = runTest {
+		val text = buildString { repeat(12) { append(('A'.code + it).toChar().toString().repeat(256)) } }
+
+		suspend fun elapsed(maxConcurrency: Int): Long {
+			val capabilities = capabilities(maxConcurrency = maxConcurrency)
+			val engine = engine { request -> delay(300L); request.text }
+			val health = NovelTranslationProviderHealthController()
+			val cache = NoOpNovelTranslationResultCache
+			val reliability = NovelTranslationReliabilityServices(
+				cache = cache,
+				singleFlight = NovelTranslationSingleFlight(scope = this@runTest),
+				circuitBreaker = NovelTranslationCircuitBreaker(),
+				diagnostics = NovelTranslationDiagnostics(),
+				writeBehindCache = NovelTranslationWriteBehindCache(
+					persistent = cache,
+					scope = this@runTest,
+					flushDelayMillis = 0L,
+				),
+			)
+			val coordinator = NovelTranslationCoordinator(
+				providerResolver = NovelTranslationProviderResolver { NovelTranslationProvider(engine, capabilities) },
+				healthController = health,
+				scheduler = NovelTranslationRequestScheduler(nowMillis = { currentTime }, sleep = { delay(it) }, healthController = health),
+				retryPolicy = NovelTranslationRetryPolicy(nowMillis = { currentTime }, jitterMillis = { 0L }),
+				sleep = { delay(it) },
+				reliability = reliability,
+			)
+			val started = currentTime
+			coordinator.translate(operation(text))
+			return currentTime - started
+		}
+
+		val sequentialMillis = elapsed(maxConcurrency = 1)
+		val fastPathMillis = elapsed(maxConcurrency = 3)
+
+		assertTrue(
+			"Expected at least 2x deterministic throughput, sequential=${sequentialMillis}ms fast=${fastPathMillis}ms",
+			fastPathMillis * 2L <= sequentialMillis,
+		)
 	}
 
 	@Test
