@@ -107,6 +107,8 @@ data class NovelTranslatedSegment(
 data class NovelTranslationOperationRequest(
 	val text: CharSequence,
 	val selection: NovelTranslationSelection,
+	val beforeContext: String = "",
+	val afterContext: String = "",
 )
 
 data class NovelTranslationOperationResult(
@@ -239,6 +241,8 @@ class NovelTranslationRetryPolicy(
 		if (failedAttempt >= capabilities.maxAttempts) return null
 		val retryAfter = error.retryAfter?.let { parseRetryAfterMillis(it, nowMillis()) }
 		if (retryAfter != null) {
+			// Never retry earlier than the provider asks. If Retry-After exceeds this operation's
+			// bounded retry budget, stop rather than turning the client into a long-lived sleeper.
 			return retryAfter.takeIf { it <= capabilities.maxRetryDelayMillis }
 		}
 		if (!error.isRetryable()) return null
@@ -305,8 +309,12 @@ class NovelTranslationCoordinator(
 								targetLanguage = request.selection.targetLanguage,
 								style = request.selection.style,
 								contextAware = request.selection.contextAware,
-								beforeContext = if (request.selection.contextAware) segments.getOrNull(index - 1)?.text.orEmpty() else "",
-								afterContext = if (request.selection.contextAware) segments.getOrNull(index + 1)?.text.orEmpty() else "",
+								beforeContext = if (request.selection.contextAware) {
+									segments.getOrNull(index - 1)?.text ?: request.beforeContext
+								} else "",
+								afterContext = if (request.selection.contextAware) {
+									segments.getOrNull(index + 1)?.text ?: request.afterContext
+								} else "",
 							),
 						)
 					}
@@ -400,10 +408,15 @@ internal fun Throwable.toNovelTranslationFailure(): NovelTranslationFailure = wh
 		)
 	}
 	is NovelTranslationException.Configuration -> NovelTranslationFailure(
-		NovelTranslationFailureCategory.CONFIGURATION, message = message ?: "Translation configuration is invalid", cause = this,
+		NovelTranslationFailureCategory.CONFIGURATION,
+		message = message ?: "Translation configuration is invalid",
+		cause = this,
 	)
 	is NovelTranslationException.Authentication -> NovelTranslationFailure(
-		NovelTranslationFailureCategory.AUTHENTICATION, statusCode = 401, message = message ?: "Translation authorization failed", cause = this,
+		NovelTranslationFailureCategory.AUTHENTICATION,
+		statusCode = 401,
+		message = message ?: "Translation authorization failed",
+		cause = this,
 	)
 	is NovelTranslationException.RateLimited -> NovelTranslationFailure(
 		NovelTranslationFailureCategory.RATE_LIMITED,
@@ -413,7 +426,10 @@ internal fun Throwable.toNovelTranslationFailure(): NovelTranslationFailure = wh
 		cause = this,
 	)
 	is NovelTranslationException.ProviderUnavailable -> NovelTranslationFailure(
-		NovelTranslationFailureCategory.PROVIDER_UNAVAILABLE, statusCode = statusCode, message = message ?: "Translation provider is unavailable", cause = this,
+		NovelTranslationFailureCategory.PROVIDER_UNAVAILABLE,
+		statusCode = statusCode,
+		message = message ?: "Translation provider is unavailable",
+		cause = this,
 	)
 	is NovelTranslationException.RequestRejected -> NovelTranslationFailure(
 		if (statusCode == 408) NovelTranslationFailureCategory.TIMEOUT else NovelTranslationFailureCategory.REQUEST_REJECTED,
@@ -422,16 +438,24 @@ internal fun Throwable.toNovelTranslationFailure(): NovelTranslationFailure = wh
 		cause = this,
 	)
 	is NovelTranslationException.InvalidResponse -> NovelTranslationFailure(
-		NovelTranslationFailureCategory.INVALID_RESPONSE, message = message ?: "Translation provider returned an invalid response", cause = this,
+		NovelTranslationFailureCategory.INVALID_RESPONSE,
+		message = message ?: "Translation provider returned an invalid response",
+		cause = this,
 	)
 	is SocketTimeoutException, is InterruptedIOException -> NovelTranslationFailure(
-		NovelTranslationFailureCategory.TIMEOUT, message = message ?: "Translation request timed out", cause = this,
+		NovelTranslationFailureCategory.TIMEOUT,
+		message = message ?: "Translation request timed out",
+		cause = this,
 	)
 	is IOException -> NovelTranslationFailure(
-		NovelTranslationFailureCategory.NETWORK, message = message ?: "Translation network request failed", cause = this,
+		NovelTranslationFailureCategory.NETWORK,
+		message = message ?: "Translation network request failed",
+		cause = this,
 	)
 	else -> NovelTranslationFailure(
-		NovelTranslationFailureCategory.INVALID_RESPONSE, message = message ?: "Translation failed", cause = this,
+		NovelTranslationFailureCategory.INVALID_RESPONSE,
+		message = message ?: "Translation failed",
+		cause = this,
 	)
 }
 
