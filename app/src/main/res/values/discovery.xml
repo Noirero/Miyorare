@@ -1,12 +1,15 @@
 <resources>
     <item name="nav_discovery_hub" type="id" />
     <item name="discovery_hub_compose" type="id" />
+    <item name="shared_search_owner" type="id" />
     <string name="discovery_hub">Home</string>
     <string name="main_utilities">Reader Journey and settings</string>
     <string name="hub_navigation_fixed_info">Favorites stays at the left and Home stays in the center. Configure the three slots below: the first appears before Home, the other two after it.</string>
     <string name="hub_replace_destination">Replace destination</string>
     <string name="hub_provider">Catalogue provider</string>
     <string name="hub_search_catalogue">Search catalogue</string>
+    <string name="hub_search_hint_provider">Search manga &amp; novels on %1$s</string>
+    <string name="hub_discovery_subtitle">Discover new manga &amp; novels</string>
     <string name="hub_all">All</string>
     <string name="hub_manga">Manga</string>
     <string name="hub_novel">Novel</string>
