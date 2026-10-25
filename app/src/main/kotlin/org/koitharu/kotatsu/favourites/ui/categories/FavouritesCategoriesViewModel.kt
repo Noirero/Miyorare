@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
@@ -22,6 +23,8 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.requireValue
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_CONTENT_TYPE
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SET_ID
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
@@ -58,12 +61,20 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
+	init {
+		savedStateHandle.get<String>(EXTRA_FAVOURITE_CONTENT_TYPE)
+			?.let { contentTypeStore.setSelectedType(FavouriteContentType.valueOf(it), favouriteSpace) }
+	}
 	private val selectedType = contentTypeStore.selectedType(favouriteSpace)
 	val selectedContentType: FavouriteContentType
 		get() = selectedType.value
 
 	val sets = repository.observeSets(favouriteSpace).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-	val activeSet = setSelection.observe(favouriteSpace, selectedType).stateIn(viewModelScope, SharingStarted.Eagerly, null)
+	val activeSet = setSelection.observe(favouriteSpace, selectedType).onStart {
+		savedStateHandle.remove<Long>(EXTRA_FAVOURITE_SET_ID)?.let { id ->
+			setSelection.select(repository.resolveSet(id, favouriteSpace), favouriteSpace, selectedType.value)
+		}
+	}.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 	fun selectSet(set: org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity) = setSelection.select(set, favouriteSpace, selectedType.value)
 	fun moveCategories(ids: Set<Long>, setId: Long) {
 		val visible = visibleIds(ids)

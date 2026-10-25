@@ -41,7 +41,7 @@ object MiyorareFavouritesVisualSpec {
 	const val CONTENT_TOGGLE_TEXT_SP = 14f
 
 	// Category rail.
-	const val CATEGORY_RAIL_HEIGHT_DP = 38f
+	const val CATEGORY_RAIL_HEIGHT_DP = 48f
 	const val CATEGORY_RAIL_HORIZONTAL_MARGIN_DP = 14f
 	const val CATEGORY_RAIL_TOP_GAP_DP = 5f
 	const val CATEGORY_RAIL_BOTTOM_GAP_DP = 5f

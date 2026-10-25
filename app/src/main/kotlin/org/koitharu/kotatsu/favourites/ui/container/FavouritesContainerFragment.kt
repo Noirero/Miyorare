@@ -157,7 +157,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			}
 		}
 		viewModel.activeSet.observe(viewLifecycleOwner) { set ->
-			binding.buttonCategorySet.text = getString(R.string.category_set_selector, set?.title.orEmpty())
+			binding.buttonCategorySet.text = set?.title.orEmpty()
+			binding.buttonCategorySet.contentDescription = getString(R.string.category_set_accessibility, set?.title.orEmpty())
 		}
 
 		setupPrivateHub(binding)

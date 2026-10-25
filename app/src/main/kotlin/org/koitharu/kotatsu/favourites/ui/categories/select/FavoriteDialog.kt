@@ -132,7 +132,7 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 					}
 					CategorySetSelector(sets, activeSet, !isSaving, viewModel::selectSet) { create ->
 						viewModel.prepareCategoryManagement()
-						showCategorySets(parentFragmentManager, viewModel.favouriteSpace, create)
+						showCategorySets(parentFragmentManager, viewModel.favouriteSpace, create, viewModel.contentType)
 					}
 					OutlinedTextField(
 						value = query, onValueChange = { viewModel.searchQuery.value = it }, enabled = !isSaving,

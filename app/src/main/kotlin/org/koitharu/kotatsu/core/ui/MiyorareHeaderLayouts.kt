@@ -373,29 +373,42 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			)
 		}
 
+		// One rail owns the glass. The Set is context; only the destination carries selection.
+		findViewById<View>(R.id.category_navigation_row)?.background = if (privateFavourites) {
+			GradientDrawable().apply {
+				cornerRadius = surfaceRadius
+				setColor(ColorUtils.blendARGB(palette.surfaceContainer, palette.primary, 0.12f))
+				setStroke(strokeWidth, ColorUtils.setAlphaComponent(palette.outlineVariant, 126))
+			}
+		} else {
+			createNormalGlassSurface(glass!!, surfaceRadius, density, selected = false)
+		}
+		findViewById<android.widget.TextView>(R.id.button_category_set)?.apply {
+			val content = if (privateFavourites) palette.onSurfaceVariant else glass!!.contentMuted
+			setTextColor(ColorStateList(
+				arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()),
+				intArrayOf(ColorUtils.setAlphaComponent(content, 110), content),
+			))
+			compoundDrawableTintList = textColors
+			background = RippleDrawable(
+				ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 28)),
+				GradientDrawable().apply {
+					cornerRadius = controlRadius.toFloat()
+					setColor(ColorUtils.setAlphaComponent(content, 12))
+				},
+				null,
+			)
+		}
 		findViewById<MaterialButton>(R.id.button_category_picker)?.apply {
 			backgroundTintList = ColorStateList.valueOf(
-				if (privateFavourites) {
-					ColorUtils.blendARGB(palette.surfaceContainer, palette.primary, 0.12f)
-				} else {
-					glass!!.railSurface
-				},
+				if (privateFavourites) palette.primaryContainer else glass!!.selectedSurface,
 			)
-			setTextColor(if (privateFavourites) palette.onSurface else glass!!.content)
+			setTextColor(if (privateFavourites) palette.onPrimaryContainer else glass!!.content)
 			iconTint = ColorStateList.valueOf(if (privateFavourites) palette.primary else glass!!.selectedBorder)
 			cornerRadius = controlRadius
-			this.strokeWidth = if (privateFavourites) strokeWidth else 0
-			strokeColor = ColorStateList.valueOf(
-				if (privateFavourites) ColorUtils.setAlphaComponent(palette.outlineVariant, 132) else Color.TRANSPARENT,
-			)
-			if (!privateFavourites) {
-				foreground = createNormalGlassOutline(
-					glass = glass!!,
-					radius = controlRadius.toFloat(),
-					density = density,
-				)
-				elevation = 0f
-			}
+			this.strokeWidth = 0
+			foreground = null
+			elevation = 0f
 		}
 	}
 
@@ -453,29 +466,22 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
 			}
 		}
-		findViewById<TabLayout>(R.id.tabs)?.apply {
+		findViewById<LinearLayout>(R.id.category_navigation_row)?.apply {
+			minimumHeight = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HEIGHT_DP)
+			setPadding(dp(3f), dp(1f), dp(3f), dp(1f))
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				params.width = ViewGroup.LayoutParams.MATCH_PARENT
-				params.height = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HEIGHT_DP)
 				params.marginStart = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HORIZONTAL_MARGIN_DP)
 				params.marginEnd = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HORIZONTAL_MARGIN_DP)
 				params.topMargin = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_TOP_GAP_DP)
 				params.bottomMargin = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_BOTTOM_GAP_DP)
 				layoutParams = params
 			}
+		}
+		findViewById<TabLayout>(R.id.tabs)?.apply {
+			// The sibling Set chip stays pinned while this remaining-width viewport scrolls.
 			minimumHeight = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HEIGHT_DP)
-			background = createNormalGlassSurface(
-				glass = glass,
-				radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density,
-				density = density,
-				selected = false,
-			)
-			setPadding(
-				dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_INSET_DP),
-				dp(1f),
-				dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_INSET_DP),
-				dp(1f),
-			)
+			background = null
+			setPadding(0, 0, 0, 0)
 			elevation = 0f
 			(getChildAt(0) as? LinearLayout)?.apply {
 				showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE

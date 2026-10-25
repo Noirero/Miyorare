@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.fragment.app.FragmentManager
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.favourites.data.*
+import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 
 @Composable
 fun CategorySetSelector(
@@ -44,6 +45,7 @@ fun showCategorySetMenu(
 	anchor: View, manager: FragmentManager, sets: List<FavouriteCategorySetEntity>, activeId: Long?,
 	space: FavouriteSpace, onSelect: (FavouriteCategorySetEntity) -> Unit,
 ) {
+	if (!anchor.isEnabled) return
 	PopupMenu(anchor.context, anchor).apply {
 		sets.forEachIndexed { index, set -> menu.add(0, index + 1, index, set.title).apply { isCheckable = true; isChecked = set.setId == activeId } }
 		menu.add(1, -1, sets.size, R.string.category_set_create)
@@ -57,9 +59,18 @@ fun showCategorySetMenu(
 	}
 }
 
-fun showCategorySets(manager: FragmentManager, space: FavouriteSpace, create: Boolean = false) {
+fun showCategorySets(
+	manager: FragmentManager,
+	space: FavouriteSpace,
+	create: Boolean = false,
+	contentType: FavouriteContentType? = null,
+) {
 	if (manager.findFragmentByTag("category_sets") != null) return
 	CategorySetsDialog().apply {
-		arguments = Bundle().apply { putInt(EXTRA_FAVOURITE_SPACE, space.dbValue); putBoolean("create", create) }
+		arguments = Bundle().apply {
+			putInt(EXTRA_FAVOURITE_SPACE, space.dbValue)
+			putBoolean("create", create)
+			contentType?.let { putString(EXTRA_FAVOURITE_CONTENT_TYPE, it.name) }
+		}
 	}.show(manager, "category_sets")
 }

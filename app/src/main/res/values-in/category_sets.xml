@@ -20,4 +20,17 @@
 	<string name="category_set_page">Halaman %1$d dari %2$d</string>
 	<string name="category_set_target">Set tujuan</string>
 	<string name="category_set_name">Nama Set</string>
+	<string name="category_set_accessibility">Set kategori: %1$s</string>
+	<string name="category_set_manage_subtitle">Atur, ubah nama, atau hapus set koleksi kamu.</string>
+	<string name="category_set_active">Set aktif</string>
+	<string name="category_set_no_categories">Tidak ada kategori</string>
+	<string name="category_set_create_new">Buat Set Baru</string>
+	<string name="category_set_rename_action">Ubah nama</string>
+	<string name="category_set_manage_categories">Pindahkan kategori…</string>
+	<string name="category_set_overflow">Tindakan untuk Set %1$s</string>
+	<string name="category_set_drag">Urutkan Set %1$s</string>
+	<plurals name="category_set_category_count">
+		<item quantity="one">%d kategori</item>
+		<item quantity="other">%d kategori</item>
+	</plurals>
 </resources>

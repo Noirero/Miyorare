@@ -283,6 +283,10 @@ class FavouritesRepository @Inject constructor(
 
 	suspend fun getSets(space: FavouriteSpace): List<FavouriteCategorySetEntity> = db.ensureCategorySets(space)
 
+	fun observeSetCategoryCounts(space: FavouriteSpace): Flow<Map<Long, Int>> =
+		db.getFavouriteCategorySetsDao().observeCategoryCounts(space.dbValue)
+			.map { counts -> counts.associate { it.setId to it.categoryCount } }.distinctUntilChanged()
+
 	suspend fun resolveSet(id: Long?, space: FavouriteSpace): FavouriteCategorySetEntity {
 		val sets = getSets(space)
 		return sets.firstOrNull { it.setId == id } ?: checkNotNull(sets.firstOrNull()) { "Missing Favourite Set" }
