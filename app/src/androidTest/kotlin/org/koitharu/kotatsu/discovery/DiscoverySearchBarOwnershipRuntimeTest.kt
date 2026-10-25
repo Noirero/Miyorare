@@ -3,7 +3,6 @@ package org.koitharu.kotatsu.discovery
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -31,7 +30,6 @@ import org.koitharu.kotatsu.alternatives.domain.AlternativeSearchEvent
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.discovery.data.CatalogSnapshotStore
-import org.koitharu.kotatsu.discovery.data.DiscoveryCatalogModule
 import org.koitharu.kotatsu.discovery.data.TrackerCatalogRepository
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.discovery.ui.CatalogArguments
