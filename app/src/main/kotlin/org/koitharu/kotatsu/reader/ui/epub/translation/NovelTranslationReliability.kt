@@ -74,11 +74,23 @@ internal fun novelTranslationDigest(vararg values: String): String {
 interface NovelTranslationResultCache {
 	suspend fun read(key: NovelTranslationSemanticKey): String?
 	suspend fun write(key: NovelTranslationSemanticKey, translatedText: String): Boolean
+
+	suspend fun readMany(keys: Collection<NovelTranslationSemanticKey>): Map<NovelTranslationSemanticKey, String> = buildMap {
+		keys.forEach { key -> read(key)?.let { put(key, it) } }
+	}
+
+	suspend fun writeMany(values: Map<NovelTranslationSemanticKey, String>): Int {
+		var stored = 0
+		values.forEach { (key, value) -> if (write(key, value)) stored++ }
+		return stored
+	}
 }
 
 object NoOpNovelTranslationResultCache : NovelTranslationResultCache {
 	override suspend fun read(key: NovelTranslationSemanticKey): String? = null
 	override suspend fun write(key: NovelTranslationSemanticKey, translatedText: String): Boolean = false
+	override suspend fun readMany(keys: Collection<NovelTranslationSemanticKey>) = emptyMap<NovelTranslationSemanticKey, String>()
+	override suspend fun writeMany(values: Map<NovelTranslationSemanticKey, String>) = 0
 }
 
 internal class NovelTranslationCacheCorruptionException(
@@ -108,12 +120,34 @@ class NovelTranslationSemanticCache internal constructor(
 		}
 	}
 
+	override suspend fun readMany(keys: Collection<NovelTranslationSemanticKey>): Map<NovelTranslationSemanticKey, String> =
+		withContext(Dispatchers.IO) {
+			mutex.withLock {
+				initializeLocked()
+				buildMap {
+					keys.forEach { key -> readLocked(key)?.let { put(key, it) } }
+				}
+			}
+		}
+
 	override suspend fun write(key: NovelTranslationSemanticKey, translatedText: String): Boolean = withContext(Dispatchers.IO) {
 		val bytes = translatedText.toByteArray(Charsets.UTF_8)
 		if (bytes.isEmpty() || bytes.size > MAX_ENTRY_BYTES) return@withContext false
 		mutex.withLock {
 			initializeLocked()
 			writeLocked(key, bytes)
+		}
+	}
+
+	override suspend fun writeMany(values: Map<NovelTranslationSemanticKey, String>): Int = withContext(Dispatchers.IO) {
+		mutex.withLock {
+			initializeLocked()
+			var stored = 0
+			values.forEach { (key, value) ->
+				val bytes = value.toByteArray(Charsets.UTF_8)
+				if (bytes.isNotEmpty() && bytes.size <= MAX_ENTRY_BYTES && writeLocked(key, bytes)) stored++
+			}
+			stored
 		}
 	}
 
@@ -182,6 +216,8 @@ class NovelTranslationSemanticCache internal constructor(
 				output.writeUTF(novelTranslationDigest(payload.toString(Charsets.UTF_8)))
 				output.write(payload)
 				output.flush()
+				// Durable sync remains intentionally here. Fast-path callers use the write-behind
+				// queue, so this no longer blocks translation/network progression.
 				stream.fd.sync()
 			}
 			if (!temporary.renameTo(target)) return false
@@ -245,8 +281,14 @@ class NovelTranslationSingleFlight(
 		val events: MutableSharedFlow<NovelTranslationFlightEvent>,
 		var subscribers: Int,
 	)
+	private class BatchFlight(
+		val result: kotlinx.coroutines.Deferred<List<String>>,
+		val events: MutableSharedFlow<NovelTranslationFlightEvent>,
+		var subscribers: Int,
+	)
 
 	private val flights = HashMap<String, Flight>()
+	private val batchFlights = HashMap<String, BatchFlight>()
 
 	suspend fun execute(
 		key: NovelTranslationSemanticKey,
@@ -274,6 +316,33 @@ class NovelTranslationSingleFlight(
 		}
 	}
 
+	suspend fun executeBatch(
+		keys: List<NovelTranslationSemanticKey>,
+		onEvent: suspend (NovelTranslationFlightEvent) -> Unit = {},
+		producer: suspend (emit: suspend (NovelTranslationFlightEvent) -> Unit) -> List<String>,
+	): List<String> {
+		val flightKey = novelTranslationDigest(BATCH_FLIGHT_VERSION, keys.joinToString("|") { it.digest })
+		val flight = synchronized(batchFlights) {
+			batchFlights[flightKey]?.also { it.subscribers++ } ?: run {
+				val events = MutableSharedFlow<NovelTranslationFlightEvent>(extraBufferCapacity = 16)
+				val result = scope.async(start = CoroutineStart.LAZY) { producer { event -> events.emit(event) } }
+				BatchFlight(result, events, 1).also { batchFlights[flightKey] = it }
+			}
+		}
+		return coroutineScope {
+			val eventJob = launch(start = CoroutineStart.UNDISPATCHED) {
+				flight.events.collect { event -> onEvent(event) }
+			}
+			try {
+				flight.result.start()
+				flight.result.await()
+			} finally {
+				eventJob.cancel()
+				releaseBatch(flightKey, flight)
+			}
+		}
+	}
+
 	private fun release(key: String, flight: Flight) {
 		synchronized(flights) {
 			if (flights[key] !== flight) return
@@ -283,6 +352,20 @@ class NovelTranslationSingleFlight(
 				flights.remove(key)
 			}
 		}
+	}
+
+	private fun releaseBatch(key: String, flight: BatchFlight) {
+		synchronized(batchFlights) {
+			if (batchFlights[key] !== flight) return
+			flight.subscribers--
+			if (flight.subscribers <= 0) {
+				if (!flight.result.isCompleted) flight.result.cancel()
+				batchFlights.remove(key)
+			}
+	}
+
+	private companion object {
+		private const val BATCH_FLIGHT_VERSION = "translation-batch-flight-v1"
 	}
 }
 
@@ -370,8 +453,12 @@ enum class NovelTranslationDiagnosticKind {
 	CACHE_READ_ERROR_RECOVERED,
 	CACHE_STORE,
 	REQUEST_ATTEMPT,
+	BATCH_REQUEST,
 	RETRY,
 	SUCCESS,
+	FIRST_VISIBLE_RESULT,
+	OPERATION_COMPLETE,
+	PROVIDER_PRESSURE_CHANGED,
 	FAILURE,
 	CIRCUIT_REJECTED,
 	CANCELLED,
@@ -387,12 +474,18 @@ data class NovelTranslationDiagnosticEvent(
 	val attempt: Int? = null,
 	val retryDelayMillis: Long? = null,
 	val segmentCount: Int? = null,
+	val batchItems: Int? = null,
+	val activeConcurrency: Int? = null,
+	val requestGapMillis: Long? = null,
+	val pressureLevel: Int? = null,
+	val priorityClass: String? = null,
+	val cacheTier: String? = null,
 	val circuitState: NovelTranslationCircuitState? = null,
 	val cancellationCategory: String? = null,
 )
 
 /** Metadata-only ring buffer. It intentionally has no fields for source/result text, keys, or headers. */
-class NovelTranslationDiagnostics(private val capacity: Int = 128) {
+class NovelTranslationDiagnostics(private val capacity: Int = 256) {
 	private val events = ArrayDeque<NovelTranslationDiagnosticEvent>()
 
 	fun record(event: NovelTranslationDiagnosticEvent) = synchronized(events) {
@@ -410,6 +503,8 @@ class NovelTranslationReliabilityServices(
 	val singleFlight: NovelTranslationSingleFlight,
 	val circuitBreaker: NovelTranslationCircuitBreaker,
 	val diagnostics: NovelTranslationDiagnostics,
+	val memoryCache: NovelTranslationMemoryCache = NovelTranslationMemoryCache(),
+	val writeBehindCache: NovelTranslationWriteBehindCache = NovelTranslationWriteBehindCache(cache),
 )
 
 /** Process-shared reliability state; disk results survive process/Reader recreation independently. */
@@ -417,14 +512,26 @@ object NovelTranslationProcessReliability {
 	private val singleFlight = NovelTranslationSingleFlight()
 	private val circuitBreaker = NovelTranslationCircuitBreaker()
 	private val diagnostics = NovelTranslationDiagnostics()
+	private val memoryCache = NovelTranslationMemoryCache()
 	@Volatile private var cache: NovelTranslationSemanticCache? = null
+	@Volatile private var writeBehind: NovelTranslationWriteBehindCache? = null
 
 	fun services(context: Context): NovelTranslationReliabilityServices {
 		val appContext = context.applicationContext
 		val persistentCache = cache ?: synchronized(this) {
 			cache ?: NovelTranslationSemanticCache(appContext).also { cache = it }
 		}
-		return NovelTranslationReliabilityServices(persistentCache, singleFlight, circuitBreaker, diagnostics)
+		val writer = writeBehind ?: synchronized(this) {
+			writeBehind ?: NovelTranslationWriteBehindCache(persistentCache).also { writeBehind = it }
+		}
+		return NovelTranslationReliabilityServices(
+			cache = persistentCache,
+			singleFlight = singleFlight,
+			circuitBreaker = circuitBreaker,
+			diagnostics = diagnostics,
+			memoryCache = memoryCache,
+			writeBehindCache = writer,
+		)
 	}
 }
 
