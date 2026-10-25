@@ -46,8 +46,10 @@ class NovelTranslationDialogController(
 	private val fragment: Fragment,
 	private val httpClient: OkHttpClient,
 	private val state: NovelTranslationSheetState = NovelTranslationSheetState(),
+	private val mangaId: Long? = null,
 	private val onRestoreOriginal: () -> Unit,
 	private val onShowTranslation: (NovelTranslationDisplayMode) -> Unit = {},
+	private val onAutoTranslateChanged: (Boolean) -> Unit = {},
 	private val onTranslate: (NovelTranslationSelection) -> Unit,
 ) {
 
@@ -56,7 +58,9 @@ class NovelTranslationDialogController(
 	private val secrets by lazy { NovelTranslationSecrets(context) }
 
 	fun show() {
-		val projectionActionsEnabled = state.hasCachedTranslation && !isActiveTextSelectionInvocation()
+		val selectionInvocation = isActiveTextSelectionInvocation()
+		val projectionActionsEnabled = state.hasCachedTranslation && !selectionInvocation
+		val autoMangaId = mangaId?.takeIf { it > 0L && !selectionInvocation }
 		val root = LinearLayout(context).apply {
 			orientation = LinearLayout.VERTICAL
 			setPadding(dp(20), dp(12), dp(20), dp(20))
@@ -117,6 +121,21 @@ class NovelTranslationDialogController(
 			}
 		}
 
+		val autoTranslateSwitch = autoMangaId?.let { id ->
+			MaterialSwitch(context).apply {
+				setText(R.string.novel_translation_auto_translate_this_novel)
+				isChecked = settings.isAutoTranslateActive(id)
+			}
+		}
+		autoTranslateSwitch?.let { root.addView(it, matchWidth()) }
+		val autoTranslateAiNote = autoMangaId?.let {
+			TextView(context).apply {
+				setPadding(0, 0, 0, dp(8))
+				visibility = View.GONE
+			}
+		}
+		autoTranslateAiNote?.let { root.addView(it, matchWidth()) }
+
 		val bilingualSwitch = MaterialSwitch(context).apply {
 			setText(R.string.novel_translation_bilingual_view)
 			isChecked = when (currentMode) {
@@ -156,10 +175,31 @@ class NovelTranslationDialogController(
 		fun selectedEngine(): NovelTranslationEngineKind =
 			engines[serviceSpinner.selectedItemPosition.coerceIn(engines.indices)]
 
+		var updatingAutoSwitch = false
+		fun updateAutoUi() {
+			val id = autoMangaId ?: return
+			if (settings.isAutoTranslateEnabled(id) && !settings.isAutoTranslateActive(id)) {
+				settings.setAutoTranslateEnabled(id, false)
+				onAutoTranslateChanged(false)
+			}
+			updatingAutoSwitch = true
+			autoTranslateSwitch?.isChecked = settings.isAutoTranslateActive(id)
+			updatingAutoSwitch = false
+			val ai = selectedEngine() == NovelTranslationEngineKind.AI
+			autoTranslateAiNote?.visibility = if (ai) View.VISIBLE else View.GONE
+			if (ai) {
+				autoTranslateAiNote?.text = context.getString(
+					R.string.novel_translation_auto_ai_note,
+					settings.provider.displayName,
+				)
+			}
+		}
+
 		fun updateServiceUi() {
 			val ai = selectedEngine() == NovelTranslationEngineKind.AI
 			advancedButton.isEnabled = ai
 			privacyNote.visibility = if (ai) View.VISIBLE else View.GONE
+			updateAutoUi()
 		}
 		serviceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
 			override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -170,7 +210,32 @@ class NovelTranslationDialogController(
 		}
 		updateServiceUi()
 
-		advancedButton.setOnClickListener { showAiSettings(continueToTranslate = false) }
+		autoTranslateSwitch?.setOnCheckedChangeListener { button, checked ->
+			if (updatingAutoSwitch) return@setOnCheckedChangeListener
+			val id = autoMangaId ?: return@setOnCheckedChangeListener
+			settings.engine = selectedEngine()
+			if (checked && settings.engine == NovelTranslationEngineKind.AI && !isAiConfigured()) {
+				settings.setAutoTranslateEnabled(id, false)
+				updatingAutoSwitch = true
+				button.isChecked = false
+				updatingAutoSwitch = false
+				Toast.makeText(context, R.string.novel_translation_auto_requires_ai_setup, Toast.LENGTH_LONG).show()
+				showAiSettings(continueToTranslate = false)
+				return@setOnCheckedChangeListener
+			}
+			settings.setAutoTranslateEnabled(id, checked)
+			onAutoTranslateChanged(checked)
+		}
+
+		advancedButton.setOnClickListener {
+			autoMangaId?.let { id ->
+				val wasEnabled = settings.isAutoTranslateEnabled(id)
+				settings.setAutoTranslateEnabled(id, false)
+				if (wasEnabled) onAutoTranslateChanged(false)
+				updateAutoUi()
+			}
+			showAiSettings(continueToTranslate = false)
+		}
 
 		val primary = MaterialButton(context).apply { isAllCaps = false }
 		val translateAgain = MaterialButton(context).apply {
