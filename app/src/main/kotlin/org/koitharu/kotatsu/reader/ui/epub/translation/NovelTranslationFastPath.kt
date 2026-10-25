@@ -154,29 +154,57 @@ class NovelTranslationProviderHealthController {
 
 /** Small process-local LRU in front of the durable semantic translation cache. */
 class NovelTranslationMemoryCache(private val maxEntries: Int = DEFAULT_MAX_ENTRIES) {
-	private val entries = object : LinkedHashMap<String, String>(maxEntries, 0.75f, true) {
-		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean =
+	private data class Entry(val value: String, val backingStamp: String?)
+
+	private val entries = object : LinkedHashMap<String, Entry>(maxEntries, 0.75f, true) {
+		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?): Boolean =
 			size > maxEntries.coerceAtLeast(1)
 	}
 
-	fun read(key: NovelTranslationSemanticKey): String? = synchronized(entries) { entries[key.digest] }
+	@Volatile
+	private var backingCache: NovelTranslationCacheCoherence? = null
+
+	internal fun bindBackingCache(cache: NovelTranslationResultCache) {
+		backingCache = cache as? NovelTranslationCacheCoherence
+	}
+
+	fun read(key: NovelTranslationSemanticKey): String? = synchronized(entries) {
+		val entry = entries[key.digest] ?: return@synchronized null
+		if (!isCurrent(key, entry)) {
+			entries.remove(key.digest)
+			return@synchronized null
+		}
+		entry.value
+	}
 
 	fun readMany(keys: Collection<NovelTranslationSemanticKey>): Map<NovelTranslationSemanticKey, String> =
 		synchronized(entries) {
 			buildMap {
-				keys.forEach { key -> this@NovelTranslationMemoryCache.entries[key.digest]?.let { put(key, it) } }
+				keys.forEach { key ->
+					val entry = this@NovelTranslationMemoryCache.entries[key.digest] ?: return@forEach
+					if (isCurrent(key, entry)) {
+						put(key, entry.value)
+					} else {
+						this@NovelTranslationMemoryCache.entries.remove(key.digest)
+					}
+				}
 			}
 		}
 
 	fun write(key: NovelTranslationSemanticKey, value: String) = synchronized(entries) {
-		entries[key.digest] = value
+		entries[key.digest] = Entry(value, backingCache?.backingStamp(key))
 	}
 
 	fun writeMany(values: Map<NovelTranslationSemanticKey, String>) = synchronized(entries) {
-		values.forEach { (key, value) -> entries[key.digest] = value }
+		values.forEach { (key, value) -> entries[key.digest] = Entry(value, backingCache?.backingStamp(key)) }
 	}
 
 	internal fun clear() = synchronized(entries) { entries.clear() }
+
+	private fun isCurrent(key: NovelTranslationSemanticKey, entry: Entry): Boolean {
+		val cache = backingCache ?: return true
+		return cache.backingStamp(key) == entry.backingStamp
+	}
 
 	private companion object {
 		private const val DEFAULT_MAX_ENTRIES = 512
