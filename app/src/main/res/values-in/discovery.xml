@@ -18,8 +18,13 @@
     <string name="hub_most_favorited">Paling difavoritkan</string>
     <string name="hub_section_title">%1$s · %2$s</string>
     <string name="hub_see_all">Lihat semua</string>
+    <string name="hub_view_details">Lihat detail</string>
     <string name="hub_refresh">Segarkan katalog</string>
     <string name="hub_loading">Memuat katalog</string>
+    <string name="hub_cached_refreshing">Data tersimpan · memperbarui…</string>
+    <string name="hub_offline_cached">Offline · menampilkan data tersimpan</string>
+    <string name="hub_cached_refresh_failed">Gagal memperbarui · menampilkan data tersimpan</string>
+    <string name="hub_partial_update">Sebagian data katalog belum dapat diperbarui</string>
     <string name="hub_empty">Tidak ada judul ditemukan</string>
     <string name="hub_search_hint">Cari judul di %1$s</string>
     <string name="hub_search_start">Cari judul manga atau novel.</string>
@@ -44,6 +49,7 @@
     <string name="hub_provider_page">Buka di %1$s</string>
     <string name="hub_attribution">Data katalog: %1$s</string>
     <string name="hub_score">Nilai: %1$s</string>
+    <string name="hub_score_compact">★ %1$s</string>
     <string name="hub_rank">Peringkat: %1$d</string>
     <string name="hub_popularity">Peringkat popularitas: %1$d</string>
     <string name="hub_readers">Pembaca: %1$d</string>
