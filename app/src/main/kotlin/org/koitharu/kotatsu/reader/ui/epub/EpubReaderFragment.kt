@@ -1264,7 +1264,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val entries = buildList {
 			chapters.forEachIndexed { index, chapter ->
 				if (chapter.sections.isEmpty()) add(ContentsEntry(chapter.title, index, 0))
-				else chapter.sections.forEach { section -> add(ContentsEntry(section.first, index, section.second))
+				else chapter.sections.forEach { section -> add(ContentsEntry(section.first, index, section.second)) }
 			}
 		}
 		val selected = entries.indexOfLast { it.chapter == locator.chapter && it.offset <= locator.offset }
