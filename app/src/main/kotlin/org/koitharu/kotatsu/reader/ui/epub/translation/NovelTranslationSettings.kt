@@ -11,7 +11,8 @@ import android.content.Context
  */
 class NovelTranslationSettings(context: Context) {
 
-	private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+	internal val applicationContext: Context = context.applicationContext
+	private val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
 	var engine: NovelTranslationEngineKind
 		get() = NovelTranslationEngineKind.fromId(prefs.getString(KEY_ENGINE, null))
@@ -196,6 +197,6 @@ enum class NovelAiProvider(
 	);
 
 	companion object {
-		fun fromId(value: String?): NovelAiProvider = entries.firstOrNull { it.id == value } ?: GEMINI
+		fun fromId(value: String?): NovelTranslationEngineKind = entries.firstOrNull { it.id == value } ?: ONLINE
 	}
 }
