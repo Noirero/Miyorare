@@ -69,41 +69,45 @@ class CategorySetsUiTest {
 	private val sets = HashMap<FavouriteSpace, List<FavouriteCategorySetEntity>>()
 	private val categoryIds = HashMap<FavouriteSpace, List<List<Long>>>()
 
-	@Before fun prepare() = runBlocking {
-		hilt.inject()
-		// Category Sets Private UI tests exercise an already-authenticated workspace. Other runtime
-		// classes in the same instrumentation process may deliberately lock that singleton first.
-		privateSession.unlock()
-		// HiltTestApplication omits the production background warm-up. Build the real image/network
-		// graph on the instrumentation thread before an Activity injects it on the main thread.
-		imageLoaderProvider.get()
-		runCatching { WorkManager.getInstance(context) }.getOrElse { WorkManager.initialize(context, Configuration.Builder().build()) }
-		database.clearAllTables()
-		context.getSharedPreferences("normal_favourite_category_memory", 0).edit().clear().commit()
-		context.getSharedPreferences("favourite_set_navigation", 0).edit().clear().commit()
-		types.removeCategories(types.novelCategoryIds.value)
-		settings.isOnboardingCompleted = true
-		settings.setMiyorareDesignStyle(org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle.MODERN)
-		display.setShowCategoryTabs(FavouriteContentType.MANGA, true)
-		display.setShowCategoryTabs(FavouriteContentType.NOVEL, true)
-		settings.isAllFavouritesVisible = true
-		settings.mainNavItems = listOf(NavItem.FAVORITES, NavItem.UPDATED, NavItem.HISTORY, NavItem.EXPLORE)
-		for (space in FavouriteSpace.entries) {
-			types.setSelectedType(FavouriteContentType.MANGA, space)
-			for (type in FavouriteContentType.entries) { quickFilters.clear(type, space); sourceFilters.clear(type, space) }
-			display.setVirtualCategoryVisible(space, FavouriteContentType.MANGA, DOWNLOADED_FAVOURITES_CATEGORY_ID, true)
-			display.setVirtualCategoryVisible(space, FavouriteContentType.MANGA, LOCAL_FAVOURITES_CATEGORY_ID, true)
-			val first = repository.getSets(space).first()
-			val second = repository.createSet("Second", space)
-			sets[space] = listOf(first, second)
-			categoryIds[space] = listOf(first, second).mapIndexed { setIndex, set ->
-				List(if (setIndex == 0) 80 else 15) { index ->
-					repository.createCategory("${if (setIndex == 0) "U" else "S"} ${index.toString().padStart(3, '0')}", ListSortOrder.NEWEST, false, false, true, space, set.setId).id
-				}
-			}
-			selection.select(first, space, FavouriteContentType.MANGA)
+	@Before fun prepare() {
+		instrumentation.runOnMainSync {
+			hilt.inject()
+			// Category Sets Private UI tests exercise an already-authenticated workspace. Other runtime
+			// classes in the same instrumentation process may deliberately lock that singleton first.
+			privateSession.unlock()
+			// HiltTestApplication omits the production background warm-up. Build the real image/network
+			// graph on the main instrumentation thread before an Activity injects it.
+			imageLoaderProvider.get()
+			runCatching { WorkManager.getInstance(context) }.getOrElse { WorkManager.initialize(context, Configuration.Builder().build()) }
 		}
-		types.activateSpace(FavouriteSpace.NORMAL)
+		runBlocking {
+			database.clearAllTables()
+			context.getSharedPreferences("normal_favourite_category_memory", 0).edit().clear().commit()
+			context.getSharedPreferences("favourite_set_navigation", 0).edit().clear().commit()
+			types.removeCategories(types.novelCategoryIds.value)
+			settings.isOnboardingCompleted = true
+			settings.setMiyorareDesignStyle(org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle.MODERN)
+			display.setShowCategoryTabs(FavouriteContentType.MANGA, true)
+			display.setShowCategoryTabs(FavouriteContentType.NOVEL, true)
+			settings.isAllFavouritesVisible = true
+			settings.mainNavItems = listOf(NavItem.FAVORITES, NavItem.UPDATED, NavItem.HISTORY, NavItem.EXPLORE)
+			for (space in FavouriteSpace.entries) {
+				types.setSelectedType(FavouriteContentType.MANGA, space)
+				for (type in FavouriteContentType.entries) { quickFilters.clear(type, space); sourceFilters.clear(type, space) }
+				display.setVirtualCategoryVisible(space, FavouriteContentType.MANGA, DOWNLOADED_FAVOURITES_CATEGORY_ID, true)
+				display.setVirtualCategoryVisible(space, FavouriteContentType.MANGA, LOCAL_FAVOURITES_CATEGORY_ID, true)
+				val first = repository.getSets(space).first()
+				val second = repository.createSet("Second", space)
+				sets[space] = listOf(first, second)
+				categoryIds[space] = listOf(first, second).mapIndexed { setIndex, set ->
+					List(if (setIndex == 0) 80 else 15) { index ->
+						repository.createCategory("${if (setIndex == 0) "U" else "S"} ${index.toString().padStart(3, '0')}", ListSortOrder.NEWEST, false, false, true, space, set.setId).id
+					}
+				}
+				selection.select(first, space, FavouriteContentType.MANGA)
+			}
+			types.activateSpace(FavouriteSpace.NORMAL)
+		}
 	}
 	private fun launch(space: FavouriteSpace = FavouriteSpace.NORMAL) = ActivityScenario.launch<FavouriteCategoriesActivity>(Intent(context, FavouriteCategoriesActivity::class.java).putExtra(EXTRA_FAVOURITE_SPACE, space.dbValue))
 	private fun showPicker(scenario: ActivityScenario<FavouriteCategoriesActivity>, space: FavouriteSpace, multi: Boolean = false) {
@@ -475,7 +479,8 @@ class CategorySetsUiTest {
 			scenario.onActivity { it.findViewById<android.view.View>(R.id.button_category_set).performClick() }
 			tapNativeMenu("Utama")
 			await { model.get().categories.value.count { it.id > 0 } == 80 }
-			await { runBlocking { allModel.get()!!.getAllSelectableIds() == setOf(manga.id) } }
+			await { runBlocking { allModel.get()!!.getAllSelectableIds() == setOf(manga.id) }
+			}
 		}
 	}
 	@Test fun managementContextCountsPrivateIsolationAndCategoryRoute() {
