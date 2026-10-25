@@ -150,6 +150,17 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			),
 		).attach()
 		binding.buttonCategoryPicker.setOnClickListener { showCategoryPicker() }
+		binding.buttonCategorySet.setOnClickListener { anchor ->
+			org.koitharu.kotatsu.favourites.ui.sets.showCategorySetMenu(anchor, childFragmentManager, viewModel.sets.value, viewModel.activeSet.value?.setId, viewModel.favouriteSpace) { set ->
+				rememberCurrentCategory()
+				viewModel.selectSet(set)
+			}
+		}
+		viewModel.activeSet.observe(viewLifecycleOwner) { set ->
+			binding.buttonCategorySet.text = set?.title.orEmpty()
+			binding.buttonCategorySet.contentDescription = getString(R.string.category_set_accessibility, set?.title.orEmpty())
+		}
+
 		setupPrivateHub(binding)
 		binding.stubEmpty.setOnInflateListener(this)
 		binding.toggleContentType.addOnButtonCheckedListener { _, checkedId, isChecked ->
@@ -431,6 +442,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			}
 		}
 		binding.buttonCategoryPicker.isEnabled = !isActionModeActive
+		binding.buttonCategorySet.isEnabled = !isActionModeActive
 		binding.buttonCategoryPicker.isClickable = canTap
 		binding.buttonCategoryPicker.isFocusable = canTap
 	}
@@ -767,10 +779,14 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			isGone = true
 		}
 		searchBar.isVisible = true
-		host.findViewById<MaterialButton>(R.id.button_settings)?.apply {
-			setIconResource(R.drawable.ic_settings)
-			contentDescription = getString(R.string.settings)
-			setOnClickListener { router.openSettings() }
+		if (host is org.koitharu.kotatsu.main.ui.MainActivity) {
+			host.restoreMainUtilityButton()
+		} else {
+			host.findViewById<MaterialButton>(R.id.button_settings)?.apply {
+				setIconResource(R.drawable.ic_settings)
+				contentDescription = getString(R.string.settings)
+				setOnClickListener { router.openSettings() }
+			}
 		}
 		if (edit != null) {
 			(host.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)

@@ -156,11 +156,12 @@ class AppRouter private constructor(
 
     fun openList(tag: MangaTag) = openList(tag.source, MangaListFilter(tags = setOf(tag)), null)
 
-    fun openSearch(query: String, kind: SearchKind = SearchKind.SIMPLE) {
+    fun openSearch(query: String, kind: SearchKind = SearchKind.SIMPLE, novelScope: Boolean? = null) {
         startActivity(
             Intent(contextOrNull() ?: return, SearchActivity::class.java)
                 .putExtra(KEY_QUERY, query)
-                .putExtra(KEY_KIND, kind),
+                .putExtra(KEY_KIND, kind)
+                .apply { novelScope?.let { putExtra(KEY_CATALOG_NOVEL_SCOPE, it) } },
         )
     }
 
@@ -325,8 +326,21 @@ class AppRouter private constructor(
         )
     }
 
-    fun openFavoriteCategoryCreate(space: FavouriteSpace = FavouriteSpace.NORMAL) =
-        openFavoriteCategoryEdit(FavouritesCategoryEditActivity.NO_ID, space)
+    fun openFavoriteCategoryCreate(
+        space: FavouriteSpace = FavouriteSpace.NORMAL,
+        setId: Long? = null,
+        contentType: org.koitharu.kotatsu.favourites.domain.FavouriteContentType? = null,
+    ) {
+        startActivity(
+            Intent(contextOrNull() ?: return, FavouritesCategoryEditActivity::class.java)
+                .putExtra(KEY_ID, FavouritesCategoryEditActivity.NO_ID)
+                .putExtra(EXTRA_FAVOURITE_SPACE, space.dbValue)
+                .apply {
+                    setId?.let { putExtra(org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SET_ID, it) }
+                    contentType?.let { putExtra(org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_CONTENT_TYPE, it.name) }
+                },
+        )
+    }
 
     fun openMangaUpdates() {
         startActivity(mangaUpdatesIntent(contextOrNull() ?: return))
@@ -796,6 +810,8 @@ class AppRouter private constructor(
 	private fun detailsActivityClassInstance() = DetailsExpressiveActivity::class.java
 
     companion object {
+        const val KEY_CATALOG_NOVEL_SCOPE = "catalog_novel_scope"
+
 
         fun from(view: View): AppRouter? = runCatching {
             AppRouter(view.findFragment())

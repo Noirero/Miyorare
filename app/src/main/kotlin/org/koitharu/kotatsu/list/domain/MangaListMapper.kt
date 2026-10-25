@@ -13,8 +13,10 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
+import org.koitharu.kotatsu.favourites.domain.FavouriteUnreadCounter
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
@@ -36,6 +38,7 @@ class MangaListMapper @Inject constructor(
 	private val trackingRepository: TrackingRepository,
 	private val historyRepository: HistoryRepository,
 	private val favouritesRepository: FavouritesRepository,
+	private val favouriteUnreadCounter: FavouriteUnreadCounter,
 	private val localMangaIndex: LocalMangaIndex,
 	private val dataRepository: MangaDataRepository,
 	private val db: MangaDatabase,
@@ -64,8 +67,15 @@ class MangaListMapper @Inject constructor(
 	) {
 		val options = getOptions(flags)
 		val overrides = dataRepository.getOverrides()
+		val unreadSnapshot = getUnreadSnapshot(manga, mode, options, flags)
 		manga.mapTo(destination) {
-			toListModelImpl(it, mode, options, overrides[it.id])
+			toListModelImpl(
+				manga = it,
+				mode = mode,
+				options = options,
+				override = overrides[it.id],
+				unreadCount = unreadSnapshot?.getUnreadCountOrNull(it.id),
+			)
 		}
 	}
 
@@ -73,12 +83,17 @@ class MangaListMapper @Inject constructor(
 		manga: Manga,
 		mode: ListMode,
 		@Flags flags: Int = DEFAULTS,
-	): MangaListModel = toListModelImpl(
-		manga = manga,
-		mode = mode,
-		options = getOptions(flags),
-		override = dataRepository.getOverride(manga.id),
-	)
+	): MangaListModel {
+		val options = getOptions(flags)
+		val unreadSnapshot = getUnreadSnapshot(listOf(manga), mode, options, flags)
+		return toListModelImpl(
+			manga = manga,
+			mode = mode,
+			options = options,
+			override = dataRepository.getOverride(manga.id),
+			unreadCount = unreadSnapshot?.getUnreadCountOrNull(manga.id),
+		)
+	}
 
 	suspend fun toFeedItem(logItem: TrackingLogItem): FeedItem {
 		val override = dataRepository.getOverride(logItem.manga.id)
@@ -150,6 +165,7 @@ class MangaListMapper @Inject constructor(
 		@Options options: Int,
 		override: MangaOverride?,
 		isTitleHidden: Boolean,
+		unreadCount: Int?,
 	) = MangaGridModel(
 		manga = manga,
 		override = override,
@@ -160,6 +176,7 @@ class MangaListMapper @Inject constructor(
 		isTitleHidden = isTitleHidden,
 		isTitleOverCover = settings.isTitleOverCover,
 		isGridSpacingIncreased = settings.isGridSpacingIncreased,
+		unreadCount = unreadCount,
 	)
 
 	private suspend fun toListModelImpl(
@@ -167,11 +184,12 @@ class MangaListMapper @Inject constructor(
 		mode: ListMode,
 		@Options options: Int,
 		override: MangaOverride?,
+		unreadCount: Int?,
 	): MangaListModel = when (mode) {
 		ListMode.LIST -> toCompactListModel(manga, options, override)
 		ListMode.DETAILED_LIST -> toDetailedListModel(manga, options, override)
-		ListMode.GRID -> toGridModel(manga, options, override, false)
-		ListMode.COVER_ONLY -> toGridModel(manga, options, override, true)
+		ListMode.GRID -> toGridModel(manga, options, override, false, unreadCount)
+		ListMode.COVER_ONLY -> toGridModel(manga, options, override, true, unreadCount)
 	}
 
 	private suspend fun getCounter(mangaId: Long, @Options options: Int): Int {
@@ -188,6 +206,20 @@ class MangaListMapper @Inject constructor(
 		} else {
 			null
 		}
+	}
+
+	private suspend fun getUnreadSnapshot(
+		manga: Collection<Manga>,
+		mode: ListMode,
+		@Options options: Int,
+		@Flags flags: Int,
+	): FavouriteUnreadCounter.Snapshot? {
+		if (flags and NO_MODERN_READING_STATE != 0) return null
+		if (settings.miyorareDesignStyle != MiyorareDesignStyle.MODERN || !options.isBadgeEnabled(PROGRESS)) {
+			return null
+		}
+		if (mode != ListMode.GRID && mode != ListMode.COVER_ONLY) return null
+		return favouriteUnreadCounter.getSnapshot(manga.map { it.id }, includeUnread = true)
 	}
 
 	private suspend fun isFavorite(mangaId: Long, @Options options: Int): Boolean {
@@ -230,7 +262,7 @@ class MangaListMapper @Inject constructor(
 		return options
 	}
 
-	@IntDef(DEFAULTS, NO_SAVED, NO_PROGRESS, NO_FAVORITE, NO_COUNTER, flag = true)
+	@IntDef(DEFAULTS, NO_SAVED, NO_PROGRESS, NO_FAVORITE, NO_COUNTER, NO_MODERN_READING_STATE, flag = true)
 	@Retention(AnnotationRetention.SOURCE)
 	annotation class Flags
 
@@ -251,5 +283,6 @@ class MangaListMapper @Inject constructor(
 		const val NO_PROGRESS = PROGRESS
 		const val NO_FAVORITE = FAVORITE
 		const val NO_COUNTER = COUNTER
+		const val NO_MODERN_READING_STATE = 16
 	}
 }

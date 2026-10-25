@@ -12,6 +12,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
@@ -37,10 +43,11 @@ import javax.inject.Inject
 
 @HiltViewModel
 class FavoriteDialogViewModel @Inject constructor(
-	savedStateHandle: SavedStateHandle,
+	private val savedStateHandle: SavedStateHandle,
 	private val favouritesRepository: FavouritesRepository,
 	settings: AppSettings,
 	private val contentTypeStore: FavouriteContentTypeStore,
+	private val setSelection: org.koitharu.kotatsu.favourites.domain.FavouriteSetSelectionStore,
 	@ApplicationContext appContext: Context,
 ) : BaseViewModel() {
 
@@ -50,16 +57,37 @@ class FavoriteDialogViewModel @Inject constructor(
 	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
-	private val contentType = if (manga.firstOrNull()?.isNovelContent == true) {
+	val contentType = if (manga.firstOrNull()?.isNovelContent == true) {
 		FavouriteContentType.NOVEL
 	} else {
 		FavouriteContentType.MANGA
 	}
+	val searchQuery = MutableStateFlow("")
+	val sets = favouritesRepository.observeSets(favouriteSpace)
+		.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+	val activeSet = setSelection.observe(favouriteSpace, flowOf(contentType))
+		.onEach { searchQuery.value = "" }
+		.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+	private val activeCategoryIds = activeSet.filterNotNull().flatMapLatest {
+		favouritesRepository.observeCategoriesInSet(it.setId, favouriteSpace).map { categories -> it.setId to categories }
+	}.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+
+	fun selectSet(set: org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity) {
+		if (isSaving.value) return
+		searchQuery.value = ""
+		setSelection.select(set, favouriteSpace, contentType)
+	}
+	fun getPage(setId: Long): Int = savedStateHandle["set_page:$setId"] ?: 0
+	fun rememberPage(setId: Long, page: Int) { if (searchQuery.value.isBlank()) savedStateHandle["set_page:$setId"] = page }
+
 	private val isSingleNormalFavourite = favouriteSpace == FavouriteSpace.NORMAL && manga.size == 1
 	private val categoryMemory = appContext.getSharedPreferences(CATEGORY_MEMORY_PREFS, Context.MODE_PRIVATE)
 	private val restoredCategoryIds = MutableStateFlow<Set<Long>>(emptySet())
 
-	private val pendingChanges = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
+	private val pendingChanges = MutableStateFlow<Map<Long, Boolean>>(
+		(savedStateHandle.get<LongArray>("pending_category_changes") ?: longArrayOf()).associate { kotlin.math.abs(it) to (it > 0) },
+	)
 	val isSaving = MutableStateFlow(false)
 	val onSaved = MutableEventFlow<Boolean>()
 	private val savedContent = combine(
@@ -74,8 +102,12 @@ class FavoriteDialogViewModel @Inject constructor(
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
-	val content = combine(savedContent, pendingChanges) { saved, pending ->
-		saved.map { model ->
+	val content = combine(savedContent, pendingChanges, activeCategoryIds, searchQuery, activeSet) { saved, pending, scoped, query, set ->
+		if (scoped == null || scoped.first != set?.setId) return@combine listOf(LoadingState)
+		val ids = scoped.second.mapTo(HashSet()) { it.id }
+		saved.filter { model ->
+			model !is MangaCategoryItem || (model.category.id in ids && model.category.title.contains(query.trim(), ignoreCase = true))
+		}.map { model ->
 			val item = model as? MangaCategoryItem ?: return@map model
 			val checked = pending[item.category.id] ?: return@map item
 			item.copy(
@@ -91,6 +123,7 @@ class FavoriteDialogViewModel @Inject constructor(
 	fun setChecked(categoryId: Long, isChecked: Boolean) {
 		if (isSaving.value) return
 		pendingChanges.update { it + (categoryId to isChecked) }
+		savedStateHandle["pending_category_changes"] = pendingChanges.value.map { (id, checked) -> if (checked) id else -id }.toLongArray()
 	}
 
 	fun save(openCategoryManagement: Boolean = false) {
@@ -120,7 +153,10 @@ class FavoriteDialogViewModel @Inject constructor(
 				if (isSingleNormalFavourite) {
 					rememberCategories(manga.single().id, rememberedAfterSave)
 				}
-				pendingChanges.value = emptyMap()
+				withContext(Dispatchers.Main.immediate) {
+					pendingChanges.value = emptyMap()
+					savedStateHandle["pending_category_changes"] = longArrayOf()
+				}
 				restoredCategoryIds.value = emptySet()
 				if (openCategoryManagement) prepareCategoryManagement()
 				onSaved.call(openCategoryManagement)

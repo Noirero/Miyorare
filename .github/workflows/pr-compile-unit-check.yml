@@ -78,6 +78,9 @@ jobs:
     needs: compile-unit
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Keep the compiler inside one bounded JVM; leave memory for the Android emulator.
+      GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.project.kotlin.compiler.execution.strategy=in-process
     steps:
       - name: Checkout exact PR head
         uses: actions/checkout@v5
@@ -93,6 +96,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
       - name: Grant execute permission
         run: chmod +x gradlew
+      - name: Build runtime APKs before booting the emulator
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :kotatsu-runtime:assembleDebug :kotatsu-runtime-fixture:assembleDebug --max-workers=2 --no-daemon --stacktrace
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
       - name: Prepare collector compatibility for the exact head
@@ -115,7 +120,7 @@ jobs:
           script: |
             bash .github/scripts/run-kotatsu-runtime-isolation-test.sh
             bash .github/scripts/check-migration-process-persistence.sh
-            ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.sync.data.GoogleDriveAuthRecoveryTest,org.koitharu.kotatsu.sync.data.SyncSettingsAuthStateTest,org.koitharu.kotatsu.sync.ui.BrowserDriveAuthCallbackRoutingTest,org.koitharu.kotatsu.details.ui.TrackerPeopleSectionTest,org.koitharu.kotatsu.scrobbling.common.data.TrackerDetailsSessionTest,org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.details.ui.TrackerRecommendationSectionTest,org.koitharu.kotatsu.details.domain.TrackerRecommendationMappingTest,org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesRepositoryTest,org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesSessionStoreTest,org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivityTest,org.koitharu.kotatsu.alternatives.domain.LosslessMigrationTransferRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.MigrationNonRoomDurabilityRegressionTest,org.koitharu.kotatsu.settings.sources.migration.MigrationReviewScreenTest,org.koitharu.kotatsu.settings.sources.migration.MigrationBatchControlsTest,org.koitharu.kotatsu.alternatives.domain.MigrationBatchVisibilityTest,org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest,org.koitharu.kotatsu.details.domain.FavouriteReleasePredictionsTest,org.koitharu.kotatsu.details.ui.prediction.ReleasePredictionHeaderTest,org.koitharu.kotatsu.details.ui.prediction.ChapterReleasePredictionSheetTest,org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest,org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest,org.koitharu.kotatsu.settings.DownloadMaintenanceSettingsTest,org.koitharu.kotatsu.favourites.domain.DownloadedLocalStateTest,org.koitharu.kotatsu.local.data.LocalChapterDeleteStateTest,org.koitharu.kotatsu.details.domain.DetailsLiveLocalStateTest
+            bash .github/scripts/collect-android-runtime-diagnostics.sh ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.sync.data.GoogleDriveAuthRecoveryTest,org.koitharu.kotatsu.sync.data.SyncSettingsAuthStateTest,org.koitharu.kotatsu.sync.ui.BrowserDriveAuthCallbackRoutingTest,org.koitharu.kotatsu.details.ui.TrackerPeopleSectionTest,org.koitharu.kotatsu.scrobbling.common.data.TrackerDetailsSessionTest,org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.details.ui.TrackerRecommendationSectionTest,org.koitharu.kotatsu.details.domain.TrackerRecommendationMappingTest,org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesRepositoryTest,org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesSessionStoreTest,org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivityTest,org.koitharu.kotatsu.alternatives.domain.LosslessMigrationTransferRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.MigrationNonRoomDurabilityRegressionTest,org.koitharu.kotatsu.settings.sources.migration.MigrationReviewScreenTest,org.koitharu.kotatsu.settings.sources.migration.MigrationBatchControlsTest,org.koitharu.kotatsu.alternatives.domain.MigrationBatchVisibilityTest,org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest,org.koitharu.kotatsu.details.domain.FavouriteReleasePredictionsTest,org.koitharu.kotatsu.details.ui.prediction.ReleasePredictionHeaderTest,org.koitharu.kotatsu.details.ui.prediction.ChapterReleasePredictionSheetTest,org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest,org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest,org.koitharu.kotatsu.settings.DownloadMaintenanceSettingsTest,org.koitharu.kotatsu.favourites.domain.DownloadedLocalStateTest,org.koitharu.kotatsu.local.data.LocalChapterDeleteStateTest,org.koitharu.kotatsu.details.domain.DetailsLiveLocalStateTest,org.koitharu.kotatsu.discovery.DiscoveryCatalogUiTest,org.koitharu.kotatsu.discovery.CatalogReadingBridgeTest,org.koitharu.kotatsu.discovery.DiscoveryNavigationRuntimeTest,org.koitharu.kotatsu.core.db.CategorySetsMigrationTest,org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest,org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest
       - name: Upload Android evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -126,11 +131,14 @@ jobs:
             app/build/outputs/androidTest-results/connected/
             app/build/reports/on-device-cover/
             app/build/reports/migration-process/
+            app/build/reports/android-runtime-diagnostics/
           if-no-files-found: warn
           retention-days: 14
 
+      # skip-device-test suppresses only the owner-facing physical-device APK artifact.
+      # Automated Android 15 runtime/instrumentation validation above still runs.
       - name: Upload exact-head debug APK for owner validation
-        if: success()
+        if: success() && !contains(github.event.pull_request.labels.*.name, 'skip-device-test')
         uses: actions/upload-artifact@v4
         with:
           name: on-device-cover-debug-apk

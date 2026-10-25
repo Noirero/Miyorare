@@ -51,6 +51,7 @@ import org.koitharu.kotatsu.local.ui.LocalListFragment
 import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.suggestions.ui.SuggestionsFragment
 import org.koitharu.kotatsu.stats.ui.ReaderJourneyFragment
+import org.koitharu.kotatsu.discovery.ui.DiscoveryHubFragment
 import org.koitharu.kotatsu.tracker.ui.feed.FeedFragment
 import org.koitharu.kotatsu.tracker.ui.updates.UpdatesFragment
 import java.util.LinkedList
@@ -138,7 +139,7 @@ class MainNavigationDelegate(
 		installNativePrivateLongClick()
 		observeSettings(lifecycleOwner)
 		val fragment = primaryFragment
-		if (fragment != null) {
+		if (fragment != null && navBar.menu.findItem(getItemId(fragment))?.isVisible == true) {
 			normalizeFragmentLifecycles(fragment)
 			onFragmentChanged(fragment, fromUser = false)
 			val itemId = getItemId(fragment)
@@ -146,11 +147,12 @@ class MainNavigationDelegate(
 				navBar.selectedItemId = itemId
 			}
 		} else {
-			val itemId = if (savedInstanceState == null) {
+			val restoredId = if (savedInstanceState == null) {
 				firstItem()?.itemId ?: navBar.selectedItemId
 			} else {
 				navBar.selectedItemId
 			}
+			val itemId = restoredId.takeIf { navBar.menu.findItem(it)?.isVisible == true } ?: firstItem()?.itemId ?: return
 			onNavigationItemSelected(itemId)
 		}
 	}
@@ -238,6 +240,7 @@ class MainNavigationDelegate(
 			R.id.nav_bookmarks -> AllBookmarksFragment::class.java
 			R.id.nav_updated -> UpdatesFragment::class.java
 			R.id.nav_reader_journey -> ReaderJourneyFragment::class.java
+			R.id.nav_discovery_hub -> DiscoveryHubFragment::class.java
 			else -> return false
 		}
 		if (!setPrimaryFragment(newFragment)) {
@@ -256,6 +259,7 @@ class MainNavigationDelegate(
 		is AllBookmarksFragment -> R.id.nav_bookmarks
 		is UpdatesFragment -> R.id.nav_updated
 		is ReaderJourneyFragment -> R.id.nav_reader_journey
+		is DiscoveryHubFragment -> R.id.nav_discovery_hub
 		else -> 0
 	}
 
@@ -332,6 +336,10 @@ class MainNavigationDelegate(
 
 	private fun onNavigationItemReselected() {
 		val fragment = primaryFragment
+		if (fragment is DiscoveryHubFragment) {
+			fragment.scrollToTop()
+			return
+		}
 		val recyclerView = (fragment as? RecyclerViewOwner)?.recyclerView ?: run {
 			(fragment?.view as? NestedScrollView)?.smoothScrollTo(0, 0)
 			return
@@ -367,8 +375,22 @@ class MainNavigationDelegate(
 			AppSettings.KEY_NAV_LEGACY,
 		)
 			.onEach {
-				setItemVisibility(R.id.nav_suggestions, settings.isSuggestionsEnabled)
-				setItemVisibility(R.id.nav_feed, settings.isTrackerEnabled)
+				val items = settings.mainNavItems
+				if ((0 until navBar.menu.size).map { navBar.menu.getItem(it).itemId } != items.map { item -> item.id }) {
+					val selected = getItemId(primaryFragment ?: return@onEach)
+					navBar.menu.clear()
+					createMenu(items, navBar.menu)
+					(navBar as? FloatingBottomNavigationView)?.setComposeItems(items)
+					installNativePrivateLongClick()
+					if (items.any { item -> item.id == selected }) {
+						// Restore the checked item without treating a settings update as a reselection.
+						navBar.setOnItemSelectedListener(null)
+						navBar.setOnItemReselectedListener(null)
+						navBar.selectedItemId = selected
+						navBar.setOnItemSelectedListener(this@MainNavigationDelegate)
+						navBar.setOnItemReselectedListener(this@MainNavigationDelegate)
+					} else navBar.selectedItemId = items.first().id
+				}
 				setNavbarIsLabeled(settings.isNavLabelsVisible)
 				(navBar as? FloatingBottomNavigationView)?.setUseLegacyNavigation(settings.isLegacyNavigationBar)
 			}.launchIn(lifecycleOwner.lifecycleScope)

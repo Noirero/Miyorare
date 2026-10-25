@@ -20,6 +20,10 @@
 	<color name="common_green">#388E3C</color>
 	<color name="common_red">#D32F2F</color>
 	<color name="common_yellow">#FBC02D</color>
+	<color name="cover_reading_in_progress">#FF8A00</color>
+	<color name="cover_reading_in_progress_outline">#FFD180</color>
+	<color name="cover_caught_up">#16B86A</color>
+	<color name="cover_caught_up_outline">#A7F3D0</color>
 
 	<!-- Widget chart label — explicit so the bitmap renderer always gets the right color -->
 </resources>

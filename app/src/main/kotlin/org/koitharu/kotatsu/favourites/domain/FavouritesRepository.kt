@@ -24,6 +24,9 @@ import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.model.toMangaSources
 import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.mapItems
+import org.koitharu.kotatsu.favourites.data.ensureCategorySets
+import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetAssignmentEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteMembership
@@ -220,6 +223,15 @@ class FavouritesRepository @Inject constructor(
 		}
 	}
 
+	fun observeInCategories(
+		categoryIds: Collection<Long>, order: ListSortOrder, filters: Set<ListFilterOption>,
+		limit: Int, pinned: List<Long>, space: FavouriteSpace,
+	): Flow<List<Manga>> = if (space == FavouriteSpace.PRIVATE) {
+		db.getPrivateFavouritesDao().observeInCategories(categoryIds, order, filters, limit, pinned).map { it.toPrivateMangaList() }
+	} else {
+		db.getFavouritesDao().observeInCategories(categoryIds, order, filters, limit, pinned).map { it.toMangaList() }
+	}
+
 	fun observeAll(
 		categoryId: Long,
 		order: ListSortOrder,
@@ -265,6 +277,124 @@ class FavouritesRepository @Inject constructor(
 		emitInitialState = true,
 	).map { Unit }
 
+	/** Global APIs below remain flattened; only navigation callers opt into this overload. */
+	fun observeSets(space: FavouriteSpace): Flow<List<FavouriteCategorySetEntity>> =
+		flow { getSets(space); emitAll(db.getFavouriteCategorySetsDao().observeSets(space.dbValue)) }.distinctUntilChanged()
+
+	suspend fun getSets(space: FavouriteSpace): List<FavouriteCategorySetEntity> = db.ensureCategorySets(space)
+
+	fun observeSetCategoryCounts(space: FavouriteSpace): Flow<Map<Long, Int>> =
+		db.getFavouriteCategorySetsDao().observeCategoryCounts(space.dbValue)
+			.map { counts -> counts.associate { it.setId to it.categoryCount } }.distinctUntilChanged()
+
+	suspend fun resolveSet(id: Long?, space: FavouriteSpace): FavouriteCategorySetEntity {
+		val sets = getSets(space)
+		return sets.firstOrNull { it.setId == id } ?: checkNotNull(sets.firstOrNull()) { "Missing Favourite Set" }
+	}
+
+	fun observeCategoriesInSet(setId: Long, space: FavouriteSpace): Flow<List<FavouriteCategory>> =
+		db.getFavouriteCategorySetsDao().observeCategories(setId, space.dbValue)
+			.mapItems { it.toFavouriteCategory() }.distinctUntilChanged()
+
+	fun observeCategoriesForLibrary(setId: Long, space: FavouriteSpace): Flow<List<FavouriteCategory>> =
+		observeCategoriesInSet(setId, space).map { list -> list.filter { it.isVisibleInLibrary } }
+
+	suspend fun getCategorySet(categoryId: Long, space: FavouriteSpace): FavouriteCategorySetEntity {
+		val category = db.getFavouriteCategoriesDao().find(categoryId.toInt())
+		check(category.space == space.dbValue)
+		return resolveSet(db.getFavouriteCategorySetsDao().getAssignment(categoryId)?.setId, space)
+	}
+
+	suspend fun createSet(title: String, space: FavouriteSpace): FavouriteCategorySetEntity = db.withTransaction {
+		val sets = getSets(space)
+		validateSetTitle(title, sets)
+		val now = System.currentTimeMillis()
+		val entity = FavouriteCategorySetEntity(
+			syncKey = java.util.UUID.randomUUID().toString(), title = title.trim(),
+			sortKey = (sets.maxOfOrNull { it.sortKey } ?: -1) + 1,
+			createdAt = now, updatedAt = now, space = space.dbValue,
+		)
+		entity.copy(setId = db.getFavouriteCategorySetsDao().insert(entity))
+	}
+
+	suspend fun renameSet(id: Long, title: String, space: FavouriteSpace) = db.withTransaction {
+		val entity = requireSet(id, space)
+		validateSetTitle(title, getSets(space).filterNot { it.setId == id })
+		db.getFavouriteCategorySetsDao().upsert(entity.copy(title = title.trim(), updatedAt = nextTimestamp(entity.updatedAt)))
+	}
+
+	suspend fun reorderSets(ids: List<Long>, space: FavouriteSpace) = db.withTransaction {
+		val sets = getSets(space)
+		require(ids.size == sets.size && ids.toSet() == sets.mapTo(HashSet()) { it.setId })
+		for ((index, id) in ids.withIndex()) {
+			val entity = sets.first { it.setId == id }
+			if (entity.sortKey != index) db.getFavouriteCategorySetsDao().upsert(
+				entity.copy(sortKey = index, updatedAt = nextTimestamp(entity.updatedAt)),
+			)
+		}
+	}
+
+	/** Moving is an assignment update; category rows and membership rows are never recreated. */
+	suspend fun moveCategoriesToSet(ids: Collection<Long>, targetId: Long, space: FavouriteSpace, sourceSetId: Long? = null) = db.withTransaction {
+		requireSet(targetId, space)
+		val dao = db.getFavouriteCategorySetsDao()
+		val targetCategories = dao.getCategories(targetId, space.dbValue)
+		var position = (targetCategories.maxOfOrNull { it.sortKey } ?: -1) + 1
+		for (id in ids.distinct()) {
+			val category = db.getFavouriteCategoriesDao().find(id.toInt())
+			require(category.space == space.dbValue)
+			val assignment = checkNotNull(dao.getAssignment(id))
+			if (assignment.setId == targetId || (sourceSetId != null && assignment.setId != sourceSetId)) continue
+			// Legacy duplicate rows are retained. Moving must not merge or delete them either.
+			db.getFavouriteCategoriesDao().updateSortKey(id, position++)
+			dao.assign(assignment.copy(setId = targetId, updatedAt = nextTimestamp(checkNotNull(dao.getAssignment(id)).updatedAt)))
+		}
+	}
+
+	/** The caller must explicitly choose destructive=true after the second confirmation. */
+	suspend fun deleteSet(id: Long, space: FavouriteSpace, moveTo: Long? = null, destructive: Boolean = false) = db.withTransaction {
+		val entity = requireSet(id, space)
+		require(getSets(space).size > 1) { "Cannot delete the last Set" }
+		val categories = db.getFavouriteCategorySetsDao().getCategories(id, space.dbValue)
+		if (destructive) {
+			removeCategories(categories.map { it.categoryId.toLong() })
+		} else {
+			require(moveTo != null && moveTo != id)
+			moveCategoriesToSet(categories.map { it.categoryId.toLong() }, moveTo, space)
+		}
+		db.getFavouriteCategorySetsDao().upsert(entity.copy(deletedAt = nextTimestamp(entity.updatedAt), updatedAt = nextTimestamp(entity.updatedAt)))
+	}
+
+	suspend fun reorderCategories(ids: List<Long>, setId: Long, space: FavouriteSpace) = db.withTransaction {
+		requireSet(setId, space)
+		val visible = db.getFavouriteCategorySetsDao().getCategories(setId, space.dbValue)
+		require(ids.distinct().size == ids.size && ids.all { id -> visible.any { it.categoryId.toLong() == id } })
+		// Replace only the selected type's positions; hidden Manga/Novel rows keep their slots.
+		val positions = visible.filter { it.categoryId.toLong() in ids }.map { it.sortKey }.sorted()
+		for ((index, id) in ids.withIndex()) db.getFavouriteCategoriesDao().updateSortKey(id, positions[index])
+	}
+
+	private suspend fun requireSet(id: Long, space: FavouriteSpace): FavouriteCategorySetEntity =
+		checkNotNull(db.getFavouriteCategorySetsDao().findSet(id)).also {
+			require(it.space == space.dbValue && it.deletedAt == 0L) { "Invalid Favourite Set" }
+		}
+
+	private fun validateSetTitle(title: String, sets: List<FavouriteCategorySetEntity>) {
+		require(title.isNotBlank())
+		if (sets.any { CategorySetIdentity.normalizeTitle(it.title) == CategorySetIdentity.normalizeTitle(title) }) {
+			throw DuplicateCategoryTitleException()
+		}
+	}
+
+	private suspend fun validateCategoryTitle(title: String, setId: Long, space: FavouriteSpace, exceptId: Long = 0) {
+		require(title.isNotBlank())
+		if (db.getFavouriteCategorySetsDao().getCategories(setId, space.dbValue).any {
+			it.categoryId.toLong() != exceptId && CategorySetIdentity.normalizeTitle(it.title) == CategorySetIdentity.normalizeTitle(title)
+		}) throw DuplicateCategoryTitleException()
+	}
+
+	private fun nextTimestamp(previous: Long): Long = maxOf(previous + 1, System.currentTimeMillis())
+
 	fun observeCategories(space: FavouriteSpace = FavouriteSpace.NORMAL): Flow<List<FavouriteCategory>> {
 		val source = if (space == FavouriteSpace.PRIVATE) {
 			db.getFavouriteCategoriesDao().observeAllInSpace(space.dbValue)
@@ -289,14 +419,19 @@ class FavouritesRepository @Inject constructor(
 
 	fun observeCategoriesWithCovers(
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
+		setId: Long? = null,
 	): Flow<Map<FavouriteCategory, List<Cover>>> {
 		return db.invalidationTracker.createFlow(
 			if (space == FavouriteSpace.PRIVATE) TABLE_PRIVATE_FAVOURITES else TABLE_FAVOURITES,
 			TABLE_FAVOURITE_CATEGORIES,
+			"favourite_category_set_assignments",
+			"favourite_category_sets",
 			emitInitialState = true,
 		).mapLatest {
 			db.withTransaction {
-				val entities = if (space == FavouriteSpace.PRIVATE) {
+				val entities = if (setId != null) {
+					db.getFavouriteCategorySetsDao().getCategories(setId, space.dbValue)
+				} else if (space == FavouriteSpace.PRIVATE) {
 					db.getFavouriteCategoriesDao().findAllInSpace(space.dbValue)
 				} else {
 					db.getFavouriteCategoriesDao().findAll()
@@ -327,7 +462,7 @@ class FavouritesRepository @Inject constructor(
 
 	fun observeCategory(id: Long, space: FavouriteSpace = FavouriteSpace.NORMAL): Flow<FavouriteCategory?> = flow {
 		categorySnapshots[snapshotKey(space, id)]?.let { emit(it) }
-		emitAll(db.getFavouriteCategoriesDao().observe(id).map { it?.toFavouriteCategory() })
+		emitAll(db.getFavouriteCategoriesDao().observe(id).map { it?.takeIf { entity -> entity.space == space.dbValue }?.toFavouriteCategory() })
 	}.distinctUntilChanged()
 
 	fun observeCategories(
@@ -404,12 +539,15 @@ class FavouritesRepository @Inject constructor(
 		isNewChaptersDownloadEnabled: Boolean,
 		isVisibleOnShelf: Boolean,
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
-	): FavouriteCategory {
+		setId: Long? = null,
+	): FavouriteCategory = db.withTransaction {
+		val target = resolveSet(setId, space)
+		validateCategoryTitle(title, target.setId, space)
 		val globalFeaturesAllowed = space != FavouriteSpace.PRIVATE || isPrivateIsolationDisabled()
 		val entity = FavouriteCategoryEntity(
-			title = title,
+			title = title.trim(),
 			createdAt = System.currentTimeMillis(),
-			sortKey = db.getFavouriteCategoriesDao().getNextSortKey(space),
+			sortKey = (db.getFavouriteCategorySetsDao().getCategories(target.setId, space.dbValue).maxOfOrNull { it.sortKey } ?: -1) + 1,
 			categoryId = 0,
 			order = sortOrder.name,
 			track = globalFeaturesAllowed && isTrackerEnabled,
@@ -419,7 +557,8 @@ class FavouritesRepository @Inject constructor(
 			space = space.dbValue,
 		)
 		val id = db.getFavouriteCategoriesDao().insert(entity)
-		return entity.toFavouriteCategory(id)
+		db.getFavouriteCategorySetsDao().assign(FavouriteCategorySetAssignmentEntity(id, target.setId, java.util.UUID.randomUUID().toString(), entity.createdAt))
+		entity.toFavouriteCategory(id)
 	}
 
 	suspend fun updateCategory(
@@ -429,8 +568,11 @@ class FavouritesRepository @Inject constructor(
 		isTrackerEnabled: Boolean,
 		isNewChaptersDownloadEnabled: Boolean,
 		isVisibleOnShelf: Boolean,
-	) {
+	) = db.withTransaction {
 		val entity = db.getFavouriteCategoriesDao().find(id.toInt())
+		val space = FavouriteSpace.fromDb(entity.space)
+		val set = getCategorySet(id, space)
+		if (title != entity.title) validateCategoryTitle(title, set.setId, space, id)
 		val globalFeaturesAllowed = entity.space != FavouriteSpace.PRIVATE.dbValue || isPrivateIsolationDisabled()
 		db.getFavouriteCategoriesDao().update(
 			id = id,
@@ -477,6 +619,19 @@ class FavouritesRepository @Inject constructor(
 		db.getFavouritesDao().isNewChaptersDownloadEnabled(mangaId) ||
 			db.getPrivateFavouritesDao().isNewChaptersDownloadEnabled(mangaId)
 
+	/** Recheck the database scope atomically; a stale selection must never act on a hidden Set. */
+	suspend fun removeCategoriesInSet(ids: Collection<Long>, setId: Long, space: FavouriteSpace): List<Long> = db.withTransaction {
+		val scoped = db.getFavouriteCategorySetsDao().getCategories(setId, space.dbValue).map { it.categoryId.toLong() }.filter { it in ids }
+		removeCategories(scoped)
+		scoped
+	}
+
+	suspend fun setCategoriesVisibleInSet(ids: Collection<Long>, visible: Boolean, setId: Long, space: FavouriteSpace) = db.withTransaction {
+		for (category in db.getFavouriteCategorySetsDao().getCategories(setId, space.dbValue)) {
+			if (category.categoryId.toLong() in ids) db.getFavouriteCategoriesDao().updateVisibility(category.categoryId.toLong(), visible)
+		}
+	}
+
 	suspend fun removeCategories(ids: Collection<Long>) {
 		db.withTransaction {
 			for (id in ids) {
@@ -522,23 +677,19 @@ class FavouritesRepository @Inject constructor(
 		val mangaById = LinkedHashMap<Long, Manga>(mangas.size)
 		for (manga in mangas) mangaById[manga.id] = manga
 		val mangaIds = mangaById.keys.toList()
-		val addedCategoryIds = changes.asSequence()
-			.filter { it.value }
-			.map { it.key }
-			.toList()
-		val removedCategoryIds = changes.asSequence()
-			.filterNot { it.value }
-			.map { it.key }
-			.toList()
-
 		db.withTransaction {
 			// Fail closed if a caller accidentally mixes Normal/Private category ids.
-			for (categoryId in changes.keys) {
-				val category = db.getFavouriteCategoriesDao().find(categoryId.toInt())
+			val validChanges = LinkedHashMap<Long, Boolean>()
+			for ((categoryId, checked) in changes) {
+				require(categoryId.toInt().toLong() == categoryId)
+				val category = db.getFavouriteCategoriesDao().findOrNull(categoryId.toInt()) ?: continue
 				check(category.space == space.dbValue) {
 					"Category $categoryId belongs to space ${category.space}, expected ${space.dbValue}"
 				}
+				validChanges[categoryId] = checked
 			}
+			val addedCategoryIds = validChanges.filterValues { it }.keys.toList()
+			val removedCategoryIds = validChanges.filterValues { !it }.keys.toList()
 
 			if (addedCategoryIds.isNotEmpty()) {
 				// Metadata is category-independent. Persist it once per manga rather than once for every

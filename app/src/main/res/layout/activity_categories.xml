@@ -39,6 +39,16 @@
 
 		</com.google.android.material.appbar.CollapsingToolbarLayout>
 
+		<com.google.android.material.button.MaterialButton
+			android:id="@+id/button_category_set"
+			style="?attr/materialButtonOutlinedStyle"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginHorizontal="16dp"
+			android:minHeight="48dp"
+			android:text="@string/category_sets"
+			app:icon="@drawable/ic_expand_more" />
+
 	</com.google.android.material.appbar.AppBarLayout>
 
 	<org.koitharu.kotatsu.core.ui.list.fastscroll.FastScrollRecyclerView

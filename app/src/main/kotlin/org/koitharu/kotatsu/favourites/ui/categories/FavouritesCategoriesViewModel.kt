@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
@@ -20,6 +23,8 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.requireValue
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_CONTENT_TYPE
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SET_ID
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
@@ -50,14 +55,34 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	private val settings: AppSettings,
 	private val contentTypeStore: FavouriteContentTypeStore,
 	private val displayPreferences: FavouriteDisplayPreferences,
+	private val setSelection: org.koitharu.kotatsu.favourites.domain.FavouriteSetSelectionStore,
 ) : BaseViewModel() {
 
 	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
+	init {
+		savedStateHandle.get<String>(EXTRA_FAVOURITE_CONTENT_TYPE)
+			?.let { contentTypeStore.setSelectedType(FavouriteContentType.valueOf(it), favouriteSpace) }
+	}
 	private val selectedType = contentTypeStore.selectedType(favouriteSpace)
 	val selectedContentType: FavouriteContentType
 		get() = selectedType.value
+
+	val sets = repository.observeSets(favouriteSpace).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+	val activeSet = setSelection.observe(favouriteSpace, selectedType).onStart {
+		savedStateHandle.remove<Long>(EXTRA_FAVOURITE_SET_ID)?.let { id ->
+			setSelection.select(repository.resolveSet(id, favouriteSpace), favouriteSpace, selectedType.value)
+		}
+	}.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+	fun selectSet(set: org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity) = setSelection.select(set, favouriteSpace, selectedType.value)
+	fun moveCategories(ids: Set<Long>, setId: Long) {
+		val visible = visibleIds(ids)
+		val sourceId = activeSet.value?.setId ?: return
+		launchJob(Dispatchers.IO) { repository.moveCategoriesToSet(visible, setId, favouriteSpace, sourceId) }
+	}
+	private fun visibleIds(ids: Collection<Long>): Set<Long> = content.value.filterIsInstance<CategoryListModel>()
+		.map { it.category.id }.filterTo(HashSet()) { it in ids }
 
 	private var commitJob: Job? = null
 	private val isActionsEnabled = MutableStateFlow(true)
@@ -78,7 +103,7 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	 * old full-library materialisation and keeps counts correct regardless of preview size.
 	 */
 	val content = combine(
-		repository.observeCategoriesWithCovers(favouriteSpace),
+		activeSet.filterNotNull().flatMapLatest { repository.observeCategoriesWithCovers(favouriteSpace, it.setId) },
 		observeAllVisibility(),
 		isActionsEnabled,
 		contentTypeState,
@@ -115,9 +140,11 @@ class FavouritesCategoriesViewModel @Inject constructor(
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
 	fun deleteCategories(ids: Set<Long>) {
+		val visible = visibleIds(ids)
+		val setId = activeSet.value?.setId ?: return
 		launchJob(Dispatchers.Default) {
-			repository.removeCategories(ids)
-			contentTypeStore.removeCategories(ids)
+			val removed = repository.removeCategoriesInSet(visible, setId, favouriteSpace)
+			contentTypeStore.removeCategories(removed)
 		}
 	}
 
@@ -137,19 +164,22 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	fun isEmpty(): Boolean = content.value.none { it is CategoryListModel }
 
 	fun saveOrder(snapshot: List<ListModel>) {
+		val setId = activeSet.value?.setId ?: return
 		val prevJob = commitJob
 		commitJob = launchJob {
 			prevJob?.cancelAndJoin()
 			val ids = snapshot.mapNotNullTo(ArrayList(snapshot.size)) {
 				(it as? CategoryListModel)?.category?.id
 			}
-			if (ids.isNotEmpty()) repository.reorderCategories(ids)
+			if (ids.isNotEmpty()) repository.reorderCategories(ids, setId, favouriteSpace)
 		}
 	}
 
 	fun setIsVisible(ids: Set<Long>, isVisible: Boolean) {
+		val visible = visibleIds(ids)
+		val setId = activeSet.value?.setId ?: return
 		launchJob(Dispatchers.Default) {
-			for (id in ids) repository.updateCategory(id, isVisible)
+			repository.setCategoriesVisibleInSet(visible, isVisible, setId, favouriteSpace)
 		}
 	}
 

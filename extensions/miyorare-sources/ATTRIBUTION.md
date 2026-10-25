@@ -73,6 +73,25 @@ Keiyoushi's `src/id/inazumanga` module is intentionally not duplicated in this i
 represents ReYume (`www.re-yume.my.id`), which Miyorare-ID already provides through its existing
 Tsuki sources.
 
+### RawDEX / New XTOON reference
+
+Miyorare-Global replaces the pinned Gekkoushi legacy `RAWDEX` Madara parser with a narrowly scoped,
+Miyorare-owned Tsuki overlay because the live RawDEX layout moved to `rdx-*` markup. The replacement
+keeps the same `RAWDEX` runtime identity so Global has one authoritative RawDEX implementation.
+
+The Miyorare-owned `NEWXTOON` Tsuki overlay targets `https://newxtoon1.com/`. Catalogue/search paths,
+detail selectors, paginated chapter JSON requests, and reader image selectors were independently
+adapted to Tsuki and cross-checked against Keiyoushi's Apache-2.0 `src/ko/newxtoon` implementation.
+The Keiyoushi APK/runtime itself is not embedded in Miyorare-Global.
+
+### Comic Asura reference
+
+The Miyorare-owned `COMICASURA` Tsuki overlay targets `https://comicasura.net/official` and uses the
+site's native `advanced-search` catalogue for Latest, Popular and Search. Detail, chapter and reader
+selectors were independently adapted to Tsuki and cross-checked against Keiyoushi's Apache-2.0
+`src/en/comicasura` MangaThemesia implementation. The Keiyoushi APK/runtime itself is not embedded in
+Miyorare-Global.
+
 ## Content providers
 
 Parser/source support does not imply affiliation with, endorsement by, or ownership of the websites

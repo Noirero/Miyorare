@@ -15,13 +15,12 @@ import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.core.prefs.MainNavigationPreferences
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.main.ui.MainActivity
-import org.koitharu.kotatsu.main.ui.MainNavigationDelegate
 import org.koitharu.kotatsu.parsers.util.move
-import org.koitharu.kotatsu.settings.nav.model.NavItemAddModel
 import org.koitharu.kotatsu.settings.nav.model.NavItemConfigModel
 import javax.inject.Inject
 
@@ -32,62 +31,35 @@ class NavConfigViewModel @Inject constructor(
 ) : BaseViewModel() {
 
 	private val items = MutableStateFlow(
-		settings.mainNavItems.filterNot { it == NavItem.READER_JOURNEY },
+		settings.mainNavItems.filterNot { it in MainNavigationPreferences.fixed },
 	)
-	private val maxConfigurableItems = MainNavigationDelegate.MAX_ITEM_COUNT - 1
-
 	val content: StateFlow<List<ListModel>> = items.map { snapshot ->
-		buildList(snapshot.size + 1) {
-			snapshot.mapTo(this) {
-				NavItemConfigModel(it, getUnavailabilityHint(it))
-			}
-			if (size < NavItem.entries.size - 1) {
-				add(NavItemAddModel(size < maxConfigurableItems))
-			}
-		}
-	}.stateIn(
-		viewModelScope + Dispatchers.Default,
-		SharingStarted.WhileSubscribed(5000),
-		emptyList(),
-	)
+		snapshot.map { NavItemConfigModel(it, getUnavailabilityHint(it)) }
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), emptyList())
 
 	private var commitJob: Job? = null
 
 	val availableItems
-		get() = items.value.let { snapshot ->
-			NavItem.entries.filterNot { x -> x == NavItem.READER_JOURNEY || x in snapshot }
-		}
+		get() = NavItem.entries.filter { it !in MainNavigationPreferences.fixed && it !in items.value && it.isAvailable(settings) }
 
 	fun reorder(fromPos: Int, toPos: Int) {
-		items.value = items.value.toMutableList().apply {
-			move(fromPos, toPos)
-			commit(this)
-		}
+		if (fromPos !in items.value.indices || toPos !in items.value.indices) return
+		items.value = items.value.toMutableList().apply { move(fromPos, toPos); commit(this) }
 	}
 
-	fun addItem(item: NavItem) {
-		if (item == NavItem.READER_JOURNEY || items.value.size >= maxConfigurableItems) return
-		items.value = items.value.plus(item).also {
-			commit(it)
-		}
-	}
-
-	fun removeItem(item: NavItem) {
-		val newList = items.value.toMutableList()
-		newList.remove(item)
-		if (newList.isEmpty()) {
-			newList.add(NavItem.EXPLORE)
-		}
-		items.value = newList
-		commit(newList)
+	fun replaceItem(old: NavItem, replacement: NavItem) {
+		if (replacement !in availableItems) return
+		val index = items.value.indexOf(old)
+		if (index < 0) return
+		items.value = items.value.toMutableList().apply { set(index, replacement); commit(this) }
 	}
 
 	private fun commit(value: List<NavItem>) {
+		settings.mainNavItems = value
 		val prevJob = commitJob
 		commitJob = launchJob {
 			prevJob?.cancelAndJoin()
 			delay(500)
-			settings.mainNavItems = value
 			activityRecreationHandle.recreate(MainActivity::class.java)
 		}
 	}

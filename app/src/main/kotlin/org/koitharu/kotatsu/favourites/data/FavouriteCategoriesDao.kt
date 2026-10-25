@@ -14,6 +14,9 @@ abstract class FavouriteCategoriesDao {
 	@Query("SELECT * FROM favourite_categories WHERE category_id = :id AND deleted_at = 0")
 	abstract suspend fun find(id: Int): FavouriteCategoryEntity
 
+	@Query("SELECT * FROM favourite_categories WHERE category_id = :id AND deleted_at = 0")
+	abstract suspend fun findOrNull(id: Int): FavouriteCategoryEntity?
+
 	/** Existing callers are intentionally NORMAL-only so Private categories stay organised separately. */
 	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 AND space = 0 ORDER BY sort_key")
 	abstract suspend fun findAll(): List<FavouriteCategoryEntity>
@@ -24,6 +27,9 @@ abstract class FavouriteCategoriesDao {
 	/** Cloud category sync remains normal-only; Private organisation is handled by its private backup. */
 	@Query("SELECT * FROM favourite_categories WHERE space = 0")
 	abstract suspend fun findAllForSync(): List<FavouriteCategoryEntity>
+
+	@Query("SELECT category_id FROM favourite_categories")
+	abstract suspend fun getAllIds(): List<Int>
 
 	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 AND space = 0 ORDER BY sort_key")
 	abstract fun observeAll(): Flow<List<FavouriteCategoryEntity>>
@@ -70,7 +76,7 @@ abstract class FavouriteCategoriesDao {
 	@Query("UPDATE favourite_categories SET sort_key = :sortKey WHERE category_id = :id")
 	abstract suspend fun updateSortKey(id: Long, sortKey: Int)
 
-	@Query("DELETE FROM favourite_categories WHERE deleted_at != 0 AND deleted_at < :maxDeletionTime")
+	@Query("DELETE FROM favourite_categories WHERE deleted_at != 0 AND deleted_at < :maxDeletionTime AND category_id NOT IN (SELECT category_id FROM favourite_category_set_assignments)")
 	abstract suspend fun gc(maxDeletionTime: Long)
 
 	@Query("SELECT MAX(sort_key) FROM favourite_categories WHERE deleted_at = 0 AND space = 0")

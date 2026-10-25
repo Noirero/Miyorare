@@ -24,6 +24,8 @@ class ModernCoverBoundaryRegressionTest {
 		assertTrue(adapter.contains("mangaListItemAD(listener, titleClickListener)"))
 		assertTrue(adapter.contains("mangaListDetailedItemAD(listener, titleClickListener)"))
 		assertTrue(source("picker/ui/manga/MangaPickerFragment.kt").contains("coverContext = ModernCoverContext.LEGACY"))
+		val picker = source("picker/ui/manga/MangaPickerViewModel.kt")
+		assertTrue(picker.contains("flags = MangaListMapper.NO_MODERN_READING_STATE"))
 		for (path in listOf("list/ui/MangaListFragment.kt", "history/ui/HistoryListAdapter.kt",
 			"search/ui/multi/adapter/SearchAdapter.kt", "search/ui/multi/adapter/SearchResultsAD.kt")) {
 			assertTrue(path, source(path).contains("ModernCoverContext.BROWSING"))
@@ -33,7 +35,7 @@ class ModernCoverBoundaryRegressionTest {
 		}
 	}
 
-	@Test fun stateProjectionCannotInventUnreadPinOrContinueAuthority() {
+	@Test fun stateProjectionUsesExplicitUnreadAuthorityWithoutReusingTrackerCounter() {
 		val state = source("list/ui/model/ModernCoverState.kt")
 		assertTrue(state.contains("unreadCount = model.unreadCount"))
 		assertTrue(state.contains("legacyCounter = if (collection) 0 else model.counter"))
@@ -42,8 +44,16 @@ class ModernCoverBoundaryRegressionTest {
 		assertTrue(state.contains("model.source.isLocal"))
 		assertTrue(state.contains("model.source.getLanguageCode()"))
 		val mapper = source("list/domain/MangaListMapper.kt")
-		assertFalse(mapper.contains("unreadCount ="))
+		assertTrue(mapper.contains("favouriteUnreadCounter.getSnapshot"))
+		assertTrue(mapper.contains("unreadCount = unreadSnapshot?.getUnreadCountOrNull(it.id)"))
+		assertTrue(mapper.contains("flags and NO_MODERN_READING_STATE != 0"))
+		assertFalse(mapper.contains("unreadCount = getCounter"))
+		assertFalse(mapper.contains("unreadCount = trackingRepository"))
 		assertTrue(mapper.contains("trackingRepository.getNewChaptersCount(mangaId)"))
+		val unread = source("favourites/domain/FavouriteUnreadCounter.kt")
+		assertTrue(unread.contains("fun getUnreadCountOrNull(mangaId: Long): Int?"))
+		assertTrue(unread.contains("hasUnreadAuthority = mangaId in unreadAuthority"))
+		assertFalse(unread.contains("UNKNOWN_UNREAD_COUNT"))
 		val cover = source("list/ui/FavouriteCoverOverlayView.kt")
 		for (forbidden in listOf("AppSettings", "Repository", "getLanguageCode", "getPinned", "getSnapshot")) {
 			assertFalse(forbidden, cover.contains(forbidden))

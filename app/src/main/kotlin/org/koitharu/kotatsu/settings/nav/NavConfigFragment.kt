@@ -24,15 +24,14 @@ import org.koitharu.kotatsu.core.util.ext.end
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.start
 import org.koitharu.kotatsu.core.util.ext.systemBarsInsets
-import org.koitharu.kotatsu.databinding.FragmentSettingsSourcesBinding
+import org.koitharu.kotatsu.databinding.FragmentNavigationConfigBinding
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.model.ListModel
-import org.koitharu.kotatsu.settings.nav.adapter.navAddAD
 import org.koitharu.kotatsu.settings.nav.adapter.navAvailableAD
 import org.koitharu.kotatsu.settings.nav.adapter.navConfigAD
 
 @AndroidEntryPoint
-class NavConfigFragment : BaseFragment<FragmentSettingsSourcesBinding>(), RecyclerViewOwner,
+class NavConfigFragment : BaseFragment<FragmentNavigationConfigBinding>(), RecyclerViewOwner,
 	OnListItemClickListener<NavItem>, View.OnClickListener {
 
 	private var reorderHelper: ItemTouchHelper? = null
@@ -44,18 +43,17 @@ class NavConfigFragment : BaseFragment<FragmentSettingsSourcesBinding>(), Recycl
 	override fun onCreateViewBinding(
 		inflater: LayoutInflater,
 		container: ViewGroup?,
-	): FragmentSettingsSourcesBinding {
-		return FragmentSettingsSourcesBinding.inflate(inflater, container, false)
+	): FragmentNavigationConfigBinding {
+		return FragmentNavigationConfigBinding.inflate(inflater, container, false)
 	}
 
 	override fun onViewBindingCreated(
-		binding: FragmentSettingsSourcesBinding,
+		binding: FragmentNavigationConfigBinding,
 		savedInstanceState: Bundle?,
 	) {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		val navConfigAdapter = BaseListAdapter<ListModel>()
 			.addDelegate(ListItemType.NAV_ITEM, navConfigAD(this))
-			.addDelegate(ListItemType.FOOTER_LOADING, navAddAD(this))
 		with(binding.recyclerView) {
 			// This list is a bare FastScrollRecyclerView fragment-root; its floating scroller would be
 			// hoisted onto SettingsActivity's shared CoordinatorLayout and blank the right edge of every
@@ -93,22 +91,19 @@ class NavConfigFragment : BaseFragment<FragmentSettingsSourcesBinding>(), Recycl
 		super.onDestroyView()
 	}
 
-	override fun onClick(v: View) {
+	override fun onClick(v: View) = Unit
+
+	override fun onItemClick(item: NavItem, view: View) {
 		var dialog: DialogInterface? = null
-		val listener = OnListItemClickListener<NavItem> { item, _ ->
-			viewModel.addItem(item)
+		val listener = OnListItemClickListener<NavItem> { replacement, _ ->
+			viewModel.replaceItem(item, replacement)
 			dialog?.dismiss()
 		}
-		dialog = buildAlertDialog(v.context) {
-			setTitle(R.string.add)
-			setCancelable(true)
+		dialog = buildAlertDialog(view.context) {
+			setTitle(R.string.hub_replace_destination)
 			setRecyclerViewList(viewModel.availableItems, navAvailableAD(listener))
 			setNegativeButton(android.R.string.cancel, null)
 		}.apply { show() }
-	}
-
-	override fun onItemClick(item: NavItem, view: View) {
-		viewModel.removeItem(item)
 	}
 
 	override fun onItemLongClick(item: NavItem, view: View): Boolean {

@@ -58,6 +58,16 @@ class CategoriesSelectionCallback(
 				true
 			}
 
+			R.id.action_move_set -> {
+				val targets = viewModel.sets.value.filterNot { it.setId == viewModel.activeSet.value?.setId }
+				val ids = controller.snapshot()
+				com.google.android.material.dialog.MaterialAlertDialogBuilder(recyclerView.context)
+					.setTitle(R.string.category_set_move).setItems(targets.map { it.title }.toTypedArray()) { _, index ->
+						viewModel.moveCategories(ids, targets[index].setId); mode?.finish()
+					}.show()
+				true
+			}
+
 			R.id.action_remove -> {
 				confirmDeleteCategories(controller.snapshot(), mode)
 				true

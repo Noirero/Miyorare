@@ -49,6 +49,31 @@ def load_manifest(path: Path, pack_name: str) -> tuple[dict, dict]:
     return root, pack
 
 
+def apply_miyorare_overlays(
+    upstream: Path,
+    language_dir: Path,
+    pack_name: str,
+    requested: list[str],
+) -> list[str]:
+    """Replace selected UMA parsers with narrow first-party compatibility overlays."""
+    source_root = Path(__file__).resolve().parents[1] / "overlays" / "uma" / pack_name
+    if not source_root.is_dir():
+        return []
+
+    requested_set = set(requested)
+    copied: list[str] = []
+    for source in sorted(source_root.rglob("*.kt")):
+        relative = source.relative_to(source_root).as_posix()
+        if relative not in requested_set:
+            fail(f"UMA overlay is not a declared source for pack {pack_name}: {relative}")
+        target = language_dir / relative
+        if not target.is_file():
+            fail(f"UMA overlay target does not exist at pinned upstream: {relative}")
+        shutil.copy2(source, target)
+        copied.append(relative)
+    return copied
+
+
 def parser_annotations(content: str, file_name: str) -> list[tuple[str, str]]:
     """Return (runtime source name, locale) pairs declared by one curated Kotlin file."""
     result: list[tuple[str, str]] = []
@@ -221,6 +246,7 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     if not requested or len(requested) != len(set(requested)):
         fail(f"Pack {pack_name} must contain a non-empty unique source list")
     validate_requested_paths(language_dir, requested, pack_name)
+    overlay_files = apply_miyorare_overlays(upstream, language_dir, pack_name, requested)
     semantic_adapters = semantic_adapter_provenance(upstream, language, requested)
 
     available = {
@@ -285,6 +311,8 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
         "tsukiApi": root["tsukiApi"],
         "buildUpstream": upstream_meta,
         "upstreams": [upstream_meta],
+        "miyorareOverlayCount": len(overlay_files),
+        "miyorareOverlayFiles": overlay_files,
         "semanticAdapters": semantic_adapters,
         "sourceFilesCount": len(requested),
         "sourceCount": len(source_names),
@@ -304,6 +332,7 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     print(
         f"Prepared {pack['displayName']} UMA shard "
         f"({len(requested)} files / {len(source_names)} runtime sources / {len(source_icons)} icons / "
+        f"{len(overlay_files)} Miyorare overlays / "
         f"{sum(item['appliedCount'] for item in semantic_adapters)} semantic adaptations) from "
         f"{upstream_meta['repository']}@{expected_commit[:12]}"
     )

@@ -74,8 +74,10 @@ class CloudFlareActivity : BaseBrowserActivity() {
 	lateinit var captchaAutoResolveCoordinator: CaptchaAutoResolveCoordinator
 
 	private lateinit var cfClient: CloudFlareClient
+	private var sourceRepository: MangaRepository? = null
 
 	override fun onCreate2(savedInstanceState: Bundle?, source: MangaSource, repository: MangaRepository?) {
+		sourceRepository = repository
 		if (isHidden) {
 			supportActionBar?.hide()
 			viewBinding.appbar.isVisible = false
@@ -230,23 +232,36 @@ class CloudFlareActivity : BaseBrowserActivity() {
 	}
 
 	private suspend fun verifyClearance(url: String): Boolean = runCatchingCancellable {
-		runInterruptible(Dispatchers.IO) {
-			val request = Request.Builder()
-				.url(url)
-				.get()
-				.apply {
-					intent?.getStringExtra(AppRouter.KEY_USER_AGENT)?.takeIf { it.isNotBlank() }?.let {
-						header(CommonHeaders.USER_AGENT, it)
-					}
-					intent?.getStringExtra(AppRouter.KEY_SOURCE)?.takeIf { it.isNotBlank() }?.let {
-						header(CommonHeaders.MANGA_SOURCE, it)
-					}
-				}
-				.build()
-			// MangaHttpClient's CloudFlareInterceptor throws if the challenge is still active
-			okHttpClient.newCall(request).execute().use { response ->
-				android.util.Log.i(TAG, "verify clearance: url=$url status=${response.code}")
+		// Prefer the source repository's own client whenever it exposes one. Tsuki repositories use
+		// this hook to run through the plugin-private HTTP client, including parser-native tags,
+		// headers and interceptors. Verifying with the shared MangaHttpClient instead can reject a
+		// WebView clearance that the real source request would accept, causing a false/sticky captcha
+		// loop such as MGKomik's browser-works/native-blocked failure.
+		val sourceResponse = sourceRepository?.getCoverStream(url)
+		if (sourceResponse != null) {
+			sourceResponse.use { response ->
+				android.util.Log.i(TAG, "verify clearance via source client: url=$url status=${response.code}")
 				response.isSuccessful
+			}
+		} else {
+			runInterruptible(Dispatchers.IO) {
+				val request = Request.Builder()
+					.url(url)
+					.get()
+					.apply {
+						intent?.getStringExtra(AppRouter.KEY_USER_AGENT)?.takeIf { it.isNotBlank() }?.let {
+							header(CommonHeaders.USER_AGENT, it)
+						}
+						intent?.getStringExtra(AppRouter.KEY_SOURCE)?.takeIf { it.isNotBlank() }?.let {
+							header(CommonHeaders.MANGA_SOURCE, it)
+						}
+					}
+					.build()
+				// MangaHttpClient's CloudFlareInterceptor throws if the challenge is still active
+				okHttpClient.newCall(request).execute().use { response ->
+					android.util.Log.i(TAG, "verify clearance via shared client: url=$url status=${response.code}")
+					response.isSuccessful
+				}
 			}
 		}
 	}.onFailure { error ->

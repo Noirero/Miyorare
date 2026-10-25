@@ -60,6 +60,7 @@ fun Throwable.getDisplayMessage(resources: Resources): String = getDisplayMessag
     ?: resources.getString(R.string.error_occurred)
 
 private fun Throwable.getDisplayMessageOrNull(resources: Resources): String? = when (this) {
+    is org.koitharu.kotatsu.favourites.domain.DuplicateCategoryTitleException -> resources.getString(R.string.category_set_duplicate_title)
     is CancellationException -> cause?.getDisplayMessageOrNull(resources) ?: message
     is CaughtException -> cause.getDisplayMessageOrNull(resources)
     is WrapperIOException -> cause.getDisplayMessageOrNull(resources)

@@ -98,6 +98,7 @@ class DownloadedLocalStateTest {
 	@Inject lateinit var detailsCache: DetailsNavigationCache
 	@Inject lateinit var downloadedSort: DownloadedFavouritesSortPreferences
 	@Inject lateinit var groups: LibraryGroupsRepository
+	@Inject lateinit var setSelection: FavouriteSetSelectionStore
 	@Inject lateinit var duplicates: LibraryDuplicateScanUseCase
 	@Inject @LocalStorageChanges lateinit var events: MutableSharedFlow<LocalManga?>
 
@@ -184,6 +185,23 @@ class DownloadedLocalStateTest {
 		} finally {
 			indexJob.cancel(); ownershipJob.cancel()
 		}
+	}
+
+	@Test fun ownershipCompletionCanPrecedeLocalIndexWithoutLosingMetadataOrMembership() = runBlocking {
+		val remote = remote(810_017L)
+		favourite(remote)
+		val memberships = repository.getCategoriesIds(remote.id)
+		val copy = download(root, remote)
+		assertNotEquals(remote.id, copy.manga.id)
+		assertFalse(copy.manga.id in db.getMangaDao())
+		// Deterministically exercise the order that independent BaseApp collectors can take.
+		ownership.emit(copy)
+		assertNotNull(db.getMangaDao().find(copy.manga.id))
+		assertEquals(copy.file.canonicalPath, db.getFavouriteDownloadIndexDao().findEntry(0, copy.manga.id)?.path)
+		index.emit(copy)
+		assertEquals(memberships, repository.getCategoriesIds(remote.id))
+		assertEquals(remote.title, db.getMangaDao().find(remote.id)?.manga?.title)
+		assertNotNull(db.getLocalMangaIndexDao().findPath(copy.manga.id))
 	}
 
 	@Test fun genericListRemapsConcreteCompletionAndNullInvalidation() = runBlocking {
@@ -273,7 +291,7 @@ class DownloadedLocalStateTest {
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
 		data.storeManga(manga, replaceExisting = true)
-		val category = repository.createCategory("Batch 11", ListSortOrder.NEWEST, false, false, true, space)
+		val category = repository.createCategory("Batch 11 ${manga.id}", ListSortOrder.NEWEST, false, false, true, space)
 		repository.updateCategoryMemberships(listOf(manga), mapOf(category.id to true), space)
 	}
 
@@ -308,7 +326,7 @@ class DownloadedLocalStateTest {
 			vm = FavouritesListViewModel(
 				SavedStateHandle(mapOf(AppRouter.KEY_ID to 0L)), repository, mapper, markAsRead, filters,
 				settings, data, events, search, contentType, display, index, classifier, unread, sources,
-				detailsCache, downloadedSort, groups, duplicates,
+				detailsCache, downloadedSort, groups, duplicates, setSelection,
 			)
 			viewModels.put("favourites", vm)
 			// Mirror the visible Fragment: list production is suspended until its UI is active.

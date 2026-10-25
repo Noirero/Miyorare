@@ -119,6 +119,18 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT manga.* FROM favourites LEFT JOIN manga ON manga.manga_id = favourites.manga_id WHERE favourites.deleted_at = 0 AND EXISTS(SELECT 1 FROM tags LEFT JOIN manga_tags ON manga_tags.tag_id = tags.tag_id WHERE manga_tags.manga_id = manga.manga_id AND tags.title LIKE :query) LIMIT :limit")
 	abstract suspend fun searchByTag(query: String, limit: Int): List<MangaWithTags>
 
+	fun observeInCategories(
+		categoryIds: Collection<Long>, order: ListSortOrder, filterOptions: Set<ListFilterOption>,
+		limit: Int, pinned: List<Long> = emptyList(),
+	): Flow<List<FavouriteManga>> = observeAllImpl(
+		MangaQueryBuilder("favourites", this)
+			.join("LEFT JOIN manga ON favourites.manga_id = manga.manga_id")
+			.where("favourites.deleted_at = 0")
+			.where(if (categoryIds.isEmpty()) "0" else "favourites.category_id IN (${categoryIds.joinToString(",")})")
+			.filters(filterOptions).groupBy("favourites.manga_id")
+			.orderBy(getOrderBy(order, pinned)).limit(limit).build(),
+	)
+
 	fun observeAll(
 		order: ListSortOrder,
 		filterOptions: Set<ListFilterOption>,
@@ -224,7 +236,7 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		val query = SimpleSQLiteQuery(
 			"SELECT manga.cover_url AS url, manga.source AS source FROM favourites " +
 				"LEFT JOIN manga ON favourites.manga_id = manga.manga_id " +
-				"WHERE favourites.category_id = ? AND deleted_at = 0 ORDER BY $orderBy",
+				"WHERE favourites.category_id = ? AND deleted_at = 0 ORDER BY $orderBy LIMIT 3",
 			arrayOf<Any>(categoryId),
 		)
 		return findCoversImpl(query)

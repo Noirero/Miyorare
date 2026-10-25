@@ -116,40 +116,68 @@
 
 			</LinearLayout>
 
-			<com.google.android.material.tabs.TabLayout
-				android:id="@+id/tabs"
+			<org.koitharu.kotatsu.favourites.ui.container.CategoryNavigationRow
+				android:id="@+id/category_navigation_row"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
-				android:layout_marginTop="4dp"
-				android:layout_marginBottom="2dp"
-				android:background="@null"
-				android:overScrollMode="never"
-				android:scrollbars="none"
-				app:tabGravity="start"
-				app:tabIndicatorAnimationDuration="0"
-				app:tabIndicatorColor="@android:color/transparent"
-				app:tabIndicatorHeight="0dp"
-				app:tabMode="scrollable"
-				app:tabRippleColor="?attr/colorPrimaryContainer"
-				app:tabSelectedTextColor="?attr/colorPrimary"
-				app:tabTextColor="?attr/colorOnSurfaceVariant" />
+				android:layout_marginHorizontal="16dp"
+				android:layout_marginVertical="4dp"
+				android:gravity="center_vertical"
+				android:orientation="horizontal">
 
-			<com.google.android.material.button.MaterialButton
-				android:id="@+id/button_category_picker"
-				style="?attr/materialButtonOutlinedStyle"
-				android:layout_width="match_parent"
-				android:layout_height="wrap_content"
-				android:layout_marginStart="16dp"
-				android:layout_marginTop="6dp"
-				android:layout_marginEnd="16dp"
-				android:layout_marginBottom="6dp"
-				android:gravity="start|center_vertical"
-				android:minHeight="48dp"
-				android:textAllCaps="false"
-				android:visibility="gone"
-				app:icon="@drawable/ic_expand_more"
-				app:iconGravity="textEnd"
-				tools:text="Kategori: Semua • 1250" />
+				<androidx.appcompat.widget.AppCompatTextView
+					android:id="@+id/button_category_set"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:background="?attr/selectableItemBackground"
+					android:clickable="true"
+					android:focusable="true"
+					android:ellipsize="end"
+					android:gravity="center_vertical"
+					android:minWidth="48dp"
+					android:minHeight="48dp"
+					android:paddingHorizontal="8dp"
+					android:singleLine="true"
+					android:textAppearance="?attr/textAppearanceLabelLarge"
+					android:textColor="?attr/colorOnSurfaceVariant"
+					android:drawablePadding="4dp"
+					tools:text="Second" />
+
+				<com.google.android.material.tabs.TabLayout
+					android:id="@+id/tabs"
+					android:layout_width="0dp"
+					android:layout_height="wrap_content"
+					android:layout_weight="1"
+					android:minHeight="48dp"
+					android:background="@null"
+					android:overScrollMode="never"
+					android:scrollbars="none"
+					app:tabGravity="start"
+					app:tabIndicatorAnimationDuration="0"
+					app:tabIndicatorColor="@android:color/transparent"
+					app:tabIndicatorHeight="0dp"
+					app:tabMode="scrollable"
+					app:tabRippleColor="?attr/colorPrimaryContainer"
+					app:tabSelectedTextColor="?attr/colorPrimary"
+					app:tabTextColor="?attr/colorOnSurfaceVariant" />
+
+				<com.google.android.material.button.MaterialButton
+					android:id="@+id/button_category_picker"
+					style="?attr/materialButtonOutlinedStyle"
+					android:layout_width="0dp"
+					android:layout_height="wrap_content"
+					android:layout_weight="1"
+					android:ellipsize="end"
+					android:singleLine="true"
+					android:gravity="start|center_vertical"
+					android:minHeight="48dp"
+					android:textAllCaps="false"
+					android:visibility="gone"
+					app:icon="@drawable/ic_expand_more"
+					app:iconGravity="textEnd"
+					tools:text="Kategori: Semua • 1250" />
+
+			</org.koitharu.kotatsu.favourites.ui.container.CategoryNavigationRow>
 
 		</org.koitharu.kotatsu.core.ui.MiyorareFavouritesHeaderLayout>
 
