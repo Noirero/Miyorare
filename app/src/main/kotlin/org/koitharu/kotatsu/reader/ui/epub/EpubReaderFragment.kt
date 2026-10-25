@@ -241,6 +241,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private val autoTranslatedChapterIds = ConcurrentHashMap.newKeySet<Long>()
 	private var translationShowsProgressUi = false
 	private var translationIsAutomatic = false
+	private var autoTranslationInFlightChapterId = 0L
 	private var bookSettings: EpubBookSettingsStore.BookSettings? = null
 	private var bookSettingsJob: Job? = null
 	private var bookSettingsMangaId = 0L
@@ -503,6 +504,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		translationOriginals.putIfAbsent(chapter.id, SpannedString(original))
 		cancelActiveTranslation(incrementGeneration = false)
 		translationIsAutomatic = automatic
+		autoTranslationInFlightChapterId = if (automatic) chapter.id else 0L
 		val generation = ++translationGeneration
 		val coordinator = translationCoordinator()
 		if (!automatic) {
@@ -552,6 +554,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				}
 			}.getOrElse { error ->
 				if (generation == translationGeneration && isAdded) {
+					if (automatic) releaseUntranslatedAutoSource(chapter.id)
 					finishTranslationUi()
 					val detail = error.localizedMessage?.takeIf { it.isNotBlank() }
 					Toast.makeText(
@@ -678,16 +681,25 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		if (translationShowsProgressUi) setChapterLoading(false)
 		translationShowsProgressUi = false
 		translationIsAutomatic = false
+		autoTranslationInFlightChapterId = 0L
 		translationStatusDialog?.dismiss()
 		translationStatusDialog = null
 		translationJob = null
 	}
 
 	private fun cancelActiveTranslation(incrementGeneration: Boolean) {
+		val abandonedAutoChapterId = if (translationIsAutomatic) autoTranslationInFlightChapterId else 0L
 		if (incrementGeneration) translationGeneration++
 		translationJob?.cancel()
 		translationJob = null
 		finishTranslationUi()
+		releaseUntranslatedAutoSource(abandonedAutoChapterId)
+	}
+
+	private fun releaseUntranslatedAutoSource(chapterId: Long) {
+		if (chapterId <= 0L || !inlineTranslations[chapterId].isNullOrEmpty()) return
+		translationOriginals.remove(chapterId)
+		autoTranslatedChapterIds.remove(chapterId)
 	}
 
 	private fun restoreOriginalTranslation() {
@@ -859,6 +871,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		autoTranslatedChapterIds.clear()
 		translationShowsProgressUi = false
 		translationIsAutomatic = false
+		autoTranslationInFlightChapterId = 0L
 		translationOriginals.clear()
 		inlineTranslations.clear()
 		translationDisplayModes.clear()

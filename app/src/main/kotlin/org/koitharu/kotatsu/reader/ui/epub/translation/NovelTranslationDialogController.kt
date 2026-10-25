@@ -180,6 +180,7 @@ class NovelTranslationDialogController(
 			val id = autoMangaId ?: return
 			if (settings.isAutoTranslateEnabled(id) && !settings.isAutoTranslateActive(id)) {
 				settings.setAutoTranslateEnabled(id, false)
+				onAutoTranslateChanged(false)
 			}
 			updatingAutoSwitch = true
 			autoTranslateSwitch?.isChecked = settings.isAutoTranslateActive(id)
@@ -228,7 +229,9 @@ class NovelTranslationDialogController(
 
 		advancedButton.setOnClickListener {
 			autoMangaId?.let { id ->
+				val wasEnabled = settings.isAutoTranslateEnabled(id)
 				settings.setAutoTranslateEnabled(id, false)
+				if (wasEnabled) onAutoTranslateChanged(false)
 				updateAutoUi()
 			}
 			showAiSettings(continueToTranslate = false)
