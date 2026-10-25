@@ -2,20 +2,31 @@ package org.koitharu.kotatsu.discovery.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.miyorareAccentSurface
+import org.koitharu.kotatsu.core.ui.miyorareIconSurface
+import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import java.text.DateFormat
@@ -42,12 +53,166 @@ fun catalogProviderName(service: ScrobblerService): String = when (service) {
 	return stringResource(R.string.hub_section_title, title, catalogKindName(key.kind))
 }
 
-@Composable fun CatalogFilterRow(filter: CatalogFilter, onFilter: (CatalogFilter) -> Unit, modifier: Modifier = Modifier) {
-	Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-		CatalogFilter.entries.forEach { choice ->
-			FilterChip(selected = choice == filter, onClick = { onFilter(choice) },
-				label = { Text(stringResource(when (choice) { CatalogFilter.ALL -> R.string.hub_all; CatalogFilter.MANGA -> R.string.hub_manga; CatalogFilter.NOVEL -> R.string.hub_novel })) },
-				modifier = Modifier.heightIn(min = 48.dp).testTag("catalog_filter_${choice.name}"))
+@Composable
+fun CatalogHomeHeader(
+	service: ScrobblerService,
+	services: List<ScrobblerService>,
+	refreshing: Boolean,
+	refreshEnabled: Boolean,
+	showLocalSearch: Boolean,
+	onProvider: (ScrobblerService) -> Unit,
+	onRefresh: () -> Unit,
+	onSearch: () -> Unit,
+	modifier: Modifier = Modifier,
+) {
+	val palette = LocalMiyorareVisualPalette.current
+	var expanded by remember { mutableStateOf(false) }
+	Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+		Row(
+			modifier = Modifier.fillMaxWidth(),
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(8.dp),
+		) {
+			Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+				Text(stringResource(R.string.discovery_hub), style = MaterialTheme.typography.headlineSmall)
+				Text(
+					stringResource(R.string.hub_discovery_subtitle),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					maxLines = 2,
+					overflow = TextOverflow.Ellipsis,
+				)
+			}
+			Box {
+				val providerShape = RoundedCornerShape(18.dp)
+				Surface(
+					onClick = { expanded = true },
+					modifier = Modifier
+						.heightIn(min = 48.dp)
+						.miyorareSurface(palette, providerShape)
+						.testTag("catalog_provider_selector"),
+					shape = providerShape,
+					color = if (palette.isModern) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
+					contentColor = MaterialTheme.colorScheme.onSurface,
+				) {
+					Row(
+						Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+						verticalAlignment = Alignment.CenterVertically,
+						horizontalArrangement = Arrangement.spacedBy(4.dp),
+					) {
+						Text(catalogProviderName(service), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+						Icon(
+							painterResource(R.drawable.ic_expand_more),
+							stringResource(R.string.hub_provider),
+							modifier = Modifier.size(18.dp),
+						)
+					}
+				}
+				DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+					services.forEach { candidate ->
+						DropdownMenuItem(
+							text = { Text(catalogProviderName(candidate)) },
+							onClick = { expanded = false; onProvider(candidate) },
+							modifier = Modifier.heightIn(min = 48.dp).testTag("catalog_provider_${candidate.name}"),
+					)
+					}
+				}
+			}
+			val actionShape = CircleShape
+			IconButton(
+				onClick = onRefresh,
+				enabled = refreshEnabled,
+				modifier = Modifier
+					.size(48.dp)
+					.miyorareIconSurface(palette, actionShape, alpha = if (refreshEnabled) 0.9f else 0.45f)
+					.testTag("catalog_refresh"),
+			) {
+				if (refreshing) {
+					CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+				} else {
+					Icon(painterResource(R.drawable.ic_refresh), stringResource(R.string.hub_refresh))
+				}
+			}
+			if (showLocalSearch) {
+				IconButton(
+					onClick = onSearch,
+					modifier = Modifier
+						.size(48.dp)
+						.miyorareIconSurface(palette, actionShape, alpha = 0.9f)
+						.testTag("catalog_search_action"),
+				) {
+					Icon(painterResource(R.drawable.ic_search), stringResource(R.string.hub_search_catalogue))
+				}
+			}
+		}
+	}
+}
+
+@Composable
+fun CatalogFilterRow(filter: CatalogFilter, onFilter: (CatalogFilter) -> Unit, modifier: Modifier = Modifier) {
+	val palette = LocalMiyorareVisualPalette.current
+	val outerShape = RoundedCornerShape(22.dp)
+	Surface(
+		modifier = modifier.fillMaxWidth().miyorareSurface(palette, outerShape),
+		shape = outerShape,
+		color = if (palette.isModern) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
+	) {
+		Row(
+			Modifier.fillMaxWidth().padding(4.dp),
+			horizontalArrangement = Arrangement.spacedBy(4.dp),
+		) {
+			CatalogFilter.entries.forEach { choice ->
+				val isSelected = choice == filter
+				val segmentShape = RoundedCornerShape(18.dp)
+				val segmentModifier = Modifier
+					.weight(1f)
+					.heightIn(min = 48.dp)
+					.semantics {
+						selected = isSelected
+						role = Role.RadioButton
+					}
+					.let {
+						if (palette.isModern && isSelected) it.miyorareAccentSurface(palette, segmentShape) else it
+					}
+					.testTag("catalog_filter_${choice.name}")
+				Surface(
+					onClick = { onFilter(choice) },
+					modifier = segmentModifier,
+					shape = segmentShape,
+					color = when {
+						palette.isModern && isSelected -> Color.Transparent
+						isSelected -> MaterialTheme.colorScheme.primaryContainer
+						else -> Color.Transparent
+					},
+					contentColor = when {
+						palette.isModern && isSelected -> palette.onButton
+						isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
+						else -> MaterialTheme.colorScheme.onSurfaceVariant
+					},
+				) {
+					Row(
+						Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+						horizontalArrangement = Arrangement.Center,
+						verticalAlignment = Alignment.CenterVertically,
+					) {
+						if (isSelected) {
+							Icon(painterResource(R.drawable.ic_check), null, Modifier.size(16.dp))
+							Spacer(Modifier.width(5.dp))
+						}
+						Text(
+							stringResource(when (choice) {
+								CatalogFilter.ALL -> R.string.hub_all
+								CatalogFilter.MANGA -> R.string.hub_manga
+								CatalogFilter.NOVEL -> R.string.hub_novel
+							}),
+							style = MaterialTheme.typography.labelLarge,
+							fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+							maxLines = 1,
+							overflow = TextOverflow.Ellipsis,
+						)
+					}
+				}
+			}
 		}
 	}
 }
