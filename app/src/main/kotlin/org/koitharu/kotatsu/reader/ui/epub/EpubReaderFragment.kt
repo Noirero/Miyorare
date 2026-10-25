@@ -1102,6 +1102,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 						if (loaded) verticalView?.adapter?.notifyItemChanged(index)
 					}
 				}
+			}
 		}
 	}
 
