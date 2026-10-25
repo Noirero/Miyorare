@@ -37,11 +37,19 @@ class FavouritesCategoryEditActivity :
 	private val sortOrders = ListSortOrder.entries
 
 	override fun onCreate(savedInstanceState: Bundle?) {
+		if (intent.getIntExtra(org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE, 0) == 1) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
 		super.onCreate(savedInstanceState)
 		setContentView(ActivityCategoryEditBinding.inflate(layoutInflater))
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = true)
 		initSortSpinner()
 		viewBinding.buttonDone.setOnClickListener(this)
+		viewBinding.buttonCategorySet.setOnClickListener {
+			val sets = viewModel.sets.value
+			com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.category_set_move)
+				.setItems(sets.map { it.title }.toTypedArray()) { _, index -> viewModel.moveToSet(sets[index]) }.show()
+		}
+		viewModel.currentSet.observe(this) { viewBinding.buttonCategorySet.text = getString(R.string.category_set_selector, it?.title.orEmpty()) }
 		viewBinding.editName.addTextChangedListener(this)
 		afterTextChanged(viewBinding.editName.text)
 
@@ -120,6 +128,7 @@ class FavouritesCategoryEditActivity :
 	}
 
 	private fun onLoadingStateChanged(isLoading: Boolean) {
+		viewBinding.buttonCategorySet.isEnabled = !isLoading
 		viewBinding.buttonDone.isEnabled = !isLoading && !viewBinding.editName.text.isNullOrBlank()
 		viewBinding.editSort.isEnabled = !isLoading
 		viewBinding.editName.isEnabled = !isLoading

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
@@ -67,11 +68,18 @@ class FavouritesContainerViewModel @Inject constructor(
 	private val displayPreferences: FavouriteDisplayPreferences,
 	private val downloadedContentClassifier: DownloadedContentClassifier,
 	private val filterStore: FavouriteQuickFilterStore,
+	private val setSelection: org.koitharu.kotatsu.favourites.domain.FavouriteSetSelectionStore,
 ) : BaseViewModel() {
 
 	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
+
+	val sets = favouritesRepository.observeSets(favouriteSpace).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+	val activeSet = setSelection.observe(favouriteSpace, contentTypeStore.selectedType(favouriteSpace))
+		.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+	fun selectSet(set: org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity) =
+		setSelection.select(set, favouriteSpace, contentTypeStore.selectedType(favouriteSpace).value)
 
 	init {
 		launchJob(Dispatchers.IO) {
@@ -100,7 +108,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		LocalMangaIndex.rebuildEvents,
 	)
 
-	private val categoriesStateFlow = favouritesRepository.observeCategoriesForLibrary(favouriteSpace)
+	private val categoriesStateFlow = activeSet.filterNotNull().flatMapLatest { favouritesRepository.observeCategoriesForLibrary(it.setId, favouriteSpace) }
 		.withErrorHandling()
 		.distinctUntilChanged { old, new ->
 			old.size == new.size && old.indices.all { index ->

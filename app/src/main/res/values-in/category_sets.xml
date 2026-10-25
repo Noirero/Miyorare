@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="category_sets">Set kategori</string>
+	<string name="category_set_selector">Set: %1$s</string>
+	<string name="category_set_create">Buat Set</string>
+	<string name="category_set_manage">Kelola Set</string>
+	<string name="category_set_rename">Ubah nama Set</string>
+	<string name="category_set_move">Pindah ke Set</string>
+	<string name="category_set_move_delete">Pindahkan kategori &amp; hapus Set</string>
+	<string name="category_set_delete">Hapus Set</string>
+	<string name="category_set_delete_categories">Hapus Set dan kategori</string>
+	<string name="category_set_delete_confirm">Hapus “%1$s”? Pindahkan %2$d kategorinya (%3$d judul unik) ke Set lain.</string>
+	<string name="category_set_destructive_confirm">Hapus permanen Set “%1$s” beserta %2$d kategori (%3$d judul unik)? Keanggotaan Favorit dalam kategori tersebut akan dihapus.</string>
+	<string name="category_set_last">Set terakhir tidak dapat dihapus. Namanya dapat diubah.</string>
+	<string name="category_set_duplicate_title">Nama ini sudah ada di sini. Pilih nama lain.</string>
+	<string name="category_set_search">Cari kategori dalam Set ini</string>
+	<string name="category_set_empty">Tidak ada kategori yang cocok dalam Set ini</string>
+	<string name="category_set_up">Pindahkan Set ke atas</string>
+	<string name="category_set_down">Pindahkan Set ke bawah</string>
+	<string name="category_set_page">Halaman %1$d dari %2$d</string>
+	<string name="category_set_target">Set tujuan</string>
+	<string name="category_set_name">Nama Set</string>
+</resources>

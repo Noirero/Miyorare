@@ -31,6 +31,10 @@ import org.koitharu.kotatsu.reader.data.TapGridSettings
 import org.koitharu.kotatsu.sync.data.GoogleDriveApi
 import org.koitharu.kotatsu.sync.data.GoogleDriveAuth
 import org.koitharu.kotatsu.sync.data.SyncSettings
+import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetAssignmentEntity
+import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
+import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
+import org.koitharu.kotatsu.sync.data.model.SyncCategorySet
 import org.koitharu.kotatsu.sync.data.model.SyncCategory
 import org.koitharu.kotatsu.sync.data.model.SyncConfig
 import org.koitharu.kotatsu.sync.data.model.SyncContent
@@ -69,6 +73,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 	private val auth: GoogleDriveAuth,
 	private val api: GoogleDriveApi,
 	private val coverCodec: CustomCoverCodec,
+	private val contentTypeStore: FavouriteContentTypeStore,
 ) {
 
 	private val json = Json {
@@ -293,6 +298,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			schemaVersion = snapshot.schemaVersion,
 			deviceId = "",
 			syncedAt = 0L,
+			categorySets = snapshot.categorySets,
 			categories = snapshot.categories,
 			favourites = snapshot.favourites,
 			history = snapshot.history,
@@ -310,7 +316,8 @@ class GoogleDriveSyncRepository @Inject constructor(
 	/** Returns a copy with tombstones older than [TOMBSTONE_TTL_MS] dropped from the row sections. */
 	private fun pruneTombstones(snapshot: SyncSnapshot, now: Long): SyncSnapshot {
 		val cutoff = now - TOMBSTONE_TTL_MS
-		val categories = snapshot.categories.filter { it.deletedAt == 0L || it.deletedAt >= cutoff }
+		// Stable identity tombstones are retained: an old/offline snapshot must never resurrect them.
+		val categories = snapshot.categories
 		val favourites = snapshot.favourites.filter { it.deletedAt == 0L || it.deletedAt >= cutoff }
 		val history = snapshot.history.filter { it.deletedAt == 0L || it.deletedAt >= cutoff }
 		if (categories.size == snapshot.categories.size &&
@@ -324,6 +331,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			schemaVersion = snapshot.schemaVersion,
 			deviceId = snapshot.deviceId,
 			syncedAt = snapshot.syncedAt,
+			categorySets = snapshot.categorySets,
 			categories = categories,
 			favourites = favourites,
 			history = history,
@@ -366,6 +374,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			remoteCategories = remote.categories,
 			remoteFavourites = remote.favourites,
 			localCategories = localCategories(),
+			reservedIds = database.getFavouriteCategoriesDao().getAllIds().toHashSet(),
 		)
 		return if (categories === remote.categories && favourites === remote.favourites) {
 			remote
@@ -459,24 +468,13 @@ class GoogleDriveSyncRepository @Inject constructor(
 		val histEnabled = SyncContent.HISTORY in enabled
 		val propagateDeletions = !syncSettings.isDeletionSyncDisabled
 
-		val categories = if (favEnabled) {
-			SyncMerger.mergeCategories(
-				localCategories(),
-				remote?.categories.orEmpty(),
-				propagateDeletions,
-			)
-		} else {
-			remote?.categories.orEmpty()
-		}
-		val favourites = if (favEnabled) {
-			SyncMerger.mergeFavourites(
-				localFavourites(),
-				remote?.favourites.orEmpty(),
-				propagateDeletions,
-			)
-		} else {
-			remote?.favourites.orEmpty()
-		}
+		val favouriteState = if (favEnabled) SyncMerger.mergeFavouriteState(
+			database.withTransaction { SyncSnapshot(categorySets = localCategorySets(), categories = localCategories(), favourites = localFavourites()) },
+			remote, propagateDeletions, database.getFavouriteCategoriesDao().getAllIds().toHashSet(),
+		) else null
+		val categories = favouriteState?.categories ?: remote?.categories.orEmpty()
+		val favourites = favouriteState?.favourites ?: remote?.favourites.orEmpty()
+
 		val history = if (histEnabled) {
 			SyncMerger.mergeHistory(
 				localHistory(),
@@ -529,6 +527,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 		return SyncSnapshot(
 			deviceId = syncSettings.deviceId,
 			syncedAt = now,
+			categorySets = favouriteState?.sets ?: remote?.categorySets.orEmpty(),
 			categories = categories,
 			favourites = favourites,
 			history = history,
@@ -655,39 +654,60 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 	// region apply to DB
 
-	private suspend fun applyToDatabase(
+	internal suspend fun applyToDatabase(
 		merged: SyncSnapshot,
 		remoteConfigWon: Boolean,
 		enabled: Set<SyncContent>,
 	) {
 		if (SyncContent.FAVOURITES in enabled) {
-			val locallyDeletedCategories = if (syncSettings.isDeletionSyncDisabled) {
-				database.getFavouriteCategoriesDao().findAllForSync()
-					.filterTo(HashSet()) { it.deletedAt != 0L }
-					.mapTo(HashSet()) { it.categoryId }
-			} else {
-				emptySet()
-			}
-			val locallyDeletedFavourites = if (syncSettings.isDeletionSyncDisabled) {
-				database.getFavouritesDao().findAllForSync()
-					.filter { it.deletedAt != 0L }
-					.mapTo(HashSet()) { it.mangaId to it.categoryId }
-			} else {
-				emptySet()
-			}
+			val typesToApply = LinkedHashMap<Long, FavouriteContentType>()
 			database.withTransaction {
-				for (category in merged.categories) {
-					if (category.categoryId !in locallyDeletedCategories) {
-						database.getFavouriteCategoriesDao().upsert(category.toEntity())
-					}
+				val dao = database.getFavouriteCategorySetsDao()
+				// Re-read inside the write transaction: a local edit or a Private insert may have happened
+				// while Drive was in flight. Reserve those IDs and keep newer local category state.
+				val preserveLocalDeletions = syncSettings.isDeletionSyncDisabled
+				val currentSets = localCategorySets()
+				val currentCategories = localCategories()
+				val locallyDeletedCategories = if (preserveLocalDeletions) currentCategories
+					.filter { it.deletedAt != 0L }.mapTo(HashSet()) { it.categoryId } else emptySet()
+				val locallyDeletedFavourites = if (preserveLocalDeletions) database.getFavouritesDao().findAllForSync()
+					.filter { it.deletedAt != 0L }.mapTo(HashSet()) { it.mangaId to it.categoryId } else emptySet()
+				val state = SyncMerger.mergeFavouriteState(
+					SyncSnapshot(categorySets = currentSets, categories = currentCategories), merged,
+					!preserveLocalDeletions, database.getFavouriteCategoriesDao().getAllIds().toHashSet(),
+				)
+				val locallyDeletedSetKeys = if (preserveLocalDeletions) currentSets.filter { it.deletedAt != 0L }.mapTo(HashSet()) { it.syncKey } else emptySet()
+				for (set in state.sets) {
+					val existing = dao.findSetByKey(set.syncKey, 0)
+					if (existing == null || (set.deletedAt == 0L && set.syncKey !in locallyDeletedSetKeys)) dao.upsert(set.toEntity(existing?.setId ?: 0))
 				}
-				for (favourite in merged.favourites) {
-					if ((favourite.mangaId to favourite.categoryId) !in locallyDeletedFavourites) {
+				for (category in state.categories) {
+					if (category.categoryId in locallyDeletedCategories) continue
+					var target = checkNotNull(dao.findSetByKey(category.setSyncKey, 0))
+					var updatedAt = category.updatedAt
+					if (category.deletedAt == 0L && target.deletedAt != 0L) {
+						target = checkNotNull(dao.getSets(0).firstOrNull())
+						updatedAt = maxOf(updatedAt, System.currentTimeMillis()) + 1
+					}
+					database.getFavouriteCategoriesDao().upsert(category.toEntity())
+					dao.assign(FavouriteCategorySetAssignmentEntity(category.categoryId.toLong(), target.setId, category.syncKey, updatedAt))
+					category.contentType?.let { type -> FavouriteContentType.entries.firstOrNull { it.name == type }?.let { typesToApply[category.categoryId.toLong()] = it } }
+				}
+				for (set in state.sets.filter { it.deletedAt != 0L }) {
+					val existing = dao.findSetByKey(set.syncKey, 0)
+					dao.upsert(set.toEntity(existing?.setId ?: 0))
+				}
+				val categoryIds = state.categories.mapTo(HashSet()) { it.categoryId.toLong() }
+				for (favourite in state.favourites) {
+					require(favourite.categoryId in categoryIds) { "Unmapped Normal sync membership" }
+					if (favourite.categoryId.toInt() !in locallyDeletedCategories && (favourite.mangaId to favourite.categoryId) !in locallyDeletedFavourites) {
 						upsertManga(favourite.manga)
 						database.getFavouritesDao().upsert(favourite.toEntity())
 					}
 				}
 			}
+			for ((id, type) in typesToApply) contentTypeStore.setCategoryType(id, type)
+
 		}
 		if (SyncContent.HISTORY in enabled) {
 			val locallyDeletedHistory = if (syncSettings.isDeletionSyncDisabled) {
@@ -845,8 +865,19 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 	// region local readers
 
-	private suspend fun localCategories(): List<SyncCategory> =
-		database.getFavouriteCategoriesDao().findAllForSync().map(::SyncCategory)
+	internal suspend fun localCategorySets(): List<SyncCategorySet> =
+		database.getFavouriteCategorySetsDao().getSetsForSync(0).map(::SyncCategorySet)
+
+	internal suspend fun localCategories(): List<SyncCategory> = database.withTransaction {
+		val dao = database.getFavouriteCategorySetsDao()
+		val assignments = dao.getAssignments(0).associateBy { it.categoryId }
+		val sets = dao.getSetsForSync(0).associateBy { it.setId }
+		database.getFavouriteCategoriesDao().findAllForSync().map { entity ->
+			val assignment = checkNotNull(assignments[entity.categoryId.toLong()])
+			SyncCategory(entity).copy(syncKey = assignment.categorySyncKey, setSyncKey = checkNotNull(sets[assignment.setId]).syncKey, updatedAt = assignment.updatedAt,
+				contentType = if (contentTypeStore.isCategoryForType(entity.categoryId.toLong(), FavouriteContentType.NOVEL)) FavouriteContentType.NOVEL.name else FavouriteContentType.MANGA.name)
+		}
+	}
 
 	private suspend fun localFavourites(): List<SyncFavourite> {
 		val mangaCache = HashMap<Long, MangaBackup>()

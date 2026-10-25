@@ -5,6 +5,8 @@ import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.StatsBackup
+import org.koitharu.kotatsu.favourites.domain.CategorySetIdentity
+import org.koitharu.kotatsu.sync.data.model.SyncCategorySet
 import org.koitharu.kotatsu.sync.data.model.SyncCategory
 import org.koitharu.kotatsu.sync.data.model.SyncConfig
 import org.koitharu.kotatsu.sync.data.model.SyncFavourite
@@ -21,60 +23,127 @@ import org.koitharu.kotatsu.sync.data.model.SyncTrack
  */
 object SyncMerger {
 
-	/**
-	 * Category ids are per-device autoincrements, so the same id on two devices usually means two
-	 * DIFFERENT categories — merging by raw id would overwrite one with the other and misfile its
-	 * favourites. The normalized title is the only cross-device identity: rewrite remote category
-	 * ids into the local id space (matched by title; unmatched remote categories keep their id or
-	 * get a free one on collision) before any id-keyed merge. Favourites follow their category.
-	 */
+	/** Stable keys own identity; numeric IDs only wire memberships into this device's namespace. */
 	fun remapRemoteCategories(
-		remoteCategories: List<SyncCategory>,
-		remoteFavourites: List<SyncFavourite>,
-		localCategories: List<SyncCategory>,
+		remoteCategories: List<SyncCategory>, remoteFavourites: List<SyncFavourite>,
+		localCategories: List<SyncCategory>, reservedIds: Set<Int> = emptySet(),
 	): Pair<List<SyncCategory>, List<SyncFavourite>> {
-		if (remoteCategories.isEmpty()) {
-			return remoteCategories to remoteFavourites
+		val remoteIds = remoteCategories.mapTo(HashSet()) { it.categoryId.toLong() }
+		require(remoteFavourites.all { it.categoryId in remoteIds }) { "Unmapped remote Favourite category" }
+		val localKeys = categoryKeys(localCategories)
+		val remoteKeys = categoryKeys(remoteCategories)
+		val localIds = localCategories.associate { checkNotNull(localKeys[it.categoryId]) to it.categoryId }
+		val usedIds = (localCategories.map { it.categoryId } + reservedIds).toHashSet()
+		val remap = HashMap<Int, Int>()
+		for (category in remoteCategories) {
+			val newId = localIds[remoteKeys[category.categoryId]] ?: category.categoryId.takeIf { it > 0 && usedIds.add(it) }
+				?: ((usedIds.maxOrNull()?.coerceAtLeast(0) ?: 0) + 1).also { require(it > 0); usedIds.add(it) }
+			if (newId != category.categoryId) remap[category.categoryId] = newId
 		}
-		val localIdByTitle = HashMap<String, Int>(localCategories.size)
-		// Live rows first so a recreated category wins over an old tombstone with the same title.
-		for (c in localCategories.sortedBy { it.deletedAt != 0L }) {
-			localIdByTitle.putIfAbsent(c.titleKey(), c.categoryId)
-		}
-		val usedIds = localCategories.mapTo(HashSet()) { it.categoryId }
-		val remap = HashMap<Int, Int>(remoteCategories.size)
-		for (c in remoteCategories) {
-			val newId = localIdByTitle[c.titleKey()]
-				?: c.categoryId.takeIf(usedIds::add)
-				?: ((usedIds.max() + 1).also(usedIds::add))
-			if (newId != c.categoryId) {
-				remap[c.categoryId] = newId
-			}
-		}
-		if (remap.isEmpty()) {
-			return remoteCategories to remoteFavourites
-		}
-		val categories = remoteCategories.map { c ->
-			remap[c.categoryId]?.let { c.copy(categoryId = it) } ?: c
-		}
-		val favourites = remoteFavourites.map { f ->
-			remap[f.categoryId.toInt()]?.let { f.copy(categoryId = it.toLong()) } ?: f
-		}
-		return categories to favourites
+		if (remap.isEmpty()) return remoteCategories to remoteFavourites
+		return remoteCategories.map { c -> remap[c.categoryId]?.let { c.copy(categoryId = it) } ?: c } to
+			remoteFavourites.map { f -> remap[f.categoryId.toInt()]?.let { f.copy(categoryId = it.toLong()) } ?: f }
 	}
 
-	private fun SyncCategory.titleKey(): String = title.trim().lowercase()
+	private fun categoryKeys(categories: List<SyncCategory>): Map<Int, String> {
+		val occurrences = HashMap<String, Int>()
+		return categories.sortedBy { it.categoryId }.associate { category ->
+			val normalized = CategorySetIdentity.normalizeTitle(category.title)
+			val occurrence = occurrences[normalized] ?: 0
+			occurrences[normalized] = occurrence + 1
+			category.categoryId to category.syncKey.ifBlank { CategorySetIdentity.legacyCategory(0, category.title, occurrence) }
+		}
+	}
 
-	fun mergeCategories(
-		local: List<SyncCategory>,
-		remote: List<SyncCategory>,
-		propagateDeletions: Boolean = true,
-	): List<SyncCategory> = mergeBy(
-		local = local.filterDeleted(propagateDeletions) { it.deletedAt },
-		remote = remote.filterDeleted(propagateDeletions) { it.deletedAt },
-		key = { it.categoryId },
-		timestamp = { maxOf(it.createdAt, it.deletedAt) },
+	fun mergeCategories(local: List<SyncCategory>, remote: List<SyncCategory>, propagateDeletions: Boolean = true): List<SyncCategory> {
+		val keys = categoryKeys(local) // Real snapshots have explicit keys; blanks are legacy callers.
+		val remoteKeys = categoryKeys(remote)
+		val result = LinkedHashMap<String, SyncCategory>()
+		for (c in local.filterDeleted(propagateDeletions) { it.deletedAt }) result[checkNotNull(keys[c.categoryId])] = c
+		for (c in remote.filterDeleted(propagateDeletions) { it.deletedAt }) {
+			val key = checkNotNull(remoteKeys[c.categoryId])
+			val current = result[key]
+			if (current == null || (c.deletedAt != 0L && current.deletedAt == 0L) || ((c.deletedAt == 0L) == (current.deletedAt == 0L) && categoryVersion(c) > categoryVersion(current))) result[key] = c
+		}
+		return result.values.toList()
+	}
+
+	private fun categoryVersion(c: SyncCategory): PairVersion = PairVersion(
+		maxOf(c.createdAt, c.updatedAt, c.deletedAt),
+		"${c.deletedAt != 0L}|${c.setSyncKey}|${c.title}|${c.sortKey}|${c.order}|${c.track}|${c.downloadNewChapters}|${c.isVisibleInLibrary}|${c.contentType}",
 	)
+	private data class PairVersion(val time: Long, val tie: String) : Comparable<PairVersion> {
+		override fun compareTo(other: PairVersion): Int = compareValuesBy(this, other, { it.time }, { it.tie })
+	}
+
+	fun mergeSets(local: List<SyncCategorySet>, remote: List<SyncCategorySet>, propagateDeletions: Boolean = true): List<SyncCategorySet> {
+		val result = LinkedHashMap<String, SyncCategorySet>()
+		for (set in (local + remote).filterDeleted(propagateDeletions) { it.deletedAt }) {
+			require(set.space == 0 && set.syncKey.isNotBlank()) { "Private or invalid Set in Normal sync" }
+			val current = result[set.syncKey]
+			fun version(s: SyncCategorySet) = PairVersion(maxOf(s.updatedAt, s.createdAt, s.deletedAt), "${s.deletedAt != 0L}|${s.title}|${s.sortKey}")
+			if (current == null || (set.deletedAt != 0L && current.deletedAt == 0L) || ((set.deletedAt == 0L) == (current.deletedAt == 0L) && version(set) > version(current))) result[set.syncKey] = set
+		}
+		return result.values.sortedWith(compareBy<SyncCategorySet> { it.sortKey }.thenBy { it.syncKey })
+	}
+
+	/** Upgrade only the old wire format. New-schema identities are never inferred from titles. */
+	fun upgradeCategorySets(snapshot: SyncSnapshot): SyncSnapshot {
+		require(snapshot.schemaVersion <= SyncSnapshot.SCHEMA_VERSION) { "Unsupported newer sync schema" }
+		if (snapshot.schemaVersion >= 5) {
+			require(snapshot.categorySets.all { it.space == 0 && it.syncKey.isNotBlank() })
+			require(snapshot.categories.all { it.syncKey.isNotBlank() && it.setSyncKey.isNotBlank() })
+			return snapshot
+		}
+		val keys = categoryKeys(snapshot.categories)
+		return snapshot.copy(schemaVersion = SyncSnapshot.SCHEMA_VERSION,
+			categorySets = listOf(SyncCategorySet(CategorySetIdentity.defaultSet(0), "Utama", 0, 0, 0)),
+			categories = snapshot.categories.map { it.copy(syncKey = checkNotNull(keys[it.categoryId]), setSyncKey = CategorySetIdentity.defaultSet(0), updatedAt = maxOf(it.createdAt, it.deletedAt)) },
+		)
+	}
+
+	data class FavouriteState(val sets: List<SyncCategorySet>, val categories: List<SyncCategory>, val favourites: List<SyncFavourite>)
+
+	/** Shared by Drive duplicate-file folding, two-way sync, and the transactional apply recheck. */
+	fun mergeFavouriteState(local: SyncSnapshot, remote: SyncSnapshot?, propagateDeletions: Boolean = true, reservedIds: Set<Int> = emptySet()): FavouriteState {
+		val a = upgradeCategorySets(local)
+		val b = remote?.let(::upgradeCategorySets)
+		val remapped = remapRemoteCategories(b?.categories.orEmpty(), b?.favourites.orEmpty(), a.categories, reservedIds)
+		val sets = mergeSets(a.categorySets, b?.categorySets.orEmpty(), propagateDeletions).toMutableList()
+		val categories = mergeCategories(a.categories, remapped.first, propagateDeletions)
+		if (sets.none { it.deletedAt == 0L }) {
+			val time = (sets.maxOfOrNull { maxOf(it.updatedAt, it.deletedAt) } ?: 0) + 1
+			val key = if (sets.isEmpty()) CategorySetIdentity.defaultSet(0) else java.util.UUID.nameUUIDFromBytes(sets.map { it.syncKey }.sorted().joinToString("|").toByteArray(Charsets.UTF_8)).toString()
+			sets += SyncCategorySet(key, "Utama", 0, time, time)
+		}
+		// Concurrent creates/renames must retain both identities without leaving ambiguous Set names.
+		val usedTitles = HashSet<String>()
+		val disambiguated = sets.sortedBy { it.syncKey }.map { set ->
+			if (set.deletedAt != 0L || usedTitles.add(CategorySetIdentity.normalizeTitle(set.title))) set
+			else {
+				var suffix = 1
+				var title: String
+				do {
+					title = "${set.title} (${set.syncKey.takeLast(8)}${if (suffix == 1) "" else "-$suffix"})"
+					suffix++
+				} while (!usedTitles.add(CategorySetIdentity.normalizeTitle(title)))
+				set.copy(title = title, updatedAt = maxOf(set.updatedAt, set.createdAt) + 1)
+			}
+		}
+		sets.clear()
+		sets.addAll(disambiguated.sortedWith(compareBy<SyncCategorySet> { it.sortKey }.thenBy { it.syncKey }))
+		val byKey = sets.associateBy { it.syncKey }
+		val fallback = sets.filter { it.deletedAt == 0L }.minWith(compareBy<SyncCategorySet> { it.sortKey }.thenBy { it.syncKey })
+		val repaired = categories.map { c ->
+			val set = requireNotNull(byKey[c.setSyncKey]) { "Unknown category Set in sync" }
+			if (c.deletedAt == 0L && set.deletedAt != 0L) c.copy(setSyncKey = fallback.syncKey, updatedAt = maxOf(c.updatedAt, set.deletedAt) + 1) else c
+		}
+		val deleted = repaired.filter { it.deletedAt != 0L }.associate { it.categoryId.toLong() to it.deletedAt }
+		val favourites = mergeFavourites(a.favourites, remapped.second, propagateDeletions).map { f ->
+			deleted[f.categoryId]?.let { f.copy(deletedAt = maxOf(it, f.deletedAt)) } ?: f
+		}
+		return FavouriteState(sets, repaired, favourites)
+	}
 
 	fun mergeFavourites(
 		local: List<SyncFavourite>,
@@ -258,8 +327,8 @@ object SyncMerger {
 	 */
 	fun combine(snapshots: List<SyncSnapshot>): SyncSnapshot? = when {
 		snapshots.isEmpty() -> null
-		snapshots.size == 1 -> snapshots.single()
-		else -> snapshots.reduce(::mergeSnapshots)
+		snapshots.size == 1 -> upgradeCategorySets(snapshots.single())
+		else -> snapshots.map(::upgradeCategorySets).reduce(::mergeSnapshots)
 	}
 
 	private fun mergeSnapshots(a: SyncSnapshot, b: SyncSnapshot): SyncSnapshot {
@@ -269,11 +338,13 @@ object SyncMerger {
 			b.config.revision > a.config.revision -> b.config
 			else -> a.config
 		}
+		val favourites = mergeFavouriteState(a, b)
 		return SyncSnapshot(
 			deviceId = a.deviceId,
 			syncedAt = maxOf(a.syncedAt, b.syncedAt),
-			categories = mergeCategories(a.categories, b.categories),
-			favourites = mergeFavourites(a.favourites, b.favourites),
+			categorySets = favourites.sets,
+			categories = favourites.categories,
+			favourites = favourites.favourites,
 			history = mergeHistory(a.history, b.history),
 			bookmarks = mergeBookmarks(a.bookmarks, b.bookmarks),
 			scrobblings = mergeScrobblings(a.scrobblings, b.scrobblings),
