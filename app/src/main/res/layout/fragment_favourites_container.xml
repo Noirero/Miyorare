@@ -136,7 +136,7 @@
 					android:ellipsize="end"
 					android:gravity="center"
 					android:minHeight="56dp"
-					android:paddingHorizontal="16dp"
+					android:paddingHorizontal="48dp"
 					android:singleLine="true"
 					android:textAppearance="?attr/textAppearanceTitleMedium"
 					android:textColor="?attr/colorOnSurfaceVariant"
@@ -173,7 +173,7 @@
 					android:textAllCaps="false"
 					android:visibility="gone"
 					app:icon="@drawable/ic_expand_more"
-					app:iconGravity="textEnd"
+					app:iconGravity="end"
 					tools:text="Kategori: Semua kesukaan • 12" />
 
 			</org.koitharu.kotatsu.favourites.ui.container.CategoryNavigationRow>
