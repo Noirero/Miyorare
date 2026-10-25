@@ -37,6 +37,7 @@ class DiscoveryCatalogUiTest {
 		compose.runOnIdle { state.value = DiscoveryHubState(request, loading = false, home = TrackerCatalogHome(emptyList())) }
 		compose.onNodeWithTag("catalog_empty").assertExists(); compose.onNodeWithTag("catalog_error_RATE_LIMITED").assertDoesNotExist()
 	}
+
 	@Test fun providerSelectionKeepsKindAndDoesNotSelectFallbackOnFailure() {
 		var chosen: Service? = null; var kind: CatalogFilter? = null
 		compose.setContent { MaterialTheme { DiscoveryHubScreen(DiscoveryHubState(request.copy(filter = CatalogFilter.NOVEL), loading = false, failure = CatalogFailure(CatalogFailureKind.PROVIDER)), listOf(Service.ANILIST, Service.MAL, Service.KITSU), loader, { chosen = it }, { kind = it }, {}, {}, {}, {}, {}, MutableSharedFlow()) } }
@@ -44,6 +45,27 @@ class DiscoveryCatalogUiTest {
 		compose.onNodeWithTag("catalog_provider_selector").performClick(); compose.onNodeWithTag("catalog_provider_KITSU").performClick()
 		assertEquals(Service.KITSU, chosen); assertNull(kind)
 	}
+
+	@Test fun homeHeaderUsesCohesiveControlsAndOnlyFallsBackToLocalSearchWhenNeeded() {
+		val sharedSearchAvailable = mutableStateOf(false)
+		val state = DiscoveryHubState(request, home = TrackerCatalogHome(emptyList()), loading = false)
+		compose.setContent {
+			MaterialTheme {
+				DiscoveryHubScreen(
+					state, listOf(Service.ANILIST, Service.MAL, Service.KITSU), loader,
+					{}, {}, {}, {}, {}, {}, {}, MutableSharedFlow(),
+					showLocalSearch = !sharedSearchAvailable.value,
+				)
+			}
+		}
+		compose.onNodeWithTag("catalog_provider_selector").assertExists().assertHasClickAction()
+		compose.onNodeWithTag("catalog_refresh").assertExists().assertHasClickAction()
+		compose.onNodeWithTag("catalog_filter_ALL").assertIsSelected().assertHasClickAction()
+		compose.onNodeWithTag("catalog_search_action").assertExists()
+		compose.runOnIdle { sharedSearchAvailable.value = true }
+		compose.onNodeWithTag("catalog_search_action").assertDoesNotExist()
+	}
+
 	@Test fun heroAndSeeAllCarryExactProviderSectionWithoutSourceResolution() {
 		var clicked: TrackerCatalogKey? = null; var browsed: CatalogSectionKey? = null
 		val home = TrackerCatalogHome(listOf(TrackerCatalogSection(section, listOf(item))))
@@ -51,22 +73,26 @@ class DiscoveryCatalogUiTest {
 		assertNull(clicked); compose.onNodeWithTag("catalog_spotlight").performClick(); assertEquals(item.key, clicked)
 		compose.onNodeWithTag("catalog_see_all_MANGA_TRENDING").performClick(); assertEquals(section, browsed)
 	}
+
 	@Test fun staleAndPartialHomeKeepsRealRowsVisibleInDarkTheme() {
 		val home = TrackerCatalogHome(listOf(TrackerCatalogSection(section, listOf(item), failure = CatalogFailure(CatalogFailureKind.OFFLINE))))
 		compose.setContent { MaterialTheme(colorScheme = darkColorScheme()) { DiscoveryHubScreen(DiscoveryHubState(request, home, loading = false, stale = true), listOf(Service.ANILIST), loader, {}, {}, {}, {}, {}, {}, {}, MutableSharedFlow()) } }
 		compose.onNodeWithTag("catalog_stale").assertExists(); compose.onNodeWithTag("catalog_spotlight").assertExists()
 		compose.onNodeWithTag("catalog_section_MANGA_TRENDING").assertExists()
 	}
+
 	@androidx.compose.runtime.Composable
 	private fun screen(state: CatalogScreenState, onRead: () -> Unit = {}, onSource: (org.koitharu.kotatsu.parsers.model.Manga) -> Unit = {}, onSearch: () -> Unit = {}, onNext: () -> Unit = {}, onGlobal: () -> Unit = {}, onProvider: () -> Unit = {}) {
 		TrackerCatalogScreen(state, null, loader, {}, {}, onSearch, {}, {}, onNext, {}, onProvider, onRead, {}, {}, onGlobal, onSource)
 	}
+
 	@Test fun searchAndSeeAllUseCatalogueCardsAndRealPaginationAction() {
 		var search = 0; var next = 0
 		compose.setContent { MaterialTheme { screen(CatalogScreenState(Service.ANILIST, CatalogScreenMode.SEARCH, CatalogFilter.ALL, "title", listOf(item), nextPage = 2), onSearch = { search++ }, onNext = { next++ }) } }
 		compose.onNodeWithTag("catalog_search_submit").performClick(); assertEquals(1, search)
 		compose.onNodeWithTag("catalog_card_ANILIST_MANGA_42").assertExists(); compose.onNodeWithTag("catalog_load_more").performScrollTo().performClick(); assertEquals(1, next)
 	}
+
 	@Test fun metadataDetailCtaDoesNotClaimReadableSourceBeforeResolution() {
 		var pressed = false
 		var provider = false
@@ -75,6 +101,7 @@ class DiscoveryCatalogUiTest {
 		compose.onNodeWithTag("catalog_read").performClick(); assertTrue(pressed)
 		compose.onNodeWithTag("catalog_provider_page").performClick(); assertTrue(provider)
 	}
+
 	@Test fun evenOneSearchCandidateRequiresExplicitSelection() {
 		val manga = SampleData.manga
 		var selected: org.koitharu.kotatsu.parsers.model.Manga? = null
@@ -82,6 +109,7 @@ class DiscoveryCatalogUiTest {
 		compose.onNodeWithTag("catalog_source_sheet").assertExists(); assertNull(selected)
 		compose.onNodeWithTag("catalog_source_${manga.source.name}_${manga.id}").performClick(); assertEquals(manga, selected)
 	}
+
 	@Test fun multipleCandidatesRemainExplicitAndEmptyResultsOfferSourceSearch() {
 		val state = mutableStateOf(CatalogScreenState(Service.ANILIST, CatalogScreenMode.DETAILS, CatalogFilter.ALL, details = TrackerCatalogDetails(item), resolution = CatalogResolutionState(visible = true, candidates = listOf(SampleData.manga, SampleData.manga.copy(id = 123L, title = "Another source result")))))
 		var fallback = false
