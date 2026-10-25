@@ -56,6 +56,7 @@ class NovelTranslationDialogController(
 	private val secrets by lazy { NovelTranslationSecrets(context) }
 
 	fun show() {
+		val projectionActionsEnabled = state.hasCachedTranslation && !isActiveTextSelectionInvocation()
 		val root = LinearLayout(context).apply {
 			orientation = LinearLayout.VERTICAL
 			setPadding(dp(20), dp(12), dp(20), dp(20))
@@ -175,7 +176,7 @@ class NovelTranslationDialogController(
 		val translateAgain = MaterialButton(context).apply {
 			setText(R.string.novel_translation_translate_again)
 			isAllCaps = false
-			visibility = if (state.hasCachedTranslation) View.VISIBLE else View.GONE
+			visibility = if (projectionActionsEnabled) View.VISIBLE else View.GONE
 		}
 		root.addView(primary, matchWidth())
 		root.addView(translateAgain, matchWidth())
@@ -189,8 +190,8 @@ class NovelTranslationDialogController(
 		fun refreshPrimaryAction() {
 			primary.setText(
 				when {
-					state.hasCachedTranslation && currentMode != NovelTranslationDisplayMode.ORIGINAL -> R.string.novel_translation_show_original
-					state.hasCachedTranslation -> R.string.novel_translation_show_translation
+					projectionActionsEnabled && currentMode != NovelTranslationDisplayMode.ORIGINAL -> R.string.novel_translation_show_original
+					projectionActionsEnabled -> R.string.novel_translation_show_translation
 					else -> R.string.novel_translation_translate
 				},
 			)
@@ -199,7 +200,7 @@ class NovelTranslationDialogController(
 
 		bilingualSwitch.setOnCheckedChangeListener { _, checked ->
 			settings.bilingual = checked
-			if (state.hasCachedTranslation && currentMode != NovelTranslationDisplayMode.ORIGINAL) {
+			if (projectionActionsEnabled && currentMode != NovelTranslationDisplayMode.ORIGINAL) {
 				currentMode = if (checked) NovelTranslationDisplayMode.BILINGUAL else NovelTranslationDisplayMode.TRANSLATED_ONLY
 				onShowTranslation(currentMode)
 				updateCurrentState()
@@ -220,11 +221,11 @@ class NovelTranslationDialogController(
 
 		primary.setOnClickListener {
 			when {
-				state.hasCachedTranslation && currentMode != NovelTranslationDisplayMode.ORIGINAL -> {
+				projectionActionsEnabled && currentMode != NovelTranslationDisplayMode.ORIGINAL -> {
 					onRestoreOriginal()
 					dialog.dismiss()
 				}
-				state.hasCachedTranslation -> {
+				projectionActionsEnabled -> {
 					onShowTranslation(desiredMode())
 					dialog.dismiss()
 				}
@@ -236,6 +237,19 @@ class NovelTranslationDialogController(
 		dialog.setContentView(scroll)
 		dialog.setOnShowListener { dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED }
 		dialog.show()
+	}
+
+	/**
+	 * The selection ActionMode is still active while its Translate callback opens this sheet.
+	 * Projection actions belong to the chapter-level sheet: disabling them here prevents a selected
+	 * range in another visible chapter from accidentally toggling the chapter at currentLocator().
+	 */
+	private fun isActiveTextSelectionInvocation(): Boolean {
+		val focused = fragment.view?.findFocus() as? TextView ?: return false
+		if (focused.getTag(R.id.tag_epub_selectable_text) != true) return false
+		val start = focused.selectionStart
+		val end = focused.selectionEnd
+		return start >= 0 && end >= 0 && start != end
 	}
 
 	private fun dispatchTranslation(engine: NovelTranslationEngineKind, displayMode: NovelTranslationDisplayMode) {
