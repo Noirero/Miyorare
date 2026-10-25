@@ -4,6 +4,9 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
@@ -40,21 +43,23 @@ class DiscoveryHubFragment : Fragment() {
 		id = R.id.discovery_hub_compose
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent { MiyorareTheme {
-			val state by viewModel.state.collectAsState()
-			DiscoveryHubScreen(
-				state = state,
-				services = viewModel.services,
-				imageLoader = imageLoader,
-				onProvider = viewModel::selectProvider,
-				onFilter = viewModel::selectFilter,
-				onRefresh = viewModel::refresh,
-				onSearch = ::openTrackerSearch,
-				onItem = { startActivity(TrackerCatalogActivity.detailsIntent(requireContext(), it)) },
-				onSection = { startActivity(TrackerCatalogActivity.sectionIntent(requireContext(), it)) },
-				onAttribution = { router.openExternalBrowser(when (state.request.service) { ScrobblerService.ANILIST -> "https://anilist.co"; ScrobblerService.MAL -> "https://myanimelist.net"; else -> "https://kitsu.app" }) },
-				scrollRequests = scrollRequests,
-				showLocalSearch = (activity as? MainActivity)?.hasSharedSearchBar() != true,
-			)
+			CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+				val state by viewModel.state.collectAsState()
+				DiscoveryHubScreen(
+					state = state,
+					services = viewModel.services,
+					imageLoader = imageLoader,
+					onProvider = viewModel::selectProvider,
+					onFilter = viewModel::selectFilter,
+					onRefresh = viewModel::refresh,
+					onSearch = ::openTrackerSearch,
+					onItem = { startActivity(TrackerCatalogActivity.detailsIntent(requireContext(), it)) },
+					onSection = { startActivity(TrackerCatalogActivity.sectionIntent(requireContext(), it)) },
+					onAttribution = { router.openExternalBrowser(when (state.request.service) { ScrobblerService.ANILIST -> "https://anilist.co"; ScrobblerService.MAL -> "https://myanimelist.net"; else -> "https://kitsu.app" }) },
+					scrollRequests = scrollRequests,
+					showLocalSearch = (activity as? MainActivity)?.hasSharedSearchBar() != true,
+				)
+			}
 		} }
 	}
 
@@ -67,7 +72,6 @@ class DiscoveryHubFragment : Fragment() {
 						(activity as? MainActivity)?.updateSharedSearchBarHint(this@DiscoveryHubFragment, searchHint(state.request.service))
 					}
 				}
-			}
 		}
 		if (!isHidden) installDiscoverySearchHandler()
 	}
