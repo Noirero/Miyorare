@@ -16,7 +16,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.Response
 
 /** Explicit provider behavior used by the reliability layer. */
 data class NovelTranslationProviderCapabilities(
@@ -48,14 +50,18 @@ fun interface NovelTranslationProviderResolver {
  * orchestration back into the Reader.
  */
 class DefaultNovelTranslationProviderResolver(
-	private val httpClient: OkHttpClient,
+	httpClient: OkHttpClient,
 	private val settings: NovelTranslationSettings,
 	private val secrets: NovelTranslationSecrets,
 ) : NovelTranslationProviderResolver {
 
+	private val reliableHttpClient = httpClient.newBuilder()
+		.addInterceptor(NovelTranslationReliabilityInterceptor())
+		.build()
+
 	override fun resolve(selection: NovelTranslationSelection): NovelTranslationProvider = when (selection.engine) {
 		NovelTranslationEngineKind.ONLINE -> NovelTranslationProvider(
-			engine = MiyorareOnlineTranslationEngine(httpClient),
+			engine = MiyorareOnlineTranslationEngine(reliableHttpClient),
 			capabilities = NovelTranslationProviderCapabilities(
 				providerId = "miyorare-online",
 				maxBatchChars = ONLINE_SEGMENT_CHARS,
@@ -66,7 +72,7 @@ class DefaultNovelTranslationProviderResolver(
 			),
 		)
 		NovelTranslationEngineKind.AI -> NovelTranslationProvider(
-			engine = NovelAiTranslationEngine(httpClient, settings, secrets),
+			engine = NovelAiTranslationEngine(reliableHttpClient, settings, secrets),
 			capabilities = NovelTranslationProviderCapabilities(
 				providerId = "ai:${settings.provider.id}",
 				maxBatchChars = AI_SEGMENT_CHARS,
@@ -128,7 +134,7 @@ sealed interface NovelTranslationProgress {
 		val segmentIndex: Int,
 		val nextAttempt: Int,
 		val delayMillis: Long,
-		val failure: NovelTranslationException,
+		val failure: NovelTranslationFailure,
 	) : NovelTranslationProgress
 }
 
@@ -226,14 +232,12 @@ class NovelTranslationRetryPolicy(
 	},
 ) {
 	fun retryDelayMillis(
-		error: NovelTranslationException,
+		error: NovelTranslationFailure,
 		failedAttempt: Int,
 		capabilities: NovelTranslationProviderCapabilities,
 	): Long? {
 		if (failedAttempt >= capabilities.maxAttempts) return null
-		val retryAfter = (error as? NovelTranslationException.RateLimited)
-			?.retryAfter
-			?.let { parseRetryAfterMillis(it, nowMillis()) }
+		val retryAfter = error.retryAfter?.let { parseRetryAfterMillis(it, nowMillis()) }
 		if (retryAfter != null) {
 			return retryAfter.takeIf { it <= capabilities.maxRetryDelayMillis }
 		}
@@ -246,15 +250,16 @@ class NovelTranslationRetryPolicy(
 			.coerceAtMost(capabilities.maxRetryDelayMillis)
 	}
 
-	private fun NovelTranslationException.isRetryable(): Boolean = when (this) {
-		is NovelTranslationException.Network,
-		is NovelTranslationException.Timeout,
-		is NovelTranslationException.RateLimited,
-		is NovelTranslationException.ProviderUnavailable -> true
-		is NovelTranslationException.Authentication,
-		is NovelTranslationException.Configuration,
-		is NovelTranslationException.InvalidResponse,
-		is NovelTranslationException.RequestRejected -> false
+	private fun NovelTranslationFailure.isRetryable(): Boolean = when (category) {
+		NovelTranslationFailureCategory.RATE_LIMITED,
+		NovelTranslationFailureCategory.NETWORK,
+		NovelTranslationFailureCategory.TIMEOUT,
+		NovelTranslationFailureCategory.PROVIDER_UNAVAILABLE -> true
+		NovelTranslationFailureCategory.CONFIGURATION,
+		NovelTranslationFailureCategory.AUTHENTICATION,
+		NovelTranslationFailureCategory.UNSUPPORTED,
+		NovelTranslationFailureCategory.REQUEST_REJECTED,
+		NovelTranslationFailureCategory.INVALID_RESPONSE -> false
 	}
 
 	companion object {
@@ -311,7 +316,7 @@ class NovelTranslationCoordinator(
 				} catch (error: CancellationException) {
 					throw error
 				} catch (error: Throwable) {
-					val typed = error.toNovelTranslationException()
+					val typed = error.toNovelTranslationFailure()
 					val retryDelay = retryPolicy.retryDelayMillis(typed, attempt, provider.capabilities)
 						?: throw typed
 					onProgress(
@@ -333,12 +338,101 @@ class NovelTranslationCoordinator(
 	}
 }
 
-internal fun Throwable.toNovelTranslationException(): NovelTranslationException = when (this) {
-	is NovelTranslationException -> this
-	is SocketTimeoutException -> NovelTranslationException.Timeout(message, this)
-	is InterruptedIOException -> NovelTranslationException.Timeout(message, this)
-	is IOException -> NovelTranslationException.Network(this)
-	else -> NovelTranslationException.InvalidResponse(message ?: "Translation failed")
+enum class NovelTranslationFailureCategory {
+	CONFIGURATION,
+	AUTHENTICATION,
+	UNSUPPORTED,
+	RATE_LIMITED,
+	NETWORK,
+	TIMEOUT,
+	PROVIDER_UNAVAILABLE,
+	REQUEST_REJECTED,
+	INVALID_RESPONSE,
+}
+
+class NovelTranslationFailure(
+	val category: NovelTranslationFailureCategory,
+	val statusCode: Int? = null,
+	val retryAfter: String? = null,
+	message: String,
+	cause: Throwable? = null,
+) : IOException(message, cause)
+
+private class NovelTranslationReliabilityHttpException(
+	val statusCode: Int,
+	val retryAfter: String?,
+) : IOException("Translation request failed with HTTP $statusCode")
+
+private class NovelTranslationReliabilityInterceptor : Interceptor {
+	override fun intercept(chain: Interceptor.Chain): Response {
+		val response = chain.proceed(chain.request())
+		if (response.code == 408 || response.code == 429) {
+			val statusCode = response.code
+			val retryAfter = response.header("Retry-After")
+			response.close()
+			throw NovelTranslationReliabilityHttpException(statusCode, retryAfter)
+		}
+		return response
+	}
+}
+
+internal fun Throwable.toNovelTranslationFailure(): NovelTranslationFailure = when (this) {
+	is NovelTranslationFailure -> this
+	is NovelTranslationReliabilityHttpException -> when (statusCode) {
+		408 -> NovelTranslationFailure(
+			category = NovelTranslationFailureCategory.TIMEOUT,
+			statusCode = statusCode,
+			message = "Translation request timed out (HTTP 408)",
+			cause = this,
+		)
+		429 -> NovelTranslationFailure(
+			category = NovelTranslationFailureCategory.RATE_LIMITED,
+			statusCode = statusCode,
+			retryAfter = retryAfter,
+			message = "Translation provider rate limit reached",
+			cause = this,
+		)
+		else -> NovelTranslationFailure(
+			category = NovelTranslationFailureCategory.REQUEST_REJECTED,
+			statusCode = statusCode,
+			message = message ?: "Translation request was rejected",
+			cause = this,
+		)
+	}
+	is NovelTranslationException.Configuration -> NovelTranslationFailure(
+		NovelTranslationFailureCategory.CONFIGURATION, message = message ?: "Translation configuration is invalid", cause = this,
+	)
+	is NovelTranslationException.Authentication -> NovelTranslationFailure(
+		NovelTranslationFailureCategory.AUTHENTICATION, statusCode = 401, message = message ?: "Translation authorization failed", cause = this,
+	)
+	is NovelTranslationException.RateLimited -> NovelTranslationFailure(
+		NovelTranslationFailureCategory.RATE_LIMITED,
+		statusCode = 429,
+		retryAfter = retryAfterSeconds?.toString(),
+		message = message ?: "Translation provider rate limit reached",
+		cause = this,
+	)
+	is NovelTranslationException.ProviderUnavailable -> NovelTranslationFailure(
+		NovelTranslationFailureCategory.PROVIDER_UNAVAILABLE, statusCode = statusCode, message = message ?: "Translation provider is unavailable", cause = this,
+	)
+	is NovelTranslationException.RequestRejected -> NovelTranslationFailure(
+		if (statusCode == 408) NovelTranslationFailureCategory.TIMEOUT else NovelTranslationFailureCategory.REQUEST_REJECTED,
+		statusCode = statusCode,
+		message = message ?: "Translation request was rejected",
+		cause = this,
+	)
+	is NovelTranslationException.InvalidResponse -> NovelTranslationFailure(
+		NovelTranslationFailureCategory.INVALID_RESPONSE, message = message ?: "Translation provider returned an invalid response", cause = this,
+	)
+	is SocketTimeoutException, is InterruptedIOException -> NovelTranslationFailure(
+		NovelTranslationFailureCategory.TIMEOUT, message = message ?: "Translation request timed out", cause = this,
+	)
+	is IOException -> NovelTranslationFailure(
+		NovelTranslationFailureCategory.NETWORK, message = message ?: "Translation network request failed", cause = this,
+	)
+	else -> NovelTranslationFailure(
+		NovelTranslationFailureCategory.INVALID_RESPONSE, message = message ?: "Translation failed", cause = this,
+	)
 }
 
 internal fun parseRetryAfterMillis(value: String?, nowMillis: Long): Long? {
