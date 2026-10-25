@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -241,7 +242,15 @@ private fun CatalogDetailsContent(
 				MetadataSurface {
 					Text(stringResource(R.string.hub_genres), style = MaterialTheme.typography.titleMedium)
 					FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-						details.genres.forEach { genre -> SuggestionChip(onClick = {}, label = { Text(genre) }, enabled = false) }
+						details.genres.forEach { genre ->
+							Surface(
+								shape = RoundedCornerShape(50),
+								color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
+								contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+							) {
+								Text(genre, Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
+							}
+						}
 					}
 				}
 			}
@@ -249,10 +258,10 @@ private fun CatalogDetailsContent(
 				MetadataSurface {
 					details.status?.let { MetadataInfoRow(stringResource(R.string.hub_status), it) }
 					details.startDate?.let { MetadataInfoRow(stringResource(R.string.hub_publication), it) }
-					details.rank?.let { MetadataInfoRow(stringResource(R.string.hub_rank, it).substringBefore(':'), "#$it") }
+					details.rank?.let { MetadataInfoRow(stringResource(R.string.hub_rank_label), "#$it") }
 					details.popularity?.let {
 						MetadataInfoRow(
-							if (state.service == ScrobblerService.ANILIST) stringResource(R.string.hub_readers, it).substringBefore(':') else stringResource(R.string.hub_popularity, it).substringBefore(':'),
+							if (state.service == ScrobblerService.ANILIST) stringResource(R.string.hub_readers_label) else stringResource(R.string.hub_popularity_label),
 							if (state.service == ScrobblerService.ANILIST) it.toString() else "#$it",
 						)
 					}
@@ -280,7 +289,14 @@ private fun CatalogDetailsContent(
 private fun CatalogDetailHero(details: TrackerCatalogDetails, service: ScrobblerService, imageLoader: ImageLoader) {
 	val palette = LocalMiyorareVisualPalette.current
 	val shape = RoundedCornerShape(26.dp)
-	Box(Modifier.fillMaxWidth().heightIn(min = 230.dp).miyorareSurface(palette, shape).background(Color.Transparent, shape)) {
+	Box(
+		Modifier
+			.fillMaxWidth()
+			.heightIn(min = 230.dp)
+			.clip(shape)
+			.miyorareSurface(palette, shape)
+			.background(Color.Transparent, shape),
+	) {
 		details.bannerUrl?.let {
 			AsyncImage(
 				model = it,
