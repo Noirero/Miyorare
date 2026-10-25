@@ -128,11 +128,15 @@ import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.epub.translation.DefaultNovelTranslationProviderResolver
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationCoordinator
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationDialogController
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationDisplayMode
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationDisplaySegment
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationOperationRequest
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationProgress
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationProjection
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationSecrets
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationSelection
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationSettings
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationSheetState
 import org.koitharu.kotatsu.reader.ui.tts.ReaderTts
 import org.koitharu.kotatsu.reader.ui.pager.BaseReaderAdapter
 import org.koitharu.kotatsu.reader.ui.pager.BaseReaderFragment
@@ -225,6 +229,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private val ttsHighlightSpan = HighlightColorSpan(0)
 	private val translationOriginals = ConcurrentHashMap<Long, Spanned>()
 	private val inlineTranslations = ConcurrentHashMap<Long, List<InlineTranslation>>()
+	private val translationDisplayModes = ConcurrentHashMap<Long, NovelTranslationDisplayMode>()
 	private var translationJob: Job? = null
 	private var translationGeneration = 0
 	private var translationStatusDialog: androidx.appcompat.app.AlertDialog? = null
@@ -418,10 +423,13 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 
 	fun showTranslationDialog() {
 		if (chapters.isEmpty()) return
+		val chapter = chapters.getOrNull(currentLocator().chapter) ?: return
 		NovelTranslationDialogController(
 			fragment = this,
 			httpClient = httpClient,
+			state = translationSheetState(chapter),
 			onRestoreOriginal = ::restoreOriginalTranslation,
+			onShowTranslation = ::showCachedTranslation,
 			onTranslate = ::translateCurrentChapter,
 		).show()
 	}
@@ -498,7 +506,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				.filter { it.translatedText.isNotBlank() }
 				.map { InlineTranslation(it.source.start, it.source.end, it.translatedText) }
 			inlineTranslations[chapter.id] = items
-			chapter.content = buildInlineTranslatedSpanned(original, items)
+			applyTranslationProjection(chapter, selection.displayMode)
 			refreshReader(locator)
 			Toast.makeText(requireContext(), R.string.epub_translate_inline_done, Toast.LENGTH_SHORT).show()
 		}
@@ -506,10 +514,13 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 
 	private fun showInlineTranslationDialog(selection: SelectedText, paragraph: Boolean) {
 		if (!selection.sourceMapped) return
+		val chapter = chapters.getOrNull(selection.chapter) ?: return
 		NovelTranslationDialogController(
 			fragment = this,
 			httpClient = httpClient,
+			state = translationSheetState(chapter),
 			onRestoreOriginal = ::restoreOriginalTranslation,
+			onShowTranslation = ::showCachedTranslation,
 			onTranslate = { translateInlineRange(selection, paragraph, it) },
 		).show()
 	}
@@ -570,7 +581,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				.plus(InlineTranslation(start, end, translated))
 				.sortedBy { it.start }
 			inlineTranslations[chapter.id] = items
-			chapter.content = buildInlineTranslatedSpanned(original, items)
+			applyTranslationProjection(chapter, translationSelection.displayMode)
 			refreshReader(Locator(selection.chapter, start))
 			Toast.makeText(requireContext(), R.string.epub_translate_inline_done, Toast.LENGTH_SHORT).show()
 		}
@@ -605,16 +616,43 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private fun restoreOriginalTranslation() {
 		val locator = currentLocator()
 		val chapter = chapters.getOrNull(locator.chapter) ?: return
-		val original = translationOriginals.remove(chapter.id) ?: run {
+		if (translationOriginals[chapter.id] == null || translationDisplayMode(chapter.id) == NovelTranslationDisplayMode.ORIGINAL) {
 			Toast.makeText(requireContext(), R.string.epub_translate_already_original, Toast.LENGTH_SHORT).show()
 			return
 		}
-		translationGeneration++
-		translationJob?.cancel()
-		translationJob = null
-		inlineTranslations.remove(chapter.id)
-		chapter.content = original
+		cancelActiveTranslation(incrementGeneration = true)
+		applyTranslationProjection(chapter, NovelTranslationDisplayMode.ORIGINAL)
 		refreshReader(locator)
+	}
+
+	private fun showCachedTranslation(mode: NovelTranslationDisplayMode) {
+		val locator = currentLocator()
+		val chapter = chapters.getOrNull(locator.chapter) ?: return
+		if (translationOriginals[chapter.id] == null || inlineTranslations[chapter.id].isNullOrEmpty()) return
+		cancelActiveTranslation(incrementGeneration = true)
+		applyTranslationProjection(chapter, mode)
+		refreshReader(locator)
+	}
+
+	private fun translationSheetState(chapter: NativeChapter): NovelTranslationSheetState = NovelTranslationSheetState(
+		displayMode = translationDisplayMode(chapter.id),
+		hasCachedTranslation = !inlineTranslations[chapter.id].isNullOrEmpty(),
+	)
+
+	private fun translationDisplayMode(chapterId: Long): NovelTranslationDisplayMode =
+		if (inlineTranslations[chapterId].isNullOrEmpty()) NovelTranslationDisplayMode.ORIGINAL
+		else translationDisplayModes[chapterId] ?: NovelTranslationDisplayMode.BILINGUAL
+
+	private fun applyTranslationProjection(chapter: NativeChapter, mode: NovelTranslationDisplayMode) {
+		val original = sourceText(chapter)
+		val items = inlineTranslations[chapter.id].orEmpty()
+		val effectiveMode = if (items.isEmpty()) NovelTranslationDisplayMode.ORIGINAL else mode
+		translationDisplayModes[chapter.id] = effectiveMode
+		chapter.content = when (effectiveMode) {
+			NovelTranslationDisplayMode.ORIGINAL -> SpannedString(original)
+			NovelTranslationDisplayMode.BILINGUAL -> buildInlineTranslatedSpanned(original, items)
+			NovelTranslationDisplayMode.TRANSLATED_ONLY -> buildTranslatedOnlySpanned(original, items)
+		}
 	}
 
 	private data class InlineTranslation(val start: Int, val end: Int, val translatedText: String)
@@ -651,8 +689,22 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		return SpannedString(output)
 	}
 
+	private fun buildTranslatedOnlySpanned(original: Spanned, translations: List<InlineTranslation>): Spanned {
+		if (translations.isEmpty()) return SpannedString(original)
+		val output = SpannableStringBuilder(original)
+		translations.sortedBy { it.start }.asReversed().forEach { item ->
+			val start = item.start.coerceIn(0, original.length)
+			val end = item.end.coerceIn(start, original.length)
+			output.replace(start, end, item.translatedText.trim())
+		}
+		return SpannedString(output)
+	}
+
 	private fun inlineTranslationBlock(item: InlineTranslation): String =
 		"\n${item.translatedText.trim()}\n"
+
+	private fun translationDisplaySegments(chapterId: Long): List<NovelTranslationDisplaySegment> =
+		inlineTranslations[chapterId].orEmpty().map { NovelTranslationDisplaySegment(it.start, it.end, it.translatedText) }
 
 	private fun sourceText(chapter: NativeChapter): Spanned =
 		translationOriginals[chapter.id] ?: chapter.text
@@ -661,59 +713,47 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		sourceText(chapter).length
 
 	private fun sourceToDisplayOffset(chapterId: Long, sourceOffset: Int, afterBoundary: Boolean = false): Int {
-		val sourceLength = translationOriginals[chapterId]?.length
-		val clamped = sourceLength?.let { sourceOffset.coerceIn(0, it) } ?: sourceOffset.coerceAtLeast(0)
-		var delta = 0
-		inlineTranslations[chapterId].orEmpty().sortedBy { it.start }.forEach { item ->
-			if (item.end > clamped || (!afterBoundary && item.end == clamped)) return@forEach
-			delta += inlineTranslationBlock(item).length
-		}
-		return clamped + delta
+		val sourceLength = translationOriginals[chapterId]?.length ?: return sourceOffset.coerceAtLeast(0)
+		return NovelTranslationProjection.sourceToDisplayOffset(
+			sourceLength = sourceLength,
+			segments = translationDisplaySegments(chapterId),
+			mode = translationDisplayMode(chapterId),
+			sourceOffset = sourceOffset,
+			afterBoundary = afterBoundary,
+		)
 	}
 
 	private fun sourceRangeToDisplaySegments(chapterId: Long, sourceStart: Int, sourceEnd: Int): List<Pair<Int, Int>> {
-		if (sourceStart >= sourceEnd) return emptyList()
-		val boundaries = inlineTranslations[chapterId].orEmpty()
-			.map { it.end }
-			.filter { it > sourceStart && it < sourceEnd }
-			.distinct()
-			.sorted()
-		val result = ArrayList<Pair<Int, Int>>(boundaries.size + 1)
-		var cursor = sourceStart
-		(boundaries + sourceEnd).forEach { boundary ->
-			val displayStart = sourceToDisplayOffset(chapterId, cursor, afterBoundary = true)
-			val displayEnd = sourceToDisplayOffset(chapterId, boundary)
-			if (displayStart < displayEnd) result += displayStart to displayEnd
-			cursor = boundary
-		}
-		return result
+		val sourceLength = translationOriginals[chapterId]?.length
+		if (sourceLength == null) return if (sourceStart < sourceEnd) listOf(sourceStart.coerceAtLeast(0) to sourceEnd.coerceAtLeast(sourceStart)) else emptyList()
+		return NovelTranslationProjection.sourceRangeToDisplaySegments(
+			sourceLength = sourceLength,
+			segments = translationDisplaySegments(chapterId),
+			mode = translationDisplayMode(chapterId),
+			sourceStart = sourceStart,
+			sourceEnd = sourceEnd,
+		)
 	}
 
 	private fun displayToSourceOffset(chapterId: Long, displayOffset: Int): Int {
-		val sourceLength = translationOriginals[chapterId]?.length
-		var delta = 0
-		inlineTranslations[chapterId].orEmpty().sortedBy { it.start }.forEach { item ->
-			val insertionStart = item.end + delta
-			val insertionEnd = insertionStart + inlineTranslationBlock(item).length
-			if (displayOffset < insertionStart) {
-				return (displayOffset - delta).let { value -> sourceLength?.let { value.coerceIn(0, it) } ?: value.coerceAtLeast(0) }
-			}
-			if (displayOffset <= insertionEnd) return item.end
-			delta = insertionEnd - item.end
-		}
-		val mapped = displayOffset - delta
-		return sourceLength?.let { mapped.coerceIn(0, it) } ?: mapped.coerceAtLeast(0)
+		val sourceLength = translationOriginals[chapterId]?.length ?: return displayOffset.coerceAtLeast(0)
+		return NovelTranslationProjection.displayToSourceOffset(
+			sourceLength = sourceLength,
+			segments = translationDisplaySegments(chapterId),
+			mode = translationDisplayMode(chapterId),
+			displayOffset = displayOffset,
+		)
 	}
 
 	private fun displayRangeTouchesInlineTranslation(chapterId: Long, displayStart: Int, displayEnd: Int): Boolean {
-		var delta = 0
-		inlineTranslations[chapterId].orEmpty().sortedBy { it.start }.forEach { item ->
-			val insertionStart = item.end + delta
-			val insertionEnd = insertionStart + inlineTranslationBlock(item).length
-			if (displayStart < insertionEnd && displayEnd > insertionStart) return true
-			delta = insertionEnd - item.end
-		}
-		return false
+		val sourceLength = translationOriginals[chapterId]?.length ?: return false
+		return NovelTranslationProjection.displayRangeTouchesUnmappedTranslation(
+			sourceLength = sourceLength,
+			segments = translationDisplaySegments(chapterId),
+			mode = translationDisplayMode(chapterId),
+			displayStart = displayStart,
+			displayEnd = displayEnd,
+		)
 	}
 
 	override fun onDestroyView() {
@@ -740,6 +780,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		novelTranslationCoordinator = null
 		translationOriginals.clear()
 		inlineTranslations.clear()
+		translationDisplayModes.clear()
 		bookSettingsJob?.cancel()
 		bookSettingsJob = null
 		bookSettings = null
@@ -1061,7 +1102,6 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 						if (loaded) verticalView?.adapter?.notifyItemChanged(index)
 					}
 				}
-			}
 		}
 	}
 
@@ -1570,13 +1610,16 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val manga = viewModel.getMangaOrNull() ?: return
 		val chapter = chapters.getOrNull(selection.chapter) ?: return
 		if (highlights.any { it.chapterId == chapter.id && it.epubHighlight?.let { h -> h.start == selection.start && h.end == selection.end } == true }) return
+		val source = sourceText(chapter)
+		val sourceStart = selection.start.coerceIn(0, source.length)
+		val sourceEnd = selection.end.coerceIn(sourceStart, source.length)
 		val bookmark = Bookmark(
 			manga = manga,
 			pageId = UUID.randomUUID().leastSignificantBits and Long.MAX_VALUE,
 			chapterId = chapter.id,
 			page = selection.start,
 			scroll = (selection.start.toLong() * 1000 / sourceTextLength(chapter).coerceAtLeast(1)).toInt(),
-			imageUrl = epubHighlightUrl(selection.end, selection.text),
+			imageUrl = epubHighlightUrl(selection.end, source.subSequence(sourceStart, sourceEnd).toString()),
 			createdAt = Instant.now(),
 			percent = selection.start / sourceTextLength(chapter).coerceAtLeast(1).toFloat(),
 		)
