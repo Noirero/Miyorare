@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.reader.ui.epub.translation
 
+import java.io.IOException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -125,6 +127,22 @@ class NovelTranslationFastPathTest {
 	}
 
 	@Test
+	fun `memory cache invalidates when durable backing changes`() = runTest {
+		val persistent = CoherentRecordingCache()
+		val cache = NovelTranslationMemoryCache(maxEntries = 2)
+		cache.bindBackingCache(persistent)
+		val key = NovelTranslationSemanticKey("key")
+		persistent.write(key, "old")
+		cache.write(key, "old")
+		assertEquals("old", cache.read(key))
+
+		persistent.write(key, "new")
+
+		assertEquals(null, cache.read(key))
+		assertEquals("new", persistent.read(key))
+	}
+
+	@Test
 	fun `write behind exposes result before durable flush`() = runTest {
 		val persistent = RecordingCache()
 		val writer = NovelTranslationWriteBehindCache(persistent, flushDelayMillis = Long.MAX_VALUE)
@@ -135,6 +153,24 @@ class NovelTranslationFastPathTest {
 		assertEquals(null, persistent.read(key))
 		writer.flushNow()
 		assertEquals("translated", persistent.read(key))
+	}
+
+	@Test
+	fun `write behind persistence retries are bounded`() = runTest {
+		val persistent = FailingCache()
+		val writer = NovelTranslationWriteBehindCache(
+			persistent = persistent,
+			scope = this,
+			flushDelayMillis = 1L,
+		)
+		val key = NovelTranslationSemanticKey("key")
+
+		writer.enqueue(key, "translated")
+		advanceUntilIdle()
+
+		assertEquals(4, persistent.writeAttempts)
+		assertEquals(3, writer.automaticRetryCount())
+		assertEquals(1, writer.pendingCount())
 	}
 
 	private fun coordinator(
@@ -180,12 +216,31 @@ class NovelTranslationFastPathTest {
 		override suspend fun translate(request: NovelTranslationRequest): String = block(request)
 	}
 
-	private class RecordingCache : NovelTranslationResultCache {
-		private val values = LinkedHashMap<NovelTranslationSemanticKey, String>()
+	private open class RecordingCache : NovelTranslationResultCache {
+		protected val values = LinkedHashMap<NovelTranslationSemanticKey, String>()
 		override suspend fun read(key: NovelTranslationSemanticKey): String? = values[key]
 		override suspend fun write(key: NovelTranslationSemanticKey, translatedText: String): Boolean {
 			values[key] = translatedText
 			return true
+		}
+	}
+
+	private class CoherentRecordingCache : RecordingCache(), NovelTranslationCacheCoherence {
+		private val versions = HashMap<NovelTranslationSemanticKey, Int>()
+		override suspend fun write(key: NovelTranslationSemanticKey, translatedText: String): Boolean {
+			val stored = super.write(key, translatedText)
+			versions[key] = (versions[key] ?: 0) + 1
+			return stored
+		}
+		override fun backingStamp(key: NovelTranslationSemanticKey): String? = versions[key]?.toString()
+	}
+
+	private class FailingCache : NovelTranslationResultCache {
+		var writeAttempts = 0
+		override suspend fun read(key: NovelTranslationSemanticKey): String? = null
+		override suspend fun write(key: NovelTranslationSemanticKey, translatedText: String): Boolean {
+			writeAttempts++
+			throw IOException("disk unavailable")
 		}
 	}
 }
