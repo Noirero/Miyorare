@@ -627,8 +627,9 @@ class CategorySetsUiTest {
 						val setSurface = row.findViewById<android.widget.TextView>(R.id.button_category_set)
 						val category = row.findViewById<android.view.View>(if (tabs) R.id.tabs else R.id.button_category_picker)
 						assertTrue(setSurface.bottom <= category.top)
-						assertEquals(width, setSurface.width)
-						assertEquals(width, category.width)
+						val contentWidth = width - row.paddingLeft - row.paddingRight
+						assertEquals(contentWidth, setSurface.width)
+						assertEquals(contentWidth, category.width)
 						row.measure(android.view.View.MeasureSpec.makeMeasureSpec(originalWidth, android.view.View.MeasureSpec.EXACTLY), heightSpec)
 						row.requestLayout()
 					}
