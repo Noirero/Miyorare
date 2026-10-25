@@ -54,8 +54,11 @@
     <string name="hub_score">Score: %1$s</string>
     <string name="hub_score_compact">★ %1$s</string>
     <string name="hub_rank">Rank: %1$d</string>
+    <string name="hub_rank_label">Rank</string>
     <string name="hub_popularity">Popularity rank: %1$d</string>
+    <string name="hub_popularity_label">Popularity</string>
     <string name="hub_readers">Readers: %1$d</string>
+    <string name="hub_readers_label">Readers</string>
     <string name="hub_genres">Genres</string>
     <string name="hub_staff">Authors and staff</string>
     <string name="hub_alternative_titles">Alternative titles</string>
