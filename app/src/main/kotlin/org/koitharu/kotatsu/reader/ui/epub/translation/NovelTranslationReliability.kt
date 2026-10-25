@@ -428,5 +428,5 @@ object NovelTranslationProcessReliability {
 	}
 }
 
-private const val SEMANTIC_CACHE_SCHEMA_VERSION = "novel-translation-semantic-v1"
+private const val SEMANTIC_CACHE_SCHEMA_VERSION = "novel-translation-semantic-v2"
 private const val NO_CONTEXT = "no-context"
