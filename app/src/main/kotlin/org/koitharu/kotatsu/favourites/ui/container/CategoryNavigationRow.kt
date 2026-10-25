@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.favourites.ui.container
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -42,12 +43,6 @@ class CategoryNavigationRow @JvmOverloads constructor(
 	override fun onFinishInflate() {
 		super.onFinishInflate()
 		findViewById<TextView>(R.id.button_category_set).apply {
-			val size = dp(19f)
-			val arrow = requireNotNull(context.getDrawable(R.drawable.ic_expand_more)).mutate().apply {
-				setBounds(0, 0, size, size)
-			}
-			setCompoundDrawablesRelative(arrow, null, null, null)
-			compoundDrawablePadding = dp(8f)
 			ViewCompat.setAccessibilityDelegate(this, object : androidx.core.view.AccessibilityDelegateCompat() {
 				override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
 					super.onInitializeAccessibilityNodeInfo(host, info)
@@ -109,7 +104,7 @@ class CategoryNavigationRow @JvmOverloads constructor(
 		}
 		setButton.apply {
 			setTextColor(palette.onSurface)
-			compoundDrawableTintList = ColorStateList.valueOf(palette.onSurfaceVariant)
+			(setButton as? CategorySetButton)?.setArrowTint(palette.onSurfaceVariant)
 			background = glassRipple(palette, selected = false)
 		}
 		tabs.apply {
@@ -195,11 +190,31 @@ class CategoryNavigationRow @JvmOverloads constructor(
 /**
  * The latest owner-approved reference promotes the Set label back to a full contextual row.
  * The Fragment continues to own the raw Set title while this view owns its localized visible copy.
+ * The chevron is drawn independently so the Set title stays optically centered like the reference.
  */
 class CategorySetButton @JvmOverloads constructor(
 	context: Context,
 	attrs: AttributeSet? = null,
 ) : AppCompatTextView(context, attrs) {
+	private val arrow = context.getDrawable(R.drawable.ic_expand_more)?.mutate()
+	private val arrowSize = (19f * resources.displayMetrics.density).roundToInt()
+	private val arrowInset = (18f * resources.displayMetrics.density).roundToInt()
+
+	fun setArrowTint(color: Int) {
+		arrow?.setTint(color)
+		invalidate()
+	}
+
+	override fun onDraw(canvas: Canvas) {
+		super.onDraw(canvas)
+		arrow?.let { drawable ->
+			val left = if (layoutDirection == LAYOUT_DIRECTION_RTL) width - arrowInset - arrowSize else arrowInset
+			val top = (height - arrowSize) / 2
+			drawable.setBounds(left, top, left + arrowSize, top + arrowSize)
+			drawable.draw(canvas)
+		}
+	}
+
 	override fun setText(text: CharSequence?, type: BufferType?) {
 		val value = text?.toString().orEmpty()
 		super.setText(
