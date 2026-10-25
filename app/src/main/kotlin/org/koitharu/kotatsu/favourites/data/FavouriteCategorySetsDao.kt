@@ -8,6 +8,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FavouriteCategorySetsDao {
+	/** Management counts live categories across both content types, never manga rows. */
+	@Query("SELECT s.set_id AS setId, COUNT(c.category_id) AS categoryCount FROM favourite_category_sets s LEFT JOIN favourite_category_set_assignments a ON a.set_id = s.set_id LEFT JOIN favourite_categories c ON c.category_id = a.category_id AND c.space = :space AND c.deleted_at = 0 WHERE s.space = :space AND s.deleted_at = 0 GROUP BY s.set_id")
+	fun observeCategoryCounts(space: Int): Flow<List<CategorySetCategoryCount>>
+
 	@Query("SELECT * FROM favourite_category_sets WHERE space = :space AND deleted_at = 0 ORDER BY sort_key, sync_key")
 	fun observeSets(space: Int): Flow<List<FavouriteCategorySetEntity>>
 
@@ -47,3 +51,5 @@ interface FavouriteCategorySetsDao {
 	@Query("SELECT c.* FROM favourite_categories c INNER JOIN favourite_category_set_assignments a ON a.category_id = c.category_id INNER JOIN favourite_category_sets s ON s.set_id = a.set_id WHERE a.set_id = :setId AND c.space = :space AND s.space = :space AND c.deleted_at = 0 AND s.deleted_at = 0 ORDER BY c.sort_key, c.category_id")
 	suspend fun getCategories(setId: Long, space: Int): List<FavouriteCategoryEntity>
 }
+
+data class CategorySetCategoryCount(val setId: Long, val categoryCount: Int)

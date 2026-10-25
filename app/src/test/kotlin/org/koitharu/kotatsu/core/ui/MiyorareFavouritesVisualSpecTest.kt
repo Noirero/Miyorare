@@ -70,7 +70,8 @@ class MiyorareFavouritesVisualSpecTest {
 	@Test
 	fun verticalControlsStayWithinCanonicalReferenceBands() {
 		assertTrue(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_HEIGHT_DP in 42f..48f)
-		assertTrue(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HEIGHT_DP in 34f..40f)
+		// The integrated Set chip keeps an accessible touch target in the same navigation band.
+		assertEquals(48f, MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HEIGHT_DP, 0.001f)
 		assertTrue(MiyorareFavouritesVisualSpec.QUICK_FILTER_HEIGHT_DP in 30f..36f)
 		assertTrue(MiyorareFavouritesVisualSpec.BOTTOM_NAV_HEIGHT_DP in 65f..72f)
 	}

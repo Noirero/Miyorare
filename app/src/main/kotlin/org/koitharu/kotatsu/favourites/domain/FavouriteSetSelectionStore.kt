@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.update
 import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -23,23 +23,32 @@ class FavouriteSetSelectionStore @Inject constructor(
 ) {
 	private val prefs = context.getSharedPreferences("favourite_set_navigation", Context.MODE_PRIVATE)
 	private val revision = MutableStateFlow(0L)
+	private val selectionLock = Any()
 
-	fun select(set: FavouriteCategorySetEntity, space: FavouriteSpace, type: FavouriteContentType) {
+	fun select(set: FavouriteCategorySetEntity, space: FavouriteSpace, type: FavouriteContentType) = synchronized(selectionLock) {
 		require(set.space == space.dbValue && set.deletedAt == 0L)
 		val key = key(space, type)
-		if (prefs.getString(key, null) == set.syncKey) return
+		if (prefs.getString(key, null) == set.syncKey) return@synchronized
 		prefs.edit { putString(key, set.syncKey) }
 		revision.update { it + 1 }
 	}
 
 	fun observe(space: FavouriteSpace, type: Flow<FavouriteContentType>): Flow<FavouriteCategorySetEntity> = combine(
 		repository.observeSets(space), type, revision,
-	) { sets, contentType, _ ->
-		val saved = prefs.getString(key(space, contentType), null)
-		val selected = sets.firstOrNull { it.syncKey == saved } ?: checkNotNull(sets.firstOrNull())
-		contentType to selected
-	}.onEach { (contentType, set) -> select(set, space, contentType) }
-		.map { it.second }.distinctUntilChanged()
+	) { sets, contentType, _ -> sets to contentType }.mapLatest { (sets, contentType) ->
+		val preferenceKey = key(space, contentType)
+		val saved = prefs.getString(preferenceKey, null)
+		// A selection revision can arrive before Room observes a newly committed Set.
+		// Confirm a missing key against current data before repairing it to the default.
+		val currentSets = if (saved != null && sets.none { it.syncKey == saved }) repository.getSets(space) else sets
+		synchronized(selectionLock) {
+			// A newer selection won during the suspended read; its revision resolves it.
+			if (prefs.getString(preferenceKey, null) != saved) return@synchronized null
+			val selected = currentSets.firstOrNull { it.syncKey == saved } ?: checkNotNull(currentSets.firstOrNull())
+			select(selected, space, contentType)
+			selected
+		}
+	}.filterNotNull().distinctUntilChanged()
 
 	private fun key(space: FavouriteSpace, type: FavouriteContentType) = "${space.dbValue}:${type.name}"
 }

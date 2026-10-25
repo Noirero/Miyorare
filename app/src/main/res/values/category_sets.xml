@@ -20,4 +20,17 @@
 	<string name="category_set_page">Page %1$d of %2$d</string>
 	<string name="category_set_target">Destination Set</string>
 	<string name="category_set_name">Set name</string>
+	<string name="category_set_accessibility">Category set: %1$s</string>
+	<string name="category_set_manage_subtitle">Arrange, rename, or delete your collection sets.</string>
+	<string name="category_set_active">Active Set</string>
+	<string name="category_set_no_categories">No categories</string>
+	<string name="category_set_create_new">Create New Set</string>
+	<string name="category_set_rename_action">Rename</string>
+	<string name="category_set_manage_categories">Move categories…</string>
+	<string name="category_set_overflow">Actions for Set %1$s</string>
+	<string name="category_set_drag">Reorder Set %1$s</string>
+	<plurals name="category_set_category_count">
+		<item quantity="one">%d category</item>
+		<item quantity="other">%d categories</item>
+	</plurals>
 </resources>

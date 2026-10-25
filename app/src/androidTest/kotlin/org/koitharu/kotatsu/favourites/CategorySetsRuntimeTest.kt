@@ -70,6 +70,23 @@ class CategorySetsRuntimeTest {
 	private suspend fun members(vararg ids: Long, space: FavouriteSpace = normal) = repository.updateCategoryMemberships(listOf(manga), ids.associateWith { true }, space)
 	private suspend fun ids(set: FavouriteCategorySetEntity) = repository.observeCategoriesInSet(set.setId, FavouriteSpace.fromDb(set.space)).first().map { it.id }
 
+	@Test fun managementCategoryCountsIncludeBothTypesAndHiddenCategoriesWithinOneSpace() = runBlocking {
+		val first = main()
+		val second = repository.createSet("Second", normal)
+		val privateSet = main(privateSpace)
+		val mangaCategory = category("Manga", first)
+		category("Novel", first, novel = true)
+		val hidden = category("Hidden", first)
+		repository.setCategoriesVisibleInSet(listOf(hidden), false, first.setId, normal)
+		category("Private", privateSet)
+		assertEquals(mapOf(first.setId to 3, second.setId to 0), repository.observeSetCategoryCounts(normal).first())
+		assertEquals(mapOf(privateSet.setId to 1), repository.observeSetCategoryCounts(privateSpace).first())
+		repository.moveCategoriesToSet(listOf(mangaCategory), second.setId, normal)
+		assertEquals(mapOf(first.setId to 2, second.setId to 1), repository.observeSetCategoryCounts(normal).first())
+		repository.removeCategoriesInSet(listOf(hidden), first.setId, normal)
+		assertEquals(mapOf(first.setId to 1, second.setId to 1), repository.observeSetCategoryCounts(normal).first())
+	}
+
 	@Test fun defaultsUnlimitedSetsRenameReorderAndDuplicateValidation() = runBlocking {
 		val first = main()
 		assertEquals("Utama", first.title)

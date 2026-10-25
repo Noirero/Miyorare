@@ -34,6 +34,8 @@ collect_runtime_diagnostics() {
     printf '%s\n' "$runtime_exit_status" > "$runtime_report_dir/command-exit-status.txt"
     timeout 10s adb devices -l > "$runtime_report_dir/adb-devices.txt" 2>&1
     timeout 10s adb shell cat /proc/meminfo > "$runtime_report_dir/device-memory.txt" 2>&1
+    # Synthetic UI captures survive AGP uninstall via MediaStore Downloads.
+    timeout 20s adb pull /sdcard/Download/miyorare-category-sets-ui "$runtime_report_dir/category-sets-ui"
     timeout 10s sudo -n dmesg --ctime > "$runtime_report_dir/host-kernel.txt" 2>&1
 }
 trap 'runtime_exit_status=$?; collect_runtime_diagnostics' EXIT
