@@ -50,6 +50,10 @@ fun interface NovelTranslationProviderResolver {
 	fun resolve(selection: NovelTranslationSelection): NovelTranslationProvider
 }
 
+internal interface NovelTranslationReliabilityServicesProvider {
+	fun reliabilityServices(): NovelTranslationReliabilityServices
+}
+
 /**
  * Current provider resolver. Provider hardening can replace adapters later without moving
  * orchestration back into the Reader.
@@ -58,11 +62,14 @@ class DefaultNovelTranslationProviderResolver(
 	httpClient: OkHttpClient,
 	private val settings: NovelTranslationSettings,
 	private val secrets: NovelTranslationSecrets,
-) : NovelTranslationProviderResolver {
+) : NovelTranslationProviderResolver, NovelTranslationReliabilityServicesProvider {
 
 	private val reliableHttpClient = httpClient.newBuilder()
 		.addInterceptor(NovelTranslationReliabilityInterceptor())
 		.build()
+
+	override fun reliabilityServices(): NovelTranslationReliabilityServices =
+		NovelTranslationProcessReliability.services(settings.applicationContext)
 
 	override fun resolve(selection: NovelTranslationSelection): NovelTranslationProvider = when (selection.engine) {
 		NovelTranslationEngineKind.ONLINE -> {
@@ -88,21 +95,23 @@ class DefaultNovelTranslationProviderResolver(
 	}
 
 	private fun resolveAiProvider(): NovelTranslationProvider {
-		val provider = settings.provider
+		val configuration = NovelAiTranslationConfiguration.from(settings)
+		val provider = configuration.provider
 		val providerId = "ai:${provider.id}"
-		val model = settings.model(provider).trim().let { value ->
-			if (provider == NovelAiProvider.GEMINI) value.removePrefix("models/") else value
-		}
-		val resolvedBaseUrl = settings.resolvedBaseUrl(provider)
 		val configurationFingerprint = novelTranslationDigest(
 			provider.id,
 			provider.protocol.name,
-			model,
-			resolvedBaseUrl,
-			settings.deeplFreeApi.toString(),
+			configuration.model,
+			configuration.resolvedBaseUrl,
+			configuration.deeplFreeApi.toString(),
 		)
 		return NovelTranslationProvider(
-			engine = NovelAiTranslationEngine(reliableHttpClient, settings, secrets),
+			engine = NovelAiTranslationEngine(
+				httpClient = reliableHttpClient,
+				settings = settings,
+				secrets = secrets,
+				configuration = configuration,
+			),
 			capabilities = NovelTranslationProviderCapabilities(
 				providerId = providerId,
 				maxBatchChars = AI_SEGMENT_CHARS,
@@ -319,12 +328,14 @@ class NovelTranslationCoordinator(
 	private val scheduler: NovelTranslationRequestScheduler = NovelTranslationRequestScheduler(),
 	private val retryPolicy: NovelTranslationRetryPolicy = NovelTranslationRetryPolicy(),
 	private val sleep: suspend (Long) -> Unit = { delay(it) },
-	private val reliability: NovelTranslationReliabilityServices = NovelTranslationReliabilityServices(
-		cache = NoOpNovelTranslationResultCache,
-		singleFlight = NovelTranslationSingleFlight(),
-		circuitBreaker = NovelTranslationCircuitBreaker(),
-		diagnostics = NovelTranslationDiagnostics(),
-	),
+	private val reliability: NovelTranslationReliabilityServices =
+		(providerResolver as? NovelTranslationReliabilityServicesProvider)?.reliabilityServices()
+			?: NovelTranslationReliabilityServices(
+				cache = NoOpNovelTranslationResultCache,
+				singleFlight = NovelTranslationSingleFlight(),
+				circuitBreaker = NovelTranslationCircuitBreaker(),
+				diagnostics = NovelTranslationDiagnostics(),
+			),
 ) {
 
 	suspend fun translate(
