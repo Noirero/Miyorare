@@ -461,7 +461,7 @@ class CategorySetsDialog : BottomSheetDialogFragment() {
 	} else androidx.compose.ui.window.SecureFlagPolicy.Inherit
 }
 
-private fun MiyorareVisualPalette.resolvedPrimary(): Color = if (isModern) primary else Color.Unspecified
+private fun MiyorareVisualPalette.resolvedPrimary(): Color = primary
 
 @Composable
 private fun MiyorareVisualPalette.resolvedOnPrimary(): Color = if (isModern) onButton else MaterialTheme.colorScheme.onPrimary
