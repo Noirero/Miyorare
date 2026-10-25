@@ -362,6 +362,7 @@ class NovelTranslationSingleFlight(
 				if (!flight.result.isCompleted) flight.result.cancel()
 				batchFlights.remove(key)
 			}
+		}
 	}
 
 	private companion object {
