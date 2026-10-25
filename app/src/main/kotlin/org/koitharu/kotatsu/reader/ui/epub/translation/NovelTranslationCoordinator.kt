@@ -311,6 +311,8 @@ class NovelTranslationRetryPolicy(
 		NovelTranslationFailureCategory.UNSUPPORTED,
 		NovelTranslationFailureCategory.REQUEST_REJECTED,
 		NovelTranslationFailureCategory.INVALID_RESPONSE,
+		NovelTranslationFailureCategory.CACHE_CORRUPTION,
+		NovelTranslationFailureCategory.INTERNAL_RECOVERABLE,
 		NovelTranslationFailureCategory.CIRCUIT_OPEN -> false
 	}
 
@@ -365,7 +367,7 @@ class NovelTranslationCoordinator(
 				beforeContext = beforeContext,
 				afterContext = afterContext,
 			)
-			val cached = safeCacheRead(key)
+			val cached = safeCacheRead(key, provider, segments.size)
 			if (cached != null) {
 				recordDiagnostic(NovelTranslationDiagnosticKind.CACHE_HIT, provider, key, segmentCount = segments.size)
 				translated += NovelTranslatedSegment(segment, cached)
@@ -394,7 +396,7 @@ class NovelTranslationCoordinator(
 					}
 				},
 			) { emit ->
-				val sharedCached = safeCacheRead(key)
+				val sharedCached = safeCacheRead(key, provider, segments.size)
 				if (sharedCached != null) {
 					recordDiagnostic(NovelTranslationDiagnosticKind.CACHE_HIT, provider, key, segmentCount = segments.size)
 					return@execute sharedCached
@@ -499,8 +501,9 @@ class NovelTranslationCoordinator(
 					)
 				}
 				reliability.circuitBreaker.onSuccess(provider.semanticIdentity.circuitKey)
-				return result
+				return preserveSegmentBoundaryWhitespace(segment.text, result)
 			} catch (error: CancellationException) {
+				reliability.circuitBreaker.onCancellation(provider.semanticIdentity.circuitKey)
 				throw error
 			} catch (error: Throwable) {
 				val typed = error.toNovelTranslationFailure()
@@ -527,11 +530,42 @@ class NovelTranslationCoordinator(
 		}
 	}
 
-	private suspend fun safeCacheRead(key: NovelTranslationSemanticKey): String? = try {
+	private fun preserveSegmentBoundaryWhitespace(source: String, translated: String): String {
+		val firstContent = source.indexOfFirst { !it.isWhitespace() }
+		if (firstContent < 0) return source
+		val lastContent = source.indexOfLast { !it.isWhitespace() }
+		return buildString(source.length.coerceAtLeast(translated.length)) {
+			append(source, 0, firstContent)
+			append(translated.trim())
+			append(source, lastContent + 1, source.length)
+		}
+	}
+
+	private suspend fun safeCacheRead(
+		key: NovelTranslationSemanticKey,
+		provider: NovelTranslationProvider,
+		segmentCount: Int,
+	): String? = try {
 		reliability.cache.read(key)
 	} catch (error: CancellationException) {
 		throw error
+	} catch (_: NovelTranslationCacheCorruptionException) {
+		recordDiagnostic(
+			kind = NovelTranslationDiagnosticKind.CACHE_CORRUPTION_RECOVERED,
+			provider = provider,
+			key = key,
+			errorCategory = NovelTranslationFailureCategory.CACHE_CORRUPTION,
+			segmentCount = segmentCount,
+		)
+		null
 	} catch (_: Exception) {
+		recordDiagnostic(
+			kind = NovelTranslationDiagnosticKind.CACHE_READ_ERROR_RECOVERED,
+			provider = provider,
+			key = key,
+			errorCategory = NovelTranslationFailureCategory.INTERNAL_RECOVERABLE,
+			segmentCount = segmentCount,
+		)
 		null
 	}
 
@@ -548,6 +582,7 @@ class NovelTranslationCoordinator(
 		provider: NovelTranslationProvider,
 		key: NovelTranslationSemanticKey,
 		error: NovelTranslationFailure? = null,
+		errorCategory: NovelTranslationFailureCategory? = null,
 		latencyMillis: Long? = null,
 		attempt: Int? = null,
 		retryDelayMillis: Long? = null,
@@ -560,7 +595,7 @@ class NovelTranslationCoordinator(
 				kind = kind,
 				provider = provider.capabilities.providerId,
 				operationId = key.operationId,
-				errorCategory = error?.category,
+				errorCategory = errorCategory ?: error?.category,
 				httpStatus = error?.statusCode,
 				latencyMillis = latencyMillis,
 				attempt = attempt,
@@ -583,6 +618,8 @@ enum class NovelTranslationFailureCategory {
 	PROVIDER_UNAVAILABLE,
 	REQUEST_REJECTED,
 	INVALID_RESPONSE,
+	CACHE_CORRUPTION,
+	INTERNAL_RECOVERABLE,
 	CIRCUIT_OPEN,
 }
 

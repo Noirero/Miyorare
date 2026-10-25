@@ -37,7 +37,12 @@ class NovelTranslationReliabilityTest {
 
 		val entry = directory.listFiles().orEmpty().single { it.name.endsWith(".translation") }
 		entry.writeText("corrupt")
-		assertNull(NovelTranslationSemanticCache(directory).read(key))
+		try {
+			NovelTranslationSemanticCache(directory).read(key)
+			fail("Expected cache corruption signal")
+		} catch (_: NovelTranslationCacheCorruptionException) {
+			// Corruption is surfaced internally so the coordinator can record a typed recovery event.
+		}
 		assertFalse(entry.exists())
 	}
 
@@ -301,6 +306,52 @@ class NovelTranslationReliabilityTest {
 		assertFalse(dump.contains(translatedSecret))
 		assertTrue(dump.contains("provider-test"))
 		assertTrue(diagnostics.snapshot().any { it.kind == NovelTranslationDiagnosticKind.SUCCESS })
+	}
+
+	@Test
+	fun `corrupt cache is recovered as miss with typed diagnostic`() = runBlocking {
+		val directory = temporary.newFolder()
+		val diagnostics = NovelTranslationDiagnostics()
+		val cache = NovelTranslationSemanticCache(directory)
+		val reliability = newServices(cache = cache, diagnostics = diagnostics)
+		coordinator(
+			engine = engine { "first" },
+			reliabilityServices = reliability,
+			maxAttempts = 1,
+		).translate(operation("source"))
+		val entry = directory.listFiles().orEmpty().single { it.name.endsWith(".translation") }
+		entry.writeText("corrupt")
+		diagnostics.clear()
+		var calls = 0
+
+		val result = coordinator(
+			engine = engine { calls++; "fresh" },
+			reliabilityServices = reliability,
+			maxAttempts = 1,
+		).translate(operation("source"))
+
+		assertEquals("fresh", result.translatedText)
+		assertEquals(1, calls)
+		assertTrue(diagnostics.snapshot().any { event ->
+			event.kind == NovelTranslationDiagnosticKind.CACHE_CORRUPTION_RECOVERED &&
+				event.errorCategory == NovelTranslationFailureCategory.CACHE_CORRUPTION
+		})
+	}
+
+	@Test
+	fun `cancelled half open probe releases provider for another probe`() {
+		var now = 1_000L
+		val breaker = NovelTranslationCircuitBreaker(failureThreshold = 1, cooldownMillis = 100L, nowMillis = { now })
+		val transient = NovelTranslationFailure(NovelTranslationFailureCategory.PROVIDER_UNAVAILABLE, message = "temporary")
+
+		assertEquals(NovelTranslationCircuitState.CLOSED, breaker.beforeRequest("provider"))
+		breaker.onFailure("provider", transient)
+		assertEquals(NovelTranslationCircuitState.OPEN, breaker.state("provider"))
+		now += 100L
+		assertEquals(NovelTranslationCircuitState.HALF_OPEN, breaker.beforeRequest("provider"))
+		breaker.onCancellation("provider")
+		assertEquals(NovelTranslationCircuitState.HALF_OPEN, breaker.state("provider"))
+		assertEquals(NovelTranslationCircuitState.HALF_OPEN, breaker.beforeRequest("provider"))
 	}
 
 	private fun assertCircuitRejected(breaker: NovelTranslationCircuitBreaker, provider: String) {

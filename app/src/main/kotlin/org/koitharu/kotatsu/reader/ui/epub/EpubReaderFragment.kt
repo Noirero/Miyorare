@@ -787,7 +787,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		translations.sortedBy { it.start }.asReversed().forEach { item ->
 			val start = item.start.coerceIn(0, original.length)
 			val end = item.end.coerceIn(start, original.length)
-			output.replace(start, end, item.translatedText.trim())
+			output.replace(start, end, item.translatedText)
 		}
 		return SpannedString(output)
 	}
