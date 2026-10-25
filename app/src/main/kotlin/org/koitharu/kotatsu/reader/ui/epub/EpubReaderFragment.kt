@@ -519,8 +519,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			fragment = this,
 			httpClient = httpClient,
 			state = translationSheetState(chapter),
-			onRestoreOriginal = ::restoreOriginalTranslation,
-			onShowTranslation = ::showCachedTranslation,
+			onRestoreOriginal = { restoreOriginalTranslationForChapter(selection.chapter) },
+			onShowTranslation = { mode -> showCachedTranslationForChapter(selection.chapter, mode) },
 			onTranslate = { translateInlineRange(selection, paragraph, it) },
 		).show()
 	}
@@ -613,9 +613,11 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		finishTranslationUi()
 	}
 
-	private fun restoreOriginalTranslation() {
+	private fun restoreOriginalTranslation() = restoreOriginalTranslationForChapter(currentLocator().chapter)
+
+	private fun restoreOriginalTranslationForChapter(chapterIndex: Int) {
 		val locator = currentLocator()
-		val chapter = chapters.getOrNull(locator.chapter) ?: return
+		val chapter = chapters.getOrNull(chapterIndex) ?: return
 		if (translationOriginals[chapter.id] == null || translationDisplayMode(chapter.id) == NovelTranslationDisplayMode.ORIGINAL) {
 			Toast.makeText(requireContext(), R.string.epub_translate_already_original, Toast.LENGTH_SHORT).show()
 			return
@@ -625,9 +627,12 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		refreshReader(locator)
 	}
 
-	private fun showCachedTranslation(mode: NovelTranslationDisplayMode) {
+	private fun showCachedTranslation(mode: NovelTranslationDisplayMode) =
+		showCachedTranslationForChapter(currentLocator().chapter, mode)
+
+	private fun showCachedTranslationForChapter(chapterIndex: Int, mode: NovelTranslationDisplayMode) {
 		val locator = currentLocator()
-		val chapter = chapters.getOrNull(locator.chapter) ?: return
+		val chapter = chapters.getOrNull(chapterIndex) ?: return
 		if (translationOriginals[chapter.id] == null || inlineTranslations[chapter.id].isNullOrEmpty()) return
 		cancelActiveTranslation(incrementGeneration = true)
 		applyTranslationProjection(chapter, mode)
@@ -1117,7 +1122,6 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 					loadingChapters.remove(index)
 					if (loaded) notifyPagedChapterChanged(index)
 				}
-			}
 		}
 	}
 
