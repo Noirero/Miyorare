@@ -5,6 +5,8 @@
     <string name="hub_replace_destination">Ganti tujuan</string>
     <string name="hub_provider">Provider katalog</string>
     <string name="hub_search_catalogue">Cari katalog</string>
+    <string name="hub_search_hint_provider">Cari manga &amp; novel di %1$s</string>
+    <string name="hub_discovery_subtitle">Temukan manga &amp; novel baru</string>
     <string name="hub_all">Semua</string>
     <string name="hub_manga">Manga</string>
     <string name="hub_novel">Novel</string>
