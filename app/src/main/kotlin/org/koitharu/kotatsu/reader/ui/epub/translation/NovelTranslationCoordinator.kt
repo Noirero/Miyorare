@@ -13,14 +13,17 @@ import kotlin.math.min
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -504,62 +507,77 @@ class NovelTranslationCoordinator(
 				publish(item, value, tier)
 			}
 
-		if (misses.isNotEmpty()) {
-			val canBatch = provider.capabilities.supportsBatch && provider.engine is NovelTranslationBatchEngine
-			val queue = NovelTranslationPriorityQueue(
-				items = misses,
-				segmentOf = WorkItem::segment,
-				priorityController = request.priorityController,
-			)
-			val workers = minOf(provider.capabilities.maxConcurrency.coerceAtLeast(1), misses.size)
-			coroutineScope {
-				List(workers) {
-					launch {
-						while (true) {
-							currentCoroutineContext().ensureActive()
-							val batch = queue.takeBatch(
-								maxItems = if (canBatch) provider.capabilities.maxBatchItems else 1,
-								maxChars = if (canBatch) provider.capabilities.maxBatchChars else provider.capabilities.maxSingleRequestChars,
-								charCount = { item: WorkItem -> item.segment.text.length },
-							)
-							if (batch.isEmpty()) break
-							if (canBatch && batch.size > 1) {
-								val values = translateBatch(
-									provider = provider,
-									selection = request.selection,
-									items = batch,
-									segmentCount = segments.size,
-									completed = completed,
-									onProgress = onProgress,
+		try {
+			if (misses.isNotEmpty()) {
+				val canBatch = provider.capabilities.supportsBatch && provider.engine is NovelTranslationBatchEngine
+				val queue = NovelTranslationPriorityQueue(
+					items = misses,
+					segmentOf = WorkItem::segment,
+					priorityController = request.priorityController,
+				)
+				val workers = minOf(provider.capabilities.maxConcurrency.coerceAtLeast(1), misses.size)
+				coroutineScope {
+					List(workers) {
+						async {
+							while (true) {
+								currentCoroutineContext().ensureActive()
+								val batch = queue.takeBatch(
+									maxItems = if (canBatch) provider.capabilities.maxBatchItems else 1,
+									maxChars = if (canBatch) provider.capabilities.maxBatchChars else provider.capabilities.maxSingleRequestChars,
+									charCount = { item: WorkItem -> item.segment.text.length },
 								)
-								batch.zip(values).forEach { (item, value) -> publish(item, value) }
-							} else {
-								val item = batch.single()
-								val value = translateSingle(
-									provider = provider,
-									selection = request.selection,
-									item = item,
-									segmentCount = segments.size,
-									completed = completed,
-									onProgress = onProgress,
-								)
-								publish(item, value)
+								if (batch.isEmpty()) break
+								if (canBatch && batch.size > 1) {
+									val values = translateBatch(
+										provider = provider,
+										selection = request.selection,
+										items = batch,
+										segmentCount = segments.size,
+										completed = completed,
+										onProgress = onProgress,
+									)
+									batch.zip(values).forEach { (item, value) -> publish(item, value) }
+								} else {
+									val item = batch.single()
+									val value = translateSingle(
+										provider = provider,
+										selection = request.selection,
+										item = item,
+										segmentCount = segments.size,
+										completed = completed,
+										onProgress = onProgress,
+									)
+									publish(item, value)
+								}
+								// Give already-started peers a chance to surface a terminal failure before this
+								// worker pulls another queued segment. Parallelism remains bounded, but stale
+								// work cannot race arbitrarily far ahead of a failing sibling.
+								yield()
 							}
 						}
-					}
-				}.joinAll()
+					}.awaitAll()
+				}
+			}
+
+			val finalSegments = results.mapIndexed { index, item ->
+				item ?: NovelTranslatedSegment(segments[index], segments[index].text)
+			}
+			recordDiagnostic(
+				kind = NovelTranslationDiagnosticKind.OPERATION_COMPLETE,
+				provider = provider,
+				key = operationKey,
+				latencyMillis = (System.nanoTime() - operationStarted) / 1_000_000L,
+				segmentCount = segments.size,
+			)
+			return NovelTranslationOperationResult(finalSegments)
+		} finally {
+			// Segment writes stay off the request hot path, but by the operation boundary every
+			// completed segment must be reusable even when a later segment failed or the caller
+			// cancelled. This preserves the reliability contract without fsync-per-request.
+			withContext(NonCancellable) {
+				reliability.writeBehindCache.flushNow()
 			}
 		}
-
-		val finalSegments = results.mapIndexed { index, item -> item ?: NovelTranslatedSegment(segments[index], segments[index].text) }
-		recordDiagnostic(
-			kind = NovelTranslationDiagnosticKind.OPERATION_COMPLETE,
-			provider = provider,
-			key = operationKey,
-			latencyMillis = (System.nanoTime() - operationStarted) / 1_000_000L,
-			segmentCount = segments.size,
-		)
-		return NovelTranslationOperationResult(finalSegments)
 	}
 
 	private suspend fun translateSingle(
