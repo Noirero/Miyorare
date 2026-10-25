@@ -600,6 +600,47 @@ class CategorySetsUiTest {
 		}
 	}
 
+	@Test fun renderedModernLightDarkAndNarrowPhoneEvidence() {
+		val initialNight = androidx.appcompat.app.AppCompatDelegate.getDefaultNightMode()
+		runBlocking { repository.updateCategoryMemberships(listOf(manga), mapOf(categoryIds.getValue(FavouriteSpace.NORMAL)[0][0] to true)) }
+		try {
+			for (night in listOf(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO, androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)) {
+				instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(night) }
+				ActivityScenario.launch<FavouritesActivity>(Intent(context, FavouritesActivity::class.java)).use { scenario ->
+					for (tabs in listOf(true, false)) {
+						instrumentation.runOnMainSync { display.setShowCategoryTabs(FavouriteContentType.MANGA, tabs) }
+						await { var ready = false; scenario.onActivity { ready = it.findViewById<android.view.View>(if (tabs) R.id.tabs else R.id.button_category_picker)?.isShown == true }; ready }
+						scenario.onActivity { assertNavigationGeometry(it, tabs) }
+						capture("modern-night-$night-tabs-$tabs")
+					}
+					scenario.onActivity { activity ->
+						activity.window.setLayout((320 * activity.resources.displayMetrics.density).toInt(), android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+					}
+					await { var narrow = false; scenario.onActivity { narrow = it.findViewById<android.view.View>(R.id.category_navigation_row).width / it.resources.displayMetrics.density < 320 }; narrow }
+					scenario.onActivity { assertNavigationGeometry(it, tabsMode = false) }
+					capture("modern-night-$night-narrow-picker")
+					scenario.onActivity { org.koitharu.kotatsu.favourites.ui.sets.showCategorySets(it.supportFragmentManager, FavouriteSpace.NORMAL) }
+					await { compose.onAllNodesWithTag("set-row:${sets.getValue(FavouriteSpace.NORMAL)[0].setId}").fetchSemanticsNodes().isNotEmpty() }
+					capture("modern-night-$night-management")
+					compose.onNodeWithTag("set-done").performClick()
+					scenario.onActivity { activity ->
+						activity.window.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+						activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+					}
+					await {
+						var landscape = false
+						scenario.onActivity { landscape = it.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE && it.findViewById<android.view.View>(R.id.button_category_picker)?.isShown == true }
+						landscape
+					}
+					scenario.onActivity { assertNavigationGeometry(it, tabsMode = false) }
+					capture("modern-night-$night-landscape")
+				}
+			}
+		} finally {
+			instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(initialNight) }
+		}
+	}
+
 	private fun tapNativeMenu(title: String) {
 		await { instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText(title)?.any { it.text?.toString() == title } == true }
 		val node = instrumentation.uiAutomation.rootInActiveWindow.findAccessibilityNodeInfosByText(title).first { it.text?.toString() == title }
