@@ -62,6 +62,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -466,12 +467,14 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	}
 
 	private fun maybeAutoTranslateCurrentChapter(chapterIndex: Int) {
+		val readerActive = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
 		if (!isAdded || translationJob?.isActive == true) return
 		val mangaId = bookSettingsMangaId.takeIf { it > 0L } ?: viewModel.getMangaOrNull()?.id ?: return
 		val settings = NovelTranslationSettings(requireContext().applicationContext)
 		val chapter = chapters.getOrNull(chapterIndex) ?: return
 		if (!NovelAutoTranslationPolicy.shouldStart(
 				enabled = settings.isAutoTranslateActive(mangaId),
+				readerActive = readerActive,
 				chapterReady = chapter.content != null,
 				hasTranslation = !inlineTranslations[chapter.id].isNullOrEmpty(),
 				translationInFlight = translationJob?.isActive == true,

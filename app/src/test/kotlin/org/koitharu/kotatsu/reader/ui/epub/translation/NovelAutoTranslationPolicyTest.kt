@@ -12,6 +12,7 @@ class NovelAutoTranslationPolicyTest {
 		assertTrue(
 			NovelAutoTranslationPolicy.shouldStart(
 				enabled = true,
+				readerActive = true,
 				chapterReady = true,
 				hasTranslation = false,
 				translationInFlight = false,
@@ -20,16 +21,17 @@ class NovelAutoTranslationPolicyTest {
 			),
 		)
 		assertFalse(
-			NovelAutoTranslationPolicy.shouldStart(true, true, false, false, 42L, 42L),
+			NovelAutoTranslationPolicy.shouldStart(true, true, true, false, false, 42L, 42L),
 		)
 	}
 
 	@Test
 	fun `preload cached disabled and in flight states never start`() {
-		assertFalse(NovelAutoTranslationPolicy.shouldStart(false, true, false, false, 42L, 0L))
-		assertFalse(NovelAutoTranslationPolicy.shouldStart(true, false, false, false, 42L, 0L))
-		assertFalse(NovelAutoTranslationPolicy.shouldStart(true, true, true, false, 42L, 0L))
-		assertFalse(NovelAutoTranslationPolicy.shouldStart(true, true, false, true, 42L, 0L))
+		assertFalse(NovelAutoTranslationPolicy.shouldStart(false, true, true, false, false, 42L, 0L))
+		assertFalse(NovelAutoTranslationPolicy.shouldStart(true, false, true, false, false, 42L, 0L))
+		assertFalse(NovelAutoTranslationPolicy.shouldStart(true, true, false, false, false, 42L, 0L))
+		assertFalse(NovelAutoTranslationPolicy.shouldStart(true, true, true, true, false, 42L, 0L))
+		assertFalse(NovelAutoTranslationPolicy.shouldStart(true, true, true, false, true, 42L, 0L))
 	}
 
 	@Test

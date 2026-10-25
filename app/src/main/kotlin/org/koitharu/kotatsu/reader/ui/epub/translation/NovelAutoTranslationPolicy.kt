@@ -5,12 +5,14 @@ internal object NovelAutoTranslationPolicy {
 
 	fun shouldStart(
 		enabled: Boolean,
+		readerActive: Boolean,
 		chapterReady: Boolean,
 		hasTranslation: Boolean,
 		translationInFlight: Boolean,
 		chapterId: Long,
 		lastAttemptedChapterId: Long,
 	): Boolean = enabled &&
+		readerActive &&
 		chapterReady &&
 		!hasTranslation &&
 		!translationInFlight &&
