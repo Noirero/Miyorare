@@ -74,11 +74,26 @@ class DiscoveryCatalogUiTest {
 		compose.onNodeWithTag("catalog_see_all_MANGA_TRENDING").performClick(); assertEquals(section, browsed)
 	}
 
-	@Test fun staleAndPartialHomeKeepsRealRowsVisibleInDarkTheme() {
+	@Test fun partialHomeIsExplicitAndKeepsRealRowsVisibleInDarkTheme() {
 		val home = TrackerCatalogHome(listOf(TrackerCatalogSection(section, listOf(item), failure = CatalogFailure(CatalogFailureKind.OFFLINE))))
 		compose.setContent { MaterialTheme(colorScheme = darkColorScheme()) { DiscoveryHubScreen(DiscoveryHubState(request, home, loading = false, stale = true), listOf(Service.ANILIST), loader, {}, {}, {}, {}, {}, {}, {}, MutableSharedFlow()) } }
-		compose.onNodeWithTag("catalog_stale").assertExists(); compose.onNodeWithTag("catalog_spotlight").assertExists()
+		compose.onNodeWithTag("catalog_status_PARTIAL").assertExists(); compose.onNodeWithTag("catalog_spotlight").assertExists()
 		compose.onNodeWithTag("catalog_section_MANGA_TRENDING").assertExists()
+	}
+
+	@Test fun cachedOfflineErrorKeepsRowsAndNamesOfflineState() {
+		val home = TrackerCatalogHome(listOf(TrackerCatalogSection(section, listOf(item))))
+		compose.setContent {
+			MaterialTheme {
+				DiscoveryHubScreen(
+					DiscoveryHubState(request, home, loading = false, stale = true, failure = CatalogFailure(CatalogFailureKind.OFFLINE)),
+					listOf(Service.ANILIST), loader, {}, {}, {}, {}, {}, {}, {}, MutableSharedFlow(),
+				)
+			}
+		}
+		compose.onNodeWithTag("catalog_status_CACHED_ERROR").assertExists()
+		compose.onNodeWithText(context.getString(R.string.hub_offline_cached)).assertExists()
+		compose.onNodeWithTag("catalog_spotlight").assertExists()
 	}
 
 	@androidx.compose.runtime.Composable
