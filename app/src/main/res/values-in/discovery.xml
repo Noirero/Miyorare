@@ -23,7 +23,6 @@
     <string name="hub_loading">Memuat katalog</string>
     <string name="hub_cached_refreshing">Data tersimpan · memperbarui…</string>
     <string name="hub_offline_cached">Offline · menampilkan data tersimpan</string>
-    <string name="hub_cached_refresh_failed">Gagal memperbarui · menampilkan data tersimpan</string>
     <string name="hub_partial_update">Sebagian data katalog belum dapat diperbarui</string>
     <string name="hub_empty">Tidak ada judul ditemukan</string>
     <string name="hub_search_hint">Cari judul di %1$s</string>
