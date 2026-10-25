@@ -94,6 +94,8 @@ class CategoryNavigationRow @JvmOverloads constructor(
 		val setButton = findViewById<TextView>(R.id.button_category_set)
 		val tabs = findViewById<TabLayout>(R.id.tabs)
 		val picker = findViewById<MaterialButton>(R.id.button_category_picker)
+		val textColors = enabledColorStateList(palette.onSurface)
+		val iconColors = enabledColorStateList(palette.onSurfaceVariant)
 
 		// The reference hierarchy is two independent glass boxes, not one shared rail.
 		applyingPresentation = true
@@ -103,8 +105,8 @@ class CategoryNavigationRow @JvmOverloads constructor(
 			applyingPresentation = false
 		}
 		setButton.apply {
-			setTextColor(palette.onSurface)
-			(setButton as? CategorySetButton)?.setArrowTint(palette.onSurfaceVariant)
+			setTextColor(textColors)
+			(setButton as? CategorySetButton)?.setArrowTint(iconColors)
 			background = glassRipple(palette, selected = false)
 		}
 		tabs.apply {
@@ -115,13 +117,24 @@ class CategoryNavigationRow @JvmOverloads constructor(
 		picker.apply {
 			backgroundTintList = null
 			background = glassRipple(palette, selected = true)
-			setTextColor(palette.onSurface)
-			iconTint = ColorStateList.valueOf(palette.borderHighlight)
+			setTextColor(textColors)
+			iconTint = enabledColorStateList(palette.borderHighlight)
 			strokeWidth = 0
 			foreground = null
 			elevation = 0f
 		}
 	}
+
+	private fun enabledColorStateList(enabledColor: Int): ColorStateList = ColorStateList(
+		arrayOf(
+			intArrayOf(-android.R.attr.state_enabled),
+			intArrayOf(),
+		),
+		intArrayOf(
+			ColorUtils.setAlphaComponent(enabledColor, 110),
+			enabledColor,
+		),
+	)
 
 	private fun isPrivateFavouritesHost(): Boolean = context.findActivity()?.intent?.getIntExtra(
 		EXTRA_FAVOURITE_SPACE,
@@ -200,8 +213,15 @@ class CategorySetButton @JvmOverloads constructor(
 	private val arrowSize = (19f * resources.displayMetrics.density).roundToInt()
 	private val arrowInset = (18f * resources.displayMetrics.density).roundToInt()
 
-	fun setArrowTint(color: Int) {
-		arrow?.setTint(color)
+	fun setArrowTint(colors: ColorStateList) {
+		arrow?.setTintList(colors)
+		arrow?.state = drawableState
+		invalidate()
+	}
+
+	override fun drawableStateChanged() {
+		super.drawableStateChanged()
+		arrow?.state = drawableState
 		invalidate()
 	}
 
