@@ -1,80 +1,84 @@
-## Miyorare v1.4.13
+## Miyorare v1.4.14
 
-This release focuses on reliability, recovery, and visual consistency. Miyorare now provides a browser-based Google Drive sign-in flow, dedicated maintenance tools for downloaded content, a stronger theme and semantic color foundation, and more reliable chapter release predictions.
+This release expands how you discover, organize, and preserve your library. Miyorare introduces a new Discovery Hub backed by tracker catalogs, Category Sets for organizing Favourites, stronger backup and synchronization support, and improved migration compatibility.
 
 ### ✨ What's New
 
-- **Google Drive browser sign-in** — Google Drive sync now has a dedicated browser-based authentication flow with callback handling and session recovery.
-- **Download Maintenance** — a new maintenance system can inspect and repair downloaded-content metadata and local download indexes.
-- **Dedicated maintenance controls** — download repair and maintenance actions are now available from Settings with their own status and progress handling.
-- **New Miyorare theme picker** — appearance settings now include a dedicated theme-selection experience built specifically for Miyorare.
-- **Semantic color system** — Miyorare now has a broader semantic palette foundation that keeps colors and contrast more consistent across modern and classic UI surfaces.
-- **Release prediction lineage** — chapter release predictions can now retain clearer evidence and lineage about how an estimate was produced.
+- **Discovery Hub** — a new discovery experience brings catalog browsing into Miyorare with dedicated navigation, responsive layouts, search integration, and status handling.
+- **AniList, Kitsu & MyAnimeList catalogs** — browse discovery catalogs backed by multiple tracker ecosystems from one integrated experience.
+- **Tracker catalog browsing** — dedicated catalog screens provide a richer way to explore titles and move from discovery into Miyorare's reading flow.
+- **Category Sets for Favourites** — Favourite categories can now be organized into separate sets, giving larger libraries another layer of organization.
+- **Category Set management** — create, select, reorder, and manage category sets through dedicated controls and dialogs.
+- **Category navigation** — Favourites now includes dedicated category/set navigation to make moving through organized collections easier.
+- **New source additions** — the Miyorare source packs have been expanded with additional sources, including ComicAsura, NewXToon, RawDex, and MGKomik.
 
 ### 🚀 Improvements
 
-- **More reliable chapter predictions** — prediction evidence, source-based estimates, favourite predictions, and next-chapter estimation have been refined for more dependable results.
-- **Prediction grace handling** — chapter prediction logic now handles release timing and grace periods more carefully.
-- **Stronger light-mode contrast** — the modern Miyorare palette includes dedicated contrast handling to keep content readable on light backgrounds.
-- **Classic/modern palette consistency** — classic views can now derive their colors through a dedicated bridge so they remain visually aligned with Miyorare's newer theme system.
-- **Explore color propagation** — Explore cards and related surfaces now follow the active Miyorare palette more consistently.
-- **Settings organization** — root, services, storage/network, downloads, appearance, and source settings have been reorganized and cleaned up for easier navigation.
-- **Settings search** — settings discovery has been expanded and reworked to better match the reorganized settings structure.
-- **Google Drive authentication recovery** — sync settings can retain and recover authentication state more safely when browser login is interrupted or the app lifecycle changes.
-- **Sync authentication policy** — Drive synchronization now has clearer authentication-state handling before background sync work proceeds.
-- **Migration review reliability** — the migration review flow received additional state and UI handling improvements.
-- **Local download scanning** — downloaded/local content discovery now uses a more dedicated scanner and cleaner compatibility path.
+- **Discovery-to-reading integration** — catalog results can resolve into available Miyorare sources and continue into the normal reading experience.
+- **Discovery resilience** — catalog data includes snapshot/cache handling and dedicated status presentation for more graceful behavior when remote catalog services are unavailable.
+- **Responsive Discovery UI** — Discovery screens have dedicated behavior and validation for different available screen sizes.
+- **Shared search ownership** — navigation and Discovery now coordinate ownership of the shared search interface more reliably.
+- **Favourites organization** — Favourite repositories, category selection, editing, unread counters, and list presentation now understand Category Sets.
+- **Private Favourites compatibility** — transfers between regular and Private Favourites have been updated to work with the expanded category organization model.
+- **Category Sets in backup** — local backup now preserves Category Set information alongside the rest of the library state.
+- **Category Sets in Google Drive sync** — synchronization and merge logic now understand Category Sets so organization can survive cross-device sync.
+- **Migration compatibility** — source migration now includes additional handling for chapter-level personal data when moving titles between compatible sources.
+- **Navigation preferences** — main navigation configuration has been simplified and moved toward a dedicated preference model.
+- **Favourite cover information** — modern Favourite covers received additional reading-state and overlay handling.
+- **Cloudflare browser handling** — browser challenge handling received lifecycle and navigation improvements.
 
 ### 🐞 Fixes
 
-- Fixed several cases where downloaded-content metadata or indexes could become inconsistent with files that still exist on device.
-- Added safer repair handling for downloaded covers and local download indexes.
-- Improved compatibility with legacy chapter download layouts while simplifying the old fallback path.
-- Improved local manga parsing and output handling for downloaded/local content.
-- Fixed authentication-state edge cases that could cause Google Drive sync to behave incorrectly after browser login or process recovery.
-- Improved callback routing for Google Drive browser authentication.
-- Improved migration review state handling after candidate changes.
-- Fixed additional light-theme contrast and custom neutral-accent edge cases.
-- Added extensive regression coverage for download maintenance, Drive authentication, semantic palettes, release predictions, local content, migration review, and Explore theme propagation.
+- Improved preservation of chapter-level personal data during compatible source migrations.
+- Added database migration support for Category Sets when upgrading existing installations.
+- Improved backup compatibility for Private Favourites and the expanded Favourite organization model.
+- Improved Google Drive merge behavior for synchronized Category Sets.
+- Fixed additional Favourite unread-count and downloaded/local-state edge cases.
+- Improved Favourite category selection and editing behavior with the new set model.
+- Improved navigation behavior around Discovery and shared search.
+- Strengthened downloaded-novel round-trip validation and runtime diagnostics.
+- Added broad regression coverage for Discovery navigation, catalog browsing, Category Sets, backup/sync, migration compatibility, responsive UI, and Favourite organization.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Rilis ini berfokus pada keandalan, pemulihan, dan konsistensi visual. Miyorare sekarang memiliki alur login Google Drive melalui browser, alat maintenance khusus untuk konten hasil download, fondasi theme dan semantic color yang lebih kuat, serta prediksi rilis chapter yang lebih andal.
+Rilis ini memperluas cara kamu menemukan, mengatur, dan mempertahankan koleksi. Miyorare menghadirkan Discovery Hub baru berbasis katalog tracker, Category Sets untuk mengatur Favourites, dukungan backup dan sinkronisasi yang lebih kuat, serta compatibility migration yang lebih baik.
 
 ### ✨ Yang Baru
 
-- **Login Google Drive melalui browser** — Google Drive sync sekarang memiliki alur autentikasi berbasis browser dengan callback handling dan pemulihan sesi.
-- **Download Maintenance** — sistem maintenance baru dapat memeriksa dan memperbaiki metadata konten hasil download serta local download index.
-- **Kontrol maintenance khusus** — tindakan repair dan maintenance download sekarang tersedia melalui Settings dengan status dan progress tersendiri.
-- **Miyorare theme picker baru** — Appearance Settings sekarang memiliki pengalaman pemilihan theme khusus yang dibuat untuk Miyorare.
-- **Semantic color system** — Miyorare sekarang memiliki fondasi semantic palette yang lebih luas agar warna dan kontras lebih konsisten pada UI modern maupun classic.
-- **Release prediction lineage** — prediksi rilis chapter sekarang dapat menyimpan evidence dan lineage yang lebih jelas mengenai bagaimana sebuah perkiraan dihasilkan.
+- **Discovery Hub** — pengalaman discovery baru menghadirkan catalog browsing langsung di Miyorare dengan navigasi khusus, layout responsif, integrasi search, dan status handling.
+- **Katalog AniList, Kitsu & MyAnimeList** — jelajahi katalog discovery dari beberapa ekosistem tracker melalui satu pengalaman yang terintegrasi.
+- **Tracker catalog browsing** — layar katalog khusus memberikan cara yang lebih kaya untuk menemukan judul dan melanjutkannya ke alur membaca Miyorare.
+- **Category Sets untuk Favourites** — kategori Favourite sekarang dapat diatur ke dalam beberapa set terpisah, memberikan lapisan organisasi tambahan untuk library yang besar.
+- **Pengelolaan Category Set** — buat, pilih, ubah urutan, dan kelola category set melalui kontrol dan dialog khusus.
+- **Navigasi kategori** — Favourites sekarang memiliki navigasi category/set khusus agar perpindahan antar koleksi yang sudah diatur menjadi lebih mudah.
+- **Source baru** — Miyorare source packs diperluas dengan source tambahan, termasuk ComicAsura, NewXToon, RawDex, dan MGKomik.
 
 ### 🚀 Peningkatan
 
-- **Prediksi chapter lebih andal** — prediction evidence, perkiraan berbasis source, favourite predictions, dan estimasi chapter berikutnya telah disempurnakan.
-- **Prediction grace handling** — logika prediksi sekarang menangani waktu rilis dan grace period dengan lebih hati-hati.
-- **Kontras light mode lebih kuat** — palette modern Miyorare memiliki penanganan kontras khusus agar konten tetap mudah dibaca pada background terang.
-- **Konsistensi palette classic/modern** — view classic sekarang dapat memperoleh warna melalui bridge khusus agar tetap selaras dengan sistem theme Miyorare yang lebih baru.
-- **Propagasi warna Explore** — card dan surface terkait di Explore sekarang mengikuti palette aktif Miyorare dengan lebih konsisten.
-- **Organisasi Settings** — root, services, storage/network, downloads, appearance, dan source settings ditata ulang dan dibersihkan agar lebih mudah dinavigasi.
-- **Settings search** — pencarian pengaturan diperluas dan disesuaikan dengan struktur Settings yang baru.
-- **Pemulihan autentikasi Google Drive** — Sync Settings dapat mempertahankan dan memulihkan state autentikasi dengan lebih aman ketika browser login terputus atau lifecycle aplikasi berubah.
-- **Sync authentication policy** — Drive sync sekarang memiliki penanganan authentication state yang lebih jelas sebelum background sync dijalankan.
-- **Migration review lebih andal** — alur migration review mendapat peningkatan tambahan pada state dan UI.
-- **Local download scanning** — discovery konten downloaded/local sekarang menggunakan scanner yang lebih khusus dengan compatibility path yang lebih bersih.
+- **Integrasi Discovery ke reader** — hasil katalog dapat dicocokkan dengan source Miyorare yang tersedia dan dilanjutkan ke pengalaman membaca normal.
+- **Discovery lebih tangguh** — data katalog memiliki snapshot/cache handling dan status presentation khusus agar kegagalan layanan katalog remote dapat ditangani dengan lebih baik.
+- **Discovery UI responsif** — layar Discovery memiliki behavior dan validasi khusus untuk berbagai ukuran layar.
+- **Shared search ownership** — navigasi dan Discovery sekarang mengoordinasikan penggunaan shared search interface dengan lebih andal.
+- **Organisasi Favourites** — repository Favourite, category selection, editing, unread counter, dan tampilan list sekarang memahami Category Sets.
+- **Kompatibilitas Private Favourites** — transfer antara Favourites biasa dan Private Favourites diperbarui agar bekerja dengan model organisasi kategori yang baru.
+- **Category Sets dalam backup** — local backup sekarang mempertahankan informasi Category Set bersama state library lainnya.
+- **Category Sets dalam Google Drive sync** — synchronization dan merge logic sekarang memahami Category Sets sehingga struktur organisasi dapat dipertahankan antar perangkat.
+- **Kompatibilitas migration** — source migration mendapat penanganan tambahan untuk data personal tingkat chapter ketika judul dipindahkan antar source yang kompatibel.
+- **Navigation preferences** — konfigurasi navigasi utama disederhanakan dan dipindahkan menuju preference model khusus.
+- **Informasi cover Favourite** — modern Favourite cover mendapat penanganan tambahan untuk reading state dan overlay.
+- **Cloudflare browser handling** — penanganan browser challenge mendapat peningkatan lifecycle dan navigasi.
 
 ### 🐞 Perbaikan
 
-- Memperbaiki beberapa kondisi ketika metadata atau index download dapat tidak sinkron dengan file yang sebenarnya masih tersedia di perangkat.
-- Menambahkan repair yang lebih aman untuk cover hasil download dan local download index.
-- Meningkatkan kompatibilitas dengan layout chapter download lama sekaligus menyederhanakan fallback lama.
-- Meningkatkan parsing dan output local manga untuk konten downloaded/local.
-- Memperbaiki edge case authentication state yang dapat menyebabkan Google Drive sync berperilaku salah setelah browser login atau process recovery.
-- Meningkatkan callback routing untuk autentikasi Google Drive melalui browser.
-- Meningkatkan state handling migration review setelah kandidat berubah.
-- Memperbaiki edge case tambahan pada kontras light theme dan custom neutral accent.
-- Menambahkan regression coverage yang lebih luas untuk download maintenance, autentikasi Drive, semantic palette, release prediction, local content, migration review, dan propagasi theme Explore.
+- Meningkatkan pemeliharaan data personal tingkat chapter ketika melakukan migration antar source yang kompatibel.
+- Menambahkan database migration untuk Category Sets ketika pengguna memperbarui instalasi lama.
+- Meningkatkan kompatibilitas backup untuk Private Favourites dan model organisasi Favourite yang diperluas.
+- Meningkatkan Google Drive merge behavior untuk Category Sets yang disinkronkan.
+- Memperbaiki edge case tambahan pada Favourite unread count dan downloaded/local state.
+- Meningkatkan category selection dan editing Favourite dengan model set baru.
+- Meningkatkan perilaku navigasi di sekitar Discovery dan shared search.
+- Memperkuat validasi round-trip downloaded novel dan runtime diagnostics.
+- Menambahkan regression coverage yang luas untuk Discovery navigation, catalog browsing, Category Sets, backup/sync, migration compatibility, responsive UI, dan organisasi Favourite.
 
 </details>
