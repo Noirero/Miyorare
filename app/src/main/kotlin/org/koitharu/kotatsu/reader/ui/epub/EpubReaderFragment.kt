@@ -128,6 +128,7 @@ import org.koitharu.kotatsu.core.model.getLocalizedTitle
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.epub.translation.DefaultNovelTranslationProviderResolver
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelAutoTranslationPolicy
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslatedSegment
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationCoordinator
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationDialogController
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationDisplayMode
@@ -135,6 +136,7 @@ import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationDisplaySe
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationEngineKind
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelAiProtocol
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationOperationRequest
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationPriorityController
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationProgress
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationProjection
 import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationSecrets
@@ -238,6 +240,11 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private var translationGeneration = 0
 	private var translationStatusDialog: androidx.appcompat.app.AlertDialog? = null
 	private var novelTranslationCoordinator: NovelTranslationCoordinator? = null
+	private var translationPriorityController: NovelTranslationPriorityController? = null
+	private var translationProgressiveChapterId = 0L
+	private var translationProgressiveBaseItems: List<InlineTranslation>? = null
+	private var translationProgressiveBaseMode: NovelTranslationDisplayMode? = null
+	private val translationStagedSegments = LinkedHashMap<Int, InlineTranslation>()
 	private var autoTranslationLastChapterId = 0L
 	private val autoTranslatedChapterIds = ConcurrentHashMap.newKeySet<Long>()
 	private var translationShowsProgressUi = false
@@ -504,10 +511,18 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private fun translateChapter(locator: Locator, selection: NovelTranslationSelection, automatic: Boolean) {
 		val chapter = chapters.getOrNull(locator.chapter) ?: return
 		val original = sourceText(chapter)
+		val baseItems = inlineTranslations[chapter.id]?.toList()
+		val baseMode = translationDisplayModes[chapter.id]
 		translationOriginals.putIfAbsent(chapter.id, SpannedString(original))
 		cancelActiveTranslation(incrementGeneration = false)
 		translationIsAutomatic = automatic
 		autoTranslationInFlightChapterId = if (automatic) chapter.id else 0L
+		translationProgressiveChapterId = chapter.id
+		translationProgressiveBaseItems = baseItems
+		translationProgressiveBaseMode = baseMode
+		translationStagedSegments.clear()
+		val priorityController = NovelTranslationPriorityController(translationVisibleRange(locator, original.length))
+		translationPriorityController = priorityController
 		val generation = ++translationGeneration
 		val coordinator = translationCoordinator()
 		if (!automatic) {
@@ -526,37 +541,48 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val translated = runCatching {
 				withContext(Dispatchers.IO) {
 					coordinator.translate(
-						NovelTranslationOperationRequest(
+						request = NovelTranslationOperationRequest(
 							text = original,
 							selection = selection,
+							priorityController = priorityController,
 						),
-					) { progress ->
-						if (!automatic) {
+						onSegmentTranslated = { segment, _, _ ->
+							if (segment.translatedText.isBlank()) return@translate
 							withContext(Dispatchers.Main) {
-								if (generation == translationGeneration && isAdded) {
-									when (progress) {
-										is NovelTranslationProgress.Translating -> updateTranslationStatus(
-											getString(
-												R.string.epub_translate_translating_progress,
-												progress.completedSegments,
-												progress.totalSegments,
-											),
-										)
-										is NovelTranslationProgress.WaitingToRetry -> updateTranslationStatus(
-											getString(
-												R.string.epub_translate_translating_progress,
-												progress.completedSegments,
-												progress.totalSegments,
-											),
-										)
+								if (generation == translationGeneration && isAdded && chapter.id == translationProgressiveChapterId) {
+									stageProgressiveTranslationSegment(chapter, locator.chapter, selection.displayMode, segment)
+								}
+							}
+						},
+						onProgress = { progress ->
+							if (!automatic) {
+								withContext(Dispatchers.Main) {
+									if (generation == translationGeneration && isAdded) {
+										when (progress) {
+											is NovelTranslationProgress.Translating -> updateTranslationStatus(
+												getString(
+													R.string.epub_translate_translating_progress,
+													progress.completedSegments,
+													progress.totalSegments,
+												),
+											)
+											is NovelTranslationProgress.WaitingToRetry -> updateTranslationStatus(
+												getString(
+													R.string.epub_translate_translating_progress,
+													progress.completedSegments,
+													progress.totalSegments,
+												),
+											)
+										}
 									}
 								}
 							}
-						}
-					}
+						},
+					)
 				}
 			}.getOrElse { error ->
 				if (generation == translationGeneration && isAdded) {
+					rollbackProgressiveTranslation(chapter.id)
 					if (automatic) releaseUntranslatedAutoSource(chapter.id)
 					finishTranslationUi()
 					val detail = error.localizedMessage?.takeIf { it.isNotBlank() }
@@ -584,6 +610,77 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			if (automatic) continueAutoTranslationFromCurrent(locator.chapter)
 			else Toast.makeText(requireContext(), R.string.epub_translate_inline_done, Toast.LENGTH_SHORT).show()
 		}
+	}
+
+	private fun stageProgressiveTranslationSegment(
+		chapter: NativeChapter,
+		chapterIndex: Int,
+		mode: NovelTranslationDisplayMode,
+		segment: NovelTranslatedSegment,
+	) {
+		translationStagedSegments[segment.source.start] = InlineTranslation(
+			start = segment.source.start,
+			end = segment.source.end,
+			translatedText = segment.translatedText,
+		)
+		val anchor = currentLocator().clamped()
+		if (anchor.chapter == chapterIndex) publishStagedTranslationsNear(chapter, chapterIndex, mode, anchor)
+	}
+
+	private fun publishStagedTranslationsNear(
+		chapter: NativeChapter,
+		chapterIndex: Int,
+		mode: NovelTranslationDisplayMode,
+		anchor: Locator,
+	) {
+		if (anchor.chapter != chapterIndex || translationStagedSegments.isEmpty()) return
+		val visible = translationVisibleRange(anchor, sourceTextLength(chapter))
+		val publish = translationStagedSegments.values.filter { it.start <= visible.last && it.end > visible.first }
+		if (publish.isEmpty()) return
+		val starts = publish.mapTo(HashSet()) { it.start }
+		val updated = inlineTranslations[chapter.id].orEmpty()
+			.filterNot { existing -> publish.any { it.start < existing.end && it.end > existing.start } }
+			.plus(publish)
+			.sortedBy { it.start }
+		inlineTranslations[chapter.id] = updated
+		starts.forEach(translationStagedSegments::remove)
+		applyTranslationProjection(chapter, mode)
+		refreshReader(anchor)
+		dismissTranslationProgressUi()
+	}
+
+	private fun translationVisibleRange(locator: Locator, sourceLength: Int): IntRange {
+		if (sourceLength <= 0) return 0..0
+		val anchor = locator.offset.coerceIn(0, sourceLength - 1)
+		val start = (anchor - TRANSLATION_VISIBLE_BEHIND_CHARS).coerceAtLeast(0)
+		val end = (anchor + TRANSLATION_VISIBLE_AHEAD_CHARS).coerceAtMost(sourceLength - 1)
+		return start..end
+	}
+
+	private fun rollbackProgressiveTranslation(chapterId: Long) {
+		if (chapterId <= 0L || chapterId != translationProgressiveChapterId) return
+		val chapterIndex = chapters.indexOfFirst { it.id == chapterId }
+		val anchor = currentLocator().clamped().takeIf { it.chapter == chapterIndex }
+		val baseItems = translationProgressiveBaseItems
+		if (baseItems.isNullOrEmpty()) inlineTranslations.remove(chapterId) else inlineTranslations[chapterId] = baseItems
+		val baseMode = translationProgressiveBaseMode
+		if (baseMode == null) translationDisplayModes.remove(chapterId) else translationDisplayModes[chapterId] = baseMode
+		chapters.getOrNull(chapterIndex)?.let { chapter ->
+			applyTranslationProjection(
+				chapter,
+				baseMode ?: if (baseItems.isNullOrEmpty()) NovelTranslationDisplayMode.ORIGINAL else NovelTranslationDisplayMode.BILINGUAL,
+			)
+		}
+		clearProgressiveTranslationState()
+		if (anchor != null && chapterIndex >= 0) refreshReader(anchor)
+	}
+
+	private fun clearProgressiveTranslationState() {
+		translationPriorityController = null
+		translationProgressiveChapterId = 0L
+		translationProgressiveBaseItems = null
+		translationProgressiveBaseMode = null
+		translationStagedSegments.clear()
 	}
 
 	private fun continueAutoTranslationFromCurrent(completedChapter: Int) {
@@ -680,21 +777,28 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 
 	private fun updateTranslationStatus(message: String) { translationStatusDialog?.setMessage(message) }
 
-	private fun finishTranslationUi() {
+	private fun dismissTranslationProgressUi() {
 		if (translationShowsProgressUi) setChapterLoading(false)
 		translationShowsProgressUi = false
-		translationIsAutomatic = false
-		autoTranslationInFlightChapterId = 0L
 		translationStatusDialog?.dismiss()
 		translationStatusDialog = null
+	}
+
+	private fun finishTranslationUi() {
+		dismissTranslationProgressUi()
+		translationIsAutomatic = false
+		autoTranslationInFlightChapterId = 0L
 		translationJob = null
+		clearProgressiveTranslationState()
 	}
 
 	private fun cancelActiveTranslation(incrementGeneration: Boolean) {
 		val abandonedAutoChapterId = if (translationIsAutomatic) autoTranslationInFlightChapterId else 0L
+		val progressiveChapterId = translationProgressiveChapterId
 		if (incrementGeneration) translationGeneration++
 		translationJob?.cancel()
 		translationJob = null
+		rollbackProgressiveTranslation(progressiveChapterId)
 		finishTranslationUi()
 		releaseUntranslatedAutoSource(abandonedAutoChapterId)
 	}
@@ -870,6 +974,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		translationStatusDialog?.dismiss()
 		translationStatusDialog = null
 		novelTranslationCoordinator = null
+		clearProgressiveTranslationState()
 		autoTranslationLastChapterId = 0L
 		autoTranslatedChapterIds.clear()
 		translationShowsProgressUi = false
@@ -1498,8 +1603,6 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				if (generation == renderGeneration && pagerView === pager) {
 					val adapter = pager.adapter ?: return@launch
 					if (loadPrevious) {
-						// The prepend load is asynchronous. Preserve the page the user is actually
-						// viewing when it completes instead of snapping back to the stale trigger position.
 						val livePosition = pager.currentItem
 						restoring = true
 						pages = added + pages
@@ -1945,6 +2048,11 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		trimAutoTranslationState(locator.chapter)
 		trimRemoteChapterCache(locator.chapter)
 		val chapter = chapters[locator.chapter]
+		if (translationProgressiveChapterId == chapter.id) {
+			translationPriorityController?.update(translationVisibleRange(locator, sourceTextLength(chapter)))
+			val mode = translationDisplayModes[chapter.id] ?: NovelTranslationDisplayMode.BILINGUAL
+			publishStagedTranslationsNear(chapter, locator.chapter, mode, locator)
+		}
 		maybeAutoTranslateCurrentChapter(locator.chapter)
 		val chapterPm = (locator.offset.toLong() * 1000 / sourceTextLength(chapter).coerceAtLeast(1)).toInt()
 		val globalPage = pagerView?.currentItem ?: 0
@@ -2467,6 +2575,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		private const val PRELOAD_RADIUS = 2
 		private const val REMOTE_CONTENT_CACHE_RADIUS = 2
 		private const val AUTO_TRANSLATION_MEMORY_RADIUS = 2
+		private const val TRANSLATION_VISIBLE_BEHIND_CHARS = 800
+		private const val TRANSLATION_VISIBLE_AHEAD_CHARS = 2_400
 		private const val REMOTE_RETRY_DELAY_MS = 800L
 		private const val SCROLL_INFO_BAR_HEIGHT_DP = 24
 		private const val PAGED_TOP_BAR_FALLBACK_DP = 80
