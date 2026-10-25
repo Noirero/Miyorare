@@ -34,13 +34,8 @@ collect_runtime_diagnostics() {
     printf '%s\n' "$runtime_exit_status" > "$runtime_report_dir/command-exit-status.txt"
     timeout 10s adb devices -l > "$runtime_report_dir/adb-devices.txt" 2>&1
     timeout 10s adb shell cat /proc/meminfo > "$runtime_report_dir/device-memory.txt" 2>&1
-    # Category Sets UI acceptance saves rendered evidence inside the debuggable test app.
-    mkdir -p "$runtime_report_dir/category-sets-ui"
-    timeout 20s adb exec-out run-as org.noirero.miyorare.debug tar -C files/category-sets-ui-evidence -cf - . \
-        > "$runtime_report_dir/category-sets-ui.tar"
-    if [[ -s "$runtime_report_dir/category-sets-ui.tar" ]]; then
-        tar -xf "$runtime_report_dir/category-sets-ui.tar" -C "$runtime_report_dir/category-sets-ui"
-    fi
+    # Synthetic UI captures survive AGP uninstall via MediaStore Downloads.
+    timeout 20s adb pull /sdcard/Download/miyorare-category-sets-ui "$runtime_report_dir/category-sets-ui"
     timeout 10s sudo -n dmesg --ctime > "$runtime_report_dir/host-kernel.txt" 2>&1
 }
 trap 'runtime_exit_status=$?; collect_runtime_diagnostics' EXIT

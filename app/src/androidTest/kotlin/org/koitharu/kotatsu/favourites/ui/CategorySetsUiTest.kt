@@ -78,9 +78,6 @@ class CategorySetsUiTest {
 		imageLoaderProvider.get()
 		instrumentation.runOnMainSync {
 			privateSession = privateSessionProvider.get()
-			// Category Sets Private UI tests exercise an already-authenticated workspace. Other runtime
-			// classes in the same instrumentation process may deliberately lock that singleton first.
-			privateSession.unlock()
 			runCatching { WorkManager.getInstance(context) }.getOrElse { WorkManager.initialize(context, Configuration.Builder().build()) }
 		}
 		runBlocking {
@@ -111,9 +108,13 @@ class CategorySetsUiTest {
 			}
 			types.activateSpace(FavouriteSpace.NORMAL)
 		}
+		// Authenticate this test's Private fixture after seeding, before launching any workspace.
+		// Hilt components are per test; the production process lifecycle still owns relocking.
+		instrumentation.runOnMainSync { privateSession.unlock() }
 	}
-	private fun launch(space: FavouriteSpace = FavouriteSpace.NORMAL) = ActivityScenario.launch<FavouriteCategoriesActivity>(Intent(context, FavouriteCategoriesActivity::class.java).putExtra(EXTRA_FAVOURITE_SPACE, space.dbValue))
+	private fun launch(space: FavouriteSpace = FavouriteSpace.NORMAL) = ActivityScenario.launch<FavouriteCategoriesActivity>(Intent(context, FavouriteCategoriesActivity::class.java).putExtra(EXTRA_FAVOURITE_SPACE, space.dbValue)).also { awaitWindowFocus(it) }
 	private fun showPicker(scenario: ActivityScenario<FavouriteCategoriesActivity>, space: FavouriteSpace, multi: Boolean = false) {
+		awaitWindowFocus(scenario)
 		scenario.onActivity { activity ->
 			FavoriteDialog().apply { arguments = Bundle().apply {
 				putParcelableArrayList(AppRouter.KEY_MANGA_LIST, arrayListOf(ParcelableManga(manga)).also { if (multi) it += ParcelableManga(otherManga) })
@@ -147,7 +148,9 @@ class CategorySetsUiTest {
 	private fun pages(): List<Int> = Regex("\\d+").findAll(compose.onNodeWithTag("category-pages").fetchSemanticsNode().config[SemanticsProperties.ContentDescription].joinToString()).map { it.value.toInt() }.toList()
 	private fun memberships(space: FavouriteSpace = FavouriteSpace.NORMAL) = runBlocking { repository.getCategoriesIds(manga.id, space) }
 	private fun awaitSelected(tag: String) = await {
-		runCatching { compose.onNodeWithTag(tag).assertIsSelected(); true }.getOrDefault(false)
+		compose.onAllNodesWithTag(tag).fetchSemanticsNodes().singleOrNull()?.let {
+			it.config.contains(SemanticsProperties.Selected) && it.config[SemanticsProperties.Selected]
+		} == true
 	}
 	private fun closed(scenario: ActivityScenario<FavouriteCategoriesActivity>) {
 		try {
@@ -427,6 +430,8 @@ class CategorySetsUiTest {
 			capture("set-destructive-confirmation")
 			compose.onNodeWithText(context.getString(R.string.category_set_delete_categories)).performClick()
 			await { runBlocking { repository.getSets(normal).size == 1 } }
+			await { compose.onAllNodesWithText(context.getString(R.string.category_set_last)).fetchSemanticsNodes().isNotEmpty() }
+			capture("manage-one-set")
 			compose.onNodeWithTag("set-overflow:${first.setId}").performScrollTo().performClick()
 			compose.onNodeWithTag("set-delete:${first.setId}").assertIsNotEnabled()
 		}
@@ -509,6 +514,7 @@ class CategorySetsUiTest {
 				assertTrue(sheet.dialog!!.window!!.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
 				assertEquals(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED, (sheet.dialog as com.google.android.material.bottomsheet.BottomSheetDialog).behavior.state)
 			}
+			captureSecureFixture("private-fixture-management", scenario, "category_sets")
 			compose.onNodeWithTag("set-overflow:${first.setId}").performClick()
 			compose.onNodeWithTag("set-categories:${first.setId}").performClick()
 			await {
@@ -570,12 +576,15 @@ class CategorySetsUiTest {
 		ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
 			awaitWindowFocus(scenario)
 			val container = AtomicReference<FavouritesContainerFragment?>()
-			await { scenario.onActivity { container.set(descendants(it.supportFragmentManager.fragments).filterIsInstance<FavouritesContainerFragment>().firstOrNull()) }; container.get()?.view != null }
 			val model = AtomicReference<FavouritesContainerViewModel>()
-			scenario.onActivity { model.set(ViewModelProvider(container.get()!!)[FavouritesContainerViewModel::class.java]) }
-			await { model.get().activeSet.value != null }
 			for (style in org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle.entries) {
 				scenario.onActivity { settings.setMiyorareDesignStyle(style) }
+				// BaseActivity applies the design overlay in onCreate, as in the actual settings flow.
+				scenario.recreate()
+				awaitWindowFocus(scenario)
+				await { scenario.onActivity { container.set(descendants(it.supportFragmentManager.fragments).filterIsInstance<FavouritesContainerFragment>().firstOrNull()) }; container.get()?.view != null }
+				scenario.onActivity { model.set(ViewModelProvider(container.get()!!)[FavouritesContainerViewModel::class.java]) }
+				await { model.get().activeSet.value != null }
 				for (type in FavouriteContentType.entries) {
 					instrumentation.runOnMainSync { types.setSelectedType(type, space); selection.select(empty, space, type) }
 					await { var ready = false; scenario.onActivity { ready = it.findViewById<android.widget.TextView>(R.id.button_category_set)?.text?.toString() == longName }; ready }
@@ -587,8 +596,9 @@ class CategorySetsUiTest {
 							assertTrue(chip.isShown)
 							assertEquals(longName, chip.text.toString())
 							assertEquals(context.getString(R.string.category_set_accessibility, longName), chip.contentDescription)
-							assertTrue(chip.performClick())
 						}
+						capture("empty-set-$style-$type-tabs-$tabs")
+						scenario.onActivity { assertTrue(it.findViewById<android.view.View>(R.id.button_category_set).performClick()) }
 						await { instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText("Utama")?.isNotEmpty() == true }
 						tapNativeMenu("Utama")
 						await { var ready = false; scenario.onActivity { ready = it.findViewById<android.widget.TextView>(R.id.button_category_set)?.text == "Utama" }; ready }
@@ -649,6 +659,7 @@ class CategorySetsUiTest {
 						assertTrue(activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
 						assertTrue(activity.findViewById<android.view.View>(R.id.private_search).isShown)
 					}
+					captureSecureFixture("private-fixture-$type-tabs-$tabs", scenario)
 				}
 			}
 		}
@@ -661,6 +672,8 @@ class CategorySetsUiTest {
 			for (night in listOf(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO, androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)) {
 				instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(night) }
 				ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
+					scenario.onActivity { it.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+					await { var portrait = false; scenario.onActivity { portrait = it.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT }; portrait }
 					awaitWindowFocus(scenario)
 					for (tabs in listOf(true, false)) {
 						instrumentation.runOnMainSync { display.setShowCategoryTabs(FavouriteContentType.MANGA, tabs) }
@@ -728,10 +741,51 @@ class CategorySetsUiTest {
 	}
 
 	private fun capture(name: String) {
+		// Hybrid screens can be entirely Views. Flush Compose frames when present without
+		// requiring a Compose root on the native rail; drag snapshots keep their manual clock.
+		if (compose.mainClock.autoAdvance) compose.onAllNodes(isRoot()).fetchSemanticsNodes(atLeastOneRootRequired = false)
 		instrumentation.waitForIdleSync()
+		writeCapture(name, checkNotNull(instrumentation.uiAutomation.takeScreenshot()))
+	}
+
+	private fun <A : androidx.fragment.app.FragmentActivity> captureSecureFixture(name: String, scenario: ActivityScenario<A>, dialogTag: String? = null) {
+		if (compose.mainClock.autoAdvance) compose.onAllNodes(isRoot()).fetchSemanticsNodes(atLeastOneRootRequired = false)
+		instrumentation.waitForIdleSync()
+		val bitmap = AtomicReference<android.graphics.Bitmap>()
+		scenario.onActivity { activity ->
+			val window = if (dialogTag == null) activity.window else {
+				(activity.supportFragmentManager.findFragmentByTag(dialogTag) as androidx.fragment.app.DialogFragment).requireDialog().window!!
+			}
+			assertTrue(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+			// Draw only our seeded fixture inside its own process. OS capture remains blocked;
+			// never clear FLAG_SECURE just to obtain Private visual evidence.
+			val view = window.decorView
+			bitmap.set(android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888).also {
+				view.draw(android.graphics.Canvas(it))
+			})
+			assertTrue(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+		}
+		writeCapture(name, bitmap.get())
+	}
+
+	private fun writeCapture(name: String, bitmap: android.graphics.Bitmap) {
 		val directory = java.io.File(context.filesDir, "category-sets-ui-evidence").apply { mkdirs() }
-		val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
 		java.io.File(directory, "$name.png").outputStream().use { assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
+		// AGP uninstalls the app after connected tests. Retain synthetic fixtures using the
+		// same MediaStore Downloads path as FavouritesGoldenVisualTest, without changing secure UI.
+		if (android.os.Build.VERSION.SDK_INT >= 29) {
+			val resolver = context.contentResolver
+			val path = "Download/miyorare-category-sets-ui/"
+			val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+			resolver.delete(collection, "relative_path=? AND _display_name=?", arrayOf(path, "$name.png"))
+			val values = android.content.ContentValues().apply {
+				put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "$name.png")
+				put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/png")
+				put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, path)
+			}
+			val uri = checkNotNull(resolver.insert(collection, values))
+			resolver.openOutputStream(uri, "w").use { assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, checkNotNull(it))) }
+		}
 		bitmap.recycle()
 	}
 
