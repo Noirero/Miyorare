@@ -23,7 +23,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.yield
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -516,17 +515,22 @@ class NovelTranslationCoordinator(
 					priorityController = request.priorityController,
 				)
 				val workers = minOf(provider.capabilities.maxConcurrency.coerceAtLeast(1), misses.size)
-				coroutineScope {
-					List(workers) {
-						async {
-							while (true) {
-								currentCoroutineContext().ensureActive()
-								val batch = queue.takeBatch(
-									maxItems = if (canBatch) provider.capabilities.maxBatchItems else 1,
-									maxChars = if (canBatch) provider.capabilities.maxBatchChars else provider.capabilities.maxSingleRequestChars,
-									charCount = { item: WorkItem -> item.segment.text.length },
-								)
-								if (batch.isEmpty()) break
+				while (true) {
+					currentCoroutineContext().ensureActive()
+					val wave = ArrayList<List<WorkItem>>(workers)
+					while (wave.size < workers) {
+						val batch = queue.takeBatch(
+							maxItems = if (canBatch) provider.capabilities.maxBatchItems else 1,
+							maxChars = if (canBatch) provider.capabilities.maxBatchChars else provider.capabilities.maxSingleRequestChars,
+							charCount = { item: WorkItem -> item.segment.text.length },
+						)
+						if (batch.isEmpty()) break
+						wave += batch
+					}
+					if (wave.isEmpty()) break
+					coroutineScope {
+						wave.map { batch ->
+							async {
 								if (canBatch && batch.size > 1) {
 									val values = translateBatch(
 										provider = provider,
@@ -549,13 +553,9 @@ class NovelTranslationCoordinator(
 									)
 									publish(item, value)
 								}
-								// Give already-started peers a chance to surface a terminal failure before this
-								// worker pulls another queued segment. Parallelism remains bounded, but stale
-								// work cannot race arbitrarily far ahead of a failing sibling.
-								yield()
 							}
-						}
-					}.awaitAll()
+						}.awaitAll()
+					}
 				}
 			}
 
