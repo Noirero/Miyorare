@@ -222,6 +222,7 @@ class NovelTranslationWriteBehindCache(
 	private val flushDelayMillis: Long = DEFAULT_FLUSH_DELAY_MILLIS,
 ) {
 	private val lock = Any()
+	private val flushMutex = Mutex()
 	private val pending = LinkedHashMap<NovelTranslationSemanticKey, String>()
 	private var flushJob: Job? = null
 	private var consecutiveFailures = 0
@@ -238,11 +239,11 @@ class NovelTranslationWriteBehindCache(
 		}
 	}
 
-	internal suspend fun flushNow() {
+	internal suspend fun flushNow() = flushMutex.withLock {
 		val snapshot = synchronized(lock) {
 			if (pending.isEmpty()) {
 				flushJob = null
-				return
+				return@withLock
 			}
 			LinkedHashMap(pending).also {
 				pending.clear()
