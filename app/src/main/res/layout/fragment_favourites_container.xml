@@ -121,36 +121,35 @@
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
 				android:layout_marginHorizontal="16dp"
-				android:layout_marginVertical="4dp"
-				android:gravity="center_vertical"
-				android:orientation="horizontal">
+				android:layout_marginTop="6dp"
+				android:layout_marginBottom="4dp"
+				android:orientation="vertical">
 
-				<androidx.appcompat.widget.AppCompatTextView
+				<org.koitharu.kotatsu.favourites.ui.container.CategorySetButton
 					android:id="@+id/button_category_set"
-					android:layout_width="wrap_content"
+					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
+					android:layout_marginBottom="8dp"
 					android:background="?attr/selectableItemBackground"
 					android:clickable="true"
 					android:focusable="true"
 					android:ellipsize="end"
-					android:gravity="center_vertical"
-					android:minWidth="48dp"
-					android:minHeight="48dp"
-					android:paddingHorizontal="8dp"
+					android:gravity="center"
+					android:minHeight="56dp"
+					android:paddingHorizontal="48dp"
 					android:singleLine="true"
-					android:textAppearance="?attr/textAppearanceLabelLarge"
+					android:textAppearance="?attr/textAppearanceTitleMedium"
 					android:textColor="?attr/colorOnSurfaceVariant"
-					android:drawablePadding="4dp"
-					tools:text="Second" />
+					tools:text="Set: Second" />
 
 				<com.google.android.material.tabs.TabLayout
 					android:id="@+id/tabs"
-					android:layout_width="0dp"
+					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_weight="1"
-					android:minHeight="48dp"
+					android:minHeight="56dp"
 					android:background="@null"
 					android:overScrollMode="never"
+					android:paddingHorizontal="4dp"
 					android:scrollbars="none"
 					app:tabGravity="start"
 					app:tabIndicatorAnimationDuration="0"
@@ -164,18 +163,18 @@
 				<com.google.android.material.button.MaterialButton
 					android:id="@+id/button_category_picker"
 					style="?attr/materialButtonOutlinedStyle"
-					android:layout_width="0dp"
+					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_weight="1"
 					android:ellipsize="end"
 					android:singleLine="true"
 					android:gravity="start|center_vertical"
-					android:minHeight="48dp"
+					android:minHeight="56dp"
+					android:paddingHorizontal="16dp"
 					android:textAllCaps="false"
 					android:visibility="gone"
 					app:icon="@drawable/ic_expand_more"
-					app:iconGravity="textEnd"
-					tools:text="Kategori: Semua • 1250" />
+					app:iconGravity="end"
+					tools:text="Kategori: Semua kesukaan • 12" />
 
 			</org.koitharu.kotatsu.favourites.ui.container.CategoryNavigationRow>
 

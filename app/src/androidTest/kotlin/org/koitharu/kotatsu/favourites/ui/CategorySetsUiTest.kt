@@ -46,6 +46,7 @@ import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.main.ui.MainActivity
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
+import kotlin.math.abs
 
 /** Exercises the production dialogs and Favourites with the owner's 80 / 15 category library. */
 @HiltAndroidTest
@@ -573,6 +574,7 @@ class CategorySetsUiTest {
 		val space = FavouriteSpace.NORMAL
 		val longName = "A very long category Set title that must leave categories usable"
 		val empty = runBlocking { repository.createSet(longName, space) }
+		val visibleLongName = context.getString(R.string.category_set_selector, longName)
 		ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
 			awaitWindowFocus(scenario)
 			val container = AtomicReference<FavouritesContainerFragment?>()
@@ -587,28 +589,28 @@ class CategorySetsUiTest {
 				await { model.get().activeSet.value != null }
 				for (type in FavouriteContentType.entries) {
 					instrumentation.runOnMainSync { types.setSelectedType(type, space); selection.select(empty, space, type) }
-					await { var ready = false; scenario.onActivity { ready = it.findViewById<android.widget.TextView>(R.id.button_category_set)?.text?.toString() == longName }; ready }
+					await { var ready = false; scenario.onActivity { ready = it.findViewById<android.widget.TextView>(R.id.button_category_set)?.text?.toString() == visibleLongName }; ready }
 					for (tabs in listOf(true, false)) {
 						instrumentation.runOnMainSync { display.setShowCategoryTabs(type, tabs) }
-						// Empty Sets keep the chip even if the existing empty state hides all category entries.
+						// Empty Sets keep the Set surface even if the existing empty state hides all category entries.
 						scenario.onActivity { activity ->
 							val chip = activity.findViewById<android.widget.TextView>(R.id.button_category_set)
 							assertTrue(chip.isShown)
-							assertEquals(longName, chip.text.toString())
+							assertEquals(visibleLongName, chip.text.toString())
 							assertEquals(context.getString(R.string.category_set_accessibility, longName), chip.contentDescription)
 						}
 						capture("empty-set-$style-$type-tabs-$tabs")
 						scenario.onActivity { assertTrue(it.findViewById<android.view.View>(R.id.button_category_set).performClick()) }
 						await { instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText("Utama")?.isNotEmpty() == true }
 						tapNativeMenu("Utama")
-						await { var ready = false; scenario.onActivity { ready = it.findViewById<android.widget.TextView>(R.id.button_category_set)?.text == "Utama" }; ready }
+						await { var ready = false; scenario.onActivity { ready = it.findViewById<android.widget.TextView>(R.id.button_category_set)?.text == context.getString(R.string.category_set_selector, "Utama") }; ready }
 						instrumentation.runOnMainSync { selection.select(empty, space, type) }
-						await { var ready = false; scenario.onActivity { ready = it.findViewById<android.widget.TextView>(R.id.button_category_set)?.text == longName }; ready }
+						await { var ready = false; scenario.onActivity { ready = it.findViewById<android.widget.TextView>(R.id.button_category_set)?.text == visibleLongName }; ready }
 					}
 				}
 			}
 			runBlocking { repository.renameSet(sets.getValue(space)[0].setId, longName + " populated", space) }
-			// Populated Set: measure the actual navigation row at narrow, reference and landscape widths.
+			// Populated Set: measure the stacked navigation surfaces at narrow, reference and landscape widths.
 			instrumentation.runOnMainSync { types.setSelectedType(FavouriteContentType.MANGA, space); selection.select(sets.getValue(space)[0], space, FavouriteContentType.MANGA) }
 			await { model.get().categories.value.count { it.id > 0 } == 80 }
 			for (widthDp in listOf(320, 432, 720)) {
@@ -622,10 +624,12 @@ class CategorySetsUiTest {
 						val width = (widthDp * activity.resources.displayMetrics.density).toInt()
 						row.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY), heightSpec)
 						row.layout(0, 0, width, row.measuredHeight)
-						val chip = row.findViewById<android.widget.TextView>(R.id.button_category_set)
+						val setSurface = row.findViewById<android.widget.TextView>(R.id.button_category_set)
 						val category = row.findViewById<android.view.View>(if (tabs) R.id.tabs else R.id.button_category_picker)
-						assertTrue(chip.right <= category.left)
-						assertTrue(category.width > chip.width)
+						assertTrue(setSurface.bottom <= category.top)
+						val contentWidth = width - row.paddingLeft - row.paddingRight
+						assertEquals(contentWidth, setSurface.width)
+						assertEquals(contentWidth, category.width)
 						row.measure(android.view.View.MeasureSpec.makeMeasureSpec(originalWidth, android.view.View.MeasureSpec.EXACTLY), heightSpec)
 						row.requestLayout()
 					}
@@ -635,7 +639,7 @@ class CategorySetsUiTest {
 		}
 	}
 
-	@Test fun privateFavouritesUsesIntegratedRailForMangaAndNovelWithoutNormalNames() {
+	@Test fun privateFavouritesUsesStackedNavigationForMangaAndNovelWithoutNormalNames() {
 		val space = FavouriteSpace.PRIVATE
 		val selected = sets.getValue(space)[1]
 		runBlocking { repository.renameSet(sets.getValue(FavouriteSpace.NORMAL)[0].setId, "NORMAL_ONLY", FavouriteSpace.NORMAL) }
@@ -650,7 +654,7 @@ class CategorySetsUiTest {
 					await {
 						var ready = false
 						scenario.onActivity { activity ->
-							ready = activity.findViewById<android.widget.TextView>(R.id.button_category_set)?.text == "Second" && activity.findViewById<android.view.View>(if (tabs) R.id.tabs else R.id.button_category_picker)?.isShown == true
+							ready = activity.findViewById<android.widget.TextView>(R.id.button_category_set)?.text == context.getString(R.string.category_set_selector, "Second") && activity.findViewById<android.view.View>(if (tabs) R.id.tabs else R.id.button_category_picker)?.isShown == true
 						}
 						ready
 					}
@@ -725,18 +729,20 @@ class CategorySetsUiTest {
 	}
 
 	private fun assertNavigationGeometry(activity: android.app.Activity, tabsMode: Boolean) {
-		val chip = activity.findViewById<android.widget.TextView>(R.id.button_category_set)
+		val setSurface = activity.findViewById<android.widget.TextView>(R.id.button_category_set)
 		val category = activity.findViewById<android.view.View>(if (tabsMode) R.id.tabs else R.id.button_category_picker)
-		assertTrue(chip.isShown)
+		assertTrue(setSurface.isShown)
 		assertTrue(category.isShown)
-		assertSame(chip.parent, category.parent)
-		val chipBounds = android.graphics.Rect().also { assertTrue(chip.getGlobalVisibleRect(it)) }
+		assertSame(setSurface.parent, category.parent)
+		val setBounds = android.graphics.Rect().also { assertTrue(setSurface.getGlobalVisibleRect(it)) }
 		val categoryBounds = android.graphics.Rect().also { assertTrue(category.getGlobalVisibleRect(it)) }
-		assertTrue("Set and categories share one vertical navigation band", chipBounds.top < categoryBounds.bottom && categoryBounds.top < chipBounds.bottom)
-		assertTrue("Pinned Set precedes categories without overlap", chipBounds.right <= categoryBounds.left)
-		assertTrue("Categories retain most of the rail width", categoryBounds.width() > chipBounds.width())
-		assertEquals(1, chip.maxLines)
-		assertEquals(android.text.TextUtils.TruncateAt.END, chip.ellipsize)
+		assertTrue("Set surface must stay above Category navigation", setBounds.bottom <= categoryBounds.top)
+		val tolerance = (4 * activity.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+		assertTrue("Stacked surfaces share the same left edge", abs(setBounds.left - categoryBounds.left) <= tolerance)
+		assertTrue("Stacked surfaces share the same right edge", abs(setBounds.right - categoryBounds.right) <= tolerance)
+		assertTrue("Set surface remains full-width", setBounds.width() >= categoryBounds.width() - tolerance)
+		assertEquals(1, setSurface.maxLines)
+		assertEquals(android.text.TextUtils.TruncateAt.END, setSurface.ellipsize)
 		if (tabsMode) assertEquals(com.google.android.material.tabs.TabLayout.MODE_SCROLLABLE, (category as com.google.android.material.tabs.TabLayout).tabMode)
 	}
 
