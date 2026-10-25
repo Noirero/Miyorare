@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.favourites.ui.container
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
@@ -36,6 +37,7 @@ class CategoryNavigationRow @JvmOverloads constructor(
 ) : LinearLayout(context, attrs) {
 
 	private var presentationPosted = false
+	private var applyingPresentation = false
 
 	override fun onFinishInflate() {
 		super.onFinishInflate()
@@ -65,6 +67,22 @@ class CategoryNavigationRow @JvmOverloads constructor(
 		if (hasWindowFocus && isShown) schedulePresentation()
 	}
 
+	/**
+	 * MiyorareFavouritesHeaderLayout still refreshes the header as one unit. Intercept its legacy
+	 * rail background assignment and re-apply this newer two-surface presentation afterward.
+	 */
+	override fun setBackground(background: Drawable?) {
+		if (
+			applyingPresentation ||
+			!isAttachedToWindow ||
+			context.miyorareViewPaletteFromPreferences(isPrivateFavouritesHost()) == null
+		) {
+			super.setBackground(background)
+			return
+		}
+		schedulePresentation()
+	}
+
 	fun refreshPresentation() = schedulePresentation()
 
 	private fun schedulePresentation() {
@@ -77,17 +95,18 @@ class CategoryNavigationRow @JvmOverloads constructor(
 	}
 
 	private fun applyModernPresentation() {
-		val privateFavourites = context.findActivity()?.intent?.getIntExtra(
-			EXTRA_FAVOURITE_SPACE,
-			FavouriteSpace.NORMAL.dbValue,
-		) == FavouriteSpace.PRIVATE.dbValue
-		val palette = context.miyorareViewPaletteFromPreferences(privateFavourites) ?: return
+		val palette = context.miyorareViewPaletteFromPreferences(isPrivateFavouritesHost()) ?: return
 		val setButton = findViewById<TextView>(R.id.button_category_set)
 		val tabs = findViewById<TabLayout>(R.id.tabs)
 		val picker = findViewById<MaterialButton>(R.id.button_category_picker)
 
 		// The reference hierarchy is two independent glass boxes, not one shared rail.
-		background = null
+		applyingPresentation = true
+		try {
+			super.setBackground(null)
+		} finally {
+			applyingPresentation = false
+		}
 		setButton.apply {
 			setTextColor(palette.onSurface)
 			compoundDrawableTintList = ColorStateList.valueOf(palette.onSurfaceVariant)
@@ -108,6 +127,11 @@ class CategoryNavigationRow @JvmOverloads constructor(
 			elevation = 0f
 		}
 	}
+
+	private fun isPrivateFavouritesHost(): Boolean = context.findActivity()?.intent?.getIntExtra(
+		EXTRA_FAVOURITE_SPACE,
+		FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE.dbValue
 
 	private fun glassRipple(palette: MiyorareViewPalette, selected: Boolean): RippleDrawable {
 		val radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * resources.displayMetrics.density
