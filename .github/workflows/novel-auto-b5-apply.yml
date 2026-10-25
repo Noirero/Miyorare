@@ -1,0 +1,59 @@
+name: Apply Novel Auto Translation Batch 5
+
+on:
+  push:
+    branches:
+      - feature/novel-translation-auto-b5
+    paths:
+      - 'tools/novel_auto_b5_patch.py'
+      - 'tools/novel_auto_b5_patch_fix.py'
+      - '.github/workflows/novel-auto-b5-apply.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  apply:
+    name: Apply guarded source patch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feature/novel-translation-auto-b5
+          fetch-depth: 0
+
+      - name: Apply exact-match patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/translation/NovelAutoTranslationPolicy.kt ]; then
+            echo 'Production patch already present; nothing to apply.'
+            exit 0
+          fi
+          python -m py_compile tools/novel_auto_b5_patch.py tools/novel_auto_b5_patch_fix.py
+          python tools/novel_auto_b5_patch.py
+          python tools/novel_auto_b5_patch_fix.py
+          git diff --check
+
+      - name: Commit production changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No production changes to commit.'
+            exit 0
+          fi
+          git config user.name 'Noirero'
+          git config user.email '149634319+Noirero@users.noreply.github.com'
+          git add \
+            app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/translation \
+            app/src/main/res/values/strings_novel_translation_hub.xml \
+            app/src/main/res/values-in/strings_novel_translation_hub.xml \
+            app/src/test/kotlin/org/koitharu/kotatsu/reader/ui/epub/translation/NovelAutoTranslationPolicyTest.kt
+          git diff --cached --check
+          git commit -m 'feat: add per-novel automatic translation'
+          git push origin HEAD:${GITHUB_REF_NAME}
