@@ -215,6 +215,7 @@ class NovelTranslationSemanticCache internal constructor(
 				bytes -= size
 				count--
 			}
+		}
 	}
 
 	internal companion object {
