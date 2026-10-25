@@ -30,6 +30,11 @@ class NovelTranslationSettings(context: Context) {
 		get() = prefs.getString(KEY_TARGET_LANGUAGE, DEFAULT_TARGET_LANGUAGE) ?: DEFAULT_TARGET_LANGUAGE
 		set(value) = prefs.edit().putString(KEY_TARGET_LANGUAGE, value.ifBlank { DEFAULT_TARGET_LANGUAGE }).apply()
 
+	/** Presentation preference only; it deliberately does not participate in semantic cache identity. */
+	var bilingual: Boolean
+		get() = prefs.getBoolean(KEY_BILINGUAL, true)
+		set(value) = prefs.edit().putBoolean(KEY_BILINGUAL, value).apply()
+
 	/**
 	 * Models are provider-scoped so changing from one provider to another never accidentally sends a
 	 * request with the previous provider's model name.
@@ -87,6 +92,7 @@ class NovelTranslationSettings(context: Context) {
 		private const val KEY_PROVIDER = "provider"
 		private const val KEY_SOURCE_LANGUAGE = "source_language"
 		private const val KEY_TARGET_LANGUAGE = "target_language"
+		private const val KEY_BILINGUAL = "bilingual"
 		private const val KEY_MODEL_PREFIX = "model_"
 		private const val KEY_BASE_URL_PREFIX = "base_url_"
 		private const val KEY_STYLE = "style"

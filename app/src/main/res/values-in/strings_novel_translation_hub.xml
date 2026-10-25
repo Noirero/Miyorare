@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="novel_translation_engine">Mesin terjemahan</string>
+    <string name="novel_translation_title">Terjemahan</string>
     <string name="novel_translation_online">Miyorare Online</string>
     <string name="novel_translation_online_summary">Default • Online • Tidak perlu API key</string>
     <string name="novel_translation_ai">Terjemahan AI</string>
     <string name="novel_translation_ai_summary">Opsional • Menggunakan API key milikmu</string>
     <string name="novel_translation_restore_original">Asli / Pulihkan teks asli</string>
+    <string name="novel_translation_show_original">Tampilkan Asli</string>
+    <string name="novel_translation_show_translation">Tampilkan Terjemahan</string>
+    <string name="novel_translation_translate_again">Terjemahkan ulang</string>
     <string name="novel_translation_source">Dari</string>
     <string name="novel_translation_target">Ke</string>
     <string name="novel_translation_auto_detect">Deteksi otomatis</string>
@@ -13,7 +17,14 @@
     <string name="novel_translation_choose_target">Pilih bahasa tujuan</string>
     <string name="novel_translation_custom_language">Kode bahasa lain…</string>
     <string name="novel_translation_language_code">Kode bahasa</string>
+    <string name="novel_translation_service">Layanan terjemahan</string>
     <string name="novel_translation_provider">Penyedia AI</string>
+    <string name="novel_translation_bilingual_view">Tampilan dwibahasa</string>
+    <string name="novel_translation_advanced_settings">Pengaturan lanjutan</string>
+    <string name="novel_translation_current_state">Tampilan saat ini: %1$s</string>
+    <string name="novel_translation_state_original">Asli</string>
+    <string name="novel_translation_state_bilingual">Dwibahasa</string>
+    <string name="novel_translation_state_translated_only">Hanya terjemahan</string>
     <string name="novel_translation_api_key">API key</string>
     <string name="novel_translation_api_key_hint">Disimpan terenkripsi di perangkat ini dan tidak masuk backup normal</string>
     <string name="novel_translation_model">Model</string>
