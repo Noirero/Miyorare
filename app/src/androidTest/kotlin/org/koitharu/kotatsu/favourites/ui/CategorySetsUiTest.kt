@@ -41,6 +41,7 @@ import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerViewModel
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListViewModel
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.main.ui.MainActivity
 import java.util.concurrent.atomic.AtomicReference
@@ -59,6 +60,7 @@ class CategorySetsUiTest {
 	@Inject lateinit var quickFilters: FavouriteQuickFilterStore
 	@Inject lateinit var sourceFilters: FavouriteSourceFilterStore
 	@Inject lateinit var display: FavouriteDisplayPreferences
+	@Inject lateinit var privateSession: PrivateFavouritesSession
 	@Inject lateinit var imageLoaderProvider: javax.inject.Provider<coil3.ImageLoader>
 	private val instrumentation = InstrumentationRegistry.getInstrumentation()
 	private val context get() = instrumentation.targetContext
@@ -69,6 +71,9 @@ class CategorySetsUiTest {
 
 	@Before fun prepare() = runBlocking {
 		hilt.inject()
+		// Category Sets Private UI tests exercise an already-authenticated workspace. Other runtime
+		// classes in the same instrumentation process may deliberately lock that singleton first.
+		privateSession.unlock()
 		// HiltTestApplication omits the production background warm-up. Build the real image/network
 		// graph on the instrumentation thread before an Activity injects it on the main thread.
 		imageLoaderProvider.get()
@@ -119,6 +124,13 @@ class CategorySetsUiTest {
 		}
 		ready
 	}
+	private fun <A : android.app.Activity> awaitWindowFocus(scenario: ActivityScenario<A>) = await {
+		var ready = false
+		scenario.onActivity { activity ->
+			ready = !activity.isFinishing && !activity.isDestroyed && activity.window.decorView.hasWindowFocus()
+		}
+		ready
+	}
 	private fun await(condition: () -> Boolean) = compose.waitUntil(30_000, condition)
 	private fun checkbox(id: Long) = compose.onNodeWithTag("category-checkbox:$id", useUnmergedTree = true)
 	private fun choose(title: String, current: String) {
@@ -127,6 +139,9 @@ class CategorySetsUiTest {
 	}
 	private fun pages(): List<Int> = Regex("\\d+").findAll(compose.onNodeWithTag("category-pages").fetchSemanticsNode().config[SemanticsProperties.ContentDescription].joinToString()).map { it.value.toInt() }.toList()
 	private fun memberships(space: FavouriteSpace = FavouriteSpace.NORMAL) = runBlocking { repository.getCategoriesIds(manga.id, space) }
+	private fun awaitSelected(tag: String) = await {
+		runCatching { compose.onNodeWithTag(tag).assertIsSelected(); true }.getOrDefault(false)
+	}
 	private fun closed(scenario: ActivityScenario<FavouriteCategoriesActivity>) {
 		try {
 			await {
@@ -145,6 +160,32 @@ class CategorySetsUiTest {
 			}
 			throw AssertionError("Picker did not dismiss: $state", error)
 		}
+	}
+	private fun swipeCategorySetsSheetDown(scenario: ActivityScenario<FavouriteCategoriesActivity>) {
+		val boundsRef = AtomicReference<android.graphics.Rect>()
+		scenario.onActivity { activity ->
+			val sheet = activity.supportFragmentManager.findFragmentByTag("category_sets") as org.koitharu.kotatsu.favourites.ui.sets.CategorySetsDialog
+			val bottomSheet = (sheet.dialog as com.google.android.material.bottomsheet.BottomSheetDialog)
+				.findViewById<android.view.View>(com.google.android.material.R.id.design_bottom_sheet)!!
+			val bounds = android.graphics.Rect()
+			assertTrue(bottomSheet.getGlobalVisibleRect(bounds))
+			boundsRef.set(bounds)
+		}
+		val bounds = boundsRef.get()
+		val density = context.resources.displayMetrics.density
+		val x = bounds.exactCenterX()
+		val startY = bounds.top + 24f * density
+		val endY = (startY + 600f * density).coerceAtMost(bounds.bottom - 1f)
+		val downTime = android.os.SystemClock.uptimeMillis()
+		fun pointer(action: Int, y: Float) {
+			val event = android.view.MotionEvent.obtain(downTime, android.os.SystemClock.uptimeMillis(), action, x, y, 0)
+			event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+			try { instrumentation.sendPointerSync(event) } finally { event.recycle() }
+			instrumentation.waitForIdleSync()
+		}
+		pointer(android.view.MotionEvent.ACTION_DOWN, startY)
+		for (step in 1..12) pointer(android.view.MotionEvent.ACTION_MOVE, startY + (endY - startY) * step / 12)
+		pointer(android.view.MotionEvent.ACTION_UP, endY)
 	}
 
 	@Test fun ownerScenarioPendingStateIndependentPagesOkCancelAndRecreation() {
@@ -329,6 +370,7 @@ class CategorySetsUiTest {
 			compose.onNodeWithText(context.getString(R.string.save)).performClick()
 			await { runBlocking { repository.getSets(normal).size == 3 } }
 			val third = runBlocking { repository.getSets(normal).first { it.title == "Third" } }
+			awaitSelected("set-row:${third.setId}")
 			compose.onNodeWithTag("set-overflow:${third.setId}").performScrollTo().performClick()
 			compose.onNodeWithTag("set-rename:${third.setId}").performClick()
 			compose.onNodeWithText(context.getString(R.string.category_set_name)).performTextReplacement("Archive")
@@ -336,6 +378,7 @@ class CategorySetsUiTest {
 			compose.onNodeWithText(context.getString(R.string.save)).performClick()
 			await { runBlocking { repository.getSets(normal).any { it.syncKey == third.syncKey && it.title == "Archive" } } }
 			compose.onNodeWithText(context.getString(R.string.category_set_no_categories)).assertIsDisplayed()
+			awaitSelected("set-row:${third.setId}")
 			compose.onNodeWithTag("set-row:${third.setId}").assertIsSelected()
 			val beforeDrag = memberships()
 			val destination = compose.onNodeWithTag("set-row:${second.setId}").fetchSemanticsNode().boundsInRoot.center.y
@@ -352,6 +395,7 @@ class CategorySetsUiTest {
 			} finally { compose.mainClock.autoAdvance = true }
 			await { runBlocking { repository.getSets(normal)[1].syncKey == third.syncKey } }
 			assertEquals(beforeDrag, memberships())
+			awaitSelected("set-row:${third.setId}")
 			compose.onNodeWithTag("set-row:${third.setId}").assertIsSelected()
 			val upActions = compose.onNodeWithTag("set-row:${third.setId}").fetchSemanticsNode().config[SemanticsActions.CustomActions]
 			compose.runOnIdle { assertTrue(upActions.single { it.label == context.getString(R.string.category_set_up) }.action()) }
@@ -506,7 +550,7 @@ class CategorySetsUiTest {
 			compose.onNodeWithTag("set-close").performClick()
 			closed()
 			open()
-			compose.onNodeWithText(context.getString(R.string.category_set_manage_subtitle)).performTouchInput { swipeDown(startY = centerY, endY = centerY + 600f, durationMillis = 500) }
+			swipeCategorySetsSheetDown(scenario)
 			closed()
 		}
 	}
@@ -515,7 +559,8 @@ class CategorySetsUiTest {
 		val space = FavouriteSpace.NORMAL
 		val longName = "A very long category Set title that must leave categories usable"
 		val empty = runBlocking { repository.createSet(longName, space) }
-		ActivityScenario.launch<FavouritesActivity>(Intent(context, FavouritesActivity::class.java)).use { scenario ->
+		ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
+			awaitWindowFocus(scenario)
 			val container = AtomicReference<FavouritesContainerFragment?>()
 			await { scenario.onActivity { container.set(descendants(it.supportFragmentManager.fragments).filterIsInstance<FavouritesContainerFragment>().firstOrNull()) }; container.get()?.view != null }
 			val model = AtomicReference<FavouritesContainerViewModel>()
@@ -579,6 +624,7 @@ class CategorySetsUiTest {
 		types.setCategoryType(categoryIds.getValue(space)[1][0], FavouriteContentType.NOVEL)
 		for (type in FavouriteContentType.entries) selection.select(selected, space, type)
 		ActivityScenario.launch<FavouritesActivity>(Intent(context, FavouritesActivity::class.java).putExtra(EXTRA_FAVOURITE_SPACE, space.dbValue)).use { scenario ->
+			awaitWindowFocus(scenario)
 			for (type in FavouriteContentType.entries) {
 				instrumentation.runOnMainSync { types.setSelectedType(type, space) }
 				for (tabs in listOf(true, false)) {
@@ -606,7 +652,8 @@ class CategorySetsUiTest {
 		try {
 			for (night in listOf(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO, androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)) {
 				instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(night) }
-				ActivityScenario.launch<FavouritesActivity>(Intent(context, FavouritesActivity::class.java)).use { scenario ->
+				ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
+					awaitWindowFocus(scenario)
 					for (tabs in listOf(true, false)) {
 						instrumentation.runOnMainSync { display.setShowCategoryTabs(FavouriteContentType.MANGA, tabs) }
 						await { var ready = false; scenario.onActivity { ready = it.findViewById<android.view.View>(if (tabs) R.id.tabs else R.id.button_category_picker)?.isShown == true }; ready }
@@ -627,6 +674,7 @@ class CategorySetsUiTest {
 						activity.window.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
 						activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
 					}
+					awaitWindowFocus(scenario)
 					await {
 						var landscape = false
 						scenario.onActivity { landscape = it.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE && it.findViewById<android.view.View>(R.id.button_category_picker)?.isShown == true }
