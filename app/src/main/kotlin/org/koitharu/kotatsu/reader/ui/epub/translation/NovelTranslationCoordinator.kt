@@ -166,17 +166,18 @@ object NovelTranslationSegmenter {
 	}
 
 	private fun preferredBreak(text: String, start: Int, hardEnd: Int, limit: Int): Int {
-		val floor = (start + limit * 2 / 3).coerceAtMost(hardEnd)
-		val paragraph = text.lastIndexOf("\n\n", hardEnd - 1).takeIf { it >= floor }?.plus(2)
+		val paragraphFloor = (start + limit / 2).coerceAtMost(hardEnd)
+		val fallbackFloor = (start + limit * 2 / 3).coerceAtMost(hardEnd)
+		val paragraph = text.lastIndexOf("\n\n", hardEnd - 1).takeIf { it >= paragraphFloor }?.plus(2)
 		if (paragraph != null) return paragraph
-		val line = text.lastIndexOf('\n', hardEnd - 1).takeIf { it >= floor }?.plus(1)
+		val line = text.lastIndexOf('\n', hardEnd - 1).takeIf { it >= fallbackFloor }?.plus(1)
 		if (line != null) return line
-		for (index in hardEnd - 1 downTo floor) {
+		for (index in hardEnd - 1 downTo fallbackFloor) {
 			if (text[index] in SENTENCE_ENDINGS && (index + 1 >= text.length || text[index + 1].isWhitespace())) {
 				return index + 1
 			}
 		}
-		for (index in hardEnd - 1 downTo floor) {
+		for (index in hardEnd - 1 downTo fallbackFloor) {
 			if (text[index].isWhitespace()) return index + 1
 		}
 		return hardEnd
