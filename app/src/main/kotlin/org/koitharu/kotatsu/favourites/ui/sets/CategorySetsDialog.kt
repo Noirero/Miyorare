@@ -372,7 +372,7 @@ class CategorySetsDialog : BottomSheetDialogFragment() {
 						.fillMaxWidth()
 						.heightIn(min = 58.dp)
 						.categorySetsGlass(palette, createShape, emphasis = 0.12f, glowWidth = 0.dp, solidBorder = false)
-						.dashedOutline(palette.resolvedPrimary().copy(alpha = 0.88f), createShape, 1.5.dp)
+						.dashedOutline(palette.resolvedPrimary().copy(alpha = 0.88f), 24.dp, 1.5.dp)
 						.testTag("set-create"),
 					shape = createShape,
 					colors = ButtonDefaults.buttonColors(
@@ -492,27 +492,10 @@ private fun Modifier.categorySetsGlass(
 		palette.borderHighlight.copy(alpha = 0.48f + strength * 0.42f)
 	} else MaterialTheme.colorScheme.outlineVariant
 	val glow = if (palette.isModern) palette.glow.copy(alpha = 0.16f + strength * 0.30f) else Color.Transparent
-	val density = LocalDensity.current
-	val glowPx = with(density) { glowWidth.toPx() }
-	val borderPx = with(density) { 1.dp.toPx() }
 	return this
 		.background(Brush.verticalGradient(colors), shape)
-		.drawBehind {
-			if (glowPx > 0f && glow.alpha > 0f) {
-				drawRoundRect(
-					color = glow,
-					cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.minDimension * 0.18f),
-					style = Stroke(width = glowPx),
-				)
-			}
-			if (solidBorder) {
-				drawRoundRect(
-					color = borderColor,
-					cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.minDimension * 0.18f),
-					style = Stroke(width = borderPx),
-				)
-			}
-		}
+		.then(if (glowWidth > 0.dp && glow.alpha > 0f) Modifier.border(glowWidth, glow, shape) else Modifier)
+		.then(if (solidBorder) Modifier.border(1.dp, borderColor, shape) else Modifier)
 }
 
 @Composable
@@ -529,30 +512,19 @@ private fun Modifier.categorySetsAccent(palette: MiyorareVisualPalette, shape: S
 			),
 		),
 		shape,
-	).drawBehind {
-		val border = 1.dp.toPx()
-		val glow = 5.dp.toPx()
-		drawRoundRect(
-			color = palette.glow.copy(alpha = 0.42f),
-			cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.minDimension * 0.30f),
-			style = Stroke(width = glow),
-		)
-		drawRoundRect(
-			color = palette.borderHighlight.copy(alpha = 0.92f),
-			cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.minDimension * 0.30f),
-			style = Stroke(width = border),
-		)
-	}
+	)
+		.border(5.dp, palette.glow.copy(alpha = 0.42f), shape)
+		.border(1.dp, palette.borderHighlight.copy(alpha = 0.92f), shape)
 }
 
 @Composable
-private fun Modifier.dashedOutline(color: Color, shape: RoundedCornerShape, width: Dp): Modifier {
+private fun Modifier.dashedOutline(color: Color, cornerRadius: Dp, width: Dp): Modifier {
 	val density = LocalDensity.current
 	val strokePx = with(density) { width.toPx() }
+	val radius = with(density) { cornerRadius.toPx() }
 	val dash = with(density) { 8.dp.toPx() }
 	val gap = with(density) { 6.dp.toPx() }
 	return drawBehind {
-		val radius = size.minDimension * 0.22f
 		drawRoundRect(
 			color = color,
 			cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius),
