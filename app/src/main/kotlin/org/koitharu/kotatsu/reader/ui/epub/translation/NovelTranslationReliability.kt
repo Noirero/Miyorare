@@ -86,6 +86,11 @@ interface NovelTranslationResultCache {
 	}
 }
 
+/** Optional cheap coherence signal used by L1 without re-reading full durable payloads. */
+internal interface NovelTranslationCacheCoherence {
+	fun backingStamp(key: NovelTranslationSemanticKey): String?
+}
+
 object NoOpNovelTranslationResultCache : NovelTranslationResultCache {
 	override suspend fun read(key: NovelTranslationSemanticKey): String? = null
 	override suspend fun write(key: NovelTranslationSemanticKey, translatedText: String): Boolean = false
@@ -105,7 +110,7 @@ class NovelTranslationSemanticCache internal constructor(
 	private val maxEntries: Int = MAX_ENTRIES,
 	private val maxIdleMillis: Long = MAX_IDLE_MILLIS,
 	private val nowMillis: () -> Long = System::currentTimeMillis,
-) : NovelTranslationResultCache {
+) : NovelTranslationResultCache, NovelTranslationCacheCoherence {
 
 	constructor(context: Context) : this(File(context.applicationContext.noBackupFilesDir, DIRECTORY_NAME))
 
@@ -165,6 +170,11 @@ class NovelTranslationSemanticCache internal constructor(
 			initializeLocked()
 			entriesLocked().size
 		}
+	}
+
+	override fun backingStamp(key: NovelTranslationSemanticKey): String? {
+		val file = File(directory, key.digest + ENTRY_SUFFIX)
+		return file.takeIf(File::isFile)?.let { "${it.lastModified()}:${it.length()}" }
 	}
 
 	private fun initializeLocked() {
@@ -506,7 +516,11 @@ class NovelTranslationReliabilityServices(
 	val diagnostics: NovelTranslationDiagnostics,
 	val memoryCache: NovelTranslationMemoryCache = NovelTranslationMemoryCache(),
 	val writeBehindCache: NovelTranslationWriteBehindCache = NovelTranslationWriteBehindCache(cache),
-)
+) {
+	init {
+		memoryCache.bindBackingCache(cache)
+	}
+}
 
 /** Process-shared reliability state; disk results survive process/Reader recreation independently. */
 object NovelTranslationProcessReliability {
