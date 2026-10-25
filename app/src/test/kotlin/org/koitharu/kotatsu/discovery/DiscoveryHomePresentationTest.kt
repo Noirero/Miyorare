@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.discovery.domain.TrackerCatalogItem
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogKey
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogSection
 import org.koitharu.kotatsu.discovery.ui.DiscoveryHomeStatus
+import org.koitharu.kotatsu.discovery.ui.discoverySectionOrdinal
 import org.koitharu.kotatsu.discovery.ui.homeStatus
 import org.koitharu.kotatsu.discovery.ui.selectDiscoverySpotlight
 import org.koitharu.kotatsu.discovery.ui.visibleDiscoveryRailItems
@@ -57,6 +58,15 @@ class DiscoveryHomePresentationTest {
 	}
 
 	@Test
+	fun rankedOrdinalUsesOriginalSectionOrderAfterDedupe() {
+		val ranked = section(CatalogSectionType.TOP_RANKED, 1, 2, 3, 4)
+		val spotlight = selectDiscoverySpotlight(listOf(ranked))
+		val visible = visibleDiscoveryRailItems(ranked, spotlight)
+		assertEquals(listOf("2", "3", "4"), visible.map { it.key.remoteId })
+		assertEquals(listOf(2, 3, 4), visible.map { discoverySectionOrdinal(ranked, it) })
+	}
+
+	@Test
 	fun presentationStatusDistinguishesLoadingCachePartialAndFullError() {
 		val fresh = section(CatalogSectionType.TRENDING, 1, 2, 3)
 		val partial = fresh.copy(failure = CatalogFailure(CatalogFailureKind.OFFLINE))
@@ -65,6 +75,7 @@ class DiscoveryHomePresentationTest {
 
 		assertEquals(DiscoveryHomeStatus.LOADING, DiscoveryHubState(request).homeStatus())
 		assertEquals(DiscoveryHomeStatus.CACHED_REFRESHING, DiscoveryHubState(request, home, loading = false, refreshing = true, stale = true).homeStatus())
+		assertEquals(DiscoveryHomeStatus.FRESH, DiscoveryHubState(request, home, loading = false, refreshing = true, stale = false).homeStatus())
 		assertEquals(DiscoveryHomeStatus.CACHED_ERROR, DiscoveryHubState(request, home, loading = false, stale = true, failure = CatalogFailure(CatalogFailureKind.OFFLINE)).homeStatus())
 		assertEquals(DiscoveryHomeStatus.PARTIAL, DiscoveryHubState(request, partialHome, loading = false, stale = true).homeStatus())
 		assertEquals(DiscoveryHomeStatus.FULL_ERROR, DiscoveryHubState(request, loading = false, failure = CatalogFailure(CatalogFailureKind.PROVIDER)).homeStatus())
