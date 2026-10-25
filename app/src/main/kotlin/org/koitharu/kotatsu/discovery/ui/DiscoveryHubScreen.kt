@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.discovery.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -106,13 +106,13 @@ fun DiscoveryHubScreen(
 					if (section.failure != null) CatalogSectionFailure(onRefresh)
 					if (visibleItems.isNotEmpty()) {
 						LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-							itemsIndexed(visibleItems, key = { _, item -> item.key.stableId }) { index, item ->
+							itemsIndexed(visibleItems, key = { _, item -> item.key.stableId }) { _, item ->
 								CatalogCard(
 									item = item,
 									imageLoader = imageLoader,
 									onClick = { onItem(item.key) },
 									modifier = Modifier.width(cardWidth),
-									ordinal = if (section.key.type == CatalogSectionType.TOP_RANKED) index + 1 else null,
+									ordinal = discoverySectionOrdinal(section, item),
 								)
 							}
 						}
