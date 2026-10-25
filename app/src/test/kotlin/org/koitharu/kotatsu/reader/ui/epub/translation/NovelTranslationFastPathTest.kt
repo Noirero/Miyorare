@@ -1,10 +1,13 @@
 package org.koitharu.kotatsu.reader.ui.epub.translation
 
 import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -199,6 +202,27 @@ class NovelTranslationFastPathTest {
 	}
 
 	@Test
+	fun `operation boundary waits for in progress durable flush`() = runTest {
+		val persistent = BlockingCache()
+		val writer = NovelTranslationWriteBehindCache(
+			persistent = persistent,
+			scope = this,
+			flushDelayMillis = 0L,
+		)
+		val key = NovelTranslationSemanticKey("key")
+
+		writer.enqueue(key, "translated")
+		persistent.writeStarted.await()
+		val boundary = async { writer.flushNow() }
+		yield()
+		assertFalse(boundary.isCompleted)
+
+		persistent.releaseWrite.complete(Unit)
+		boundary.await()
+		assertEquals("translated", persistent.read(key))
+	}
+
+	@Test
 	fun `write behind persistence retries are bounded`() = runTest {
 		val persistent = FailingCache()
 		val writer = NovelTranslationWriteBehindCache(
@@ -276,6 +300,20 @@ class NovelTranslationFastPathTest {
 			return stored
 		}
 		override fun backingStamp(key: NovelTranslationSemanticKey): String? = versions[key]?.toString()
+	}
+
+	private class BlockingCache : NovelTranslationResultCache {
+		private val values = LinkedHashMap<NovelTranslationSemanticKey, String>()
+		val writeStarted = CompletableDeferred<Unit>()
+		val releaseWrite = CompletableDeferred<Unit>()
+
+		override suspend fun read(key: NovelTranslationSemanticKey): String? = values[key]
+		override suspend fun write(key: NovelTranslationSemanticKey, translatedText: String): Boolean {
+			writeStarted.complete(Unit)
+			releaseWrite.await()
+			values[key] = translatedText
+			return true
+		}
 	}
 
 	private class FailingCache : NovelTranslationResultCache {
