@@ -35,6 +35,38 @@ class NovelTranslationSettings(context: Context) {
 		get() = prefs.getBoolean(KEY_BILINGUAL, true)
 		set(value) = prefs.edit().putBoolean(KEY_BILINGUAL, value).apply()
 
+	fun isAutoTranslateEnabled(mangaId: Long): Boolean =
+		mangaId > 0L && prefs.getBoolean(autoTranslateKey(mangaId), false)
+
+	/**
+	 * Auto-translate is opt-in per novel and bound to the selected provider boundary. Changing
+	 * Online -> AI or switching AI providers therefore requires an explicit opt-in again.
+	 */
+	fun isAutoTranslateActive(mangaId: Long): Boolean =
+		isAutoTranslateEnabled(mangaId) &&
+			prefs.getString(autoTranslateBindingKey(mangaId), null) == currentAutoProviderBinding()
+
+	fun setAutoTranslateEnabled(mangaId: Long, enabled: Boolean) {
+		if (mangaId <= 0L) return
+		prefs.edit().apply {
+			putBoolean(autoTranslateKey(mangaId), enabled)
+			if (enabled) putString(autoTranslateBindingKey(mangaId), currentAutoProviderBinding())
+			else remove(autoTranslateBindingKey(mangaId))
+		}.apply()
+	}
+
+	fun currentSelection(): NovelTranslationSelection {
+		val selectedEngine = engine
+		return NovelTranslationSelection(
+			engine = selectedEngine,
+			sourceLanguage = sourceLanguage,
+			targetLanguage = targetLanguage,
+			style = style,
+			contextAware = selectedEngine == NovelTranslationEngineKind.AI && contextAware,
+			displayMode = if (bilingual) NovelTranslationDisplayMode.BILINGUAL else NovelTranslationDisplayMode.TRANSLATED_ONLY,
+		)
+	}
+
 	/**
 	 * Models are provider-scoped so changing from one provider to another never accidentally sends a
 	 * request with the previous provider's model name.
@@ -82,6 +114,9 @@ class NovelTranslationSettings(context: Context) {
 	}
 
 	private fun providerKey(prefix: String, provider: NovelAiProvider) = "$prefix${provider.id}"
+	private fun autoTranslateKey(mangaId: Long) = "$KEY_AUTO_TRANSLATE_PREFIX$mangaId"
+	private fun autoTranslateBindingKey(mangaId: Long) = "$KEY_AUTO_TRANSLATE_BINDING_PREFIX$mangaId"
+	private fun currentAutoProviderBinding() = NovelAutoTranslationPolicy.providerBinding(engine, provider)
 
 	companion object {
 		const val LANGUAGE_AUTO = "auto"
@@ -93,6 +128,8 @@ class NovelTranslationSettings(context: Context) {
 		private const val KEY_SOURCE_LANGUAGE = "source_language"
 		private const val KEY_TARGET_LANGUAGE = "target_language"
 		private const val KEY_BILINGUAL = "bilingual"
+		private const val KEY_AUTO_TRANSLATE_PREFIX = "auto_translate_"
+		private const val KEY_AUTO_TRANSLATE_BINDING_PREFIX = "auto_translate_binding_"
 		private const val KEY_MODEL_PREFIX = "model_"
 		private const val KEY_BASE_URL_PREFIX = "base_url_"
 		private const val KEY_STYLE = "style"
