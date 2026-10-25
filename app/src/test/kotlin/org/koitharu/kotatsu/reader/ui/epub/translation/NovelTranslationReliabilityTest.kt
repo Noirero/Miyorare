@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.reader.ui.epub.translation
 
-import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -135,7 +134,7 @@ class NovelTranslationReliabilityTest {
 		val calls = AtomicInteger()
 		val started = CompletableDeferred<Unit>()
 		val release = CompletableDeferred<Unit>()
-		val sharedServices = services()
+		val sharedReliability = newServices()
 		val coordinator = coordinator(
 			engine = engine { request ->
 				calls.incrementAndGet()
@@ -143,7 +142,7 @@ class NovelTranslationReliabilityTest {
 				release.await()
 				"translated:${request.text}"
 			},
-			services = sharedServices,
+			reliabilityServices = sharedReliability,
 		)
 
 		val first = async { coordinator.translate(operation("same")) }
@@ -161,14 +160,14 @@ class NovelTranslationReliabilityTest {
 		val calls = AtomicInteger()
 		val release = CompletableDeferred<Unit>()
 		val bothStarted = CompletableDeferred<Unit>()
-		val services = services()
+		val reliability = newServices()
 		val coordinator = coordinator(
 			engine = engine { request ->
 				if (calls.incrementAndGet() == 2) bothStarted.complete(Unit)
 				release.await()
 				request.text
 			},
-			services = services,
+			reliabilityServices = reliability,
 		)
 
 		val first = async { coordinator.translate(operation("first")) }
@@ -288,10 +287,10 @@ class NovelTranslationReliabilityTest {
 		val sourceSecret = "PRIVATE_SOURCE_SENTINEL"
 		val translatedSecret = "PRIVATE_TRANSLATED_SENTINEL"
 		val diagnostics = NovelTranslationDiagnostics()
-		val services = services(diagnostics = diagnostics)
+		val reliability = newServices(diagnostics = diagnostics)
 		val coordinator = coordinator(
 			engine = engine { translatedSecret },
-			services = services,
+			reliabilityServices = reliability,
 		)
 
 		coordinator.translate(operation(sourceSecret))
@@ -325,7 +324,7 @@ class NovelTranslationReliabilityTest {
 	private fun coordinator(
 		engine: NovelTranslationEngine,
 		cache: NovelTranslationResultCache = NoOpNovelTranslationResultCache,
-		services: NovelTranslationReliabilityServices? = null,
+		reliabilityServices: NovelTranslationReliabilityServices? = null,
 		maxAttempts: Int = 3,
 	): NovelTranslationCoordinator {
 		val provider = provider(engine, maxAttempts = maxAttempts)
@@ -334,11 +333,11 @@ class NovelTranslationReliabilityTest {
 			scheduler = NovelTranslationRequestScheduler(nowMillis = { 0L }, sleep = {}),
 			retryPolicy = NovelTranslationRetryPolicy(nowMillis = { 0L }, jitterMillis = { 0L }),
 			sleep = {},
-			reliability = services ?: services(cache = cache),
+			reliability = reliabilityServices ?: newServices(cache = cache),
 		)
 	}
 
-	private fun services(
+	private fun newServices(
 		cache: NovelTranslationResultCache = NoOpNovelTranslationResultCache,
 		diagnostics: NovelTranslationDiagnostics = NovelTranslationDiagnostics(),
 	) = NovelTranslationReliabilityServices(
