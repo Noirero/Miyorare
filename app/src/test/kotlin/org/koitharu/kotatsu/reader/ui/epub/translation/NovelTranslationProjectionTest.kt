@@ -63,6 +63,20 @@ class NovelTranslationProjectionTest {
 	}
 
 	@Test
+	fun `translated only preserves whitespace between adjacent translated chunks`() {
+		val source = "alpha\n\nbeta"
+		val chunks = listOf(
+			NovelTranslationDisplaySegment(0, 7, "satu\n\n"),
+			NovelTranslationDisplaySegment(7, 11, "dua"),
+		)
+
+		assertEquals(
+			"satu\n\ndua",
+			NovelTranslationProjection.displayText(source, chunks, NovelTranslationDisplayMode.TRANSLATED_ONLY),
+		)
+	}
+
+	@Test
 	fun `invalid or overlapping display segments cannot escape source bounds`() {
 		val mode = NovelTranslationDisplayMode.TRANSLATED_ONLY
 		val malformed = listOf(

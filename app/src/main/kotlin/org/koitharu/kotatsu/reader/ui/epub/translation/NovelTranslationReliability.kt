@@ -81,6 +81,11 @@ object NoOpNovelTranslationResultCache : NovelTranslationResultCache {
 	override suspend fun write(key: NovelTranslationSemanticKey, translatedText: String): Boolean = false
 }
 
+internal class NovelTranslationCacheCorruptionException(
+	message: String,
+	cause: Throwable? = null,
+) : IOException(message, cause)
+
 /** App-private, bounded persistent segment-result cache. Source text and provider secrets are never stored. */
 class NovelTranslationSemanticCache internal constructor(
 	private val directory: File,
@@ -155,9 +160,9 @@ class NovelTranslationSemanticCache internal constructor(
 				touchLocked(file)
 				payload.toString(Charsets.UTF_8)
 			}
-		} catch (_: IOException) {
+		} catch (error: IOException) {
 			file.delete()
-			null
+			throw NovelTranslationCacheCorruptionException("Corrupt translation cache entry recovered", error)
 		}
 	}
 
@@ -310,6 +315,11 @@ class NovelTranslationCircuitBreaker(
 		providers[providerKey] = ProviderState()
 	}
 
+	/** Cancellation is neutral: release a half-open probe without counting success or failure. */
+	fun onCancellation(providerKey: String) = synchronized(providers) {
+		providers[providerKey]?.halfOpenProbeInFlight = false
+	}
+
 	fun onFailure(providerKey: String, failure: NovelTranslationFailure) = synchronized(providers) {
 		val state = providers.getOrPut(providerKey) { ProviderState() }
 		if (!failure.category.isCircuitEligible()) {
@@ -356,6 +366,8 @@ class NovelTranslationCircuitBreaker(
 enum class NovelTranslationDiagnosticKind {
 	CACHE_HIT,
 	CACHE_MISS,
+	CACHE_CORRUPTION_RECOVERED,
+	CACHE_READ_ERROR_RECOVERED,
 	CACHE_STORE,
 	REQUEST_ATTEMPT,
 	RETRY,

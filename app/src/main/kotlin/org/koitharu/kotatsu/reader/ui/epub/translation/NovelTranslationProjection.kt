@@ -209,7 +209,7 @@ internal object NovelTranslationProjection {
 		return result
 	}
 
-	private fun translatedText(item: NovelTranslationDisplaySegment): String = item.translatedText.trim()
-	private fun bilingualBlock(item: NovelTranslationDisplaySegment): String = "\n${translatedText(item)}\n"
+	private fun translatedText(item: NovelTranslationDisplaySegment): String = item.translatedText
+	private fun bilingualBlock(item: NovelTranslationDisplaySegment): String = "\n${item.translatedText.trim()}\n"
 	private fun clampSource(value: Int, sourceLength: Int): Int = value.coerceIn(0, sourceLength.coerceAtLeast(0))
 }

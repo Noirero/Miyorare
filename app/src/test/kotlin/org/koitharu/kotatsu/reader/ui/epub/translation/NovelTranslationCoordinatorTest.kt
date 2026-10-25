@@ -5,12 +5,15 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -323,6 +326,95 @@ class NovelTranslationCoordinatorTest {
 		scheduler.execute(capabilities) { Unit }
 
 		assertEquals(listOf(100L), waits)
+	}
+
+	@Test
+	fun `translated chunks preserve source paragraph whitespace`() = runTest {
+		val text = "a".repeat(254) + "\n\n" + "b".repeat(256)
+		val coordinator = coordinator(
+			engine = engine { request -> if (request.text.startsWith('a')) "ONE" else "TWO" },
+		)
+
+		val result = coordinator.translate(operation(text))
+
+		assertEquals("ONE\n\nTWO", result.translatedText)
+	}
+
+	@Test
+	fun `scheduler cancellation removes queued work cleanly`() = runTest {
+		val scheduler = NovelTranslationRequestScheduler(nowMillis = { 0L }, sleep = {})
+		val capabilities = capabilities(maxConcurrency = 1)
+		val started = CompletableDeferred<Unit>()
+		val release = CompletableDeferred<Unit>()
+		var queuedExecuted = false
+		val first = async {
+			scheduler.execute(capabilities) {
+				started.complete(Unit)
+				release.await()
+			}
+		}
+		started.await()
+		val queued = async { scheduler.execute(capabilities) { queuedExecuted = true } }
+		yield()
+		queued.cancelAndJoin()
+		release.complete(Unit)
+		first.await()
+		scheduler.execute(capabilities) { Unit }
+
+		assertFalse(queuedExecuted)
+	}
+
+	@Test
+	fun `scheduler lets queued small work run before large work reacquires`() = runTest {
+		val scheduler = NovelTranslationRequestScheduler(nowMillis = { 0L }, sleep = {})
+		val capabilities = capabilities(maxConcurrency = 1)
+		val firstStarted = CompletableDeferred<Unit>()
+		val releaseFirst = CompletableDeferred<Unit>()
+		val order = mutableListOf<String>()
+		val large = async {
+			scheduler.execute(capabilities) {
+				order += "large-1"
+				firstStarted.complete(Unit)
+				releaseFirst.await()
+			}
+			scheduler.execute(capabilities) { order += "large-2" }
+		}
+		firstStarted.await()
+		val small = async { scheduler.execute(capabilities) { order += "small" } }
+		yield()
+		releaseFirst.complete(Unit)
+		large.await()
+		small.await()
+
+		assertEquals(listOf("large-1", "small", "large-2"), order)
+	}
+
+	@Test
+	fun `scheduler isolates provider lanes`() = runTest {
+		val scheduler = NovelTranslationRequestScheduler(nowMillis = { 0L }, sleep = {})
+		val providerA = capabilities(maxConcurrency = 1).copy(providerId = "provider-a")
+		val providerB = capabilities(maxConcurrency = 1).copy(providerId = "provider-b")
+		val aStarted = CompletableDeferred<Unit>()
+		val releaseA = CompletableDeferred<Unit>()
+		var secondARan = false
+		var bRan = false
+		val firstA = async {
+			scheduler.execute(providerA) {
+				aStarted.complete(Unit)
+				releaseA.await()
+			}
+		}
+		aStarted.await()
+		val secondA = async { scheduler.execute(providerA) { secondARan = true } }
+		val callB = async { scheduler.execute(providerB) { bRan = true } }
+		callB.await()
+
+		assertTrue(bRan)
+		assertFalse(secondARan)
+		releaseA.complete(Unit)
+		firstA.await()
+		secondA.await()
+		assertTrue(secondARan)
 	}
 
 	private fun coordinator(
