@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="novel_translation_engine">Translation engine</string>
+    <string name="novel_translation_title">Translation</string>
     <string name="novel_translation_online">Miyorare Online</string>
     <string name="novel_translation_online_summary">Default • Online • No API key required</string>
     <string name="novel_translation_ai">AI Translation</string>
     <string name="novel_translation_ai_summary">Optional • Uses your own API key</string>
     <string name="novel_translation_restore_original">Original / Restore original</string>
+    <string name="novel_translation_show_original">Show Original</string>
+    <string name="novel_translation_show_translation">Show Translation</string>
+    <string name="novel_translation_translate_again">Translate again</string>
     <string name="novel_translation_source">From</string>
     <string name="novel_translation_target">To</string>
     <string name="novel_translation_auto_detect">Auto-detect</string>
@@ -13,7 +17,14 @@
     <string name="novel_translation_choose_target">Choose target language</string>
     <string name="novel_translation_custom_language">Other language code…</string>
     <string name="novel_translation_language_code">Language code</string>
+    <string name="novel_translation_service">Translation service</string>
     <string name="novel_translation_provider">AI provider</string>
+    <string name="novel_translation_bilingual_view">Bilingual view</string>
+    <string name="novel_translation_advanced_settings">Advanced settings</string>
+    <string name="novel_translation_current_state">Current view: %1$s</string>
+    <string name="novel_translation_state_original">Original</string>
+    <string name="novel_translation_state_bilingual">Bilingual</string>
+    <string name="novel_translation_state_translated_only">Translated only</string>
     <string name="novel_translation_api_key">API key</string>
     <string name="novel_translation_api_key_hint">Stored encrypted on this device and excluded from normal backup</string>
     <string name="novel_translation_model">Model</string>
