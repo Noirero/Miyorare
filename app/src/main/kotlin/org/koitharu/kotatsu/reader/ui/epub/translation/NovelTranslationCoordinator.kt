@@ -311,7 +311,14 @@ class NovelTranslationRequestScheduler(
 			waiter.await()
 		} catch (error: CancellationException) {
 			lane.gateMutex.withLock {
-				if (lane.waiters.remove(waiter)) drainWaitersLocked(lane, capabilities)
+				val removedBeforeGrant = lane.waiters.remove(waiter)
+				if (!removedBeforeGrant && waiter.isCompleted) {
+					// drainWaitersLocked accounts a granted waiter as active before completing it. If
+					// cancellation wins immediately after that grant, execute() has not reached its
+					// release/finally yet, so return the granted slot here.
+					lane.active = (lane.active - 1).coerceAtLeast(0)
+				}
+				drainWaitersLocked(lane, capabilities)
 			}
 			throw error
 		}
@@ -405,8 +412,8 @@ class NovelTranslationCoordinator(
 
 	suspend fun translate(
 		request: NovelTranslationOperationRequest,
-		onProgress: suspend (NovelTranslationProgress) -> Unit = {},
 		onSegmentTranslated: suspend (NovelTranslatedSegment, completedSegments: Int, totalSegments: Int) -> Unit = { _, _, _ -> },
+		onProgress: suspend (NovelTranslationProgress) -> Unit = {},
 	): NovelTranslationOperationResult {
 		val provider = providerResolver.resolve(request.selection)
 		val segments = NovelTranslationSegmenter.split(request.text, provider.capabilities.maxSingleRequestChars)
