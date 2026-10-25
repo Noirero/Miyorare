@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.discovery.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -111,7 +112,12 @@ fun CatalogHomeHeader(
 						verticalAlignment = Alignment.CenterVertically,
 						horizontalArrangement = Arrangement.spacedBy(4.dp),
 					) {
-						Text(catalogProviderName(service), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+						Text(
+							catalogProviderName(service),
+							style = MaterialTheme.typography.labelLarge,
+							maxLines = 1,
+							overflow = TextOverflow.Ellipsis,
+						)
 						Icon(
 							painterResource(R.drawable.ic_expand_more),
 							stringResource(R.string.hub_provider),
@@ -222,6 +228,7 @@ fun CatalogFilterRow(filter: CatalogFilter, onFilter: (CatalogFilter) -> Unit, m
 	}
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CatalogSpotlight(
 	spotlight: DiscoverySpotlight,
@@ -235,7 +242,7 @@ fun CatalogSpotlight(
 	Box(
 		modifier = modifier
 			.fillMaxWidth()
-			.heightIn(min = 210.dp, max = 250.dp)
+			.heightIn(min = 210.dp, max = 280.dp)
 			.clip(shape)
 			.miyorareSurface(palette, shape)
 			.clickable(onClick = onClick)
@@ -271,7 +278,7 @@ fun CatalogSpotlight(
 			),
 		)
 		Column(
-			Modifier.fillMaxHeight().fillMaxWidth(0.78f).padding(20.dp),
+			Modifier.fillMaxHeight().fillMaxWidth(0.82f).padding(20.dp),
 			verticalArrangement = Arrangement.Center,
 		) {
 			Text(
@@ -282,7 +289,10 @@ fun CatalogSpotlight(
 			Spacer(Modifier.height(8.dp))
 			Text(item.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
 			Spacer(Modifier.height(8.dp))
-			Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+			FlowRow(
+				horizontalArrangement = Arrangement.spacedBy(8.dp),
+				verticalArrangement = Arrangement.spacedBy(4.dp),
+			) {
 				Text(catalogProviderName(item.key.service), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
 				Text(catalogKindName(item.key.kind), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -355,6 +365,7 @@ fun catalogHomeCardWidth(): Dp = when {
 	else -> 144.dp
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CatalogCard(
 	item: TrackerCatalogItem,
@@ -388,7 +399,10 @@ fun CatalogCard(
 			}
 			Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
 				Text(item.title, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-				Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+				FlowRow(
+					horizontalArrangement = Arrangement.spacedBy(6.dp),
+					verticalArrangement = Arrangement.spacedBy(2.dp),
+				) {
 					Text(catalogKindName(item.key.kind), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 					item.score?.let {
 						Text("•", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -405,8 +419,8 @@ fun CatalogHomeLoading(modifier: Modifier = Modifier) {
 	val placeholder = MaterialTheme.colorScheme.surfaceContainerHigh
 	Column(modifier.fillMaxWidth().testTag("catalog_loading"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
 		Box(Modifier.fillMaxWidth().height(220.dp).background(placeholder, RoundedCornerShape(26.dp)))
-		Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-			repeat(3) {
+		LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+			items(3) {
 				Column(Modifier.width(128.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 					Box(Modifier.fillMaxWidth().height(176.dp).background(placeholder, RoundedCornerShape(16.dp)))
 					Box(Modifier.fillMaxWidth(0.82f).height(14.dp).background(placeholder, RoundedCornerShape(7.dp)))
@@ -431,44 +445,14 @@ fun CatalogLoading(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun CatalogStatusBanner(
-	status: DiscoveryHomeStatus,
-	failure: CatalogFailure?,
-	onRetry: () -> Unit,
-	modifier: Modifier = Modifier,
-) {
-	val palette = LocalMiyorareVisualPalette.current
-	val text = when (status) {
-		DiscoveryHomeStatus.CACHED_REFRESHING -> stringResource(R.string.hub_cached_refreshing)
-		DiscoveryHomeStatus.CACHED_ERROR -> stringResource(
-			if (failure?.kind == CatalogFailureKind.OFFLINE) R.string.hub_offline_cached else R.string.hub_cached_refresh_failed,
-		)
-		DiscoveryHomeStatus.PARTIAL -> stringResource(R.string.hub_partial_update)
-		else -> return
-	}
-	val shape = RoundedCornerShape(16.dp)
-	Surface(
-		modifier = modifier.fillMaxWidth().miyorareSurface(palette, shape).testTag("catalog_status_${status.name}"),
-		shape = shape,
-		color = if (palette.isModern) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
-	) {
-		Row(
-			Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(8.dp),
-		) {
-			Text(text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
-			if (status == DiscoveryHomeStatus.CACHED_ERROR || status == DiscoveryHomeStatus.PARTIAL) {
-				TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.hub_retry)) }
-			}
-		}
-	}
-}
-
-@Composable
 fun CatalogSectionFailure(onRetry: () -> Unit) {
 	Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-		Text(stringResource(R.string.hub_partial_update), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+		Text(
+			stringResource(R.string.hub_partial_update),
+			style = MaterialTheme.typography.bodySmall,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+			modifier = Modifier.weight(1f),
+		)
 		TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.hub_retry)) }
 	}
 }
