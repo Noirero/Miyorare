@@ -1,66 +1,80 @@
-## Miyorare v1.4.10
+## Miyorare v1.4.13
 
-This update refreshes the modern Miyorare experience with a redesigned Details presentation, more flexible Favourites layouts, improved cover information, deeper appearance customization, and important fixes for chapter data and personal metadata.
+This release focuses on reliability, recovery, and visual consistency. Miyorare now provides a browser-based Google Drive sign-in flow, dedicated maintenance tools for downloaded content, a stronger theme and semantic color foundation, and more reliable chapter release predictions.
 
 ### ✨ What's New
 
-- **Modern Details experience** — Details now uses the latest Miyorare presentation with refined header and expansion behavior for a cleaner, more consistent manga information screen.
-- **Favourites layout size controls** — Modern Favourites gains dedicated layout sizing controls so the library presentation can better match your preferred cover and content density.
-- **Modern cover information system** — manga covers can now present reusable status, metadata, reading-progress, and Favourite information with a more consistent modern layout.
-- **Custom accent colors** — Appearance now includes a dedicated custom accent picker for more control over Miyorare's visual identity.
-- **Improved custom backgrounds** — custom backgrounds now integrate more consistently with Miyorare's surrounding colors and surfaces.
+- **Google Drive browser sign-in** — Google Drive sync now has a dedicated browser-based authentication flow with callback handling and session recovery.
+- **Download Maintenance** — a new maintenance system can inspect and repair downloaded-content metadata and local download indexes.
+- **Dedicated maintenance controls** — download repair and maintenance actions are now available from Settings with their own status and progress handling.
+- **New Miyorare theme picker** — appearance settings now include a dedicated theme-selection experience built specifically for Miyorare.
+- **Semantic color system** — Miyorare now has a broader semantic palette foundation that keeps colors and contrast more consistent across modern and classic UI surfaces.
+- **Release prediction lineage** — chapter release predictions can now retain clearer evidence and lineage about how an estimate was produced.
 
 ### 🚀 Improvements
 
-- **Favourite category picker** — category selection received another layout and interaction pass for a cleaner experience across different screen sizes.
-- **Reading progress presentation** — reading progress visuals were refreshed and integrated with the modern cover/status presentation.
-- **Chapter personal indicators** — chapter rating, notes, and related personal information are displayed more reliably and consistently in Details.
-- **Modern cover consistency** — cover presentation was aligned across Favourites and other supported manga lists while preserving screens that intentionally keep the classic layout.
-- **Appearance color handling** — custom accent and background colors now produce more balanced surrounding palettes and neutral surfaces.
-- **Release validation** — additional runtime and regression coverage now protects modern covers, Favourite overlays, chapter persistence, personal metadata identity, appearance colors, and promotion to main.
+- **More reliable chapter predictions** — prediction evidence, source-based estimates, favourite predictions, and next-chapter estimation have been refined for more dependable results.
+- **Prediction grace handling** — chapter prediction logic now handles release timing and grace periods more carefully.
+- **Stronger light-mode contrast** — the modern Miyorare palette includes dedicated contrast handling to keep content readable on light backgrounds.
+- **Classic/modern palette consistency** — classic views can now derive their colors through a dedicated bridge so they remain visually aligned with Miyorare's newer theme system.
+- **Explore color propagation** — Explore cards and related surfaces now follow the active Miyorare palette more consistently.
+- **Settings organization** — root, services, storage/network, downloads, appearance, and source settings have been reorganized and cleaned up for easier navigation.
+- **Settings search** — settings discovery has been expanded and reworked to better match the reorganized settings structure.
+- **Google Drive authentication recovery** — sync settings can retain and recover authentication state more safely when browser login is interrupted or the app lifecycle changes.
+- **Sync authentication policy** — Drive synchronization now has clearer authentication-state handling before background sync work proceeds.
+- **Migration review reliability** — the migration review flow received additional state and UI handling improvements.
+- **Local download scanning** — downloaded/local content discovery now uses a more dedicated scanner and cleaner compatibility path.
 
 ### 🐞 Fixes
 
-- Fixed chapter reconciliation so freshly loaded chapter data can be matched with existing local chapter records earlier and more reliably.
-- Fixed cases where chapter personal metadata could become associated with the wrong chapter identity after chapter data changed or refreshed.
-- Fixed chapter rating and Personal Note indicators so their state stays aligned with the correct chapter.
-- Fixed live chapter download/delete state updates in Details.
-- Fixed several modern Details header and expansion geometry issues.
-- Fixed custom accent/background combinations that could produce unintended tinted neutral surfaces.
-- Fixed Favourites and cover overlay geometry across compact and supported modern layouts.
-- Improved Downloaded and Local Favourites state handling and regression coverage.
+- Fixed several cases where downloaded-content metadata or indexes could become inconsistent with files that still exist on device.
+- Added safer repair handling for downloaded covers and local download indexes.
+- Improved compatibility with legacy chapter download layouts while simplifying the old fallback path.
+- Improved local manga parsing and output handling for downloaded/local content.
+- Fixed authentication-state edge cases that could cause Google Drive sync to behave incorrectly after browser login or process recovery.
+- Improved callback routing for Google Drive browser authentication.
+- Improved migration review state handling after candidate changes.
+- Fixed additional light-theme contrast and custom neutral-accent edge cases.
+- Added extensive regression coverage for download maintenance, Drive authentication, semantic palettes, release predictions, local content, migration review, and Explore theme propagation.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Pembaruan ini menyegarkan pengalaman modern Miyorare dengan tampilan Details yang diperbarui, layout Favourites yang lebih fleksibel, informasi cover yang lebih lengkap, kustomisasi tampilan yang lebih dalam, serta perbaikan penting pada data chapter dan metadata pribadi.
+Rilis ini berfokus pada keandalan, pemulihan, dan konsistensi visual. Miyorare sekarang memiliki alur login Google Drive melalui browser, alat maintenance khusus untuk konten hasil download, fondasi theme dan semantic color yang lebih kuat, serta prediksi rilis chapter yang lebih andal.
 
 ### ✨ Yang Baru
 
-- **Tampilan Details modern** — Details sekarang menggunakan presentasi Miyorare terbaru dengan perilaku header dan expansion yang disempurnakan agar informasi manga tampil lebih bersih dan konsisten.
-- **Kontrol ukuran layout Favourites** — Modern Favourites mendapatkan kontrol ukuran layout khusus sehingga tampilan library dapat disesuaikan dengan ukuran cover dan kepadatan konten yang diinginkan.
-- **Sistem informasi cover modern** — cover manga sekarang dapat menampilkan status, metadata, progres membaca, dan informasi Favourite melalui layout modern yang lebih konsisten.
-- **Custom accent color** — Appearance sekarang memiliki pemilih warna accent khusus untuk memberikan kontrol lebih besar terhadap identitas visual Miyorare.
-- **Custom background yang lebih baik** — background kustom sekarang menyatu lebih konsisten dengan warna dan surface di sekitarnya.
+- **Login Google Drive melalui browser** — Google Drive sync sekarang memiliki alur autentikasi berbasis browser dengan callback handling dan pemulihan sesi.
+- **Download Maintenance** — sistem maintenance baru dapat memeriksa dan memperbaiki metadata konten hasil download serta local download index.
+- **Kontrol maintenance khusus** — tindakan repair dan maintenance download sekarang tersedia melalui Settings dengan status dan progress tersendiri.
+- **Miyorare theme picker baru** — Appearance Settings sekarang memiliki pengalaman pemilihan theme khusus yang dibuat untuk Miyorare.
+- **Semantic color system** — Miyorare sekarang memiliki fondasi semantic palette yang lebih luas agar warna dan kontras lebih konsisten pada UI modern maupun classic.
+- **Release prediction lineage** — prediksi rilis chapter sekarang dapat menyimpan evidence dan lineage yang lebih jelas mengenai bagaimana sebuah perkiraan dihasilkan.
 
 ### 🚀 Peningkatan
 
-- **Pemilih kategori Favourite** — pemilihan kategori mendapatkan penyempurnaan layout dan interaksi agar lebih nyaman pada berbagai ukuran layar.
-- **Tampilan progres membaca** — visual progres membaca diperbarui dan diintegrasikan dengan tampilan cover/status modern.
-- **Indikator personal chapter** — rating chapter, catatan, dan informasi pribadi terkait sekarang ditampilkan dengan lebih andal dan konsisten di Details.
-- **Konsistensi cover modern** — tampilan cover diselaraskan pada Favourites dan daftar manga lain yang didukung, tanpa mengubah layar yang memang sengaja mempertahankan layout klasik.
-- **Penanganan warna Appearance** — custom accent dan background sekarang menghasilkan palette sekitar dan neutral surface yang lebih seimbang.
-- **Validasi rilis** — coverage runtime dan regression tambahan sekarang melindungi modern cover, Favourite overlay, chapter persistence, identitas metadata pribadi, warna Appearance, dan proses promotion ke main.
+- **Prediksi chapter lebih andal** — prediction evidence, perkiraan berbasis source, favourite predictions, dan estimasi chapter berikutnya telah disempurnakan.
+- **Prediction grace handling** — logika prediksi sekarang menangani waktu rilis dan grace period dengan lebih hati-hati.
+- **Kontras light mode lebih kuat** — palette modern Miyorare memiliki penanganan kontras khusus agar konten tetap mudah dibaca pada background terang.
+- **Konsistensi palette classic/modern** — view classic sekarang dapat memperoleh warna melalui bridge khusus agar tetap selaras dengan sistem theme Miyorare yang lebih baru.
+- **Propagasi warna Explore** — card dan surface terkait di Explore sekarang mengikuti palette aktif Miyorare dengan lebih konsisten.
+- **Organisasi Settings** — root, services, storage/network, downloads, appearance, dan source settings ditata ulang dan dibersihkan agar lebih mudah dinavigasi.
+- **Settings search** — pencarian pengaturan diperluas dan disesuaikan dengan struktur Settings yang baru.
+- **Pemulihan autentikasi Google Drive** — Sync Settings dapat mempertahankan dan memulihkan state autentikasi dengan lebih aman ketika browser login terputus atau lifecycle aplikasi berubah.
+- **Sync authentication policy** — Drive sync sekarang memiliki penanganan authentication state yang lebih jelas sebelum background sync dijalankan.
+- **Migration review lebih andal** — alur migration review mendapat peningkatan tambahan pada state dan UI.
+- **Local download scanning** — discovery konten downloaded/local sekarang menggunakan scanner yang lebih khusus dengan compatibility path yang lebih bersih.
 
 ### 🐞 Perbaikan
 
-- Memperbaiki rekonsiliasi chapter agar data chapter yang baru dimuat dapat dicocokkan lebih awal dan lebih andal dengan record chapter lokal yang sudah ada.
-- Memperbaiki kasus ketika metadata pribadi chapter dapat terhubung ke identitas chapter yang salah setelah data chapter berubah atau di-refresh.
-- Memperbaiki indikator rating chapter dan Personal Note agar state tetap terhubung dengan chapter yang benar.
-- Memperbaiki pembaruan langsung status download/delete chapter di Details.
-- Memperbaiki beberapa masalah geometri header dan expansion pada Details modern.
-- Memperbaiki kombinasi custom accent/background yang dapat menghasilkan neutral surface dengan tint yang tidak diinginkan.
-- Memperbaiki geometri Favourites dan cover overlay pada layout compact serta layout modern yang didukung.
-- Meningkatkan penanganan state dan regression coverage untuk Downloaded dan Local Favourites.
+- Memperbaiki beberapa kondisi ketika metadata atau index download dapat tidak sinkron dengan file yang sebenarnya masih tersedia di perangkat.
+- Menambahkan repair yang lebih aman untuk cover hasil download dan local download index.
+- Meningkatkan kompatibilitas dengan layout chapter download lama sekaligus menyederhanakan fallback lama.
+- Meningkatkan parsing dan output local manga untuk konten downloaded/local.
+- Memperbaiki edge case authentication state yang dapat menyebabkan Google Drive sync berperilaku salah setelah browser login atau process recovery.
+- Meningkatkan callback routing untuk autentikasi Google Drive melalui browser.
+- Meningkatkan state handling migration review setelah kandidat berubah.
+- Memperbaiki edge case tambahan pada kontras light theme dan custom neutral accent.
+- Menambahkan regression coverage yang lebih luas untuk download maintenance, autentikasi Drive, semantic palette, release prediction, local content, migration review, dan propagasi theme Explore.
 
 </details>
