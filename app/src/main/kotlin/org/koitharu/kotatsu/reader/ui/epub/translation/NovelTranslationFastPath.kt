@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.reader.ui.epub.translation
 
 import java.util.LinkedHashMap
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -163,7 +164,7 @@ class NovelTranslationMemoryCache(private val maxEntries: Int = DEFAULT_MAX_ENTR
 	fun readMany(keys: Collection<NovelTranslationSemanticKey>): Map<NovelTranslationSemanticKey, String> =
 		synchronized(entries) {
 			buildMap {
-				keys.forEach { key -> entries[key.digest]?.let { put(key, it) } }
+				keys.forEach { key -> this@NovelTranslationMemoryCache.entries[key.digest]?.let { put(key, it) } }
 			}
 		}
 
@@ -199,11 +200,7 @@ class NovelTranslationWriteBehindCache(
 	fun enqueue(key: NovelTranslationSemanticKey, value: String) {
 		synchronized(lock) {
 			pending[key] = value
-			if (flushJob?.isActive == true) return
-			flushJob = scope.launch {
-				if (flushDelayMillis > 0L) delay(flushDelayMillis)
-				flushNow()
-			}
+			scheduleFlushLocked()
 		}
 	}
 
@@ -218,7 +215,29 @@ class NovelTranslationWriteBehindCache(
 				flushJob = null
 			}
 		}
-		persistent.writeMany(snapshot)
+		try {
+			persistent.writeMany(snapshot)
+		} catch (error: CancellationException) {
+			requeue(snapshot)
+			throw error
+		} catch (_: Exception) {
+			// Cache is derived data. Preserve the latest values for a bounded retry instead of
+			// surfacing a persistence failure into translation/network progression.
+			requeue(snapshot)
+		}
+	}
+
+	private fun requeue(snapshot: Map<NovelTranslationSemanticKey, String>) = synchronized(lock) {
+		snapshot.forEach { (key, value) -> if (!pending.containsKey(key)) pending[key] = value }
+		scheduleFlushLocked()
+	}
+
+	private fun scheduleFlushLocked() {
+		if (flushJob?.isActive == true) return
+		flushJob = scope.launch {
+			if (flushDelayMillis > 0L) delay(flushDelayMillis)
+			flushNow()
+		}
 	}
 
 	internal fun pendingCount(): Int = synchronized(lock) { pending.size }
