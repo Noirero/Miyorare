@@ -60,8 +60,9 @@ class CategorySetsUiTest {
 	@Inject lateinit var quickFilters: FavouriteQuickFilterStore
 	@Inject lateinit var sourceFilters: FavouriteSourceFilterStore
 	@Inject lateinit var display: FavouriteDisplayPreferences
-	@Inject lateinit var privateSession: PrivateFavouritesSession
+	@Inject lateinit var privateSessionProvider: javax.inject.Provider<PrivateFavouritesSession>
 	@Inject lateinit var imageLoaderProvider: javax.inject.Provider<coil3.ImageLoader>
+	private lateinit var privateSession: PrivateFavouritesSession
 	private val instrumentation = InstrumentationRegistry.getInstrumentation()
 	private val context get() = instrumentation.targetContext
 	private val manga get() = SampleData.manga.copy(id = 9_900_001L, title = "SET_ONLY_MAIN", source = MangaSource("MIHON_123"), coverUrl = "", tags = emptySet(), contentRating = null)
@@ -70,14 +71,16 @@ class CategorySetsUiTest {
 	private val categoryIds = HashMap<FavouriteSpace, List<List<Long>>>()
 
 	@Before fun prepare() {
+		// Hilt's graph contains both a network provider that must be created off-main and the
+		// ProcessLifecycle-backed Private session that must be created on main. Keep each on its
+		// owning thread instead of forcing the whole graph onto either side.
+		hilt.inject()
+		imageLoaderProvider.get()
 		instrumentation.runOnMainSync {
-			hilt.inject()
+			privateSession = privateSessionProvider.get()
 			// Category Sets Private UI tests exercise an already-authenticated workspace. Other runtime
 			// classes in the same instrumentation process may deliberately lock that singleton first.
 			privateSession.unlock()
-			// HiltTestApplication omits the production background warm-up. Build the real image/network
-			// graph on the main instrumentation thread before an Activity injects it.
-			imageLoaderProvider.get()
 			runCatching { WorkManager.getInstance(context) }.getOrElse { WorkManager.initialize(context, Configuration.Builder().build()) }
 		}
 		runBlocking {
