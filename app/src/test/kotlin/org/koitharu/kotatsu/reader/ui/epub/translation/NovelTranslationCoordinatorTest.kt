@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.reader.ui.epub.translation
 
+import java.io.IOException
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -76,6 +77,54 @@ class NovelTranslationCoordinatorTest {
 	}
 
 	@Test
+	fun `HTTP 408 is classified retryable`() = runTest {
+		var calls = 0
+		val coordinator = coordinator(
+			engine = engine { request ->
+				calls++
+				if (calls == 1) throw NovelTranslationException.RequestRejected(408)
+				request.text
+			},
+		)
+
+		coordinator.translate(operation("hello"))
+
+		assertEquals(2, calls)
+	}
+
+	@Test
+	fun `network failure retries and then succeeds`() = runTest {
+		var calls = 0
+		val coordinator = coordinator(
+			engine = engine { request ->
+				calls++
+				if (calls == 1) throw IOException("offline")
+				request.text
+			},
+		)
+
+		coordinator.translate(operation("hello"))
+
+		assertEquals(2, calls)
+	}
+
+	@Test
+	fun `provider unavailable retries and then succeeds`() = runTest {
+		var calls = 0
+		val coordinator = coordinator(
+			engine = engine { request ->
+				calls++
+				if (calls == 1) throw NovelTranslationException.ProviderUnavailable(503)
+				request.text
+			},
+		)
+
+		coordinator.translate(operation("hello"))
+
+		assertEquals(2, calls)
+	}
+
+	@Test
 	fun `rate limit honors retry after before retrying`() = runTest {
 		var calls = 0
 		val slept = mutableListOf<Long>()
@@ -100,6 +149,28 @@ class NovelTranslationCoordinatorTest {
 	}
 
 	@Test
+	fun `retry exhaustion stops after configured attempts`() = runTest {
+		var calls = 0
+		val slept = mutableListOf<Long>()
+		val coordinator = coordinator(
+			engine = engine {
+				calls++
+				throw NovelTranslationException.ProviderUnavailable(503)
+			},
+			sleep = { slept += it },
+		)
+
+		try {
+			coordinator.translate(operation("hello"))
+			fail("Expected provider failure")
+		} catch (error: NovelTranslationFailure) {
+			assertEquals(NovelTranslationFailureCategory.PROVIDER_UNAVAILABLE, error.category)
+		}
+		assertEquals(3, calls)
+		assertEquals(2, slept.size)
+	}
+
+	@Test
 	fun `authentication failure fails fast`() = runTest {
 		var calls = 0
 		val coordinator = coordinator(
@@ -114,6 +185,25 @@ class NovelTranslationCoordinatorTest {
 			fail("Expected authentication failure")
 		} catch (error: NovelTranslationFailure) {
 			assertEquals(NovelTranslationFailureCategory.AUTHENTICATION, error.category)
+		}
+		assertEquals(1, calls)
+	}
+
+	@Test
+	fun `configuration failure fails fast`() = runTest {
+		var calls = 0
+		val coordinator = coordinator(
+			engine = engine {
+				calls++
+				throw NovelTranslationException.Configuration("missing model")
+			},
+		)
+
+		try {
+			coordinator.translate(operation("hello"))
+			fail("Expected configuration failure")
+		} catch (error: NovelTranslationFailure) {
+			assertEquals(NovelTranslationFailureCategory.CONFIGURATION, error.category)
 		}
 		assertEquals(1, calls)
 	}
@@ -139,6 +229,25 @@ class NovelTranslationCoordinatorTest {
 	}
 
 	@Test
+	fun `invalid response fails fast`() = runTest {
+		var calls = 0
+		val coordinator = coordinator(
+			engine = engine {
+				calls++
+				throw NovelTranslationException.InvalidResponse("bad payload")
+			},
+		)
+
+		try {
+			coordinator.translate(operation("hello"))
+			fail("Expected invalid response")
+		} catch (error: NovelTranslationFailure) {
+			assertEquals(NovelTranslationFailureCategory.INVALID_RESPONSE, error.category)
+		}
+		assertEquals(1, calls)
+	}
+
+	@Test
 	fun `cancellation is terminal and never retried`() = runTest {
 		var calls = 0
 		val coordinator = coordinator(
@@ -155,6 +264,26 @@ class NovelTranslationCoordinatorTest {
 			// Expected.
 		}
 		assertEquals(1, calls)
+	}
+
+	@Test
+	fun `external context is preserved for a single context aware segment`() = runTest {
+		var captured: NovelTranslationRequest? = null
+		val coordinator = coordinator(
+			engine = engine { request ->
+				captured = request
+				request.text
+			},
+		)
+		val request = operation("hello", contextAware = true).copy(
+			beforeContext = "before",
+			afterContext = "after",
+		)
+
+		coordinator.translate(request)
+
+		assertEquals("before", captured?.beforeContext)
+		assertEquals("after", captured?.afterContext)
 	}
 
 	@Test
@@ -178,6 +307,22 @@ class NovelTranslationCoordinatorTest {
 		}
 
 		assertEquals(1, maxActive)
+	}
+
+	@Test
+	fun `scheduler enforces minimum request gap`() = runTest {
+		var now = 0L
+		val waits = mutableListOf<Long>()
+		val scheduler = NovelTranslationRequestScheduler(
+			nowMillis = { now },
+			sleep = { wait -> waits += wait; now += wait },
+		)
+		val capabilities = capabilities().copy(minRequestGapMillis = 100L)
+
+		scheduler.execute(capabilities) { Unit }
+		scheduler.execute(capabilities) { Unit }
+
+		assertEquals(listOf(100L), waits)
 	}
 
 	private fun coordinator(
@@ -205,14 +350,14 @@ class NovelTranslationCoordinatorTest {
 		maxRetryDelayMillis = 5_000L,
 	)
 
-	private fun operation(text: String) = NovelTranslationOperationRequest(
+	private fun operation(text: String, contextAware: Boolean = false) = NovelTranslationOperationRequest(
 		text = text,
 		selection = NovelTranslationSelection(
 			engine = NovelTranslationEngineKind.ONLINE,
 			sourceLanguage = "auto",
 			targetLanguage = "id",
 			style = NovelTranslationStyle.NATURAL,
-			contextAware = false,
+			contextAware = contextAware,
 		),
 	)
 
