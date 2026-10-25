@@ -196,11 +196,17 @@ class NovelTranslationWriteBehindCache(
 	private val lock = Any()
 	private val pending = LinkedHashMap<NovelTranslationSemanticKey, String>()
 	private var flushJob: Job? = null
+	private var consecutiveFailures = 0
 
 	fun enqueue(key: NovelTranslationSemanticKey, value: String) {
 		synchronized(lock) {
 			pending[key] = value
-			scheduleFlushLocked()
+			if (flushJob?.isActive != true) {
+				// New translation activity is a safe opportunity to retry entries retained after the
+				// previous bounded retry budget was exhausted.
+				if (consecutiveFailures >= MAX_AUTOMATIC_FLUSH_RETRIES) consecutiveFailures = 0
+				scheduleFlushLocked(flushDelayMillis)
+			}
 		}
 	}
 
@@ -217,32 +223,42 @@ class NovelTranslationWriteBehindCache(
 		}
 		try {
 			persistent.writeMany(snapshot)
+			synchronized(lock) { consecutiveFailures = 0 }
 		} catch (error: CancellationException) {
-			requeue(snapshot)
+			requeue(snapshot, retryAutomatically = false)
 			throw error
 		} catch (_: Exception) {
-			// Cache is derived data. Preserve the latest values for a bounded retry instead of
-			// surfacing a persistence failure into translation/network progression.
-			requeue(snapshot)
+			// Cache is derived data. Preserve the latest values without allowing a broken storage
+			// backend to spin forever or surface into translation/network progression.
+			requeue(snapshot, retryAutomatically = true)
 		}
 	}
 
-	private fun requeue(snapshot: Map<NovelTranslationSemanticKey, String>) = synchronized(lock) {
+	private fun requeue(
+		snapshot: Map<NovelTranslationSemanticKey, String>,
+		retryAutomatically: Boolean,
+	) = synchronized(lock) {
 		snapshot.forEach { (key, value) -> if (!pending.containsKey(key)) pending[key] = value }
-		scheduleFlushLocked()
+		if (!retryAutomatically || consecutiveFailures >= MAX_AUTOMATIC_FLUSH_RETRIES) return@synchronized
+		consecutiveFailures++
+		val multiplier = 1L shl (consecutiveFailures - 1)
+		val retryDelay = if (flushDelayMillis > Long.MAX_VALUE / multiplier) Long.MAX_VALUE else flushDelayMillis * multiplier
+		scheduleFlushLocked(retryDelay)
 	}
 
-	private fun scheduleFlushLocked() {
+	private fun scheduleFlushLocked(delayMillis: Long) {
 		if (flushJob?.isActive == true) return
 		flushJob = scope.launch {
-			if (flushDelayMillis > 0L) delay(flushDelayMillis)
+			if (delayMillis > 0L) delay(delayMillis)
 			flushNow()
 		}
 	}
 
 	internal fun pendingCount(): Int = synchronized(lock) { pending.size }
+	internal fun automaticRetryCount(): Int = synchronized(lock) { consecutiveFailures }
 
 	private companion object {
 		private const val DEFAULT_FLUSH_DELAY_MILLIS = 100L
+		private const val MAX_AUTOMATIC_FLUSH_RETRIES = 3
 	}
 }
