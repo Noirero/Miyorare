@@ -51,8 +51,11 @@
     <string name="hub_score">Nilai: %1$s</string>
     <string name="hub_score_compact">★ %1$s</string>
     <string name="hub_rank">Peringkat: %1$d</string>
+    <string name="hub_rank_label">Peringkat</string>
     <string name="hub_popularity">Peringkat popularitas: %1$d</string>
+    <string name="hub_popularity_label">Popularitas</string>
     <string name="hub_readers">Pembaca: %1$d</string>
+    <string name="hub_readers_label">Pembaca</string>
     <string name="hub_genres">Genre</string>
     <string name="hub_staff">Penulis dan staf</string>
     <string name="hub_alternative_titles">Judul alternatif</string>
