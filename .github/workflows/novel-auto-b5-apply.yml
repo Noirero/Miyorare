@@ -7,7 +7,7 @@ on:
     paths:
       - 'tools/novel_auto_b5_patch.py'
       - 'tools/novel_auto_b5_patch_fix2.py'
-      - 'tools/novel_auto_b5_postpatch.py'
+      - 'tools/novel_auto_b5_postpatch2.py'
       - '.github/workflows/novel-auto-b5-apply.yml'
 
 permissions:
@@ -30,12 +30,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m py_compile tools/novel_auto_b5_patch.py tools/novel_auto_b5_patch_fix2.py tools/novel_auto_b5_postpatch.py
+          python -m py_compile tools/novel_auto_b5_patch.py tools/novel_auto_b5_patch_fix2.py tools/novel_auto_b5_postpatch2.py
           if [ ! -f app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/translation/NovelAutoTranslationPolicy.kt ]; then
             python tools/novel_auto_b5_patch.py
             python tools/novel_auto_b5_patch_fix2.py
           fi
-          python tools/novel_auto_b5_postpatch.py
+          python tools/novel_auto_b5_postpatch2.py
           git diff --check
 
       - name: Commit production changes
