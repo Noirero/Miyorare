@@ -25,7 +25,7 @@ fun DiscoveryHubState.homeStatus(): DiscoveryHomeStatus {
 	val hasRows = sections.any { it.items.isNotEmpty() }
 	return when {
 		loading && !hasRows -> DiscoveryHomeStatus.LOADING
-		refreshing && hasRows -> DiscoveryHomeStatus.CACHED_REFRESHING
+		refreshing && hasRows && stale -> DiscoveryHomeStatus.CACHED_REFRESHING
 		failure != null && hasRows -> DiscoveryHomeStatus.CACHED_ERROR
 		failure != null -> DiscoveryHomeStatus.FULL_ERROR
 		sections.any { it.failure != null } -> DiscoveryHomeStatus.PARTIAL
@@ -55,4 +55,11 @@ fun visibleDiscoveryRailItems(
 	}
 	if (section.items.size <= 2) return section.items
 	return section.items.filterNot { it.key == spotlight.item.key }
+}
+
+/** Keeps truthful ordinal identity after presentation-only Spotlight dedupe. */
+fun discoverySectionOrdinal(section: TrackerCatalogSection, item: TrackerCatalogItem): Int? {
+	if (section.key.type != CatalogSectionType.TOP_RANKED) return null
+	val index = section.items.indexOfFirst { it.key == item.key }
+	return if (index >= 0) index + 1 else null
 }
