@@ -26,7 +26,6 @@
     <string name="hub_loading">Loading catalogue</string>
     <string name="hub_cached_refreshing">Saved data · updating…</string>
     <string name="hub_offline_cached">Offline · showing saved data</string>
-    <string name="hub_cached_refresh_failed">Couldn’t refresh · showing saved data</string>
     <string name="hub_partial_update">Some catalogue sections could not be updated</string>
     <string name="hub_empty">No titles found</string>
     <string name="hub_search_hint">Search titles in %1$s</string>
