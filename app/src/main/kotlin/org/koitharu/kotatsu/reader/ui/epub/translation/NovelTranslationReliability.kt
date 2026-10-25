@@ -90,7 +90,7 @@ class NovelTranslationSemanticCache internal constructor(
 	private val nowMillis: () -> Long = System::currentTimeMillis,
 ) : NovelTranslationResultCache {
 
-	constructor(context: Context) : this(File(context.applicationContext.filesDir, DIRECTORY_NAME))
+	constructor(context: Context) : this(File(context.applicationContext.noBackupFilesDir, DIRECTORY_NAME))
 
 	private val mutex = Mutex()
 	private var initialized = false
