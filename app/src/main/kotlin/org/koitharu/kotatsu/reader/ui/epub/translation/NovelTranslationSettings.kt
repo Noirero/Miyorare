@@ -197,6 +197,6 @@ enum class NovelAiProvider(
 	);
 
 	companion object {
-		fun fromId(value: String?): NovelTranslationEngineKind = entries.firstOrNull { it.id == value } ?: ONLINE
+		fun fromId(value: String?): NovelAiProvider = entries.firstOrNull { it.id == value } ?: GEMINI
 	}
 }
