@@ -1,0 +1,95 @@
+name: Apply novel translation cache schema v2 patch
+
+on:
+  push:
+    branches:
+      - fix/novel-translation-cache-schema-v2
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Bump novel translation semantic cache schema to v2'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: fix/novel-translation-cache-schema-v2
+
+      - name: Apply guarded source and test patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          reliability_path = Path('app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationReliability.kt')
+          reliability = reliability_path.read_text()
+          old_schema = 'private const val SEMANTIC_CACHE_SCHEMA_VERSION = "novel-translation-semantic-v1"'
+          new_schema = 'private const val SEMANTIC_CACHE_SCHEMA_VERSION = "novel-translation-semantic-v2"'
+          if reliability.count(old_schema) != 1:
+              raise SystemExit(f'Expected exactly one legacy schema constant, found {reliability.count(old_schema)}')
+          reliability_path.write_text(reliability.replace(old_schema, new_schema, 1))
+
+          test_path = Path('app/src/test/kotlin/org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationReliabilityTest.kt')
+          tests = test_path.read_text()
+          anchor = '\n\t@Test\n\tfun `partial success persists and next coordinator requests only missing segments`() = runBlocking {'
+          if tests.count(anchor) != 1:
+              raise SystemExit(f'Expected exactly one partial-resume test anchor, found {tests.count(anchor)}')
+          regression = r'''
+
+	@Test
+	fun `semantic cache v2 does not reuse legacy v1 entries`() = runBlocking {
+		val directory = temporary.newFolder()
+		val cache = NovelTranslationSemanticCache(directory)
+		val provider = provider(
+			engine = engine { it.text },
+			providerId = "provider-a",
+			configuration = "model-a",
+			contract = "prompt-v1",
+		)
+		val selection = selection()
+		val segmentText = "source"
+		val current = semanticKey(provider, selection, segmentText, "before", "after")
+		val legacy = NovelTranslationSemanticKey(
+			novelTranslationDigest(
+				"novel-translation-semantic-v1",
+				provider.capabilities.providerId,
+				provider.semanticIdentity.configurationFingerprint,
+				provider.semanticIdentity.contractVersion,
+				selection.sourceLanguage.trim().lowercase(),
+				selection.targetLanguage.trim().lowercase(),
+				selection.style.id,
+				selection.contextAware.toString(),
+				novelTranslationDigest(segmentText),
+				"no-context",
+				"no-context",
+			),
+		)
+
+		assertNotEquals(legacy, current)
+		assertTrue(cache.write(legacy, "legacy-result"))
+		assertEquals("legacy-result", cache.read(legacy))
+		assertNull(cache.read(current))
+	}
+'''
+          test_path.write_text(tests.replace(anchor, regression + anchor, 1))
+
+          workflow = Path('.github/workflows/novel-cache-schema-v2-patch.yml')
+          if not workflow.is_file():
+              raise SystemExit('Temporary workflow is missing before cleanup')
+          workflow.unlink()
+
+      - name: Commit production patch and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "LatishaLIFE"
+          git config user.email "149634319+Noirero@users.noreply.github.com"
+          git add app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationReliability.kt \
+                  app/src/test/kotlin/org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationReliabilityTest.kt \
+                  .github/workflows/novel-cache-schema-v2-patch.yml
+          git diff --cached --check
+          git diff --cached --quiet && { echo 'Expected a guarded production patch'; exit 1; }
+          git commit -m "Bump novel translation semantic cache schema to v2"
+          git push origin HEAD:fix/novel-translation-cache-schema-v2
