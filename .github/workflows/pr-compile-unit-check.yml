@@ -135,8 +135,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      # skip-device-test suppresses only the owner-facing physical-device APK artifact.
+      # Automated Android 15 runtime/instrumentation validation above still runs.
       - name: Upload exact-head debug APK for owner validation
-        if: success()
+        if: success() && !contains(github.event.pull_request.labels.*.name, 'skip-device-test')
         uses: actions/upload-artifact@v4
         with:
           name: on-device-cover-debug-apk
