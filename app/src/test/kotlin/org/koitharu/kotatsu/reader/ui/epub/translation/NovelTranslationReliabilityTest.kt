@@ -208,6 +208,7 @@ class NovelTranslationReliabilityTest {
 				onEvent = { if (it is NovelTranslationFlightEvent.Attempt) secondObserved.complete(Unit) },
 			) { error("Second subscriber must not become producer") }
 		}
+		yield()
 		emitGate.complete(Unit)
 		secondObserved.await()
 		first.cancelAndJoin()
