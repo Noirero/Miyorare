@@ -5,6 +5,9 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import androidx.activity.viewModels
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -48,30 +51,32 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 		viewBinding.composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		viewBinding.composeView.setContent {
 			MiyorareTheme {
-				val state by viewModel.state.collectAsState()
-				TrackerCatalogScreen(
-					state = state,
-					section = viewModel.section,
-					imageLoader = imageLoader,
-					onBack = { onBackPressedDispatcher.onBackPressed() },
-					onQuery = viewModel::updateQuery,
-					onSearch = viewModel::reload,
-					onFilter = viewModel::selectFilter,
-					onRetry = viewModel::retry,
-					onNext = viewModel::nextPage,
-					onItem = { startActivity(detailsIntent(this, it)) },
-					onProviderPage = { state.details?.item?.providerUrl?.let { router.openExternalBrowser(it) } },
-					onRead = viewModel::read,
-					onAllSources = { viewModel.startResolution(allSources = true) },
-					onCloseResolution = viewModel::closeResolution,
-					onGlobalSearch = {
-					viewModel.closeResolution()
-					state.details?.item?.let {
-						router.openSearch(it.title, org.koitharu.kotatsu.search.domain.SearchKind.TITLE, it.key.kind == CatalogMediaKind.NOVEL)
-					}
-				},
-					onSource = viewModel::chooseSource,
-				)
+				CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+					val state by viewModel.state.collectAsState()
+					TrackerCatalogScreen(
+						state = state,
+						section = viewModel.section,
+						imageLoader = imageLoader,
+						onBack = { onBackPressedDispatcher.onBackPressed() },
+						onQuery = viewModel::updateQuery,
+						onSearch = viewModel::reload,
+						onFilter = viewModel::selectFilter,
+						onRetry = viewModel::retry,
+						onNext = viewModel::nextPage,
+						onItem = { startActivity(detailsIntent(this, it)) },
+						onProviderPage = { state.details?.item?.providerUrl?.let { router.openExternalBrowser(it) } },
+						onRead = viewModel::read,
+						onAllSources = { viewModel.startResolution(allSources = true) },
+						onCloseResolution = viewModel::closeResolution,
+						onGlobalSearch = {
+						viewModel.closeResolution()
+						state.details?.item?.let {
+							router.openSearch(it.title, org.koitharu.kotatsu.search.domain.SearchKind.TITLE, it.key.kind == CatalogMediaKind.NOVEL)
+						}
+					},
+						onSource = viewModel::chooseSource,
+					)
+				}
 			}
 		}
 		lifecycleScope.launch {
