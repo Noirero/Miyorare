@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_tracking_edit">Edit</string>
+    <string name="hub_tracking_editor_add_title">Tambahkan ke %1$s</string>
+    <string name="hub_tracking_editor_edit_title">Edit Daftar Saya — %1$s</string>
+    <string name="hub_tracking_editor_remote_hint">Perubahan disimpan langsung ke akun provider dan tidak mengubah progres baca lokal.</string>
+    <string name="hub_tracking_editor_status">Status</string>
+    <string name="hub_tracking_editor_progress">Progres (bab)</string>
+    <string name="hub_tracking_editor_progress_invalid">Masukkan nomor bab yang valid.</string>
+    <string name="hub_tracking_editor_score">Nilai</string>
+    <string name="hub_tracking_editor_not_rated">Belum dinilai</string>
+    <string name="hub_tracking_editor_add">Tambahkan ke Daftar Saya</string>
+    <string name="hub_tracking_editor_save">Simpan perubahan</string>
+    <string name="hub_tracking_editor_session_expired">Sesi tracker telah berakhir. Hubungkan ulang untuk melanjutkan.</string>
+    <string name="hub_tracking_editor_reconnect">Hubungkan ulang</string>
+    <string name="hub_tracking_editor_provider_error">Tidak dapat memperbarui %1$s. Editan Anda tetap tersimpan di layar ini.</string>
+    <string name="hub_tracking_editor_open_provider">Buka di %1$s</string>
+    <string name="hub_tracking_editor_remove">Hapus dari Daftar Saya</string>
+    <string name="hub_tracking_editor_remove_title">Hapus judul ini?</string>
+    <string name="hub_tracking_editor_remove_message">Judul ini akan dihapus dari daftar %1$s Anda. Data baca lokal Miyorare tidak ikut dihapus.</string>
+    <string name="hub_tracking_feedback_added_status">Ditambahkan ke %1$s · %2$s</string>
+    <string name="hub_tracking_feedback_added">Ditambahkan ke %1$s</string>
+    <string name="hub_tracking_feedback_updated">Diperbarui di %1$s</string>
+    <string name="hub_tracking_feedback_removed">Dihapus dari %1$s</string>
+</resources>

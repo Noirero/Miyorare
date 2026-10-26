@@ -1,9 +1,12 @@
 package org.koitharu.kotatsu.discovery.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.koitharu.kotatsu.discovery.domain.CatalogTrackingEntry
+import org.koitharu.kotatsu.discovery.domain.catalogSupportedTrackingStatuses
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerUser
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
@@ -23,6 +26,25 @@ class TrackerCatalogAccountTest {
 		assertNull(catalogTrackingStatus(ScrobblerService.MAL, "PLANNING"))
 		assertNull(catalogTrackingStatus(ScrobblerService.KITSU, "unknown"))
 		assertNull(catalogTrackingStatus(ScrobblerService.MANGABAKA, "planning"))
+	}
+
+	@Test
+	fun `outbound statuses preserve each provider vocabulary`() {
+		assertEquals("PLANNING", catalogTrackingStatusRaw(ScrobblerService.ANILIST, ScrobblingStatus.PLANNED))
+		assertEquals("REPEATING", catalogTrackingStatusRaw(ScrobblerService.ANILIST, ScrobblingStatus.RE_READING))
+		assertEquals("plan_to_read", catalogTrackingStatusRaw(ScrobblerService.MAL, ScrobblingStatus.PLANNED))
+		assertNull(catalogTrackingStatusRaw(ScrobblerService.MAL, ScrobblingStatus.RE_READING))
+		assertEquals("planned", catalogTrackingStatusRaw(ScrobblerService.KITSU, ScrobblingStatus.PLANNED))
+		assertNull(catalogTrackingStatusRaw(ScrobblerService.KITSU, ScrobblingStatus.RE_READING))
+		assertEquals("rereading", catalogTrackingStatusRaw(ScrobblerService.MANGABAKA, ScrobblingStatus.RE_READING))
+	}
+
+	@Test
+	fun `editor only exposes statuses supported by the selected provider`() {
+		assertTrue(ScrobblingStatus.RE_READING in catalogSupportedTrackingStatuses(ScrobblerService.ANILIST))
+		assertTrue(ScrobblingStatus.RE_READING in catalogSupportedTrackingStatuses(ScrobblerService.MANGABAKA))
+		assertFalse(ScrobblingStatus.RE_READING in catalogSupportedTrackingStatuses(ScrobblerService.MAL))
+		assertFalse(ScrobblingStatus.RE_READING in catalogSupportedTrackingStatuses(ScrobblerService.KITSU))
 	}
 
 	@Test
@@ -51,6 +73,15 @@ class TrackerCatalogAccountTest {
 			service = ScrobblerService.ANILIST,
 			targetId = 1,
 			rating = 1.1f,
+		)
+	}
+
+	@Test(expected = IllegalArgumentException::class)
+	fun `tracking entry rejects invalid provider entry id`() {
+		CatalogTrackingEntry(
+			service = ScrobblerService.KITSU,
+			targetId = 1,
+			entryId = 0,
 		)
 	}
 }

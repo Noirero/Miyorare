@@ -64,9 +64,13 @@ fun TrackerCatalogScreen(
 	onSource: (Manga) -> Unit,
 	account: CatalogAccountState = CatalogAccountState(state.service),
 	tracking: CatalogTrackingState = CatalogTrackingState(),
+	trackingEditor: CatalogTrackingEditorState = CatalogTrackingEditorState(),
 	knownTracking: Map<Long, CatalogTrackingEntry> = emptyMap(),
 	onLogin: () -> Unit = {},
 	onAddTracking: () -> Unit = {},
+	onSaveTracking: (CatalogTrackingDraft) -> Unit = {},
+	onCloseTrackingEditor: () -> Unit = {},
+	onRemoveTracking: () -> Unit = {},
 	onManageTracking: () -> Unit = {},
 ) {
 	val palette = LocalMiyorareVisualPalette.current
@@ -149,6 +153,16 @@ fun TrackerCatalogScreen(
 			}
 		}
 	}
+
+	CatalogTrackingEditorSheet(
+		account = account,
+		editor = trackingEditor,
+		onDismiss = onCloseTrackingEditor,
+		onSave = onSaveTracking,
+		onReconnect = onLogin,
+		onOpenProvider = onProviderPage,
+		onRemove = onRemoveTracking,
+	)
 }
 
 @Composable
@@ -266,7 +280,7 @@ private fun CatalogDetailsContent(
 					account = account,
 					tracking = tracking,
 					onLogin = onLogin,
-					onAdd = onAddTracking,
+					onEdit = onAddTracking,
 					onManage = onManageTracking,
 				)
 			}

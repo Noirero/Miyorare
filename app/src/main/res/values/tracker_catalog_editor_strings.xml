@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_tracking_edit">Edit</string>
+    <string name="hub_tracking_editor_add_title">Add to %1$s</string>
+    <string name="hub_tracking_editor_edit_title">Edit My List — %1$s</string>
+    <string name="hub_tracking_editor_remote_hint">Changes are saved directly to your provider account and do not change local reading progress.</string>
+    <string name="hub_tracking_editor_status">Status</string>
+    <string name="hub_tracking_editor_progress">Progress (chapters)</string>
+    <string name="hub_tracking_editor_progress_invalid">Enter a valid chapter number.</string>
+    <string name="hub_tracking_editor_score">Score</string>
+    <string name="hub_tracking_editor_not_rated">Not rated</string>
+    <string name="hub_tracking_editor_add">Add to My List</string>
+    <string name="hub_tracking_editor_save">Save changes</string>
+    <string name="hub_tracking_editor_session_expired">Your tracker session expired. Reconnect to continue.</string>
+    <string name="hub_tracking_editor_reconnect">Reconnect</string>
+    <string name="hub_tracking_editor_provider_error">Couldn’t update %1$s. Your edits are still here.</string>
+    <string name="hub_tracking_editor_open_provider">Open on %1$s</string>
+    <string name="hub_tracking_editor_remove">Remove from My List</string>
+    <string name="hub_tracking_editor_remove_title">Remove this title?</string>
+    <string name="hub_tracking_editor_remove_message">This removes the title from your %1$s list. Local Miyorare reading data is not deleted.</string>
+    <string name="hub_tracking_feedback_added_status">Added to %1$s · %2$s</string>
+    <string name="hub_tracking_feedback_added">Added to %1$s</string>
+    <string name="hub_tracking_feedback_updated">Updated on %1$s</string>
+    <string name="hub_tracking_feedback_removed">Removed from %1$s</string>
+</resources>

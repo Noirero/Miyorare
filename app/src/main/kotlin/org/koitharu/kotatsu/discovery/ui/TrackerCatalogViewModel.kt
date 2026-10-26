@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import org.koitharu.kotatsu.alternatives.domain.AlternativeSearchEvent
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.discovery.data.CatalogAccountUnauthorizedException
 import org.koitharu.kotatsu.discovery.data.TrackerCatalogAccountRepository
 import org.koitharu.kotatsu.discovery.data.TrackerCatalogRepository
 import org.koitharu.kotatsu.discovery.domain.*
@@ -71,6 +72,10 @@ class TrackerCatalogViewModel @Inject constructor(
 	val knownTracking = mutableKnownTracking.asStateFlow()
 	private val mutableTracking = MutableStateFlow(CatalogTrackingState())
 	val tracking = mutableTracking.asStateFlow()
+	private val mutableTrackingEditor = MutableStateFlow(CatalogTrackingEditorState())
+	val trackingEditor = mutableTrackingEditor.asStateFlow()
+	private val trackingFeedbackEvents = Channel<CatalogTrackingFeedback>(Channel.BUFFERED)
+	val trackingFeedback = trackingFeedbackEvents.receiveAsFlow()
 	@Volatile private var generation = 0L
 	private var loadJob: Job? = null
 	private var sourceJob: Job? = null
@@ -158,6 +163,7 @@ class TrackerCatalogViewModel @Inject constructor(
 			trackingJob?.cancel()
 			mutableKnownTracking.value = emptyMap()
 			mutableTracking.value = CatalogTrackingState()
+			mutableTrackingEditor.value = CatalogTrackingEditorState()
 			return
 		}
 		accountJob = viewModelScope.launch {
@@ -167,6 +173,7 @@ class TrackerCatalogViewModel @Inject constructor(
 				if (token == accountGeneration) {
 					mutableAccount.value = refreshed
 					mutableKnownTracking.value = known
+					mutableTrackingEditor.update { if (it.visible) it.copy(failure = null) else it }
 					if (mode == CatalogScreenMode.DETAILS) key?.let(::refreshTracking)
 				}
 			} catch (e: CancellationException) {
@@ -203,23 +210,85 @@ class TrackerCatalogViewModel @Inject constructor(
 		}
 	}
 
-	fun addTracking() {
+	fun openTrackingEditor() {
+		if (mode != CatalogScreenMode.DETAILS || !mutableAccount.value.authorized || mutableTracking.value.loading) return
+		mutableTrackingEditor.value = CatalogTrackingEditorState(
+			visible = true,
+			existing = mutableTracking.value.entry,
+		)
+	}
+
+	fun closeTrackingEditor() {
+		val state = mutableTrackingEditor.value
+		if (state.saving || state.removing) return
+		mutableTrackingEditor.value = CatalogTrackingEditorState()
+	}
+
+	fun saveTracking(draft: CatalogTrackingDraft) {
 		val target = key ?: return
-		if (!mutableAccount.value.authorized || mutableTracking.value.adding) return
+		val editor = mutableTrackingEditor.value
+		if (!editor.visible || editor.saving || editor.removing || !mutableAccount.value.authorized) return
 		val token = ++trackingGeneration
 		trackingJob?.cancel()
-		mutableTracking.value = mutableTracking.value.copy(adding = true, failed = false)
+		mutableTrackingEditor.value = editor.copy(saving = true, failure = null)
 		trackingJob = viewModelScope.launch {
 			try {
-				val entry = accountRepository.addTracking(target)
+				val entry = accountRepository.saveTracking(target, draft, editor.existing)
 				if (token == trackingGeneration) {
 					mutableTracking.value = CatalogTrackingState(entry = entry)
 					mutableKnownTracking.update { it + (entry.targetId to entry) }
+					mutableTrackingEditor.value = CatalogTrackingEditorState()
+					trackingFeedbackEvents.send(
+						CatalogTrackingFeedback(
+							service = target.service,
+							action = if (editor.existing == null) CatalogTrackingFeedbackAction.ADDED else CatalogTrackingFeedbackAction.UPDATED,
+							status = entry.status,
+						),
+					)
 				}
 			} catch (e: CancellationException) {
 				throw e
+			} catch (_: CatalogAccountUnauthorizedException) {
+				if (token == trackingGeneration) {
+					mutableAccount.update { it.copy(failed = true) }
+					mutableTrackingEditor.update { it.copy(saving = false, failure = CatalogTrackingMutationFailure.AUTH_EXPIRED) }
+				}
 			} catch (_: Exception) {
-				if (token == trackingGeneration) mutableTracking.value = mutableTracking.value.copy(adding = false, failed = true)
+				if (token == trackingGeneration) {
+					mutableTrackingEditor.update { it.copy(saving = false, failure = CatalogTrackingMutationFailure.PROVIDER) }
+				}
+			}
+		}
+	}
+
+	fun removeTracking() {
+		val target = key ?: return
+		val editor = mutableTrackingEditor.value
+		if (!editor.visible || editor.existing == null || editor.saving || editor.removing || !mutableAccount.value.authorized) return
+		val token = ++trackingGeneration
+		trackingJob?.cancel()
+		mutableTrackingEditor.value = editor.copy(removing = true, failure = null)
+		trackingJob = viewModelScope.launch {
+			try {
+				accountRepository.removeTracking(target, editor.existing)
+				if (token == trackingGeneration) {
+					mutableTracking.value = CatalogTrackingState(entry = null)
+					val targetId = target.remoteId.toLong()
+					mutableKnownTracking.update { it - targetId }
+					mutableTrackingEditor.value = CatalogTrackingEditorState()
+					trackingFeedbackEvents.send(CatalogTrackingFeedback(target.service, CatalogTrackingFeedbackAction.REMOVED))
+				}
+			} catch (e: CancellationException) {
+				throw e
+			} catch (_: CatalogAccountUnauthorizedException) {
+				if (token == trackingGeneration) {
+					mutableAccount.update { it.copy(failed = true) }
+					mutableTrackingEditor.update { it.copy(removing = false, failure = CatalogTrackingMutationFailure.AUTH_EXPIRED) }
+				}
+			} catch (_: Exception) {
+				if (token == trackingGeneration) {
+					mutableTrackingEditor.update { it.copy(removing = false, failure = CatalogTrackingMutationFailure.PROVIDER) }
+				}
 			}
 		}
 	}
@@ -233,6 +302,7 @@ class TrackerCatalogViewModel @Inject constructor(
 		mutableAccount.value = CatalogAccountState(service)
 		mutableKnownTracking.value = emptyMap()
 		mutableTracking.value = CatalogTrackingState()
+		mutableTrackingEditor.value = CatalogTrackingEditorState()
 	}
 
 	fun startResolution(allSources: Boolean = false) {
