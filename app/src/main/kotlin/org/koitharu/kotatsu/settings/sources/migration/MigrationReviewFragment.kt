@@ -198,7 +198,12 @@ internal fun MigrationReviewScreen(
 				if ((state.availability?.providerFailureCount ?: 0) > 0) {
 					Text(stringResource(R.string.migration_partial_provider_pool), style = MaterialTheme.typography.bodySmall)
 				}
-				if (!state.hasSearched || state.searchFailed) return@Column
+				if (!state.hasSearched || state.searchFailed) {
+					TextButton(onClick = onRetry, modifier = Modifier.testTag("migration-retry")) {
+						Text(stringResource(R.string.migration_retry))
+					}
+					return@Column
+				}
 				if (discovery.searchPartial) {
 					Text(stringResource(R.string.migration_partial_search), style = MaterialTheme.typography.bodySmall)
 				}
