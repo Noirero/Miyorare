@@ -179,7 +179,7 @@ class AutoFixUseCase @Inject constructor(
 			.filter { it.name == selection.source }
 		if (selectedSources.isEmpty()) return MigrationDiscovery(seed)
 
-		var selected: Manga? = null
+		var selected: MigrationCandidateObservation? = null
 		var validationError: Throwable? = null
 		for (query in buildMigrationSearchQueries(seed)) {
 			alternativesUseCase(
@@ -193,7 +193,7 @@ class AutoFixUseCase @Inject constructor(
 				when (event) {
 					is AlternativeSearchEvent.Result -> {
 						if (event.manga.source.name == selection.source && event.manga.id == selection.id) {
-							selected = event.manga
+							selected = MigrationCandidateObservation(event.manga, setOf(query))
 						}
 					}
 					is AlternativeSearchEvent.SourceFinished -> {
@@ -204,13 +204,16 @@ class AutoFixUseCase @Inject constructor(
 			if (selected != null) break
 		}
 		val approved = selected ?: return MigrationDiscovery(seed, incomplete = validationError != null)
-		val probe = approved.probeHealth()
+		val probe = approved.manga.probeHealth()
 		if (probe.isFailure && validationError == null) validationError = probe.exceptionOrNull()
 		val fresh = probe.getOrNull() ?: return MigrationDiscovery(seed, incomplete = validationError != null)
 		if (MigrationSelection.of(fresh) != selection) return MigrationDiscovery(seed)
 		return MigrationDiscovery(
 			seed = seed,
-			assessment = candidateMatcher.assess(seed, listOf(MigrationCandidateObservation(fresh))),
+			assessment = candidateMatcher.assess(
+				seed,
+				listOf(MigrationCandidateObservation(fresh, approved.matchedQueries)),
+			),
 			incomplete = validationError != null,
 		)
 	}
