@@ -1,7 +1,7 @@
 package org.koitharu.kotatsu.discovery.data
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFailsWith
+import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -52,8 +52,11 @@ class CatalogSnapshotStoreMixedTest {
 
 	@Test
 	fun `mixed is section only and cannot become public item identity`() {
-		assertFailsWith<IllegalArgumentException> {
+		try {
 			TrackerCatalogKey(ScrobblerService.MANGABAKA, CatalogMediaKind.MIXED, "1")
+			fail("MIXED must never become a public item identity")
+		} catch (_: IllegalArgumentException) {
+			// expected
 		}
 	}
 }
