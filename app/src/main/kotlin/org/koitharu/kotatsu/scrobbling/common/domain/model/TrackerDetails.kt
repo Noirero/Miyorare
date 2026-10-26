@@ -53,8 +53,7 @@ data class TrackerRelation(
 	val providerRelation: String? = null,
 )
 
-/** RELATION entries are navigation-only proxies; relation presentation uses [TrackerRelation]. */
-enum class TrackerRecommendationKind { RECOMMENDATION, SIMILAR_MANGA, RELATION }
+enum class TrackerRecommendationKind { RECOMMENDATION, SIMILAR_MANGA }
 
 data class TrackerRecommendation(
 	val target: TrackerTarget,
