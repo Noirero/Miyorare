@@ -72,6 +72,7 @@ class MigrationReviewScreenTest {
 		compose.onNodeWithTag("migration-scope-all").assertIsEnabled()
 		compose.onNodeWithTag("migration-scope-gekkoushi").assertIsNotEnabled()
 		compose.onNodeWithTag("migration-execute").assertDoesNotExist()
+		compose.onNodeWithTag("migration-retry").assertExists()
 		compose.onNodeWithTag("migration-scope-uma").performClick()
 		assertEquals(MigrationSearchScope.UMA, chosen)
 		compose.onNodeWithTag("migration-search").performClick()
@@ -145,6 +146,7 @@ class MigrationReviewScreenTest {
 		) } }
 		compose.onNodeWithText(context.getString(R.string.migration_search_failed)).assertExists()
 		compose.onNodeWithText(context.getString(R.string.migration_blocked)).assertDoesNotExist()
+		compose.onNodeWithTag("migration-retry").assertExists()
 	}
 	@Test fun completedStateOffersOnlyThePersistedDestination() {
 		var opened: Long? = null
