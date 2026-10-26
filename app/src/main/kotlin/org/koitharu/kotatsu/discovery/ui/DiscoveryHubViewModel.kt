@@ -110,7 +110,7 @@ class DiscoveryHubViewModel @Inject constructor(
 					mutableAccount.value = refreshed
 					mutableKnownTracking.value = known
 					if (service == ScrobblerService.MANGABAKA) {
-						refreshMangaBakaPersonal(state.value.request, known)
+						refreshMangaBakaPersonal(state.value.request)
 					}
 				}
 			} catch (e: CancellationException) {
@@ -132,10 +132,7 @@ class DiscoveryHubViewModel @Inject constructor(
 		}
 	}
 
-	private fun refreshMangaBakaPersonal(
-		request: CatalogHomeRequest,
-		baseKnown: Map<Long, CatalogTrackingEntry> = mutableKnownTracking.value,
-	) {
+	private fun refreshMangaBakaPersonal(request: CatalogHomeRequest) {
 		if (request.service != ScrobblerService.MANGABAKA || !mutableAccount.value.authorized) {
 			clearMangaBakaPersonal()
 			return
@@ -144,13 +141,12 @@ class DiscoveryHubViewModel @Inject constructor(
 		personalJob?.cancel()
 		exploreJob?.cancel()
 		exploreGeneration++
-		val previous = mutableMangaBakaPersonal.value
-		mutableMangaBakaPersonal.value = previous.copy(
+		mutableMangaBakaPersonal.value = mutableMangaBakaPersonal.value.copy(
 			loading = true,
 			failed = false,
 			authExpired = false,
 			partial = false,
-			selectedType = previous.selectedType?.takeIf { it.isVisibleFor(request.filter) },
+			selectedType = null,
 			exploreItems = emptyList(),
 			exploreLoading = false,
 			exploreFailed = false,
@@ -167,7 +163,9 @@ class DiscoveryHubViewModel @Inject constructor(
 						failed = false,
 						authExpired = false,
 					)
-					mutableKnownTracking.value = baseKnown + snapshot.library.associate { it.tracking.targetId to it.tracking }
+					// The bulk remote library is authoritative for MangaBaka Home badges. This also
+					// removes stale locally-known entries that were deleted on MangaBaka elsewhere.
+					mutableKnownTracking.value = snapshot.library.associate { it.tracking.targetId to it.tracking }
 				}
 			} catch (e: CancellationException) {
 				throw e
