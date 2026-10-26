@@ -75,8 +75,9 @@ internal fun normalizeMigrationTitle(value: String): String {
 }
 
 /**
- * Ranks every candidate actually returned by installed sources so review UI can stay transparent.
+ * Ranks candidates returned by installed-source search so review UI can stay transparent.
  * Automatic migration remains stricter: it still needs corroborating identity evidence and a clear winner.
+ * Synthetic candidates without search provenance still need minimum identity credibility.
  */
 @Reusable
 class MigrationCandidateMatcher @Inject constructor() {
@@ -106,7 +107,7 @@ class MigrationCandidateMatcher @Inject constructor() {
 	): List<MigrationMatchCandidate> {
 		return observations
 			.groupBy { CandidateKey(it.manga.source.name, it.manga.id) }
-			.map { (_, group) ->
+			.mapNotNull { (_, group) ->
 				val representative = group
 					.map(MigrationCandidateObservation::manga)
 					.sortedWith(
@@ -118,7 +119,9 @@ class MigrationCandidateMatcher @Inject constructor() {
 					)
 					.first()
 				val matchedQueries = group.flatMapTo(sortedSetOf()) { it.matchedQueries }
-				MigrationMatchCandidate(representative, matchedQueries, score(seed, representative, matchedQueries))
+				val evidence = score(seed, representative, matchedQueries)
+				if (matchedQueries.isEmpty() && !isCredible(evidence)) return@mapNotNull null
+				MigrationMatchCandidate(representative, matchedQueries, evidence)
 			}
 			.sortedWith(
 				compareByDescending<MigrationMatchCandidate> { it.evidence.score }
@@ -195,6 +198,9 @@ class MigrationCandidateMatcher @Inject constructor() {
 			autoEligible = autoEligible,
 		)
 	}
+
+	private fun isCredible(evidence: MigrationCandidateEvidence): Boolean =
+		evidence.exactTitleMatch || evidence.titleSimilarity >= 0.78f || evidence.matchedSeedQuery
 
 	private fun chapterEvidence(seed: Manga, candidate: Manga): ChapterEvidence {
 		val seedKeys = seed.chapters.orEmpty()
