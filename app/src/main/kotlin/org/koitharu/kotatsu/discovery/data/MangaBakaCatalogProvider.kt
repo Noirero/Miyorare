@@ -171,13 +171,10 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 				page,
 				limit,
 			)
-			CatalogSectionType.HIDDEN_GEMS -> discoverPage(
-				"$MANGABAKA_API_V2/series/discover/hidden-gems",
-				filter,
-				allowAdult,
-				page,
-				limit,
-			)
+			CatalogSectionType.HIDDEN_GEMS -> {
+				val url = seriesListUrl("$MANGABAKA_API_V2/series/discover/hidden-gems", filter, allowAdult, page, limit).build()
+				parsePage(request(url), filter, allowAdult, page, limit)
+			}
 			CatalogSectionType.NEW_RELEASES -> {
 				val url = seriesListUrl("$MANGABAKA_API_V2/series/search", filter, allowAdult, page, limit)
 					.addQueryParameter("sort_by", "latest")
@@ -189,10 +186,10 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 	}
 
 	/**
-	 * Rising and Hidden Gems do not advertise type/type_not filters. Mixed/All therefore maps one
-	 * provider page directly. Manga/Novel scan at most four consecutive provider pages, return every
-	 * matching item from pages actually consumed, and expose the first unconsumed provider page as
-	 * nextPage. That keeps sparse Novel results usable without overlap or silently dropping matches.
+	 * Rising does not advertise type/type_not filters. Mixed/All therefore maps one provider page
+	 * directly. Manga/Novel scan at most four consecutive provider pages, return every matching item
+	 * from pages actually consumed, and expose the first unconsumed provider page as nextPage. That
+	 * keeps sparse Novel results usable without overlap or silently dropping matches.
 	 */
 	private suspend fun discoverPage(
 		base: String,
