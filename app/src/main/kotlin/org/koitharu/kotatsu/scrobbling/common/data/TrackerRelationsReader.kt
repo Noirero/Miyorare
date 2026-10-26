@@ -22,6 +22,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRelation
 import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRelationType
 import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerResult
 import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerTarget
+import org.koitharu.kotatsu.scrobbling.mangabaka.data.MangaBakaTrackerRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,6 +36,7 @@ class TrackerRelationsReader @Inject constructor(
 	@ScrobblerType(ScrobblerService.ANILIST) aniListClient: OkHttpClient,
 	@BaseHttpClient baseHttpClient: OkHttpClient,
 	@ScrobblerType(ScrobblerService.MAL) malClient: OkHttpClient,
+	private val mangaBaka: MangaBakaTrackerRepository,
 ) {
 	private val aniList = trackerDetailsClient(aniListClient)
 	// Kitsu media relationships are a public catalog read; never attach the account bearer here.
@@ -42,7 +44,7 @@ class TrackerRelationsReader @Inject constructor(
 	private val mal = trackerDetailsClient(malClient)
 
 	fun supports(service: ScrobblerService): Boolean = service == ScrobblerService.ANILIST ||
-		service == ScrobblerService.KITSU || service == ScrobblerService.MAL
+		service == ScrobblerService.KITSU || service == ScrobblerService.MAL || service == ScrobblerService.MANGABAKA
 
 	suspend fun load(target: TrackerTarget, page: TrackerPage): TrackerResult<TrackerRelation> {
 		if (!supports(target.service)) return TrackerResult.Unsupported
@@ -51,6 +53,7 @@ class TrackerRelationsReader @Inject constructor(
 			ScrobblerService.ANILIST -> loadAniList(target)
 			ScrobblerService.KITSU -> loadKitsu(target)
 			ScrobblerService.MAL -> loadMal(target)
+			ScrobblerService.MANGABAKA -> mangaBaka.loadRelations(target, page)
 			else -> TrackerResult.Unsupported
 		}
 	}
@@ -218,9 +221,9 @@ internal fun trackerRelationType(value: String?): TrackerRelationType {
 		"ADAPTATION" -> TrackerRelationType.ADAPTATION
 		"PREQUEL" -> TrackerRelationType.PREQUEL
 		"SEQUEL" -> TrackerRelationType.SEQUEL
-		"PARENT", "PARENT_STORY", "FULL_STORY" -> TrackerRelationType.PARENT
+		"PARENT", "PARENT_STORY", "MAIN_STORY", "FULL_STORY" -> TrackerRelationType.PARENT
 		"SIDE_STORY" -> TrackerRelationType.SIDE_STORY
-		"CHARACTER" -> TrackerRelationType.CHARACTER
+		"CHARACTER", "CHARACTER_FOCUS" -> TrackerRelationType.CHARACTER
 		"SUMMARY" -> TrackerRelationType.SUMMARY
 		"ALTERNATIVE", "ALTERNATIVE_SETTING", "ALTERNATIVE_VERSION" -> TrackerRelationType.ALTERNATIVE
 		"SPIN_OFF", "SPINOFF" -> TrackerRelationType.SPIN_OFF
