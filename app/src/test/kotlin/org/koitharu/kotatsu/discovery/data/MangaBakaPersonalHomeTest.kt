@@ -132,6 +132,56 @@ class MangaBakaPersonalHomeTest {
 	}
 
 	@Test
+	fun `Explore See all keeps exact provider type across real pagination`() = runBlocking {
+		val public = CatalogHttp(client { request ->
+			assertEquals("/v2/series/search", request.url.encodedPath)
+			assertEquals("manhwa", request.url.queryParameter("type"))
+			assertEquals("popularity_asc", request.url.queryParameter("sort_by"))
+			assertEquals("2", request.url.queryParameter("page"))
+			assertEquals("20", request.url.queryParameter("limit"))
+			assertNull(request.header("Authorization"))
+			"""{"data":[
+				{"id":601,"type":"manhwa","content_rating":"safe","title":"Right manhwa"},
+				{"id":602,"type":"manga","content_rating":"safe","title":"Wrong type"}
+			],"pagination":{"next":3}}"""
+		})
+		val repository = MangaBakaPersonalHomeRepository(OkHttpClient(), public)
+		val result = repository.explorePage(MangaBakaExploreType.MANHWA, allowAdult = false, page = 2)
+		assertEquals(listOf("601"), result.items.map { it.key.remoteId })
+		assertEquals(3, result.nextPage)
+		assertTrue(result.items.all { it.providerType == "manhwa" })
+	}
+
+	@Test
+	fun `Library See all URL and page parser preserve filters pagination and tracking truth`() {
+		val url = mangaBakaLibraryUrl(CatalogFilter.NOVEL, allowAdult = false, page = 2, limit = 50)
+		assertEquals("/v2/my/library", url.encodedPath)
+		assertEquals("novel", url.queryParameter("type"))
+		assertNull(url.queryParameter("type_not"))
+		assertEquals("2", url.queryParameter("page"))
+		assertEquals("50", url.queryParameter("limit"))
+		assertEquals(listOf("safe", "suggestive"), url.queryParameterValues("content_rating"))
+
+		val result = parseMangaBakaLibraryPage(
+			root = json(
+				"""{"data":[{
+					"series":{"id":701,"type":"novel","content_rating":"safe","title":"Library novel"},
+					"entry":{"series_id":701,"state":"reading","progress_chapter":27,"rating":90}
+				}],"pagination":{"next":3}}""",
+			),
+			filter = CatalogFilter.NOVEL,
+			allowAdult = false,
+			page = 2,
+			limit = 50,
+		)
+		assertEquals(listOf("701"), result.items.map { it.item.key.remoteId })
+		assertEquals(3, result.nextPage)
+		assertEquals(27, result.items.single().tracking.chapter)
+		assertEquals(0.9f, result.items.single().tracking.rating, 0.001f)
+		assertEquals("novel", result.items.single().item.providerType)
+	}
+
+	@Test
 	fun `For You sends official Novel type filter before defensive filtering`() {
 		val url = mangaBakaRecommendationsUrl(CatalogFilter.NOVEL, allowAdult = false)
 		assertEquals("/v1/my/series/recommendations", url.encodedPath)

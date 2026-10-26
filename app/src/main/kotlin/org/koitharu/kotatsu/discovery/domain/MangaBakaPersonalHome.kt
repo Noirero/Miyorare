@@ -21,6 +21,11 @@ data class MangaBakaLibraryItem(
 	val tracking: CatalogTrackingEntry,
 )
 
+data class MangaBakaLibraryPage(
+	val items: List<MangaBakaLibraryItem>,
+	val nextPage: Int? = null,
+)
+
 data class MangaBakaPersonalHomeSnapshot(
 	val library: List<MangaBakaLibraryItem> = emptyList(),
 	val recommendations: List<TrackerCatalogItem> = emptyList(),
