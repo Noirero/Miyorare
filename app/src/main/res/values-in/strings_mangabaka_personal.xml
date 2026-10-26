@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_mangabaka_loading_personal">Memuat pustaka MangaBaka Anda…</string>
+    <string name="hub_mangabaka_my_library">Pustaka MangaBaka Saya</string>
+    <string name="hub_mangabaka_library_empty">Pustaka MangaBaka Anda tidak memiliki judul yang cocok dengan filter ini.</string>
+    <string name="hub_mangabaka_for_you">Untuk Anda</string>
+    <string name="hub_mangabaka_for_you_subtitle">Rekomendasi berdasarkan pustaka MangaBaka Anda</string>
+    <string name="hub_mangabaka_personal_partial">Sebagian konten personal MangaBaka tidak dapat diperbarui. Pustaka Anda tetap ditampilkan jika tersedia.</string>
+    <string name="hub_mangabaka_explore_type">Jelajahi MangaBaka berdasarkan tipe</string>
+    <string name="hub_mangabaka_explore_failed">Tipe MangaBaka ini gagal dimuat. Tekan tipenya lagi untuk mencoba ulang.</string>
+    <string name="hub_mangabaka_session_expired">Sesi MangaBaka Anda telah berakhir. Hubungkan kembali untuk memperbarui pustaka.</string>
+    <string name="hub_mangabaka_personal_error">Pustaka MangaBaka Anda gagal diperbarui. Penjelajahan publik tetap tersedia di bawah.</string>
+    <string name="hub_mangabaka_type_manhwa">Manhwa</string>
+    <string name="hub_mangabaka_type_manhua">Manhua</string>
+    <string name="hub_mangabaka_type_oel">OEL</string>
+    <string name="hub_mangabaka_type_other">Lainnya</string>
+</resources>
