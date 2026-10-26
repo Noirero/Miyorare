@@ -32,7 +32,7 @@ class MigrationMatchingContractTest {
 	}
 
 	@Test
-	fun `selected migration refreshes only approved identity before lossless execution`() {
+	fun `selected migration refreshes only approved destination identity before lossless execution`() {
 		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
 		val migrateSelected = source.substringAfter("suspendfunmigrateSelected(").substringBefore("privatesuspendfunvalidateSelection(")
 		val validation = source.substringAfter("privatesuspendfunvalidateSelection(").substringBefore("privatesuspendfunloadStoredSeed(")
@@ -41,16 +41,53 @@ class MigrationMatchingContractTest {
 		assertTrue(migrateSelected.contains("allowReadableSource:Boolean=false"))
 		assertFalse(migrateSelected.contains("discover(mangaId)"))
 		assertTrue(migrateSelected.contains("lossless=true,requireLibraryEntry=true"))
-		assertTrue(validation.contains("currentReadable=seed.isReadable()"))
-		assertTrue(validation.contains("if(currentReadable&&!allowReadableSource)returnMigrationDiscovery(seed,sourceHealthy=true)"))
+
+		// Direct-search mode intentionally skips the old source. Checked mode reuses the bounded
+		// current-source check. Neither path is allowed to run full replacement discovery again.
+		assertTrue(validation.contains("if(allowReadableSource)"))
+		assertTrue(validation.contains("MigrationDiscovery(seed=loadStoredSeed(mangaId),sourceHealthy=false)"))
+		assertTrue(validation.contains("checkCurrentSource(mangaId)"))
+		assertTrue(validation.contains("currentReadable=current.currentSourceReadable"))
+		assertTrue(validation.contains("if(currentReadable&&!allowReadableSource)returncurrent"))
+		assertFalse(validation.contains("seed.isReadable()"))
+		assertFalse(validation.contains("discover(mangaId)"))
+
+		// The approved destination still has to be found again from its exact source, health-probed,
+		// fingerprint-checked and reassessed before the lossless transfer receives permission.
 		assertTrue(validation.contains("filter{it.name==selection.source}"))
 		assertTrue(validation.contains("precomputedSources=selectedSources"))
 		assertTrue(validation.contains("event.manga.source.name==selection.source&&event.manga.id==selection.id"))
 		assertFalse(validation.contains("MigrationSelection.of(event.manga)==selection"))
 		assertTrue(validation.contains("if(selected!=null)break"))
+		assertTrue(validation.contains("approved.manga.probeHealth()"))
 		assertTrue(validation.contains("MigrationSelection.of(fresh)!=selection"))
 		assertTrue(validation.contains("candidateMatcher.assess"))
-		assertFalse(validation.contains("discover(mangaId)"))
+	}
+
+	@Test
+	fun `direct replacement discovery never opens the old source`() {
+		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val availability = source.substringAfter("suspendfunsearchAvailability(").substringBefore("suspendfundiscover(")
+		val directSearch = source.substringAfter("suspendfunsearchReplacements(").substringBefore("/**Refreshtheapproveddestinationidentity")
+
+		assertTrue(availability.contains("loadStoredSeed(mangaId)"))
+		assertFalse(availability.contains("getDetailsSafe()"))
+		assertFalse(availability.contains("checkCurrentSource("))
+		assertTrue(directSearch.contains("val seed=loadStoredSeed(mangaId)"))
+		assertFalse(directSearch.contains("getDetailsSafe()"))
+		assertFalse(directSearch.contains("checkCurrentSource("))
+	}
+
+	@Test
+	fun `optional current source check is bounded and probes the newest normalized chapter`() {
+		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val check = source.substringAfter("suspendfuncheckCurrentSource(").substringBefore("/**Directreplacementsearch")
+		val probe = source.substringAfter("privatesuspendfunManga.probeHealth()")
+
+		assertTrue(check.contains("withTimeoutOrNull(CURRENT_SOURCE_CHECK_TIMEOUT_MS)"))
+		assertTrue(source.contains("CURRENT_SOURCE_CHECK_TIMEOUT_MS=12_000L"))
+		assertTrue(probe.contains("details.chapters?.lastOrNull()"))
+		assertFalse(probe.contains("details.chapters?.firstOrNull()"))
 	}
 
 	@Test
