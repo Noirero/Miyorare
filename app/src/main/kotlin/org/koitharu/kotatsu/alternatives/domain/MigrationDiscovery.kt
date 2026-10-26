@@ -24,10 +24,20 @@ data class MigrationSearchProgress(
 data class MigrationDiscovery(
 	val seed: Manga,
 	val assessment: MigrationMatchAssessment? = null,
+	/** Compatibility storage name; semantically this means the current manga is still readable. */
 	val sourceHealthy: Boolean = false,
+	/** True only when discovery could not inspect enough of the selected scope to make a usable result. */
 	val incomplete: Boolean = false,
+	/** Provider/source failures that did not prevent useful search results. */
+	val partialFailureCount: Int = 0,
 	val progress: MigrationSearchProgress? = null,
-)
+) {
+	val currentSourceReadable: Boolean
+		get() = sourceHealthy
+
+	val searchPartial: Boolean
+		get() = partialFailureCount > 0
+}
 
 data class MigrationSelection(val source: String, val id: Long, val fingerprint: String) {
 	companion object {
@@ -41,7 +51,7 @@ data class MigrationSelection(val source: String, val id: Long, val fingerprint:
 
 object MigrationExecutionPolicy {
 	fun select(current: MigrationDiscovery, selection: MigrationSelection, reviewed: Boolean): Manga? {
-		if (current.sourceHealthy) return null
+		if (current.currentSourceReadable) return null
 		val assessment = current.assessment ?: return null
 		if (!reviewed && (current.incomplete || assessment.state != MigrationMatchState.READY ||
 			assessment.best?.manga?.let(MigrationSelection::of) != selection)) return null
