@@ -5,22 +5,29 @@ import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
 
-/** Explicit provider behavior used by the reliability layer. */
+/** Explicit provider behavior used by the reliability/fast-path layer. */
 data class NovelTranslationProviderCapabilities(
 	val providerId: String,
 	val supportsBatch: Boolean = false,
@@ -54,10 +61,7 @@ internal interface NovelTranslationReliabilityServicesProvider {
 	fun reliabilityServices(): NovelTranslationReliabilityServices
 }
 
-/**
- * Current provider resolver. Provider hardening can replace adapters later without moving
- * orchestration back into the Reader.
- */
+/** Current provider resolver. Reader orchestration is provider-independent. */
 class DefaultNovelTranslationProviderResolver(
 	httpClient: OkHttpClient,
 	private val settings: NovelTranslationSettings,
@@ -81,7 +85,7 @@ class DefaultNovelTranslationProviderResolver(
 					maxBatchChars = ONLINE_SEGMENT_CHARS,
 					maxSingleRequestChars = ONLINE_SEGMENT_CHARS,
 					credentialRequired = false,
-					maxConcurrency = 1,
+					maxConcurrency = ONLINE_MAX_CONCURRENCY,
 					minRequestGapMillis = ONLINE_REQUEST_GAP_MS,
 				),
 				semanticIdentity = NovelTranslationProviderSemanticIdentity(
@@ -105,6 +109,7 @@ class DefaultNovelTranslationProviderResolver(
 			configuration.resolvedBaseUrl,
 			configuration.deeplFreeApi.toString(),
 		)
+		val supportsBatch = provider.protocol == NovelAiProtocol.DEEPL
 		return NovelTranslationProvider(
 			engine = NovelAiTranslationEngine(
 				httpClient = reliableHttpClient,
@@ -114,11 +119,13 @@ class DefaultNovelTranslationProviderResolver(
 			),
 			capabilities = NovelTranslationProviderCapabilities(
 				providerId = providerId,
-				maxBatchChars = AI_SEGMENT_CHARS,
+				supportsBatch = supportsBatch,
+				maxBatchItems = if (supportsBatch) DEEPL_MAX_BATCH_ITEMS else 1,
+				maxBatchChars = if (supportsBatch) DEEPL_MAX_BATCH_CHARS else AI_SEGMENT_CHARS,
 				maxSingleRequestChars = AI_SEGMENT_CHARS,
 				credentialRequired = true,
-				maxConcurrency = 1,
-				minRequestGapMillis = AI_REQUEST_GAP_MS,
+				maxConcurrency = if (supportsBatch) DEEPL_MAX_CONCURRENCY else 1,
+				minRequestGapMillis = if (supportsBatch) DEEPL_REQUEST_GAP_MS else AI_REQUEST_GAP_MS,
 			),
 			semanticIdentity = NovelTranslationProviderSemanticIdentity(
 				configurationFingerprint = configurationFingerprint,
@@ -129,11 +136,16 @@ class DefaultNovelTranslationProviderResolver(
 	}
 
 	companion object {
-		// Preserve the proven current reader limits while moving ownership below the Reader.
 		private const val ONLINE_SEGMENT_CHARS = 1600
 		private const val AI_SEGMENT_CHARS = 8000
-		private const val ONLINE_REQUEST_GAP_MS = 250L
+		private const val ONLINE_MAX_CONCURRENCY = 3
+		private const val ONLINE_REQUEST_GAP_MS = 100L
 		private const val AI_REQUEST_GAP_MS = 150L
+		private const val DEEPL_MAX_BATCH_ITEMS = 10
+		// Well below DeepL's documented 128 KiB request-body ceiling even for 4-byte UTF-8 text.
+		private const val DEEPL_MAX_BATCH_CHARS = 24_000
+		private const val DEEPL_MAX_CONCURRENCY = 2
+		private const val DEEPL_REQUEST_GAP_MS = 75L
 		private const val ONLINE_CONTRACT_VERSION = "online-v1"
 		private const val AI_PROMPT_CONTRACT_VERSION = "ai-prompt-v1"
 	}
@@ -155,6 +167,7 @@ data class NovelTranslationOperationRequest(
 	val selection: NovelTranslationSelection,
 	val beforeContext: String = "",
 	val afterContext: String = "",
+	val priorityController: NovelTranslationPriorityController? = null,
 )
 
 data class NovelTranslationOperationResult(
@@ -243,33 +256,88 @@ object NovelTranslationSegmenter {
 	private val SENTENCE_ENDINGS = charArrayOf('.', '!', '?', '。', '！', '？')
 }
 
-/** Provider-keyed request scheduler. It bounds concurrency and spaces request starts. */
+/** Provider-keyed dynamic scheduler with FIFO fairness, adaptive concurrency and adaptive pacing. */
 class NovelTranslationRequestScheduler(
 	private val nowMillis: () -> Long = System::currentTimeMillis,
 	private val sleep: suspend (Long) -> Unit = { delay(it) },
+	private val healthController: NovelTranslationProviderHealthController = NovelTranslationProviderHealthController(),
 ) {
 	private data class Lane(
-		val semaphore: Semaphore,
+		val gateMutex: Mutex = Mutex(),
 		val pacingMutex: Mutex = Mutex(),
+		val waiters: ArrayDeque<CompletableDeferred<Unit>> = ArrayDeque(),
+		var active: Int = 0,
 		var lastRequestStartedAt: Long? = null,
 	)
 
 	private val lanes = ConcurrentHashMap<String, Lane>()
 
 	suspend fun <T> execute(capabilities: NovelTranslationProviderCapabilities, block: suspend () -> T): T {
-		val lane = lanes.getOrPut(capabilities.providerId) {
-			Lane(Semaphore(capabilities.maxConcurrency.coerceAtLeast(1)))
-		}
-		return lane.semaphore.withPermit {
+		val lane = lanes.getOrPut(capabilities.providerId) { Lane() }
+		acquire(lane, capabilities)
+		try {
 			lane.pacingMutex.withLock {
+				val policy = healthController.policy(capabilities)
 				val previous = lane.lastRequestStartedAt
-				if (previous != null && capabilities.minRequestGapMillis > 0) {
-					val wait = capabilities.minRequestGapMillis - (nowMillis() - previous)
-					if (wait > 0) sleep(wait)
+				if (previous != null && policy.minRequestGapMillis > 0L) {
+					val wait = policy.minRequestGapMillis - (nowMillis() - previous)
+					if (wait > 0L) sleep(wait)
 				}
 				lane.lastRequestStartedAt = nowMillis()
 			}
-			block()
+			return block()
+		} finally {
+			release(lane, capabilities)
+		}
+	}
+
+	suspend fun policyChanged(capabilities: NovelTranslationProviderCapabilities) {
+		val lane = lanes[capabilities.providerId] ?: return
+		lane.gateMutex.withLock { drainWaitersLocked(lane, capabilities) }
+	}
+
+	private suspend fun acquire(lane: Lane, capabilities: NovelTranslationProviderCapabilities) {
+		val waiter = CompletableDeferred<Unit>()
+		val acquired = lane.gateMutex.withLock {
+			val limit = healthController.policy(capabilities).maxConcurrency
+			if (lane.waiters.isEmpty() && lane.active < limit) {
+				lane.active++
+				true
+			} else {
+				lane.waiters.addLast(waiter)
+				false
+			}
+		}
+		if (acquired) return
+		try {
+			waiter.await()
+		} catch (error: CancellationException) {
+			lane.gateMutex.withLock {
+				val removedBeforeGrant = lane.waiters.remove(waiter)
+				if (!removedBeforeGrant && waiter.isCompleted) {
+					// drainWaitersLocked accounts a granted waiter as active before completing it. If
+					// cancellation wins immediately after that grant, execute() has not reached its
+					// release/finally yet, so return the granted slot here.
+					lane.active = (lane.active - 1).coerceAtLeast(0)
+				}
+				drainWaitersLocked(lane, capabilities)
+			}
+			throw error
+		}
+	}
+
+	private suspend fun release(lane: Lane, capabilities: NovelTranslationProviderCapabilities) {
+		lane.gateMutex.withLock {
+			lane.active = (lane.active - 1).coerceAtLeast(0)
+			drainWaitersLocked(lane, capabilities)
+		}
+	}
+
+	private fun drainWaitersLocked(lane: Lane, capabilities: NovelTranslationProviderCapabilities) {
+		val limit = healthController.policy(capabilities).maxConcurrency
+		while (lane.active < limit && lane.waiters.isNotEmpty()) {
+			lane.active++
+			lane.waiters.removeFirst().complete(Unit)
 		}
 	}
 }
@@ -287,11 +355,7 @@ class NovelTranslationRetryPolicy(
 	): Long? {
 		if (failedAttempt >= capabilities.maxAttempts) return null
 		val retryAfter = error.retryAfter?.let { parseRetryAfterMillis(it, nowMillis()) }
-		if (retryAfter != null) {
-			// Never retry earlier than the provider asks. If Retry-After exceeds this operation's
-			// bounded retry budget, stop rather than turning the client into a long-lived sleeper.
-			return retryAfter.takeIf { it <= capabilities.maxRetryDelayMillis }
-		}
+		if (retryAfter != null) return retryAfter.takeIf { it <= capabilities.maxRetryDelayMillis }
 		if (!error.isRetryable()) return null
 		val shift = (failedAttempt - 1).coerceIn(0, MAX_BACKOFF_SHIFT)
 		val exponential = capabilities.initialBackoffMillis * (1L shl shift)
@@ -322,12 +386,13 @@ class NovelTranslationRetryPolicy(
 }
 
 /**
- * Owns translation segmentation, cache/resume, shared in-flight work, provider health and retry.
- * Reader code asks for a coherent operation and never loops provider calls itself.
+ * Owns translation priority, batching, task-pool execution, cache/resume, provider health and retry.
+ * Reader asks for one coherent operation while receiving progressive completed segments.
  */
 class NovelTranslationCoordinator(
 	private val providerResolver: NovelTranslationProviderResolver,
-	private val scheduler: NovelTranslationRequestScheduler = NovelTranslationRequestScheduler(),
+	private val healthController: NovelTranslationProviderHealthController = NovelTranslationProviderHealthController(),
+	private val scheduler: NovelTranslationRequestScheduler = NovelTranslationRequestScheduler(healthController = healthController),
 	private val retryPolicy: NovelTranslationRetryPolicy = NovelTranslationRetryPolicy(),
 	private val sleep: suspend (Long) -> Unit = { delay(it) },
 	private val reliability: NovelTranslationReliabilityServices =
@@ -339,128 +404,313 @@ class NovelTranslationCoordinator(
 				diagnostics = NovelTranslationDiagnostics(),
 			),
 ) {
+	private data class WorkItem(
+		val index: Int,
+		val segment: NovelTranslationSegment,
+		val key: NovelTranslationSemanticKey,
+		val beforeContext: String,
+		val afterContext: String,
+	)
 
 	suspend fun translate(
 		request: NovelTranslationOperationRequest,
+		onSegmentTranslated: suspend (NovelTranslatedSegment, completedSegments: Int, totalSegments: Int) -> Unit = { _, _, _ -> },
 		onProgress: suspend (NovelTranslationProgress) -> Unit = {},
 	): NovelTranslationOperationResult {
 		val provider = providerResolver.resolve(request.selection)
 		val segments = NovelTranslationSegmenter.split(request.text, provider.capabilities.maxSingleRequestChars)
-		val translated = ArrayList<NovelTranslatedSegment>(segments.size)
-		for ((index, segment) in segments.withIndex()) {
-			currentCoroutineContext().ensureActive()
-			if (segment.text.isBlank()) {
-				translated += NovelTranslatedSegment(segment, segment.text)
-				onProgress(NovelTranslationProgress.Translating(index + 1, segments.size, index, 1))
-				continue
-			}
+		if (segments.isEmpty()) return NovelTranslationOperationResult(emptyList())
+		val operationStarted = System.nanoTime()
+		val operationKey = NovelTranslationSemanticKey(
+			novelTranslationDigest(
+				"translation-operation-v1",
+				provider.capabilities.providerId,
+				provider.semanticIdentity.configurationFingerprint,
+				request.selection.sourceLanguage,
+				request.selection.targetLanguage,
+				novelTranslationDigest(request.text.toString()),
+			),
+		)
+		val work = segments.mapIndexed { index, segment ->
 			val beforeContext = if (request.selection.contextAware) {
 				segments.getOrNull(index - 1)?.text ?: request.beforeContext
 			} else ""
 			val afterContext = if (request.selection.contextAware) {
 				segments.getOrNull(index + 1)?.text ?: request.afterContext
 			} else ""
-			val key = buildNovelTranslationSemanticKey(
-				provider = provider,
-				selection = request.selection,
-				segmentText = segment.text,
+			WorkItem(
+				index = index,
+				segment = segment,
+				key = buildNovelTranslationSemanticKey(
+					provider = provider,
+					selection = request.selection,
+					segmentText = segment.text,
+					beforeContext = beforeContext,
+					afterContext = afterContext,
+				),
 				beforeContext = beforeContext,
 				afterContext = afterContext,
 			)
-			val cached = safeCacheRead(key, provider, segments.size)
-			if (cached != null) {
-				recordDiagnostic(NovelTranslationDiagnosticKind.CACHE_HIT, provider, key, segmentCount = segments.size)
-				translated += NovelTranslatedSegment(segment, cached)
-				onProgress(NovelTranslationProgress.Translating(index + 1, segments.size, index, 1))
-				continue
-			}
-			recordDiagnostic(NovelTranslationDiagnosticKind.CACHE_MISS, provider, key, segmentCount = segments.size)
-
-			val translatedText = reliability.singleFlight.execute(
-				key = key,
-				onEvent = { event ->
-					when (event) {
-						is NovelTranslationFlightEvent.Attempt -> onProgress(
-							NovelTranslationProgress.Translating(index, segments.size, index, event.attempt),
-						)
-						is NovelTranslationFlightEvent.Retry -> onProgress(
-							NovelTranslationProgress.WaitingToRetry(
-								completedSegments = index,
-								totalSegments = segments.size,
-								segmentIndex = index,
-								nextAttempt = event.nextAttempt,
-								delayMillis = event.delayMillis,
-								failure = event.failure,
-							),
-						)
-					}
-				},
-			) { emit ->
-				val sharedCached = safeCacheRead(key, provider, segments.size)
-				if (sharedCached != null) {
-					recordDiagnostic(NovelTranslationDiagnosticKind.CACHE_HIT, provider, key, segmentCount = segments.size)
-					return@execute sharedCached
-				}
-				val started = System.nanoTime()
-				try {
-					val value = translateMissingSegment(
-						provider = provider,
-						selection = request.selection,
-						segment = segment,
-						beforeContext = beforeContext,
-						afterContext = afterContext,
-						key = key,
-						segmentCount = segments.size,
-						emit = emit,
-					)
-					if (safeCacheWrite(key, value)) {
-						recordDiagnostic(NovelTranslationDiagnosticKind.CACHE_STORE, provider, key, segmentCount = segments.size)
-					}
-					recordDiagnostic(
-						kind = NovelTranslationDiagnosticKind.SUCCESS,
-						provider = provider,
-						key = key,
-						latencyMillis = (System.nanoTime() - started) / 1_000_000L,
-						segmentCount = segments.size,
-					)
-					value
-				} catch (error: CancellationException) {
-					recordDiagnostic(
-						kind = NovelTranslationDiagnosticKind.CANCELLED,
-						provider = provider,
-						key = key,
-						segmentCount = segments.size,
-						cancellationCategory = "subscriber-or-lifecycle",
-					)
-					throw error
-				} catch (error: NovelTranslationFailure) {
-					recordDiagnostic(
-						kind = NovelTranslationDiagnosticKind.FAILURE,
-						provider = provider,
-						key = key,
-						error = error,
-						latencyMillis = (System.nanoTime() - started) / 1_000_000L,
-						segmentCount = segments.size,
-					)
-					throw error
-				}
-			}
-			translated += NovelTranslatedSegment(segment, translatedText)
-			onProgress(NovelTranslationProgress.Translating(index + 1, segments.size, index, 1))
 		}
-		return NovelTranslationOperationResult(translated)
+		val results = arrayOfNulls<NovelTranslatedSegment>(segments.size)
+		val completed = AtomicInteger(0)
+		val firstVisibleRecorded = AtomicBoolean(false)
+
+		suspend fun publish(item: WorkItem, translatedText: String, cacheTier: String? = null) {
+			val translated = NovelTranslatedSegment(item.segment, translatedText)
+			results[item.index] = translated
+			val done = completed.incrementAndGet()
+			cacheTier?.let {
+				recordDiagnostic(
+					kind = NovelTranslationDiagnosticKind.CACHE_HIT,
+					provider = provider,
+					key = item.key,
+					segmentCount = segments.size,
+					cacheTier = it,
+				)
+			}
+			onSegmentTranslated(translated, done, segments.size)
+			onProgress(NovelTranslationProgress.Translating(done, segments.size, item.index, 1))
+			val visible = request.priorityController?.visibleRange
+			val isVisible = visible == null || (item.segment.start <= visible.last && item.segment.end > visible.first)
+			if (isVisible && firstVisibleRecorded.compareAndSet(false, true)) {
+				recordDiagnostic(
+					kind = NovelTranslationDiagnosticKind.FIRST_VISIBLE_RESULT,
+					provider = provider,
+					key = operationKey,
+					latencyMillis = (System.nanoTime() - operationStarted) / 1_000_000L,
+					segmentCount = segments.size,
+					priorityClass = "visible",
+				)
+			}
+		}
+
+		val blankItems = work.filter { it.segment.text.isBlank() }
+		blankItems.sortedBy { NovelTranslationPrioritizer.score(it.segment, request.priorityController?.visibleRange) }
+			.forEach { publish(it, it.segment.text) }
+
+		val translatable = work.filterNot { it.segment.text.isBlank() }
+		val cached = safeCacheReadMany(translatable.map { it.key }, provider, segments.size)
+		val misses = ArrayList<WorkItem>()
+		translatable.forEach { item ->
+			val hit = cached[item.key]
+			if (hit == null) {
+				misses += item
+				recordDiagnostic(NovelTranslationDiagnosticKind.CACHE_MISS, provider, item.key, segmentCount = segments.size)
+			}
+		}
+		translatable.filter { cached.containsKey(it.key) }
+			.sortedWith(compareBy { NovelTranslationPrioritizer.score(it.segment, request.priorityController?.visibleRange) })
+			.forEach { item ->
+				val (value, tier) = checkNotNull(cached[item.key])
+				publish(item, value, tier)
+			}
+
+		try {
+			if (misses.isNotEmpty()) {
+				val canBatch = provider.capabilities.supportsBatch && provider.engine is NovelTranslationBatchEngine
+				val queue = NovelTranslationPriorityQueue(
+					items = misses,
+					segmentOf = WorkItem::segment,
+					priorityController = request.priorityController,
+				)
+				val workers = minOf(provider.capabilities.maxConcurrency.coerceAtLeast(1), misses.size)
+				while (true) {
+					currentCoroutineContext().ensureActive()
+					val wave = ArrayList<List<WorkItem>>(workers)
+					while (wave.size < workers) {
+						val batch = queue.takeBatch(
+							maxItems = if (canBatch) provider.capabilities.maxBatchItems else 1,
+							maxChars = if (canBatch) provider.capabilities.maxBatchChars else provider.capabilities.maxSingleRequestChars,
+							charCount = { item: WorkItem -> item.segment.text.length },
+						)
+						if (batch.isEmpty()) break
+						wave += batch
+					}
+					if (wave.isEmpty()) break
+					coroutineScope {
+						wave.map { batch ->
+							async {
+								if (canBatch && batch.size > 1) {
+									val values = translateBatch(
+										provider = provider,
+										selection = request.selection,
+										items = batch,
+										segmentCount = segments.size,
+										completed = completed,
+										onProgress = onProgress,
+									)
+									batch.zip(values).forEach { (item, value) -> publish(item, value) }
+								} else {
+									val item = batch.single()
+									val value = translateSingle(
+										provider = provider,
+										selection = request.selection,
+										item = item,
+										segmentCount = segments.size,
+										completed = completed,
+										onProgress = onProgress,
+									)
+									publish(item, value)
+								}
+							}
+						}.awaitAll()
+					}
+				}
+			}
+
+			val finalSegments = results.mapIndexed { index, item ->
+				item ?: NovelTranslatedSegment(segments[index], segments[index].text)
+			}
+			recordDiagnostic(
+				kind = NovelTranslationDiagnosticKind.OPERATION_COMPLETE,
+				provider = provider,
+				key = operationKey,
+				latencyMillis = (System.nanoTime() - operationStarted) / 1_000_000L,
+				segmentCount = segments.size,
+			)
+			return NovelTranslationOperationResult(finalSegments)
+		} finally {
+			// Segment writes stay off the request hot path, but by the operation boundary every
+			// completed segment must be reusable even when a later segment failed or the caller
+			// cancelled. This preserves the reliability contract without fsync-per-request.
+			withContext(NonCancellable) {
+				reliability.writeBehindCache.flushNow()
+			}
+		}
+	}
+
+	private suspend fun translateSingle(
+		provider: NovelTranslationProvider,
+		selection: NovelTranslationSelection,
+		item: WorkItem,
+		segmentCount: Int,
+		completed: AtomicInteger,
+		onProgress: suspend (NovelTranslationProgress) -> Unit,
+	): String = reliability.singleFlight.execute(
+		key = item.key,
+		onEvent = { event -> reportFlightEvent(event, item.index, segmentCount, completed.get(), onProgress) },
+	) { emit ->
+		reliability.memoryCache.read(item.key)?.let { return@execute it }
+		val started = System.nanoTime()
+		try {
+			val value = translateMissingSegment(provider, selection, item, segmentCount, emit)
+			cacheTranslatedValue(item.key, value, provider, segmentCount)
+			recordDiagnostic(
+				kind = NovelTranslationDiagnosticKind.SUCCESS,
+				provider = provider,
+				key = item.key,
+				latencyMillis = (System.nanoTime() - started) / 1_000_000L,
+				segmentCount = segmentCount,
+			)
+			value
+		} catch (error: CancellationException) {
+			recordDiagnostic(
+				kind = NovelTranslationDiagnosticKind.CANCELLED,
+				provider = provider,
+				key = item.key,
+				segmentCount = segmentCount,
+				cancellationCategory = "subscriber-or-lifecycle",
+			)
+			throw error
+		} catch (error: NovelTranslationFailure) {
+			recordDiagnostic(
+				kind = NovelTranslationDiagnosticKind.FAILURE,
+				provider = provider,
+				key = item.key,
+				error = error,
+				latencyMillis = (System.nanoTime() - started) / 1_000_000L,
+				segmentCount = segmentCount,
+			)
+			throw error
+		}
+	}
+
+	private suspend fun translateBatch(
+		provider: NovelTranslationProvider,
+		selection: NovelTranslationSelection,
+		items: List<WorkItem>,
+		segmentCount: Int,
+		completed: AtomicInteger,
+		onProgress: suspend (NovelTranslationProgress) -> Unit,
+	): List<String> = reliability.singleFlight.executeBatch(
+		keys = items.map { it.key },
+		onEvent = { event -> reportFlightEvent(event, items.first().index, segmentCount, completed.get(), onProgress) },
+	) { emit ->
+		val memoryHits = reliability.memoryCache.readMany(items.map { it.key })
+		if (memoryHits.size == items.size) return@executeBatch items.map { checkNotNull(memoryHits[it.key]) }
+		val missing = items.filterNot { memoryHits.containsKey(it.key) }
+		val translatedMissing = translateMissingBatch(provider, selection, missing, segmentCount, emit)
+		missing.zip(translatedMissing).forEach { (item, value) -> cacheTranslatedValue(item.key, value, provider, segmentCount) }
+		val translatedByKey = missing.zip(translatedMissing).associate { (item, value) -> item.key to value }
+		items.map { item -> memoryHits[item.key] ?: checkNotNull(translatedByKey[item.key]) }
+	}
+
+	private suspend fun reportFlightEvent(
+		event: NovelTranslationFlightEvent,
+		segmentIndex: Int,
+		segmentCount: Int,
+		completed: Int,
+		onProgress: suspend (NovelTranslationProgress) -> Unit,
+	) {
+		when (event) {
+			is NovelTranslationFlightEvent.Attempt -> onProgress(
+				NovelTranslationProgress.Translating(completed, segmentCount, segmentIndex, event.attempt),
+			)
+			is NovelTranslationFlightEvent.Retry -> onProgress(
+				NovelTranslationProgress.WaitingToRetry(
+					completedSegments = completed,
+					totalSegments = segmentCount,
+					segmentIndex = segmentIndex,
+					nextAttempt = event.nextAttempt,
+					delayMillis = event.delayMillis,
+					failure = event.failure,
+				),
+			)
+		}
 	}
 
 	private suspend fun translateMissingSegment(
 		provider: NovelTranslationProvider,
 		selection: NovelTranslationSelection,
-		segment: NovelTranslationSegment,
-		beforeContext: String,
-		afterContext: String,
-		key: NovelTranslationSemanticKey,
+		item: WorkItem,
 		segmentCount: Int,
 		emit: suspend (NovelTranslationFlightEvent) -> Unit,
 	): String {
+		return executeProviderWithRetry(provider, item.key, segmentCount, 1, emit) {
+			provider.engine.translate(item.toProviderRequest(selection))
+		}.let { preserveSegmentBoundaryWhitespace(item.segment.text, it) }
+	}
+
+	private suspend fun translateMissingBatch(
+		provider: NovelTranslationProvider,
+		selection: NovelTranslationSelection,
+		items: List<WorkItem>,
+		segmentCount: Int,
+		emit: suspend (NovelTranslationFlightEvent) -> Unit,
+	): List<String> {
+		val engine = provider.engine as? NovelTranslationBatchEngine
+			?: throw NovelTranslationFailure(
+				category = NovelTranslationFailureCategory.UNSUPPORTED,
+				message = "Translation provider does not implement batch requests",
+			)
+		return executeProviderWithRetry(provider, items.first().key, segmentCount, items.size, emit) {
+			val translated = engine.translateBatch(items.map { it.toProviderRequest(selection) })
+			if (translated.size != items.size) {
+				throw NovelTranslationException.InvalidResponse("Translation provider returned an incomplete batch result")
+			}
+			translated.mapIndexed { index, value -> preserveSegmentBoundaryWhitespace(items[index].segment.text, value) }
+		}
+	}
+
+	private suspend fun <T> executeProviderWithRetry(
+		provider: NovelTranslationProvider,
+		key: NovelTranslationSemanticKey,
+		segmentCount: Int,
+		batchItems: Int,
+		emit: suspend (NovelTranslationFlightEvent) -> Unit,
+		request: suspend () -> T,
+	): T {
 		var attempt = 1
 		while (true) {
 			currentCoroutineContext().ensureActive()
@@ -478,41 +728,42 @@ class NovelTranslationCoordinator(
 				throw error
 			}
 			emit(NovelTranslationFlightEvent.Attempt(attempt))
+			val policy = healthController.policy(provider.capabilities)
 			recordDiagnostic(
-				kind = NovelTranslationDiagnosticKind.REQUEST_ATTEMPT,
+				kind = if (batchItems > 1) NovelTranslationDiagnosticKind.BATCH_REQUEST else NovelTranslationDiagnosticKind.REQUEST_ATTEMPT,
 				provider = provider,
 				key = key,
 				attempt = attempt,
 				segmentCount = segmentCount,
+				batchItems = batchItems,
+				activeConcurrency = policy.maxConcurrency,
+				requestGapMillis = policy.minRequestGapMillis,
+				pressureLevel = policy.pressureLevel,
 				circuitState = circuitState,
 			)
 			try {
-				val result = scheduler.execute(provider.capabilities) {
-					provider.engine.translate(
-						NovelTranslationRequest(
-							text = segment.text,
-							sourceLanguage = selection.sourceLanguage,
-							targetLanguage = selection.targetLanguage,
-							style = selection.style,
-							contextAware = selection.contextAware,
-							beforeContext = beforeContext,
-							afterContext = afterContext,
-						),
-					)
-				}
+				val result = scheduler.execute(provider.capabilities, request)
 				reliability.circuitBreaker.onSuccess(provider.semanticIdentity.circuitKey)
-				return preserveSegmentBoundaryWhitespace(segment.text, result)
+				if (healthController.onSuccess(provider.capabilities.providerId)) {
+					scheduler.policyChanged(provider.capabilities)
+					recordPressureChange(provider, key, segmentCount)
+				}
+				return result
 			} catch (error: CancellationException) {
 				reliability.circuitBreaker.onCancellation(provider.semanticIdentity.circuitKey)
 				throw error
 			} catch (error: Throwable) {
 				val typed = error.toNovelTranslationFailure()
+				val pressureChanged = healthController.onFailure(provider.capabilities.providerId, typed)
+				if (pressureChanged) {
+					scheduler.policyChanged(provider.capabilities)
+					recordPressureChange(provider, key, segmentCount)
+				}
 				reliability.circuitBreaker.onFailure(provider.semanticIdentity.circuitKey, typed)
 				if (reliability.circuitBreaker.state(provider.semanticIdentity.circuitKey) == NovelTranslationCircuitState.OPEN) {
 					throw typed
 				}
-				val retryDelay = retryPolicy.retryDelayMillis(typed, attempt, provider.capabilities)
-					?: throw typed
+				val retryDelay = retryPolicy.retryDelayMillis(typed, attempt, provider.capabilities) ?: throw typed
 				emit(NovelTranslationFlightEvent.Retry(attempt + 1, retryDelay, typed))
 				recordDiagnostic(
 					kind = NovelTranslationDiagnosticKind.RETRY,
@@ -522,6 +773,8 @@ class NovelTranslationCoordinator(
 					attempt = attempt,
 					retryDelayMillis = retryDelay,
 					segmentCount = segmentCount,
+					batchItems = batchItems,
+					pressureLevel = healthController.pressureLevel(provider.capabilities.providerId),
 					circuitState = reliability.circuitBreaker.state(provider.semanticIdentity.circuitKey),
 				)
 				sleep(retryDelay)
@@ -529,6 +782,16 @@ class NovelTranslationCoordinator(
 			}
 		}
 	}
+
+	private fun WorkItem.toProviderRequest(selection: NovelTranslationSelection) = NovelTranslationRequest(
+		text = segment.text,
+		sourceLanguage = selection.sourceLanguage,
+		targetLanguage = selection.targetLanguage,
+		style = selection.style,
+		contextAware = selection.contextAware,
+		beforeContext = beforeContext,
+		afterContext = afterContext,
+	)
 
 	private fun preserveSegmentBoundaryWhitespace(source: String, translated: String): String {
 		val firstContent = source.indexOfFirst { !it.isWhitespace() }
@@ -541,40 +804,107 @@ class NovelTranslationCoordinator(
 		}
 	}
 
-	private suspend fun safeCacheRead(
-		key: NovelTranslationSemanticKey,
+	private suspend fun safeCacheReadMany(
+		keys: Collection<NovelTranslationSemanticKey>,
 		provider: NovelTranslationProvider,
 		segmentCount: Int,
-	): String? = try {
-		reliability.cache.read(key)
-	} catch (error: CancellationException) {
-		throw error
-	} catch (_: NovelTranslationCacheCorruptionException) {
-		recordDiagnostic(
-			kind = NovelTranslationDiagnosticKind.CACHE_CORRUPTION_RECOVERED,
-			provider = provider,
-			key = key,
-			errorCategory = NovelTranslationFailureCategory.CACHE_CORRUPTION,
-			segmentCount = segmentCount,
-		)
-		null
-	} catch (_: Exception) {
-		recordDiagnostic(
-			kind = NovelTranslationDiagnosticKind.CACHE_READ_ERROR_RECOVERED,
-			provider = provider,
-			key = key,
-			errorCategory = NovelTranslationFailureCategory.INTERNAL_RECOVERABLE,
-			segmentCount = segmentCount,
-		)
-		null
+	): Map<NovelTranslationSemanticKey, Pair<String, String>> {
+		if (keys.isEmpty()) return emptyMap()
+		val memory = reliability.memoryCache.readMany(keys)
+		val result = LinkedHashMap<NovelTranslationSemanticKey, Pair<String, String>>(keys.size)
+		memory.forEach { (key, value) -> result[key] = value to "memory" }
+		val missing = keys.filterNot(memory::containsKey)
+		if (missing.isEmpty()) return result
+		val persistent = try {
+			reliability.cache.readMany(missing)
+		} catch (error: CancellationException) {
+			throw error
+		} catch (_: NovelTranslationCacheCorruptionException) {
+			recordDiagnostic(
+				kind = NovelTranslationDiagnosticKind.CACHE_CORRUPTION_RECOVERED,
+				provider = provider,
+				key = missing.first(),
+				errorCategory = NovelTranslationFailureCategory.CACHE_CORRUPTION,
+				segmentCount = segmentCount,
+			)
+			readPersistentIndividually(missing, provider, segmentCount)
+		} catch (_: Exception) {
+			recordDiagnostic(
+				kind = NovelTranslationDiagnosticKind.CACHE_READ_ERROR_RECOVERED,
+				provider = provider,
+				key = missing.first(),
+				errorCategory = NovelTranslationFailureCategory.INTERNAL_RECOVERABLE,
+				segmentCount = segmentCount,
+			)
+			emptyMap()
+		}
+		reliability.memoryCache.writeMany(persistent)
+		persistent.forEach { (key, value) -> result[key] = value to "persistent" }
+		return result
 	}
 
-	private suspend fun safeCacheWrite(key: NovelTranslationSemanticKey, value: String): Boolean = try {
-		reliability.cache.write(key, value)
-	} catch (error: CancellationException) {
-		throw error
-	} catch (_: Exception) {
-		false
+	private suspend fun readPersistentIndividually(
+		keys: Collection<NovelTranslationSemanticKey>,
+		provider: NovelTranslationProvider,
+		segmentCount: Int,
+	): Map<NovelTranslationSemanticKey, String> = buildMap {
+		keys.forEach { key ->
+			try {
+				reliability.cache.read(key)?.let { put(key, it) }
+			} catch (error: CancellationException) {
+				throw error
+			} catch (_: NovelTranslationCacheCorruptionException) {
+				recordDiagnostic(
+					kind = NovelTranslationDiagnosticKind.CACHE_CORRUPTION_RECOVERED,
+					provider = provider,
+					key = key,
+					errorCategory = NovelTranslationFailureCategory.CACHE_CORRUPTION,
+					segmentCount = segmentCount,
+				)
+			} catch (_: Exception) {
+				recordDiagnostic(
+					kind = NovelTranslationDiagnosticKind.CACHE_READ_ERROR_RECOVERED,
+					provider = provider,
+					key = key,
+					errorCategory = NovelTranslationFailureCategory.INTERNAL_RECOVERABLE,
+					segmentCount = segmentCount,
+				)
+			}
+		}
+	}
+
+	private fun cacheTranslatedValue(
+		key: NovelTranslationSemanticKey,
+		value: String,
+		provider: NovelTranslationProvider,
+		segmentCount: Int,
+	) {
+		reliability.memoryCache.write(key, value)
+		reliability.writeBehindCache.enqueue(key, value)
+		recordDiagnostic(
+			kind = NovelTranslationDiagnosticKind.CACHE_STORE,
+			provider = provider,
+			key = key,
+			segmentCount = segmentCount,
+			cacheTier = "write-behind",
+		)
+	}
+
+	private fun recordPressureChange(
+		provider: NovelTranslationProvider,
+		key: NovelTranslationSemanticKey,
+		segmentCount: Int,
+	) {
+		val policy = healthController.policy(provider.capabilities)
+		recordDiagnostic(
+			kind = NovelTranslationDiagnosticKind.PROVIDER_PRESSURE_CHANGED,
+			provider = provider,
+			key = key,
+			segmentCount = segmentCount,
+			activeConcurrency = policy.maxConcurrency,
+			requestGapMillis = policy.minRequestGapMillis,
+			pressureLevel = policy.pressureLevel,
+		)
 	}
 
 	private fun recordDiagnostic(
@@ -587,6 +917,12 @@ class NovelTranslationCoordinator(
 		attempt: Int? = null,
 		retryDelayMillis: Long? = null,
 		segmentCount: Int? = null,
+		batchItems: Int? = null,
+		activeConcurrency: Int? = null,
+		requestGapMillis: Long? = null,
+		pressureLevel: Int? = null,
+		priorityClass: String? = null,
+		cacheTier: String? = null,
 		circuitState: NovelTranslationCircuitState? = null,
 		cancellationCategory: String? = null,
 	) {
@@ -601,6 +937,12 @@ class NovelTranslationCoordinator(
 				attempt = attempt,
 				retryDelayMillis = retryDelayMillis,
 				segmentCount = segmentCount,
+				batchItems = batchItems,
+				activeConcurrency = activeConcurrency,
+				requestGapMillis = requestGapMillis,
+				pressureLevel = pressureLevel,
+				priorityClass = priorityClass,
+				cacheTier = cacheTier,
 				circuitState = circuitState,
 				cancellationCategory = cancellationCategory,
 			),

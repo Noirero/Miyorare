@@ -14,7 +14,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import okhttp3.Call
 import okhttp3.Callback
-import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -41,6 +40,11 @@ data class NovelTranslationRequest(
 interface NovelTranslationEngine {
 	suspend fun translate(request: NovelTranslationRequest): String
 	suspend fun listModels(): List<String> = emptyList()
+}
+
+/** Optional provider contract for one real provider request containing multiple independent texts. */
+interface NovelTranslationBatchEngine {
+	suspend fun translateBatch(requests: List<NovelTranslationRequest>): List<String>
 }
 
 /** Immutable output-affecting AI configuration used by one translation operation. */
@@ -134,7 +138,7 @@ class NovelAiTranslationEngine(
 	private val settings: NovelTranslationSettings,
 	private val secrets: NovelTranslationSecrets,
 	private val configuration: NovelAiTranslationConfiguration? = null,
-) : NovelTranslationEngine {
+) : NovelTranslationEngine, NovelTranslationBatchEngine {
 
 	private val client = httpClient.translationClient()
 
@@ -147,8 +151,22 @@ class NovelAiTranslationEngine(
 		return when (provider.protocol) {
 			NovelAiProtocol.OPENAI_COMPATIBLE -> translateOpenAiCompatible(config, apiKey, request)
 			NovelAiProtocol.ANTHROPIC -> translateAnthropic(config, apiKey, request)
-			NovelAiProtocol.DEEPL -> translateDeepL(config, apiKey, request)
+			NovelAiProtocol.DEEPL -> translateDeepLBatch(config, apiKey, listOf(request)).single()
 		}
+	}
+
+	override suspend fun translateBatch(requests: List<NovelTranslationRequest>): List<String> {
+		if (requests.isEmpty()) return emptyList()
+		val config = currentConfiguration()
+		val provider = config.provider
+		if (provider.protocol != NovelAiProtocol.DEEPL) {
+			// Capability metadata prevents this path for non-batch providers. Keep a safe semantic
+			// fallback so a future custom resolver cannot accidentally drop work.
+			return requests.map { translate(it) }
+		}
+		val apiKey = secrets.get(provider)
+			?: throw NovelTranslationException.Configuration("API key is not configured for ${provider.displayName}")
+		return translateDeepLBatch(config, apiKey, requests)
 	}
 
 	override suspend fun listModels(): List<String> {
@@ -264,37 +282,52 @@ class NovelAiTranslationEngine(
 		}
 	}
 
-	private suspend fun translateDeepL(
+	/** DeepL's documented text[] contract returns translations in the same request order. */
+	private suspend fun translateDeepLBatch(
 		config: NovelAiTranslationConfiguration,
 		apiKey: String,
-		request: NovelTranslationRequest,
-	): String {
-		val target = request.targetLanguage.trim()
+		requests: List<NovelTranslationRequest>,
+	): List<String> {
+		if (requests.isEmpty()) return emptyList()
+		val first = requests.first()
+		val target = first.targetLanguage.trim()
 		if (target.isEmpty()) throw NovelTranslationException.Configuration("Target language is required")
-		val baseUrl = config.resolvedBaseUrl
-		val form = FormBody.Builder()
-			.add("text", request.text)
-			.add("target_lang", target.uppercase())
-			.apply {
-				request.sourceLanguage.takeUnless { it.isBlank() || it == NovelTranslationSettings.LANGUAGE_AUTO }
-					?.let { add("source_lang", it.uppercase()) }
-			}
-			.build()
+		if (requests.any { !it.targetLanguage.equals(first.targetLanguage, ignoreCase = true) }) {
+			throw NovelTranslationException.Configuration("Batch translation requires one target language")
+		}
+		val normalizedSource = first.sourceLanguage.takeUnless {
+			it.isBlank() || it == NovelTranslationSettings.LANGUAGE_AUTO
+		}?.uppercase()
+		if (requests.any { request ->
+			val source = request.sourceLanguage.takeUnless {
+				it.isBlank() || it == NovelTranslationSettings.LANGUAGE_AUTO
+			}?.uppercase()
+			source != normalizedSource
+		}) {
+			throw NovelTranslationException.Configuration("Batch translation requires one source language policy")
+		}
+		val body = buildJsonObject {
+			put("text", buildJsonArray { requests.forEach { add(JsonPrimitive(it.text)) } })
+			put("target_lang", target.uppercase())
+			normalizedSource?.let { put("source_lang", it) }
+		}
 		val response = client.newCall(
 			Request.Builder()
-				.url(baseUrl.toHttpUrl().newBuilder().addPathSegment("translate").build())
+				.url(config.resolvedBaseUrl.toHttpUrl().newBuilder().addPathSegment("translate").build())
 				.header("Authorization", "DeepL-Auth-Key $apiKey")
 				.header("User-Agent", USER_AGENT)
-				.post(form)
+				.post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
 				.build(),
 		).await()
 		response.use {
 			it.requireSuccessful()
 			val root = parseJson(it.body.string()).jsonObject
-			val translated = root["translations"]?.jsonArray
-				?.firstOrNull()?.jsonObject
-				?.get("text")?.jsonPrimitive?.contentOrNull.orEmpty()
-			if (translated.isBlank()) throw NovelTranslationException.InvalidResponse("DeepL returned an empty result")
+			val translated = root["translations"]?.jsonArray.orEmpty().map { item ->
+				item.jsonObject["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
+			}
+			if (translated.size != requests.size || translated.any { it.isBlank() }) {
+				throw NovelTranslationException.InvalidResponse("DeepL returned an incomplete batch result")
+			}
 			return translated
 		}
 	}
