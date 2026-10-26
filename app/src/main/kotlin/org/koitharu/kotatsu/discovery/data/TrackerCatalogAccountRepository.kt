@@ -109,7 +109,7 @@ class TrackerCatalogAccountRepository @Inject constructor(
 
 	suspend fun tracking(key: TrackerCatalogKey): CatalogTrackingEntry? {
 		requireSupported(key.service)
-		check(repositories[key.service].isAuthorized) { "${key.service} is not authorized" }
+		requireAuthorized(key.service)
 		val entry = when (key.service) {
 			ScrobblerService.ANILIST -> readAniList(key)
 			ScrobblerService.MAL -> readMAL(key)
@@ -131,7 +131,7 @@ class TrackerCatalogAccountRepository @Inject constructor(
 		existing: CatalogTrackingEntry?,
 	): CatalogTrackingEntry {
 		requireSupported(key.service)
-		check(repositories[key.service].isAuthorized) { "${key.service} is not authorized" }
+		requireAuthorized(key.service)
 		require(draft.status in catalogSupportedTrackingStatuses(key.service)) { "Unsupported ${key.service} status ${draft.status}" }
 		val remoteExisting = existing ?: tracking(key)
 		val entry = when (key.service) {
@@ -141,13 +141,14 @@ class TrackerCatalogAccountRepository @Inject constructor(
 			ScrobblerService.MANGABAKA -> saveMangaBaka(key, draft, remoteExisting)
 			else -> error("Unsupported Tracker Home account service ${key.service}")
 		}
+		syncPersistedAssociations(entry)
 		remember(key.service, key.remoteId.toLong(), entry)
 		return entry
 	}
 
 	suspend fun removeTracking(key: TrackerCatalogKey, existing: CatalogTrackingEntry?) {
 		requireSupported(key.service)
-		check(repositories[key.service].isAuthorized) { "${key.service} is not authorized" }
+		requireAuthorized(key.service)
 		val entry = existing ?: tracking(key) ?: return
 		when (key.service) {
 			ScrobblerService.ANILIST -> removeAniList(entry)
@@ -158,6 +159,25 @@ class TrackerCatalogAccountRepository @Inject constructor(
 		}
 		clearPersistedAssociations(key.service, key.remoteId.toLong())
 		remember(key.service, key.remoteId.toLong(), null)
+	}
+
+	private suspend fun syncPersistedAssociations(entry: CatalogTrackingEntry) {
+		val dao = database.getScrobblingDao()
+		val rawStatus = entry.status?.let { catalogTrackingStatusRaw(entry.service, it) }
+		dao.findByTarget(entry.service.id, entry.targetId).forEach { association ->
+			dao.upsert(
+				ScrobblingEntity(
+					scrobbler = association.scrobbler,
+					id = association.id,
+					mangaId = association.mangaId,
+					targetId = association.targetId,
+					status = rawStatus,
+					chapter = entry.chapter,
+					comment = association.comment,
+					rating = entry.rating,
+				),
+			)
+		}
 	}
 
 	private suspend fun clearPersistedAssociations(service: ScrobblerService, targetId: Long) {
@@ -389,6 +409,10 @@ class TrackerCatalogAccountRepository @Inject constructor(
 
 	private fun requireSupported(service: ScrobblerService) {
 		require(catalogSupportedTrackingStatuses(service).isNotEmpty())
+	}
+
+	private fun requireAuthorized(service: ScrobblerService) {
+		if (!repositories[service].isAuthorized) throw CatalogAccountUnauthorizedException(service)
 	}
 
 	private fun JSONObject.throwProviderErrors(service: ScrobblerService): JSONObject {
