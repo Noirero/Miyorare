@@ -2,20 +2,20 @@
 <resources>
     <string name="migration_batch_cancel">Batalkan batch berjalan</string>
     <string name="migration_batch_check">Periksa semua dan cari pengganti</string>
-    <string name="migration_batch_safety">Setiap manga diperiksa lebih dulu. Jika source saat ini rusak, Miyorare mencari pada source yang sudah terpasang. Kecocokan yang jelas menjadi Siap; hasil yang meragukan tetap menunggu pilihan Anda.</string>
+    <string name="migration_batch_safety">Setiap manga diperiksa lebih dulu. Jika manga tidak lagi dapat dibaca dari source saat ini, Miyorare mencari pada area source terpasang yang dipilih. Kecocokan yang jelas menjadi Siap; hasil yang meragukan tetap menunggu pilihan Anda.</string>
     <string name="migration_batch_unchecked">Belum diperiksa — ketuk untuk meninjau</string>
     <string name="migration_batch_queued">Menunggu dalam antrean batch</string>
-    <string name="migration_batch_checking">Memeriksa source / mencari pada source terpasang…</string>
-    <string name="migration_batch_checking_current">Memeriksa source saat ini…</string>
-    <string name="migration_batch_searching">Mencari pada source yang terpasang…</string>
+    <string name="migration_batch_checking">Memeriksa keterbacaan / mencari pada source terpasang…</string>
+    <string name="migration_batch_checking_current">Memeriksa apakah manga dari source saat ini masih bisa dibaca…</string>
+    <string name="migration_batch_searching">Mencari pada source terpasang yang dipilih…</string>
     <string name="migration_batch_searching_progress">Mencari pada source terpasang · %1$d/%2$d diperiksa</string>
     <string name="migration_batch_verifying">Memverifikasi %1$d kemungkinan hasil…</string>
     <string name="migration_batch_migrating">Sedang dimigrasikan…</string>
     <string name="migration_batch_ready">Siap — pengganti ditemukan</string>
     <string name="migration_batch_review">Pengganti ditemukan — pilih manual</string>
-    <string name="migration_batch_no_replacement">Tidak ada hasil pada source yang terpasang</string>
-    <string name="migration_batch_incomplete">Pencarian belum lengkap — coba lagi</string>
-    <string name="migration_batch_healthy">Source saat ini berfungsi</string>
+    <string name="migration_batch_no_replacement">Tidak ada hasil yang bisa dibaca pada source yang diperiksa</string>
+    <string name="migration_batch_incomplete">Area yang dipilih tidak dapat diperiksa dengan cukup andal — coba lagi atau pilih area lain</string>
+    <string name="migration_batch_healthy">Manga dari source saat ini masih bisa dibaca</string>
     <string name="migration_batch_interrupted">Terputus — periksa koleksi sebelum mencoba lagi</string>
     <string name="migration_batch_error">Belum dapat dimigrasikan dengan aman — tinjau atau coba lagi</string>
     <string name="migration_batch_empty">Tidak ada entri koleksi atau riwayat yang tersisa untuk source ini.</string>

@@ -2,9 +2,11 @@ package org.koitharu.kotatsu.alternatives.domain
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -14,6 +16,7 @@ import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
+import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -41,6 +44,7 @@ class AlternativesUseCase @Inject constructor(
 	private val searchHelperFactory: SearchV2Helper.Factory,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val historyRepository: HistoryRepository,
+	private val mihonExtensionManager: MihonExtensionManager,
 ) {
 
 	fun hasPinnedSources(): Boolean = sourcesRepository.getPinnedSources().isNotEmpty()
@@ -69,6 +73,38 @@ class AlternativesUseCase @Inject constructor(
 			.distinct()
 			.sorted()
 			.toList()
+	}
+
+	/**
+	 * Migration-only source pool. Runtime families are loaded independently and only when they can
+	 * serve the current content domain, so an irrelevant provider failure never poisons repair.
+	 */
+	suspend fun getMigrationSourcePool(manga: Manga): MigrationSourcePool = coroutineScope {
+		val isNovel = manga.isNovelContent
+		val results = buildList {
+			add(async {
+				runCatchingCancellable {
+					mihonExtensionManager.ensureReady()
+					sourcesRepository.observeMihonSources().first().map { it as MangaSource }
+				}
+			})
+			if (isNovel) {
+				add(async { runCatchingCancellable { sourcesRepository.getLnSources().map { it as MangaSource } } })
+			} else {
+				add(async { runCatchingCancellable { sourcesRepository.getTsukiSources().map { it as MangaSource } } })
+				add(async { runCatchingCancellable { sourcesRepository.getKotatsuSources().map { it as MangaSource } } })
+			}
+		}.awaitAll()
+		val merged = mergeMigrationProviderResults(results)
+		MigrationSourcePool(
+			allSources = merged.values
+				.asSequence()
+				.filter { it.name != manga.source.name && it.isNovelContentSource == isNovel }
+				.distinctBy(MangaSource::name)
+				.sortedBy { it.name }
+				.toList(),
+			providerFailureCount = merged.failureCount,
+		)
 	}
 
 	suspend fun getSources(

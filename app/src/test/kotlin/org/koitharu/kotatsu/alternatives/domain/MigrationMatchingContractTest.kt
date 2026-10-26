@@ -35,21 +35,22 @@ class MigrationMatchingContractTest {
 	fun `selected migration refreshes only approved identity before lossless execution`() {
 		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
 		val migrateSelected = source.substringAfter("suspendfunmigrateSelected(").substringBefore("privatesuspendfunvalidateSelection(")
-		val validation = source.substringAfter("privatesuspendfunvalidateSelection(").substringBefore("privatesuspendfunloadSeed(")
+		val validation = source.substringAfter("privatesuspendfunvalidateSelection(").substringBefore("privatesuspendfunloadStoredSeed(")
 
-		assertTrue(migrateSelected.contains("validateSelection(mangaId,selection)"))
+		assertTrue(migrateSelected.contains("validateSelection(mangaId,selection,allowReadableSource)"))
+		assertTrue(migrateSelected.contains("allowReadableSource:Boolean=false"))
 		assertFalse(migrateSelected.contains("discover(mangaId)"))
 		assertTrue(migrateSelected.contains("lossless=true,requireLibraryEntry=true"))
+		assertTrue(validation.contains("currentReadable=seed.isReadable()"))
+		assertTrue(validation.contains("if(currentReadable&&!allowReadableSource)returnMigrationDiscovery(seed,sourceHealthy=true)"))
 		assertTrue(validation.contains("filter{it.name==selection.source}"))
-		assertTrue(validation.contains("if(selectedSources.isEmpty())returnMigrationDiscovery(seed)"))
 		assertTrue(validation.contains("precomputedSources=selectedSources"))
 		assertTrue(validation.contains("event.manga.source.name==selection.source&&event.manga.id==selection.id"))
 		assertFalse(validation.contains("MigrationSelection.of(event.manga)==selection"))
 		assertTrue(validation.contains("if(selected!=null)break"))
-		assertTrue(validation.contains("selected?:returnMigrationDiscovery(seed,incomplete=validationError!=null)"))
-		assertTrue(validation.contains("probe.getOrNull()?:returnMigrationDiscovery(seed,incomplete=validationError!=null)"))
 		assertTrue(validation.contains("MigrationSelection.of(fresh)!=selection"))
 		assertTrue(validation.contains("candidateMatcher.assess"))
+		assertFalse(validation.contains("discover(mangaId)"))
 	}
 
 	@Test
@@ -62,6 +63,17 @@ class MigrationMatchingContractTest {
 		assertTrue(source.contains("searchSources(normalizedQuery,sources,manga.sourcetomanga.id,maxDetailCandidates)"))
 		assertTrue(source.contains("excluded==null||it.source!=excluded.first||it.id!=excluded.second"))
 		assertFalse(source.contains("filter{it.id!=manga.id}"))
+	}
+
+	@Test
+	fun `legacy fix entry points route through explicit migration UI`() {
+		val source = source("org/koitharu/kotatsu/alternatives/ui/AutoFixService.kt")
+		val entryPoints = source.substringAfter("companionobject{")
+
+		assertTrue(entryPoints.contains("ACTION_MIGRATION_REVIEW"))
+		assertTrue(entryPoints.contains("ACTION_MIGRATION"))
+		assertTrue(entryPoints.contains("context.startActivity("))
+		assertFalse(entryPoints.contains("startForegroundService"))
 	}
 
 	private fun source(relativePath: String): String {

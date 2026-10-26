@@ -15,6 +15,7 @@ data class MigrationBatchRequest(
 	val source: String,
 	val action: MigrationBatchAction,
 	val selection: MigrationSelection? = null,
+	val searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
 )
 
 data class MigrationBatchOutcome(
@@ -31,11 +32,12 @@ data class MigrationBatchSnapshot(
 	val outcome: MigrationBatchOutcome,
 	val running: Boolean = false,
 	val searchProgress: MigrationSearchProgress? = null,
+	val searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
 )
 
 object MigrationBatchPolicy {
 	fun assess(discovery: MigrationDiscovery, changed: Boolean = false): MigrationBatchOutcome = when {
-		discovery.sourceHealthy -> MigrationBatchOutcome(MigrationBatchStatus.HEALTHY)
+		discovery.currentSourceReadable -> MigrationBatchOutcome(MigrationBatchStatus.HEALTHY)
 		discovery.incomplete -> MigrationBatchOutcome(MigrationBatchStatus.INCOMPLETE)
 		discovery.assessment?.state == MigrationMatchState.READY && !changed -> MigrationBatchOutcome(
 			MigrationBatchStatus.READY, discovery.assessment.best?.manga?.let(MigrationSelection::of),
@@ -54,13 +56,23 @@ object MigrationBatchPolicy {
 			)
 		}
 
-	fun readyRequests(manga: Collection<Manga>, snapshots: Map<Long, MigrationBatchSnapshot>): List<MigrationBatchRequest> =
-		manga.mapNotNull { item ->
-			val snapshot = snapshots[item.id] ?: return@mapNotNull null
-			if (snapshot.source != item.source.name || snapshot.outcome.status != MigrationBatchStatus.READY || snapshot.running) return@mapNotNull null
-			val selection = snapshot.outcome.selection ?: return@mapNotNull null
-			MigrationBatchRequest(item.id, item.source.name, MigrationBatchAction.MIGRATE, selection)
-		}
+	fun readyRequests(
+		manga: Collection<Manga>,
+		snapshots: Map<Long, MigrationBatchSnapshot>,
+		searchScope: MigrationSearchScope? = null,
+	): List<MigrationBatchRequest> = manga.mapNotNull { item ->
+		val snapshot = snapshots[item.id] ?: return@mapNotNull null
+		if (searchScope != null && snapshot.searchScope != searchScope) return@mapNotNull null
+		if (snapshot.source != item.source.name || snapshot.outcome.status != MigrationBatchStatus.READY || snapshot.running) return@mapNotNull null
+		val selection = snapshot.outcome.selection ?: return@mapNotNull null
+		MigrationBatchRequest(
+			item.id,
+			item.source.name,
+			MigrationBatchAction.MIGRATE,
+			selection,
+			searchScope = snapshot.searchScope,
+		)
+	}
 
 	/** WorkManager persists each explicit outcome. Domain failures do not cancel later batch items. */
 	suspend fun process(

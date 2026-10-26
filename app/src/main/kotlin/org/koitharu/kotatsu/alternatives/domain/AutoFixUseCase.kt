@@ -24,9 +24,9 @@ class AutoFixUseCase @Inject constructor(
 ) {
 
 	suspend operator fun invoke(mangaId: Long): Pair<Manga, Manga?> {
-		val discovery = discover(mangaId)
+		val discovery = discover(mangaId, MigrationSearchScope.ALL)
 		val seed = discovery.seed
-		if (discovery.sourceHealthy) return seed to null
+		if (discovery.currentSourceReadable) return seed to null
 		if (discovery.incomplete) throw CandidateDiscoveryIncompleteException(ParcelableManga(seed))
 		val assessment = checkNotNull(discovery.assessment)
 		val replacement = when (assessment.state) {
@@ -48,14 +48,8 @@ class AutoFixUseCase @Inject constructor(
 		return seed to replacement
 	}
 
-	/**
-	 * Discovery is a preview, never permission to mutate user data.
-	 *
-	 * [onProgress] receives provisional search evidence while discovery is still running. Every result
-	 * returned by an installed source remains reviewable; only automatic migration keeps the stricter
-	 * identity threshold.
-	 */
-	suspend fun discover(
+	/** Only decides whether the current manga can still serve a readable page. */
+	suspend fun checkCurrentSource(
 		mangaId: Long,
 		onProgress: suspend (MigrationDiscovery) -> Unit = {},
 	): MigrationDiscovery {
@@ -71,17 +65,43 @@ class AutoFixUseCase @Inject constructor(
 				progress = MigrationSearchProgress(MigrationSearchPhase.CHECKING_SOURCE),
 			))
 		}
-		if (seed.isHealthy()) {
-			return MigrationDiscovery(seed, sourceHealthy = true)
-		}
+		return MigrationDiscovery(seed = seed, sourceHealthy = seed.isReadable())
+	}
 
-		// Broken-source migration searches enabled/installed sources only. Pinned/language filters are
-		// manual Alternatives preferences, not identity constraints for repair.
-		val sources = alternativesUseCase.getSources(seed, SearchSourceMode.ALL_SOURCES, emptySet())
+	suspend fun searchAvailability(mangaId: Long): MigrationSearchAvailability {
+		val seed = loadStoredSeed(mangaId).getDetailsSafe()
+		return alternativesUseCase.getMigrationSourcePool(seed).availability()
+	}
+
+	/**
+	 * Discovery is a preview, never permission to mutate user data. The current source being
+	 * unavailable is the reason to search, not an error state. Provider/source failures are isolated
+	 * and only become incomplete when the selected scope could not be meaningfully inspected at all.
+	 */
+	suspend fun discover(
+		mangaId: Long,
+		searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
+		onProgress: suspend (MigrationDiscovery) -> Unit = {},
+	): MigrationDiscovery {
+		val current = checkCurrentSource(mangaId, onProgress)
+		if (current.currentSourceReadable) return current
+		return searchReplacements(mangaId, searchScope, onProgress = onProgress)
+	}
+
+	suspend fun searchReplacements(
+		mangaId: Long,
+		searchScope: MigrationSearchScope,
+		currentSourceReadable: Boolean = false,
+		onProgress: suspend (MigrationDiscovery) -> Unit = {},
+	): MigrationDiscovery {
+		val seed = loadStoredSeed(mangaId).getDetailsSafe()
+		val pool = alternativesUseCase.getMigrationSourcePool(seed)
+		val sources = pool.sources(searchScope)
 		val queries = buildMigrationSearchQueries(seed)
 		val observations = ArrayList<MigrationCandidateObservation>()
 		val observedKeys = hashSetOf<Pair<String, Long>>()
-		var discoveryError: Throwable? = null
+		val sourceFailures = hashSetOf<String>()
+		val sourceSuccesses = hashSetOf<String>()
 
 		suspend fun publishSearchProgress(
 			query: String,
@@ -93,6 +113,8 @@ class AutoFixUseCase @Inject constructor(
 			onProgress(MigrationDiscovery(
 				seed = seed,
 				assessment = assessment,
+				sourceHealthy = currentSourceReadable,
+				partialFailureCount = pool.providerFailureCount + sourceFailures.size,
 				progress = MigrationSearchProgress(
 					phase = MigrationSearchPhase.SEARCHING_SOURCES,
 					query = query,
@@ -123,7 +145,7 @@ class AutoFixUseCase @Inject constructor(
 						observedKeys += event.manga.source.name to event.manga.id
 					}
 					is AlternativeSearchEvent.SourceFinished -> {
-						if (event.error != null && discoveryError == null) discoveryError = event.error
+						if (event.error != null) sourceFailures += event.source.name else sourceSuccesses += event.source.name
 						completedSources++
 						publishSearchProgress(query, index + 1, completedSources, event.source.name)
 					}
@@ -137,6 +159,8 @@ class AutoFixUseCase @Inject constructor(
 		onProgress(MigrationDiscovery(
 			seed = seed,
 			assessment = observations.takeIf { it.isNotEmpty() }?.let { candidateMatcher.assess(seed, it) },
+			sourceHealthy = currentSourceReadable,
+			partialFailureCount = pool.providerFailureCount + sourceFailures.size,
 			progress = MigrationSearchProgress(
 				phase = MigrationSearchPhase.VERIFYING_CANDIDATES,
 				candidateCount = ranked.size,
@@ -154,30 +178,54 @@ class AutoFixUseCase @Inject constructor(
 		}
 		val healthy = ArrayList<MigrationCandidateObservation>(probes.size)
 		for ((candidate, probe) in probes) {
-			if (probe.isFailure && discoveryError == null) discoveryError = probe.exceptionOrNull()
 			val details = probe.getOrNull() ?: continue
 			healthy += MigrationCandidateObservation(details, candidate.matchedQueries)
 		}
 		val assessment = candidateMatcher.assess(seed, healthy)
-		return MigrationDiscovery(seed, assessment, incomplete = discoveryError != null)
+		val incomplete = isMigrationScopeIncomplete(
+			scopedSourceNames = sources.map { it.name },
+			failedSourceNames = sourceFailures,
+			successfulSourceNames = sourceSuccesses,
+		)
+		return MigrationDiscovery(
+			seed = seed,
+			assessment = assessment,
+			sourceHealthy = currentSourceReadable,
+			incomplete = incomplete,
+			partialFailureCount = pool.providerFailureCount + sourceFailures.size,
+		)
 	}
 
 	/** Refresh the approved identity before executing; a UI snapshot is never identity authority. */
-	suspend fun migrateSelected(mangaId: Long, selection: MigrationSelection, reviewed: Boolean): Manga? {
-		val current = validateSelection(mangaId, selection)
-		if (current.sourceHealthy) return null
-		val replacement = MigrationExecutionPolicy.select(current, selection, reviewed)
+	suspend fun migrateSelected(
+		mangaId: Long,
+		selection: MigrationSelection,
+		reviewed: Boolean,
+		allowReadableSource: Boolean = false,
+	): Manga? {
+		val current = validateSelection(mangaId, selection, allowReadableSource)
+		if (current.currentSourceReadable && !allowReadableSource) return null
+		val replacement = MigrationExecutionPolicy.select(current, selection, reviewed, allowReadableSource)
 			?: throw SelectionChangedException(current)
 		migrateUseCase(oldManga = current.seed, newManga = replacement, lossless = true, requireLibraryEntry = true)
 		return replacement
 	}
 
-	private suspend fun validateSelection(mangaId: Long, selection: MigrationSelection): MigrationDiscovery {
+	private suspend fun validateSelection(
+		mangaId: Long,
+		selection: MigrationSelection,
+		allowReadableSource: Boolean,
+	): MigrationDiscovery {
 		val seed = loadSeed(mangaId)
-		if (seed.isHealthy()) return MigrationDiscovery(seed, sourceHealthy = true)
-		val selectedSources = alternativesUseCase.getSources(seed, SearchSourceMode.ALL_SOURCES, emptySet())
-			.filter { it.name == selection.source }
-		if (selectedSources.isEmpty()) return MigrationDiscovery(seed)
+		val currentReadable = seed.isReadable()
+		if (currentReadable && !allowReadableSource) return MigrationDiscovery(seed, sourceHealthy = true)
+		val pool = alternativesUseCase.getMigrationSourcePool(seed)
+		val selectedSources = pool.allSources.filter { it.name == selection.source }
+		if (selectedSources.isEmpty()) return MigrationDiscovery(
+			seed = seed,
+			sourceHealthy = currentReadable,
+			incomplete = pool.providerFailureCount > 0,
+		)
 
 		var selected: MigrationCandidateObservation? = null
 		var validationError: Throwable? = null
@@ -203,17 +251,26 @@ class AutoFixUseCase @Inject constructor(
 			}
 			if (selected != null) break
 		}
-		val approved = selected ?: return MigrationDiscovery(seed, incomplete = validationError != null)
+		val approved = selected ?: return MigrationDiscovery(
+			seed = seed,
+			sourceHealthy = currentReadable,
+			incomplete = validationError != null,
+		)
 		val probe = approved.manga.probeHealth()
 		if (probe.isFailure && validationError == null) validationError = probe.exceptionOrNull()
-		val fresh = probe.getOrNull() ?: return MigrationDiscovery(seed, incomplete = validationError != null)
-		if (MigrationSelection.of(fresh) != selection) return MigrationDiscovery(seed)
+		val fresh = probe.getOrNull() ?: return MigrationDiscovery(
+			seed = seed,
+			sourceHealthy = currentReadable,
+			incomplete = validationError != null,
+		)
+		if (MigrationSelection.of(fresh) != selection) return MigrationDiscovery(seed, sourceHealthy = currentReadable)
 		return MigrationDiscovery(
 			seed = seed,
 			assessment = candidateMatcher.assess(
 				seed,
 				listOf(MigrationCandidateObservation(fresh, approved.matchedQueries)),
 			),
+			sourceHealthy = currentReadable,
 			incomplete = validationError != null,
 		)
 	}
@@ -224,9 +281,9 @@ class AutoFixUseCase @Inject constructor(
 
 	private suspend fun loadSeed(mangaId: Long): Manga = loadStoredSeed(mangaId).getDetailsSafe()
 
-	private suspend fun Manga.isHealthy(): Boolean = getHealthyDetailsOrNull() != null
+	private suspend fun Manga.isReadable(): Boolean = getReadableDetailsOrNull() != null
 
-	private suspend fun Manga.getHealthyDetailsOrNull(): Manga? = probeHealth().getOrNull()
+	private suspend fun Manga.getReadableDetailsOrNull(): Manga? = probeHealth().getOrNull()
 
 	private suspend fun Manga.probeHealth(): Result<Manga?> = runCatchingCancellable {
 		val repo = mangaRepositoryFactory.create(source)

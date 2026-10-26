@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.platform.testTag
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
+import org.koitharu.kotatsu.alternatives.domain.MigrationSearchScope
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -102,6 +103,7 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 					onMigrateReady = viewModel::migrateReady,
 					onCancel = viewModel::cancelBatch,
 					onFilter = viewModel::setFilter,
+					onSearchScope = viewModel::setSearchScope,
 					onMangaClick = { manga ->
 						if (state.selectedIds.isEmpty()) {
 							(requireActivity() as org.koitharu.kotatsu.settings.SettingsActivity).openFragment(
@@ -239,6 +241,7 @@ private fun SourceMangaListScreen(
 	onMigrateReady: () -> Unit,
 	onCancel: () -> Unit,
 	onFilter: (MigrationBatchStatus?) -> Unit,
+	onSearchScope: (MigrationSearchScope) -> Unit,
 	onMangaClick: (Manga) -> Unit,
 	onMangaLongClick: (Manga) -> Unit,
 ) {
@@ -258,7 +261,7 @@ private fun SourceMangaListScreen(
 			}
 		}
 		if (state.manga.size > 1 || state.batchItems.size > 1) item {
-			MigrationBatchControls(state, onCheck, onMigrateReady, onCancel, onFilter)
+			MigrationBatchControls(state, onCheck, onMigrateReady, onCancel, onFilter, onSearchScope)
 		}
 		if (state.manga.isEmpty() && !state.failed) item {
 			Text(stringResource(R.string.migration_batch_empty), modifier = Modifier.padding(20.dp))
@@ -310,8 +313,8 @@ private fun SourceMangaRow(
 					MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
 				} else {
 					Color.Transparent
-				},
-			)
+			},
+		)
 			.then(
 				if (isSelected) {
 					Modifier.border(

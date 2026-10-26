@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.annotation.StringRes
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,7 +36,9 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.MigrationMatchCandidate
 import org.koitharu.kotatsu.alternatives.domain.MigrationMatchState
+import org.koitharu.kotatsu.alternatives.domain.MigrationSearchAvailability
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchPhase
+import org.koitharu.kotatsu.alternatives.domain.MigrationSearchScope
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
@@ -64,6 +68,9 @@ class MigrationReviewFragment : BaseComposeSettingsFragment(R.string.manga_migra
 						onMigrate = viewModel::migrate,
 						onOpenResult = { router.openDetails(it) },
 						onOpenCandidate = { router.openDetails(it) },
+						onScopeChange = viewModel::setSearchScope,
+						onSearch = viewModel::search,
+						onManualSearch = viewModel::enableManualSearch,
 					)
 				}
 			}
@@ -93,16 +100,24 @@ internal fun MigrationReviewScreen(
 	onMigrate: (Manga, Boolean) -> Unit,
 	onOpenResult: (Long) -> Unit,
 	onOpenCandidate: (Manga) -> Unit,
+	onScopeChange: (MigrationSearchScope) -> Unit = {},
+	onSearch: () -> Unit = {},
+	onManualSearch: () -> Unit = {},
 ) {
 	// Only user intent is saveable. Network matching evidence remains transient.
 	var selectedSource by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
 	var selectedId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
 	var selectedFingerprint by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
 	val discovery = state.discovery
-	val finalDecision = !state.loading
+	val finalDecision = !state.loading && state.hasSearched && !state.searchFailed
 	val ready = finalDecision && discovery != null && !discovery.incomplete &&
 		discovery.assessment?.state == MigrationMatchState.READY
-	val candidates = if (ready) listOfNotNull(discovery?.assessment?.best) else discovery?.assessment?.candidates.orEmpty()
+	val candidates = when {
+		state.searching -> discovery?.assessment?.candidates.orEmpty()
+		!finalDecision -> emptyList()
+		ready -> listOfNotNull(discovery?.assessment?.best)
+		else -> discovery?.assessment?.candidates.orEmpty()
+	}
 	val selected = candidates.firstOrNull { it.manga.id == selectedId && it.manga.source.name == selectedSource &&
 		org.koitharu.kotatsu.alternatives.domain.MigrationSelection.of(it.manga).fingerprint == selectedFingerprint }
 	val context = LocalContext.current
@@ -147,30 +162,58 @@ internal fun MigrationReviewScreen(
 					}
 				}
 			}
-			// Discovery may show provisional candidates while the remaining sources are still running.
-			// Execution stays disabled until final health checks return.
 			if (!state.searching || candidates.isEmpty()) return@Column
+			for (candidate in candidates) {
+				MigrationCandidateCard(
+					candidate = candidate,
+					selected = false,
+					imageLoader = imageLoader,
+					onSelect = {},
+					onOpenDetails = { onOpenCandidate(candidate.manga) },
+				)
+			}
+			return@Column
 		}
-		if (!state.loading) {
-			if (state.changed) Text(stringResource(R.string.migration_changed))
-			if (state.failed) Text(stringResource(R.string.migration_blocked), color = MaterialTheme.colorScheme.error)
-		}
+		if (state.changed) Text(stringResource(R.string.migration_changed))
+		if (state.failed) Text(stringResource(R.string.migration_blocked), color = MaterialTheme.colorScheme.error)
+		if (state.searchFailed) Text(stringResource(R.string.migration_search_failed), color = MaterialTheme.colorScheme.error)
 		when {
 			discovery == null -> Unit
-			discovery.sourceHealthy -> if (!state.loading) {
+			discovery.currentSourceReadable && !state.manualSearchEnabled -> {
 				Text(stringResource(R.string.migration_source_healthy))
+				TextButton(onClick = onManualSearch, modifier = Modifier.testTag("migration-manual-search")) {
+					Text(stringResource(R.string.migration_find_another_source))
+				}
 			}
 			else -> {
-				if (!state.loading) {
-					Text(stringResource(R.string.migration_source_problem))
-					val status = when {
-						discovery.incomplete -> R.string.migration_incomplete
-						discovery.assessment?.state == MigrationMatchState.READY -> R.string.migration_ready
-						discovery.assessment?.state == MigrationMatchState.NEEDS_REVIEW -> R.string.migration_review
-						else -> R.string.migration_no_replacement
-					}
-					Text(stringResource(status), style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("migration-status"))
+				Text(stringResource(
+					if (discovery.currentSourceReadable) R.string.migration_source_healthy else R.string.migration_source_unavailable,
+				))
+				MigrationScopeSelector(
+					availability = state.availability,
+					selectedScope = state.selectedScope,
+					onScopeChange = onScopeChange,
+					onSearch = onSearch,
+				)
+				if ((state.availability?.providerFailureCount ?: 0) > 0) {
+					Text(stringResource(R.string.migration_partial_provider_pool), style = MaterialTheme.typography.bodySmall)
 				}
+				if (!state.hasSearched || state.searchFailed) {
+					TextButton(onClick = onRetry, modifier = Modifier.testTag("migration-retry")) {
+						Text(stringResource(R.string.migration_retry))
+					}
+					return@Column
+				}
+				if (discovery.searchPartial) {
+					Text(stringResource(R.string.migration_partial_search), style = MaterialTheme.typography.bodySmall)
+				}
+				val status = when {
+					discovery.incomplete -> R.string.migration_incomplete
+					discovery.assessment?.state == MigrationMatchState.READY -> R.string.migration_ready
+					discovery.assessment?.state == MigrationMatchState.NEEDS_REVIEW -> R.string.migration_review
+					else -> R.string.migration_no_replacement
+				}
+				Text(stringResource(status), style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("migration-status"))
 				for (candidate in candidates) {
 					MigrationCandidateCard(
 						candidate = candidate,
@@ -184,20 +227,63 @@ internal fun MigrationReviewScreen(
 						onOpenDetails = { onOpenCandidate(candidate.manga) },
 					)
 				}
-				if (!state.loading && candidates.isNotEmpty()) {
+				if (candidates.isNotEmpty()) {
 					Text(stringResource(R.string.migration_preservation), style = MaterialTheme.typography.bodySmall)
 					val chosen = if (ready) discovery.assessment?.best else selected
 					Button(onClick = { chosen?.let { onMigrate(it.manga, !ready) } },
-						enabled = chosen != null, modifier = Modifier.fillMaxWidth().testTag("migration-execute")) {
+						enabled = chosen != null && !discovery.incomplete, modifier = Modifier.fillMaxWidth().testTag("migration-execute")) {
 						Text(stringResource(if (ready) R.string.migration_migrate else R.string.migration_confirm_review))
 					}
 				}
 			}
 		}
-		if (!state.loading) {
-			TextButton(onClick = onRetry, modifier = Modifier.testTag("migration-retry")) { Text(stringResource(R.string.migration_retry)) }
+		TextButton(onClick = onRetry, modifier = Modifier.testTag("migration-retry")) { Text(stringResource(R.string.migration_retry)) }
+	}
+}
+
+@Composable
+private fun MigrationScopeSelector(
+	availability: MigrationSearchAvailability?,
+	selectedScope: MigrationSearchScope,
+	onScopeChange: (MigrationSearchScope) -> Unit,
+	onSearch: () -> Unit,
+) {
+	Text(stringResource(R.string.migration_search_scope_title), style = MaterialTheme.typography.titleMedium)
+	Row(
+		modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("migration-scope-row"),
+		horizontalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		for (scope in MigrationSearchScope.entries) {
+			val count = availability?.count(scope) ?: 0
+			FilterChip(
+				selected = selectedScope == scope,
+				onClick = { onScopeChange(scope) },
+				enabled = availability != null && count > 0,
+				label = { Text(stringResource(R.string.migration_scope_with_count, stringResource(scope.labelRes()), count)) },
+				modifier = Modifier.testTag("migration-scope-${scope.name.lowercase()}"),
+			)
 		}
 	}
+	val selectedCount = availability?.count(selectedScope) ?: 0
+	if (availability != null && selectedCount == 0) {
+		Text(stringResource(R.string.migration_scope_empty), style = MaterialTheme.typography.bodySmall)
+	}
+	Button(
+		onClick = onSearch,
+		enabled = availability != null && selectedCount > 0,
+		modifier = Modifier.fillMaxWidth().testTag("migration-search"),
+	) {
+		Text(stringResource(R.string.migration_search_replacements))
+	}
+}
+
+@StringRes
+internal fun MigrationSearchScope.labelRes(): Int = when (this) {
+	MigrationSearchScope.ALL -> R.string.migration_scope_all
+	MigrationSearchScope.STORE -> R.string.migration_scope_store
+	MigrationSearchScope.UMA -> R.string.migration_scope_uma
+	MigrationSearchScope.GEKKOUSHI -> R.string.migration_scope_gekkoushi
+	MigrationSearchScope.MIYORARE -> R.string.migration_scope_miyorare
 }
 
 @Composable

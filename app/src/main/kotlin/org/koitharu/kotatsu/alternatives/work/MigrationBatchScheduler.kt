@@ -81,6 +81,7 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 						markerGeneration,
 						markerBatch,
 						snapshot.outcome.destinationId,
+						snapshot.searchScope,
 					).forEach { addTag(it) }
 				}
 				.build()

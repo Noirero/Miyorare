@@ -39,9 +39,22 @@ class MigrationExecutionPolicyTest {
 		assertNull(MigrationExecutionPolicy.select(p, MigrationSelection.of(first), false))
 		assertEquals(first, MigrationExecutionPolicy.select(p, MigrationSelection.of(first), true))
 	}
-	@Test fun missingOrHealthySourceNeverMigratesEvenAfterReview() {
+	@Test fun missingOrHealthySourceNeverMigratesWithoutExplicitReadableOverride() {
 		assertNull(MigrationExecutionPolicy.select(preview(), MigrationSelection.of(first), true))
 		assertNull(MigrationExecutionPolicy.select(preview(first).copy(sourceHealthy = true), MigrationSelection.of(first), true))
+	}
+	@Test fun readableSourceCanMigrateOnlyThroughExplicitSingleMangaOverride() {
+		val readable = preview(first).copy(sourceHealthy = true)
+		assertNull(MigrationExecutionPolicy.select(readable, MigrationSelection.of(first), false))
+		assertEquals(
+			first,
+			MigrationExecutionPolicy.select(
+				readable,
+				MigrationSelection.of(first),
+				reviewed = false,
+				allowReadableSource = true,
+			),
+		)
 	}
 	@Test fun candidateChangesRequireAnotherReviewInsteadOfTrustingAnOldId() {
 		val prior = MigrationSelection.of(first)

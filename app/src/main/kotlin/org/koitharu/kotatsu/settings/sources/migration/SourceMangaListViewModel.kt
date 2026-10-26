@@ -38,6 +38,9 @@ class SourceMangaListViewModel @Inject constructor(
 
 	private val _state = MutableStateFlow(SourceMangaListState(
 		filter = savedStateHandle.get<String>(FILTER)?.let { raw -> MigrationBatchStatus.entries.find { it.name == raw } },
+		searchScope = savedStateHandle.get<String>(SEARCH_SCOPE)
+			?.let { raw -> MigrationSearchScope.entries.find { it.name == raw } }
+			?: MigrationSearchScope.ALL,
 	))
 	val state: StateFlow<SourceMangaListState> = _state.asStateFlow()
 
@@ -98,9 +101,22 @@ class SourceMangaListViewModel @Inject constructor(
 		_state.update { it.copy(filter = filter) }
 	}
 
-	fun checkAll() = enqueue(state.value.manga.map { MigrationBatchRequest(it.id, it.source.name, MigrationBatchAction.CHECK) })
+	fun setSearchScope(scope: MigrationSearchScope) {
+		if (state.value.batchBusy || state.value.scheduling || state.value.searchScope == scope) return
+		savedStateHandle[SEARCH_SCOPE] = scope.name
+		savedStateHandle[FILTER] = null
+		_state.update { it.copy(searchScope = scope, filter = null) }
+	}
 
-	fun migrateReady() = enqueue(MigrationBatchPolicy.readyRequests(state.value.manga, state.value.batchItems))
+	fun checkAll() = enqueue(state.value.manga.map {
+		MigrationBatchRequest(it.id, it.source.name, MigrationBatchAction.CHECK, searchScope = state.value.searchScope)
+	})
+
+	fun migrateReady() = enqueue(MigrationBatchPolicy.readyRequests(
+		state.value.manga,
+		state.value.batchItems,
+		state.value.searchScope,
+	))
 
 	private fun enqueue(requests: List<MigrationBatchRequest>) {
 		if (state.value.scheduling || state.value.batchBusy || requests.isEmpty()) return
@@ -149,14 +165,18 @@ class SourceMangaListViewModel @Inject constructor(
 						migratedCount = latest.values.count { it.outcome.status == MigrationBatchStatus.MIGRATED },
 						unconfirmedCount = latest.values.count { it.mangaId !in visible && it.outcome.status == MigrationBatchStatus.INTERRUPTED })
 				}.flowOn(Dispatchers.IO).collect { projection ->
-					_state.update { current -> projection.copy(filter = current.filter, scheduling = current.scheduling,
+					_state.update { current -> projection.copy(filter = current.filter, searchScope = current.searchScope,
+						scheduling = current.scheduling,
 						selectedIds = current.selectedIds.intersect(projection.manga.mapTo(hashSetOf()) { it.id })) }
 				}
 			}.onFailure { _state.update { it.copy(isLoading = false, failed = true) } }
 		}
 	}
 
-	private companion object { const val FILTER = "migration_batch_filter" }
+	private companion object {
+		const val FILTER = "migration_batch_filter"
+		const val SEARCH_SCOPE = "migration_batch_search_scope"
+	}
 
 }
 
@@ -166,6 +186,7 @@ data class SourceMangaListState(
 	val manga: List<Manga> = emptyList(),
 	val selectedIds: Set<Long> = emptySet(),
 	val filter: MigrationBatchStatus? = null,
+	val searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
 	val batchItems: Map<Long, MigrationBatchSnapshot> = emptyMap(),
 	val batchBusy: Boolean = false,
 	val ownedBatchName: String? = null,
@@ -175,7 +196,16 @@ data class SourceMangaListState(
 	val migratedCount: Int = 0,
 	val unconfirmedCount: Int = 0,
 ) {
-	fun status(mangaId: Long): MigrationBatchStatus = batchItems[mangaId]?.outcome?.status ?: MigrationBatchStatus.UNCHECKED
+	fun status(mangaId: Long): MigrationBatchStatus {
+		val snapshot = batchItems[mangaId] ?: return MigrationBatchStatus.UNCHECKED
+		val status = snapshot.outcome.status
+		return if (
+			snapshot.searchScope == searchScope ||
+			status == MigrationBatchStatus.HEALTHY ||
+			status == MigrationBatchStatus.MIGRATED
+		) status else MigrationBatchStatus.UNCHECKED
+	}
+
 	val visibleManga: List<Manga> get() = manga.filter { filter == null || status(it.id) == filter }
-	val readyCount: Int get() = MigrationBatchPolicy.readyRequests(manga, batchItems).size
+	val readyCount: Int get() = MigrationBatchPolicy.readyRequests(manga, batchItems, searchScope).size
 }

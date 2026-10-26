@@ -370,7 +370,7 @@ abstract class MangaListFragment :
 				buildAlertDialog(context ?: return false, isCentered = true) {
 					setTitle(item.title)
 					setIcon(item.icon)
-					setMessage(R.string.manga_fix_prompt)
+					setMessage(R.string.migration_fix_entry_prompt)
 					setNegativeButton(android.R.string.cancel, null)
 					setPositiveButton(R.string.fix) { _, _ ->
 						AutoFixService.start(context, itemsSnapshot)

@@ -12,14 +12,22 @@ internal object MigrationBatchWork {
 	private const val GENERATION = "migration_generation:"
 	private const val BATCH = "migration_batch_name:"
 	private const val TARGET = "migration_target:"
+	private const val SCOPE = "migration_scope:"
 	private const val TERMINAL = "migration_terminal:"
 
 	fun tags(request: MigrationBatchRequest, generation: Long, batch: String): List<String> =
-		tags(request.mangaId, request.source, generation, batch, request.selection?.id)
+		tags(request.mangaId, request.source, generation, batch, request.selection?.id, request.searchScope)
 
-	fun tags(mangaId: Long, source: String, generation: Long, batch: String, destinationId: Long? = null): List<String> = buildList {
+	fun tags(
+		mangaId: Long,
+		source: String,
+		generation: Long,
+		batch: String,
+		destinationId: Long? = null,
+		searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
+	): List<String> = buildList {
 		add(TAG); add(ID + mangaId); add(SOURCE + source)
-		add(GENERATION + generation); add(BATCH + batch)
+		add(GENERATION + generation); add(BATCH + batch); add(SCOPE + searchScope.name)
 		destinationId?.let { add(TARGET + it) }
 	}
 
@@ -33,6 +41,7 @@ internal object MigrationBatchWork {
 	fun input(request: MigrationBatchRequest): Data = Data.Builder()
 		.putLong("request_id", request.mangaId).putString("request_source", request.source)
 		.putString("request_action", request.action.name)
+		.putString("request_scope", request.searchScope.name)
 		.putString("request_target_source", request.selection?.source)
 		.putLong("request_target_id", request.selection?.id ?: 0L)
 		.putString("request_fingerprint", request.selection?.fingerprint).build()
@@ -43,6 +52,9 @@ internal object MigrationBatchWork {
 		selection = data.getString("request_fingerprint")?.let { fingerprint ->
 			MigrationSelection(checkNotNull(data.getString("request_target_source")), data.getLong("request_target_id", 0L), fingerprint)
 		},
+		searchScope = data.getString("request_scope")
+			?.let { raw -> MigrationSearchScope.entries.find { it.name == raw } }
+			?: MigrationSearchScope.ALL,
 	)
 
 	fun output(outcome: MigrationBatchOutcome, searchProgress: MigrationSearchProgress? = null): Data = Data.Builder()
@@ -62,6 +74,11 @@ internal object MigrationBatchWork {
 
 	fun generation(tags: Set<String>): Long = tags.firstOrNull { it.startsWith(GENERATION) }
 		?.removePrefix(GENERATION)?.toLongOrNull() ?: 0L
+
+	fun searchScope(tags: Set<String>): MigrationSearchScope = tags.firstOrNull { it.startsWith(SCOPE) }
+		?.removePrefix(SCOPE)
+		?.let { raw -> MigrationSearchScope.entries.find { it.name == raw } }
+		?: MigrationSearchScope.ALL
 
 	private fun searchProgress(data: Data): MigrationSearchProgress? {
 		val phase = data.getString("search_phase")
@@ -105,6 +122,7 @@ internal object MigrationBatchWork {
 			outcome = MigrationBatchOutcome(status, selection, destinationId),
 			running = terminalStatus == null && !info.state.isFinished,
 			searchProgress = searchProgress(data),
+			searchScope = searchScope(info.tags),
 		)
 	}
 }
