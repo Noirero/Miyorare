@@ -12,6 +12,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.parsers.util.parseJson
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerType
@@ -32,11 +33,12 @@ private const val MAL_API_BASE = "https://api.myanimelist.net/v2"
 @Singleton
 class TrackerRelationsReader @Inject constructor(
 	@ScrobblerType(ScrobblerService.ANILIST) aniListClient: OkHttpClient,
-	@ScrobblerType(ScrobblerService.KITSU) kitsuClient: OkHttpClient,
+	@BaseHttpClient baseHttpClient: OkHttpClient,
 	@ScrobblerType(ScrobblerService.MAL) malClient: OkHttpClient,
 ) {
 	private val aniList = trackerDetailsClient(aniListClient)
-	private val kitsu = trackerDetailsClient(kitsuClient)
+	// Kitsu media relationships are a public catalog read; never attach the account bearer here.
+	private val kitsu = trackerDetailsClient(baseHttpClient)
 	private val mal = trackerDetailsClient(malClient)
 
 	fun supports(service: ScrobblerService): Boolean = service == ScrobblerService.ANILIST ||
