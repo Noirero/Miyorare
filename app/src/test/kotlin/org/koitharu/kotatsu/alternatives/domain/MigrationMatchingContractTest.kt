@@ -35,21 +35,22 @@ class MigrationMatchingContractTest {
 	fun `selected migration refreshes only approved identity before lossless execution`() {
 		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
 		val migrateSelected = source.substringAfter("suspendfunmigrateSelected(").substringBefore("privatesuspendfunvalidateSelection(")
-		val validation = source.substringAfter("privatesuspendfunvalidateSelection(").substringBefore("privatesuspendfunloadSeed(")
+		val validation = source.substringAfter("privatesuspendfunvalidateSelection(").substringBefore("privatesuspendfunloadStoredSeed(")
 
-		assertTrue(migrateSelected.contains("validateSelection(mangaId,selection)"))
+		assertTrue(migrateSelected.contains("validateSelection(mangaId,selection,allowReadableSource)"))
+		assertTrue(migrateSelected.contains("allowReadableSource:Boolean=false"))
 		assertFalse(migrateSelected.contains("discover(mangaId)"))
 		assertTrue(migrateSelected.contains("lossless=true,requireLibraryEntry=true"))
+		assertTrue(validation.contains("currentReadable=seed.isReadable()"))
+		assertTrue(validation.contains("if(currentReadable&&!allowReadableSource)returnMigrationDiscovery(seed,sourceHealthy=true)"))
 		assertTrue(validation.contains("filter{it.name==selection.source}"))
-		assertTrue(validation.contains("if(selectedSources.isEmpty())returnMigrationDiscovery(seed)"))
 		assertTrue(validation.contains("precomputedSources=selectedSources"))
 		assertTrue(validation.contains("event.manga.source.name==selection.source&&event.manga.id==selection.id"))
 		assertFalse(validation.contains("MigrationSelection.of(event.manga)==selection"))
 		assertTrue(validation.contains("if(selected!=null)break"))
-		assertTrue(validation.contains("selected?:returnMigrationDiscovery(seed,incomplete=validationError!=null)"))
-		assertTrue(validation.contains("probe.getOrNull()?:returnMigrationDiscovery(seed,incomplete=validationError!=null)"))
 		assertTrue(validation.contains("MigrationSelection.of(fresh)!=selection"))
 		assertTrue(validation.contains("candidateMatcher.assess"))
+		assertFalse(validation.contains("discover(mangaId)"))
 	}
 
 	@Test
