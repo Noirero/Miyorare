@@ -34,12 +34,13 @@ class MiyorareBuiltInTranslationEngine(
 }
 
 private class BuiltInTranslationRuntime private constructor(
-	private val applicationContext: Context,
+	@Suppress("unused") private val applicationContext: Context,
 ) {
 
 	private data class Session(
 		val translator: Translator,
 		val mutex: Mutex = Mutex(),
+		var users: Int = 0,
 	)
 
 	private val sessionsMutex = Mutex()
@@ -59,20 +60,24 @@ private class BuiltInTranslationRuntime private constructor(
 		val source = resolveSourceLanguage(request)
 		if (source.equals(target, ignoreCase = true)) return request.text
 
-		val session = session(source, target)
-		return session.mutex.withLock {
-			try {
-				session.translator.downloadModelIfNeeded(downloadConditions).awaitTask()
-				val translated = session.translator.translate(request.text).awaitTask()
-				if (translated.isBlank() && request.text.isNotBlank()) {
-					throw NovelTranslationException.InvalidResponse("Built-in translator returned an empty result")
+		val session = acquireSession(source, target)
+		return try {
+			session.mutex.withLock {
+				try {
+					session.translator.downloadModelIfNeeded(downloadConditions).awaitTask()
+					val translated = session.translator.translate(request.text).awaitTask()
+					if (translated.isBlank() && request.text.isNotBlank()) {
+						throw NovelTranslationException.InvalidResponse("Built-in translator returned an empty result")
+					}
+					translated
+				} catch (error: NovelTranslationException) {
+					throw error
+				} catch (error: Exception) {
+					throw IOException("Built-in translation failed", error)
 				}
-				translated
-			} catch (error: NovelTranslationException) {
-				throw error
-			} catch (error: Exception) {
-				throw IOException("Built-in translation failed", error)
 			}
+		} finally {
+			releaseSession(session)
 		}
 	}
 
@@ -101,23 +106,31 @@ private class BuiltInTranslationRuntime private constructor(
 			?: throw NovelTranslationException.Configuration("Built-in translation does not support $role language: $languageTag")
 	}
 
-	private suspend fun session(sourceLanguage: String, targetLanguage: String): Session = sessionsMutex.withLock {
+	private suspend fun acquireSession(sourceLanguage: String, targetLanguage: String): Session = sessionsMutex.withLock {
 		val key = "$sourceLanguage>$targetLanguage"
-		sessions[key]?.let { return@withLock it }
-		val translator = Translation.getClient(
+		val session = sessions[key] ?: Translation.getClient(
 			TranslatorOptions.Builder()
 				.setSourceLanguage(sourceLanguage)
 				.setTargetLanguage(targetLanguage)
 				.build(),
-		)
-		val created = Session(translator)
-		sessions[key] = created
+		).let { Session(it) }.also { sessions[key] = it }
+		session.users += 1
+		trimIdleSessions()
+		session
+	}
+
+	private suspend fun releaseSession(session: Session) = sessionsMutex.withLock {
+		session.users = (session.users - 1).coerceAtLeast(0)
+		trimIdleSessions()
+	}
+
+	/** Never close a translator while a caller is using or waiting to use that session. */
+	private fun trimIdleSessions() {
 		while (sessions.size > MAX_CACHED_TRANSLATORS) {
-			val eldest = sessions.entries.iterator().next()
-			sessions.remove(eldest.key)
-			eldest.value.translator.close()
+			val idle = sessions.entries.firstOrNull { it.value.users == 0 } ?: return
+			sessions.remove(idle.key)
+			idle.value.translator.close()
 		}
-		created
 	}
 
 	companion object {
