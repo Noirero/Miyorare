@@ -287,7 +287,7 @@ fun CatalogSpotlight(
 				Icon(
 					painterResource(R.drawable.ic_discovery_hub),
 					contentDescription = null,
-					tint = MaterialTheme.colorScheme.onSurfaceVariant,
+					tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
 					modifier = Modifier.padding(end = 32.dp).size(88.dp),
 				)
 			}
