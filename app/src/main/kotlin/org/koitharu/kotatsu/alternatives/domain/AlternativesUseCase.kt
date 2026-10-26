@@ -76,23 +76,26 @@ class AlternativesUseCase @Inject constructor(
 	}
 
 	/**
-	 * Migration-only source pool. Each runtime family is loaded independently so a broken optional
-	 * provider never prevents the usable providers from participating in repair.
+	 * Migration-only source pool. Runtime families are loaded independently and only when they can
+	 * serve the current content domain, so an irrelevant provider failure never poisons repair.
 	 */
 	suspend fun getMigrationSourcePool(manga: Manga): MigrationSourcePool = coroutineScope {
-		val results = listOf(
-			async {
+		val isNovel = manga.isNovelContent
+		val results = buildList {
+			add(async {
 				runCatchingCancellable {
 					mihonExtensionManager.ensureReady()
 					sourcesRepository.observeMihonSources().first().map { it as MangaSource }
 				}
-			},
-			async { runCatchingCancellable { sourcesRepository.getLnSources().map { it as MangaSource } } },
-			async { runCatchingCancellable { sourcesRepository.getTsukiSources().map { it as MangaSource } } },
-			async { runCatchingCancellable { sourcesRepository.getKotatsuSources().map { it as MangaSource } } },
-		).awaitAll()
+			})
+			if (isNovel) {
+				add(async { runCatchingCancellable { sourcesRepository.getLnSources().map { it as MangaSource } } })
+			} else {
+				add(async { runCatchingCancellable { sourcesRepository.getTsukiSources().map { it as MangaSource } } })
+				add(async { runCatchingCancellable { sourcesRepository.getKotatsuSources().map { it as MangaSource } } })
+			}
+		}.awaitAll()
 		val merged = mergeMigrationProviderResults(results)
-		val isNovel = manga.isNovelContent
 		MigrationSourcePool(
 			allSources = merged.values
 				.asSequence()
