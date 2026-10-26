@@ -17,23 +17,27 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import coil3.ImageLoader
+import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.main.ui.hasSharedSearchBar
 import org.koitharu.kotatsu.main.ui.installSharedSearchBarOwner
 import org.koitharu.kotatsu.main.ui.releaseSharedSearchBarOwner
 import org.koitharu.kotatsu.main.ui.updateSharedSearchBarHint
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
+import org.koitharu.kotatsu.scrobbling.common.ui.ScrobblerAuthHelper
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class DiscoveryHubFragment : Fragment() {
 	@Inject lateinit var imageLoader: ImageLoader
+	@Inject lateinit var scrobblerAuthHelper: ScrobblerAuthHelper
 	private val viewModel by viewModels<DiscoveryHubViewModel>()
 	private val scrollRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -45,6 +49,8 @@ class DiscoveryHubFragment : Fragment() {
 		setContent { MiyorareTheme {
 			CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
 				val state by viewModel.state.collectAsState()
+				val account by viewModel.account.collectAsState()
+				val knownTracking by viewModel.knownTracking.collectAsState()
 				DiscoveryHubScreen(
 					state = state,
 					services = viewModel.services,
@@ -58,6 +64,13 @@ class DiscoveryHubFragment : Fragment() {
 					onAttribution = { router.openExternalBrowser(when (state.request.service) { ScrobblerService.ANILIST -> "https://anilist.co"; ScrobblerService.MAL -> "https://myanimelist.net"; else -> "https://kitsu.app" }) },
 					scrollRequests = scrollRequests,
 					showLocalSearch = (activity as? MainActivity)?.hasSharedSearchBar() != true,
+					account = account,
+					knownTracking = knownTracking,
+					onAccountLogin = { startAccountAuth(state.request.service) },
+					onAccountProfile = { account.profileUrl?.let(router::openExternalBrowser) },
+					onAccountMyList = { router.openScrobblerSettings(state.request.service) },
+					onAccountManage = router::openSettings,
+					onAccountLogout = viewModel::logoutAccount,
 				)
 			}
 		} }
@@ -79,6 +92,7 @@ class DiscoveryHubFragment : Fragment() {
 
 	override fun onResume() {
 		super.onResume()
+		viewModel.refreshAccount()
 		if (!isHidden) installDiscoverySearchHandler()
 	}
 
@@ -87,6 +101,7 @@ class DiscoveryHubFragment : Fragment() {
 		if (hidden) {
 			releaseDiscoverySearchHandler()
 		} else if (view != null) {
+			viewModel.refreshAccount()
 			installDiscoverySearchHandler()
 		}
 	}
@@ -94,6 +109,12 @@ class DiscoveryHubFragment : Fragment() {
 	override fun onDestroyView() {
 		releaseDiscoverySearchHandler()
 		super.onDestroyView()
+	}
+
+	private fun startAccountAuth(service: ScrobblerService) {
+		scrobblerAuthHelper.startAuth(requireContext(), service).onFailure {
+			Snackbar.make(requireView(), it.getDisplayMessage(resources), Snackbar.LENGTH_LONG).show()
+		}
 	}
 
 	private fun installDiscoverySearchHandler() {
