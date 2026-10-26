@@ -175,10 +175,9 @@ class DiscoveryHubViewModel @Inject constructor(
 			} catch (_: CatalogAccountUnauthorizedException) {
 				if (token == personalGeneration && state.value.request == request) {
 					// An expired session can no longer establish remote truth, so do not keep stale
-					// badges sourced from an earlier account snapshot.
+					// badges or personal rails sourced from an earlier account snapshot.
 					mutableKnownTracking.value = emptyMap()
-					mutableMangaBakaPersonal.value = mutableMangaBakaPersonal.value.copy(
-						loading = false,
+					mutableMangaBakaPersonal.value = MangaBakaPersonalHomeState(
 						failed = true,
 						authExpired = true,
 					)
