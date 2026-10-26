@@ -13,6 +13,7 @@
     <string name="migration_blocked">Migrasi tidak dapat diselesaikan dengan aman. Data koleksi yang ada tidak ditimpa. Periksa koleksi lalu coba lagi.</string>
     <string name="migration_search_failed">Pencarian pengganti tidak dapat disiapkan atau diselesaikan. Tidak ada migrasi yang dilakukan. Pilih area pencarian lalu coba lagi.</string>
     <string name="migration_source_healthy">Manga ini masih dapat dibaca dari source saat ini. Migrasi tidak diperlukan.</string>
+    <string name="migration_find_another_source">Cari source lain juga</string>
     <string name="migration_source_unavailable">Source saat ini tidak dapat menyediakan halaman yang bisa dibaca. Pilih tempat untuk mencari pengganti.</string>
     <string name="migration_source_problem">Source saat ini tidak dapat menyediakan halaman yang bisa dibaca. Manga tetap disimpan selama Anda memilih pengganti.</string>
     <string name="migration_search_scope_title">Cari pengganti di</string>
