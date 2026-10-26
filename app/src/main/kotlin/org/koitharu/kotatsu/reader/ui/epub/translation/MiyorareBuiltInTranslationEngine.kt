@@ -11,6 +11,7 @@ import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
 import java.io.IOException
 import java.util.LinkedHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -70,6 +71,8 @@ private class BuiltInTranslationRuntime private constructor(
 						throw NovelTranslationException.InvalidResponse("Built-in translator returned an empty result")
 					}
 					translated
+				} catch (error: CancellationException) {
+					throw error
 				} catch (error: NovelTranslationException) {
 					throw error
 				} catch (error: Exception) {
@@ -88,6 +91,8 @@ private class BuiltInTranslationRuntime private constructor(
 		}
 		val detected = try {
 			languageIdentifier.identifyLanguage(request.text).awaitTask()
+		} catch (error: CancellationException) {
+			throw error
 		} catch (error: Exception) {
 			throw IOException("Built-in language detection failed", error)
 		}
