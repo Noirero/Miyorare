@@ -15,6 +15,7 @@ data class MigrationBatchRequest(
 	val source: String,
 	val action: MigrationBatchAction,
 	val selection: MigrationSelection? = null,
+	val searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
 )
 
 data class MigrationBatchOutcome(
@@ -35,7 +36,7 @@ data class MigrationBatchSnapshot(
 
 object MigrationBatchPolicy {
 	fun assess(discovery: MigrationDiscovery, changed: Boolean = false): MigrationBatchOutcome = when {
-		discovery.sourceHealthy -> MigrationBatchOutcome(MigrationBatchStatus.HEALTHY)
+		discovery.currentSourceReadable -> MigrationBatchOutcome(MigrationBatchStatus.HEALTHY)
 		discovery.incomplete -> MigrationBatchOutcome(MigrationBatchStatus.INCOMPLETE)
 		discovery.assessment?.state == MigrationMatchState.READY && !changed -> MigrationBatchOutcome(
 			MigrationBatchStatus.READY, discovery.assessment.best?.manga?.let(MigrationSelection::of),
