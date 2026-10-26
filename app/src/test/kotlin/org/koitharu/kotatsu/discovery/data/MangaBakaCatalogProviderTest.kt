@@ -111,6 +111,30 @@ class MangaBakaCatalogProviderTest {
 	}
 
 	@Test
+	fun `Novel section paging scans past a sparse provider page`() = runBlocking {
+		val requestedPages = mutableListOf<Int>()
+		val provider = MangaBakaCatalogProvider(http { request ->
+			assertEquals("/v2/series/discover/rising", request.url.encodedPath)
+			assertNull(request.url.queryParameter("type"))
+			val page = requireNotNull(request.url.queryParameter("page")).toInt()
+			requestedPages += page
+			when (page) {
+				1 -> """{"data":[$manhwa],"pagination":{"next":true}}"""
+				2 -> """{"data":[$novel],"pagination":{"next":false}}"""
+				else -> error("Unexpected provider page $page")
+			}
+		})
+		val page = provider.browseSection(
+			CatalogSectionKey(ScrobblerService.MANGABAKA, CatalogMediaKind.NOVEL, CatalogSectionType.RISING),
+			allowAdult = false,
+			page = 1,
+		)
+		assertEquals(listOf(1, 2), requestedPages)
+		assertEquals(listOf("703"), page.items.map { it.key.remoteId })
+		assertNull(page.nextPage)
+	}
+
+	@Test
 	fun `mixed section paging preserves item identity`() = runBlocking {
 		val provider = MangaBakaCatalogProvider(http { request ->
 			assertEquals("/v2/series/discover/rising", request.url.encodedPath)
