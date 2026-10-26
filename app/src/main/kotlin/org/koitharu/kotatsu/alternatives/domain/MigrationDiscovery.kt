@@ -50,8 +50,13 @@ data class MigrationSelection(val source: String, val id: Long, val fingerprint:
 }
 
 object MigrationExecutionPolicy {
-	fun select(current: MigrationDiscovery, selection: MigrationSelection, reviewed: Boolean): Manga? {
-		if (current.currentSourceReadable) return null
+	fun select(
+		current: MigrationDiscovery,
+		selection: MigrationSelection,
+		reviewed: Boolean,
+		allowReadableSource: Boolean = false,
+	): Manga? {
+		if (current.currentSourceReadable && !allowReadableSource) return null
 		val assessment = current.assessment ?: return null
 		if (!reviewed && (current.incomplete || assessment.state != MigrationMatchState.READY ||
 			assessment.best?.manga?.let(MigrationSelection::of) != selection)) return null
