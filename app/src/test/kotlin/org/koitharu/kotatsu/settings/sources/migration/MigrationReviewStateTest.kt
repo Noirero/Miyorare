@@ -33,7 +33,7 @@ class MigrationReviewStateTest {
 	)
 
 	@Test
-	fun `changing scope invalidates prior search evidence but keeps stable context`() {
+	fun `changing scope invalidates prior search evidence but keeps stable context and chosen path`() {
 		val availability = MigrationSearchAvailability(
 			counts = mapOf(MigrationSearchScope.ALL to 4, MigrationSearchScope.UMA to 2),
 		)
@@ -48,6 +48,7 @@ class MigrationReviewStateTest {
 			availability = availability,
 			selectedScope = MigrationSearchScope.ALL,
 			hasSearched = true,
+			currentSourceChecked = true,
 			manualSearchEnabled = true,
 			searchFailed = true,
 			failed = true,
@@ -62,6 +63,7 @@ class MigrationReviewStateTest {
 		assertFalse(after.searchFailed)
 		assertFalse(after.failed)
 		assertFalse(after.changed)
+		assertTrue(after.currentSourceChecked)
 		assertTrue(after.manualSearchEnabled)
 		assertSame(availability, after.availability)
 		assertNotNull(after.discovery)
@@ -70,6 +72,18 @@ class MigrationReviewStateTest {
 		assertFalse(after.discovery?.incomplete == true)
 		assertEquals(0, after.discovery?.partialFailureCount)
 		assertNull(after.discovery?.assessment)
+	}
+
+	@Test
+	fun `initial local seed is not treated as a completed current source check`() {
+		val state = MigrationReviewState(
+			loading = false,
+			discovery = MigrationDiscovery(seed),
+		)
+
+		assertFalse(state.currentSourceChecked)
+		assertFalse(state.manualSearchEnabled)
+		assertFalse(state.hasSearched)
 	}
 
 	@Test
