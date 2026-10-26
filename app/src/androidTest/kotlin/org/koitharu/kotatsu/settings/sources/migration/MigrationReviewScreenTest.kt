@@ -30,6 +30,7 @@ class MigrationReviewScreenTest {
 		return MigrationReviewState(
 			loading = false,
 			hasSearched = true,
+			currentSourceChecked = true,
 			discovery = MigrationDiscovery(
 				seed,
 				MigrationCandidateMatcher().assess(seed, listOf(MigrationCandidateObservation(next))),
@@ -37,6 +38,26 @@ class MigrationReviewScreenTest {
 			),
 		)
 	}
+
+	@Test fun initialScreenWaitsForExplicitUserChoice() {
+		var checks = 0
+		var direct = 0
+		compose.setContent { MaterialTheme { MigrationReviewScreen(
+			MigrationReviewState(loading = false, discovery = MigrationDiscovery(seed)),
+			imageLoader,
+			onRetry = { checks++ },
+			onMigrate = { _, _ -> fail() },
+			onOpenResult = {},
+			onOpenCandidate = {},
+			onManualSearch = { direct++ },
+		) } }
+		compose.onNodeWithTag("migration-loading").assertDoesNotExist()
+		compose.onNodeWithTag("migration-check-current").assertIsEnabled().performClick()
+		compose.onNodeWithTag("migration-direct-search").assertIsEnabled().performClick()
+		assertEquals(1, checks)
+		assertEquals(1, direct)
+	}
+
 	@Test fun readyShowsSourcesPreservationAndRequiresExplicitAction() {
 		var executed = false
 		compose.setContent { MaterialTheme { MigrationReviewScreen(state(), imageLoader, {}, { _, reviewed -> assertFalse(reviewed); executed = true }, {}, {}) } }
@@ -46,6 +67,7 @@ class MigrationReviewScreenTest {
 		compose.onNodeWithTag("migration-execute").performScrollTo().performClick()
 		assertTrue(executed)
 	}
+
 	@Test fun unavailableStopsForScopeChoiceBeforeSearch() {
 		val availability = MigrationSearchAvailability(
 			counts = mapOf(
@@ -59,7 +81,12 @@ class MigrationReviewScreenTest {
 		var chosen: MigrationSearchScope? = null
 		var searches = 0
 		compose.setContent { MaterialTheme { MigrationReviewScreen(
-			state = MigrationReviewState(loading = false, discovery = MigrationDiscovery(seed), availability = availability),
+			state = MigrationReviewState(
+				loading = false,
+				currentSourceChecked = true,
+				discovery = MigrationDiscovery(seed),
+				availability = availability,
+			),
 			imageLoader = imageLoader,
 			onRetry = {},
 			onMigrate = { _, _ -> fail("Search must happen before migration") },
@@ -72,12 +99,32 @@ class MigrationReviewScreenTest {
 		compose.onNodeWithTag("migration-scope-all").assertIsEnabled()
 		compose.onNodeWithTag("migration-scope-gekkoushi").assertIsNotEnabled()
 		compose.onNodeWithTag("migration-execute").assertDoesNotExist()
-		compose.onNodeWithTag("migration-retry").assertExists()
 		compose.onNodeWithTag("migration-scope-uma").performClick()
 		assertEquals(MigrationSearchScope.UMA, chosen)
 		compose.onNodeWithTag("migration-search").performClick()
 		assertEquals(1, searches)
 	}
+
+	@Test fun directSearchPathDoesNotPretendTheCurrentSourceWasChecked() {
+		val availability = MigrationSearchAvailability(counts = mapOf(MigrationSearchScope.ALL to 3))
+		compose.setContent { MaterialTheme { MigrationReviewScreen(
+			state = MigrationReviewState(
+				loading = false,
+				discovery = MigrationDiscovery(seed),
+				availability = availability,
+				manualSearchEnabled = true,
+			),
+			imageLoader = imageLoader,
+			onRetry = {},
+			onMigrate = { _, _ -> fail() },
+			onOpenResult = {},
+			onOpenCandidate = {},
+		) } }
+		compose.onNodeWithText(context.getString(R.string.migration_direct_search_active)).assertExists()
+		compose.onNodeWithText(context.getString(R.string.migration_source_unavailable)).assertDoesNotExist()
+		compose.onNodeWithTag("migration-search").assertIsEnabled()
+	}
+
 	@Test fun progressiveDiscoveryShowsCandidatesBeforeFinalDecisionWithoutExecution() {
 		val progress = state(review = true).copy(loading = true, searching = true)
 		compose.setContent { MaterialTheme { MigrationReviewScreen(progress, imageLoader, {}, { _, _ -> fail("Provisional candidate must not execute") }, {}, {}) } }
@@ -85,8 +132,8 @@ class MigrationReviewScreenTest {
 		compose.onNodeWithTag("migration-candidate:NEW:2").performScrollTo().assertExists()
 		compose.onNodeWithText(context.getString(R.string.migration_replacement_source, "NEW")).assertExists()
 		compose.onNodeWithTag("migration-execute").assertDoesNotExist()
-		compose.onNodeWithTag("migration-retry").assertDoesNotExist()
 	}
+
 	@Test fun reviewSelectionSurvivesSavedStateRecreationButNeverExecutesItself() {
 		val restore = StateRestorationTester(compose)
 		var executions = 0
@@ -98,10 +145,15 @@ class MigrationReviewScreenTest {
 		compose.onNodeWithTag("migration-execute").performScrollTo().assertIsEnabled().performClick()
 		assertEquals(1, executions)
 	}
+
 	@Test fun candidateCoverAndDetailsKeepSelectionSeparate() {
 		val next = candidate.copy(authors = emptySet(), coverUrl = "file:///migration-candidate-cover.jpg")
-		val reviewState = MigrationReviewState(loading = false, hasSearched = true, discovery = MigrationDiscovery(seed,
-			MigrationCandidateMatcher().assess(seed, listOf(MigrationCandidateObservation(next)))))
+		val reviewState = MigrationReviewState(
+			loading = false,
+			hasSearched = true,
+			currentSourceChecked = true,
+			discovery = MigrationDiscovery(seed, MigrationCandidateMatcher().assess(seed, listOf(MigrationCandidateObservation(next)))),
+		)
 		var opened: Manga? = null
 		compose.setContent { MaterialTheme { MigrationReviewScreen(
 			state = reviewState,
@@ -117,37 +169,48 @@ class MigrationReviewScreenTest {
 		assertEquals(next, opened)
 		compose.onNodeWithTag("migration-execute").performScrollTo().assertIsNotEnabled()
 	}
-	@Test fun incompleteAndNoReplacementAreDifferentRecoverableStates() {
+
+	@Test fun incompleteAndNoReplacementAreDifferentStates() {
 		compose.setContent { MaterialTheme { MigrationReviewScreen(state(incomplete = true), imageLoader, {}, { _, _ -> fail("Must review first") }, {}, {}) } }
 		compose.onNodeWithText(context.getString(R.string.migration_incomplete)).assertExists()
 		compose.onNodeWithText(context.getString(R.string.migration_no_replacement)).assertDoesNotExist()
 		compose.onNodeWithTag("migration-execute").performScrollTo().assertIsNotEnabled()
-		compose.onNodeWithTag("migration-retry").performScrollTo().assertIsEnabled()
 	}
+
 	@Test fun busyStateDoesNotOfferDuplicateExecution() {
 		compose.setContent { MaterialTheme { MigrationReviewScreen(MigrationReviewState(loading = true), imageLoader, {}, { _, _ -> fail() }, {}, {}) } }
 		compose.onNodeWithTag("migration-loading").assertExists()
 		compose.onNodeWithTag("migration-execute").assertDoesNotExist()
+		compose.onNodeWithTag("migration-check-current").assertDoesNotExist()
 	}
-	@Test fun unresolvedKeepsRetryWithoutMigrationAction() {
-		var retries = 0
-		val unresolved = MigrationReviewState(loading = false, hasSearched = true, discovery = MigrationDiscovery(seed,
-			MigrationCandidateMatcher().assess(seed, emptyList())))
-		compose.setContent { MaterialTheme { MigrationReviewScreen(unresolved, imageLoader, { retries++ }, { _, _ -> fail() }, {}, {}) } }
+
+	@Test fun unresolvedHasNoMigrationAction() {
+		val unresolved = MigrationReviewState(
+			loading = false,
+			hasSearched = true,
+			currentSourceChecked = true,
+			discovery = MigrationDiscovery(seed, MigrationCandidateMatcher().assess(seed, emptyList())),
+		)
+		compose.setContent { MaterialTheme { MigrationReviewScreen(unresolved, imageLoader, {}, { _, _ -> fail() }, {}, {}) } }
 		compose.onNodeWithText(context.getString(R.string.migration_no_replacement)).assertExists()
 		compose.onNodeWithTag("migration-execute").assertDoesNotExist()
-		compose.onNodeWithTag("migration-retry").performScrollTo().performClick()
-		assertEquals(1, retries)
 	}
+
 	@Test fun searchFailureIsNotReportedAsTransferConflict() {
 		compose.setContent { MaterialTheme { MigrationReviewScreen(
-			MigrationReviewState(loading = false, discovery = MigrationDiscovery(seed), searchFailed = true),
+			MigrationReviewState(
+				loading = false,
+				currentSourceChecked = true,
+				discovery = MigrationDiscovery(seed),
+				searchFailed = true,
+			),
 			imageLoader, {}, { _, _ -> fail() }, {}, {},
 		) } }
 		compose.onNodeWithText(context.getString(R.string.migration_search_failed)).assertExists()
 		compose.onNodeWithText(context.getString(R.string.migration_blocked)).assertDoesNotExist()
 		compose.onNodeWithTag("migration-retry").assertExists()
 	}
+
 	@Test fun completedStateOffersOnlyThePersistedDestination() {
 		var opened: Long? = null
 		compose.setContent { MaterialTheme { MigrationReviewScreen(MigrationReviewState(loading = false, completedId = 42L), imageLoader, {}, { _, _ -> fail() }, { opened = it }, {}) } }
@@ -155,12 +218,17 @@ class MigrationReviewScreenTest {
 		compose.onNodeWithText(context.getString(R.string.migration_open_result)).performClick()
 		assertEquals(42L, opened)
 	}
-	@Test fun recoveredSourceDoesNotOfferMigration() {
-		val healthy = MigrationReviewState(loading = false, discovery = MigrationDiscovery(seed, sourceHealthy = true))
+
+	@Test fun recoveredSourceDoesNotOfferMigrationUnlessUserChoosesDirectSearch() {
+		val healthy = MigrationReviewState(
+			loading = false,
+			currentSourceChecked = true,
+			discovery = MigrationDiscovery(seed, sourceHealthy = true),
+		)
 		compose.setContent { MaterialTheme { MigrationReviewScreen(healthy, imageLoader, {}, { _, _ -> fail() }, {}, {}) } }
 		compose.onNodeWithText(context.getString(R.string.migration_source_healthy)).assertExists()
 		compose.onNodeWithTag("migration-execute").assertDoesNotExist()
 		compose.onNodeWithTag("migration-search").assertDoesNotExist()
+		compose.onNodeWithTag("migration-manual-search").assertIsEnabled()
 	}
-
 }
