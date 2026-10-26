@@ -3,11 +3,10 @@
     <string name="novel_translation_engine">Translation engine</string>
     <string name="novel_translation_title">Translation</string>
     <string name="novel_translation_built_in">Built-in</string>
-    <string name="novel_translation_built_in_summary">On-device • Downloads language models on first use • Works offline afterward</string>
-    <string name="novel_translation_built_in_attribution">Built-in translation runs on this device. First use may download a language model (about 30 MB per language). powered by Google Translate. Tap for Google Translate.</string>
-    <string name="novel_translation_translate_with_google">Translate with Google</string>
-    <string name="novel_translation_powered_by_google_translate">powered by Google Translate</string>
-    <string name="novel_translation_google_disclaimer">THIS SERVICE MAY CONTAIN TRANSLATIONS POWERED BY GOOGLE. GOOGLE DISCLAIMS ALL WARRANTIES RELATED TO THE TRANSLATIONS, EXPRESS OR IMPLIED, INCLUDING ANY WARRANTIES OF ACCURACY, RELIABILITY, AND ANY IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.</string>
+    <string name="novel_translation_built_in_summary">Android system translation • On-device when the language pack is installed • No translation runtime bundled in Miyorare</string>
+    <string name="novel_translation_built_in_info">Uses the Android system/OEM on-device translation service. Language packs are managed by your device. Built-in requires Android 12 or newer and may not be available on every device.</string>
+    <string name="novel_translation_manage_system_translation">Manage system translation</string>
+    <string name="novel_translation_system_settings_unavailable">System translation settings are not available on this device.</string>
     <string name="novel_translation_online">Miyorare Online</string>
     <string name="novel_translation_online_summary">Online • No API key required</string>
     <string name="novel_translation_ai">AI Translation</string>

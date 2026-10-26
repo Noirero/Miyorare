@@ -252,8 +252,7 @@ dependencies {
 	ksp libs.androidx.room.compiler
 
 	implementation libs.play.services.auth
-	implementation 'com.google.mlkit:translate:17.0.3'
-	implementation 'com.google.mlkit:language-id:17.0.6'
+	implementation 'com.google.android.gms:play-services-mlkit-language-id:17.0.0'
 
 	implementation libs.okhttp
 	implementation libs.okhttp.brotli

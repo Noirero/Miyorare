@@ -18,16 +18,4 @@
 		android:layout_gravity="center"
 		android:visibility="gone" />
 
-	<org.koitharu.kotatsu.reader.ui.epub.translation.BuiltInTranslationAttributionView
-		android:id="@+id/builtInTranslationAttribution"
-		android:layout_width="wrap_content"
-		android:layout_height="wrap_content"
-		android:layout_gravity="bottom|end"
-		android:layout_margin="12dp"
-		android:background="@drawable/bg_novel_translation_attribution"
-		android:elevation="4dp"
-		android:textColor="?attr/colorOnSurface"
-		android:textSize="12sp"
-		android:visibility="gone" />
-
 </FrameLayout>
