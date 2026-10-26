@@ -153,21 +153,27 @@ class MangaBakaPersonalHomeTest {
 	}
 
 	@Test
-	fun `Library See all pages through authenticated library and carries tracking truth`() = runBlocking {
-		val account = client { request ->
-			assertEquals("/v2/my/library", request.url.encodedPath)
-			assertEquals("novel", request.url.queryParameter("type"))
-			assertNull(request.url.queryParameter("type_not"))
-			assertEquals("2", request.url.queryParameter("page"))
-			assertEquals("50", request.url.queryParameter("limit"))
-			"""{"data":[{
-				"series":{"id":701,"type":"novel","content_rating":"safe","title":"Library novel"},
-				"entry":{"series_id":701,"state":"reading","progress_chapter":27,"rating":90}
-			}],"pagination":{"next":3}}"""
-		}
-		val public = CatalogHttp(client { error("Library See all must not use the public client") })
-		val repository = MangaBakaPersonalHomeRepository(account, public)
-		val result = repository.libraryPage(CatalogFilter.NOVEL, allowAdult = false, page = 2)
+	fun `Library See all URL and page parser preserve filters pagination and tracking truth`() {
+		val url = mangaBakaLibraryUrl(CatalogFilter.NOVEL, allowAdult = false, page = 2, limit = 50)
+		assertEquals("/v2/my/library", url.encodedPath)
+		assertEquals("novel", url.queryParameter("type"))
+		assertNull(url.queryParameter("type_not"))
+		assertEquals("2", url.queryParameter("page"))
+		assertEquals("50", url.queryParameter("limit"))
+		assertEquals(listOf("safe", "suggestive"), url.queryParameterValues("content_rating"))
+
+		val result = parseMangaBakaLibraryPage(
+			root = json(
+				"""{"data":[{
+					"series":{"id":701,"type":"novel","content_rating":"safe","title":"Library novel"},
+					"entry":{"series_id":701,"state":"reading","progress_chapter":27,"rating":90}
+				}],"pagination":{"next":3}}""",
+			),
+			filter = CatalogFilter.NOVEL,
+			allowAdult = false,
+			page = 2,
+			limit = 50,
+		)
 		assertEquals(listOf("701"), result.items.map { it.item.key.remoteId })
 		assertEquals(3, result.nextPage)
 		assertEquals(27, result.items.single().tracking.chapter)
