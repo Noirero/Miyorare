@@ -221,11 +221,15 @@ internal fun CatalogTrackingCard(
 						Text(stringResource(R.string.hub_tracking_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
 					}
 				}
+				tracking.failed -> {
+					Text(stringResource(R.string.hub_tracking_unavailable), color = MaterialTheme.colorScheme.onSurfaceVariant)
+					OutlinedButton(
+						onClick = onManage,
+						modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("catalog_manage_tracking"),
+					) { Text(stringResource(R.string.hub_manage_tracking)) }
+				}
 				tracking.entry == null -> {
-					Text(
-						if (tracking.failed) stringResource(R.string.hub_tracking_unavailable) else stringResource(R.string.hub_not_in_list),
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
+					Text(stringResource(R.string.hub_not_in_list), color = MaterialTheme.colorScheme.onSurfaceVariant)
 					Button(
 						onClick = onAdd,
 						enabled = !tracking.adding,
