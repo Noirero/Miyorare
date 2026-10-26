@@ -21,6 +21,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerType
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerUser
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
 import java.io.IOException
+import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.util.EnumMap
 import java.util.Locale
@@ -30,6 +31,7 @@ import javax.inject.Singleton
 private const val ANILIST_GRAPHQL = "https://graphql.anilist.co"
 private const val MAL_API = "https://api.myanimelist.net/v2"
 private const val KITSU_API = "https://kitsu.app/api/edge"
+private const val MANGABAKA_API = "https://api.mangabaka.org/v1"
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 private val KITSU_MEDIA_TYPE = "application/vnd.api+json".toMediaType()
 
@@ -48,6 +50,7 @@ class TrackerCatalogAccountRepository @Inject constructor(
 	@ScrobblerType(ScrobblerService.ANILIST) private val aniListHttp: OkHttpClient,
 	@ScrobblerType(ScrobblerService.MAL) private val malHttp: OkHttpClient,
 	@ScrobblerType(ScrobblerService.KITSU) private val kitsuHttp: OkHttpClient,
+	@ScrobblerType(ScrobblerService.MANGABAKA) private val mangaBakaHttp: OkHttpClient,
 ) {
 	private val lock = Any()
 	private val remoteState = EnumMap<ScrobblerService, MutableMap<Long, CatalogTrackingEntry?>>(ScrobblerService::class.java)
@@ -105,6 +108,7 @@ class TrackerCatalogAccountRepository @Inject constructor(
 			ScrobblerService.ANILIST -> readAniList(key)
 			ScrobblerService.MAL -> readMAL(key)
 			ScrobblerService.KITSU -> readKitsu(key)
+			ScrobblerService.MANGABAKA -> readMangaBaka(key)
 			else -> error("Unsupported Tracker Home account service ${key.service}")
 		}
 		remember(key.service, key.remoteId.toLong(), entry)
@@ -119,6 +123,7 @@ class TrackerCatalogAccountRepository @Inject constructor(
 			ScrobblerService.ANILIST -> addAniList(key)
 			ScrobblerService.MAL -> addMAL(key)
 			ScrobblerService.KITSU -> addKitsu(key)
+			ScrobblerService.MANGABAKA -> addMangaBaka(key)
 			else -> error("Unsupported Tracker Home account service ${key.service}")
 		}
 		remember(key.service, key.remoteId.toLong(), entry)
@@ -235,6 +240,40 @@ class TrackerCatalogAccountRepository @Inject constructor(
 		)
 	}
 
+	private suspend fun readMangaBaka(key: TrackerCatalogKey): CatalogTrackingEntry? {
+		val response = mangaBakaHttp.newCall(
+			Request.Builder().url("$MANGABAKA_API/my/library/${key.remoteId}").get().build(),
+		).await()
+		if (response.code == HttpURLConnection.HTTP_NOT_FOUND) {
+			response.close()
+			return null
+		}
+		val data = response.parseJson().getJSONObject("data")
+		return mangaBakaEntry(key.remoteId.toLong(), data)
+	}
+
+	private suspend fun addMangaBaka(key: TrackerCatalogKey): CatalogTrackingEntry {
+		val body = JSONObject().put("state", "plan_to_read").toString().toRequestBody(JSON_MEDIA_TYPE)
+		val response = mangaBakaHttp.newCall(
+			Request.Builder().url("$MANGABAKA_API/my/library/${key.remoteId}").post(body).build(),
+		).await()
+		if (!response.isSuccessful) {
+			val code = response.code
+			response.close()
+			throw IOException("MangaBaka library create HTTP $code")
+		}
+		response.close()
+		return checkNotNull(readMangaBaka(key)) { "MangaBaka did not return the newly created library entry" }
+	}
+
+	private fun mangaBakaEntry(targetId: Long, json: JSONObject): CatalogTrackingEntry = CatalogTrackingEntry(
+		service = ScrobblerService.MANGABAKA,
+		targetId = targetId,
+		status = catalogTrackingStatus(ScrobblerService.MANGABAKA, json.optionalString("state")),
+		chapter = json.optDouble("progress_chapter", 0.0).takeUnless(Double::isNaN)?.toInt()?.coerceAtLeast(0) ?: 0,
+		rating = (json.optInt("rating", 0).toFloat() / 100f).coerceIn(0f, 1f),
+	)
+
 	private fun ScrobblingEntity.toCatalogTrackingEntry(service: ScrobblerService) = CatalogTrackingEntry(
 		service = service,
 		targetId = targetId,
@@ -254,7 +293,12 @@ class TrackerCatalogAccountRepository @Inject constructor(
 	}
 
 	private fun requireSupported(service: ScrobblerService) {
-		require(service == ScrobblerService.ANILIST || service == ScrobblerService.MAL || service == ScrobblerService.KITSU)
+		require(
+			service == ScrobblerService.ANILIST ||
+				service == ScrobblerService.MAL ||
+				service == ScrobblerService.KITSU ||
+				service == ScrobblerService.MANGABAKA,
+		)
 	}
 
 	private fun JSONObject.throwProviderErrors(): JSONObject {
@@ -306,6 +350,15 @@ internal fun catalogTrackingStatus(service: ScrobblerService, raw: String?): Scr
 			"dropped" -> ScrobblingStatus.DROPPED
 			else -> null
 		}
+		ScrobblerService.MANGABAKA -> when (normalized) {
+			"plan_to_read" -> ScrobblingStatus.PLANNED
+			"reading" -> ScrobblingStatus.READING
+			"rereading" -> ScrobblingStatus.RE_READING
+			"completed" -> ScrobblingStatus.COMPLETED
+			"paused" -> ScrobblingStatus.ON_HOLD
+			"dropped" -> ScrobblingStatus.DROPPED
+			else -> null
+		}
 		else -> null
 	}
 }
@@ -314,6 +367,7 @@ internal fun catalogAccountProfileUrl(user: ScrobblerUser): String? = when (user
 	ScrobblerService.ANILIST -> "https://anilist.co/user/${user.nickname.pathSegment()}"
 	ScrobblerService.MAL -> "https://myanimelist.net/profile/${user.nickname.pathSegment()}"
 	ScrobblerService.KITSU -> "https://kitsu.app/users/${user.id}"
+	ScrobblerService.MANGABAKA -> null
 	else -> null
 }
 
