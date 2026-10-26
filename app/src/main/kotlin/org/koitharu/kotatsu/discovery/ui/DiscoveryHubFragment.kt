@@ -95,6 +95,7 @@ class DiscoveryHubFragment : Fragment() {
 					if (!isHidden) {
 						(activity as? MainActivity)?.updateSharedSearchBarHint(this@DiscoveryHubFragment, searchHint(state.request.service))
 					}
+				}
 			}
 		}
 		if (!isHidden) installDiscoverySearchHandler()
