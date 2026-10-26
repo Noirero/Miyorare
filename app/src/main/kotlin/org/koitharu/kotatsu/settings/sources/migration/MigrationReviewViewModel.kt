@@ -33,6 +33,26 @@ data class MigrationReviewState(
 	val completedId: Long? = null,
 )
 
+/**
+ * A scope change invalidates every result produced by the previous scope. Keep only the stable
+ * current-source readability decision and the already-loaded availability counts; candidate evidence
+ * becomes actionable again only after Search runs for the newly selected scope.
+ */
+internal fun MigrationReviewState.withSearchScope(scope: MigrationSearchScope): MigrationReviewState {
+	if (scope == selectedScope) return this
+	return copy(
+		searching = false,
+		discovery = discovery?.let {
+			MigrationDiscovery(seed = it.seed, sourceHealthy = it.currentSourceReadable)
+		},
+		selectedScope = scope,
+		hasSearched = false,
+		searchFailed = false,
+		failed = false,
+		changed = false,
+	)
+}
+
 @HiltViewModel
 class MigrationReviewViewModel @Inject constructor(
 	private val savedStateHandle: SavedStateHandle,
@@ -112,8 +132,9 @@ class MigrationReviewViewModel @Inject constructor(
 	}
 
 	fun setSearchScope(scope: MigrationSearchScope) {
-		if (mutableState.value.loading) return
-		mutableState.value = mutableState.value.copy(selectedScope = scope, searchFailed = false)
+		val before = mutableState.value
+		if (before.loading || before.selectedScope == scope) return
+		mutableState.value = before.withSearchScope(scope)
 	}
 
 	fun search() {
