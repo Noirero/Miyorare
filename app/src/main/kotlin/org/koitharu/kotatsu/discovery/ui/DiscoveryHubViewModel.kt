@@ -56,8 +56,9 @@ class DiscoveryHubViewModel @Inject constructor(
 					loader.load(next)
 					if (providerChanged) {
 						refreshAccount(next.service)
-					} else if (next.service == ScrobblerService.MANGABAKA && mutableAccount.value.authorized) {
-						refreshMangaBakaPersonal(next)
+					} else if (next.service == ScrobblerService.MANGABAKA) {
+						clearMangaBakaExplore()
+						if (mutableAccount.value.authorized) refreshMangaBakaPersonal(next)
 					}
 				}
 			}
@@ -76,16 +77,18 @@ class DiscoveryHubViewModel @Inject constructor(
 		settings.discoveryFilter = filter.name
 		val next = request()
 		loader.load(next)
-		if (next.service == ScrobblerService.MANGABAKA && mutableAccount.value.authorized) {
-			refreshMangaBakaPersonal(next)
+		if (next.service == ScrobblerService.MANGABAKA) {
+			clearMangaBakaExplore()
+			if (mutableAccount.value.authorized) refreshMangaBakaPersonal(next)
 		}
 	}
 
 	fun refresh() {
 		loader.load(force = true)
 		val current = state.value.request
-		if (current.service == ScrobblerService.MANGABAKA && mutableAccount.value.authorized) {
-			refreshMangaBakaPersonal(current)
+		if (current.service == ScrobblerService.MANGABAKA) {
+			if (mutableAccount.value.authorized) refreshMangaBakaPersonal(current)
+			mutableMangaBakaPersonal.value.selectedType?.let(::selectMangaBakaExploreType)
 		}
 	}
 
@@ -94,12 +97,12 @@ class DiscoveryHubViewModel @Inject constructor(
 	private fun refreshAccount(service: ScrobblerService) {
 		val token = ++accountGeneration
 		accountJob?.cancel()
-		if (service != ScrobblerService.MANGABAKA) clearMangaBakaPersonal()
+		if (service != ScrobblerService.MANGABAKA) clearMangaBakaAll()
 		val snapshot = accountRepository.snapshot(service)
 		mutableAccount.value = snapshot.copy(loading = snapshot.authorized && snapshot.user == null, failed = false)
 		if (!snapshot.authorized) {
 			mutableKnownTracking.value = emptyMap()
-			if (service == ScrobblerService.MANGABAKA) clearMangaBakaPersonal()
+			if (service == ScrobblerService.MANGABAKA) clearMangaBakaPersonalData()
 			return
 		}
 		accountJob = viewModelScope.launch {
@@ -120,8 +123,8 @@ class DiscoveryHubViewModel @Inject constructor(
 					mutableAccount.value = snapshot.copy(loading = false, failed = true)
 					mutableKnownTracking.value = emptyMap()
 					if (service == ScrobblerService.MANGABAKA) {
-						clearMangaBakaPersonal()
-						mutableMangaBakaPersonal.value = MangaBakaPersonalHomeState(failed = true)
+						clearMangaBakaPersonalData()
+						mutableMangaBakaPersonal.value = mutableMangaBakaPersonal.value.copy(failed = true)
 					}
 				}
 			}
@@ -137,22 +140,16 @@ class DiscoveryHubViewModel @Inject constructor(
 
 	private fun refreshMangaBakaPersonal(request: CatalogHomeRequest) {
 		if (request.service != ScrobblerService.MANGABAKA || !mutableAccount.value.authorized) {
-			clearMangaBakaPersonal()
+			clearMangaBakaPersonalData()
 			return
 		}
 		val token = ++personalGeneration
 		personalJob?.cancel()
-		exploreJob?.cancel()
-		exploreGeneration++
 		mutableMangaBakaPersonal.value = mutableMangaBakaPersonal.value.copy(
 			loading = true,
 			failed = false,
 			authExpired = false,
 			partial = false,
-			selectedType = null,
-			exploreItems = emptyList(),
-			exploreLoading = false,
-			exploreFailed = false,
 		)
 		personalJob = viewModelScope.launch {
 			try {
@@ -174,10 +171,14 @@ class DiscoveryHubViewModel @Inject constructor(
 				throw e
 			} catch (_: CatalogAccountUnauthorizedException) {
 				if (token == personalGeneration && state.value.request == request) {
-					// An expired session can no longer establish remote truth, so do not keep stale
-					// badges or personal rails sourced from an earlier account snapshot.
+					// Expired auth invalidates personal truth, but public MangaBaka Explore remains usable.
 					mutableKnownTracking.value = emptyMap()
-					mutableMangaBakaPersonal.value = MangaBakaPersonalHomeState(
+					val current = mutableMangaBakaPersonal.value
+					mutableMangaBakaPersonal.value = current.copy(
+						loading = false,
+						library = emptyList(),
+						recommendations = emptyList(),
+						partial = false,
 						failed = true,
 						authExpired = true,
 					)
@@ -192,11 +193,7 @@ class DiscoveryHubViewModel @Inject constructor(
 
 	fun selectMangaBakaExploreType(type: MangaBakaExploreType) {
 		val request = state.value.request
-		if (
-			request.service != ScrobblerService.MANGABAKA ||
-			!mutableAccount.value.authorized ||
-			!type.isVisibleFor(request.filter)
-		) return
+		if (request.service != ScrobblerService.MANGABAKA || !type.isVisibleFor(request.filter)) return
 		val token = ++exploreGeneration
 		exploreJob?.cancel()
 		mutableMangaBakaPersonal.value = mutableMangaBakaPersonal.value.copy(
@@ -225,12 +222,33 @@ class DiscoveryHubViewModel @Inject constructor(
 		}
 	}
 
-	private fun clearMangaBakaPersonal() {
+	private fun clearMangaBakaPersonalData() {
 		personalGeneration++
-		exploreGeneration++
 		personalJob?.cancel()
+		mutableMangaBakaPersonal.value = mutableMangaBakaPersonal.value.copy(
+			loading = false,
+			library = emptyList(),
+			recommendations = emptyList(),
+			partial = false,
+			failed = false,
+			authExpired = false,
+		)
+	}
+
+	private fun clearMangaBakaExplore() {
+		exploreGeneration++
 		exploreJob?.cancel()
-		mutableMangaBakaPersonal.value = MangaBakaPersonalHomeState()
+		mutableMangaBakaPersonal.value = mutableMangaBakaPersonal.value.copy(
+			selectedType = null,
+			exploreItems = emptyList(),
+			exploreLoading = false,
+			exploreFailed = false,
+		)
+	}
+
+	private fun clearMangaBakaAll() {
+		clearMangaBakaPersonalData()
+		clearMangaBakaExplore()
 	}
 
 	fun logoutAccount() {
@@ -240,6 +258,6 @@ class DiscoveryHubViewModel @Inject constructor(
 		accountRepository.logout(service)
 		mutableAccount.value = CatalogAccountState(service)
 		mutableKnownTracking.value = emptyMap()
-		if (service == ScrobblerService.MANGABAKA) clearMangaBakaPersonal()
+		if (service == ScrobblerService.MANGABAKA) clearMangaBakaPersonalData()
 	}
 }

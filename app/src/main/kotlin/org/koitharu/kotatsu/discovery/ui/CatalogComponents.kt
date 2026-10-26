@@ -49,8 +49,29 @@ fun catalogProviderName(service: ScrobblerService): String = when (service) {
 }
 
 @Composable
-fun catalogKindName(kind: CatalogMediaKind): String =
-	stringResource(if (kind == CatalogMediaKind.MANGA) R.string.hub_manga else R.string.hub_novel)
+fun catalogKindName(kind: CatalogMediaKind): String = stringResource(
+	when (kind) {
+		CatalogMediaKind.MANGA -> R.string.hub_manga
+		CatalogMediaKind.NOVEL -> R.string.hub_novel
+		CatalogMediaKind.MIXED -> R.string.hub_all
+	},
+)
+
+@Composable
+fun catalogItemTypeName(item: TrackerCatalogItem): String {
+	if (item.key.service != ScrobblerService.MANGABAKA) return catalogKindName(item.key.kind)
+	return stringResource(
+		when (item.providerType) {
+			"manga" -> R.string.hub_manga
+			"novel" -> R.string.hub_novel
+			"manhwa" -> R.string.hub_mangabaka_type_manhwa
+			"manhua" -> R.string.hub_mangabaka_type_manhua
+			"oel" -> R.string.hub_mangabaka_type_oel
+			"other" -> R.string.hub_mangabaka_type_other
+			else -> if (item.key.kind == CatalogMediaKind.NOVEL) R.string.hub_novel else R.string.hub_manga
+		},
+	)
+}
 
 @Composable
 fun catalogSectionTitle(key: CatalogSectionKey): String {
@@ -62,9 +83,12 @@ fun catalogSectionTitle(key: CatalogSectionKey): String {
 			CatalogSectionType.TOP_RATED -> R.string.hub_top_rated
 			CatalogSectionType.TOP_RANKED -> R.string.hub_top_ranked
 			CatalogSectionType.MOST_FAVORITED -> R.string.hub_most_favorited
+			CatalogSectionType.RISING -> R.string.hub_mangabaka_rising
+			CatalogSectionType.HIDDEN_GEMS -> R.string.hub_mangabaka_hidden_gems
+			CatalogSectionType.NEW_RELEASES -> R.string.hub_mangabaka_new_releases
 		},
 	)
-	return stringResource(R.string.hub_section_title, title, catalogKindName(key.kind))
+	return if (key.kind == CatalogMediaKind.MIXED) title else stringResource(R.string.hub_section_title, title, catalogKindName(key.kind))
 }
 
 @Composable
@@ -284,7 +308,7 @@ fun CatalogSpotlight(
 			verticalArrangement = Arrangement.Center,
 		) {
 			Text(
-				catalogSectionTitle(spotlight.section.key),
+				if (item.key.service == ScrobblerService.MANGABAKA) stringResource(R.string.hub_mangabaka_spotlight) else catalogSectionTitle(spotlight.section.key),
 				style = MaterialTheme.typography.labelLarge,
 				color = if (palette.isModern) palette.primary else MaterialTheme.colorScheme.primary,
 			)
@@ -297,7 +321,7 @@ fun CatalogSpotlight(
 			) {
 				Text(catalogProviderName(item.key.service), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
-				Text(catalogKindName(item.key.kind), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+				Text(catalogItemTypeName(item), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				item.score?.let {
 					Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
 					Text(stringResource(R.string.hub_score_compact, String.format(Locale.getDefault(), "%.1f", it)), style = MaterialTheme.typography.labelMedium)
@@ -405,7 +429,7 @@ fun CatalogCard(
 					horizontalArrangement = Arrangement.spacedBy(6.dp),
 					verticalArrangement = Arrangement.spacedBy(2.dp),
 				) {
-					Text(catalogKindName(item.key.kind), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+					Text(catalogItemTypeName(item), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 					item.score?.let {
 						Text("•", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 						Text(stringResource(R.string.hub_score_compact, String.format(Locale.getDefault(), "%.1f", it)), style = MaterialTheme.typography.labelSmall)

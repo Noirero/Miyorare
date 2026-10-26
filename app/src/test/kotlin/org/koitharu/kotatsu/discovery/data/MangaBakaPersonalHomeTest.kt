@@ -1,7 +1,14 @@
 package org.koitharu.kotatsu.discovery.data
 
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -14,7 +21,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
 
 class MangaBakaPersonalHomeTest {
 	@Test
-	fun `remote library row preserves provider card and tracking truth`() {
+	fun `remote library row preserves provider card type and tracking truth`() {
 		val item = parseMangaBakaLibraryItem(
 			json(
 				"""
@@ -43,6 +50,7 @@ class MangaBakaPersonalHomeTest {
 		requireNotNull(item)
 		assertEquals("101", item.item.key.remoteId)
 		assertEquals(CatalogMediaKind.MANGA, item.item.key.kind)
+		assertEquals("manhwa", item.item.providerType)
 		assertEquals("https://img.example/101.jpg", item.item.coverUrl)
 		assertEquals(ScrobblingStatus.READING, item.tracking.status)
 		assertEquals(18, item.tracking.chapter)
@@ -102,6 +110,34 @@ class MangaBakaPersonalHomeTest {
 		requireNotNull(card)
 		assertEquals("404", card.key.remoteId)
 		assertEquals("Recommended title", card.title)
+		assertEquals("manga", card.providerType)
+	}
+
+	@Test
+	fun `Explore uses public Search exact provider type and rejects mismatched rows`() = runBlocking {
+		val public = CatalogHttp(client { request ->
+			assertEquals("/v2/series/search", request.url.encodedPath)
+			assertEquals("novel", request.url.queryParameter("type"))
+			assertEquals("popularity_asc", request.url.queryParameter("sort_by"))
+			assertNull(request.header("Authorization"))
+			"""{"data":[
+				{"id":501,"type":"novel","content_rating":"safe","title":"Right novel"},
+				{"id":502,"type":"manhwa","content_rating":"safe","title":"Wrong type"}
+			]}"""
+		})
+		val repository = MangaBakaPersonalHomeRepository(OkHttpClient(), public)
+		val result = repository.explore(MangaBakaExploreType.NOVEL, allowAdult = false)
+		assertEquals(listOf("501"), result.map { it.key.remoteId })
+		assertTrue(result.all { it.providerType == "novel" && it.key.kind == CatalogMediaKind.NOVEL })
+	}
+
+	@Test
+	fun `For You sends official Novel type filter before defensive filtering`() {
+		val url = mangaBakaRecommendationsUrl(CatalogFilter.NOVEL, allowAdult = false)
+		assertEquals("/v1/my/series/recommendations", url.encodedPath)
+		assertEquals("novel", url.queryParameter("type"))
+		assertNull(url.queryParameter("type_not"))
+		assertEquals(listOf("safe", "suggestive"), url.queryParameterValues("content_rating"))
 	}
 
 	@Test
@@ -115,6 +151,16 @@ class MangaBakaPersonalHomeTest {
 		assertTrue(MangaBakaExploreType.OEL in mangaTypes)
 		assertTrue(MangaBakaExploreType.OTHER in mangaTypes)
 	}
+
+	private fun client(answer: (Request) -> String): OkHttpClient = OkHttpClient.Builder().addInterceptor { chain ->
+		Response.Builder()
+			.request(chain.request())
+			.protocol(Protocol.HTTP_1_1)
+			.code(200)
+			.message("fixture")
+			.body(answer(chain.request()).toResponseBody("application/json".toMediaType()))
+			.build()
+	}.build()
 
 	private fun json(value: String) = Json.parseToJsonElement(value).jsonObject
 }

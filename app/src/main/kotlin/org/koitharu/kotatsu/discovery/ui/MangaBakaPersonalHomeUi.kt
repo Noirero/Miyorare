@@ -42,14 +42,12 @@ private const val MANGABAKA_HOME_LIBRARY_LIMIT = 12
 @Composable
 internal fun MangaBakaPersonalHomeContent(
 	state: MangaBakaPersonalHomeState,
-	filter: CatalogFilter,
 	knownTracking: Map<Long, CatalogTrackingEntry>,
 	imageLoader: ImageLoader,
 	onItem: (TrackerCatalogKey) -> Unit,
 	onRetry: () -> Unit,
 	onReconnect: () -> Unit,
 	onLibrarySeeAll: () -> Unit,
-	onExploreType: (MangaBakaExploreType) -> Unit,
 	modifier: Modifier = Modifier,
 ) {
 	Column(
@@ -129,29 +127,28 @@ internal fun MangaBakaPersonalHomeContent(
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 			)
 		}
-
-		MangaBakaExploreByType(
-			state = state,
-			filter = filter,
-			knownTracking = knownTracking,
-			imageLoader = imageLoader,
-			onItem = onItem,
-			onExploreType = onExploreType,
-		)
 	}
 }
 
 @Composable
-private fun MangaBakaExploreByType(
+internal fun MangaBakaExploreByType(
 	state: MangaBakaPersonalHomeState,
 	filter: CatalogFilter,
 	knownTracking: Map<Long, CatalogTrackingEntry>,
 	imageLoader: ImageLoader,
 	onItem: (TrackerCatalogKey) -> Unit,
 	onExploreType: (MangaBakaExploreType) -> Unit,
+	onSeeAll: (MangaBakaExploreType) -> Unit,
+	modifier: Modifier = Modifier,
 ) {
-	Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("mangabaka_explore_by_type")) {
-		MangaBakaPersonalSectionHeader(stringResource(R.string.hub_mangabaka_explore_type))
+	Column(
+		verticalArrangement = Arrangement.spacedBy(8.dp),
+		modifier = modifier.fillMaxWidth().testTag("mangabaka_explore_by_type"),
+	) {
+		MangaBakaPersonalSectionHeader(
+			title = stringResource(R.string.hub_mangabaka_explore_type),
+			onSeeAll = state.selectedType?.let { type -> { onSeeAll(type) } },
+		)
 		FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 			MangaBakaExploreType.entries.filter { it.isVisibleFor(filter) }.forEach { type ->
 				FilterChip(

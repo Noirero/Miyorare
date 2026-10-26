@@ -61,9 +61,11 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 		return MangaBakaPersonalHomeSnapshot(library, recommendations)
 	}
 
+	/** Public exact-type browsing. MangaBaka Search officially supports type/type_not. */
 	suspend fun explore(type: MangaBakaExploreType, allowAdult: Boolean): List<TrackerCatalogItem> {
-		val url = "$MANGABAKA_PERSONAL_API_V2/series/discover/rising".toHttpUrl().newBuilder()
+		val url = "$MANGABAKA_PERSONAL_API_V2/series/search".toHttpUrl().newBuilder()
 			.addQueryParameter("type", type.apiValue)
+			.addQueryParameter("sort_by", "popularity_asc")
 			.addQueryParameter("page", "1")
 			.addQueryParameter("limit", MANGABAKA_PERSONAL_LIMIT.toString())
 			.apply { addContentRatings(allowAdult) }
@@ -77,6 +79,8 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 				val row = element as? JsonObject ?: return@mapNotNull null
 				parseMangaBakaPersonalCard(row, allowAdult)
 			}
+			// Keep the provider response honest even if its search contract changes later.
+			.filter { it.providerType == type.apiValue }
 			.distinctBy { it.key }
 			.take(MANGABAKA_PERSONAL_LIMIT)
 	}
@@ -111,12 +115,7 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 	}
 
 	private suspend fun loadRecommendations(filter: CatalogFilter, allowAdult: Boolean): List<TrackerCatalogItem> {
-		val url = "$MANGABAKA_PERSONAL_API_V1/my/series/recommendations".toHttpUrl().newBuilder()
-			.addQueryParameter("page", "1")
-			.addQueryParameter("limit", MANGABAKA_PERSONAL_LIMIT.toString())
-			.apply { addContentRatings(allowAdult) }
-			.build()
-		val root = accountRequest(url.toString())
+		val root = accountRequest(mangaBakaRecommendationsUrl(filter, allowAdult).toString())
 		val rows = root.optJSONArray("data") ?: return emptyList()
 		return buildList {
 			for (index in 0 until rows.length()) {
@@ -131,6 +130,20 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 		return response.requireMangaBakaAccountSuccess().parseJson()
 	}
 }
+
+internal fun mangaBakaRecommendationsUrl(filter: CatalogFilter, allowAdult: Boolean) =
+	"$MANGABAKA_PERSONAL_API_V1/my/series/recommendations".toHttpUrl().newBuilder()
+		.addQueryParameter("page", "1")
+		.addQueryParameter("limit", MANGABAKA_PERSONAL_LIMIT.toString())
+		.apply {
+			when (filter) {
+				CatalogFilter.ALL -> Unit
+				CatalogFilter.MANGA -> addQueryParameter("type_not", "novel")
+				CatalogFilter.NOVEL -> addQueryParameter("type", "novel")
+			}
+			addContentRatings(allowAdult)
+		}
+		.build()
 
 internal fun parseMangaBakaLibraryItem(
 	row: JsonObject,
