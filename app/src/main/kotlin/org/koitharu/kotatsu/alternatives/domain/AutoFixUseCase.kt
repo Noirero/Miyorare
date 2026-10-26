@@ -182,9 +182,11 @@ class AutoFixUseCase @Inject constructor(
 			healthy += MigrationCandidateObservation(details, candidate.matchedQueries)
 		}
 		val assessment = candidateMatcher.assess(seed, healthy)
-		val allScopedSourcesFailed = sources.isNotEmpty() && sourceSuccesses.isEmpty() &&
-			sources.all { it.name in sourceFailures }
-		val incomplete = (sources.isEmpty() && pool.providerFailureCount > 0) || allScopedSourcesFailed
+		val incomplete = isMigrationScopeIncomplete(
+			scopedSourceNames = sources.map(MangaSource::name),
+			failedSourceNames = sourceFailures,
+			successfulSourceNames = sourceSuccesses,
+		)
 		return MigrationDiscovery(
 			seed = seed,
 			assessment = assessment,
