@@ -129,10 +129,7 @@ class MiyorareOnlineTranslationEngine(
 	}
 }
 
-/**
- * Optional BYOK engine. No provider SDK or on-device model is bundled: all providers reuse OkHttp
- * and kotlinx.serialization already present in Miyorare.
- */
+/** Optional AI/BYOK engine plus the Built-in provider adapter used by the shared translation runtime. */
 class NovelAiTranslationEngine(
 	httpClient: OkHttpClient,
 	private val settings: NovelTranslationSettings,
@@ -141,17 +138,31 @@ class NovelAiTranslationEngine(
 ) : NovelTranslationEngine, NovelTranslationBatchEngine {
 
 	private val client = httpClient.translationClient()
+	private val builtInEngine by lazy(LazyThreadSafetyMode.NONE) {
+		MiyorareBuiltInTranslationEngine(settings.applicationContext)
+	}
 
 	override suspend fun translate(request: NovelTranslationRequest): String {
 		if (request.text.isBlank()) return request.text
 		val config = currentConfiguration()
 		val provider = config.provider
-		val apiKey = secrets.get(provider)
-			?: throw NovelTranslationException.Configuration("API key is not configured for ${provider.displayName}")
 		return when (provider.protocol) {
-			NovelAiProtocol.OPENAI_COMPATIBLE -> translateOpenAiCompatible(config, apiKey, request)
-			NovelAiProtocol.ANTHROPIC -> translateAnthropic(config, apiKey, request)
-			NovelAiProtocol.DEEPL -> translateDeepLBatch(config, apiKey, listOf(request)).single()
+			NovelAiProtocol.ON_DEVICE -> builtInEngine.translate(request)
+			NovelAiProtocol.OPENAI_COMPATIBLE -> {
+				val apiKey = secrets.get(provider)
+					?: throw NovelTranslationException.Configuration("API key is not configured for ${provider.displayName}")
+				translateOpenAiCompatible(config, apiKey, request)
+			}
+			NovelAiProtocol.ANTHROPIC -> {
+				val apiKey = secrets.get(provider)
+					?: throw NovelTranslationException.Configuration("API key is not configured for ${provider.displayName}")
+				translateAnthropic(config, apiKey, request)
+			}
+			NovelAiProtocol.DEEPL -> {
+				val apiKey = secrets.get(provider)
+					?: throw NovelTranslationException.Configuration("API key is not configured for ${provider.displayName}")
+				translateDeepLBatch(config, apiKey, listOf(request)).single()
+			}
 		}
 	}
 
@@ -159,6 +170,9 @@ class NovelAiTranslationEngine(
 		if (requests.isEmpty()) return emptyList()
 		val config = currentConfiguration()
 		val provider = config.provider
+		if (provider.protocol == NovelAiProtocol.ON_DEVICE) {
+			return requests.map { builtInEngine.translate(it) }
+		}
 		if (provider.protocol != NovelAiProtocol.DEEPL) {
 			// Capability metadata prevents this path for non-batch providers. Keep a safe semantic
 			// fallback so a future custom resolver cannot accidentally drop work.

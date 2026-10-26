@@ -25,11 +25,13 @@ class NovelTranslationSecrets(context: Context) {
 	private val lock = Any()
 
 	fun get(provider: NovelAiProvider): String? = synchronized(lock) {
+		if (provider.protocol == NovelAiProtocol.ON_DEVICE) return@synchronized null
 		val encoded = loadProperties().getProperty(provider.id) ?: return@synchronized null
 		decrypt(encoded)?.takeIf { it.isNotBlank() }
 	}
 
 	fun put(provider: NovelAiProvider, apiKey: String) = synchronized(lock) {
+		if (provider.protocol == NovelAiProtocol.ON_DEVICE) return@synchronized
 		val values = loadProperties()
 		val trimmed = apiKey.trim()
 		if (trimmed.isEmpty()) {
@@ -41,6 +43,7 @@ class NovelTranslationSecrets(context: Context) {
 	}
 
 	fun clear(provider: NovelAiProvider) = synchronized(lock) {
+		if (provider.protocol == NovelAiProtocol.ON_DEVICE) return@synchronized
 		val values = loadProperties()
 		if (values.remove(provider.id) != null) storeProperties(values)
 	}
@@ -49,7 +52,9 @@ class NovelTranslationSecrets(context: Context) {
 		if (file.exists()) file.delete()
 	}
 
-	fun has(provider: NovelAiProvider): Boolean = get(provider) != null
+	/** On-device providers satisfy readiness without storing or exposing a credential. */
+	fun has(provider: NovelAiProvider): Boolean =
+		provider.protocol == NovelAiProtocol.ON_DEVICE || get(provider) != null
 
 	private fun loadProperties(): Properties = Properties().apply {
 		if (!file.exists()) return@apply

@@ -59,11 +59,27 @@ class NovelReaderFinishingRegressionTest {
 	}
 
 	@Test
-	fun `novel finishing does not bundle an on-device translation sdk`() {
+	fun `novel built in translation uses approved on-device sdk`() {
 		val gradle = projectFile("app/build.gradle").readText().lowercase()
 
-		assertFalse(gradle.contains("com.google.mlkit:translate"))
+		assertTrue(gradle.contains("com.google.mlkit:translate:17.0.3"))
+		assertTrue(gradle.contains("com.google.mlkit:language-id:17.0.6"))
 		assertFalse(gradle.contains("tensorflow-lite-task-text"))
+	}
+
+	@Test
+	fun `built in translation keeps required google attribution outside novel text`() {
+		val controller = source("org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationDialogController.kt")
+		val attributionView = source("org/koitharu/kotatsu/reader/ui/epub/translation/BuiltInTranslationAttributionView.kt")
+		val layout = projectFile("app/src/main/res/layout/fragment_reader_epub.xml").readText()
+		val strings = projectFile("app/src/main/res/values/strings_novel_translation_hub.xml").readText()
+
+		assertTrue(controller.contains("novel_translation_translate_with_google"))
+		assertTrue(controller.contains("novel_translation_google_disclaimer"))
+		assertTrue(attributionView.contains("novel_translation_powered_by_google_translate"))
+		assertTrue(layout.contains("BuiltInTranslationAttributionView"))
+		assertTrue(strings.contains("Translate with Google"))
+		assertTrue(strings.contains("powered by Google Translate"))
 	}
 
 	private fun source(relativePath: String): String {

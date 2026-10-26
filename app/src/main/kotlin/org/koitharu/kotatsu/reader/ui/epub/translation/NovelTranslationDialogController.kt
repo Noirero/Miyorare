@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.reader.ui.epub.translation
 
+import android.content.Intent
+import android.net.Uri
 import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
@@ -37,6 +39,12 @@ data class NovelTranslationSheetState(
 	val displayMode: NovelTranslationDisplayMode = NovelTranslationDisplayMode.ORIGINAL,
 	val hasCachedTranslation: Boolean = false,
 )
+
+private enum class NovelTranslationService {
+	BUILT_IN,
+	ONLINE,
+	AI,
+}
 
 /**
  * UI-only controller for the Novel translator. It is created only when the user taps Translate, so
@@ -146,17 +154,18 @@ class NovelTranslationDialogController(
 		}
 		root.addView(bilingualSwitch, matchWidth())
 
-		val engines = NovelTranslationEngineKind.entries
+		val services = NovelTranslationService.entries
 		val serviceSpinner = Spinner(context).apply {
 			adapter = ArrayAdapter(
 				context,
 				android.R.layout.simple_spinner_dropdown_item,
 				listOf(
-					context.getString(R.string.novel_translation_online),
-					"${context.getString(R.string.novel_translation_ai)} — ${settings.provider.displayName}",
+					"${context.getString(R.string.novel_translation_built_in)}\n${context.getString(R.string.novel_translation_built_in_summary)}",
+					"${context.getString(R.string.novel_translation_online)}\n${context.getString(R.string.novel_translation_online_summary)}",
+					"${context.getString(R.string.novel_translation_ai)}\n${context.getString(R.string.novel_translation_ai_summary)}",
 				),
 			)
-			setSelection(engines.indexOf(settings.engine).coerceAtLeast(0))
+			setSelection(services.indexOf(currentService()).coerceAtLeast(0))
 		}
 		root.addLabeledView(R.string.novel_translation_service, serviceSpinner)
 
@@ -167,15 +176,70 @@ class NovelTranslationDialogController(
 		root.addView(advancedButton, matchWidth())
 
 		val privacyNote = TextView(context).apply {
-			setText(R.string.novel_translation_privacy_note)
 			setPadding(0, dp(4), 0, dp(8))
+			setOnClickListener {
+				if (selectedServiceFromPosition(serviceSpinner.selectedItemPosition) == NovelTranslationService.BUILT_IN) {
+					openGoogleTranslate()
+				}
+			}
 		}
 		root.addView(privacyNote, matchWidth())
 
-		fun selectedEngine(): NovelTranslationEngineKind =
-			engines[serviceSpinner.selectedItemPosition.coerceIn(engines.indices)]
+		val googleDisclaimer = TextView(context).apply {
+			setText(R.string.novel_translation_google_disclaimer)
+			setPadding(0, 0, 0, dp(8))
+			visibility = View.GONE
+		}
+		root.addView(googleDisclaimer, matchWidth())
+
+		fun selectedService(): NovelTranslationService =
+			selectedServiceFromPosition(serviceSpinner.selectedItemPosition)
+
+		fun selectedEngine(): NovelTranslationEngineKind = when (selectedService()) {
+			NovelTranslationService.ONLINE -> NovelTranslationEngineKind.ONLINE
+			NovelTranslationService.BUILT_IN,
+			NovelTranslationService.AI -> NovelTranslationEngineKind.AI
+		}
+
+		fun applySelectedService() {
+			when (selectedService()) {
+				NovelTranslationService.BUILT_IN -> {
+					settings.engine = NovelTranslationEngineKind.AI
+					settings.provider = NovelAiProvider.BUILT_IN
+				}
+				NovelTranslationService.ONLINE -> settings.engine = NovelTranslationEngineKind.ONLINE
+				NovelTranslationService.AI -> {
+					settings.engine = NovelTranslationEngineKind.AI
+					if (settings.provider == NovelAiProvider.BUILT_IN) {
+						settings.provider = settings.lastRemoteAiProvider
+					}
+				}
+			}
+		}
 
 		var updatingAutoSwitch = false
+		var primaryAction: MaterialButton? = null
+		var translateAgainAction: MaterialButton? = null
+
+		fun refreshTranslationActionLabels(service: NovelTranslationService = selectedService()) {
+			if (!projectionActionsEnabled) {
+				primaryAction?.setText(
+					if (service == NovelTranslationService.BUILT_IN) {
+						R.string.novel_translation_translate_with_google
+					} else {
+						R.string.novel_translation_translate
+					},
+				)
+			}
+			translateAgainAction?.setText(
+				if (service == NovelTranslationService.BUILT_IN) {
+					R.string.novel_translation_translate_with_google
+				} else {
+					R.string.novel_translation_translate_again
+				},
+			)
+		}
+
 		fun updateAutoUi() {
 			val id = autoMangaId ?: return
 			if (settings.isAutoTranslateEnabled(id) && !settings.isAutoTranslateActive(id)) {
@@ -185,9 +249,9 @@ class NovelTranslationDialogController(
 			updatingAutoSwitch = true
 			autoTranslateSwitch?.isChecked = settings.isAutoTranslateActive(id)
 			updatingAutoSwitch = false
-			val ai = selectedEngine() == NovelTranslationEngineKind.AI
-			autoTranslateAiNote?.visibility = if (ai) View.VISIBLE else View.GONE
-			if (ai) {
+			val remoteAi = selectedService() == NovelTranslationService.AI
+			autoTranslateAiNote?.visibility = if (remoteAi) View.VISIBLE else View.GONE
+			if (remoteAi) {
 				autoTranslateAiNote?.text = context.getString(
 					R.string.novel_translation_auto_ai_note,
 					settings.provider.displayName,
@@ -196,14 +260,24 @@ class NovelTranslationDialogController(
 		}
 
 		fun updateServiceUi() {
-			val ai = selectedEngine() == NovelTranslationEngineKind.AI
-			advancedButton.isEnabled = ai
-			privacyNote.visibility = if (ai) View.VISIBLE else View.GONE
+			applySelectedService()
+			val service = selectedService()
+			val remoteAi = service == NovelTranslationService.AI
+			advancedButton.isEnabled = remoteAi
+			privacyNote.visibility = if (service == NovelTranslationService.ONLINE) View.GONE else View.VISIBLE
+			privacyNote.setText(
+				if (service == NovelTranslationService.BUILT_IN) {
+					R.string.novel_translation_built_in_attribution
+				} else {
+					R.string.novel_translation_privacy_note
+				},
+			)
+			googleDisclaimer.visibility = if (service == NovelTranslationService.BUILT_IN) View.VISIBLE else View.GONE
+			refreshTranslationActionLabels(service)
 			updateAutoUi()
 		}
 		serviceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
 			override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-				settings.engine = engines[position.coerceIn(engines.indices)]
 				updateServiceUi()
 			}
 			override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -213,8 +287,8 @@ class NovelTranslationDialogController(
 		autoTranslateSwitch?.setOnCheckedChangeListener { button, checked ->
 			if (updatingAutoSwitch) return@setOnCheckedChangeListener
 			val id = autoMangaId ?: return@setOnCheckedChangeListener
-			settings.engine = selectedEngine()
-			if (checked && settings.engine == NovelTranslationEngineKind.AI && !isAiConfigured()) {
+			applySelectedService()
+			if (checked && selectedService() == NovelTranslationService.AI && !isAiConfigured()) {
 				settings.setAutoTranslateEnabled(id, false)
 				updatingAutoSwitch = true
 				button.isChecked = false
@@ -238,11 +312,12 @@ class NovelTranslationDialogController(
 		}
 
 		val primary = MaterialButton(context).apply { isAllCaps = false }
+		primaryAction = primary
 		val translateAgain = MaterialButton(context).apply {
-			setText(R.string.novel_translation_translate_again)
 			isAllCaps = false
 			visibility = if (projectionActionsEnabled) View.VISIBLE else View.GONE
 		}
+		translateAgainAction = translateAgain
 		root.addView(primary, matchWidth())
 		root.addView(translateAgain, matchWidth())
 
@@ -257,9 +332,11 @@ class NovelTranslationDialogController(
 				when {
 					projectionActionsEnabled && currentMode != NovelTranslationDisplayMode.ORIGINAL -> R.string.novel_translation_show_original
 					projectionActionsEnabled -> R.string.novel_translation_show_translation
+					selectedService() == NovelTranslationService.BUILT_IN -> R.string.novel_translation_translate_with_google
 					else -> R.string.novel_translation_translate
 				},
 			)
+			refreshTranslationActionLabels()
 		}
 		refreshPrimaryAction()
 
@@ -274,9 +351,10 @@ class NovelTranslationDialogController(
 		}
 
 		fun translateNow() {
+			applySelectedService()
 			val engine = selectedEngine()
 			val displayMode = desiredMode()
-			if (engine == NovelTranslationEngineKind.AI && !isAiConfigured()) {
+			if (selectedService() == NovelTranslationService.AI && !isAiConfigured()) {
 				showAiSettings(continueToTranslate = true, pendingDisplayMode = displayMode)
 				return
 			}
@@ -317,6 +395,21 @@ class NovelTranslationDialogController(
 		return start >= 0 && end >= 0 && start != end
 	}
 
+	private fun selectedServiceFromPosition(position: Int): NovelTranslationService =
+		NovelTranslationService.entries[position.coerceIn(NovelTranslationService.entries.indices)]
+
+	private fun currentService(): NovelTranslationService = when {
+		settings.engine == NovelTranslationEngineKind.ONLINE -> NovelTranslationService.ONLINE
+		settings.provider == NovelAiProvider.BUILT_IN -> NovelTranslationService.BUILT_IN
+		else -> NovelTranslationService.AI
+	}
+
+	private fun openGoogleTranslate() {
+		context.startActivity(
+			Intent(Intent.ACTION_VIEW, Uri.parse(GOOGLE_TRANSLATE_URL)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+		)
+	}
+
 	private fun dispatchTranslation(engine: NovelTranslationEngineKind, displayMode: NovelTranslationDisplayMode) {
 		val source = settings.sourceLanguage
 		val target = settings.targetLanguage
@@ -326,13 +419,14 @@ class NovelTranslationDialogController(
 		}
 		settings.engine = engine
 		settings.bilingual = displayMode == NovelTranslationDisplayMode.BILINGUAL
+		val builtIn = engine == NovelTranslationEngineKind.AI && settings.provider == NovelAiProvider.BUILT_IN
 		onTranslate(
 			NovelTranslationSelection(
 				engine = engine,
 				sourceLanguage = source,
 				targetLanguage = target,
-				style = settings.style,
-				contextAware = engine == NovelTranslationEngineKind.AI && settings.contextAware,
+				style = if (builtIn) NovelTranslationStyle.NATURAL else settings.style,
+				contextAware = engine == NovelTranslationEngineKind.AI && !builtIn && settings.contextAware,
 				displayMode = displayMode,
 			),
 		)
@@ -340,6 +434,7 @@ class NovelTranslationDialogController(
 
 	private fun isAiConfigured(): Boolean {
 		val provider = settings.provider
+		if (provider == NovelAiProvider.BUILT_IN) return true
 		return secrets.has(provider) &&
 			(provider.protocol == NovelAiProtocol.DEEPL || settings.model(provider).isNotBlank()) &&
 			settings.resolvedBaseUrl(provider).isNotBlank()
@@ -407,10 +502,11 @@ class NovelTranslationDialogController(
 			isFillViewport = true
 			addView(root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 		}
-		val providers = NovelAiProvider.entries
+		val providers = NovelAiProvider.entries.filter { it != NovelAiProvider.BUILT_IN }
+		val initialProvider = settings.provider.takeUnless { it == NovelAiProvider.BUILT_IN } ?: settings.lastRemoteAiProvider
 		val providerSpinner = Spinner(context).apply {
 			adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, providers.map { it.displayName })
-			setSelection(providers.indexOf(settings.provider).coerceAtLeast(0))
+			setSelection(providers.indexOf(initialProvider).coerceAtLeast(0))
 		}
 		root.addLabeledView(R.string.novel_translation_provider, providerSpinner)
 
@@ -498,7 +594,7 @@ class NovelTranslationDialogController(
 			}
 			override fun onNothingSelected(parent: AdapterView<*>?) = Unit
 		}
-		applyProviderUi(settings.provider)
+		applyProviderUi(initialProvider)
 
 		fun saveFields(): NovelAiProvider {
 			val provider = selectedProvider()
@@ -597,4 +693,8 @@ class NovelTranslationDialogController(
 	private fun matchWidth() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 	private fun weighted() = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
 	private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
+
+	private companion object {
+		const val GOOGLE_TRANSLATE_URL = "https://translate.google.com/"
+	}
 }

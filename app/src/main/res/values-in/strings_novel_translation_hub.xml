@@ -2,8 +2,14 @@
 <resources>
     <string name="novel_translation_engine">Mesin terjemahan</string>
     <string name="novel_translation_title">Terjemahan</string>
+    <string name="novel_translation_built_in">Built-in</string>
+    <string name="novel_translation_built_in_summary">Di perangkat • Model bahasa diunduh saat pertama dipakai • Setelah itu dapat digunakan offline</string>
+    <string name="novel_translation_built_in_attribution">Terjemahan Built-in berjalan di perangkat ini. Penggunaan pertama dapat mengunduh model bahasa (sekitar 30 MB per bahasa). powered by Google Translate. Ketuk untuk membuka Google Translate.</string>
+    <string name="novel_translation_translate_with_google">Terjemahkan dengan Google</string>
+    <string name="novel_translation_powered_by_google_translate">powered by Google Translate</string>
+    <string name="novel_translation_google_disclaimer">THIS SERVICE MAY CONTAIN TRANSLATIONS POWERED BY GOOGLE. GOOGLE DISCLAIMS ALL WARRANTIES RELATED TO THE TRANSLATIONS, EXPRESS OR IMPLIED, INCLUDING ANY WARRANTIES OF ACCURACY, RELIABILITY, AND ANY IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.</string>
     <string name="novel_translation_online">Miyorare Online</string>
-    <string name="novel_translation_online_summary">Default • Online • Tidak perlu API key</string>
+    <string name="novel_translation_online_summary">Online • Tidak perlu API key</string>
     <string name="novel_translation_ai">Terjemahan AI</string>
     <string name="novel_translation_ai_summary">Opsional • Menggunakan API key milikmu</string>
     <string name="novel_translation_restore_original">Asli / Pulihkan teks asli</string>
