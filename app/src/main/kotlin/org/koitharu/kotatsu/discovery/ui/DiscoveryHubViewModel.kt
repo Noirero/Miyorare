@@ -119,7 +119,10 @@ class DiscoveryHubViewModel @Inject constructor(
 				if (token == accountGeneration && state.value.request.service == service) {
 					mutableAccount.value = snapshot.copy(loading = false, failed = true)
 					mutableKnownTracking.value = emptyMap()
-					if (service == ScrobblerService.MANGABAKA) clearMangaBakaPersonal()
+					if (service == ScrobblerService.MANGABAKA) {
+						clearMangaBakaPersonal()
+						mutableMangaBakaPersonal.value = MangaBakaPersonalHomeState(failed = true)
+					}
 				}
 			}
 		}
