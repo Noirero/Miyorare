@@ -4,12 +4,15 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.longOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.discovery.domain.CatalogFilter
 import org.koitharu.kotatsu.discovery.domain.CatalogTrackingEntry
@@ -72,8 +75,7 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 		return (root["data"] as? JsonArray).orEmpty()
 			.mapNotNull { element ->
 				val row = element as? JsonObject ?: return@mapNotNull null
-				val series = row["series"] as? JsonObject ?: row
-				parseMangaBakaCatalogCard(series, allowAdult)
+				parseMangaBakaPersonalCard(row, allowAdult)
 			}
 			.distinctBy { it.key }
 			.take(MANGABAKA_PERSONAL_LIMIT)
@@ -98,10 +100,11 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 			val root = accountRequest(url.toString())
 			val rows = root.optJSONArray("data") ?: throw IOException("MangaBaka library response has no data")
 			for (index in 0 until rows.length()) {
-				val row = rows.optJSONObject(index) ?: continue
+				val row = rows.optJSONObject(index)?.toKotlinxObject() ?: continue
 				parseMangaBakaLibraryItem(row, filter, allowAdult)?.let { result[it.tracking.targetId] = it }
 			}
-			if (!mangaBakaAccountHasNext(root.optJSONObject("pagination"), page, rows.length(), MANGABAKA_LIBRARY_PAGE_SIZE)) break
+			val pagination = root.optJSONObject("pagination")?.toKotlinxObject()
+			if (!mangaBakaHasNext(pagination, page, rows.length(), MANGABAKA_LIBRARY_PAGE_SIZE)) break
 			page++
 		}
 		return result.values.toList()
@@ -117,7 +120,7 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 		val rows = root.optJSONArray("data") ?: return emptyList()
 		return buildList {
 			for (index in 0 until rows.length()) {
-				val row = rows.optJSONObject(index) ?: continue
+				val row = rows.optJSONObject(index)?.toKotlinxObject() ?: continue
 				parseMangaBakaPersonalCard(row, allowAdult)?.takeIf { it.key.kind in filter.kinds }?.let(::add)
 			}
 		}.distinctBy { it.key }.take(MANGABAKA_PERSONAL_LIMIT)
@@ -130,50 +133,31 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 }
 
 internal fun parseMangaBakaLibraryItem(
-	row: JSONObject,
+	row: JsonObject,
 	filter: CatalogFilter,
 	allowAdult: Boolean,
 ): MangaBakaLibraryItem? {
-	val entry = row.optJSONObject("entry") ?: return null
-	val series = row.optJSONObject("series") ?: row.optJSONObject("data") ?: row
-	val item = parseMangaBakaPersonalCard(series, allowAdult) ?: return null
+	val entry = row["entry"] as? JsonObject ?: return null
+	val series = row["series"] as? JsonObject ?: row["data"] as? JsonObject ?: row
+	val item = parseMangaBakaCatalogCard(series, allowAdult) ?: return null
 	if (item.key.kind !in filter.kinds) return null
-	val targetId = entry.longValue("series_id") ?: item.key.remoteId.toLongOrNull() ?: return null
+	val targetId = entry.positiveLong("series_id") ?: item.key.remoteId.toLongOrNull() ?: return null
 	if (item.key.remoteId.toLongOrNull() != targetId) return null
 	val tracking = CatalogTrackingEntry(
 		service = ScrobblerService.MANGABAKA,
 		targetId = targetId,
 		// MangaBaka library mutation endpoints are keyed by series id, not the library row id.
 		entryId = targetId,
-		status = catalogTrackingStatus(ScrobblerService.MANGABAKA, entry.optionalString("state")),
-		chapter = entry.optDouble("progress_chapter", 0.0).takeUnless { it.isNaN() }?.toInt()?.coerceAtLeast(0) ?: 0,
-		rating = (entry.optDouble("rating", 0.0).takeUnless { it.isNaN() }?.toFloat() ?: 0f).div(100f).coerceIn(0f, 1f),
+		status = catalogTrackingStatus(ScrobblerService.MANGABAKA, entry.stringValue("state")),
+		chapter = (entry.numberValue("progress_chapter") ?: 0.0).toInt().coerceAtLeast(0),
+		rating = ((entry.numberValue("rating") ?: 0.0).toFloat() / 100f).coerceIn(0f, 1f),
 	)
 	return MangaBakaLibraryItem(item, tracking)
 }
 
-internal fun parseMangaBakaPersonalCard(row: JSONObject, allowAdult: Boolean): TrackerCatalogItem? = runCatching {
-	val series = row.optJSONObject("series") ?: row
-	val json = Json.parseToJsonElement(series.toString()).jsonObject
-	parseMangaBakaCatalogCard(json, allowAdult)
-}.getOrNull()
-
-internal fun mangaBakaAccountHasNext(pagination: JSONObject?, page: Int, rowCount: Int, limit: Int): Boolean {
-	if (pagination == null) return rowCount >= limit
-	return when (val next = pagination.opt("next")) {
-		is Boolean -> next
-		is Number -> next.toInt() > page
-		is String -> next.isNotBlank() && !next.equals("null", true) && !next.equals("false", true)
-		else -> {
-			val nextPage = pagination.optInt("next_page", 0)
-			if (nextPage > 0) nextPage > page
-			else {
-				val current = pagination.optInt("page", 0)
-				val pages = pagination.optInt("pages", 0)
-				current > 0 && pages > 0 && current < pages
-			}
-		}
-	}
+internal fun parseMangaBakaPersonalCard(row: JsonObject, allowAdult: Boolean): TrackerCatalogItem? {
+	val series = row["series"] as? JsonObject ?: row
+	return parseMangaBakaCatalogCard(series, allowAdult)
 }
 
 private fun okhttp3.HttpUrl.Builder.addContentRatings(allowAdult: Boolean) {
@@ -185,13 +169,16 @@ private fun okhttp3.HttpUrl.Builder.addContentRatings(allowAdult: Boolean) {
 	}
 }
 
-private fun JSONObject.longValue(name: String): Long? = when (val value = opt(name)) {
-	is Number -> value.toLong()
-	is String -> value.toLongOrNull()
-	else -> null
-}?.takeIf { it > 0 }
+private fun JSONObject.toKotlinxObject(): JsonObject = Json.parseToJsonElement(toString()).jsonObject
 
-private fun JSONObject.optionalString(name: String): String? = optString(name).takeIf(String::isNotBlank)
+private fun JsonObject.positiveLong(name: String): Long? =
+	(this[name] as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 }
+
+private fun JsonObject.stringValue(name: String): String? =
+	(this[name] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)
+
+private fun JsonObject.numberValue(name: String): Double? =
+	(this[name] as? JsonPrimitive)?.doubleOrNull
 
 private fun Response.requireMangaBakaAccountSuccess(): Response {
 	if (code == HttpURLConnection.HTTP_UNAUTHORIZED || code == HttpURLConnection.HTTP_FORBIDDEN) {
