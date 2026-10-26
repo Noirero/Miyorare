@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.discovery.data
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
@@ -37,6 +39,31 @@ class CatalogSnapshotStoreMixedTest {
 		assertEquals(CatalogMediaKind.MIXED, restored.sections.single().key.kind)
 		assertEquals(listOf(CatalogMediaKind.MANGA, CatalogMediaKind.NOVEL), restored.sections.single().items.map { it.key.kind })
 		assertEquals(listOf("manhwa", "novel"), restored.sections.single().items.map { it.providerType })
+	}
+
+	@Test
+	fun `corrupt concrete section cache cannot smuggle a different item kind`() {
+		val now = 1_800_000_000_000L
+		val request = CatalogHomeRequest(ScrobblerService.MANGABAKA, CatalogFilter.ALL, false)
+		val cacheFile = folder.root.resolve("${ScrobblerService.MANGABAKA.name}_${CatalogFilter.ALL.name}_false.json")
+		cacheFile.writeText(
+			"""
+			{
+			  "version": 2,
+			  "service": "MANGABAKA",
+			  "filter": "ALL",
+			  "adult": false,
+			  "savedAt": $now,
+			  "sections": [{
+			    "kind": "MANGA",
+			    "type": "RISING",
+			    "items": [{"id":"802","kind":"NOVEL","title":"Wrong kind"}]
+			  }]
+			}
+			""".trimIndent(),
+		)
+		assertNull(FileCatalogSnapshotStore(folder.root).read(request, now))
+		assertFalse(cacheFile.exists())
 	}
 
 	@Test
