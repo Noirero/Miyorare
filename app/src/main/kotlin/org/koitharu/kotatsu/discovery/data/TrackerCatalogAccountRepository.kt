@@ -362,7 +362,7 @@ class TrackerCatalogAccountRepository @Inject constructor(
 		targetId = targetId,
 		entryId = when (service) {
 			ScrobblerService.MAL, ScrobblerService.MANGABAKA -> targetId
-			else -> id.toLong().takeIf { it > 0L }
+			else -> null
 		},
 		status = catalogTrackingStatus(service, status),
 		chapter = chapter.coerceAtLeast(0),
