@@ -183,7 +183,7 @@ class AutoFixUseCase @Inject constructor(
 		}
 		val assessment = candidateMatcher.assess(seed, healthy)
 		val incomplete = isMigrationScopeIncomplete(
-			scopedSourceNames = sources.map(MangaSource::name),
+			scopedSourceNames = sources.map { it.name },
 			failedSourceNames = sourceFailures,
 			successfulSourceNames = sourceSuccesses,
 		)
