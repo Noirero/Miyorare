@@ -1,10 +1,5 @@
 package org.koitharu.kotatsu.discovery.ui
 
-import android.content.Context
-import android.content.Intent
-import android.os.Bundle
-import android.view.View
-import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -23,7 +18,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -32,117 +26,22 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowInsetsCompat
 import coil3.ImageLoader
-import com.google.android.material.snackbar.Snackbar
-import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.prefs.AppSettings
-import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
-import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
-import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
-import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
-import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
-import org.koitharu.kotatsu.core.ui.miyorareViewPalette
-import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
-import org.koitharu.kotatsu.core.util.ext.observe
-import org.koitharu.kotatsu.databinding.ActivityTrackerCatalogBinding
-import org.koitharu.kotatsu.discovery.domain.CatalogFilter
 import org.koitharu.kotatsu.discovery.domain.CatalogTrackingEntry
 import org.koitharu.kotatsu.discovery.domain.MangaBakaExploreType
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogKey
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
-import org.koitharu.kotatsu.scrobbling.common.ui.ScrobblerAuthHelper
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
-import javax.inject.Inject
-
-@AndroidEntryPoint
-class MangaBakaSeeAllActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
-	@Inject lateinit var imageLoader: ImageLoader
-	@Inject lateinit var settings: AppSettings
-	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
-	@Inject lateinit var scrobblerAuthHelper: ScrobblerAuthHelper
-
-	private val viewModel by viewModels<MangaBakaSeeAllViewModel>()
-
-	override fun onCreate(savedInstanceState: Bundle?) {
-		super.onCreate(savedInstanceState)
-		setContentView(ActivityTrackerCatalogBinding.inflate(layoutInflater))
-		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
-			visualEffectPreferences.level.observe(this, ::applyModernCatalogBackground)
-			viewBinding.composeView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-		}
-		viewBinding.composeView.setContent {
-			MiyorareTheme {
-				CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
-					val state by viewModel.state.collectAsState()
-					val knownTracking by viewModel.knownTracking.collectAsState()
-					MangaBakaSeeAllScreen(
-						state = state,
-						knownTracking = knownTracking,
-						imageLoader = imageLoader,
-						onBack = { onBackPressedDispatcher.onBackPressed() },
-						onRetry = viewModel::retry,
-						onNext = viewModel::nextPage,
-						onReconnect = ::startAccountAuth,
-						onItem = { startActivity(TrackerCatalogActivity.detailsIntent(this, it)) },
-					)
-				}
-			}
-		}
-	}
-
-	override fun onResume() {
-		super.onResume()
-		viewModel.refreshAccount()
-	}
-
-	private fun startAccountAuth() {
-		scrobblerAuthHelper.startAuth(this, ScrobblerService.MANGABAKA).onFailure {
-			Snackbar.make(viewBinding.root, it.getDisplayMessage(resources), Snackbar.LENGTH_LONG).show()
-		}
-	}
-
-	private fun applyModernCatalogBackground(level: VisualEffectLevel) {
-		val palette = miyorareViewPalette(settings, level)
-		viewBinding.root.background = MiyorareHeaderShapeDrawable(
-			palette = palette,
-			variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
-			density = resources.displayMetrics.density,
-		)
-	}
-
-	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat = insets
-
-	companion object {
-		fun libraryIntent(context: Context, filter: CatalogFilter): Intent =
-			Intent(context, MangaBakaSeeAllActivity::class.java)
-				.putExtra(MangaBakaSeeAllArguments.MODE, MangaBakaSeeAllMode.LIBRARY.name)
-				.putExtra(MangaBakaSeeAllArguments.FILTER, filter.name)
-
-		fun exploreIntent(context: Context, type: MangaBakaExploreType): Intent =
-			Intent(context, MangaBakaSeeAllActivity::class.java)
-				.putExtra(MangaBakaSeeAllArguments.MODE, MangaBakaSeeAllMode.EXPLORE.name)
-				.putExtra(
-					MangaBakaSeeAllArguments.FILTER,
-					(if (type == MangaBakaExploreType.NOVEL) CatalogFilter.NOVEL else CatalogFilter.MANGA).name,
-				)
-				.putExtra(MangaBakaSeeAllArguments.TYPE, type.name)
-	}
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MangaBakaSeeAllScreen(
+internal fun MangaBakaSeeAllScreen(
 	state: MangaBakaSeeAllState,
 	knownTracking: Map<Long, CatalogTrackingEntry>,
 	imageLoader: ImageLoader,
