@@ -26,10 +26,14 @@ class ReadTrackerDetailsUseCase @Inject constructor(
 		if (!policy.allowsNetwork || requested.isEmpty()) {
 			return@withContext services.map { AssociatedTrackerDetails(it, null, TrackerDetailsReadState.SUPPRESSED) }
 		}
-		// Relations live in the same post-chapter discovery section as recommendations, so they share
-		// its lazy demand without sharing its domain/result semantics.
-		val effectiveRequested = if (TrackerContent.RECOMMENDATIONS in requested && TrackerContent.RELATIONS !in requested) {
-			requested + (TrackerContent.RELATIONS to checkNotNull(requested[TrackerContent.RECOMMENDATIONS]))
+		// Relations are presented after Character/Staff, so share that section's lazy demand while
+		// remaining a distinct result type. This also lets Kitsu participate without pretending it
+		// supports tracker recommendations.
+		val effectiveRequested = if (
+			(TrackerContent.CHARACTERS in requested || TrackerContent.STAFF in requested) &&
+			TrackerContent.RELATIONS !in requested
+		) {
+			requested + (TrackerContent.RELATIONS to TrackerPage())
 		} else {
 			requested
 		}
@@ -41,7 +45,12 @@ class ReadTrackerDetailsUseCase @Inject constructor(
 			if (target == null) {
 				AssociatedTrackerDetails(service, null, TrackerDetailsReadState.NO_MAPPING)
 			} else {
-				readAssociatedTrackerDetails(target, repositories[service] as? TrackerDetailsProvider, effectiveRequested, relationsReader::load)
+				readAssociatedTrackerDetails(
+					target,
+					repositories[service] as? TrackerDetailsProvider,
+					effectiveRequested,
+					relationsReader::load,
+				)
 			}
 		}
 	}
@@ -89,43 +98,13 @@ internal suspend fun readAssociatedTrackerDetails(
 			TrackerResult.Error(e)
 		}
 	}
-	val relations = readRelations()
-	val recommendations = read(TrackerContent.RECOMMENDATIONS) { provider.loadRecommendations(target, it) }
-		.withRelationNavigation(relations)
 	val result = AssociatedTrackerDetails(
 		target.service, target, TrackerDetailsReadState.LOADED,
 		characters = read(TrackerContent.CHARACTERS) { provider.loadCharacters(target, it) },
 		staff = read(TrackerContent.STAFF) { provider.loadStaff(target, it) },
-		relations = relations,
-		recommendations = recommendations,
+		relations = readRelations(),
+		recommendations = read(TrackerContent.RECOMMENDATIONS) { provider.loadRecommendations(target, it) },
 	)
 	return if (provider.isAuthorized) result else AssociatedTrackerDetails(target.service, target, TrackerDetailsReadState.AUTH_REQUIRED)
-}
-
-internal fun TrackerRelation.navigationRecommendation(): TrackerRecommendation = TrackerRecommendation(
-	target = target,
-	title = title,
-	image = image,
-	kind = TrackerRecommendationKind.RELATION,
-)
-
-private fun TrackerResult<TrackerRelation>.relationNavigationItems(): List<TrackerRecommendation> = when (this) {
-	is TrackerResult.Success -> items.map(TrackerRelation::navigationRecommendation)
-	is TrackerResult.Partial -> items.map(TrackerRelation::navigationRecommendation)
-	else -> emptyList()
-}
-
-internal fun TrackerResult<TrackerRecommendation>.withRelationNavigation(
-	relations: TrackerResult<TrackerRelation>,
-): TrackerResult<TrackerRecommendation> {
-	val proxies = relations.relationNavigationItems()
-	if (proxies.isEmpty()) return this
-	return when (this) {
-		is TrackerResult.Success -> copy(items = proxies + items)
-		is TrackerResult.Partial -> copy(items = proxies + items)
-		is TrackerResult.Empty -> TrackerResult.Success(proxies, next)
-		TrackerResult.Unsupported, TrackerResult.NotRequested -> TrackerResult.Success(proxies)
-		is TrackerResult.Error -> TrackerResult.Partial(proxies, setOf(TrackerPartialReason.PROVIDER_ERROR))
-	}
 }
 
