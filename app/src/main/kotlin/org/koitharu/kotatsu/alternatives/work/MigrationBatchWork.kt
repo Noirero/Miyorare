@@ -13,10 +13,19 @@ internal object MigrationBatchWork {
 	private const val BATCH = "migration_batch_name:"
 	private const val TARGET = "migration_target:"
 	private const val SCOPE = "migration_scope:"
+	private const val MODE = "migration_mode:"
 	private const val TERMINAL = "migration_terminal:"
 
 	fun tags(request: MigrationBatchRequest, generation: Long, batch: String): List<String> =
-		tags(request.mangaId, request.source, generation, batch, request.selection?.id, request.searchScope)
+		tags(
+			request.mangaId,
+			request.source,
+			generation,
+			batch,
+			request.selection?.id,
+			request.searchScope,
+			request.discoveryMode,
+		)
 
 	fun tags(
 		mangaId: Long,
@@ -25,9 +34,10 @@ internal object MigrationBatchWork {
 		batch: String,
 		destinationId: Long? = null,
 		searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
+		discoveryMode: MigrationBatchDiscoveryMode = MigrationBatchDiscoveryMode.CHECK_CURRENT,
 	): List<String> = buildList {
 		add(TAG); add(ID + mangaId); add(SOURCE + source)
-		add(GENERATION + generation); add(BATCH + batch); add(SCOPE + searchScope.name)
+		add(GENERATION + generation); add(BATCH + batch); add(SCOPE + searchScope.name); add(MODE + discoveryMode.name)
 		destinationId?.let { add(TARGET + it) }
 	}
 
@@ -42,6 +52,7 @@ internal object MigrationBatchWork {
 		.putLong("request_id", request.mangaId).putString("request_source", request.source)
 		.putString("request_action", request.action.name)
 		.putString("request_scope", request.searchScope.name)
+		.putString("request_mode", request.discoveryMode.name)
 		.putString("request_target_source", request.selection?.source)
 		.putLong("request_target_id", request.selection?.id ?: 0L)
 		.putString("request_fingerprint", request.selection?.fingerprint).build()
@@ -55,6 +66,9 @@ internal object MigrationBatchWork {
 		searchScope = data.getString("request_scope")
 			?.let { raw -> MigrationSearchScope.entries.find { it.name == raw } }
 			?: MigrationSearchScope.ALL,
+		discoveryMode = data.getString("request_mode")
+			?.let { raw -> MigrationBatchDiscoveryMode.entries.find { it.name == raw } }
+			?: MigrationBatchDiscoveryMode.CHECK_CURRENT,
 	)
 
 	fun output(outcome: MigrationBatchOutcome, searchProgress: MigrationSearchProgress? = null): Data = Data.Builder()
@@ -79,6 +93,11 @@ internal object MigrationBatchWork {
 		?.removePrefix(SCOPE)
 		?.let { raw -> MigrationSearchScope.entries.find { it.name == raw } }
 		?: MigrationSearchScope.ALL
+
+	fun discoveryMode(tags: Set<String>): MigrationBatchDiscoveryMode = tags.firstOrNull { it.startsWith(MODE) }
+		?.removePrefix(MODE)
+		?.let { raw -> MigrationBatchDiscoveryMode.entries.find { it.name == raw } }
+		?: MigrationBatchDiscoveryMode.CHECK_CURRENT
 
 	private fun searchProgress(data: Data): MigrationSearchProgress? {
 		val phase = data.getString("search_phase")
@@ -123,6 +142,7 @@ internal object MigrationBatchWork {
 			running = terminalStatus == null && !info.state.isFinished,
 			searchProgress = searchProgress(data),
 			searchScope = searchScope(info.tags),
+			discoveryMode = discoveryMode(info.tags),
 		)
 	}
 }
