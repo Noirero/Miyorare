@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.reader.ui.epub.translation
 
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -92,12 +93,12 @@ class NovelTranslationReliabilityTest {
 	@Test
 	fun `partial success persists and next coordinator requests only missing segments`() = runBlocking {
 		val directory = temporary.newFolder()
-		val firstCalls = mutableListOf<Char>()
+		val firstCalls = ConcurrentLinkedQueue<Char>()
 		val firstCache = NovelTranslationSemanticCache(directory)
 		val firstCoordinator = coordinator(
 			engine = engine { request ->
 				val marker = request.text.first()
-				firstCalls += marker
+				firstCalls.add(marker)
 				if (marker == 'b') throw NovelTranslationException.Authentication()
 				"translated-$marker"
 			},
@@ -118,12 +119,12 @@ class NovelTranslationReliabilityTest {
 		assertEquals(1, firstCalls.count { it == 'b' })
 		assertEquals(1, firstCache.entryCount())
 
-		val secondCalls = mutableListOf<Char>()
+		val secondCalls = ConcurrentLinkedQueue<Char>()
 		val reopened = NovelTranslationSemanticCache(directory)
 		val secondCoordinator = coordinator(
 			engine = engine { request ->
 				val marker = request.text.first()
-				secondCalls += marker
+				secondCalls.add(marker)
 				"translated-$marker"
 			},
 			cache = reopened,
