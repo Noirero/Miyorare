@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.scrobbling.common.data
 
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -29,13 +28,9 @@ private const val ANILIST_ENDPOINT = "https://graphql.anilist.co"
 private const val KITSU_RELATIONS_ENDPOINT = "https://kitsu.app/api/edge/media-relationships"
 private const val MAL_API_BASE = "https://api.myanimelist.net/v2"
 
-/**
- * Read-only official relation metadata. This stays separate from provider recommendations: the
- * caller owns relation presentation and only uses a recommendation-shaped proxy for the existing
- * safe source-resolution path.
- */
+/** Read-only official relation metadata, kept separate from recommendation semantics. */
 @Singleton
-internal class TrackerRelationsReader @Inject constructor(
+class TrackerRelationsReader @Inject constructor(
 	@ScrobblerType(ScrobblerService.ANILIST) aniListClient: OkHttpClient,
 	@ScrobblerType(ScrobblerService.KITSU) kitsuClient: OkHttpClient,
 	@ScrobblerType(ScrobblerService.MAL) malClient: OkHttpClient,
