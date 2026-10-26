@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.reader.ui.epub.translation
 
+import android.content.Intent
+import android.net.Uri
 import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
@@ -175,11 +177,23 @@ class NovelTranslationDialogController(
 
 		val privacyNote = TextView(context).apply {
 			setPadding(0, dp(4), 0, dp(8))
+			setOnClickListener {
+				if (selectedServiceFromPosition(serviceSpinner.selectedItemPosition) == NovelTranslationService.BUILT_IN) {
+					openGoogleTranslate()
+				}
+			}
 		}
 		root.addView(privacyNote, matchWidth())
 
+		val googleDisclaimer = TextView(context).apply {
+			setText(R.string.novel_translation_google_disclaimer)
+			setPadding(0, 0, 0, dp(8))
+			visibility = View.GONE
+		}
+		root.addView(googleDisclaimer, matchWidth())
+
 		fun selectedService(): NovelTranslationService =
-			services[serviceSpinner.selectedItemPosition.coerceIn(services.indices)]
+			selectedServiceFromPosition(serviceSpinner.selectedItemPosition)
 
 		fun selectedEngine(): NovelTranslationEngineKind = when (selectedService()) {
 			NovelTranslationService.ONLINE -> NovelTranslationEngineKind.ONLINE
@@ -204,6 +218,28 @@ class NovelTranslationDialogController(
 		}
 
 		var updatingAutoSwitch = false
+		var primaryAction: MaterialButton? = null
+		var translateAgainAction: MaterialButton? = null
+
+		fun refreshTranslationActionLabels(service: NovelTranslationService = selectedService()) {
+			if (!projectionActionsEnabled) {
+				primaryAction?.setText(
+					if (service == NovelTranslationService.BUILT_IN) {
+						R.string.novel_translation_translate_with_google
+					} else {
+						R.string.novel_translation_translate
+					},
+				)
+			}
+			translateAgainAction?.setText(
+				if (service == NovelTranslationService.BUILT_IN) {
+					R.string.novel_translation_translate_with_google
+				} else {
+					R.string.novel_translation_translate_again
+				},
+			)
+		}
+
 		fun updateAutoUi() {
 			val id = autoMangaId ?: return
 			if (settings.isAutoTranslateEnabled(id) && !settings.isAutoTranslateActive(id)) {
@@ -236,6 +272,8 @@ class NovelTranslationDialogController(
 					R.string.novel_translation_privacy_note
 				},
 			)
+			googleDisclaimer.visibility = if (service == NovelTranslationService.BUILT_IN) View.VISIBLE else View.GONE
+			refreshTranslationActionLabels(service)
 			updateAutoUi()
 		}
 		serviceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -274,11 +312,12 @@ class NovelTranslationDialogController(
 		}
 
 		val primary = MaterialButton(context).apply { isAllCaps = false }
+		primaryAction = primary
 		val translateAgain = MaterialButton(context).apply {
-			setText(R.string.novel_translation_translate_again)
 			isAllCaps = false
 			visibility = if (projectionActionsEnabled) View.VISIBLE else View.GONE
 		}
+		translateAgainAction = translateAgain
 		root.addView(primary, matchWidth())
 		root.addView(translateAgain, matchWidth())
 
@@ -293,9 +332,11 @@ class NovelTranslationDialogController(
 				when {
 					projectionActionsEnabled && currentMode != NovelTranslationDisplayMode.ORIGINAL -> R.string.novel_translation_show_original
 					projectionActionsEnabled -> R.string.novel_translation_show_translation
+					selectedService() == NovelTranslationService.BUILT_IN -> R.string.novel_translation_translate_with_google
 					else -> R.string.novel_translation_translate
 				},
 			)
+			refreshTranslationActionLabels()
 		}
 		refreshPrimaryAction()
 
@@ -354,10 +395,19 @@ class NovelTranslationDialogController(
 		return start >= 0 && end >= 0 && start != end
 	}
 
+	private fun selectedServiceFromPosition(position: Int): NovelTranslationService =
+		NovelTranslationService.entries[position.coerceIn(NovelTranslationService.entries.indices)]
+
 	private fun currentService(): NovelTranslationService = when {
 		settings.engine == NovelTranslationEngineKind.ONLINE -> NovelTranslationService.ONLINE
 		settings.provider == NovelAiProvider.BUILT_IN -> NovelTranslationService.BUILT_IN
 		else -> NovelTranslationService.AI
+	}
+
+	private fun openGoogleTranslate() {
+		context.startActivity(
+			Intent(Intent.ACTION_VIEW, Uri.parse(GOOGLE_TRANSLATE_URL)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+		)
 	}
 
 	private fun dispatchTranslation(engine: NovelTranslationEngineKind, displayMode: NovelTranslationDisplayMode) {
@@ -643,4 +693,8 @@ class NovelTranslationDialogController(
 	private fun matchWidth() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 	private fun weighted() = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
 	private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
+
+	private companion object {
+		const val GOOGLE_TRANSLATE_URL = "https://translate.google.com/"
+	}
 }
