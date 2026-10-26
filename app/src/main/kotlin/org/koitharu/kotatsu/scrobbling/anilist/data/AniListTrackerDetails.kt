@@ -9,6 +9,7 @@ internal fun aniListDetailsQuery(target: TrackerTarget, content: TrackerContent,
 	val field = when (content) {
 		TrackerContent.CHARACTERS -> "characters(page: ${page.number}, perPage: 25, sort: [ROLE, FAVOURITES_DESC]) { pageInfo { hasNextPage } edges { role node { id name { userPreferred full } image { large medium } siteUrl } } }"
 		TrackerContent.STAFF -> "staff(page: ${page.number}, perPage: 25) { pageInfo { hasNextPage } edges { role node { id name { userPreferred full } image { large medium } siteUrl } } }"
+		TrackerContent.RELATIONS -> error("AniList relations use TrackerRelationsReader")
 		TrackerContent.RECOMMENDATIONS -> "recommendations(page: ${page.number}, perPage: 25, sort: RATING_DESC) { pageInfo { hasNextPage } edges { node { mediaRecommendation { id title { userPreferred romaji native } coverImage { large medium } siteUrl } } } }"
 	}
 	return "query { Media(id: ${target.id}, type: MANGA) { id $field } }"
