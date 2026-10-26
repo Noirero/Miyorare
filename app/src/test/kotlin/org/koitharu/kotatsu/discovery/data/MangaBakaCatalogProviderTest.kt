@@ -70,6 +70,7 @@ class MangaBakaCatalogProviderTest {
 				"/v2/series/search" -> {
 					assertEquals("latest", request.url.queryParameter("sort_by"))
 					assertNull(request.url.queryParameter("type"))
+					assertNull(request.url.queryParameter("type_not"))
 					"""{"data":[$manga,$novel],"pagination":{"next":false}}"""
 				}
 				else -> error("Unexpected request ${request.url}")
@@ -87,17 +88,23 @@ class MangaBakaCatalogProviderTest {
 	}
 
 	@Test
-	fun `Novel Home never sends unsupported type filter to rising or hidden gems`() = runBlocking {
+	fun `Novel Home keeps Rising unfiltered and uses supported Novel filters elsewhere`() = runBlocking {
 		val provider = MangaBakaCatalogProvider(http { request ->
 			when (request.url.encodedPath) {
-				"/v2/series/discover/rising", "/v2/series/discover/hidden-gems" -> {
+				"/v2/series/discover/rising" -> {
 					assertNull(request.url.queryParameter("type"))
 					assertNull(request.url.queryParameter("type_not"))
 					assertEquals("24", request.url.queryParameter("limit"))
 					"""{"data":[$manhwa,$novel],"pagination":{"next":false}}"""
 				}
+				"/v2/series/discover/hidden-gems" -> {
+					assertEquals("novel", request.url.queryParameter("type"))
+					assertNull(request.url.queryParameter("type_not"))
+					"""{"data":[$novel],"pagination":{"next":false}}"""
+				}
 				"/v2/series/search" -> {
 					assertEquals("novel", request.url.queryParameter("type"))
+					assertNull(request.url.queryParameter("type_not"))
 					assertEquals("latest", request.url.queryParameter("sort_by"))
 					"""{"data":[$novel],"pagination":{"next":false}}"""
 				}
