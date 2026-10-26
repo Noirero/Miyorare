@@ -38,6 +38,9 @@ class SourceMangaListViewModel @Inject constructor(
 
 	private val _state = MutableStateFlow(SourceMangaListState(
 		filter = savedStateHandle.get<String>(FILTER)?.let { raw -> MigrationBatchStatus.entries.find { it.name == raw } },
+		searchScope = savedStateHandle.get<String>(SEARCH_SCOPE)
+			?.let { raw -> MigrationSearchScope.entries.find { it.name == raw } }
+			?: MigrationSearchScope.ALL,
 	))
 	val state: StateFlow<SourceMangaListState> = _state.asStateFlow()
 
@@ -98,7 +101,15 @@ class SourceMangaListViewModel @Inject constructor(
 		_state.update { it.copy(filter = filter) }
 	}
 
-	fun checkAll() = enqueue(state.value.manga.map { MigrationBatchRequest(it.id, it.source.name, MigrationBatchAction.CHECK) })
+	fun setSearchScope(scope: MigrationSearchScope) {
+		if (state.value.batchBusy || state.value.scheduling) return
+		savedStateHandle[SEARCH_SCOPE] = scope.name
+		_state.update { it.copy(searchScope = scope) }
+	}
+
+	fun checkAll() = enqueue(state.value.manga.map {
+		MigrationBatchRequest(it.id, it.source.name, MigrationBatchAction.CHECK, searchScope = state.value.searchScope)
+	})
 
 	fun migrateReady() = enqueue(MigrationBatchPolicy.readyRequests(state.value.manga, state.value.batchItems))
 
@@ -149,14 +160,18 @@ class SourceMangaListViewModel @Inject constructor(
 						migratedCount = latest.values.count { it.outcome.status == MigrationBatchStatus.MIGRATED },
 						unconfirmedCount = latest.values.count { it.mangaId !in visible && it.outcome.status == MigrationBatchStatus.INTERRUPTED })
 				}.flowOn(Dispatchers.IO).collect { projection ->
-					_state.update { current -> projection.copy(filter = current.filter, scheduling = current.scheduling,
+					_state.update { current -> projection.copy(filter = current.filter, searchScope = current.searchScope,
+						scheduling = current.scheduling,
 						selectedIds = current.selectedIds.intersect(projection.manga.mapTo(hashSetOf()) { it.id })) }
 				}
 			}.onFailure { _state.update { it.copy(isLoading = false, failed = true) } }
 		}
 	}
 
-	private companion object { const val FILTER = "migration_batch_filter" }
+	private companion object {
+		const val FILTER = "migration_batch_filter"
+		const val SEARCH_SCOPE = "migration_batch_search_scope"
+	}
 
 }
 
@@ -166,6 +181,7 @@ data class SourceMangaListState(
 	val manga: List<Manga> = emptyList(),
 	val selectedIds: Set<Long> = emptySet(),
 	val filter: MigrationBatchStatus? = null,
+	val searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
 	val batchItems: Map<Long, MigrationBatchSnapshot> = emptyMap(),
 	val batchBusy: Boolean = false,
 	val ownedBatchName: String? = null,
