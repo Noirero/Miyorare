@@ -61,8 +61,9 @@ class TrackerCatalogRepository(
 		if (raw.sections.isNotEmpty() && raw.sections.all { it.failure != null }) throw CatalogException(checkNotNull(raw.sections.first().failure))
 		require(raw.sections.size <= CatalogCachePolicy.MAX_SECTIONS && raw.sections.distinctBy { it.key }.size == raw.sections.size)
 		val sections = raw.sections.map { section ->
-			require(section.key.service == key.service && section.key.kind in key.filter.kinds)
-			require(section.items.all { it.key.service == key.service && it.key.kind == section.key.kind })
+			require(section.key.service == key.service && section.key.kind.matches(key.filter))
+			val allowedItemKinds = section.key.kind.itemKinds(key.filter)
+			require(section.items.all { it.key.service == key.service && it.key.kind in allowedItemKinds })
 			val items = section.items.mapNotNull { it.forPolicy(key.allowAdult) }.take(CatalogCachePolicy.HOME_PAGE_SIZE)
 			if (section.failure != null) previous?.sections?.find { it.key == section.key }?.copy(failure = section.failure) ?: section.copy(items = emptyList())
 			else section.copy(items = items)
@@ -89,7 +90,7 @@ class TrackerCatalogRepository(
 		provider(service).search(query, filter, adult, page).checked(service, filter.kinds, adult)
 
 	suspend fun browse(key: CatalogSectionKey, adult: Boolean, page: Int): TrackerCatalogPage =
-		provider(key.service).browseSection(key, adult, page).checked(key.service, listOf(key.kind), adult)
+		provider(key.service).browseSection(key, adult, page).checked(key.service, key.kind.itemKinds(CatalogFilter.ALL), adult)
 
 	suspend fun details(key: TrackerCatalogKey, adult: Boolean): TrackerCatalogDetails {
 		val cacheKey = key to adult
@@ -107,5 +108,13 @@ class TrackerCatalogRepository(
 	private fun TrackerCatalogPage.checked(service: ScrobblerService, kinds: List<CatalogMediaKind>, adult: Boolean): TrackerCatalogPage {
 		require(items.all { it.key.service == service && it.key.kind in kinds })
 		return copy(items = items.mapNotNull { it.forPolicy(adult) }.distinctBy { it.key }, nextPage = nextPage?.takeIf { it in 2..CatalogCachePolicy.MAX_PAGE })
+	}
+
+	private fun CatalogMediaKind.matches(filter: CatalogFilter): Boolean =
+		this in filter.kinds || this == CatalogMediaKind.MIXED && filter == CatalogFilter.ALL
+
+	private fun CatalogMediaKind.itemKinds(filter: CatalogFilter): List<CatalogMediaKind> = when (this) {
+		CatalogMediaKind.MIXED -> filter.kinds
+		CatalogMediaKind.MANGA, CatalogMediaKind.NOVEL -> listOf(this)
 	}
 }
