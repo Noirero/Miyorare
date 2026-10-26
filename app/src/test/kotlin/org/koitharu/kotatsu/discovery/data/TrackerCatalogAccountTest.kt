@@ -39,7 +39,8 @@ class TrackerCatalogAccountTest {
 			"https://kitsu.app/users/42",
 			catalogAccountProfileUrl(ScrobblerUser(42, "Reader", null, ScrobblerService.KITSU)),
 		)
-		assertNull(
+		assertEquals(
+			"https://mangabaka.org/my/settings/profile",
 			catalogAccountProfileUrl(ScrobblerUser(5, "Reader", null, ScrobblerService.MANGABAKA)),
 		)
 	}
