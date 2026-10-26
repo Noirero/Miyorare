@@ -3,7 +3,6 @@ package org.koitharu.kotatsu.scrobbling.common.data
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
@@ -103,6 +102,5 @@ class TrackerRelationsReaderTest {
 			TrackerTarget(ScrobblerService.ANILIST, "2"),
 		)
 		assertTrue(result is TrackerResult.Error)
-		assertNull((result as? TrackerResult.Success)?.next)
 	}
 }
