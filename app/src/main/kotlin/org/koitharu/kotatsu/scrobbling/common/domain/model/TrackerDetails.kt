@@ -9,7 +9,7 @@ data class TrackerTarget(val service: ScrobblerService, val id: String, val url:
 	}
 }
 
-enum class TrackerContent { CHARACTERS, STAFF, RECOMMENDATIONS }
+enum class TrackerContent { CHARACTERS, STAFF, RELATIONS, RECOMMENDATIONS }
 
 /** One bounded provider page. Kitsu supplies an opaque related-collection link. */
 data class TrackerPage(val number: Int = 1, val url: String? = null) {
@@ -24,7 +24,37 @@ data class TrackerPerson(
 	val url: String? = null,
 )
 
-enum class TrackerRecommendationKind { RECOMMENDATION, SIMILAR_MANGA }
+enum class TrackerRelationType {
+	ADAPTATION,
+	PREQUEL,
+	SEQUEL,
+	PARENT,
+	SIDE_STORY,
+	CHARACTER,
+	SUMMARY,
+	ALTERNATIVE,
+	SPIN_OFF,
+	SOURCE,
+	COMPILATION,
+	CONTAINS,
+	SAME_UNIVERSE,
+	OTHER,
+}
+
+enum class TrackerMediaType { MANGA, ANIME, OTHER }
+
+data class TrackerRelation(
+	val target: TrackerTarget,
+	val title: String,
+	val image: String?,
+	val relation: TrackerRelationType,
+	val mediaType: TrackerMediaType,
+	val format: String? = null,
+	val providerRelation: String? = null,
+)
+
+/** RELATION entries are navigation-only proxies; relation presentation uses [TrackerRelation]. */
+enum class TrackerRecommendationKind { RECOMMENDATION, SIMILAR_MANGA, RELATION }
 
 data class TrackerRecommendation(
 	val target: TrackerTarget,
@@ -57,6 +87,7 @@ data class AssociatedTrackerDetails(
 	val state: TrackerDetailsReadState,
 	val characters: TrackerResult<TrackerPerson> = TrackerResult.NotRequested,
 	val staff: TrackerResult<TrackerPerson> = TrackerResult.NotRequested,
+	val relations: TrackerResult<TrackerRelation> = TrackerResult.NotRequested,
 	val recommendations: TrackerResult<TrackerRecommendation> = TrackerResult.NotRequested,
 )
 
