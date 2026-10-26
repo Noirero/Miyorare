@@ -38,11 +38,16 @@ fun DiscoveryHubScreen(
 	showLocalSearch: Boolean = true,
 	account: CatalogAccountState = CatalogAccountState(state.request.service),
 	knownTracking: Map<Long, CatalogTrackingEntry> = emptyMap(),
+	mangaBakaPersonal: MangaBakaPersonalHomeState = MangaBakaPersonalHomeState(),
 	onAccountLogin: () -> Unit = {},
 	onAccountProfile: () -> Unit = {},
 	onAccountMyList: () -> Unit = {},
 	onAccountManage: () -> Unit = {},
 	onAccountLogout: () -> Unit = {},
+	onMangaBakaPersonalRetry: () -> Unit = {},
+	onMangaBakaReconnect: () -> Unit = {},
+	onMangaBakaLibrarySeeAll: () -> Unit = {},
+	onMangaBakaExploreType: (MangaBakaExploreType) -> Unit = {},
 ) {
 	val list = rememberLazyListState()
 	val dataset = "${state.request.service}_${state.request.filter}_${state.request.allowAdult}"
@@ -99,6 +104,22 @@ fun DiscoveryHubScreen(
 			if (status == DiscoveryHomeStatus.CACHED_REFRESHING || status == DiscoveryHomeStatus.CACHED_ERROR || status == DiscoveryHomeStatus.PARTIAL) {
 				item(key = "status") {
 					CatalogStatusBanner(status, state.failure, state.request.service, onRefresh)
+				}
+			}
+
+			if (state.request.service == ScrobblerService.MANGABAKA && account.authorized) {
+				item(key = "mangabaka_personal") {
+					MangaBakaPersonalHomeContent(
+						state = mangaBakaPersonal,
+						filter = state.request.filter,
+						knownTracking = knownTracking,
+						imageLoader = imageLoader,
+						onItem = onItem,
+						onRetry = onMangaBakaPersonalRetry,
+						onReconnect = onMangaBakaReconnect,
+						onLibrarySeeAll = onMangaBakaLibrarySeeAll,
+						onExploreType = onMangaBakaExploreType,
+					)
 				}
 			}
 

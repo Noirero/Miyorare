@@ -51,6 +51,7 @@ class DiscoveryHubFragment : Fragment() {
 				val state by viewModel.state.collectAsState()
 				val account by viewModel.account.collectAsState()
 				val knownTracking by viewModel.knownTracking.collectAsState()
+				val mangaBakaPersonal by viewModel.mangaBakaPersonal.collectAsState()
 				DiscoveryHubScreen(
 					state = state,
 					services = viewModel.services,
@@ -66,11 +67,16 @@ class DiscoveryHubFragment : Fragment() {
 					showLocalSearch = (activity as? MainActivity)?.hasSharedSearchBar() != true,
 					account = account,
 					knownTracking = knownTracking,
+					mangaBakaPersonal = mangaBakaPersonal,
 					onAccountLogin = { startAccountAuth(state.request.service) },
 					onAccountProfile = { account.profileUrl?.let(router::openExternalBrowser) },
 					onAccountMyList = { router.openScrobblerSettings(state.request.service) },
 					onAccountManage = router::openSettings,
 					onAccountLogout = viewModel::logoutAccount,
+					onMangaBakaPersonalRetry = viewModel::retryMangaBakaPersonal,
+					onMangaBakaReconnect = { startAccountAuth(ScrobblerService.MANGABAKA) },
+					onMangaBakaLibrarySeeAll = { router.openExternalBrowser(MANGABAKA_LIBRARY_URL) },
+					onMangaBakaExploreType = viewModel::selectMangaBakaExploreType,
 				)
 			}
 		} }
@@ -145,5 +151,9 @@ class DiscoveryHubFragment : Fragment() {
 	private fun openTrackerSearch() {
 		val request = viewModel.state.value.request
 		startActivity(TrackerCatalogActivity.searchIntent(requireContext(), request.service, request.filter))
+	}
+
+	private companion object {
+		const val MANGABAKA_LIBRARY_URL = "https://mangabaka.org/my/library"
 	}
 }
