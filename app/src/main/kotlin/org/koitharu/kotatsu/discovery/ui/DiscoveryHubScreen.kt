@@ -111,7 +111,7 @@ fun DiscoveryHubScreen(
 				item(key = "spotlight") {
 					Box {
 						CatalogSpotlight(spotlight, imageLoader, onClick = { onItem(spotlight.item.key) })
-						knownTracking[spotlight.item.key.remoteId.toLongOrNull()]?.let {
+						spotlight.item.key.remoteId.toLongOrNull()?.let { knownTracking[it] }?.let {
 							CatalogTrackingBadge(it, Modifier.align(Alignment.TopEnd).padding(12.dp))
 						}
 					}
