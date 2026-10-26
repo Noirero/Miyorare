@@ -156,7 +156,15 @@ class TrackerCatalogAccountRepository @Inject constructor(
 			ScrobblerService.MANGABAKA -> removeMangaBaka(key)
 			else -> error("Unsupported Tracker Home account service ${key.service}")
 		}
+		clearPersistedAssociations(key.service, key.remoteId.toLong())
 		remember(key.service, key.remoteId.toLong(), null)
+	}
+
+	private suspend fun clearPersistedAssociations(service: ScrobblerService, targetId: Long) {
+		val dao = database.getScrobblingDao()
+		dao.findByTarget(service.id, targetId).forEach { association ->
+			dao.delete(service.id, association.mangaId)
+		}
 	}
 
 	private suspend fun readAniList(key: TrackerCatalogKey): CatalogTrackingEntry? {
