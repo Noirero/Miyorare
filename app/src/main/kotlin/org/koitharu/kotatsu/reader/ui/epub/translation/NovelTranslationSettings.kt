@@ -127,17 +127,24 @@ class NovelTranslationSettings(context: Context) {
 
 	/**
 	 * Models are provider-scoped so changing from one provider to another never accidentally sends a
-	 * request with the previous provider's model name.
+	 * request with the previous provider's model name. Built-in exposes a stable runtime identity so
+	 * auto-translate readiness and semantic cache fingerprints remain provider-correct without a
+	 * fake user-configured model.
 	 */
 	var model: String
 		get() = model(provider)
 		set(value) = setModel(provider, value)
 
-	fun model(provider: NovelAiProvider): String =
+	fun model(provider: NovelAiProvider): String = if (provider == NovelAiProvider.BUILT_IN) {
+		BUILT_IN_RUNTIME_ID
+	} else {
 		prefs.getString(providerKey(KEY_MODEL_PREFIX, provider), "").orEmpty()
+	}
 
-	fun setModel(provider: NovelAiProvider, value: String) =
+	fun setModel(provider: NovelAiProvider, value: String) {
+		if (provider == NovelAiProvider.BUILT_IN) return
 		prefs.edit().putString(providerKey(KEY_MODEL_PREFIX, provider), value.trim()).apply()
+	}
 
 	/**
 	 * Optional provider-scoped override for accounts/regions that use a different endpoint.
@@ -150,8 +157,10 @@ class NovelTranslationSettings(context: Context) {
 	fun baseUrlOverride(provider: NovelAiProvider): String =
 		prefs.getString(providerKey(KEY_BASE_URL_PREFIX, provider), "").orEmpty()
 
-	fun setBaseUrlOverride(provider: NovelAiProvider, value: String) =
+	fun setBaseUrlOverride(provider: NovelAiProvider, value: String) {
+		if (provider == NovelAiProvider.BUILT_IN) return
 		prefs.edit().putString(providerKey(KEY_BASE_URL_PREFIX, provider), value.trim()).apply()
+	}
 
 	var style: NovelTranslationStyle
 		get() = NovelTranslationStyle.fromId(prefs.getString(KEY_STYLE, null))
@@ -195,6 +204,7 @@ class NovelTranslationSettings(context: Context) {
 	companion object {
 		const val LANGUAGE_AUTO = "auto"
 		const val DEFAULT_TARGET_LANGUAGE = "id"
+		internal const val BUILT_IN_RUNTIME_ID = "mlkit-translate-17.0.3"
 
 		private const val PREFS_NAME = "novel_translation"
 		private const val KEY_ENGINE = "engine"
@@ -255,7 +265,7 @@ enum class NovelAiProvider(
 		id = "built_in",
 		displayName = "Built-in",
 		protocol = NovelAiProtocol.ON_DEVICE,
-		defaultBaseUrl = "",
+		defaultBaseUrl = "on-device:mlkit-translate-17.0.3",
 		supportsModelDiscovery = false,
 	),
 	OPENAI(
