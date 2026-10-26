@@ -2,19 +2,18 @@ package org.koitharu.kotatsu.reader.ui.epub.translation
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NovelBuiltInTranslationPolicyTest {
 
 	@Test
-	fun `built in provider is an on-device service with stable runtime identity`() {
+	fun `built in provider is an android system service with stable runtime identity`() {
 		val provider = NovelAiProvider.BUILT_IN
 
 		assertEquals("built_in", provider.id)
 		assertEquals(NovelAiProtocol.ON_DEVICE, provider.protocol)
-		assertEquals("on-device:mlkit-translate-17.0.3", provider.defaultBaseUrl)
-		assertEquals("mlkit-translate-17.0.3", NovelTranslationSettings.BUILT_IN_RUNTIME_ID)
+		assertEquals("on-device:android-system-translation", provider.defaultBaseUrl)
+		assertEquals("android-system-translation-api31-v1", NovelTranslationSettings.BUILT_IN_RUNTIME_ID)
 		assertFalse(provider.supportsModelDiscovery)
 	}
 
