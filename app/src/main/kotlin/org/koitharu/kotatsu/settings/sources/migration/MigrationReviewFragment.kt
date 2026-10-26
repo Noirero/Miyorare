@@ -110,12 +110,11 @@ internal fun MigrationReviewScreen(
 	val finalDecision = !state.loading && state.hasSearched && !state.searchFailed
 	val ready = finalDecision && discovery != null && !discovery.incomplete &&
 		discovery.assessment?.state == MigrationMatchState.READY
-	val candidates = if (!finalDecision) {
-		emptyList()
-	} else if (ready) {
-		listOfNotNull(discovery?.assessment?.best)
-	} else {
-		discovery?.assessment?.candidates.orEmpty()
+	val candidates = when {
+		state.searching -> discovery?.assessment?.candidates.orEmpty()
+		!finalDecision -> emptyList()
+		ready -> listOfNotNull(discovery?.assessment?.best)
+		else -> discovery?.assessment?.candidates.orEmpty()
 	}
 	val selected = candidates.firstOrNull { it.manga.id == selectedId && it.manga.source.name == selectedSource &&
 		org.koitharu.kotatsu.alternatives.domain.MigrationSelection.of(it.manga).fingerprint == selectedFingerprint }
@@ -160,6 +159,16 @@ internal fun MigrationReviewScreen(
 						Text(stringResource(R.string.migration_verifying_candidates, progress.candidateCount))
 					}
 				}
+			}
+			if (!state.searching || candidates.isEmpty()) return@Column
+			for (candidate in candidates) {
+				MigrationCandidateCard(
+					candidate = candidate,
+					selected = false,
+					imageLoader = imageLoader,
+					onSelect = {},
+					onOpenDetails = { onOpenCandidate(candidate.manga) },
+				)
 			}
 			return@Column
 		}
