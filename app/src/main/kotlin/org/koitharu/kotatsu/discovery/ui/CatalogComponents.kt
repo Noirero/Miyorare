@@ -95,14 +95,12 @@ fun catalogSectionTitle(key: CatalogSectionKey): String {
 fun CatalogHomeHeader(
 	service: ScrobblerService,
 	services: List<ScrobblerService>,
-	imageLoader: ImageLoader? = null,
+	refreshing: Boolean,
+	refreshEnabled: Boolean,
+	showLocalSearch: Boolean,
 	onProvider: (ScrobblerService) -> Unit,
-	onFilter: ((CatalogFilter) -> Unit)? = null,
-	onSearch: () -> Unit,
 	onRefresh: () -> Unit,
-	refreshing: Boolean = false,
-	refreshEnabled: Boolean = true,
-	showLocalSearch: Boolean = true,
+	onSearch: () -> Unit,
 	modifier: Modifier = Modifier,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
@@ -289,7 +287,7 @@ fun CatalogSpotlight(
 				Icon(
 					painterResource(R.drawable.ic_discovery_hub),
 					contentDescription = null,
-					tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+					tint = MaterialTheme.colorScheme.onSurfaceVariant,
 					modifier = Modifier.padding(end = 32.dp).size(88.dp),
 				)
 			}
