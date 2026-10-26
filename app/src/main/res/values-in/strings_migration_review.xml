@@ -16,6 +16,7 @@
     <string name="migration_find_another_source">Cari source lain juga</string>
     <string name="migration_source_unavailable">Source saat ini tidak dapat menyediakan halaman yang bisa dibaca. Pilih tempat untuk mencari pengganti.</string>
     <string name="migration_source_problem">Source saat ini tidak dapat menyediakan halaman yang bisa dibaca. Manga tetap disimpan selama Anda memilih pengganti.</string>
+    <string name="migration_fix_entry_prompt">Buka Migrasi Manga untuk memeriksa apakah manga masih bisa dibaca, memilih area pencarian pengganti, dan meninjau hasil sebelum ada manga yang dimigrasikan.</string>
     <string name="migration_search_scope_title">Cari pengganti di</string>
     <string name="migration_scope_all">ALL</string>
     <string name="migration_scope_store">Store</string>
