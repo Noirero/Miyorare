@@ -169,11 +169,11 @@ class MigrationCandidateMatcherTest {
 	}
 
 	@Test
-	fun `unrelated search result stays visible for manual review`() {
+	fun `unrelated source search result stays visible for manual review`() {
 		val seed = manga(1, "Original Story", "OLD", authors = setOf("Writer"))
 		val unrelated = manga(2, "Completely Different", "NEW", authors = setOf("Someone Else"))
 
-		val result = matcher.assess(seed, listOf(MigrationCandidateObservation(unrelated)))
+		val result = matcher.assess(seed, listOf(observation(unrelated, seed.title)))
 
 		assertEquals(MigrationMatchState.NEEDS_REVIEW, result.state)
 		assertEquals(unrelated.id, result.best?.manga?.id)
