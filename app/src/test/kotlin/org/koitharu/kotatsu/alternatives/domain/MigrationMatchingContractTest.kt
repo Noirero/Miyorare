@@ -65,6 +65,17 @@ class MigrationMatchingContractTest {
 		assertFalse(source.contains("filter{it.id!=manga.id}"))
 	}
 
+	@Test
+	fun `legacy fix entry points route through explicit migration UI`() {
+		val source = source("org/koitharu/kotatsu/alternatives/ui/AutoFixService.kt")
+		val entryPoints = source.substringAfter("companionobject{")
+
+		assertTrue(entryPoints.contains("ACTION_MIGRATION_REVIEW"))
+		assertTrue(entryPoints.contains("ACTION_MIGRATION"))
+		assertTrue(entryPoints.contains("context.startActivity("))
+		assertFalse(entryPoints.contains("startForegroundService"))
+	}
+
 	private fun source(relativePath: String): String {
 		var dir = File(System.getProperty("user.dir"))
 		repeat(8) {
