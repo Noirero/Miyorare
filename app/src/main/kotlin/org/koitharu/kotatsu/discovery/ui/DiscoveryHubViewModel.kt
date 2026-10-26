@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.discovery.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -84,6 +85,8 @@ class DiscoveryHubViewModel @Inject constructor(
 					mutableAccount.value = refreshed
 					mutableKnownTracking.value = known
 				}
+			} catch (e: CancellationException) {
+				throw e
 			} catch (_: Exception) {
 				if (token == accountGeneration && state.value.request.service == service) {
 					mutableAccount.value = snapshot.copy(loading = false, failed = true)
