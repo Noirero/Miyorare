@@ -62,6 +62,14 @@ data class MigrationSearchAvailability(
 	fun count(scope: MigrationSearchScope): Int = counts[scope] ?: 0
 }
 
+internal fun isMigrationScopeIncomplete(
+	scopedSourceNames: Collection<String>,
+	failedSourceNames: Set<String>,
+	successfulSourceNames: Set<String>,
+): Boolean = scopedSourceNames.isEmpty() || (
+	successfulSourceNames.isEmpty() && scopedSourceNames.all { it in failedSourceNames }
+)
+
 internal data class MigrationProviderMerge<T>(
 	val values: List<T>,
 	val failureCount: Int,
