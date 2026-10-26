@@ -40,7 +40,7 @@ class MigrationBatchWorker @AssistedInject constructor(
 					database.getMangaDao().find(request.mangaId)?.manga?.source == request.source
 			},
 			discover = {
-				autoFix.discover(request.mangaId) { discovery ->
+				autoFix.discover(request.mangaId, request.searchScope) { discovery ->
 					setProgress(MigrationBatchWork.output(
 						MigrationBatchOutcome(MigrationBatchStatus.CHECKING),
 						discovery.progress,
