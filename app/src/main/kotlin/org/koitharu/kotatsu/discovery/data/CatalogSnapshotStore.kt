@@ -31,14 +31,15 @@ class FileCatalogSnapshotStore(private val directory: File) : CatalogSnapshotSto
 			val sections = rows.map { value ->
 				val row = value.jsonObject
 				val sectionKind = CatalogMediaKind.valueOf(row.text("kind") ?: invalidCatalog())
-				check(sectionKind == CatalogMediaKind.MIXED && key.filter == CatalogFilter.ALL || sectionKind in key.filter.kinds)
+				check((sectionKind == CatalogMediaKind.MIXED && key.filter == CatalogFilter.ALL) || sectionKind in key.filter.kinds)
+				val allowedItemKinds = if (sectionKind == CatalogMediaKind.MIXED) key.filter.kinds else listOf(sectionKind)
 				val sectionKey = CatalogSectionKey(key.service, sectionKind, CatalogSectionType.valueOf(row.text("type") ?: invalidCatalog()))
 				val items = row.array("items") ?: invalidCatalog()
 				check(items.size <= CatalogCachePolicy.HOME_PAGE_SIZE)
 				TrackerCatalogSection(sectionKey, items.mapNotNull { entry ->
 					val item = entry.jsonObject
 					val itemKind = CatalogMediaKind.valueOf(item.text("kind") ?: invalidCatalog())
-					check(itemKind != CatalogMediaKind.MIXED && itemKind in key.filter.kinds)
+					check(itemKind != CatalogMediaKind.MIXED && itemKind in allowedItemKinds)
 					TrackerCatalogItem(
 						TrackerCatalogKey(key.service, itemKind, item.catalogId()),
 						item.text("title") ?: invalidCatalog(),
