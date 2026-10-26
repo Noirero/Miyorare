@@ -77,6 +77,9 @@ class DiscoveryHubFragment : Fragment() {
 					onMangaBakaReconnect = { startAccountAuth(ScrobblerService.MANGABAKA) },
 					onMangaBakaLibrarySeeAll = { router.openExternalBrowser(MANGABAKA_LIBRARY_URL) },
 					onMangaBakaExploreType = viewModel::selectMangaBakaExploreType,
+					onMangaBakaExploreSeeAll = { type ->
+						router.openExternalBrowser("$MANGABAKA_SEARCH_URL?sort_by=popularity_asc&type=${type.apiValue}")
+					},
 				)
 			}
 		} }
@@ -155,5 +158,6 @@ class DiscoveryHubFragment : Fragment() {
 
 	private companion object {
 		const val MANGABAKA_LIBRARY_URL = "https://mangabaka.org/my/library"
+		const val MANGABAKA_SEARCH_URL = "https://mangabaka.org/search"
 	}
 }
