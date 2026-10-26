@@ -3,6 +3,12 @@
     <string name="migration_open_result">Open migrated manga</string>
     <string name="migration_current_source">Current source: %1$s</string>
     <string name="migration_replacement_source">Replacement source: %1$s</string>
+    <string name="migration_preparing">Preparing migration…</string>
+    <string name="migration_choose_path">How do you want to migrate?</string>
+    <string name="migration_choose_path_description">You can check the current source first, or skip that check and search for this title in other installed sources.</string>
+    <string name="migration_check_current_action">Check current source first</string>
+    <string name="migration_search_direct_action">Search replacement directly</string>
+    <string name="migration_direct_search_active">Current-source checking was skipped. Choose where to search for this title.</string>
     <string name="migration_checking">Checking whether the current manga can still be read…</string>
     <string name="migration_checking_source">Checking current source: %1$s</string>
     <string name="migration_searching_sources">Searching the selected installed sources…</string>
@@ -13,10 +19,10 @@
     <string name="migration_blocked">Migration could not be completed safely. Your existing library data was not overwritten. Review the library and retry.</string>
     <string name="migration_search_failed">The replacement search could not be prepared or completed. No migration was performed. Choose a scope and try again.</string>
     <string name="migration_source_healthy">This manga can still be read from its current source. Migration is not needed.</string>
-    <string name="migration_find_another_source">Find another source anyway</string>
-    <string name="migration_source_unavailable">The current source could not provide a readable page. Choose where to search for a replacement.</string>
+    <string name="migration_find_another_source">Search replacement directly anyway</string>
+    <string name="migration_source_unavailable">The current source could not prove a readable page within the check. Choose where to search for a replacement.</string>
     <string name="migration_source_problem">The current source could not provide a readable page. Your manga stays in place while you choose a replacement.</string>
-    <string name="migration_fix_entry_prompt">Open Manga Migration to check readability, choose where replacements are searched, and review results before anything is migrated.</string>
+    <string name="migration_fix_entry_prompt">Open Manga Migration, then choose whether to check the current source first or search for a replacement directly.</string>
     <string name="migration_search_scope_title">Search replacement in</string>
     <string name="migration_scope_all">ALL</string>
     <string name="migration_scope_store">Store</string>
@@ -35,7 +41,7 @@
     <string name="migration_preservation">Migration preserves library categories, private membership, history/progress, bookmarks, notes/ratings, Reader settings and compatible tracker state. Chapter data must map safely; conflicts stop migration. Existing downloads stay in place.</string>
     <string name="migration_migrate">Migrate</string>
     <string name="migration_confirm_review">Migrate to the selected manga</string>
-    <string name="migration_retry">Check again</string>
+    <string name="migration_retry">Try again</string>
     <string name="migration_chapter_evidence">%1$d chapters · %2$d matching chapter numbers</string>
     <string name="migration_evidence_conflict">Author or chapter evidence differs. Check the identity carefully.</string>
     <string name="migration_evidence_agrees">Author or chapter structure corroborates the match</string>
