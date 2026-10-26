@@ -4,11 +4,11 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRelationType
 import java.io.IOException
 
-enum class CatalogMediaKind { MANGA, NOVEL }
+enum class CatalogMediaKind { MANGA, NOVEL, MIXED }
 enum class CatalogFilter {
 	ALL, MANGA, NOVEL;
 	val kinds: List<CatalogMediaKind> get() = when (this) {
-		ALL -> CatalogMediaKind.entries
+		ALL -> listOf(CatalogMediaKind.MANGA, CatalogMediaKind.NOVEL)
 		MANGA -> listOf(CatalogMediaKind.MANGA)
 		NOVEL -> listOf(CatalogMediaKind.NOVEL)
 	}
@@ -16,7 +16,10 @@ enum class CatalogFilter {
 
 /** Public work identity. It never represents a parser/source manga or a user's tracker entry. */
 data class TrackerCatalogKey(val service: ScrobblerService, val kind: CatalogMediaKind, val remoteId: String) {
-	init { require(remoteId.toLongOrNull()?.let { it > 0 && it.toString() == remoteId } == true) }
+	init {
+		require(kind != CatalogMediaKind.MIXED)
+		require(remoteId.toLongOrNull()?.let { it > 0 && it.toString() == remoteId } == true)
+	}
 	val stableId: String get() = "${service.name}_${kind.name}_$remoteId"
 }
 
@@ -27,6 +30,8 @@ data class TrackerCatalogItem(
 	val providerUrl: String? = null,
 	val score: Double? = null,
 	val adult: Boolean? = null,
+	/** Provider-native format/taxonomy, e.g. MangaBaka manga/manhwa/manhua/novel/oel/other. */
+	val providerType: String? = null,
 ) {
 	init { require(title.isNotBlank()) }
 	fun forPolicy(allowAdult: Boolean): TrackerCatalogItem? = when {
@@ -73,7 +78,17 @@ data class TrackerCatalogRelatedWork(
 		}
 }
 
-enum class CatalogSectionType { RECENT, TRENDING, POPULAR, TOP_RATED, TOP_RANKED, MOST_FAVORITED }
+enum class CatalogSectionType {
+	RECENT,
+	TRENDING,
+	POPULAR,
+	TOP_RATED,
+	TOP_RANKED,
+	MOST_FAVORITED,
+	RISING,
+	HIDDEN_GEMS,
+	NEW_RELEASES,
+}
 data class CatalogSectionKey(val service: ScrobblerService, val kind: CatalogMediaKind, val type: CatalogSectionType)
 data class TrackerCatalogPage(val items: List<TrackerCatalogItem>, val nextPage: Int? = null)
 data class TrackerCatalogSection(
