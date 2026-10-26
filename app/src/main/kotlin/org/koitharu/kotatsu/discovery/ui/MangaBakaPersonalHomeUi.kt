@@ -220,7 +220,7 @@ private fun MangaBakaPersonalFailure(authExpired: Boolean, onRetry: () -> Unit, 
 				stringResource(if (authExpired) R.string.hub_mangabaka_session_expired else R.string.hub_mangabaka_personal_error),
 			)
 			TextButton(onClick = if (authExpired) onReconnect else onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
-				Text(stringResource(if (authExpired) R.string.hub_tracking_reconnect else R.string.hub_retry))
+				Text(stringResource(if (authExpired) R.string.hub_tracking_editor_reconnect else R.string.hub_retry))
 			}
 		}
 	}
