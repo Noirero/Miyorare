@@ -204,7 +204,7 @@ class NovelTranslationSettings(context: Context) {
 	companion object {
 		const val LANGUAGE_AUTO = "auto"
 		const val DEFAULT_TARGET_LANGUAGE = "id"
-		internal const val BUILT_IN_RUNTIME_ID = "mlkit-translate-17.0.3"
+		internal const val BUILT_IN_RUNTIME_ID = "android-system-translation-api31-v1"
 
 		private const val PREFS_NAME = "novel_translation"
 		private const val KEY_ENGINE = "engine"
@@ -265,7 +265,7 @@ enum class NovelAiProvider(
 		id = "built_in",
 		displayName = "Built-in",
 		protocol = NovelAiProtocol.ON_DEVICE,
-		defaultBaseUrl = "on-device:mlkit-translate-17.0.3",
+		defaultBaseUrl = "on-device:android-system-translation",
 		supportsModelDiscovery = false,
 	),
 	OPENAI(
