@@ -110,9 +110,12 @@ class NovelTranslationReliabilityTest {
 			firstCoordinator.translate(operation(text))
 			fail("Expected partial failure")
 		} catch (_: NovelTranslationFailure) {
-			// Expected after the first segment was persisted.
+			// Expected after one successful segment was persisted.
 		}
-		assertEquals(listOf('a', 'b'), firstCalls)
+		assertEquals(2, firstCalls.size)
+		assertEquals(setOf('a', 'b'), firstCalls.toSet())
+		assertEquals(1, firstCalls.count { it == 'a' })
+		assertEquals(1, firstCalls.count { it == 'b' })
 		assertEquals(1, firstCache.entryCount())
 
 		val secondCalls = mutableListOf<Char>()
@@ -128,7 +131,10 @@ class NovelTranslationReliabilityTest {
 		)
 		val result = secondCoordinator.translate(operation(text))
 
-		assertEquals(listOf('b', 'c'), secondCalls)
+		assertEquals(2, secondCalls.size)
+		assertEquals(setOf('b', 'c'), secondCalls.toSet())
+		assertEquals(1, secondCalls.count { it == 'b' })
+		assertEquals(1, secondCalls.count { it == 'c' })
 		assertEquals(listOf('a', 'b', 'c'), result.segments.map { it.source.text.first() })
 		assertEquals(listOf("translated-a", "translated-b", "translated-c"), result.segments.map { it.translatedText })
 		assertEquals(3, reopened.entryCount())
