@@ -8,12 +8,13 @@ import org.junit.Test
 class NovelBuiltInTranslationPolicyTest {
 
 	@Test
-	fun `built in provider is an on-device service without remote model discovery`() {
+	fun `built in provider is an on-device service with stable runtime identity`() {
 		val provider = NovelAiProvider.BUILT_IN
 
 		assertEquals("built_in", provider.id)
 		assertEquals(NovelAiProtocol.ON_DEVICE, provider.protocol)
-		assertTrue(provider.defaultBaseUrl.isBlank())
+		assertEquals("on-device:mlkit-translate-17.0.3", provider.defaultBaseUrl)
+		assertEquals("mlkit-translate-17.0.3", NovelTranslationSettings.BUILT_IN_RUNTIME_ID)
 		assertFalse(provider.supportsModelDiscovery)
 	}
 
