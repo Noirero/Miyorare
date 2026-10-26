@@ -2,6 +2,41 @@ package org.koitharu.kotatsu.reader.ui.epub.translation
 
 import android.content.Context
 
+internal data class NovelTranslationPresentationMigration(
+	val bilingual: Boolean,
+	val version: Int,
+	val shouldPersist: Boolean,
+)
+
+/**
+ * Presentation policy is deliberately independent from translation/cache identity.
+ *
+ * Version 0 shipped Bilingual as the implicit default and also persisted that implicit value on the
+ * first translation. That means an old stored `true` cannot reliably be distinguished from an
+ * explicit user choice. Version 1 therefore performs one compatibility reset to Translated Only;
+ * subsequent explicit Bilingual choices are preserved normally.
+ */
+internal object NovelTranslationPresentationPolicy {
+	const val CURRENT_VERSION = 1
+	val defaultDisplayMode: NovelTranslationDisplayMode = NovelTranslationDisplayMode.TRANSLATED_ONLY
+	val defaultBilingual: Boolean = false
+
+	fun migrate(storedVersion: Int, storedBilingual: Boolean?): NovelTranslationPresentationMigration {
+		if (storedVersion >= CURRENT_VERSION) {
+			return NovelTranslationPresentationMigration(
+				bilingual = storedBilingual ?: defaultBilingual,
+				version = storedVersion,
+				shouldPersist = false,
+			)
+		}
+		return NovelTranslationPresentationMigration(
+			bilingual = defaultBilingual,
+			version = CURRENT_VERSION,
+			shouldPersist = true,
+		)
+	}
+}
+
 /**
  * Lightweight Novel translation preferences.
  *
@@ -13,6 +48,10 @@ class NovelTranslationSettings(context: Context) {
 
 	internal val applicationContext: Context = context.applicationContext
 	private val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+	init {
+		migratePresentationPolicyIfNeeded()
+	}
 
 	var engine: NovelTranslationEngineKind
 		get() = NovelTranslationEngineKind.fromId(prefs.getString(KEY_ENGINE, null))
@@ -32,8 +71,11 @@ class NovelTranslationSettings(context: Context) {
 
 	/** Presentation preference only; it deliberately does not participate in semantic cache identity. */
 	var bilingual: Boolean
-		get() = prefs.getBoolean(KEY_BILINGUAL, true)
-		set(value) = prefs.edit().putBoolean(KEY_BILINGUAL, value).apply()
+		get() = prefs.getBoolean(KEY_BILINGUAL, NovelTranslationPresentationPolicy.defaultBilingual)
+		set(value) = prefs.edit()
+			.putBoolean(KEY_BILINGUAL, value)
+			.putInt(KEY_PRESENTATION_POLICY_VERSION, NovelTranslationPresentationPolicy.CURRENT_VERSION)
+			.apply()
 
 	fun isAutoTranslateEnabled(mangaId: Long): Boolean =
 		mangaId > 0L && prefs.getBoolean(autoTranslateKey(mangaId), false)
@@ -63,7 +105,7 @@ class NovelTranslationSettings(context: Context) {
 			targetLanguage = targetLanguage,
 			style = style,
 			contextAware = selectedEngine == NovelTranslationEngineKind.AI && contextAware,
-			displayMode = if (bilingual) NovelTranslationDisplayMode.BILINGUAL else NovelTranslationDisplayMode.TRANSLATED_ONLY,
+			displayMode = if (bilingual) NovelTranslationDisplayMode.BILINGUAL else NovelTranslationPresentationPolicy.defaultDisplayMode,
 		)
 	}
 
@@ -113,6 +155,22 @@ class NovelTranslationSettings(context: Context) {
 		return if (override.isNotEmpty()) override else provider.defaultBaseUrl.trimEnd('/')
 	}
 
+	private fun migratePresentationPolicyIfNeeded() {
+		val migration = NovelTranslationPresentationPolicy.migrate(
+			storedVersion = prefs.getInt(KEY_PRESENTATION_POLICY_VERSION, 0),
+			storedBilingual = if (prefs.contains(KEY_BILINGUAL)) {
+				prefs.getBoolean(KEY_BILINGUAL, NovelTranslationPresentationPolicy.defaultBilingual)
+			} else {
+				null
+			},
+		)
+		if (!migration.shouldPersist) return
+		prefs.edit()
+			.putBoolean(KEY_BILINGUAL, migration.bilingual)
+			.putInt(KEY_PRESENTATION_POLICY_VERSION, migration.version)
+			.apply()
+	}
+
 	private fun providerKey(prefix: String, provider: NovelAiProvider) = "$prefix${provider.id}"
 	private fun autoTranslateKey(mangaId: Long) = "$KEY_AUTO_TRANSLATE_PREFIX$mangaId"
 	private fun autoTranslateBindingKey(mangaId: Long) = "$KEY_AUTO_TRANSLATE_BINDING_PREFIX$mangaId"
@@ -128,6 +186,7 @@ class NovelTranslationSettings(context: Context) {
 		private const val KEY_SOURCE_LANGUAGE = "source_language"
 		private const val KEY_TARGET_LANGUAGE = "target_language"
 		private const val KEY_BILINGUAL = "bilingual"
+		private const val KEY_PRESENTATION_POLICY_VERSION = "presentation_policy_version"
 		private const val KEY_AUTO_TRANSLATE_PREFIX = "auto_translate_"
 		private const val KEY_AUTO_TRANSLATE_BINDING_PREFIX = "auto_translate_binding_"
 		private const val KEY_MODEL_PREFIX = "model_"
