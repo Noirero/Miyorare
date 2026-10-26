@@ -30,6 +30,7 @@ data class MigrationBatchSnapshot(
 	val batchName: String,
 	val outcome: MigrationBatchOutcome,
 	val running: Boolean = false,
+	val searchProgress: MigrationSearchProgress? = null,
 )
 
 object MigrationBatchPolicy {

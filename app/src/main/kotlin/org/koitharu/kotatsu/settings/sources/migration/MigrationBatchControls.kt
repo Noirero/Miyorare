@@ -11,12 +11,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
+import org.koitharu.kotatsu.alternatives.domain.MigrationSearchPhase
 
 @StringRes
 internal fun MigrationBatchStatus.labelRes(): Int = when (this) {
 	MigrationBatchStatus.UNCHECKED -> R.string.migration_batch_unchecked
 	MigrationBatchStatus.QUEUED -> R.string.migration_batch_queued
-	MigrationBatchStatus.CHECKING -> R.string.migration_checking
+	MigrationBatchStatus.CHECKING -> R.string.migration_batch_checking
 	MigrationBatchStatus.MIGRATING -> R.string.migration_batch_migrating
 	MigrationBatchStatus.READY -> R.string.migration_batch_ready
 	MigrationBatchStatus.NEEDS_REVIEW -> R.string.migration_batch_review
@@ -37,12 +38,28 @@ internal fun MigrationBatchControls(
 	onFilter: (MigrationBatchStatus?) -> Unit,
 ) {
 	var expanded by remember { mutableStateOf(false) }
+	val activeProgress = state.batchItems.values.firstOrNull { it.running && it.searchProgress != null }?.searchProgress
 	Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 		Text(pluralStringResource(R.plurals.manga_count, state.manga.size, state.manga.size), style = MaterialTheme.typography.titleMedium)
 		Text(stringResource(R.string.migration_batch_summary, state.readyCount,
 			state.manga.count { state.status(it.id) == MigrationBatchStatus.NEEDS_REVIEW },
 			state.manga.count { state.status(it.id) == MigrationBatchStatus.NO_REPLACEMENT }))
 		Text(stringResource(R.string.migration_batch_safety), style = MaterialTheme.typography.bodySmall)
+		activeProgress?.let { progress ->
+			val text = when (progress.phase) {
+				MigrationSearchPhase.CHECKING_SOURCE -> stringResource(R.string.migration_batch_checking_current)
+				MigrationSearchPhase.SEARCHING_SOURCES -> if (progress.totalSources > 0) {
+					stringResource(R.string.migration_batch_searching_progress, progress.completedSources, progress.totalSources)
+				} else {
+					stringResource(R.string.migration_batch_searching)
+				}
+				MigrationSearchPhase.VERIFYING_CANDIDATES -> stringResource(
+					R.string.migration_batch_verifying,
+					progress.candidateCount,
+				)
+			}
+			Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("migration-batch-live-progress"))
+		}
 		if (state.batchTotal > 0) {
 			LinearProgressIndicator(progress = { state.batchCompleted.toFloat() / state.batchTotal }, modifier = Modifier.fillMaxWidth())
 			Text(stringResource(R.string.migration_batch_progress, state.batchCompleted, state.batchTotal))

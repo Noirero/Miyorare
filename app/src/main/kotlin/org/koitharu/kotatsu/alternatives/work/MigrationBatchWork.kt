@@ -45,14 +45,39 @@ internal object MigrationBatchWork {
 		},
 	)
 
-	fun output(outcome: MigrationBatchOutcome): Data = Data.Builder()
+	fun output(outcome: MigrationBatchOutcome, searchProgress: MigrationSearchProgress? = null): Data = Data.Builder()
 		.putString("result_status", outcome.status.name)
 		.putString("result_target_source", outcome.selection?.source)
 		.putLong("result_target_id", outcome.selection?.id ?: outcome.destinationId ?: 0L)
-		.putString("result_fingerprint", outcome.selection?.fingerprint).build()
+		.putString("result_fingerprint", outcome.selection?.fingerprint)
+		.putString("search_phase", searchProgress?.phase?.name)
+		.putString("search_query", searchProgress?.query)
+		.putInt("search_query_index", searchProgress?.queryIndex ?: 0)
+		.putInt("search_query_total", searchProgress?.queryTotal ?: 0)
+		.putInt("search_source_completed", searchProgress?.completedSources ?: 0)
+		.putInt("search_source_total", searchProgress?.totalSources ?: 0)
+		.putInt("search_candidate_count", searchProgress?.candidateCount ?: 0)
+		.putString("search_last_source", searchProgress?.lastSource)
+		.build()
 
 	fun generation(tags: Set<String>): Long = tags.firstOrNull { it.startsWith(GENERATION) }
 		?.removePrefix(GENERATION)?.toLongOrNull() ?: 0L
+
+	private fun searchProgress(data: Data): MigrationSearchProgress? {
+		val phase = data.getString("search_phase")
+			?.let { raw -> MigrationSearchPhase.entries.find { it.name == raw } }
+			?: return null
+		return MigrationSearchProgress(
+			phase = phase,
+			query = data.getString("search_query"),
+			queryIndex = data.getInt("search_query_index", 0),
+			queryTotal = data.getInt("search_query_total", 0),
+			completedSources = data.getInt("search_source_completed", 0),
+			totalSources = data.getInt("search_source_total", 0),
+			candidateCount = data.getInt("search_candidate_count", 0),
+			lastSource = data.getString("search_last_source"),
+		)
+	}
 
 	fun snapshot(info: WorkInfo): MigrationBatchSnapshot? {
 		val mangaId = info.tags.firstOrNull { it.startsWith(ID) }?.removePrefix(ID)?.toLongOrNull() ?: return null
@@ -72,7 +97,14 @@ internal object MigrationBatchWork {
 		} else null
 		val destinationId = data.getLong("result_target_id", 0L).takeIf { it != 0L }
 			?: info.tags.firstOrNull { it.startsWith(TARGET) }?.removePrefix(TARGET)?.toLongOrNull()
-		return MigrationBatchSnapshot(mangaId, source, generation(info.tags), batch,
-			MigrationBatchOutcome(status, selection, destinationId), running = terminalStatus == null && !info.state.isFinished)
+		return MigrationBatchSnapshot(
+			mangaId = mangaId,
+			source = source,
+			generation = generation(info.tags),
+			batchName = batch,
+			outcome = MigrationBatchOutcome(status, selection, destinationId),
+			running = terminalStatus == null && !info.state.isFinished,
+			searchProgress = searchProgress(data),
+		)
 	}
 }

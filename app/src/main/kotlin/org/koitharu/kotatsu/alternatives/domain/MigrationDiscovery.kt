@@ -2,12 +2,31 @@ package org.koitharu.kotatsu.alternatives.domain
 
 import org.koitharu.kotatsu.parsers.model.Manga
 
+enum class MigrationSearchPhase {
+	CHECKING_SOURCE,
+	SEARCHING_SOURCES,
+	VERIFYING_CANDIDATES,
+}
+
+/** Transient progress shown while a replacement search is running. */
+data class MigrationSearchProgress(
+	val phase: MigrationSearchPhase,
+	val query: String? = null,
+	val queryIndex: Int = 0,
+	val queryTotal: Int = 0,
+	val completedSources: Int = 0,
+	val totalSources: Int = 0,
+	val candidateCount: Int = 0,
+	val lastSource: String? = null,
+)
+
 /** Transient network evidence; rediscovered after process recreation and freshly revalidated before execution. */
 data class MigrationDiscovery(
 	val seed: Manga,
 	val assessment: MigrationMatchAssessment? = null,
 	val sourceHealthy: Boolean = false,
 	val incomplete: Boolean = false,
+	val progress: MigrationSearchProgress? = null,
 )
 
 data class MigrationSelection(val source: String, val id: Long, val fingerprint: String) {
