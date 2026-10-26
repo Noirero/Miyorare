@@ -3,11 +3,10 @@
     <string name="novel_translation_engine">Mesin terjemahan</string>
     <string name="novel_translation_title">Terjemahan</string>
     <string name="novel_translation_built_in">Built-in</string>
-    <string name="novel_translation_built_in_summary">Di perangkat • Model bahasa diunduh saat pertama dipakai • Setelah itu dapat digunakan offline</string>
-    <string name="novel_translation_built_in_attribution">Terjemahan Built-in berjalan di perangkat ini. Penggunaan pertama dapat mengunduh model bahasa (sekitar 30 MB per bahasa). powered by Google Translate. Ketuk untuk membuka Google Translate.</string>
-    <string name="novel_translation_translate_with_google">Terjemahkan dengan Google</string>
-    <string name="novel_translation_powered_by_google_translate">powered by Google Translate</string>
-    <string name="novel_translation_google_disclaimer">THIS SERVICE MAY CONTAIN TRANSLATIONS POWERED BY GOOGLE. GOOGLE DISCLAIMS ALL WARRANTIES RELATED TO THE TRANSLATIONS, EXPRESS OR IMPLIED, INCLUDING ANY WARRANTIES OF ACCURACY, RELIABILITY, AND ANY IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.</string>
+    <string name="novel_translation_built_in_summary">Terjemahan sistem Android • Di perangkat saat paket bahasa sudah terpasang • Runtime terjemahan tidak dibundel di Miyorare</string>
+    <string name="novel_translation_built_in_info">Menggunakan layanan terjemahan di perangkat milik sistem Android/OEM. Paket bahasa dikelola oleh perangkat. Built-in membutuhkan Android 12 atau lebih baru dan mungkin tidak tersedia di semua perangkat.</string>
+    <string name="novel_translation_manage_system_translation">Kelola terjemahan sistem</string>
+    <string name="novel_translation_system_settings_unavailable">Pengaturan terjemahan sistem tidak tersedia di perangkat ini.</string>
     <string name="novel_translation_online">Miyorare Online</string>
     <string name="novel_translation_online_summary">Online • Tidak perlu API key</string>
     <string name="novel_translation_ai">Terjemahan AI</string>
