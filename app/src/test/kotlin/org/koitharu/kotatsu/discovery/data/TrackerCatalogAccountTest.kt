@@ -17,8 +17,12 @@ class TrackerCatalogAccountTest {
 		assertEquals(ScrobblingStatus.ON_HOLD, catalogTrackingStatus(ScrobblerService.MAL, "on_hold"))
 		assertEquals(ScrobblingStatus.READING, catalogTrackingStatus(ScrobblerService.KITSU, "current"))
 		assertEquals(ScrobblingStatus.DROPPED, catalogTrackingStatus(ScrobblerService.KITSU, "dropped"))
+		assertEquals(ScrobblingStatus.PLANNED, catalogTrackingStatus(ScrobblerService.MANGABAKA, "plan_to_read"))
+		assertEquals(ScrobblingStatus.RE_READING, catalogTrackingStatus(ScrobblerService.MANGABAKA, "rereading"))
+		assertEquals(ScrobblingStatus.ON_HOLD, catalogTrackingStatus(ScrobblerService.MANGABAKA, "paused"))
 		assertNull(catalogTrackingStatus(ScrobblerService.MAL, "PLANNING"))
 		assertNull(catalogTrackingStatus(ScrobblerService.KITSU, "unknown"))
+		assertNull(catalogTrackingStatus(ScrobblerService.MANGABAKA, "planning"))
 	}
 
 	@Test
@@ -34,6 +38,9 @@ class TrackerCatalogAccountTest {
 		assertEquals(
 			"https://kitsu.app/users/42",
 			catalogAccountProfileUrl(ScrobblerUser(42, "Reader", null, ScrobblerService.KITSU)),
+		)
+		assertNull(
+			catalogAccountProfileUrl(ScrobblerUser(5, "Reader", null, ScrobblerService.MANGABAKA)),
 		)
 	}
 
