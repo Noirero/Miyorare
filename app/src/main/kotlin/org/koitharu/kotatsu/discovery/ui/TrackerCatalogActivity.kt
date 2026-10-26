@@ -45,6 +45,8 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 	@Inject lateinit var scrobblerAuthHelper: ScrobblerAuthHelper
 
 	private val viewModel by viewModels<TrackerCatalogViewModel>()
+	private val mangaBakaSeeAllViewModel by viewModels<MangaBakaSeeAllViewModel>()
+	private val isMangaBakaSeeAll: Boolean get() = intent.hasExtra(MangaBakaSeeAllArguments.MODE)
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -57,58 +59,75 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 		viewBinding.composeView.setContent {
 			MiyorareTheme {
 				CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
-					val state by viewModel.state.collectAsState()
-					val account by viewModel.account.collectAsState()
-					val tracking by viewModel.tracking.collectAsState()
-					val trackingEditor by viewModel.trackingEditor.collectAsState()
-					val knownTracking by viewModel.knownTracking.collectAsState()
-					TrackerCatalogScreen(
-						state = state,
-						section = viewModel.section,
-						imageLoader = imageLoader,
-						onBack = { onBackPressedDispatcher.onBackPressed() },
-						onQuery = viewModel::updateQuery,
-						onSearch = viewModel::reload,
-						onFilter = viewModel::selectFilter,
-						onRetry = viewModel::retry,
-						onNext = viewModel::nextPage,
-						onItem = { startActivity(detailsIntent(this, it)) },
-						onProviderPage = { state.details?.item?.providerUrl?.let { router.openExternalBrowser(it) } },
-						onRead = viewModel::read,
-						onAllSources = { viewModel.startResolution(allSources = true) },
-						onCloseResolution = viewModel::closeResolution,
-						onGlobalSearch = {
-						viewModel.closeResolution()
-						state.details?.item?.let {
-							router.openSearch(it.title, org.koitharu.kotatsu.search.domain.SearchKind.TITLE, it.key.kind == CatalogMediaKind.NOVEL)
-						}
-					},
-						onSource = viewModel::chooseSource,
-						account = account,
-						tracking = tracking,
-						trackingEditor = trackingEditor,
-						knownTracking = knownTracking,
-						onLogin = { startAccountAuth(state.service) },
-						onAddTracking = viewModel::openTrackingEditor,
-						onSaveTracking = viewModel::saveTracking,
-						onCloseTrackingEditor = viewModel::closeTrackingEditor,
-						onRemoveTracking = viewModel::removeTracking,
-						onManageTracking = { router.openScrobblerSettings(state.service) },
-					)
+					if (isMangaBakaSeeAll) {
+						val state by mangaBakaSeeAllViewModel.state.collectAsState()
+						val knownTracking by mangaBakaSeeAllViewModel.knownTracking.collectAsState()
+						MangaBakaSeeAllScreen(
+							state = state,
+							knownTracking = knownTracking,
+							imageLoader = imageLoader,
+							onBack = { onBackPressedDispatcher.onBackPressed() },
+							onRetry = mangaBakaSeeAllViewModel::retry,
+							onNext = mangaBakaSeeAllViewModel::nextPage,
+							onReconnect = { startAccountAuth(ScrobblerService.MANGABAKA) },
+							onItem = { startActivity(detailsIntent(this, it)) },
+						)
+					} else {
+						val state by viewModel.state.collectAsState()
+						val account by viewModel.account.collectAsState()
+						val tracking by viewModel.tracking.collectAsState()
+						val trackingEditor by viewModel.trackingEditor.collectAsState()
+						val knownTracking by viewModel.knownTracking.collectAsState()
+						TrackerCatalogScreen(
+							state = state,
+							section = viewModel.section,
+							imageLoader = imageLoader,
+							onBack = { onBackPressedDispatcher.onBackPressed() },
+							onQuery = viewModel::updateQuery,
+							onSearch = viewModel::reload,
+							onFilter = viewModel::selectFilter,
+							onRetry = viewModel::retry,
+							onNext = viewModel::nextPage,
+							onItem = { startActivity(detailsIntent(this, it)) },
+							onProviderPage = { state.details?.item?.providerUrl?.let { router.openExternalBrowser(it) } },
+							onRead = viewModel::read,
+							onAllSources = { viewModel.startResolution(allSources = true) },
+							onCloseResolution = viewModel::closeResolution,
+							onGlobalSearch = {
+							viewModel.closeResolution()
+							state.details?.item?.let {
+								router.openSearch(it.title, org.koitharu.kotatsu.search.domain.SearchKind.TITLE, it.key.kind == CatalogMediaKind.NOVEL)
+							}
+						},
+							onSource = viewModel::chooseSource,
+							account = account,
+							tracking = tracking,
+							trackingEditor = trackingEditor,
+							knownTracking = knownTracking,
+							onLogin = { startAccountAuth(state.service) },
+							onAddTracking = viewModel::openTrackingEditor,
+							onSaveTracking = viewModel::saveTracking,
+							onCloseTrackingEditor = viewModel::closeTrackingEditor,
+							onRemoveTracking = viewModel::removeTracking,
+							onManageTracking = { router.openScrobblerSettings(state.service) },
+						)
+					}
 				}
 			}
 		}
-		lifecycleScope.launch {
-			repeatOnLifecycle(Lifecycle.State.RESUMED) {
-				launch { viewModel.openSource.collect { router.openDetails(it) } }
-				launch { viewModel.trackingFeedback.collect(::showTrackingFeedback) }
+		if (!isMangaBakaSeeAll) {
+			lifecycleScope.launch {
+				repeatOnLifecycle(Lifecycle.State.RESUMED) {
+					launch { viewModel.openSource.collect { router.openDetails(it) } }
+					launch { viewModel.trackingFeedback.collect(::showTrackingFeedback) }
+				}
 			}
 		}
 	}
 
 	override fun onResume() {
 		super.onResume()
-		viewModel.refreshAccount()
+		if (isMangaBakaSeeAll) mangaBakaSeeAllViewModel.refreshAccount() else viewModel.refreshAccount()
 	}
 
 	private fun startAccountAuth(service: ScrobblerService) {
@@ -157,5 +176,19 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 			.putExtra(CatalogArguments.SERVICE, key.service.name)
 			.putExtra(CatalogArguments.KIND, key.kind.name)
 			.putExtra(CatalogArguments.SECTION, key.type.name)
+
+		fun mangaBakaLibraryIntent(context: Context, filter: CatalogFilter): Intent =
+			Intent(context, TrackerCatalogActivity::class.java)
+				.putExtra(MangaBakaSeeAllArguments.MODE, MangaBakaSeeAllMode.LIBRARY.name)
+				.putExtra(MangaBakaSeeAllArguments.FILTER, filter.name)
+
+		fun mangaBakaExploreIntent(context: Context, type: MangaBakaExploreType): Intent =
+			Intent(context, TrackerCatalogActivity::class.java)
+				.putExtra(MangaBakaSeeAllArguments.MODE, MangaBakaSeeAllMode.EXPLORE.name)
+				.putExtra(
+					MangaBakaSeeAllArguments.FILTER,
+					(if (type == MangaBakaExploreType.NOVEL) CatalogFilter.NOVEL else CatalogFilter.MANGA).name,
+				)
+				.putExtra(MangaBakaSeeAllArguments.TYPE, type.name)
 	}
 }
