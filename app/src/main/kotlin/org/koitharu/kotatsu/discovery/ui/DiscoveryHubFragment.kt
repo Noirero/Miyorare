@@ -75,10 +75,12 @@ class DiscoveryHubFragment : Fragment() {
 					onAccountLogout = viewModel::logoutAccount,
 					onMangaBakaPersonalRetry = viewModel::retryMangaBakaPersonal,
 					onMangaBakaReconnect = { startAccountAuth(ScrobblerService.MANGABAKA) },
-					onMangaBakaLibrarySeeAll = { router.openExternalBrowser(MANGABAKA_LIBRARY_URL) },
+					onMangaBakaLibrarySeeAll = {
+						startActivity(MangaBakaSeeAllActivity.libraryIntent(requireContext(), state.request.filter))
+					},
 					onMangaBakaExploreType = viewModel::selectMangaBakaExploreType,
 					onMangaBakaExploreSeeAll = { type ->
-						router.openExternalBrowser("$MANGABAKA_SEARCH_URL?sort_by=popularity_asc&type=${type.apiValue}")
+						startActivity(MangaBakaSeeAllActivity.exploreIntent(requireContext(), type))
 					},
 				)
 			}
@@ -93,7 +95,6 @@ class DiscoveryHubFragment : Fragment() {
 					if (!isHidden) {
 						(activity as? MainActivity)?.updateSharedSearchBarHint(this@DiscoveryHubFragment, searchHint(state.request.service))
 					}
-				}
 			}
 		}
 		if (!isHidden) installDiscoverySearchHandler()
@@ -154,10 +155,5 @@ class DiscoveryHubFragment : Fragment() {
 	private fun openTrackerSearch() {
 		val request = viewModel.state.value.request
 		startActivity(TrackerCatalogActivity.searchIntent(requireContext(), request.service, request.filter))
-	}
-
-	private companion object {
-		const val MANGABAKA_LIBRARY_URL = "https://mangabaka.org/my/library"
-		const val MANGABAKA_SEARCH_URL = "https://mangabaka.org/search"
 	}
 }
