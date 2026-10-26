@@ -1,7 +1,9 @@
 package org.koitharu.kotatsu.settings.sources.migration
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -12,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchPhase
+import org.koitharu.kotatsu.alternatives.domain.MigrationSearchScope
 
 @StringRes
 internal fun MigrationBatchStatus.labelRes(): Int = when (this) {
@@ -36,6 +39,7 @@ internal fun MigrationBatchControls(
 	onMigrateReady: () -> Unit,
 	onCancel: () -> Unit,
 	onFilter: (MigrationBatchStatus?) -> Unit,
+	onSearchScope: (MigrationSearchScope) -> Unit = {},
 ) {
 	var expanded by remember { mutableStateOf(false) }
 	val activeProgress = state.batchItems.values.firstOrNull { it.running && it.searchProgress != null }?.searchProgress
@@ -45,6 +49,21 @@ internal fun MigrationBatchControls(
 			state.manga.count { state.status(it.id) == MigrationBatchStatus.NEEDS_REVIEW },
 			state.manga.count { state.status(it.id) == MigrationBatchStatus.NO_REPLACEMENT }))
 		Text(stringResource(R.string.migration_batch_safety), style = MaterialTheme.typography.bodySmall)
+		Text(stringResource(R.string.migration_search_scope_title), style = MaterialTheme.typography.titleSmall)
+		Row(
+			modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("migration-batch-scope-row"),
+			horizontalArrangement = Arrangement.spacedBy(8.dp),
+		) {
+			for (scope in MigrationSearchScope.entries) {
+				FilterChip(
+					selected = state.searchScope == scope,
+					onClick = { onSearchScope(scope) },
+					enabled = !state.batchBusy && !state.scheduling,
+					label = { Text(stringResource(scope.labelRes())) },
+					modifier = Modifier.testTag("migration-batch-scope-${scope.name.lowercase()}"),
+				)
+			}
+		}
 		activeProgress?.let { progress ->
 			val text = when (progress.phase) {
 				MigrationSearchPhase.CHECKING_SOURCE -> stringResource(R.string.migration_batch_checking_current)
