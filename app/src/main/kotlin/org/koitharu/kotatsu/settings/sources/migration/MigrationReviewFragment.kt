@@ -34,6 +34,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.MigrationMatchCandidate
 import org.koitharu.kotatsu.alternatives.domain.MigrationMatchState
+import org.koitharu.kotatsu.alternatives.domain.MigrationSearchPhase
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
@@ -118,9 +119,36 @@ internal fun MigrationReviewScreen(
 		}
 		if (state.loading) {
 			CircularProgressIndicator(Modifier.testTag("migration-loading"))
-			Text(stringResource(R.string.migration_checking))
-			// Execution keeps the historical blocking screen. Only discovery is allowed to surface
-			// provisional evidence, and no migration action is exposed until final health checks finish.
+			when (val progress = discovery?.progress) {
+				null -> Text(stringResource(R.string.migration_checking))
+				else -> when (progress.phase) {
+					MigrationSearchPhase.CHECKING_SOURCE -> {
+						val sourceTitle = discovery.seed.source.getTitle(context)
+						Text(stringResource(R.string.migration_checking_source, sourceTitle))
+					}
+					MigrationSearchPhase.SEARCHING_SOURCES -> {
+						Text(
+							if (progress.totalSources > 0) {
+								stringResource(
+									R.string.migration_searching_sources_progress,
+									progress.completedSources,
+									progress.totalSources,
+								)
+							} else {
+								stringResource(R.string.migration_searching_sources)
+							},
+						)
+						progress.query?.let { query ->
+							Text(stringResource(R.string.migration_search_query, query), style = MaterialTheme.typography.bodySmall)
+						}
+					}
+					MigrationSearchPhase.VERIFYING_CANDIDATES -> {
+						Text(stringResource(R.string.migration_verifying_candidates, progress.candidateCount))
+					}
+				}
+			}
+			// Discovery may show provisional candidates while the remaining sources are still running.
+			// Execution stays disabled until final health checks return.
 			if (!state.searching || candidates.isEmpty()) return@Column
 		}
 		if (!state.loading) {
@@ -182,6 +210,12 @@ private fun MigrationCandidateCard(
 ) {
 	val context = LocalContext.current
 	val coverUrl = candidate.manga.coverUrl?.takeIf(String::isNotBlank)
+	val confidence = when {
+		candidate.evidence.autoEligible -> R.string.migration_confidence_strong
+		candidate.evidence.exactTitleMatch || candidate.evidence.matchedSeedQuery || candidate.evidence.score >= 30 ->
+			R.string.migration_confidence_possible
+		else -> R.string.migration_confidence_low
+	}
 	OutlinedCard(onClick = onSelect, modifier = Modifier.fillMaxWidth().testTag("migration-candidate:${candidate.manga.source.name}:${candidate.manga.id}")) {
 		Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
 			Row(
@@ -209,6 +243,7 @@ private fun MigrationCandidateCard(
 				Column(Modifier.weight(1f)) {
 					Text(candidate.manga.title, style = MaterialTheme.typography.titleMedium)
 					Text(stringResource(R.string.migration_replacement_source, candidate.manga.source.getTitle(context)))
+					Text(stringResource(confidence), style = MaterialTheme.typography.labelMedium)
 					TextButton(
 						onClick = onOpenDetails,
 						modifier = Modifier.testTag("migration-candidate-details:${candidate.manga.source.name}:${candidate.manga.id}"),
