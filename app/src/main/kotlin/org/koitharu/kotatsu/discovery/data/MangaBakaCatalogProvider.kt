@@ -73,16 +73,19 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 			CatalogFilter.NOVEL -> CatalogMediaKind.NOVEL
 		}
 		val keys = sectionTypes.map { CatalogSectionKey(catalogService, kind, it) }
-		TrackerCatalogHome(keys.map { key ->
-			try {
-				val page = listing(key, allowAdult, 1, CatalogCachePolicy.HOME_PAGE_SIZE, fillHome = true)
-				TrackerCatalogSection(key, page.items.take(CatalogCachePolicy.HOME_PAGE_SIZE), page.nextPage)
-			} catch (e: CancellationException) {
-				throw e
-			} catch (e: Exception) {
-				TrackerCatalogSection(key, emptyList(), failure = e.catalogFailure())
+		val sections = keys.map { key ->
+			async {
+				try {
+					val page = listing(key, allowAdult, 1, CatalogCachePolicy.HOME_PAGE_SIZE, fillHome = true)
+					TrackerCatalogSection(key, page.items.take(CatalogCachePolicy.HOME_PAGE_SIZE), page.nextPage)
+				} catch (e: CancellationException) {
+					throw e
+				} catch (e: Exception) {
+					TrackerCatalogSection(key, emptyList(), failure = e.catalogFailure())
+				}
 			}
-		})
+		}.map { it.await() }
+		TrackerCatalogHome(sections)
 	}
 
 	override suspend fun browseSection(key: CatalogSectionKey, allowAdult: Boolean, page: Int): TrackerCatalogPage {
