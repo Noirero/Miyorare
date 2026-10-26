@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="migration_batch_cancel">Batalkan batch berjalan</string>
+    <string name="migration_batch_mode_title">Mode migrasi batch</string>
+    <string name="migration_batch_mode_check">Periksa source saat ini dulu</string>
+    <string name="migration_batch_mode_direct">Langsung cari pengganti</string>
+    <string name="migration_batch_mode_check_description">Periksa setiap manga terlebih dahulu. Hanya manga yang tidak dapat dibuktikan masih bisa dibaca yang akan dicarikan pengganti.</string>
+    <string name="migration_batch_mode_direct_description">Lewati pengecekan source saat ini dan cari pengganti untuk setiap manga pada area source terpasang yang dipilih.</string>
     <string name="migration_batch_check">Periksa semua dan cari pengganti</string>
-    <string name="migration_batch_safety">Setiap manga diperiksa lebih dulu. Jika manga tidak lagi dapat dibaca dari source saat ini, Miyorare mencari pada area source terpasang yang dipilih. Kecocokan yang jelas menjadi Siap; hasil yang meragukan tetap menunggu pilihan Anda.</string>
+    <string name="migration_batch_direct">Cari pengganti untuk semua</string>
+    <string name="migration_batch_safety">Langkah ini hanya menyiapkan kandidat. Tidak ada data yang dipindahkan sampai Anda menekan Migrasikan yang siap.</string>
     <string name="migration_batch_unchecked">Belum diperiksa — ketuk untuk meninjau</string>
     <string name="migration_batch_queued">Menunggu dalam antrean batch</string>
     <string name="migration_batch_checking">Memeriksa keterbacaan / mencari pada source terpasang…</string>
