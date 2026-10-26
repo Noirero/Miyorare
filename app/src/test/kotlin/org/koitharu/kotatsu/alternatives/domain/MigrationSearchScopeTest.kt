@@ -44,6 +44,13 @@ class MigrationSearchScopeTest {
 		assertEquals(1, availability.providerFailureCount)
 	}
 
+	@Test fun `empty or wholly failed scope is incomplete but partial success is usable`() {
+		assertTrue(isMigrationScopeIncomplete(emptyList(), emptySet(), emptySet()))
+		assertTrue(isMigrationScopeIncomplete(listOf("a", "b"), setOf("a", "b"), emptySet()))
+		assertFalse(isMigrationScopeIncomplete(listOf("a", "b"), setOf("a"), setOf("b")))
+		assertFalse(isMigrationScopeIncomplete(listOf("a", "b"), emptySet(), setOf("a", "b")))
+	}
+
 	private fun assertOnly(scope: MigrationSearchScope, expected: MigrationSourceOrigin) {
 		for (origin in MigrationSourceOrigin.entries) {
 			if (origin == expected) assertTrue(scope.matches(origin)) else assertFalse(scope.matches(origin))
