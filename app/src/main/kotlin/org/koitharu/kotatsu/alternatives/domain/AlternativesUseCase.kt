@@ -2,9 +2,11 @@ package org.koitharu.kotatsu.alternatives.domain
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -14,6 +16,7 @@ import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
+import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -41,6 +44,7 @@ class AlternativesUseCase @Inject constructor(
 	private val searchHelperFactory: SearchV2Helper.Factory,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val historyRepository: HistoryRepository,
+	private val mihonExtensionManager: MihonExtensionManager,
 ) {
 
 	fun hasPinnedSources(): Boolean = sourcesRepository.getPinnedSources().isNotEmpty()
@@ -69,6 +73,35 @@ class AlternativesUseCase @Inject constructor(
 			.distinct()
 			.sorted()
 			.toList()
+	}
+
+	/**
+	 * Migration-only source pool. Each runtime family is loaded independently so a broken optional
+	 * provider never prevents the usable providers from participating in repair.
+	 */
+	suspend fun getMigrationSourcePool(manga: Manga): MigrationSourcePool = coroutineScope {
+		val results = listOf(
+			async {
+				runCatchingCancellable {
+					mihonExtensionManager.ensureReady()
+					sourcesRepository.observeMihonSources().first().map { it as MangaSource }
+				}
+			},
+			async { runCatchingCancellable { sourcesRepository.getLnSources().map { it as MangaSource } } },
+			async { runCatchingCancellable { sourcesRepository.getTsukiSources().map { it as MangaSource } } },
+			async { runCatchingCancellable { sourcesRepository.getKotatsuSources().map { it as MangaSource } } },
+		).awaitAll()
+		val merged = mergeMigrationProviderResults(results)
+		val isNovel = manga.isNovelContent
+		MigrationSourcePool(
+			allSources = merged.values
+				.asSequence()
+				.filter { it != manga.source && it.isNovelContentSource == isNovel }
+				.distinctBy(MangaSource::name)
+				.sortedBy { it.name }
+				.toList(),
+			providerFailureCount = merged.failureCount,
+		)
 	}
 
 	suspend fun getSources(
