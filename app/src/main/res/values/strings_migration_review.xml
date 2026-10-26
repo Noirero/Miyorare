@@ -13,6 +13,7 @@
     <string name="migration_blocked">Migration could not be completed safely. Your existing library data was not overwritten. Review the library and retry.</string>
     <string name="migration_search_failed">The replacement search could not be prepared or completed. No migration was performed. Choose a scope and try again.</string>
     <string name="migration_source_healthy">This manga can still be read from its current source. Migration is not needed.</string>
+    <string name="migration_find_another_source">Find another source anyway</string>
     <string name="migration_source_unavailable">The current source could not provide a readable page. Choose where to search for a replacement.</string>
     <string name="migration_source_problem">The current source could not provide a readable page. Your manga stays in place while you choose a replacement.</string>
     <string name="migration_search_scope_title">Search replacement in</string>
