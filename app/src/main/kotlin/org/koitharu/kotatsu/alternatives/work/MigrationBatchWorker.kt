@@ -39,7 +39,14 @@ class MigrationBatchWorker @AssistedInject constructor(
 				database.getMangaDao().isMigrationEntryVisible(request.mangaId) &&
 					database.getMangaDao().find(request.mangaId)?.manga?.source == request.source
 			},
-			discover = { autoFix.discover(request.mangaId) },
+			discover = {
+				autoFix.discover(request.mangaId) { discovery ->
+					setProgress(MigrationBatchWork.output(
+						MigrationBatchOutcome(MigrationBatchStatus.CHECKING),
+						discovery.progress,
+					))
+				}
+			},
 			migrate = { selection -> autoFix.migrateSelected(request.mangaId, selection, reviewed = false) },
 		)
 		// ERROR/INCOMPLETE/REVIEW are explicit item outcomes, not a claim that migration succeeded.
