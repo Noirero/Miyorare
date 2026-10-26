@@ -113,32 +113,8 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 	): MangaBakaLibraryPage {
 		require(page in 1..MANGABAKA_LIBRARY_MAX_PAGES)
 		require(limit in 1..100)
-		val url = "$MANGABAKA_PERSONAL_API_V2/my/library".toHttpUrl().newBuilder()
-			.addQueryParameter("page", page.toString())
-			.addQueryParameter("limit", limit.toString())
-			.apply {
-				when (filter) {
-					CatalogFilter.ALL -> Unit
-					CatalogFilter.MANGA -> addQueryParameter("type_not", "novel")
-					CatalogFilter.NOVEL -> addQueryParameter("type", "novel")
-				}
-				addContentRatings(allowAdult)
-			}
-			.build()
-		val root = accountRequest(url.toString())
-		val rows = root.optJSONArray("data") ?: throw IOException("MangaBaka library response has no data")
-		val items = buildList {
-			for (index in 0 until rows.length()) {
-				val row = rows.optJSONObject(index)?.toKotlinxObject() ?: continue
-				parseMangaBakaLibraryItem(row, filter, allowAdult)?.let(::add)
-			}
-		}.distinctBy { it.tracking.targetId }
-		val pagination = root.optJSONObject("pagination")?.toKotlinxObject()
-		val hasNext = mangaBakaHasNext(pagination, page, rows.length(), limit)
-		return MangaBakaLibraryPage(
-			items = items,
-			nextPage = (page + 1).takeIf { hasNext && page < MANGABAKA_LIBRARY_MAX_PAGES },
-		)
+		val root = accountRequest(mangaBakaLibraryUrl(filter, allowAdult, page, limit).toString()).toKotlinxObject()
+		return parseMangaBakaLibraryPage(root, filter, allowAdult, page, limit)
 	}
 
 	private suspend fun loadLibrary(filter: CatalogFilter, allowAdult: Boolean): List<MangaBakaLibraryItem> {
@@ -167,6 +143,42 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 		val response = accountHttp.newCall(Request.Builder().url(url).get().build()).await()
 		return response.requireMangaBakaAccountSuccess().parseJson()
 	}
+}
+
+internal fun mangaBakaLibraryUrl(
+	filter: CatalogFilter,
+	allowAdult: Boolean,
+	page: Int,
+	limit: Int = MANGABAKA_LIBRARY_PAGE_SIZE,
+) = "$MANGABAKA_PERSONAL_API_V2/my/library".toHttpUrl().newBuilder()
+	.addQueryParameter("page", page.toString())
+	.addQueryParameter("limit", limit.toString())
+	.apply {
+		when (filter) {
+			CatalogFilter.ALL -> Unit
+			CatalogFilter.MANGA -> addQueryParameter("type_not", "novel")
+			CatalogFilter.NOVEL -> addQueryParameter("type", "novel")
+		}
+		addContentRatings(allowAdult)
+	}
+	.build()
+
+internal fun parseMangaBakaLibraryPage(
+	root: JsonObject,
+	filter: CatalogFilter,
+	allowAdult: Boolean,
+	page: Int,
+	limit: Int = MANGABAKA_LIBRARY_PAGE_SIZE,
+): MangaBakaLibraryPage {
+	val rows = root["data"] as? JsonArray ?: throw IOException("MangaBaka library response has no data")
+	val items = rows.mapNotNull { raw ->
+		(raw as? JsonObject)?.let { parseMangaBakaLibraryItem(it, filter, allowAdult) }
+	}.distinctBy { it.tracking.targetId }
+	val hasNext = mangaBakaHasNext(root["pagination"] as? JsonObject, page, rows.size, limit)
+	return MangaBakaLibraryPage(
+		items = items,
+		nextPage = (page + 1).takeIf { hasNext && page < MANGABAKA_LIBRARY_MAX_PAGES },
+	)
 }
 
 internal fun mangaBakaRecommendationsUrl(filter: CatalogFilter, allowAdult: Boolean) =
