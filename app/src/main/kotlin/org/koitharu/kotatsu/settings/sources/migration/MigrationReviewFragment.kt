@@ -70,6 +70,7 @@ class MigrationReviewFragment : BaseComposeSettingsFragment(R.string.manga_migra
 						onOpenCandidate = { router.openDetails(it) },
 						onScopeChange = viewModel::setSearchScope,
 						onSearch = viewModel::search,
+						onManualSearch = viewModel::enableManualSearch,
 					)
 				}
 			}
@@ -101,6 +102,7 @@ internal fun MigrationReviewScreen(
 	onOpenCandidate: (Manga) -> Unit,
 	onScopeChange: (MigrationSearchScope) -> Unit = {},
 	onSearch: () -> Unit = {},
+	onManualSearch: () -> Unit = {},
 ) {
 	// Only user intent is saveable. Network matching evidence remains transient.
 	var selectedSource by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
@@ -177,11 +179,16 @@ internal fun MigrationReviewScreen(
 		if (state.searchFailed) Text(stringResource(R.string.migration_search_failed), color = MaterialTheme.colorScheme.error)
 		when {
 			discovery == null -> Unit
-			discovery.currentSourceReadable -> {
+			discovery.currentSourceReadable && !state.manualSearchEnabled -> {
 				Text(stringResource(R.string.migration_source_healthy))
+				TextButton(onClick = onManualSearch, modifier = Modifier.testTag("migration-manual-search")) {
+					Text(stringResource(R.string.migration_find_another_source))
+				}
 			}
 			else -> {
-				Text(stringResource(R.string.migration_source_unavailable))
+				Text(stringResource(
+					if (discovery.currentSourceReadable) R.string.migration_source_healthy else R.string.migration_source_unavailable,
+				))
 				MigrationScopeSelector(
 					availability = state.availability,
 					selectedScope = state.selectedScope,
