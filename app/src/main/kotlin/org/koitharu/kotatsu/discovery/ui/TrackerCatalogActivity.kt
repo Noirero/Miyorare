@@ -19,6 +19,7 @@ import coil3.ImageLoader
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -59,6 +60,7 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 					val state by viewModel.state.collectAsState()
 					val account by viewModel.account.collectAsState()
 					val tracking by viewModel.tracking.collectAsState()
+					val trackingEditor by viewModel.trackingEditor.collectAsState()
 					val knownTracking by viewModel.knownTracking.collectAsState()
 					TrackerCatalogScreen(
 						state = state,
@@ -84,9 +86,13 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 						onSource = viewModel::chooseSource,
 						account = account,
 						tracking = tracking,
+						trackingEditor = trackingEditor,
 						knownTracking = knownTracking,
 						onLogin = { startAccountAuth(state.service) },
-						onAddTracking = viewModel::addTracking,
+						onAddTracking = viewModel::openTrackingEditor,
+						onSaveTracking = viewModel::saveTracking,
+						onCloseTrackingEditor = viewModel::closeTrackingEditor,
+						onRemoveTracking = viewModel::removeTracking,
 						onManageTracking = { router.openScrobblerSettings(state.service) },
 					)
 				}
@@ -94,7 +100,8 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 		}
 		lifecycleScope.launch {
 			repeatOnLifecycle(Lifecycle.State.RESUMED) {
-				viewModel.openSource.collect { router.openDetails(it) }
+				launch { viewModel.openSource.collect { router.openDetails(it) } }
+				launch { viewModel.trackingFeedback.collect(::showTrackingFeedback) }
 			}
 		}
 	}
@@ -108,6 +115,18 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 		scrobblerAuthHelper.startAuth(this, service).onFailure {
 			Snackbar.make(viewBinding.root, it.getDisplayMessage(resources), Snackbar.LENGTH_LONG).show()
 		}
+	}
+
+	private fun showTrackingFeedback(feedback: CatalogTrackingFeedback) {
+		val provider = catalogProviderName(feedback.service)
+		val message = when (feedback.action) {
+			CatalogTrackingFeedbackAction.ADDED -> feedback.status?.let {
+				getString(R.string.hub_tracking_feedback_added_status, provider, getString(catalogStatusLabel(it)))
+			} ?: getString(R.string.hub_tracking_feedback_added, provider)
+			CatalogTrackingFeedbackAction.UPDATED -> getString(R.string.hub_tracking_feedback_updated, provider)
+			CatalogTrackingFeedbackAction.REMOVED -> getString(R.string.hub_tracking_feedback_removed, provider)
+		}
+		Snackbar.make(viewBinding.root, message, Snackbar.LENGTH_SHORT).show()
 	}
 
 	private fun applyModernCatalogBackground(level: VisualEffectLevel) {
