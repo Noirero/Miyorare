@@ -150,10 +150,11 @@ private fun MangaBakaSeeAllCard(
 			onClick = onClick,
 		)
 		if (showPersonalProgress && tracking != null) {
-			val details = buildList {
-				if (tracking.chapter > 0) add(stringResource(R.string.library_group_tracking_chapter, tracking.chapter))
-				if (tracking.rating > 0f) add(String.format(Locale.getDefault(), "%.1f/10", tracking.rating * 10f))
-			}
+			val chapterLabel = tracking.chapter.takeIf { it > 0 }
+				?.let { stringResource(R.string.library_group_tracking_chapter, it) }
+			val ratingLabel = tracking.rating.takeIf { it > 0f }
+				?.let { String.format(Locale.getDefault(), "%.1f/10", it * 10f) }
+			val details = listOfNotNull(chapterLabel, ratingLabel)
 			if (details.isNotEmpty()) {
 				Text(
 					text = details.joinToString(" · "),
