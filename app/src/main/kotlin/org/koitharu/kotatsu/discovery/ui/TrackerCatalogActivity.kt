@@ -16,6 +16,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import coil3.ImageLoader
+import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.core.nav.router
@@ -26,10 +27,12 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
+import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.databinding.ActivityTrackerCatalogBinding
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
+import org.koitharu.kotatsu.scrobbling.common.ui.ScrobblerAuthHelper
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import javax.inject.Inject
 
@@ -38,6 +41,7 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 	@Inject lateinit var imageLoader: ImageLoader
 	@Inject lateinit var settings: AppSettings
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
+	@Inject lateinit var scrobblerAuthHelper: ScrobblerAuthHelper
 
 	private val viewModel by viewModels<TrackerCatalogViewModel>()
 
@@ -53,6 +57,9 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 			MiyorareTheme {
 				CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
 					val state by viewModel.state.collectAsState()
+					val account by viewModel.account.collectAsState()
+					val tracking by viewModel.tracking.collectAsState()
+					val knownTracking by viewModel.knownTracking.collectAsState()
 					TrackerCatalogScreen(
 						state = state,
 						section = viewModel.section,
@@ -75,6 +82,12 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 						}
 					},
 						onSource = viewModel::chooseSource,
+						account = account,
+						tracking = tracking,
+						knownTracking = knownTracking,
+						onLogin = { startAccountAuth(state.service) },
+						onAddTracking = viewModel::addTracking,
+						onManageTracking = { router.openScrobblerSettings(state.service) },
 					)
 				}
 			}
@@ -83,6 +96,17 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 			repeatOnLifecycle(Lifecycle.State.RESUMED) {
 				viewModel.openSource.collect { router.openDetails(it) }
 			}
+		}
+	}
+
+	override fun onResume() {
+		super.onResume()
+		viewModel.refreshAccount()
+	}
+
+	private fun startAccountAuth(service: ScrobblerService) {
+		scrobblerAuthHelper.startAuth(this, service).onFailure {
+			Snackbar.make(viewBinding.root, it.getDisplayMessage(resources), Snackbar.LENGTH_LONG).show()
 		}
 	}
 

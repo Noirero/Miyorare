@@ -101,21 +101,26 @@ object ScrobblingModule {
 
 	@Provides
 	@Singleton
+	@ScrobblerType(ScrobblerService.KITSU)
+	fun provideKitsuHttpClient(
+		authenticator: KitsuAuthenticator,
+		@ScrobblerType(ScrobblerService.KITSU) storage: ScrobblerStorage,
+	): OkHttpClient = OkHttpClient.Builder().apply {
+		authenticator(authenticator)
+		addInterceptor(KitsuInterceptor(storage))
+		if (BuildConfig.DEBUG) {
+			addInterceptor(CurlLoggingInterceptor())
+		}
+	}.build()
+
+	@Provides
+	@Singleton
 	fun provideKitsuRepository(
 		@ApplicationContext context: Context,
+		@ScrobblerType(ScrobblerService.KITSU) okHttp: OkHttpClient,
 		@ScrobblerType(ScrobblerService.KITSU) storage: ScrobblerStorage,
 		database: MangaDatabase,
-		authenticator: KitsuAuthenticator,
-	): KitsuRepository {
-		val okHttp = OkHttpClient.Builder().apply {
-			authenticator(authenticator)
-			addInterceptor(KitsuInterceptor(storage))
-			if (BuildConfig.DEBUG) {
-				addInterceptor(CurlLoggingInterceptor())
-			}
-		}.build()
-		return KitsuRepository(context, okHttp, storage, database)
-	}
+	): KitsuRepository = KitsuRepository(context, okHttp, storage, database)
 
 	@Provides
 	@Singleton
@@ -170,4 +175,3 @@ object ScrobblingModule {
 		mangaUpdatesScrobbler,
 	)
 }
-

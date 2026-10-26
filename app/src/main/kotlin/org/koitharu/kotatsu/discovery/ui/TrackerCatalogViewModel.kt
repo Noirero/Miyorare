@@ -5,16 +5,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.takeWhile
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.flow.update
 import org.koitharu.kotatsu.alternatives.domain.AlternativeSearchEvent
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.discovery.data.TrackerCatalogAccountRepository
 import org.koitharu.kotatsu.discovery.data.TrackerCatalogRepository
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -53,6 +55,7 @@ data class CatalogScreenState(
 class TrackerCatalogViewModel @Inject constructor(
 	private val saved: SavedStateHandle,
 	private val repository: TrackerCatalogRepository,
+	private val accountRepository: TrackerCatalogAccountRepository,
 	private val resolver: CatalogSourceResolution,
 	private val settings: AppSettings,
 ) : ViewModel() {
@@ -62,10 +65,20 @@ class TrackerCatalogViewModel @Inject constructor(
 	private val initialFilter = runCatching { CatalogFilter.valueOf(checkNotNull(saved.get<String>(CatalogArguments.FILTER))) }.getOrDefault(CatalogFilter.ALL)
 	private val mutableState = MutableStateFlow(CatalogScreenState(service, mode, initialFilter, saved.get<String>(CatalogArguments.QUERY).orEmpty()))
 	val state: StateFlow<CatalogScreenState> = mutableState
+	private val mutableAccount = MutableStateFlow(accountRepository.snapshot(service))
+	val account = mutableAccount.asStateFlow()
+	private val mutableKnownTracking = MutableStateFlow<Map<Long, CatalogTrackingEntry>>(emptyMap())
+	val knownTracking = mutableKnownTracking.asStateFlow()
+	private val mutableTracking = MutableStateFlow(CatalogTrackingState())
+	val tracking = mutableTracking.asStateFlow()
 	@Volatile private var generation = 0L
 	private var loadJob: Job? = null
 	private var sourceJob: Job? = null
+	private var accountJob: Job? = null
+	private var trackingJob: Job? = null
 	@Volatile private var sourceGeneration = 0L
+	@Volatile private var accountGeneration = 0L
+	@Volatile private var trackingGeneration = 0L
 	private var adult = !settings.isNsfwContentDisabled
 	private var explicitlyChosen: Manga? = null
 	private data class SourceEvent(val generation: Long, val key: TrackerCatalogKey, val manga: Manga)
@@ -85,6 +98,7 @@ class TrackerCatalogViewModel @Inject constructor(
 
 	init {
 		if (mode != CatalogScreenMode.SEARCH || state.value.query.isNotBlank()) reload()
+		refreshAccount()
 		viewModelScope.launch { settings.observeChanges().collect {
 			if (adult != !settings.isNsfwContentDisabled) {
 				adult = !settings.isNsfwContentDisabled
@@ -118,7 +132,10 @@ class TrackerCatalogViewModel @Inject constructor(
 				if (mode == CatalogScreenMode.DETAILS) {
 					val details = repository.details(checkNotNull(key), adult)
 					val known = resolver.known(details.item.key)
-					if (token == generation) mutableState.update { it.copy(details = details, known = known, loading = false) }
+					if (token == generation) {
+						mutableState.update { it.copy(details = details, known = known, loading = false) }
+						refreshTracking(details.item.key)
+					}
 				} else {
 					val result = if (mode == CatalogScreenMode.SECTION) repository.browse(checkNotNull(section), adult, page)
 						else repository.search(service, request.query.trim(), request.filter, adult, page)
@@ -129,6 +146,93 @@ class TrackerCatalogViewModel @Inject constructor(
 			} catch (e: CancellationException) { throw e }
 			catch (e: Exception) { if (token == generation) mutableState.update { it.copy(loading = false, loadingMore = false, failure = e.catalogFailure()) } }
 		}
+	}
+
+	fun refreshAccount() {
+		val token = ++accountGeneration
+		accountJob?.cancel()
+		val snapshot = accountRepository.snapshot(service)
+		mutableAccount.value = snapshot.copy(loading = snapshot.authorized && snapshot.user == null, failed = false)
+		if (!snapshot.authorized) {
+			trackingGeneration++
+			trackingJob?.cancel()
+			mutableKnownTracking.value = emptyMap()
+			mutableTracking.value = CatalogTrackingState()
+			return
+		}
+		accountJob = viewModelScope.launch {
+			try {
+				val refreshed = accountRepository.refreshAccount(service)
+				val known = accountRepository.knownTracking(service)
+				if (token == accountGeneration) {
+					mutableAccount.value = refreshed
+					mutableKnownTracking.value = known
+					if (mode == CatalogScreenMode.DETAILS) key?.let(::refreshTracking)
+				}
+			} catch (e: CancellationException) {
+				throw e
+			} catch (_: Exception) {
+				if (token == accountGeneration) mutableAccount.value = snapshot.copy(loading = false, failed = true)
+			}
+		}
+	}
+
+	private fun refreshTracking(target: TrackerCatalogKey) {
+		if (mode != CatalogScreenMode.DETAILS || !mutableAccount.value.authorized) {
+			mutableTracking.value = CatalogTrackingState()
+			return
+		}
+		val token = ++trackingGeneration
+		trackingJob?.cancel()
+		mutableTracking.value = CatalogTrackingState(loading = true, entry = mutableTracking.value.entry)
+		trackingJob = viewModelScope.launch {
+			try {
+				val entry = accountRepository.tracking(target)
+				if (token == trackingGeneration) {
+					mutableTracking.value = CatalogTrackingState(entry = entry)
+					val targetId = target.remoteId.toLong()
+					mutableKnownTracking.update { old ->
+						if (entry == null) old - targetId else old + (targetId to entry)
+					}
+				}
+			} catch (e: CancellationException) {
+				throw e
+			} catch (_: Exception) {
+				if (token == trackingGeneration) mutableTracking.value = CatalogTrackingState(failed = true)
+			}
+		}
+	}
+
+	fun addTracking() {
+		val target = key ?: return
+		if (!mutableAccount.value.authorized || mutableTracking.value.adding) return
+		val token = ++trackingGeneration
+		trackingJob?.cancel()
+		mutableTracking.value = mutableTracking.value.copy(adding = true, failed = false)
+		trackingJob = viewModelScope.launch {
+			try {
+				val entry = accountRepository.addTracking(target)
+				if (token == trackingGeneration) {
+					mutableTracking.value = CatalogTrackingState(entry = entry)
+					mutableKnownTracking.update { it + (entry.targetId to entry) }
+				}
+			} catch (e: CancellationException) {
+				throw e
+			} catch (_: Exception) {
+				if (token == trackingGeneration) mutableTracking.value = mutableTracking.value.copy(adding = false, failed = true)
+			}
+		}
+	}
+
+	fun logoutAccount() {
+		accountGeneration++
+		trackingGeneration++
+		accountJob?.cancel()
+		trackingJob?.cancel()
+		accountRepository.logout(service)
+		mutableAccount.value = CatalogAccountState(service)
+		mutableKnownTracking.value = emptyMap()
+		mutableTracking.value = CatalogTrackingState()
 	}
 
 	fun startResolution(allSources: Boolean = false) {
