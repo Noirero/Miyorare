@@ -36,8 +36,10 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.discovery.domain.CatalogTrackingEntry
 import org.koitharu.kotatsu.discovery.domain.MangaBakaExploreType
+import org.koitharu.kotatsu.discovery.domain.TrackerCatalogItem
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogKey
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,10 +109,12 @@ internal fun MangaBakaSeeAllScreen(
 				}
 			}
 			items(state.items, key = { it.key.stableId }) { item ->
-				CatalogTrackedCard(
+				val tracking = item.key.remoteId.toLongOrNull()?.let(knownTracking::get)
+				MangaBakaSeeAllCard(
 					item = item,
+					tracking = tracking,
+					showPersonalProgress = state.mode == MangaBakaSeeAllMode.LIBRARY,
 					imageLoader = imageLoader,
-					tracking = item.key.remoteId.toLongOrNull()?.let(knownTracking::get),
 					onClick = { onItem(item.key) },
 				)
 			}
@@ -125,6 +129,38 @@ internal fun MangaBakaSeeAllScreen(
 						Text(stringResource(R.string.hub_load_more))
 					}
 				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun MangaBakaSeeAllCard(
+	item: TrackerCatalogItem,
+	tracking: CatalogTrackingEntry?,
+	showPersonalProgress: Boolean,
+	imageLoader: ImageLoader,
+	onClick: () -> Unit,
+) {
+	Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+		CatalogTrackedCard(
+			item = item,
+			imageLoader = imageLoader,
+			tracking = tracking,
+			onClick = onClick,
+		)
+		if (showPersonalProgress && tracking != null) {
+			val details = buildList {
+				if (tracking.chapter > 0) add(stringResource(R.string.library_group_tracking_chapter, tracking.chapter))
+				if (tracking.rating > 0f) add(String.format(Locale.getDefault(), "%.1f/10", tracking.rating * 10f))
+			}
+			if (details.isNotEmpty()) {
+				Text(
+					text = details.joinToString(" · "),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier.padding(horizontal = 4.dp).testTag("mangabaka_library_progress_${tracking.targetId}"),
+				)
 			}
 		}
 	}
