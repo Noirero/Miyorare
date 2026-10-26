@@ -12,14 +12,22 @@ internal object MigrationBatchWork {
 	private const val GENERATION = "migration_generation:"
 	private const val BATCH = "migration_batch_name:"
 	private const val TARGET = "migration_target:"
+	private const val SCOPE = "migration_scope:"
 	private const val TERMINAL = "migration_terminal:"
 
 	fun tags(request: MigrationBatchRequest, generation: Long, batch: String): List<String> =
-		tags(request.mangaId, request.source, generation, batch, request.selection?.id)
+		tags(request.mangaId, request.source, generation, batch, request.selection?.id, request.searchScope)
 
-	fun tags(mangaId: Long, source: String, generation: Long, batch: String, destinationId: Long? = null): List<String> = buildList {
+	fun tags(
+		mangaId: Long,
+		source: String,
+		generation: Long,
+		batch: String,
+		destinationId: Long? = null,
+		searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
+	): List<String> = buildList {
 		add(TAG); add(ID + mangaId); add(SOURCE + source)
-		add(GENERATION + generation); add(BATCH + batch)
+		add(GENERATION + generation); add(BATCH + batch); add(SCOPE + searchScope.name)
 		destinationId?.let { add(TARGET + it) }
 	}
 
@@ -67,6 +75,11 @@ internal object MigrationBatchWork {
 	fun generation(tags: Set<String>): Long = tags.firstOrNull { it.startsWith(GENERATION) }
 		?.removePrefix(GENERATION)?.toLongOrNull() ?: 0L
 
+	fun searchScope(tags: Set<String>): MigrationSearchScope = tags.firstOrNull { it.startsWith(SCOPE) }
+		?.removePrefix(SCOPE)
+		?.let { raw -> MigrationSearchScope.entries.find { it.name == raw } }
+		?: MigrationSearchScope.ALL
+
 	private fun searchProgress(data: Data): MigrationSearchProgress? {
 		val phase = data.getString("search_phase")
 			?.let { raw -> MigrationSearchPhase.entries.find { it.name == raw } }
@@ -109,6 +122,7 @@ internal object MigrationBatchWork {
 			outcome = MigrationBatchOutcome(status, selection, destinationId),
 			running = terminalStatus == null && !info.state.isFinished,
 			searchProgress = searchProgress(data),
+			searchScope = searchScope(info.tags),
 		)
 	}
 }
