@@ -350,8 +350,8 @@ private class AndroidSystemTranslationRuntime private constructor(
 		)
 	}
 
-	private companion object {
-		const val MAX_CACHED_TRANSLATORS = 3
+	companion object {
+		private const val MAX_CACHED_TRANSLATORS = 3
 		@Volatile
 		private var instance: AndroidSystemTranslationRuntime? = null
 
