@@ -9,7 +9,7 @@
     <string name="migration_check_current_action">Periksa source saat ini dulu</string>
     <string name="migration_search_direct_action">Langsung cari source pengganti</string>
     <string name="migration_direct_search_active">Pengecekan source saat ini dilewati. Pilih tempat untuk mencari judul ini.</string>
-    <string name="migration_checking">Memeriksa apakah manga dari source saat ini masih bisa dibaca…</string>
+    <string name="migration_checking">Menyiapkan migrasi…</string>
     <string name="migration_checking_source">Memeriksa source saat ini: %1$s</string>
     <string name="migration_searching_sources">Mencari pada source terpasang yang dipilih…</string>
     <string name="migration_searching_sources_progress">Mencari pada source terpasang · %1$d/%2$d diperiksa</string>
