@@ -115,19 +115,7 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 	}
 
 	private suspend fun loadRecommendations(filter: CatalogFilter, allowAdult: Boolean): List<TrackerCatalogItem> {
-		val url = "$MANGABAKA_PERSONAL_API_V1/my/series/recommendations".toHttpUrl().newBuilder()
-			.addQueryParameter("page", "1")
-			.addQueryParameter("limit", MANGABAKA_PERSONAL_LIMIT.toString())
-			.apply {
-				when (filter) {
-					CatalogFilter.ALL -> Unit
-					CatalogFilter.MANGA -> addQueryParameter("type_not", "novel")
-					CatalogFilter.NOVEL -> addQueryParameter("type", "novel")
-				}
-				addContentRatings(allowAdult)
-			}
-			.build()
-		val root = accountRequest(url.toString())
+		val root = accountRequest(mangaBakaRecommendationsUrl(filter, allowAdult).toString())
 		val rows = root.optJSONArray("data") ?: return emptyList()
 		return buildList {
 			for (index in 0 until rows.length()) {
@@ -142,6 +130,20 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 		return response.requireMangaBakaAccountSuccess().parseJson()
 	}
 }
+
+internal fun mangaBakaRecommendationsUrl(filter: CatalogFilter, allowAdult: Boolean) =
+	"$MANGABAKA_PERSONAL_API_V1/my/series/recommendations".toHttpUrl().newBuilder()
+		.addQueryParameter("page", "1")
+		.addQueryParameter("limit", MANGABAKA_PERSONAL_LIMIT.toString())
+		.apply {
+			when (filter) {
+				CatalogFilter.ALL -> Unit
+				CatalogFilter.MANGA -> addQueryParameter("type_not", "novel")
+				CatalogFilter.NOVEL -> addQueryParameter("type", "novel")
+			}
+			addContentRatings(allowAdult)
+		}
+		.build()
 
 internal fun parseMangaBakaLibraryItem(
 	row: JsonObject,
