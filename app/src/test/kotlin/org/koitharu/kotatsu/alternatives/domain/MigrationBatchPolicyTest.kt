@@ -14,8 +14,20 @@ class MigrationBatchPolicyTest {
 		publicUrl = "https://fixture.invalid/$id", rating = 0f, contentRating = null, coverUrl = null,
 		tags = emptySet(), state = null, authors = setOf("Writer"), source = MangaSource("OLD"))
 	private fun ready() = MigrationDiscovery(seed, MigrationCandidateMatcher().assess(seed, listOf(MigrationCandidateObservation(replacement))))
-	private fun snapshot(id: Long, generation: Long, status: MigrationBatchStatus, selection: MigrationSelection? = null) =
-		MigrationBatchSnapshot(id, "OLD", generation, "batch-$generation", MigrationBatchOutcome(status, selection))
+	private fun snapshot(
+		id: Long,
+		generation: Long,
+		status: MigrationBatchStatus,
+		selection: MigrationSelection? = null,
+		searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
+	) = MigrationBatchSnapshot(
+		id,
+		"OLD",
+		generation,
+		"batch-$generation",
+		MigrationBatchOutcome(status, selection),
+		searchScope = searchScope,
+	)
 
 	@Test fun onlyReadyVisibleCurrentSourceResultsBecomeBatchRequests() {
 		val states = listOf(MigrationBatchStatus.READY, MigrationBatchStatus.NEEDS_REVIEW, MigrationBatchStatus.NO_REPLACEMENT,
@@ -25,6 +37,21 @@ class MigrationBatchPolicyTest {
 		assertEquals(listOf(1L), requests.map { it.mangaId })
 		assertTrue(MigrationBatchPolicy.readyRequests(listOf(manga(1).copy(source = MangaSource("CHANGED"))), items).isEmpty())
 		assertTrue(MigrationBatchPolicy.readyRequests(emptyList(), items).isEmpty())
+	}
+	@Test fun readyPermissionIsBoundToTheScopeThatProducedIt() {
+		val ready = snapshot(
+			1L,
+			1,
+			MigrationBatchStatus.READY,
+			MigrationSelection.of(replacement),
+			searchScope = MigrationSearchScope.UMA,
+		)
+		val items = mapOf(1L to ready)
+
+		assertTrue(MigrationBatchPolicy.readyRequests(listOf(manga(1)), items, MigrationSearchScope.ALL).isEmpty())
+		val requests = MigrationBatchPolicy.readyRequests(listOf(manga(1)), items, MigrationSearchScope.UMA)
+		assertEquals(1, requests.size)
+		assertEquals(MigrationSearchScope.UMA, requests.single().searchScope)
 	}
 	@Test fun incompleteAndAmbiguousSearchesNeverBecomeReadyCounts() {
 		assertEquals(MigrationBatchStatus.INCOMPLETE, MigrationBatchPolicy.assess(ready().copy(incomplete = true)).status)
