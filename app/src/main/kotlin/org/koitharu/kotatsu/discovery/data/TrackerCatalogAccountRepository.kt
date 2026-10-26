@@ -270,7 +270,7 @@ class TrackerCatalogAccountRepository @Inject constructor(
 		service = ScrobblerService.MANGABAKA,
 		targetId = targetId,
 		status = catalogTrackingStatus(ScrobblerService.MANGABAKA, json.optionalString("state")),
-		chapter = json.optDouble("progress_chapter", 0.0).takeUnless(Double::isNaN)?.toInt()?.coerceAtLeast(0) ?: 0,
+		chapter = json.optDouble("progress_chapter", 0.0).takeUnless { it.isNaN() }?.toInt()?.coerceAtLeast(0) ?: 0,
 		rating = (json.optInt("rating", 0).toFloat() / 100f).coerceIn(0f, 1f),
 	)
 
@@ -367,7 +367,7 @@ internal fun catalogAccountProfileUrl(user: ScrobblerUser): String? = when (user
 	ScrobblerService.ANILIST -> "https://anilist.co/user/${user.nickname.pathSegment()}"
 	ScrobblerService.MAL -> "https://myanimelist.net/profile/${user.nickname.pathSegment()}"
 	ScrobblerService.KITSU -> "https://kitsu.app/users/${user.id}"
-	ScrobblerService.MANGABAKA -> null
+	ScrobblerService.MANGABAKA -> "https://mangabaka.org/my/settings/profile"
 	else -> null
 }
 
