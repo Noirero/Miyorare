@@ -73,14 +73,17 @@ class MangaBakaSeeAllViewModel @Inject constructor(
 	private var adult = !settings.isNsfwContentDisabled
 
 	init {
-		reload()
+		val accountSnapshot = accountRepository.snapshot(ScrobblerService.MANGABAKA)
+		if (mode == MangaBakaSeeAllMode.EXPLORE || accountSnapshot.authorized) reload()
 		refreshAccount()
 		viewModelScope.launch {
 			settings.observeChanges().collect {
 				val nextAdult = !settings.isNsfwContentDisabled
 				if (adult != nextAdult) {
 					adult = nextAdult
-					reload()
+					if (mode == MangaBakaSeeAllMode.EXPLORE || accountRepository.snapshot(ScrobblerService.MANGABAKA).authorized) {
+						reload()
+					}
 				}
 			}
 		}
