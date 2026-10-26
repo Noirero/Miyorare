@@ -37,6 +37,34 @@ class MigrationCandidateMatcherTest {
 	}
 
 	@Test
+	fun `decorated stored title matches clean source title`() {
+		val seed = manga(1, "[kajdi] Fairy Tail", "OLD", authors = setOf("Hiro Mashima"))
+		val candidate = manga(2, "Fairy Tail", "NEW", authors = setOf("Hiro Mashima"))
+
+		val result = matcher.assess(seed, listOf(observation(candidate, "Fairy Tail")))
+
+		assertEquals(MigrationMatchState.READY, result.state)
+		assertTrue(checkNotNull(result.best).evidence.exactTitleMatch)
+		assertTrue(checkNotNull(result.best).evidence.autoEligible)
+	}
+
+	@Test
+	fun `search queries include cleaned decorated title and short cjk alias`() {
+		val seed = manga(
+			1,
+			"(oppah) Jurag",
+			"OLD",
+			altTitles = setOf("進撃"),
+		)
+
+		val queries = buildMigrationSearchQueries(seed)
+
+		assertTrue("(oppah) Jurag" in queries)
+		assertTrue("Jurag" in queries)
+		assertTrue("進撃" in queries)
+	}
+
+	@Test
 	fun `same title different author with more chapters cannot beat corroborated identity`() {
 		val seed = manga(
 			id = 1,
@@ -141,15 +169,16 @@ class MigrationCandidateMatcherTest {
 	}
 
 	@Test
-	fun `unrelated candidate without search provenance is no replacement`() {
+	fun `unrelated search result stays visible for manual review`() {
 		val seed = manga(1, "Original Story", "OLD", authors = setOf("Writer"))
 		val unrelated = manga(2, "Completely Different", "NEW", authors = setOf("Someone Else"))
 
 		val result = matcher.assess(seed, listOf(MigrationCandidateObservation(unrelated)))
 
-		assertEquals(MigrationMatchState.NO_REPLACEMENT, result.state)
-		assertEquals(null, result.best)
-		assertTrue(result.candidates.isEmpty())
+		assertEquals(MigrationMatchState.NEEDS_REVIEW, result.state)
+		assertEquals(unrelated.id, result.best?.manga?.id)
+		assertEquals(listOf(unrelated.id), result.candidates.map { it.manga.id })
+		assertTrue(!checkNotNull(result.best).evidence.autoEligible)
 	}
 
 	@Test
