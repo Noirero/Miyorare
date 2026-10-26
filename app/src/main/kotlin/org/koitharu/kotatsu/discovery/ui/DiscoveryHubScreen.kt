@@ -48,6 +48,7 @@ fun DiscoveryHubScreen(
 	onMangaBakaReconnect: () -> Unit = {},
 	onMangaBakaLibrarySeeAll: () -> Unit = {},
 	onMangaBakaExploreType: (MangaBakaExploreType) -> Unit = {},
+	onMangaBakaExploreSeeAll: (MangaBakaExploreType) -> Unit = {},
 ) {
 	val list = rememberLazyListState()
 	val dataset = "${state.request.service}_${state.request.filter}_${state.request.allowAdult}"
@@ -64,6 +65,9 @@ fun DiscoveryHubScreen(
 	val status = state.homeStatus()
 	val spotlight = remember(sections) { selectDiscoverySpotlight(sections) }
 	val cardWidth = catalogHomeCardWidth()
+	// MainActivity augments the child system-bars inset by the visible floating-nav overlap when the
+	// bar is pinned. Consume that propagated inset instead of guessing a device-specific nav height.
+	val bottomContentPadding = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding() + 16.dp
 
 	PullToRefreshBox(
 		isRefreshing = state.refreshing,
@@ -73,7 +77,7 @@ fun DiscoveryHubScreen(
 		LazyColumn(
 			state = list,
 			modifier = Modifier.testTag("catalog_home_list"),
-			contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+			contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomContentPadding),
 			verticalArrangement = Arrangement.spacedBy(18.dp),
 		) {
 			item(key = "header") {
@@ -111,14 +115,12 @@ fun DiscoveryHubScreen(
 				item(key = "mangabaka_personal") {
 					MangaBakaPersonalHomeContent(
 						state = mangaBakaPersonal,
-						filter = state.request.filter,
 						knownTracking = knownTracking,
 						imageLoader = imageLoader,
 						onItem = onItem,
 						onRetry = onMangaBakaPersonalRetry,
 						onReconnect = onMangaBakaReconnect,
 						onLibrarySeeAll = onMangaBakaLibrarySeeAll,
-						onExploreType = onMangaBakaExploreType,
 					)
 				}
 			}
@@ -163,6 +165,20 @@ fun DiscoveryHubScreen(
 					} else if (section.failure == null) {
 						Text(stringResource(R.string.hub_empty), style = MaterialTheme.typography.bodySmall)
 					}
+				}
+			}
+
+			if (state.request.service == ScrobblerService.MANGABAKA) {
+				item(key = "mangabaka_explore") {
+					MangaBakaExploreByType(
+						state = mangaBakaPersonal,
+						filter = state.request.filter,
+						knownTracking = knownTracking,
+						imageLoader = imageLoader,
+						onItem = onItem,
+						onExploreType = onMangaBakaExploreType,
+						onSeeAll = onMangaBakaExploreSeeAll,
+					)
 				}
 			}
 
