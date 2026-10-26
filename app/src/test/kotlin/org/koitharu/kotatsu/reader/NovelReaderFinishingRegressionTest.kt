@@ -59,10 +59,11 @@ class NovelReaderFinishingRegressionTest {
 	}
 
 	@Test
-	fun `novel finishing does not bundle an on-device translation sdk`() {
+	fun `novel built in translation uses approved on-device sdk`() {
 		val gradle = projectFile("app/build.gradle").readText().lowercase()
 
-		assertFalse(gradle.contains("com.google.mlkit:translate"))
+		assertTrue(gradle.contains("com.google.mlkit:translate:17.0.3"))
+		assertTrue(gradle.contains("com.google.mlkit:language-id:17.0.6"))
 		assertFalse(gradle.contains("tensorflow-lite-task-text"))
 	}
 
