@@ -96,7 +96,7 @@ class AlternativesUseCase @Inject constructor(
 		MigrationSourcePool(
 			allSources = merged.values
 				.asSequence()
-				.filter { it != manga.source && it.isNovelContentSource == isNovel }
+				.filter { it.name != manga.source.name && it.isNovelContentSource == isNovel }
 				.distinctBy(MangaSource::name)
 				.sortedBy { it.name }
 				.toList(),
