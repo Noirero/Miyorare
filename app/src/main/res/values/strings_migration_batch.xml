@@ -2,20 +2,20 @@
 <resources>
     <string name="migration_batch_cancel">Cancel running batch</string>
     <string name="migration_batch_check">Check all and find replacements</string>
-    <string name="migration_batch_safety">Each manga is checked first. If its current source is broken, Miyorare searches installed sources. Clear matches become Ready; uncertain matches stay for your review.</string>
+    <string name="migration_batch_safety">Each manga is checked first. If it can no longer be read from its current source, Miyorare searches the selected installed-source scope. Clear matches become Ready; uncertain matches stay for your review.</string>
     <string name="migration_batch_unchecked">Not checked yet — tap to review</string>
     <string name="migration_batch_queued">Waiting in batch queue</string>
-    <string name="migration_batch_checking">Checking source / searching installed sources…</string>
-    <string name="migration_batch_checking_current">Checking the current source…</string>
-    <string name="migration_batch_searching">Searching installed sources…</string>
+    <string name="migration_batch_checking">Checking readability / searching installed sources…</string>
+    <string name="migration_batch_checking_current">Checking whether the current manga can still be read…</string>
+    <string name="migration_batch_searching">Searching the selected installed sources…</string>
     <string name="migration_batch_searching_progress">Searching installed sources · %1$d/%2$d checked</string>
     <string name="migration_batch_verifying">Verifying %1$d possible matches…</string>
     <string name="migration_batch_migrating">Migrating…</string>
     <string name="migration_batch_ready">Ready — replacement found</string>
     <string name="migration_batch_review">Replacement found — choose manually</string>
-    <string name="migration_batch_no_replacement">No result found in installed sources</string>
-    <string name="migration_batch_incomplete">Search incomplete — retry</string>
-    <string name="migration_batch_healthy">Current source is working</string>
+    <string name="migration_batch_no_replacement">No readable result found in the sources checked</string>
+    <string name="migration_batch_incomplete">Selected scope could not be checked reliably — retry or choose another scope</string>
+    <string name="migration_batch_healthy">Current manga is still readable</string>
     <string name="migration_batch_interrupted">Interrupted — check library before retry</string>
     <string name="migration_batch_error">Could not migrate safely — review or retry</string>
     <string name="migration_batch_empty">No remaining library or history entries for these sources.</string>
