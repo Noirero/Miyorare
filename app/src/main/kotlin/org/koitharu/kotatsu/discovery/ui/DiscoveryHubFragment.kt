@@ -61,7 +61,7 @@ class DiscoveryHubFragment : Fragment() {
 					onSearch = ::openTrackerSearch,
 					onItem = { startActivity(TrackerCatalogActivity.detailsIntent(requireContext(), it)) },
 					onSection = { startActivity(TrackerCatalogActivity.sectionIntent(requireContext(), it)) },
-					onAttribution = { router.openExternalBrowser(when (state.request.service) { ScrobblerService.ANILIST -> "https://anilist.co"; ScrobblerService.MAL -> "https://myanimelist.net"; else -> "https://kitsu.app" }) },
+					onAttribution = { router.openExternalBrowser(providerHome(state.request.service)) },
 					scrollRequests = scrollRequests,
 					showLocalSearch = (activity as? MainActivity)?.hasSharedSearchBar() != true,
 					account = account,
@@ -133,6 +133,14 @@ class DiscoveryHubFragment : Fragment() {
 
 	private fun searchHint(service: ScrobblerService): String =
 		getString(R.string.hub_search_hint_provider, catalogProviderName(service))
+
+	private fun providerHome(service: ScrobblerService): String = when (service) {
+		ScrobblerService.ANILIST -> "https://anilist.co"
+		ScrobblerService.MAL -> "https://myanimelist.net"
+		ScrobblerService.KITSU -> "https://kitsu.app"
+		ScrobblerService.MANGABAKA -> "https://mangabaka.org"
+		else -> error("Unsupported Tracker Home provider $service")
+	}
 
 	private fun openTrackerSearch() {
 		val request = viewModel.state.value.request
