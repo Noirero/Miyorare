@@ -16,6 +16,7 @@
     <string name="migration_find_another_source">Find another source anyway</string>
     <string name="migration_source_unavailable">The current source could not provide a readable page. Choose where to search for a replacement.</string>
     <string name="migration_source_problem">The current source could not provide a readable page. Your manga stays in place while you choose a replacement.</string>
+    <string name="migration_fix_entry_prompt">Open Manga Migration to check readability, choose where replacements are searched, and review results before anything is migrated.</string>
     <string name="migration_search_scope_title">Search replacement in</string>
     <string name="migration_scope_all">ALL</string>
     <string name="migration_scope_store">Store</string>
