@@ -37,6 +37,8 @@ import org.koitharu.kotatsu.discovery.domain.MangaBakaExploreType
 import org.koitharu.kotatsu.discovery.domain.MangaBakaPersonalHomeState
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogKey
 
+private const val MANGABAKA_HOME_LIBRARY_LIMIT = 12
+
 @Composable
 internal fun MangaBakaPersonalHomeContent(
 	state: MangaBakaPersonalHomeState,
@@ -76,7 +78,7 @@ internal fun MangaBakaPersonalHomeContent(
 					onSeeAll = onLibrarySeeAll,
 				)
 				LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-					items(state.library, key = { it.item.key.stableId }) { libraryItem ->
+					items(state.library.take(MANGABAKA_HOME_LIBRARY_LIMIT), key = { it.item.key.stableId }) { libraryItem ->
 						CatalogTrackedCard(
 							item = libraryItem.item,
 							imageLoader = imageLoader,
