@@ -5,6 +5,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
@@ -35,20 +36,20 @@ class AutoFixUseCase @Inject constructor(
 				seed = ParcelableManga(seed),
 				candidates = assessment.candidates.map { ParcelableManga(it.manga) },
 			)
-			MigrationMatchState.NO_REPLACEMENT -> {
-				throw NoAlternativesException(ParcelableManga(seed))
-			}
+			MigrationMatchState.NO_REPLACEMENT -> throw NoAlternativesException(ParcelableManga(seed))
 		}
 
-		migrateUseCase(
-			oldManga = seed,
-			newManga = replacement,
-			lossless = true,
-		)
+		migrateUseCase(oldManga = seed, newManga = replacement, lossless = true)
 		return seed to replacement
 	}
 
-	/** Only decides whether the current manga can still serve a readable page. */
+	/** Local-only seed for the initial migration screen. This never opens the current source. */
+	suspend fun loadStoredManga(mangaId: Long): Manga = loadStoredSeed(mangaId)
+
+	/**
+	 * Optional current-source check. Dead/challenged sources must never hold the migration screen
+	 * indefinitely: failure or timeout means only "not proven readable", not a permanent broken claim.
+	 */
 	suspend fun checkCurrentSource(
 		mangaId: Long,
 		onProgress: suspend (MigrationDiscovery) -> Unit = {},
@@ -58,26 +59,24 @@ class AutoFixUseCase @Inject constructor(
 			seed = storedSeed,
 			progress = MigrationSearchProgress(MigrationSearchPhase.CHECKING_SOURCE),
 		))
-		val seed = storedSeed.getDetailsSafe()
-		if (seed != storedSeed) {
-			onProgress(MigrationDiscovery(
-				seed = seed,
-				progress = MigrationSearchProgress(MigrationSearchPhase.CHECKING_SOURCE),
-			))
-		}
-		return MigrationDiscovery(seed = seed, sourceHealthy = seed.isReadable())
+		return withTimeoutOrNull(CURRENT_SOURCE_CHECK_TIMEOUT_MS) {
+			val seed = storedSeed.getDetailsSafe()
+			if (seed != storedSeed) {
+				onProgress(MigrationDiscovery(
+					seed = seed,
+					progress = MigrationSearchProgress(MigrationSearchPhase.CHECKING_SOURCE),
+				))
+			}
+			MigrationDiscovery(seed = seed, sourceHealthy = seed.isReadable())
+		} ?: MigrationDiscovery(seed = storedSeed, sourceHealthy = false)
 	}
 
+	/** Direct replacement search must not touch the current source at all. */
 	suspend fun searchAvailability(mangaId: Long): MigrationSearchAvailability {
-		val seed = loadStoredSeed(mangaId).getDetailsSafe()
+		val seed = loadStoredSeed(mangaId)
 		return alternativesUseCase.getMigrationSourcePool(seed).availability()
 	}
 
-	/**
-	 * Discovery is a preview, never permission to mutate user data. The current source being
-	 * unavailable is the reason to search, not an error state. Provider/source failures are isolated
-	 * and only become incomplete when the selected scope could not be meaningfully inspected at all.
-	 */
 	suspend fun discover(
 		mangaId: Long,
 		searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
@@ -88,13 +87,14 @@ class AutoFixUseCase @Inject constructor(
 		return searchReplacements(mangaId, searchScope, onProgress = onProgress)
 	}
 
+	/** Search replacements from stored title/aliases only; current-source network access is skipped. */
 	suspend fun searchReplacements(
 		mangaId: Long,
 		searchScope: MigrationSearchScope,
 		currentSourceReadable: Boolean = false,
 		onProgress: suspend (MigrationDiscovery) -> Unit = {},
 	): MigrationDiscovery {
-		val seed = loadStoredSeed(mangaId).getDetailsSafe()
+		val seed = loadStoredSeed(mangaId)
 		val pool = alternativesUseCase.getMigrationSourcePool(seed)
 		val sources = pool.sources(searchScope)
 		val queries = buildMigrationSearchQueries(seed)
@@ -153,8 +153,6 @@ class AutoFixUseCase @Inject constructor(
 			}
 		}
 
-		// Rank first, then health-check a broad review set. Low-confidence results remain visible after
-		// they prove they can actually serve pages; ranking is guidance, not a visibility gate.
 		val ranked = candidateMatcher.rank(seed, observations).take(MAX_HEALTH_CHECKS)
 		onProgress(MigrationDiscovery(
 			seed = seed,
@@ -170,9 +168,7 @@ class AutoFixUseCase @Inject constructor(
 		val probes = coroutineScope {
 			ranked.map { candidate ->
 				async {
-					healthSemaphore.withPermit {
-						candidate to candidate.manga.probeHealth()
-					}
+					healthSemaphore.withPermit { candidate to candidate.manga.probeHealth() }
 				}
 			}.awaitAll()
 		}
@@ -196,7 +192,7 @@ class AutoFixUseCase @Inject constructor(
 		)
 	}
 
-	/** Refresh the approved identity before executing; a UI snapshot is never identity authority. */
+	/** Refresh the approved destination identity before executing. */
 	suspend fun migrateSelected(
 		mangaId: Long,
 		selection: MigrationSelection,
@@ -216,9 +212,16 @@ class AutoFixUseCase @Inject constructor(
 		selection: MigrationSelection,
 		allowReadableSource: Boolean,
 	): MigrationDiscovery {
-		val seed = loadSeed(mangaId)
-		val currentReadable = seed.isReadable()
-		if (currentReadable && !allowReadableSource) return MigrationDiscovery(seed, sourceHealthy = true)
+		// Direct-search mode deliberately never asks the old source again. Checked mode keeps the
+		// readable-source guard, but that re-check is bounded by the same timeout as the UI check.
+		val current = if (allowReadableSource) {
+			MigrationDiscovery(seed = loadStoredSeed(mangaId), sourceHealthy = false)
+		} else {
+			checkCurrentSource(mangaId)
+		}
+		val seed = current.seed
+		val currentReadable = current.currentSourceReadable
+		if (currentReadable && !allowReadableSource) return current
 		val pool = alternativesUseCase.getMigrationSourcePool(seed)
 		val selectedSources = pool.allSources.filter { it.name == selection.source }
 		if (selectedSources.isEmpty()) return MigrationDiscovery(
@@ -279,8 +282,6 @@ class AutoFixUseCase @Inject constructor(
 		mangaDataRepository.findMangaById(mangaId, withChapters = true),
 	) { "Manga $mangaId not found" }
 
-	private suspend fun loadSeed(mangaId: Long): Manga = loadStoredSeed(mangaId).getDetailsSafe()
-
 	private suspend fun Manga.isReadable(): Boolean = getReadableDetailsOrNull() != null
 
 	private suspend fun Manga.getReadableDetailsOrNull(): Manga? = probeHealth().getOrNull()
@@ -288,14 +289,12 @@ class AutoFixUseCase @Inject constructor(
 	private suspend fun Manga.probeHealth(): Result<Manga?> = runCatchingCancellable {
 		val repo = mangaRepositoryFactory.create(source)
 		val details = if (this.chapters != null) this else repo.getDetails(this)
-		val firstChapter = details.chapters?.firstOrNull() ?: return@runCatchingCancellable null
-		val firstPage = repo.getPages(firstChapter).firstOrNull() ?: return@runCatchingCancellable null
+		// Repository chapter lists are normalized oldest-first in the migration-supported adapters;
+		// probe the newest entry, which is less likely to be a stale/deleted historical URL.
+		val chapter = details.chapters?.lastOrNull() ?: return@runCatchingCancellable null
+		val firstPage = repo.getPages(chapter).firstOrNull() ?: return@runCatchingCancellable null
 		val pageUrl = repo.getPageUrl(firstPage)
-		if (pageUrl.toHttpUrlOrNull() != null || (source.isExternalSource() && pageUrl.isNotEmpty())) {
-			details
-		} else {
-			null
-		}
+		if (pageUrl.toHttpUrlOrNull() != null || (source.isExternalSource() && pageUrl.isNotEmpty())) details else null
 	}
 
 	private suspend fun Manga.getDetailsSafe() = runCatchingCancellable {
@@ -317,6 +316,7 @@ class AutoFixUseCase @Inject constructor(
 	class SelectionChangedException(val discovery: MigrationDiscovery) : IllegalStateException("Replacement changed; review again")
 
 	private companion object {
+		const val CURRENT_SOURCE_CHECK_TIMEOUT_MS = 12_000L
 		const val MAX_MIGRATION_DETAIL_CANDIDATES = 10
 		const val MAX_HEALTH_CHECKS = 24
 		const val MAX_PARALLEL_HEALTH_CHECKS = 4
