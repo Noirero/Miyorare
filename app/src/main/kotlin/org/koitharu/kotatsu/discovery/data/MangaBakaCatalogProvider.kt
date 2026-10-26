@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
@@ -221,16 +222,26 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 			val series = row.obj("series") ?: row
 			parseMangaBakaCatalogCard(series, allowAdult)?.takeIf { it.key.kind in filter.kinds }
 		}
-		val hasNext = root.obj("pagination")?.let { pagination ->
-			pagination.text("next") != null || pagination.catalogInt("next_page") != null || pagination.catalogInt("page")?.let { current ->
-				pagination.catalogInt("pages")?.let { pages -> current < pages }
-			} == true
-		} ?: (rows.size >= limit)
+		val hasNext = mangaBakaHasNext(root.obj("pagination"), page, rows.size, limit)
 		return TrackerCatalogPage(items, (page + 1).takeIf { page < CatalogCachePolicy.MAX_PAGE && hasNext })
 	}
 
 	private suspend fun request(url: HttpUrl): JsonObject =
 		http.request(catalogService, Request.Builder().url(url).get().build())
+}
+
+internal fun mangaBakaHasNext(pagination: JsonObject?, page: Int, rowCount: Int, limit: Int): Boolean {
+	if (pagination == null) return rowCount >= limit
+	val next = pagination["next"] as? JsonPrimitive
+	next?.booleanOrNull?.let { return it }
+	next?.intOrNull?.let { return it > page }
+	next?.contentOrNull?.trim()?.takeIf {
+		it.isNotEmpty() && !it.equals("null", ignoreCase = true) && !it.equals("false", ignoreCase = true)
+	}?.let { return true }
+	pagination.catalogInt("next_page")?.let { return it > page }
+	val current = pagination.catalogInt("page")
+	val pages = pagination.catalogInt("pages")
+	return current != null && pages != null && current < pages
 }
 
 internal fun parseMangaBakaCatalogCard(root: JsonObject, allowAdult: Boolean): TrackerCatalogItem? {
