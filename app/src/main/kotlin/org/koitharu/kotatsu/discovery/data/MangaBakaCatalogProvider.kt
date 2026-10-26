@@ -42,6 +42,8 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 private const val MANGABAKA_API_V2 = "https://api.mangabaka.org/v2"
 private const val MANGABAKA_RELATION_LIMIT = 40
 private const val MANGABAKA_RECOMMENDATION_LIMIT = 10
+private const val MANGABAKA_DISCOVERY_FILL_PAGES = 4
+private const val MANGABAKA_DISCOVERY_FILL_PAGE_SIZE = 24
 
 /** Public, credential-free MangaBaka catalogue for Tracker Home. */
 class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogProvider {
@@ -58,13 +60,22 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 		CatalogCapability.RELATIONS,
 	)
 
-	private val sectionTypes = listOf(CatalogSectionType.TRENDING)
+	private val sectionTypes = listOf(
+		CatalogSectionType.RISING,
+		CatalogSectionType.HIDDEN_GEMS,
+		CatalogSectionType.NEW_RELEASES,
+	)
 
 	override suspend fun home(filter: CatalogFilter, allowAdult: Boolean): TrackerCatalogHome = coroutineScope {
-		val keys = filter.kinds.flatMap { kind -> sectionTypes.map { CatalogSectionKey(catalogService, kind, it) } }
+		val kind = when (filter) {
+			CatalogFilter.ALL -> CatalogMediaKind.MIXED
+			CatalogFilter.MANGA -> CatalogMediaKind.MANGA
+			CatalogFilter.NOVEL -> CatalogMediaKind.NOVEL
+		}
+		val keys = sectionTypes.map { CatalogSectionKey(catalogService, kind, it) }
 		TrackerCatalogHome(keys.map { key ->
 			try {
-				val page = listing(key, allowAdult, 1, CatalogCachePolicy.HOME_PAGE_SIZE)
+				val page = listing(key, allowAdult, 1, CatalogCachePolicy.HOME_PAGE_SIZE, fillHome = true)
 				TrackerCatalogSection(key, page.items.take(CatalogCachePolicy.HOME_PAGE_SIZE), page.nextPage)
 			} catch (e: CancellationException) {
 				throw e
@@ -77,7 +88,7 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 	override suspend fun browseSection(key: CatalogSectionKey, allowAdult: Boolean, page: Int): TrackerCatalogPage {
 		require(key.service == catalogService && key.type in sectionTypes)
 		catalogPageNumber(page)
-		return listing(key, allowAdult, page, CatalogCachePolicy.PAGE_SIZE)
+		return listing(key, allowAdult, page, CatalogCachePolicy.PAGE_SIZE, fillHome = false)
 	}
 
 	override suspend fun search(query: String, filter: CatalogFilter, allowAdult: Boolean, page: Int): TrackerCatalogPage {
@@ -143,13 +154,73 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 		allowAdult: Boolean,
 		page: Int,
 		limit: Int,
+		fillHome: Boolean,
 	): TrackerCatalogPage {
-		if (key.type != CatalogSectionType.TRENDING) {
-			throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
+		val filter = when (key.kind) {
+			CatalogMediaKind.MIXED -> CatalogFilter.ALL
+			CatalogMediaKind.NOVEL -> CatalogFilter.NOVEL
+			CatalogMediaKind.MANGA -> CatalogFilter.MANGA
 		}
-		val filter = if (key.kind == CatalogMediaKind.NOVEL) CatalogFilter.NOVEL else CatalogFilter.MANGA
-		val url = seriesListUrl("$MANGABAKA_API_V2/series/discover/rising", filter, allowAdult, page, limit).build()
-		return parsePage(request(url), filter, allowAdult, page, limit)
+		return when (key.type) {
+			CatalogSectionType.RISING -> discoverPage(
+				"$MANGABAKA_API_V2/series/discover/rising",
+				filter,
+				allowAdult,
+				page,
+				limit,
+				fillHome,
+			)
+			CatalogSectionType.HIDDEN_GEMS -> discoverPage(
+				"$MANGABAKA_API_V2/series/discover/hidden-gems",
+				filter,
+				allowAdult,
+				page,
+				limit,
+				fillHome,
+			)
+			CatalogSectionType.NEW_RELEASES -> {
+				val url = seriesListUrl("$MANGABAKA_API_V2/series/search", filter, allowAdult, page, limit)
+					.addQueryParameter("sort_by", "latest")
+					.build()
+				parsePage(request(url), filter, allowAdult, page, limit)
+			}
+			else -> throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
+		}
+	}
+
+	/**
+	 * MangaBaka's Rising and Hidden Gems endpoints do not advertise type/type_not filters. For the
+	 * small Home preview we therefore fill from a bounded number of provider pages and post-filter.
+	 * Section paging stays one provider page per requested page so it never skips or repeats rows.
+	 */
+	private suspend fun discoverPage(
+		base: String,
+		filter: CatalogFilter,
+		allowAdult: Boolean,
+		page: Int,
+		limit: Int,
+		fillHome: Boolean,
+	): TrackerCatalogPage {
+		if (!fillHome || filter == CatalogFilter.ALL) {
+			val url = discoveryListUrl(base, allowAdult, page, limit).build()
+			return parsePage(request(url), filter, allowAdult, page, limit)
+		}
+		val items = LinkedHashMap<String, TrackerCatalogItem>()
+		var hasNext = false
+		var sourcePage = 1
+		while (sourcePage <= MANGABAKA_DISCOVERY_FILL_PAGES && items.size < limit) {
+			val url = discoveryListUrl(base, allowAdult, sourcePage, MANGABAKA_DISCOVERY_FILL_PAGE_SIZE).build()
+			val root = request(url)
+			val rows = root.array("data") ?: invalidCatalog()
+			catalogRows(rows) { row ->
+				val series = row.obj("series") ?: row
+				parseMangaBakaCatalogCard(series, allowAdult)?.takeIf { it.key.kind in filter.kinds }
+			}.forEach { items.putIfAbsent(it.key.stableId, it) }
+			hasNext = mangaBakaHasNext(root.obj("pagination"), sourcePage, rows.size, MANGABAKA_DISCOVERY_FILL_PAGE_SIZE)
+			if (!hasNext) break
+			sourcePage++
+		}
+		return TrackerCatalogPage(items.values.take(limit), nextPage = if (hasNext) 2 else null)
 	}
 
 	private fun seriesListUrl(
@@ -158,14 +229,22 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 		allowAdult: Boolean,
 		page: Int,
 		limit: Int,
-	): HttpUrl.Builder = base.toHttpUrl().newBuilder().apply {
-		addQueryParameter("page", page.toString())
-		addQueryParameter("limit", limit.toString())
+	): HttpUrl.Builder = discoveryListUrl(base, allowAdult, page, limit).apply {
 		when (filter) {
 			CatalogFilter.ALL -> Unit
 			CatalogFilter.NOVEL -> addQueryParameter("type", "novel")
 			CatalogFilter.MANGA -> addQueryParameter("type_not", "novel")
 		}
+	}
+
+	private fun discoveryListUrl(
+		base: String,
+		allowAdult: Boolean,
+		page: Int,
+		limit: Int,
+	): HttpUrl.Builder = base.toHttpUrl().newBuilder().apply {
+		addQueryParameter("page", page.toString())
+		addQueryParameter("limit", limit.toString())
 		addQueryParameter("content_rating", "safe")
 		addQueryParameter("content_rating", "suggestive")
 		if (allowAdult) {
@@ -264,6 +343,7 @@ internal fun parseMangaBakaCatalogCard(root: JsonObject, allowAdult: Boolean): T
 		providerUrl = catalogUrl(root.text("canonical_url")) ?: "https://mangabaka.org/$id",
 		score = root.catalogDouble("rating")?.takeIf { it in 0.0..100.0 }?.div(10.0),
 		adult = rating,
+		providerType = type,
 	).forPolicy(allowAdult)
 }
 
