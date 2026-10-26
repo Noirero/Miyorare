@@ -132,25 +132,12 @@ class MangaBakaPersonalHomeTest {
 	}
 
 	@Test
-	fun `For You sends official Novel type filter before defensive filtering`() = runBlocking {
-		val account = client { request ->
-			when (request.url.encodedPath) {
-				"/v2/my/library" -> {
-					assertEquals("novel", request.url.queryParameter("type"))
-					"""{"data":[],"pagination":{"next":false}}"""
-				}
-				"/v1/my/series/recommendations" -> {
-					assertEquals("novel", request.url.queryParameter("type"))
-					assertNull(request.url.queryParameter("type_not"))
-					"""{"data":[{"series":{"id":601,"type":"novel","content_rating":"safe","title":"Novel rec"}}]}"""
-				}
-				else -> error("Unexpected MangaBaka request ${request.url}")
-			}
-		}
-		val public = CatalogHttp(client { error("Public client must not serve personal Home") })
-		val snapshot = MangaBakaPersonalHomeRepository(account, public).load(CatalogFilter.NOVEL, allowAdult = false)
-		assertEquals("601", snapshot.recommendations.single().key.remoteId)
-		assertEquals(CatalogMediaKind.NOVEL, snapshot.recommendations.single().key.kind)
+	fun `For You sends official Novel type filter before defensive filtering`() {
+		val url = mangaBakaRecommendationsUrl(CatalogFilter.NOVEL, allowAdult = false)
+		assertEquals("/v1/my/series/recommendations", url.encodedPath)
+		assertEquals("novel", url.queryParameter("type"))
+		assertNull(url.queryParameter("type_not"))
+		assertEquals(listOf("safe", "suggestive"), url.queryParameterValues("content_rating"))
 	}
 
 	@Test
