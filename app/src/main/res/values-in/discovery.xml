@@ -10,6 +10,8 @@
     <string name="hub_all">Semua</string>
     <string name="hub_manga">Manga</string>
     <string name="hub_novel">Novel</string>
+    <string name="hub_anime">Anime</string>
+    <string name="hub_other_media">Media lain</string>
     <string name="hub_recent">Baru terbit</string>
     <string name="hub_trending">Sedang tren</string>
     <string name="hub_popular">Populer</string>
@@ -56,7 +58,9 @@
     <string name="hub_readers">Pembaca: %1$d</string>
     <string name="hub_readers_label">Pembaca</string>
     <string name="hub_genres">Genre</string>
+    <string name="hub_characters">Karakter</string>
     <string name="hub_staff">Penulis dan staf</string>
+    <string name="hub_related_works">Karya terkait</string>
     <string name="hub_alternative_titles">Judul alternatif</string>
     <string name="hub_description">Sinopsis</string>
     <string name="hub_status">Status</string>

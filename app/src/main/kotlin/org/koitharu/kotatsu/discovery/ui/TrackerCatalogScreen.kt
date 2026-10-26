@@ -270,7 +270,12 @@ private fun CatalogDetailsContent(
 			if (details.alternativeTitles.isNotEmpty()) item {
 				MetadataBlock(stringResource(R.string.hub_alternative_titles), details.alternativeTitles.joinToString("\n"))
 			}
-			if (details.staff.isNotEmpty()) item { MetadataBlock(stringResource(R.string.hub_staff), details.staff.joinToString("\n")) }
+			if (details.characters.isNotEmpty() || details.staffPeople.isNotEmpty() || details.relatedWorks.isNotEmpty()) item {
+				CatalogSupplementalDetails(details, imageLoader, onItem)
+			}
+			if (details.staffPeople.isEmpty() && details.staff.isNotEmpty()) item {
+				MetadataBlock(stringResource(R.string.hub_staff), details.staff.joinToString("\n"))
+			}
 			if (details.recommendations.isNotEmpty()) item {
 				Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 					Text(stringResource(R.string.hub_recommendations), style = MaterialTheme.typography.titleMedium)
