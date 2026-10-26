@@ -59,7 +59,22 @@ class NovelTranslationSettings(context: Context) {
 
 	var provider: NovelAiProvider
 		get() = NovelAiProvider.fromId(prefs.getString(KEY_PROVIDER, null))
-		set(value) = prefs.edit().putString(KEY_PROVIDER, value.id).apply()
+		set(value) {
+			val previous = NovelAiProvider.fromId(prefs.getString(KEY_PROVIDER, null))
+			prefs.edit().apply {
+				if (value == NovelAiProvider.BUILT_IN && previous != NovelAiProvider.BUILT_IN) {
+					putString(KEY_LAST_REMOTE_AI_PROVIDER, previous.id)
+				} else if (value != NovelAiProvider.BUILT_IN) {
+					putString(KEY_LAST_REMOTE_AI_PROVIDER, value.id)
+				}
+				putString(KEY_PROVIDER, value.id)
+			}.apply()
+		}
+
+	val lastRemoteAiProvider: NovelAiProvider
+		get() = NovelAiProvider.fromId(prefs.getString(KEY_LAST_REMOTE_AI_PROVIDER, null))
+			.takeUnless { it == NovelAiProvider.BUILT_IN }
+			?: NovelAiProvider.GEMINI
 
 	var sourceLanguage: String
 		get() = prefs.getString(KEY_SOURCE_LANGUAGE, LANGUAGE_AUTO) ?: LANGUAGE_AUTO
@@ -99,12 +114,13 @@ class NovelTranslationSettings(context: Context) {
 
 	fun currentSelection(): NovelTranslationSelection {
 		val selectedEngine = engine
+		val builtIn = selectedEngine == NovelTranslationEngineKind.AI && provider == NovelAiProvider.BUILT_IN
 		return NovelTranslationSelection(
 			engine = selectedEngine,
 			sourceLanguage = sourceLanguage,
 			targetLanguage = targetLanguage,
-			style = style,
-			contextAware = selectedEngine == NovelTranslationEngineKind.AI && contextAware,
+			style = if (builtIn) NovelTranslationStyle.NATURAL else style,
+			contextAware = selectedEngine == NovelTranslationEngineKind.AI && !builtIn && contextAware,
 			displayMode = if (bilingual) NovelTranslationDisplayMode.BILINGUAL else NovelTranslationPresentationPolicy.defaultDisplayMode,
 		)
 	}
@@ -183,6 +199,7 @@ class NovelTranslationSettings(context: Context) {
 		private const val PREFS_NAME = "novel_translation"
 		private const val KEY_ENGINE = "engine"
 		private const val KEY_PROVIDER = "provider"
+		private const val KEY_LAST_REMOTE_AI_PROVIDER = "last_remote_ai_provider"
 		private const val KEY_SOURCE_LANGUAGE = "source_language"
 		private const val KEY_TARGET_LANGUAGE = "target_language"
 		private const val KEY_BILINGUAL = "bilingual"
@@ -217,6 +234,7 @@ enum class NovelTranslationStyle(val id: String) {
 }
 
 enum class NovelAiProtocol {
+	ON_DEVICE,
 	OPENAI_COMPATIBLE,
 	ANTHROPIC,
 	DEEPL,
@@ -233,6 +251,13 @@ enum class NovelAiProvider(
 	val defaultBaseUrl: String,
 	val supportsModelDiscovery: Boolean,
 ) {
+	BUILT_IN(
+		id = "built_in",
+		displayName = "Built-in",
+		protocol = NovelAiProtocol.ON_DEVICE,
+		defaultBaseUrl = "",
+		supportsModelDiscovery = false,
+	),
 	OPENAI(
 		id = "openai",
 		displayName = "OpenAI",
