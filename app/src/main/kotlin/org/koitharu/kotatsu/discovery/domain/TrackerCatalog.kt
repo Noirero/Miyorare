@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.discovery.domain
 
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRelationType
 import java.io.IOException
 
 enum class CatalogMediaKind { MANGA, NOVEL }
@@ -36,6 +37,42 @@ data class TrackerCatalogItem(
 	}
 }
 
+data class TrackerCatalogPerson(
+	val id: String? = null,
+	val name: String,
+	val imageUrl: String? = null,
+	val roles: List<String> = emptyList(),
+	val providerUrl: String? = null,
+) {
+	init { require(name.isNotBlank()) }
+}
+
+enum class CatalogRelatedMediaKind { MANGA, NOVEL, ANIME, OTHER }
+
+data class TrackerCatalogRelatedWork(
+	val service: ScrobblerService,
+	val remoteId: String,
+	val title: String,
+	val coverUrl: String? = null,
+	val providerUrl: String? = null,
+	val relation: TrackerRelationType = TrackerRelationType.OTHER,
+	val mediaKind: CatalogRelatedMediaKind = CatalogRelatedMediaKind.OTHER,
+	val format: String? = null,
+	val providerRelation: String? = null,
+) {
+	init {
+		require(remoteId.toLongOrNull()?.let { it > 0 && it.toString() == remoteId } == true)
+		require(title.isNotBlank())
+	}
+
+	val catalogKey: TrackerCatalogKey?
+		get() = when (mediaKind) {
+			CatalogRelatedMediaKind.MANGA -> TrackerCatalogKey(service, CatalogMediaKind.MANGA, remoteId)
+			CatalogRelatedMediaKind.NOVEL -> TrackerCatalogKey(service, CatalogMediaKind.NOVEL, remoteId)
+			CatalogRelatedMediaKind.ANIME, CatalogRelatedMediaKind.OTHER -> null
+		}
+}
+
 enum class CatalogSectionType { RECENT, TRENDING, POPULAR, TOP_RATED, TOP_RANKED, MOST_FAVORITED }
 data class CatalogSectionKey(val service: ScrobblerService, val kind: CatalogMediaKind, val type: CatalogSectionType)
 data class TrackerCatalogPage(val items: List<TrackerCatalogItem>, val nextPage: Int? = null)
@@ -59,9 +96,14 @@ data class TrackerCatalogDetails(
 	val popularity: Int? = null,
 	val recommendations: List<TrackerCatalogItem> = emptyList(),
 	val partial: Boolean = false,
+	val characters: List<TrackerCatalogPerson> = emptyList(),
+	val staffPeople: List<TrackerCatalogPerson> = emptyList(),
+	val relatedWorks: List<TrackerCatalogRelatedWork> = emptyList(),
 )
 
-enum class CatalogCapability { HOME, SEARCH, DETAILS, SECTION_PAGING, MANGA, NOVEL, STAFF, RECOMMENDATIONS }
+enum class CatalogCapability {
+	HOME, SEARCH, DETAILS, SECTION_PAGING, MANGA, NOVEL, STAFF, RECOMMENDATIONS, CHARACTERS, RELATIONS,
+}
 enum class CatalogFailureKind { OFFLINE, RATE_LIMITED, PROVIDER, INVALID_DATA, UNSUPPORTED }
 data class CatalogFailure(val kind: CatalogFailureKind, val retryAt: Long? = null)
 class CatalogException(val failure: CatalogFailure, cause: Throwable? = null) : IOException("Catalogue ${failure.kind}", cause)

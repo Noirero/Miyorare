@@ -18,7 +18,17 @@ internal const val MAL_CATALOG_FIELDS = "media_type,nsfw,mean"
 
 class MALCatalogProvider(private val http: CatalogHttp, private val clientId: String) : TrackerCatalogProvider {
 	override val catalogService = ScrobblerService.MAL
-	override val catalogCapabilities = setOf(CatalogCapability.HOME, CatalogCapability.SEARCH, CatalogCapability.DETAILS, CatalogCapability.SECTION_PAGING, CatalogCapability.MANGA, CatalogCapability.NOVEL, CatalogCapability.STAFF, CatalogCapability.RECOMMENDATIONS)
+	override val catalogCapabilities = setOf(
+		CatalogCapability.HOME,
+		CatalogCapability.SEARCH,
+		CatalogCapability.DETAILS,
+		CatalogCapability.SECTION_PAGING,
+		CatalogCapability.MANGA,
+		CatalogCapability.NOVEL,
+		CatalogCapability.STAFF,
+		CatalogCapability.RECOMMENDATIONS,
+		CatalogCapability.RELATIONS,
+	)
 	private val sectionTypes = listOf(CatalogSectionType.TOP_RANKED, CatalogSectionType.POPULAR, CatalogSectionType.MOST_FAVORITED)
 
 	internal fun rankingType(key: CatalogSectionKey): String = when (key.type) {
@@ -57,21 +67,47 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 
 	override suspend fun details(key: TrackerCatalogKey, allowAdult: Boolean): TrackerCatalogDetails {
 		require(key.service == catalogService)
-		val fields = "$MAL_CATALOG_FIELDS,alternative_titles,synopsis,rank,popularity,num_list_users,status,start_date,genres,authors{node{first_name,last_name},role},recommendations{node{media_type,nsfw,mean}}"
+		val fields = "$MAL_CATALOG_FIELDS,alternative_titles,synopsis,rank,popularity,num_list_users,status,start_date,genres," +
+			"authors{node{first_name,last_name},role}," +
+			"recommendations{node{id,title,media_type,nsfw,mean,main_picture}}," +
+			"related_manga{node{id,title,media_type,nsfw,main_picture},relation_type,relation_type_formatted}," +
+			"related_anime{node{id,title,nsfw,main_picture},relation_type,relation_type_formatted}"
 		val root = request("https://api.myanimelist.net/v2/manga/${key.remoteId}".toHttpUrl().newBuilder().addQueryParameter("fields", fields).build())
 		val item = parseMALCard(root, allowAdult) ?: throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
 		if (item.key != key) invalidCatalog()
 		val alternatives = root.obj("alternative_titles")?.let { titles -> listOfNotNull(titles.text("en"), titles.text("ja")) + titles.catalogStrings("synonyms") }.orEmpty().distinct()
-		val staff = root.array("authors").orEmpty().mapNotNull { row ->
+		val staffPeople = root.array("authors").orEmpty().mapNotNull { row ->
 			val edge = row as? JsonObject ?: return@mapNotNull null
 			val person = edge.obj("node") ?: return@mapNotNull null
 			val name = listOfNotNull(person.text("first_name"), person.text("last_name")).joinToString(" ").ifBlank { null } ?: return@mapNotNull null
-			listOfNotNull(name, edge.text("role")).joinToString(" · ")
+			TrackerCatalogPerson(
+				id = null,
+				name = name,
+				imageUrl = null,
+				roles = listOfNotNull(edge.text("role")),
+				providerUrl = null,
+			)
 		}
 		var partial = false
-		val recommendations = try { root.array("recommendations")?.let { rows -> catalogRows(rows) { row -> row.obj("node")?.let { parseMALCard(it, allowAdult) } } }.orEmpty() } catch (_: CatalogException) { partial = true; emptyList() }
-		return TrackerCatalogDetails(item, alternatives, root.text("synopsis"), genres = root.array("genres").orEmpty().mapNotNull { (it as? JsonObject)?.text("name") }, staff = staff,
-			status = root.text("status"), startDate = root.text("start_date"), rank = root.catalogInt("rank"), popularity = root.catalogInt("popularity"), recommendations = recommendations, partial = partial)
+		val recommendations = try {
+			root.array("recommendations")?.let { rows -> catalogRows(rows) { row -> row.obj("node")?.let { parseMALCard(it, allowAdult) } } }.orEmpty()
+		} catch (_: CatalogException) { partial = true; emptyList() }
+		val relatedWorks = try { malCatalogRelatedWorks(root, allowAdult) } catch (_: Exception) { partial = true; emptyList() }
+		return TrackerCatalogDetails(
+			item = item,
+			alternativeTitles = alternatives,
+			description = root.text("synopsis"),
+			genres = root.array("genres").orEmpty().mapNotNull { (it as? JsonObject)?.text("name") },
+			staff = staffPeople.map { (listOf(it.name) + it.roles).joinToString(" · ") },
+			status = root.text("status"),
+			startDate = root.text("start_date"),
+			rank = root.catalogInt("rank"),
+			popularity = root.catalogInt("popularity"),
+			recommendations = recommendations,
+			partial = partial,
+			staffPeople = staffPeople,
+			relatedWorks = relatedWorks,
+		)
 	}
 
 	private fun url(path: String, adult: Boolean, page: Int, size: Int) = "https://api.myanimelist.net/v2/$path".toHttpUrl().newBuilder()

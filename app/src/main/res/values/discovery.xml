@@ -13,6 +13,8 @@
     <string name="hub_all">All</string>
     <string name="hub_manga">Manga</string>
     <string name="hub_novel">Novel</string>
+    <string name="hub_anime">Anime</string>
+    <string name="hub_other_media">Other media</string>
     <string name="hub_recent">Recently released</string>
     <string name="hub_trending">Trending</string>
     <string name="hub_popular">Popular</string>
@@ -59,7 +61,9 @@
     <string name="hub_readers">Readers: %1$d</string>
     <string name="hub_readers_label">Readers</string>
     <string name="hub_genres">Genres</string>
+    <string name="hub_characters">Characters</string>
     <string name="hub_staff">Authors and staff</string>
+    <string name="hub_related_works">Related works</string>
     <string name="hub_alternative_titles">Alternative titles</string>
     <string name="hub_description">Synopsis</string>
     <string name="hub_status">Status</string>

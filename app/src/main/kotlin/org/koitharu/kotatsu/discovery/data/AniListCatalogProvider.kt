@@ -68,15 +68,17 @@ class AniListCatalogProvider(private val http: CatalogHttp) : TrackerCatalogProv
 
 	override suspend fun details(key: TrackerCatalogKey, allowAdult: Boolean): TrackerCatalogDetails {
 		require(key.service == catalogService && key.remoteId.toIntOrNull() != null)
-		val root = request("{Media(id:${key.remoteId},type:MANGA){$ANILIST_CATALOG_CARD_FIELDS synonyms description(asHtml:false) bannerImage genres status popularity startDate{year month day} staff(perPage:12){edges{role node{name{full}}}} recommendations(perPage:10,sort:RATING_DESC){nodes{mediaRecommendation{$ANILIST_CATALOG_CARD_FIELDS}}}}}")
+		val root = request(
+			"{Media(id:${key.remoteId},type:MANGA){$ANILIST_CATALOG_CARD_FIELDS synonyms description(asHtml:false) bannerImage genres status popularity startDate{year month day} " +
+				"characters(perPage:12,sort:[ROLE,FAVOURITES_DESC]){edges{role node{id name{userPreferred full} image{large medium} siteUrl}}} " +
+				"staff(perPage:12){edges{role node{id name{userPreferred full} image{large medium} siteUrl}}} " +
+				"relations{edges{relationType node{id type format isAdult title{userPreferred romaji native} coverImage{large medium} siteUrl}}} " +
+				"recommendations(perPage:10,sort:RATING_DESC){nodes{mediaRecommendation{$ANILIST_CATALOG_CARD_FIELDS}}}}}",
+		)
 		val media = root.obj("data")?.obj("Media") ?: invalidCatalog()
 		val item = parseAniListCard(media, allowAdult) ?: throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
 		if (item.key != key) invalidCatalog()
 		val names = media.obj("title")?.values.orEmpty().mapNotNull { (it as? JsonPrimitive)?.content?.takeIf(String::isNotBlank) }
-		val staff = media.obj("staff")?.array("edges").orEmpty().mapNotNull { edge ->
-			val value = edge as? JsonObject ?: return@mapNotNull null
-			value.obj("node")?.obj("name")?.text("full")?.let { name -> listOfNotNull(name, value.text("role")).joinToString(" · ") }
-		}
 		val date = media.obj("startDate")?.let { d ->
 			val year = d.catalogInt("year")?.takeIf { it > 0 }
 			val month = d.catalogInt("month")?.takeIf { it in 1..12 }
@@ -84,9 +86,30 @@ class AniListCatalogProvider(private val http: CatalogHttp) : TrackerCatalogProv
 			year?.toString()?.let { y -> if (month == null) y else "%s-%02d".format(java.util.Locale.ROOT, y, month) + (day?.let { "-%02d".format(java.util.Locale.ROOT, it) } ?: "") }
 		}
 		var partial = !root.array("errors").isNullOrEmpty()
-		val recommendations = try { media.obj("recommendations")?.array("nodes")?.let { rows -> catalogRows(rows) { row -> row.obj("mediaRecommendation")?.let { parseAniListCard(it, allowAdult) } } }.orEmpty() } catch (_: CatalogException) { partial = true; emptyList() }
-		return TrackerCatalogDetails(item, (names + media.catalogStrings("synonyms")).distinct(), media.text("description"), if (item.adult != null || allowAdult) catalogUrl(media.text("bannerImage")) else null,
-			media.catalogStrings("genres"), staff, media.text("status"), date, popularity = media.catalogInt("popularity"), recommendations = recommendations, partial = partial)
+		val characters = try { aniListCatalogPeople(media, "characters") } catch (_: Exception) { partial = true; emptyList() }
+		val staffPeople = try { aniListCatalogPeople(media, "staff") } catch (_: Exception) { partial = true; emptyList() }
+		val relatedWorks = try { aniListCatalogRelatedWorks(media, allowAdult) } catch (_: Exception) { partial = true; emptyList() }
+		val recommendations = try {
+			media.obj("recommendations")?.array("nodes")?.let { rows ->
+				catalogRows(rows) { row -> row.obj("mediaRecommendation")?.let { parseAniListCard(it, allowAdult) } }
+			}.orEmpty()
+		} catch (_: CatalogException) { partial = true; emptyList() }
+		return TrackerCatalogDetails(
+			item = item,
+			alternativeTitles = (names + media.catalogStrings("synonyms")).distinct(),
+			description = media.text("description"),
+			bannerUrl = if (item.adult != null || allowAdult) catalogUrl(media.text("bannerImage")) else null,
+			genres = media.catalogStrings("genres"),
+			staff = staffPeople.map { (listOf(it.name) + it.roles).joinToString(" · ") },
+			status = media.text("status"),
+			startDate = date,
+			popularity = media.catalogInt("popularity"),
+			recommendations = recommendations,
+			partial = partial,
+			characters = characters,
+			staffPeople = staffPeople,
+			relatedWorks = relatedWorks,
+		)
 	}
 
 	private fun parsePage(root: JsonObject, allowAdult: Boolean, page: Int): TrackerCatalogPage = TrackerCatalogPage(
