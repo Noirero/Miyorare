@@ -76,11 +76,11 @@ class DiscoveryHubFragment : Fragment() {
 					onMangaBakaPersonalRetry = viewModel::retryMangaBakaPersonal,
 					onMangaBakaReconnect = { startAccountAuth(ScrobblerService.MANGABAKA) },
 					onMangaBakaLibrarySeeAll = {
-						startActivity(MangaBakaSeeAllActivity.libraryIntent(requireContext(), state.request.filter))
+						startActivity(TrackerCatalogActivity.mangaBakaLibraryIntent(requireContext(), state.request.filter))
 					},
 					onMangaBakaExploreType = viewModel::selectMangaBakaExploreType,
 					onMangaBakaExploreSeeAll = { type ->
-						startActivity(MangaBakaSeeAllActivity.exploreIntent(requireContext(), type))
+						startActivity(TrackerCatalogActivity.mangaBakaExploreIntent(requireContext(), type))
 					},
 				)
 			}
