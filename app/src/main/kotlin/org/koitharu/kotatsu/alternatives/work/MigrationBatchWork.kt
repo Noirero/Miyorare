@@ -33,6 +33,7 @@ internal object MigrationBatchWork {
 	fun input(request: MigrationBatchRequest): Data = Data.Builder()
 		.putLong("request_id", request.mangaId).putString("request_source", request.source)
 		.putString("request_action", request.action.name)
+		.putString("request_scope", request.searchScope.name)
 		.putString("request_target_source", request.selection?.source)
 		.putLong("request_target_id", request.selection?.id ?: 0L)
 		.putString("request_fingerprint", request.selection?.fingerprint).build()
@@ -43,6 +44,9 @@ internal object MigrationBatchWork {
 		selection = data.getString("request_fingerprint")?.let { fingerprint ->
 			MigrationSelection(checkNotNull(data.getString("request_target_source")), data.getLong("request_target_id", 0L), fingerprint)
 		},
+		searchScope = data.getString("request_scope")
+			?.let { raw -> MigrationSearchScope.entries.find { it.name == raw } }
+			?: MigrationSearchScope.ALL,
 	)
 
 	fun output(outcome: MigrationBatchOutcome, searchProgress: MigrationSearchProgress? = null): Data = Data.Builder()
