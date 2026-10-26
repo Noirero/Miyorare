@@ -12,6 +12,11 @@ import com.google.mlkit.nl.translate.TranslatorOptions
 import java.io.IOException
 import java.util.LinkedHashMap
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -40,10 +45,11 @@ private class BuiltInTranslationRuntime private constructor(
 
 	private data class Session(
 		val translator: Translator,
-		val mutex: Mutex = Mutex(),
+		var tail: Deferred<*>? = null,
 		var users: Int = 0,
 	)
 
+	private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 	private val sessionsMutex = Mutex()
 	private val sessions = LinkedHashMap<String, Session>(MAX_CACHED_TRANSLATORS + 1, 0.75f, true)
 	private val languageIdentifier by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -61,27 +67,49 @@ private class BuiltInTranslationRuntime private constructor(
 		val source = resolveSourceLanguage(request)
 		if (source.equals(target, ignoreCase = true)) return request.text
 
-		val session = acquireSession(source, target)
-		return try {
-			session.mutex.withLock {
-				try {
-					session.translator.downloadModelIfNeeded(downloadConditions).awaitTask()
-					val translated = session.translator.translate(request.text).awaitTask()
-					if (translated.isBlank() && request.text.isNotBlank()) {
-						throw NovelTranslationException.InvalidResponse("Built-in translator returned an empty result")
-					}
-					translated
-				} catch (error: CancellationException) {
-					throw error
-				} catch (error: NovelTranslationException) {
-					throw error
-				} catch (error: Exception) {
-					throw IOException("Built-in translation failed", error)
+		// ML Kit Tasks are not cancellable through the coroutine bridge. Schedule work in an
+		// application-scoped queue so a caller can cancel immediately without releasing/closing the
+		// underlying translator while its native Task is still running.
+		val work = schedule(source, target, request)
+		return work.await()
+	}
+
+	private suspend fun schedule(
+		sourceLanguage: String,
+		targetLanguage: String,
+		request: NovelTranslationRequest,
+	): Deferred<String> = sessionsMutex.withLock {
+		val key = "$sourceLanguage>$targetLanguage"
+		val session = sessions[key] ?: Translation.getClient(
+			TranslatorOptions.Builder()
+				.setSourceLanguage(sourceLanguage)
+				.setTargetLanguage(targetLanguage)
+				.build(),
+		).let { Session(it) }.also { sessions[key] = it }
+		val previous = session.tail
+		session.users += 1
+		val work = scope.async {
+			previous?.join()
+			try {
+				session.translator.downloadModelIfNeeded(downloadConditions).awaitTask()
+				val translated = session.translator.translate(request.text).awaitTask()
+				if (translated.isBlank() && request.text.isNotBlank()) {
+					throw NovelTranslationException.InvalidResponse("Built-in translator returned an empty result")
 				}
+				translated
+			} catch (error: CancellationException) {
+				throw error
+			} catch (error: NovelTranslationException) {
+				throw error
+			} catch (error: Exception) {
+				throw IOException("Built-in translation failed", error)
+			} finally {
+				releaseSession(session)
 			}
-		} finally {
-			releaseSession(session)
 		}
+		session.tail = work
+		trimIdleSessions()
+		work
 	}
 
 	private suspend fun resolveSourceLanguage(request: NovelTranslationRequest): String {
@@ -111,25 +139,12 @@ private class BuiltInTranslationRuntime private constructor(
 			?: throw NovelTranslationException.Configuration("Built-in translation does not support $role language: $languageTag")
 	}
 
-	private suspend fun acquireSession(sourceLanguage: String, targetLanguage: String): Session = sessionsMutex.withLock {
-		val key = "$sourceLanguage>$targetLanguage"
-		val session = sessions[key] ?: Translation.getClient(
-			TranslatorOptions.Builder()
-				.setSourceLanguage(sourceLanguage)
-				.setTargetLanguage(targetLanguage)
-				.build(),
-		).let { Session(it) }.also { sessions[key] = it }
-		session.users += 1
-		trimIdleSessions()
-		session
-	}
-
 	private suspend fun releaseSession(session: Session) = sessionsMutex.withLock {
 		session.users = (session.users - 1).coerceAtLeast(0)
 		trimIdleSessions()
 	}
 
-	/** Never close a translator while a caller is using or waiting to use that session. */
+	/** Never close a translator while a queued or running native Task still owns that session. */
 	private fun trimIdleSessions() {
 		while (sessions.size > MAX_CACHED_TRANSLATORS) {
 			val idle = sessions.entries.firstOrNull { it.value.users == 0 } ?: return
