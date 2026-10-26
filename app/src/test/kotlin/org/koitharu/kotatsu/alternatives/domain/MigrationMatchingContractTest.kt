@@ -73,7 +73,7 @@ class MigrationMatchingContractTest {
 		assertTrue(availability.contains("loadStoredSeed(mangaId)"))
 		assertFalse(availability.contains("getDetailsSafe()"))
 		assertFalse(availability.contains("checkCurrentSource("))
-		assertTrue(directSearch.contains("val seed=loadStoredSeed(mangaId)"))
+		assertTrue(directSearch.contains("valseed=loadStoredSeed(mangaId)"))
 		assertFalse(directSearch.contains("getDetailsSafe()"))
 		assertFalse(directSearch.contains("checkCurrentSource("))
 	}
