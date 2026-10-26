@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.discovery.data
 
 import kotlinx.coroutines.flow.first
 import okhttp3.FormBody
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -25,7 +26,6 @@ import java.util.EnumMap
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.roundToInt
 
 private const val ANILIST_GRAPHQL = "https://graphql.anilist.co"
 private const val MAL_API = "https://api.myanimelist.net/v2"
@@ -159,7 +159,7 @@ class TrackerCatalogAccountRepository @Inject constructor(
 	private fun aniListEntry(json: JSONObject): CatalogTrackingEntry = CatalogTrackingEntry(
 		service = ScrobblerService.ANILIST,
 		targetId = json.getLong("mediaId"),
-		status = catalogTrackingStatus(ScrobblerService.ANILIST, json.optString("status", null)),
+		status = catalogTrackingStatus(ScrobblerService.ANILIST, json.optionalString("status")),
 		chapter = json.optInt("progress", 0).coerceAtLeast(0),
 		rating = (json.optDouble("score", 0.0).toFloat() / 100f).coerceIn(0f, 1f),
 	)
@@ -188,18 +188,19 @@ class TrackerCatalogAccountRepository @Inject constructor(
 	private fun malEntry(targetId: Long, json: JSONObject): CatalogTrackingEntry = CatalogTrackingEntry(
 		service = ScrobblerService.MAL,
 		targetId = targetId,
-		status = catalogTrackingStatus(ScrobblerService.MAL, json.optString("status", null)),
+		status = catalogTrackingStatus(ScrobblerService.MAL, json.optionalString("status")),
 		chapter = json.optInt("num_chapters_read", 0).coerceAtLeast(0),
 		rating = (json.optDouble("score", 0.0).toFloat() / 10f).coerceIn(0f, 1f),
 	)
 
 	private suspend fun readKitsu(key: TrackerCatalogKey): CatalogTrackingEntry? {
 		val user = repositories[ScrobblerService.KITSU].cachedUser ?: repositories[ScrobblerService.KITSU].loadUser()
-		val request = Request.Builder()
-			.url("$KITSU_API/library-entries?filter[manga_id]=${key.remoteId}&filter[userId]=${user.id}&include=manga")
-			.get()
+		val url = "$KITSU_API/library-entries".toHttpUrl().newBuilder()
+			.addQueryParameter("filter[manga_id]", key.remoteId)
+			.addQueryParameter("filter[userId]", user.id.toString())
+			.addQueryParameter("include", "manga")
 			.build()
-		val root = kitsuHttp.newCall(request).await().parseJson().throwProviderErrors()
+		val root = kitsuHttp.newCall(Request.Builder().url(url).get().build()).await().parseJson().throwProviderErrors()
 		return root.optJSONArray("data")?.optJSONObject(0)?.let(::kitsuEntry)
 	}
 
@@ -212,8 +213,11 @@ class TrackerCatalogAccountRepository @Inject constructor(
 				.put("relationships", JSONObject()
 					.put("manga", JSONObject().put("data", JSONObject().put("type", "manga").put("id", key.remoteId)))
 					.put("user", JSONObject().put("data", JSONObject().put("type", "users").put("id", user.id.toString())))))
+		val url = "$KITSU_API/library-entries".toHttpUrl().newBuilder()
+			.addQueryParameter("include", "manga")
+			.build()
 		val request = Request.Builder()
-			.url("$KITSU_API/library-entries?include=manga")
+			.url(url)
 			.post(payload.toString().toRequestBody(KITSU_MEDIA_TYPE))
 			.build()
 		return kitsuEntry(kitsuHttp.newCall(request).await().parseJson().throwProviderErrors().getJSONObject("data"))
@@ -225,7 +229,7 @@ class TrackerCatalogAccountRepository @Inject constructor(
 		return CatalogTrackingEntry(
 			service = ScrobblerService.KITSU,
 			targetId = target,
-			status = catalogTrackingStatus(ScrobblerService.KITSU, attrs.optString("status", null)),
+			status = catalogTrackingStatus(ScrobblerService.KITSU, attrs.optionalString("status")),
 			chapter = attrs.optInt("progress", 0).coerceAtLeast(0),
 			rating = (attrs.optDouble("ratingTwenty", 0.0).toFloat() / 20f).coerceIn(0f, 1f),
 		)
@@ -257,9 +261,9 @@ class TrackerCatalogAccountRepository @Inject constructor(
 		val errors = optJSONArray("errors")
 		if (errors != null && errors.length() > 0) {
 			val first = errors.optJSONObject(0)
-			throw IOException(first?.optString("message")?.takeIf { it.isNotBlank() }
-				?: first?.optString("detail")?.takeIf { it.isNotBlank() }
-				?: first?.optString("title")?.takeIf { it.isNotBlank() }
+			throw IOException(first?.optionalString("message")
+				?: first?.optionalString("detail")
+				?: first?.optionalString("title")
 				?: "Tracker provider request failed")
 		}
 		return this
@@ -270,6 +274,8 @@ class TrackerCatalogAccountRepository @Inject constructor(
 		is String -> value.toLong()
 		else -> error("Missing numeric $name")
 	}
+
+	private fun JSONObject.optionalString(name: String): String? = optString(name).takeIf(String::isNotBlank)
 }
 
 internal fun catalogTrackingStatus(service: ScrobblerService, raw: String?): ScrobblingStatus? {
