@@ -104,5 +104,12 @@ class MangaBakaCatalogProviderTest {
 		assertFalse(relation.title.isBlank())
 	}
 
+	@Test
+	fun `pagination does not treat false next flag as another page`() {
+		val pagination = json("""{"page":2,"pages":2,"next":false}""")
+		assertFalse(mangaBakaHasNext(pagination, page = 2, rowCount = 20, limit = 20))
+		assertTrue(mangaBakaHasNext(json("""{"page":1,"pages":2,"next":true}"""), page = 1, rowCount = 20, limit = 20))
+	}
+
 	private fun json(value: String) = Json.parseToJsonElement(value).jsonObject
 }
