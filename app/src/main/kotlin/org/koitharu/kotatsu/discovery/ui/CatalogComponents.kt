@@ -44,6 +44,7 @@ fun catalogProviderName(service: ScrobblerService): String = when (service) {
 	ScrobblerService.ANILIST -> "AniList"
 	ScrobblerService.MAL -> "MyAnimeList"
 	ScrobblerService.KITSU -> "Kitsu"
+	ScrobblerService.MANGABAKA -> "MangaBaka"
 	else -> service.name
 }
 

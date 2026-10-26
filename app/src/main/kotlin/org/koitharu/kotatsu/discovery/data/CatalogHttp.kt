@@ -50,6 +50,7 @@ class CatalogHttp @Inject constructor(@BaseHttpClient base: OkHttpClient) {
 			ScrobblerService.ANILIST -> "graphql.anilist.co"
 			ScrobblerService.MAL -> "api.myanimelist.net"
 			ScrobblerService.KITSU -> "kitsu.app"
+			ScrobblerService.MANGABAKA -> "api.mangabaka.org"
 			else -> throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
 		}
 		require(url.scheme == "https" && url.host == host && url.port == 443 && url.username.isEmpty() && url.password.isEmpty())
