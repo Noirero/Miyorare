@@ -102,16 +102,21 @@ class SourceMangaListViewModel @Inject constructor(
 	}
 
 	fun setSearchScope(scope: MigrationSearchScope) {
-		if (state.value.batchBusy || state.value.scheduling) return
+		if (state.value.batchBusy || state.value.scheduling || state.value.searchScope == scope) return
 		savedStateHandle[SEARCH_SCOPE] = scope.name
-		_state.update { it.copy(searchScope = scope) }
+		savedStateHandle[FILTER] = null
+		_state.update { it.copy(searchScope = scope, filter = null) }
 	}
 
 	fun checkAll() = enqueue(state.value.manga.map {
 		MigrationBatchRequest(it.id, it.source.name, MigrationBatchAction.CHECK, searchScope = state.value.searchScope)
 	})
 
-	fun migrateReady() = enqueue(MigrationBatchPolicy.readyRequests(state.value.manga, state.value.batchItems))
+	fun migrateReady() = enqueue(MigrationBatchPolicy.readyRequests(
+		state.value.manga,
+		state.value.batchItems,
+		state.value.searchScope,
+	))
 
 	private fun enqueue(requests: List<MigrationBatchRequest>) {
 		if (state.value.scheduling || state.value.batchBusy || requests.isEmpty()) return
@@ -191,7 +196,16 @@ data class SourceMangaListState(
 	val migratedCount: Int = 0,
 	val unconfirmedCount: Int = 0,
 ) {
-	fun status(mangaId: Long): MigrationBatchStatus = batchItems[mangaId]?.outcome?.status ?: MigrationBatchStatus.UNCHECKED
+	fun status(mangaId: Long): MigrationBatchStatus {
+		val snapshot = batchItems[mangaId] ?: return MigrationBatchStatus.UNCHECKED
+		val status = snapshot.outcome.status
+		return if (
+			snapshot.searchScope == searchScope ||
+			status == MigrationBatchStatus.HEALTHY ||
+			status == MigrationBatchStatus.MIGRATED
+		) status else MigrationBatchStatus.UNCHECKED
+	}
+
 	val visibleManga: List<Manga> get() = manga.filter { filter == null || status(it.id) == filter }
-	val readyCount: Int get() = MigrationBatchPolicy.readyRequests(manga, batchItems).size
+	val readyCount: Int get() = MigrationBatchPolicy.readyRequests(manga, batchItems, searchScope).size
 }
