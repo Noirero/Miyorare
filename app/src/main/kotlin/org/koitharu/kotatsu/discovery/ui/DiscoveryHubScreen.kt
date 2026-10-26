@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -35,6 +36,13 @@ fun DiscoveryHubScreen(
 	onAttribution: () -> Unit,
 	scrollRequests: Flow<Unit>,
 	showLocalSearch: Boolean = true,
+	account: CatalogAccountState = CatalogAccountState(state.request.service),
+	knownTracking: Map<Long, CatalogTrackingEntry> = emptyMap(),
+	onAccountLogin: () -> Unit = {},
+	onAccountProfile: () -> Unit = {},
+	onAccountMyList: () -> Unit = {},
+	onAccountManage: () -> Unit = {},
+	onAccountLogout: () -> Unit = {},
 ) {
 	val list = rememberLazyListState()
 	val dataset = "${state.request.service}_${state.request.filter}_${state.request.allowAdult}"
@@ -75,6 +83,15 @@ fun DiscoveryHubScreen(
 						onRefresh = onRefresh,
 						onSearch = onSearch,
 					)
+					CatalogAccountBar(
+						account = account,
+						imageLoader = imageLoader,
+						onLogin = onAccountLogin,
+						onProfile = onAccountProfile,
+						onMyList = onAccountMyList,
+						onManage = onAccountManage,
+						onLogout = onAccountLogout,
+					)
 					CatalogFilterRow(state.request.filter, onFilter)
 				}
 			}
@@ -92,7 +109,12 @@ fun DiscoveryHubScreen(
 
 			if (spotlight != null && status != DiscoveryHomeStatus.LOADING && status != DiscoveryHomeStatus.FULL_ERROR) {
 				item(key = "spotlight") {
-					CatalogSpotlight(spotlight, imageLoader, onClick = { onItem(spotlight.item.key) })
+					Box {
+						CatalogSpotlight(spotlight, imageLoader, onClick = { onItem(spotlight.item.key) })
+						knownTracking[spotlight.item.key.remoteId.toLongOrNull()]?.let {
+							CatalogTrackingBadge(it, Modifier.align(Alignment.TopEnd).padding(12.dp))
+						}
+					}
 				}
 			}
 
@@ -107,9 +129,10 @@ fun DiscoveryHubScreen(
 					if (visibleItems.isNotEmpty()) {
 						LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 							itemsIndexed(visibleItems, key = { _, item -> item.key.stableId }) { _, item ->
-								CatalogCard(
+								CatalogTrackedCard(
 									item = item,
 									imageLoader = imageLoader,
+									tracking = item.key.remoteId.toLongOrNull()?.let(knownTracking::get),
 									onClick = { onItem(item.key) },
 									modifier = Modifier.width(cardWidth),
 									ordinal = discoverySectionOrdinal(section, item),
