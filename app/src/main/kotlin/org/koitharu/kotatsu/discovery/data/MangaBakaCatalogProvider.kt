@@ -76,7 +76,7 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 		val sections = keys.map { key ->
 			async {
 				try {
-					val page = listing(key, allowAdult, 1, CatalogCachePolicy.HOME_PAGE_SIZE, fillHome = true)
+					val page = listing(key, allowAdult, 1, CatalogCachePolicy.HOME_PAGE_SIZE)
 					TrackerCatalogSection(key, page.items.take(CatalogCachePolicy.HOME_PAGE_SIZE), page.nextPage)
 				} catch (e: CancellationException) {
 					throw e
@@ -91,7 +91,7 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 	override suspend fun browseSection(key: CatalogSectionKey, allowAdult: Boolean, page: Int): TrackerCatalogPage {
 		require(key.service == catalogService && key.type in sectionTypes)
 		catalogPageNumber(page)
-		return listing(key, allowAdult, page, CatalogCachePolicy.PAGE_SIZE, fillHome = false)
+		return listing(key, allowAdult, page, CatalogCachePolicy.PAGE_SIZE)
 	}
 
 	override suspend fun search(query: String, filter: CatalogFilter, allowAdult: Boolean, page: Int): TrackerCatalogPage {
@@ -157,7 +157,6 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 		allowAdult: Boolean,
 		page: Int,
 		limit: Int,
-		fillHome: Boolean,
 	): TrackerCatalogPage {
 		val filter = when (key.kind) {
 			CatalogMediaKind.MIXED -> CatalogFilter.ALL
@@ -171,7 +170,6 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 				allowAdult,
 				page,
 				limit,
-				fillHome,
 			)
 			CatalogSectionType.HIDDEN_GEMS -> discoverPage(
 				"$MANGABAKA_API_V2/series/discover/hidden-gems",
@@ -179,7 +177,6 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 				allowAdult,
 				page,
 				limit,
-				fillHome,
 			)
 			CatalogSectionType.NEW_RELEASES -> {
 				val url = seriesListUrl("$MANGABAKA_API_V2/series/search", filter, allowAdult, page, limit)
@@ -192,9 +189,10 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 	}
 
 	/**
-	 * MangaBaka's Rising and Hidden Gems endpoints do not advertise type/type_not filters. For the
-	 * small Home preview we therefore fill from a bounded number of provider pages and post-filter.
-	 * Section paging stays one provider page per requested page so it never skips or repeats rows.
+	 * Rising and Hidden Gems do not advertise type/type_not filters. Mixed/All therefore maps one
+	 * provider page directly. Manga/Novel scan at most four consecutive provider pages, return every
+	 * matching item from pages actually consumed, and expose the first unconsumed provider page as
+	 * nextPage. That keeps sparse Novel results usable without overlap or silently dropping matches.
 	 */
 	private suspend fun discoverPage(
 		base: String,
@@ -202,28 +200,32 @@ class MangaBakaCatalogProvider(private val http: CatalogHttp) : TrackerCatalogPr
 		allowAdult: Boolean,
 		page: Int,
 		limit: Int,
-		fillHome: Boolean,
 	): TrackerCatalogPage {
-		if (!fillHome || filter == CatalogFilter.ALL) {
+		if (filter == CatalogFilter.ALL) {
 			val url = discoveryListUrl(base, allowAdult, page, limit).build()
 			return parsePage(request(url), filter, allowAdult, page, limit)
 		}
 		val items = LinkedHashMap<String, TrackerCatalogItem>()
+		var sourcePage = page
+		var lastScannedPage = page - 1
+		var scannedPages = 0
 		var hasNext = false
-		var sourcePage = 1
-		while (sourcePage <= MANGABAKA_DISCOVERY_FILL_PAGES && items.size < limit) {
+		while (scannedPages < MANGABAKA_DISCOVERY_FILL_PAGES && items.size < limit) {
 			val url = discoveryListUrl(base, allowAdult, sourcePage, MANGABAKA_DISCOVERY_FILL_PAGE_SIZE).build()
 			val root = request(url)
 			val rows = root.array("data") ?: invalidCatalog()
+			lastScannedPage = sourcePage
+			scannedPages++
 			catalogRows(rows) { row ->
 				val series = row.obj("series") ?: row
 				parseMangaBakaCatalogCard(series, allowAdult)?.takeIf { it.key.kind in filter.kinds }
 			}.forEach { items.putIfAbsent(it.key.stableId, it) }
 			hasNext = mangaBakaHasNext(root.obj("pagination"), sourcePage, rows.size, MANGABAKA_DISCOVERY_FILL_PAGE_SIZE)
-			if (!hasNext) break
+			if (!hasNext || items.size >= limit) break
 			sourcePage++
 		}
-		return TrackerCatalogPage(items.values.take(limit), nextPage = if (hasNext) 2 else null)
+		val nextPage = (lastScannedPage + 1).takeIf { hasNext && lastScannedPage < CatalogCachePolicy.MAX_PAGE }
+		return TrackerCatalogPage(items.values.toList(), nextPage)
 	}
 
 	private fun seriesListUrl(
