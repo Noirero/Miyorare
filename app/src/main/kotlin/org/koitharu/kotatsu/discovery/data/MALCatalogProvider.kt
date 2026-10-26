@@ -68,7 +68,7 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 	override suspend fun details(key: TrackerCatalogKey, allowAdult: Boolean): TrackerCatalogDetails {
 		require(key.service == catalogService)
 		val fields = "$MAL_CATALOG_FIELDS,alternative_titles,synopsis,rank,popularity,num_list_users,status,start_date,genres," +
-			"authors{node{id,first_name,last_name},role}," +
+			"authors{node{first_name,last_name},role}," +
 			"recommendations{node{id,title,media_type,nsfw,mean,main_picture}}," +
 			"related_manga{node{id,title,media_type,nsfw,main_picture},relation_type,relation_type_formatted}," +
 			"related_anime{node{id,title,nsfw,main_picture},relation_type,relation_type_formatted}"
@@ -80,13 +80,12 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 			val edge = row as? JsonObject ?: return@mapNotNull null
 			val person = edge.obj("node") ?: return@mapNotNull null
 			val name = listOfNotNull(person.text("first_name"), person.text("last_name")).joinToString(" ").ifBlank { null } ?: return@mapNotNull null
-			val id = person.text("id")?.takeIf { it.toLongOrNull()?.let { value -> value > 0 && value.toString() == it } == true }
 			TrackerCatalogPerson(
-				id = id,
+				id = null,
 				name = name,
 				imageUrl = null,
 				roles = listOfNotNull(edge.text("role")),
-				providerUrl = id?.let { "https://myanimelist.net/people/$it" },
+				providerUrl = null,
 			)
 		}
 		var partial = false
