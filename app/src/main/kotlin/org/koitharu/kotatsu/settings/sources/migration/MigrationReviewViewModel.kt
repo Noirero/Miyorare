@@ -13,6 +13,8 @@ import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.alternatives.domain.AutoFixUseCase
 import org.koitharu.kotatsu.alternatives.domain.MigrationDiscovery
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchAvailability
+import org.koitharu.kotatsu.alternatives.domain.MigrationSearchPhase
+import org.koitharu.kotatsu.alternatives.domain.MigrationSearchProgress
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchScope
 import org.koitharu.kotatsu.alternatives.domain.MigrationSelection
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -191,7 +193,11 @@ class MigrationReviewViewModel @Inject constructor(
 		mutableState.value = before.copy(
 			loading = true,
 			searching = true,
-			discovery = MigrationDiscovery(seed = seed, sourceHealthy = currentReadable),
+			discovery = MigrationDiscovery(
+				seed = seed,
+				sourceHealthy = currentReadable,
+				progress = MigrationSearchProgress(MigrationSearchPhase.SEARCHING_SOURCES),
+			),
 			availability = null,
 			selectedScope = scope,
 			hasSearched = true,
