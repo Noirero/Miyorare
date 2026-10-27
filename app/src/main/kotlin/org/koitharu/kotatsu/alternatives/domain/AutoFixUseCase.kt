@@ -358,36 +358,21 @@ class AutoFixUseCase @Inject constructor(
 		val currentReadable = current.currentSourceReadable
 		if (currentReadable && !allowReadableSource) return current
 		val pool = alternativesUseCase.getMigrationSourcePool(seed)
-		val selectedSources = pool.allSources.filter { it.name == selection.source }
-		if (selectedSources.isEmpty()) return MigrationDiscovery(
-			seed = seed,
-			sourceHealthy = currentReadable,
-			incomplete = pool.providerFailureCount > 0,
-		)
+		val selectedSource = pool.allSources.firstOrNull { it.name == selection.source }
+			?: return MigrationDiscovery(
+				seed = seed,
+				sourceHealthy = currentReadable,
+				incomplete = pool.providerFailureCount > 0,
+			)
 
 		var selected: MigrationCandidateObservation? = null
 		var validationError: Throwable? = null
 		for (query in buildMigrationSearchQueries(seed)) {
-			alternativesUseCase(
-				manga = seed,
-				mode = SearchSourceMode.ALL_SOURCES,
-				preferredLanguages = emptySet(),
-				query = query,
-				precomputedSources = selectedSources,
-				maxDetailCandidates = MAX_MIGRATION_DETAIL_CANDIDATES,
-			).collect { event ->
-				when (event) {
-					is AlternativeSearchEvent.Result -> {
-						if (event.manga.source.name == selection.source && event.manga.id == selection.id) {
-							selected = MigrationCandidateObservation(event.manga, setOf(query))
-						}
-					}
-					is AlternativeSearchEvent.SourceFinished -> {
-						if (event.error != null && validationError == null) validationError = event.error
-					}
-				}
-			}
-			if (selected != null) break
+			val refreshed = alternativesUseCase.refreshExactCandidate(query, selectedSource, selection.id)
+			if (refreshed.isFailure && validationError == null) validationError = refreshed.exceptionOrNull()
+			val manga = refreshed.getOrNull() ?: continue
+			selected = MigrationCandidateObservation(manga, setOf(query))
+			break
 		}
 		val approved = selected ?: return MigrationDiscovery(
 			seed = seed,
