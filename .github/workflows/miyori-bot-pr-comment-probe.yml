@@ -1,0 +1,50 @@
+name: Miyori Bot PR Comment Probe
+
+on:
+  push:
+    branches:
+      - feat/miyori-bot-pr-comments
+
+permissions:
+  contents: read
+
+jobs:
+  verify-pr-comment:
+    name: Verify Miyori Bot PR comment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Miyori Bot installation token
+        id: miyori-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.MIYORI_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.MIYORI_BOT_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Verify identity and comment on PR 772
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          BOT_LOGIN="${APP_SLUG}[bot]"
+          ACTUAL_LOGIN="$(gh api "/users/${BOT_LOGIN}" --jq '.login')"
+          [[ "$ACTUAL_LOGIN" == "$BOT_LOGIN" ]]
+
+          BODY=$(cat <<EOF
+          🌸 **Miyori Bot PR-comment pilot passed.**
+
+          Authentication succeeded as \`${BOT_LOGIN}\` with Issues and Pull requests write permission scoped to the Miyorare App installation.
+
+          Miyori still has no code push, merge, release, Actions, administration, or branch-mutation authority.
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          EOF
+          )
+
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/772/comments" \
+            -f body="$BODY"
