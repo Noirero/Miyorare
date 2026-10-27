@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
@@ -62,22 +63,28 @@ class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga
 			setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 			setContent {
 				MiyorareTheme {
-					val state by viewModel.state.collectAsState()
-					LaunchedEffect(state.skipped) {
-						if (state.skipped) requireActivity().onBackPressedDispatcher.onBackPressed()
+					Surface(
+						modifier = Modifier.fillMaxSize(),
+						color = Color.Transparent,
+						contentColor = MaterialTheme.colorScheme.onSurface,
+					) {
+						val state by viewModel.state.collectAsState()
+						LaunchedEffect(state.skipped) {
+							if (state.skipped) requireActivity().onBackPressedDispatcher.onBackPressed()
+						}
+						MigrationManualSearchScreen(
+							state = state,
+							imageLoader = imageLoader,
+							onQueryChange = viewModel::setQuery,
+							onSearch = viewModel::search,
+							onSelect = viewModel::select,
+							onClearSelection = viewModel::clearSelection,
+							onMigrate = viewModel::migrateSelected,
+							onCopy = viewModel::copySelected,
+							onSkip = viewModel::skip,
+							onOpenResult = { router.openDetails(it) },
+						)
 					}
-					MigrationManualSearchScreen(
-						state = state,
-						imageLoader = imageLoader,
-						onQueryChange = viewModel::setQuery,
-						onSearch = viewModel::search,
-						onSelect = viewModel::select,
-						onClearSelection = viewModel::clearSelection,
-						onMigrate = viewModel::migrateSelected,
-						onCopy = viewModel::copySelected,
-						onSkip = viewModel::skip,
-						onOpenResult = { router.openDetails(it) },
-					)
 				}
 			}
 		}
