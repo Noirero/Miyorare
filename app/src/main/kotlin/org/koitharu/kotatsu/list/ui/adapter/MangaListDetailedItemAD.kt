@@ -13,10 +13,12 @@ import org.koitharu.kotatsu.list.ui.ListModelDiffCallback
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaDetailedListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 
 fun mangaListDetailedItemAD(
 	clickListener: MangaDetailsClickListener,
 	titleClickListener: OnListItemClickListener<MangaListModel>? = null,
+	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
 ) = adapterDelegateViewBinding<MangaDetailedListModel, ListModel, ItemMangaListDetailsBinding>(
 	{ inflater, parent -> ItemMangaListDetailsBinding.inflate(inflater, parent, false) },
 ) {
@@ -55,7 +57,11 @@ fun mangaListDetailedItemAD(
 				} else 0
 		}
 		binding.imageViewPin.isVisible = item.isPinned
-		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
+		binding.imageViewCover.setImageAsync(
+			item.coverUrl,
+			item.manga,
+			persistCover = coverContext == ModernCoverContext.COLLECTION,
+		)
 		binding.textViewTags.text = item.tags.joinToString(separator = ", ") { it.title ?: "" }
 		binding.badge.number = item.counter
 		binding.badge.isVisible = item.counter > 0
