@@ -10,7 +10,7 @@ class MigrationDirectSearchQueryTest {
 	private val seed = Manga(
 		id = 1L,
 		title = "(Arai Kei) Middle-Aged Miss Hanada's Defloration [Uncensored]",
-		altTitles = setOf("Hanada-san", "花田さん"),
+		altTitles = setOf("Hanada-san", "花田さん", "Alias Three", "Alias Four", "Alias Five"),
 		url = "/1",
 		publicUrl = "https://example.invalid/1",
 		rating = 0f,
@@ -30,12 +30,13 @@ class MigrationDirectSearchQueryTest {
 	}
 
 	@Test
-	fun `default direct queries use cleaned title first and keep aliases as fallback`() {
+	fun `default direct queries use cleaned title first and keep bounded aliases as fallback`() {
 		val queries = buildDirectMigrationSearchQueries(seed, MigrationDirectSearchOptions())
 
 		assertEquals("Middle-Aged Miss Hanada's Defloration", queries.first())
 		assertTrue(queries.contains("(Arai Kei) Middle-Aged Miss Hanada's Defloration [Uncensored]"))
 		assertTrue(queries.any { normalizeMigrationTitle(it) == normalizeMigrationTitle("Hanada-san") })
+		assertTrue(queries.size <= 4)
 	}
 
 	@Test
@@ -46,6 +47,7 @@ class MigrationDirectSearchQueryTest {
 		)
 
 		assertEquals(seed.title, queries.first())
+		assertTrue(queries.size <= 4)
 	}
 
 	@Test
