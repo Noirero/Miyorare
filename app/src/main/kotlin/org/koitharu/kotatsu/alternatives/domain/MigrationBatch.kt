@@ -43,11 +43,18 @@ data class MigrationBatchSnapshot(
 )
 
 object MigrationBatchPolicy {
-	fun assess(discovery: MigrationDiscovery, changed: Boolean = false): MigrationBatchOutcome = when {
+	fun assess(
+		discovery: MigrationDiscovery,
+		changed: Boolean = false,
+		rawSelection: Boolean = false,
+	): MigrationBatchOutcome = when {
 		discovery.currentSourceReadable -> MigrationBatchOutcome(MigrationBatchStatus.HEALTHY)
 		discovery.incomplete -> MigrationBatchOutcome(MigrationBatchStatus.INCOMPLETE)
 		discovery.assessment?.state == MigrationMatchState.READY && !changed -> MigrationBatchOutcome(
-			MigrationBatchStatus.READY, discovery.assessment.best?.manga?.let(MigrationSelection::of),
+			MigrationBatchStatus.READY,
+			discovery.assessment.best?.manga?.let {
+				if (rawSelection) MigrationSelection.fromSearchResult(it) else MigrationSelection.of(it)
+			},
 		)
 		discovery.assessment?.state == MigrationMatchState.NO_REPLACEMENT -> MigrationBatchOutcome(MigrationBatchStatus.NO_REPLACEMENT)
 		else -> MigrationBatchOutcome(MigrationBatchStatus.NEEDS_REVIEW)
@@ -92,7 +99,10 @@ object MigrationBatchPolicy {
 	): MigrationBatchOutcome = try {
 		if (!canAccess()) MigrationBatchOutcome(MigrationBatchStatus.INTERRUPTED, destinationId = request.selection?.id)
 		else when (request.action) {
-			MigrationBatchAction.CHECK -> assess(discover())
+			MigrationBatchAction.CHECK -> assess(
+				discovery(),
+				rawSelection = request.discoveryMode == MigrationBatchDiscoveryMode.DIRECT_SEARCH,
+			)
 			MigrationBatchAction.MIGRATE -> {
 				val selected = checkNotNull(request.selection) { "Batch migration requires a READY selection" }
 				val result = migrate(selected)
@@ -103,7 +113,11 @@ object MigrationBatchPolicy {
 	} catch (error: CancellationException) {
 		throw error
 	} catch (error: AutoFixUseCase.SelectionChangedException) {
-		assess(error.discovery, changed = true)
+		assess(
+			error.discovery,
+			changed = true,
+			rawSelection = request.discoveryMode == MigrationBatchDiscoveryMode.DIRECT_SEARCH,
+		)
 	} catch (error: MigrateUseCase.SourceChangedException) {
 		MigrationBatchOutcome(MigrationBatchStatus.INTERRUPTED, destinationId = request.selection?.id)
 	} catch (error: Exception) {
