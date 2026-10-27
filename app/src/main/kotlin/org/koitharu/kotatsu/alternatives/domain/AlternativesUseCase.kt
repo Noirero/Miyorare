@@ -194,6 +194,23 @@ class AlternativesUseCase @Inject constructor(
 		}
 	}
 
+	/**
+	 * Execution-time destination refresh. Search the selected source without truncating its raw list,
+	 * find the exact source/id first, and only then fetch details for that one approved candidate.
+	 */
+	suspend fun refreshExactCandidate(
+		query: String,
+		source: MangaSource,
+		candidateId: Long,
+	): Result<Manga?> = runCatchingCancellable {
+		val normalizedQuery = query.trim()
+		if (normalizedQuery.isEmpty()) return@runCatchingCancellable null
+		val raw = searchHelperFactory.create(source)(normalizedQuery, SearchKind.TITLE)?.manga.orEmpty()
+		val candidate = raw.firstOrNull { it.source.name == source.name && it.id == candidateId }
+			?: return@runCatchingCancellable null
+		mangaRepositoryFactory.create(source).getDetails(candidate)
+	}
+
 	private fun searchSources(
 		normalizedQuery: String, sources: List<MangaSource>, excluded: Pair<MangaSource, Long>?, maxDetailCandidates: Int,
 	): Flow<AlternativeSearchEvent> {
