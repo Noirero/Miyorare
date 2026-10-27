@@ -35,9 +35,9 @@ jobs:
   command:
     name: Handle owner-authorized Miyori command
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (startsWith(github.event.comment.body, '/miyori') &&
-       github.event.comment.user.login == github.repository_owner)
+      github.actor == github.repository_owner &&
+      (github.event_name == 'workflow_dispatch' ||
+       startsWith(github.event.comment.body, '/miyori'))
     runs-on: ubuntu-latest
     env:
       TARGET_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.target_number || github.event.issue.number }}
