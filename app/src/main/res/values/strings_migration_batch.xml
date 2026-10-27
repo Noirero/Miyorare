@@ -8,7 +8,7 @@
     <string name="migration_batch_mode_direct_description">Skip current-source checks and search replacements for every manga in the selected installed-source scope.</string>
     <string name="migration_batch_check">Check all and find replacements</string>
     <string name="migration_batch_direct">Find replacements for all</string>
-    <string name="migration_batch_safety">This step only prepares candidates. Nothing is transferred until you explicitly choose Migrate ready.</string>
+    <string name="migration_batch_safety">This step only prepares candidates. Nothing is transferred until you explicitly choose Migrate or Copy.</string>
     <string name="migration_batch_unchecked">Not checked yet — tap to review</string>
     <string name="migration_batch_queued">Waiting in batch queue</string>
     <string name="migration_batch_checking">Checking readability / searching installed sources…</string>
@@ -16,21 +16,23 @@
     <string name="migration_batch_searching">Searching the selected installed sources…</string>
     <string name="migration_batch_searching_progress">Searching installed sources · %1$d/%2$d checked</string>
     <string name="migration_batch_verifying">Verifying %1$d possible matches…</string>
-    <string name="migration_batch_migrating">Migrating…</string>
+    <string name="migration_batch_migrating">Migrating or copying…</string>
     <string name="migration_batch_ready">Ready — replacement found</string>
     <string name="migration_batch_review">Replacement found — choose manually</string>
     <string name="migration_batch_no_replacement">No readable result found in the sources checked</string>
     <string name="migration_batch_incomplete">Selected scope could not be checked reliably — retry or choose another scope</string>
     <string name="migration_batch_healthy">Current manga is still readable</string>
+    <string name="migration_batch_copied">Copied — source kept</string>
     <string name="migration_batch_interrupted">Interrupted — check library before retry</string>
     <string name="migration_batch_error">Could not migrate safely — review or retry</string>
     <string name="migration_batch_empty">No remaining library or history entries for these sources.</string>
     <string name="migration_batch_progress">Processed %1$d of %2$d manga</string>
-    <string name="migration_batch_done">%1$d manga migrated in recent batches</string>
+    <string name="migration_batch_done">%1$d manga migrated or copied in recent batches</string>
     <string name="migration_batch_check_library">An interrupted item may already be in its replacement. Check the library; it will not be migrated again blindly.</string>
     <string name="migration_batch_other_active">A migration batch is running in another source collection.</string>
     <string name="migration_batch_all">All results</string>
     <string name="migration_batch_filter_count">%1$s · %2$d</string>
     <plurals name="migration_batch_migrate_ready"><item quantity="one">Migrate %d ready manga</item><item quantity="other">Migrate %d ready manga</item></plurals>
+    <plurals name="migration_batch_copy_ready"><item quantity="one">Copy %d ready manga</item><item quantity="other">Copy %d ready manga</item></plurals>
     <string name="migration_batch_summary">Ready: %1$d · Choose manually: %2$d · Not found: %3$d</string>
 </resources>
