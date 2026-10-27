@@ -19,6 +19,7 @@ class MigrationYokaiFlowContractTest {
 		assertTrue(bridge.contains("SearchKind.SIMPLE"))
 		assertFalse(bridge.contains("SearchKind.TITLE"))
 		assertTrue(automatic.contains("globalSearch.search(source,query)"))
+		assertTrue(automatic.contains("replace(\"’\",\"'\")"))
 		assertTrue(manual.contains("globalSearch.search(source,query)"))
 	}
 
@@ -44,6 +45,13 @@ class MigrationYokaiFlowContractTest {
 		assertTrue(automatic.contains("filterNot{result->result.id==seed.id}"))
 		assertTrue(manual.contains("if(candidate.id==seed.id)continue"))
 		assertTrue(manual.contains("candidate.id==mangaId"))
+	}
+
+	@Test
+	fun `manual preselection is discarded when source setup changed`() {
+		val manual = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchViewModel.kt")
+
+		assertTrue(manual.contains("takeIf{it.source.nameinselectedSourceNames}"))
 	}
 
 	@Test
