@@ -28,6 +28,7 @@ import androidx.fragment.app.viewModels
 import com.google.android.material.appbar.AppBarLayout
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.alternatives.domain.MigrationExecutionMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.nav.router
@@ -53,6 +54,8 @@ class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga
 						onSelect = viewModel::select,
 						onClearSelection = viewModel::clearSelection,
 						onMigrate = viewModel::migrateSelected,
+						onCopy = viewModel::copySelected,
+						onSkip = { requireActivity().onBackPressedDispatcher.onBackPressed() },
 						onOpenResult = { router.openDetails(it) },
 					)
 				}
@@ -106,6 +109,8 @@ private fun MigrationManualSearchScreen(
 	onSelect: (Manga) -> Unit,
 	onClearSelection: () -> Unit,
 	onMigrate: () -> Unit,
+	onCopy: () -> Unit,
+	onSkip: () -> Unit,
 	onOpenResult: (Manga) -> Unit,
 ) {
 	val context = androidx.compose.ui.platform.LocalContext.current
@@ -118,7 +123,12 @@ private fun MigrationManualSearchScreen(
 			Modifier.fillMaxSize().padding(20.dp),
 			verticalArrangement = Arrangement.spacedBy(12.dp),
 		) {
-			Text(stringResource(R.string.migration_completed), style = MaterialTheme.typography.titleLarge)
+			Text(
+				stringResource(
+					if (state.completedMode == MigrationExecutionMode.COPY) R.string.migration_copied else R.string.migration_completed,
+				),
+				style = MaterialTheme.typography.titleLarge,
+			)
 			Button(onClick = { onOpenResult(manga) }) { Text(stringResource(R.string.migration_open_result)) }
 		}
 		return
@@ -182,7 +192,17 @@ private fun MigrationManualSearchScreen(
 								CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
 								Spacer(Modifier.width(8.dp))
 							}
-							Text(stringResource(R.string.migration_migrate))
+							Text(stringResource(R.string.migration_yokai_migrate_now))
+						}
+						OutlinedButton(
+							onClick = onCopy,
+							enabled = !state.migrating,
+							modifier = Modifier.fillMaxWidth().testTag("migration-manual-copy"),
+						) {
+							Text(stringResource(R.string.migration_yokai_copy_now))
+						}
+						TextButton(onClick = onSkip, enabled = !state.migrating, modifier = Modifier.fillMaxWidth()) {
+							Text(stringResource(R.string.migration_yokai_skip_manga))
 						}
 						TextButton(onClick = onClearSelection, enabled = !state.migrating) {
 							Text(stringResource(R.string.migration_change_result))
