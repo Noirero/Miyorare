@@ -44,6 +44,30 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 		true
 	}
 
+	/**
+	 * Execute one manual Migrate/Copy through the same durable worker path as bulk execution and
+	 * await this exact WorkRequest rather than inferring completion from an older session snapshot.
+	 */
+	suspend fun enqueueAndAwait(request: MigrationBatchRequest): MigrationBatchSnapshot? {
+		val task = schedulingMutex.withLock {
+			val existing = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
+			if (existing.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) }) return@withLock null
+			val previous = existing.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
+			check(previous < Long.MAX_VALUE)
+			val generation = previous + 1L
+			val batchName = "${MigrationBatchWork.TAG}:manual:${UUID.randomUUID()}"
+			OneTimeWorkRequestBuilder<MigrationBatchWorker>()
+				.setInputData(MigrationBatchWork.input(request))
+				.setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+				.keepResultsForAtLeast(30, TimeUnit.DAYS)
+				.apply { MigrationBatchWork.tags(request, generation, batchName).forEach { addTag(it) } }
+				.build()
+				.also { workManager.beginUniqueWork(batchName, ExistingWorkPolicy.KEEP, it).enqueue().await() }
+		} ?: return null
+		val finished = workManager.getWorkInfoByIdFlow(task.id).first { it.state.isFinished }
+		return MigrationBatchWork.snapshot(finished)
+	}
+
 	/** Persist Yokai's per-item Skip as a new session outcome without requiring network access. */
 	suspend fun markSkipped(
 		mangaId: Long,
