@@ -151,6 +151,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 					val initial = initialTargetId.takeIf { it != 0L && it != mangaId }
 						?.let { mangaDataRepository.findMangaById(it, withChapters = false) }
 						?.takeIf { initialTargetSource == null || it.source.name == initialTargetSource }
+						?.takeIf { it.source.name in selectedSourceNames }
 					Triple(seed, selected, initial)
 				}
 			}.onSuccess { (seed, sources, initial) ->
