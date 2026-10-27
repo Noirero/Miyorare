@@ -199,6 +199,7 @@ class AlternativesUseCase @Inject constructor(
 					}
 					send(AlternativeSearchEvent.SourceFinished(source, sourceError))
 				}
+			}
 		}
 	}
 
