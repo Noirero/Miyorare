@@ -174,13 +174,18 @@ class SourceMangaListViewModel @Inject constructor(
 		})
 	}
 
-	fun migrateReady() {
+	fun migrateReady() = executeReady(MigrationBatchAction.MIGRATE)
+
+	fun copyReady() = executeReady(MigrationBatchAction.COPY)
+
+	private fun executeReady(action: MigrationBatchAction) {
 		val current = state.value
 		enqueue(MigrationBatchPolicy.readyRequests(
 			manga = current.manga,
 			snapshots = current.batchItems,
 			discoveryMode = MigrationBatchDiscoveryMode.YOKAI,
 			configKey = current.configKey,
+			action = action,
 		))
 	}
 
@@ -253,7 +258,9 @@ class SourceMangaListViewModel @Inject constructor(
 						ownedBatchName = owned,
 						batchCompleted = batch.count { !it.running },
 						batchTotal = batch.size,
-						migratedCount = latest.values.count { it.outcome.status == MigrationBatchStatus.MIGRATED },
+						migratedCount = latest.values.count {
+							it.outcome.status == MigrationBatchStatus.MIGRATED || it.outcome.status == MigrationBatchStatus.COPIED
+						},
 						unconfirmedCount = latest.values.count {
 							it.mangaId !in visible && it.outcome.status == MigrationBatchStatus.INTERRUPTED
 						},
@@ -375,7 +382,7 @@ data class SourceMangaListState(
 		val snapshot = batchItems[mangaId] ?: return MigrationBatchStatus.UNCHECKED
 		val status = snapshot.outcome.status
 		return when {
-			status == MigrationBatchStatus.MIGRATED -> status
+			status == MigrationBatchStatus.MIGRATED || status == MigrationBatchStatus.COPIED -> status
 			snapshot.discoveryMode == MigrationBatchDiscoveryMode.YOKAI && snapshot.configKey == configKey -> status
 			else -> MigrationBatchStatus.UNCHECKED
 		}
