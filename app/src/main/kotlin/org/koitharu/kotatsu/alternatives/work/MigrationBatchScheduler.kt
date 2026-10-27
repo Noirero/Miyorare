@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.alternatives.work
 
 import androidx.work.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -41,6 +42,38 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 		// Enqueue the complete graph once; requests/outcomes survive process death in WorkManager.
 		chain.enqueue().await()
 		true
+	}
+
+	/** Persist Yokai's per-item Skip as a new session outcome without requiring network access. */
+	suspend fun markSkipped(
+		mangaId: Long,
+		source: String,
+		configKey: String,
+		discoveryMode: MigrationBatchDiscoveryMode = MigrationBatchDiscoveryMode.YOKAI,
+	): Boolean = schedulingMutex.withLock {
+		val existing = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
+		if (existing.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) }) return@withLock false
+		val previous = existing.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
+		check(previous < Long.MAX_VALUE)
+		val generation = previous + 1L
+		val batchName = "${MigrationBatchWork.TAG}:skip:${UUID.randomUUID()}"
+		val marker = OneTimeWorkRequestBuilder<MigrationBatchCancellationMarkerWorker>()
+			.setInputData(MigrationBatchWork.output(MigrationBatchOutcome(MigrationBatchStatus.SKIPPED)))
+			.keepResultsForAtLeast(30, TimeUnit.DAYS)
+			.apply {
+				MigrationBatchWork.tags(
+					mangaId = mangaId,
+					source = source,
+					generation = generation,
+					batch = batchName,
+					discoveryMode = discoveryMode,
+					configKey = configKey,
+				).forEach { addTag(it) }
+			}
+			.build()
+		workManager.enqueue(marker).await()
+		val finished = workManager.getWorkInfoByIdFlow(marker.id).first { it.state.isFinished }
+		finished.state == WorkInfo.State.SUCCEEDED
 	}
 
 	suspend fun cancel(batchName: String) = schedulingMutex.withLock {
