@@ -23,6 +23,7 @@
     <string name="migration_batch_incomplete">Area yang dipilih tidak dapat diperiksa dengan cukup andal — coba lagi atau pilih area lain</string>
     <string name="migration_batch_healthy">Manga dari source saat ini masih bisa dibaca</string>
     <string name="migration_batch_copied">Disalin — source lama dipertahankan</string>
+    <string name="migration_batch_skipped">Dilewati untuk setup migrasi ini</string>
     <string name="migration_batch_interrupted">Terputus — periksa koleksi sebelum mencoba lagi</string>
     <string name="migration_batch_error">Belum dapat dimigrasikan dengan aman — tinjau atau coba lagi</string>
     <string name="migration_batch_empty">Tidak ada entri koleksi atau riwayat yang tersisa untuk source ini.</string>
