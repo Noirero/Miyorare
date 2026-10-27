@@ -69,6 +69,16 @@ class MigrationYokaiFlowContractTest {
 	}
 
 	@Test
+	fun `manual preselection is accepted only from the exact active Yokai config`() {
+		val list = source("org/koitharu/kotatsu/settings/sources/migration/SourceMangaListFragment.kt")
+
+		assertTrue(list.contains("snapshot.discoveryMode==MigrationBatchDiscoveryMode.YOKAI"))
+		assertTrue(list.contains("snapshot.configKey==state.configKey"))
+		assertTrue(list.contains("initialTargetSource=selection?.source"))
+		assertTrue(list.contains("initialTargetId=selection?.id"))
+	}
+
+	@Test
 	fun `manual migrate copy and skip share the durable migration session authority`() {
 		val manual = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchViewModel.kt")
 
