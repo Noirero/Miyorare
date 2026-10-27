@@ -4,28 +4,38 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.doOnDetach
 import androidx.core.view.updatePadding
 import androidx.fragment.app.viewModels
+import coil3.ImageLoader
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.google.android.material.appbar.AppBarLayout
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
@@ -33,13 +43,18 @@ import org.koitharu.kotatsu.alternatives.domain.MigrationExecutionMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga_migration) {
+	@Inject
+	lateinit var imageLoader: ImageLoader
+
 	private val viewModel by viewModels<MigrationManualSearchViewModel>()
 
 	override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
@@ -53,6 +68,7 @@ class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga
 					}
 					MigrationManualSearchScreen(
 						state = state,
+						imageLoader = imageLoader,
 						onQueryChange = viewModel::setQuery,
 						onSearch = viewModel::search,
 						onSelect = viewModel::select,
@@ -108,6 +124,7 @@ class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga
 @Composable
 private fun MigrationManualSearchScreen(
 	state: MigrationManualSearchState,
+	imageLoader: ImageLoader,
 	onQueryChange: (String) -> Unit,
 	onSearch: () -> Unit,
 	onSelect: (Manga) -> Unit,
@@ -117,7 +134,7 @@ private fun MigrationManualSearchScreen(
 	onSkip: () -> Unit,
 	onOpenResult: (Manga) -> Unit,
 ) {
-	val context = androidx.compose.ui.platform.LocalContext.current
+	val context = LocalContext.current
 	val busy = state.migrating || state.skipping
 	if (state.loading) {
 		Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -196,8 +213,41 @@ private fun MigrationManualSearchScreen(
 						Text(state.seed?.title.orEmpty())
 						Text("→", style = MaterialTheme.typography.titleLarge)
 						Text(stringResource(R.string.migration_new_selection), style = MaterialTheme.typography.labelLarge)
-						Text(selected.title, style = MaterialTheme.typography.titleMedium)
-						Text(selected.source.getTitle(context), style = MaterialTheme.typography.bodySmall)
+						Row(
+							modifier = Modifier.fillMaxWidth(),
+							verticalAlignment = Alignment.CenterVertically,
+							horizontalArrangement = Arrangement.spacedBy(12.dp),
+						) {
+							MigrationMangaCover(
+								manga = selected,
+								imageLoader = imageLoader,
+								modifier = Modifier.width(68.dp).aspectRatio(0.72f),
+							)
+							Column(Modifier.weight(1f)) {
+								Text(
+									selected.title,
+									style = MaterialTheme.typography.titleMedium,
+									maxLines = 2,
+									overflow = TextOverflow.Ellipsis,
+								)
+								Text(selected.source.getTitle(context), style = MaterialTheme.typography.bodySmall)
+								selected.authors.firstOrNull()?.let { author ->
+									Text(
+										author,
+										style = MaterialTheme.typography.bodySmall,
+										maxLines = 1,
+										overflow = TextOverflow.Ellipsis,
+									)
+								}
+							}
+						}
+						OutlinedButton(
+							onClick = { onOpenResult(selected) },
+							enabled = !busy,
+							modifier = Modifier.fillMaxWidth().testTag("migration-manual-details"),
+						) {
+							Text(stringResource(R.string.hub_view_details))
+						}
 						Text(stringResource(R.string.migration_preserve_all_fixed), style = MaterialTheme.typography.bodySmall)
 						Button(
 							onClick = onMigrate,
@@ -247,18 +297,78 @@ private fun MigrationManualSearchScreen(
 				items = group?.manga.orEmpty(),
 				key = { manga -> "${source.name}:${manga.id}" },
 			) { manga ->
-				Column(
+				Row(
 					modifier = Modifier
 						.fillMaxWidth()
 						.clickable(enabled = !busy) { onSelect(manga) }
 						.padding(vertical = 10.dp)
 						.testTag("migration-manual-result"),
+					verticalAlignment = Alignment.CenterVertically,
+					horizontalArrangement = Arrangement.spacedBy(12.dp),
 				) {
-					Text(manga.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-					manga.authors.firstOrNull()?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+					MigrationMangaCover(
+						manga = manga,
+						imageLoader = imageLoader,
+						modifier = Modifier.width(64.dp).aspectRatio(0.72f),
+					)
+					Column(Modifier.weight(1f)) {
+						Text(
+							manga.title,
+							style = MaterialTheme.typography.bodyLarge,
+							maxLines = 2,
+							overflow = TextOverflow.Ellipsis,
+						)
+						manga.authors.firstOrNull()?.let { author ->
+							Text(
+								author,
+								style = MaterialTheme.typography.bodySmall,
+								maxLines = 1,
+								overflow = TextOverflow.Ellipsis,
+							)
+						}
+					}
 				}
 				HorizontalDivider()
 			}
+		}
+	}
+}
+
+@Composable
+private fun MigrationMangaCover(
+	manga: Manga,
+	imageLoader: ImageLoader,
+	modifier: Modifier = Modifier,
+) {
+	val context = LocalContext.current
+	val coverRequest = remember(manga.id, manga.coverUrl, manga.source) {
+		manga.coverUrl?.takeIf { it.isNotBlank() }?.let { coverUrl ->
+			ImageRequest.Builder(context)
+				.data(coverUrl)
+				.mangaSourceExtra(manga.source)
+				.build()
+		}
+	}
+	Box(
+		modifier = modifier
+			.clip(RoundedCornerShape(8.dp))
+			.background(MaterialTheme.colorScheme.surfaceContainerHighest),
+		contentAlignment = Alignment.Center,
+	) {
+		Icon(
+			painter = painterResource(R.drawable.ic_placeholder),
+			contentDescription = null,
+			tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+			modifier = Modifier.size(32.dp),
+		)
+		if (coverRequest != null) {
+			AsyncImage(
+				model = coverRequest,
+				imageLoader = imageLoader,
+				contentDescription = null,
+				contentScale = ContentScale.Crop,
+				modifier = Modifier.fillMaxSize(),
+			)
 		}
 	}
 }
