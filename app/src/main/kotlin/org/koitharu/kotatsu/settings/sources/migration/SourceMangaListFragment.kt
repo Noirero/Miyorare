@@ -28,11 +28,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.platform.testTag
-import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
-import org.koitharu.kotatsu.alternatives.domain.MigrationSearchScope
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -45,33 +40,39 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.fragment.app.viewModels
 import androidx.core.view.doOnDetach
 import androidx.core.view.updatePadding
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
-import com.google.android.material.appbar.AppBarLayout
-import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
+import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import dagger.hilt.android.AndroidEntryPoint
+import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
+import org.koitharu.kotatsu.alternatives.domain.MigrationSearchScope
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
+import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
@@ -104,6 +105,7 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 					onCancel = viewModel::cancelBatch,
 					onFilter = viewModel::setFilter,
 					onSearchScope = viewModel::setSearchScope,
+					onDiscoveryMode = viewModel::setDiscoveryMode,
 					onMangaClick = { manga ->
 						if (state.selectedIds.isEmpty()) {
 							(requireActivity() as org.koitharu.kotatsu.settings.SettingsActivity).openFragment(
@@ -174,12 +176,9 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 			val state = viewModel.state.value
 			mode.title = state.selectedIds.size.toString()
 			menu.findItem(ACTION_SELECT_ALL)?.isVisible = state.selectedIds.size < state.manga.size
-			val selectedIndices = state.manga.mapIndexedNotNull { index, manga ->
-				index.takeIf { manga.id in state.selectedIds }
-			}
+			val selectedIndices = state.manga.mapIndexedNotNull { index, manga -> index.takeIf { manga.id in state.selectedIds } }
 			menu.findItem(ACTION_SELECT_RANGE)?.isVisible =
-				selectedIndices.size >= 2 &&
-					selectedIndices.last() - selectedIndices.first() + 1 > selectedIndices.size
+				selectedIndices.size >= 2 && selectedIndices.last() - selectedIndices.first() + 1 > selectedIndices.size
 			return true
 		}
 
@@ -197,17 +196,8 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 						.show()
 					true
 				}
-
-				ACTION_SELECT_RANGE -> {
-					viewModel.selectRange()
-					true
-				}
-
-				ACTION_SELECT_ALL -> {
-					viewModel.selectAll()
-					true
-				}
-
+				ACTION_SELECT_RANGE -> { viewModel.selectRange(); true }
+				ACTION_SELECT_ALL -> { viewModel.selectAll(); true }
 				else -> false
 			}
 		}
@@ -242,13 +232,12 @@ private fun SourceMangaListScreen(
 	onCancel: () -> Unit,
 	onFilter: (MigrationBatchStatus?) -> Unit,
 	onSearchScope: (MigrationSearchScope) -> Unit,
+	onDiscoveryMode: (MigrationBatchDiscoveryMode) -> Unit,
 	onMangaClick: (Manga) -> Unit,
 	onMangaLongClick: (Manga) -> Unit,
 ) {
 	if (state.isLoading) {
-		Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-			CircularProgressIndicator()
-		}
+		Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 		return
 	}
 	LazyColumn(
@@ -261,7 +250,7 @@ private fun SourceMangaListScreen(
 			}
 		}
 		if (state.manga.size > 1 || state.batchItems.size > 1) item {
-			MigrationBatchControls(state, onCheck, onMigrateReady, onCancel, onFilter, onSearchScope)
+			MigrationBatchControls(state, onCheck, onMigrateReady, onCancel, onFilter, onSearchScope, onDiscoveryMode)
 		}
 		if (state.manga.isEmpty() && !state.failed) item {
 			Text(stringResource(R.string.migration_batch_empty), modifier = Modifier.padding(20.dp))
@@ -308,13 +297,7 @@ private fun SourceMangaRow(
 			.padding(horizontal = 8.dp, vertical = 2.dp)
 			.clip(RoundedCornerShape(12.dp))
 			.heightIn(min = 84.dp)
-			.background(
-				if (isSelected) {
-					MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-				} else {
-					Color.Transparent
-			},
-		)
+			.background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent)
 			.then(
 				if (isSelected) {
 					Modifier.border(
@@ -322,9 +305,7 @@ private fun SourceMangaRow(
 						color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
 						shape = RoundedCornerShape(12.dp),
 					)
-				} else {
-					Modifier
-				},
+				} else Modifier,
 			)
 			.combinedClickable(onClick = onClick, onLongClick = onLongClick)
 			.padding(horizontal = 8.dp, vertical = 6.dp),
@@ -372,7 +353,6 @@ private fun SourceMangaRow(
 			}
 			Text(stringResource(status.labelRes()), style = MaterialTheme.typography.bodySmall,
 				color = MaterialTheme.colorScheme.primary)
-
 		}
 	}
 }

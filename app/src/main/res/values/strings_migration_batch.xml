@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="migration_batch_cancel">Cancel running batch</string>
+    <string name="migration_batch_mode_title">Batch migration mode</string>
+    <string name="migration_batch_mode_check">Check current source first</string>
+    <string name="migration_batch_mode_direct">Find replacements directly</string>
+    <string name="migration_batch_mode_check_description">Check each manga first. Only manga that cannot be proven readable are searched for replacements.</string>
+    <string name="migration_batch_mode_direct_description">Skip current-source checks and search replacements for every manga in the selected installed-source scope.</string>
     <string name="migration_batch_check">Check all and find replacements</string>
-    <string name="migration_batch_safety">Each manga is checked first. If it can no longer be read from its current source, Miyorare searches the selected installed-source scope. Clear matches become Ready; uncertain matches stay for your review.</string>
+    <string name="migration_batch_direct">Find replacements for all</string>
+    <string name="migration_batch_safety">This step only prepares candidates. Nothing is transferred until you explicitly choose Migrate ready.</string>
     <string name="migration_batch_unchecked">Not checked yet — tap to review</string>
     <string name="migration_batch_queued">Waiting in batch queue</string>
     <string name="migration_batch_checking">Checking readability / searching installed sources…</string>

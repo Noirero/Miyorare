@@ -25,6 +25,9 @@ data class MigrationReviewState(
 	val availability: MigrationSearchAvailability? = null,
 	val selectedScope: MigrationSearchScope = MigrationSearchScope.ALL,
 	val hasSearched: Boolean = false,
+	/** True only after the user explicitly chose the current-source check. */
+	val currentSourceChecked: Boolean = false,
+	/** True when the user explicitly chose direct replacement search / readable-source override. */
 	val manualSearchEnabled: Boolean = false,
 	val searchFailed: Boolean = false,
 	/** Execution/transfer failure only. Discovery failures use [searchFailed]. */
@@ -33,11 +36,7 @@ data class MigrationReviewState(
 	val completedId: Long? = null,
 )
 
-/**
- * A scope change invalidates every result produced by the previous scope. Keep only the stable
- * current-source readability decision and the already-loaded availability counts; candidate evidence
- * becomes actionable again only after Search runs for the newly selected scope.
- */
+/** Scope changes invalidate only scope-dependent search evidence, never the user's chosen entry path. */
 internal fun MigrationReviewState.withSearchScope(scope: MigrationSearchScope): MigrationReviewState {
 	if (scope == selectedScope) return this
 	return copy(
@@ -59,26 +58,55 @@ class MigrationReviewViewModel @Inject constructor(
 	private val autoFix: AutoFixUseCase,
 ) : ViewModel() {
 	private val mangaId: Long = checkNotNull(savedStateHandle[MigrationReviewFragment.ARG_MANGA_ID])
-	// Start idle so init can enter retry(); every actual network/execution operation flips loading=true.
-	private val mutableState = MutableStateFlow(MigrationReviewState(loading = false))
+	private val mutableState = MutableStateFlow(MigrationReviewState())
 	val state = mutableState.asStateFlow()
 
 	init {
 		val completed = savedStateHandle.get<Long>(COMPLETED_ID)
-		if (completed != null) mutableState.value = MigrationReviewState(loading = false, completedId = completed)
-		else retry()
+		if (completed != null) {
+			mutableState.value = MigrationReviewState(loading = false, completedId = completed)
+		} else {
+			loadInitialState()
+		}
 	}
 
-	/** Check only whether the current manga remains readable, then prepare source-scope counts if needed. */
+	/** Initial screen reads local library state only. No source/network call is allowed here. */
+	private fun loadInitialState() {
+		viewModelScope.launch {
+			runCatchingCancellable { withContext(Dispatchers.IO) { autoFix.loadStoredManga(mangaId) } }
+				.onSuccess { seed ->
+					mutableState.value = MigrationReviewState(
+						loading = false,
+						discovery = MigrationDiscovery(seed = seed),
+					)
+				}
+				.onFailure {
+					mutableState.value = MigrationReviewState(loading = false, searchFailed = true)
+				}
+		}
+	}
+
+	/** User-selected path: check current source first. */
 	fun retry() {
-		if (mutableState.value.loading) return
-		val selectedScope = mutableState.value.selectedScope
-		mutableState.value = MigrationReviewState(loading = true, selectedScope = selectedScope)
+		val before = mutableState.value
+		if (before.loading || before.discovery == null) return
+		val selectedScope = before.selectedScope
+		mutableState.value = before.copy(
+			loading = true,
+			searching = false,
+			availability = null,
+			hasSearched = false,
+			currentSourceChecked = false,
+			manualSearchEnabled = false,
+			searchFailed = false,
+			failed = false,
+			changed = false,
+		)
 		viewModelScope.launch {
 			runCatchingCancellable {
 				withContext(Dispatchers.IO) {
 					val current = autoFix.checkCurrentSource(mangaId) { progress ->
-						mutableState.value = MigrationReviewState(
+						mutableState.value = mutableState.value.copy(
 							loading = true,
 							discovery = progress,
 							selectedScope = selectedScope,
@@ -94,23 +122,30 @@ class MigrationReviewViewModel @Inject constructor(
 						discovery = current,
 						availability = availability,
 						selectedScope = selectedScope,
+						currentSourceChecked = true,
 					)
 				}
 				.onFailure {
-					mutableState.value = MigrationReviewState(
+					mutableState.value = before.copy(
 						loading = false,
-						selectedScope = selectedScope,
 						searchFailed = true,
 					)
 				}
 		}
 	}
 
-	/** Explicit single-manga override; batch never uses this path. */
+	/** User-selected path: skip current-source probing and prepare replacement scopes immediately. */
 	fun enableManualSearch() {
 		val before = mutableState.value
-		if (before.loading || before.discovery?.currentSourceReadable != true) return
-		mutableState.value = before.copy(loading = true, manualSearchEnabled = true, searchFailed = false)
+		if (before.loading || before.discovery == null) return
+		mutableState.value = before.copy(
+			loading = true,
+			manualSearchEnabled = true,
+			hasSearched = false,
+			searchFailed = false,
+			failed = false,
+			changed = false,
+		)
 		viewModelScope.launch {
 			runCatchingCancellable { withContext(Dispatchers.IO) { autoFix.searchAvailability(mangaId) } }
 				.onSuccess { availability ->
@@ -140,10 +175,11 @@ class MigrationReviewViewModel @Inject constructor(
 	fun search() {
 		val before = mutableState.value
 		if (before.loading || before.discovery == null) return
-		if (before.discovery.currentSourceReadable && !before.manualSearchEnabled) return
+		if (!before.currentSourceChecked && !before.manualSearchEnabled) return
+		if (before.currentSourceChecked && before.discovery.currentSourceReadable && !before.manualSearchEnabled) return
 		if ((before.availability?.count(before.selectedScope) ?: 0) <= 0) return
 		val scope = before.selectedScope
-		val currentReadable = before.discovery.currentSourceReadable
+		val currentReadable = before.currentSourceChecked && before.discovery.currentSourceReadable
 		mutableState.value = before.copy(
 			loading = true,
 			searching = true,

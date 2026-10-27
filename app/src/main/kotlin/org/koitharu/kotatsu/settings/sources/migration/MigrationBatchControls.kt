@@ -12,6 +12,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchPhase
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchScope
@@ -40,6 +41,7 @@ internal fun MigrationBatchControls(
 	onCancel: () -> Unit,
 	onFilter: (MigrationBatchStatus?) -> Unit,
 	onSearchScope: (MigrationSearchScope) -> Unit = {},
+	onDiscoveryMode: (MigrationBatchDiscoveryMode) -> Unit = {},
 ) {
 	var expanded by remember { mutableStateOf(false) }
 	val activeProgress = state.batchItems.values.firstOrNull { it.running && it.searchProgress != null }?.searchProgress
@@ -49,6 +51,38 @@ internal fun MigrationBatchControls(
 			state.manga.count { state.status(it.id) == MigrationBatchStatus.NEEDS_REVIEW },
 			state.manga.count { state.status(it.id) == MigrationBatchStatus.NO_REPLACEMENT }))
 		Text(stringResource(R.string.migration_batch_safety), style = MaterialTheme.typography.bodySmall)
+
+		Text(stringResource(R.string.migration_batch_mode_title), style = MaterialTheme.typography.titleSmall)
+		Row(
+			modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("migration-batch-mode-row"),
+			horizontalArrangement = Arrangement.spacedBy(8.dp),
+		) {
+			FilterChip(
+				selected = state.discoveryMode == MigrationBatchDiscoveryMode.CHECK_CURRENT,
+				onClick = { onDiscoveryMode(MigrationBatchDiscoveryMode.CHECK_CURRENT) },
+				enabled = !state.batchBusy && !state.scheduling,
+				label = { Text(stringResource(R.string.migration_batch_mode_check)) },
+				modifier = Modifier.testTag("migration-batch-mode-check"),
+			)
+			FilterChip(
+				selected = state.discoveryMode == MigrationBatchDiscoveryMode.DIRECT_SEARCH,
+				onClick = { onDiscoveryMode(MigrationBatchDiscoveryMode.DIRECT_SEARCH) },
+				enabled = !state.batchBusy && !state.scheduling,
+				label = { Text(stringResource(R.string.migration_batch_mode_direct)) },
+				modifier = Modifier.testTag("migration-batch-mode-direct"),
+			)
+		}
+		Text(
+			stringResource(
+				if (state.discoveryMode == MigrationBatchDiscoveryMode.CHECK_CURRENT) {
+					R.string.migration_batch_mode_check_description
+				} else {
+					R.string.migration_batch_mode_direct_description
+				},
+			),
+			style = MaterialTheme.typography.bodySmall,
+		)
+
 		Text(stringResource(R.string.migration_search_scope_title), style = MaterialTheme.typography.titleSmall)
 		Row(
 			modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("migration-batch-scope-row"),
@@ -69,13 +103,8 @@ internal fun MigrationBatchControls(
 				MigrationSearchPhase.CHECKING_SOURCE -> stringResource(R.string.migration_batch_checking_current)
 				MigrationSearchPhase.SEARCHING_SOURCES -> if (progress.totalSources > 0) {
 					stringResource(R.string.migration_batch_searching_progress, progress.completedSources, progress.totalSources)
-				} else {
-					stringResource(R.string.migration_batch_searching)
-				}
-				MigrationSearchPhase.VERIFYING_CANDIDATES -> stringResource(
-					R.string.migration_batch_verifying,
-					progress.candidateCount,
-				)
+				} else stringResource(R.string.migration_batch_searching)
+				MigrationSearchPhase.VERIFYING_CANDIDATES -> stringResource(R.string.migration_batch_verifying, progress.candidateCount)
 			}
 			Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("migration-batch-live-progress"))
 		}
@@ -86,10 +115,24 @@ internal fun MigrationBatchControls(
 		if (state.migratedCount > 0) Text(stringResource(R.string.migration_batch_done, state.migratedCount))
 		if (state.unconfirmedCount > 0) Text(stringResource(R.string.migration_batch_check_library))
 		if (state.batchBusy && state.ownedBatchName == null) Text(stringResource(R.string.migration_batch_other_active))
-		Button(onClick = onCheck, enabled = !state.batchBusy && !state.scheduling && state.manga.isNotEmpty(),
-			modifier = Modifier.fillMaxWidth().testTag("migration-batch-check")) { Text(stringResource(R.string.migration_batch_check)) }
-		if (state.readyCount > 0) Button(onClick = onMigrateReady, enabled = !state.batchBusy && !state.scheduling,
-			modifier = Modifier.fillMaxWidth().testTag("migration-batch-execute")) {
+		Button(
+			onClick = onCheck,
+			enabled = !state.batchBusy && !state.scheduling && state.manga.isNotEmpty(),
+			modifier = Modifier.fillMaxWidth().testTag("migration-batch-check"),
+		) {
+			Text(stringResource(
+				if (state.discoveryMode == MigrationBatchDiscoveryMode.CHECK_CURRENT) {
+					R.string.migration_batch_check
+				} else {
+					R.string.migration_batch_direct
+				},
+			))
+		}
+		if (state.readyCount > 0) Button(
+			onClick = onMigrateReady,
+			enabled = !state.batchBusy && !state.scheduling,
+			modifier = Modifier.fillMaxWidth().testTag("migration-batch-execute"),
+		) {
 			Text(pluralStringResource(R.plurals.migration_batch_migrate_ready, state.readyCount, state.readyCount))
 		}
 		if (state.ownedBatchName != null) TextButton(onClick = onCancel, modifier = Modifier.testTag("migration-batch-cancel")) {
@@ -104,8 +147,10 @@ internal fun MigrationBatchControls(
 				for (status in MigrationBatchStatus.entries) {
 					val count = state.manga.count { state.status(it.id) == status }
 					if (count == 0) continue
-					DropdownMenuItem(text = { Text(stringResource(R.string.migration_batch_filter_count, stringResource(status.labelRes()), count)) },
-						onClick = { expanded = false; onFilter(status) })
+					DropdownMenuItem(
+						text = { Text(stringResource(R.string.migration_batch_filter_count, stringResource(status.labelRes()), count)) },
+						onClick = { expanded = false; onFilter(status) },
+					)
 				}
 			}
 		}

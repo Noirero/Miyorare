@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.settings.sources.migration
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchOutcome
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchSnapshot
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
@@ -31,6 +32,7 @@ class SourceMangaListStateTest {
 		id: Long,
 		status: MigrationBatchStatus,
 		scope: MigrationSearchScope,
+		mode: MigrationBatchDiscoveryMode = MigrationBatchDiscoveryMode.CHECK_CURRENT,
 	): MigrationBatchSnapshot = MigrationBatchSnapshot(
 		mangaId = id,
 		source = "OLD",
@@ -41,6 +43,7 @@ class SourceMangaListStateTest {
 			selection = if (status == MigrationBatchStatus.READY) MigrationSelection("NEW", 101L, "fingerprint") else null,
 		),
 		searchScope = scope,
+		discoveryMode = mode,
 	)
 
 	@Test
@@ -58,32 +61,48 @@ class SourceMangaListStateTest {
 	}
 
 	@Test
-	fun `ready result is actionable only in the scope that produced it`() {
+	fun `ready result is actionable only in the scope and mode that produced it`() {
 		val item = manga(1L)
-		val state = SourceMangaListState(
+		val directSnapshot = snapshot(
+			1L,
+			MigrationBatchStatus.READY,
+			MigrationSearchScope.UMA,
+			MigrationBatchDiscoveryMode.DIRECT_SEARCH,
+		)
+		val checkState = SourceMangaListState(
 			isLoading = false,
 			manga = listOf(item),
 			searchScope = MigrationSearchScope.UMA,
-			batchItems = mapOf(1L to snapshot(1L, MigrationBatchStatus.READY, MigrationSearchScope.UMA)),
+			discoveryMode = MigrationBatchDiscoveryMode.CHECK_CURRENT,
+			batchItems = mapOf(1L to directSnapshot),
 		)
+		val directState = checkState.copy(discoveryMode = MigrationBatchDiscoveryMode.DIRECT_SEARCH)
 
-		assertEquals(MigrationBatchStatus.READY, state.status(1L))
-		assertEquals(1, state.readyCount)
+		assertEquals(MigrationBatchStatus.UNCHECKED, checkState.status(1L))
+		assertEquals(0, checkState.readyCount)
+		assertEquals(MigrationBatchStatus.READY, directState.status(1L))
+		assertEquals(1, directState.readyCount)
 	}
 
 	@Test
-	fun `healthy and migrated outcomes stay valid across scope changes`() {
-		val state = SourceMangaListState(
-			isLoading = false,
-			manga = listOf(manga(1L), manga(2L)),
-			searchScope = MigrationSearchScope.GEKKOUSHI,
-			batchItems = mapOf(
-				1L to snapshot(1L, MigrationBatchStatus.HEALTHY, MigrationSearchScope.ALL),
-				2L to snapshot(2L, MigrationBatchStatus.MIGRATED, MigrationSearchScope.ALL),
-			),
+	fun `healthy stays valid across scope changes only in check mode while migrated always stays valid`() {
+		val items = listOf(manga(1L), manga(2L))
+		val snapshots = mapOf(
+			1L to snapshot(1L, MigrationBatchStatus.HEALTHY, MigrationSearchScope.ALL),
+			2L to snapshot(2L, MigrationBatchStatus.MIGRATED, MigrationSearchScope.ALL),
 		)
+		val checkState = SourceMangaListState(
+			isLoading = false,
+			manga = items,
+			searchScope = MigrationSearchScope.GEKKOUSHI,
+			discoveryMode = MigrationBatchDiscoveryMode.CHECK_CURRENT,
+			batchItems = snapshots,
+		)
+		val directState = checkState.copy(discoveryMode = MigrationBatchDiscoveryMode.DIRECT_SEARCH)
 
-		assertEquals(MigrationBatchStatus.HEALTHY, state.status(1L))
-		assertEquals(MigrationBatchStatus.MIGRATED, state.status(2L))
+		assertEquals(MigrationBatchStatus.HEALTHY, checkState.status(1L))
+		assertEquals(MigrationBatchStatus.MIGRATED, checkState.status(2L))
+		assertEquals(MigrationBatchStatus.UNCHECKED, directState.status(1L))
+		assertEquals(MigrationBatchStatus.MIGRATED, directState.status(2L))
 	}
 }

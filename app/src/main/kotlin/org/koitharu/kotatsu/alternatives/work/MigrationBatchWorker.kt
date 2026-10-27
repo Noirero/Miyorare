@@ -40,17 +40,28 @@ class MigrationBatchWorker @AssistedInject constructor(
 					database.getMangaDao().find(request.mangaId)?.manga?.source == request.source
 			},
 			discover = {
-				autoFix.discover(request.mangaId, request.searchScope) { discovery ->
+				val onProgress: suspend (MigrationDiscovery) -> Unit = { discovery ->
 					setProgress(MigrationBatchWork.output(
 						MigrationBatchOutcome(MigrationBatchStatus.CHECKING),
 						discovery.progress,
 					))
 				}
+				when (request.discoveryMode) {
+					MigrationBatchDiscoveryMode.CHECK_CURRENT ->
+						autoFix.discover(request.mangaId, request.searchScope, onProgress)
+					MigrationBatchDiscoveryMode.DIRECT_SEARCH ->
+						autoFix.searchReplacements(request.mangaId, request.searchScope, onProgress = onProgress)
+				}
 			},
-			migrate = { selection -> autoFix.migrateSelected(request.mangaId, selection, reviewed = false) },
+			migrate = { selection ->
+				autoFix.migrateSelected(
+					request.mangaId,
+					selection,
+					reviewed = false,
+					allowReadableSource = request.discoveryMode == MigrationBatchDiscoveryMode.DIRECT_SEARCH,
+				)
+			},
 		)
-		// ERROR/INCOMPLETE/REVIEW are explicit item outcomes, not a claim that migration succeeded.
-		// Completing this work item lets later independent manga continue after a partial failure.
 		return Result.success(MigrationBatchWork.output(outcome))
 	}
 
@@ -61,7 +72,6 @@ class MigrationBatchWorker @AssistedInject constructor(
 			NotificationChannelCompat.Builder(channel, NotificationManagerCompat.IMPORTANCE_LOW)
 				.setName(title).setShowBadge(false).setVibrationEnabled(false).setSound(null, null).build(),
 		)
-		// Always generic and secret: membership can become Private while a batch is running.
 		val notification = NotificationCompat.Builder(applicationContext, channel)
 			.setContentTitle(title).setSmallIcon(R.drawable.general_notification)
 			.setVisibility(NotificationCompat.VISIBILITY_SECRET).setSilent(true).setOngoing(true)
@@ -76,11 +86,6 @@ class MigrationBatchWorker @AssistedInject constructor(
 	}
 }
 
-/**
- * Durable WorkManager record used for explicit terminal cancellation state.
- * The scheduler keeps terminal markers blocked behind one delayed sentinel so a fresh WorkManager
- * process cannot prune never-started cancellation identities before the UI reconstructs them.
- */
 class MigrationBatchCancellationMarkerWorker(
 	context: Context,
 	parameters: WorkerParameters,

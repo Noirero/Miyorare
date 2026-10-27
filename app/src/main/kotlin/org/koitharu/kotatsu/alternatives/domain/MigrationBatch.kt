@@ -10,12 +10,18 @@ enum class MigrationBatchStatus {
 
 enum class MigrationBatchAction { CHECK, MIGRATE }
 
+enum class MigrationBatchDiscoveryMode {
+	CHECK_CURRENT,
+	DIRECT_SEARCH,
+}
+
 data class MigrationBatchRequest(
 	val mangaId: Long,
 	val source: String,
 	val action: MigrationBatchAction,
 	val selection: MigrationSelection? = null,
 	val searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
+	val discoveryMode: MigrationBatchDiscoveryMode = MigrationBatchDiscoveryMode.CHECK_CURRENT,
 )
 
 data class MigrationBatchOutcome(
@@ -33,6 +39,7 @@ data class MigrationBatchSnapshot(
 	val running: Boolean = false,
 	val searchProgress: MigrationSearchProgress? = null,
 	val searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
+	val discoveryMode: MigrationBatchDiscoveryMode = MigrationBatchDiscoveryMode.CHECK_CURRENT,
 )
 
 object MigrationBatchPolicy {
@@ -50,7 +57,6 @@ object MigrationBatchPolicy {
 		snapshots.groupBy { it.mangaId }.mapValues { (_, items) ->
 			val generation = items.maxOf(MigrationBatchSnapshot::generation)
 			val newest = items.filter { it.generation == generation }
-			// An inconsistent duplicate generation is never permission to run unattended.
 			if (newest.size == 1) newest.single() else newest.sortedBy { it.batchName }.first().copy(
 				outcome = MigrationBatchOutcome(MigrationBatchStatus.INTERRUPTED), running = newest.any { it.running },
 			)
@@ -60,9 +66,11 @@ object MigrationBatchPolicy {
 		manga: Collection<Manga>,
 		snapshots: Map<Long, MigrationBatchSnapshot>,
 		searchScope: MigrationSearchScope? = null,
+		discoveryMode: MigrationBatchDiscoveryMode? = null,
 	): List<MigrationBatchRequest> = manga.mapNotNull { item ->
 		val snapshot = snapshots[item.id] ?: return@mapNotNull null
 		if (searchScope != null && snapshot.searchScope != searchScope) return@mapNotNull null
+		if (discoveryMode != null && snapshot.discoveryMode != discoveryMode) return@mapNotNull null
 		if (snapshot.source != item.source.name || snapshot.outcome.status != MigrationBatchStatus.READY || snapshot.running) return@mapNotNull null
 		val selection = snapshot.outcome.selection ?: return@mapNotNull null
 		MigrationBatchRequest(
@@ -71,6 +79,7 @@ object MigrationBatchPolicy {
 			MigrationBatchAction.MIGRATE,
 			selection,
 			searchScope = snapshot.searchScope,
+			discoveryMode = snapshot.discoveryMode,
 		)
 	}
 
