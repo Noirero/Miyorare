@@ -1,9 +1,11 @@
 package org.koitharu.kotatsu.settings.sources.migration
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +21,8 @@ import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchPhase
 import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.explore.ui.adapter.ExploreSourceOrigin
+import org.koitharu.kotatsu.explore.ui.adapter.exploreSourceOrigin
 import org.koitharu.kotatsu.parsers.model.MangaSource
 
 @StringRes
@@ -68,6 +72,19 @@ internal fun MigrationBatchControls(
 			.sortedBy { it.getTitle(context).toString() }
 			.forEach(::add)
 	}
+	val availableOrigins = SOURCE_ORIGIN_ORDER.filter { origin ->
+		state.availableSources.any { it.exploreSourceOrigin() == origin }
+	}
+	val defaultOrigin = when {
+		ExploreSourceOrigin.MIYORARE_PACK in availableOrigins -> ExploreSourceOrigin.MIYORARE_PACK
+		else -> availableOrigins.firstOrNull()
+	}
+	var sourceOriginFilter by remember(state.availableSources.map(MangaSource::name)) {
+		mutableStateOf(defaultOrigin)
+	}
+	val visibleSources = orderedSources.filter { source ->
+		sourceOriginFilter == null || source.exploreSourceOrigin() == sourceOriginFilter
+	}
 	val targetCount = state.selectedIds.size.takeIf { it > 0 } ?: state.manga.size
 	val controlsEnabled = !state.batchBusy && !state.scheduling
 
@@ -103,47 +120,138 @@ internal fun MigrationBatchControls(
 			state.availableSources.isEmpty() -> Text(stringResource(R.string.migration_no_sources_available))
 			else -> {
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					TextButton(onClick = onSelectAllSources, enabled = controlsEnabled) {
+					TextButton(
+						onClick = {
+							if (sourceOriginFilter == null) {
+								onSelectAllSources()
+							} else {
+								visibleSources
+									.asSequence()
+									.map(MangaSource::name)
+									.filterNot(selectedSet::contains)
+									.forEach(onToggleSource)
+							}
+						},
+						enabled = controlsEnabled,
+					) {
 						Text(stringResource(R.string.migration_select_all_visible))
 					}
-					TextButton(onClick = onClearSources, enabled = controlsEnabled) {
+					TextButton(
+						onClick = {
+							if (sourceOriginFilter == null) {
+								onClearSources()
+							} else {
+								visibleSources
+									.asSequence()
+									.map(MangaSource::name)
+									.filter(selectedSet::contains)
+									.forEach(onToggleSource)
+							}
+						},
+						enabled = controlsEnabled,
+					) {
 						Text(stringResource(R.string.migration_deselect_all_visible))
 					}
 				}
 				Text(stringResource(R.string.migration_sources_selected, state.selectedSourceNames.size), style = MaterialTheme.typography.bodySmall)
-				LazyColumn(
-					modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).testTag("migration-source-picker"),
-					verticalArrangement = Arrangement.spacedBy(2.dp),
+
+				if (state.selectedSourceNames.isNotEmpty()) {
+					LazyColumn(
+						modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).testTag("migration-selected-source-order"),
+						verticalArrangement = Arrangement.spacedBy(2.dp),
+					) {
+						items(state.selectedSourceNames, key = { "selected:$it" }) { sourceName ->
+							val source = sourceByName[sourceName]
+							if (source != null) {
+								val selectedIndex = state.selectedSourceNames.indexOf(sourceName)
+								Row(
+									modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+									verticalAlignment = Alignment.CenterVertically,
+								) {
+									Text(
+										text = "${selectedIndex + 1}. ${source.getTitle(context)}",
+										modifier = Modifier.weight(1f),
+										maxLines = 1,
+										overflow = TextOverflow.Ellipsis,
+									)
+									TextButton(
+										onClick = { onMoveSource(sourceName, -1) },
+										enabled = controlsEnabled && selectedIndex > 0,
+										contentPadding = PaddingValues(horizontal = 8.dp),
+									) { Text("↑") }
+									TextButton(
+										onClick = { onMoveSource(sourceName, 1) },
+										enabled = controlsEnabled && selectedIndex < state.selectedSourceNames.lastIndex,
+										contentPadding = PaddingValues(horizontal = 8.dp),
+									) { Text("↓") }
+								}
+							}
+						}
+					}
+				}
+
+				Row(
+					modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("migration-source-origin-row"),
+					horizontalArrangement = Arrangement.spacedBy(8.dp),
 				) {
-					items(orderedSources, key = MangaSource::name) { source ->
-						val selected = source.name in selectedSet
-						val selectedIndex = state.selectedSourceNames.indexOf(source.name)
-						Row(
-							modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-							verticalAlignment = Alignment.CenterVertically,
-						) {
-							Checkbox(
-								checked = selected,
-								onCheckedChange = { onToggleSource(source.name) },
-								enabled = controlsEnabled,
-							)
+					FilterChip(
+						selected = sourceOriginFilter == null,
+						onClick = { sourceOriginFilter = null },
+						enabled = controlsEnabled,
+						label = {
 							Text(
-								text = source.getTitle(context).toString(),
-								modifier = Modifier.weight(1f),
-								maxLines = 1,
-								overflow = TextOverflow.Ellipsis,
+								stringResource(
+									R.string.migration_scope_with_count,
+									stringResource(R.string.migration_scope_all),
+									state.availableSources.size,
+								),
 							)
-							if (selected) {
-								TextButton(
-									onClick = { onMoveSource(source.name, -1) },
-									enabled = controlsEnabled && selectedIndex > 0,
-									contentPadding = PaddingValues(horizontal = 8.dp),
-								) { Text("↑") }
-								TextButton(
-									onClick = { onMoveSource(source.name, 1) },
-									enabled = controlsEnabled && selectedIndex < state.selectedSourceNames.lastIndex,
-									contentPadding = PaddingValues(horizontal = 8.dp),
-								) { Text("↓") }
+						},
+					)
+					for (origin in availableOrigins) {
+						val count = state.availableSources.count { it.exploreSourceOrigin() == origin }
+						FilterChip(
+							selected = sourceOriginFilter == origin,
+							onClick = { sourceOriginFilter = origin },
+							enabled = controlsEnabled,
+							label = {
+								Text(
+									stringResource(
+										R.string.migration_scope_with_count,
+										stringResource(origin.migrationTitleRes()),
+										count,
+									),
+								)
+							},
+							modifier = Modifier.testTag("migration-source-origin-${origin.name.lowercase()}"),
+						)
+					}
+				}
+
+				if (visibleSources.isEmpty()) {
+					Text(stringResource(R.string.migration_scope_empty), style = MaterialTheme.typography.bodySmall)
+				} else {
+					LazyColumn(
+						modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).testTag("migration-source-picker"),
+						verticalArrangement = Arrangement.spacedBy(2.dp),
+					) {
+						items(visibleSources, key = MangaSource::name) { source ->
+							val selected = source.name in selectedSet
+							Row(
+								modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+								verticalAlignment = Alignment.CenterVertically,
+							) {
+								Checkbox(
+									checked = selected,
+									onCheckedChange = { onToggleSource(source.name) },
+									enabled = controlsEnabled,
+								)
+								Text(
+									text = source.getTitle(context).toString(),
+									modifier = Modifier.weight(1f),
+									maxLines = 1,
+									overflow = TextOverflow.Ellipsis,
+								)
 							}
 						}
 					}
@@ -258,6 +366,25 @@ internal fun MigrationBatchControls(
 		}
 	}
 }
+
+@StringRes
+private fun ExploreSourceOrigin.migrationTitleRes(): Int = when (this) {
+	ExploreSourceOrigin.MIYORARE_PACK -> R.string.migration_scope_miyorare
+	ExploreSourceOrigin.EXTENSION_STORE -> R.string.migration_scope_store
+	ExploreSourceOrigin.UMA -> R.string.migration_scope_uma
+	ExploreSourceOrigin.GEKKOUSHI -> R.string.migration_scope_gekkoushi
+	ExploreSourceOrigin.LNREADER -> R.string.explore_source_origin_lnreader
+	ExploreSourceOrigin.CUSTOM_PLUGIN -> R.string.explore_source_origin_custom
+}
+
+private val SOURCE_ORIGIN_ORDER = listOf(
+	ExploreSourceOrigin.MIYORARE_PACK,
+	ExploreSourceOrigin.EXTENSION_STORE,
+	ExploreSourceOrigin.UMA,
+	ExploreSourceOrigin.GEKKOUSHI,
+	ExploreSourceOrigin.LNREADER,
+	ExploreSourceOrigin.CUSTOM_PLUGIN,
+)
 
 @Composable
 private fun MigrationStrategyRow(

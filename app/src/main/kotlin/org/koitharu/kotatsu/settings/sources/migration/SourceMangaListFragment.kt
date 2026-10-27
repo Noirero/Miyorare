@@ -31,6 +31,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -92,50 +93,56 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
 			MiyorareTheme {
-				val state by viewModel.state.collectAsState()
-				SourceMangaListScreen(
-					state = state,
-					imageLoader = imageLoader,
-					onRetry = viewModel::retry,
-					onSearch = viewModel::searchAll,
-					onMigrateReady = viewModel::migrateReady,
-					onCopyReady = viewModel::copyReady,
-					onCancel = viewModel::cancelBatch,
-					onFilter = viewModel::setFilter,
-					onToggleSource = viewModel::toggleSource,
-					onSelectAllSources = viewModel::selectAllSources,
-					onClearSources = viewModel::clearSources,
-					onMoveSource = viewModel::moveSource,
-					onStrategy = viewModel::setSourceStrategy,
-					onExtraSearch = viewModel::setExtraSearchParams,
-					onSkipSetup = viewModel::setSkipSetup,
-					onRetrySources = viewModel::reloadSearchSources,
-					onMangaClick = { manga ->
-						if (state.selectedIds.isEmpty()) {
-							val snapshot = state.batchItems[manga.id]
-							val selection = snapshot?.outcome?.selection?.takeIf {
-								snapshot.discoveryMode == MigrationBatchDiscoveryMode.YOKAI &&
-									snapshot.configKey == state.configKey
+				Surface(
+					modifier = Modifier.fillMaxSize(),
+					color = Color.Transparent,
+					contentColor = MaterialTheme.colorScheme.onSurface,
+				) {
+					val state by viewModel.state.collectAsState()
+					SourceMangaListScreen(
+						state = state,
+						imageLoader = imageLoader,
+						onRetry = viewModel::retry,
+						onSearch = viewModel::searchAll,
+						onMigrateReady = viewModel::migrateReady,
+						onCopyReady = viewModel::copyReady,
+						onCancel = viewModel::cancelBatch,
+						onFilter = viewModel::setFilter,
+						onToggleSource = viewModel::toggleSource,
+						onSelectAllSources = viewModel::selectAllSources,
+						onClearSources = viewModel::clearSources,
+						onMoveSource = viewModel::moveSource,
+						onStrategy = viewModel::setSourceStrategy,
+						onExtraSearch = viewModel::setExtraSearchParams,
+						onSkipSetup = viewModel::setSkipSetup,
+						onRetrySources = viewModel::reloadSearchSources,
+						onMangaClick = { manga ->
+							if (state.selectedIds.isEmpty()) {
+								val snapshot = state.batchItems[manga.id]
+								val selection = snapshot?.outcome?.selection?.takeIf {
+									snapshot.discoveryMode == MigrationBatchDiscoveryMode.YOKAI &&
+										snapshot.configKey == state.configKey
+								}
+								(requireActivity() as SettingsActivity).openFragment(
+									MigrationManualSearchFragment::class.java,
+									MigrationManualSearchFragment.args(
+										mangaId = manga.id,
+										selectedSourceNames = state.selectedSourceNames,
+										strategy = state.sourceStrategy,
+										extraSearchParams = state.extraSearchParams,
+										configKey = state.configKey,
+										initialTargetSource = selection?.source,
+										initialTargetId = selection?.id,
+									),
+									false,
+								)
+							} else {
+								viewModel.toggleSelection(manga.id)
 							}
-							(requireActivity() as SettingsActivity).openFragment(
-								MigrationManualSearchFragment::class.java,
-								MigrationManualSearchFragment.args(
-									mangaId = manga.id,
-									selectedSourceNames = state.selectedSourceNames,
-									strategy = state.sourceStrategy,
-									extraSearchParams = state.extraSearchParams,
-									configKey = state.configKey,
-									initialTargetSource = selection?.source,
-									initialTargetId = selection?.id,
-								),
-								false,
-							)
-						} else {
-							viewModel.toggleSelection(manga.id)
-						}
-					},
-					onMangaLongClick = { viewModel.toggleSelection(it.id) },
-				)
+						},
+						onMangaLongClick = { viewModel.toggleSelection(it.id) },
+					)
+				}
 			}
 		}
 	}
