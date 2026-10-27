@@ -76,12 +76,14 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 				.addTag(MigrationBatchWork.terminalTag(MigrationBatchStatus.INTERRUPTED))
 				.apply {
 					MigrationBatchWork.tags(
-						snapshot.mangaId,
-						snapshot.source,
-						markerGeneration,
-						markerBatch,
-						snapshot.outcome.destinationId,
-						snapshot.searchScope,
+						mangaId = snapshot.mangaId,
+						source = snapshot.source,
+						generation = markerGeneration,
+						batch = markerBatch,
+						destinationId = snapshot.outcome.destinationId,
+						searchScope = snapshot.searchScope,
+						discoveryMode = snapshot.discoveryMode,
+						configKey = snapshot.configKey,
 					).forEach { addTag(it) }
 				}
 				.build()
