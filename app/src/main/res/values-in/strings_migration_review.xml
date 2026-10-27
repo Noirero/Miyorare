@@ -15,15 +15,15 @@
     <string name="migration_loading_sources">Memuat source terpasang…</string>
     <string name="migration_source_list_failed">Daftar source terpasang tidak dapat dimuat. Pencarian belum dimulai.</string>
     <string name="migration_no_sources_available">Tidak ada source pengganti terpasang yang tersedia saat ini. Aktifkan atau pasang source, lalu coba lagi.</string>
-    <string name="migration_direct_choose_sources">Pilih source pencarian</string>
-    <string name="migration_direct_choose_sources_description">Pilih source terpasang yang benar-benar ingin dicari. Pilih semua jika ingin perilaku seperti Search Everywhere.</string>
+    <string name="migration_direct_choose_sources">Pilih source migrasi</string>
+    <string name="migration_direct_choose_sources_description">Pilih dan urutkan source terpasang yang dipakai untuk mencari pengganti. Setup yang sama dipakai untuk satu manga maupun batch.</string>
     <string name="migration_checked_choose_sources">Pilih source terpasang yang ingin dipakai untuk mencari pengganti.</string>
     <string name="migration_filter_sources">Filter source</string>
-    <string name="migration_select_all_visible">Pilih semua source yang terlihat</string>
-    <string name="migration_deselect_all_visible">Batalkan semua source yang terlihat</string>
+    <string name="migration_select_all_visible">Pilih semua source</string>
+    <string name="migration_deselect_all_visible">Pilih tidak ada</string>
     <string name="migration_sources_selected">%1$d source dipilih</string>
-    <string name="migration_searching_sources">Mencari di source terpasang yang dipilih…</string>
-    <string name="migration_searching_sources_progress">Mencari di source pilihan · %1$d/%2$d diperiksa</string>
+    <string name="migration_searching_sources">Mencari di source migrasi yang dipilih…</string>
+    <string name="migration_searching_sources_progress">Mencari di source migrasi · %1$d/%2$d diperiksa</string>
     <string name="migration_search_query">Mencari judul: %1$s</string>
     <string name="migration_verifying_candidates">Memverifikasi %1$d kemungkinan hasil sebelum migrasi…</string>
     <string name="migration_changed">Source atau pengganti berubah. Tinjau hasil terbaru sebelum melanjutkan.</string>
@@ -34,7 +34,7 @@
     <string name="migration_find_another_source">Tetap cari di source terpasang</string>
     <string name="migration_source_unavailable">Pengecekan tidak dapat membuktikan halaman yang bisa dibaca dari source saat ini.</string>
     <string name="migration_source_problem">Source saat ini tidak dapat menyediakan halaman yang bisa dibaca. Manga tetap disimpan selama Anda memilih pengganti.</string>
-    <string name="migration_fix_entry_prompt">Buka Migrasi Manga, lalu pilih apakah ingin memeriksa source saat ini terlebih dahulu atau langsung mencari di source terpasang.</string>
+    <string name="migration_fix_entry_prompt">Buka Migrasi Manga, pilih source tujuan, lalu biarkan Miyorare mencari pengganti.</string>
     <string name="migration_search_scope_title">Filter daftar source</string>
     <string name="migration_scope_all">ALL</string>
     <string name="migration_scope_store">Store</string>
@@ -48,13 +48,13 @@
     <string name="migration_change_sources">Ubah source</string>
     <string name="migration_change_result">Ganti hasil</string>
     <string name="migration_partial_provider_pool">Sebagian provider source tidak tersedia. Source yang berhasil dimuat tetap dapat dipilih.</string>
-    <string name="migration_partial_search">Sebagian source atau provider tidak tersedia. Hasil dari source pilihan yang merespons tetap dapat dipilih.</string>
+    <string name="migration_partial_search">Sebagian source atau provider tidak tersedia. Hasil dari source pilihan yang merespons tetap dapat digunakan.</string>
     <string name="migration_incomplete">Tidak ada source pilihan yang berhasil dicari. Ubah source atau coba lagi nanti.</string>
-    <string name="migration_ready">Pengganti dengan kecocokan kuat ditemukan. Anda dapat langsung memigrasikannya.</string>
+    <string name="migration_ready">Pengganti ditemukan. Tinjau atau migrasikan saat siap.</string>
     <string name="migration_review">Hasil pencarian ditemukan. Pilih manga yang Anda kenali.</string>
     <string name="migration_no_replacement">Tidak ditemukan hasil yang cocok pada source pilihan yang merespons. Manga tetap disimpan.</string>
     <string name="migration_preservation">Migrasi mempertahankan kategori koleksi, keanggotaan privat, riwayat/progres, bookmark, catatan/rating, pengaturan Reader, dan data tracker yang kompatibel. Tujuan yang dipilih dimuat ulang dan diverifikasi sebelum transfer. File unduhan tetap di tempatnya.</string>
-    <string name="migration_preserve_all_fixed">Semua data koleksi yang kompatibel selalu dipertahankan. Pengaman ini tidak dapat dimatikan dari Direct Search.</string>
+    <string name="migration_preserve_all_fixed">Semua data Miyorare yang kompatibel selalu dipertahankan saat penggantian source. Pengaman ini tidak dapat dimatikan.</string>
     <string name="migration_current_selection">Saat ini</string>
     <string name="migration_new_selection">Pengganti</string>
     <string name="migration_migrate">Migrasikan</string>
@@ -78,5 +78,24 @@
     <string name="migration_review_list">Tinjau manga</string>
     <plurals name="migration_review_sources"><item quantity="one">Tinjau %d source</item><item quantity="other">Tinjau %d source</item></plurals>
     <string name="manga_migration">Migrasi manga</string>
-    <string name="migration_review_description">Pilih source, lalu tinjau setiap manga dan penggantinya sebelum migrasi. Bukti kecocokan dan data yang dipertahankan ditampilkan untuk setiap manga. Source yang tidak tersedia mungkin memerlukan pemasangan ekstensi.</string>
+    <string name="migration_review_description">Pilih kelompok source dan manga yang ingin dimigrasikan, lalu gunakan satu setup migrasi yang sama untuk single maupun batch.</string>
+
+    <string name="migration_yokai_source_order_title">Source migrasi</string>
+    <string name="migration_yokai_source_order_description">Source yang dipilih dicoba sesuai urutan ini. Geser prioritas source ke atas atau bawah untuk mengubah urutan.</string>
+    <string name="migration_yokai_move_up">Naikkan</string>
+    <string name="migration_yokai_move_down">Turunkan</string>
+    <string name="migration_yokai_strategy_title">Strategi pengganti</string>
+    <string name="migration_yokai_strategy_first">Gunakan source pertama yang cocok</string>
+    <string name="migration_yokai_strategy_first_description">Coba source sesuai urutan pilihan dan berhenti saat manga yang cocok ditemukan.</string>
+    <string name="migration_yokai_strategy_most">Gunakan source dengan chapter terbanyak</string>
+    <string name="migration_yokai_strategy_most_description">Periksa source pilihan lalu utamakan manga yang cocok dengan jumlah chapter terbanyak.</string>
+    <string name="migration_yokai_extra_search">Parameter pencarian tambahan</string>
+    <string name="migration_yokai_extra_search_hint">Teks opsional yang ditambahkan setelah judul manga saat pencarian otomatis.</string>
+    <string name="migration_yokai_skip_setup">Lewati setup ini lain kali</string>
+    <string name="migration_yokai_skip_setup_description">Gunakan kembali source, urutan, dan strategi yang tersimpan secara otomatis saat Migrasi Manga dibuka lagi.</string>
+    <string name="migration_yokai_search_selected">Cari pengganti</string>
+    <string name="migration_yokai_search_selected_count">Cari pengganti untuk %1$d manga</string>
+    <string name="migration_yokai_manual_search">Cari manual</string>
+    <string name="migration_yokai_skip_manga">Lewati</string>
+    <string name="migration_yokai_source_failure">Satu source gagal; source lainnya tetap dilanjutkan.</string>
 </resources>
