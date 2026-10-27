@@ -149,11 +149,12 @@ class CoverImageView @JvmOverloads constructor(
 	fun setImageAsync(
 		coverUrl: String?,
 		manga: Manga?,
+		persistCover: Boolean = false,
 	) = enqueueRequest(
 		newRequestBuilder()
 			.data(coverUrl)
 			.mangaExtra(manga)
-			.stableMangaCoverKey(manga, coverUrl)
+			.stableMangaCoverKey(manga, coverUrl, persist = persistCover)
 			.build(),
 	)
 

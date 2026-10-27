@@ -11,10 +11,12 @@ import org.koitharu.kotatsu.databinding.ItemMangaListBinding
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 
 fun mangaListItemAD(
 	clickListener: MangaDetailsClickListener,
 	titleClickListener: OnListItemClickListener<MangaListModel>? = null,
+	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
 ) = adapterDelegateViewBinding<MangaCompactListModel, ListModel, ItemMangaListBinding>(
 	{ inflater, parent -> ItemMangaListBinding.inflate(inflater, parent, false) },
 ) {
@@ -38,7 +40,11 @@ fun mangaListItemAD(
 		}
 		binding.textViewSubtitle.textAndVisible = info.joinToString(" • ")
 		binding.imageViewPin.isVisible = item.isPinned
-		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
+		binding.imageViewCover.setImageAsync(
+			item.coverUrl,
+			item.manga,
+			persistCover = coverContext == ModernCoverContext.COLLECTION,
+		)
 		binding.badge.number = item.counter
 		binding.badge.isVisible = item.counter > 0
 		binding.imageViewContinue.isVisible = item.showContinueReading

@@ -62,6 +62,16 @@ fun TrackerCatalogScreen(
 	onCloseResolution: () -> Unit,
 	onGlobalSearch: () -> Unit,
 	onSource: (Manga) -> Unit,
+	account: CatalogAccountState = CatalogAccountState(state.service),
+	tracking: CatalogTrackingState = CatalogTrackingState(),
+	trackingEditor: CatalogTrackingEditorState = CatalogTrackingEditorState(),
+	knownTracking: Map<Long, CatalogTrackingEntry> = emptyMap(),
+	onLogin: () -> Unit = {},
+	onAddTracking: () -> Unit = {},
+	onSaveTracking: (CatalogTrackingDraft) -> Unit = {},
+	onCloseTrackingEditor: () -> Unit = {},
+	onRemoveTracking: () -> Unit = {},
+	onManageTracking: () -> Unit = {},
 ) {
 	val palette = LocalMiyorareVisualPalette.current
 	val scaffoldColor = if (palette.isModern) Color.Transparent else MaterialTheme.colorScheme.background
@@ -82,9 +92,23 @@ fun TrackerCatalogScreen(
 		},
 	) { padding ->
 		if (state.mode == CatalogScreenMode.DETAILS) {
-			CatalogDetailsContent(state, imageLoader, onRetry, onItem, onProviderPage, onRead, Modifier.padding(padding))
+			CatalogDetailsContent(
+				state = state,
+				imageLoader = imageLoader,
+				onRetry = onRetry,
+				onItem = onItem,
+				onProviderPage = onProviderPage,
+				onRead = onRead,
+				account = account,
+				tracking = tracking,
+				knownTracking = knownTracking,
+				onLogin = onLogin,
+				onAddTracking = onAddTracking,
+				onManageTracking = onManageTracking,
+				modifier = Modifier.padding(padding),
+			)
 		} else {
-			CatalogListingContent(state, imageLoader, onQuery, onSearch, onFilter, onRetry, onNext, onItem, Modifier.padding(padding))
+			CatalogListingContent(state, imageLoader, onQuery, onSearch, onFilter, onRetry, onNext, onItem, knownTracking, Modifier.padding(padding))
 		}
 	}
 
@@ -129,6 +153,16 @@ fun TrackerCatalogScreen(
 			}
 		}
 	}
+
+	CatalogTrackingEditorSheet(
+		account = account,
+		editor = trackingEditor,
+		onDismiss = onCloseTrackingEditor,
+		onSave = onSaveTracking,
+		onReconnect = onLogin,
+		onOpenProvider = onProviderPage,
+		onRemove = onRemoveTracking,
+	)
 }
 
 @Composable
@@ -141,6 +175,7 @@ private fun CatalogListingContent(
 	onRetry: () -> Unit,
 	onNext: () -> Unit,
 	onItem: (TrackerCatalogKey) -> Unit,
+	knownTracking: Map<Long, CatalogTrackingEntry>,
 	modifier: Modifier = Modifier,
 ) {
 	Column(modifier.fillMaxSize()) {
@@ -181,7 +216,14 @@ private fun CatalogListingContent(
 					)
 				}
 			}
-			items(state.items, key = { it.key.stableId }) { item -> CatalogCard(item, imageLoader, { onItem(item.key) }) }
+			items(state.items, key = { it.key.stableId }) { item ->
+				CatalogTrackedCard(
+					item = item,
+					imageLoader = imageLoader,
+					tracking = item.key.remoteId.toLongOrNull()?.let { knownTracking[it] },
+					onClick = { onItem(item.key) },
+				)
+			}
 			if (state.loadingMore) {
 				item(span = { GridItemSpan(maxLineSpan) }) { CatalogLoading() }
 			} else if (state.nextPage != null) {
@@ -204,6 +246,12 @@ private fun CatalogDetailsContent(
 	onItem: (TrackerCatalogKey) -> Unit,
 	onProviderPage: () -> Unit,
 	onRead: () -> Unit,
+	account: CatalogAccountState,
+	tracking: CatalogTrackingState,
+	knownTracking: Map<Long, CatalogTrackingEntry>,
+	onLogin: () -> Unit,
+	onAddTracking: () -> Unit,
+	onManageTracking: () -> Unit,
 	modifier: Modifier = Modifier,
 ) {
 	LazyColumn(
@@ -226,6 +274,15 @@ private fun CatalogDetailsContent(
 						fontWeight = FontWeight.SemiBold,
 					)
 				}
+			}
+			item {
+				CatalogTrackingCard(
+					account = account,
+					tracking = tracking,
+					onLogin = onLogin,
+					onEdit = onAddTracking,
+					onManage = onManageTracking,
+				)
 			}
 			if (details.item.providerUrl != null) item {
 				OutlinedButton(onClick = onProviderPage, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("catalog_provider_page")) {
@@ -270,13 +327,24 @@ private fun CatalogDetailsContent(
 			if (details.alternativeTitles.isNotEmpty()) item {
 				MetadataBlock(stringResource(R.string.hub_alternative_titles), details.alternativeTitles.joinToString("\n"))
 			}
-			if (details.staff.isNotEmpty()) item { MetadataBlock(stringResource(R.string.hub_staff), details.staff.joinToString("\n")) }
+			if (details.characters.isNotEmpty() || details.staffPeople.isNotEmpty() || details.relatedWorks.isNotEmpty()) item {
+				CatalogSupplementalDetails(details, imageLoader, onItem)
+			}
+			if (details.staffPeople.isEmpty() && details.staff.isNotEmpty()) item {
+				MetadataBlock(stringResource(R.string.hub_staff), details.staff.joinToString("\n"))
+			}
 			if (details.recommendations.isNotEmpty()) item {
 				Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 					Text(stringResource(R.string.hub_recommendations), style = MaterialTheme.typography.titleMedium)
 					LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 						items(details.recommendations, key = { it.key.stableId }) { item ->
-							CatalogCard(item, imageLoader, { onItem(item.key) }, Modifier.width(136.dp))
+							CatalogTrackedCard(
+								item = item,
+								imageLoader = imageLoader,
+								tracking = item.key.remoteId.toLongOrNull()?.let { knownTracking[it] },
+								onClick = { onItem(item.key) },
+								modifier = Modifier.width(136.dp),
+							)
 						}
 					}
 				}

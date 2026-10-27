@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_mangabaka_loading_personal">Loading your MangaBaka library…</string>
+    <string name="hub_mangabaka_my_library">My MangaBaka Library</string>
+    <string name="hub_mangabaka_library_empty">Your MangaBaka library has no titles matching this filter.</string>
+    <string name="hub_mangabaka_for_you">For You</string>
+    <string name="hub_mangabaka_for_you_subtitle">Recommendations from your MangaBaka library</string>
+    <string name="hub_mangabaka_personal_partial">Some personalized MangaBaka content could not be refreshed. Your library is still shown when available.</string>
+    <string name="hub_mangabaka_spotlight">MangaBaka Spotlight</string>
+    <string name="hub_mangabaka_rising">Rising in libraries</string>
+    <string name="hub_mangabaka_hidden_gems">Hidden Gems</string>
+    <string name="hub_mangabaka_new_releases">New Releases</string>
+    <string name="hub_mangabaka_explore_type">Explore MangaBaka by type</string>
+    <string name="hub_mangabaka_explore_failed">Couldn’t load this MangaBaka type. Tap the type again to retry.</string>
+    <string name="hub_mangabaka_session_expired">Your MangaBaka session expired. Reconnect to refresh your library.</string>
+    <string name="hub_mangabaka_personal_error">Couldn’t refresh your MangaBaka library. Public discovery is still available below.</string>
+    <string name="hub_mangabaka_type_manhwa">Manhwa</string>
+    <string name="hub_mangabaka_type_manhua">Manhua</string>
+    <string name="hub_mangabaka_type_oel">OEL</string>
+    <string name="hub_mangabaka_type_other">Other</string>
+</resources>

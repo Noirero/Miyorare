@@ -20,7 +20,12 @@ object DiscoveryCatalogModule {
 	fun sourceResolver(resolver: CatalogSourceResolver): CatalogSourceResolution = resolver
 	@Provides @Singleton
 	fun repository(http: CatalogHttp, @ApplicationContext context: Context): TrackerCatalogRepository = TrackerCatalogRepository(
-		setOf(AniListCatalogProvider(http), MALCatalogProvider(http, context.getString(R.string.mal_clientId)), KitsuCatalogProvider(http)),
+		setOf(
+			AniListCatalogProvider(http),
+			MALCatalogProvider(http, context.getString(R.string.mal_clientId)),
+			KitsuCatalogProvider(http),
+			MangaBakaCatalogProvider(http),
+		),
 		FileCatalogSnapshotStore(File(context.cacheDir, "tracker-discovery-v1")),
 	)
 }

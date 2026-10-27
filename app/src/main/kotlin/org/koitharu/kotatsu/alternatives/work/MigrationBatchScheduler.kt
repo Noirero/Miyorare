@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.alternatives.work
 
 import androidx.work.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -43,6 +44,66 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 		true
 	}
 
+	/**
+	 * Execute one manual Migrate/Copy through the same durable worker path as bulk execution and
+	 * await this exact WorkRequest rather than inferring completion from an older session snapshot.
+	 */
+	suspend fun enqueueAndAwait(request: MigrationBatchRequest): MigrationBatchSnapshot? {
+		val task = schedulingMutex.withLock {
+			val existing = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
+			if (existing.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) }) return@withLock null
+			val previous = existing.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
+			check(previous < Long.MAX_VALUE)
+			val generation = previous + 1L
+			val batchName = "${MigrationBatchWork.TAG}:manual:${UUID.randomUUID()}"
+			OneTimeWorkRequestBuilder<MigrationBatchWorker>()
+				.setInputData(MigrationBatchWork.input(request))
+				.setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+				.keepResultsForAtLeast(30, TimeUnit.DAYS)
+				.apply { MigrationBatchWork.tags(request, generation, batchName).forEach { addTag(it) } }
+				.build()
+				.also { workManager.beginUniqueWork(batchName, ExistingWorkPolicy.KEEP, it).enqueue().await() }
+		} ?: return null
+		val finished = checkNotNull(
+			workManager.getWorkInfoByIdFlow(task.id).first { it?.state?.isFinished == true },
+		)
+		return MigrationBatchWork.snapshot(finished)
+	}
+
+	/** Persist Yokai's per-item Skip as a new session outcome without requiring network access. */
+	suspend fun markSkipped(
+		mangaId: Long,
+		source: String,
+		configKey: String,
+		discoveryMode: MigrationBatchDiscoveryMode = MigrationBatchDiscoveryMode.YOKAI,
+	): Boolean = schedulingMutex.withLock {
+		val existing = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
+		if (existing.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) }) return@withLock false
+		val previous = existing.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
+		check(previous < Long.MAX_VALUE)
+		val generation = previous + 1L
+		val batchName = "${MigrationBatchWork.TAG}:skip:${UUID.randomUUID()}"
+		val marker = OneTimeWorkRequestBuilder<MigrationBatchCancellationMarkerWorker>()
+			.setInputData(MigrationBatchWork.output(MigrationBatchOutcome(MigrationBatchStatus.SKIPPED)))
+			.keepResultsForAtLeast(30, TimeUnit.DAYS)
+			.apply {
+				MigrationBatchWork.tags(
+					mangaId = mangaId,
+					source = source,
+					generation = generation,
+					batch = batchName,
+					discoveryMode = discoveryMode,
+					configKey = configKey,
+				).forEach { addTag(it) }
+			}
+			.build()
+		workManager.enqueue(marker).await()
+		val finished = checkNotNull(
+			workManager.getWorkInfoByIdFlow(marker.id).first { it?.state?.isFinished == true },
+		)
+		finished.state == WorkInfo.State.SUCCEEDED
+	}
+
 	suspend fun cancel(batchName: String) = schedulingMutex.withLock {
 		require(batchName.startsWith(MigrationBatchWork.TAG + ":"))
 		val before = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
@@ -76,11 +137,14 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 				.addTag(MigrationBatchWork.terminalTag(MigrationBatchStatus.INTERRUPTED))
 				.apply {
 					MigrationBatchWork.tags(
-						snapshot.mangaId,
-						snapshot.source,
-						markerGeneration,
-						markerBatch,
-						snapshot.outcome.destinationId,
+						mangaId = snapshot.mangaId,
+						source = snapshot.source,
+						generation = markerGeneration,
+						batch = markerBatch,
+						destinationId = snapshot.outcome.destinationId,
+						searchScope = snapshot.searchScope,
+						discoveryMode = snapshot.discoveryMode,
+						configKey = snapshot.configKey,
 					).forEach { addTag(it) }
 				}
 				.build()

@@ -2,9 +2,11 @@ package org.koitharu.kotatsu.alternatives.domain
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -14,6 +16,7 @@ import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
+import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -41,6 +44,7 @@ class AlternativesUseCase @Inject constructor(
 	private val searchHelperFactory: SearchV2Helper.Factory,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val historyRepository: HistoryRepository,
+	private val mihonExtensionManager: MihonExtensionManager,
 ) {
 
 	fun hasPinnedSources(): Boolean = sourcesRepository.getPinnedSources().isNotEmpty()
@@ -69,6 +73,45 @@ class AlternativesUseCase @Inject constructor(
 			.distinct()
 			.sorted()
 			.toList()
+	}
+
+	/**
+	 * Migration-only source pool. Runtime families are loaded independently and only when they can
+	 * serve the current content domain, so an irrelevant provider failure never poisons repair.
+	 * Legacy callers exclude the current source; Yokai-style setup can request the complete enabled
+	 * pool so its one-source exception behaves like the reference implementation.
+	 */
+	suspend fun getMigrationSourcePool(
+		manga: Manga,
+		excludeCurrent: Boolean = true,
+	): MigrationSourcePool = coroutineScope {
+		val isNovel = manga.isNovelContent
+		val results = buildList {
+			add(async {
+				runCatchingCancellable {
+					mihonExtensionManager.ensureReady()
+					sourcesRepository.observeMihonSources().first().map { it as MangaSource }
+				}
+			})
+			if (isNovel) {
+				add(async { runCatchingCancellable { sourcesRepository.getLnSources().map { it as MangaSource } } })
+			} else {
+				add(async { runCatchingCancellable { sourcesRepository.getTsukiSources().map { it as MangaSource } } })
+				add(async { runCatchingCancellable { sourcesRepository.getKotatsuSources().map { it as MangaSource } } })
+			}
+		}.awaitAll()
+		val merged = mergeMigrationProviderResults(results)
+		MigrationSourcePool(
+			allSources = merged.values
+				.asSequence()
+				.filter { source ->
+					source.isNovelContentSource == isNovel && (!excludeCurrent || source.name != manga.source.name)
+				}
+				.distinctBy(MangaSource::name)
+				.sortedBy { it.name }
+				.toList(),
+			providerFailureCount = merged.failureCount,
+		)
 	}
 
 	suspend fun getSources(
@@ -121,6 +164,67 @@ class AlternativesUseCase @Inject constructor(
 		val query = title.trim()
 		require(query.isNotEmpty())
 		return searchSources(query, getSources(isNovel, null, mode, preferredLanguages), null, MAX_DETAIL_CANDIDATES)
+	}
+
+	/**
+	 * Search-Everywhere-style migration discovery. Each source gets one primary query. Optional
+	 * alias queries are tried only when that source returned no primary result. Raw results are
+	 * published immediately; detail/page validation remains execution-time work.
+	 */
+	fun searchInstalledSourcesDirect(
+		queries: List<String>,
+		sources: List<MangaSource>,
+		excluded: Pair<MangaSource, Long>? = null,
+	): Flow<AlternativeSearchEvent> {
+		val normalizedQueries = queries.asSequence().map(String::trim).filter(String::isNotEmpty).distinct().toList()
+		if (normalizedQueries.isEmpty() || sources.isEmpty()) return emptyFlow()
+		val sourceSemaphore = Semaphore(MAX_PARALLEL_SOURCES)
+		return channelFlow {
+			for (source in sources) {
+				launch {
+					var sourceError: Throwable? = null
+					for (query in normalizedQueries) {
+						val searchResult = runCatchingCancellable {
+							sourceSemaphore.withPermit {
+								searchHelperFactory.create(source)(query, SearchKind.TITLE)?.manga
+							}
+						}
+						val list = searchResult.getOrElse { error ->
+							sourceError = error
+							emptyList()
+						}
+						val results = list.orEmpty()
+							.asSequence()
+							.filter { excluded == null || it.source != excluded.first || it.id != excluded.second }
+							.distinctBy { it.dedupeKey() }
+							.toList()
+						if (results.isNotEmpty()) {
+							for (result in results) send(AlternativeSearchEvent.Result(result))
+							sourceError = null
+							break
+						}
+					}
+					send(AlternativeSearchEvent.SourceFinished(source, sourceError))
+				}
+			}
+		}
+	}
+
+	/**
+	 * Execution-time destination refresh. Search the selected source without truncating its raw list,
+	 * find the exact source/id first, and only then fetch details for that one approved candidate.
+	 */
+	suspend fun refreshExactCandidate(
+		query: String,
+		source: MangaSource,
+		candidateId: Long,
+	): Result<Manga?> = runCatchingCancellable {
+		val normalizedQuery = query.trim()
+		if (normalizedQuery.isEmpty()) return@runCatchingCancellable null
+		val raw = searchHelperFactory.create(source)(normalizedQuery, SearchKind.TITLE)?.manga.orEmpty()
+		val candidate = raw.firstOrNull { it.source.name == source.name && it.id == candidateId }
+			?: return@runCatchingCancellable null
+		mangaRepositoryFactory.create(source).getDetails(candidate)
 	}
 
 	private fun searchSources(

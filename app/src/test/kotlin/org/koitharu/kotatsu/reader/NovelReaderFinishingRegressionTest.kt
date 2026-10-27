@@ -59,11 +59,36 @@ class NovelReaderFinishingRegressionTest {
 	}
 
 	@Test
-	fun `novel finishing does not bundle an on-device translation sdk`() {
+	fun `novel built in translation does not bundle a translation runtime`() {
 		val gradle = projectFile("app/build.gradle").readText().lowercase()
+		val engine = source("org/koitharu/kotatsu/reader/ui/epub/translation/MiyorareBuiltInTranslationEngine.kt")
 
 		assertFalse(gradle.contains("com.google.mlkit:translate"))
+		assertFalse(gradle.contains("com.google.mlkit:language-id"))
+		assertTrue(gradle.contains("com.google.android.gms:play-services-mlkit-language-id:17.0.0"))
 		assertFalse(gradle.contains("tensorflow-lite-task-text"))
+		assertTrue(engine.contains("TranslationManager"))
+		assertTrue(engine.contains("getOnDeviceTranslationCapabilities"))
+		assertTrue(engine.contains("createOnDeviceTranslator"))
+		assertTrue(engine.contains("CancellationSignal"))
+		assertTrue(engine.contains("TranslationRequestValue.forText"))
+		assertFalse(engine.contains("com.google.mlkit.nl.translate"))
+		assertFalse(engine.contains("downloadModelIfNeeded"))
+	}
+
+	@Test
+	fun `system built in translation has no provider branding overlay or silent web fallback`() {
+		val controller = source("org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationDialogController.kt")
+		val engine = source("org/koitharu/kotatsu/reader/ui/epub/translation/MiyorareBuiltInTranslationEngine.kt")
+		val layout = projectFile("app/src/main/res/layout/fragment_reader_epub.xml").readText()
+		val strings = projectFile("app/src/main/res/values/strings_novel_translation_hub.xml").readText()
+
+		assertFalse(controller.contains("GoogleTranslate"))
+		assertFalse(controller.contains("translate.google.com"))
+		assertFalse(layout.contains("BuiltInTranslationAttributionView"))
+		assertFalse(strings.contains("powered by Google Translate"))
+		assertTrue(controller.contains("MiyorareBuiltInTranslationSupport.settingsPendingIntent"))
+		assertFalse(engine.contains("MiyorareOnlineTranslationEngine"))
 	}
 
 	private fun source(relativePath: String): String {

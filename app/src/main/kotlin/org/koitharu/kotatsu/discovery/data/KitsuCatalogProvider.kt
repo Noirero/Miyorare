@@ -20,7 +20,17 @@ internal const val KITSU_CATALOG_FIELDS = "canonicalTitle,titles,posterImage,sub
 
 class KitsuCatalogProvider(private val http: CatalogHttp) : TrackerCatalogProvider {
 	override val catalogService = ScrobblerService.KITSU
-	override val catalogCapabilities = setOf(CatalogCapability.HOME, CatalogCapability.SEARCH, CatalogCapability.DETAILS, CatalogCapability.SECTION_PAGING, CatalogCapability.MANGA, CatalogCapability.NOVEL, CatalogCapability.STAFF)
+	override val catalogCapabilities = setOf(
+		CatalogCapability.HOME,
+		CatalogCapability.SEARCH,
+		CatalogCapability.DETAILS,
+		CatalogCapability.SECTION_PAGING,
+		CatalogCapability.MANGA,
+		CatalogCapability.NOVEL,
+		CatalogCapability.STAFF,
+		CatalogCapability.CHARACTERS,
+		CatalogCapability.RELATIONS,
+	)
 	private val sectionTypes = listOf(CatalogSectionType.TRENDING, CatalogSectionType.POPULAR, CatalogSectionType.TOP_RATED)
 
 	override suspend fun home(filter: CatalogFilter, allowAdult: Boolean): TrackerCatalogHome = coroutineScope {
@@ -58,24 +68,64 @@ class KitsuCatalogProvider(private val http: CatalogHttp) : TrackerCatalogProvid
 		return parsePage(root, kind, allowAdult, page)
 	}
 
-	override suspend fun details(key: TrackerCatalogKey, allowAdult: Boolean): TrackerCatalogDetails {
+	override suspend fun details(key: TrackerCatalogKey, allowAdult: Boolean): TrackerCatalogDetails = coroutineScope {
 		require(key.service == catalogService)
 		val root = request("https://kitsu.app/api/edge/manga/${key.remoteId}".toHttpUrl().newBuilder().addQueryParameter("include", "categories").build())
 		val record = root.obj("data") ?: invalidCatalog()
 		val item = parseKitsuCard(record, allowAdult) ?: throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
 		if (item.key != key) invalidCatalog()
 		val attrs = record.obj("attributes") ?: invalidCatalog()
-		var partial = false
-		val staff = try {
-			val target = TrackerTarget(catalogService, key.remoteId)
-			val people = kitsuPeople(request(kitsuDetailsUrl(target, TrackerContent.STAFF, TrackerPage())), target, TrackerContent.STAFF, TrackerPage())
-			when (people) { is TrackerResult.Success -> people.items; is TrackerResult.Partial -> { partial = true; people.items }; else -> emptyList() }.map { (listOf(it.name) + it.roles).joinToString(" · ") }
-		} catch (e: CancellationException) { throw e } catch (_: Exception) { partial = true; emptyList() }
-		return TrackerCatalogDetails(item, attrs.obj("titles")?.values.orEmpty().mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf(String::isNotBlank) }.distinct(),
-			attrs.text("synopsis") ?: attrs.text("description"), if (allowAdult || item.adult != null) catalogUrl(attrs.obj("coverImage")?.text("large")) else null,
-			root.array("included").orEmpty().filterIsInstance<JsonObject>().filter { it.text("type") == "categories" }.mapNotNull { it.obj("attributes")?.text("title") }, staff,
-			attrs.text("status"), attrs.text("startDate"), attrs.catalogInt("ratingRank"), attrs.catalogInt("popularityRank"), partial = partial)
+		val target = TrackerTarget(catalogService, key.remoteId)
+		val charactersDeferred = async { loadPeople(target, TrackerContent.CHARACTERS) }
+		val staffDeferred = async { loadPeople(target, TrackerContent.STAFF) }
+		val relationsDeferred = async { loadRelations(key.remoteId, allowAdult) }
+		val characters = charactersDeferred.await()
+		val staffPeople = staffDeferred.await()
+		val relations = relationsDeferred.await()
+		val partial = characters.partial || staffPeople.partial || relations.partial
+		TrackerCatalogDetails(
+			item = item,
+			alternativeTitles = attrs.obj("titles")?.values.orEmpty().mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf(String::isNotBlank) }.distinct(),
+			description = attrs.text("synopsis") ?: attrs.text("description"),
+			bannerUrl = if (allowAdult || item.adult != null) catalogUrl(attrs.obj("coverImage")?.text("large")) else null,
+			genres = root.array("included").orEmpty().filterIsInstance<JsonObject>().filter { it.text("type") == "categories" }.mapNotNull { it.obj("attributes")?.text("title") },
+			staff = staffPeople.items.map { (listOf(it.name) + it.roles).joinToString(" · ") },
+			status = attrs.text("status"),
+			startDate = attrs.text("startDate"),
+			rank = attrs.catalogInt("ratingRank"),
+			popularity = attrs.catalogInt("popularityRank"),
+			partial = partial,
+			characters = characters.items,
+			staffPeople = staffPeople.items,
+			relatedWorks = relations.items,
+		)
 	}
+
+	private suspend fun loadPeople(target: TrackerTarget, content: TrackerContent): CatalogSupplementalResult<TrackerCatalogPerson> = try {
+		val page = TrackerPage()
+		catalogPeople(kitsuPeople(request(kitsuDetailsUrl(target, content, page)), target, content, page))
+	} catch (e: CancellationException) {
+		throw e
+	} catch (_: Exception) {
+		CatalogSupplementalResult(emptyList(), partial = true)
+	}
+
+	private suspend fun loadRelations(id: String, allowAdult: Boolean): CatalogSupplementalResult<TrackerCatalogRelatedWork> = try {
+		val root = request(relationsUrl(id))
+		val next = root.obj("links")?.let { links -> links.text("next") ?: links.obj("next")?.text("href") }
+		CatalogSupplementalResult(kitsuCatalogRelatedWorks(root, allowAdult), partial = next != null)
+	} catch (e: CancellationException) {
+		throw e
+	} catch (_: Exception) {
+		CatalogSupplementalResult(emptyList(), partial = true)
+	}
+
+	private fun relationsUrl(id: String): HttpUrl = "https://kitsu.app/api/edge/media-relationships".toHttpUrl().newBuilder()
+		.addQueryParameter("filter[sourceType]", "Manga")
+		.addQueryParameter("filter[sourceId]", id)
+		.addQueryParameter("include", "destination")
+		.addQueryParameter("page[limit]", "20")
+		.build()
 
 	private fun listUrl(kind: CatalogMediaKind?, adult: Boolean, page: Int, size: Int): HttpUrl.Builder = "https://kitsu.app/api/edge/manga".toHttpUrl().newBuilder().apply {
 		addQueryParameter("page[limit]", size.toString()); addQueryParameter("page[offset]", ((page - 1) * size).toString())

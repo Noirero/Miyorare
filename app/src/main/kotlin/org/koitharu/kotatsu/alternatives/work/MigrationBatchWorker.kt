@@ -16,7 +16,16 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.alternatives.domain.*
+import org.koitharu.kotatsu.alternatives.domain.AutoFixUseCase
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchOutcome
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchPolicy
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
+import org.koitharu.kotatsu.alternatives.domain.MigrationDiscovery
+import org.koitharu.kotatsu.alternatives.domain.MigrationExecutionMode
+import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationExecutionUseCase
+import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationSearchUseCase
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.settings.SettingsActivity
@@ -26,6 +35,8 @@ class MigrationBatchWorker @AssistedInject constructor(
 	@Assisted context: Context,
 	@Assisted parameters: WorkerParameters,
 	private val autoFix: AutoFixUseCase,
+	private val yokaiSearch: YokaiStyleMigrationSearchUseCase,
+	private val yokaiExecute: YokaiStyleMigrationExecutionUseCase,
 	private val database: MangaDatabase,
 ) : CoroutineWorker(context, parameters) {
 	override suspend fun doWork(): Result {
@@ -34,16 +45,62 @@ class MigrationBatchWorker @AssistedInject constructor(
 		setProgress(MigrationBatchWork.output(MigrationBatchOutcome(
 			if (request.action == MigrationBatchAction.CHECK) MigrationBatchStatus.CHECKING else MigrationBatchStatus.MIGRATING,
 		)))
-		val outcome = MigrationBatchPolicy.process(request,
+		val outcome = MigrationBatchPolicy.process(
+			request = request,
 			canAccess = {
 				database.getMangaDao().isMigrationEntryVisible(request.mangaId) &&
 					database.getMangaDao().find(request.mangaId)?.manga?.source == request.source
 			},
-			discover = { autoFix.discover(request.mangaId) },
-			migrate = { selection -> autoFix.migrateSelected(request.mangaId, selection, reviewed = false) },
+			discover = {
+				val onProgress: suspend (MigrationDiscovery) -> Unit = { discovery ->
+					setProgress(MigrationBatchWork.output(
+						MigrationBatchOutcome(MigrationBatchStatus.CHECKING),
+						discovery.progress,
+					))
+				}
+				when (request.discoveryMode) {
+					MigrationBatchDiscoveryMode.YOKAI -> yokaiSearch(
+						mangaId = request.mangaId,
+						selectedSourceNames = request.selectedSourceNames,
+						strategy = request.sourceStrategy,
+						extraSearchParams = request.extraSearchParams,
+						onProgress = onProgress,
+					)
+					MigrationBatchDiscoveryMode.CHECK_CURRENT ->
+						autoFix.discover(request.mangaId, request.searchScope, onProgress)
+					MigrationBatchDiscoveryMode.DIRECT_SEARCH ->
+						autoFix.searchReplacements(
+							mangaId = request.mangaId,
+							searchScope = request.searchScope,
+							directSearch = true,
+							revealAllCandidates = false,
+							onProgress = onProgress,
+						)
+				}
+			},
+			migrate = { selection ->
+				when (request.discoveryMode) {
+					MigrationBatchDiscoveryMode.YOKAI -> yokaiExecute(
+						request.mangaId,
+						selection,
+						MigrationExecutionMode.MIGRATE,
+					)
+					MigrationBatchDiscoveryMode.CHECK_CURRENT,
+					MigrationBatchDiscoveryMode.DIRECT_SEARCH -> autoFix.migrateSelected(
+						request.mangaId,
+						selection,
+						reviewed = false,
+						allowReadableSource = request.discoveryMode == MigrationBatchDiscoveryMode.DIRECT_SEARCH,
+					)
+				}
+			},
+			copy = { selection ->
+				check(request.discoveryMode == MigrationBatchDiscoveryMode.YOKAI) {
+					"Copy is only supported by the Yokai migration session"
+				}
+				yokaiExecute(request.mangaId, selection, MigrationExecutionMode.COPY)
+			},
 		)
-		// ERROR/INCOMPLETE/REVIEW are explicit item outcomes, not a claim that migration succeeded.
-		// Completing this work item lets later independent manga continue after a partial failure.
 		return Result.success(MigrationBatchWork.output(outcome))
 	}
 
@@ -54,7 +111,6 @@ class MigrationBatchWorker @AssistedInject constructor(
 			NotificationChannelCompat.Builder(channel, NotificationManagerCompat.IMPORTANCE_LOW)
 				.setName(title).setShowBadge(false).setVibrationEnabled(false).setSound(null, null).build(),
 		)
-		// Always generic and secret: membership can become Private while a batch is running.
 		val notification = NotificationCompat.Builder(applicationContext, channel)
 			.setContentTitle(title).setSmallIcon(R.drawable.general_notification)
 			.setVisibility(NotificationCompat.VISIBILITY_SECRET).setSilent(true).setOngoing(true)
@@ -69,11 +125,6 @@ class MigrationBatchWorker @AssistedInject constructor(
 	}
 }
 
-/**
- * Durable WorkManager record used for explicit terminal cancellation state.
- * The scheduler keeps terminal markers blocked behind one delayed sentinel so a fresh WorkManager
- * process cannot prune never-started cancellation identities before the UI reconstructs them.
- */
 class MigrationBatchCancellationMarkerWorker(
 	context: Context,
 	parameters: WorkerParameters,

@@ -13,6 +13,7 @@ import kotlinx.coroutines.runInterruptible
 import okhttp3.Cache
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.image.MiyorareImageDiskCache
+import org.koitharu.kotatsu.core.image.StoredMangaCoverStore
 import org.koitharu.kotatsu.core.network.cookies.MutableCookieJar
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -43,6 +44,7 @@ class DataCleanupSettingsViewModel @Inject constructor(
     private val mangaDataRepositoryProvider: Provider<MangaDataRepository>,
     private val coil: ImageLoader,
     private val imageDiskCache: MiyorareImageDiskCache,
+    private val storedMangaCoverStore: StoredMangaCoverStore,
     private val smartLocalCoverCache: SmartLocalCoverCache,
 ) : BaseViewModel() {
 
@@ -76,7 +78,7 @@ class DataCleanupSettingsViewModel @Inject constructor(
             }
         }
         launchJob(Dispatchers.IO) {
-            coverCacheSize.value = imageDiskCache.coverSize + smartLocalCoverCache.size()
+            coverCacheSize.value = coverStorageSize()
         }
         launchJob(Dispatchers.Default) {
             httpCacheSize.value = runInterruptible { httpCache.size() }
@@ -111,13 +113,17 @@ class DataCleanupSettingsViewModel @Inject constructor(
                 // Memory entries can otherwise keep a just-cleared cover visible until eviction.
                 coil.memoryCache?.clear()
                 imageDiskCache.clearCovers()
+                storedMangaCoverStore.clear()
                 smartLocalCoverCache.clear()
-                coverCacheSize.value = imageDiskCache.coverSize + smartLocalCoverCache.size()
+                coverCacheSize.value = coverStorageSize()
             } finally {
                 loadingKeys.update { it - KEY_COVER_CACHE_CLEAR }
             }
         }
     }
+
+    private suspend fun coverStorageSize(): Long =
+        imageDiskCache.coverSize + storedMangaCoverStore.size() + smartLocalCoverCache.size()
 
     fun clearHttpCache() {
         launchJob(Dispatchers.Default) {

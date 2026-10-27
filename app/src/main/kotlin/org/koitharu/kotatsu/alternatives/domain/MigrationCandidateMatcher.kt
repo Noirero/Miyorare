@@ -46,11 +46,38 @@ data class MigrationMatchAssessment(
 	val candidates: List<MigrationMatchCandidate>,
 )
 
+private val LEADING_MIGRATION_DECORATOR = Regex(
+	"""^\s*(?:\[[^\]\r\n]{1,40}]|\([^\)\r\n]{1,40}\)|\{[^}\r\n]{1,40}\}|【[^】\r\n]{1,40}】|（[^）\r\n]{1,40}）)\s*[-–—:|·]*\s*""",
+)
+
+internal fun migrationTitleVariants(value: String): List<String> {
+	val original = value.trim()
+	if (original.isEmpty()) return emptyList()
+	var cleaned = original
+	var stripped = 0
+	while (stripped < 3) {
+		val match = LEADING_MIGRATION_DECORATOR.find(cleaned) ?: break
+		val next = cleaned.removeRange(match.range).trim()
+		if (next.isEmpty() || next == cleaned) break
+		cleaned = next
+		stripped++
+	}
+	return if (cleaned == original) listOf(original) else listOf(original, cleaned)
+}
+
+internal fun normalizeMigrationTitle(value: String): String {
+	val decomposed = Normalizer.normalize(value.trim().lowercase(), Normalizer.Form.NFD)
+	return buildString(decomposed.length) {
+		for (char in decomposed) {
+			if (char.isLetterOrDigit()) append(char)
+		}
+	}
+}
+
 /**
- * Identity authority for broken-source migration candidates.
- *
- * Search relevance only discovers candidates. Automatic migration requires corroborating identity
- * evidence and a clear winner; title equality by itself is deliberately insufficient.
+ * Ranks candidates returned by installed-source search so review UI can stay transparent.
+ * Automatic migration remains stricter: it still needs corroborating identity evidence and a clear winner.
+ * Synthetic candidates without search provenance still need minimum identity credibility.
  */
 @Reusable
 class MigrationCandidateMatcher @Inject constructor() {
@@ -87,13 +114,13 @@ class MigrationCandidateMatcher @Inject constructor() {
 						compareByDescending<Manga> { it.chapters.orEmpty().size }
 							.thenByDescending { it.authors.size }
 							.thenByDescending { it.altTitles.size }
-							.thenBy { normalize(it.title) }
+							.thenBy { normalizeMigrationTitle(it.title) }
 							.thenBy { it.publicUrl },
 					)
 					.first()
 				val matchedQueries = group.flatMapTo(sortedSetOf()) { it.matchedQueries }
 				val evidence = score(seed, representative, matchedQueries)
-				if (!isCredible(evidence)) return@mapNotNull null
+				if (matchedQueries.isEmpty() && !isCredible(evidence)) return@mapNotNull null
 				MigrationMatchCandidate(representative, matchedQueries, evidence)
 			}
 			.sortedWith(
@@ -103,7 +130,7 @@ class MigrationCandidateMatcher @Inject constructor() {
 					.thenByDescending { it.evidence.strongChapterMatch }
 					.thenBy { it.manga.source.name }
 					.thenBy { it.manga.id }
-					.thenBy { normalize(it.manga.title) },
+					.thenBy { normalizeMigrationTitle(it.manga.title) },
 			)
 	}
 
@@ -118,7 +145,7 @@ class MigrationCandidateMatcher @Inject constructor() {
 		val titleSimilarity = bestTitleSimilarity(seedTitles, candidateTitles)
 		val matchedSeedQuery = matchedQueries
 			.asSequence()
-			.map(::normalize)
+			.map(::normalizeMigrationTitle)
 			.filter(String::isNotEmpty)
 			.any(seedTitles::contains)
 
@@ -131,8 +158,8 @@ class MigrationCandidateMatcher @Inject constructor() {
 			else -> 0
 		}
 
-		val seedAuthors = seed.authors.mapTo(HashSet(), ::normalize).filterTo(HashSet(), String::isNotEmpty)
-		val candidateAuthors = candidate.authors.mapTo(HashSet(), ::normalize).filterTo(HashSet(), String::isNotEmpty)
+		val seedAuthors = seed.authors.mapTo(HashSet(), ::normalizeMigrationTitle).filterTo(HashSet(), String::isNotEmpty)
+		val candidateAuthors = candidate.authors.mapTo(HashSet(), ::normalizeMigrationTitle).filterTo(HashSet(), String::isNotEmpty)
 		val authorMatch = seedAuthors.isNotEmpty() && candidateAuthors.isNotEmpty() && seedAuthors.any { first ->
 			candidateAuthors.any { second -> namesMatch(first, second) }
 		}
@@ -215,8 +242,14 @@ class MigrationCandidateMatcher @Inject constructor() {
 	}
 
 	private fun Manga.normalizedTitles(): Set<String> = buildSet {
-		normalize(title).takeIf(String::isNotEmpty)?.let(::add)
-		for (alias in altTitles) normalize(alias).takeIf(String::isNotEmpty)?.let(::add)
+		for (variant in migrationTitleVariants(title)) {
+			normalizeMigrationTitle(variant).takeIf(String::isNotEmpty)?.let(::add)
+		}
+		for (alias in altTitles) {
+			for (variant in migrationTitleVariants(alias)) {
+				normalizeMigrationTitle(variant).takeIf(String::isNotEmpty)?.let(::add)
+			}
+		}
 	}
 
 	private fun namesMatch(first: String, second: String): Boolean {
@@ -238,19 +271,10 @@ class MigrationCandidateMatcher @Inject constructor() {
 	private companion object {
 		const val READY_MIN_SCORE = 70
 		const val READY_SCORE_MARGIN = 12
-		const val MAX_REVIEW_CANDIDATES = 5
+		const val MAX_REVIEW_CANDIDATES = 20
 		const val MIN_FUZZY_TITLE_LENGTH = 4
 		const val MIN_AUTHOR_CONTAINMENT_LENGTH = 4
 		const val MIN_STRONG_CHAPTER_MATCHES = 3
 		const val STRONG_CHAPTER_COVERAGE = 0.6f
-
-		fun normalize(value: String): String {
-			val decomposed = Normalizer.normalize(value.trim().lowercase(), Normalizer.Form.NFD)
-			return buildString(decomposed.length) {
-				for (char in decomposed) {
-					if (char.isLetterOrDigit()) append(char)
-				}
-			}
-		}
 	}
 }

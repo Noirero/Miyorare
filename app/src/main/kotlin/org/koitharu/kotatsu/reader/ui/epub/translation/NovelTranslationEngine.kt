@@ -14,7 +14,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import okhttp3.Call
 import okhttp3.Callback
-import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -41,6 +40,40 @@ data class NovelTranslationRequest(
 interface NovelTranslationEngine {
 	suspend fun translate(request: NovelTranslationRequest): String
 	suspend fun listModels(): List<String> = emptyList()
+}
+
+/** Optional provider contract for one real provider request containing multiple independent texts. */
+interface NovelTranslationBatchEngine {
+	suspend fun translateBatch(requests: List<NovelTranslationRequest>): List<String>
+}
+
+/** Immutable output-affecting AI configuration used by one translation operation. */
+data class NovelAiTranslationConfiguration(
+	val provider: NovelAiProvider,
+	val model: String,
+	val baseUrlOverride: String,
+	val deeplFreeApi: Boolean,
+) {
+	val resolvedBaseUrl: String
+		get() = when {
+			baseUrlOverride.isNotEmpty() -> baseUrlOverride
+			provider == NovelAiProvider.DEEPL && !deeplFreeApi -> DEEPL_PAID_BASE_URL
+			else -> provider.defaultBaseUrl.trimEnd('/')
+		}
+
+	companion object {
+		fun from(settings: NovelTranslationSettings): NovelAiTranslationConfiguration {
+			val provider = settings.provider
+			val rawModel = settings.model(provider).trim()
+			val model = if (provider == NovelAiProvider.GEMINI) rawModel.removePrefix("models/") else rawModel
+			return NovelAiTranslationConfiguration(
+				provider = provider,
+				model = model,
+				baseUrlOverride = settings.baseUrlOverride(provider).trim().trimEnd('/'),
+				deeplFreeApi = settings.deeplFreeApi,
+			)
+		}
+	}
 }
 
 /**
@@ -96,35 +129,66 @@ class MiyorareOnlineTranslationEngine(
 	}
 }
 
-/**
- * Optional BYOK engine. No provider SDK or on-device model is bundled: all providers reuse OkHttp
- * and kotlinx.serialization already present in Miyorare.
- */
+/** Optional AI/BYOK engine plus the Built-in provider adapter used by the shared translation runtime. */
 class NovelAiTranslationEngine(
 	httpClient: OkHttpClient,
 	private val settings: NovelTranslationSettings,
 	private val secrets: NovelTranslationSecrets,
-) : NovelTranslationEngine {
+	private val configuration: NovelAiTranslationConfiguration? = null,
+) : NovelTranslationEngine, NovelTranslationBatchEngine {
 
 	private val client = httpClient.translationClient()
+	private val builtInEngine by lazy(LazyThreadSafetyMode.NONE) {
+		MiyorareBuiltInTranslationEngine(settings.applicationContext)
+	}
 
 	override suspend fun translate(request: NovelTranslationRequest): String {
 		if (request.text.isBlank()) return request.text
-		val provider = settings.provider
-		val apiKey = secrets.get(provider)
-			?: throw NovelTranslationException.Configuration("API key is not configured for ${provider.displayName}")
+		val config = currentConfiguration()
+		val provider = config.provider
 		return when (provider.protocol) {
-			NovelAiProtocol.OPENAI_COMPATIBLE -> translateOpenAiCompatible(provider, apiKey, request)
-			NovelAiProtocol.ANTHROPIC -> translateAnthropic(provider, apiKey, request)
-			NovelAiProtocol.DEEPL -> translateDeepL(provider, apiKey, request)
+			NovelAiProtocol.ON_DEVICE -> builtInEngine.translate(request)
+			NovelAiProtocol.OPENAI_COMPATIBLE -> {
+				val apiKey = secrets.get(provider)
+					?: throw NovelTranslationException.Configuration("API key is not configured for ${provider.displayName}")
+				translateOpenAiCompatible(config, apiKey, request)
+			}
+			NovelAiProtocol.ANTHROPIC -> {
+				val apiKey = secrets.get(provider)
+					?: throw NovelTranslationException.Configuration("API key is not configured for ${provider.displayName}")
+				translateAnthropic(config, apiKey, request)
+			}
+			NovelAiProtocol.DEEPL -> {
+				val apiKey = secrets.get(provider)
+					?: throw NovelTranslationException.Configuration("API key is not configured for ${provider.displayName}")
+				translateDeepLBatch(config, apiKey, listOf(request)).single()
+			}
 		}
 	}
 
+	override suspend fun translateBatch(requests: List<NovelTranslationRequest>): List<String> {
+		if (requests.isEmpty()) return emptyList()
+		val config = currentConfiguration()
+		val provider = config.provider
+		if (provider.protocol == NovelAiProtocol.ON_DEVICE) {
+			return requests.map { builtInEngine.translate(it) }
+		}
+		if (provider.protocol != NovelAiProtocol.DEEPL) {
+			// Capability metadata prevents this path for non-batch providers. Keep a safe semantic
+			// fallback so a future custom resolver cannot accidentally drop work.
+			return requests.map { translate(it) }
+		}
+		val apiKey = secrets.get(provider)
+			?: throw NovelTranslationException.Configuration("API key is not configured for ${provider.displayName}")
+		return translateDeepLBatch(config, apiKey, requests)
+	}
+
 	override suspend fun listModels(): List<String> {
-		val provider = settings.provider
+		val config = currentConfiguration()
+		val provider = config.provider
 		if (!provider.supportsModelDiscovery || provider.protocol != NovelAiProtocol.OPENAI_COMPATIBLE) return emptyList()
 		val apiKey = secrets.get(provider) ?: return emptyList()
-		val baseUrl = resolvedBaseUrl(provider)
+		val baseUrl = config.resolvedBaseUrl
 		if (baseUrl.isBlank()) return emptyList()
 		val response = client.newCall(
 			Request.Builder()
@@ -148,13 +212,14 @@ class NovelAiTranslationEngine(
 	}
 
 	private suspend fun translateOpenAiCompatible(
-		provider: NovelAiProvider,
+		config: NovelAiTranslationConfiguration,
 		apiKey: String,
 		request: NovelTranslationRequest,
 	): String {
-		val baseUrl = resolvedBaseUrl(provider)
+		val provider = config.provider
+		val baseUrl = config.resolvedBaseUrl
 		if (baseUrl.isBlank()) throw NovelTranslationException.Configuration("Base URL is required")
-		val model = normalizeModelId(provider, settings.model)
+		val model = normalizeModelId(provider, config.model)
 		if (model.isEmpty()) throw NovelTranslationException.Configuration("Select or enter a model")
 		val body = buildJsonObject {
 			put("model", model)
@@ -192,13 +257,14 @@ class NovelAiTranslationEngine(
 	}
 
 	private suspend fun translateAnthropic(
-		provider: NovelAiProvider,
+		config: NovelAiTranslationConfiguration,
 		apiKey: String,
 		request: NovelTranslationRequest,
 	): String {
-		val model = settings.model.trim()
+		val provider = config.provider
+		val model = config.model.trim()
 		if (model.isEmpty()) throw NovelTranslationException.Configuration("Select or enter a Claude model")
-		val baseUrl = resolvedBaseUrl(provider)
+		val baseUrl = config.resolvedBaseUrl
 		val body = buildJsonObject {
 			put("model", model)
 			put("max_tokens", 4096)
@@ -230,47 +296,58 @@ class NovelAiTranslationEngine(
 		}
 	}
 
-	private suspend fun translateDeepL(
-		provider: NovelAiProvider,
+	/** DeepL's documented text[] contract returns translations in the same request order. */
+	private suspend fun translateDeepLBatch(
+		config: NovelAiTranslationConfiguration,
 		apiKey: String,
-		request: NovelTranslationRequest,
-	): String {
-		val target = request.targetLanguage.trim()
+		requests: List<NovelTranslationRequest>,
+	): List<String> {
+		if (requests.isEmpty()) return emptyList()
+		val first = requests.first()
+		val target = first.targetLanguage.trim()
 		if (target.isEmpty()) throw NovelTranslationException.Configuration("Target language is required")
-		val configured = settings.baseUrlOverride.trim()
-		val baseUrl = when {
-			configured.isNotEmpty() -> configured.trimEnd('/')
-			settings.deeplFreeApi -> provider.defaultBaseUrl
-			else -> DEEPL_PAID_BASE_URL
+		if (requests.any { !it.targetLanguage.equals(first.targetLanguage, ignoreCase = true) }) {
+			throw NovelTranslationException.Configuration("Batch translation requires one target language")
 		}
-		val form = FormBody.Builder()
-			.add("text", request.text)
-			.add("target_lang", target.uppercase())
-			.apply {
-				request.sourceLanguage.takeUnless { it.isBlank() || it == NovelTranslationSettings.LANGUAGE_AUTO }
-					?.let { add("source_lang", it.uppercase()) }
-			}
-			.build()
+		val normalizedSource = first.sourceLanguage.takeUnless {
+			it.isBlank() || it == NovelTranslationSettings.LANGUAGE_AUTO
+		}?.uppercase()
+		if (requests.any { request ->
+			val source = request.sourceLanguage.takeUnless {
+				it.isBlank() || it == NovelTranslationSettings.LANGUAGE_AUTO
+			}?.uppercase()
+			source != normalizedSource
+		}) {
+			throw NovelTranslationException.Configuration("Batch translation requires one source language policy")
+		}
+		val body = buildJsonObject {
+			put("text", buildJsonArray { requests.forEach { add(JsonPrimitive(it.text)) } })
+			put("target_lang", target.uppercase())
+			normalizedSource?.let { put("source_lang", it) }
+		}
 		val response = client.newCall(
 			Request.Builder()
-				.url(baseUrl.toHttpUrl().newBuilder().addPathSegment("translate").build())
+				.url(config.resolvedBaseUrl.toHttpUrl().newBuilder().addPathSegment("translate").build())
 				.header("Authorization", "DeepL-Auth-Key $apiKey")
 				.header("User-Agent", USER_AGENT)
-				.post(form)
+				.post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
 				.build(),
 		).await()
 		response.use {
 			it.requireSuccessful()
 			val root = parseJson(it.body.string()).jsonObject
-			val translated = root["translations"]?.jsonArray
-				?.firstOrNull()?.jsonObject
-				?.get("text")?.jsonPrimitive?.contentOrNull.orEmpty()
-			if (translated.isBlank()) throw NovelTranslationException.InvalidResponse("DeepL returned an empty result")
+			val translated = root["translations"]?.jsonArray.orEmpty().map { item ->
+				item.jsonObject["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
+			}
+			if (translated.size != requests.size || translated.any { it.isBlank() }) {
+				throw NovelTranslationException.InvalidResponse("DeepL returned an incomplete batch result")
+			}
 			return translated
 		}
 	}
 
-	private fun resolvedBaseUrl(provider: NovelAiProvider): String = settings.resolvedBaseUrl(provider)
+	private fun currentConfiguration(): NovelAiTranslationConfiguration =
+		configuration ?: NovelAiTranslationConfiguration.from(settings)
 
 	private fun normalizeModelId(provider: NovelAiProvider, rawModel: String): String {
 		val value = rawModel.trim()
@@ -322,7 +399,6 @@ class NovelAiTranslationEngine(
 
 	companion object {
 		private const val ANTHROPIC_VERSION = "2023-06-01"
-		private const val DEEPL_PAID_BASE_URL = "https://api.deepl.com/v2"
 		private const val MAX_CONTEXT_CHARS = 4000
 		private val GEMINI_NON_TEXT_MODEL_MARKERS = listOf(
 			"image",
@@ -350,6 +426,7 @@ sealed class NovelTranslationException(message: String) : IOException(message) {
 
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 private const val USER_AGENT = "Mozilla/5.0 (Android) Miyorare"
+private const val DEEPL_PAID_BASE_URL = "https://api.deepl.com/v2"
 private val JSON = Json { ignoreUnknownKeys = true; isLenient = true }
 
 private fun parseJson(body: String) = try {

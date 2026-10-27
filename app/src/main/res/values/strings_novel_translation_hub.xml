@@ -1,11 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="novel_translation_engine">Translation engine</string>
+    <string name="novel_translation_title">Translation</string>
+    <string name="novel_translation_built_in">Built-in</string>
+    <string name="novel_translation_built_in_summary">Android system translation • On-device when the language pack is installed • No translation runtime bundled in Miyorare</string>
+    <string name="novel_translation_built_in_info">Uses the Android system/OEM on-device translation service. Language packs are managed by your device. Built-in requires Android 12 or newer and may not be available on every device.</string>
+    <string name="novel_translation_manage_system_translation">Manage system translation</string>
+    <string name="novel_translation_system_settings_unavailable">System translation settings are not available on this device.</string>
     <string name="novel_translation_online">Miyorare Online</string>
-    <string name="novel_translation_online_summary">Default • Online • No API key required</string>
+    <string name="novel_translation_online_summary">Online • No API key required</string>
     <string name="novel_translation_ai">AI Translation</string>
     <string name="novel_translation_ai_summary">Optional • Uses your own API key</string>
     <string name="novel_translation_restore_original">Original / Restore original</string>
+    <string name="novel_translation_show_original">Show Original</string>
+    <string name="novel_translation_show_translation">Show Translation</string>
+    <string name="novel_translation_translate_again">Translate again</string>
     <string name="novel_translation_source">From</string>
     <string name="novel_translation_target">To</string>
     <string name="novel_translation_auto_detect">Auto-detect</string>
@@ -13,7 +22,14 @@
     <string name="novel_translation_choose_target">Choose target language</string>
     <string name="novel_translation_custom_language">Other language code…</string>
     <string name="novel_translation_language_code">Language code</string>
+    <string name="novel_translation_service">Translation service</string>
     <string name="novel_translation_provider">AI provider</string>
+    <string name="novel_translation_bilingual_view">Bilingual view</string>
+    <string name="novel_translation_advanced_settings">Advanced settings</string>
+    <string name="novel_translation_current_state">Current view: %1$s</string>
+    <string name="novel_translation_state_original">Original</string>
+    <string name="novel_translation_state_bilingual">Bilingual</string>
+    <string name="novel_translation_state_translated_only">Translated only</string>
     <string name="novel_translation_api_key">API key</string>
     <string name="novel_translation_api_key_hint">Stored encrypted on this device and excluded from normal backup</string>
     <string name="novel_translation_model">Model</string>
@@ -42,4 +58,9 @@
     <string name="novel_translation_cancelled">Translation cancelled</string>
     <string name="novel_translation_invalid_pair">Source and target languages must be different</string>
     <string name="novel_translation_privacy_note">When AI Translation is used, selected text and optional context are sent to the chosen provider. Miyorare does not send them when AI Translation is off.</string>
+    <string name="novel_translation_auto_translate_this_novel">Auto translate this novel</string>
+    <string name="novel_translation_auto_ai_note">Automatic translation sends each chapter you open to %1$s and may use your provider quota or billing.</string>
+    <string name="novel_translation_auto_requires_ai_setup">Configure the selected AI provider before enabling automatic translation.</string>
+    <string name="novel_translation_auto_disabled_config">Automatic translation was turned off because the selected AI provider is no longer configured.</string>
+    <string name="novel_translation_auto_failed">Automatic translation failed; showing the original text.</string>
 </resources>

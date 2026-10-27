@@ -10,7 +10,6 @@ import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.PendingIntentCompat
-import androidx.core.content.ContextCompat
 import coil3.ImageLoader
 import coil3.request.ImageRequest
 import dagger.hilt.android.AndroidEntryPoint
@@ -235,22 +234,32 @@ class AutoFixService : CoroutineIntentService() {
 		private const val CHANNEL_ID = "auto_fix"
 		private const val FOREGROUND_NOTIFICATION_ID = 38
 
-		fun start(context: Context, mangaIds: Collection<Long>): Boolean = try {
-			val intent = Intent(context, AutoFixService::class.java)
-			intent.putExtra(DATA_IDS, mangaIds.toLongArray())
-			ContextCompat.startForegroundService(context, intent)
-			true
-		} catch (e: Exception) {
-			e.printStackTraceDebug()
-			false
+		/** Legacy Fix actions now enter the explicit migration UI instead of mutating in background. */
+		fun start(context: Context, mangaIds: Collection<Long>): Boolean {
+			if (mangaIds.isEmpty()) return false
+			return try {
+				val singleId = mangaIds.singleOrNull()
+				val intent = Intent(context, org.koitharu.kotatsu.settings.SettingsActivity::class.java)
+					.setAction(if (singleId != null) AppRouter.ACTION_MIGRATION_REVIEW else AppRouter.ACTION_MIGRATION)
+					.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+				if (singleId != null) intent.putExtra(AppRouter.KEY_ID, singleId)
+				context.startActivity(intent)
+				true
+			} catch (e: Exception) {
+				e.printStackTraceDebug()
+				false
+			}
 		}
 
+		/** Source-wide legacy entry points route to the migration hub so scope remains user-selected. */
 		fun startForSources(context: Context, sources: Collection<String>): Boolean {
 			if (sources.isEmpty()) return false
 			return try {
-				val intent = Intent(context, AutoFixService::class.java)
-					.putExtra(DATA_SOURCES, sources.toTypedArray())
-				ContextCompat.startForegroundService(context, intent)
+				context.startActivity(
+					Intent(context, org.koitharu.kotatsu.settings.SettingsActivity::class.java)
+						.setAction(AppRouter.ACTION_MIGRATION)
+						.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+				)
 				true
 			} catch (e: Exception) {
 				e.printStackTraceDebug()
