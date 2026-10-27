@@ -8,20 +8,27 @@ import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import javax.inject.Inject
 
+enum class MigrationExecutionMode { MIGRATE, COPY }
+
 /**
  * Execution authority for the Yokai-style migration flow.
  *
  * Search/manual review chooses and persists a stable source/id. Execution never searches for that
  * candidate again. It reloads the exact persisted identity, refreshes details from that exact source,
- * proves a page can be resolved, then hands the replacement to Miyorare's existing lossless transfer.
+ * proves a page can be resolved, then hands the replacement to Miyorare's lossless transfer path.
  */
 @Reusable
 class YokaiStyleMigrationExecutionUseCase @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val migrateUseCase: MigrateUseCase,
+	private val copyUseCase: LosslessMigrationCopyUseCase,
 ) {
-	suspend operator fun invoke(mangaId: Long, selection: MigrationSelection): Manga {
+	suspend operator fun invoke(
+		mangaId: Long,
+		selection: MigrationSelection,
+		mode: MigrationExecutionMode = MigrationExecutionMode.MIGRATE,
+	): Manga {
 		val old = checkNotNull(mangaDataRepository.findMangaById(mangaId, withChapters = true)) {
 			"Source manga $mangaId no longer exists"
 		}
@@ -55,12 +62,15 @@ class YokaiStyleMigrationExecutionUseCase @Inject constructor(
 			stripAppliedOverride = false,
 			detailsFetched = true,
 		)
-		migrateUseCase(
-			oldManga = old,
-			newManga = details,
-			lossless = true,
-			requireLibraryEntry = true,
-		)
+		when (mode) {
+			MigrationExecutionMode.MIGRATE -> migrateUseCase(
+				oldManga = old,
+				newManga = details,
+				lossless = true,
+				requireLibraryEntry = true,
+			)
+			MigrationExecutionMode.COPY -> copyUseCase(old, details)
+		}
 		return details
 	}
 }
