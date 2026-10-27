@@ -214,7 +214,13 @@ class SourceMangaListViewModel @Inject constructor(
 	}
 
 	fun refresh() {
-		if (loadJob?.isActive == true) return
+		if (loadJob?.isActive == true) {
+			// Source-backed sessions already observe Room continuously. Explicit manga-id sessions use
+			// a one-shot snapshot so they must be rebuilt on resume after a manual migration moved
+			// library ownership away from the original id.
+			if (explicitMangaIds.isEmpty()) return
+			loadJob?.cancel()
+		}
 		loadJob = viewModelScope.launch {
 			runCatchingCancellable {
 				combine(
@@ -274,7 +280,11 @@ class SourceMangaListViewModel @Inject constructor(
 	}
 
 	private fun mangaFlow(): Flow<List<MangaWithTags>> = if (explicitMangaIds.isNotEmpty()) {
-		flow { emit(database.getMangaDao().findByIds(explicitMangaIds)) }
+		flow {
+			val dao = database.getMangaDao()
+			val visible = dao.findByIds(explicitMangaIds).filter { dao.isMigrationEntryVisible(it.manga.id) }
+			emit(visible)
+		}
 	} else {
 		database.getMangaDao().observeLibraryMangaBySources(sourceKeys)
 	}
