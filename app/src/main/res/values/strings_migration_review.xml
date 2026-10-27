@@ -48,7 +48,7 @@
     <string name="migration_change_sources">Change sources</string>
     <string name="migration_change_result">Change result</string>
     <string name="migration_partial_provider_pool">Some source providers are unavailable. Sources that loaded successfully can still be selected.</string>
-    <string name="migration_partial_search">Some selected sources were unavailable. Results from sources that responded are still selectable.</string>
+    <string name="migration_partial_search">Some sources or providers were unavailable. Results from the selected sources that responded are still selectable.</string>
     <string name="migration_incomplete">None of the selected sources could be searched successfully. Change sources or try again later.</string>
     <string name="migration_ready">A strong replacement was found. You can migrate it now.</string>
     <string name="migration_review">Search results found. Choose the manga you recognize.</string>
