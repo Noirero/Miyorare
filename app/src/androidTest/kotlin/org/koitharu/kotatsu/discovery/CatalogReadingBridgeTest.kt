@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.test.platform.app.InstrumentationRegistry
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import okhttp3.*
@@ -14,6 +16,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.alternatives.domain.AlternativeSearchEvent
@@ -23,9 +26,14 @@ import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.discovery.ui.*
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService as Service
+import javax.inject.Inject
 
 /** Production wire adapter -> repository -> ViewModel -> explicit source bridge, without a network. */
+@HiltAndroidTest
 class CatalogReadingBridgeTest {
+	@get:Rule val hilt = HiltAndroidRule(this)
+	@Inject lateinit var accountRepository: TrackerCatalogAccountRepository
+
 	private val instrumentation = InstrumentationRegistry.getInstrumentation()
 	private val app = instrumentation.targetContext
 	private val context = object : ContextWrapper(app) { override fun getSharedPreferences(name: String, mode: Int) = super.getSharedPreferences("hub-bridge-$name", mode) }
@@ -47,6 +55,7 @@ class CatalogReadingBridgeTest {
 		}
 	}
 	@Before fun setup() {
+		hilt.inject()
 		settings = AppSettings(context); settings.isNsfwContentDisabled = true
 		val http = CatalogHttp(OkHttpClient.Builder().addInterceptor { chain ->
 			providerCalls++
@@ -61,7 +70,7 @@ class CatalogReadingBridgeTest {
 		}, scope)
 		val saved = SavedStateHandle(mapOf(CatalogArguments.MODE to CatalogScreenMode.DETAILS.name, CatalogArguments.SERVICE to key.service.name, CatalogArguments.KIND to key.kind.name, CatalogArguments.ID to key.remoteId))
 		instrumentation.runOnMainSync {
-			vm = ViewModelProvider(store, object : ViewModelProvider.Factory { @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = TrackerCatalogViewModel(saved, repository, resolver, settings) as T })[TrackerCatalogViewModel::class.java]
+			vm = ViewModelProvider(store, object : ViewModelProvider.Factory { @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = TrackerCatalogViewModel(saved, repository, accountRepository, resolver, settings) as T })[TrackerCatalogViewModel::class.java]
 		}
 		waitFor { vm.state.value.details != null }
 	}
@@ -114,7 +123,7 @@ class CatalogReadingBridgeTest {
 	@Test fun editingMetadataQueryInvalidatesItsOldResultsAndPaginationWithoutStartingNewSourceWork() {
 		lateinit var search: TrackerCatalogViewModel
 		main {
-			search = TrackerCatalogViewModel(SavedStateHandle(mapOf(CatalogArguments.MODE to CatalogScreenMode.SEARCH.name, CatalogArguments.SERVICE to Service.ANILIST.name, CatalogArguments.QUERY to "first")), repository, resolver, settings)
+			search = TrackerCatalogViewModel(SavedStateHandle(mapOf(CatalogArguments.MODE to CatalogScreenMode.SEARCH.name, CatalogArguments.SERVICE to Service.ANILIST.name, CatalogArguments.QUERY to "first")), repository, accountRepository, resolver, settings)
 			store.put("metadata-search", search)
 		}
 		waitFor { search.state.value.items.isNotEmpty() }
