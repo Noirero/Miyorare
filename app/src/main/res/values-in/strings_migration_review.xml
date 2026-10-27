@@ -14,6 +14,7 @@
     <string name="migration_checking_source">Memeriksa source saat ini: %1$s</string>
     <string name="migration_loading_sources">Memuat source terpasang…</string>
     <string name="migration_source_list_failed">Daftar source terpasang tidak dapat dimuat. Pencarian belum dimulai.</string>
+    <string name="migration_no_sources_available">Tidak ada source pengganti terpasang yang tersedia saat ini. Aktifkan atau pasang source, lalu coba lagi.</string>
     <string name="migration_direct_choose_sources">Pilih source pencarian</string>
     <string name="migration_direct_choose_sources_description">Pilih source terpasang yang benar-benar ingin dicari. Pilih semua jika ingin perilaku seperti Search Everywhere.</string>
     <string name="migration_checked_choose_sources">Pilih source terpasang yang ingin dipakai untuk mencari pengganti.</string>
