@@ -292,6 +292,7 @@ class AutoFixUseCase @Inject constructor(
 						completedSources++
 						publishSearchProgress(query, index + 1, completedSources, event.source.name)
 					}
+				}
 			}
 		}
 
