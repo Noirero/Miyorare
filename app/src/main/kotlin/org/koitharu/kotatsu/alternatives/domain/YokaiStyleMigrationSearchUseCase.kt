@@ -6,12 +6,18 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.levenshteinDistance
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacks
+import org.koitharu.kotatsu.tsuki.TsukiPluginManager
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlin.math.max
@@ -33,13 +39,41 @@ enum class MigrationSourceStrategy {
 class YokaiStyleMigrationSearchUseCase @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val alternativesUseCase: AlternativesUseCase,
+	private val appSettings: AppSettings,
+	private val tsukiPluginManager: TsukiPluginManager,
 	private val globalSearch: MigrationGlobalSearchBridge,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val candidateMatcher: MigrationCandidateMatcher,
 ) {
 
-	suspend fun sourcePool(mangaId: Long): MigrationSourcePool =
-		alternativesUseCase.getMigrationSourcePool(loadSeed(mangaId), excludeCurrent = false)
+	suspend fun sourcePool(mangaId: Long): MigrationSourcePool {
+		val seed = loadSeed(mangaId)
+		val base = alternativesUseCase.getMigrationSourcePool(seed, excludeCurrent = false)
+		if (seed.isNovelContent) return base
+
+		// Explore/global search intentionally exposes only explicitly enabled Tsuki sources. Migration
+		// needs a slightly wider view for official Miyorare packs: an installed usable source must stay
+		// selectable even when it is hidden from the normal catalog. Keep third-party Tsuki providers
+		// on their existing explicit-enabled semantics and preserve the normal NSFW/content-domain gates.
+		val officialMiyorareSources = tsukiPluginManager.getAvailableSources()
+			.asSequence()
+			.filter { source ->
+				source.plugin.provider == TsukiPluginProvider.MIYORARE &&
+					MiyorareOfficialSourcePacks.findByInstalledPluginId(source.plugin.pluginId) != null
+			}
+			.filter { source -> source.isNovelContentSource == seed.isNovelContent }
+			.filterNot { source ->
+				appSettings.isNsfwContentDisabled && source.descriptor.contentType.equals("HENTAI", ignoreCase = true)
+			}
+			.map { it as MangaSource }
+			.toList()
+
+		return base.copy(
+			allSources = (base.allSources + officialMiyorareSources)
+				.distinctBy(MangaSource::name)
+				.sortedBy(MangaSource::name),
+		)
+	}
 
 	suspend operator fun invoke(
 		mangaId: Long,
@@ -133,9 +167,9 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 	): SourceResult {
 		val searched = globalSearch.search(source, query)
 		if (searched.isFailure) return SourceResult(null, true)
-		// MangaEntity uses manga_id as its sole primary key. Different source implementations may
-		// legitimately emit the same numeric id, so such a candidate cannot be persisted alongside
-		// the source manga safely. Skip it rather than overwriting user state before migration starts.
+		// MangaEntity uses manga_id as its sole primary key. Different source implementations can legally
+		// collide on that number, so such a candidate cannot be persisted alongside the source manga safely.
+		// Skip it rather than overwriting user state before migration starts.
 		val eligible = searched.getOrDefault(emptyList()).filterNot { result -> result.id == seed.id }
 		val candidate = chooseCandidate(seed.title, eligible) ?: return SourceResult(null, false)
 		if (!canPersistCandidate(candidate)) return SourceResult(null, false)
