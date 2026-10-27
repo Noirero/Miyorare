@@ -46,7 +46,7 @@ class MigrationYokaiFlowContractTest {
 		val automatic = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
 		val alternatives = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
 
-		assertTrue(automatic.contains("getMigrationSourcePool(loadSeed(mangaId),excludeCurrent=false)"))
+		assertTrue(automatic.contains("getMigrationSourcePool(seed,excludeCurrent=false)"))
 		assertTrue(alternatives.contains("excludeCurrent:Boolean=true"))
 	}
 
