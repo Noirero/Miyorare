@@ -51,7 +51,7 @@ class StoredMangaCoverStore internal constructor(
 			val stem = fileStem(mangaId, sourceUrl)
 			val file = extensions.asSequence()
 				.map { extension -> File(directory, "$stem.$extension") }
-				.firstOrNull(File::isFile)
+				.firstOrNull { it.isFile }
 				?: return@withLock null
 			touchLocked(file)
 			file
@@ -90,7 +90,7 @@ class StoredMangaCoverStore internal constructor(
 					if (!temporary.renameTo(target)) throw IOException("Cannot publish stored cover")
 					touchLocked(target)
 					trimLocked()
-					target.takeIf(File::isFile)
+					target.takeIf { it.isFile }
 				} finally {
 					temporary.delete()
 				}
@@ -120,24 +120,24 @@ class StoredMangaCoverStore internal constructor(
 	suspend fun size(): Long = withContext(Dispatchers.IO) {
 		mutex.withLock {
 			initializeLocked()
-			directory.listFiles().orEmpty().filter(File::isStoredCover).sumOf(File::length)
+			directory.listFiles().orEmpty().filter { it.isStoredCover() }.sumOf { it.length() }
 		}
 	}
 
 	private fun initializeLocked() {
 		if (initialized) return
 		check(directory.isDirectory || directory.mkdirs()) { "Cannot create stored cover directory" }
-		directory.listFiles().orEmpty().filter { it.name.endsWith(".partial") }.forEach(File::delete)
-		lastAccess = directory.listFiles().orEmpty().maxOfOrNull(File::lastModified) ?: 0L
+		directory.listFiles().orEmpty().filter { it.name.endsWith(".partial") }.forEach { it.delete() }
+		lastAccess = directory.listFiles().orEmpty().maxOfOrNull { it.lastModified() } ?: 0L
 		trimLocked()
 		initialized = true
 	}
 
 	private fun trimLocked() {
 		val entries = directory.listFiles().orEmpty()
-			.filter(File::isStoredCover)
-			.sortedBy(File::lastModified)
-		var bytes = entries.sumOf(File::length)
+			.filter { it.isStoredCover() }
+			.sortedBy { it.lastModified() }
+		var bytes = entries.sumOf { it.length() }
 		var count = entries.size
 		for (entry in entries) {
 			if (bytes <= maxBytes && count <= maxEntries) break
@@ -196,7 +196,7 @@ class StoredMangaCoverStore internal constructor(
 		private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
 			.digest(value.toByteArray())
 			.take(16)
-			.joinToString("") { byte -> "%02x".format(byte) }
+			.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 	}
 }
 
