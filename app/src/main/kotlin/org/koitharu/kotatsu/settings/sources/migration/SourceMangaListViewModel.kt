@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.alternatives.work.MigrationBatchWork
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.toMangaList
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -209,8 +210,9 @@ class SourceMangaListViewModel @Inject constructor(
 	}
 
 	fun reloadSearchSources() {
-		val mangaId = state.value.manga.firstOrNull()?.id ?: return
-		loadSearchSources(mangaId, force = true)
+		val manga = state.value.manga
+		if (manga.isEmpty()) return
+		loadSearchSources(manga, force = true)
 	}
 
 	fun refresh() {
@@ -273,7 +275,7 @@ class SourceMangaListViewModel @Inject constructor(
 							failed = current.failed,
 						)
 					}
-					projection.manga.firstOrNull()?.id?.let { loadSearchSources(it) }
+					if (projection.manga.isNotEmpty()) loadSearchSources(projection.manga)
 				}
 			}.onFailure { _state.update { it.copy(isLoading = false, failed = true) } }
 		}
@@ -289,33 +291,45 @@ class SourceMangaListViewModel @Inject constructor(
 		database.getMangaDao().observeLibraryMangaBySources(sourceKeys)
 	}
 
-	private fun loadSearchSources(mangaId: Long, force: Boolean = false) {
+	private fun loadSearchSources(manga: List<Manga>, force: Boolean = false) {
 		if (!force && (state.value.availableSources.isNotEmpty() || sourceLoadJob?.isActive == true)) return
 		sourceLoadJob?.cancel()
 		_state.update { it.copy(sourceSelectionLoading = true, sourceSelectionFailed = false) }
 		sourceLoadJob = viewModelScope.launch {
-			runCatchingCancellable { withContext(Dispatchers.IO) { yokaiSearch.sourcePool(mangaId) } }
-				.onSuccess { pool ->
-					val availableNames = pool.allSources.mapTo(hashSetOf(), MangaSource::name)
-					val remembered = migrationPreferences.selectedSourceNames.filter { it in availableNames }
-					val currentSelection = state.value.selectedSourceNames.filter { it in availableNames }
-					val selected = when {
-						currentSelection.isNotEmpty() -> currentSelection
-						remembered.isNotEmpty() -> remembered
-						else -> pool.allSources.map(MangaSource::name)
-					}
-					_state.update { current -> current.copy(
-						availableSources = pool.allSources,
-						selectedSourceNames = selected,
-						sourceSelectionLoading = false,
-						sourceSelectionFailed = false,
-						sourcePoolFailureCount = pool.providerFailureCount,
-					) }
-					if (!autoStartConsumed && migrationPreferences.skipSetup && selected.isNotEmpty()) {
-						autoStartConsumed = true
-						searchAll()
-					}
+			runCatchingCancellable {
+				withContext(Dispatchers.IO) {
+					// Yokai is manga-only; Miyorare can place comics and novels in one migration session.
+					// Load one pool per content domain and expose their union. Each worker later intersects
+					// the chosen source order with that manga's own compatible pool.
+					val pools = manga.distinctBy { it.isNovelContent }.map { yokaiSearch.sourcePool(it.id) }
+					MigrationSourcePool(
+						allSources = pools.flatMap(MigrationSourcePool::allSources)
+							.distinctBy(MangaSource::name)
+							.sortedBy(MangaSource::name),
+						providerFailureCount = pools.sumOf(MigrationSourcePool::providerFailureCount),
+					)
 				}
+			}.onSuccess { pool ->
+				val availableNames = pool.allSources.mapTo(hashSetOf(), MangaSource::name)
+				val remembered = migrationPreferences.selectedSourceNames.filter { it in availableNames }
+				val currentSelection = state.value.selectedSourceNames.filter { it in availableNames }
+				val selected = when {
+					currentSelection.isNotEmpty() -> currentSelection
+					remembered.isNotEmpty() -> remembered
+					else -> pool.allSources.map(MangaSource::name)
+				}
+				_state.update { current -> current.copy(
+					availableSources = pool.allSources,
+					selectedSourceNames = selected,
+					sourceSelectionLoading = false,
+					sourceSelectionFailed = false,
+					sourcePoolFailureCount = pool.providerFailureCount,
+				) }
+				if (!autoStartConsumed && migrationPreferences.skipSetup && selected.isNotEmpty()) {
+					autoStartConsumed = true
+					searchAll()
+				}
+			}
 				.onFailure {
 					_state.update { current -> current.copy(
 						sourceSelectionLoading = false,
