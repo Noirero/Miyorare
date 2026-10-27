@@ -157,7 +157,7 @@ class StoredMangaCoverStore internal constructor(
 	private fun File.isStoredCover(): Boolean = isFile && extensions.any { name.endsWith(".$it") }
 
 	private fun fileStem(mangaId: Long, sourceUrl: String): String =
-		"${mangaPrefix(mangaId)}${digest("$RECIPE|$sourceUrl")}" 
+		"${mangaPrefix(mangaId)}${digest("$RECIPE|$sourceUrl")}"
 
 	private fun mangaPrefix(mangaId: Long): String = "$mangaId-"
 
