@@ -120,10 +120,36 @@ internal fun MigrationBatchControls(
 			state.availableSources.isEmpty() -> Text(stringResource(R.string.migration_no_sources_available))
 			else -> {
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					TextButton(onClick = onSelectAllSources, enabled = controlsEnabled) {
+					TextButton(
+						onClick = {
+							if (sourceOriginFilter == null) {
+								onSelectAllSources()
+							} else {
+								visibleSources
+									.asSequence()
+									.map(MangaSource::name)
+									.filterNot(selectedSet::contains)
+									.forEach(onToggleSource)
+							}
+						},
+						enabled = controlsEnabled,
+					) {
 						Text(stringResource(R.string.migration_select_all_visible))
 					}
-					TextButton(onClick = onClearSources, enabled = controlsEnabled) {
+					TextButton(
+						onClick = {
+							if (sourceOriginFilter == null) {
+								onClearSources()
+							} else {
+								visibleSources
+									.asSequence()
+									.map(MangaSource::name)
+									.filter(selectedSet::contains)
+									.forEach(onToggleSource)
+							}
+						},
+						enabled = controlsEnabled,
+					) {
 						Text(stringResource(R.string.migration_deselect_all_visible))
 					}
 				}
