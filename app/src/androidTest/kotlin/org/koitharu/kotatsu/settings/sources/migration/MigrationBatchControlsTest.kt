@@ -74,6 +74,7 @@ class MigrationBatchControlsTest {
 		state: SourceMangaListState = state(),
 		onSearch: () -> Unit = {},
 		onMigrateReady: () -> Unit = {},
+		onCopyReady: () -> Unit = {},
 		onCancel: () -> Unit = {},
 		onFilter: (MigrationBatchStatus?) -> Unit = {},
 	) {
@@ -85,6 +86,7 @@ class MigrationBatchControlsTest {
 							state = state,
 							onSearch = onSearch,
 							onMigrateReady = onMigrateReady,
+							onCopyReady = onCopyReady,
 							onCancel = onCancel,
 							onFilter = onFilter,
 							onToggleSource = {},
@@ -103,13 +105,18 @@ class MigrationBatchControlsTest {
 	}
 
 	@Test
-	fun summaryAndReadyOnlyActionReachTheUser() {
-		var executions = 0
-		setControls(onMigrateReady = { executions++ })
+	fun summaryAndReadyActionsReachTheUser() {
+		var migrations = 0
+		var copies = 0
+		setControls(
+			onMigrateReady = { migrations++ },
+			onCopyReady = { copies++ },
+		)
 		compose.onNodeWithText(context.getString(R.string.migration_batch_summary, 1, 1, 1)).assertExists()
-		assertEquals(0, executions)
-		compose.onNodeWithTag("migration-batch-execute").performScrollTo().performClick()
-		assertEquals(1, executions)
+		compose.onNodeWithTag("migration-batch-migrate").performScrollTo().performClick()
+		compose.onNodeWithTag("migration-batch-copy").performScrollTo().performClick()
+		assertEquals(1, migrations)
+		assertEquals(1, copies)
 	}
 
 	@Test
@@ -136,7 +143,8 @@ class MigrationBatchControlsTest {
 			onCancel = { cancellations++ },
 		)
 		compose.onNodeWithTag("migration-batch-search").performScrollTo().assertIsNotEnabled()
-		compose.onNodeWithTag("migration-batch-execute").performScrollTo().assertIsNotEnabled()
+		compose.onNodeWithTag("migration-batch-migrate").performScrollTo().assertIsNotEnabled()
+		compose.onNodeWithTag("migration-batch-copy").performScrollTo().assertIsNotEnabled()
 		compose.onNodeWithTag("migration-batch-cancel").performScrollTo().performClick()
 		assertEquals(1, cancellations)
 	}
