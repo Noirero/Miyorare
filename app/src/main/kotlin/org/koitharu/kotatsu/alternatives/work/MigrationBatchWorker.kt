@@ -23,6 +23,9 @@ import org.koitharu.kotatsu.alternatives.domain.MigrationBatchOutcome
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchPolicy
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationDiscovery
+import org.koitharu.kotatsu.alternatives.domain.MigrationExecutionMode
+import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationExecutionUseCase
+import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationSearchUseCase
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.settings.SettingsActivity
@@ -32,6 +35,8 @@ class MigrationBatchWorker @AssistedInject constructor(
 	@Assisted context: Context,
 	@Assisted parameters: WorkerParameters,
 	private val autoFix: AutoFixUseCase,
+	private val yokaiSearch: YokaiStyleMigrationSearchUseCase,
+	private val yokaiExecute: YokaiStyleMigrationExecutionUseCase,
 	private val database: MangaDatabase,
 ) : CoroutineWorker(context, parameters) {
 	override suspend fun doWork(): Result {
@@ -54,6 +59,13 @@ class MigrationBatchWorker @AssistedInject constructor(
 					))
 				}
 				when (request.discoveryMode) {
+					MigrationBatchDiscoveryMode.YOKAI -> yokaiSearch(
+						mangaId = request.mangaId,
+						selectedSourceNames = request.selectedSourceNames,
+						strategy = request.sourceStrategy,
+						extraSearchParams = request.extraSearchParams,
+						onProgress = onProgress,
+					)
 					MigrationBatchDiscoveryMode.CHECK_CURRENT ->
 						autoFix.discover(request.mangaId, request.searchScope, onProgress)
 					MigrationBatchDiscoveryMode.DIRECT_SEARCH ->
@@ -67,12 +79,26 @@ class MigrationBatchWorker @AssistedInject constructor(
 				}
 			},
 			migrate = { selection ->
-				autoFix.migrateSelected(
-					request.mangaId,
-					selection,
-					reviewed = false,
-					allowReadableSource = request.discoveryMode == MigrationBatchDiscoveryMode.DIRECT_SEARCH,
-				)
+				when (request.discoveryMode) {
+					MigrationBatchDiscoveryMode.YOKAI -> yokaiExecute(
+						request.mangaId,
+						selection,
+						MigrationExecutionMode.MIGRATE,
+					)
+					MigrationBatchDiscoveryMode.CHECK_CURRENT,
+					MigrationBatchDiscoveryMode.DIRECT_SEARCH -> autoFix.migrateSelected(
+						request.mangaId,
+						selection,
+						reviewed = false,
+						allowReadableSource = request.discoveryMode == MigrationBatchDiscoveryMode.DIRECT_SEARCH,
+					)
+				}
+			},
+			copy = { selection ->
+				check(request.discoveryMode == MigrationBatchDiscoveryMode.YOKAI) {
+					"Copy is only supported by the Yokai migration session"
+				}
+				yokaiExecute(request.mangaId, selection, MigrationExecutionMode.COPY)
 			},
 		)
 		return Result.success(MigrationBatchWork.output(outcome))

@@ -47,7 +47,7 @@ data class MigrationMatchAssessment(
 )
 
 private val LEADING_MIGRATION_DECORATOR = Regex(
-	"""^\s*(?:\[[^\]\r\n]{1,40}]|\([^\)\r\n]{1,40}\)|\{[^}\r\n]{1,40}}|【[^】\r\n]{1,40}】|（[^）\r\n]{1,40}）)\s*[-–—:|·]*\s*""",
+	"""^\s*(?:\[[^\]\r\n]{1,40}]|\([^\)\r\n]{1,40}\)|\{[^}\r\n]{1,40}\}|【[^】\r\n]{1,40}】|（[^）\r\n]{1,40}）)\s*[-–—:|·]*\s*""",
 )
 
 internal fun migrationTitleVariants(value: String): List<String> {

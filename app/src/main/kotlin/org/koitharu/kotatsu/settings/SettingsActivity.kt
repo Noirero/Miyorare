@@ -250,8 +250,12 @@ class SettingsActivity :
 			AppRouter.ACTION_SUGGESTIONS -> SuggestionsSettingsFragment()
 			AppRouter.ACTION_TRACKER -> TrackerSettingsFragment()
 			AppRouter.ACTION_SYNC -> SyncSettingsFragment()
-			AppRouter.ACTION_MIGRATION_REVIEW -> org.koitharu.kotatsu.settings.sources.migration.MigrationReviewFragment().apply {
-				arguments = org.koitharu.kotatsu.settings.sources.migration.MigrationReviewFragment.args(intent.getLongExtra(AppRouter.KEY_ID, 0L))
+			AppRouter.ACTION_MIGRATION_REVIEW -> org.koitharu.kotatsu.settings.sources.migration.SourceMangaListFragment().apply {
+				val mangaId = intent.getLongExtra(AppRouter.KEY_ID, 0L)
+				arguments = org.koitharu.kotatsu.settings.sources.migration.SourceMangaListFragment.argsForMangaIds(
+					listOf(mangaId),
+					getString(R.string.manga_migration),
+				)
 			}
 			AppRouter.ACTION_MIGRATION -> org.koitharu.kotatsu.settings.sources.migration.BrokenSourcesMigrationFragment()
 			AppRouter.ACTION_SOURCES -> ExtensionsSettingsFragment()

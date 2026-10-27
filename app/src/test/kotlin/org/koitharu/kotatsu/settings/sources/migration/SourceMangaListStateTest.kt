@@ -6,8 +6,9 @@ import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchOutcome
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchSnapshot
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
-import org.koitharu.kotatsu.alternatives.domain.MigrationSearchScope
 import org.koitharu.kotatsu.alternatives.domain.MigrationSelection
+import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
+import org.koitharu.kotatsu.alternatives.domain.migrationConfigKey
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
 
@@ -31,8 +32,8 @@ class SourceMangaListStateTest {
 	private fun snapshot(
 		id: Long,
 		status: MigrationBatchStatus,
-		scope: MigrationSearchScope,
-		mode: MigrationBatchDiscoveryMode = MigrationBatchDiscoveryMode.CHECK_CURRENT,
+		configKey: String,
+		mode: MigrationBatchDiscoveryMode = MigrationBatchDiscoveryMode.YOKAI,
 	): MigrationBatchSnapshot = MigrationBatchSnapshot(
 		mangaId = id,
 		source = "OLD",
@@ -40,20 +41,22 @@ class SourceMangaListStateTest {
 		batchName = "batch",
 		outcome = MigrationBatchOutcome(
 			status,
-			selection = if (status == MigrationBatchStatus.READY) MigrationSelection("NEW", 101L, "fingerprint") else null,
+			selection = if (status == MigrationBatchStatus.READY) MigrationSelection("NEW", 101L, "") else null,
 		),
-		searchScope = scope,
 		discoveryMode = mode,
+		configKey = configKey,
 	)
 
 	@Test
-	fun `scope dependent results become unchecked after scope changes`() {
+	fun `search evidence becomes unchecked after ordered source config changes`() {
 		val item = manga(1L)
+		val original = migrationConfigKey(listOf("A", "B"), MigrationSourceStrategy.FIRST_MATCH, null)
 		val state = SourceMangaListState(
 			isLoading = false,
 			manga = listOf(item),
-			searchScope = MigrationSearchScope.UMA,
-			batchItems = mapOf(1L to snapshot(1L, MigrationBatchStatus.READY, MigrationSearchScope.ALL)),
+			selectedSourceNames = listOf("B", "A"),
+			sourceStrategy = MigrationSourceStrategy.FIRST_MATCH,
+			batchItems = mapOf(1L to snapshot(1L, MigrationBatchStatus.READY, original)),
 		)
 
 		assertEquals(MigrationBatchStatus.UNCHECKED, state.status(1L))
@@ -61,48 +64,86 @@ class SourceMangaListStateTest {
 	}
 
 	@Test
-	fun `ready result is actionable only in the scope and mode that produced it`() {
+	fun `ready result is actionable only for the Yokai config that produced it`() {
 		val item = manga(1L)
-		val directSnapshot = snapshot(
-			1L,
-			MigrationBatchStatus.READY,
-			MigrationSearchScope.UMA,
-			MigrationBatchDiscoveryMode.DIRECT_SEARCH,
-		)
-		val checkState = SourceMangaListState(
+		val sourceOrder = listOf("A", "B")
+		val matching = migrationConfigKey(sourceOrder, MigrationSourceStrategy.MOST_CHAPTERS, "uncensored")
+		val ready = snapshot(1L, MigrationBatchStatus.READY, matching)
+		val state = SourceMangaListState(
 			isLoading = false,
 			manga = listOf(item),
-			searchScope = MigrationSearchScope.UMA,
-			discoveryMode = MigrationBatchDiscoveryMode.CHECK_CURRENT,
-			batchItems = mapOf(1L to directSnapshot),
+			selectedSourceNames = sourceOrder,
+			sourceStrategy = MigrationSourceStrategy.MOST_CHAPTERS,
+			extraSearchParams = "uncensored",
+			batchItems = mapOf(1L to ready),
 		)
-		val directState = checkState.copy(discoveryMode = MigrationBatchDiscoveryMode.DIRECT_SEARCH)
+		val changedStrategy = state.copy(sourceStrategy = MigrationSourceStrategy.FIRST_MATCH)
 
-		assertEquals(MigrationBatchStatus.UNCHECKED, checkState.status(1L))
-		assertEquals(0, checkState.readyCount)
-		assertEquals(MigrationBatchStatus.READY, directState.status(1L))
-		assertEquals(1, directState.readyCount)
+		assertEquals(MigrationBatchStatus.READY, state.status(1L))
+		assertEquals(1, state.readyCount)
+		assertEquals(MigrationBatchStatus.UNCHECKED, changedStrategy.status(1L))
+		assertEquals(0, changedStrategy.readyCount)
 	}
 
 	@Test
-	fun `healthy stays valid across scope changes only in check mode while migrated always stays valid`() {
-		val items = listOf(manga(1L), manga(2L))
-		val snapshots = mapOf(
-			1L to snapshot(1L, MigrationBatchStatus.HEALTHY, MigrationSearchScope.ALL),
-			2L to snapshot(2L, MigrationBatchStatus.MIGRATED, MigrationSearchScope.ALL),
-		)
-		val checkState = SourceMangaListState(
+	fun `legacy discovery evidence is not actionable in Yokai session`() {
+		val item = manga(1L)
+		val config = migrationConfigKey(listOf("NEW"), MigrationSourceStrategy.FIRST_MATCH, null)
+		val state = SourceMangaListState(
 			isLoading = false,
-			manga = items,
-			searchScope = MigrationSearchScope.GEKKOUSHI,
-			discoveryMode = MigrationBatchDiscoveryMode.CHECK_CURRENT,
-			batchItems = snapshots,
+			manga = listOf(item),
+			selectedSourceNames = listOf("NEW"),
+			sourceStrategy = MigrationSourceStrategy.FIRST_MATCH,
+			batchItems = mapOf(
+				1L to snapshot(
+					1L,
+					MigrationBatchStatus.READY,
+					config,
+					MigrationBatchDiscoveryMode.DIRECT_SEARCH,
+				),
+			),
 		)
-		val directState = checkState.copy(discoveryMode = MigrationBatchDiscoveryMode.DIRECT_SEARCH)
 
-		assertEquals(MigrationBatchStatus.HEALTHY, checkState.status(1L))
-		assertEquals(MigrationBatchStatus.MIGRATED, checkState.status(2L))
-		assertEquals(MigrationBatchStatus.UNCHECKED, directState.status(1L))
-		assertEquals(MigrationBatchStatus.MIGRATED, directState.status(2L))
+		assertEquals(MigrationBatchStatus.UNCHECKED, state.status(1L))
+		assertEquals(0, state.readyCount)
+	}
+
+	@Test
+	fun `skipped item is excluded from execution only for the session config that was skipped`() {
+		val item = manga(1L)
+		val sourceOrder = listOf("A", "B")
+		val config = migrationConfigKey(sourceOrder, MigrationSourceStrategy.FIRST_MATCH, null)
+		val state = SourceMangaListState(
+			isLoading = false,
+			manga = listOf(item),
+			selectedSourceNames = sourceOrder,
+			sourceStrategy = MigrationSourceStrategy.FIRST_MATCH,
+			batchItems = mapOf(1L to snapshot(1L, MigrationBatchStatus.SKIPPED, config)),
+		)
+		val changedOrder = state.copy(selectedSourceNames = sourceOrder.reversed())
+
+		assertEquals(MigrationBatchStatus.SKIPPED, state.status(1L))
+		assertEquals(0, state.readyCount)
+		assertEquals(MigrationBatchStatus.UNCHECKED, changedOrder.status(1L))
+		assertEquals(0, changedOrder.readyCount)
+	}
+
+	@Test
+	fun `migrated and copied stay final when migration setup changes`() {
+		val oldConfig = migrationConfigKey(listOf("A", "B"), MigrationSourceStrategy.FIRST_MATCH, null)
+		val state = SourceMangaListState(
+			isLoading = false,
+			manga = listOf(manga(1L), manga(2L)),
+			selectedSourceNames = listOf("B", "A"),
+			sourceStrategy = MigrationSourceStrategy.MOST_CHAPTERS,
+			extraSearchParams = "different",
+			batchItems = mapOf(
+				1L to snapshot(1L, MigrationBatchStatus.MIGRATED, oldConfig),
+				2L to snapshot(2L, MigrationBatchStatus.COPIED, oldConfig),
+			),
+		)
+
+		assertEquals(MigrationBatchStatus.MIGRATED, state.status(1L))
+		assertEquals(MigrationBatchStatus.COPIED, state.status(2L))
 	}
 }
