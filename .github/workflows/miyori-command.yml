@@ -1,0 +1,250 @@
+name: Miyori Owner Commands
+
+# Owner-only control plane. The command allowlist is intentionally narrow.
+# No command can push code, merge, publish releases, weaken CI, or run arbitrary shell input.
+
+on:
+  issue_comment:
+    types:
+      - created
+  workflow_dispatch:
+    inputs:
+      target_number:
+        description: 'Issue or pull request number for manual command verification'
+        required: true
+        type: string
+      command:
+        description: 'Synthetic owner command'
+        required: true
+        type: choice
+        options:
+          - /miyori help
+          - /miyori status
+          - /miyori require-runtime
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: miyori-command-${{ github.event_name == 'workflow_dispatch' && inputs.target_number || github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  command:
+    name: Handle owner-authorized Miyori command
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (startsWith(github.event.comment.body, '/miyori') &&
+       github.event.comment.user.login == github.repository_owner)
+    runs-on: ubuntu-latest
+    env:
+      TARGET_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.target_number || github.event.issue.number }}
+      COMMAND_RAW: ${{ github.event_name == 'workflow_dispatch' && inputs.command || github.event.comment.body }}
+      COMMAND_EVENT_ID: ${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.comment.id }}
+
+    steps:
+      - name: Validate target number
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Target number must be a positive integer."
+            exit 1
+          }
+
+      - name: Checkout trusted default-branch automation code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Parse strict command allowlist
+        id: parse
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMAND="$(python3 .github/scripts/miyori_command.py "$COMMAND_RAW")"
+          echo "command=$COMMAND" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Miyori Bot installation token
+        id: miyori-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.MIYORI_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.MIYORI_BOT_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Verify Miyori identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          BOT_LOGIN="${APP_SLUG}[bot]"
+          ACTUAL_LOGIN="$(gh api "/users/${BOT_LOGIN}" --jq '.login')"
+          [[ "$ACTUAL_LOGIN" == "$BOT_LOGIN" ]] || {
+            echo "::error::Resolved bot login '$ACTUAL_LOGIN' did not match expected '$BOT_LOGIN'."
+            exit 1
+          }
+
+      - name: Detect pull request target
+        id: target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/pulls/${TARGET_NUMBER}" >/dev/null 2>&1; then
+            echo "is_pr=true" >> "$GITHUB_OUTPUT"
+            echo "state=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${TARGET_NUMBER}" --jq '.state')" >> "$GITHUB_OUTPUT"
+            echo "head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${TARGET_NUMBER}" --jq '.head.sha')" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_pr=false" >> "$GITHUB_OUTPUT"
+            echo "state=" >> "$GITHUB_OUTPUT"
+            echo "head_sha=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Refresh unified PR status card
+        if: steps.parse.outputs.command == 'status' && steps.target.outputs.is_pr == 'true' && steps.target.outputs.state == 'open'
+        shell: bash
+        env:
+          MIYORI_READ_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+
+          python3 .github/scripts/miyori_status.py \
+            --pr-number "$TARGET_NUMBER" \
+            --output "$RUNNER_TEMP/miyori-status.md"
+
+          BOT_LOGIN="${APP_SLUG}[bot]"
+          CARD_MARKER='<!-- miyori-status-card:v1 -->'
+          LEGACY_MARKER='<!-- miyori-status:identity-guard -->'
+
+          COMMENT_ID="$(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+              --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${CARD_MARKER}\"))) | .id" \
+              | head -n 1
+          )"
+          if [[ -z "$COMMENT_ID" ]]; then
+            COMMENT_ID="$(
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+                --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${LEGACY_MARKER}\"))) | .id" \
+                | head -n 1
+            )"
+          fi
+
+          BODY="$(cat "$RUNNER_TEMP/miyori-status.md")"
+          if [[ -n "$COMMENT_ID" ]]; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
+              -f body="$BODY" >/dev/null
+          else
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+              -f body="$BODY" >/dev/null
+          fi
+
+      - name: Require Android Runtime validation
+        if: steps.parse.outputs.command == 'require-runtime' && steps.target.outputs.is_pr == 'true' && steps.target.outputs.state == 'open'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/labels" \
+            --input - <<'JSON' >/dev/null
+          {"labels":["ci:runtime-required"]}
+          JSON
+
+      - name: Publish idempotent command response
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
+          COMMAND: ${{ steps.parse.outputs.command }}
+          IS_PR: ${{ steps.target.outputs.is_pr }}
+          PR_STATE: ${{ steps.target.outputs.state }}
+        run: |
+          set -euo pipefail
+
+          BOT_LOGIN="${APP_SLUG}[bot]"
+          RESPONSE_MARKER="<!-- miyori-command-response:${COMMAND_EVENT_ID} -->"
+
+          case "$COMMAND" in
+            help)
+              RESPONSE=$(cat <<EOF
+          ${RESPONSE_MARKER}
+          🌸 **Miyori owner commands**
+
+          - \`/miyori help\` — show this allowlist.
+          - \`/miyori status\` — refresh the persistent PR status card.
+          - \`/miyori require-runtime\` — add \`ci:runtime-required\` to an open PR.
+
+          Commands are accepted only from the repository owner. Miyori cannot push code, merge, publish releases, or weaken validation.
+          EOF
+              )
+              ;;
+            status)
+              if [[ "$IS_PR" != "true" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 \`/miyori status\` requires a pull request target."
+              elif [[ "$PR_STATE" != "open" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; its status card was not changed."
+              else
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 Refreshed the persistent status card for PR #${TARGET_NUMBER}."
+              fi
+              ;;
+            require-runtime)
+              if [[ "$IS_PR" != "true" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 \`/miyori require-runtime\` requires a pull request target."
+              elif [[ "$PR_STATE" != "open" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; no label was changed."
+              else
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🛡️ Added \`ci:runtime-required\` to PR #${TARGET_NUMBER}. This action can only strengthen CI validation."
+              fi
+              ;;
+            *)
+              RESPONSE=$(cat <<EOF
+          ${RESPONSE_MARKER}
+          🌸 Command not recognized.
+
+          Allowed commands: \`/miyori help\`, \`/miyori status\`, \`/miyori require-runtime\`.
+          EOF
+              )
+              ;;
+          esac
+
+          COMMENT_ID="$(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+              --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${RESPONSE_MARKER}\"))) | .id" \
+              | head -n 1
+          )"
+
+          if [[ -n "$COMMENT_ID" ]]; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
+              -f body="$RESPONSE" >/dev/null
+          else
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+              -f body="$RESPONSE" >/dev/null
+          fi
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Miyori owner command"
+            echo
+            echo "- Target: #${TARGET_NUMBER}"
+            echo "- Parsed command: \`${{ steps.parse.outputs.command }}\`"
+            echo "- Owner-only: yes"
+            echo "- Safe mutation allowlist: add \`ci:runtime-required\` only"
+          } >> "$GITHUB_STEP_SUMMARY"
