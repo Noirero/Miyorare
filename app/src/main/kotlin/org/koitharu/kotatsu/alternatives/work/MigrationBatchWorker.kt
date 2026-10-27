@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.alternatives.domain.MigrationBatchOutcome
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchPolicy
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationDiscovery
+import org.koitharu.kotatsu.alternatives.domain.MigrationExecutionMode
 import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationExecutionUseCase
 import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationSearchUseCase
 import org.koitharu.kotatsu.core.db.MangaDatabase
@@ -79,7 +80,11 @@ class MigrationBatchWorker @AssistedInject constructor(
 			},
 			migrate = { selection ->
 				when (request.discoveryMode) {
-					MigrationBatchDiscoveryMode.YOKAI -> yokaiExecute(request.mangaId, selection)
+					MigrationBatchDiscoveryMode.YOKAI -> yokaiExecute(
+						request.mangaId,
+						selection,
+						MigrationExecutionMode.MIGRATE,
+					)
 					MigrationBatchDiscoveryMode.CHECK_CURRENT,
 					MigrationBatchDiscoveryMode.DIRECT_SEARCH -> autoFix.migrateSelected(
 						request.mangaId,
@@ -88,6 +93,12 @@ class MigrationBatchWorker @AssistedInject constructor(
 						allowReadableSource = request.discoveryMode == MigrationBatchDiscoveryMode.DIRECT_SEARCH,
 					)
 				}
+			},
+			copy = { selection ->
+				check(request.discoveryMode == MigrationBatchDiscoveryMode.YOKAI) {
+					"Copy is only supported by the Yokai migration session"
+				}
+				yokaiExecute(request.mangaId, selection, MigrationExecutionMode.COPY)
 			},
 		)
 		return Result.success(MigrationBatchWork.output(outcome))
