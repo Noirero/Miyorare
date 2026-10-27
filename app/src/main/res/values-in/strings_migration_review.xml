@@ -48,7 +48,7 @@
     <string name="migration_change_sources">Ubah source</string>
     <string name="migration_change_result">Ganti hasil</string>
     <string name="migration_partial_provider_pool">Sebagian provider source tidak tersedia. Source yang berhasil dimuat tetap dapat dipilih.</string>
-    <string name="migration_partial_search">Sebagian source pilihan tidak tersedia. Hasil dari source yang merespons tetap dapat dipilih.</string>
+    <string name="migration_partial_search">Sebagian source atau provider tidak tersedia. Hasil dari source pilihan yang merespons tetap dapat dipilih.</string>
     <string name="migration_incomplete">Tidak ada source pilihan yang berhasil dicari. Ubah source atau coba lagi nanti.</string>
     <string name="migration_ready">Pengganti dengan kecocokan kuat ditemukan. Anda dapat langsung memigrasikannya.</string>
     <string name="migration_review">Hasil pencarian ditemukan. Pilih manga yang Anda kenali.</string>
