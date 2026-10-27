@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.alternatives.domain.MigrationBatchOutcome
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchPolicy
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationDiscovery
+import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationExecutionUseCase
 import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationSearchUseCase
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -34,6 +35,7 @@ class MigrationBatchWorker @AssistedInject constructor(
 	@Assisted parameters: WorkerParameters,
 	private val autoFix: AutoFixUseCase,
 	private val yokaiSearch: YokaiStyleMigrationSearchUseCase,
+	private val yokaiExecute: YokaiStyleMigrationExecutionUseCase,
 	private val database: MangaDatabase,
 ) : CoroutineWorker(context, parameters) {
 	override suspend fun doWork(): Result {
@@ -76,14 +78,16 @@ class MigrationBatchWorker @AssistedInject constructor(
 				}
 			},
 			migrate = { selection ->
-				autoFix.migrateSelected(
-					request.mangaId,
-					selection,
-					// Yokai-style READY is explicitly accepted by the user through Migrate ready.
-					// Fresh destination identity/readability validation still happens inside migrateSelected.
-					reviewed = request.discoveryMode == MigrationBatchDiscoveryMode.YOKAI,
-					allowReadableSource = request.discoveryMode != MigrationBatchDiscoveryMode.CHECK_CURRENT,
-				)
+				when (request.discoveryMode) {
+					MigrationBatchDiscoveryMode.YOKAI -> yokaiExecute(request.mangaId, selection)
+					MigrationBatchDiscoveryMode.CHECK_CURRENT,
+					MigrationBatchDiscoveryMode.DIRECT_SEARCH -> autoFix.migrateSelected(
+						request.mangaId,
+						selection,
+						reviewed = false,
+						allowReadableSource = request.discoveryMode == MigrationBatchDiscoveryMode.DIRECT_SEARCH,
+					)
+				}
 			},
 		)
 		return Result.success(MigrationBatchWork.output(outcome))
