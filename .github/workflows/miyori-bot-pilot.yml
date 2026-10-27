@@ -1,13 +1,10 @@
 name: Miyori Bot Pilot
 
 on:
-  push:
-    branches:
-      - chore/miyori-bot-pilot
   workflow_dispatch:
     inputs:
       issue_number:
-        description: 'Issue or pull request number that Miyori Bot should comment on'
+        description: 'Issue number that Miyori Bot should comment on'
         required: true
         type: string
 
@@ -23,7 +20,7 @@ jobs:
     name: Verify Miyori Bot identity
     runs-on: ubuntu-latest
     env:
-      TARGET_ISSUE_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || '771' }}
+      TARGET_ISSUE_NUMBER: ${{ inputs.issue_number }}
     steps:
       - name: Validate target number
         shell: bash
@@ -78,7 +75,7 @@ jobs:
 
           Authentication succeeded as \`${APP_SLUG}[bot]\` using a repository-scoped GitHub App installation token.
 
-          This pilot only has permission to write issue/PR conversation comments. It does not push code, merge branches, publish releases, or replace \`github-actions[bot]\`.
+          This pilot only has permission to write issue comments. It does not push code, merge branches, publish releases, or replace \`github-actions[bot]\`.
 
           Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           EOF
@@ -96,8 +93,8 @@ jobs:
           {
             echo "## Miyori Bot pilot"
             echo
-            echo "- Target: #${TARGET_ISSUE_NUMBER}"
+            echo "- Target issue: #${TARGET_ISSUE_NUMBER}"
             echo "- App slug: \`${{ steps.miyori-token.outputs.app-slug }}\`"
-            echo "- Scope: issue/PR comment only"
+            echo "- Scope: issue comment only"
             echo "- Existing github-actions[bot] automation: unchanged"
           } >> "$GITHUB_STEP_SUMMARY"
