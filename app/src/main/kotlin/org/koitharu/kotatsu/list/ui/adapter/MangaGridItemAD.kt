@@ -366,7 +366,11 @@ fun mangaGridItemAD(
 						context.resources.getDimensionPixelSize(R.dimen.library_indicator_spacing)
 				} else 0
 		}
-		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
+		binding.imageViewCover.setImageAsync(
+			item.coverUrl,
+			item.manga,
+			persistCover = coverContext == ModernCoverContext.COLLECTION,
+		)
 		binding.badge.number = item.counter
 		binding.badge.isVisible = item.counter > 0 && !usesModernCover
 	}
