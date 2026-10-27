@@ -141,7 +141,12 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		if (!canPersistCandidate(candidate)) return SourceResult(null, false)
 		if (!requireDetails) return SourceResult(candidate, false)
 		val details = runCatchingCancellable { mangaRepositoryFactory.create(source).getDetails(candidate) }.getOrNull()
-		return SourceResult(details, details == null)
+			?: return SourceResult(null, true)
+		if (details.id != candidate.id || details.source.name != candidate.source.name) {
+			return SourceResult(null, true)
+		}
+		if (!canPersistCandidate(details)) return SourceResult(null, false)
+		return SourceResult(details, false)
 	}
 
 	private suspend fun canPersistCandidate(candidate: Manga): Boolean {
