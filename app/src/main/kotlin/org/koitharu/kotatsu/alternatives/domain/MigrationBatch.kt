@@ -100,7 +100,7 @@ object MigrationBatchPolicy {
 		if (!canAccess()) MigrationBatchOutcome(MigrationBatchStatus.INTERRUPTED, destinationId = request.selection?.id)
 		else when (request.action) {
 			MigrationBatchAction.CHECK -> assess(
-				discovery(),
+				discover(),
 				rawSelection = request.discoveryMode == MigrationBatchDiscoveryMode.DIRECT_SEARCH,
 			)
 			MigrationBatchAction.MIGRATE -> {
