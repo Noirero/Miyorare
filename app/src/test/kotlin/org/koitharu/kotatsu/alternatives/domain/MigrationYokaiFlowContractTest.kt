@@ -42,7 +42,7 @@ class MigrationYokaiFlowContractTest {
 		val manual = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchViewModel.kt")
 
 		assertTrue(automatic.contains("filterNot{result->result.id==seed.id}"))
-		assertTrue(manual.contains("filterNot{it.id==seed.id}"))
+		assertTrue(manual.contains("if(candidate.id==seed.id)continue"))
 		assertTrue(manual.contains("candidate.id==mangaId"))
 	}
 
