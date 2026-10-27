@@ -9,20 +9,20 @@ class MigrationMatchingContractTest {
 
 	@Test
 	fun `background auto fix keeps strict execution validation`() {
-		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
 
-		assertTrue(source.contains("MigrationMatchState.READY"))
-		assertTrue(source.contains("MigrationSelection.fromSearchResult(replacement)"))
-		assertTrue(source.contains("migrateSelected("))
-		assertFalse(source.contains("selectLastWithTimeout"))
-		assertFalse(source.contains("runningFold"))
+		assertTrue(autoFix.contains("MigrationMatchState.READY"))
+		assertTrue(autoFix.contains("MigrationSelection.fromSearchResult(replacement)"))
+		assertTrue(autoFix.contains("migrateSelected("))
+		assertFalse(autoFix.contains("selectLastWithTimeout"))
+		assertFalse(autoFix.contains("runningFold"))
 	}
 
 	@Test
 	fun `selected migration refreshes approved destination before lossless execution`() {
-		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
-		val migrateSelected = source.substringAfter("suspendfunmigrateSelected(").substringBefore("privatesuspendfunvalidateSelection(")
-		val validation = source.substringAfter("privatesuspendfunvalidateSelection(").substringBefore("privatesuspendfunloadStoredSeed(")
+		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val migrateSelected = autoFix.substringAfter("suspendfunmigrateSelected(").substringBefore("privatesuspendfunvalidateSelection(")
+		val validation = autoFix.substringAfter("privatesuspendfunvalidateSelection(").substringBefore("privatesuspendfunloadStoredSeed(")
 
 		assertTrue(migrateSelected.contains("validateSelection(mangaId,selection,allowReadableSource)"))
 		assertTrue(migrateSelected.contains("selection.isRawSearchIdentity"))
@@ -30,7 +30,6 @@ class MigrationMatchingContractTest {
 		assertTrue(migrateSelected.contains("lossless=true,requireLibraryEntry=true"))
 		assertFalse(migrateSelected.contains("discover(mangaId)"))
 
-		// Direct mode skips the old source. Checked mode still keeps the bounded current-source guard.
 		assertTrue(validation.contains("if(allowReadableSource)"))
 		assertTrue(validation.contains("MigrationDiscovery(seed=loadStoredSeed(mangaId),sourceHealthy=false)"))
 		assertTrue(validation.contains("checkCurrentSource(mangaId)"))
@@ -38,8 +37,6 @@ class MigrationMatchingContractTest {
 		assertFalse(validation.contains("seed.isReadable()"))
 		assertFalse(validation.contains("discover(mangaId)"))
 
-		// The exact destination source/id is searched again, then details/page health and the fresh
-		// full fingerprint are established before lossless transfer can proceed.
 		assertTrue(validation.contains("filter{it.name==selection.source}"))
 		assertTrue(validation.contains("precomputedSources=selectedSources"))
 		assertTrue(validation.contains("event.manga.source.name==selection.source&&event.manga.id==selection.id"))
@@ -51,8 +48,8 @@ class MigrationMatchingContractTest {
 
 	@Test
 	fun `direct discovery is one raw query per installed source with no preflight health probe`() {
-		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
-		val direct = source.substringAfter("suspendfunsearchReplacements(").substringBefore("/**Refreshtheapproveddestinationidentity")
+		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val direct = autoFix.substringAfter("suspendfunsearchReplacements(").substringBefore("/**Refreshtheapproveddestinationidentity")
 		val alternatives = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
 		val rawSearch = alternatives.substringAfter("funsearchInstalledSourcesDirect(").substringBefore("privatefunsearchSources(")
 
@@ -84,9 +81,9 @@ class MigrationMatchingContractTest {
 
 	@Test
 	fun `primary discovery query strips lightweight title decorators while aliases stay execution fallback`() {
-		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
-		val primary = source.substringAfter("internalfunbuildPrimaryMigrationSearchQuery(").substringBefore("internalfunbuildMigrationSearchQueries(")
-		val fallback = source.substringAfter("internalfunbuildMigrationSearchQueries(")
+		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val primary = autoFix.substringAfter("internalfunbuildPrimaryMigrationSearchQuery(").substringBefore("internalfunbuildMigrationSearchQueries(")
+		val fallback = autoFix.substringAfter("internalfunbuildMigrationSearchQueries(")
 
 		assertTrue(primary.contains("migrationTitleVariants(seed.title).lastOrNull()"))
 		assertTrue(primary.contains("TRAILING_MIGRATION_DECORATOR"))
@@ -96,32 +93,32 @@ class MigrationMatchingContractTest {
 
 	@Test
 	fun `optional current source check is bounded and probes the newest normalized chapter`() {
-		val source = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
-		val check = source.substringAfter("suspendfuncheckCurrentSource(").substringBefore("suspendfunsearchAvailability(")
-		val probe = source.substringAfter("privatesuspendfunManga.probeHealth()")
+		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val check = autoFix.substringAfter("suspendfuncheckCurrentSource(").substringBefore("suspendfunsearchAvailability(")
+		val probe = autoFix.substringAfter("privatesuspendfunManga.probeHealth()")
 
 		assertTrue(check.contains("withTimeoutOrNull(CURRENT_SOURCE_CHECK_TIMEOUT_MS)"))
-		assertTrue(source.contains("CURRENT_SOURCE_CHECK_TIMEOUT_MS=12_000L"))
+		assertTrue(autoFix.contains("CURRENT_SOURCE_CHECK_TIMEOUT_MS=12_000L"))
 		assertTrue(probe.contains("details.chapters?.lastOrNull()"))
 		assertFalse(probe.contains("details.chapters?.firstOrNull()"))
 	}
 
 	@Test
 	fun `manual alternatives keep user preference mode while cross-source id collisions remain discoverable`() {
-		val source = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
+		val alternatives = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
 
-		assertTrue(source.contains("SearchSourceMode.PINNED_ONLY"))
-		assertTrue(source.contains("SearchSourceMode.PREFERRED_LANGUAGES"))
-		assertTrue(source.contains("SearchSourceMode.ALL_SOURCES"))
-		assertTrue(source.contains("searchSources(normalizedQuery,sources,manga.sourcetomanga.id,maxDetailCandidates)"))
-		assertTrue(source.contains("excluded==null||it.source!=excluded.first||it.id!=excluded.second"))
-		assertFalse(source.contains("filter{it.id!=manga.id}"))
+		assertTrue(alternatives.contains("SearchSourceMode.PINNED_ONLY"))
+		assertTrue(alternatives.contains("SearchSourceMode.PREFERRED_LANGUAGES"))
+		assertTrue(alternatives.contains("SearchSourceMode.ALL_SOURCES"))
+		assertTrue(alternatives.contains("searchSources(normalizedQuery,sources,manga.sourcetomanga.id,maxDetailCandidates)"))
+		assertTrue(alternatives.contains("excluded==null||it.source!=excluded.first||it.id!=excluded.second"))
+		assertFalse(alternatives.contains("filter{it.id!=manga.id}"))
 	}
 
 	@Test
 	fun `legacy fix entry points route through explicit migration UI`() {
-		val source = source("org/koitharu/kotatsu/alternatives/ui/AutoFixService.kt")
-		val entryPoints = source.substringAfter("companionobject{")
+		val service = source("org/koitharu/kotatsu/alternatives/ui/AutoFixService.kt")
+		val entryPoints = service.substringAfter("companionobject{")
 
 		assertTrue(entryPoints.contains("ACTION_MIGRATION_REVIEW"))
 		assertTrue(entryPoints.contains("ACTION_MIGRATION"))
