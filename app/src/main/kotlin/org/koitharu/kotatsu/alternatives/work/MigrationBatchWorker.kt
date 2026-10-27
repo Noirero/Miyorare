@@ -1,11 +1,11 @@
 package org.koitharu.kotatsu.alternatives.work
 
-import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.PendingIntentCompat
 import androidx.hilt.work.HiltWorker
@@ -16,8 +16,12 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.alternatives.domain.*
-import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.alternatives.domain.AutoFixUseCase
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchOutcome
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchPolicy
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.settings.SettingsActivity
 
@@ -26,22 +30,31 @@ class MigrationBatchWorker @AssistedInject constructor(
 	@Assisted context: Context,
 	@Assisted parameters: WorkerParameters,
 	private val autoFix: AutoFixUseCase,
-	private val database: MangaDatabase,
 ) : CoroutineWorker(context, parameters) {
+
 	override suspend fun doWork(): Result {
+		val request = MigrationBatchWork.request(inputData) ?: return Result.failure()
 		setForeground(getForegroundInfo())
-		val request = MigrationBatchWork.request(inputData)
-		setProgress(MigrationBatchWork.output(MigrationBatchOutcome(
-			if (request.action == MigrationBatchAction.CHECK) MigrationBatchStatus.CHECKING else MigrationBatchStatus.MIGRATING,
-		)))
-		val outcome = MigrationBatchPolicy.process(request,
-			canAccess = {
-				database.getMangaDao().isMigrationEntryVisible(request.mangaId) &&
-					database.getMangaDao().find(request.mangaId)?.manga?.source == request.source
-			},
+		val generation = MigrationBatchWork.generation(inputData)
+		val batchName = MigrationBatchWork.batchName(inputData).ifBlank { "migration-${id}" }
+		val progress = MigrationBatchWork.progress(
+			request,
+			generation,
+			batchName,
+			MigrationBatchOutcome(
+				if (request.action == MigrationBatchAction.MIGRATE) MigrationBatchStatus.MIGRATING else MigrationBatchStatus.CHECKING,
+			),
+		)
+		setProgress(progress)
+		val outcome = MigrationBatchPolicy.process(
+			request = request,
+			canAccess = { MigrationBatchWork.canAccess(applicationContext, request) },
 			discover = {
-				val onProgress: suspend (MigrationDiscovery) -> Unit = { discovery ->
-					setProgress(MigrationBatchWork.output(
+				val onProgress: suspend (org.koitharu.kotatsu.alternatives.domain.MigrationDiscovery) -> Unit = { discovery ->
+					setProgress(MigrationBatchWork.progress(
+						request,
+						generation,
+						batchName,
 						MigrationBatchOutcome(MigrationBatchStatus.CHECKING),
 						discovery.progress,
 					))
@@ -50,7 +63,13 @@ class MigrationBatchWorker @AssistedInject constructor(
 					MigrationBatchDiscoveryMode.CHECK_CURRENT ->
 						autoFix.discover(request.mangaId, request.searchScope, onProgress)
 					MigrationBatchDiscoveryMode.DIRECT_SEARCH ->
-						autoFix.searchReplacements(request.mangaId, request.searchScope, onProgress = onProgress)
+						autoFix.searchReplacements(
+							mangaId = request.mangaId,
+							searchScope = request.searchScope,
+							directSearch = true,
+							revealAllCandidates = false,
+							onProgress = onProgress,
+						)
 				}
 			},
 			migrate = { selection ->
