@@ -23,6 +23,7 @@
     <string name="migration_batch_incomplete">Selected scope could not be checked reliably — retry or choose another scope</string>
     <string name="migration_batch_healthy">Current manga is still readable</string>
     <string name="migration_batch_copied">Copied — source kept</string>
+    <string name="migration_batch_skipped">Skipped for this migration setup</string>
     <string name="migration_batch_interrupted">Interrupted — check library before retry</string>
     <string name="migration_batch_error">Could not migrate safely — review or retry</string>
     <string name="migration_batch_empty">No remaining library or history entries for these sources.</string>
