@@ -82,8 +82,8 @@ class MiyorareImageDiskCacheTest {
 		val sourceBitmap = Bitmap.createBitmap(320, 480, Bitmap.Config.ARGB_8888).apply {
 			eraseColor(Color.RED)
 		}
-		val fetcher = Fetcher.Factory<String> { data, _, _ ->
-			if (data != REMOTE_COVER_URL) return@Factory null
+		val fetcher = Fetcher.Factory<TestCoverData> { data, _, _ ->
+			if (data.sourceUrl != REMOTE_COVER_URL) return@Factory null
 			Fetcher {
 				fetches.incrementAndGet()
 				ImageFetchResult(sourceBitmap.asImage(), isSampled = false, dataSource = DataSource.NETWORK)
@@ -92,7 +92,7 @@ class MiyorareImageDiskCacheTest {
 		val store = StoredMangaCoverStore(storedRoot(), maxBytes = 4L * 1024 * 1024, maxEntries = 8)
 
 		fun request() = ImageRequest.Builder(context)
-			.data(REMOTE_COVER_URL)
+			.data(TestCoverData(REMOTE_COVER_URL))
 			.diskCacheKey(COVER_KEY)
 			.fetcherFactory(fetcher)
 			.size(128, 192)
@@ -225,6 +225,8 @@ class MiyorareImageDiskCacheTest {
 	private fun coverRoot(): File = (context.getExternalFilesDir("covers") ?: File(context.filesDir, "covers"))
 
 	private fun storedRoot(): File = File(context.filesDir, "stored-cover-test")
+
+	private data class TestCoverData(val sourceUrl: String)
 
 	private companion object {
 		const val COVER_KEY = "cover:123"
