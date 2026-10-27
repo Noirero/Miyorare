@@ -1,21 +1,23 @@
 package org.koitharu.kotatsu.settings.sources.migration
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchPhase
-import org.koitharu.kotatsu.alternatives.domain.MigrationSearchScope
+import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
+import org.koitharu.kotatsu.parsers.model.MangaSource
 
 @StringRes
 internal fun MigrationBatchStatus.labelRes(): Int = when (this) {
@@ -36,68 +38,151 @@ internal fun MigrationBatchStatus.labelRes(): Int = when (this) {
 @Composable
 internal fun MigrationBatchControls(
 	state: SourceMangaListState,
-	onCheck: () -> Unit,
+	onSearch: () -> Unit,
 	onMigrateReady: () -> Unit,
 	onCancel: () -> Unit,
 	onFilter: (MigrationBatchStatus?) -> Unit,
-	onSearchScope: (MigrationSearchScope) -> Unit = {},
-	onDiscoveryMode: (MigrationBatchDiscoveryMode) -> Unit = {},
+	onToggleSource: (String) -> Unit,
+	onSelectAllSources: () -> Unit,
+	onClearSources: () -> Unit,
+	onMoveSource: (String, Int) -> Unit,
+	onStrategy: (MigrationSourceStrategy) -> Unit,
+	onExtraSearch: (String) -> Unit,
+	onSkipSetup: (Boolean) -> Unit,
+	onRetrySources: () -> Unit,
 ) {
-	var expanded by remember { mutableStateOf(false) }
+	var filterExpanded by remember { mutableStateOf(false) }
 	val activeProgress = state.batchItems.values.firstOrNull { it.running && it.searchProgress != null }?.searchProgress
-	Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-		Text(pluralStringResource(R.plurals.manga_count, state.manga.size, state.manga.size), style = MaterialTheme.typography.titleMedium)
-		Text(stringResource(R.string.migration_batch_summary, state.readyCount,
-			state.manga.count { state.status(it.id) == MigrationBatchStatus.NEEDS_REVIEW },
-			state.manga.count { state.status(it.id) == MigrationBatchStatus.NO_REPLACEMENT }))
-		Text(stringResource(R.string.migration_batch_safety), style = MaterialTheme.typography.bodySmall)
+	val selectedSet = state.selectedSourceNames.toHashSet()
+	val sourceByName = state.availableSources.associateBy(MangaSource::name)
+	val orderedSources = buildList {
+		state.selectedSourceNames.mapNotNullTo(this) { sourceByName[it] }
+		state.availableSources
+			.filterNot { it.name in selectedSet }
+			.sortedBy { it.title.ifBlank { it.name } }
+			.forEach(::add)
+	}
+	val targetCount = state.selectedIds.size.takeIf { it > 0 } ?: state.manga.size
+	val controlsEnabled = !state.batchBusy && !state.scheduling
 
-		Text(stringResource(R.string.migration_batch_mode_title), style = MaterialTheme.typography.titleSmall)
-		Row(
-			modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("migration-batch-mode-row"),
-			horizontalArrangement = Arrangement.spacedBy(8.dp),
-		) {
-			FilterChip(
-				selected = state.discoveryMode == MigrationBatchDiscoveryMode.CHECK_CURRENT,
-				onClick = { onDiscoveryMode(MigrationBatchDiscoveryMode.CHECK_CURRENT) },
-				enabled = !state.batchBusy && !state.scheduling,
-				label = { Text(stringResource(R.string.migration_batch_mode_check)) },
-				modifier = Modifier.testTag("migration-batch-mode-check"),
-			)
-			FilterChip(
-				selected = state.discoveryMode == MigrationBatchDiscoveryMode.DIRECT_SEARCH,
-				onClick = { onDiscoveryMode(MigrationBatchDiscoveryMode.DIRECT_SEARCH) },
-				enabled = !state.batchBusy && !state.scheduling,
-				label = { Text(stringResource(R.string.migration_batch_mode_direct)) },
-				modifier = Modifier.testTag("migration-batch-mode-direct"),
-			)
-		}
+	Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+		Text(pluralStringResource(R.plurals.manga_count, state.manga.size, state.manga.size), style = MaterialTheme.typography.titleMedium)
 		Text(
 			stringResource(
-				if (state.discoveryMode == MigrationBatchDiscoveryMode.CHECK_CURRENT) {
-					R.string.migration_batch_mode_check_description
-				} else {
-					R.string.migration_batch_mode_direct_description
-				},
+				R.string.migration_batch_summary,
+				state.readyCount,
+				state.manga.count { state.status(it.id) == MigrationBatchStatus.NEEDS_REVIEW },
+				state.manga.count { state.status(it.id) == MigrationBatchStatus.NO_REPLACEMENT },
 			),
-			style = MaterialTheme.typography.bodySmall,
+			style = MaterialTheme.typography.bodyMedium,
 		)
+		Text(stringResource(R.string.migration_preserve_all_fixed), style = MaterialTheme.typography.bodySmall)
 
-		Text(stringResource(R.string.migration_search_scope_title), style = MaterialTheme.typography.titleSmall)
-		Row(
-			modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("migration-batch-scope-row"),
-			horizontalArrangement = Arrangement.spacedBy(8.dp),
-		) {
-			for (scope in MigrationSearchScope.entries) {
-				FilterChip(
-					selected = state.searchScope == scope,
-					onClick = { onSearchScope(scope) },
-					enabled = !state.batchBusy && !state.scheduling,
-					label = { Text(stringResource(scope.labelRes())) },
-					modifier = Modifier.testTag("migration-batch-scope-${scope.name.lowercase()}"),
-				)
+		Text(stringResource(R.string.migration_yokai_source_order_title), style = MaterialTheme.typography.titleSmall)
+		Text(stringResource(R.string.migration_yokai_source_order_description), style = MaterialTheme.typography.bodySmall)
+
+		when {
+			state.sourceSelectionLoading -> Row(
+				modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(12.dp),
+			) {
+				CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+				Text(stringResource(R.string.migration_loading_sources))
+			}
+			state.sourceSelectionFailed -> {
+				Text(stringResource(R.string.migration_source_list_failed), color = MaterialTheme.colorScheme.error)
+				TextButton(onClick = onRetrySources) { Text(stringResource(R.string.migration_retry)) }
+			}
+			state.availableSources.isEmpty() -> Text(stringResource(R.string.migration_no_sources_available))
+			else -> {
+				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+					TextButton(onClick = onSelectAllSources, enabled = controlsEnabled) {
+						Text(stringResource(R.string.migration_select_all_visible))
+					}
+					TextButton(onClick = onClearSources, enabled = controlsEnabled) {
+						Text(stringResource(R.string.migration_deselect_all_visible))
+					}
+				}
+				Text(stringResource(R.string.migration_sources_selected, state.selectedSourceNames.size), style = MaterialTheme.typography.bodySmall)
+				LazyColumn(
+					modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).testTag("migration-source-picker"),
+					verticalArrangement = Arrangement.spacedBy(2.dp),
+				) {
+					items(orderedSources, key = MangaSource::name) { source ->
+						val selected = source.name in selectedSet
+						val selectedIndex = state.selectedSourceNames.indexOf(source.name)
+						Row(
+							modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+							verticalAlignment = Alignment.CenterVertically,
+						) {
+							Checkbox(
+								checked = selected,
+								onCheckedChange = { onToggleSource(source.name) },
+								enabled = controlsEnabled,
+							)
+							Text(
+								text = source.title.ifBlank { source.name },
+								modifier = Modifier.weight(1f),
+								maxLines = 1,
+								overflow = TextOverflow.Ellipsis,
+							)
+							if (selected) {
+								TextButton(
+									onClick = { onMoveSource(source.name, -1) },
+									enabled = controlsEnabled && selectedIndex > 0,
+									contentPadding = PaddingValues(horizontal = 8.dp),
+								) { Text("↑") }
+								TextButton(
+									onClick = { onMoveSource(source.name, 1) },
+									enabled = controlsEnabled && selectedIndex < state.selectedSourceNames.lastIndex,
+									contentPadding = PaddingValues(horizontal = 8.dp),
+								) { Text("↓") }
+							}
+						}
+					}
+				}
 			}
 		}
+
+		Text(stringResource(R.string.migration_yokai_strategy_title), style = MaterialTheme.typography.titleSmall)
+		MigrationStrategyRow(
+			selected = state.sourceStrategy == MigrationSourceStrategy.FIRST_MATCH,
+			title = stringResource(R.string.migration_yokai_strategy_first),
+			description = stringResource(R.string.migration_yokai_strategy_first_description),
+			enabled = controlsEnabled,
+			onClick = { onStrategy(MigrationSourceStrategy.FIRST_MATCH) },
+		)
+		MigrationStrategyRow(
+			selected = state.sourceStrategy == MigrationSourceStrategy.MOST_CHAPTERS,
+			title = stringResource(R.string.migration_yokai_strategy_most),
+			description = stringResource(R.string.migration_yokai_strategy_most_description),
+			enabled = controlsEnabled,
+			onClick = { onStrategy(MigrationSourceStrategy.MOST_CHAPTERS) },
+		)
+
+		OutlinedTextField(
+			value = state.extraSearchParams,
+			onValueChange = onExtraSearch,
+			enabled = controlsEnabled,
+			modifier = Modifier.fillMaxWidth().testTag("migration-extra-search"),
+			label = { Text(stringResource(R.string.migration_yokai_extra_search)) },
+			supportingText = { Text(stringResource(R.string.migration_yokai_extra_search_hint)) },
+			singleLine = true,
+		)
+
+		Row(verticalAlignment = Alignment.CenterVertically) {
+			Checkbox(checked = state.skipSetup, onCheckedChange = onSkipSetup, enabled = controlsEnabled)
+			Column(Modifier.weight(1f)) {
+				Text(stringResource(R.string.migration_yokai_skip_setup))
+				Text(stringResource(R.string.migration_yokai_skip_setup_description), style = MaterialTheme.typography.bodySmall)
+			}
+		}
+
+		if (state.sourcePoolFailureCount > 0) {
+			Text(stringResource(R.string.migration_partial_provider_pool), style = MaterialTheme.typography.bodySmall)
+		}
+
 		activeProgress?.let { progress ->
 			val text = when (progress.phase) {
 				MigrationSearchPhase.CHECKING_SOURCE -> stringResource(R.string.migration_batch_checking_current)
@@ -109,28 +194,29 @@ internal fun MigrationBatchControls(
 			Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("migration-batch-live-progress"))
 		}
 		if (state.batchTotal > 0) {
-			LinearProgressIndicator(progress = { state.batchCompleted.toFloat() / state.batchTotal }, modifier = Modifier.fillMaxWidth())
+			LinearProgressIndicator(
+				progress = { if (state.batchTotal == 0) 0f else state.batchCompleted.toFloat() / state.batchTotal },
+				modifier = Modifier.fillMaxWidth(),
+			)
 			Text(stringResource(R.string.migration_batch_progress, state.batchCompleted, state.batchTotal))
 		}
 		if (state.migratedCount > 0) Text(stringResource(R.string.migration_batch_done, state.migratedCount))
 		if (state.unconfirmedCount > 0) Text(stringResource(R.string.migration_batch_check_library))
 		if (state.batchBusy && state.ownedBatchName == null) Text(stringResource(R.string.migration_batch_other_active))
+
 		Button(
-			onClick = onCheck,
-			enabled = !state.batchBusy && !state.scheduling && state.manga.isNotEmpty(),
-			modifier = Modifier.fillMaxWidth().testTag("migration-batch-check"),
+			onClick = onSearch,
+			enabled = controlsEnabled && targetCount > 0 && state.selectedSourceNames.isNotEmpty() && !state.sourceSelectionLoading,
+			modifier = Modifier.fillMaxWidth().testTag("migration-batch-search"),
 		) {
-			Text(stringResource(
-				if (state.discoveryMode == MigrationBatchDiscoveryMode.CHECK_CURRENT) {
-					R.string.migration_batch_check
-				} else {
-					R.string.migration_batch_direct
-				},
-			))
+			Text(
+				if (targetCount == 1) stringResource(R.string.migration_yokai_search_selected)
+				else stringResource(R.string.migration_yokai_search_selected_count, targetCount),
+			)
 		}
 		if (state.readyCount > 0) Button(
 			onClick = onMigrateReady,
-			enabled = !state.batchBusy && !state.scheduling,
+			enabled = controlsEnabled,
 			modifier = Modifier.fillMaxWidth().testTag("migration-batch-execute"),
 		) {
 			Text(pluralStringResource(R.plurals.migration_batch_migrate_ready, state.readyCount, state.readyCount))
@@ -138,21 +224,42 @@ internal fun MigrationBatchControls(
 		if (state.ownedBatchName != null) TextButton(onClick = onCancel, modifier = Modifier.testTag("migration-batch-cancel")) {
 			Text(stringResource(R.string.migration_batch_cancel))
 		}
+
 		Box {
-			TextButton(onClick = { expanded = true }, modifier = Modifier.testTag("migration-batch-filter")) {
+			TextButton(onClick = { filterExpanded = true }, modifier = Modifier.testTag("migration-batch-filter")) {
 				Text(state.filter?.let { stringResource(it.labelRes()) } ?: stringResource(R.string.migration_batch_all))
 			}
-			DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-				DropdownMenuItem(text = { Text(stringResource(R.string.migration_batch_all)) }, onClick = { expanded = false; onFilter(null) })
+			DropdownMenu(expanded = filterExpanded, onDismissRequest = { filterExpanded = false }) {
+				DropdownMenuItem(text = { Text(stringResource(R.string.migration_batch_all)) }, onClick = { filterExpanded = false; onFilter(null) })
 				for (status in MigrationBatchStatus.entries) {
 					val count = state.manga.count { state.status(it.id) == status }
 					if (count == 0) continue
 					DropdownMenuItem(
 						text = { Text(stringResource(R.string.migration_batch_filter_count, stringResource(status.labelRes()), count)) },
-						onClick = { expanded = false; onFilter(status) },
+						onClick = { filterExpanded = false; onFilter(status) },
 					)
 				}
 			}
+		}
+	}
+}
+
+@Composable
+private fun MigrationStrategyRow(
+	selected: Boolean,
+	title: String,
+	description: String,
+	enabled: Boolean,
+	onClick: () -> Unit,
+) {
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.Top,
+	) {
+		RadioButton(selected = selected, onClick = onClick, enabled = enabled)
+		Column(Modifier.weight(1f).padding(top = 10.dp)) {
+			Text(title, style = MaterialTheme.typography.bodyLarge)
+			Text(description, style = MaterialTheme.typography.bodySmall)
 		}
 	}
 }
