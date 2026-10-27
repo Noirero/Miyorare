@@ -123,13 +123,13 @@ def latest_runs_by_name(runs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
             continue
         current = latest.get(name)
         current_key = (
-            int(current.get("run_attempt") or 0),
             int(current.get("run_number") or 0),
+            int(current.get("run_attempt") or 0),
             str(current.get("updated_at") or ""),
         ) if current else (-1, -1, "")
         candidate_key = (
-            int(run.get("run_attempt") or 0),
             int(run.get("run_number") or 0),
+            int(run.get("run_attempt") or 0),
             str(run.get("updated_at") or ""),
         )
         if current is None or candidate_key > current_key:
