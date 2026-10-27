@@ -1,5 +1,10 @@
 package org.koitharu.kotatsu.alternatives.domain
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.koitharu.kotatsu.core.model.isExternalSource
@@ -76,6 +81,7 @@ class AutoFixUseCase @Inject constructor(
 		return alternativesUseCase.getMigrationSourcePool(seed).availability()
 	}
 
+	/** Checked mode intentionally preserves the strict pre-#762 discovery path. */
 	suspend fun discover(
 		mangaId: Long,
 		searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
@@ -83,21 +89,49 @@ class AutoFixUseCase @Inject constructor(
 	): MigrationDiscovery {
 		val current = checkCurrentSource(mangaId, onProgress)
 		if (current.currentSourceReadable) return current
-		return searchReplacements(mangaId, searchScope, onProgress = onProgress)
+		return searchReplacements(
+			mangaId = mangaId,
+			searchScope = searchScope,
+			currentSourceReadable = false,
+			directSearch = false,
+			onProgress = onProgress,
+		)
 	}
 
 	/**
-	 * Search installed sources exactly like Search Everywhere: one lightweight title query per source,
-	 * publish results as sources finish, and defer details/health/fingerprint validation until execution.
+	 * [directSearch] selects the Search-Everywhere-style path. Checked mode remains strict and keeps
+	 * alias discovery plus candidate health verification before it can produce READY.
 	 */
 	suspend fun searchReplacements(
 		mangaId: Long,
 		searchScope: MigrationSearchScope,
 		currentSourceReadable: Boolean = false,
+		directSearch: Boolean = false,
 		revealAllCandidates: Boolean = false,
 		onProgress: suspend (MigrationDiscovery) -> Unit = {},
 	): MigrationDiscovery {
 		val seed = loadStoredSeed(mangaId)
+		return if (directSearch) {
+			searchDirectReplacements(
+				seed = seed,
+				searchScope = searchScope,
+				currentSourceReadable = currentSourceReadable,
+				revealAllCandidates = revealAllCandidates,
+				onProgress = onProgress,
+			)
+		} else {
+			searchStrictReplacements(seed, searchScope, currentSourceReadable, onProgress)
+		}
+	}
+
+	/** One raw title query per installed source; no detail/page probe before displaying results. */
+	private suspend fun searchDirectReplacements(
+		seed: Manga,
+		searchScope: MigrationSearchScope,
+		currentSourceReadable: Boolean,
+		revealAllCandidates: Boolean,
+		onProgress: suspend (MigrationDiscovery) -> Unit,
+	): MigrationDiscovery {
 		val pool = alternativesUseCase.getMigrationSourcePool(seed)
 		val sources = pool.sources(searchScope)
 		val query = buildPrimaryMigrationSearchQuery(seed)
@@ -183,6 +217,110 @@ class AutoFixUseCase @Inject constructor(
 		)
 	}
 
+	/** Strict checked-mode discovery retained for identity-safe automatic READY decisions. */
+	private suspend fun searchStrictReplacements(
+		seed: Manga,
+		searchScope: MigrationSearchScope,
+		currentSourceReadable: Boolean,
+		onProgress: suspend (MigrationDiscovery) -> Unit,
+	): MigrationDiscovery {
+		val pool = alternativesUseCase.getMigrationSourcePool(seed)
+		val sources = pool.sources(searchScope)
+		val queries = buildMigrationSearchQueries(seed)
+		val observations = ArrayList<MigrationCandidateObservation>()
+		val observedKeys = hashSetOf<Pair<String, Long>>()
+		val sourceFailures = hashSetOf<String>()
+		val sourceSuccesses = hashSetOf<String>()
+
+		suspend fun publishSearchProgress(
+			query: String,
+			queryIndex: Int,
+			completedSources: Int,
+			lastSource: String? = null,
+		) {
+			val assessment = observations.takeIf { it.isNotEmpty() }?.let { candidateMatcher.assess(seed, it) }
+			onProgress(MigrationDiscovery(
+				seed = seed,
+				assessment = assessment,
+				sourceHealthy = currentSourceReadable,
+				partialFailureCount = pool.providerFailureCount + sourceFailures.size,
+				progress = MigrationSearchProgress(
+					phase = MigrationSearchPhase.SEARCHING_SOURCES,
+					query = query,
+					queryIndex = queryIndex,
+					queryTotal = queries.size,
+					completedSources = completedSources,
+					totalSources = sources.size,
+					candidateCount = observedKeys.size,
+					lastSource = lastSource,
+				),
+			))
+		}
+
+		for ((index, query) in queries.withIndex()) {
+			var completedSources = 0
+			publishSearchProgress(query, index + 1, completedSources)
+			alternativesUseCase(
+				manga = seed,
+				mode = SearchSourceMode.ALL_SOURCES,
+				preferredLanguages = emptySet(),
+				query = query,
+				precomputedSources = sources,
+				maxDetailCandidates = MAX_MIGRATION_DETAIL_CANDIDATES,
+			).collect { event ->
+				when (event) {
+					is AlternativeSearchEvent.Result -> {
+						observations += MigrationCandidateObservation(event.manga, setOf(query))
+						observedKeys += event.manga.source.name to event.manga.id
+					}
+					is AlternativeSearchEvent.SourceFinished -> {
+						if (event.error != null) sourceFailures += event.source.name else sourceSuccesses += event.source.name
+						completedSources++
+						publishSearchProgress(query, index + 1, completedSources, event.source.name)
+					}
+				}
+			}
+		}
+
+		val ranked = candidateMatcher.rank(seed, observations).take(MAX_HEALTH_CHECKS)
+		onProgress(MigrationDiscovery(
+			seed = seed,
+			assessment = observations.takeIf { it.isNotEmpty() }?.let { candidateMatcher.assess(seed, it) },
+			sourceHealthy = currentSourceReadable,
+			partialFailureCount = pool.providerFailureCount + sourceFailures.size,
+			progress = MigrationSearchProgress(
+				phase = MigrationSearchPhase.VERIFYING_CANDIDATES,
+				candidateCount = ranked.size,
+			),
+		))
+		val healthSemaphore = Semaphore(MAX_PARALLEL_HEALTH_CHECKS)
+		val probes = coroutineScope {
+			ranked.map { candidate ->
+				async {
+					healthSemaphore.withPermit { candidate to candidate.manga.probeHealth() }
+				}
+			}.awaitAll()
+		}
+		val healthy = ArrayList<MigrationCandidateObservation>(probes.size)
+		for ((candidate, probe) in probes) {
+			val details = probe.getOrNull() ?: continue
+			healthy += MigrationCandidateObservation(details, candidate.matchedQueries)
+		}
+		val assessment = candidateMatcher.assess(seed, healthy)
+		val incomplete = isMigrationScopeIncomplete(
+			scopedSourceNames = sources.map { it.name },
+			failedSourceNames = sourceFailures,
+			successfulSourceNames = sourceSuccesses,
+		)
+		return MigrationDiscovery(
+			seed = seed,
+			assessment = assessment,
+			sourceHealthy = currentSourceReadable,
+			incomplete = incomplete,
+			partialFailureCount = pool.providerFailureCount + sourceFailures.size,
+		)
+	}
+
 	/** Refresh the approved destination identity before executing. */
 	suspend fun migrateSelected(
 		mangaId: Long,
@@ -211,8 +349,6 @@ class AutoFixUseCase @Inject constructor(
 		selection: MigrationSelection,
 		allowReadableSource: Boolean,
 	): MigrationDiscovery {
-		// Direct-search mode deliberately never asks the old source again. Checked mode keeps the
-		// readable-source guard, but that re-check is bounded by the same timeout as the UI check.
 		val current = if (allowReadableSource) {
 			MigrationDiscovery(seed = loadStoredSeed(mangaId), sourceHealthy = false)
 		} else {
@@ -290,8 +426,6 @@ class AutoFixUseCase @Inject constructor(
 	private suspend fun Manga.probeHealth(): Result<Manga?> = runCatchingCancellable {
 		val repo = mangaRepositoryFactory.create(source)
 		val details = if (this.chapters != null) this else repo.getDetails(this)
-		// Repository chapter lists are normalized oldest-first in the migration-supported adapters;
-		// probe the newest entry, which is less likely to be a stale/deleted historical URL.
 		val chapter = details.chapters?.lastOrNull() ?: return@runCatchingCancellable null
 		val firstPage = repo.getPages(chapter).firstOrNull() ?: return@runCatchingCancellable null
 		val pageUrl = repo.getPageUrl(firstPage)
@@ -319,6 +453,8 @@ class AutoFixUseCase @Inject constructor(
 	private companion object {
 		const val CURRENT_SOURCE_CHECK_TIMEOUT_MS = 12_000L
 		const val MAX_MIGRATION_DETAIL_CANDIDATES = 10
+		const val MAX_HEALTH_CHECKS = 24
+		const val MAX_PARALLEL_HEALTH_CHECKS = 4
 	}
 }
 
