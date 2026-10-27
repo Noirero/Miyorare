@@ -18,6 +18,8 @@ import coil3.toBitmap
 import okio.buffer
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
 import org.koitharu.kotatsu.core.image.RegionBitmapDecoder
+import org.koitharu.kotatsu.core.image.StoredMangaCoverRequest
+import org.koitharu.kotatsu.core.image.storedMangaCoverRequestKey
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 
@@ -58,19 +60,36 @@ fun ImageRequest.Builder.mangaExtra(manga: Manga?): ImageRequest.Builder = apply
 }
 
 /**
- * Pins a source cover's disk-cache entry to a stable key derived from the manga id instead of the
- * transport URL. Remote covers can rotate signed/CDN URLs, while Smart Local covers use a virtual
- * `smart-local://cover/<id>` URL whose extracted bytes are expensive enough that they should share
- * the same persistent cover tier.
+ * Opts an original remote source cover into Miyorare's durable collection-cover pipeline.
  *
- * Skipped for user-set cover overrides (a URL that differs from the source cover): those keep their
- * own cache key so they cannot collide with the source cover cached under `cover:$mangaId`.
+ * Browse/search/details requests leave [persist] and [forceRefresh] false, so their transport URL
+ * remains a normal disposable Coil cache key. Collection surfaces set [persist] to keep a compact
+ * 512px representation in app Data. Details refresh uses [forceRefresh] to update that stored copy
+ * only when the manga was already durable; merely viewing a manga never makes it persistent.
+ *
+ * Smart Local is intentionally excluded because its expensive extraction already has a dedicated
+ * persistent derived-thumbnail owner in SmartLocalCoverCache.
  */
-fun ImageRequest.Builder.stableMangaCoverKey(manga: Manga?, coverUrl: String?): ImageRequest.Builder = apply {
-	if (manga != null && (isRemoteCoverUrl(coverUrl) || isSmartLocalCoverUrl(coverUrl)) &&
-		(coverUrl == manga.coverUrl || coverUrl == manga.largeCoverUrl)
+fun ImageRequest.Builder.stableMangaCoverKey(
+	manga: Manga?,
+	coverUrl: String?,
+	persist: Boolean = false,
+	forceRefresh: Boolean = false,
+): ImageRequest.Builder = apply {
+	if (
+		manga != null &&
+		coverUrl != null &&
+		isRemoteCoverUrl(coverUrl) &&
+		(coverUrl == manga.coverUrl || coverUrl == manga.largeCoverUrl) &&
+		(persist || forceRefresh)
 	) {
 		diskCacheKey(mangaCoverDiskCacheKey(manga.id))
+		extras[storedMangaCoverRequestKey] = StoredMangaCoverRequest(
+			mangaId = manga.id,
+			sourceUrl = coverUrl,
+			persist = persist,
+			forceRefresh = forceRefresh,
+		)
 	}
 }
 
