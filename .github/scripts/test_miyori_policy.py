@@ -77,8 +77,10 @@ def main() -> int:
 
     if '{"labels":["ci:runtime-required"]}' not in command:
         fail("The only safe mutation must remain ci:runtime-required.")
-    if "github.event.comment.user.login == github.repository_owner" not in command:
-        fail("Owner-only actor guard is missing.")
+    if "github.actor == github.repository_owner" not in command:
+        fail("Owner-only actor guard is missing for Miyori commands.")
+    if "github.event_name == 'workflow_dispatch' ||\n      (startsWith" in command:
+        fail("workflow_dispatch must not bypass the owner actor guard.")
 
     diagnostics = (WORKFLOWS / "miyori-diagnostics.yml").read_text(encoding="utf-8")
     if "workflow_dispatch:" not in diagnostics or "issue_comment:" in diagnostics:
