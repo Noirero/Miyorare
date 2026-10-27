@@ -109,18 +109,21 @@ class SourceMangaListStateTest {
 	}
 
 	@Test
-	fun `migrated stays final when migration setup changes`() {
-		val item = manga(1L)
+	fun `migrated and copied stay final when migration setup changes`() {
 		val oldConfig = migrationConfigKey(listOf("A", "B"), MigrationSourceStrategy.FIRST_MATCH, null)
 		val state = SourceMangaListState(
 			isLoading = false,
-			manga = listOf(item),
+			manga = listOf(manga(1L), manga(2L)),
 			selectedSourceNames = listOf("B", "A"),
 			sourceStrategy = MigrationSourceStrategy.MOST_CHAPTERS,
 			extraSearchParams = "different",
-			batchItems = mapOf(1L to snapshot(1L, MigrationBatchStatus.MIGRATED, oldConfig)),
+			batchItems = mapOf(
+				1L to snapshot(1L, MigrationBatchStatus.MIGRATED, oldConfig),
+				2L to snapshot(2L, MigrationBatchStatus.COPIED, oldConfig),
+			),
 		)
 
 		assertEquals(MigrationBatchStatus.MIGRATED, state.status(1L))
+		assertEquals(MigrationBatchStatus.COPIED, state.status(2L))
 	}
 }
