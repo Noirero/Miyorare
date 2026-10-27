@@ -28,6 +28,7 @@ class MigrationYokaiFlowContractTest {
 		val source = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
 
 		assertTrue(source.contains("for((index,source)insources.withIndex())"))
+		assertTrue(source.contains("if(selected.size==1)selectedelseselected.filter{it.name!=seed.source.name}"))
 		assertTrue(source.contains("if(results.size==1)returnresults.single()"))
 		assertTrue(source.contains("MIN_ELIGIBLE_SIMILARITY=0.4"))
 		assertTrue(source.contains("Semaphore(MAX_PARALLEL_SOURCES)"))
@@ -35,6 +36,15 @@ class MigrationYokaiFlowContractTest {
 		assertTrue(source.contains("it.chapters.orEmpty().size"))
 		assertTrue(source.contains("result.id==seed.id"))
 		assertFalse(source.contains("checkCurrentSource("))
+	}
+
+	@Test
+	fun `Yokai setup can list current source while legacy pool still defaults to excluding it`() {
+		val automatic = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
+		val alternatives = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
+
+		assertTrue(automatic.contains("getMigrationSourcePool(loadSeed(mangaId),excludeCurrent=false)"))
+		assertTrue(alternatives.contains("excludeCurrent:Boolean=true"))
 	}
 
 	@Test
