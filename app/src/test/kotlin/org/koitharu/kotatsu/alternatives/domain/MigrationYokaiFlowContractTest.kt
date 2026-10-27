@@ -59,10 +59,12 @@ class MigrationYokaiFlowContractTest {
 	}
 
 	@Test
-	fun `manual selection is invalidated by source setup or query changes`() {
+	fun `manual search uses the same Yokai current source rule and invalidates stale selection`() {
 		val manual = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchViewModel.kt")
 
-		assertTrue(manual.contains("takeIf{it.source.nameinselectedSourceNames}"))
+		assertTrue(manual.contains("if(selected.size==1)selectedelseselected.filterNot{it==seed.source}"))
+		assertTrue(manual.contains("validSourceNames"))
+		assertTrue(manual.contains("takeIf{it.source.nameinvalidSourceNames}"))
 		assertTrue(manual.contains("copy(query=value,selected=null,errorMessage=null)"))
 	}
 
@@ -75,16 +77,32 @@ class MigrationYokaiFlowContractTest {
 	}
 
 	@Test
-	fun `execution refreshes exact persisted identity then uses Miyorare lossless transfer`() {
+	fun `execution refreshes exact persisted identity before migrate or copy`() {
 		val source = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationExecutionUseCase.kt")
 
 		assertTrue(source.contains("findMangaById(selection.id,withChapters=false)"))
 		assertTrue(source.contains("storedCandidate.source.name==selection.source"))
 		assertTrue(source.contains("repository.getDetails(storedCandidate)"))
 		assertTrue(source.contains("repository.getPages(chapter)"))
+		assertTrue(source.contains("MigrationExecutionMode.MIGRATE->migrateUseCase("))
 		assertTrue(source.contains("lossless=true"))
 		assertTrue(source.contains("requireLibraryEntry=true"))
+		assertTrue(source.contains("MigrationExecutionMode.COPY->copyUseCase(old,details)"))
 		assertFalse(source.contains("search("))
+	}
+
+	@Test
+	fun `copy path preserves source while reusing lossless chapter mapping`() {
+		val copy = source("org/koitharu/kotatsu/alternatives/domain/LosslessMigrationCopyUseCase.kt")
+
+		assertTrue(copy.contains("losslessMigrationTransfer.prepare(oldManga,newManga)"))
+		assertTrue(copy.contains("mangaReaderProfileStore.prepareMove(oldManga.id,newManga.id)"))
+		assertTrue(copy.contains("mangaNotesRepository.prepareMove(oldManga.id,newManga.id)"))
+		assertTrue(copy.contains("losslessMigrationTransfer.prepareReadOverrides(plan)"))
+		assertTrue(copy.contains("copyRoom(plan)"))
+		assertFalse(copy.contains("favouritesDao.delete(oldId)"))
+		assertFalse(copy.contains("database.getHistoryDao().delete(oldId)"))
+		assertFalse(copy.contains("commitMove(oldId,newId)"))
 	}
 
 	@Test
@@ -117,11 +135,11 @@ class MigrationYokaiFlowContractTest {
 	}
 
 	@Test
-	fun `work request round trip preserves Yokai migration config`() {
+	fun `work request round trip preserves Yokai migration config and copy action`() {
 		val request = MigrationBatchRequest(
 			mangaId = 42L,
 			source = "OLD",
-			action = MigrationBatchAction.CHECK,
+			action = MigrationBatchAction.COPY,
 			discoveryMode = MigrationBatchDiscoveryMode.YOKAI,
 			selectedSourceNames = listOf("B", "A"),
 			sourceStrategy = MigrationSourceStrategy.MOST_CHAPTERS,
@@ -130,6 +148,7 @@ class MigrationYokaiFlowContractTest {
 		val restored = MigrationBatchWork.request(MigrationBatchWork.input(request))
 
 		assertEquals(request.mangaId, restored.mangaId)
+		assertEquals(request.action, restored.action)
 		assertEquals(request.discoveryMode, restored.discoveryMode)
 		assertEquals(request.selectedSourceNames, restored.selectedSourceNames)
 		assertEquals(request.sourceStrategy, restored.sourceStrategy)
