@@ -69,6 +69,18 @@ class MigrationYokaiFlowContractTest {
 	}
 
 	@Test
+	fun `manual migrate copy and skip share the durable migration session authority`() {
+		val manual = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchViewModel.kt")
+
+		assertTrue(manual.contains("batchScheduler.enqueueAndAwait("))
+		assertTrue(manual.contains("MigrationBatchAction.COPY"))
+		assertTrue(manual.contains("MigrationBatchAction.MIGRATE"))
+		assertTrue(manual.contains("batchScheduler.markSkipped("))
+		assertTrue(manual.contains("configKey=sessionConfigKey"))
+		assertFalse(manual.contains("yokaiExecute("))
+	}
+
+	@Test
 	fun `mixed manga and novel sessions build setup pools per content domain`() {
 		val source = source("org/koitharu/kotatsu/settings/sources/migration/SourceMangaListViewModel.kt")
 
