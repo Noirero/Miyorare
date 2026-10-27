@@ -12,7 +12,7 @@ class MigrationMatchingContractTest {
 		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
 
 		assertTrue(autoFix.contains("MigrationMatchState.READY"))
-		assertTrue(autoFix.contains("MigrationSelection.fromSearchResult(replacement)"))
+		assertTrue(autoFix.contains("MigrationSelection.of(replacement)"))
 		assertTrue(autoFix.contains("migrateSelected("))
 		assertFalse(autoFix.contains("selectLastWithTimeout"))
 		assertFalse(autoFix.contains("runningFold"))
@@ -44,7 +44,6 @@ class MigrationMatchingContractTest {
 		assertTrue(validation.contains("!selection.isRawSearchIdentity&&MigrationSelection.of(fresh)!=selection"))
 		assertTrue(validation.contains("candidateMatcher.assess"))
 
-		// Exact execution refresh must search the complete raw source result list before fetching details.
 		assertTrue(exactRefresh.contains("firstOrNull{it.source.name==source.name&&it.id==candidateId}"))
 		assertTrue(exactRefresh.contains("getDetails(candidate)"))
 		assertFalse(exactRefresh.contains("take("))
