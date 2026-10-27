@@ -35,7 +35,7 @@ class AutoFixUseCase @Inject constructor(
 		}
 		val migrated = migrateSelected(
 			mangaId = mangaId,
-			selection = MigrationSelection.of(replacement),
+			selection = MigrationSelection.fromSearchResult(replacement),
 			reviewed = false,
 			allowReadableSource = false,
 		) ?: return seed to null
@@ -186,7 +186,15 @@ class AutoFixUseCase @Inject constructor(
 	): Manga? {
 		val current = validateSelection(mangaId, selection, allowReadableSource)
 		if (current.currentSourceReadable && !allowReadableSource) return null
-		val replacement = MigrationExecutionPolicy.select(current, selection, reviewed, allowReadableSource)
+		val executionSelection = if (selection.isRawSearchIdentity) {
+			current.assessment?.candidates
+				?.firstOrNull { it.manga.source.name == selection.source && it.manga.id == selection.id }
+				?.manga?.let(MigrationSelection::of)
+				?: throw SelectionChangedException(current)
+		} else {
+			selection
+		}
+		val replacement = MigrationExecutionPolicy.select(current, executionSelection, reviewed, allowReadableSource)
 			?: throw SelectionChangedException(current)
 		migrateUseCase(oldManga = current.seed, newManga = replacement, lossless = true, requireLibraryEntry = true)
 		return replacement
@@ -251,7 +259,9 @@ class AutoFixUseCase @Inject constructor(
 			sourceHealthy = currentReadable,
 			incomplete = validationError != null,
 		)
-		if (MigrationSelection.of(fresh) != selection) return MigrationDiscovery(seed, sourceHealthy = currentReadable)
+		if (!selection.isRawSearchIdentity && MigrationSelection.of(fresh) != selection) {
+			return MigrationDiscovery(seed, sourceHealthy = currentReadable)
+		}
 		return MigrationDiscovery(
 			seed = seed,
 			assessment = candidateMatcher.assess(
