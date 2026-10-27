@@ -148,11 +148,13 @@ class MigrationManualSearchViewModel @Inject constructor(
 					val pool = yokaiSearch.sourcePool(mangaId)
 					val byName = pool.allSources.associateBy(MangaSource::name)
 					val selected = selectedSourceNames.mapNotNull(byName::get).distinctBy(MangaSource::name)
+					val validSources = if (selected.size == 1) selected else selected.filterNot { it == seed.source }
+					val validSourceNames = validSources.mapTo(HashSet(), MangaSource::name)
 					val initial = initialTargetId.takeIf { it != 0L && it != mangaId }
 						?.let { mangaDataRepository.findMangaById(it, withChapters = false) }
 						?.takeIf { initialTargetSource == null || it.source.name == initialTargetSource }
-						?.takeIf { it.source.name in selectedSourceNames }
-					Triple(seed, selected, initial)
+						?.takeIf { it.source.name in validSourceNames }
+					Triple(seed, validSources, initial)
 				}
 			}.onSuccess { (seed, sources, initial) ->
 				_state.value = MigrationManualSearchState(
