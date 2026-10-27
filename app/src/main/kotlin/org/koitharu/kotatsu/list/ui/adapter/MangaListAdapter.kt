@@ -30,8 +30,8 @@ open class MangaListAdapter(
 		} else {
 			null
 		}
-		addDelegate(ListItemType.MANGA_LIST, mangaListItemAD(listener, titleClickListener))
-		addDelegate(ListItemType.MANGA_LIST_DETAILED, mangaListDetailedItemAD(listener, titleClickListener))
+		addDelegate(ListItemType.MANGA_LIST, mangaListItemAD(listener, titleClickListener, coverContext))
+		addDelegate(ListItemType.MANGA_LIST_DETAILED, mangaListDetailedItemAD(listener, titleClickListener, coverContext))
 		addDelegate(
 			ListItemType.MANGA_GRID,
 			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider, coverContext),
