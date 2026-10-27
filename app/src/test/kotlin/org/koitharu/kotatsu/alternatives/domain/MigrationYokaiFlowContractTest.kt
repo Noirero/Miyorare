@@ -53,15 +53,25 @@ class MigrationYokaiFlowContractTest {
 		val manual = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchViewModel.kt")
 
 		assertTrue(automatic.contains("filterNot{result->result.id==seed.id}"))
+		assertTrue(automatic.contains("details.id!=candidate.id||details.source.name!=candidate.source.name"))
 		assertTrue(manual.contains("if(candidate.id==seed.id)continue"))
 		assertTrue(manual.contains("candidate.id==mangaId"))
 	}
 
 	@Test
-	fun `manual preselection is discarded when source setup changed`() {
+	fun `manual selection is invalidated by source setup or query changes`() {
 		val manual = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchViewModel.kt")
 
 		assertTrue(manual.contains("takeIf{it.source.nameinselectedSourceNames}"))
+		assertTrue(manual.contains("copy(query=value,selected=null,errorMessage=null)"))
+	}
+
+	@Test
+	fun `mixed manga and novel sessions build setup pools per content domain`() {
+		val source = source("org/koitharu/kotatsu/settings/sources/migration/SourceMangaListViewModel.kt")
+
+		assertTrue(source.contains("manga.distinctBy{it.isNovelContent}.map{yokaiSearch.sourcePool(it.id)}"))
+		assertTrue(source.contains("distinctBy(MangaSource::name)"))
 	}
 
 	@Test
