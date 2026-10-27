@@ -27,8 +27,7 @@ enum class MigrationSourceStrategy {
  * Source selection/order is supplied by the user. Each source receives one normal/global-search query.
  * FIRST_MATCH stops at the first eligible result in source order. MOST_CHAPTERS checks the selected
  * sources with bounded parallelism and chooses the eligible candidate with the largest chapter list.
- * This only chooses a candidate; [AutoFixUseCase.migrateSelected] still performs Miyorare's fresh
- * destination validation and lossless state transfer before any library data is changed.
+ * Discovery only chooses and persists candidate identity; execution remains Miyorare's lossless path.
  */
 @Reusable
 class YokaiStyleMigrationSearchUseCase @Inject constructor(
@@ -45,7 +44,7 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		return pool.copy(
 			allSources = (pool.allSources + seed.source)
 				.distinctBy(MangaSource::name)
-				.sortedBy { it.title.ifBlank { it.name } },
+				.sortedBy(MangaSource::name),
 		)
 	}
 
@@ -60,6 +59,8 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		val pool = sourcePool(mangaId)
 		val byName = pool.allSources.associateBy(MangaSource::name)
 		val selected = selectedSourceNames.mapNotNull(byName::get).distinctBy(MangaSource::name)
+		// Match Yokai: when multiple migration sources are selected, do not waste work on the current
+		// source. A single explicitly selected current source remains usable for same-source replacement.
 		val sources = if (selected.size == 1) selected else selected.filter { it.name != seed.source.name }
 		val query = buildQuery(seed.title, extraSearchParams)
 		if (sources.isEmpty()) {
@@ -139,12 +140,11 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 	): SourceResult {
 		val searched = globalSearch.search(source, query)
 		if (searched.isFailure) return SourceResult(null, true)
-		val candidate = chooseCandidate(seed.title, searched.getOrDefault(emptyList())) ?: return SourceResult(null, false)
-		if (!requireDetails) {
-			val details = runCatchingCancellable { mangaRepositoryFactory.create(source).getDetails(candidate) }
-				.getOrDefault(candidate)
-			return SourceResult(details, false)
+		val eligible = searched.getOrDefault(emptyList()).filterNot { result ->
+			result.source.name == seed.source.name && result.id == seed.id
 		}
+		val candidate = chooseCandidate(seed.title, eligible) ?: return SourceResult(null, false)
+		if (!requireDetails) return SourceResult(candidate, false)
 		val details = runCatchingCancellable { mangaRepositoryFactory.create(source).getDetails(candidate) }.getOrNull()
 		return SourceResult(details, details == null)
 	}
