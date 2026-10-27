@@ -163,6 +163,12 @@ private fun MigrationManualSearchScreen(
 		return
 	}
 
+	val selected = state.selected
+	val selectionIsInResults = selected != null && state.groups[selected.source.name]
+		?.manga
+		.orEmpty()
+		.any { candidate -> candidate.sameMigrationIdentity(selected) }
+
 	LazyColumn(
 		modifier = Modifier.fillMaxSize().nestedScroll(rememberNestedScrollInteropConnection()).navigationBarsPadding(),
 		contentPadding = PaddingValues(20.dp),
@@ -212,73 +218,21 @@ private fun MigrationManualSearchScreen(
 			item { Text(message, color = MaterialTheme.colorScheme.error) }
 		}
 
-		state.selected?.let { selected ->
-			item {
-				Card(Modifier.fillMaxWidth().testTag("migration-manual-confirmation")) {
-					Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-						Text(stringResource(R.string.migration_current_selection), style = MaterialTheme.typography.labelLarge)
-						Text(state.seed?.title.orEmpty())
-						Text("→", style = MaterialTheme.typography.titleLarge)
-						Text(stringResource(R.string.migration_new_selection), style = MaterialTheme.typography.labelLarge)
-						Row(
-							modifier = Modifier.fillMaxWidth(),
-							verticalAlignment = Alignment.CenterVertically,
-							horizontalArrangement = Arrangement.spacedBy(12.dp),
-						) {
-							MigrationMangaCover(
-								manga = selected,
-								imageLoader = imageLoader,
-								modifier = Modifier.width(68.dp).aspectRatio(0.72f),
-							)
-							Column(Modifier.weight(1f)) {
-								Text(
-									selected.title,
-									style = MaterialTheme.typography.titleMedium,
-									maxLines = 2,
-									overflow = TextOverflow.Ellipsis,
-								)
-								Text(selected.source.getTitle(context), style = MaterialTheme.typography.bodySmall)
-								selected.authors.firstOrNull()?.let { author ->
-									Text(
-										author,
-										style = MaterialTheme.typography.bodySmall,
-										maxLines = 1,
-										overflow = TextOverflow.Ellipsis,
-									)
-								}
-							}
-						}
-						OutlinedButton(
-							onClick = { onOpenResult(selected) },
-							enabled = !busy,
-							modifier = Modifier.fillMaxWidth().testTag("migration-manual-details"),
-						) {
-							Text(stringResource(R.string.hub_view_details))
-						}
-						Text(stringResource(R.string.migration_preserve_all_fixed), style = MaterialTheme.typography.bodySmall)
-						Button(
-							onClick = onMigrate,
-							enabled = !busy,
-							modifier = Modifier.fillMaxWidth().testTag("migration-manual-migrate"),
-						) {
-							if (state.migrating) {
-								CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-								Spacer(Modifier.width(8.dp))
-							}
-							Text(stringResource(R.string.migration_yokai_migrate_now))
-						}
-						OutlinedButton(
-							onClick = onCopy,
-							enabled = !busy,
-							modifier = Modifier.fillMaxWidth().testTag("migration-manual-copy"),
-						) {
-							Text(stringResource(R.string.migration_yokai_copy_now))
-						}
-						TextButton(onClick = onClearSelection, enabled = !busy) {
-							Text(stringResource(R.string.migration_change_result))
-						}
-					}
-				}
+		// A candidate restored from the previous Yokai batch can exist before its manual-search group
+		// has produced results. Keep that selection actionable until the matching row appears; normal
+		// user selections render inline at the exact row that was tapped below.
+		if (selected != null && !selectionIsInResults) {
+			item(key = "selection-fallback:${selected.source.name}:${selected.id}") {
+				MigrationManualSelectionCard(
+					state = state,
+					selected = selected,
+					imageLoader = imageLoader,
+					busy = busy,
+					onOpenResult = onOpenResult,
+					onMigrate = onMigrate,
+					onCopy = onCopy,
+					onClearSelection = onClearSelection,
+				)
 			}
 		}
 
@@ -304,42 +258,138 @@ private fun MigrationManualSearchScreen(
 				items = group?.manga.orEmpty(),
 				key = { manga -> "${source.name}:${manga.id}" },
 			) { manga ->
-				Row(
-					modifier = Modifier
-						.fillMaxWidth()
-						.clickable(enabled = !busy) { onSelect(manga) }
-						.padding(vertical = 10.dp)
-						.testTag("migration-manual-result"),
-					verticalAlignment = Alignment.CenterVertically,
-					horizontalArrangement = Arrangement.spacedBy(12.dp),
-				) {
-					MigrationMangaCover(
-						manga = manga,
-						imageLoader = imageLoader,
-						modifier = Modifier.width(64.dp).aspectRatio(0.72f),
-					)
-					Column(Modifier.weight(1f)) {
-						Text(
-							manga.title,
-							style = MaterialTheme.typography.bodyLarge,
-							maxLines = 2,
-							overflow = TextOverflow.Ellipsis,
+				Column(Modifier.fillMaxWidth()) {
+					Row(
+						modifier = Modifier
+							.fillMaxWidth()
+							.clickable(enabled = !busy) { onSelect(manga) }
+							.padding(vertical = 10.dp)
+							.testTag("migration-manual-result"),
+						verticalAlignment = Alignment.CenterVertically,
+						horizontalArrangement = Arrangement.spacedBy(12.dp),
+					) {
+						MigrationMangaCover(
+							manga = manga,
+							imageLoader = imageLoader,
+							modifier = Modifier.width(64.dp).aspectRatio(0.72f),
 						)
-						manga.authors.firstOrNull()?.let { author ->
+						Column(Modifier.weight(1f)) {
 							Text(
-								author,
-								style = MaterialTheme.typography.bodySmall,
-								maxLines = 1,
+								manga.title,
+								style = MaterialTheme.typography.bodyLarge,
+								maxLines = 2,
 								overflow = TextOverflow.Ellipsis,
 							)
+							manga.authors.firstOrNull()?.let { author ->
+								Text(
+									author,
+									style = MaterialTheme.typography.bodySmall,
+									maxLines = 1,
+									overflow = TextOverflow.Ellipsis,
+								)
+							}
 						}
 					}
+					if (manga.sameMigrationIdentity(selected)) {
+						MigrationManualSelectionCard(
+							state = state,
+							selected = manga,
+							imageLoader = imageLoader,
+							busy = busy,
+							onOpenResult = onOpenResult,
+							onMigrate = onMigrate,
+							onCopy = onCopy,
+							onClearSelection = onClearSelection,
+						)
+					}
+					HorizontalDivider()
 				}
-				HorizontalDivider()
 			}
 		}
 	}
 }
+
+@Composable
+private fun MigrationManualSelectionCard(
+	state: MigrationManualSearchState,
+	selected: Manga,
+	imageLoader: ImageLoader,
+	busy: Boolean,
+	onOpenResult: (Manga) -> Unit,
+	onMigrate: () -> Unit,
+	onCopy: () -> Unit,
+	onClearSelection: () -> Unit,
+) {
+	val context = LocalContext.current
+	Card(Modifier.fillMaxWidth().testTag("migration-manual-confirmation")) {
+		Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+			Text(stringResource(R.string.migration_current_selection), style = MaterialTheme.typography.labelLarge)
+			Text(state.seed?.title.orEmpty())
+			Text("→", style = MaterialTheme.typography.titleLarge)
+			Text(stringResource(R.string.migration_new_selection), style = MaterialTheme.typography.labelLarge)
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(12.dp),
+			) {
+				MigrationMangaCover(
+					manga = selected,
+					imageLoader = imageLoader,
+					modifier = Modifier.width(68.dp).aspectRatio(0.72f),
+				)
+				Column(Modifier.weight(1f)) {
+					Text(
+						selected.title,
+						style = MaterialTheme.typography.titleMedium,
+						maxLines = 2,
+						overflow = TextOverflow.Ellipsis,
+					)
+					Text(selected.source.getTitle(context), style = MaterialTheme.typography.bodySmall)
+					selected.authors.firstOrNull()?.let { author ->
+						Text(
+							author,
+							style = MaterialTheme.typography.bodySmall,
+							maxLines = 1,
+							overflow = TextOverflow.Ellipsis,
+						)
+					}
+				}
+			}
+			OutlinedButton(
+				onClick = { onOpenResult(selected) },
+				enabled = !busy,
+				modifier = Modifier.fillMaxWidth().testTag("migration-manual-details"),
+			) {
+				Text(stringResource(R.string.hub_view_details))
+			}
+			Text(stringResource(R.string.migration_preserve_all_fixed), style = MaterialTheme.typography.bodySmall)
+			Button(
+				onClick = onMigrate,
+				enabled = !busy,
+				modifier = Modifier.fillMaxWidth().testTag("migration-manual-migrate"),
+			) {
+				if (state.migrating) {
+					CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+					Spacer(Modifier.width(8.dp))
+				}
+				Text(stringResource(R.string.migration_yokai_migrate_now))
+			}
+			OutlinedButton(
+				onClick = onCopy,
+				enabled = !busy,
+				modifier = Modifier.fillMaxWidth().testTag("migration-manual-copy"),
+			) {
+				Text(stringResource(R.string.migration_yokai_copy_now))
+			}
+			TextButton(onClick = onClearSelection, enabled = !busy) {
+				Text(stringResource(R.string.migration_change_result))
+			}
+		}
+	}
+}
+
+private fun Manga.sameMigrationIdentity(other: Manga?): Boolean =
+	other != null && id == other.id && source.name == other.source.name
 
 @Composable
 private fun MigrationMangaCover(
