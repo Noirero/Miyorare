@@ -33,6 +33,7 @@ internal fun MigrationBatchStatus.labelRes(): Int = when (this) {
 	MigrationBatchStatus.INCOMPLETE -> R.string.migration_batch_incomplete
 	MigrationBatchStatus.HEALTHY -> R.string.migration_batch_healthy
 	MigrationBatchStatus.MIGRATED -> R.string.migration_completed
+	MigrationBatchStatus.COPIED -> R.string.migration_batch_copied
 	MigrationBatchStatus.INTERRUPTED -> R.string.migration_batch_interrupted
 	MigrationBatchStatus.ERROR -> R.string.migration_batch_error
 }
@@ -42,6 +43,7 @@ internal fun MigrationBatchControls(
 	state: SourceMangaListState,
 	onSearch: () -> Unit,
 	onMigrateReady: () -> Unit,
+	onCopyReady: () -> Unit,
 	onCancel: () -> Unit,
 	onFilter: (MigrationBatchStatus?) -> Unit,
 	onToggleSource: (String) -> Unit,
@@ -217,12 +219,21 @@ internal fun MigrationBatchControls(
 				else stringResource(R.string.migration_yokai_search_selected_count, targetCount),
 			)
 		}
-		if (state.readyCount > 0) Button(
-			onClick = onMigrateReady,
-			enabled = controlsEnabled,
-			modifier = Modifier.fillMaxWidth().testTag("migration-batch-execute"),
-		) {
-			Text(pluralStringResource(R.plurals.migration_batch_migrate_ready, state.readyCount, state.readyCount))
+		if (state.readyCount > 0) {
+			Button(
+				onClick = onMigrateReady,
+				enabled = controlsEnabled,
+				modifier = Modifier.fillMaxWidth().testTag("migration-batch-migrate"),
+			) {
+				Text(pluralStringResource(R.plurals.migration_batch_migrate_ready, state.readyCount, state.readyCount))
+			}
+			OutlinedButton(
+				onClick = onCopyReady,
+				enabled = controlsEnabled,
+				modifier = Modifier.fillMaxWidth().testTag("migration-batch-copy"),
+			) {
+				Text(pluralStringResource(R.plurals.migration_batch_copy_ready, state.readyCount, state.readyCount))
+			}
 		}
 		if (state.ownedBatchName != null) TextButton(onClick = onCancel, modifier = Modifier.testTag("migration-batch-cancel")) {
 			Text(stringResource(R.string.migration_batch_cancel))
