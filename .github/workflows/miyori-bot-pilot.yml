@@ -1,0 +1,100 @@
+name: Miyori Bot Pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number that Miyori Bot should comment on'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: miyori-bot-pilot
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify Miyori Bot identity
+    runs-on: ubuntu-latest
+    env:
+      TARGET_ISSUE_NUMBER: ${{ inputs.issue_number }}
+    steps:
+      - name: Validate target number
+        shell: bash
+        env:
+          ISSUE_NUMBER: ${{ env.TARGET_ISSUE_NUMBER }}
+        run: |
+          set -euo pipefail
+          [[ "$ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::issue_number must be a positive integer."
+            exit 1
+          }
+
+      - name: Generate Miyori Bot installation token
+        id: miyori-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.MIYORI_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.MIYORI_BOT_PRIVATE_KEY }}
+          permission-issues: write
+
+      - name: Verify GitHub App bot identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          [[ -n "$APP_SLUG" ]] || {
+            echo "::error::GitHub App token did not return an app slug."
+            exit 1
+          }
+
+          BOT_LOGIN="${APP_SLUG}[bot]"
+          ACTUAL_LOGIN="$(gh api "/users/${BOT_LOGIN}" --jq '.login')"
+          [[ "$ACTUAL_LOGIN" == "$BOT_LOGIN" ]] || {
+            echo "::error::Resolved bot login '$ACTUAL_LOGIN' did not match expected '$BOT_LOGIN'."
+            exit 1
+          }
+
+          echo "Authenticated GitHub App bot: $BOT_LOGIN"
+
+      - name: Post pilot verification comment as Miyori Bot
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+          ISSUE_NUMBER: ${{ env.TARGET_ISSUE_NUMBER }}
+          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          BODY=$(cat <<EOF
+          🌸 **Miyori Bot pilot passed.**
+
+          Authentication succeeded as \`${APP_SLUG}[bot]\` using a repository-scoped GitHub App installation token.
+
+          This pilot only has permission to write issue comments. It does not push code, merge branches, publish releases, or replace \`github-actions[bot]\`.
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          EOF
+          )
+
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments" \
+            -f body="$BODY"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Miyori Bot pilot"
+            echo
+            echo "- Target issue: #${TARGET_ISSUE_NUMBER}"
+            echo "- App slug: \`${{ steps.miyori-token.outputs.app-slug }}\`"
+            echo "- Scope: issue comment only"
+            echo "- Existing github-actions[bot] automation: unchanged"
+          } >> "$GITHUB_STEP_SUMMARY"
