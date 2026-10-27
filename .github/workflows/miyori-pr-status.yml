@@ -1,49 +1,45 @@
-name: Miyori PR Status — Identity Guard
+name: Miyori PR Status
+
+# Miyori owns the PR communication/status layer only.
+# Core CI execution remains owned by the existing GitHub Actions workflows.
 
 on:
   workflow_run:
     workflows:
       - Miyorare Identity Guard
+      - Beta to Main Release Gate
+      - Promotion to Main Gate
     types:
       - completed
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'Pull request number to update during manual verification'
+        description: 'Pull request number whose Miyori status card should be refreshed'
         required: true
         type: string
-      conclusion:
-        description: 'Synthetic Identity Guard conclusion for manual verification'
-        required: true
-        type: choice
-        default: success
-        options:
-          - success
-          - failure
-          - cancelled
-          - skipped
 
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
 
 concurrency:
-  group: miyori-pr-status-${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || github.run_id }}
+  group: miyori-pr-status-${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   notify:
-    name: Publish Miyori Identity Guard status
+    name: Refresh Miyori PR status card
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.pull_requests[0].number != null)
+      (github.event.workflow_run.event == 'pull_request' &&
+       github.event.workflow_run.pull_requests[0].number != null)
     runs-on: ubuntu-latest
     env:
       PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.workflow_run.pull_requests[0].number }}
-      GATE_CONCLUSION: ${{ github.event_name == 'workflow_dispatch' && inputs.conclusion || github.event.workflow_run.conclusion }}
-      GATE_RUN_URL: ${{ github.event_name == 'workflow_dispatch' && format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) || github.event.workflow_run.html_url }}
-      GATE_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+
     steps:
-      - name: Validate target
+      - name: Validate target PR number
         shell: bash
         run: |
           set -euo pipefail
@@ -51,13 +47,11 @@ jobs:
             echo "::error::PR number must be a positive integer."
             exit 1
           }
-          case "$GATE_CONCLUSION" in
-            success|failure|cancelled|skipped) ;;
-            *)
-              echo "::error::Unsupported Identity Guard conclusion: $GATE_CONCLUSION"
-              exit 1
-              ;;
-          esac
+
+      - name: Checkout trusted default-branch automation code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: Generate Miyori Bot installation token
         id: miyori-token
@@ -68,7 +62,8 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Publish or update Identity Guard status comment
+      - name: Verify Miyori identity and current PR state
+        id: target
         shell: bash
         env:
           GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
@@ -84,62 +79,71 @@ jobs:
           }
 
           PR_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state')"
+          PR_HEAD_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+
+          echo "state=$PR_STATE" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+
           if [[ "$PR_STATE" != "open" ]]; then
-            echo "PR #${PR_NUMBER} is ${PR_STATE}; no status comment published."
-            exit 0
+            echo "PR #${PR_NUMBER} is ${PR_STATE}; no status card will be published."
           fi
 
-          case "$GATE_CONCLUSION" in
-            success)
-              STATUS_ICON='✅'
-              STATUS_TEXT='passed'
-              ;;
-            failure)
-              STATUS_ICON='❌'
-              STATUS_TEXT='failed'
-              ;;
-            cancelled)
-              STATUS_ICON='⚪'
-              STATUS_TEXT='was cancelled'
-              ;;
-            skipped)
-              STATUS_ICON='⏭️'
-              STATUS_TEXT='was skipped'
-              ;;
-          esac
+      - name: Render exact-head unified status card
+        if: steps.target.outputs.state == 'open'
+        shell: bash
+        env:
+          MIYORI_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/miyori_status.py \
+            --pr-number "$PR_NUMBER" \
+            --output "$RUNNER_TEMP/miyori-status.md"
 
-          MARKER='<!-- miyori-status:identity-guard -->'
-          BODY=$(cat <<EOF
-          ${MARKER}
-          🌸 **Miyori status — Identity Guard**
+      - name: Publish or update persistent Miyori status card
+        if: steps.target.outputs.state == 'open'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
 
-          ${STATUS_ICON} **Miyorare Identity Guard ${STATUS_TEXT}.**
+          BOT_LOGIN="${APP_SLUG}[bot]"
+          CARD_MARKER='<!-- miyori-status-card:v1 -->'
+          LEGACY_MARKER='<!-- miyori-status:identity-guard -->'
 
-          Head: \`${GATE_HEAD_SHA}\`
-          Run: ${GATE_RUN_URL}
-
-          _Miyori only reports the gate result here; it does not push code, merge, or release._
-          EOF
+          mapfile -t CARD_IDS < <(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${CARD_MARKER}\"))) | .id"
           )
 
-          COMMENT_ID="$(
-            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
-              --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${MARKER}\"))) | .id" \
-              | head -n 1
-          )"
+          COMMENT_ID=''
+          if (( ${#CARD_IDS[@]} > 0 )); then
+            COMMENT_ID="${CARD_IDS[0]}"
+            if (( ${#CARD_IDS[@]} > 1 )); then
+              echo "::warning::Multiple Miyori status cards exist on PR #${PR_NUMBER}; updating the oldest discovered card only."
+            fi
+          else
+            COMMENT_ID="$(
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+                --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${LEGACY_MARKER}\"))) | .id" \
+                | head -n 1
+            )"
+          fi
 
+          BODY="$(cat "$RUNNER_TEMP/miyori-status.md")"
           if [[ -n "$COMMENT_ID" ]]; then
             gh api \
               --method PATCH \
               "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
               -f body="$BODY" >/dev/null
-            echo "Updated Miyori Identity Guard status comment ${COMMENT_ID} on PR #${PR_NUMBER}."
+            echo "Updated Miyori status card ${COMMENT_ID} on PR #${PR_NUMBER}."
           else
             gh api \
               --method POST \
               "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
               -f body="$BODY" >/dev/null
-            echo "Created Miyori Identity Guard status comment on PR #${PR_NUMBER}."
+            echo "Created Miyori status card on PR #${PR_NUMBER}."
           fi
 
       - name: Summary
@@ -149,8 +153,9 @@ jobs:
           {
             echo "## Miyori PR status"
             echo
-            echo "- Gate: Miyorare Identity Guard"
             echo "- Target PR: #${PR_NUMBER}"
-            echo "- Conclusion: \`${GATE_CONCLUSION}\`"
-            echo "- Authority: notification/comment only"
+            echo "- Current head: \`${{ steps.target.outputs.head_sha }}\`"
+            echo "- PR state: \`${{ steps.target.outputs.state }}\`"
+            echo "- Tracked gates: Identity Guard, Beta to Main Release Gate, Promotion to Main Gate"
+            echo "- Authority: status/comment only"
           } >> "$GITHUB_STEP_SUMMARY"
