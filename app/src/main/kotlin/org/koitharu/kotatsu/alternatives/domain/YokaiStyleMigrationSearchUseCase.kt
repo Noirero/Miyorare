@@ -38,15 +38,8 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 	private val candidateMatcher: MigrationCandidateMatcher,
 ) {
 
-	suspend fun sourcePool(mangaId: Long): MigrationSourcePool {
-		val seed = loadSeed(mangaId)
-		val pool = alternativesUseCase.getMigrationSourcePool(seed)
-		return pool.copy(
-			allSources = (pool.allSources + seed.source)
-				.distinctBy(MangaSource::name)
-				.sortedBy(MangaSource::name),
-		)
-	}
+	suspend fun sourcePool(mangaId: Long): MigrationSourcePool =
+		alternativesUseCase.getMigrationSourcePool(loadSeed(mangaId))
 
 	suspend operator fun invoke(
 		mangaId: Long,
@@ -58,10 +51,7 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		val seed = loadSeed(mangaId)
 		val pool = sourcePool(mangaId)
 		val byName = pool.allSources.associateBy(MangaSource::name)
-		val selected = selectedSourceNames.mapNotNull(byName::get).distinctBy(MangaSource::name)
-		// Match Yokai: when multiple migration sources are selected, do not waste work on the current
-		// source. A single explicitly selected current source remains usable for same-source replacement.
-		val sources = if (selected.size == 1) selected else selected.filter { it.name != seed.source.name }
+		val sources = selectedSourceNames.mapNotNull(byName::get).distinctBy(MangaSource::name)
 		val query = buildQuery(seed.title, extraSearchParams)
 		if (sources.isEmpty()) {
 			return noReplacement(seed, incomplete = pool.providerFailureCount > 0, pool.providerFailureCount)
