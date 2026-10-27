@@ -53,6 +53,14 @@ class MigrationBatchPolicyTest {
 		assertEquals(1, requests.size)
 		assertEquals(MigrationSearchScope.UMA, requests.single().searchScope)
 	}
+	@Test fun directReadyPersistsOnlyRawSearchIdentityUntilExecutionRefresh() {
+		val outcome = MigrationBatchPolicy.assess(ready(), rawSelection = true)
+		assertEquals(MigrationBatchStatus.READY, outcome.status)
+		assertNotNull(outcome.selection)
+		assertTrue(outcome.selection!!.isRawSearchIdentity)
+		assertEquals("NEW", outcome.selection!!.source)
+		assertEquals(101L, outcome.selection!!.id)
+	}
 	@Test fun incompleteAndAmbiguousSearchesNeverBecomeReadyCounts() {
 		assertEquals(MigrationBatchStatus.INCOMPLETE, MigrationBatchPolicy.assess(ready().copy(incomplete = true)).status)
 		val ambiguous = ready().copy(assessment = ready().assessment!!.copy(state = MigrationMatchState.NEEDS_REVIEW))
@@ -91,6 +99,17 @@ class MigrationBatchPolicyTest {
 		assertNull(changed.selection)
 		val recovered = MigrationBatchPolicy.process(request, { true }, { ready() }, { null })
 		assertEquals(MigrationBatchStatus.HEALTHY, recovered.status)
+	}
+	@Test fun directCheckProcessStoresRawSelection() = runTest {
+		val request = MigrationBatchRequest(
+			1,
+			"OLD",
+			MigrationBatchAction.CHECK,
+			discoveryMode = MigrationBatchDiscoveryMode.DIRECT_SEARCH,
+		)
+		val outcome = MigrationBatchPolicy.process(request, { true }, { ready() }, { error("No migration") })
+		assertEquals(MigrationBatchStatus.READY, outcome.status)
+		assertTrue(outcome.selection?.isRawSearchIdentity == true)
 	}
 	@Test fun cancellationPropagatesInsteadOfInventingAnOutcome() = runTest {
 		try {
