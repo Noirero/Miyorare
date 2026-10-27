@@ -475,7 +475,7 @@ internal fun buildDirectMigrationSearchQueries(
 	options: MigrationDirectSearchOptions,
 ): List<String> {
 	val seen = hashSetOf<String>()
-	val result = ArrayList<String>(MAX_MIGRATION_SEARCH_QUERIES)
+	val result = ArrayList<String>(MAX_DIRECT_MIGRATION_SEARCH_QUERIES)
 	fun add(value: String) {
 		val query = value.trim()
 		if (query.isEmpty()) return
@@ -496,10 +496,10 @@ internal fun buildDirectMigrationSearchQueries(
 		for (alias in seed.altTitles.sortedByDescending { normalizeMigrationTitle(it).length }) {
 			add(buildPrimaryMigrationSearchQuery(seed.copy(title = alias)))
 			add(alias)
-			if (result.size >= MAX_MIGRATION_SEARCH_QUERIES) break
+			if (result.size >= MAX_DIRECT_MIGRATION_SEARCH_QUERIES) break
 		}
 	}
-	return result.take(MAX_MIGRATION_SEARCH_QUERIES)
+	return result.take(MAX_DIRECT_MIGRATION_SEARCH_QUERIES)
 }
 
 internal fun buildMigrationSearchQueries(seed: Manga): List<String> {
@@ -528,5 +528,6 @@ internal fun buildMigrationSearchQueries(seed: Manga): List<String> {
 private val TRAILING_MIGRATION_DECORATOR = Regex(
 	"""\s*[-–—:|·]*\s*(?:\[[^\]\r\n]{1,40}]|\([^\)\r\n]{1,40}\)|\{[^}\r\n]{1,40}}|【[^】\r\n]{1,40}】|（[^）\r\n]{1,40}）)\s*$""",
 )
+private const val MAX_DIRECT_MIGRATION_SEARCH_QUERIES = 4
 private const val MAX_MIGRATION_SEARCH_QUERIES = 10
 private const val MIN_MIGRATION_QUERY_LENGTH = 2
