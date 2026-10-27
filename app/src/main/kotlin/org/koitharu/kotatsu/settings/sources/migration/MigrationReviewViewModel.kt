@@ -160,7 +160,7 @@ class MigrationReviewViewModel @Inject constructor(
 			failed = false,
 			changed = false,
 		)
-		startSearch(before.selectedScope, revealAllCandidates = true)
+		startSearch(before.selectedScope, directSearch = true)
 	}
 
 	fun setSearchScope(scope: MigrationSearchScope) {
@@ -171,7 +171,7 @@ class MigrationReviewViewModel @Inject constructor(
 		searchGeneration++
 		mutableState.value = before.withSearchScope(scope)
 		if (before.manualSearchEnabled) {
-			startSearch(scope, revealAllCandidates = true)
+			startSearch(scope, directSearch = true)
 		}
 	}
 
@@ -181,10 +181,10 @@ class MigrationReviewViewModel @Inject constructor(
 		if (before.loading && !before.manualSearchEnabled) return
 		if (!before.currentSourceChecked && !before.manualSearchEnabled) return
 		if (before.currentSourceChecked && before.discovery.currentSourceReadable && !before.manualSearchEnabled) return
-		startSearch(before.selectedScope, revealAllCandidates = before.manualSearchEnabled)
+		startSearch(before.selectedScope, directSearch = before.manualSearchEnabled)
 	}
 
-	private fun startSearch(scope: MigrationSearchScope, revealAllCandidates: Boolean) {
+	private fun startSearch(scope: MigrationSearchScope, directSearch: Boolean) {
 		val before = mutableState.value
 		val seed = before.discovery?.seed ?: return
 		searchJob?.cancel()
@@ -213,7 +213,8 @@ class MigrationReviewViewModel @Inject constructor(
 						mangaId = mangaId,
 						searchScope = scope,
 						currentSourceReadable = currentReadable,
-						revealAllCandidates = revealAllCandidates,
+						directSearch = directSearch,
+						revealAllCandidates = directSearch,
 					) { progress ->
 						if (generation == searchGeneration && mutableState.value.selectedScope == scope) {
 							mutableState.value = mutableState.value.copy(
