@@ -39,7 +39,7 @@ class PersistentCoverStorageRegressionTest {
 		val favourites = source("favourites/ui/list/FavouritesListFragment.kt").compact()
 
 		assertTrue(coil.contains("persist:Boolean?=null,forceRefresh:Boolean=false"))
-		assertTrue(coil.contains("valshouldPersist=persist?:(!forceRefresh&&extras[mangaKey]!=null)"))
+		assertTrue(coil.contains("valshouldPersist=persist?:(!forceRefresh&&build().extras[mangaKey]!=null)"))
 		assertTrue(coil.contains("isRemoteCoverUrl(coverUrl)"))
 		assertTrue(coil.contains("mangaCoverOverrideDiskCacheKey(manga.id,coverUrl)"))
 		assertTrue(coil.contains("rawDiskCacheKey=rawDiskCacheKey"))

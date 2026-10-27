@@ -80,7 +80,7 @@ fun ImageRequest.Builder.stableMangaCoverKey(
 	persist: Boolean? = null,
 	forceRefresh: Boolean = false,
 ): ImageRequest.Builder = apply {
-	val shouldPersist = persist ?: (!forceRefresh && extras[mangaKey] != null)
+	val shouldPersist = persist ?: (!forceRefresh && build().extras[mangaKey] != null)
 	if (
 		manga != null &&
 		coverUrl != null &&
