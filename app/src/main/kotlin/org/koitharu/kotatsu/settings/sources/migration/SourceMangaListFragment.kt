@@ -65,6 +65,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
@@ -111,7 +112,11 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 					onRetrySources = viewModel::reloadSearchSources,
 					onMangaClick = { manga ->
 						if (state.selectedIds.isEmpty()) {
-							val selection = state.batchItems[manga.id]?.outcome?.selection
+							val snapshot = state.batchItems[manga.id]
+							val selection = snapshot?.outcome?.selection?.takeIf {
+								snapshot.discoveryMode == MigrationBatchDiscoveryMode.YOKAI &&
+									snapshot.configKey == state.configKey
+							}
 							(requireActivity() as SettingsActivity).openFragment(
 								MigrationManualSearchFragment::class.java,
 								MigrationManualSearchFragment.args(
