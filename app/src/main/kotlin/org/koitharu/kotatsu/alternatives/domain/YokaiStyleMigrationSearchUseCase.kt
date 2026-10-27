@@ -235,11 +235,8 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		return 1.0 - a.levenshteinDistance(b).toDouble() / longest.toDouble()
 	}
 
-	private fun normalizeForSimilarity(value: String): String = value
-		.trim()
-		.lowercase()
-		.replace("’", "'")
-		.replace(Regex("\\s+"), " ")
+	/** Match Yokai's String.toNormalized(): only normalize the smart apostrophe. */
+	private fun normalizeForSimilarity(value: String): String = value.replace("’", "'")
 
 	private suspend fun loadSeed(mangaId: Long): Manga = checkNotNull(
 		mangaDataRepository.findMangaById(mangaId, withChapters = true),
