@@ -58,6 +58,7 @@
     <string name="migration_current_selection">Saat ini</string>
     <string name="migration_new_selection">Pengganti</string>
     <string name="migration_migrate">Migrasikan</string>
+    <string name="migration_copied">Manga disalin</string>
     <string name="migration_confirm_review">Migrasikan ke manga yang dipilih</string>
     <string name="migration_retry">Coba lagi</string>
     <string name="migration_advanced_show">Opsi pencarian lanjutan ▾</string>
@@ -96,6 +97,8 @@
     <string name="migration_yokai_search_selected">Cari pengganti</string>
     <string name="migration_yokai_search_selected_count">Cari pengganti untuk %1$d manga</string>
     <string name="migration_yokai_manual_search">Cari manual</string>
+    <string name="migration_yokai_migrate_now">Migrasikan sekarang</string>
+    <string name="migration_yokai_copy_now">Salin sekarang</string>
     <string name="migration_yokai_skip_manga">Lewati</string>
     <string name="migration_yokai_source_failure">Satu source gagal; source lainnya tetap dilanjutkan.</string>
 </resources>
