@@ -1,16 +1,30 @@
 package org.koitharu.kotatsu.core.image
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Color
 import androidx.test.core.app.ApplicationProvider
+import coil3.ImageLoader
+import coil3.asImage
+import coil3.decode.DataSource
 import coil3.disk.DiskCache
 import coil3.disk.directory
+import coil3.fetch.Fetcher
+import coil3.fetch.ImageFetchResult
+import coil3.intercept.Interceptor
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 class MiyorareImageDiskCacheTest {
 
@@ -60,6 +74,66 @@ class MiyorareImageDiskCacheTest {
 		val reopened = MiyorareImageDiskCache(context).also { cache = it }
 		assertNotNull(reopened.openSnapshot(SMART_LOCAL_COVER_KEY)?.also { it.close() })
 		assertNotNull(reopened.openSnapshot(COVER_KEY)?.also { it.close() })
+	}
+
+	@Test
+	fun compactCollectionCoverSurvivesVolatileCacheRemovalWithoutRefetch() = runBlocking {
+		val fetches = AtomicInteger()
+		val sourceBitmap = Bitmap.createBitmap(320, 480, Bitmap.Config.ARGB_8888).apply {
+			eraseColor(Color.RED)
+		}
+		val fetcher = Fetcher.Factory<String> { data, _, _ ->
+			if (data != REMOTE_COVER_URL) return@Factory null
+			Fetcher {
+				fetches.incrementAndGet()
+				ImageFetchResult(sourceBitmap.asImage(), isSampled = false, dataSource = DataSource.NETWORK)
+			}
+		}
+		val store = StoredMangaCoverStore(storedRoot(), maxBytes = 4L * 1024 * 1024, maxEntries = 8)
+
+		fun request() = ImageRequest.Builder(context)
+			.data(REMOTE_COVER_URL)
+			.diskCacheKey(COVER_KEY)
+			.fetcherFactory(fetcher)
+			.size(128, 192)
+			.allowHardware(false)
+			.apply {
+				extras[storedMangaCoverRequestKey] = StoredMangaCoverRequest(
+					mangaId = 123L,
+					sourceUrl = REMOTE_COVER_URL,
+					persist = true,
+					forceRefresh = false,
+				)
+			}
+			.build()
+
+		fun loader(): ImageLoader {
+			val volatile = DiskCache.Builder().directory(volatileRoot()).build()
+			val routed = MiyorareImageDiskCache(context, volatile)
+			val pipeline = StoredMangaCoverPipeline(store, routed)
+			return ImageLoader.Builder(context)
+				.diskCache { routed }
+				.components { add(Interceptor { chain -> pipeline.proceed(chain) }) }
+				.build()
+		}
+
+		try {
+			loader().use { first ->
+				assertTrue(first.execute(request()) is SuccessResult)
+			}
+			assertEquals(1, fetches.get())
+			assertTrue(store.size() > 0L)
+
+			// Android's disposable image cache can disappear completely. The second process-like loader
+			// must resolve the compact app-Data file and never call the remote fetcher again.
+			volatileRoot().deleteRecursively()
+			loader().use { second ->
+				assertTrue(second.execute(request()) is SuccessResult)
+			}
+			assertEquals(1, fetches.get())
+		} finally {
+			sourceBitmap.recycle()
+		}
 	}
 
 	@Test
@@ -136,6 +210,7 @@ class MiyorareImageDiskCacheTest {
 	private fun deleteTestStorage() {
 		volatileRoot().deleteRecursively()
 		coverRoot().deleteRecursively()
+		storedRoot().deleteRecursively()
 		context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().commit()
 	}
 
@@ -143,10 +218,13 @@ class MiyorareImageDiskCacheTest {
 
 	private fun coverRoot(): File = (context.getExternalFilesDir("covers") ?: File(context.filesDir, "covers"))
 
+	private fun storedRoot(): File = File(context.filesDir, "stored-cover-test")
+
 	private companion object {
 		const val COVER_KEY = "cover:123"
 		const val SMART_LOCAL_COVER_KEY = "smart-local://cover/123"
 		const val VOLATILE_KEY = "https://example.test/not-a-cover.jpg"
+		const val REMOTE_COVER_URL = "https://example.test/library-cover.png"
 		const val PREFS_NAME = "persistent_cover_cache"
 	}
 }
