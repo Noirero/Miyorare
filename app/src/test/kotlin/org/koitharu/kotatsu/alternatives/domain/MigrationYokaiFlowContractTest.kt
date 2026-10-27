@@ -35,6 +35,9 @@ class MigrationYokaiFlowContractTest {
 		assertTrue(source.contains("MAX_PARALLEL_SOURCES=3"))
 		assertTrue(source.contains("it.chapters.orEmpty().size"))
 		assertTrue(source.contains("result.id==seed.id"))
+		assertTrue(source.contains("normalizeForSimilarity(value:String):String=value.replace(\"’\",\"'\")"))
+		assertFalse(source.contains("lowercase()"))
+		assertFalse(source.contains("Regex(\"\\\\s+\")"))
 		assertFalse(source.contains("checkCurrentSource("))
 	}
 
