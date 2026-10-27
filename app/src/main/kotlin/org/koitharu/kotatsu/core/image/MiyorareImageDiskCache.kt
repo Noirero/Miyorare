@@ -12,6 +12,10 @@ import java.io.File
  * entry in Android's disposable cache. Cover entries therefore survive Android "Clear cache"
  * without turning reader pages, favicons, bookmarks, or arbitrary network images into user data.
  *
+ * Static collection covers progressively move to StoredMangaCoverStore. This tier remains as the
+ * bounded compatibility/fallback owner for legacy raw entries and cover formats that should not be
+ * flattened into a static compact representation.
+ *
  * Smart Local cover URLs are normalized here as well as at request-building call sites. The disk
  * cache is the ownership boundary for persistence, so a caller that submits
  * `smart-local://cover/<mangaId>` directly cannot accidentally create a second volatile entry.
@@ -29,11 +33,11 @@ class MiyorareImageDiskCache(
 
 	private val coverCache = DiskCache.Builder()
 		.directory((context.getExternalFilesDir(COVER_DIR) ?: File(context.filesDir, COVER_DIR)).resolve(COIL_DIR))
-		// This cache contains covers only. Keep it bounded independently instead of carrying the
-		// shared volatile cache's 256 MiB-2 GiB retention policy into persistent app files.
-		.maxSizePercent(0.02)
-		.minimumMaxSizeBytes(10L * 1024L * 1024L)
-		.maximumMaxSizeBytes(250L * 1024L * 1024L)
+		// Compact static collection covers have their own 96 MiB store. Keep this raw/animated legacy
+		// fallback materially smaller so old transport-sized entries cannot dominate app Data forever.
+		.maxSizePercent(0.01)
+		.minimumMaxSizeBytes(8L * 1024L * 1024L)
+		.maximumMaxSizeBytes(64L * 1024L * 1024L)
 		.build()
 
 	override val size: Long

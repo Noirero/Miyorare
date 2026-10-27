@@ -43,7 +43,6 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.util.ext.isRemoteCoverUrl
-import org.koitharu.kotatsu.core.util.ext.mangaCoverDiskCacheKey
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -137,7 +136,7 @@ internal fun CoverCard(
 					ImageRequest.Builder(ctx)
 						.data(coverUrl)
 						.mangaSourceExtra(manga.source)
-						.diskCacheKey(mangaCoverDiskCacheKey(manga.id))
+						.stableMangaCoverKey(manga, coverUrl, forceRefresh = true)
 						.diskCachePolicy(CachePolicy.WRITE_ONLY)
 						.memoryCachePolicy(CachePolicy.DISABLED)
 						.networkCachePolicy(CachePolicy.ENABLED)

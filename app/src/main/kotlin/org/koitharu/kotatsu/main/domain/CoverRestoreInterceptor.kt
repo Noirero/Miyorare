@@ -6,6 +6,7 @@ import coil3.request.ErrorResult
 import coil3.request.ImageResult
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
+import org.koitharu.kotatsu.core.image.StoredMangaCoverPipeline
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.util.ext.bookmarkKey
@@ -19,19 +20,18 @@ import javax.inject.Inject
 class CoverRestoreInterceptor @Inject constructor(
 	private val bookmarksRepository: BookmarksRepository,
 	private val repositoryFactory: MangaRepository.Factory,
+	private val storedMangaCoverPipeline: StoredMangaCoverPipeline,
 ) : Interceptor {
 
 	private val blacklist = Collections.synchronizedSet(ArraySet<String>())
 
 	override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
 		val request = chain.request
-		val result = chain.proceed()
+		val result = storedMangaCoverPipeline.proceed(chain)
 		if (result is ErrorResult && result.throwable.shouldRestore()) {
-			// Note: manga covers are intentionally NOT restored here. Doing so triggered a network
-			// `repo.find()` per failed cover on the favourites/history lists at launch, which made
-			// every cover load slowly and appear "greyed out". A manga's cover is now refreshed from
-			// the source only when the entry is opened (see DetailsExpressiveScreen.CoverCard); on the
-			// lists, covers are served from the disk cache via a stable per-manga key instead.
+			// Note: manga covers are intentionally NOT restored through repo.find() here. Collection
+			// covers are served by the compact stored-cover pipeline, while browse/search remains
+			// disposable. Refreshing Details updates a durable cover only if it was already stored.
 			request.extras[bookmarkKey]?.let {
 				return if (restoreBookmark(it)) {
 					chain.withRequest(request.newBuilder().build()).proceed()
