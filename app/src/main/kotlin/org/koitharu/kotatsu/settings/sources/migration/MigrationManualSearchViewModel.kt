@@ -118,7 +118,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 					yokaiExecute(mangaId, MigrationSelection.fromSearchResult(candidate))
 				}
 			}.onSuccess { migrated ->
-				_state.update { it.copy(migrating = false, completedId = migrated.id) }
+				_state.update { it.copy(migrating = false, completed = migrated) }
 			}.onFailure { error ->
 				_state.update { it.copy(migrating = false, errorMessage = error.message ?: error::class.java.simpleName) }
 			}
@@ -172,7 +172,7 @@ data class MigrationManualSearchState(
 	val groups: Map<String, ManualMigrationSourceResult> = emptyMap(),
 	val selected: Manga? = null,
 	val errorMessage: String? = null,
-	val completedId: Long? = null,
+	val completed: Manga? = null,
 )
 
 data class ManualMigrationSourceResult(
