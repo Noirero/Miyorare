@@ -84,10 +84,14 @@ class MigrationManualSearchViewModel @Inject constructor(
 				sources.map { source ->
 					launch {
 						val result = semaphore.withPermit { globalSearch.search(source, query) }
-						// MangaEntity has a single numeric primary key. A different source may legally
-						// generate the same id, but persisting it would overwrite the source manga row.
-						val manga = result.getOrDefault(emptyList())
-							.filterNot { it.id == seed.id }
+						// MangaEntity has a single numeric primary key. Source implementations can legally
+						// collide on that number, so hide candidates that cannot be persisted without
+						// overwriting either the source manga or an unrelated manga from another source.
+						val manga = ArrayList<Manga>()
+						for (candidate in result.getOrDefault(emptyList())) {
+							if (candidate.id == seed.id) continue
+							if (canPersistCandidate(candidate)) manga += candidate
+						}
 						_state.update { current ->
 							val next = current.groups.toMutableMap()
 							next[source.name] = ManualMigrationSourceResult(
@@ -113,6 +117,9 @@ class MigrationManualSearchViewModel @Inject constructor(
 			runCatchingCancellable {
 				withContext(Dispatchers.IO) {
 					check(candidate.id != mangaId) { "Selected replacement conflicts with the source manga identity" }
+					check(canPersistCandidate(candidate)) {
+						"Selected replacement id is already owned by a different source"
+					}
 					mangaDataRepository.storeManga(
 						manga = candidate,
 						replaceExisting = true,
@@ -126,6 +133,11 @@ class MigrationManualSearchViewModel @Inject constructor(
 				_state.update { it.copy(migrating = false, errorMessage = error.message ?: error::class.java.simpleName) }
 			}
 		}
+	}
+
+	private suspend fun canPersistCandidate(candidate: Manga): Boolean {
+		val existing = mangaDataRepository.findMangaById(candidate.id, withChapters = false) ?: return true
+		return existing.source.name == candidate.source.name
 	}
 
 	private fun load() {
