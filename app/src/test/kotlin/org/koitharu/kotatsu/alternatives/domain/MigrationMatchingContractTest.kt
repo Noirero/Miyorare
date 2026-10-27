@@ -19,10 +19,12 @@ class MigrationMatchingContractTest {
 	}
 
 	@Test
-	fun `selected migration refreshes approved destination before lossless execution`() {
+	fun `selected migration refreshes exact destination before lossless execution`() {
 		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val alternatives = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
 		val migrateSelected = autoFix.substringAfter("suspendfunmigrateSelected(").substringBefore("privatesuspendfunvalidateSelection(")
 		val validation = autoFix.substringAfter("privatesuspendfunvalidateSelection(").substringBefore("privatesuspendfunloadStoredSeed(")
+		val exactRefresh = alternatives.substringAfter("suspendfunrefreshExactCandidate(").substringBefore("privatefunsearchSources(")
 
 		assertTrue(migrateSelected.contains("validateSelection(mangaId,selection,allowReadableSource)"))
 		assertTrue(migrateSelected.contains("selection.isRawSearchIdentity"))
@@ -36,14 +38,17 @@ class MigrationMatchingContractTest {
 		assertTrue(validation.contains("if(currentReadable&&!allowReadableSource)returncurrent"))
 		assertFalse(validation.contains("seed.isReadable()"))
 		assertFalse(validation.contains("discover(mangaId)"))
-
-		assertTrue(validation.contains("filter{it.name==selection.source}"))
-		assertTrue(validation.contains("precomputedSources=selectedSources"))
-		assertTrue(validation.contains("event.manga.source.name==selection.source&&event.manga.id==selection.id"))
-		assertTrue(validation.contains("if(selected!=null)break"))
+		assertTrue(validation.contains("firstOrNull{it.name==selection.source}"))
+		assertTrue(validation.contains("refreshExactCandidate(query,selectedSource,selection.id)"))
 		assertTrue(validation.contains("approved.manga.probeHealth()"))
 		assertTrue(validation.contains("!selection.isRawSearchIdentity&&MigrationSelection.of(fresh)!=selection"))
 		assertTrue(validation.contains("candidateMatcher.assess"))
+
+		// Exact execution refresh must search the complete raw source result list before fetching details.
+		assertTrue(exactRefresh.contains("firstOrNull{it.source.name==source.name&&it.id==candidateId}"))
+		assertTrue(exactRefresh.contains("getDetails(candidate)"))
+		assertFalse(exactRefresh.contains("take("))
+		assertFalse(exactRefresh.contains("MAX_DETAIL_CANDIDATES"))
 	}
 
 	@Test
@@ -52,7 +57,7 @@ class MigrationMatchingContractTest {
 		val direct = autoFix.substringAfter("privatesuspendfunsearchDirectReplacements(")
 			.substringBefore("/**Strictchecked-modediscovery")
 		val alternatives = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
-		val rawSearch = alternatives.substringAfter("funsearchInstalledSourcesDirect(").substringBefore("privatefunsearchSources(")
+		val rawSearch = alternatives.substringAfter("funsearchInstalledSourcesDirect(").substringBefore("/**Execution-timedestinationrefresh")
 
 		assertTrue(direct.contains("buildPrimaryMigrationSearchQuery(seed)"))
 		assertTrue(direct.contains("searchInstalledSourcesDirect("))
