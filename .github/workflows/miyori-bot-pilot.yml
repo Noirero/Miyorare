@@ -23,7 +23,7 @@ jobs:
     name: Verify Miyori Bot identity
     runs-on: ubuntu-latest
     env:
-      TARGET_ISSUE_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || '770' }}
+      TARGET_ISSUE_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || '771' }}
     steps:
       - name: Validate target number
         shell: bash
