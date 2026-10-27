@@ -215,7 +215,7 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 	}
 
 	private fun buildQuery(title: String, extraSearchParams: String?): String = buildString {
-		append(title.trim())
+		append(title.trim().replace("’", "'"))
 		extraSearchParams?.trim()?.takeIf(String::isNotEmpty)?.let { append(' ').append(it) }
 	}.trim()
 
@@ -230,6 +230,7 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 	private fun normalizeForSimilarity(value: String): String = value
 		.trim()
 		.lowercase()
+		.replace("’", "'")
 		.replace(Regex("\\s+"), " ")
 
 	private suspend fun loadSeed(mangaId: Long): Manga = checkNotNull(
