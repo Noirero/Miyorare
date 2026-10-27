@@ -2,13 +2,10 @@ package org.koitharu.kotatsu.settings.sources.migration
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.koitharu.kotatsu.alternatives.domain.MigrationDiscovery
-import org.koitharu.kotatsu.alternatives.domain.MigrationSearchAvailability
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchScope
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -33,49 +30,32 @@ class MigrationReviewStateTest {
 	)
 
 	@Test
-	fun `changing scope invalidates prior search evidence but keeps stable context and chosen path`() {
-		val availability = MigrationSearchAvailability(
-			counts = mapOf(MigrationSearchScope.ALL to 4, MigrationSearchScope.UMA to 2),
-		)
+	fun `changing category only filters source picker and preserves selections and evidence`() {
 		val before = MigrationReviewState(
 			loading = false,
-			discovery = MigrationDiscovery(
-				seed = seed,
-				sourceHealthy = true,
-				incomplete = true,
-				partialFailureCount = 2,
-			),
-			availability = availability,
+			discovery = MigrationDiscovery(seed = seed, sourceHealthy = true, incomplete = true, partialFailureCount = 2),
 			selectedScope = MigrationSearchScope.ALL,
 			hasSearched = true,
 			currentSourceChecked = true,
 			manualSearchEnabled = true,
+			selectedSourceNames = setOf("A", "B"),
 			searchFailed = true,
-			failed = true,
 			changed = true,
 		)
 
 		val after = before.withSearchScope(MigrationSearchScope.UMA)
 
 		assertEquals(MigrationSearchScope.UMA, after.selectedScope)
-		assertFalse(after.hasSearched)
-		assertFalse(after.searching)
-		assertFalse(after.searchFailed)
-		assertFalse(after.failed)
-		assertFalse(after.changed)
-		assertTrue(after.currentSourceChecked)
-		assertTrue(after.manualSearchEnabled)
-		assertSame(availability, after.availability)
-		assertNotNull(after.discovery)
-		assertEquals(seed, after.discovery?.seed)
-		assertTrue(after.discovery?.currentSourceReadable == true)
-		assertFalse(after.discovery?.incomplete == true)
-		assertEquals(0, after.discovery?.partialFailureCount)
-		assertNull(after.discovery?.assessment)
+		assertEquals(before.copy(selectedScope = MigrationSearchScope.UMA), after)
+		assertEquals(setOf("A", "B"), after.selectedSourceNames)
+		assertTrue(after.hasSearched)
+		assertTrue(after.searchFailed)
+		assertTrue(after.changed)
+		assertSame(before.discovery, after.discovery)
 	}
 
 	@Test
-	fun `initial local seed is not treated as a completed current source check`() {
+	fun `initial local seed is not treated as a completed current source check or search`() {
 		val state = MigrationReviewState(
 			loading = false,
 			discovery = MigrationDiscovery(seed),
@@ -84,10 +64,13 @@ class MigrationReviewStateTest {
 		assertFalse(state.currentSourceChecked)
 		assertFalse(state.manualSearchEnabled)
 		assertFalse(state.hasSearched)
+		assertFalse(state.checkFailed)
+		assertFalse(state.sourceSelectionLoading)
+		assertTrue(state.selectedSourceNames.isEmpty())
 	}
 
 	@Test
-	fun `reselecting current scope does not discard current evidence`() {
+	fun `reselecting current category returns identical state`() {
 		val before = MigrationReviewState(
 			loading = false,
 			discovery = MigrationDiscovery(seed),

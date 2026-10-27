@@ -22,6 +22,23 @@ enum class MigrationSourceOrigin {
 	OTHER,
 }
 
+enum class MigrationDirectTitleMode {
+	ORIGINAL,
+	CLEANED,
+}
+
+/**
+ * Advanced options for the user-driven Search-Everywhere-style migration path.
+ * These affect discovery only; migration execution always refreshes and validates the chosen destination.
+ */
+data class MigrationDirectSearchOptions(
+	val titleMode: MigrationDirectTitleMode = MigrationDirectTitleMode.CLEANED,
+	val includeAlternativeTitles: Boolean = true,
+	val searchAliasesIfNeeded: Boolean = true,
+	val showLowConfidenceResults: Boolean = true,
+	val autoSelectStrongestResult: Boolean = false,
+)
+
 internal fun MangaSource.migrationSourceOrigin(): MigrationSourceOrigin = when (val source = unwrap()) {
 	is MihonMangaSource -> MigrationSourceOrigin.STORE
 	is TsukiMangaSource -> when (source.plugin.provider) {
@@ -48,6 +65,12 @@ data class MigrationSourcePool(
 	val providerFailureCount: Int = 0,
 ) {
 	fun sources(scope: MigrationSearchScope): List<MangaSource> = allSources.filter(scope::matches)
+
+	fun selected(sourceNames: Set<String>): List<MangaSource> = if (sourceNames.isEmpty()) {
+		emptyList()
+	} else {
+		allSources.filter { it.name in sourceNames }
+	}
 
 	fun availability(): MigrationSearchAvailability = MigrationSearchAvailability(
 		counts = MigrationSearchScope.entries.associateWith { scope -> sources(scope).size },

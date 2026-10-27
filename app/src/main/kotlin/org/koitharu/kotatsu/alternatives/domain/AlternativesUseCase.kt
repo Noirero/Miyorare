@@ -159,6 +159,67 @@ class AlternativesUseCase @Inject constructor(
 		return searchSources(query, getSources(isNovel, null, mode, preferredLanguages), null, MAX_DETAIL_CANDIDATES)
 	}
 
+	/**
+	 * Search-Everywhere-style migration discovery. Each source gets one primary query. Optional
+	 * alias queries are tried only when that source returned no primary result. Raw results are
+	 * published immediately; detail/page validation remains execution-time work.
+	 */
+	fun searchInstalledSourcesDirect(
+		queries: List<String>,
+		sources: List<MangaSource>,
+		excluded: Pair<MangaSource, Long>? = null,
+	): Flow<AlternativeSearchEvent> {
+		val normalizedQueries = queries.asSequence().map(String::trim).filter(String::isNotEmpty).distinct().toList()
+		if (normalizedQueries.isEmpty() || sources.isEmpty()) return emptyFlow()
+		val sourceSemaphore = Semaphore(MAX_PARALLEL_SOURCES)
+		return channelFlow {
+			for (source in sources) {
+				launch {
+					var sourceError: Throwable? = null
+					for (query in normalizedQueries) {
+						val searchResult = runCatchingCancellable {
+							sourceSemaphore.withPermit {
+								searchHelperFactory.create(source)(query, SearchKind.TITLE)?.manga
+							}
+						}
+						val list = searchResult.getOrElse { error ->
+							sourceError = error
+							emptyList()
+						}
+						val results = list.orEmpty()
+							.asSequence()
+							.filter { excluded == null || it.source != excluded.first || it.id != excluded.second }
+							.distinctBy { it.dedupeKey() }
+							.toList()
+						if (results.isNotEmpty()) {
+							for (result in results) send(AlternativeSearchEvent.Result(result))
+							sourceError = null
+							break
+						}
+					}
+					send(AlternativeSearchEvent.SourceFinished(source, sourceError))
+				}
+			}
+		}
+	}
+
+	/**
+	 * Execution-time destination refresh. Search the selected source without truncating its raw list,
+	 * find the exact source/id first, and only then fetch details for that one approved candidate.
+	 */
+	suspend fun refreshExactCandidate(
+		query: String,
+		source: MangaSource,
+		candidateId: Long,
+	): Result<Manga?> = runCatchingCancellable {
+		val normalizedQuery = query.trim()
+		if (normalizedQuery.isEmpty()) return@runCatchingCancellable null
+		val raw = searchHelperFactory.create(source)(normalizedQuery, SearchKind.TITLE)?.manga.orEmpty()
+		val candidate = raw.firstOrNull { it.source.name == source.name && it.id == candidateId }
+			?: return@runCatchingCancellable null
+		mangaRepositoryFactory.create(source).getDetails(candidate)
+	}
+
 	private fun searchSources(
 		normalizedQuery: String, sources: List<MangaSource>, excluded: Pair<MangaSource, Long>?, maxDetailCandidates: Int,
 	): Flow<AlternativeSearchEvent> {

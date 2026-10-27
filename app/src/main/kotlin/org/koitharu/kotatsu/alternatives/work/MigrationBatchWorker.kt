@@ -16,7 +16,13 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.alternatives.domain.*
+import org.koitharu.kotatsu.alternatives.domain.AutoFixUseCase
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchOutcome
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchPolicy
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
+import org.koitharu.kotatsu.alternatives.domain.MigrationDiscovery
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.settings.SettingsActivity
@@ -34,7 +40,8 @@ class MigrationBatchWorker @AssistedInject constructor(
 		setProgress(MigrationBatchWork.output(MigrationBatchOutcome(
 			if (request.action == MigrationBatchAction.CHECK) MigrationBatchStatus.CHECKING else MigrationBatchStatus.MIGRATING,
 		)))
-		val outcome = MigrationBatchPolicy.process(request,
+		val outcome = MigrationBatchPolicy.process(
+			request = request,
 			canAccess = {
 				database.getMangaDao().isMigrationEntryVisible(request.mangaId) &&
 					database.getMangaDao().find(request.mangaId)?.manga?.source == request.source
@@ -50,7 +57,13 @@ class MigrationBatchWorker @AssistedInject constructor(
 					MigrationBatchDiscoveryMode.CHECK_CURRENT ->
 						autoFix.discover(request.mangaId, request.searchScope, onProgress)
 					MigrationBatchDiscoveryMode.DIRECT_SEARCH ->
-						autoFix.searchReplacements(request.mangaId, request.searchScope, onProgress = onProgress)
+						autoFix.searchReplacements(
+							mangaId = request.mangaId,
+							searchScope = request.searchScope,
+							directSearch = true,
+							revealAllCandidates = false,
+							onProgress = onProgress,
+						)
 				}
 			},
 			migrate = { selection ->
