@@ -88,11 +88,11 @@ fun ImageRequest.Builder.stableMangaCoverKey(
 		(shouldPersist || forceRefresh)
 	) {
 		val rawDiskCacheKey = if (coverUrl == manga.coverUrl || coverUrl == manga.largeCoverUrl) {
+			diskCacheKey(mangaCoverDiskCacheKey(manga.id))
 			mangaCoverDiskCacheKey(manga.id)
 		} else {
-			mangaCoverOverrideDiskCacheKey(manga.id, coverUrl)
+			mangaCoverOverrideDiskCacheKey(manga.id, coverUrl).also(::diskCacheKey)
 		}
-		diskCacheKey(rawDiskCacheKey)
 		extras[storedMangaCoverRequestKey] = StoredMangaCoverRequest(
 			mangaId = manga.id,
 			sourceUrl = coverUrl,
