@@ -33,13 +33,19 @@ enum class MigrationSourceStrategy {
 class YokaiStyleMigrationSearchUseCase @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val alternativesUseCase: AlternativesUseCase,
+	private val globalSearch: MigrationGlobalSearchBridge,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val candidateMatcher: MigrationCandidateMatcher,
 ) {
 
 	suspend fun sourcePool(mangaId: Long): MigrationSourcePool {
 		val seed = loadSeed(mangaId)
-		return alternativesUseCase.getMigrationSourcePool(seed, excludeCurrent = false)
+		val pool = alternativesUseCase.getMigrationSourcePool(seed)
+		return pool.copy(
+			allSources = (pool.allSources + seed.source)
+				.distinctBy(MangaSource::name)
+				.sortedBy { it.title.ifBlank { it.name } },
+		)
 	}
 
 	suspend operator fun invoke(
@@ -50,8 +56,9 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		onProgress: suspend (MigrationDiscovery) -> Unit = {},
 	): MigrationDiscovery {
 		val seed = loadSeed(mangaId)
-		val pool = alternativesUseCase.getMigrationSourcePool(seed, excludeCurrent = false)
-		val selected = pool.selected(selectedSourceNames)
+		val pool = sourcePool(mangaId)
+		val byName = pool.allSources.associateBy(MangaSource::name)
+		val selected = selectedSourceNames.mapNotNull(byName::get).distinctBy(MangaSource::name)
 		val sources = if (selected.size == 1) selected else selected.filter { it.name != seed.source.name }
 		val query = buildQuery(seed.title, extraSearchParams)
 		if (sources.isEmpty()) {
@@ -127,7 +134,7 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		source: MangaSource,
 		requireDetails: Boolean,
 	): SourceResult {
-		val searched = alternativesUseCase.searchSourceLikeGlobalSearch(source, query)
+		val searched = globalSearch.search(source, query)
 		if (searched.isFailure) return SourceResult(null, true)
 		val candidate = chooseCandidate(seed.title, searched.getOrDefault(emptyList())) ?: return SourceResult(null, false)
 		if (!requireDetails) {
