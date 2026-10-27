@@ -49,7 +49,8 @@ class MigrationMatchingContractTest {
 	@Test
 	fun `direct discovery is one raw query per installed source with no preflight health probe`() {
 		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
-		val direct = autoFix.substringAfter("suspendfunsearchReplacements(").substringBefore("/**Refreshtheapproveddestinationidentity")
+		val direct = autoFix.substringAfter("privatesuspendfunsearchDirectReplacements(")
+			.substringBefore("/**Strictchecked-modediscovery")
 		val alternatives = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
 		val rawSearch = alternatives.substringAfter("funsearchInstalledSourcesDirect(").substringBefore("privatefunsearchSources(")
 
@@ -67,16 +68,41 @@ class MigrationMatchingContractTest {
 	}
 
 	@Test
+	fun `checked discovery keeps alias search and health verification`() {
+		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val strict = autoFix.substringAfter("privatesuspendfunsearchStrictReplacements(")
+			.substringBefore("/**Refreshtheapproveddestinationidentity")
+		val discover = autoFix.substringAfter("suspendfundiscover(").substringBefore("/**[directSearch]selects")
+
+		assertTrue(discover.contains("directSearch=false"))
+		assertTrue(strict.contains("buildMigrationSearchQueries(seed)"))
+		assertTrue(strict.contains("VERIFYING_CANDIDATES"))
+		assertTrue(strict.contains("probeHealth()"))
+		assertTrue(strict.contains("MAX_HEALTH_CHECKS"))
+	}
+
+	@Test
 	fun `direct UI starts search immediately and scope changes restart it without availability gate`() {
 		val viewModel = source("org/koitharu/kotatsu/settings/sources/migration/MigrationReviewViewModel.kt")
 		val manual = viewModel.substringAfter("funenableManualSearch()").substringBefore("funsetSearchScope(")
 		val scope = viewModel.substringAfter("funsetSearchScope(").substringBefore("funsearch()")
+		val start = viewModel.substringAfter("privatefunstartSearch(").substringBefore("funmigrate(")
 
-		assertTrue(manual.contains("startSearch(before.selectedScope,revealAllCandidates=true)"))
+		assertTrue(manual.contains("startSearch(before.selectedScope,directSearch=true)"))
 		assertFalse(manual.contains("searchAvailability("))
 		assertTrue(scope.contains("if(before.manualSearchEnabled)"))
-		assertTrue(scope.contains("startSearch(scope,revealAllCandidates=true)"))
+		assertTrue(scope.contains("startSearch(scope,directSearch=true)"))
+		assertTrue(start.contains("directSearch=directSearch"))
+		assertTrue(start.contains("revealAllCandidates=directSearch"))
 		assertFalse(viewModel.contains("availability?.count(before.selectedScope)"))
+	}
+
+	@Test
+	fun `batch direct uses lightweight path while checked batch keeps discover`() {
+		val worker = source("org/koitharu/kotatsu/alternatives/work/MigrationBatchWorker.kt")
+		assertTrue(worker.contains("MigrationBatchDiscoveryMode.CHECK_CURRENT->autoFix.discover"))
+		assertTrue(worker.contains("MigrationBatchDiscoveryMode.DIRECT_SEARCH->autoFix.searchReplacements"))
+		assertTrue(worker.contains("directSearch=true"))
 	}
 
 	@Test
