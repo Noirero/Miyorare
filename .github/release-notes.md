@@ -1,84 +1,80 @@
-## Miyorare v1.4.14
+## Miyorare v1.4.15
 
-This release expands how you discover, organize, and preserve your library. Miyorare introduces a new Discovery Hub backed by tracker catalogs, Category Sets for organizing Favourites, stronger backup and synchronization support, and improved migration compatibility.
+This release expands Miyorare's discovery ecosystem, strengthens persistent cover handling, and introduces a major new iteration of source migration. Migration improvements in this release are still **Beta / not yet stable**, while Discovery gains MangaBaka and tracker-account integration.
 
 ### ✨ What's New
 
-- **Discovery Hub** — a new discovery experience brings catalog browsing into Miyorare with dedicated navigation, responsive layouts, search integration, and status handling.
-- **AniList, Kitsu & MyAnimeList catalogs** — browse discovery catalogs backed by multiple tracker ecosystems from one integrated experience.
-- **Tracker catalog browsing** — dedicated catalog screens provide a richer way to explore titles and move from discovery into Miyorare's reading flow.
-- **Category Sets for Favourites** — Favourite categories can now be organized into separate sets, giving larger libraries another layer of organization.
-- **Category Set management** — create, select, reorder, and manage category sets through dedicated controls and dialogs.
-- **Category navigation** — Favourites now includes dedicated category/set navigation to make moving through organized collections easier.
-- **New source additions** — the Miyorare source packs have been expanded with additional sources, including ComicAsura, NewXToon, RawDex, and MGKomik.
+- **MangaBaka in Discovery** — MangaBaka joins the Discovery catalog ecosystem with dedicated catalog support.
+- **MangaBaka Personal Home** — Discovery can provide a personalized MangaBaka home experience with dedicated browsing and “See all” screens.
+- **Tracker catalog accounts** — Discovery now includes account infrastructure and UI for supported tracker catalogs.
+- **Manual migration search (Beta)** — source migration now provides a dedicated manual search flow when automatic candidate matching is not enough. This migration functionality is still under active development and should be considered **Beta / not yet stable**.
+- **Broader migration search controls (Beta)** — migration can search through explicit scopes and use global search integration to find replacement titles more flexibly. The expanded migration flow is **not yet considered stable**.
+- **Persistent cover storage** — Miyorare now has dedicated persistent storage for manga covers instead of relying solely on ordinary image-cache behavior.
 
 ### 🚀 Improvements
 
-- **Discovery-to-reading integration** — catalog results can resolve into available Miyorare sources and continue into the normal reading experience.
-- **Discovery resilience** — catalog data includes snapshot/cache handling and dedicated status presentation for more graceful behavior when remote catalog services are unavailable.
-- **Responsive Discovery UI** — Discovery screens have dedicated behavior and validation for different available screen sizes.
-- **Shared search ownership** — navigation and Discovery now coordinate ownership of the shared search interface more reliably.
-- **Favourites organization** — Favourite repositories, category selection, editing, unread counters, and list presentation now understand Category Sets.
-- **Private Favourites compatibility** — transfers between regular and Private Favourites have been updated to work with the expanded category organization model.
-- **Category Sets in backup** — local backup now preserves Category Set information alongside the rest of the library state.
-- **Category Sets in Google Drive sync** — synchronization and merge logic now understand Category Sets so organization can survive cross-device sync.
-- **Migration compatibility** — source migration now includes additional handling for chapter-level personal data when moving titles between compatible sources.
-- **Navigation preferences** — main navigation configuration has been simplified and moved toward a dedicated preference model.
-- **Favourite cover information** — modern Favourite covers received additional reading-state and overlay handling.
-- **Cloudflare browser handling** — browser challenge handling received lifecycle and navigation improvements.
+- **Migration search & matching (Beta)** — candidate discovery and matching have been expanded to work with the new search scopes and manual/global search paths. These migration improvements remain **Beta / not yet stable**.
+- **Lossless migration copy (Beta)** — migration has a dedicated copy path designed to preserve related user/library data while moving a title to its replacement source. This functionality is still **Beta** and may receive further changes.
+- **Batch migration controls (Beta)** — batch migration controls, scheduling, background work, and execution policies have been substantially expanded, but the overall migration system remains **not yet stable**.
+- **Migration session preferences (Beta)** — migration can retain additional session/search choices instead of treating each operation as completely isolated. This remains part of the **Beta migration system**.
+- **Discovery catalog data** — AniList, Kitsu, and MyAnimeList providers received additional catalog data and supplemental information handling.
+- **Tracker details & relations** — tracker-backed details now have richer relation-reading infrastructure and expanded people information.
+- **MangaBaka tracker details** — MangaBaka is integrated more deeply into tracker-backed title information.
+- **Persistent cover restoration** — stored covers are integrated with Miyorare's image loading and restoration path for more durable artwork availability.
+- **Discovery snapshots** — catalog snapshot handling has been improved for mixed and supplemental catalog data.
 
 ### 🐞 Fixes
 
-- Improved preservation of chapter-level personal data during compatible source migrations.
-- Added database migration support for Category Sets when upgrading existing installations.
-- Improved backup compatibility for Private Favourites and the expanded Favourite organization model.
-- Improved Google Drive merge behavior for synchronized Category Sets.
-- Fixed additional Favourite unread-count and downloaded/local-state edge cases.
-- Improved Favourite category selection and editing behavior with the new set model.
-- Improved navigation behavior around Discovery and shared search.
-- Strengthened downloaded-novel round-trip validation and runtime diagnostics.
-- Added broad regression coverage for Discovery navigation, catalog browsing, Category Sets, backup/sync, migration compatibility, responsive UI, and Favourite organization.
+- **Migration (Beta)** — improved preservation of library and user data when copying entries during source migration.
+- **Migration (Beta)** — improved candidate matching for direct searches and broader search scopes.
+- **Migration (Beta)** — improved behavior when automatic matching cannot confidently find a replacement.
+- **Migration (Beta)** — improved batch migration state, work scope, and execution handling.
+- Improved image disk-cache behavior alongside the new persistent cover storage path.
+- Improved cover restoration behavior when normal cached artwork is no longer available.
+- Improved tracker relation reading so relation data remains isolated and handled consistently.
+- Improved Discovery catalog snapshot and supplemental-data handling.
+- Added regression coverage for **Beta migration**, persistent covers, MangaBaka Discovery, tracker accounts, tracker relations, and Discovery catalog behavior.
+
+> **Migration status:** The migration features described in this release are still **Beta / not yet stable**. They are under active development and may receive further behavioral, UI, and compatibility changes in future releases.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Rilis ini memperluas cara kamu menemukan, mengatur, dan mempertahankan koleksi. Miyorare menghadirkan Discovery Hub baru berbasis katalog tracker, Category Sets untuk mengatur Favourites, dukungan backup dan sinkronisasi yang lebih kuat, serta compatibility migration yang lebih baik.
+Rilis ini memperluas ekosistem Discovery Miyorare, memperkuat penanganan persistent cover, dan menghadirkan iterasi besar baru untuk source migration. Peningkatan migration pada rilis ini masih berstatus **Beta / belum stabil**, sementara Discovery mendapat integrasi MangaBaka dan akun tracker.
 
 ### ✨ Yang Baru
 
-- **Discovery Hub** — pengalaman discovery baru menghadirkan catalog browsing langsung di Miyorare dengan navigasi khusus, layout responsif, integrasi search, dan status handling.
-- **Katalog AniList, Kitsu & MyAnimeList** — jelajahi katalog discovery dari beberapa ekosistem tracker melalui satu pengalaman yang terintegrasi.
-- **Tracker catalog browsing** — layar katalog khusus memberikan cara yang lebih kaya untuk menemukan judul dan melanjutkannya ke alur membaca Miyorare.
-- **Category Sets untuk Favourites** — kategori Favourite sekarang dapat diatur ke dalam beberapa set terpisah, memberikan lapisan organisasi tambahan untuk library yang besar.
-- **Pengelolaan Category Set** — buat, pilih, ubah urutan, dan kelola category set melalui kontrol dan dialog khusus.
-- **Navigasi kategori** — Favourites sekarang memiliki navigasi category/set khusus agar perpindahan antar koleksi yang sudah diatur menjadi lebih mudah.
-- **Source baru** — Miyorare source packs diperluas dengan source tambahan, termasuk ComicAsura, NewXToon, RawDex, dan MGKomik.
+- **MangaBaka di Discovery** — MangaBaka bergabung dengan ekosistem katalog Discovery melalui dukungan katalog khusus.
+- **MangaBaka Personal Home** — Discovery dapat menyediakan pengalaman MangaBaka personal dengan browsing khusus dan layar “See all”.
+- **Akun tracker catalog** — Discovery sekarang memiliki infrastructure dan UI akun untuk tracker catalog yang didukung.
+- **Manual migration search (Beta)** — source migration sekarang memiliki alur pencarian manual khusus ketika automatic candidate matching tidak mencukupi. Fungsi migration ini masih dalam pengembangan aktif dan berstatus **Beta / belum stabil**.
+- **Kontrol pencarian migration lebih luas (Beta)** — migration dapat menggunakan search scope khusus dan integrasi global search untuk menemukan judul pengganti secara lebih fleksibel. Alur migration yang diperluas ini **belum dianggap stabil**.
+- **Persistent cover storage** — Miyorare sekarang memiliki penyimpanan persisten khusus untuk cover manga dan tidak hanya bergantung pada image cache biasa.
 
 ### 🚀 Peningkatan
 
-- **Integrasi Discovery ke reader** — hasil katalog dapat dicocokkan dengan source Miyorare yang tersedia dan dilanjutkan ke pengalaman membaca normal.
-- **Discovery lebih tangguh** — data katalog memiliki snapshot/cache handling dan status presentation khusus agar kegagalan layanan katalog remote dapat ditangani dengan lebih baik.
-- **Discovery UI responsif** — layar Discovery memiliki behavior dan validasi khusus untuk berbagai ukuran layar.
-- **Shared search ownership** — navigasi dan Discovery sekarang mengoordinasikan penggunaan shared search interface dengan lebih andal.
-- **Organisasi Favourites** — repository Favourite, category selection, editing, unread counter, dan tampilan list sekarang memahami Category Sets.
-- **Kompatibilitas Private Favourites** — transfer antara Favourites biasa dan Private Favourites diperbarui agar bekerja dengan model organisasi kategori yang baru.
-- **Category Sets dalam backup** — local backup sekarang mempertahankan informasi Category Set bersama state library lainnya.
-- **Category Sets dalam Google Drive sync** — synchronization dan merge logic sekarang memahami Category Sets sehingga struktur organisasi dapat dipertahankan antar perangkat.
-- **Kompatibilitas migration** — source migration mendapat penanganan tambahan untuk data personal tingkat chapter ketika judul dipindahkan antar source yang kompatibel.
-- **Navigation preferences** — konfigurasi navigasi utama disederhanakan dan dipindahkan menuju preference model khusus.
-- **Informasi cover Favourite** — modern Favourite cover mendapat penanganan tambahan untuk reading state dan overlay.
-- **Cloudflare browser handling** — penanganan browser challenge mendapat peningkatan lifecycle dan navigasi.
+- **Migration search & matching (Beta)** — candidate discovery dan matching diperluas agar bekerja dengan search scope baru serta jalur manual/global search. Peningkatan migration ini masih **Beta / belum stabil**.
+- **Lossless migration copy (Beta)** — migration memiliki jalur copy khusus yang dirancang untuk mempertahankan data user/library terkait saat judul dipindahkan ke source pengganti. Fungsi ini masih **Beta** dan dapat berubah lagi.
+- **Batch migration controls (Beta)** — kontrol batch migration, scheduling, background work, dan execution policy diperluas secara signifikan, tetapi keseluruhan sistem migration masih **belum stabil**.
+- **Migration session preferences (Beta)** — migration dapat mempertahankan pilihan session/search tambahan sehingga setiap operasi tidak selalu dimulai sepenuhnya dari awal. Ini masih menjadi bagian dari **sistem migration Beta**.
+- **Data Discovery catalog** — provider AniList, Kitsu, dan MyAnimeList mendapat tambahan data katalog dan supplemental information handling.
+- **Tracker details & relations** — detail berbasis tracker sekarang memiliki infrastructure pembacaan relation yang lebih kaya serta informasi people yang diperluas.
+- **MangaBaka tracker details** — MangaBaka terintegrasi lebih dalam dengan informasi judul berbasis tracker.
+- **Persistent cover restoration** — cover tersimpan diintegrasikan dengan image loading dan restoration path Miyorare agar artwork tersedia lebih tahan lama.
+- **Discovery snapshots** — penanganan catalog snapshot ditingkatkan untuk mixed dan supplemental catalog data.
 
 ### 🐞 Perbaikan
 
-- Meningkatkan pemeliharaan data personal tingkat chapter ketika melakukan migration antar source yang kompatibel.
-- Menambahkan database migration untuk Category Sets ketika pengguna memperbarui instalasi lama.
-- Meningkatkan kompatibilitas backup untuk Private Favourites dan model organisasi Favourite yang diperluas.
-- Meningkatkan Google Drive merge behavior untuk Category Sets yang disinkronkan.
-- Memperbaiki edge case tambahan pada Favourite unread count dan downloaded/local state.
-- Meningkatkan category selection dan editing Favourite dengan model set baru.
-- Meningkatkan perilaku navigasi di sekitar Discovery dan shared search.
-- Memperkuat validasi round-trip downloaded novel dan runtime diagnostics.
-- Menambahkan regression coverage yang luas untuk Discovery navigation, catalog browsing, Category Sets, backup/sync, migration compatibility, responsive UI, dan organisasi Favourite.
+- **Migration (Beta)** — meningkatkan pemeliharaan data library dan user ketika entry disalin selama source migration.
+- **Migration (Beta)** — meningkatkan candidate matching untuk direct search dan search scope yang lebih luas.
+- **Migration (Beta)** — meningkatkan perilaku ketika automatic matching tidak dapat menemukan pengganti dengan cukup yakin.
+- **Migration (Beta)** — meningkatkan batch migration state, work scope, dan execution handling.
+- Meningkatkan image disk-cache behavior bersama persistent cover storage yang baru.
+- Meningkatkan cover restoration ketika artwork dari cache biasa sudah tidak tersedia.
+- Meningkatkan pembacaan tracker relations agar relation data tetap terisolasi dan ditangani secara konsisten.
+- Meningkatkan penanganan Discovery catalog snapshot dan supplemental data.
+- Menambahkan regression coverage untuk **migration Beta**, persistent cover, MangaBaka Discovery, tracker accounts, tracker relations, dan perilaku Discovery catalog.
+
+> **Status Migration:** Fitur-fitur migration yang dijelaskan pada rilis ini masih berstatus **Beta / belum stabil**. Sistem tersebut masih dalam pengembangan aktif dan dapat menerima perubahan behavior, UI, maupun compatibility pada rilis berikutnya.
 
 </details>
