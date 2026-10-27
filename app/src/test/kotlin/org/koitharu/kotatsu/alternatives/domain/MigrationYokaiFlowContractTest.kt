@@ -99,6 +99,15 @@ class MigrationYokaiFlowContractTest {
 	}
 
 	@Test
+	fun `remembered unavailable sources never silently expand to arbitrary sources`() {
+		val source = source("org/koitharu/kotatsu/settings/sources/migration/SourceMangaListViewModel.kt")
+
+		assertTrue(source.contains("currentConfigured.isNotEmpty()->currentSelection"))
+		assertTrue(source.contains("rememberedConfigured.isNotEmpty()->remembered"))
+		assertTrue(source.contains("migrationPreferences.skipSetup&&selected.isNotEmpty()"))
+	}
+
+	@Test
 	fun `execution refreshes exact persisted identity before migrate or copy`() {
 		val source = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationExecutionUseCase.kt")
 
