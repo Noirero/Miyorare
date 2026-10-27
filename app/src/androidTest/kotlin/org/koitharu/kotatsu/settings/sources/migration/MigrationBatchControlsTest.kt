@@ -21,8 +21,8 @@ import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationSelection
 import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
 import org.koitharu.kotatsu.alternatives.domain.migrationConfigKey
-import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaSource
 
 class MigrationBatchControlsTest {
 	@get:Rule val compose = createComposeRule()
