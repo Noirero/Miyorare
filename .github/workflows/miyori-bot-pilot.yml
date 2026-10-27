@@ -1,6 +1,9 @@
 name: Miyori Bot Pilot
 
 on:
+  push:
+    branches:
+      - chore/miyori-bot-pilot
   workflow_dispatch:
     inputs:
       issue_number:
@@ -19,11 +22,13 @@ jobs:
   verify:
     name: Verify Miyori Bot identity
     runs-on: ubuntu-latest
+    env:
+      TARGET_ISSUE_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || '770' }}
     steps:
       - name: Validate target number
         shell: bash
         env:
-          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          ISSUE_NUMBER: ${{ env.TARGET_ISSUE_NUMBER }}
         run: |
           set -euo pipefail
           [[ "$ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
@@ -64,7 +69,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
-          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          ISSUE_NUMBER: ${{ env.TARGET_ISSUE_NUMBER }}
           APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
         run: |
           set -euo pipefail
@@ -91,7 +96,7 @@ jobs:
           {
             echo "## Miyori Bot pilot"
             echo
-            echo "- Target: #${{ inputs.issue_number }}"
+            echo "- Target: #${TARGET_ISSUE_NUMBER}"
             echo "- App slug: \`${{ steps.miyori-token.outputs.app-slug }}\`"
             echo "- Scope: issue/PR comment only"
             echo "- Existing github-actions[bot] automation: unchanged"
