@@ -8,7 +8,7 @@
     <string name="migration_batch_mode_direct_description">Lewati pengecekan source saat ini dan cari pengganti untuk setiap manga pada area source terpasang yang dipilih.</string>
     <string name="migration_batch_check">Periksa semua dan cari pengganti</string>
     <string name="migration_batch_direct">Cari pengganti untuk semua</string>
-    <string name="migration_batch_safety">Langkah ini hanya menyiapkan kandidat. Tidak ada data yang dipindahkan sampai Anda menekan Migrasikan yang siap.</string>
+    <string name="migration_batch_safety">Langkah ini hanya menyiapkan kandidat. Tidak ada data yang dipindahkan sampai Anda memilih Migrasikan atau Salin.</string>
     <string name="migration_batch_unchecked">Belum diperiksa — ketuk untuk meninjau</string>
     <string name="migration_batch_queued">Menunggu dalam antrean batch</string>
     <string name="migration_batch_checking">Memeriksa keterbacaan / mencari pada source terpasang…</string>
@@ -16,21 +16,23 @@
     <string name="migration_batch_searching">Mencari pada source terpasang yang dipilih…</string>
     <string name="migration_batch_searching_progress">Mencari pada source terpasang · %1$d/%2$d diperiksa</string>
     <string name="migration_batch_verifying">Memverifikasi %1$d kemungkinan hasil…</string>
-    <string name="migration_batch_migrating">Sedang dimigrasikan…</string>
+    <string name="migration_batch_migrating">Sedang dimigrasikan atau disalin…</string>
     <string name="migration_batch_ready">Siap — pengganti ditemukan</string>
     <string name="migration_batch_review">Pengganti ditemukan — pilih manual</string>
     <string name="migration_batch_no_replacement">Tidak ada hasil yang bisa dibaca pada source yang diperiksa</string>
     <string name="migration_batch_incomplete">Area yang dipilih tidak dapat diperiksa dengan cukup andal — coba lagi atau pilih area lain</string>
     <string name="migration_batch_healthy">Manga dari source saat ini masih bisa dibaca</string>
+    <string name="migration_batch_copied">Disalin — source lama dipertahankan</string>
     <string name="migration_batch_interrupted">Terputus — periksa koleksi sebelum mencoba lagi</string>
     <string name="migration_batch_error">Belum dapat dimigrasikan dengan aman — tinjau atau coba lagi</string>
     <string name="migration_batch_empty">Tidak ada entri koleksi atau riwayat yang tersisa untuk source ini.</string>
     <string name="migration_batch_progress">%1$d dari %2$d manga telah diproses</string>
-    <string name="migration_batch_done">%1$d manga dimigrasikan melalui batch baru-baru ini</string>
+    <string name="migration_batch_done">%1$d manga dimigrasikan atau disalin melalui batch baru-baru ini</string>
     <string name="migration_batch_check_library">Manga yang terputus mungkin sudah berada di penggantinya. Periksa koleksi; migrasi tidak akan diulang secara buta.</string>
     <string name="migration_batch_other_active">Batch migrasi sedang berjalan pada koleksi source lain.</string>
     <string name="migration_batch_all">Semua hasil</string>
     <string name="migration_batch_filter_count">%1$s · %2$d</string>
     <plurals name="migration_batch_migrate_ready"><item quantity="one">Migrasikan %d manga yang siap</item><item quantity="other">Migrasikan %d manga yang siap</item></plurals>
+    <plurals name="migration_batch_copy_ready"><item quantity="one">Salin %d manga yang siap</item><item quantity="other">Salin %d manga yang siap</item></plurals>
     <string name="migration_batch_summary">Siap: %1$d · Pilih manual: %2$d · Tidak ditemukan: %3$d</string>
 </resources>
