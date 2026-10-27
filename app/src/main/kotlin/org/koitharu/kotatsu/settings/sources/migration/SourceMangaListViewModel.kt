@@ -318,11 +318,13 @@ class SourceMangaListViewModel @Inject constructor(
 				}
 			}.onSuccess { pool ->
 				val availableNames = pool.allSources.mapTo(hashSetOf(), MangaSource::name)
-				val remembered = migrationPreferences.selectedSourceNames.filter { it in availableNames }
-				val currentSelection = state.value.selectedSourceNames.filter { it in availableNames }
+				val rememberedConfigured = migrationPreferences.selectedSourceNames
+				val currentConfigured = state.value.selectedSourceNames
+				val remembered = rememberedConfigured.filter { it in availableNames }
+				val currentSelection = currentConfigured.filter { it in availableNames }
 				val selected = when {
-					currentSelection.isNotEmpty() -> currentSelection
-					remembered.isNotEmpty() -> remembered
+					currentConfigured.isNotEmpty() -> currentSelection
+					rememberedConfigured.isNotEmpty() -> remembered
 					else -> pool.allSources.map(MangaSource::name)
 				}
 				_state.update { current -> current.copy(
