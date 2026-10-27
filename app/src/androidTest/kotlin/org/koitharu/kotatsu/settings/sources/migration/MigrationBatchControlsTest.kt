@@ -2,7 +2,6 @@ package org.koitharu.kotatsu.settings.sources.migration
 
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -112,7 +111,7 @@ class MigrationBatchControlsTest {
 			onMigrateReady = { migrations++ },
 			onCopyReady = { copies++ },
 		)
-		compose.onNodeWithText(context.getString(R.string.migration_batch_summary, 1, 1, 1)).assertExists()
+		compose.onNodeWithText(context.getString(R.string.migration_batch_summary, 1, 1, 1)).fetchSemanticsNode()
 		compose.onNodeWithTag("migration-batch-migrate").performScrollTo().performClick()
 		compose.onNodeWithTag("migration-batch-copy").performScrollTo().performClick()
 		assertEquals(1, migrations)
