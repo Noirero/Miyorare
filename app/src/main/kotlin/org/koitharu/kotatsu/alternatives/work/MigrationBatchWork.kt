@@ -160,7 +160,6 @@ internal object MigrationBatchWork {
 		} else null
 		val destinationId = data.getLong("result_target_id", 0L).takeIf { it != 0L }
 			?: info.tags.firstOrNull { it.startsWith(TARGET) }?.removePrefix(TARGET)?.toLongOrNull()
-		val request = runCatching { request(info.outputData) }.getOrNull()
 		return MigrationBatchSnapshot(
 			mangaId = mangaId,
 			source = source,
@@ -171,9 +170,11 @@ internal object MigrationBatchWork {
 			searchProgress = searchProgress(data),
 			searchScope = searchScope(info.tags),
 			discoveryMode = discoveryMode(info.tags),
-			selectedSourceNames = request?.selectedSourceNames.orEmpty(),
-			sourceStrategy = request?.sourceStrategy ?: MigrationSourceStrategy.FIRST_MATCH,
-			extraSearchParams = request?.extraSearchParams,
+			// WorkInfo intentionally does not expose inputData. Full ordered source/strategy config remains
+			// durable inside the worker request; history/status matching uses the explicit config tag below.
+			selectedSourceNames = emptyList(),
+			sourceStrategy = MigrationSourceStrategy.FIRST_MATCH,
+			extraSearchParams = null,
 			configKey = configKey(info.tags),
 		)
 	}
