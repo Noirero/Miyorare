@@ -167,9 +167,9 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 	): SourceResult {
 		val searched = globalSearch.search(source, query)
 		if (searched.isFailure) return SourceResult(null, true)
-		// MangaEntity uses manga_id as its sole primary key. Different source implementations can legally
-		// collide on that number, so such a candidate cannot be persisted alongside the source manga safely.
-		// Skip it rather than overwriting user state before migration starts.
+		// MangaEntity uses manga_id as its sole primary key. Different source implementations may
+		// legitimately emit the same numeric id, so such a candidate cannot be persisted alongside
+		// the source manga safely. Skip it rather than overwriting user state before migration starts.
 		val eligible = searched.getOrDefault(emptyList()).filterNot { result -> result.id == seed.id }
 		val candidate = chooseCandidate(seed.title, eligible) ?: return SourceResult(null, false)
 		if (!canPersistCandidate(candidate)) return SourceResult(null, false)
