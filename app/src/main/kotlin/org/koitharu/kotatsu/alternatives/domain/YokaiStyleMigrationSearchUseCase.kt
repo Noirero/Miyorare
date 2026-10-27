@@ -135,9 +135,15 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		// the source manga safely. Skip it rather than overwriting user state before migration starts.
 		val eligible = searched.getOrDefault(emptyList()).filterNot { result -> result.id == seed.id }
 		val candidate = chooseCandidate(seed.title, eligible) ?: return SourceResult(null, false)
+		if (!canPersistCandidate(candidate)) return SourceResult(null, false)
 		if (!requireDetails) return SourceResult(candidate, false)
 		val details = runCatchingCancellable { mangaRepositoryFactory.create(source).getDetails(candidate) }.getOrNull()
 		return SourceResult(details, details == null)
+	}
+
+	private suspend fun canPersistCandidate(candidate: Manga): Boolean {
+		val existing = mangaDataRepository.findMangaById(candidate.id, withChapters = false) ?: return true
+		return existing.source.name == candidate.source.name
 	}
 
 	private suspend fun persistCandidate(candidate: Manga) {
