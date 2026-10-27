@@ -64,7 +64,9 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 				.build()
 				.also { workManager.beginUniqueWork(batchName, ExistingWorkPolicy.KEEP, it).enqueue().await() }
 		} ?: return null
-		val finished = workManager.getWorkInfoByIdFlow(task.id).first { it.state.isFinished }
+		val finished = checkNotNull(
+			workManager.getWorkInfoByIdFlow(task.id).first { it?.state?.isFinished == true },
+		)
 		return MigrationBatchWork.snapshot(finished)
 	}
 
@@ -96,7 +98,9 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 			}
 			.build()
 		workManager.enqueue(marker).await()
-		val finished = workManager.getWorkInfoByIdFlow(marker.id).first { it.state.isFinished }
+		val finished = checkNotNull(
+			workManager.getWorkInfoByIdFlow(marker.id).first { it?.state?.isFinished == true },
+		)
 		finished.state == WorkInfo.State.SUCCEEDED
 	}
 
