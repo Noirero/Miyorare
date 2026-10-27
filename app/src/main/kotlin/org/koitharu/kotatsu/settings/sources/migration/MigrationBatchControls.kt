@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -17,6 +18,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchPhase
 import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
+import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.parsers.model.MangaSource
 
 @StringRes
@@ -52,6 +54,7 @@ internal fun MigrationBatchControls(
 	onRetrySources: () -> Unit,
 ) {
 	var filterExpanded by remember { mutableStateOf(false) }
+	val context = LocalContext.current
 	val activeProgress = state.batchItems.values.firstOrNull { it.running && it.searchProgress != null }?.searchProgress
 	val selectedSet = state.selectedSourceNames.toHashSet()
 	val sourceByName = state.availableSources.associateBy(MangaSource::name)
@@ -59,7 +62,7 @@ internal fun MigrationBatchControls(
 		state.selectedSourceNames.mapNotNullTo(this) { sourceByName[it] }
 		state.availableSources
 			.filterNot { it.name in selectedSet }
-			.sortedBy { it.title.ifBlank { it.name } }
+			.sortedBy { it.getTitle(context).toString() }
 			.forEach(::add)
 	}
 	val targetCount = state.selectedIds.size.takeIf { it > 0 } ?: state.manga.size
@@ -122,7 +125,7 @@ internal fun MigrationBatchControls(
 								enabled = controlsEnabled,
 							)
 							Text(
-								text = source.title.ifBlank { source.name },
+								text = source.getTitle(context).toString(),
 								modifier = Modifier.weight(1f),
 								maxLines = 1,
 								overflow = TextOverflow.Ellipsis,
@@ -195,7 +198,7 @@ internal fun MigrationBatchControls(
 		}
 		if (state.batchTotal > 0) {
 			LinearProgressIndicator(
-				progress = { if (state.batchTotal == 0) 0f else state.batchCompleted.toFloat() / state.batchTotal },
+				progress = { state.batchCompleted.toFloat() / state.batchTotal },
 				modifier = Modifier.fillMaxWidth(),
 			)
 			Text(stringResource(R.string.migration_batch_progress, state.batchCompleted, state.batchTotal))
