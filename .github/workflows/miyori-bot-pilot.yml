@@ -3,13 +3,10 @@ name: Miyori Bot Pilot
 on:
   workflow_dispatch:
     inputs:
-      target_number:
+      issue_number:
         description: 'Issue or pull request number that Miyori Bot should comment on'
         required: true
         type: string
-  push:
-    branches:
-      - feat/miyori-bot-pr-comments
 
 permissions:
   contents: read
@@ -23,7 +20,7 @@ jobs:
     name: Verify Miyori Bot identity
     runs-on: ubuntu-latest
     env:
-      TARGET_NUMBER: ${{ inputs.target_number || '772' }}
+      TARGET_NUMBER: ${{ inputs.issue_number }}
     steps:
       - name: Validate target number
         shell: bash
@@ -32,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$TARGET_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
-            echo "::error::target_number must be a positive integer."
+            echo "::error::issue_number must be a positive integer."
             exit 1
           }
 
@@ -75,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           BODY=$(cat <<EOF
-          🌸 **Miyori Bot PR-comment pilot passed.**
+          🌸 **Miyori Bot pilot passed.**
 
           Authentication succeeded as \`${APP_SLUG}[bot]\` using a repository-scoped GitHub App installation token.
 
