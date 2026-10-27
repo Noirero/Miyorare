@@ -15,15 +15,23 @@ class FakeClient:
 
 
 class MiyoriStatusTests(unittest.TestCase):
-    def test_latest_run_prefers_newer_run_number(self):
+    def test_latest_run_prefers_newer_run_number_over_older_rerun(self):
         runs = [
-            {"name": "Miyorare Identity Guard", "run_number": 10, "run_attempt": 1, "updated_at": "a"},
+            {"name": "Miyorare Identity Guard", "run_number": 10, "run_attempt": 2, "updated_at": "c"},
             {"name": "Miyorare Identity Guard", "run_number": 11, "run_attempt": 1, "updated_at": "b"},
             {"name": "Other", "run_number": 99, "run_attempt": 1, "updated_at": "z"},
         ]
         latest = ms.latest_runs_by_name(runs)
         self.assertEqual(latest["Miyorare Identity Guard"]["run_number"], 11)
         self.assertNotIn("Other", latest)
+
+    def test_latest_run_prefers_newer_attempt_for_same_run(self):
+        runs = [
+            {"name": "Miyorare Identity Guard", "run_number": 11, "run_attempt": 1, "updated_at": "a"},
+            {"name": "Miyorare Identity Guard", "run_number": 11, "run_attempt": 2, "updated_at": "b"},
+        ]
+        latest = ms.latest_runs_by_name(runs)
+        self.assertEqual(latest["Miyorare Identity Guard"]["run_attempt"], 2)
 
     def test_gate_applicability(self):
         self.assertTrue(ms.gate_applicable("Miyorare Identity Guard", "beta"))
