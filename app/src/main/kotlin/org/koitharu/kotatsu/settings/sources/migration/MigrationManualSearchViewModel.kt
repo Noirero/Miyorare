@@ -49,7 +49,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 
 	fun setQuery(value: String) {
 		if (state.value.searching || state.value.migrating) return
-		_state.update { it.copy(query = value, errorMessage = null) }
+		_state.update { it.copy(query = value, selected = null, errorMessage = null) }
 	}
 
 	fun select(candidate: Manga) {
