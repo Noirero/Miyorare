@@ -78,8 +78,13 @@ class AlternativesUseCase @Inject constructor(
 	/**
 	 * Migration-only source pool. Runtime families are loaded independently and only when they can
 	 * serve the current content domain, so an irrelevant provider failure never poisons repair.
+	 * Legacy callers exclude the current source; Yokai-style setup can request the complete enabled
+	 * pool so its one-source exception behaves like the reference implementation.
 	 */
-	suspend fun getMigrationSourcePool(manga: Manga): MigrationSourcePool = coroutineScope {
+	suspend fun getMigrationSourcePool(
+		manga: Manga,
+		excludeCurrent: Boolean = true,
+	): MigrationSourcePool = coroutineScope {
 		val isNovel = manga.isNovelContent
 		val results = buildList {
 			add(async {
@@ -99,7 +104,9 @@ class AlternativesUseCase @Inject constructor(
 		MigrationSourcePool(
 			allSources = merged.values
 				.asSequence()
-				.filter { it.name != manga.source.name && it.isNovelContentSource == isNovel }
+				.filter { source ->
+					source.isNovelContentSource == isNovel && (!excludeCurrent || source.name != manga.source.name)
+				}
 				.distinctBy(MangaSource::name)
 				.sortedBy { it.name }
 				.toList(),
