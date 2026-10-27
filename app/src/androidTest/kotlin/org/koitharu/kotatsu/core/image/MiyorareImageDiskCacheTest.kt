@@ -118,8 +118,11 @@ class MiyorareImageDiskCacheTest {
 		}
 
 		try {
-			loader().use { first ->
+			val first = loader()
+			try {
 				assertTrue(first.execute(request()) is SuccessResult)
+			} finally {
+				first.shutdown()
 			}
 			assertEquals(1, fetches.get())
 			assertTrue(store.size() > 0L)
@@ -127,8 +130,11 @@ class MiyorareImageDiskCacheTest {
 			// Android's disposable image cache can disappear completely. The second process-like loader
 			// must resolve the compact app-Data file and never call the remote fetcher again.
 			volatileRoot().deleteRecursively()
-			loader().use { second ->
+			val second = loader()
+			try {
 				assertTrue(second.execute(request()) is SuccessResult)
+			} finally {
+				second.shutdown()
 			}
 			assertEquals(1, fetches.get())
 		} finally {
