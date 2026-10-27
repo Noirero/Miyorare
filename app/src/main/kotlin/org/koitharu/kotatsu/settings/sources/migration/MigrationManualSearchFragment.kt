@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -47,6 +48,9 @@ class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga
 			setContent {
 				MiyorareTheme {
 					val state by viewModel.state.collectAsState()
+					LaunchedEffect(state.skipped) {
+						if (state.skipped) requireActivity().onBackPressedDispatcher.onBackPressed()
+					}
 					MigrationManualSearchScreen(
 						state = state,
 						onQueryChange = viewModel::setQuery,
@@ -55,7 +59,7 @@ class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga
 						onClearSelection = viewModel::clearSelection,
 						onMigrate = viewModel::migrateSelected,
 						onCopy = viewModel::copySelected,
-						onSkip = { requireActivity().onBackPressedDispatcher.onBackPressed() },
+						onSkip = viewModel::skip,
 						onOpenResult = { router.openDetails(it) },
 					)
 				}
@@ -114,6 +118,7 @@ private fun MigrationManualSearchScreen(
 	onOpenResult: (Manga) -> Unit,
 ) {
 	val context = androidx.compose.ui.platform.LocalContext.current
+	val busy = state.migrating || state.skipping
 	if (state.loading) {
 		Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 		return
@@ -149,7 +154,7 @@ private fun MigrationManualSearchScreen(
 			OutlinedTextField(
 				value = state.query,
 				onValueChange = onQueryChange,
-				enabled = !state.searching && !state.migrating,
+				enabled = !state.searching && !busy,
 				modifier = Modifier.fillMaxWidth().testTag("migration-manual-query"),
 				label = { Text(stringResource(R.string.search)) },
 				singleLine = true,
@@ -157,7 +162,7 @@ private fun MigrationManualSearchScreen(
 			Spacer(Modifier.height(8.dp))
 			Button(
 				onClick = onSearch,
-				enabled = !state.searching && !state.migrating && state.query.isNotBlank() && state.sources.isNotEmpty(),
+				enabled = !state.searching && !busy && state.query.isNotBlank() && state.sources.isNotEmpty(),
 				modifier = Modifier.fillMaxWidth().testTag("migration-manual-search"),
 			) {
 				if (state.searching) {
@@ -165,6 +170,17 @@ private fun MigrationManualSearchScreen(
 					Spacer(Modifier.width(8.dp))
 				}
 				Text(stringResource(R.string.migration_yokai_manual_search))
+			}
+			TextButton(
+				onClick = onSkip,
+				enabled = !busy,
+				modifier = Modifier.fillMaxWidth().testTag("migration-manual-skip"),
+			) {
+				if (state.skipping) {
+					CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+					Spacer(Modifier.width(8.dp))
+				}
+				Text(stringResource(R.string.migration_yokai_skip_manga))
 			}
 		}
 
@@ -185,7 +201,7 @@ private fun MigrationManualSearchScreen(
 						Text(stringResource(R.string.migration_preserve_all_fixed), style = MaterialTheme.typography.bodySmall)
 						Button(
 							onClick = onMigrate,
-							enabled = !state.migrating,
+							enabled = !busy,
 							modifier = Modifier.fillMaxWidth().testTag("migration-manual-migrate"),
 						) {
 							if (state.migrating) {
@@ -196,15 +212,12 @@ private fun MigrationManualSearchScreen(
 						}
 						OutlinedButton(
 							onClick = onCopy,
-							enabled = !state.migrating,
+							enabled = !busy,
 							modifier = Modifier.fillMaxWidth().testTag("migration-manual-copy"),
 						) {
 							Text(stringResource(R.string.migration_yokai_copy_now))
 						}
-						TextButton(onClick = onSkip, enabled = !state.migrating, modifier = Modifier.fillMaxWidth()) {
-							Text(stringResource(R.string.migration_yokai_skip_manga))
-						}
-						TextButton(onClick = onClearSelection, enabled = !state.migrating) {
+						TextButton(onClick = onClearSelection, enabled = !busy) {
 							Text(stringResource(R.string.migration_change_result))
 						}
 					}
@@ -237,7 +250,7 @@ private fun MigrationManualSearchScreen(
 				Column(
 					modifier = Modifier
 						.fillMaxWidth()
-						.clickable(enabled = !state.migrating) { onSelect(manga) }
+						.clickable(enabled = !busy) { onSelect(manga) }
 						.padding(vertical = 10.dp)
 						.testTag("migration-manual-result"),
 				) {
