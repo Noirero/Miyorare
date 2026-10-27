@@ -40,7 +40,14 @@ data class MigrationDiscovery(
 }
 
 data class MigrationSelection(val source: String, val id: Long, val fingerprint: String) {
+	val isRawSearchIdentity: Boolean
+		get() = fingerprint.isEmpty()
+
 	companion object {
+		/** Raw Search-Everywhere result: stable source/id only. Full fingerprint is created after refresh. */
+		fun fromSearchResult(manga: Manga) = MigrationSelection(manga.source.name, manga.id, "")
+
+		/** Full execution identity after destination details have been refreshed. */
 		fun of(manga: Manga) = MigrationSelection(manga.source.name, manga.id, java.security.MessageDigest.getInstance("SHA-256").digest(buildString {
 			append(manga.title); append('|'); append(manga.publicUrl)
 			append('|'); append(manga.authors.sorted()); append('|'); append(manga.altTitles.sorted())
