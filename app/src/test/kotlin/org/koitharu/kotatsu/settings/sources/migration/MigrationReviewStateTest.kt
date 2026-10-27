@@ -38,7 +38,8 @@ class MigrationReviewStateTest {
 			counts = mapOf(MigrationSearchScope.ALL to 4, MigrationSearchScope.UMA to 2),
 		)
 		val before = MigrationReviewState(
-			loading = false,
+			loading = true,
+			searching = true,
 			discovery = MigrationDiscovery(
 				seed = seed,
 				sourceHealthy = true,
@@ -50,6 +51,7 @@ class MigrationReviewStateTest {
 			hasSearched = true,
 			currentSourceChecked = true,
 			manualSearchEnabled = true,
+			checkFailed = true,
 			searchFailed = true,
 			failed = true,
 			changed = true,
@@ -58,14 +60,16 @@ class MigrationReviewStateTest {
 		val after = before.withSearchScope(MigrationSearchScope.UMA)
 
 		assertEquals(MigrationSearchScope.UMA, after.selectedScope)
+		assertFalse(after.loading)
 		assertFalse(after.hasSearched)
 		assertFalse(after.searching)
+		assertFalse(after.checkFailed)
 		assertFalse(after.searchFailed)
 		assertFalse(after.failed)
 		assertFalse(after.changed)
 		assertTrue(after.currentSourceChecked)
 		assertTrue(after.manualSearchEnabled)
-		assertSame(availability, after.availability)
+		assertNull(after.availability)
 		assertNotNull(after.discovery)
 		assertEquals(seed, after.discovery?.seed)
 		assertTrue(after.discovery?.currentSourceReadable == true)
@@ -84,6 +88,7 @@ class MigrationReviewStateTest {
 		assertFalse(state.currentSourceChecked)
 		assertFalse(state.manualSearchEnabled)
 		assertFalse(state.hasSearched)
+		assertFalse(state.checkFailed)
 	}
 
 	@Test
