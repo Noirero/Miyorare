@@ -109,6 +109,26 @@ class SourceMangaListStateTest {
 	}
 
 	@Test
+	fun `skipped item is excluded from execution only for the session config that was skipped`() {
+		val item = manga(1L)
+		val sourceOrder = listOf("A", "B")
+		val config = migrationConfigKey(sourceOrder, MigrationSourceStrategy.FIRST_MATCH, null)
+		val state = SourceMangaListState(
+			isLoading = false,
+			manga = listOf(item),
+			selectedSourceNames = sourceOrder,
+			sourceStrategy = MigrationSourceStrategy.FIRST_MATCH,
+			batchItems = mapOf(1L to snapshot(1L, MigrationBatchStatus.SKIPPED, config)),
+		)
+		val changedOrder = state.copy(selectedSourceNames = sourceOrder.reversed())
+
+		assertEquals(MigrationBatchStatus.SKIPPED, state.status(1L))
+		assertEquals(0, state.readyCount)
+		assertEquals(MigrationBatchStatus.UNCHECKED, changedOrder.status(1L))
+		assertEquals(0, changedOrder.readyCount)
+	}
+
+	@Test
 	fun `migrated and copied stay final when migration setup changes`() {
 		val oldConfig = migrationConfigKey(listOf("A", "B"), MigrationSourceStrategy.FIRST_MATCH, null)
 		val state = SourceMangaListState(
