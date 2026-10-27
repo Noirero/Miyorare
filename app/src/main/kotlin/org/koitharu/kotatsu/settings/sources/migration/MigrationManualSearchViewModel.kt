@@ -15,11 +15,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchRequest
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationExecutionMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationGlobalSearchBridge
 import org.koitharu.kotatsu.alternatives.domain.MigrationSelection
-import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationExecutionUseCase
+import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
 import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationSearchUseCase
+import org.koitharu.kotatsu.alternatives.domain.migrationConfigKey
+import org.koitharu.kotatsu.alternatives.work.MigrationBatchScheduler
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
@@ -32,11 +38,20 @@ class MigrationManualSearchViewModel @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val yokaiSearch: YokaiStyleMigrationSearchUseCase,
 	private val globalSearch: MigrationGlobalSearchBridge,
-	private val yokaiExecute: YokaiStyleMigrationExecutionUseCase,
+	private val batchScheduler: MigrationBatchScheduler,
 ) : ViewModel() {
 	private val mangaId: Long = checkNotNull(savedStateHandle[MigrationManualSearchFragment.ARG_MANGA_ID])
 	private val selectedSourceNames: List<String> = savedStateHandle
 		.get<Array<String>>(MigrationManualSearchFragment.ARG_SOURCE_NAMES)?.toList().orEmpty()
+	private val sessionStrategy: MigrationSourceStrategy = savedStateHandle
+		.get<String>(MigrationManualSearchFragment.ARG_STRATEGY)
+		?.let { raw -> MigrationSourceStrategy.entries.find { it.name == raw } }
+		?: MigrationSourceStrategy.FIRST_MATCH
+	private val sessionExtraSearch: String? = savedStateHandle
+		.get<String>(MigrationManualSearchFragment.ARG_EXTRA_SEARCH)?.trim()?.takeIf(String::isNotEmpty)
+	private val sessionConfigKey: String = savedStateHandle
+		.get<String>(MigrationManualSearchFragment.ARG_CONFIG)
+		?: migrationConfigKey(selectedSourceNames, sessionStrategy, sessionExtraSearch)
 	private val initialTargetSource: String? = savedStateHandle[MigrationManualSearchFragment.ARG_TARGET_SOURCE]
 	private val initialTargetId: Long = savedStateHandle.get<Long>(MigrationManualSearchFragment.ARG_TARGET_ID) ?: 0L
 
@@ -49,17 +64,17 @@ class MigrationManualSearchViewModel @Inject constructor(
 	}
 
 	fun setQuery(value: String) {
-		if (state.value.searching || state.value.migrating) return
+		if (state.value.searching || state.value.migrating || state.value.skipping) return
 		_state.update { it.copy(query = value, selected = null, errorMessage = null) }
 	}
 
 	fun select(candidate: Manga) {
-		if (state.value.migrating || candidate.id == mangaId) return
+		if (state.value.migrating || state.value.skipping || candidate.id == mangaId) return
 		_state.update { it.copy(selected = candidate, errorMessage = null) }
 	}
 
 	fun clearSelection() {
-		if (state.value.migrating) return
+		if (state.value.migrating || state.value.skipping) return
 		_state.update { it.copy(selected = null, errorMessage = null) }
 	}
 
@@ -67,7 +82,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 		val before = state.value
 		val seed = before.seed ?: return
 		val query = before.query.trim()
-		if (query.isEmpty() || before.migrating) return
+		if (query.isEmpty() || before.migrating || before.skipping) return
 		searchJob?.cancel()
 		val sources = before.sources
 		_state.update { current ->
@@ -114,10 +129,37 @@ class MigrationManualSearchViewModel @Inject constructor(
 
 	fun copySelected() = executeSelected(MigrationExecutionMode.COPY)
 
+	fun skip() {
+		val seed = state.value.seed ?: return
+		if (state.value.migrating || state.value.skipping) return
+		searchJob?.cancel()
+		_state.update { it.copy(searching = false, skipping = true, errorMessage = null) }
+		viewModelScope.launch {
+			runCatchingCancellable {
+				batchScheduler.markSkipped(
+					mangaId = mangaId,
+					source = seed.source.name,
+					configKey = sessionConfigKey,
+				)
+			}.onSuccess { marked ->
+				if (marked) {
+					_state.update { it.copy(skipping = false, skipped = true) }
+				} else {
+					_state.update { it.copy(skipping = false, errorMessage = "Another migration batch is still running") }
+				}
+			}.onFailure { error ->
+				_state.update { it.copy(skipping = false, errorMessage = error.message ?: error::class.java.simpleName) }
+			}
+		}
+	}
+
 	private fun executeSelected(mode: MigrationExecutionMode) {
-		val candidate = state.value.selected ?: return
-		if (state.value.migrating || candidate.id == mangaId) return
-		_state.update { it.copy(migrating = true, errorMessage = null) }
+		val current = state.value
+		val candidate = current.selected ?: return
+		val seed = current.seed ?: return
+		if (current.migrating || current.skipping || candidate.id == mangaId) return
+		searchJob?.cancel()
+		_state.update { it.copy(searching = false, migrating = true, errorMessage = null) }
 		viewModelScope.launch {
 			runCatchingCancellable {
 				withContext(Dispatchers.IO) {
@@ -130,7 +172,30 @@ class MigrationManualSearchViewModel @Inject constructor(
 						replaceExisting = true,
 						stripAppliedOverride = false,
 					)
-					yokaiExecute(mangaId, MigrationSelection.fromSearchResult(candidate), mode)
+					val selection = MigrationSelection.fromSearchResult(candidate)
+					val snapshot = checkNotNull(
+						batchScheduler.enqueueAndAwait(
+							MigrationBatchRequest(
+								mangaId = mangaId,
+								source = seed.source.name,
+								action = if (mode == MigrationExecutionMode.COPY) MigrationBatchAction.COPY else MigrationBatchAction.MIGRATE,
+								selection = selection,
+								discoveryMode = MigrationBatchDiscoveryMode.YOKAI,
+								selectedSourceNames = selectedSourceNames,
+								sourceStrategy = sessionStrategy,
+								extraSearchParams = sessionExtraSearch,
+								configKey = sessionConfigKey,
+							),
+						),
+					) { "Another migration batch is still running" }
+					val expected = if (mode == MigrationExecutionMode.COPY) MigrationBatchStatus.COPIED else MigrationBatchStatus.MIGRATED
+					check(snapshot.outcome.status == expected) {
+						"Migration execution ended with ${snapshot.outcome.status.name.lowercase()}"
+					}
+					val destinationId = checkNotNull(snapshot.outcome.destinationId) { "Migration result has no destination" }
+					checkNotNull(mangaDataRepository.findMangaById(destinationId, withChapters = false)) {
+						"Migrated manga $destinationId is no longer available"
+					}
 				}
 			}.onSuccess { result ->
 				_state.update { it.copy(migrating = false, completed = result, completedMode = mode) }
@@ -188,6 +253,8 @@ data class MigrationManualSearchState(
 	val loading: Boolean = true,
 	val searching: Boolean = false,
 	val migrating: Boolean = false,
+	val skipping: Boolean = false,
+	val skipped: Boolean = false,
 	val seed: Manga? = null,
 	val query: String = "",
 	val sources: List<MangaSource> = emptyList(),
