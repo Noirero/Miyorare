@@ -208,8 +208,20 @@ internal fun MigrationReviewScreen(
 			return@Column
 		}
 
-		val showingSourcePicker = !state.hasSearched && state.availableSources.isNotEmpty() &&
+		val sourcePickerRequested = !state.hasSearched &&
 			(state.manualSearchEnabled || (state.currentSourceChecked && discovery?.currentSourceReadable == false))
+		if (sourcePickerRequested && state.availableSources.isEmpty()) {
+			Text(stringResource(R.string.migration_no_sources_available), color = MaterialTheme.colorScheme.error)
+			if (state.sourcePoolFailureCount > 0) {
+				Text(stringResource(R.string.migration_partial_provider_pool), style = MaterialTheme.typography.bodySmall)
+			}
+			Button(onClick = onReloadSources, modifier = Modifier.testTag("migration-reload-sources")) {
+				Text(stringResource(R.string.migration_retry))
+			}
+			return@Column
+		}
+
+		val showingSourcePicker = sourcePickerRequested && state.availableSources.isNotEmpty()
 		if (showingSourcePicker) {
 			if (state.manualSearchEnabled) {
 				Text(stringResource(R.string.migration_direct_choose_sources), style = MaterialTheme.typography.titleMedium)
