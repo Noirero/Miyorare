@@ -19,12 +19,10 @@ class MigrationMatchingContractTest {
 	}
 
 	@Test
-	fun `selected migration refreshes exact destination before lossless execution`() {
+	fun `selected migration refreshes approved destination before lossless execution`() {
 		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
-		val alternatives = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
 		val migrateSelected = autoFix.substringAfter("suspendfunmigrateSelected(").substringBefore("privatesuspendfunvalidateSelection(")
 		val validation = autoFix.substringAfter("privatesuspendfunvalidateSelection(").substringBefore("privatesuspendfunloadStoredSeed(")
-		val exactRefresh = alternatives.substringAfter("suspendfunrefreshExactCandidate(").substringBefore("privatefunsearchSources(")
 
 		assertTrue(migrateSelected.contains("validateSelection(mangaId,selection,allowReadableSource)"))
 		assertTrue(migrateSelected.contains("selection.isRawSearchIdentity"))
@@ -38,47 +36,42 @@ class MigrationMatchingContractTest {
 		assertTrue(validation.contains("if(currentReadable&&!allowReadableSource)returncurrent"))
 		assertFalse(validation.contains("seed.isReadable()"))
 		assertFalse(validation.contains("discover(mangaId)"))
-		assertTrue(validation.contains("firstOrNull{it.name==selection.source}"))
+		assertTrue(validation.contains("pool.allSources.firstOrNull{it.name==selection.source}"))
 		assertTrue(validation.contains("refreshExactCandidate(query,selectedSource,selection.id)"))
 		assertTrue(validation.contains("approved.manga.probeHealth()"))
 		assertTrue(validation.contains("!selection.isRawSearchIdentity&&MigrationSelection.of(fresh)!=selection"))
 		assertTrue(validation.contains("candidateMatcher.assess"))
-
-		assertTrue(exactRefresh.contains("firstOrNull{it.source.name==source.name&&it.id==candidateId}"))
-		assertTrue(exactRefresh.contains("getDetails(candidate)"))
-		assertFalse(exactRefresh.contains("take("))
-		assertFalse(exactRefresh.contains("MAX_DETAIL_CANDIDATES"))
+		assertFalse(validation.contains("take(MAX_MIGRATION_DETAIL_CANDIDATES)"))
 	}
 
 	@Test
-	fun `direct discovery is one raw query per installed source with no preflight health probe`() {
+	fun `direct discovery searches only explicitly selected sources and keeps detail work deferred`() {
 		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
 		val direct = autoFix.substringAfter("privatesuspendfunsearchDirectReplacements(")
 			.substringBefore("/**Strictchecked-modediscovery")
 		val alternatives = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
 		val rawSearch = alternatives.substringAfter("funsearchInstalledSourcesDirect(").substringBefore("/**Execution-timedestinationrefresh")
 
-		assertTrue(direct.contains("buildPrimaryMigrationSearchQuery(seed)"))
+		assertTrue(direct.contains("selectedSourceNames?.let(pool::selected)"))
+		assertTrue(direct.contains("buildDirectMigrationSearchQueries(seed,options)"))
 		assertTrue(direct.contains("searchInstalledSourcesDirect("))
-		assertTrue(direct.contains("queryIndex=1"))
-		assertTrue(direct.contains("queryTotal=1"))
-		assertFalse(direct.contains("buildMigrationSearchQueries(seed)"))
 		assertFalse(direct.contains("probeHealth()"))
 		assertFalse(direct.contains("VERIFYING_CANDIDATES"))
+		assertTrue(rawSearch.contains("for(queryinnormalizedQueries)"))
+		assertTrue(rawSearch.contains("if(results.isNotEmpty())"))
 		assertFalse(rawSearch.contains("getDetails("))
 		assertTrue(rawSearch.contains("SearchKind.TITLE"))
-		assertTrue(rawSearch.contains("SourceFinished(source,error)"))
-		assertTrue(rawSearch.contains("SourceFinished(source,null)"))
 	}
 
 	@Test
-	fun `checked discovery keeps alias search and health verification`() {
+	fun `checked discovery remains strict and can also honor explicit source choices`() {
 		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
 		val strict = autoFix.substringAfter("privatesuspendfunsearchStrictReplacements(")
 			.substringBefore("/**Refreshtheapproveddestinationidentity")
 		val discover = autoFix.substringAfter("suspendfundiscover(").substringBefore("/**[directSearch]selects")
 
 		assertTrue(discover.contains("directSearch=false"))
+		assertTrue(strict.contains("selectedSourceNames?.let(pool::selected)"))
 		assertTrue(strict.contains("buildMigrationSearchQueries(seed)"))
 		assertTrue(strict.contains("VERIFYING_CANDIDATES"))
 		assertTrue(strict.contains("probeHealth()"))
@@ -86,45 +79,49 @@ class MigrationMatchingContractTest {
 	}
 
 	@Test
-	fun `direct UI starts search immediately and scope changes restart it without availability gate`() {
+	fun `direct UI prepares a source picker and never auto starts all-source search`() {
 		val viewModel = source("org/koitharu/kotatsu/settings/sources/migration/MigrationReviewViewModel.kt")
-		val manual = viewModel.substringAfter("funenableManualSearch()").substringBefore("funsetSearchScope(")
-		val scope = viewModel.substringAfter("funsetSearchScope(").substringBefore("funsearch()")
-		val start = viewModel.substringAfter("privatefunstartSearch(").substringBefore("funmigrate(")
+		val manual = viewModel.substringAfter("funenableManualSearch()").substringBefore("funreloadSearchSources()")
+		val scope = viewModel.substringAfter("funsetSearchScope(").substringBefore("funsetSourcesSelected(")
+		val search = viewModel.substringAfter("funsearch()").substringBefore("privatefunstartSearch(")
+		val start = viewModel.substringAfter("privatefunstartSearch(").substringBefore("funbackToSourceSelection(")
 
-		assertTrue(manual.contains("startSearch(before.selectedScope,directSearch=true)"))
+		assertTrue(manual.contains("prepareSourceSelection(directSearch=true)"))
+		assertFalse(manual.contains("startSearch("))
 		assertFalse(manual.contains("searchAvailability("))
-		assertTrue(scope.contains("if(before.manualSearchEnabled)"))
-		assertTrue(scope.contains("startSearch(scope,directSearch=true)"))
-		assertTrue(start.contains("directSearch=directSearch"))
-		assertTrue(start.contains("revealAllCandidates=directSearch"))
-		assertFalse(viewModel.contains("availability?.count(before.selectedScope)"))
+		assertFalse(scope.contains("startSearch("))
+		assertTrue(search.contains("before.selectedSourceNames.isEmpty()"))
+		assertTrue(start.contains("selectedSourceNames=selectedSourceNames"))
+		assertTrue(start.contains("directOptions=options"))
 	}
 
 	@Test
-	fun `batch direct uses lightweight path while checked batch keeps discover`() {
-		val worker = source("org/koitharu/kotatsu/alternatives/work/MigrationBatchWorker.kt")
-		assertTrue(worker.contains("MigrationBatchDiscoveryMode.CHECK_CURRENT->autoFix.discover"))
-		assertTrue(worker.contains("MigrationBatchDiscoveryMode.DIRECT_SEARCH->autoFix.searchReplacements"))
-		assertTrue(worker.contains("directSearch=true"))
-	}
-
-	@Test
-	fun `primary discovery query strips lightweight title decorators while aliases stay execution fallback`() {
+	fun `source picker uses installed source pool and selection is authoritative`() {
 		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
-		val primary = autoFix.substringAfter("internalfunbuildPrimaryMigrationSearchQuery(").substringBefore("internalfunbuildMigrationSearchQueries(")
-		val fallback = autoFix.substringAfter("internalfunbuildMigrationSearchQueries(")
+		val scope = source("org/koitharu/kotatsu/alternatives/domain/MigrationSearchScope.kt")
+
+		assertTrue(autoFix.contains("loadSearchSourcePool(mangaId:Long)"))
+		assertTrue(scope.contains("funselected(sourceNames:Set<String>)"))
+		assertTrue(scope.contains("allSources.filter{it.nameinsourceNames}"))
+	}
+
+	@Test
+	fun `primary discovery query strips lightweight title decorators while aliases stay fallback`() {
+		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
+		val primary = autoFix.substringAfter("internalfunbuildPrimaryMigrationSearchQuery(").substringBefore("internalfunbuildDirectMigrationSearchQueries(")
+		val directQueries = autoFix.substringAfter("internalfunbuildDirectMigrationSearchQueries(").substringBefore("internalfunbuildMigrationSearchQueries(")
 
 		assertTrue(primary.contains("migrationTitleVariants(seed.title).lastOrNull()"))
 		assertTrue(primary.contains("TRAILING_MIGRATION_DECORATOR"))
-		assertTrue(fallback.contains("addQuery(buildPrimaryMigrationSearchQuery(seed))"))
-		assertTrue(fallback.contains("seed.altTitles"))
+		assertTrue(directQueries.contains("options.titleMode"))
+		assertTrue(directQueries.contains("options.searchAliasesIfNeeded"))
+		assertTrue(directQueries.contains("options.includeAlternativeTitles"))
 	}
 
 	@Test
 	fun `optional current source check is bounded and probes the newest normalized chapter`() {
 		val autoFix = source("org/koitharu/kotatsu/alternatives/domain/AutoFixUseCase.kt")
-		val check = autoFix.substringAfter("suspendfuncheckCurrentSource(").substringBefore("suspendfunsearchAvailability(")
+		val check = autoFix.substringAfter("suspendfuncheckCurrentSource(").substringBefore("/**Compatibility/counthelper")
 		val probe = autoFix.substringAfter("privatesuspendfunManga.probeHealth()")
 
 		assertTrue(check.contains("withTimeoutOrNull(CURRENT_SOURCE_CHECK_TIMEOUT_MS)"))
