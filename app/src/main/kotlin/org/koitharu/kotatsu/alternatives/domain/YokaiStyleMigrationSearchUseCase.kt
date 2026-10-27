@@ -1,0 +1,228 @@
+package org.koitharu.kotatsu.alternatives.domain
+
+import dagger.Reusable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import org.koitharu.kotatsu.core.parser.MangaDataRepository
+import org.koitharu.kotatsu.core.parser.MangaRepository
+import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.parsers.util.levenshteinDistance
+import java.util.concurrent.atomic.AtomicInteger
+import javax.inject.Inject
+import kotlin.math.max
+
+enum class MigrationSourceStrategy {
+	FIRST_MATCH,
+	MOST_CHAPTERS,
+}
+
+/**
+ * Migration discovery modeled after Yokai's migration flow.
+ *
+ * Source selection/order is supplied by the user. Each source receives one normal/global-search query.
+ * FIRST_MATCH stops at the first eligible result in source order. MOST_CHAPTERS checks the selected
+ * sources with bounded parallelism and chooses the eligible candidate with the largest chapter list.
+ * This only chooses a candidate; [AutoFixUseCase.migrateSelected] still performs Miyorare's fresh
+ * destination validation and lossless state transfer before any library data is changed.
+ */
+@Reusable
+class YokaiStyleMigrationSearchUseCase @Inject constructor(
+	private val mangaDataRepository: MangaDataRepository,
+	private val alternativesUseCase: AlternativesUseCase,
+	private val mangaRepositoryFactory: MangaRepository.Factory,
+	private val candidateMatcher: MigrationCandidateMatcher,
+) {
+
+	suspend fun sourcePool(mangaId: Long): MigrationSourcePool {
+		val seed = loadSeed(mangaId)
+		return alternativesUseCase.getMigrationSourcePool(seed, excludeCurrent = false)
+	}
+
+	suspend operator fun invoke(
+		mangaId: Long,
+		selectedSourceNames: List<String>,
+		strategy: MigrationSourceStrategy,
+		extraSearchParams: String? = null,
+		onProgress: suspend (MigrationDiscovery) -> Unit = {},
+	): MigrationDiscovery {
+		val seed = loadSeed(mangaId)
+		val pool = alternativesUseCase.getMigrationSourcePool(seed, excludeCurrent = false)
+		val selected = pool.selected(selectedSourceNames)
+		val sources = if (selected.size == 1) selected else selected.filter { it.name != seed.source.name }
+		val query = buildQuery(seed.title, extraSearchParams)
+		if (sources.isEmpty()) {
+			return noReplacement(seed, incomplete = pool.providerFailureCount > 0, pool.providerFailureCount)
+		}
+
+		onProgress(progress(seed, query, 0, sources.size, null, pool.providerFailureCount))
+		return when (strategy) {
+			MigrationSourceStrategy.FIRST_MATCH -> firstMatch(seed, query, sources, pool.providerFailureCount, onProgress)
+			MigrationSourceStrategy.MOST_CHAPTERS -> mostChapters(seed, query, sources, pool.providerFailureCount, onProgress)
+		}
+	}
+
+	private suspend fun firstMatch(
+		seed: Manga,
+		query: String,
+		sources: List<MangaSource>,
+		providerFailures: Int,
+		onProgress: suspend (MigrationDiscovery) -> Unit,
+	): MigrationDiscovery {
+		var sourceFailures = 0
+		var successfulSources = 0
+		for ((index, source) in sources.withIndex()) {
+			val result = findCandidate(seed, query, source, requireDetails = false)
+			if (result.failed) sourceFailures++ else successfulSources++
+			onProgress(progress(seed, query, index + 1, sources.size, source.name, providerFailures + sourceFailures,
+				candidate = result.manga))
+			result.manga?.let { candidate ->
+				return ready(seed, candidate, query, providerFailures + sourceFailures)
+			}
+		}
+		return noReplacement(
+			seed = seed,
+			incomplete = successfulSources == 0 && (sourceFailures > 0 || providerFailures > 0),
+			failures = providerFailures + sourceFailures,
+		)
+	}
+
+	private suspend fun mostChapters(
+		seed: Manga,
+		query: String,
+		sources: List<MangaSource>,
+		providerFailures: Int,
+		onProgress: suspend (MigrationDiscovery) -> Unit,
+	): MigrationDiscovery = coroutineScope {
+		val semaphore = Semaphore(MAX_PARALLEL_SOURCES)
+		val completed = AtomicInteger(0)
+		val results = sources.map { source ->
+			async {
+				val result = semaphore.withPermit { findCandidate(seed, query, source, requireDetails = true) }
+				val done = completed.incrementAndGet()
+				onProgress(progress(seed, query, done, sources.size, source.name, providerFailures,
+					candidate = result.manga))
+				result
+			}
+		}.awaitAll()
+		val failures = results.count(SourceResult::failed)
+		val successful = results.size - failures
+		val candidate = results.mapNotNull(SourceResult::manga).maxWithOrNull(
+			compareBy<Manga> { it.chapters.orEmpty().size }
+				.thenBy { titleSimilarity(seed.title, it.title) },
+		)
+		if (candidate != null) {
+			ready(seed, candidate, query, providerFailures + failures)
+		} else {
+			noReplacement(seed, successful == 0 && (failures > 0 || providerFailures > 0), providerFailures + failures)
+		}
+	}
+
+	private suspend fun findCandidate(
+		seed: Manga,
+		query: String,
+		source: MangaSource,
+		requireDetails: Boolean,
+	): SourceResult {
+		val searched = alternativesUseCase.searchSourceLikeGlobalSearch(source, query)
+		if (searched.isFailure) return SourceResult(null, true)
+		val candidate = chooseCandidate(seed.title, searched.getOrDefault(emptyList())) ?: return SourceResult(null, false)
+		if (!requireDetails) {
+			val details = runCatching { mangaRepositoryFactory.create(source).getDetails(candidate) }.getOrDefault(candidate)
+			return SourceResult(details, false)
+		}
+		val details = runCatching { mangaRepositoryFactory.create(source).getDetails(candidate) }.getOrNull()
+		return SourceResult(details, details == null)
+	}
+
+	private fun chooseCandidate(seedTitle: String, results: List<Manga>): Manga? {
+		if (results.isEmpty()) return null
+		if (results.size == 1) return results.single()
+		return results.asSequence()
+			.map { manga -> manga to titleSimilarity(seedTitle, manga.title) }
+			.filter { (_, similarity) -> similarity >= MIN_ELIGIBLE_SIMILARITY }
+			.maxByOrNull { it.second }
+			?.first
+	}
+
+	private fun ready(seed: Manga, candidate: Manga, query: String, failures: Int): MigrationDiscovery {
+		val ranked = candidateMatcher.rank(seed, listOf(MigrationCandidateObservation(candidate, setOf(query))))
+		val match = ranked.firstOrNull() ?: return noReplacement(seed, false, failures)
+		return MigrationDiscovery(
+			seed = seed,
+			assessment = MigrationMatchAssessment(MigrationMatchState.READY, match, listOf(match)),
+			sourceHealthy = false,
+			partialFailureCount = failures,
+		)
+	}
+
+	private fun noReplacement(seed: Manga, incomplete: Boolean, failures: Int) = MigrationDiscovery(
+		seed = seed,
+		assessment = MigrationMatchAssessment(MigrationMatchState.NO_REPLACEMENT, null, emptyList()),
+		sourceHealthy = false,
+		incomplete = incomplete,
+		partialFailureCount = failures,
+	)
+
+	private fun progress(
+		seed: Manga,
+		query: String,
+		completed: Int,
+		total: Int,
+		lastSource: String?,
+		failures: Int,
+		candidate: Manga? = null,
+	): MigrationDiscovery {
+		val assessment = candidate?.let { manga ->
+			candidateMatcher.rank(seed, listOf(MigrationCandidateObservation(manga, setOf(query))))
+				.firstOrNull()?.let { MigrationMatchAssessment(MigrationMatchState.READY, it, listOf(it)) }
+		}
+		return MigrationDiscovery(
+			seed = seed,
+			assessment = assessment,
+			partialFailureCount = failures,
+			progress = MigrationSearchProgress(
+				phase = MigrationSearchPhase.SEARCHING_SOURCES,
+				query = query,
+				queryIndex = 1,
+				queryTotal = 1,
+				completedSources = completed,
+				totalSources = total,
+				candidateCount = if (candidate == null) 0 else 1,
+				lastSource = lastSource,
+			),
+		)
+	}
+
+	private fun buildQuery(title: String, extraSearchParams: String?): String = buildString {
+		append(title.trim())
+		extraSearchParams?.trim()?.takeIf(String::isNotEmpty)?.let { append(' ').append(it) }
+	}.trim()
+
+	private fun titleSimilarity(first: String, second: String): Double {
+		val a = normalizeForSimilarity(first)
+		val b = normalizeForSimilarity(second)
+		if (a.isEmpty() || b.isEmpty()) return 0.0
+		val longest = max(a.length, b.length)
+		return 1.0 - a.levenshteinDistance(b).toDouble() / longest.toDouble()
+	}
+
+	private fun normalizeForSimilarity(value: String): String = value
+		.trim()
+		.lowercase()
+		.replace(Regex("\\s+"), " ")
+
+	private suspend fun loadSeed(mangaId: Long): Manga = checkNotNull(
+		mangaDataRepository.findMangaById(mangaId, withChapters = true),
+	) { "Manga $mangaId not found" }
+
+	private data class SourceResult(val manga: Manga?, val failed: Boolean)
+
+	private companion object {
+		const val MIN_ELIGIBLE_SIMILARITY = 0.4
+		const val MAX_PARALLEL_SOURCES = 3
+	}
+}
