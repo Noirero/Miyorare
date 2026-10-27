@@ -58,6 +58,7 @@
     <string name="migration_current_selection">Current</string>
     <string name="migration_new_selection">Replacement</string>
     <string name="migration_migrate">Migrate</string>
+    <string name="migration_copied">Manga copied</string>
     <string name="migration_confirm_review">Migrate to the selected manga</string>
     <string name="migration_retry">Try again</string>
     <string name="migration_advanced_show">Advanced search options ▾</string>
@@ -95,6 +96,8 @@
     <string name="migration_yokai_search_selected">Find replacements</string>
     <string name="migration_yokai_search_selected_count">Find replacements for %1$d manga</string>
     <string name="migration_yokai_manual_search">Search manually</string>
+    <string name="migration_yokai_migrate_now">Migrate now</string>
+    <string name="migration_yokai_copy_now">Copy now</string>
     <string name="migration_yokai_skip_manga">Skip</string>
     <string name="migration_yokai_source_failure">One source failed; remaining sources will continue.</string>
 </resources>
