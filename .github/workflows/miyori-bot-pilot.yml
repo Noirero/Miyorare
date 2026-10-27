@@ -3,8 +3,8 @@ name: Miyori Bot Pilot
 on:
   workflow_dispatch:
     inputs:
-      issue_number:
-        description: 'Issue number that Miyori Bot should comment on'
+      target_number:
+        description: 'Issue or pull request number that Miyori Bot should comment on'
         required: true
         type: string
 
@@ -20,16 +20,16 @@ jobs:
     name: Verify Miyori Bot identity
     runs-on: ubuntu-latest
     env:
-      TARGET_ISSUE_NUMBER: ${{ inputs.issue_number }}
+      TARGET_NUMBER: ${{ inputs.target_number }}
     steps:
       - name: Validate target number
         shell: bash
         env:
-          ISSUE_NUMBER: ${{ env.TARGET_ISSUE_NUMBER }}
+          TARGET_NUMBER: ${{ env.TARGET_NUMBER }}
         run: |
           set -euo pipefail
-          [[ "$ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
-            echo "::error::issue_number must be a positive integer."
+          [[ "$TARGET_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::target_number must be a positive integer."
             exit 1
           }
 
@@ -40,6 +40,7 @@ jobs:
           client-id: ${{ vars.MIYORI_BOT_CLIENT_ID }}
           private-key: ${{ secrets.MIYORI_BOT_PRIVATE_KEY }}
           permission-issues: write
+          permission-pull-requests: write
 
       - name: Verify GitHub App bot identity
         shell: bash
@@ -66,7 +67,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
-          ISSUE_NUMBER: ${{ env.TARGET_ISSUE_NUMBER }}
+          TARGET_NUMBER: ${{ env.TARGET_NUMBER }}
           APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
         run: |
           set -euo pipefail
@@ -75,7 +76,7 @@ jobs:
 
           Authentication succeeded as \`${APP_SLUG}[bot]\` using a repository-scoped GitHub App installation token.
 
-          This pilot only has permission to write issue comments. It does not push code, merge branches, publish releases, or replace \`github-actions[bot]\`.
+          This pilot can write issue/PR conversation comments. It does not push code, merge branches, publish releases, or replace \`github-actions[bot]\`.
 
           Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           EOF
@@ -83,7 +84,7 @@ jobs:
 
           gh api \
             --method POST \
-            "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments" \
+            "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
             -f body="$BODY"
 
       - name: Summary
@@ -93,8 +94,8 @@ jobs:
           {
             echo "## Miyori Bot pilot"
             echo
-            echo "- Target issue: #${TARGET_ISSUE_NUMBER}"
+            echo "- Target issue/PR: #${TARGET_NUMBER}"
             echo "- App slug: \`${{ steps.miyori-token.outputs.app-slug }}\`"
-            echo "- Scope: issue comment only"
+            echo "- Scope: issue/PR conversation comments only"
             echo "- Existing github-actions[bot] automation: unchanged"
           } >> "$GITHUB_STEP_SUMMARY"
