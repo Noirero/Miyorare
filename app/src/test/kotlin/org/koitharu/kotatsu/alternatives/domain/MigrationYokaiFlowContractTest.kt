@@ -32,8 +32,18 @@ class MigrationYokaiFlowContractTest {
 		assertTrue(source.contains("Semaphore(MAX_PARALLEL_SOURCES)"))
 		assertTrue(source.contains("MAX_PARALLEL_SOURCES=3"))
 		assertTrue(source.contains("it.chapters.orEmpty().size"))
-		assertTrue(source.contains("result.source.name==seed.source.name&&result.id==seed.id"))
+		assertTrue(source.contains("result.id==seed.id"))
 		assertFalse(source.contains("checkCurrentSource("))
+	}
+
+	@Test
+	fun `candidate persistence cannot overwrite source manga on numeric id collision`() {
+		val automatic = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
+		val manual = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchViewModel.kt")
+
+		assertTrue(automatic.contains("filterNot{result->result.id==seed.id}"))
+		assertTrue(manual.contains("filterNot{it.id==seed.id}"))
+		assertTrue(manual.contains("candidate.id==mangaId"))
 	}
 
 	@Test
@@ -58,6 +68,15 @@ class MigrationYokaiFlowContractTest {
 		assertTrue(action.contains("SourceMangaListFragment"))
 		assertTrue(action.contains("argsForMangaIds("))
 		assertFalse(action.contains("MigrationReviewFragment"))
+	}
+
+	@Test
+	fun `explicit single migration session refreshes after ownership moves`() {
+		val source = source("org/koitharu/kotatsu/settings/sources/migration/SourceMangaListViewModel.kt")
+
+		assertTrue(source.contains("if(explicitMangaIds.isEmpty())return"))
+		assertTrue(source.contains("loadJob?.cancel()"))
+		assertTrue(source.contains("dao.isMigrationEntryVisible(it.manga.id)"))
 	}
 
 	@Test
