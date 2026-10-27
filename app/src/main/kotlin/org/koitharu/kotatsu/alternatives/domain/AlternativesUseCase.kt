@@ -159,6 +159,41 @@ class AlternativesUseCase @Inject constructor(
 		return searchSources(query, getSources(isNovel, null, mode, preferredLanguages), null, MAX_DETAIL_CANDIDATES)
 	}
 
+	/**
+	 * Search-Everywhere-style migration discovery. This deliberately returns raw search results as
+	 * soon as each installed source responds. It does not fetch details or health-probe candidates;
+	 * those safety checks belong to migration execution after the user chooses a destination.
+	 */
+	fun searchInstalledSourcesDirect(
+		query: String,
+		sources: List<MangaSource>,
+		excluded: Pair<MangaSource, Long>? = null,
+	): Flow<AlternativeSearchEvent> {
+		val normalizedQuery = query.trim()
+		if (normalizedQuery.isEmpty() || sources.isEmpty()) return emptyFlow()
+		val sourceSemaphore = Semaphore(MAX_PARALLEL_SOURCES)
+		return channelFlow {
+			for (source in sources) {
+				launch {
+					val searchResult = runCatchingCancellable {
+						sourceSemaphore.withPermit {
+							searchHelperFactory.create(source)(normalizedQuery, SearchKind.TITLE)?.manga
+						}
+					}
+					val list = searchResult.getOrElse { error ->
+						send(AlternativeSearchEvent.SourceFinished(source, error))
+						return@launch
+					}
+					list.orEmpty()
+						.asSequence()
+						.filter { excluded == null || it.source != excluded.first || it.id != excluded.second }
+						.distinctBy { it.dedupeKey() }
+						.forEach { send(AlternativeSearchEvent.Result(it)) }
+					send(AlternativeSearchEvent.SourceFinished(source, null))
+				}
+		}
+	}
+
 	private fun searchSources(
 		normalizedQuery: String, sources: List<MangaSource>, excluded: Pair<MangaSource, Long>?, maxDetailCandidates: Int,
 	): Flow<AlternativeSearchEvent> {
