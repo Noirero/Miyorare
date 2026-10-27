@@ -101,6 +101,7 @@ class MiyorareImageDiskCacheTest {
 				extras[storedMangaCoverRequestKey] = StoredMangaCoverRequest(
 					mangaId = 123L,
 					sourceUrl = REMOTE_COVER_URL,
+					rawDiskCacheKey = COVER_KEY,
 					persist = true,
 					forceRefresh = false,
 				)

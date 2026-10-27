@@ -10,11 +10,11 @@ import coil3.request.ImageResult
 import coil3.request.SuccessResult
 import coil3.toBitmap
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.koitharu.kotatsu.core.util.ext.mangaCoverDiskCacheKey
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -28,7 +28,7 @@ import kotlin.math.roundToInt
  *
  * Only compact, presentation-sized static images belong here. Search/browse images remain in Coil's
  * disposable cache, Smart Local keeps its own derived-cover authority, and animated/non-bitmap
- * covers fall back to the legacy bounded cover tier so their presentation is not flattened.
+ * covers fall back to the bounded raw cover tier so their presentation is not flattened.
  */
 @Singleton
 class StoredMangaCoverStore internal constructor(
@@ -82,7 +82,8 @@ class StoredMangaCoverStore internal constructor(
 						output.flush()
 						output.fd.sync()
 					}
-					// One durable representation per manga. A changed source URL replaces the old one.
+					// One durable representation per manga. A changed source URL or user override
+					// replaces the older compact representation rather than accumulating duplicates.
 					directory.listFiles().orEmpty().forEach { file ->
 						if (file.isStoredCover() && file.name.startsWith(prefix) && file != target) file.delete()
 					}
@@ -103,6 +104,16 @@ class StoredMangaCoverStore internal constructor(
 			initializeLocked()
 			val stem = fileStem(mangaId, sourceUrl)
 			extensions.forEach { extension -> File(directory, "$stem.$extension").delete() }
+		}
+	}
+
+	suspend fun removeManga(mangaId: Long) = withContext(Dispatchers.IO) {
+		mutex.withLock {
+			initializeLocked()
+			val prefix = mangaPrefix(mangaId)
+			directory.listFiles().orEmpty().forEach { file ->
+				if (file.isStoredCover() && file.name.startsWith(prefix)) file.delete()
+			}
 		}
 	}
 
@@ -203,6 +214,7 @@ class StoredMangaCoverStore internal constructor(
 internal data class StoredMangaCoverRequest(
 	val mangaId: Long,
 	val sourceUrl: String,
+	val rawDiskCacheKey: String,
 	val persist: Boolean,
 	val forceRefresh: Boolean,
 )
@@ -222,10 +234,14 @@ class StoredMangaCoverPipeline @Inject constructor(
 	suspend fun proceed(chain: Interceptor.Chain): ImageResult {
 		val request = chain.request
 		val spec = request.extras[storedMangaCoverRequestKey] ?: return chain.proceed()
-		val hadStoredCover = if (spec.forceRefresh) store.containsManga(spec.mangaId) else false
+		val hadStoredCover = if (spec.forceRefresh) {
+			storageOrNull { store.containsManga(spec.mangaId) } == true
+		} else {
+			false
+		}
 
 		if (!spec.forceRefresh) {
-			store.find(spec.mangaId, spec.sourceUrl)?.let { file ->
+			storageOrNull { store.find(spec.mangaId, spec.sourceUrl) }?.let { file ->
 				val cached = chain.withRequest(
 					request.newBuilder()
 						.data(file)
@@ -234,7 +250,7 @@ class StoredMangaCoverPipeline @Inject constructor(
 						.build(),
 				).proceed()
 				if (cached is SuccessResult) return cached.copy(request = request)
-				store.remove(spec.mangaId, spec.sourceUrl)
+				storageOrNull { store.remove(spec.mangaId, spec.sourceUrl) }
 			}
 		}
 
@@ -242,19 +258,37 @@ class StoredMangaCoverPipeline @Inject constructor(
 		if (result !is SuccessResult) return result
 
 		val shouldPersist = spec.persist || (spec.forceRefresh && hadStoredCover)
-		if (shouldPersist && result.image is BitmapImage) {
-			val compact = compactBitmap(result)
-			val stored = compact?.let { store.put(spec.mangaId, spec.sourceUrl, it) }
-			if (stored != null) {
-				// The compact file is now authoritative for this collection cover. Remove the larger
-				// legacy Coil copy so migration reduces Data usage instead of duplicating it.
-				imageDiskCache.remove(mangaCoverDiskCacheKey(spec.mangaId))
+		val stored = if (shouldPersist && result.image is BitmapImage) {
+			compactBitmap(result)?.let { bitmap ->
+				storageOrNull { store.put(spec.mangaId, spec.sourceUrl, bitmap) }
 			}
-		} else if (spec.forceRefresh && !shouldPersist) {
+		} else {
+			null
+		}
+
+		if (stored != null) {
+			// The compact file is now authoritative. Remove only this request's raw fallback key;
+			// custom cover overrides use a distinct key and cannot collide with the source cover.
+			imageDiskCache.remove(spec.rawDiskCacheKey)
+		} else if (spec.forceRefresh && hadStoredCover) {
+			// A successful refresh that can no longer be represented compactly (for example an
+			// animation) must not leave the previous static compact file winning future requests.
+			storageOrNull { store.removeManga(spec.mangaId) }
+		}
+
+		if (spec.forceRefresh && !shouldPersist) {
 			// Details refreshes must not turn a merely viewed manga into durable app data.
-			imageDiskCache.remove(mangaCoverDiskCacheKey(spec.mangaId))
+			imageDiskCache.remove(spec.rawDiskCacheKey)
 		}
 		return result
+	}
+
+	private suspend fun <T> storageOrNull(block: suspend () -> T): T? = try {
+		block()
+	} catch (e: CancellationException) {
+		throw e
+	} catch (_: Exception) {
+		null
 	}
 
 	private fun compactBitmap(result: SuccessResult): Bitmap? {

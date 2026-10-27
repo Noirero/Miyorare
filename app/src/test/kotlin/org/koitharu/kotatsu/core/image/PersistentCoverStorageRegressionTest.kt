@@ -19,7 +19,9 @@ class PersistentCoverStorageRegressionTest {
 		assertTrue(store.contains("constvalMAX_ENTRY_BYTES=2*1024*1024"))
 		assertTrue(store.contains("Bitmap.CompressFormat.JPEG"))
 		assertTrue(store.contains("Bitmap.CompressFormat.PNG"))
-		assertTrue(store.contains("imageDiskCache.remove(mangaCoverDiskCacheKey(spec.mangaId))"))
+		assertTrue(store.contains("imageDiskCache.remove(spec.rawDiskCacheKey)"))
+		assertTrue(store.contains("suspendfunremoveManga(mangaId:Long)"))
+		assertTrue(store.contains("storageOrNull"))
 
 		assertTrue(legacy.contains(".maxSizePercent(0.01)"))
 		assertTrue(legacy.contains(".minimumMaxSizeBytes(8L*1024L*1024L)"))
@@ -34,10 +36,13 @@ class PersistentCoverStorageRegressionTest {
 		val list = source("list/ui/adapter/MangaListItemAD.kt").compact()
 		val detailed = source("list/ui/adapter/MangaListDetailedItemAD.kt").compact()
 		val grid = source("list/ui/adapter/MangaGridItemAD.kt").compact()
+		val favourites = source("favourites/ui/list/FavouritesListFragment.kt").compact()
 
-		assertTrue(coil.contains("persist:Boolean=false,forceRefresh:Boolean=false"))
+		assertTrue(coil.contains("persist:Boolean?=null,forceRefresh:Boolean=false"))
+		assertTrue(coil.contains("valshouldPersist=persist?:(!forceRefresh&&extras[mangaKey]!=null)"))
 		assertTrue(coil.contains("isRemoteCoverUrl(coverUrl)"))
-		assertTrue(coil.contains("(persist||forceRefresh)"))
+		assertTrue(coil.contains("mangaCoverOverrideDiskCacheKey(manga.id,coverUrl)"))
+		assertTrue(coil.contains("rawDiskCacheKey=rawDiskCacheKey"))
 		assertFalse(
 			"Smart Local owns its own persistent derived thumbnails",
 			coil.substringAfter("funImageRequest.Builder.stableMangaCoverKey(")
@@ -50,6 +55,11 @@ class PersistentCoverStorageRegressionTest {
 		for (delegate in listOf(list, detailed, grid)) {
 			assertTrue(delegate.contains("persistCover=coverContext==ModernCoverContext.COLLECTION"))
 		}
+		assertTrue(
+			favourites.contains(
+				".mangaExtra(candidate.item.manga).stableMangaCoverKey(candidate.item.manga,candidate.coverUrl)",
+			),
+		)
 	}
 
 	@Test
@@ -59,8 +69,9 @@ class PersistentCoverStorageRegressionTest {
 
 		assertTrue(details.contains("stableMangaCoverKey(manga,coverUrl,forceRefresh=true)"))
 		assertFalse(details.contains("diskCacheKey(mangaCoverDiskCacheKey(manga.id))"))
-		assertTrue(pipeline.contains("valhadStoredCover=if(spec.forceRefresh)store.containsManga(spec.mangaId)elsefalse"))
+		assertTrue(pipeline.contains("storageOrNull{store.containsManga(spec.mangaId)}==true"))
 		assertTrue(pipeline.contains("valshouldPersist=spec.persist||(spec.forceRefresh&&hadStoredCover)"))
+		assertTrue(pipeline.contains("store.removeManga(spec.mangaId)"))
 		assertTrue(pipeline.contains("Detailsrefreshesmustnotturnamerelyviewedmangaintodurableappdata"))
 	}
 

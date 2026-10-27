@@ -22,6 +22,7 @@ import org.koitharu.kotatsu.core.image.StoredMangaCoverRequest
 import org.koitharu.kotatsu.core.image.storedMangaCoverRequestKey
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import java.security.MessageDigest
 
 fun ImageRequest.Builder.enqueueWith(loader: ImageLoader) = loader.enqueue(build())
 
@@ -60,40 +61,57 @@ fun ImageRequest.Builder.mangaExtra(manga: Manga?): ImageRequest.Builder = apply
 }
 
 /**
- * Opts an original remote source cover into Miyorare's durable collection-cover pipeline.
+ * Routes remote collection covers through Miyorare's durable cover pipeline.
  *
- * Browse/search/details requests leave [persist] and [forceRefresh] false, so their transport URL
- * remains a normal disposable Coil cache key. Collection surfaces set [persist] to keep a compact
- * 512px representation in app Data. Details refresh uses [forceRefresh] to update that stored copy
- * only when the manga was already durable; merely viewing a manga never makes it persistent.
+ * Browse/search callers such as [org.koitharu.kotatsu.image.ui.CoverImageView] pass [persist]
+ * explicitly. Legacy direct prefetch requests that already attach the full manga via [mangaExtra]
+ * retain their historical durable behaviour when [persist] is omitted, while source-only Details
+ * and Stats requests remain disposable. A force refresh updates durable storage only when that manga
+ * was already stored; merely viewing a manga never makes it persistent.
  *
+ * User-set remote cover overrides participate too. They receive a distinct raw fallback key so an
+ * animated/non-bitmap override cannot overwrite the source cover's `cover:<mangaId>` entry.
  * Smart Local is intentionally excluded because its expensive extraction already has a dedicated
  * persistent derived-thumbnail owner in SmartLocalCoverCache.
  */
 fun ImageRequest.Builder.stableMangaCoverKey(
 	manga: Manga?,
 	coverUrl: String?,
-	persist: Boolean = false,
+	persist: Boolean? = null,
 	forceRefresh: Boolean = false,
 ): ImageRequest.Builder = apply {
+	val shouldPersist = persist ?: (!forceRefresh && extras[mangaKey] != null)
 	if (
 		manga != null &&
 		coverUrl != null &&
 		isRemoteCoverUrl(coverUrl) &&
-		(coverUrl == manga.coverUrl || coverUrl == manga.largeCoverUrl) &&
-		(persist || forceRefresh)
+		(shouldPersist || forceRefresh)
 	) {
-		diskCacheKey(mangaCoverDiskCacheKey(manga.id))
+		val rawDiskCacheKey = if (coverUrl == manga.coverUrl || coverUrl == manga.largeCoverUrl) {
+			mangaCoverDiskCacheKey(manga.id)
+		} else {
+			mangaCoverOverrideDiskCacheKey(manga.id, coverUrl)
+		}
+		diskCacheKey(rawDiskCacheKey)
 		extras[storedMangaCoverRequestKey] = StoredMangaCoverRequest(
 			mangaId = manga.id,
 			sourceUrl = coverUrl,
-			persist = persist,
+			rawDiskCacheKey = rawDiskCacheKey,
+			persist = shouldPersist,
 			forceRefresh = forceRefresh,
 		)
 	}
 }
 
 fun mangaCoverDiskCacheKey(mangaId: Long): String = "cover:$mangaId"
+
+internal fun mangaCoverOverrideDiskCacheKey(mangaId: Long, coverUrl: String): String {
+	val digest = MessageDigest.getInstance("SHA-256")
+		.digest(coverUrl.toByteArray())
+		.take(12)
+		.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+	return "${mangaCoverDiskCacheKey(mangaId)}:override:$digest"
+}
 
 fun isRemoteCoverUrl(url: String?): Boolean =
 	url != null && (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true))
