@@ -14,6 +14,7 @@
     <string name="migration_checking_source">Checking current source: %1$s</string>
     <string name="migration_loading_sources">Loading installed sources…</string>
     <string name="migration_source_list_failed">Installed sources could not be loaded. No search was started.</string>
+    <string name="migration_no_sources_available">No installed replacement source is available right now. Enable or install a source, then try again.</string>
     <string name="migration_direct_choose_sources">Choose search sources</string>
     <string name="migration_direct_choose_sources_description">Select exactly which installed sources to search. Select all if you want Search Everywhere behavior.</string>
     <string name="migration_checked_choose_sources">Choose the installed sources you want to use for replacement search.</string>
