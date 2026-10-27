@@ -31,9 +31,9 @@ class MigrationBatchPolicyTest {
 
 	@Test fun onlyReadyVisibleCurrentSourceResultsBecomeBatchRequests() {
 		val states = listOf(MigrationBatchStatus.READY, MigrationBatchStatus.NEEDS_REVIEW, MigrationBatchStatus.NO_REPLACEMENT,
-			MigrationBatchStatus.INCOMPLETE, MigrationBatchStatus.ERROR, MigrationBatchStatus.INTERRUPTED)
+			MigrationBatchStatus.INCOMPLETE, MigrationBatchStatus.ERROR, MigrationBatchStatus.SKIPPED, MigrationBatchStatus.INTERRUPTED)
 		val items = states.mapIndexed { index, status -> snapshot(index + 1L, 1, status, MigrationSelection.of(replacement)) }.associateBy { it.mangaId }
-		val requests = MigrationBatchPolicy.readyRequests((1L..6L).map(::manga), items)
+		val requests = MigrationBatchPolicy.readyRequests((1L..7L).map(::manga), items)
 		assertEquals(listOf(1L), requests.map { it.mangaId })
 		assertTrue(MigrationBatchPolicy.readyRequests(listOf(manga(1).copy(source = MangaSource("CHANGED"))), items).isEmpty())
 		assertTrue(MigrationBatchPolicy.readyRequests(emptyList(), items).isEmpty())
@@ -83,6 +83,22 @@ class MigrationBatchPolicyTest {
 		assertEquals(MigrationBatchStatus.MIGRATED, successful.status)
 		val retry = MigrationBatchPolicy.process(request, { true }, { error("No scan here") }, { replacement })
 		assertEquals(MigrationBatchStatus.MIGRATED, retry.status)
+	}
+	@Test fun copyActionUsesCopyExecutorAndReportsCopied() = runTest {
+		var migrateCalls = 0
+		var copyCalls = 0
+		val request = MigrationBatchRequest(1, "OLD", MigrationBatchAction.COPY, MigrationSelection.of(replacement))
+		val result = MigrationBatchPolicy.process(
+			request = request,
+			canAccess = { true },
+			discover = { error("No discovery during execution") },
+			migrate = { migrateCalls++; replacement },
+			copy = { copyCalls++; replacement },
+		)
+		assertEquals(0, migrateCalls)
+		assertEquals(1, copyCalls)
+		assertEquals(MigrationBatchStatus.COPIED, result.status)
+		assertEquals(replacement.id, result.destinationId)
 	}
 	@Test fun replayAfterCommitOrPrivacyRemovalDoesNotExecuteAgain() = runTest {
 		var calls = 0
