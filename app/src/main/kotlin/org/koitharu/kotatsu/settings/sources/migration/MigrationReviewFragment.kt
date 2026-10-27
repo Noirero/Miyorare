@@ -106,19 +106,17 @@ internal fun MigrationReviewScreen(
 ) {
 	var selectedSource by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
 	var selectedId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
-	var selectedFingerprint by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
 	val discovery = state.discovery
 	val finalDecision = !state.loading && state.hasSearched && !state.searchFailed
 	val ready = finalDecision && discovery != null && !discovery.incomplete &&
-		discovery.assessment?.state == MigrationMatchState.READY
+		discovery.assessment?.state == MigrationMatchState.READY && !state.manualSearchEnabled
 	val candidates = when {
 		state.searching -> discovery?.assessment?.candidates.orEmpty()
-		!finalDecision -> emptyList()
+		!state.hasSearched -> emptyList()
 		ready -> listOfNotNull(discovery?.assessment?.best)
 		else -> discovery?.assessment?.candidates.orEmpty()
 	}
-	val selected = candidates.firstOrNull { it.manga.id == selectedId && it.manga.source.name == selectedSource &&
-		org.koitharu.kotatsu.alternatives.domain.MigrationSelection.of(it.manga).fingerprint == selectedFingerprint }
+	val selected = candidates.firstOrNull { it.manga.id == selectedId && it.manga.source.name == selectedSource }
 	val context = LocalContext.current
 	Column(
 		Modifier.fillMaxSize().nestedScroll(rememberNestedScrollInteropConnection()).verticalScroll(rememberScrollState())
@@ -135,7 +133,7 @@ internal fun MigrationReviewScreen(
 			Text(stringResource(R.string.migration_current_source, seed.source.getTitle(context)))
 		}
 
-		if (!state.loading && discovery != null && !state.currentSourceChecked && !state.manualSearchEnabled) {
+		if (!state.loading && discovery != null && !state.currentSourceChecked && !state.manualSearchEnabled && !state.checkFailed) {
 			Text(stringResource(R.string.migration_choose_path), style = MaterialTheme.typography.titleMedium)
 			Text(stringResource(R.string.migration_choose_path_description), style = MaterialTheme.typography.bodyMedium)
 			Button(
@@ -147,6 +145,29 @@ internal fun MigrationReviewScreen(
 				modifier = Modifier.fillMaxWidth().testTag("migration-direct-search"),
 			) { Text(stringResource(R.string.migration_search_direct_action)) }
 			return@Column
+		}
+
+		if (state.checkFailed) {
+			Text(stringResource(R.string.migration_check_failed), color = MaterialTheme.colorScheme.error)
+			TextButton(onClick = onRetry, modifier = Modifier.testTag("migration-check-retry")) {
+				Text(stringResource(R.string.migration_retry))
+			}
+			OutlinedButton(
+				onClick = onManualSearch,
+				modifier = Modifier.fillMaxWidth().testTag("migration-direct-after-check-failure"),
+			) { Text(stringResource(R.string.migration_search_direct_action)) }
+			return@Column
+		}
+
+		if (state.manualSearchEnabled && discovery != null) {
+			Text(stringResource(R.string.migration_direct_search_active))
+			MigrationScopeSelector(
+				availability = null,
+				selectedScope = state.selectedScope,
+				onScopeChange = onScopeChange,
+				onSearch = onSearch,
+				showSearchButton = false,
+			)
 		}
 
 		if (state.loading) {
@@ -173,14 +194,17 @@ internal fun MigrationReviewScreen(
 					}
 				}
 			}
-			if (!state.searching || candidates.isEmpty()) return@Column
-			for (candidate in candidates) {
-				MigrationCandidateCard(
-					candidate = candidate,
-					selected = false,
+			if (state.searching && candidates.isNotEmpty()) {
+				MigrationCandidateGroups(
+					candidates = candidates,
+					selected = selected,
 					imageLoader = imageLoader,
-					onSelect = {},
-					onOpenDetails = { onOpenCandidate(candidate.manga) },
+					showEvidence = !state.manualSearchEnabled,
+					onSelect = { candidate ->
+						selectedSource = candidate.manga.source.name
+						selectedId = candidate.manga.id
+					},
+					onOpenCandidate = onOpenCandidate,
 				)
 			}
 			return@Column
@@ -188,7 +212,13 @@ internal fun MigrationReviewScreen(
 
 		if (state.changed) Text(stringResource(R.string.migration_changed))
 		if (state.failed) Text(stringResource(R.string.migration_blocked), color = MaterialTheme.colorScheme.error)
-		if (state.searchFailed) Text(stringResource(R.string.migration_search_failed), color = MaterialTheme.colorScheme.error)
+		if (state.searchFailed) {
+			Text(stringResource(R.string.migration_search_failed), color = MaterialTheme.colorScheme.error)
+			TextButton(onClick = onSearch, modifier = Modifier.testTag("migration-retry")) {
+				Text(stringResource(R.string.migration_retry))
+			}
+			return@Column
+		}
 
 		when {
 			discovery == null -> Unit
@@ -199,59 +229,43 @@ internal fun MigrationReviewScreen(
 				}
 			}
 			else -> {
-				Text(
-					stringResource(
-						when {
-							state.manualSearchEnabled && !state.currentSourceChecked -> R.string.migration_direct_search_active
-							discovery.currentSourceReadable -> R.string.migration_source_healthy
-							else -> R.string.migration_source_unavailable
-						},
-					),
-				)
-				MigrationScopeSelector(
-					availability = state.availability,
-					selectedScope = state.selectedScope,
-					onScopeChange = onScopeChange,
-					onSearch = onSearch,
-				)
-				if ((state.availability?.providerFailureCount ?: 0) > 0) {
-					Text(stringResource(R.string.migration_partial_provider_pool), style = MaterialTheme.typography.bodySmall)
+				if (!state.manualSearchEnabled) {
+					Text(stringResource(R.string.migration_source_unavailable))
+					MigrationScopeSelector(
+						availability = null,
+						selectedScope = state.selectedScope,
+						onScopeChange = onScopeChange,
+						onSearch = onSearch,
+						showSearchButton = true,
+					)
 				}
-				if (state.searchFailed) {
-					TextButton(
-						onClick = if (state.manualSearchEnabled) onManualSearch else onRetry,
-						modifier = Modifier.testTag("migration-retry"),
-					) { Text(stringResource(R.string.migration_retry)) }
-				}
-				if (!state.hasSearched || state.searchFailed) return@Column
+				if (!state.hasSearched) return@Column
 				if (discovery.searchPartial) {
 					Text(stringResource(R.string.migration_partial_search), style = MaterialTheme.typography.bodySmall)
 				}
 				val status = when {
 					discovery.incomplete -> R.string.migration_incomplete
-					discovery.assessment?.state == MigrationMatchState.READY -> R.string.migration_ready
+					ready -> R.string.migration_ready
 					discovery.assessment?.state == MigrationMatchState.NEEDS_REVIEW -> R.string.migration_review
 					else -> R.string.migration_no_replacement
 				}
 				Text(stringResource(status), style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("migration-status"))
-				for (candidate in candidates) {
-					MigrationCandidateCard(
-						candidate = candidate,
-						selected = ready || candidate == selected,
-						imageLoader = imageLoader,
-						onSelect = {
-							selectedSource = candidate.manga.source.name
-							selectedId = candidate.manga.id
-							selectedFingerprint = org.koitharu.kotatsu.alternatives.domain.MigrationSelection.of(candidate.manga).fingerprint
-						},
-						onOpenDetails = { onOpenCandidate(candidate.manga) },
-					)
-				}
+				MigrationCandidateGroups(
+					candidates = candidates,
+					selected = selected,
+					imageLoader = imageLoader,
+					showEvidence = !state.manualSearchEnabled,
+					onSelect = { candidate ->
+						selectedSource = candidate.manga.source.name
+						selectedId = candidate.manga.id
+					},
+					onOpenCandidate = onOpenCandidate,
+				)
 				if (candidates.isNotEmpty()) {
 					Text(stringResource(R.string.migration_preservation), style = MaterialTheme.typography.bodySmall)
 					val chosen = if (ready) discovery.assessment?.best else selected
 					Button(
-						onClick = { chosen?.let { onMigrate(it.manga, !ready) } },
+						onClick = { chosen?.let { onMigrate(it.manga, !ready || state.manualSearchEnabled) } },
 						enabled = chosen != null && !discovery.incomplete,
 						modifier = Modifier.fillMaxWidth().testTag("migration-execute"),
 					) {
@@ -269,6 +283,7 @@ private fun MigrationScopeSelector(
 	selectedScope: MigrationSearchScope,
 	onScopeChange: (MigrationSearchScope) -> Unit,
 	onSearch: () -> Unit,
+	showSearchButton: Boolean,
 ) {
 	Text(stringResource(R.string.migration_search_scope_title), style = MaterialTheme.typography.titleMedium)
 	Row(
@@ -276,26 +291,33 @@ private fun MigrationScopeSelector(
 		horizontalArrangement = Arrangement.spacedBy(8.dp),
 	) {
 		for (scope in MigrationSearchScope.entries) {
-			val count = availability?.count(scope) ?: 0
+			val count = availability?.count(scope)
 			FilterChip(
 				selected = selectedScope == scope,
 				onClick = { onScopeChange(scope) },
-				enabled = availability != null && count > 0,
-				label = { Text(stringResource(R.string.migration_scope_with_count, stringResource(scope.labelRes()), count)) },
+				enabled = count == null || count > 0,
+				label = {
+					Text(
+						if (count == null) stringResource(scope.labelRes())
+						else stringResource(R.string.migration_scope_with_count, stringResource(scope.labelRes()), count),
+					)
+				},
 				modifier = Modifier.testTag("migration-scope-${scope.name.lowercase()}"),
 			)
 		}
 	}
-	val selectedCount = availability?.count(selectedScope) ?: 0
-	if (availability != null && selectedCount == 0) {
-		Text(stringResource(R.string.migration_scope_empty), style = MaterialTheme.typography.bodySmall)
-	}
-	Button(
-		onClick = onSearch,
-		enabled = availability != null && selectedCount > 0,
-		modifier = Modifier.fillMaxWidth().testTag("migration-search"),
-	) {
-		Text(stringResource(R.string.migration_search_replacements))
+	if (showSearchButton) {
+		val selectedCount = availability?.count(selectedScope)
+		if (selectedCount == 0) {
+			Text(stringResource(R.string.migration_scope_empty), style = MaterialTheme.typography.bodySmall)
+		}
+		Button(
+			onClick = onSearch,
+			enabled = selectedCount == null || selectedCount > 0,
+			modifier = Modifier.fillMaxWidth().testTag("migration-search"),
+		) {
+			Text(stringResource(R.string.migration_search_replacements))
+		}
 	}
 }
 
@@ -309,10 +331,37 @@ internal fun MigrationSearchScope.labelRes(): Int = when (this) {
 }
 
 @Composable
+private fun MigrationCandidateGroups(
+	candidates: List<MigrationMatchCandidate>,
+	selected: MigrationMatchCandidate?,
+	imageLoader: ImageLoader,
+	showEvidence: Boolean,
+	onSelect: (MigrationMatchCandidate) -> Unit,
+	onOpenCandidate: (Manga) -> Unit,
+) {
+	val context = LocalContext.current
+	for ((_, sourceCandidates) in candidates.groupBy { it.manga.source.name }) {
+		val first = sourceCandidates.firstOrNull() ?: continue
+		Text(first.manga.source.getTitle(context), style = MaterialTheme.typography.titleMedium)
+		for (candidate in sourceCandidates) {
+			MigrationCandidateCard(
+				candidate = candidate,
+				selected = candidate == selected,
+				imageLoader = imageLoader,
+				showEvidence = showEvidence,
+				onSelect = { onSelect(candidate) },
+				onOpenDetails = { onOpenCandidate(candidate.manga) },
+			)
+		}
+	}
+}
+
+@Composable
 private fun MigrationCandidateCard(
 	candidate: MigrationMatchCandidate,
 	selected: Boolean,
 	imageLoader: ImageLoader,
+	showEvidence: Boolean,
 	onSelect: () -> Unit,
 	onOpenDetails: () -> Unit,
 ) {
@@ -358,11 +407,13 @@ private fun MigrationCandidateCard(
 			}
 			if (candidate.manga.altTitles.isNotEmpty()) Text(candidate.manga.altTitles.take(2).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
 			if (candidate.manga.authors.isNotEmpty()) Text(candidate.manga.authors.joinToString(", "), style = MaterialTheme.typography.bodySmall)
-			Text(stringResource(R.string.migration_chapter_evidence, candidate.manga.chapters.orEmpty().size, candidate.evidence.chapterMatches), style = MaterialTheme.typography.bodySmall)
-			if (candidate.evidence.authorConflict || candidate.evidence.chapterConflict) {
-				Text(stringResource(R.string.migration_evidence_conflict), color = MaterialTheme.colorScheme.error)
-			} else if (candidate.evidence.authorMatch || candidate.evidence.strongChapterMatch) {
-				Text(stringResource(R.string.migration_evidence_agrees), style = MaterialTheme.typography.bodySmall)
+			if (showEvidence) {
+				Text(stringResource(R.string.migration_chapter_evidence, candidate.manga.chapters.orEmpty().size, candidate.evidence.chapterMatches), style = MaterialTheme.typography.bodySmall)
+				if (candidate.evidence.authorConflict || candidate.evidence.chapterConflict) {
+					Text(stringResource(R.string.migration_evidence_conflict), color = MaterialTheme.colorScheme.error)
+				} else if (candidate.evidence.authorMatch || candidate.evidence.strongChapterMatch) {
+					Text(stringResource(R.string.migration_evidence_agrees), style = MaterialTheme.typography.bodySmall)
+				}
 			}
 		}
 	}
