@@ -7,9 +7,6 @@ on:
         description: 'Issue or pull request number that Miyori Bot should comment on'
         required: true
         type: string
-  push:
-    branches:
-      - feat/miyori-identity-guard-status
 
 permissions:
   contents: read
@@ -23,7 +20,7 @@ jobs:
     name: Verify Miyori Bot identity
     runs-on: ubuntu-latest
     env:
-      TARGET_NUMBER: ${{ github.event_name == 'push' && '773' || inputs.issue_number }}
+      TARGET_NUMBER: ${{ inputs.issue_number }}
     steps:
       - name: Validate target number
         shell: bash
@@ -67,7 +64,6 @@ jobs:
           echo "Authenticated GitHub App bot: $BOT_LOGIN"
 
       - name: Post pilot verification comment as Miyori Bot
-        if: github.event_name == 'workflow_dispatch'
         shell: bash
         env:
           GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
@@ -91,66 +87,6 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
             -f body="$BODY"
 
-      - name: Verify Phase 3 persistent status create and update
-        if: github.event_name == 'push'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
-          TARGET_NUMBER: ${{ env.TARGET_NUMBER }}
-          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
-        run: |
-          set -euo pipefail
-
-          BOT_LOGIN="${APP_SLUG}[bot]"
-          MARKER='<!-- miyori-status:identity-guard -->'
-
-          INITIAL_BODY=$(cat <<EOF
-          ${MARKER}
-          🌸 **Miyori status — Identity Guard**
-
-          ⚪ **Phase 3 verification is creating the persistent status comment.**
-
-          _Temporary verification harness on PR #${TARGET_NUMBER}._
-          EOF
-          )
-
-          COMMENT_ID="$(
-            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
-              --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${MARKER}\"))) | .id" \
-              | head -n 1
-          )"
-
-          if [[ -n "$COMMENT_ID" ]]; then
-            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" -f body="$INITIAL_BODY" >/dev/null
-          else
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" -f body="$INITIAL_BODY" >/dev/null
-          fi
-
-          COMMENT_ID="$(
-            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
-              --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${MARKER}\"))) | .id" \
-              | head -n 1
-          )"
-          [[ -n "$COMMENT_ID" ]] || {
-            echo "::error::Persistent Miyori status comment was not created."
-            exit 1
-          }
-
-          FINAL_BODY=$(cat <<EOF
-          ${MARKER}
-          🌸 **Miyori status — Identity Guard**
-
-          ✅ **Phase 3 persistent status create/update verification passed.**
-
-          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-
-          _Miyori only reports gate results; it does not push code, merge, or release._
-          EOF
-          )
-
-          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" -f body="$FINAL_BODY" >/dev/null
-          echo "Verified persistent status comment create/update using comment ${COMMENT_ID}."
-
       - name: Summary
         if: always()
         shell: bash
@@ -160,5 +96,6 @@ jobs:
             echo
             echo "- Target issue/PR: #${TARGET_NUMBER}"
             echo "- App slug: \`${{ steps.miyori-token.outputs.app-slug }}\`"
+            echo "- Scope: issue/PR conversation comments only"
             echo "- Existing github-actions[bot] automation: unchanged"
           } >> "$GITHUB_STEP_SUMMARY"
