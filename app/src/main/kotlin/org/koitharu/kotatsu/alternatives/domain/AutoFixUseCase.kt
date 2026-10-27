@@ -102,20 +102,22 @@ class AutoFixUseCase @Inject constructor(
 		val sources = pool.sources(searchScope)
 		val query = buildPrimaryMigrationSearchQuery(seed)
 		val observations = ArrayList<MigrationCandidateObservation>()
+		val directCandidates = ArrayList<MigrationMatchCandidate>()
 		val observedKeys = hashSetOf<Pair<String, Long>>()
 		val sourceFailures = hashSetOf<String>()
 		val sourceSuccesses = hashSetOf<String>()
 		var completedSources = 0
 
 		fun assessment(): MigrationMatchAssessment? {
-			if (observations.isEmpty()) return null
-			if (!revealAllCandidates) return candidateMatcher.assess(seed, observations)
-			val ranked = candidateMatcher.rank(seed, observations)
-			return MigrationMatchAssessment(
-				state = if (ranked.isEmpty()) MigrationMatchState.NO_REPLACEMENT else MigrationMatchState.NEEDS_REVIEW,
-				best = ranked.firstOrNull(),
-				candidates = ranked,
-			)
+			if (revealAllCandidates) {
+				if (directCandidates.isEmpty()) return null
+				return MigrationMatchAssessment(
+					state = MigrationMatchState.NEEDS_REVIEW,
+					best = directCandidates.maxByOrNull { it.evidence.score },
+					candidates = directCandidates.toList(),
+				)
+			}
+			return observations.takeIf { it.isNotEmpty() }?.let { candidateMatcher.assess(seed, it) }
 		}
 
 		suspend fun publish(lastSource: String? = null) {
@@ -147,7 +149,11 @@ class AutoFixUseCase @Inject constructor(
 				is AlternativeSearchEvent.Result -> {
 					val key = event.manga.source.name to event.manga.id
 					if (observedKeys.add(key)) {
-						observations += MigrationCandidateObservation(event.manga, setOf(query))
+						val observation = MigrationCandidateObservation(event.manga, setOf(query))
+						observations += observation
+						if (revealAllCandidates) {
+							candidateMatcher.rank(seed, listOf(observation)).firstOrNull()?.let(directCandidates::add)
+						}
 					}
 				}
 				is AlternativeSearchEvent.SourceFinished -> {
