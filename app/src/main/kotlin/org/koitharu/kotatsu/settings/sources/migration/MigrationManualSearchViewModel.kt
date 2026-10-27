@@ -53,7 +53,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 	}
 
 	fun select(candidate: Manga) {
-		if (state.value.migrating) return
+		if (state.value.migrating || candidate.id == mangaId) return
 		_state.update { it.copy(selected = candidate, errorMessage = null) }
 	}
 
@@ -84,8 +84,10 @@ class MigrationManualSearchViewModel @Inject constructor(
 				sources.map { source ->
 					launch {
 						val result = semaphore.withPermit { globalSearch.search(source, query) }
+						// MangaEntity has a single numeric primary key. A different source may legally
+						// generate the same id, but persisting it would overwrite the source manga row.
 						val manga = result.getOrDefault(emptyList())
-							.filterNot { it.source.name == seed.source.name && it.id == seed.id }
+							.filterNot { it.id == seed.id }
 						_state.update { current ->
 							val next = current.groups.toMutableMap()
 							next[source.name] = ManualMigrationSourceResult(
@@ -105,11 +107,12 @@ class MigrationManualSearchViewModel @Inject constructor(
 
 	fun migrateSelected() {
 		val candidate = state.value.selected ?: return
-		if (state.value.migrating) return
+		if (state.value.migrating || candidate.id == mangaId) return
 		_state.update { it.copy(migrating = true, errorMessage = null) }
 		viewModelScope.launch {
 			runCatchingCancellable {
 				withContext(Dispatchers.IO) {
+					check(candidate.id != mangaId) { "Selected replacement conflicts with the source manga identity" }
 					mangaDataRepository.storeManga(
 						manga = candidate,
 						replaceExisting = true,
@@ -133,11 +136,10 @@ class MigrationManualSearchViewModel @Inject constructor(
 					val pool = yokaiSearch.sourcePool(mangaId)
 					val byName = pool.allSources.associateBy(MangaSource::name)
 					val selected = selectedSourceNames.mapNotNull(byName::get).distinctBy(MangaSource::name)
-					val sources = if (selected.size == 1) selected else selected.filter { it.name != seed.source.name }
-					val initial = initialTargetId.takeIf { it != 0L }
+					val initial = initialTargetId.takeIf { it != 0L && it != mangaId }
 						?.let { mangaDataRepository.findMangaById(it, withChapters = false) }
 						?.takeIf { initialTargetSource == null || it.source.name == initialTargetSource }
-					Triple(seed, sources, initial)
+					Triple(seed, selected, initial)
 				}
 			}.onSuccess { (seed, sources, initial) ->
 				_state.value = MigrationManualSearchState(
