@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.levenshteinDistance
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlin.math.max
@@ -87,6 +88,7 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 			onProgress(progress(seed, query, index + 1, sources.size, source.name, providerFailures + sourceFailures,
 				candidate = result.manga))
 			result.manga?.let { candidate ->
+				persistCandidate(candidate)
 				return ready(seed, candidate, query, providerFailures + sourceFailures)
 			}
 		}
@@ -122,6 +124,7 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 				.thenBy { titleSimilarity(seed.title, it.title) },
 		)
 		if (candidate != null) {
+			persistCandidate(candidate)
 			ready(seed, candidate, query, providerFailures + failures)
 		} else {
 			noReplacement(seed, successful == 0 && (failures > 0 || providerFailures > 0), providerFailures + failures)
@@ -138,11 +141,21 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		if (searched.isFailure) return SourceResult(null, true)
 		val candidate = chooseCandidate(seed.title, searched.getOrDefault(emptyList())) ?: return SourceResult(null, false)
 		if (!requireDetails) {
-			val details = runCatching { mangaRepositoryFactory.create(source).getDetails(candidate) }.getOrDefault(candidate)
+			val details = runCatchingCancellable { mangaRepositoryFactory.create(source).getDetails(candidate) }
+				.getOrDefault(candidate)
 			return SourceResult(details, false)
 		}
-		val details = runCatching { mangaRepositoryFactory.create(source).getDetails(candidate) }.getOrNull()
+		val details = runCatchingCancellable { mangaRepositoryFactory.create(source).getDetails(candidate) }.getOrNull()
 		return SourceResult(details, details == null)
+	}
+
+	private suspend fun persistCandidate(candidate: Manga) {
+		mangaDataRepository.storeManga(
+			manga = candidate,
+			replaceExisting = true,
+			stripAppliedOverride = false,
+			detailsFetched = candidate.chapters != null,
+		)
 	}
 
 	private fun chooseCandidate(seedTitle: String, results: List<Manga>): Manga? {
