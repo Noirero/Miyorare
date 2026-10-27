@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.alternatives.domain.MigrationExecutionMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationGlobalSearchBridge
 import org.koitharu.kotatsu.alternatives.domain.MigrationSelection
 import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationExecutionUseCase
@@ -109,7 +110,11 @@ class MigrationManualSearchViewModel @Inject constructor(
 		}
 	}
 
-	fun migrateSelected() {
+	fun migrateSelected() = executeSelected(MigrationExecutionMode.MIGRATE)
+
+	fun copySelected() = executeSelected(MigrationExecutionMode.COPY)
+
+	private fun executeSelected(mode: MigrationExecutionMode) {
 		val candidate = state.value.selected ?: return
 		if (state.value.migrating || candidate.id == mangaId) return
 		_state.update { it.copy(migrating = true, errorMessage = null) }
@@ -125,10 +130,10 @@ class MigrationManualSearchViewModel @Inject constructor(
 						replaceExisting = true,
 						stripAppliedOverride = false,
 					)
-					yokaiExecute(mangaId, MigrationSelection.fromSearchResult(candidate))
+					yokaiExecute(mangaId, MigrationSelection.fromSearchResult(candidate), mode)
 				}
-			}.onSuccess { migrated ->
-				_state.update { it.copy(migrating = false, completed = migrated) }
+			}.onSuccess { result ->
+				_state.update { it.copy(migrating = false, completed = result, completedMode = mode) }
 			}.onFailure { error ->
 				_state.update { it.copy(migrating = false, errorMessage = error.message ?: error::class.java.simpleName) }
 			}
@@ -190,6 +195,7 @@ data class MigrationManualSearchState(
 	val selected: Manga? = null,
 	val errorMessage: String? = null,
 	val completed: Manga? = null,
+	val completedMode: MigrationExecutionMode? = null,
 )
 
 data class ManualMigrationSourceResult(
