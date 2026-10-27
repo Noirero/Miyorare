@@ -80,20 +80,17 @@ class MigrationMatchingContractTest {
 	}
 
 	@Test
-	fun `direct UI prepares a source picker and never auto starts all-source search`() {
-		val viewModel = source("org/koitharu/kotatsu/settings/sources/migration/MigrationReviewViewModel.kt")
-		val manual = viewModel.substringAfter("funenableManualSearch()").substringBefore("funreloadSearchSources()")
-		val scope = viewModel.substringAfter("funsetSearchScope(").substringBefore("funsetSourcesSelected(")
-		val search = viewModel.substringAfter("funsearch()").substringBefore("privatefunstartSearch(")
-		val start = viewModel.substringAfter("privatefunstartSearch(").substringBefore("funbackToSourceSelection(")
+	fun `Yokai setup waits for explicit search unless saved skip setup is enabled`() {
+		val viewModel = source("org/koitharu/kotatsu/settings/sources/migration/SourceMangaListViewModel.kt")
+		val search = viewModel.substringAfter("funsearchAll()").substringBefore("funmigrateReady()")
+		val loadSources = viewModel.substringAfter("privatefunloadSearchSources(").substringBefore("privatecompanionobject{")
 
-		assertTrue(manual.contains("prepareSourceSelection(directSearch=true)"))
-		assertFalse(manual.contains("startSearch("))
-		assertFalse(manual.contains("searchAvailability("))
-		assertFalse(scope.contains("startSearch("))
-		assertTrue(search.contains("before.selectedSourceNames.isEmpty()"))
-		assertTrue(start.contains("selectedSourceNames=selectedSourceNames"))
-		assertTrue(start.contains("directOptions=options"))
+		assertTrue(search.contains("current.selectedSourceNames.isEmpty()"))
+		assertTrue(search.contains("discoveryMode=MigrationBatchDiscoveryMode.YOKAI"))
+		assertTrue(search.contains("selectedSourceNames=current.selectedSourceNames"))
+		assertTrue(loadSources.contains("migrationPreferences.skipSetup"))
+		assertTrue(loadSources.contains("searchAll()"))
+		assertFalse(loadSources.substringBefore("migrationPreferences.skipSetup").contains("searchAll()"))
 	}
 
 	@Test
