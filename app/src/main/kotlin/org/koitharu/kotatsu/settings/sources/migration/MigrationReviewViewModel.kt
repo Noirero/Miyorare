@@ -248,13 +248,18 @@ class MigrationReviewViewModel @Inject constructor(
 	fun migrate(candidate: Manga, reviewed: Boolean) {
 		if (mutableState.value.loading) return
 		val allowReadableSource = mutableState.value.manualSearchEnabled
+		val selection = if (allowReadableSource) {
+			MigrationSelection.fromSearchResult(candidate)
+		} else {
+			MigrationSelection.of(candidate)
+		}
 		mutableState.value = mutableState.value.copy(loading = true, searching = false, failed = false, changed = false)
 		viewModelScope.launch {
 			runCatchingCancellable {
 				withContext(Dispatchers.IO) {
 					autoFix.migrateSelected(
 						mangaId,
-						MigrationSelection.of(candidate),
+						selection,
 						reviewed,
 						allowReadableSource = allowReadableSource,
 					)
