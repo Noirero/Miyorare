@@ -40,7 +40,7 @@ class AutoFixUseCase @Inject constructor(
 		}
 		val migrated = migrateSelected(
 			mangaId = mangaId,
-			selection = MigrationSelection.fromSearchResult(replacement),
+			selection = MigrationSelection.of(replacement),
 			reviewed = false,
 			allowReadableSource = false,
 		) ?: return seed to null
@@ -278,7 +278,6 @@ class AutoFixUseCase @Inject constructor(
 						completedSources++
 						publishSearchProgress(query, index + 1, completedSources, event.source.name)
 					}
-				}
 			}
 		}
 
