@@ -106,20 +106,20 @@ private fun MigrationManualSearchScreen(
 	onSelect: (Manga) -> Unit,
 	onClearSelection: () -> Unit,
 	onMigrate: () -> Unit,
-	onOpenResult: (Long) -> Unit,
+	onOpenResult: (Manga) -> Unit,
 ) {
 	val context = androidx.compose.ui.platform.LocalContext.current
 	if (state.loading) {
 		Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 		return
 	}
-	state.completedId?.let { id ->
+	state.completed?.let { manga ->
 		Column(
 			Modifier.fillMaxSize().padding(20.dp),
 			verticalArrangement = Arrangement.spacedBy(12.dp),
 		) {
 			Text(stringResource(R.string.migration_completed), style = MaterialTheme.typography.titleLarge)
-			Button(onClick = { onOpenResult(id) }) { Text(stringResource(R.string.migration_open_result)) }
+			Button(onClick = { onOpenResult(manga) }) { Text(stringResource(R.string.migration_open_result)) }
 		}
 		return
 	}
