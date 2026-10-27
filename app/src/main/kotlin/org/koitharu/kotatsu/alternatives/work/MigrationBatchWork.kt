@@ -14,17 +14,19 @@ internal object MigrationBatchWork {
 	private const val TARGET = "migration_target:"
 	private const val SCOPE = "migration_scope:"
 	private const val MODE = "migration_mode:"
+	private const val CONFIG = "migration_config:"
 	private const val TERMINAL = "migration_terminal:"
 
 	fun tags(request: MigrationBatchRequest, generation: Long, batch: String): List<String> =
 		tags(
-			request.mangaId,
-			request.source,
-			generation,
-			batch,
-			request.selection?.id,
-			request.searchScope,
-			request.discoveryMode,
+			mangaId = request.mangaId,
+			source = request.source,
+			generation = generation,
+			batch = batch,
+			destinationId = request.selection?.id,
+			searchScope = request.searchScope,
+			discoveryMode = request.discoveryMode,
+			configKey = request.configKey,
 		)
 
 	fun tags(
@@ -35,9 +37,11 @@ internal object MigrationBatchWork {
 		destinationId: Long? = null,
 		searchScope: MigrationSearchScope = MigrationSearchScope.ALL,
 		discoveryMode: MigrationBatchDiscoveryMode = MigrationBatchDiscoveryMode.CHECK_CURRENT,
+		configKey: String = LEGACY_MIGRATION_CONFIG,
 	): List<String> = buildList {
 		add(TAG); add(ID + mangaId); add(SOURCE + source)
 		add(GENERATION + generation); add(BATCH + batch); add(SCOPE + searchScope.name); add(MODE + discoveryMode.name)
+		add(CONFIG + configKey)
 		destinationId?.let { add(TARGET + it) }
 	}
 
@@ -49,27 +53,46 @@ internal object MigrationBatchWork {
 	fun isTerminal(info: WorkInfo): Boolean = info.tags.any { it.startsWith(TERMINAL) }
 
 	fun input(request: MigrationBatchRequest): Data = Data.Builder()
-		.putLong("request_id", request.mangaId).putString("request_source", request.source)
+		.putLong("request_id", request.mangaId)
+		.putString("request_source", request.source)
 		.putString("request_action", request.action.name)
 		.putString("request_scope", request.searchScope.name)
 		.putString("request_mode", request.discoveryMode.name)
+		.putStringArray("request_sources", request.selectedSourceNames.toTypedArray())
+		.putString("request_strategy", request.sourceStrategy.name)
+		.putString("request_extra_search", request.extraSearchParams)
+		.putString("request_config", request.configKey)
 		.putString("request_target_source", request.selection?.source)
 		.putLong("request_target_id", request.selection?.id ?: 0L)
-		.putString("request_fingerprint", request.selection?.fingerprint).build()
+		.putString("request_fingerprint", request.selection?.fingerprint)
+		.build()
 
-	fun request(data: Data) = MigrationBatchRequest(
-		mangaId = data.getLong("request_id", 0L), source = checkNotNull(data.getString("request_source")),
-		action = MigrationBatchAction.valueOf(checkNotNull(data.getString("request_action"))),
-		selection = data.getString("request_fingerprint")?.let { fingerprint ->
-			MigrationSelection(checkNotNull(data.getString("request_target_source")), data.getLong("request_target_id", 0L), fingerprint)
-		},
-		searchScope = data.getString("request_scope")
-			?.let { raw -> MigrationSearchScope.entries.find { it.name == raw } }
-			?: MigrationSearchScope.ALL,
-		discoveryMode = data.getString("request_mode")
-			?.let { raw -> MigrationBatchDiscoveryMode.entries.find { it.name == raw } }
-			?: MigrationBatchDiscoveryMode.CHECK_CURRENT,
-	)
+	fun request(data: Data): MigrationBatchRequest {
+		val selectedSources = data.getStringArray("request_sources")?.toList().orEmpty()
+		val strategy = data.getString("request_strategy")
+			?.let { raw -> MigrationSourceStrategy.entries.find { it.name == raw } }
+			?: MigrationSourceStrategy.FIRST_MATCH
+		val extra = data.getString("request_extra_search")
+		return MigrationBatchRequest(
+			mangaId = data.getLong("request_id", 0L),
+			source = checkNotNull(data.getString("request_source")),
+			action = MigrationBatchAction.valueOf(checkNotNull(data.getString("request_action"))),
+			selection = data.getString("request_fingerprint")?.let { fingerprint ->
+				MigrationSelection(checkNotNull(data.getString("request_target_source")), data.getLong("request_target_id", 0L), fingerprint)
+			},
+			searchScope = data.getString("request_scope")
+				?.let { raw -> MigrationSearchScope.entries.find { it.name == raw } }
+				?: MigrationSearchScope.ALL,
+			discoveryMode = data.getString("request_mode")
+				?.let { raw -> MigrationBatchDiscoveryMode.entries.find { it.name == raw } }
+				?: MigrationBatchDiscoveryMode.CHECK_CURRENT,
+			selectedSourceNames = selectedSources,
+			sourceStrategy = strategy,
+			extraSearchParams = extra,
+			configKey = data.getString("request_config")
+				?: migrationConfigKey(selectedSources, strategy, extra),
+		)
+	}
 
 	fun output(outcome: MigrationBatchOutcome, searchProgress: MigrationSearchProgress? = null): Data = Data.Builder()
 		.putString("result_status", outcome.status.name)
@@ -98,6 +121,10 @@ internal object MigrationBatchWork {
 		?.removePrefix(MODE)
 		?.let { raw -> MigrationBatchDiscoveryMode.entries.find { it.name == raw } }
 		?: MigrationBatchDiscoveryMode.CHECK_CURRENT
+
+	fun configKey(tags: Set<String>): String = tags.firstOrNull { it.startsWith(CONFIG) }
+		?.removePrefix(CONFIG)
+		?: LEGACY_MIGRATION_CONFIG
 
 	private fun searchProgress(data: Data): MigrationSearchProgress? {
 		val phase = data.getString("search_phase")
@@ -133,6 +160,7 @@ internal object MigrationBatchWork {
 		} else null
 		val destinationId = data.getLong("result_target_id", 0L).takeIf { it != 0L }
 			?: info.tags.firstOrNull { it.startsWith(TARGET) }?.removePrefix(TARGET)?.toLongOrNull()
+		val request = runCatching { request(info.outputData) }.getOrNull()
 		return MigrationBatchSnapshot(
 			mangaId = mangaId,
 			source = source,
@@ -143,6 +171,10 @@ internal object MigrationBatchWork {
 			searchProgress = searchProgress(data),
 			searchScope = searchScope(info.tags),
 			discoveryMode = discoveryMode(info.tags),
+			selectedSourceNames = request?.selectedSourceNames.orEmpty(),
+			sourceStrategy = request?.sourceStrategy ?: MigrationSourceStrategy.FIRST_MATCH,
+			extraSearchParams = request?.extraSearchParams,
+			configKey = configKey(info.tags),
 		)
 	}
 }
