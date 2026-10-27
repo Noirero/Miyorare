@@ -50,6 +50,10 @@ class AutoFixUseCase @Inject constructor(
 	/** Local-only seed for the initial migration screen. This never opens the current source. */
 	suspend fun loadStoredManga(mangaId: Long): Manga = loadStoredSeed(mangaId)
 
+	/** Installed/enabled replacement sources, loaded independently from the current source. */
+	suspend fun loadSearchSourcePool(mangaId: Long): MigrationSourcePool =
+		alternativesUseCase.getMigrationSourcePool(loadStoredSeed(mangaId))
+
 	/**
 	 * Optional current-source check. Dead/challenged sources must never hold the migration screen
 	 * indefinitely: failure or timeout means only "not proven readable", not a permanent broken claim.
@@ -75,11 +79,8 @@ class AutoFixUseCase @Inject constructor(
 		} ?: MigrationDiscovery(seed = storedSeed, sourceHealthy = false)
 	}
 
-	/** Compatibility/count helper. Direct UI no longer waits on this before starting a search. */
-	suspend fun searchAvailability(mangaId: Long): MigrationSearchAvailability {
-		val seed = loadStoredSeed(mangaId)
-		return alternativesUseCase.getMigrationSourcePool(seed).availability()
-	}
+	/** Compatibility/count helper retained for batch and older call sites. */
+	suspend fun searchAvailability(mangaId: Long): MigrationSearchAvailability = loadSearchSourcePool(mangaId).availability()
 
 	/** Checked mode intentionally preserves the strict pre-#762 discovery path. */
 	suspend fun discover(
@@ -99,8 +100,9 @@ class AutoFixUseCase @Inject constructor(
 	}
 
 	/**
-	 * [directSearch] selects the Search-Everywhere-style path. Checked mode remains strict and keeps
-	 * alias discovery plus candidate health verification before it can produce READY.
+	 * [directSearch] selects the Search-Everywhere-style path. [selectedSourceNames] is authoritative
+	 * when supplied, so the UI can search exactly the extensions the user checked instead of an
+	 * implicit category. Checked mode stays strict and keeps candidate health verification.
 	 */
 	suspend fun searchReplacements(
 		mangaId: Long,
@@ -108,6 +110,8 @@ class AutoFixUseCase @Inject constructor(
 		currentSourceReadable: Boolean = false,
 		directSearch: Boolean = false,
 		revealAllCandidates: Boolean = false,
+		selectedSourceNames: Set<String>? = null,
+		directOptions: MigrationDirectSearchOptions = MigrationDirectSearchOptions(),
 		onProgress: suspend (MigrationDiscovery) -> Unit = {},
 	): MigrationDiscovery {
 		val seed = loadStoredSeed(mangaId)
@@ -117,24 +121,29 @@ class AutoFixUseCase @Inject constructor(
 				searchScope = searchScope,
 				currentSourceReadable = currentSourceReadable,
 				revealAllCandidates = revealAllCandidates,
+				selectedSourceNames = selectedSourceNames,
+				options = directOptions,
 				onProgress = onProgress,
 			)
 		} else {
-			searchStrictReplacements(seed, searchScope, currentSourceReadable, onProgress)
+			searchStrictReplacements(seed, searchScope, currentSourceReadable, selectedSourceNames, onProgress)
 		}
 	}
 
-	/** One raw title query per installed source; no detail/page probe before displaying results. */
+	/** Raw result streaming. No destination details/page probe runs before the user chooses a result. */
 	private suspend fun searchDirectReplacements(
 		seed: Manga,
 		searchScope: MigrationSearchScope,
 		currentSourceReadable: Boolean,
 		revealAllCandidates: Boolean,
+		selectedSourceNames: Set<String>?,
+		options: MigrationDirectSearchOptions,
 		onProgress: suspend (MigrationDiscovery) -> Unit,
 	): MigrationDiscovery {
 		val pool = alternativesUseCase.getMigrationSourcePool(seed)
-		val sources = pool.sources(searchScope)
-		val query = buildPrimaryMigrationSearchQuery(seed)
+		val sources = selectedSourceNames?.let(pool::selected) ?: pool.sources(searchScope)
+		val queries = buildDirectMigrationSearchQueries(seed, options)
+		val primaryQuery = queries.firstOrNull().orEmpty()
 		val observations = ArrayList<MigrationCandidateObservation>()
 		val directCandidates = ArrayList<MigrationMatchCandidate>()
 		val observedKeys = hashSetOf<Pair<String, Long>>()
@@ -162,9 +171,9 @@ class AutoFixUseCase @Inject constructor(
 				partialFailureCount = pool.providerFailureCount + sourceFailures.size,
 				progress = MigrationSearchProgress(
 					phase = MigrationSearchPhase.SEARCHING_SOURCES,
-					query = query,
+					query = primaryQuery,
 					queryIndex = 1,
-					queryTotal = 1,
+					queryTotal = queries.size.coerceAtLeast(1),
 					completedSources = completedSources,
 					totalSources = sources.size,
 					candidateCount = observedKeys.size,
@@ -175,7 +184,7 @@ class AutoFixUseCase @Inject constructor(
 
 		publish()
 		alternativesUseCase.searchInstalledSourcesDirect(
-			query = query,
+			queries = queries,
 			sources = sources,
 			excluded = seed.source to seed.id,
 		).collect { event ->
@@ -183,10 +192,14 @@ class AutoFixUseCase @Inject constructor(
 				is AlternativeSearchEvent.Result -> {
 					val key = event.manga.source.name to event.manga.id
 					if (observedKeys.add(key)) {
-						val observation = MigrationCandidateObservation(event.manga, setOf(query))
+						val observation = MigrationCandidateObservation(event.manga, setOf(primaryQuery))
 						observations += observation
 						if (revealAllCandidates) {
-							candidateMatcher.rank(seed, listOf(observation)).firstOrNull()?.let(directCandidates::add)
+							candidateMatcher.rank(seed, listOf(observation)).firstOrNull()?.let { candidate ->
+								if (options.showLowConfidenceResults || candidate.evidence.score >= MIN_VISIBLE_DIRECT_SCORE) {
+									directCandidates += candidate
+								}
+							}
 						}
 					}
 				}
@@ -222,10 +235,11 @@ class AutoFixUseCase @Inject constructor(
 		seed: Manga,
 		searchScope: MigrationSearchScope,
 		currentSourceReadable: Boolean,
+		selectedSourceNames: Set<String>?,
 		onProgress: suspend (MigrationDiscovery) -> Unit,
 	): MigrationDiscovery {
 		val pool = alternativesUseCase.getMigrationSourcePool(seed)
-		val sources = pool.sources(searchScope)
+		val sources = selectedSourceNames?.let(pool::selected) ?: pool.sources(searchScope)
 		val queries = buildMigrationSearchQueries(seed)
 		val observations = ArrayList<MigrationCandidateObservation>()
 		val observedKeys = hashSetOf<Pair<String, Long>>()
@@ -439,6 +453,7 @@ class AutoFixUseCase @Inject constructor(
 		const val MAX_MIGRATION_DETAIL_CANDIDATES = 10
 		const val MAX_HEALTH_CHECKS = 24
 		const val MAX_PARALLEL_HEALTH_CHECKS = 4
+		const val MIN_VISIBLE_DIRECT_SCORE = 30
 	}
 }
 
@@ -453,6 +468,38 @@ internal fun buildPrimaryMigrationSearchQuery(seed: Manga): String {
 		stripped++
 	}
 	return query.ifEmpty { seed.title.trim() }
+}
+
+internal fun buildDirectMigrationSearchQueries(
+	seed: Manga,
+	options: MigrationDirectSearchOptions,
+): List<String> {
+	val seen = hashSetOf<String>()
+	val result = ArrayList<String>(MAX_MIGRATION_SEARCH_QUERIES)
+	fun add(value: String) {
+		val query = value.trim()
+		if (query.isEmpty()) return
+		val key = normalizeMigrationTitle(query)
+		if (key.isEmpty() || !seen.add(key)) return
+		result += query
+	}
+
+	when (options.titleMode) {
+		MigrationDirectTitleMode.ORIGINAL -> add(seed.title)
+		MigrationDirectTitleMode.CLEANED -> add(buildPrimaryMigrationSearchQuery(seed))
+	}
+	if (!options.searchAliasesIfNeeded) return result
+
+	// Fallback queries are evaluated per-source only after the primary query returned no result.
+	if (options.titleMode == MigrationDirectTitleMode.ORIGINAL) add(buildPrimaryMigrationSearchQuery(seed)) else add(seed.title)
+	if (options.includeAlternativeTitles) {
+		for (alias in seed.altTitles.sortedByDescending { normalizeMigrationTitle(it).length }) {
+			add(buildPrimaryMigrationSearchQuery(seed.copy(title = alias)))
+			add(alias)
+			if (result.size >= MAX_MIGRATION_SEARCH_QUERIES) break
+		}
+	}
+	return result.take(MAX_MIGRATION_SEARCH_QUERIES)
 }
 
 internal fun buildMigrationSearchQueries(seed: Manga): List<String> {
