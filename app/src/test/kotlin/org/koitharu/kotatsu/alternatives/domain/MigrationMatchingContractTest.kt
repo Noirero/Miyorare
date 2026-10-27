@@ -50,7 +50,8 @@ class MigrationMatchingContractTest {
 		val direct = autoFix.substringAfter("privatesuspendfunsearchDirectReplacements(")
 			.substringBefore("/**Strictchecked-modediscovery")
 		val alternatives = source("org/koitharu/kotatsu/alternatives/domain/AlternativesUseCase.kt")
-		val rawSearch = alternatives.substringAfter("funsearchInstalledSourcesDirect(").substringBefore("/**Execution-timedestinationrefresh")
+		val rawSearch = alternatives.substringAfter("funsearchInstalledSourcesDirect(")
+			.substringBefore("suspendfunrefreshExactCandidate(")
 
 		assertTrue(direct.contains("selectedSourceNames?.let(pool::selected)"))
 		assertTrue(direct.contains("buildDirectMigrationSearchQueries(seed,options)"))
