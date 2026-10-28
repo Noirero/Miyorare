@@ -182,7 +182,8 @@ class HistoryRepository @Inject constructor(
 	) {
 		mangaRepository.storeManga(manga.copy(chapters = null), replaceExisting = true)
 		val branch = manga.chapters?.findById(chapterId)?.branch
-		db.getHistoryDao().upsert(
+		val historyDao = db.getHistoryDao()
+		historyDao.upsert(
 			HistoryEntity(
 				mangaId = manga.id,
 				createdAt = System.currentTimeMillis(),
@@ -196,6 +197,9 @@ class HistoryRepository @Inject constructor(
 				space = space.dbValue,
 			),
 		)
+		// Generic History upserts preserve an existing ownership marker. Only a context-aware
+		// reading/tracking write may move a row between Normal and Private spaces.
+		historyDao.updateSpace(manga.id, space.dbValue)
 		val unreadLogs = db.getTrackLogsDao().findUnreadByManga(manga.id)
 		if (unreadLogs.isNotEmpty()) {
 			val allChapters = db.getChaptersDao().findAll(manga.id)
