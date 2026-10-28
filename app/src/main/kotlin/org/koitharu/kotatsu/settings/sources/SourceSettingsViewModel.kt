@@ -173,7 +173,11 @@ class SourceSettingsViewModel @Inject constructor(
 	) {
 		launchJob(Dispatchers.IO) {
 			mutableOfficialGlobalState.update { it.copy(isLoading = true, latestActionDiagnostic = null) }
-			val diagnostic = runCatching { block() }.getOrElse { error ->
+			val diagnostic = try {
+				block()
+			} catch (error: kotlinx.coroutines.CancellationException) {
+				throw error
+			} catch (error: Throwable) {
 				OfficialGlobalDiagnostic(
 					domain = mutableOfficialGlobalState.value.snapshot?.activeDomain.orEmpty(),
 					status = OfficialGlobalDiagnosticStatus.SOURCE_UNAVAILABLE,
