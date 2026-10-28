@@ -95,6 +95,7 @@ class TsukiPluginRuntime @Inject constructor(
 				parserCache.remove(source.name)
 				null
 			}
+		}
 	}
 
 	fun getHandle(source: TsukiMangaSource): ParserHandle {
