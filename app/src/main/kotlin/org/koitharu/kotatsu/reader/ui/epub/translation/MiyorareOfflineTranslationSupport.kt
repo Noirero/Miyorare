@@ -32,8 +32,15 @@ internal object MiyorareOfflineTranslationSupport {
 	private const val PREFS_NAME = "novel_translation_offline_models"
 	private const val KEY_EXPLICIT_MODELS = "explicit_models"
 
+	@Volatile
+	private var applicationContext: Context? = null
+
 	private val modelManager: RemoteModelManager by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
 		RemoteModelManager.getInstance()
+	}
+
+	fun attachContext(context: Context) {
+		applicationContext = context.applicationContext
 	}
 
 	/**
@@ -41,6 +48,7 @@ internal object MiyorareOfflineTranslationSupport {
 	 * The actual ML Kit model inventory is re-checked before translation.
 	 */
 	fun shouldUseDownloadedModel(context: Context, sourceLanguage: String, targetLanguage: String): Boolean {
+		attachContext(context)
 		val required = requiredModelLanguages(sourceLanguage, targetLanguage) ?: return false
 		if (required.isEmpty()) return false
 		val explicit = context.applicationContext
@@ -50,7 +58,8 @@ internal object MiyorareOfflineTranslationSupport {
 		return required.all(explicit::contains)
 	}
 
-	suspend fun modelState(context: Context, sourceLanguage: String, targetLanguage: String): MiyorareOfflineModelState {
+	suspend fun modelState(sourceLanguage: String, targetLanguage: String): MiyorareOfflineModelState {
+		val context = requireContext()
 		val plan = modelPlan(sourceLanguage, targetLanguage) ?: return MiyorareOfflineModelState.SourceLanguageRequired
 		plan.unsupportedLanguage?.let { return MiyorareOfflineModelState.Unsupported(it) }
 		if (plan.requiredModels.isEmpty()) return MiyorareOfflineModelState.Ready
@@ -60,7 +69,8 @@ internal object MiyorareOfflineTranslationSupport {
 		return if (missing.isEmpty()) MiyorareOfflineModelState.Ready else MiyorareOfflineModelState.Missing(missing)
 	}
 
-	suspend fun downloadModels(context: Context, sourceLanguage: String, targetLanguage: String) {
+	suspend fun downloadModels(sourceLanguage: String, targetLanguage: String) {
+		val context = requireContext()
 		val plan = requireDownloadablePlan(sourceLanguage, targetLanguage)
 		val downloaded = downloadedLanguages().toMutableSet()
 		val conditions = DownloadConditions.Builder().build()
@@ -72,7 +82,8 @@ internal object MiyorareOfflineTranslationSupport {
 		syncExplicitModelState(context, plan.requiredModels, downloaded)
 	}
 
-	suspend fun deleteModels(context: Context, sourceLanguage: String, targetLanguage: String) {
+	suspend fun deleteModels(sourceLanguage: String, targetLanguage: String) {
+		val context = requireContext()
 		val plan = requireDownloadablePlan(sourceLanguage, targetLanguage)
 		val downloaded = downloadedLanguages().toMutableSet()
 		for (language in plan.requiredModels.filter(downloaded::contains)) {
@@ -84,13 +95,14 @@ internal object MiyorareOfflineTranslationSupport {
 	}
 
 	suspend fun translateInstalled(context: Context, sourceLanguage: String, targetLanguage: String, text: String): String {
+		attachContext(context)
 		if (text.isBlank()) return text
 		val plan = modelPlan(sourceLanguage, targetLanguage)
 			?: throw NovelTranslationException.Configuration("Choose a source language before using the offline translation model")
 		plan.unsupportedLanguage?.let {
 			throw NovelTranslationException.Configuration("Offline translation does not support language $it")
 		}
-		when (val state = modelState(context, sourceLanguage, targetLanguage)) {
+		when (val state = modelState(sourceLanguage, targetLanguage)) {
 			MiyorareOfflineModelState.Ready -> Unit
 			MiyorareOfflineModelState.SourceLanguageRequired -> throw NovelTranslationException.Configuration(
 				"Choose a source language before using the offline translation model",
@@ -123,6 +135,10 @@ internal object MiyorareOfflineTranslationSupport {
 	internal fun requiredModelLanguages(sourceLanguage: String, targetLanguage: String): List<String>? {
 		val plan = modelPlan(sourceLanguage, targetLanguage) ?: return null
 		return if (plan.unsupportedLanguage == null) plan.requiredModels else emptyList()
+	}
+
+	private fun requireContext(): Context = checkNotNull(applicationContext) {
+		"Offline translation support must be initialized from NovelTranslationSettings"
 	}
 
 	private suspend fun downloadedLanguages(): Set<String> =
