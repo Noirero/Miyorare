@@ -6,6 +6,7 @@ import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
 import org.koitharu.kotatsu.core.db.TABLE_HISTORY
 import org.koitharu.kotatsu.core.db.entity.MangaEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 
 @Entity(
 	tableName = TABLE_HISTORY,
@@ -29,4 +30,5 @@ data class HistoryEntity(
 	@ColumnInfo(name = "percent") val percent: Float,
 	@ColumnInfo(name = "deleted_at") val deletedAt: Long,
 	@ColumnInfo(name = "chapters") val chaptersCount: Int,
+	@ColumnInfo(name = "space", index = true, defaultValue = "0") val space: Int = FavouriteSpace.NORMAL.dbValue,
 )
