@@ -129,7 +129,7 @@ class MiyorareOnlineTranslationEngine(
 	}
 }
 
-/** Optional AI/BYOK engine plus the Built-in provider adapter used by the shared translation runtime. */
+/** Optional remote AI/BYOK engine used by the shared translation runtime. */
 class NovelAiTranslationEngine(
 	httpClient: OkHttpClient,
 	private val settings: NovelTranslationSettings,
@@ -138,16 +138,12 @@ class NovelAiTranslationEngine(
 ) : NovelTranslationEngine, NovelTranslationBatchEngine {
 
 	private val client = httpClient.translationClient()
-	private val builtInEngine by lazy(LazyThreadSafetyMode.NONE) {
-		MiyorareBuiltInTranslationEngine(settings.applicationContext)
-	}
 
 	override suspend fun translate(request: NovelTranslationRequest): String {
 		if (request.text.isBlank()) return request.text
 		val config = currentConfiguration()
 		val provider = config.provider
 		return when (provider.protocol) {
-			NovelAiProtocol.ON_DEVICE -> builtInEngine.translate(request)
 			NovelAiProtocol.OPENAI_COMPATIBLE -> {
 				val apiKey = secrets.get(provider)
 					?: throw NovelTranslationException.Configuration("API key is not configured for ${provider.displayName}")
@@ -170,9 +166,6 @@ class NovelAiTranslationEngine(
 		if (requests.isEmpty()) return emptyList()
 		val config = currentConfiguration()
 		val provider = config.provider
-		if (provider.protocol == NovelAiProtocol.ON_DEVICE) {
-			return requests.map { builtInEngine.translate(it) }
-		}
 		if (provider.protocol != NovelAiProtocol.DEEPL) {
 			// Capability metadata prevents this path for non-batch providers. Keep a safe semantic
 			// fallback so a future custom resolver cannot accidentally drop work.
