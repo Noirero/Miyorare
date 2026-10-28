@@ -119,7 +119,7 @@ class SourceSettingsViewModel @Inject constructor(
 		launchJob(Dispatchers.IO) {
 			runCatching { tsukiRuntime.setOfficialGlobalAutoMirror(target, enabled) }
 			val snapshot = runCatching { tsukiRuntime.getOfficialGlobalSettings(target) }.getOrNull()
-			mutableOfficialGlobalState.update { it.copy(snapshot = snapshot) }
+			mutableOfficialGlobalState.update { it.copy(snapshot = snapshot, latestActionDiagnostic = null) }
 		}
 	}
 
@@ -128,7 +128,7 @@ class SourceSettingsViewModel @Inject constructor(
 		launchJob(Dispatchers.IO) {
 			runCatching { tsukiRuntime.setOfficialGlobalRequestProfile(target, profile) }
 			val snapshot = runCatching { tsukiRuntime.getOfficialGlobalSettings(target) }.getOrNull()
-			mutableOfficialGlobalState.update { it.copy(snapshot = snapshot) }
+			mutableOfficialGlobalState.update { it.copy(snapshot = snapshot, latestActionDiagnostic = null) }
 		}
 	}
 
@@ -141,7 +141,9 @@ class SourceSettingsViewModel @Inject constructor(
 
 	fun testOfficialGlobalSource() {
 		val target = officialGlobalSource ?: return
-		runOfficialGlobalAction(target) { tsukiRuntime.testOfficialGlobalSource(target) }
+		runOfficialGlobalAction(target, invalidateOnHealthy = false) {
+			tsukiRuntime.testOfficialGlobalSource(target)
+		}
 	}
 
 	fun resetOfficialGlobalSession() {
