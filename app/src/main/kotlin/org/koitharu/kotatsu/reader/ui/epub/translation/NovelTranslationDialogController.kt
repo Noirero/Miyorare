@@ -39,7 +39,6 @@ data class NovelTranslationSheetState(
 )
 
 private enum class NovelTranslationService {
-	BUILT_IN,
 	ONLINE,
 	AI,
 }
@@ -67,7 +66,6 @@ class NovelTranslationDialogController(
 		val selectionInvocation = isActiveTextSelectionInvocation()
 		val projectionActionsEnabled = state.hasCachedTranslation && !selectionInvocation
 		val autoMangaId = mangaId?.takeIf { it > 0L && !selectionInvocation }
-		var refreshOfflineModelUi: () -> Unit = {}
 		val root = LinearLayout(context).apply {
 			orientation = LinearLayout.VERTICAL
 			setPadding(dp(20), dp(12), dp(20), dp(20))
@@ -119,14 +117,12 @@ class NovelTranslationDialogController(
 			chooseLanguage(source = true) {
 				settings.sourceLanguage = it
 				refreshLanguageButtons()
-				refreshOfflineModelUi()
 			}
 		}
 		targetButton.setOnClickListener {
 			chooseLanguage(source = false) {
 				settings.targetLanguage = it
 				refreshLanguageButtons()
-				refreshOfflineModelUi()
 			}
 		}
 
@@ -161,7 +157,6 @@ class NovelTranslationDialogController(
 				context,
 				android.R.layout.simple_spinner_dropdown_item,
 				listOf(
-					"${context.getString(R.string.novel_translation_built_in)}\n${context.getString(R.string.novel_translation_built_in_summary)}",
 					"${context.getString(R.string.novel_translation_online)}\n${context.getString(R.string.novel_translation_online_summary)}",
 					"${context.getString(R.string.novel_translation_ai)}\n${context.getString(R.string.novel_translation_ai_summary)}",
 				),
@@ -177,186 +172,21 @@ class NovelTranslationDialogController(
 		root.addView(advancedButton, matchWidth())
 
 		val privacyNote = TextView(context).apply {
+			setText(R.string.novel_translation_privacy_note)
 			setPadding(0, dp(4), 0, dp(8))
 		}
 		root.addView(privacyNote, matchWidth())
 
-		val systemSettingsButton = MaterialButton(context).apply {
-			setText(R.string.novel_translation_manage_system_translation)
-			isAllCaps = false
-			visibility = View.GONE
-			setOnClickListener {
-				val pendingIntent = MiyorareBuiltInTranslationSupport.settingsPendingIntent(context)
-				if (pendingIntent == null) {
-					Toast.makeText(context, R.string.novel_translation_system_settings_unavailable, Toast.LENGTH_LONG).show()
-				} else {
-					runCatching { pendingIntent.send() }.onFailure {
-						Toast.makeText(context, R.string.novel_translation_system_settings_unavailable, Toast.LENGTH_LONG).show()
-					}
-				}
-			}
-		}
-		root.addView(systemSettingsButton, matchWidth())
-
-		val offlineModelStatus = TextView(context).apply {
-			setPadding(0, dp(4), 0, dp(4))
-			visibility = View.GONE
-		}
-		root.addView(offlineModelStatus, matchWidth())
-		val offlineModelDownloadButton = MaterialButton(context).apply {
-			setText(R.string.novel_translation_offline_model_download)
-			isAllCaps = false
-			visibility = View.GONE
-		}
-		root.addView(offlineModelDownloadButton, matchWidth())
-		val offlineModelDeleteButton = MaterialButton(context).apply {
-			setText(R.string.novel_translation_offline_model_delete)
-			isAllCaps = false
-			visibility = View.GONE
-		}
-		root.addView(offlineModelDeleteButton, matchWidth())
-		val offlineModelAttribution = TextView(context).apply {
-			setText(R.string.novel_translation_offline_model_attribution)
-			setPadding(0, dp(2), 0, dp(8))
-			visibility = View.GONE
-		}
-		root.addView(offlineModelAttribution, matchWidth())
-
 		fun selectedService(): NovelTranslationService =
 			selectedServiceFromPosition(serviceSpinner.selectedItemPosition)
 
-		var offlineModelUiVersion = 0
-		fun updateOfflineModelUi() {
-			val builtIn = selectedService() == NovelTranslationService.BUILT_IN
-			val source = settings.sourceLanguage
-			val target = settings.targetLanguage
-			offlineModelUiVersion += 1
-			val version = offlineModelUiVersion
-			offlineModelStatus.visibility = if (builtIn) View.VISIBLE else View.GONE
-			offlineModelAttribution.visibility = if (builtIn) View.VISIBLE else View.GONE
-			offlineModelDownloadButton.visibility = View.GONE
-			offlineModelDeleteButton.visibility = View.GONE
-			if (!builtIn) return
-			if (source == NovelTranslationSettings.LANGUAGE_AUTO) {
-				offlineModelStatus.setText(R.string.novel_translation_offline_model_source_required)
-				return
-			}
-			if (source.equals(target, ignoreCase = true)) {
-				offlineModelStatus.setText(R.string.novel_translation_invalid_pair)
-				return
-			}
-			offlineModelStatus.setText(R.string.novel_translation_offline_model_checking)
-			fragment.viewLifecycleOwner.lifecycleScope.launch {
-				val result = runCatching { MiyorareOfflineTranslationSupport.modelState(source, target) }
-				if (version != offlineModelUiVersion) return@launch
-				val sourceLabel = languageLabel(source, source = true)
-				val targetLabel = languageLabel(target, source = false)
-				when (val modelState = result.getOrNull()) {
-					MiyorareOfflineModelState.Ready -> {
-						offlineModelStatus.text = context.getString(
-							R.string.novel_translation_offline_model_ready,
-							sourceLabel,
-							targetLabel,
-						)
-						offlineModelDeleteButton.visibility = View.VISIBLE
-						offlineModelDeleteButton.isEnabled = true
-					}
-					MiyorareOfflineModelState.SourceLanguageRequired -> {
-						offlineModelStatus.setText(R.string.novel_translation_offline_model_source_required)
-					}
-					is MiyorareOfflineModelState.Missing -> {
-						offlineModelStatus.text = context.getString(
-							R.string.novel_translation_offline_model_missing,
-							sourceLabel,
-							targetLabel,
-						)
-						offlineModelDownloadButton.visibility = View.VISIBLE
-						offlineModelDownloadButton.isEnabled = true
-					}
-					is MiyorareOfflineModelState.Unsupported -> {
-						offlineModelStatus.text = context.getString(
-							R.string.novel_translation_offline_model_unsupported,
-							modelState.languageCode,
-						)
-					}
-					null -> {
-						offlineModelStatus.text = result.exceptionOrNull()?.localizedMessage
-							?: context.getString(R.string.novel_translation_offline_model_status_failed)
-					}
-				}
-			}
-		}
-		refreshOfflineModelUi = { updateOfflineModelUi() }
-
-		offlineModelDownloadButton.setOnClickListener {
-			val source = settings.sourceLanguage
-			val target = settings.targetLanguage
-			offlineModelUiVersion += 1
-			offlineModelDownloadButton.isEnabled = false
-			offlineModelDeleteButton.visibility = View.GONE
-			offlineModelStatus.setText(R.string.novel_translation_offline_model_downloading)
-			fragment.viewLifecycleOwner.lifecycleScope.launch {
-				val result = runCatching { MiyorareOfflineTranslationSupport.downloadModels(source, target) }
-				Toast.makeText(
-					context,
-					if (result.isSuccess) {
-						context.getString(R.string.novel_translation_offline_model_downloaded)
-					} else {
-						context.getString(
-							R.string.novel_translation_offline_model_download_failed,
-							result.exceptionOrNull()?.localizedMessage.orEmpty(),
-						)
-					},
-					Toast.LENGTH_LONG,
-				).show()
-				refreshOfflineModelUi()
-			}
-		}
-		offlineModelDeleteButton.setOnClickListener {
-			val source = settings.sourceLanguage
-			val target = settings.targetLanguage
-			offlineModelUiVersion += 1
-			offlineModelDeleteButton.isEnabled = false
-			offlineModelDownloadButton.visibility = View.GONE
-			offlineModelStatus.setText(R.string.novel_translation_offline_model_deleting)
-			fragment.viewLifecycleOwner.lifecycleScope.launch {
-				val result = runCatching { MiyorareOfflineTranslationSupport.deleteModels(source, target) }
-				Toast.makeText(
-					context,
-					if (result.isSuccess) {
-						context.getString(R.string.novel_translation_offline_model_deleted)
-					} else {
-						context.getString(
-							R.string.novel_translation_offline_model_delete_failed,
-							result.exceptionOrNull()?.localizedMessage.orEmpty(),
-						)
-					},
-					Toast.LENGTH_LONG,
-				).show()
-				refreshOfflineModelUi()
-			}
-		}
-
 		fun selectedEngine(): NovelTranslationEngineKind = when (selectedService()) {
 			NovelTranslationService.ONLINE -> NovelTranslationEngineKind.ONLINE
-			NovelTranslationService.BUILT_IN,
 			NovelTranslationService.AI -> NovelTranslationEngineKind.AI
 		}
 
 		fun applySelectedService() {
-			when (selectedService()) {
-				NovelTranslationService.BUILT_IN -> {
-					settings.engine = NovelTranslationEngineKind.AI
-					settings.provider = NovelAiProvider.BUILT_IN
-				}
-				NovelTranslationService.ONLINE -> settings.engine = NovelTranslationEngineKind.ONLINE
-				NovelTranslationService.AI -> {
-					settings.engine = NovelTranslationEngineKind.AI
-					if (settings.provider == NovelAiProvider.BUILT_IN) {
-						settings.provider = settings.lastRemoteAiProvider
-					}
-				}
-			}
+			settings.engine = selectedEngine()
 		}
 
 		var updatingAutoSwitch = false
@@ -391,22 +221,9 @@ class NovelTranslationDialogController(
 
 		fun updateServiceUi() {
 			applySelectedService()
-			val service = selectedService()
-			val builtIn = service == NovelTranslationService.BUILT_IN
-			val remoteAi = service == NovelTranslationService.AI
+			val remoteAi = selectedService() == NovelTranslationService.AI
 			advancedButton.isEnabled = remoteAi
-			privacyNote.visibility = if (service == NovelTranslationService.ONLINE) View.GONE else View.VISIBLE
-			privacyNote.setText(
-				if (builtIn) {
-					R.string.novel_translation_built_in_info
-				} else {
-					R.string.novel_translation_privacy_note
-				},
-			)
-			systemSettingsButton.visibility = if (
-				builtIn && MiyorareBuiltInTranslationSupport.settingsPendingIntent(context) != null
-			) View.VISIBLE else View.GONE
-			refreshOfflineModelUi()
+			privacyNote.visibility = if (remoteAi) View.VISIBLE else View.GONE
 			refreshTranslationActionLabels()
 			updateAutoUi()
 		}
@@ -531,11 +348,8 @@ class NovelTranslationDialogController(
 	private fun selectedServiceFromPosition(position: Int): NovelTranslationService =
 		NovelTranslationService.entries[position.coerceIn(NovelTranslationService.entries.indices)]
 
-	private fun currentService(): NovelTranslationService = when {
-		settings.engine == NovelTranslationEngineKind.ONLINE -> NovelTranslationService.ONLINE
-		settings.provider == NovelAiProvider.BUILT_IN -> NovelTranslationService.BUILT_IN
-		else -> NovelTranslationService.AI
-	}
+	private fun currentService(): NovelTranslationService =
+		if (settings.engine == NovelTranslationEngineKind.ONLINE) NovelTranslationService.ONLINE else NovelTranslationService.AI
 
 	private fun dispatchTranslation(engine: NovelTranslationEngineKind, displayMode: NovelTranslationDisplayMode) {
 		val source = settings.sourceLanguage
@@ -546,14 +360,13 @@ class NovelTranslationDialogController(
 		}
 		settings.engine = engine
 		settings.bilingual = displayMode == NovelTranslationDisplayMode.BILINGUAL
-		val builtIn = engine == NovelTranslationEngineKind.AI && settings.provider == NovelAiProvider.BUILT_IN
 		onTranslate(
 			NovelTranslationSelection(
 				engine = engine,
 				sourceLanguage = source,
 				targetLanguage = target,
-				style = if (builtIn) NovelTranslationStyle.NATURAL else settings.style,
-				contextAware = engine == NovelTranslationEngineKind.AI && !builtIn && settings.contextAware,
+				style = settings.style,
+				contextAware = engine == NovelTranslationEngineKind.AI && settings.contextAware,
 				displayMode = displayMode,
 			),
 		)
@@ -561,7 +374,6 @@ class NovelTranslationDialogController(
 
 	private fun isAiConfigured(): Boolean {
 		val provider = settings.provider
-		if (provider == NovelAiProvider.BUILT_IN) return true
 		return secrets.has(provider) &&
 			(provider.protocol == NovelAiProtocol.DEEPL || settings.model(provider).isNotBlank()) &&
 			settings.resolvedBaseUrl(provider).isNotBlank()
@@ -629,8 +441,8 @@ class NovelTranslationDialogController(
 			isFillViewport = true
 			addView(root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 		}
-		val providers = NovelAiProvider.entries.filter { it != NovelAiProvider.BUILT_IN }
-		val initialProvider = settings.provider.takeUnless { it == NovelAiProvider.BUILT_IN } ?: settings.lastRemoteAiProvider
+		val providers = NovelAiProvider.entries
+		val initialProvider = settings.provider
 		val providerSpinner = Spinner(context).apply {
 			adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, providers.map { it.displayName })
 			setSelection(providers.indexOf(initialProvider).coerceAtLeast(0))

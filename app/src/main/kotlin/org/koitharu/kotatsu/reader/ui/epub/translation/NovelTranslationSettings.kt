@@ -37,6 +37,24 @@ internal object NovelTranslationPresentationPolicy {
 	}
 }
 
+internal data class NovelTranslationLegacyProviderMigration(
+	val engine: NovelTranslationEngineKind,
+	val provider: NovelAiProvider,
+)
+
+internal fun legacyBuiltInProviderMigration(
+	storedProviderId: String?,
+	lastRemoteProviderId: String?,
+): NovelTranslationLegacyProviderMigration? {
+	if (storedProviderId != LEGACY_BUILT_IN_PROVIDER_ID) return null
+	return NovelTranslationLegacyProviderMigration(
+		engine = NovelTranslationEngineKind.ONLINE,
+		provider = NovelAiProvider.fromId(lastRemoteProviderId),
+	)
+}
+
+private const val LEGACY_BUILT_IN_PROVIDER_ID = "built_in"
+
 /**
  * Lightweight Novel translation preferences.
  *
@@ -50,7 +68,7 @@ class NovelTranslationSettings(context: Context) {
 	private val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
 	init {
-		MiyorareOfflineTranslationSupport.attachContext(applicationContext)
+		migrateRemovedBuiltInStateIfNeeded()
 		migratePresentationPolicyIfNeeded()
 	}
 
@@ -60,22 +78,7 @@ class NovelTranslationSettings(context: Context) {
 
 	var provider: NovelAiProvider
 		get() = NovelAiProvider.fromId(prefs.getString(KEY_PROVIDER, null))
-		set(value) {
-			val previous = NovelAiProvider.fromId(prefs.getString(KEY_PROVIDER, null))
-			prefs.edit().apply {
-				if (value == NovelAiProvider.BUILT_IN && previous != NovelAiProvider.BUILT_IN) {
-					putString(KEY_LAST_REMOTE_AI_PROVIDER, previous.id)
-				} else if (value != NovelAiProvider.BUILT_IN) {
-					putString(KEY_LAST_REMOTE_AI_PROVIDER, value.id)
-				}
-				putString(KEY_PROVIDER, value.id)
-			}.apply()
-		}
-
-	val lastRemoteAiProvider: NovelAiProvider
-		get() = NovelAiProvider.fromId(prefs.getString(KEY_LAST_REMOTE_AI_PROVIDER, null))
-			.takeUnless { it == NovelAiProvider.BUILT_IN }
-			?: NovelAiProvider.GEMINI
+		set(value) = prefs.edit().putString(KEY_PROVIDER, value.id).apply()
 
 	var sourceLanguage: String
 		get() = prefs.getString(KEY_SOURCE_LANGUAGE, LANGUAGE_AUTO) ?: LANGUAGE_AUTO
@@ -115,38 +118,25 @@ class NovelTranslationSettings(context: Context) {
 
 	fun currentSelection(): NovelTranslationSelection {
 		val selectedEngine = engine
-		val builtIn = selectedEngine == NovelTranslationEngineKind.AI && provider == NovelAiProvider.BUILT_IN
 		return NovelTranslationSelection(
 			engine = selectedEngine,
 			sourceLanguage = sourceLanguage,
 			targetLanguage = targetLanguage,
-			style = if (builtIn) NovelTranslationStyle.NATURAL else style,
-			contextAware = selectedEngine == NovelTranslationEngineKind.AI && !builtIn && contextAware,
+			style = style,
+			contextAware = selectedEngine == NovelTranslationEngineKind.AI && contextAware,
 			displayMode = if (bilingual) NovelTranslationDisplayMode.BILINGUAL else NovelTranslationPresentationPolicy.defaultDisplayMode,
 		)
 	}
 
-	/**
-	 * Models are provider-scoped so changing from one provider to another never accidentally sends a
-	 * request with the previous provider's model name. Built-in exposes a runtime identity that also
-	 * separates explicitly downloaded offline-model results from Android/OEM system results.
-	 */
+	/** Models are provider-scoped so changing providers never reuses a different provider's model. */
 	var model: String
 		get() = model(provider)
 		set(value) = setModel(provider, value)
 
-	fun model(provider: NovelAiProvider): String = if (provider == NovelAiProvider.BUILT_IN) {
-		if (MiyorareOfflineTranslationSupport.shouldUseDownloadedModel(applicationContext, sourceLanguage, targetLanguage)) {
-			BUILT_IN_OFFLINE_RUNTIME_ID
-		} else {
-			BUILT_IN_RUNTIME_ID
-		}
-	} else {
+	fun model(provider: NovelAiProvider): String =
 		prefs.getString(providerKey(KEY_MODEL_PREFIX, provider), "").orEmpty()
-	}
 
 	fun setModel(provider: NovelAiProvider, value: String) {
-		if (provider == NovelAiProvider.BUILT_IN) return
 		prefs.edit().putString(providerKey(KEY_MODEL_PREFIX, provider), value.trim()).apply()
 	}
 
@@ -162,7 +152,6 @@ class NovelTranslationSettings(context: Context) {
 		prefs.getString(providerKey(KEY_BASE_URL_PREFIX, provider), "").orEmpty()
 
 	fun setBaseUrlOverride(provider: NovelAiProvider, value: String) {
-		if (provider == NovelAiProvider.BUILT_IN) return
 		prefs.edit().putString(providerKey(KEY_BASE_URL_PREFIX, provider), value.trim()).apply()
 	}
 
@@ -182,6 +171,23 @@ class NovelTranslationSettings(context: Context) {
 	fun resolvedBaseUrl(provider: NovelAiProvider = this.provider): String {
 		val override = baseUrlOverride(provider).trim().trimEnd('/')
 		return if (override.isNotEmpty()) override else provider.defaultBaseUrl.trimEnd('/')
+	}
+
+	private fun migrateRemovedBuiltInStateIfNeeded() {
+		if (prefs.getBoolean(KEY_BUILT_IN_REMOVAL_MIGRATED, false)) return
+		val migration = legacyBuiltInProviderMigration(
+			storedProviderId = prefs.getString(KEY_PROVIDER, null),
+			lastRemoteProviderId = prefs.getString(LEGACY_KEY_LAST_REMOTE_AI_PROVIDER, null),
+		)
+		prefs.edit().apply {
+			if (migration != null) {
+				putString(KEY_ENGINE, migration.engine.id)
+				putString(KEY_PROVIDER, migration.provider.id)
+			}
+			remove(LEGACY_KEY_LAST_REMOTE_AI_PROVIDER)
+			putBoolean(KEY_BUILT_IN_REMOVAL_MIGRATED, true)
+		}.apply()
+		applicationContext.deleteSharedPreferences(LEGACY_OFFLINE_MODELS_PREFS_NAME)
 	}
 
 	private fun migratePresentationPolicyIfNeeded() {
@@ -208,13 +214,13 @@ class NovelTranslationSettings(context: Context) {
 	companion object {
 		const val LANGUAGE_AUTO = "auto"
 		const val DEFAULT_TARGET_LANGUAGE = "id"
-		internal const val BUILT_IN_RUNTIME_ID = "android-system-translation-api31-v1"
-		internal const val BUILT_IN_OFFLINE_RUNTIME_ID = "google-mlkit-translate-17.0.3-explicit-v1"
 
 		private const val PREFS_NAME = "novel_translation"
+		private const val LEGACY_OFFLINE_MODELS_PREFS_NAME = "novel_translation_offline_models"
 		private const val KEY_ENGINE = "engine"
 		private const val KEY_PROVIDER = "provider"
-		private const val KEY_LAST_REMOTE_AI_PROVIDER = "last_remote_ai_provider"
+		private const val LEGACY_KEY_LAST_REMOTE_AI_PROVIDER = "last_remote_ai_provider"
+		private const val KEY_BUILT_IN_REMOVAL_MIGRATED = "built_in_removal_migrated"
 		private const val KEY_SOURCE_LANGUAGE = "source_language"
 		private const val KEY_TARGET_LANGUAGE = "target_language"
 		private const val KEY_BILINGUAL = "bilingual"
@@ -249,7 +255,6 @@ enum class NovelTranslationStyle(val id: String) {
 }
 
 enum class NovelAiProtocol {
-	ON_DEVICE,
 	OPENAI_COMPATIBLE,
 	ANTHROPIC,
 	DEEPL,
@@ -266,13 +271,6 @@ enum class NovelAiProvider(
 	val defaultBaseUrl: String,
 	val supportsModelDiscovery: Boolean,
 ) {
-	BUILT_IN(
-		id = "built_in",
-		displayName = "Built-in",
-		protocol = NovelAiProtocol.ON_DEVICE,
-		defaultBaseUrl = "on-device:android-system-translation",
-		supportsModelDiscovery = false,
-	),
 	OPENAI(
 		id = "openai",
 		displayName = "OpenAI",
