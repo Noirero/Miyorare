@@ -2,26 +2,6 @@
 <resources>
     <string name="novel_translation_engine">Mesin terjemahan</string>
     <string name="novel_translation_title">Terjemahan</string>
-    <string name="novel_translation_built_in">Built-in</string>
-    <string name="novel_translation_built_in_summary">Di perangkat • Menggunakan terjemahan sistem Android jika tersedia • Model offline hanya diunduh jika kamu memilihnya</string>
-    <string name="novel_translation_built_in_info">Menggunakan terjemahan di perangkat milik sistem Android/OEM jika tersedia. Jika layanan sistem tidak tersedia, kamu dapat mengunduh model bahasa offline secara eksplisit. Model bahasa offline tidak dibundel di APK Miyorare dan tidak pernah diunduh otomatis.</string>
-    <string name="novel_translation_manage_system_translation">Kelola terjemahan sistem</string>
-    <string name="novel_translation_system_settings_unavailable">Pengaturan terjemahan sistem tidak tersedia di perangkat ini.</string>
-    <string name="novel_translation_offline_model_checking">Memeriksa model bahasa offline…</string>
-    <string name="novel_translation_offline_model_source_required">Pilih bahasa sumber selain Deteksi otomatis untuk mengunduh atau menghapus model bahasa offline.</string>
-    <string name="novel_translation_offline_model_ready">Model bahasa offline sudah diunduh dan siap untuk %1$s → %2$s.</string>
-    <string name="novel_translation_offline_model_missing">Model bahasa offline untuk %1$s → %2$s belum diunduh.</string>
-    <string name="novel_translation_offline_model_unsupported">Terjemahan model offline tidak mendukung bahasa %1$s.</string>
-    <string name="novel_translation_offline_model_status_failed">Tidak dapat memeriksa status model bahasa offline.</string>
-    <string name="novel_translation_offline_model_download">Unduh model bahasa offline</string>
-    <string name="novel_translation_offline_model_downloading">Mengunduh model bahasa offline…</string>
-    <string name="novel_translation_offline_model_downloaded">Model bahasa offline berhasil diunduh. Terjemahan offline siap digunakan.</string>
-    <string name="novel_translation_offline_model_download_failed">Gagal mengunduh model bahasa offline: %1$s</string>
-    <string name="novel_translation_offline_model_delete">Hapus model bahasa offline</string>
-    <string name="novel_translation_offline_model_deleting">Menghapus model bahasa offline…</string>
-    <string name="novel_translation_offline_model_deleted">Model bahasa offline berhasil dihapus.</string>
-    <string name="novel_translation_offline_model_delete_failed">Tidak dapat menghapus model bahasa offline: %1$s</string>
-    <string name="novel_translation_offline_model_attribution">Model offline opsional didukung oleh Google Translate. Satu model bahasa berukuran sekitar 30 MB dan hanya disimpan setelah kamu memilih untuk mengunduhnya. Google tidak memberikan jaminan atas hasil terjemahan, termasuk akurasi dan keandalannya.</string>
     <string name="novel_translation_online">Miyorare Online</string>
     <string name="novel_translation_online_summary">Online • Tidak perlu API key</string>
     <string name="novel_translation_ai">Terjemahan AI</string>
