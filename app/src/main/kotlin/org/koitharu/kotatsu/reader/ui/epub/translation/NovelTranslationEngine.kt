@@ -110,7 +110,7 @@ class MiyorareOnlineTranslationEngine(
 				.build(),
 		).await()
 		response.use {
-			it.requireSuccessful()
+			it.requireOnlineSuccessful()
 			val root = parseJson(it.body.string()).jsonArray
 			val segments = root.getOrNull(0)?.jsonArray
 				?: throw NovelTranslationException.InvalidResponse("Online translator returned an invalid response")
@@ -456,6 +456,19 @@ private suspend fun Call.await(): Response = suspendCancellableCoroutine { conti
 			if (continuation.isActive) continuation.resume(response) else response.close()
 		}
 	})
+}
+
+internal fun onlineTranslationFailure(statusCode: Int, retryAfter: String?): NovelTranslationException = when (statusCode) {
+	403 -> NovelTranslationException.ProviderUnavailable(statusCode)
+	408 -> NovelTranslationException.RequestRejected(statusCode)
+	429 -> NovelTranslationException.RateLimited(retryAfter?.toLongOrNull())
+	in 500..599 -> NovelTranslationException.ProviderUnavailable(statusCode)
+	else -> NovelTranslationException.RequestRejected(statusCode)
+}
+
+private fun Response.requireOnlineSuccessful() {
+	if (isSuccessful) return
+	throw onlineTranslationFailure(code, headers["Retry-After"])
 }
 
 private fun Response.requireSuccessful() {
