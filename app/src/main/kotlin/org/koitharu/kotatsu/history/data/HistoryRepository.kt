@@ -141,7 +141,7 @@ class HistoryRepository @Inject constructor(
 		// transaction prevents a slow source/tracker from holding the database writer and stalling UI.
 		newChaptersUseCaseProvider.get()(manga, chapterId)
 		if (!isPrivateOnly(manga.id)) {
-			scrobbblers.forEach { it.tryScrobble(manga, chapterId) }
+			scrobblers.forEach { it.tryScrobble(manga, chapterId) }
 		}
 	}
 
