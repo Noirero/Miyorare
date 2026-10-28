@@ -124,7 +124,11 @@ internal class OfficialGlobalSourceNetworkPolicyInterceptor(
 			try {
 				val response = chain.proceed(routed)
 				val stayedOnDeclaredHost = requestTargetsDomain(response.request, candidate)
-				if (response.code in 200..399 && stayedOnDeclaredHost) {
+				if (!stayedOnDeclaredHost) {
+					response.close()
+					continue
+				}
+				if (response.code in 200..399) {
 					config.setDomain(parser.configKeyDomain, candidate)
 					return response
 				}
