@@ -71,7 +71,7 @@ class MiyorareBuiltInTranslationEngine(
 				target,
 				request.text,
 			)
-			return "$translated\n\n$GOOGLE_TRANSLATE_RESULT_ATTRIBUTION"
+			return translated
 		}
 
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
