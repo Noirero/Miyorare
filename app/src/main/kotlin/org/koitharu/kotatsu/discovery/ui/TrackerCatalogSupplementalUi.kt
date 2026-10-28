@@ -167,6 +167,7 @@ private fun CatalogPeopleLane(
 			}
 		}
 		LazyRow(
+			modifier = Modifier.testTag("catalog_${tag}_list"),
 			contentPadding = PaddingValues(end = 8.dp),
 			horizontalArrangement = Arrangement.spacedBy(12.dp),
 		) {
