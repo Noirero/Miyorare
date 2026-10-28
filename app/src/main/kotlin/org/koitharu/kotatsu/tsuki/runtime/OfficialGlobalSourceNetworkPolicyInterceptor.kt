@@ -18,8 +18,8 @@ import java.util.concurrent.TimeUnit
  *
  * This runs after Tsuki routing has applied parser headers/interception, while Miyorare's normal
  * Cloudflare/rate-limit/base interceptors remain downstream. Only idempotent GET/HEAD requests can
- * be replayed. No arbitrary redirect is ever promoted as a source domain; automatic failover is
- * limited to ConfigKey.Domain.presetValues and a no-cookie redirect preflight.
+ * be replayed. Automatic failover is limited to ConfigKey.Domain.presetValues and a mirror is only
+ * promoted when the final response remains on that declared host.
  */
 internal class OfficialGlobalSourceNetworkPolicyInterceptor(
 	private val runtime: TsukiPluginRuntime,
@@ -119,11 +119,11 @@ internal class OfficialGlobalSourceNetworkPolicyInterceptor(
 		val active = parser.domain
 		val candidates = parser.configKeyDomain.presetValues.filterNot { it.equals(active, ignoreCase = true) }
 		for ((index, candidate) in candidates.withIndex()) {
-			if (!runtime.isTrustedMirrorRedirectSafe(candidate)) continue
 			val routed = rewriteTrustedDomain(request, candidate) ?: continue
 			try {
 				val response = chain.proceed(routed)
-				if (response.code in 200..399) {
+				val stayedOnDeclaredHost = requestTargetsDomain(response.request, candidate)
+				if (response.code in 200..399 && stayedOnDeclaredHost) {
 					config.setDomain(parser.configKeyDomain, candidate)
 					return response
 				}
