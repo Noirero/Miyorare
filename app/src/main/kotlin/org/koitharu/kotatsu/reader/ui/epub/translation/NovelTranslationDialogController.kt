@@ -67,6 +67,7 @@ class NovelTranslationDialogController(
 		val selectionInvocation = isActiveTextSelectionInvocation()
 		val projectionActionsEnabled = state.hasCachedTranslation && !selectionInvocation
 		val autoMangaId = mangaId?.takeIf { it > 0L && !selectionInvocation }
+		var refreshOfflineModelUi: () -> Unit = {}
 		val root = LinearLayout(context).apply {
 			orientation = LinearLayout.VERTICAL
 			setPadding(dp(20), dp(12), dp(20), dp(20))
@@ -118,12 +119,14 @@ class NovelTranslationDialogController(
 			chooseLanguage(source = true) {
 				settings.sourceLanguage = it
 				refreshLanguageButtons()
+				refreshOfflineModelUi()
 			}
 		}
 		targetButton.setOnClickListener {
 			chooseLanguage(source = false) {
 				settings.targetLanguage = it
 				refreshLanguageButtons()
+				refreshOfflineModelUi()
 			}
 		}
 
@@ -195,8 +198,144 @@ class NovelTranslationDialogController(
 		}
 		root.addView(systemSettingsButton, matchWidth())
 
+		val offlineModelStatus = TextView(context).apply {
+			setPadding(0, dp(4), 0, dp(4))
+			visibility = View.GONE
+		}
+		root.addView(offlineModelStatus, matchWidth())
+		val offlineModelDownloadButton = MaterialButton(context).apply {
+			setText(R.string.novel_translation_offline_model_download)
+			isAllCaps = false
+			visibility = View.GONE
+		}
+		root.addView(offlineModelDownloadButton, matchWidth())
+		val offlineModelDeleteButton = MaterialButton(context).apply {
+			setText(R.string.novel_translation_offline_model_delete)
+			isAllCaps = false
+			visibility = View.GONE
+		}
+		root.addView(offlineModelDeleteButton, matchWidth())
+		val offlineModelAttribution = TextView(context).apply {
+			setText(R.string.novel_translation_offline_model_attribution)
+			setPadding(0, dp(2), 0, dp(8))
+			visibility = View.GONE
+		}
+		root.addView(offlineModelAttribution, matchWidth())
+
 		fun selectedService(): NovelTranslationService =
 			selectedServiceFromPosition(serviceSpinner.selectedItemPosition)
+
+		var offlineModelUiVersion = 0
+		fun updateOfflineModelUi() {
+			val builtIn = selectedService() == NovelTranslationService.BUILT_IN
+			val source = settings.sourceLanguage
+			val target = settings.targetLanguage
+			offlineModelUiVersion += 1
+			val version = offlineModelUiVersion
+			offlineModelStatus.visibility = if (builtIn) View.VISIBLE else View.GONE
+			offlineModelAttribution.visibility = if (builtIn) View.VISIBLE else View.GONE
+			offlineModelDownloadButton.visibility = View.GONE
+			offlineModelDeleteButton.visibility = View.GONE
+			if (!builtIn) return
+			if (source == NovelTranslationSettings.LANGUAGE_AUTO) {
+				offlineModelStatus.setText(R.string.novel_translation_offline_model_source_required)
+				return
+			}
+			if (source.equals(target, ignoreCase = true)) {
+				offlineModelStatus.setText(R.string.novel_translation_invalid_pair)
+				return
+			}
+			offlineModelStatus.setText(R.string.novel_translation_offline_model_checking)
+			fragment.viewLifecycleOwner.lifecycleScope.launch {
+				val result = runCatching { MiyorareOfflineTranslationSupport.modelState(source, target) }
+				if (version != offlineModelUiVersion) return@launch
+				val sourceLabel = languageLabel(source, source = true)
+				val targetLabel = languageLabel(target, source = false)
+				when (val modelState = result.getOrNull()) {
+					MiyorareOfflineModelState.Ready -> {
+						offlineModelStatus.text = context.getString(
+							R.string.novel_translation_offline_model_ready,
+							sourceLabel,
+							targetLabel,
+						)
+						offlineModelDeleteButton.visibility = View.VISIBLE
+						offlineModelDeleteButton.isEnabled = true
+					}
+					MiyorareOfflineModelState.SourceLanguageRequired -> {
+						offlineModelStatus.setText(R.string.novel_translation_offline_model_source_required)
+					}
+					is MiyorareOfflineModelState.Missing -> {
+						offlineModelStatus.text = context.getString(
+							R.string.novel_translation_offline_model_missing,
+							sourceLabel,
+							targetLabel,
+						)
+						offlineModelDownloadButton.visibility = View.VISIBLE
+						offlineModelDownloadButton.isEnabled = true
+					}
+					is MiyorareOfflineModelState.Unsupported -> {
+						offlineModelStatus.text = context.getString(
+							R.string.novel_translation_offline_model_unsupported,
+							modelState.languageCode,
+						)
+					}
+					null -> {
+						offlineModelStatus.text = result.exceptionOrNull()?.localizedMessage
+							?: context.getString(R.string.novel_translation_offline_model_status_failed)
+					}
+				}
+			}
+		}
+		refreshOfflineModelUi = { updateOfflineModelUi() }
+
+		offlineModelDownloadButton.setOnClickListener {
+			val source = settings.sourceLanguage
+			val target = settings.targetLanguage
+			offlineModelUiVersion += 1
+			offlineModelDownloadButton.isEnabled = false
+			offlineModelDeleteButton.visibility = View.GONE
+			offlineModelStatus.setText(R.string.novel_translation_offline_model_downloading)
+			fragment.viewLifecycleOwner.lifecycleScope.launch {
+				val result = runCatching { MiyorareOfflineTranslationSupport.downloadModels(source, target) }
+				Toast.makeText(
+					context,
+					if (result.isSuccess) {
+						context.getString(R.string.novel_translation_offline_model_downloaded)
+					} else {
+						context.getString(
+							R.string.novel_translation_offline_model_download_failed,
+							result.exceptionOrNull()?.localizedMessage.orEmpty(),
+						)
+					},
+					Toast.LENGTH_LONG,
+				).show()
+				refreshOfflineModelUi()
+			}
+		}
+		offlineModelDeleteButton.setOnClickListener {
+			val source = settings.sourceLanguage
+			val target = settings.targetLanguage
+			offlineModelUiVersion += 1
+			offlineModelDeleteButton.isEnabled = false
+			offlineModelDownloadButton.visibility = View.GONE
+			offlineModelStatus.setText(R.string.novel_translation_offline_model_deleting)
+			fragment.viewLifecycleOwner.lifecycleScope.launch {
+				val result = runCatching { MiyorareOfflineTranslationSupport.deleteModels(source, target) }
+				Toast.makeText(
+					context,
+					if (result.isSuccess) {
+						context.getString(R.string.novel_translation_offline_model_deleted)
+					} else {
+						context.getString(
+							R.string.novel_translation_offline_model_delete_failed,
+							result.exceptionOrNull()?.localizedMessage.orEmpty(),
+						)
+					},
+					Toast.LENGTH_LONG,
+				).show()
+				refreshOfflineModelUi()
+			}
+		}
 
 		fun selectedEngine(): NovelTranslationEngineKind = when (selectedService()) {
 			NovelTranslationService.ONLINE -> NovelTranslationEngineKind.ONLINE
@@ -267,6 +406,7 @@ class NovelTranslationDialogController(
 			systemSettingsButton.visibility = if (
 				builtIn && MiyorareBuiltInTranslationSupport.settingsPendingIntent(context) != null
 			) View.VISIBLE else View.GONE
+			refreshOfflineModelUi()
 			refreshTranslationActionLabels()
 			updateAutoUi()
 		}
