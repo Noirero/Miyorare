@@ -127,16 +127,19 @@ class NovelTranslationSettings(context: Context) {
 
 	/**
 	 * Models are provider-scoped so changing from one provider to another never accidentally sends a
-	 * request with the previous provider's model name. Built-in exposes a stable runtime identity so
-	 * auto-translate readiness and semantic cache fingerprints remain provider-correct without a
-	 * fake user-configured model.
+	 * request with the previous provider's model name. Built-in exposes a runtime identity that also
+	 * separates explicitly downloaded offline-model results from Android/OEM system results.
 	 */
 	var model: String
 		get() = model(provider)
 		set(value) = setModel(provider, value)
 
 	fun model(provider: NovelAiProvider): String = if (provider == NovelAiProvider.BUILT_IN) {
-		BUILT_IN_RUNTIME_ID
+		if (MiyorareOfflineTranslationSupport.shouldUseDownloadedModel(applicationContext, sourceLanguage, targetLanguage)) {
+			BUILT_IN_OFFLINE_RUNTIME_ID
+		} else {
+			BUILT_IN_RUNTIME_ID
+		}
 	} else {
 		prefs.getString(providerKey(KEY_MODEL_PREFIX, provider), "").orEmpty()
 	}
@@ -205,6 +208,7 @@ class NovelTranslationSettings(context: Context) {
 		const val LANGUAGE_AUTO = "auto"
 		const val DEFAULT_TARGET_LANGUAGE = "id"
 		internal const val BUILT_IN_RUNTIME_ID = "android-system-translation-api31-v1"
+		internal const val BUILT_IN_OFFLINE_RUNTIME_ID = "google-mlkit-translate-17.0.3-explicit-v1"
 
 		private const val PREFS_NAME = "novel_translation"
 		private const val KEY_ENGINE = "engine"
