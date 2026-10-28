@@ -29,6 +29,7 @@ internal class MiyorareTsukiLoaderContext(
 	override val httpClient: OkHttpClient,
 	override val cookieJar: CookieJar,
 	private val webViewExecutor: TsukiWebViewExecutor,
+	private val domainOverrides: Map<String, String> = emptyMap(),
 ) : MangaLoaderContext() {
 
 	private val configs = ConcurrentHashMap<String, MangaSourceConfig>()
@@ -39,7 +40,12 @@ internal class MiyorareTsukiLoaderContext(
 	override fun getParserSources(): List<MangaSource> = runtime.rawSources(plugin)
 
 	override fun getConfig(source: MangaSource): MangaSourceConfig = configs.getOrPut(source.name) {
-		TsukiSourceConfig(appContext, plugin.storageKey, source)
+		TsukiSourceConfig(
+			context = appContext,
+			pluginStorageKey = plugin.storageKey,
+			source = source,
+			transientDomainOverride = domainOverrides[source.name],
+		)
 	}
 
 	override fun getDefaultUserAgent(): String = webViewExecutor.defaultUserAgent ?: UserAgents.FIREFOX_MOBILE
