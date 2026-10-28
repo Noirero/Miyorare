@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.reader.ui.epub.translation
 
+import android.content.Context
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.common.model.RemoteModelManager
@@ -24,48 +25,72 @@ internal sealed interface MiyorareOfflineModelState {
  *
  * The translation runtime may ship with Miyorare, but language models never do. Downloads happen
  * only through [downloadModels], which is called from an explicit user action in the Translation UI.
- * Translation itself never invokes downloadModelIfNeeded or any other implicit model download.
+ * Translation itself never invokes an implicit model download.
  */
 internal object MiyorareOfflineTranslationSupport {
+
+	private const val PREFS_NAME = "novel_translation_offline_models"
+	private const val KEY_EXPLICIT_MODELS = "explicit_models"
 
 	private val modelManager: RemoteModelManager by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
 		RemoteModelManager.getInstance()
 	}
 
-	suspend fun modelState(sourceLanguage: String, targetLanguage: String): MiyorareOfflineModelState {
+	/**
+	 * Synchronous routing hint used only to keep semantic cache/provider identity deterministic.
+	 * The actual ML Kit model inventory is re-checked before translation.
+	 */
+	fun shouldUseDownloadedModel(context: Context, sourceLanguage: String, targetLanguage: String): Boolean {
+		val required = requiredModelLanguages(sourceLanguage, targetLanguage) ?: return false
+		if (required.isEmpty()) return false
+		val explicit = context.applicationContext
+			.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+			.getStringSet(KEY_EXPLICIT_MODELS, emptySet())
+			.orEmpty()
+		return required.all(explicit::contains)
+	}
+
+	suspend fun modelState(context: Context, sourceLanguage: String, targetLanguage: String): MiyorareOfflineModelState {
 		val plan = modelPlan(sourceLanguage, targetLanguage) ?: return MiyorareOfflineModelState.SourceLanguageRequired
 		plan.unsupportedLanguage?.let { return MiyorareOfflineModelState.Unsupported(it) }
 		if (plan.requiredModels.isEmpty()) return MiyorareOfflineModelState.Ready
 		val downloaded = downloadedLanguages()
+		syncExplicitModelState(context, plan.requiredModels, downloaded)
 		val missing = plan.requiredModels.filterNot(downloaded::contains)
 		return if (missing.isEmpty()) MiyorareOfflineModelState.Ready else MiyorareOfflineModelState.Missing(missing)
 	}
 
-	suspend fun downloadModels(sourceLanguage: String, targetLanguage: String) {
+	suspend fun downloadModels(context: Context, sourceLanguage: String, targetLanguage: String) {
 		val plan = requireDownloadablePlan(sourceLanguage, targetLanguage)
-		val downloaded = downloadedLanguages()
+		val downloaded = downloadedLanguages().toMutableSet()
 		val conditions = DownloadConditions.Builder().build()
 		for (language in plan.requiredModels.filterNot(downloaded::contains)) {
 			modelManager.download(TranslateRemoteModel.Builder(language).build(), conditions).awaitTask()
+			downloaded += language
+			syncExplicitModelState(context, plan.requiredModels, downloaded)
 		}
+		syncExplicitModelState(context, plan.requiredModels, downloaded)
 	}
 
-	suspend fun deleteModels(sourceLanguage: String, targetLanguage: String) {
+	suspend fun deleteModels(context: Context, sourceLanguage: String, targetLanguage: String) {
 		val plan = requireDownloadablePlan(sourceLanguage, targetLanguage)
-		val downloaded = downloadedLanguages()
+		val downloaded = downloadedLanguages().toMutableSet()
 		for (language in plan.requiredModels.filter(downloaded::contains)) {
 			modelManager.deleteDownloadedModel(TranslateRemoteModel.Builder(language).build()).awaitTask()
+			downloaded -= language
+			syncExplicitModelState(context, listOf(language), downloaded)
 		}
+		syncExplicitModelState(context, plan.requiredModels, downloaded)
 	}
 
-	suspend fun translateInstalled(sourceLanguage: String, targetLanguage: String, text: String): String {
+	suspend fun translateInstalled(context: Context, sourceLanguage: String, targetLanguage: String, text: String): String {
 		if (text.isBlank()) return text
 		val plan = modelPlan(sourceLanguage, targetLanguage)
 			?: throw NovelTranslationException.Configuration("Choose a source language before using the offline translation model")
 		plan.unsupportedLanguage?.let {
 			throw NovelTranslationException.Configuration("Offline translation does not support language $it")
 		}
-		when (val state = modelState(sourceLanguage, targetLanguage)) {
+		when (val state = modelState(context, sourceLanguage, targetLanguage)) {
 			MiyorareOfflineModelState.Ready -> Unit
 			MiyorareOfflineModelState.SourceLanguageRequired -> throw NovelTranslationException.Configuration(
 				"Choose a source language before using the offline translation model",
@@ -104,6 +129,16 @@ internal object MiyorareOfflineTranslationSupport {
 		modelManager.getDownloadedModels(TranslateRemoteModel::class.java)
 			.awaitTask()
 			.mapTo(linkedSetOf()) { it.language }
+
+	private fun syncExplicitModelState(context: Context, checkedLanguages: Collection<String>, downloaded: Set<String>) {
+		if (checkedLanguages.isEmpty()) return
+		val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+		val next = prefs.getStringSet(KEY_EXPLICIT_MODELS, emptySet()).orEmpty().toMutableSet()
+		checkedLanguages.forEach { language ->
+			if (language in downloaded) next += language else next -= language
+		}
+		prefs.edit().putStringSet(KEY_EXPLICIT_MODELS, next).apply()
+	}
 
 	private fun requireDownloadablePlan(sourceLanguage: String, targetLanguage: String): OfflineModelPlan {
 		val plan = modelPlan(sourceLanguage, targetLanguage)
