@@ -72,11 +72,25 @@ class NovelReaderFinishingRegressionTest {
 		assertTrue(offline.contains("RemoteModelManager"))
 		assertTrue(offline.contains("modelManager.download("))
 		assertTrue(offline.contains("deleteDownloadedModel"))
+		assertTrue(offline.contains("KEY_EXPLICIT_MODELS"))
+		assertTrue(offline.contains("markExplicitModels"))
+		assertTrue(offline.contains("shouldUseDownloadedModel"))
 		assertFalse(offline.contains(".downloadModelIfNeeded("))
 		assertTrue(controller.contains("novel_translation_offline_model_download"))
 		assertTrue(controller.contains("MiyorareOfflineTranslationSupport.downloadModels"))
 		assertFalse(engine.contains("downloadModels("))
 		assertFalse(reader.contains("downloadModels("))
+	}
+
+	@Test
+	fun `built in offline and system results keep separate semantic identity`() {
+		val settings = source("org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationSettings.kt")
+		val engine = source("org/koitharu/kotatsu/reader/ui/epub/translation/MiyorareBuiltInTranslationEngine.kt")
+
+		assertTrue(settings.contains("BUILT_IN_RUNTIME_ID"))
+		assertTrue(settings.contains("BUILT_IN_OFFLINE_RUNTIME_ID"))
+		assertTrue(settings.contains("MiyorareOfflineTranslationSupport.shouldUseDownloadedModel"))
+		assertTrue(engine.contains("GOOGLE_TRANSLATE_RESULT_ATTRIBUTION"))
 	}
 
 	@Test
