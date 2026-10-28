@@ -1,6 +1,6 @@
 name: Miyori Owner Commands
 
-# Owner-only control plane. The command allowlist is intentionally narrow.
+# Owner-only control plane. The allowlist is exact and intentionally narrow.
 # No command can push code, merge, publish releases, weaken CI, or run arbitrary shell input.
 
 on:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       target_number:
-        description: 'Issue or pull request number for manual command verification'
+        description: 'Issue or pull request number'
         required: true
         type: string
       command:
@@ -20,6 +20,11 @@ on:
         options:
           - /miyori help
           - /miyori status
+          - /miyori checks
+          - /miyori explain
+          - /miyori labels
+          - /miyori readiness
+          - /miyori head
           - /miyori require-runtime
 
 permissions:
@@ -33,7 +38,7 @@ concurrency:
 
 jobs:
   command:
-    name: Handle owner-authorized Miyori command
+    name: Handle owner-authorized command
     if: >-
       github.actor == github.repository_owner &&
       (github.event_name == 'workflow_dispatch' ||
@@ -67,7 +72,7 @@ jobs:
           COMMAND="$(python3 .github/scripts/miyori_command.py "$COMMAND_RAW")"
           echo "command=$COMMAND" >> "$GITHUB_OUTPUT"
 
-      - name: Generate Miyori Bot installation token
+      - name: Generate bot installation token
         id: miyori-token
         uses: actions/create-github-app-token@v3
         with:
@@ -76,7 +81,7 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Verify Miyori identity
+      - name: Verify bot identity
         shell: bash
         env:
           GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
@@ -107,7 +112,7 @@ jobs:
             echo "head_sha=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Refresh unified PR status card
+      - name: Refresh persistent PR status card
         if: steps.parse.outputs.command == 'status' && steps.target.outputs.is_pr == 'true' && steps.target.outputs.state == 'open'
         shell: bash
         env:
@@ -149,6 +154,21 @@ jobs:
               -f body="$BODY" >/dev/null
           fi
 
+      - name: Render read-only report
+        if: >-
+          contains(fromJSON('["checks","explain","labels","readiness","head"]'), steps.parse.outputs.command) &&
+          steps.target.outputs.is_pr == 'true' &&
+          steps.target.outputs.state == 'open'
+        shell: bash
+        env:
+          MIYORI_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/miyori_report.py \
+            --command "${{ steps.parse.outputs.command }}" \
+            --pr-number "$TARGET_NUMBER" \
+            --output "$RUNNER_TEMP/miyori-report.md"
+
       - name: Require Android Runtime validation
         if: steps.parse.outputs.command == 'require-runtime' && steps.target.outputs.is_pr == 'true' && steps.target.outputs.state == 'open'
         shell: bash
@@ -185,36 +205,48 @@ jobs:
 
           - \`/miyori help\` — show this allowlist.
           - \`/miyori status\` — refresh the persistent PR status card.
-          - \`/miyori require-runtime\` — add \`ci:runtime-required\` to an open PR.
+          - \`/miyori checks\` — summarize applicable checks.
+          - \`/miyori explain\` — explain why current checks/attention apply.
+          - \`/miyori labels\` — inspect CI label consistency.
+          - \`/miyori readiness\` — report technical readiness.
+          - \`/miyori head\` — report exact-head evidence.
+          - \`/miyori require-runtime\` — add the safe runtime-required override.
 
-          Commands are accepted only from the repository owner. Miyori cannot push code, merge, publish releases, or weaken validation.
+          Commands are accepted only from the repository owner. Miyori cannot push code, merge, publish releases, rerun arbitrary workflows, or weaken validation.
           EOF
               )
               ;;
             status)
               if [[ "$IS_PR" != "true" ]]; then
-                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 \`/miyori status\` requires a pull request target."
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 This command requires a pull request target."
               elif [[ "$PR_STATE" != "open" ]]; then
                 RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; its status card was not changed."
               else
                 RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 Refreshed the persistent status card for PR #${TARGET_NUMBER}."
               fi
               ;;
+            checks|explain|labels|readiness|head)
+              if [[ "$IS_PR" != "true" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 This command requires a pull request target."
+              elif [[ "$PR_STATE" != "open" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; no live report was generated."
+              else
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"$(cat "$RUNNER_TEMP/miyori-report.md")"
+              fi
+              ;;
             require-runtime)
               if [[ "$IS_PR" != "true" ]]; then
-                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 \`/miyori require-runtime\` requires a pull request target."
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 This command requires a pull request target."
               elif [[ "$PR_STATE" != "open" ]]; then
                 RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; no label was changed."
               else
-                RESPONSE="${RESPONSE_MARKER}"$'\n'"🛡️ Added \`ci:runtime-required\` to PR #${TARGET_NUMBER}. This action can only strengthen CI validation."
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🛡️ Added the runtime-required override to PR #${TARGET_NUMBER}. This action can only strengthen validation."
               fi
               ;;
             *)
               RESPONSE=$(cat <<EOF
           ${RESPONSE_MARKER}
-          🌸 Command not recognized.
-
-          Allowed commands: \`/miyori help\`, \`/miyori status\`, \`/miyori require-runtime\`.
+          🌸 Command not recognized. Use \`/miyori help\` for the exact allowlist.
           EOF
               )
               ;;
@@ -241,10 +273,10 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## Miyori owner command"
+            echo "## Owner command"
             echo
             echo "- Target: #${TARGET_NUMBER}"
             echo "- Parsed command: \`${{ steps.parse.outputs.command }}\`"
             echo "- Owner-only: yes"
-            echo "- Safe mutation allowlist: add \`ci:runtime-required\` only"
+            echo "- Mutation allowlist: add runtime-required override only"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -9,6 +9,11 @@ import sys
 COMMANDS = {
     "/miyori help": "help",
     "/miyori status": "status",
+    "/miyori checks": "checks",
+    "/miyori explain": "explain",
+    "/miyori labels": "labels",
+    "/miyori readiness": "readiness",
+    "/miyori head": "head",
     "/miyori require-runtime": "require-runtime",
 }
 

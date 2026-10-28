@@ -1,6 +1,6 @@
 name: Miyori PR Status
 
-# Miyori owns the PR communication/status layer only.
+# Trusted metadata/status layer only. It never checks out PR head code.
 # Core CI execution remains owned by the existing GitHub Actions workflows.
 
 on:
@@ -12,10 +12,19 @@ on:
       - Promotion to Main Gate
     types:
       - completed
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
+      - unlabeled
+      - edited
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'Pull request number whose Miyori status card should be refreshed'
+        description: 'Pull request number whose status card should be refreshed'
         required: true
         type: string
 
@@ -25,19 +34,31 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: miyori-pr-status-${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
+  group: >-
+    miyori-pr-status-${{
+      github.event_name == 'workflow_dispatch' && inputs.pr_number ||
+      github.event_name == 'pull_request_target' && github.event.pull_request.number ||
+      github.event.workflow_run.pull_requests[0].number ||
+      github.run_id
+    }}
   cancel-in-progress: false
 
 jobs:
   notify:
-    name: Refresh Miyori PR status card
+    name: Refresh PR status card
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'pull_request_target' ||
       (github.event.workflow_run.event == 'pull_request' &&
        github.event.workflow_run.pull_requests[0].number != null)
     runs-on: ubuntu-latest
     env:
-      PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.workflow_run.pull_requests[0].number }}
+      PR_NUMBER: >-
+        ${{
+          github.event_name == 'workflow_dispatch' && inputs.pr_number ||
+          github.event_name == 'pull_request_target' && github.event.pull_request.number ||
+          github.event.workflow_run.pull_requests[0].number
+        }}
 
     steps:
       - name: Validate target PR number
@@ -54,7 +75,7 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
 
-      - name: Generate Miyori Bot installation token
+      - name: Generate bot installation token
         id: miyori-token
         uses: actions/create-github-app-token@v3
         with:
@@ -63,7 +84,7 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Verify Miyori identity and current PR state
+      - name: Verify bot identity and current PR state
         id: target
         shell: bash
         env:
@@ -71,7 +92,6 @@ jobs:
           APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
         run: |
           set -euo pipefail
-
           BOT_LOGIN="${APP_SLUG}[bot]"
           ACTUAL_LOGIN="$(gh api "/users/${BOT_LOGIN}" --jq '.login')"
           [[ "$ACTUAL_LOGIN" == "$BOT_LOGIN" ]] || {
@@ -81,15 +101,10 @@ jobs:
 
           PR_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state')"
           PR_HEAD_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
-
           echo "state=$PR_STATE" >> "$GITHUB_OUTPUT"
           echo "head_sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
 
-          if [[ "$PR_STATE" != "open" ]]; then
-            echo "PR #${PR_NUMBER} is ${PR_STATE}; no status card will be published."
-          fi
-
-      - name: Render exact-head unified status card
+      - name: Render current-head status card
         if: steps.target.outputs.state == 'open'
         shell: bash
         env:
@@ -100,7 +115,7 @@ jobs:
             --pr-number "$PR_NUMBER" \
             --output "$RUNNER_TEMP/miyori-status.md"
 
-      - name: Publish or update persistent Miyori status card
+      - name: Publish or update persistent status card
         if: steps.target.outputs.state == 'open'
         shell: bash
         env:
@@ -122,7 +137,7 @@ jobs:
           if (( ${#CARD_IDS[@]} > 0 )); then
             COMMENT_ID="${CARD_IDS[0]}"
             if (( ${#CARD_IDS[@]} > 1 )); then
-              echo "::warning::Multiple Miyori status cards exist on PR #${PR_NUMBER}; updating the oldest discovered card only."
+              echo "::warning::Multiple status cards exist on PR #${PR_NUMBER}; updating the first discovered card only."
             fi
           else
             COMMENT_ID="$(
@@ -134,17 +149,13 @@ jobs:
 
           BODY="$(cat "$RUNNER_TEMP/miyori-status.md")"
           if [[ -n "$COMMENT_ID" ]]; then
-            gh api \
-              --method PATCH \
+            gh api --method PATCH \
               "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
               -f body="$BODY" >/dev/null
-            echo "Updated Miyori status card ${COMMENT_ID} on PR #${PR_NUMBER}."
           else
-            gh api \
-              --method POST \
+            gh api --method POST \
               "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
               -f body="$BODY" >/dev/null
-            echo "Created Miyori status card on PR #${PR_NUMBER}."
           fi
 
       - name: Summary
@@ -152,7 +163,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## Miyori PR status"
+            echo "## PR status"
             echo
             echo "- Target PR: #${PR_NUMBER}"
             echo "- Current head: \`${{ steps.target.outputs.head_sha }}\`"
