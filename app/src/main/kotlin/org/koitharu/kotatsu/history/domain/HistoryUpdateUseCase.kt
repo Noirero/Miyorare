@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -18,7 +19,12 @@ class HistoryUpdateUseCase @Inject constructor(
 	private val historyRepository: HistoryRepository,
 ) {
 
-	suspend operator fun invoke(manga: Manga, readerState: ReaderState, percent: Float) {
+	suspend operator fun invoke(
+		manga: Manga,
+		readerState: ReaderState,
+		percent: Float,
+		space: FavouriteSpace,
+	) {
 		historyRepository.addOrUpdate(
 			manga = manga,
 			chapterId = readerState.chapterId,
@@ -26,6 +32,7 @@ class HistoryUpdateUseCase @Inject constructor(
 			scroll = readerState.scroll,
 			percent = percent,
 			force = false,
+			space = space,
 		)
 	}
 
@@ -33,11 +40,12 @@ class HistoryUpdateUseCase @Inject constructor(
 	fun invokeAsync(
 		manga: Manga,
 		readerState: ReaderState,
-		percent: Float
+		percent: Float,
+		space: FavouriteSpace,
 	) = processLifecycleScope.launch(Dispatchers.Default, CoroutineStart.ATOMIC) {
 		runCatchingCancellable {
 			withContext(NonCancellable) {
-				invoke(manga, readerState, percent)
+				invoke(manga, readerState, percent, space)
 			}
 		}.onFailure {
 			it.printStackTraceDebug()
