@@ -487,6 +487,7 @@ class TsukiPluginRuntime @Inject constructor(
 		testedAt: Long,
 		error: Throwable,
 	): OfficialGlobalDiagnostic {
+		if (error is java.util.concurrent.CancellationException) throw error
 		val status = when (error) {
 			is UntrustedProbeRedirectException -> OfficialGlobalDiagnosticStatus.REDIRECT
 			is CloudFlareProtectedException,
