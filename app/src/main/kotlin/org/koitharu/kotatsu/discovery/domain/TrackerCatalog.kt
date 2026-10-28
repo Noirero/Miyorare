@@ -98,6 +98,31 @@ data class TrackerCatalogSection(
 	val failure: CatalogFailure? = null,
 )
 data class TrackerCatalogHome(val sections: List<TrackerCatalogSection>, val savedAt: Long = 0)
+
+enum class CatalogStatKind {
+	WEIGHTED_SCORE,
+	MEAN_SCORE,
+	COMMUNITY_APPROVAL,
+	RANK,
+	RATING_RANK,
+	POPULARITY_RANK,
+	READERS,
+	MEMBERS,
+	USERS,
+	FAVORITES,
+}
+
+data class TrackerCatalogStat(
+	val kind: CatalogStatKind,
+	val value: Double,
+	val scale: Double? = null,
+) {
+	init {
+		require(value.isFinite() && value >= 0.0)
+		require(scale == null || scale.isFinite() && scale > 0.0)
+	}
+}
+
 data class TrackerCatalogDetails(
 	val item: TrackerCatalogItem,
 	val alternativeTitles: List<String> = emptyList(),
@@ -107,6 +132,15 @@ data class TrackerCatalogDetails(
 	val staff: List<String> = emptyList(),
 	val status: String? = null,
 	val startDate: String? = null,
+	val endDate: String? = null,
+	val chapterCount: Int? = null,
+	val volumeCount: Int? = null,
+	val source: String? = null,
+	val serialization: String? = null,
+	val ageRating: String? = null,
+	/** Provider-native statistics retain their original semantics/scale instead of collapsing to one generic score. */
+	val stats: List<TrackerCatalogStat> = emptyList(),
+	/** Legacy/general-provider fields retained for providers that do not expose [stats] yet. */
 	val rank: Int? = null,
 	val popularity: Int? = null,
 	val recommendations: List<TrackerCatalogItem> = emptyList(),

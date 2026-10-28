@@ -67,8 +67,8 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 
 	override suspend fun details(key: TrackerCatalogKey, allowAdult: Boolean): TrackerCatalogDetails {
 		require(key.service == catalogService)
-		val fields = "$MAL_CATALOG_FIELDS,alternative_titles,synopsis,rank,popularity,num_list_users,status,start_date,genres," +
-			"authors{node{first_name,last_name},role}," +
+		val fields = "$MAL_CATALOG_FIELDS,alternative_titles,synopsis,rank,popularity,num_list_users,status,start_date,end_date,num_chapters,num_volumes,genres," +
+			"authors{node{first_name,last_name},role},serialization{name}," +
 			"recommendations{node{id,title,media_type,nsfw,mean,main_picture}}," +
 			"related_manga{node{id,title,media_type,nsfw,main_picture},relation_type,relation_type_formatted}," +
 			"related_anime{node{id,title,nsfw,main_picture},relation_type,relation_type_formatted}"
@@ -93,6 +93,11 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 			root.array("recommendations")?.let { rows -> catalogRows(rows) { row -> row.obj("node")?.let { parseMALCard(it, allowAdult) } } }.orEmpty()
 		} catch (_: CatalogException) { partial = true; emptyList() }
 		val relatedWorks = try { malCatalogRelatedWorks(root, allowAdult) } catch (_: Exception) { partial = true; emptyList() }
+		val rank = root.catalogInt("rank")
+		val popularity = root.catalogInt("popularity")
+		val serialization = root.array("serialization").orEmpty().mapNotNull { row ->
+			(row as? JsonObject)?.obj("node")?.text("name")
+		}.distinct().joinToString(", ").takeIf(String::isNotBlank)
 		return TrackerCatalogDetails(
 			item = item,
 			alternativeTitles = alternatives,
@@ -101,8 +106,18 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 			staff = staffPeople.map { (listOf(it.name) + it.roles).joinToString(" · ") },
 			status = root.text("status"),
 			startDate = root.text("start_date"),
-			rank = root.catalogInt("rank"),
-			popularity = root.catalogInt("popularity"),
+			endDate = root.text("end_date"),
+			chapterCount = root.catalogInt("num_chapters")?.takeIf { it > 0 },
+			volumeCount = root.catalogInt("num_volumes")?.takeIf { it > 0 },
+			serialization = serialization,
+			stats = buildList {
+				root.catalogDouble("mean")?.takeIf { it in 0.0..10.0 }?.let { add(TrackerCatalogStat(CatalogStatKind.MEAN_SCORE, it, 10.0)) }
+				rank?.takeIf { it > 0 }?.let { add(TrackerCatalogStat(CatalogStatKind.RANK, it.toDouble())) }
+				popularity?.takeIf { it > 0 }?.let { add(TrackerCatalogStat(CatalogStatKind.POPULARITY_RANK, it.toDouble())) }
+				root.catalogInt("num_list_users")?.takeIf { it > 0 }?.let { add(TrackerCatalogStat(CatalogStatKind.MEMBERS, it.toDouble())) }
+			},
+			rank = rank,
+			popularity = popularity,
 			recommendations = recommendations,
 			partial = partial,
 			staffPeople = staffPeople,
