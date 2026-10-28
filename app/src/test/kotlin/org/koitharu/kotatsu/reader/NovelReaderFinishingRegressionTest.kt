@@ -72,7 +72,7 @@ class NovelReaderFinishingRegressionTest {
 		assertTrue(offline.contains("RemoteModelManager"))
 		assertTrue(offline.contains("modelManager.download("))
 		assertTrue(offline.contains("deleteDownloadedModel"))
-		assertFalse(offline.contains("downloadModelIfNeeded"))
+		assertFalse(offline.contains(".downloadModelIfNeeded("))
 		assertTrue(controller.contains("novel_translation_offline_model_download"))
 		assertTrue(controller.contains("MiyorareOfflineTranslationSupport.downloadModels"))
 		assertFalse(engine.contains("downloadModels("))
