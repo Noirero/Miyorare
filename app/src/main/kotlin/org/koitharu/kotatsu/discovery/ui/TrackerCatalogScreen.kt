@@ -127,7 +127,7 @@ fun TrackerCatalogScreen(
 				}
 				if (state.resolution.failedSources) item { Text(stringResource(R.string.hub_source_partial)) }
 				if (!state.resolution.searching && state.resolution.candidates.isEmpty()) item {
-					Text(stringResource(R.string.hub_source_empty), Modifier.padding(24.dp).testTag("catalog_source_empty"))
+					Text(stringResource(R.string.hub_source_empty), Modifier.testTag("catalog_source_empty"))
 				}
 				items(state.resolution.candidates, key = { "${it.source.name}_${it.id}" }) { manga ->
 					OutlinedCard(
@@ -158,7 +158,7 @@ fun TrackerCatalogScreen(
 	CatalogTrackingEditorSheet(
 		account = account,
 		editor = trackingEditor,
-		onDismissRequest = onCloseTrackingEditor,
+		onDismiss = onCloseTrackingEditor,
 		onSave = onSaveTracking,
 		onReconnect = onLogin,
 		onOpenProvider = onProviderPage,
