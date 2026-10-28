@@ -139,12 +139,23 @@ class GitHubClient:
         return list(payload.get("artifacts", []))
 
     def workflow_names(self) -> set[str]:
-        payload = self.get(f"/repos/{self.repository}/actions/workflows?per_page=100")
-        return {
-            str(item.get("name") or "")
-            for item in payload.get("workflows", [])
-            if item.get("name")
-        }
+        names: set[str] = set()
+        page = 1
+        while True:
+            payload = self.get(
+                f"/repos/{self.repository}/actions/workflows?per_page=100&page={page}"
+            )
+            workflows = list(payload.get("workflows", []))
+            names.update(
+                str(item.get("name") or "")
+                for item in workflows
+                if item.get("name")
+            )
+            total_count = int(payload.get("total_count") or 0)
+            if not workflows or len(workflows) < 100 or (total_count and page * 100 >= total_count):
+                break
+            page += 1
+        return names
 
 
 def latest_runs_by_name(runs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
