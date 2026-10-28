@@ -16,10 +16,10 @@ import java.util.concurrent.TimeUnit
 /**
  * Narrow network resilience for the four ordinary sources in Miyorare Global.
  *
- * This deliberately lives after [TsukiPluginRuntime.RoutingInterceptor]: parser headers/interception
- * are already applied, while Miyorare's normal Cloudflare/rate-limit interceptors remain downstream.
- * Only idempotent GET/HEAD requests can be replayed. No arbitrary redirect is ever promoted as a
- * source domain; automatic failover is limited to ConfigKey.Domain.presetValues.
+ * This runs after Tsuki routing has applied parser headers/interception, while Miyorare's normal
+ * Cloudflare/rate-limit/base interceptors remain downstream. Only idempotent GET/HEAD requests can
+ * be replayed. No arbitrary redirect is ever promoted as a source domain; automatic failover is
+ * limited to ConfigKey.Domain.presetValues and a no-cookie redirect preflight.
  */
 internal class OfficialGlobalSourceNetworkPolicyInterceptor(
 	private val runtime: TsukiPluginRuntime,
@@ -87,7 +87,7 @@ internal class OfficialGlobalSourceNetworkPolicyInterceptor(
 		if (!canFailover(parser, config, request)) return lastResponse
 		lastResponse.close()
 		return tryTrustedMirrors(chain, parser, config, request)
-			?: chain.proceed(request)
+			?: throw IOException("All trusted mirrors failed for ${parser.source.name}")
 	}
 
 	private fun failoverTrustedMirrorAfterFailure(
@@ -117,15 +117,17 @@ internal class OfficialGlobalSourceNetworkPolicyInterceptor(
 		request: Request,
 	): Response? {
 		val active = parser.domain
-		for (candidate in parser.configKeyDomain.presetValues) {
-			if (candidate.equals(active, ignoreCase = true)) continue
+		val candidates = parser.configKeyDomain.presetValues.filterNot { it.equals(active, ignoreCase = true) }
+		for ((index, candidate) in candidates.withIndex()) {
+			if (!runtime.isTrustedMirrorRedirectSafe(candidate)) continue
 			val routed = rewriteTrustedDomain(request, candidate) ?: continue
 			try {
 				val response = chain.proceed(routed)
-				if (!response.isTransientFailure()) {
+				if (response.code in 200..399) {
 					config.setDomain(parser.configKeyDomain, candidate)
 					return response
 				}
+				if (index == candidates.lastIndex) return response
 				response.close()
 			} catch (_: TooManyRequestExceptions) {
 				// Try only the next source-declared trusted mirror.
