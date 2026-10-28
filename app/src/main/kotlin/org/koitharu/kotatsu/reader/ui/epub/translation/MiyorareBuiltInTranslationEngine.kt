@@ -33,9 +33,10 @@ import kotlin.coroutines.resumeWithException
 /**
  * Miyorare's Built-in translation backend.
  *
- * Translation itself is provided by Android's system/OEM TranslationService. Miyorare does not
- * bundle a translation model or translation runtime. Source-language auto detection uses the small
- * Google Play services Language ID module and is skipped when the source language is explicit.
+ * Explicitly downloaded offline models are preferred when they are available. Otherwise Android's
+ * system/OEM TranslationService is used when supported by the device. Offline language models are
+ * never bundled in Miyorare and this translate path never starts a model download.
+ * Source-language auto detection uses the small Google Play services Language ID module.
  */
 class MiyorareBuiltInTranslationEngine(
 	context: Context,
@@ -52,16 +53,58 @@ class MiyorareBuiltInTranslationEngine(
 
 	override suspend fun translate(request: NovelTranslationRequest): String {
 		if (request.text.isBlank()) return request.text
-		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-			throw NovelTranslationException.Configuration(
-				"Built-in translation requires Android 12 or newer",
-			)
-		}
 		val target = normalizeLanguage(request.targetLanguage, "target")
 		val source = resolveSourceLanguage(request)
 		if (sameLanguage(source, target)) return request.text
-		return AndroidSystemTranslationRuntime.forApplication(applicationContext)
-			.translate(source, target, request.text)
+
+		val offlineState = runCatching {
+			MiyorareOfflineTranslationSupport.modelState(source, target)
+		}.getOrNull()
+		var offlineFailure: NovelTranslationException? = null
+		if (offlineState == MiyorareOfflineModelState.Ready) {
+			try {
+				return MiyorareOfflineTranslationSupport.translateInstalled(source, target, request.text)
+			} catch (error: CancellationException) {
+				throw error
+			} catch (error: NovelTranslationException) {
+				offlineFailure = error
+			} catch (error: Exception) {
+				offlineFailure = NovelTranslationException.InvalidResponse(
+					"Offline translation failed: ${error.message.orEmpty()}",
+				)
+			}
+		}
+
+		var systemFailure: NovelTranslationException? = null
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+			try {
+				return AndroidSystemTranslationRuntime.forApplication(applicationContext)
+					.translate(source, target, request.text)
+			} catch (error: CancellationException) {
+				throw error
+			} catch (error: NovelTranslationException) {
+				systemFailure = error
+			} catch (error: Exception) {
+				systemFailure = NovelTranslationException.InvalidResponse(
+					"Android system translation failed: ${error.message.orEmpty()}",
+				)
+			}
+		}
+
+		offlineFailure?.let { throw it }
+		when (offlineState) {
+			is MiyorareOfflineModelState.Missing -> throw NovelTranslationException.Configuration(
+				"Built-in translation could not use the system service and the offline language model is not downloaded. " +
+					"Open Translation and tap Download offline language model.",
+			)
+			is MiyorareOfflineModelState.Unsupported -> systemFailure?.let { throw it }
+			MiyorareOfflineModelState.SourceLanguageRequired -> systemFailure?.let { throw it }
+			MiyorareOfflineModelState.Ready -> Unit
+			null -> systemFailure?.let { throw it }
+		}
+		throw NovelTranslationException.Configuration(
+			"Built-in translation is unavailable on this device. Download an offline language model in Translation settings.",
+		)
 	}
 
 	private suspend fun resolveSourceLanguage(request: NovelTranslationRequest): String {
