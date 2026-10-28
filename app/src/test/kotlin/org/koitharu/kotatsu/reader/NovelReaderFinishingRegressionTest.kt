@@ -59,53 +59,22 @@ class NovelReaderFinishingRegressionTest {
 	}
 
 	@Test
-	fun `novel offline language models are explicit user downloads`() {
+	fun `novel translation base app ships only online and remote ai services`() {
 		val gradle = projectFile("app/build.gradle").readText().lowercase()
-		val engine = source("org/koitharu/kotatsu/reader/ui/epub/translation/MiyorareBuiltInTranslationEngine.kt")
-		val offline = source("org/koitharu/kotatsu/reader/ui/epub/translation/MiyorareOfflineTranslationSupport.kt")
-		val controller = source("org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationDialogController.kt")
-		val reader = source("org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt")
-
-		assertTrue(gradle.contains("com.google.mlkit:translate:17.0.3"))
-		assertTrue(gradle.contains("com.google.android.gms:play-services-mlkit-language-id:17.0.0"))
-		assertFalse(gradle.contains("tensorflow-lite-task-text"))
-		assertTrue(offline.contains("RemoteModelManager"))
-		assertTrue(offline.contains("modelManager.download("))
-		assertTrue(offline.contains("deleteDownloadedModel"))
-		assertTrue(offline.contains("KEY_EXPLICIT_MODELS"))
-		assertTrue(offline.contains("markExplicitModels"))
-		assertTrue(offline.contains("shouldUseDownloadedModel"))
-		assertFalse(offline.contains(".downloadModelIfNeeded("))
-		assertTrue(controller.contains("novel_translation_offline_model_download"))
-		assertTrue(controller.contains("MiyorareOfflineTranslationSupport.downloadModels"))
-		assertFalse(engine.contains("downloadModels("))
-		assertFalse(reader.contains("downloadModels("))
-	}
-
-	@Test
-	fun `built in offline and system results keep separate semantic identity`() {
 		val settings = source("org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationSettings.kt")
-		val engine = source("org/koitharu/kotatsu/reader/ui/epub/translation/MiyorareBuiltInTranslationEngine.kt")
-
-		assertTrue(settings.contains("BUILT_IN_RUNTIME_ID"))
-		assertTrue(settings.contains("BUILT_IN_OFFLINE_RUNTIME_ID"))
-		assertTrue(settings.contains("MiyorareOfflineTranslationSupport.shouldUseDownloadedModel"))
-		assertTrue(engine.contains("GOOGLE_TRANSLATE_RESULT_ATTRIBUTION"))
-		assertTrue(engine.contains("returntranslated"))
-	}
-
-	@Test
-	fun `built in translation keeps system support and has no silent web fallback`() {
+		val engine = source("org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationEngine.kt")
 		val controller = source("org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationDialogController.kt")
-		val engine = source("org/koitharu/kotatsu/reader/ui/epub/translation/MiyorareBuiltInTranslationEngine.kt")
-		val layout = projectFile("app/src/main/res/layout/fragment_reader_epub.xml").readText()
-		val strings = projectFile("app/src/main/res/values/strings_novel_translation_hub.xml").readText()
 
-		assertFalse(controller.contains("translate.google.com"))
-		assertFalse(layout.contains("BuiltInTranslationAttributionView"))
-		assertTrue(strings.contains("powered by Google Translate"))
-		assertTrue(controller.contains("MiyorareBuiltInTranslationSupport.settingsPendingIntent"))
-		assertFalse(engine.contains("MiyorareOnlineTranslationEngine"))
+		assertFalse(gradle.contains("com.google.mlkit:translate"))
+		assertFalse(gradle.contains("play-services-mlkit-language-id"))
+		assertFalse(settings.contains("NovelAiProvider.BUILT_IN"))
+		assertFalse(settings.contains("NovelAiProtocol.ON_DEVICE"))
+		assertTrue(settings.contains("legacyBuiltInProviderMigration"))
+		assertFalse(engine.contains("MiyorareBuiltInTranslationEngine"))
+		assertFalse(controller.contains("MiyorareOfflineTranslationSupport"))
+		assertFalse(controller.contains("MiyorareBuiltInTranslationSupport"))
+		assertTrue(controller.contains("NovelTranslationService.ONLINE"))
+		assertTrue(controller.contains("NovelTranslationService.AI"))
 	}
 
 	private fun source(relativePath: String): String {
