@@ -30,13 +30,14 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+internal const val GOOGLE_TRANSLATE_RESULT_ATTRIBUTION = "Powered by Google Translate"
+
 /**
  * Miyorare's Built-in translation backend.
  *
- * Explicitly downloaded offline models are preferred when they are available. Otherwise Android's
- * system/OEM TranslationService is used when supported by the device. Offline language models are
- * never bundled in Miyorare and this translate path never starts a model download.
- * Source-language auto detection uses the small Google Play services Language ID module.
+ * An explicitly downloaded offline model and Android's system/OEM TranslationService are separate
+ * runtime identities. A translation operation picks exactly one path and never silently downloads a
+ * model or switches providers after work begins.
  */
 class MiyorareBuiltInTranslationEngine(
 	context: Context,
@@ -57,54 +58,30 @@ class MiyorareBuiltInTranslationEngine(
 		val source = resolveSourceLanguage(request)
 		if (sameLanguage(source, target)) return request.text
 
-		val offlineState = runCatching {
-			MiyorareOfflineTranslationSupport.modelState(source, target)
-		}.getOrNull()
-		var offlineFailure: NovelTranslationException? = null
-		if (offlineState == MiyorareOfflineModelState.Ready) {
-			try {
-				return MiyorareOfflineTranslationSupport.translateInstalled(source, target, request.text)
-			} catch (error: CancellationException) {
-				throw error
-			} catch (error: NovelTranslationException) {
-				offlineFailure = error
-			} catch (error: Exception) {
-				offlineFailure = NovelTranslationException.InvalidResponse(
-					"Offline translation failed: ${error.message.orEmpty()}",
-				)
-			}
-		}
-
-		var systemFailure: NovelTranslationException? = null
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-			try {
-				return AndroidSystemTranslationRuntime.forApplication(applicationContext)
-					.translate(source, target, request.text)
-			} catch (error: CancellationException) {
-				throw error
-			} catch (error: NovelTranslationException) {
-				systemFailure = error
-			} catch (error: Exception) {
-				systemFailure = NovelTranslationException.InvalidResponse(
-					"Android system translation failed: ${error.message.orEmpty()}",
-				)
-			}
-		}
-
-		offlineFailure?.let { throw it }
-		when (offlineState) {
-			is MiyorareOfflineModelState.Missing -> throw NovelTranslationException.Configuration(
-				"Built-in translation could not use the system service and the offline language model is not downloaded. " +
-					"Open Translation and tap Download offline language model.",
+		val useOfflineModel = request.sourceLanguage != NovelTranslationSettings.LANGUAGE_AUTO &&
+			MiyorareOfflineTranslationSupport.shouldUseDownloadedModel(
+				applicationContext,
+				request.sourceLanguage,
+				request.targetLanguage,
 			)
-			is MiyorareOfflineModelState.Unsupported -> systemFailure?.let { throw it }
-			MiyorareOfflineModelState.SourceLanguageRequired -> systemFailure?.let { throw it }
-			MiyorareOfflineModelState.Ready -> Unit
-			null -> systemFailure?.let { throw it }
+		if (useOfflineModel) {
+			val translated = MiyorareOfflineTranslationSupport.translateInstalled(
+				applicationContext,
+				source,
+				target,
+				request.text,
+			)
+			return "$translated\n\n$GOOGLE_TRANSLATE_RESULT_ATTRIBUTION"
 		}
-		throw NovelTranslationException.Configuration(
-			"Built-in translation is unavailable on this device. Download an offline language model in Translation settings.",
-		)
+
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+			throw NovelTranslationException.Configuration(
+				"Built-in system translation is unavailable on this device. " +
+					"Choose a source language and download an offline language model in Translation settings.",
+			)
+		}
+		return AndroidSystemTranslationRuntime.forApplication(applicationContext)
+			.translate(source, target, request.text)
 	}
 
 	private suspend fun resolveSourceLanguage(request: NovelTranslationRequest): String {
