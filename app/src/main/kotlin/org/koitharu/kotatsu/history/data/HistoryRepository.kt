@@ -120,17 +120,28 @@ class HistoryRepository @Inject constructor(
 		}
 	}
 
-	suspend fun addOrUpdate(manga: Manga, chapterId: Long, page: Int, scroll: Int, percent: Float, force: Boolean) {
+	suspend fun addOrUpdate(
+		manga: Manga,
+		chapterId: Long,
+		page: Int,
+		scroll: Int,
+		percent: Float,
+		force: Boolean,
+		space: FavouriteSpace? = null,
+	) {
 		if (!force && shouldSkip(manga)) return
 		assert(manga.chapters != null)
 		db.withTransaction {
-			addOrUpdateLocalLocked(manga, chapterId, page, scroll, percent)
+			val resolvedSpace = space
+				?: db.getHistoryDao().findIncludingDeleted(manga.id)?.let { FavouriteSpace.fromDb(it.space) }
+				?: FavouriteSpace.NORMAL
+			addOrUpdateLocalLocked(manga, chapterId, page, scroll, percent, resolvedSpace)
 		}
 		// Source checks and tracker requests can involve network I/O. Keeping them outside Room's
 		// transaction prevents a slow source/tracker from holding the database writer and stalling UI.
 		newChaptersUseCaseProvider.get()(manga, chapterId)
 		if (!isPrivateOnly(manga.id)) {
-			scrobblers.forEach { it.tryScrobble(manga, chapterId) }
+			scrobbblers.forEach { it.tryScrobble(manga, chapterId) }
 		}
 	}
 
@@ -150,6 +161,7 @@ class HistoryRepository @Inject constructor(
 				page = 0,
 				scroll = 0,
 				percent = (targetIndex + 1) / chapters.size.toFloat(),
+				space = history?.let { FavouriteSpace.fromDb(it.space) } ?: FavouriteSpace.NORMAL,
 			)
 			true
 		}
@@ -166,6 +178,7 @@ class HistoryRepository @Inject constructor(
 		page: Int,
 		scroll: Int,
 		percent: Float,
+		space: FavouriteSpace,
 	) {
 		mangaRepository.storeManga(manga.copy(chapters = null), replaceExisting = true)
 		val branch = manga.chapters?.findById(chapterId)?.branch
@@ -180,6 +193,7 @@ class HistoryRepository @Inject constructor(
 				percent = percent,
 				chaptersCount = manga.chapters?.count { it.branch == branch } ?: 0,
 				deletedAt = 0L,
+				space = space.dbValue,
 			),
 		)
 		val unreadLogs = db.getTrackLogsDao().findUnreadByManga(manga.id)
