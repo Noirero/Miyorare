@@ -30,12 +30,14 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+internal const val GOOGLE_TRANSLATE_RESULT_ATTRIBUTION = "Powered by Google Translate"
+
 /**
  * Miyorare's Built-in translation backend.
  *
- * Translation itself is provided by Android's system/OEM TranslationService. Miyorare does not
- * bundle a translation model or translation runtime. Source-language auto detection uses the small
- * Google Play services Language ID module and is skipped when the source language is explicit.
+ * An explicitly downloaded offline model and Android's system/OEM TranslationService are separate
+ * runtime identities. A translation operation picks exactly one path and never silently downloads a
+ * model or switches providers after work begins.
  */
 class MiyorareBuiltInTranslationEngine(
 	context: Context,
@@ -52,14 +54,32 @@ class MiyorareBuiltInTranslationEngine(
 
 	override suspend fun translate(request: NovelTranslationRequest): String {
 		if (request.text.isBlank()) return request.text
-		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-			throw NovelTranslationException.Configuration(
-				"Built-in translation requires Android 12 or newer",
-			)
-		}
 		val target = normalizeLanguage(request.targetLanguage, "target")
 		val source = resolveSourceLanguage(request)
 		if (sameLanguage(source, target)) return request.text
+
+		val useOfflineModel = request.sourceLanguage != NovelTranslationSettings.LANGUAGE_AUTO &&
+			MiyorareOfflineTranslationSupport.shouldUseDownloadedModel(
+				applicationContext,
+				request.sourceLanguage,
+				request.targetLanguage,
+			)
+		if (useOfflineModel) {
+			val translated = MiyorareOfflineTranslationSupport.translateInstalled(
+				applicationContext,
+				source,
+				target,
+				request.text,
+			)
+			return translated
+		}
+
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+			throw NovelTranslationException.Configuration(
+				"Built-in system translation is unavailable on this device. " +
+					"Choose a source language and download an offline language model in Translation settings.",
+			)
+		}
 		return AndroidSystemTranslationRuntime.forApplication(applicationContext)
 			.translate(source, target, request.text)
 	}
