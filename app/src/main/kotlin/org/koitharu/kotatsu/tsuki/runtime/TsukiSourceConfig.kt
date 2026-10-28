@@ -82,7 +82,6 @@ internal class TsukiSourceConfig(
 			stage = stage,
 			httpStatus = httpStatus,
 			testedAt = testedAt,
-			message = prefs.getString(KEY_DIAGNOSTIC_MESSAGE, null),
 		)
 	}
 
@@ -93,11 +92,6 @@ internal class TsukiSourceConfig(
 			putString(KEY_DIAGNOSTIC_STAGE, value.stage.name)
 			putInt(KEY_DIAGNOSTIC_HTTP_STATUS, value.httpStatus ?: NO_HTTP_STATUS)
 			putLong(KEY_DIAGNOSTIC_TESTED_AT, value.testedAt)
-			if (value.message == null) {
-				remove(KEY_DIAGNOSTIC_MESSAGE)
-			} else {
-				putString(KEY_DIAGNOSTIC_MESSAGE, value.message)
-			}
 		}
 	}
 
@@ -108,7 +102,6 @@ internal class TsukiSourceConfig(
 			remove(KEY_DIAGNOSTIC_STAGE)
 			remove(KEY_DIAGNOSTIC_HTTP_STATUS)
 			remove(KEY_DIAGNOSTIC_TESTED_AT)
-			remove(KEY_DIAGNOSTIC_MESSAGE)
 		}
 	}
 
@@ -132,7 +125,6 @@ internal class TsukiSourceConfig(
 		const val KEY_DIAGNOSTIC_STAGE = "miyorare_global_diagnostic_stage"
 		const val KEY_DIAGNOSTIC_HTTP_STATUS = "miyorare_global_diagnostic_http_status"
 		const val KEY_DIAGNOSTIC_TESTED_AT = "miyorare_global_diagnostic_tested_at"
-		const val KEY_DIAGNOSTIC_MESSAGE = "miyorare_global_diagnostic_message"
 		const val NO_HTTP_STATUS = -1
 
 		fun sanitize(value: String): String = value.replace(Regex("[^A-Za-z0-9._-]"), "_")
