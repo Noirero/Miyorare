@@ -8,7 +8,12 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import org.jsoup.HttpStatusException
+import org.koitharu.kotatsu.core.exceptions.CloudFlareBlockedException
+import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
 import org.koitharu.kotatsu.core.network.BaseHttpClient
+import org.koitharu.kotatsu.parsers.exception.TooManyRequestExceptions
 import org.koitharu.kotatsu.tsuki.TsukiPluginClassLoader
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
 import org.koitharu.kotatsu.tsuki.TsukiPluginValidator
@@ -18,7 +23,9 @@ import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
 import tsuki.MangaParser
+import tsuki.model.MangaListFilter
 import tsuki.model.MangaSource
+import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.net.IDN
@@ -57,6 +64,14 @@ class TsukiPluginRuntime @Inject constructor(
 		val context: MiyorareTsukiLoaderContext,
 		val httpClient: OkHttpClient,
 	)
+
+	private data class PreflightResult(
+		val httpStatus: Int?,
+		val failure: OfficialGlobalDiagnostic? = null,
+	)
+
+	private class UntrustedProbeRedirectException(target: String) :
+		IOException("Probe redirected to untrusted host: $target")
 
 	private val lock = Any()
 	private val loadedPlugins = object : LinkedHashMap<String, LoadedPlugin>(MAX_LOADED_PLUGINS + 1, 0.75f, true) {}
@@ -190,6 +205,316 @@ class TsukiPluginRuntime @Inject constructor(
 			.build()
 	}
 
+	fun getOfficialGlobalSettings(source: TsukiMangaSource): OfficialGlobalSourceSettingsSnapshot? {
+		if (!OfficialGlobalSourceResilience.supports(source)) return null
+		val handle = getHandle(source)
+		val config = handle.parser.config as? TsukiSourceConfig ?: return null
+		val presets = handle.parser.configKeyDomain.presetValues.toList()
+		val active = handle.parser.domain
+		return OfficialGlobalSourceSettingsSnapshot(
+			sourceTitle = handle.source.displayName,
+			packName = handle.source.plugin.displayName,
+			packVersion = handle.source.plugin.version.takeIf { it.isNotBlank() && it != "unknown" },
+			providerName = handle.source.plugin.provider.wireName,
+			packLastModified = handle.source.plugin.lastModified.takeIf { it > 0L },
+			activeDomain = active,
+			presetDomains = presets,
+			domainMode = OfficialGlobalSourceResilience.domainMode(active, presets),
+			autoMirrorEnabled = config.autoMirrorEnabled,
+			requestProfile = config.requestProfile,
+			diagnostic = config.readDiagnostic(),
+		)
+	}
+
+	fun setOfficialGlobalAutoMirror(source: TsukiMangaSource, enabled: Boolean) {
+		val handle = requireOfficialGlobalHandle(source)
+		(handle.parser.config as TsukiSourceConfig).autoMirrorEnabled = enabled
+	}
+
+	fun setOfficialGlobalRequestProfile(source: TsukiMangaSource, profile: OfficialGlobalRequestProfile) {
+		val handle = requireOfficialGlobalHandle(source)
+		(handle.parser.config as TsukiSourceConfig).requestProfile = profile
+	}
+
+	fun resetOfficialGlobalDomain(source: TsukiMangaSource) {
+		val handle = requireOfficialGlobalHandle(source)
+		(handle.parser.config as TsukiSourceConfig).resetDomain(handle.parser.configKeyDomain)
+	}
+
+	fun clearOfficialGlobalDiagnostic(source: TsukiMangaSource) {
+		val handle = requireOfficialGlobalHandle(source)
+		(handle.parser.config as TsukiSourceConfig).clearDiagnostic()
+	}
+
+	suspend fun testOfficialGlobalAddress(source: TsukiMangaSource): OfficialGlobalDiagnostic {
+		val handle = requireOfficialGlobalHandle(source)
+		val domain = handle.parser.domain
+		val testedAt = System.currentTimeMillis()
+		val preflight = preflightOfficialGlobalDomain(handle.source, domain, useCookies = true, testedAt = testedAt)
+		preflight.failure?.let { return it }
+		val status = if (preflight.httpStatus != null && preflight.httpStatus >= 400) {
+			OfficialGlobalDiagnosticStatus.HTTP_ERROR
+		} else {
+			OfficialGlobalDiagnosticStatus.HEALTHY
+		}
+		return OfficialGlobalDiagnostic(
+			domain = domain,
+			status = status,
+			stage = OfficialGlobalDiagnosticStage.NONE,
+			httpStatus = preflight.httpStatus,
+			testedAt = testedAt,
+		)
+	}
+
+	suspend fun validateAndApplyOfficialGlobalTrustedDomain(
+		source: TsukiMangaSource,
+		domain: String,
+	): OfficialGlobalDiagnostic {
+		val handle = requireOfficialGlobalHandle(source)
+		val trusted = handle.parser.configKeyDomain.presetValues.firstOrNull {
+			it.equals(domain, ignoreCase = true)
+		} ?: return OfficialGlobalDiagnostic(
+			domain = domain,
+			status = OfficialGlobalDiagnosticStatus.SOURCE_UNAVAILABLE,
+			message = "Domain is not declared by this source",
+		)
+		val result = probeOfficialGlobalDomain(handle.source, trusted, useCookies = true)
+		if (result.isHealthy) {
+			val config = handle.parser.config as TsukiSourceConfig
+			config.setDomain(handle.parser.configKeyDomain, trusted)
+			config.writeDiagnostic(result)
+		}
+		return result
+	}
+
+	suspend fun validateAndApplyOfficialGlobalCustomDomain(
+		source: TsukiMangaSource,
+		input: String,
+	): OfficialGlobalDiagnostic {
+		val normalized = OfficialGlobalSourceResilience.normalizeDomainInput(input)
+			?: return OfficialGlobalDiagnostic(
+				domain = input.trim(),
+				status = OfficialGlobalDiagnosticStatus.INVALID_URL,
+				message = "Use a bare host or an https URL without a path, query or credentials",
+			)
+		val handle = requireOfficialGlobalHandle(source)
+		// Candidate domains intentionally receive no existing cookies/session. This prevents an
+		// untrusted user-entered host from inheriting source credentials before compatibility is proven.
+		val result = probeOfficialGlobalDomain(handle.source, normalized, useCookies = false)
+		if (result.isHealthy) {
+			val config = handle.parser.config as TsukiSourceConfig
+			config.setDomain(handle.parser.configKeyDomain, normalized)
+			config.writeDiagnostic(result)
+		}
+		return result
+	}
+
+	suspend fun testOfficialGlobalSource(source: TsukiMangaSource): OfficialGlobalDiagnostic {
+		val handle = requireOfficialGlobalHandle(source)
+		val config = handle.parser.config as TsukiSourceConfig
+		val result = probeOfficialGlobalDomain(handle.source, handle.parser.domain, useCookies = true)
+		config.writeDiagnostic(result)
+		return result
+	}
+
+	private fun requireOfficialGlobalHandle(source: TsukiMangaSource): ParserHandle {
+		require(OfficialGlobalSourceResilience.supports(source)) {
+			"Source ${source.descriptor.name} does not use Miyorare Global resilience"
+		}
+		val handle = getHandle(source)
+		require(handle.parser.config is TsukiSourceConfig) { "Unexpected Tsuki config implementation" }
+		return handle
+	}
+
+	private suspend fun probeOfficialGlobalDomain(
+		source: TsukiMangaSource,
+		domain: String,
+		useCookies: Boolean,
+	): OfficialGlobalDiagnostic {
+		val startedAt = System.currentTimeMillis()
+		val preflight = preflightOfficialGlobalDomain(source, domain, useCookies, startedAt)
+		preflight.failure?.let { return it }
+		val baseHttpStatus = preflight.httpStatus?.takeIf { it in 200..399 }
+		var stage = OfficialGlobalDiagnosticStage.CATALOGUE
+		return try {
+			val parser = createOfficialGlobalProbeParser(source, domain, useCookies)
+			val order = parser.availableSortOrders.firstOrNull()
+				?: return parserMismatch(domain, stage, baseHttpStatus, startedAt, "No catalogue sort order")
+			val list = parser.getList(0, order, MangaListFilter.EMPTY)
+			val seed = list.firstOrNull()
+				?: return parserMismatch(domain, stage, baseHttpStatus, startedAt, "Catalogue returned no items")
+
+			stage = OfficialGlobalDiagnosticStage.DETAILS
+			val details = parser.getDetails(seed)
+			val chapter = details.chapters?.firstOrNull()
+				?: return parserMismatch(domain, stage, baseHttpStatus, startedAt, "Details returned no chapters")
+
+			stage = OfficialGlobalDiagnosticStage.CHAPTERS
+			if (chapter.url.isBlank()) {
+				return parserMismatch(domain, stage, baseHttpStatus, startedAt, "Chapter URL is empty")
+			}
+
+			stage = OfficialGlobalDiagnosticStage.READER
+			val pages = parser.getPages(chapter)
+			if (pages.isEmpty()) {
+				return parserMismatch(domain, stage, baseHttpStatus, startedAt, "Reader returned no pages")
+			}
+			OfficialGlobalDiagnostic(
+				domain = domain,
+				status = OfficialGlobalDiagnosticStatus.HEALTHY,
+				stage = OfficialGlobalDiagnosticStage.READER,
+				httpStatus = baseHttpStatus,
+				testedAt = startedAt,
+			)
+		} catch (e: InvocationTargetException) {
+			classifyProbeFailure(domain, stage, baseHttpStatus, startedAt, e.targetException)
+		} catch (e: Throwable) {
+			classifyProbeFailure(domain, stage, baseHttpStatus, startedAt, e)
+		}
+	}
+
+	private fun preflightOfficialGlobalDomain(
+		source: TsukiMangaSource,
+		domain: String,
+		useCookies: Boolean,
+		testedAt: Long,
+	): PreflightResult {
+		val root = runCatching { "https://$domain/".toHttpUrl() }.getOrElse {
+			return PreflightResult(
+				httpStatus = null,
+				failure = OfficialGlobalDiagnostic(
+					domain = domain,
+					status = OfficialGlobalDiagnosticStatus.INVALID_URL,
+					testedAt = testedAt,
+				),
+			)
+		}
+		val client = baseHttpClient.newBuilder()
+			.cookieJar(if (useCookies) cookieJar else CookieJar.NO_COOKIES)
+			.followRedirects(false)
+			.followSslRedirects(false)
+			.build()
+		return try {
+			client.newCall(
+				Request.Builder()
+					.url(root)
+					.tag(org.koitharu.kotatsu.parsers.model.MangaSource::class.java, source)
+					.get()
+					.build(),
+			).execute().use { response ->
+				if (response.code in 300..399) {
+					val target = response.header("Location")?.let(root::resolve)
+					if (target != null && (!target.host.equals(root.host, ignoreCase = true) || target.port != root.port)) {
+						return PreflightResult(
+							httpStatus = response.code,
+							failure = OfficialGlobalDiagnostic(
+								domain = domain,
+								status = OfficialGlobalDiagnosticStatus.REDIRECT,
+								httpStatus = response.code,
+								testedAt = testedAt,
+								message = "Redirects to a different host",
+							),
+						)
+					}
+				}
+				PreflightResult(httpStatus = response.code)
+			}
+		} catch (e: Throwable) {
+			PreflightResult(
+				httpStatus = null,
+				failure = classifyProbeFailure(
+					domain = domain,
+					stage = OfficialGlobalDiagnosticStage.NONE,
+					httpStatus = null,
+					testedAt = testedAt,
+					error = e,
+				),
+			)
+		}
+	}
+
+	private fun createOfficialGlobalProbeParser(
+		source: TsukiMangaSource,
+		domain: String,
+		useCookies: Boolean,
+	): MangaParser {
+		val loaded = loadPlugin(source.plugin)
+		val rawSource = loaded.rawSources[source.descriptor.name]
+			?: error("Tsuki plugin ${source.plugin.displayName} has no source ${source.descriptor.name}")
+		val probeRouting = ProbeRoutingInterceptor(source, domain)
+		val probeCookieJar = if (useCookies) cookieJar else CookieJar.NO_COOKIES
+		val probeClient = baseHttpClient.newBuilder().apply {
+			cookieJar(probeCookieJar)
+			interceptors().add(0, probeRouting)
+		}.build()
+		val probeContext = MiyorareTsukiLoaderContext(
+			appContext = context,
+			plugin = source.plugin,
+			runtime = this,
+			httpClient = probeClient,
+			cookieJar = probeCookieJar,
+			webViewExecutor = webViewExecutor,
+			domainOverrides = mapOf(rawSource.name to domain),
+		)
+		val parser = loaded.factory.invoke(null, rawSource, probeContext) as? MangaParser
+			?: error("Tsuki factory returned an unexpected parser type")
+		require(parser.source.name == rawSource.name) {
+			"Tsuki factory returned parser for ${parser.source.name} instead of ${rawSource.name}"
+		}
+		probeRouting.bind(parser)
+		return parser
+	}
+
+	private fun parserMismatch(
+		domain: String,
+		stage: OfficialGlobalDiagnosticStage,
+		httpStatus: Int?,
+		testedAt: Long,
+		message: String,
+	): OfficialGlobalDiagnostic = OfficialGlobalDiagnostic(
+		domain = domain,
+		status = OfficialGlobalDiagnosticStatus.PARSER_MISMATCH,
+		stage = stage,
+		httpStatus = httpStatus,
+		testedAt = testedAt,
+		message = message,
+	)
+
+	private fun classifyProbeFailure(
+		domain: String,
+		stage: OfficialGlobalDiagnosticStage,
+		httpStatus: Int?,
+		testedAt: Long,
+		error: Throwable,
+	): OfficialGlobalDiagnostic {
+		if (error is java.util.concurrent.CancellationException) throw error
+		val status = when (error) {
+			is UntrustedProbeRedirectException -> OfficialGlobalDiagnosticStatus.REDIRECT
+			is CloudFlareProtectedException,
+			is CloudFlareBlockedException -> OfficialGlobalDiagnosticStatus.CLOUDFLARE
+			is TooManyRequestExceptions,
+			is tsuki.exception.TooManyRequestExceptions -> OfficialGlobalDiagnosticStatus.RATE_LIMITED
+			is tsuki.exception.AuthRequiredException -> OfficialGlobalDiagnosticStatus.AUTH_REQUIRED
+			is tsuki.exception.ParseException -> OfficialGlobalDiagnosticStatus.PARSER_MISMATCH
+			is HttpStatusException -> OfficialGlobalDiagnosticStatus.HTTP_ERROR
+			is IOException -> OfficialGlobalDiagnosticStatus.NETWORK_ERROR
+			else -> OfficialGlobalDiagnosticStatus.SOURCE_UNAVAILABLE
+		}
+		val code = when {
+			status == OfficialGlobalDiagnosticStatus.RATE_LIMITED -> 429
+			error is HttpStatusException -> error.statusCode
+			else -> httpStatus
+		}
+		return OfficialGlobalDiagnostic(
+			domain = domain,
+			status = status,
+			stage = stage,
+			httpStatus = code,
+			testedAt = testedAt,
+			message = error.message?.take(160),
+		)
+	}
+
 	private fun loadPlugin(requested: TsukiPluginDescriptor): LoadedPlugin {
 		val current = requireUsablePlugin(requested)
 		val key = current.storageKey
@@ -237,8 +562,11 @@ class TsukiPluginRuntime @Inject constructor(
 			}
 
 			val routingInterceptor = RoutingInterceptor(this, current)
+			val resilienceInterceptor = OfficialGlobalSourceNetworkPolicyInterceptor(this, current)
 			val client = baseHttpClient.newBuilder().apply {
-				// Parser headers/interception must run before Cloudflare/rate-limit/base interceptors.
+				// Routing supplies parser headers first. Resilience may replay only the four explicitly
+				// supported Global sources; Cloudflare/rate-limit/base interceptors stay downstream.
+				interceptors().add(0, resilienceInterceptor)
 				interceptors().add(0, routingInterceptor)
 			}.build()
 			val loaderContext = MiyorareTsukiLoaderContext(
@@ -325,7 +653,7 @@ class TsukiPluginRuntime @Inject constructor(
 		runCatching { pluginManager.markSourceBroken(identity) }
 	}
 
-	private fun findCachedParser(plugin: TsukiPluginDescriptor, rawSource: MangaSource): MangaParser? = synchronized(lock) {
+	internal fun findCachedParserForPolicy(plugin: TsukiPluginDescriptor, rawSource: MangaSource): MangaParser? = synchronized(lock) {
 		val key = TsukiSourceIdentity(plugin.provider, plugin.pluginId, rawSource.name).storedName
 		parserCache[key]
 			?.takeIf { sameRuntimeArtifact(it.source.plugin, plugin) }
@@ -365,7 +693,7 @@ class TsukiPluginRuntime @Inject constructor(
 		override fun intercept(chain: Interceptor.Chain): Response {
 			val request = chain.request()
 			val rawSource = request.tag(MangaSource::class.java)
-			val parser = rawSource?.let { runtime.findCachedParser(plugin, it) }
+			val parser = rawSource?.let { runtime.findCachedParserForPolicy(plugin, it) }
 			val builder = request.newBuilder()
 			if (parser != null) {
 				parser.getRequestHeaders().forEach { (name, value) ->
@@ -387,6 +715,54 @@ class TsukiPluginRuntime @Inject constructor(
 				chain.proceed(routed)
 			}
 		}
+	}
+
+	private inner class ProbeRoutingInterceptor(
+		private val source: TsukiMangaSource,
+		private val expectedDomain: String,
+	) : Interceptor {
+
+		private val expectedBase = "https://$expectedDomain/".toHttpUrl()
+
+		@Volatile
+		private var boundParser: MangaParser? = null
+
+		fun bind(parser: MangaParser) {
+			boundParser = parser
+		}
+
+		override fun intercept(chain: Interceptor.Chain): Response {
+			val parser = boundParser
+			val request = chain.request()
+			val builder = request.newBuilder()
+				.tag(org.koitharu.kotatsu.parsers.model.MangaSource::class.java, source)
+			if (parser != null) {
+				parser.getRequestHeaders().forEach { (name, value) ->
+					if (request.header(name) == null) builder.header(name, value)
+				}
+				if (request.header("Referer") == null) {
+					builder.header("Referer", "https://${IDN.toASCII(parser.domain)}/")
+				}
+			}
+			if (request.header("User-Agent") == null) {
+				builder.header("User-Agent", webViewExecutor.defaultUserAgent ?: tsuki.network.UserAgents.FIREFOX_MOBILE)
+			}
+			val routed = builder.build()
+			val response = if (parser != null) {
+				parser.intercept(ProxyChain(chain, routed))
+			} else {
+				chain.proceed(routed)
+			}
+			if (targetsExpectedDomain(routed) && !targetsExpectedDomain(response.request)) {
+				val target = response.request.url.toString()
+				response.close()
+				throw UntrustedProbeRedirectException(target)
+			}
+			return response
+		}
+
+		private fun targetsExpectedDomain(request: Request): Boolean =
+			request.url.host.equals(expectedBase.host, ignoreCase = true) && request.url.port == expectedBase.port
 	}
 
 	private class ProxyChain(

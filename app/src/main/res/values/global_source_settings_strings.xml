@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="global_source_address_group">Site address</string>
+    <string name="global_source_active_address">Active address</string>
+    <string name="global_source_domain_default">Default</string>
+    <string name="global_source_domain_trusted_mirror">Trusted mirror</string>
+    <string name="global_source_domain_custom">Custom URL</string>
+    <string name="global_source_trusted_address">Trusted address</string>
+    <string name="global_source_trusted_address_summary">Choose an address declared by this source</string>
+    <string name="global_source_auto_mirror">Choose mirror automatically</string>
+    <string name="global_source_auto_mirror_summary">Try another trusted address when the active address is unavailable</string>
+    <string name="global_source_custom_url">Custom URL</string>
+    <string name="global_source_custom_url_hint">Enter an HTTPS site address to validate</string>
+    <string name="global_source_custom_url_invalid">Use a valid HTTPS root address or host without a path, query, or credentials</string>
+    <string name="global_source_test_address">Test address</string>
+    <string name="global_source_test_address_summary">Check reachability and redirects without changing the active address</string>
+    <string name="global_source_reset_address">Reset address</string>
+    <string name="global_source_reset_address_summary">Return to the source default address</string>
+
+    <string name="global_source_recovery_group">Recovery &amp; diagnostics</string>
+    <string name="global_source_test_source">Test source</string>
+    <string name="global_source_test_source_summary">Check catalogue, details, chapters, and reader compatibility</string>
+    <string name="global_source_status">Source status</string>
+    <string name="global_source_status_never_tested">Not tested yet</string>
+    <string name="global_source_status_testing">Testing…</string>
+    <string name="global_source_active_unchanged">Active address remains %1$s</string>
+    <string name="global_source_reset_session">Reset source session</string>
+    <string name="global_source_reset_session_summary">Clear cookies and Cloudflare session only for this source</string>
+
+    <string name="global_source_network_group">Network requests</string>
+    <string name="global_source_request_handling">Request handling</string>
+    <string name="global_source_request_auto">Automatic (recommended)</string>
+    <string name="global_source_request_normal">Normal</string>
+    <string name="global_source_request_slower">Slower</string>
+
+    <string name="global_source_info_group">Source information</string>
+    <string name="global_source_info_title">Source Pack info</string>
+    <string name="global_source_info_source">Source: %1$s</string>
+    <string name="global_source_info_pack">Pack: %1$s</string>
+    <string name="global_source_info_version">Version: %1$s</string>
+    <string name="global_source_info_provider">Provider: %1$s</string>
+    <string name="global_source_info_updated">Updated: %1$s</string>
+
+    <string name="global_source_diag_healthy">Source is working</string>
+    <string name="global_source_diag_address_reachable">Address is reachable</string>
+    <string name="global_source_diag_invalid_url">Invalid custom URL</string>
+    <string name="global_source_diag_network_error">Network error</string>
+    <string name="global_source_diag_http_error">Website error</string>
+    <string name="global_source_diag_redirect">Untrusted redirect</string>
+    <string name="global_source_diag_cloudflare">Cloudflare challenge</string>
+    <string name="global_source_diag_rate_limited">Rate limited</string>
+    <string name="global_source_diag_parser_mismatch">Parser mismatch</string>
+    <string name="global_source_diag_auth_required">Authentication required</string>
+    <string name="global_source_diag_unavailable">Source unavailable</string>
+    <string name="global_source_diag_stage_catalogue">Catalogue</string>
+    <string name="global_source_diag_stage_details">Details</string>
+    <string name="global_source_diag_stage_chapters">Chapters</string>
+    <string name="global_source_diag_stage_reader">Reader</string>
+    <string name="global_source_custom_active_label">Custom: %1$s</string>
+</resources>

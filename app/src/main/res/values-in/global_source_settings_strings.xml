@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="global_source_address_group">Alamat situs</string>
+    <string name="global_source_active_address">Alamat aktif</string>
+    <string name="global_source_domain_default">Bawaan</string>
+    <string name="global_source_domain_trusted_mirror">Mirror terpercaya</string>
+    <string name="global_source_domain_custom">URL khusus</string>
+    <string name="global_source_trusted_address">Alamat terpercaya</string>
+    <string name="global_source_trusted_address_summary">Pilih alamat yang dideklarasikan oleh sumber ini</string>
+    <string name="global_source_auto_mirror">Pilih mirror otomatis</string>
+    <string name="global_source_auto_mirror_summary">Coba alamat terpercaya lain saat alamat aktif tidak tersedia</string>
+    <string name="global_source_custom_url">URL khusus</string>
+    <string name="global_source_custom_url_hint">Masukkan alamat situs HTTPS untuk divalidasi</string>
+    <string name="global_source_custom_url_invalid">Gunakan alamat HTTPS root atau host valid tanpa path, query, atau kredensial</string>
+    <string name="global_source_test_address">Uji alamat</string>
+    <string name="global_source_test_address_summary">Periksa koneksi dan pengalihan tanpa mengubah alamat aktif</string>
+    <string name="global_source_reset_address">Reset alamat</string>
+    <string name="global_source_reset_address_summary">Kembali ke alamat bawaan sumber</string>
+
+    <string name="global_source_recovery_group">Pemulihan &amp; diagnostik</string>
+    <string name="global_source_test_source">Uji sumber</string>
+    <string name="global_source_test_source_summary">Periksa kecocokan katalog, detail, bab, dan pembaca</string>
+    <string name="global_source_status">Status sumber</string>
+    <string name="global_source_status_never_tested">Belum pernah diuji</string>
+    <string name="global_source_status_testing">Sedang menguji…</string>
+    <string name="global_source_active_unchanged">Alamat aktif tetap %1$s</string>
+    <string name="global_source_reset_session">Reset sesi sumber</string>
+    <string name="global_source_reset_session_summary">Hapus cookie dan sesi Cloudflare hanya untuk sumber ini</string>
+
+    <string name="global_source_network_group">Permintaan jaringan</string>
+    <string name="global_source_request_handling">Penanganan permintaan</string>
+    <string name="global_source_request_auto">Otomatis (disarankan)</string>
+    <string name="global_source_request_normal">Normal</string>
+    <string name="global_source_request_slower">Lebih lambat</string>
+
+    <string name="global_source_info_group">Informasi sumber</string>
+    <string name="global_source_info_title">Info Source Pack</string>
+    <string name="global_source_info_source">Sumber: %1$s</string>
+    <string name="global_source_info_pack">Pack: %1$s</string>
+    <string name="global_source_info_version">Versi: %1$s</string>
+    <string name="global_source_info_provider">Provider: %1$s</string>
+    <string name="global_source_info_updated">Diperbarui: %1$s</string>
+
+    <string name="global_source_diag_healthy">Sumber berfungsi normal</string>
+    <string name="global_source_diag_address_reachable">Alamat dapat dijangkau</string>
+    <string name="global_source_diag_invalid_url">URL khusus tidak valid</string>
+    <string name="global_source_diag_network_error">Kesalahan jaringan</string>
+    <string name="global_source_diag_http_error">Kesalahan situs</string>
+    <string name="global_source_diag_redirect">Pengalihan tidak dipercaya</string>
+    <string name="global_source_diag_cloudflare">Pemeriksaan Cloudflare</string>
+    <string name="global_source_diag_rate_limited">Permintaan dibatasi</string>
+    <string name="global_source_diag_parser_mismatch">Parser tidak cocok</string>
+    <string name="global_source_diag_auth_required">Autentikasi diperlukan</string>
+    <string name="global_source_diag_unavailable">Sumber tidak tersedia</string>
+    <string name="global_source_diag_stage_catalogue">Katalog</string>
+    <string name="global_source_diag_stage_details">Detail</string>
+    <string name="global_source_diag_stage_chapters">Bab</string>
+    <string name="global_source_diag_stage_reader">Pembaca</string>
+    <string name="global_source_custom_active_label">Khusus: %1$s</string>
+</resources>
