@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.reader.ui.epub.translation
 
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -47,15 +48,15 @@ class NovelTranslationFastPathTest {
 
 	@Test
 	fun `true batch engine reduces provider request count`() = runTest {
-		var singleCalls = 0
-		var batchCalls = 0
+		val singleCalls = AtomicInteger(0)
+		val batchCalls = AtomicInteger(0)
 		val batchEngine = object : NovelTranslationEngine, NovelTranslationBatchEngine {
 			override suspend fun translate(request: NovelTranslationRequest): String {
-				singleCalls++
+				singleCalls.incrementAndGet()
 				return request.text
 			}
 			override suspend fun translateBatch(requests: List<NovelTranslationRequest>): List<String> {
-				batchCalls++
+				batchCalls.incrementAndGet()
 				return requests.map { it.text }
 			}
 		}
@@ -72,8 +73,8 @@ class NovelTranslationFastPathTest {
 		val result = coordinator.translate(operation(text))
 
 		assertEquals(text, result.translatedText)
-		assertEquals(0, singleCalls)
-		assertEquals(2, batchCalls)
+		assertEquals(0, singleCalls.get())
+		assertEquals(2, batchCalls.get())
 	}
 
 	@Test
