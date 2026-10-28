@@ -39,6 +39,7 @@ data class NovelTranslationProviderCapabilities(
 	val maxBatchChars: Int,
 	val maxSingleRequestChars: Int,
 	val supportsAutoDetect: Boolean = true,
+	val supportsProgressiveResultPublishing: Boolean = true,
 	val credentialRequired: Boolean,
 	val maxConcurrency: Int = 1,
 	val minRequestGapMillis: Long = 0L,
@@ -88,6 +89,7 @@ class DefaultNovelTranslationProviderResolver(
 					providerId = providerId,
 					maxBatchChars = ONLINE_SEGMENT_CHARS,
 					maxSingleRequestChars = ONLINE_SEGMENT_CHARS,
+					supportsProgressiveResultPublishing = false,
 					credentialRequired = false,
 					maxConcurrency = MIYORARE_ONLINE_MAX_CONCURRENCY,
 					minRequestGapMillis = MIYORARE_ONLINE_REQUEST_GAP_MS,
@@ -420,7 +422,7 @@ class NovelTranslationCoordinator(
 		onProgress: suspend (NovelTranslationProgress) -> Unit = {},
 	): NovelTranslationOperationResult {
 		val provider = providerResolver.resolve(request.selection)
-		val progressiveCallbacks = provider.capabilities.providerId != MIYORARE_ONLINE_PROVIDER_ID
+		val progressiveCallbacks = provider.capabilities.supportsProgressiveResultPublishing
 		val priorityController = request.priorityController.takeIf { progressiveCallbacks }
 		val segments = NovelTranslationSegmenter.split(request.text, provider.capabilities.maxSingleRequestChars)
 		if (segments.isEmpty()) return NovelTranslationOperationResult(emptyList())

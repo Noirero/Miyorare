@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.reader.ui.epub.translation
 
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,6 +13,7 @@ class NovelOnlineTranslationStabilityTest {
 	fun `online provider starts with conservative request pacing`() {
 		assertEquals(1, MIYORARE_ONLINE_MAX_CONCURRENCY)
 		assertTrue(MIYORARE_ONLINE_REQUEST_GAP_MS >= 750L)
+		assertFalse(capabilities().supportsProgressiveResultPublishing)
 	}
 
 	@Test
@@ -72,6 +74,7 @@ class NovelOnlineTranslationStabilityTest {
 		providerId = MIYORARE_ONLINE_PROVIDER_ID,
 		maxBatchChars = 256,
 		maxSingleRequestChars = 256,
+		supportsProgressiveResultPublishing = false,
 		credentialRequired = false,
 		maxConcurrency = MIYORARE_ONLINE_MAX_CONCURRENCY,
 		minRequestGapMillis = MIYORARE_ONLINE_REQUEST_GAP_MS,
