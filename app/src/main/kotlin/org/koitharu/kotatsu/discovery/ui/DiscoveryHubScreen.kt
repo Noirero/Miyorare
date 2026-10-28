@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -76,7 +78,9 @@ fun DiscoveryHubScreen(
 	) {
 		LazyColumn(
 			state = list,
-			modifier = Modifier.testTag("catalog_home_list"),
+			modifier = Modifier
+				.nestedScroll(rememberNestedScrollInteropConnection())
+				.testTag("catalog_home_list"),
 			contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomContentPadding),
 			verticalArrangement = Arrangement.spacedBy(18.dp),
 		) {
