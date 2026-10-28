@@ -69,6 +69,9 @@ class TsukiPluginRuntime @Inject constructor(
 		val failure: OfficialGlobalDiagnostic? = null,
 	)
 
+	private class UntrustedProbeRedirectException(target: String) :
+		IOException("Probe redirected to untrusted host: $target")
+
 	private val lock = Any()
 	private val loadedPlugins = object : LinkedHashMap<String, LoadedPlugin>(MAX_LOADED_PLUGINS + 1, 0.75f, true) {}
 	private val parserCache = object : LinkedHashMap<String, ParserHandle>(MAX_CACHED_PARSERS + 1, 0.75f, true) {}
@@ -441,7 +444,7 @@ class TsukiPluginRuntime @Inject constructor(
 		val loaded = loadPlugin(source.plugin)
 		val rawSource = loaded.rawSources[source.descriptor.name]
 			?: error("Tsuki plugin ${source.plugin.displayName} has no source ${source.descriptor.name}")
-		val probeRouting = ProbeRoutingInterceptor(source)
+		val probeRouting = ProbeRoutingInterceptor(source, domain)
 		val probeCookieJar = if (useCookies) cookieJar else CookieJar.NO_COOKIES
 		val probeClient = baseHttpClient.newBuilder().apply {
 			cookieJar(probeCookieJar)
@@ -488,6 +491,7 @@ class TsukiPluginRuntime @Inject constructor(
 		error: Throwable,
 	): OfficialGlobalDiagnostic {
 		val status = when (error) {
+			is UntrustedProbeRedirectException -> OfficialGlobalDiagnosticStatus.REDIRECT
 			is CloudFlareProtectedException,
 			is CloudFlareBlockedException -> OfficialGlobalDiagnosticStatus.CLOUDFLARE
 			is TooManyRequestExceptions,
@@ -715,7 +719,10 @@ class TsukiPluginRuntime @Inject constructor(
 
 	private inner class ProbeRoutingInterceptor(
 		private val source: TsukiMangaSource,
+		private val expectedDomain: String,
 	) : Interceptor {
+
+		private val expectedBase = "https://$expectedDomain/".toHttpUrl()
 
 		@Volatile
 		private var boundParser: MangaParser? = null
@@ -741,8 +748,21 @@ class TsukiPluginRuntime @Inject constructor(
 				builder.header("User-Agent", webViewExecutor.defaultUserAgent ?: tsuki.network.UserAgents.FIREFOX_MOBILE)
 			}
 			val routed = builder.build()
-			return if (parser != null) parser.intercept(ProxyChain(chain, routed)) else chain.proceed(routed)
+			val response = if (parser != null) {
+				parser.intercept(ProxyChain(chain, routed))
+			} else {
+				chain.proceed(routed)
+			}
+			if (targetsExpectedDomain(routed) && !targetsExpectedDomain(response.request)) {
+				val target = response.request.url.toString()
+				response.close()
+				throw UntrustedProbeRedirectException(target)
+			}
+			return response
 		}
+
+		private fun targetsExpectedDomain(request: Request): Boolean =
+			request.url.host.equals(expectedBase.host, ignoreCase = true) && request.url.port == expectedBase.port
 	}
 
 	private class ProxyChain(
