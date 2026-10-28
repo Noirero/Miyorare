@@ -1,9 +1,11 @@
 package org.koitharu.kotatsu.discovery.data
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -15,8 +17,15 @@ import org.koitharu.kotatsu.scrobbling.common.data.text
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 
 internal const val MAL_CATALOG_FIELDS = "media_type,nsfw,mean"
+private const val MAL_HOME_SECTION_TIMEOUT_MS = 12_000L
 
-class MALCatalogProvider(private val http: CatalogHttp, private val clientId: String) : TrackerCatalogProvider {
+class MALCatalogProvider(
+	private val http: CatalogHttp,
+	private val clientId: String,
+	private val homeSectionTimeoutMs: Long = MAL_HOME_SECTION_TIMEOUT_MS,
+) : TrackerCatalogProvider {
+	init { require(homeSectionTimeoutMs > 0L) }
+
 	override val catalogService = ScrobblerService.MAL
 	override val catalogCapabilities = setOf(
 		CatalogCapability.HOME,
@@ -43,8 +52,10 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 		val keys = filter.kinds.flatMap { kind -> sectionTypes.map { CatalogSectionKey(catalogService, kind, it) } }
 		TrackerCatalogHome(keys.map { key -> async {
 			try {
-				val page = ranking(key, allowAdult, 1, CatalogCachePolicy.HOME_PAGE_SIZE)
+				val page = withTimeout(homeSectionTimeoutMs) { ranking(key, allowAdult, 1, CatalogCachePolicy.HOME_PAGE_SIZE) }
 				TrackerCatalogSection(key, page.items, page.nextPage)
+			} catch (_: TimeoutCancellationException) {
+				TrackerCatalogSection(key, emptyList(), failure = CatalogFailure(CatalogFailureKind.PROVIDER))
 			} catch (e: CancellationException) { throw e }
 			catch (e: Exception) { TrackerCatalogSection(key, emptyList(), failure = e.catalogFailure()) }
 		} }.awaitAll())
