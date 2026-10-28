@@ -236,6 +236,25 @@ class TsukiPluginRuntime @Inject constructor(
 		(handle.parser.config as TsukiSourceConfig).resetDomain(handle.parser.configKeyDomain)
 	}
 
+	fun clearOfficialGlobalDiagnostic(source: TsukiMangaSource) {
+		val handle = requireOfficialGlobalHandle(source)
+		(handle.parser.config as TsukiSourceConfig).clearDiagnostic()
+	}
+
+	suspend fun testOfficialGlobalAddress(source: TsukiMangaSource): OfficialGlobalDiagnostic {
+		val handle = requireOfficialGlobalHandle(source)
+		val domain = handle.parser.domain
+		val testedAt = System.currentTimeMillis()
+		val preflight = preflightOfficialGlobalDomain(handle.source, domain, useCookies = true, testedAt = testedAt)
+		return preflight.failure ?: OfficialGlobalDiagnostic(
+			domain = domain,
+			status = OfficialGlobalDiagnosticStatus.HEALTHY,
+			stage = OfficialGlobalDiagnosticStage.NONE,
+			httpStatus = preflight.httpStatus,
+			testedAt = testedAt,
+		)
+	}
+
 	suspend fun validateAndApplyOfficialGlobalTrustedDomain(
 		source: TsukiMangaSource,
 		domain: String,
@@ -694,7 +713,7 @@ class TsukiPluginRuntime @Inject constructor(
 		}
 	}
 
-	private class ProbeRoutingInterceptor(
+	private inner class ProbeRoutingInterceptor(
 		private val source: TsukiMangaSource,
 	) : Interceptor {
 
