@@ -27,6 +27,10 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
 
+internal const val MIYORARE_ONLINE_PROVIDER_ID = "miyorare-online"
+internal const val MIYORARE_ONLINE_MAX_CONCURRENCY = 1
+internal const val MIYORARE_ONLINE_REQUEST_GAP_MS = 750L
+
 /** Explicit provider behavior used by the reliability/fast-path layer. */
 data class NovelTranslationProviderCapabilities(
 	val providerId: String,
@@ -77,7 +81,7 @@ class DefaultNovelTranslationProviderResolver(
 
 	override fun resolve(selection: NovelTranslationSelection): NovelTranslationProvider = when (selection.engine) {
 		NovelTranslationEngineKind.ONLINE -> {
-			val providerId = "miyorare-online"
+			val providerId = MIYORARE_ONLINE_PROVIDER_ID
 			NovelTranslationProvider(
 				engine = MiyorareOnlineTranslationEngine(reliableHttpClient),
 				capabilities = NovelTranslationProviderCapabilities(
@@ -85,8 +89,8 @@ class DefaultNovelTranslationProviderResolver(
 					maxBatchChars = ONLINE_SEGMENT_CHARS,
 					maxSingleRequestChars = ONLINE_SEGMENT_CHARS,
 					credentialRequired = false,
-					maxConcurrency = ONLINE_MAX_CONCURRENCY,
-					minRequestGapMillis = ONLINE_REQUEST_GAP_MS,
+					maxConcurrency = MIYORARE_ONLINE_MAX_CONCURRENCY,
+					minRequestGapMillis = MIYORARE_ONLINE_REQUEST_GAP_MS,
 				),
 				semanticIdentity = NovelTranslationProviderSemanticIdentity(
 					configurationFingerprint = novelTranslationDigest(providerId, ONLINE_CONTRACT_VERSION),
@@ -138,8 +142,6 @@ class DefaultNovelTranslationProviderResolver(
 	companion object {
 		private const val ONLINE_SEGMENT_CHARS = 1600
 		private const val AI_SEGMENT_CHARS = 8000
-		private const val ONLINE_MAX_CONCURRENCY = 3
-		private const val ONLINE_REQUEST_GAP_MS = 100L
 		private const val AI_REQUEST_GAP_MS = 150L
 		private const val DEEPL_MAX_BATCH_ITEMS = 10
 		// Well below DeepL's documented 128 KiB request-body ceiling even for 4-byte UTF-8 text.
@@ -418,6 +420,8 @@ class NovelTranslationCoordinator(
 		onProgress: suspend (NovelTranslationProgress) -> Unit = {},
 	): NovelTranslationOperationResult {
 		val provider = providerResolver.resolve(request.selection)
+		val progressiveCallbacks = provider.capabilities.providerId != MIYORARE_ONLINE_PROVIDER_ID
+		val priorityController = request.priorityController.takeIf { progressiveCallbacks }
 		val segments = NovelTranslationSegmenter.split(request.text, provider.capabilities.maxSingleRequestChars)
 		if (segments.isEmpty()) return NovelTranslationOperationResult(emptyList())
 		val operationStarted = System.nanoTime()
@@ -469,9 +473,9 @@ class NovelTranslationCoordinator(
 					cacheTier = it,
 				)
 			}
-			onSegmentTranslated(translated, done, segments.size)
+			if (progressiveCallbacks) onSegmentTranslated(translated, done, segments.size)
 			onProgress(NovelTranslationProgress.Translating(done, segments.size, item.index, 1))
-			val visible = request.priorityController?.visibleRange
+			val visible = priorityController?.visibleRange
 			val isVisible = visible == null || (item.segment.start <= visible.last && item.segment.end > visible.first)
 			if (isVisible && firstVisibleRecorded.compareAndSet(false, true)) {
 				recordDiagnostic(
@@ -486,7 +490,7 @@ class NovelTranslationCoordinator(
 		}
 
 		val blankItems = work.filter { it.segment.text.isBlank() }
-		blankItems.sortedBy { NovelTranslationPrioritizer.score(it.segment, request.priorityController?.visibleRange) }
+		blankItems.sortedBy { NovelTranslationPrioritizer.score(it.segment, priorityController?.visibleRange) }
 			.forEach { publish(it, it.segment.text) }
 
 		val translatable = work.filterNot { it.segment.text.isBlank() }
@@ -500,7 +504,7 @@ class NovelTranslationCoordinator(
 			}
 		}
 		translatable.filter { cached.containsKey(it.key) }
-			.sortedWith(compareBy { NovelTranslationPrioritizer.score(it.segment, request.priorityController?.visibleRange) })
+			.sortedWith(compareBy { NovelTranslationPrioritizer.score(it.segment, priorityController?.visibleRange) })
 			.forEach { item ->
 				val (value, tier) = checkNotNull(cached[item.key])
 				publish(item, value, tier)
@@ -512,7 +516,7 @@ class NovelTranslationCoordinator(
 				val queue = NovelTranslationPriorityQueue(
 					items = misses,
 					segmentOf = WorkItem::segment,
-					priorityController = request.priorityController,
+					priorityController = priorityController,
 				)
 				val workers = minOf(provider.capabilities.maxConcurrency.coerceAtLeast(1), misses.size)
 				while (true) {
