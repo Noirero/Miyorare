@@ -51,10 +51,7 @@ internal object MiyorareOfflineTranslationSupport {
 		attachContext(context)
 		val required = requiredModelLanguages(sourceLanguage, targetLanguage) ?: return false
 		if (required.isEmpty()) return false
-		val explicit = context.applicationContext
-			.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-			.getStringSet(KEY_EXPLICIT_MODELS, emptySet())
-			.orEmpty()
+		val explicit = explicitModels(context)
 		return required.all(explicit::contains)
 	}
 
@@ -64,7 +61,7 @@ internal object MiyorareOfflineTranslationSupport {
 		plan.unsupportedLanguage?.let { return MiyorareOfflineModelState.Unsupported(it) }
 		if (plan.requiredModels.isEmpty()) return MiyorareOfflineModelState.Ready
 		val downloaded = downloadedLanguages()
-		syncExplicitModelState(context, plan.requiredModels, downloaded)
+		pruneMissingExplicitModels(context, plan.requiredModels, downloaded)
 		val missing = plan.requiredModels.filterNot(downloaded::contains)
 		return if (missing.isEmpty()) MiyorareOfflineModelState.Ready else MiyorareOfflineModelState.Missing(missing)
 	}
@@ -77,9 +74,8 @@ internal object MiyorareOfflineTranslationSupport {
 		for (language in plan.requiredModels.filterNot(downloaded::contains)) {
 			modelManager.download(TranslateRemoteModel.Builder(language).build(), conditions).awaitTask()
 			downloaded += language
-			syncExplicitModelState(context, plan.requiredModels, downloaded)
 		}
-		syncExplicitModelState(context, plan.requiredModels, downloaded)
+		markExplicitModels(context, plan.requiredModels.filter(downloaded::contains))
 	}
 
 	suspend fun deleteModels(sourceLanguage: String, targetLanguage: String) {
@@ -89,9 +85,8 @@ internal object MiyorareOfflineTranslationSupport {
 		for (language in plan.requiredModels.filter(downloaded::contains)) {
 			modelManager.deleteDownloadedModel(TranslateRemoteModel.Builder(language).build()).awaitTask()
 			downloaded -= language
-			syncExplicitModelState(context, listOf(language), downloaded)
 		}
-		syncExplicitModelState(context, plan.requiredModels, downloaded)
+		removeExplicitModels(context, plan.requiredModels)
 	}
 
 	suspend fun translateInstalled(context: Context, sourceLanguage: String, targetLanguage: String, text: String): String {
@@ -112,6 +107,11 @@ internal object MiyorareOfflineTranslationSupport {
 			)
 			is MiyorareOfflineModelState.Unsupported -> throw NovelTranslationException.Configuration(
 				"Offline translation does not support language ${state.languageCode}",
+			)
+		}
+		if (!shouldUseDownloadedModel(context, sourceLanguage, targetLanguage)) {
+			throw NovelTranslationException.Configuration(
+				"Offline language model is not enabled for Miyorare. Download it from Translation settings first.",
 			)
 		}
 		val options = TranslatorOptions.Builder()
@@ -146,14 +146,27 @@ internal object MiyorareOfflineTranslationSupport {
 			.awaitTask()
 			.mapTo(linkedSetOf()) { it.language }
 
-	private fun syncExplicitModelState(context: Context, checkedLanguages: Collection<String>, downloaded: Set<String>) {
-		if (checkedLanguages.isEmpty()) return
+	private fun explicitModels(context: Context): Set<String> =
+		context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+			.getStringSet(KEY_EXPLICIT_MODELS, emptySet())
+			.orEmpty()
+
+	private fun markExplicitModels(context: Context, languages: Collection<String>) {
+		if (languages.isEmpty()) return
 		val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-		val next = prefs.getStringSet(KEY_EXPLICIT_MODELS, emptySet()).orEmpty().toMutableSet()
-		checkedLanguages.forEach { language ->
-			if (language in downloaded) next += language else next -= language
-		}
+		val next = explicitModels(context).toMutableSet().apply { addAll(languages) }
 		prefs.edit().putStringSet(KEY_EXPLICIT_MODELS, next).apply()
+	}
+
+	private fun removeExplicitModels(context: Context, languages: Collection<String>) {
+		if (languages.isEmpty()) return
+		val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+		val next = explicitModels(context).toMutableSet().apply { removeAll(languages.toSet()) }
+		prefs.edit().putStringSet(KEY_EXPLICIT_MODELS, next).apply()
+	}
+
+	private fun pruneMissingExplicitModels(context: Context, checkedLanguages: Collection<String>, downloaded: Set<String>) {
+		removeExplicitModels(context, checkedLanguages.filterNot(downloaded::contains))
 	}
 
 	private fun requireDownloadablePlan(sourceLanguage: String, targetLanguage: String): OfflineModelPlan {
