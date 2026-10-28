@@ -62,17 +62,19 @@ class HistoryWidget : AppWidgetProvider() {
 		if (mangaId == 0L) return
 		runAsync(context, TAG) { appContext ->
 			val entryPoint = appContext.widgetEntryPoint()
-			// Collection widgets can be a frame behind a membership change. Re-check the current
-			// privacy policy before opening so any active Private membership dominates a stale Normal
-			// History row while isolation is enabled. The explicit isolation-disabled mode remains the
-			// only override, matching HistoryDao visibility semantics.
+			// Collection widgets can be a frame behind a privacy change. Re-check both current
+			// Private membership and the persisted read space before opening a stale Normal History row.
+			// The explicit isolation-disabled mode remains the only override, matching HistoryDao.
 			val isPrivate = runCatching {
 				entryPoint.favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+			}.getOrDefault(false)
+			val isPrivateHistory = runCatching {
+				entryPoint.database.getHistoryDao().find(mangaId)?.space == FavouriteSpace.PRIVATE.dbValue
 			}.getOrDefault(false)
 			val isolationDisabled = runCatching {
 				entryPoint.favouritesRepository.isPrivateIsolationDisabled()
 			}.getOrDefault(false)
-			if (isPrivate && !isolationDisabled) {
+			if ((isPrivate || isPrivateHistory) && !isolationDisabled) {
 				nudgeAll(appContext)
 				return@runAsync
 			}
@@ -126,7 +128,6 @@ class HistoryWidget : AppWidgetProvider() {
 	companion object {
 		private const val TAG = "HistoryWidget"
 		const val ACTION_REFRESH = "org.koitharu.kotatsu.widget.history.REFRESH"
-		const val ACTION_CLICK = "org.koitharu.kotatsu.widget.history.CLICK"
 		const val EXTRA_MANGA_ID = "manga_id"
 		const val EXTRA_PLAY = "play"
 
