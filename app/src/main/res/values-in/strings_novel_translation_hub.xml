@@ -21,7 +21,7 @@
     <string name="novel_translation_offline_model_deleting">Menghapus model bahasa offline…</string>
     <string name="novel_translation_offline_model_deleted">Model bahasa offline berhasil dihapus.</string>
     <string name="novel_translation_offline_model_delete_failed">Tidak dapat menghapus model bahasa offline: %1$s</string>
-    <string name="novel_translation_offline_model_attribution">Model offline opsional didukung oleh Google Terjemahan. Satu model bahasa berukuran sekitar 30 MB dan hanya disimpan setelah kamu memilih untuk mengunduhnya.</string>
+    <string name="novel_translation_offline_model_attribution">Model offline opsional didukung oleh Google Translate. Satu model bahasa berukuran sekitar 30 MB dan hanya disimpan setelah kamu memilih untuk mengunduhnya. Google tidak memberikan jaminan atas hasil terjemahan, termasuk akurasi dan keandalannya.</string>
     <string name="novel_translation_online">Miyorare Online</string>
     <string name="novel_translation_online_summary">Online • Tidak perlu API key</string>
     <string name="novel_translation_ai">Terjemahan AI</string>
