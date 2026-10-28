@@ -55,7 +55,7 @@ class SourceSettingsViewModel @Inject constructor(
 	val onPluginDeleted = MutableEventFlow<Unit>()
 
 	private val mutableOfficialGlobalState = MutableStateFlow(OfficialGlobalSourceSettingsUiState())
-	val officialGlobalState = mutableOfficialGlobalState.asStateFlow()
+	internal val officialGlobalState = mutableOfficialGlobalState.asStateFlow()
 
 	init {
 		if (officialGlobalSource != null) refreshOfficialGlobalSettings()
@@ -123,7 +123,7 @@ class SourceSettingsViewModel @Inject constructor(
 		}
 	}
 
-	fun setOfficialGlobalRequestProfile(profile: OfficialGlobalRequestProfile) {
+	internal fun setOfficialGlobalRequestProfile(profile: OfficialGlobalRequestProfile) {
 		val target = officialGlobalSource ?: return
 		launchJob(Dispatchers.IO) {
 			runCatching { tsukiRuntime.setOfficialGlobalRequestProfile(target, profile) }
