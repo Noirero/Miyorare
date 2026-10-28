@@ -128,6 +128,7 @@ class HistoryWidget : AppWidgetProvider() {
 	companion object {
 		private const val TAG = "HistoryWidget"
 		const val ACTION_REFRESH = "org.koitharu.kotatsu.widget.history.REFRESH"
+		const val ACTION_CLICK = "org.koitharu.kotatsu.widget.history.CLICK"
 		const val EXTRA_MANGA_ID = "manga_id"
 		const val EXTRA_PLAY = "play"
 
