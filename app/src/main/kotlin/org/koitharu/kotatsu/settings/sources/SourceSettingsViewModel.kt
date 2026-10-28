@@ -132,6 +132,13 @@ class SourceSettingsViewModel @Inject constructor(
 		}
 	}
 
+	fun testOfficialGlobalAddress() {
+		val target = officialGlobalSource ?: return
+		runOfficialGlobalAction(target, invalidateOnHealthy = false) {
+			tsukiRuntime.testOfficialGlobalAddress(target)
+		}
+	}
+
 	fun testOfficialGlobalSource() {
 		val target = officialGlobalSource ?: return
 		runOfficialGlobalAction(target) { tsukiRuntime.testOfficialGlobalSource(target) }
@@ -159,6 +166,7 @@ class SourceSettingsViewModel @Inject constructor(
 
 	private fun runOfficialGlobalAction(
 		target: TsukiMangaSource,
+		invalidateOnHealthy: Boolean = true,
 		block: suspend () -> OfficialGlobalDiagnostic,
 	) {
 		launchJob(Dispatchers.IO) {
@@ -170,7 +178,7 @@ class SourceSettingsViewModel @Inject constructor(
 					message = error.message,
 				)
 			}
-			if (diagnostic.isHealthy) invalidateSourceCache()
+			if (diagnostic.isHealthy && invalidateOnHealthy) invalidateSourceCache()
 			val snapshot = runCatching { tsukiRuntime.getOfficialGlobalSettings(target) }.getOrNull()
 			mutableOfficialGlobalState.value = OfficialGlobalSourceSettingsUiState(
 				snapshot = snapshot,
