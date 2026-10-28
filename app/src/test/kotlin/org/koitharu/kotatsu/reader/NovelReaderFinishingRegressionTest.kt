@@ -91,6 +91,7 @@ class NovelReaderFinishingRegressionTest {
 		assertTrue(settings.contains("BUILT_IN_OFFLINE_RUNTIME_ID"))
 		assertTrue(settings.contains("MiyorareOfflineTranslationSupport.shouldUseDownloadedModel"))
 		assertTrue(engine.contains("GOOGLE_TRANSLATE_RESULT_ATTRIBUTION"))
+		assertTrue(engine.contains("returntranslated"))
 	}
 
 	@Test
