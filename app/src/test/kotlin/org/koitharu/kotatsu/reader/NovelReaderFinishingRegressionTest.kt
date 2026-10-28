@@ -15,6 +15,7 @@ class NovelReaderFinishingRegressionTest {
 
 		assertTrue(config.contains("EpubFontWeightSection"))
 		assertTrue(config.contains("\"center\"tostringResource(R.string.epub_align_center)"))
+		assertTrue(config.contains("\"sepia\"toR.string.epub_theme_sepia"))
 		assertTrue(reader.contains("EPUB_THEME_SEPIA"))
 		assertTrue(reader.contains("activeFontWeight"))
 		assertTrue(prefs.contains("KEY_EPUB_FONT_WEIGHT"))
