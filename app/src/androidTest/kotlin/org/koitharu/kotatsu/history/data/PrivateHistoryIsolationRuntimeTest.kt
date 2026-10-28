@@ -74,6 +74,11 @@ class PrivateHistoryIsolationRuntimeTest {
 		assertEquals(FavouriteSpace.PRIVATE.dbValue, dao.find(manga.id)?.space)
 		assertTrue(dao.observeAll(ListSortOrder.NEWEST, emptySet(), 10).first().isEmpty())
 
+		// Incoming history sync from an older peer also lacks Private read-space context.
+		dao.upsertForSync(privateHistory.copy(updatedAt = 4L, space = FavouriteSpace.NORMAL.dbValue))
+		assertEquals(FavouriteSpace.PRIVATE.dbValue, dao.find(manga.id)?.space)
+		assertTrue(dao.observeAll(ListSortOrder.NEWEST, emptySet(), 10).first().isEmpty())
+
 		// A context-aware later read from Normal may reclaim the row when no Private membership exists.
 		dao.updateSpace(manga.id, FavouriteSpace.NORMAL.dbValue)
 		assertEquals(
