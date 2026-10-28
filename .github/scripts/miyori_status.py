@@ -19,9 +19,19 @@ CARD_MARKER = "<!-- miyori-status-card:v1 -->"
 LEGACY_MARKER = "<!-- miyori-status:identity-guard -->"
 
 GATES = (
+    "PR Compile & Unit Check",
     "Miyorare Identity Guard",
     "Beta to Main Release Gate",
     "Promotion to Main Gate",
+)
+
+TRACKED_LABELS = (
+    "ci:owner-request",
+    "ci:user-issue",
+    "ci:theme",
+    "ci:runtime-required",
+    "non-theme",
+    "skip-device-test",
 )
 
 STATUS_LABELS = {
@@ -138,6 +148,8 @@ def latest_runs_by_name(runs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
 
 
 def gate_applicable(gate: str, base_ref: str) -> bool:
+    if gate == "PR Compile & Unit Check":
+        return base_ref == "Amain2"
     if gate == "Miyorare Identity Guard":
         return base_ref in {"main", "beta"}
     return base_ref == "main"
@@ -190,25 +202,28 @@ def render_card(
         for item in pr.get("labels", [])
         if item.get("name")
     }
+    tracked_labels = [label for label in TRACKED_LABELS if label in labels]
+    applicable_states = [state for state in gate_states if state.applicable]
 
     lines = [
         CARD_MARKER,
         "🌸 **Miyori — PR Status**",
         "",
         f"PR: #{pr_number} · Base: `{base_ref}` · Head: `{short_sha}`",
+        f"CI labels: {', '.join(f'`{label}`' for label in tracked_labels) if tracked_labels else '_none of the tracked CI labels_'}",
         "",
         "| Gate | Status |",
         "| --- | --- |",
     ]
 
-    for state in gate_states:
+    for state in applicable_states:
         display = state.display
         if state.run_url:
             display = f"{display} · [run]({state.run_url})"
         lines.append(f"| {state.name} | {display} |")
 
     attention: list[str] = []
-    for state in gate_states:
+    for state in applicable_states:
         if not state.run or state.run.get("conclusion") not in FAILURE_CONCLUSIONS:
             continue
         details = failure_details(client, state.run)
@@ -226,6 +241,14 @@ def render_card(
             [
                 "",
                 "🛡️ `ci:runtime-required` is active; Android Runtime validation is explicitly required.",
+            ]
+        )
+
+    if "skip-device-test" in labels:
+        lines.extend(
+            [
+                "",
+                "📦 `skip-device-test` is active; owner-facing device-test APK delivery may be skipped while required automated validation remains governed by core CI.",
             ]
         )
 
