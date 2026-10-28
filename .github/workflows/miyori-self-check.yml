@@ -23,11 +23,16 @@ jobs:
         run: |
           python3 -m py_compile \
             .github/scripts/miyori_status.py \
+            .github/scripts/miyori_report.py \
             .github/scripts/miyori_command.py
 
       - name: Run Miyori unit tests
         working-directory: .github/scripts
-        run: python3 -m unittest test_miyori_status.py test_miyori_command.py
+        run: >-
+          python3 -m unittest
+          test_miyori_status.py
+          test_miyori_report.py
+          test_miyori_command.py
 
       - name: Enforce Miyori permission and mutation boundary
         run: python3 .github/scripts/test_miyori_policy.py

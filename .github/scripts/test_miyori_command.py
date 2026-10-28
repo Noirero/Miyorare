@@ -6,14 +6,27 @@ import miyori_command as mc
 
 class MiyoriCommandTests(unittest.TestCase):
     def test_allowlist(self):
-        self.assertEqual(mc.parse_command("/miyori help"), "help")
-        self.assertEqual(mc.parse_command("  /miyori status  "), "status")
-        self.assertEqual(mc.parse_command("/miyori require-runtime"), "require-runtime")
+        expected = {
+            "/miyori help": "help",
+            "/miyori status": "status",
+            "/miyori checks": "checks",
+            "/miyori explain": "explain",
+            "/miyori labels": "labels",
+            "/miyori readiness": "readiness",
+            "/miyori head": "head",
+            "/miyori require-runtime": "require-runtime",
+        }
+        for text, parsed in expected.items():
+            self.assertEqual(mc.parse_command(text), parsed)
 
     def test_rejects_arguments_and_multiline_payload(self):
-        self.assertEqual(mc.parse_command("/miyori require-runtime ci:user-issue"), "unknown")
+        self.assertEqual(
+            mc.parse_command("/miyori require-runtime ci:user-issue"), "unknown"
+        )
         self.assertEqual(mc.parse_command("/miyori status\nrm -rf /"), "unknown")
         self.assertEqual(mc.parse_command("/miyori merge"), "unknown")
+        self.assertEqual(mc.parse_command("/miyori release"), "unknown")
+        self.assertEqual(mc.parse_command("/miyori rerun"), "unknown")
 
 
 if __name__ == "__main__":
