@@ -287,7 +287,7 @@ class SourceSettingsFragment : BaseComposeSettingsFragment(0) {
 	}
 
 	companion object {
-		private const val DEFAULT_VARIANT_KEY = "\u0000default"
+		private val DEFAULT_VARIANT_KEY = buildString { append(0.toChar()); append("default") }
 
 		fun newInstance(source: MangaSource, scrollToLanguage: Boolean = false) = SourceSettingsFragment().withArgs(2) {
 			putString(AppRouter.KEY_SOURCE, source.name)
@@ -440,6 +440,7 @@ private fun SourceSettingsScreen(
 								icon = R.drawable.ic_open_external,
 								shape = pos.shape,
 								onClick = { onOpenBrowser(browserUrl) },
+							)
 						}
 					}
 					if (novelPluginId != null) {
@@ -615,6 +616,7 @@ private fun rememberSourceBoolean(
 						state.value = newValue
 						prefs.edit().putBoolean(key, newValue).apply()
 					}
+				}
 
 			override fun component1() = value
 			override fun component2(): (Boolean) -> Unit = { value = it }
