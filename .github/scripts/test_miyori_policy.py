@@ -24,9 +24,19 @@ FORBIDDEN_PATTERNS = {
 }
 
 REQUIRED_STATUS_GATES = {
+    "PR Compile & Unit Check",
     "Miyorare Identity Guard",
     "Beta to Main Release Gate",
     "Promotion to Main Gate",
+}
+
+REQUIRED_STATUS_LABELS = {
+    "ci:owner-request",
+    "ci:user-issue",
+    "ci:theme",
+    "ci:runtime-required",
+    "non-theme",
+    "skip-device-test",
 }
 
 ALLOWED_COMMANDS = {
@@ -58,6 +68,10 @@ def main() -> int:
     missing_gates = sorted(REQUIRED_STATUS_GATES - {g for g in REQUIRED_STATUS_GATES if g in status})
     if missing_gates:
         fail(f"Status workflow is missing tracked gates: {missing_gates}")
+
+    missing_labels = sorted(REQUIRED_STATUS_LABELS - {label for label in REQUIRED_STATUS_LABELS if label in status})
+    if missing_labels:
+        fail(f"Status workflow is missing tracked CI labels: {missing_labels}")
 
     command = (WORKFLOWS / "miyori-command.yml").read_text(encoding="utf-8")
     for item in ALLOWED_COMMANDS:
