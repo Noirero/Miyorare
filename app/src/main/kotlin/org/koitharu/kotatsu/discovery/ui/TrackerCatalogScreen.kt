@@ -127,7 +127,7 @@ fun TrackerCatalogScreen(
 				}
 				if (state.resolution.failedSources) item { Text(stringResource(R.string.hub_source_partial)) }
 				if (!state.resolution.searching && state.resolution.candidates.isEmpty()) item {
-					Text(stringResource(R.string.hub_source_empty), Modifier.testTag("catalog_source_empty"))
+					Text(stringResource(R.string.hub_source_empty), Modifier.padding(24.dp).testTag("catalog_source_empty"))
 				}
 				items(state.resolution.candidates, key = { "${it.source.name}_${it.id}" }) { manga ->
 					OutlinedCard(
@@ -158,7 +158,7 @@ fun TrackerCatalogScreen(
 	CatalogTrackingEditorSheet(
 		account = account,
 		editor = trackingEditor,
-		onDismiss = onCloseTrackingEditor,
+		onDismissRequest = onCloseTrackingEditor,
 		onSave = onSaveTracking,
 		onReconnect = onLogin,
 		onOpenProvider = onProviderPage,
@@ -342,7 +342,7 @@ private fun CatalogDetailsContent(
 			if (details.alternativeTitles.isNotEmpty()) item {
 				MetadataBlock(stringResource(R.string.hub_alternative_titles), details.alternativeTitles.joinToString("\n"))
 			}
-			if (details.characters.isNotEmpty() || details.staffPeople.isNotEmpty() || details.relatedWorks.isNotEmpty()) item {
+			if (details.statistics != null || details.characters.isNotEmpty() || details.staffPeople.isNotEmpty() || details.relatedWorks.isNotEmpty()) item {
 				CatalogSupplementalDetails(details, imageLoader, onItem)
 			}
 			if (details.staffPeople.isEmpty() && details.staff.isNotEmpty()) item {
