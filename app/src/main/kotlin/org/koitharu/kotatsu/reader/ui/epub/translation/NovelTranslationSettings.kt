@@ -50,6 +50,7 @@ class NovelTranslationSettings(context: Context) {
 	private val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
 	init {
+		MiyorareOfflineTranslationSupport.attachContext(applicationContext)
 		migratePresentationPolicyIfNeeded()
 	}
 
