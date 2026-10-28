@@ -224,6 +224,33 @@ class MiyoriStatusTests(unittest.TestCase):
         findings = ms.automation_drift(client, {"ci:owner-request"})
         self.assertTrue(any("tracked workflow name" in item for item in findings))
 
+    def test_workflow_inventory_paginates(self):
+        class PagedClient(ms.GitHubClient):
+            repository = "Noirero/Miyorare"
+
+            def __init__(self):
+                self.calls = []
+
+            def get(self, path):
+                self.calls.append(path)
+                if "page=1" in path:
+                    return {
+                        "total_count": 101,
+                        "workflows": [
+                            {"name": f"workflow-{index}"} for index in range(100)
+                        ],
+                    }
+                return {
+                    "total_count": 101,
+                    "workflows": [{"name": "Promotion to Main Gate"}],
+                }
+
+        client = PagedClient()
+        names = client.workflow_names()
+        self.assertEqual(len(client.calls), 2)
+        self.assertIn("workflow-99", names)
+        self.assertIn("Promotion to Main Gate", names)
+
     def test_legacy_marker_is_distinct(self):
         self.assertNotEqual(ms.CARD_MARKER, ms.LEGACY_MARKER)
 
