@@ -89,13 +89,6 @@ add_database_suite() {
   MAPPED=true
 }
 
-add_category_sets_suite() {
-  add_class org.koitharu.kotatsu.core.db.CategorySetsMigrationTest
-  add_class org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest
-  add_class org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest
-  MAPPED=true
-}
-
 add_history_suite() {
   add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   MAPPED=true
@@ -106,16 +99,67 @@ add_runtime_pack_suite() {
   MAPPED=true
 }
 
+add_backup_suite() {
+  add_class org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest
+  MAPPED=true
+}
+
+add_category_sets_data_suite() {
+  add_class org.koitharu.kotatsu.core.db.CategorySetsMigrationTest
+  add_class org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest
+  MAPPED=true
+}
+
+add_category_sets_ui_suite() {
+  add_category_sets_data_suite
+  add_class org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest
+}
+
 add_full_suite() {
-  add_sync_suite
-  add_tracker_suite
-  add_database_suite
-  add_mangaupdates_suite
-  add_migration_suite
-  add_local_download_suite
-  add_discovery_suite
-  add_category_sets_suite
+  # Preserve the pre-refactor full-runtime class order. New optional mapped tests
+  # are appended only when their source exists in the exact PR head.
+  add_class org.koitharu.kotatsu.sync.data.GoogleDriveAuthRecoveryTest
+  add_class org.koitharu.kotatsu.sync.data.SyncSettingsAuthStateTest
+  add_class org.koitharu.kotatsu.sync.ui.BrowserDriveAuthCallbackRoutingTest
+  add_class org.koitharu.kotatsu.details.ui.TrackerPeopleSectionTest
+  add_class org.koitharu.kotatsu.scrobbling.common.data.TrackerDetailsSessionTest
+  add_class org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest
+  add_class org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest
+  add_class org.koitharu.kotatsu.details.ui.TrackerRecommendationSectionTest
+  add_class org.koitharu.kotatsu.details.domain.TrackerRecommendationMappingTest
+  add_class org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesRepositoryTest
+  add_class org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesSessionStoreTest
+  add_class org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivityTest
+  add_class org.koitharu.kotatsu.alternatives.domain.LosslessMigrationTransferRegressionTest
+  add_class org.koitharu.kotatsu.alternatives.domain.LosslessMigrationCopyRegressionTest
+  add_class org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest
+  add_class org.koitharu.kotatsu.alternatives.domain.MigrationNonRoomDurabilityRegressionTest
+  add_class org.koitharu.kotatsu.settings.sources.migration.MigrationBatchControlsTest
+  add_class org.koitharu.kotatsu.alternatives.domain.MigrationBatchVisibilityTest
+  add_class org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest
+  add_class org.koitharu.kotatsu.details.domain.FavouriteReleasePredictionsTest
+  add_class org.koitharu.kotatsu.details.ui.prediction.ReleasePredictionHeaderTest
+  add_class org.koitharu.kotatsu.details.ui.prediction.ChapterReleasePredictionSheetTest
+  add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest
+  add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest
+  add_class org.koitharu.kotatsu.settings.DownloadMaintenanceSettingsTest
+  add_class org.koitharu.kotatsu.favourites.domain.DownloadedLocalStateTest
+  add_class org.koitharu.kotatsu.local.data.LocalChapterDeleteStateTest
+  add_class org.koitharu.kotatsu.details.domain.DetailsLiveLocalStateTest
+  add_class org.koitharu.kotatsu.discovery.DiscoveryCatalogUiTest
+  add_class org.koitharu.kotatsu.discovery.CatalogReadingBridgeTest
+  add_class org.koitharu.kotatsu.discovery.DiscoveryNavigationRuntimeTest
+  add_class org.koitharu.kotatsu.core.db.CategorySetsMigrationTest
+  add_class org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest
+  add_class org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest
+
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/data/PrivateHistoryIsolationRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
+  fi
+
   RUN_RUNTIME_ISOLATION=true
+  RUN_MIGRATION_PERSISTENCE=true
+  MAPPED=true
 }
 
 plan_path() {
@@ -143,7 +187,14 @@ plan_path() {
       add_discovery_suite ;;
 
     app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/sets/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/favourites/ui/CategorySetsUiTest.kt|app/src/androidTest/kotlin/org/koitharu/kotatsu/favourites/CategorySetsRuntimeTest.kt|app/src/main/kotlin/org/koitharu/kotatsu/favourites/data/CategorySet*|app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/CategorySetsSchema.kt|app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/Migration49To50.kt)
-      add_category_sets_suite ;;
+      add_category_sets_ui_suite ;;
+
+    app/src/main/kotlin/org/koitharu/kotatsu/backup/local/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/backup/local/*)
+      add_backup_suite ;;
+
+    app/src/main/kotlin/org/koitharu/kotatsu/core/db/DatabasePrePopulateCallback.kt)
+      add_database_suite
+      add_category_sets_data_suite ;;
 
     app/src/main/kotlin/org/koitharu/kotatsu/core/db/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/*)
       add_database_suite ;;
@@ -210,6 +261,10 @@ self_test() {
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
   grep -q 'DiscoveryCatalogUiTest' <<<"$out"
   grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
+  ! grep -q 'CategorySetsUiTest' <<<"$out"
+
+  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"
+  grep -q 'LocalBackupIdentityTest' <<<"$out"
   ! grep -q 'CategorySetsUiTest' <<<"$out"
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/Foo.kt')"
