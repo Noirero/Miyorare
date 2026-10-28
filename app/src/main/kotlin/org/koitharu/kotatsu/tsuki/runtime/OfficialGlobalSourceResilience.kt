@@ -57,13 +57,13 @@ internal object OfficialGlobalSourceResilience {
 	}
 }
 
-internal enum class OfficialGlobalDomainMode {
+enum class OfficialGlobalDomainMode {
 	DEFAULT,
 	TRUSTED_MIRROR,
 	CUSTOM,
 }
 
-internal enum class OfficialGlobalRequestProfile {
+enum class OfficialGlobalRequestProfile {
 	/** No fixed pacing while healthy; one bounded adaptive retry for transient failures. */
 	AUTO,
 
@@ -74,7 +74,7 @@ internal enum class OfficialGlobalRequestProfile {
 	SLOWER,
 }
 
-internal enum class OfficialGlobalDiagnosticStatus {
+enum class OfficialGlobalDiagnosticStatus {
 	UNTESTED,
 	HEALTHY,
 	INVALID_URL,
@@ -88,7 +88,7 @@ internal enum class OfficialGlobalDiagnosticStatus {
 	SOURCE_UNAVAILABLE,
 }
 
-internal enum class OfficialGlobalDiagnosticStage {
+enum class OfficialGlobalDiagnosticStage {
 	NONE,
 	CATALOGUE,
 	DETAILS,
@@ -96,7 +96,7 @@ internal enum class OfficialGlobalDiagnosticStage {
 	READER,
 }
 
-internal data class OfficialGlobalDiagnostic(
+data class OfficialGlobalDiagnostic(
 	val domain: String,
 	val status: OfficialGlobalDiagnosticStatus,
 	val stage: OfficialGlobalDiagnosticStage = OfficialGlobalDiagnosticStage.NONE,
@@ -108,7 +108,7 @@ internal data class OfficialGlobalDiagnostic(
 		get() = status == OfficialGlobalDiagnosticStatus.HEALTHY
 }
 
-internal data class OfficialGlobalSourceSettingsSnapshot(
+data class OfficialGlobalSourceSettingsSnapshot(
 	val sourceTitle: String,
 	val packName: String,
 	val packVersion: String?,
