@@ -80,6 +80,7 @@ internal enum class OfficialGlobalDiagnosticStatus {
 	INVALID_URL,
 	NETWORK_ERROR,
 	HTTP_ERROR,
+	REDIRECT,
 	CLOUDFLARE,
 	RATE_LIMITED,
 	PARSER_MISMATCH,
@@ -108,6 +109,11 @@ internal data class OfficialGlobalDiagnostic(
 }
 
 internal data class OfficialGlobalSourceSettingsSnapshot(
+	val sourceTitle: String,
+	val packName: String,
+	val packVersion: String?,
+	val providerName: String,
+	val packLastModified: Long?,
 	val activeDomain: String,
 	val presetDomains: List<String>,
 	val domainMode: OfficialGlobalDomainMode,
