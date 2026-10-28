@@ -3,12 +3,12 @@ package org.koitharu.kotatsu.discovery
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.hasText
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
 import org.junit.After
@@ -60,7 +60,7 @@ class MALCatalogDetailsUiTest {
 		compose.onNodeWithText("Character 11").assertDoesNotExist()
 		compose.onNodeWithTag("catalog_characters_view_all").performClick()
 		compose.onNodeWithText(context.getString(R.string.hub_show_less)).assertExists()
-		compose.onNodeWithTag("catalog_characters").performScrollToNode(hasText("Character 12"))
+		compose.onNodeWithTag("catalog_characters_list").performScrollToNode(hasText("Character 12"))
 		compose.onNodeWithText("Character 12").assertExists()
 	}
 
