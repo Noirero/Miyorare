@@ -62,10 +62,11 @@ internal class OfficialGlobalSourceNetworkPolicyInterceptor(
 				waitCancellable(chain, retryDelay(profile, attempt))
 				attempt++
 			} catch (e: TooManyRequestExceptions) {
-				if (attempt >= maxRetries) {
+				val serverDelay = e.getRetryDelay()
+				if (attempt >= maxRetries || serverDelay < 0L || serverDelay > MAX_SERVER_RETRY_DELAY_MILLIS) {
 					return failoverTrustedMirrorAfterFailure(chain, parser, config, request, e)
 				}
-				waitCancellable(chain, retryDelay(profile, attempt))
+				waitCancellable(chain, maxOf(serverDelay, retryDelay(profile, attempt)))
 				attempt++
 			} catch (e: IOException) {
 				if (attempt >= maxRetries || chain.call().isCanceled()) {
@@ -193,5 +194,6 @@ internal class OfficialGlobalSourceNetworkPolicyInterceptor(
 		const val AUTO_RETRY_DELAY_MILLIS = 350L
 		const val SLOWER_MIN_INTERVAL_MILLIS = 600L
 		const val SLOWER_RETRY_DELAY_MILLIS = 1_000L
+		const val MAX_SERVER_RETRY_DELAY_MILLIS = 30_000L
 	}
 }
