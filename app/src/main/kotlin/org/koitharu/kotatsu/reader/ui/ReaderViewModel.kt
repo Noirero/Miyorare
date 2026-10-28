@@ -297,6 +297,7 @@ class ReaderViewModel @Inject constructor(
             manga = getMangaOrNull() ?: return,
             readerState = readerState,
             percent = computePercent(readerState),
+            space = favouriteSpace,
         )
     }
 
@@ -619,7 +620,7 @@ class ReaderViewModel @Inject constructor(
         if (isPeekMode.value) return
         val state = readingState.value ?: return
         when (isIncognitoMode.value) {
-            false -> historyUpdateUseCase.invokeAsync(manga, state, computePercent(state))
+            false -> historyUpdateUseCase.invokeAsync(manga, state, computePercent(state), favouriteSpace)
             true -> Unit
             null -> {
                 deferredHistorySaveJob?.cancel()
@@ -630,6 +631,7 @@ class ReaderViewModel @Inject constructor(
                             manga = getMangaOrNull() ?: manga,
                             readerState = latestState,
                             percent = computePercent(latestState),
+                            space = favouriteSpace,
                         )
                     }
                 }
