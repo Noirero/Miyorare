@@ -534,34 +534,40 @@ class NovelTranslationCoordinator(
 						wave += batch
 					}
 					if (wave.isEmpty()) break
-					coroutineScope {
+					val waveFailure = coroutineScope {
 						wave.map { batch ->
 							async {
-								if (canBatch && batch.size > 1) {
-									val values = translateBatch(
-										provider = provider,
-										selection = request.selection,
-										items = batch,
-										segmentCount = segments.size,
-										completed = completed,
-										onProgress = onProgress,
-									)
-									batch.zip(values).forEach { (item, value) -> publish(item, value) }
-								} else {
-									val item = batch.single()
-									val value = translateSingle(
-										provider = provider,
-										selection = request.selection,
-										item = item,
-										segmentCount = segments.size,
-										completed = completed,
-										onProgress = onProgress,
-									)
-									publish(item, value)
+								try {
+									if (canBatch && batch.size > 1) {
+										val values = translateBatch(
+											provider = provider,
+											selection = request.selection,
+											items = batch,
+											segmentCount = segments.size,
+											completed = completed,
+											onProgress = onProgress,
+										)
+										batch.zip(values).forEach { (item, value) -> publish(item, value) }
+									} else {
+										val item = batch.single()
+										val value = translateSingle(
+											provider = provider,
+											selection = request.selection,
+											item = item,
+											segmentCount = segments.size,
+											completed = completed,
+											onProgress = onProgress,
+										)
+										publish(item, value)
+									}
+									null
+								} catch (error: NovelTranslationFailure) {
+									error
 								}
 							}
-						}.awaitAll()
+						}.awaitAll().firstOrNull { it != null }
 					}
+					waveFailure?.let { throw it }
 				}
 			}
 
