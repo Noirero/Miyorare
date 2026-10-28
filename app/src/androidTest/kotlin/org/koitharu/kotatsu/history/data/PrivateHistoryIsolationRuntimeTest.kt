@@ -15,6 +15,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.list.domain.ListSortOrder
@@ -34,6 +35,41 @@ class PrivateHistoryIsolationRuntimeTest {
 	fun prepare() = runBlocking {
 		hilt.inject()
 		database.clearAllTables()
+	}
+
+	@Test
+	fun privateReadSpaceStaysOutOfNormalHistoryWithoutFavouriteMembership() = runBlocking {
+		val manga = SampleData.mangaDetails
+		database.getMangaDao().upsert(manga.toEntity())
+		val dao = database.getHistoryDao()
+		val privateHistory = HistoryEntity(
+			mangaId = manga.id,
+			createdAt = 1L,
+			updatedAt = 2L,
+			chapterId = SampleData.chapter.id,
+			page = 0,
+			scroll = 0f,
+			percent = 0.5f,
+			deletedAt = 0L,
+			chaptersCount = checkNotNull(manga.chapters).size,
+			space = FavouriteSpace.PRIVATE.dbValue,
+		)
+		dao.insert(privateHistory)
+
+		assertTrue(dao.observeAll(ListSortOrder.NEWEST, emptySet(), 10).first().isEmpty())
+		assertEquals(
+			listOf(manga.id),
+			dao.observeAllPrivate(ListSortOrder.NEWEST, emptySet(), 10).first().map { it.history.mangaId },
+		)
+		assertFalse(dao.findAllForSync().any { it.mangaId == manga.id })
+		assertNotNull(dao.find(manga.id))
+
+		// A later read from Normal may reclaim the row when no Private membership exists.
+		dao.upsert(privateHistory.copy(updatedAt = 3L, space = FavouriteSpace.NORMAL.dbValue))
+		assertEquals(
+			listOf(manga.id),
+			dao.observeAll(ListSortOrder.NEWEST, emptySet(), 10).first().map { it.history.mangaId },
+		)
 	}
 
 	@Test
