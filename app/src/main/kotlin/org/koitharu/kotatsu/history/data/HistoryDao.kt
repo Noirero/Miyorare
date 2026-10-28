@@ -337,7 +337,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun upsertForSync(entity: HistoryEntity)
 
 	@Query(
-		"UPDATE history SET page = :page, chapter_id = :chapterId, scroll = :scroll, percent = :percent, updated_at = :updatedAt, chapters = :chapters, space = :space, deleted_at = 0 WHERE manga_id = :mangaId",
+		"UPDATE history SET page = :page, chapter_id = :chapterId, scroll = :scroll, percent = :percent, updated_at = :updatedAt, chapters = :chapters, deleted_at = 0 WHERE manga_id = :mangaId",
 	)
 	abstract suspend fun update(
 		mangaId: Long,
@@ -346,9 +346,11 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		scroll: Float,
 		percent: Float,
 		chapters: Int,
-		space: Int,
 		updatedAt: Long,
 	): Int
+
+	@Query("UPDATE history SET space = :space WHERE manga_id = :mangaId")
+	abstract suspend fun updateSpace(mangaId: Long, space: Int)
 
 	suspend fun delete(mangaId: Long) = setDeletedAt(mangaId, System.currentTimeMillis())
 
@@ -370,7 +372,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		scroll = entity.scroll,
 		percent = entity.percent,
 		chapters = entity.chaptersCount,
-		space = entity.space,
 		updatedAt = entity.updatedAt,
 	)
 
