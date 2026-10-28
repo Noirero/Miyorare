@@ -52,6 +52,33 @@ data class TrackerCatalogPerson(
 	init { require(name.isNotBlank()) }
 }
 
+data class TrackerCatalogScoreDistribution(
+	val score: Int,
+	val votes: Long,
+	val percentage: Double? = null,
+) {
+	init {
+		require(score in 1..10)
+		require(votes >= 0L)
+		require(percentage == null || percentage.isFinite() && percentage in 0.0..100.0)
+	}
+}
+
+data class TrackerCatalogStatistics(
+	val reading: Long? = null,
+	val completed: Long? = null,
+	val onHold: Long? = null,
+	val dropped: Long? = null,
+	val planToRead: Long? = null,
+	val total: Long? = null,
+	val scores: List<TrackerCatalogScoreDistribution> = emptyList(),
+) {
+	init {
+		require(listOfNotNull(reading, completed, onHold, dropped, planToRead, total).all { it >= 0L })
+		require(scores.map { it.score }.distinct().size == scores.size)
+	}
+}
+
 enum class CatalogRelatedMediaKind { MANGA, NOVEL, ANIME, OTHER }
 
 data class TrackerCatalogRelatedWork(
@@ -148,6 +175,8 @@ data class TrackerCatalogDetails(
 	val characters: List<TrackerCatalogPerson> = emptyList(),
 	val staffPeople: List<TrackerCatalogPerson> = emptyList(),
 	val relatedWorks: List<TrackerCatalogRelatedWork> = emptyList(),
+	/** Full provider community statistics when the catalogue backend exposes them. */
+	val statistics: TrackerCatalogStatistics? = null,
 )
 
 enum class CatalogCapability {

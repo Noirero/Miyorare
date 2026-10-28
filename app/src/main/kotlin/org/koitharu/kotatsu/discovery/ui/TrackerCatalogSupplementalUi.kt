@@ -6,15 +6,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,6 +30,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
@@ -32,8 +41,14 @@ import org.koitharu.kotatsu.discovery.domain.TrackerCatalogDetails
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogKey
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogPerson
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogRelatedWork
+import org.koitharu.kotatsu.discovery.domain.TrackerCatalogStatistics
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRelationType
 import java.net.URI
+import java.text.NumberFormat
+import java.util.Locale
+
+private const val MAL_CHARACTER_PREVIEW_COUNT = 10
 
 @Composable
 internal fun CatalogSupplementalDetails(
@@ -42,8 +57,15 @@ internal fun CatalogSupplementalDetails(
 	onItem: (TrackerCatalogKey) -> Unit,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+		details.statistics?.let { CatalogStatisticsSection(it) }
 		if (details.characters.isNotEmpty()) {
-			CatalogPeopleLane(stringResource(R.string.hub_characters), details.characters, imageLoader, "characters")
+			CatalogPeopleLane(
+				title = stringResource(R.string.hub_characters),
+				people = details.characters,
+				imageLoader = imageLoader,
+				tag = "characters",
+				viewAll = details.item.key.service == ScrobblerService.MAL,
+			)
 		}
 		if (details.staffPeople.isNotEmpty()) {
 			CatalogPeopleLane(stringResource(R.string.hub_staff), details.staffPeople, imageLoader, "staff")
@@ -55,19 +77,94 @@ internal fun CatalogSupplementalDetails(
 }
 
 @Composable
+private fun CatalogStatisticsSection(statistics: TrackerCatalogStatistics) {
+	var expanded by rememberSaveable { mutableStateOf(false) }
+	val toggleLabel = stringResource(if (expanded) R.string.hub_collapse_statistics else R.string.hub_expand_statistics)
+	Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("catalog_statistics")) {
+		Row(
+			modifier = Modifier
+				.fillMaxWidth()
+				.heightIn(min = 48.dp)
+				.clip(RoundedCornerShape(12.dp))
+				.clickable(onClickLabel = toggleLabel) { expanded = !expanded }
+				.testTag("catalog_statistics_toggle")
+				.padding(horizontal = 4.dp),
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(8.dp),
+		) {
+			Text(stringResource(R.string.hub_statistics), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+			statistics.total?.let {
+				Text(formatCatalogPeopleCount(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			}
+			Text(if (expanded) "▲" else "▼", style = MaterialTheme.typography.labelLarge)
+		}
+		if (expanded) {
+			Column(
+				modifier = Modifier.fillMaxWidth().testTag("catalog_statistics_content"),
+				verticalArrangement = Arrangement.spacedBy(8.dp),
+			) {
+				statistics.reading?.let { CatalogStatisticRow(stringResource(R.string.hub_reading), formatCatalogPeopleCount(it)) }
+				statistics.completed?.let { CatalogStatisticRow(stringResource(R.string.hub_completed), formatCatalogPeopleCount(it)) }
+				statistics.onHold?.let { CatalogStatisticRow(stringResource(R.string.hub_on_hold), formatCatalogPeopleCount(it)) }
+				statistics.dropped?.let { CatalogStatisticRow(stringResource(R.string.hub_dropped), formatCatalogPeopleCount(it)) }
+				statistics.planToRead?.let { CatalogStatisticRow(stringResource(R.string.hub_plan_to_read), formatCatalogPeopleCount(it)) }
+				statistics.total?.let { CatalogStatisticRow(stringResource(R.string.hub_total), formatCatalogPeopleCount(it)) }
+				if (statistics.scores.isNotEmpty()) {
+					Text(
+						stringResource(R.string.hub_score_distribution),
+						style = MaterialTheme.typography.labelLarge,
+						modifier = Modifier.padding(top = 4.dp),
+					)
+					statistics.scores.forEach { score ->
+						val percentage = score.percentage?.let { String.format(Locale.getDefault(), "%.1f%%", it) }
+						CatalogStatisticRow(
+							label = stringResource(R.string.hub_score_value, score.score),
+							value = listOfNotNull(formatCatalogPeopleCount(score.votes), percentage).joinToString(" · "),
+						)
+					}
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun CatalogStatisticRow(label: String, value: String) {
+	Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+		Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+		Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+	}
+}
+
+@Composable
 private fun CatalogPeopleLane(
 	title: String,
 	people: List<TrackerCatalogPerson>,
 	imageLoader: ImageLoader,
 	tag: String,
+	viewAll: Boolean = false,
 ) {
+	var expanded by rememberSaveable(tag, people.size) { mutableStateOf(false) }
+	val canExpand = viewAll && people.size > MAL_CHARACTER_PREVIEW_COUNT
+	val visiblePeople = if (canExpand && !expanded) people.take(MAL_CHARACTER_PREVIEW_COUNT) else people
 	Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("catalog_$tag")) {
-		Text(title, style = MaterialTheme.typography.titleMedium)
+		Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+			Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+			if (canExpand) {
+				TextButton(
+					onClick = { expanded = !expanded },
+					modifier = Modifier.heightIn(min = 48.dp).testTag("catalog_${tag}_view_all"),
+				) {
+					Text(stringResource(if (expanded) R.string.hub_show_less else R.string.hub_view_all))
+				}
+			}
+		}
 		LazyRow(
+			modifier = Modifier.testTag("catalog_${tag}_list"),
 			contentPadding = PaddingValues(end = 8.dp),
 			horizontalArrangement = Arrangement.spacedBy(12.dp),
 		) {
-			items(people, key = { person -> "${person.id}:${person.name}:${person.roles.joinToString()}" }) { person ->
+			items(visiblePeople, key = { person -> "${person.id}:${person.name}:${person.roles.joinToString()}" }) { person ->
 				CatalogPersonCard(person, imageLoader)
 			}
 		}
@@ -199,6 +296,8 @@ private fun catalogRelatedMediaName(kind: CatalogRelatedMediaKind): String = whe
 	CatalogRelatedMediaKind.ANIME -> stringResource(R.string.hub_anime)
 	CatalogRelatedMediaKind.OTHER -> stringResource(R.string.hub_other_media)
 }
+
+private fun formatCatalogPeopleCount(value: Long): String = NumberFormat.getIntegerInstance(Locale.getDefault()).format(value)
 
 private fun safeCatalogHttps(value: String?): String? = value?.let {
 	runCatching { URI(it) }.getOrNull()?.takeIf { uri ->

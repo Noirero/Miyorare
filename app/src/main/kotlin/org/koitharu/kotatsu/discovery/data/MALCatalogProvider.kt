@@ -27,6 +27,7 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 		CatalogCapability.NOVEL,
 		CatalogCapability.STAFF,
 		CatalogCapability.RECOMMENDATIONS,
+		CatalogCapability.CHARACTERS,
 		CatalogCapability.RELATIONS,
 	)
 	private val sectionTypes = listOf(CatalogSectionType.TOP_RANKED, CatalogSectionType.POPULAR, CatalogSectionType.MOST_FAVORITED)
@@ -88,7 +89,8 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 				providerUrl = null,
 			)
 		}
-		var partial = false
+		val supplemental = loadMALCatalogSupplemental(http, key)
+		var partial = supplemental.partial
 		val recommendations = try {
 			root.array("recommendations")?.let { rows -> catalogRows(rows) { row -> row.obj("node")?.let { parseMALCard(it, allowAdult) } } }.orEmpty()
 		} catch (_: CatalogException) { partial = true; emptyList() }
@@ -120,8 +122,10 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 			popularity = popularity,
 			recommendations = recommendations,
 			partial = partial,
+			characters = supplemental.characters,
 			staffPeople = staffPeople,
 			relatedWorks = relatedWorks,
+			statistics = supplemental.statistics,
 		)
 	}
 

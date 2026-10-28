@@ -342,7 +342,7 @@ private fun CatalogDetailsContent(
 			if (details.alternativeTitles.isNotEmpty()) item {
 				MetadataBlock(stringResource(R.string.hub_alternative_titles), details.alternativeTitles.joinToString("\n"))
 			}
-			if (details.characters.isNotEmpty() || details.staffPeople.isNotEmpty() || details.relatedWorks.isNotEmpty()) item {
+			if (details.statistics != null || details.characters.isNotEmpty() || details.staffPeople.isNotEmpty() || details.relatedWorks.isNotEmpty()) item {
 				CatalogSupplementalDetails(details, imageLoader, onItem)
 			}
 			if (details.staffPeople.isEmpty() && details.staff.isNotEmpty()) item {
