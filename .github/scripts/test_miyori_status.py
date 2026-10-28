@@ -233,7 +233,7 @@ class MiyoriStatusTests(unittest.TestCase):
 
             def get(self, path):
                 self.calls.append(path)
-                if "page=1" in path:
+                if path.endswith("page=1"):
                     return {
                         "total_count": 101,
                         "workflows": [
