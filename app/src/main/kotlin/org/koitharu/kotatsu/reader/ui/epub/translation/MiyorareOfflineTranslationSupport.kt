@@ -62,7 +62,8 @@ internal object MiyorareOfflineTranslationSupport {
 		if (plan.requiredModels.isEmpty()) return MiyorareOfflineModelState.Ready
 		val downloaded = downloadedLanguages()
 		pruneMissingExplicitModels(context, plan.requiredModels, downloaded)
-		val missing = plan.requiredModels.filterNot(downloaded::contains)
+		val explicit = explicitModels(context)
+		val missing = plan.requiredModels.filterNot { language -> language in downloaded && language in explicit }
 		return if (missing.isEmpty()) MiyorareOfflineModelState.Ready else MiyorareOfflineModelState.Missing(missing)
 	}
 
