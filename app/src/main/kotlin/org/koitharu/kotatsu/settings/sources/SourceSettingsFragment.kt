@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,7 @@ import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.MultiSelectSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
+import org.koitharu.kotatsu.settings.compose.SettingsListScope
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.LocalSettingsScrollToTop
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
@@ -128,6 +130,7 @@ class SourceSettingsFragment : BaseComposeSettingsFragment(0) {
 
 		setContent {
 			MiyorareTheme {
+				val officialGlobalState by viewModel.officialGlobalState.collectAsState()
 				SourceSettingsScreen(
 					isValidSource = isValidSource,
 					languageOptions = emptyList(),
@@ -143,6 +146,19 @@ class SourceSettingsFragment : BaseComposeSettingsFragment(0) {
 					onDeletePlugin = { id -> confirmDeletePlugin(id) },
 					onLanguageSelected = {},
 					scrollToLanguage = requireArguments().getBoolean(ARG_SCROLL_TO_LANGUAGE),
+					extraContent = {
+						officialGlobalSourceSettings(
+							state = officialGlobalState,
+							onTrustedDomainSelected = viewModel::selectOfficialGlobalTrustedDomain,
+							onCustomDomainEntered = viewModel::applyOfficialGlobalCustomDomain,
+							onAutoMirrorChanged = viewModel::setOfficialGlobalAutoMirror,
+							onTestAddress = viewModel::testOfficialGlobalAddress,
+							onResetAddress = viewModel::resetOfficialGlobalDomain,
+							onTestSource = viewModel::testOfficialGlobalSource,
+							onResetSession = viewModel::resetOfficialGlobalSession,
+							onRequestProfileChanged = viewModel::setOfficialGlobalRequestProfile,
+						)
+					},
 				)
 			}
 		}
@@ -271,7 +287,7 @@ class SourceSettingsFragment : BaseComposeSettingsFragment(0) {
 	}
 
 	companion object {
-		private const val DEFAULT_VARIANT_KEY = " default"
+		private const val DEFAULT_VARIANT_KEY = "\u0000default"
 
 		fun newInstance(source: MangaSource, scrollToLanguage: Boolean = false) = SourceSettingsFragment().withArgs(2) {
 			putString(AppRouter.KEY_SOURCE, source.name)
@@ -310,6 +326,7 @@ private fun SourceSettingsScreen(
 	onDeletePlugin: (String) -> Unit,
 	onLanguageSelected: (String) -> Unit,
 	scrollToLanguage: Boolean,
+	extraContent: SettingsListScope.() -> Unit,
 ) {
 	// The active language drives an in-place reload of the whole screen.
 	var selectedLang by remember { mutableStateOf(initialLang) }
@@ -371,6 +388,8 @@ private fun SourceSettingsScreen(
 			}
 		}
 
+		extraContent()
+
 		if (isValidSource || variant.openBrowserUrl != null || uninstallPkg != null || novelPluginId != null) {
 			item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 			item {
@@ -421,7 +440,6 @@ private fun SourceSettingsScreen(
 								icon = R.drawable.ic_open_external,
 								shape = pos.shape,
 								onClick = { onOpenBrowser(browserUrl) },
-							)
 						}
 					}
 					if (novelPluginId != null) {
@@ -597,7 +615,6 @@ private fun rememberSourceBoolean(
 						state.value = newValue
 						prefs.edit().putBoolean(key, newValue).apply()
 					}
-				}
 
 			override fun component1() = value
 			override fun component2(): (Boolean) -> Unit = { value = it }
