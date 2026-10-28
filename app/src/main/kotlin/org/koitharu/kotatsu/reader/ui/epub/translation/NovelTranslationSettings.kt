@@ -68,7 +68,7 @@ class NovelTranslationSettings(context: Context) {
 	private val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
 	init {
-		migrateLegacyBuiltInProviderIfNeeded()
+		migrateRemovedBuiltInStateIfNeeded()
 		migratePresentationPolicyIfNeeded()
 	}
 
@@ -173,16 +173,21 @@ class NovelTranslationSettings(context: Context) {
 		return if (override.isNotEmpty()) override else provider.defaultBaseUrl.trimEnd('/')
 	}
 
-	private fun migrateLegacyBuiltInProviderIfNeeded() {
+	private fun migrateRemovedBuiltInStateIfNeeded() {
+		if (prefs.getBoolean(KEY_BUILT_IN_REMOVAL_MIGRATED, false)) return
 		val migration = legacyBuiltInProviderMigration(
 			storedProviderId = prefs.getString(KEY_PROVIDER, null),
 			lastRemoteProviderId = prefs.getString(LEGACY_KEY_LAST_REMOTE_AI_PROVIDER, null),
-		) ?: return
-		prefs.edit()
-			.putString(KEY_ENGINE, migration.engine.id)
-			.putString(KEY_PROVIDER, migration.provider.id)
-			.remove(LEGACY_KEY_LAST_REMOTE_AI_PROVIDER)
-			.apply()
+		)
+		prefs.edit().apply {
+			if (migration != null) {
+				putString(KEY_ENGINE, migration.engine.id)
+				putString(KEY_PROVIDER, migration.provider.id)
+			}
+			remove(LEGACY_KEY_LAST_REMOTE_AI_PROVIDER)
+			putBoolean(KEY_BUILT_IN_REMOVAL_MIGRATED, true)
+		}.apply()
+		applicationContext.deleteSharedPreferences(LEGACY_OFFLINE_MODELS_PREFS_NAME)
 	}
 
 	private fun migratePresentationPolicyIfNeeded() {
@@ -211,9 +216,11 @@ class NovelTranslationSettings(context: Context) {
 		const val DEFAULT_TARGET_LANGUAGE = "id"
 
 		private const val PREFS_NAME = "novel_translation"
+		private const val LEGACY_OFFLINE_MODELS_PREFS_NAME = "novel_translation_offline_models"
 		private const val KEY_ENGINE = "engine"
 		private const val KEY_PROVIDER = "provider"
 		private const val LEGACY_KEY_LAST_REMOTE_AI_PROVIDER = "last_remote_ai_provider"
+		private const val KEY_BUILT_IN_REMOVAL_MIGRATED = "built_in_removal_migrated"
 		private const val KEY_SOURCE_LANGUAGE = "source_language"
 		private const val KEY_TARGET_LANGUAGE = "target_language"
 		private const val KEY_BILINGUAL = "bilingual"
