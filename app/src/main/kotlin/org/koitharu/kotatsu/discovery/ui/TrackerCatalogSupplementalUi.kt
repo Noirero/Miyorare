@@ -12,14 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -84,13 +79,14 @@ internal fun CatalogSupplementalDetails(
 @Composable
 private fun CatalogStatisticsSection(statistics: TrackerCatalogStatistics) {
 	var expanded by rememberSaveable { mutableStateOf(false) }
+	val toggleLabel = stringResource(if (expanded) R.string.hub_collapse_statistics else R.string.hub_expand_statistics)
 	Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("catalog_statistics")) {
 		Row(
 			modifier = Modifier
 				.fillMaxWidth()
 				.heightIn(min = 48.dp)
 				.clip(RoundedCornerShape(12.dp))
-				.clickable { expanded = !expanded }
+				.clickable(onClickLabel = toggleLabel) { expanded = !expanded }
 				.testTag("catalog_statistics_toggle")
 				.padding(horizontal = 4.dp),
 			verticalAlignment = Alignment.CenterVertically,
@@ -100,10 +96,7 @@ private fun CatalogStatisticsSection(statistics: TrackerCatalogStatistics) {
 			statistics.total?.let {
 				Text(formatCatalogPeopleCount(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
-			Icon(
-				imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-				contentDescription = stringResource(if (expanded) R.string.hub_collapse_statistics else R.string.hub_expand_statistics),
-			)
+			Text(if (expanded) "▲" else "▼", style = MaterialTheme.typography.labelLarge)
 		}
 		if (expanded) {
 			Column(
