@@ -11,6 +11,7 @@
     <string name="global_source_auto_mirror_summary">Try another trusted address when the active address is unavailable</string>
     <string name="global_source_custom_url">Custom URL</string>
     <string name="global_source_custom_url_hint">Enter an HTTPS site address to validate</string>
+    <string name="global_source_custom_url_invalid">Use a valid HTTPS root address or host without a path, query, or credentials</string>
     <string name="global_source_test_address">Test address</string>
     <string name="global_source_test_address_summary">Check reachability and redirects without changing the active address</string>
     <string name="global_source_reset_address">Reset address</string>
@@ -22,6 +23,7 @@
     <string name="global_source_status">Source status</string>
     <string name="global_source_status_never_tested">Not tested yet</string>
     <string name="global_source_status_testing">Testing…</string>
+    <string name="global_source_active_unchanged">Active address remains %1$s</string>
     <string name="global_source_reset_session">Reset source session</string>
     <string name="global_source_reset_session_summary">Clear cookies and Cloudflare session only for this source</string>
 
@@ -50,12 +52,9 @@
     <string name="global_source_diag_parser_mismatch">Parser mismatch</string>
     <string name="global_source_diag_auth_required">Authentication required</string>
     <string name="global_source_diag_unavailable">Source unavailable</string>
-    <string name="global_source_diag_http">HTTP %1$d</string>
     <string name="global_source_diag_stage_catalogue">Catalogue</string>
     <string name="global_source_diag_stage_details">Details</string>
     <string name="global_source_diag_stage_chapters">Chapters</string>
     <string name="global_source_diag_stage_reader">Reader</string>
-    <string name="global_source_diag_summary">%1$s · %2$s · %3$s</string>
-    <string name="global_source_diag_summary_http">%1$s · HTTP %2$d · %3$s · %4$s</string>
     <string name="global_source_custom_active_label">Custom: %1$s</string>
 </resources>
