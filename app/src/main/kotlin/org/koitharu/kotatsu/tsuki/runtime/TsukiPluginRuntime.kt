@@ -9,6 +9,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import org.jsoup.HttpStatusException
 import org.koitharu.kotatsu.core.exceptions.CloudFlareBlockedException
 import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
 import org.koitharu.kotatsu.core.network.BaseHttpClient
@@ -249,9 +250,15 @@ class TsukiPluginRuntime @Inject constructor(
 		val domain = handle.parser.domain
 		val testedAt = System.currentTimeMillis()
 		val preflight = preflightOfficialGlobalDomain(handle.source, domain, useCookies = true, testedAt = testedAt)
-		return preflight.failure ?: OfficialGlobalDiagnostic(
+		preflight.failure?.let { return it }
+		val status = if (preflight.httpStatus != null && preflight.httpStatus >= 400) {
+			OfficialGlobalDiagnosticStatus.HTTP_ERROR
+		} else {
+			OfficialGlobalDiagnosticStatus.HEALTHY
+		}
+		return OfficialGlobalDiagnostic(
 			domain = domain,
-			status = OfficialGlobalDiagnosticStatus.HEALTHY,
+			status = status,
 			stage = OfficialGlobalDiagnosticStage.NONE,
 			httpStatus = preflight.httpStatus,
 			testedAt = testedAt,
@@ -326,41 +333,42 @@ class TsukiPluginRuntime @Inject constructor(
 		val startedAt = System.currentTimeMillis()
 		val preflight = preflightOfficialGlobalDomain(source, domain, useCookies, startedAt)
 		preflight.failure?.let { return it }
+		val baseHttpStatus = preflight.httpStatus?.takeIf { it in 200..399 }
 		var stage = OfficialGlobalDiagnosticStage.CATALOGUE
 		return try {
 			val parser = createOfficialGlobalProbeParser(source, domain, useCookies)
 			val order = parser.availableSortOrders.firstOrNull()
-				?: return parserMismatch(domain, stage, preflight.httpStatus, startedAt, "No catalogue sort order")
+				?: return parserMismatch(domain, stage, baseHttpStatus, startedAt, "No catalogue sort order")
 			val list = parser.getList(0, order, MangaListFilter.EMPTY)
 			val seed = list.firstOrNull()
-				?: return parserMismatch(domain, stage, preflight.httpStatus, startedAt, "Catalogue returned no items")
+				?: return parserMismatch(domain, stage, baseHttpStatus, startedAt, "Catalogue returned no items")
 
 			stage = OfficialGlobalDiagnosticStage.DETAILS
 			val details = parser.getDetails(seed)
 			val chapter = details.chapters?.firstOrNull()
-				?: return parserMismatch(domain, stage, preflight.httpStatus, startedAt, "Details returned no chapters")
+				?: return parserMismatch(domain, stage, baseHttpStatus, startedAt, "Details returned no chapters")
 
 			stage = OfficialGlobalDiagnosticStage.CHAPTERS
 			if (chapter.url.isBlank()) {
-				return parserMismatch(domain, stage, preflight.httpStatus, startedAt, "Chapter URL is empty")
+				return parserMismatch(domain, stage, baseHttpStatus, startedAt, "Chapter URL is empty")
 			}
 
 			stage = OfficialGlobalDiagnosticStage.READER
 			val pages = parser.getPages(chapter)
 			if (pages.isEmpty()) {
-				return parserMismatch(domain, stage, preflight.httpStatus, startedAt, "Reader returned no pages")
+				return parserMismatch(domain, stage, baseHttpStatus, startedAt, "Reader returned no pages")
 			}
 			OfficialGlobalDiagnostic(
 				domain = domain,
 				status = OfficialGlobalDiagnosticStatus.HEALTHY,
 				stage = OfficialGlobalDiagnosticStage.READER,
-				httpStatus = preflight.httpStatus,
+				httpStatus = baseHttpStatus,
 				testedAt = startedAt,
 			)
 		} catch (e: InvocationTargetException) {
-			classifyProbeFailure(domain, stage, preflight.httpStatus, startedAt, e.targetException)
+			classifyProbeFailure(domain, stage, baseHttpStatus, startedAt, e.targetException)
 		} catch (e: Throwable) {
-			classifyProbeFailure(domain, stage, preflight.httpStatus, startedAt, e)
+			classifyProbeFailure(domain, stage, baseHttpStatus, startedAt, e)
 		}
 	}
 
@@ -408,19 +416,7 @@ class TsukiPluginRuntime @Inject constructor(
 						)
 					}
 				}
-				if (response.code !in 200..399) {
-					PreflightResult(
-						httpStatus = response.code,
-						failure = OfficialGlobalDiagnostic(
-							domain = domain,
-							status = OfficialGlobalDiagnosticStatus.HTTP_ERROR,
-							httpStatus = response.code,
-							testedAt = testedAt,
-						),
-					)
-				} else {
-					PreflightResult(httpStatus = response.code)
-				}
+				PreflightResult(httpStatus = response.code)
 			}
 		} catch (e: Throwable) {
 			PreflightResult(
@@ -498,11 +494,13 @@ class TsukiPluginRuntime @Inject constructor(
 			is tsuki.exception.TooManyRequestExceptions -> OfficialGlobalDiagnosticStatus.RATE_LIMITED
 			is tsuki.exception.AuthRequiredException -> OfficialGlobalDiagnosticStatus.AUTH_REQUIRED
 			is tsuki.exception.ParseException -> OfficialGlobalDiagnosticStatus.PARSER_MISMATCH
+			is HttpStatusException -> OfficialGlobalDiagnosticStatus.HTTP_ERROR
 			is IOException -> OfficialGlobalDiagnosticStatus.NETWORK_ERROR
 			else -> OfficialGlobalDiagnosticStatus.SOURCE_UNAVAILABLE
 		}
-		val code = when (status) {
-			OfficialGlobalDiagnosticStatus.RATE_LIMITED -> 429
+		val code = when {
+			status == OfficialGlobalDiagnosticStatus.RATE_LIMITED -> 429
+			error is HttpStatusException -> error.statusCode
 			else -> httpStatus
 		}
 		return OfficialGlobalDiagnostic(
