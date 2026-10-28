@@ -45,8 +45,10 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      - name: Validate runtime test selector
-        run: bash .github/scripts/select-pr-runtime-tests.sh --self-test
+      - name: Validate runtime selector and wrapper
+        run: |
+          bash .github/scripts/select-pr-runtime-tests.sh --self-test
+          bash -n .github/scripts/run-selected-android-runtime.sh
 
       - name: Install browser auth helper tooling
         run: npm install --prefix browser-auth-helper --ignore-scripts
@@ -160,16 +162,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            if [ "$RUN_RUNTIME_ISOLATION" = "true" ]; then
-              bash .github/scripts/run-kotatsu-runtime-isolation-test.sh
-            fi
-            if [ "$RUN_MIGRATION_PERSISTENCE" = "true" ]; then
-              bash .github/scripts/check-migration-process-persistence.sh
-            fi
-            if [ -n "$RUNTIME_CLASSES" ]; then
-              bash .github/scripts/collect-android-runtime-diagnostics.sh ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace "-Pandroid.testInstrumentationRunnerArguments.class=$RUNTIME_CLASSES"
-            fi
+          script: bash .github/scripts/run-selected-android-runtime.sh
 
       - name: Upload Android evidence
         if: always()
