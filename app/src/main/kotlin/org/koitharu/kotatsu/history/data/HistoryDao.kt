@@ -7,7 +7,6 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RawQuery
 import androidx.room.Transaction
-import androidx.room.Upsert
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
@@ -333,8 +332,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	)
 	abstract suspend fun findAllForSync(): List<HistoryEntity>
 
-	@Upsert
-	abstract suspend fun upsertForSync(entity: HistoryEntity)
+	/** Remote sync may update reading progress, but it must not overwrite local History privacy ownership. */
+	suspend fun upsertForSync(entity: HistoryEntity) {
+		upsert(entity)
+	}
 
 	@Query(
 		"UPDATE history SET page = :page, chapter_id = :chapterId, scroll = :scroll, percent = :percent, updated_at = :updatedAt, chapters = :chapters, deleted_at = 0 WHERE manga_id = :mangaId",
