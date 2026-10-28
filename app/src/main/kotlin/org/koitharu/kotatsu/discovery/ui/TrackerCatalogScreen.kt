@@ -41,6 +41,7 @@ import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
+import java.text.NumberFormat
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -262,6 +263,10 @@ private fun CatalogDetailsContent(
 		if (state.loading) item { CatalogLoading() }
 		state.failure?.let { failure -> item { CatalogFeedback(failure, state.service, onRetry) } }
 		state.details?.let { details ->
+			val publication = listOfNotNull(details.startDate, details.endDate).distinct().joinToString(" – ").takeIf(String::isNotBlank)
+			val hasProviderFacts = details.item.providerType != null || details.status != null || publication != null || details.chapterCount != null ||
+				details.volumeCount != null || details.source != null || details.serialization != null || details.ageRating != null ||
+				details.stats.isNotEmpty() || details.rank != null || details.popularity != null
 			item { CatalogDetailHero(details, state.service, imageLoader) }
 			item {
 				Button(onClick = onRead, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("catalog_read")) {
@@ -311,16 +316,26 @@ private fun CatalogDetailsContent(
 					}
 				}
 			}
-			if (details.status != null || details.startDate != null || details.rank != null || details.popularity != null) item {
+			if (hasProviderFacts) item {
 				MetadataSurface {
-					details.status?.let { MetadataInfoRow(stringResource(R.string.hub_status), it) }
-					details.startDate?.let { MetadataInfoRow(stringResource(R.string.hub_publication), it) }
-					details.rank?.let { MetadataInfoRow(stringResource(R.string.hub_rank_label), "#$it") }
-					details.popularity?.let {
-						MetadataInfoRow(
-							if (state.service == ScrobblerService.ANILIST) stringResource(R.string.hub_readers_label) else stringResource(R.string.hub_popularity_label),
-							if (state.service == ScrobblerService.ANILIST) it.toString() else "#$it",
-						)
+					details.item.providerType?.let { MetadataInfoRow(stringResource(R.string.hub_format), formatProviderToken(it)) }
+					details.status?.let { MetadataInfoRow(stringResource(R.string.hub_status), formatProviderToken(it)) }
+					publication?.let { MetadataInfoRow(stringResource(R.string.hub_publication), it) }
+					details.chapterCount?.let { MetadataInfoRow(stringResource(R.string.hub_chapters), formatCatalogCount(it.toLong())) }
+					details.volumeCount?.let { MetadataInfoRow(stringResource(R.string.hub_volumes), formatCatalogCount(it.toLong())) }
+					details.source?.let { MetadataInfoRow(stringResource(R.string.hub_source), formatProviderToken(it)) }
+					details.serialization?.let { MetadataInfoRow(stringResource(R.string.hub_serialization), it) }
+					details.ageRating?.let { MetadataInfoRow(stringResource(R.string.hub_age_rating), it) }
+					if (details.stats.isNotEmpty()) {
+						details.stats.forEach { CatalogStatRow(it) }
+					} else {
+						details.rank?.let { MetadataInfoRow(stringResource(R.string.hub_rank_label), "#$it") }
+						details.popularity?.let {
+							MetadataInfoRow(
+								if (state.service == ScrobblerService.ANILIST) stringResource(R.string.hub_readers_label) else stringResource(R.string.hub_popularity_label),
+								if (state.service == ScrobblerService.ANILIST) formatCatalogCount(it.toLong()) else "#$it",
+							)
+						}
 					}
 				}
 			}
@@ -390,9 +405,12 @@ private fun CatalogDetailHero(details: TrackerCatalogDetails, service: Scrobbler
 		) {
 			CatalogCover(details.item, imageLoader, Modifier.width(112.dp).height(166.dp))
 			Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+				val providerType = details.item.providerType?.let(::formatProviderToken) ?: catalogKindName(details.item.key.kind)
 				Text(details.item.title, style = MaterialTheme.typography.headlineSmall, maxLines = 4, overflow = TextOverflow.Ellipsis)
-				Text("${catalogProviderName(service)} · ${catalogKindName(details.item.key.kind)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-				details.item.score?.let { Text(stringResource(R.string.hub_score, String.format(Locale.getDefault(), "%.1f", it)), style = MaterialTheme.typography.bodyMedium) }
+				Text("${catalogProviderName(service)} · $providerType", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+				if (details.stats.isEmpty()) {
+					details.item.score?.let { Text(stringResource(R.string.hub_score, String.format(Locale.getDefault(), "%.1f", it)), style = MaterialTheme.typography.bodyMedium) }
+				}
 			}
 		}
 	}
@@ -426,3 +444,59 @@ private fun MetadataInfoRow(label: String, value: String) {
 		Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
 	}
 }
+
+@Composable
+private fun CatalogStatRow(stat: TrackerCatalogStat) {
+	val label = stringResource(
+		when (stat.kind) {
+			CatalogStatKind.WEIGHTED_SCORE -> R.string.hub_weighted_score
+			CatalogStatKind.MEAN_SCORE -> R.string.hub_mean_score
+			CatalogStatKind.COMMUNITY_APPROVAL -> R.string.hub_community_approval
+			CatalogStatKind.RANK -> R.string.hub_rank_label
+			CatalogStatKind.RATING_RANK -> R.string.hub_rating_rank
+			CatalogStatKind.POPULARITY_RANK -> R.string.hub_popularity_rank_label
+			CatalogStatKind.READERS -> R.string.hub_readers_label
+			CatalogStatKind.MEMBERS -> R.string.hub_members
+			CatalogStatKind.USERS -> R.string.hub_users
+			CatalogStatKind.FAVORITES -> R.string.hub_favorites
+		},
+	)
+	MetadataInfoRow(label, formatCatalogStat(stat))
+}
+
+private fun formatCatalogStat(stat: TrackerCatalogStat): String = when (stat.kind) {
+	CatalogStatKind.WEIGHTED_SCORE,
+	CatalogStatKind.MEAN_SCORE,
+	-> when (stat.scale) {
+		100.0 -> "${formatCatalogNumber(stat.value)}%"
+		null -> formatCatalogNumber(stat.value)
+		else -> "${formatCatalogNumber(stat.value)}/${formatCatalogNumber(stat.scale)}"
+	}
+	CatalogStatKind.COMMUNITY_APPROVAL -> "${formatCatalogNumber(stat.value)}%"
+	CatalogStatKind.RANK,
+	CatalogStatKind.RATING_RANK,
+	CatalogStatKind.POPULARITY_RANK,
+	-> "#${formatCatalogCount(stat.value.toLong())}"
+	CatalogStatKind.READERS,
+	CatalogStatKind.MEMBERS,
+	CatalogStatKind.USERS,
+	CatalogStatKind.FAVORITES,
+	-> formatCatalogCount(stat.value.toLong())
+}
+
+private fun formatCatalogNumber(value: Double): String = NumberFormat.getNumberInstance(Locale.getDefault()).apply {
+	minimumFractionDigits = 0
+	maximumFractionDigits = 2
+}.format(value)
+
+private fun formatCatalogCount(value: Long): String = NumberFormat.getIntegerInstance(Locale.getDefault()).format(value)
+
+private fun formatProviderToken(value: String): String = value
+	.split('_', '-')
+	.filter(String::isNotBlank)
+	.joinToString(" ") { token ->
+		when (token.uppercase(Locale.ROOT)) {
+			"G", "PG", "R", "R18", "OEL" -> token.uppercase(Locale.ROOT)
+			else -> token.lowercase(Locale.ROOT).replaceFirstChar { it.uppercaseChar() }
+		}
+	}
