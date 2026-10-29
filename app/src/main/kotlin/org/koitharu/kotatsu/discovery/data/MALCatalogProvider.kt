@@ -93,25 +93,14 @@ class MALCatalogProvider(
 			val edge = row as? JsonObject ?: return@mapNotNull null
 			val person = edge.obj("node") ?: return@mapNotNull null
 			val name = listOfNotNull(person.text("first_name"), person.text("last_name")).joinToString(" ").ifBlank { null } ?: return@mapNotNull null
-			TrackerCatalogPerson(
-				id = null,
-				name = name,
-				imageUrl = null,
-				roles = listOfNotNull(edge.text("role")),
-				providerUrl = null,
-			)
+			TrackerCatalogPerson(id = null, name = name, imageUrl = null, roles = listOfNotNull(edge.text("role")), providerUrl = null)
 		}
-		val supplemental = loadMALCatalogSupplemental(http, key)
-		var partial = supplemental.partial
-		val recommendations = try {
-			root.array("recommendations")?.let { rows -> catalogRows(rows) { row -> row.obj("node")?.let { parseMALCard(it, allowAdult) } } }.orEmpty()
-		} catch (_: CatalogException) { partial = true; emptyList() }
+		var partial = false
+		val recommendations = try { root.array("recommendations")?.let { rows -> catalogRows(rows) { row -> row.obj("node")?.let { parseMALCard(it, allowAdult) } } }.orEmpty() } catch (_: CatalogException) { partial = true; emptyList() }
 		val relatedWorks = try { malCatalogRelatedWorks(root, allowAdult) } catch (_: Exception) { partial = true; emptyList() }
 		val rank = root.catalogInt("rank")
 		val popularity = root.catalogInt("popularity")
-		val serialization = root.array("serialization").orEmpty().mapNotNull { row ->
-			(row as? JsonObject)?.obj("node")?.text("name")
-		}.distinct().joinToString(", ").takeIf(String::isNotBlank)
+		val serialization = root.array("serialization").orEmpty().mapNotNull { row -> (row as? JsonObject)?.obj("node")?.text("name") }.distinct().joinToString(", ").takeIf(String::isNotBlank)
 		return TrackerCatalogDetails(
 			item = item,
 			alternativeTitles = alternatives,
@@ -134,15 +123,15 @@ class MALCatalogProvider(
 			popularity = popularity,
 			recommendations = recommendations,
 			partial = partial,
-			characters = supplemental.characters,
 			staffPeople = staffPeople,
 			relatedWorks = relatedWorks,
-			statistics = supplemental.statistics,
 		)
 	}
 
-	override suspend fun characterDetails(person: TrackerCatalogPerson): TrackerCatalogCharacterDetails =
-		loadMALCharacterDetails(http, person)
+	internal suspend fun supplementalCharacters(key: TrackerCatalogKey): List<TrackerCatalogPerson> = loadMALCharacters(http, key)
+	internal suspend fun supplementalStatistics(key: TrackerCatalogKey): TrackerCatalogStatistics = loadMALStatistics(http, key)
+
+	override suspend fun characterDetails(person: TrackerCatalogPerson): TrackerCatalogCharacterDetails = loadMALCharacterDetails(http, person)
 
 	private fun url(path: String, adult: Boolean, page: Int, size: Int) = "https://api.myanimelist.net/v2/$path".toHttpUrl().newBuilder()
 		.addQueryParameter("limit", size.toString()).addQueryParameter("offset", ((page - 1) * size).toString())

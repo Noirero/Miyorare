@@ -4,9 +4,9 @@ name: Promotion to Main Gate
 # - release/promote-main-* is a frozen, selectively constructed release candidate.
 # - The source integration branch may be Amain2; validation is against the current main base.
 # - This gate is intentionally independent from the legacy beta -> main gate.
-# - `skip-device-test` is an explicit owner override for low-risk promotions only. It skips the
-#   Android 15/device-APK job while keeping the verify/regression gate and change classification.
-# - Full Android 15 acceptance and the exact-head device-test APK remain the default.
+# - `skip-device-test` suppresses only the owner-facing exact-head debug APK artifact.
+# - Automated Android 15 acceptance still runs whenever the runtime classifier requires it.
+# - Full Android 15 acceptance remains the default for runtime-sensitive promotions.
 
 on:
   pull_request:
@@ -92,7 +92,7 @@ jobs:
   runtime-smoke:
     name: Promotion Android 15 acceptance
     needs: classify-runtime-smoke
-    if: needs.classify-runtime-smoke.outputs.run_smoke == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-device-test')
+    if: needs.classify-runtime-smoke.outputs.run_smoke == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
@@ -155,18 +155,6 @@ jobs:
           test -n "$CANDIDATE_APK"
           cp "$CANDIDATE_APK" /tmp/miyorare-promotion-debug.apk
 
-          # Build a second, unmodified exact-head APK for owner physical-device validation.
-          # The runtime-smoke APK above temporarily exports SettingsActivity and must never
-          # be handed to the owner as the release candidate.
-          git checkout --force "$HEAD_SHA"
-          rm -rf app/build/outputs/apk/debug
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
-          DEVICE_APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
-          test -n "$DEVICE_APK"
-          mkdir -p promotion-device-test
-          cp "$DEVICE_APK" "promotion-device-test/Miyorare-promotion-${HEAD_SHA}.apk"
-          printf '%s\n' "$HEAD_SHA" > promotion-device-test/HEAD_SHA.txt
-
       - name: Enable KVM
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
@@ -187,8 +175,25 @@ jobs:
             bash .github/scripts/beta-main-runtime-smoke.sh
             ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest
 
+      - name: Build exact-head APK for owner device test
+        if: success() && !contains(github.event.pull_request.labels.*.name, 'skip-device-test')
+        shell: bash
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git checkout --force "$HEAD_SHA"
+          chmod +x gradlew
+          rm -rf app/build/outputs/apk/debug
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          DEVICE_APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
+          test -n "$DEVICE_APK"
+          mkdir -p promotion-device-test
+          cp "$DEVICE_APK" "promotion-device-test/Miyorare-promotion-${HEAD_SHA}.apk"
+          printf '%s\n' "$HEAD_SHA" > promotion-device-test/HEAD_SHA.txt
+
       - name: Upload exact-head APK for owner device test
-        if: success()
+        if: success() && !contains(github.event.pull_request.labels.*.name, 'skip-device-test')
         uses: actions/upload-artifact@v4
         with:
           name: promotion-device-test-apk-${{ github.event.pull_request.head.sha }}

@@ -22,6 +22,8 @@ class TrackerCatalogRepository(
 	private val epochs = mutableMapOf<CatalogHomeRequest, Long>()
 	private val cacheWrites = java.util.concurrent.ConcurrentHashMap<CatalogHomeRequest, Mutex>()
 	private val detailsCache = LinkedHashMap<Pair<TrackerCatalogKey, Boolean>, Pair<Long, TrackerCatalogDetails>>()
+	private val malCharactersCache = LinkedHashMap<TrackerCatalogKey, Pair<Long, List<TrackerCatalogPerson>>>()
+	private val malStatisticsCache = LinkedHashMap<TrackerCatalogKey, Pair<Long, TrackerCatalogStatistics>>()
 
 	fun provider(service: ScrobblerService): TrackerCatalogProvider = providers[service] ?: throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
 
@@ -103,6 +105,35 @@ class TrackerCatalogRepository(
 			while (detailsCache.size > 64) detailsCache.remove(detailsCache.keys.first())
 		}
 		return safe
+	}
+
+	internal suspend fun malCharacters(key: TrackerCatalogKey): List<TrackerCatalogPerson> {
+		require(key.service == ScrobblerService.MAL)
+		val mal = provider(ScrobblerService.MAL) as? MALCatalogProvider
+			?: throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
+		return cachedMALValue(malCharactersCache, key) { mal.supplementalCharacters(key) }
+	}
+
+	internal suspend fun malStatistics(key: TrackerCatalogKey): TrackerCatalogStatistics {
+		require(key.service == ScrobblerService.MAL)
+		val mal = provider(ScrobblerService.MAL) as? MALCatalogProvider
+			?: throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
+		return cachedMALValue(malStatisticsCache, key) { mal.supplementalStatistics(key) }
+	}
+
+	private suspend fun <T> cachedMALValue(
+		cache: LinkedHashMap<TrackerCatalogKey, Pair<Long, T>>,
+		key: TrackerCatalogKey,
+		load: suspend () -> T,
+	): T {
+		mutex.withLock { cache[key] }?.takeIf { CatalogCachePolicy.isFresh(it.first, now()) }?.let { return it.second }
+		val value = load()
+		mutex.withLock {
+			cache.remove(key)
+			cache[key] = now() to value
+			while (cache.size > 64) cache.remove(cache.keys.first())
+		}
+		return value
 	}
 
 	suspend fun characterDetails(service: ScrobblerService, person: TrackerCatalogPerson): TrackerCatalogCharacterDetails {
