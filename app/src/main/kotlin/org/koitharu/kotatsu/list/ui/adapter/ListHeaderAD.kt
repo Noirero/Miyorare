@@ -17,6 +17,7 @@ import androidx.appcompat.R as appcompatR
 
 fun listHeaderAD(
 	listener: ListHeaderClickListener?,
+	localCinematic: Boolean = false,
 ) = adapterDelegateViewBinding<ListHeader, ListModel, ItemHeaderBinding>(
 	{ inflater, parent -> ItemHeaderBinding.inflate(inflater, parent, false) },
 ) {
@@ -48,6 +49,10 @@ fun listHeaderAD(
 		androidx.core.view.ViewCompat.setAccessibilityHeading(binding.textViewTitle, isChapterToggle)
 		itemView.isSelected = isChapterToggle && currentItem.badge != null
 		binding.textViewTitle.text = currentItem.getText(context)
+		if (localCinematic) {
+			binding.textViewTitle.setTextColor(androidx.core.content.ContextCompat.getColor(context, R.color.smart_local_cream))
+			androidx.core.view.ViewCompat.setAccessibilityHeading(binding.textViewTitle, true)
+		}
 		if (currentItem.buttonTextRes == 0) {
 			binding.root.updatePadding(bottom = defaultRootPaddingBottom)
 			binding.buttonMore.updateLayoutParams<ViewGroup.MarginLayoutParams> {
@@ -128,6 +133,9 @@ fun listHeaderAD(
 				R.string.smart_local_chapter_toggle_description, context.getString(currentItem.buttonTextRes),
 				currentItem.getText(context), currentItem.badge.orEmpty(),
 			).trim()
+			if (localCinematic) {
+				binding.buttonMore.setTextColor(androidx.core.content.ContextCompat.getColor(context, R.color.smart_local_gold))
+			}
 			badge = itemView.bindBadge(badge, currentItem.badge)
 		}
 	}
