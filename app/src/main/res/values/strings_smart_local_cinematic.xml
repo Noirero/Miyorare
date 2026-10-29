@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
  <string name="smart_local_archive_eyebrow">MIYORARE / PERSONAL ARCHIVE</string>
- <string name="smart_local_archive_title">File di Perangkat</string>
- <string name="smart_local_archive_subtitle">Koleksi cerita yang tersimpan di perangkatmu</string>
+ <string name="smart_local_archive_title">On-device Files</string>
+ <string name="smart_local_archive_subtitle">Stories saved on your device</string>
  <string name="smart_local_archive_folders">Folder</string>
- <string name="smart_local_archive_titles">Judul</string>
- <string name="smart_local_archive_chapters">Bab</string>
+ <string name="smart_local_archive_titles">Titles</string>
+ <string name="smart_local_archive_chapters">Chapters</string>
 </resources>
