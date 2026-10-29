@@ -26,15 +26,6 @@ private const val JIKAN_API_BASE = "https://api.jikan.moe/v4"
 private const val MAL_PUBLIC_FALLBACK_BASE = "https://jikan.lucashdo.com/v1"
 private const val MAL_SUPPLEMENTAL_ORIGIN_TIMEOUT_MS = 6_000L
 
-internal data class MALCatalogSupplemental(
-	val characters: List<TrackerCatalogPerson>,
-	val statistics: TrackerCatalogStatistics?,
-	val charactersFailure: CatalogFailure? = null,
-	val statisticsFailure: CatalogFailure? = null,
-) {
-	val partial: Boolean get() = charactersFailure != null || statisticsFailure != null
-}
-
 internal suspend fun loadMALCharacters(http: CatalogHttp, key: TrackerCatalogKey): List<TrackerCatalogPerson> {
 	require(key.service == ScrobblerService.MAL)
 	return loadMALSupplementalCollection(http, key, "characters", ::parseMALCharacters)
@@ -55,6 +46,7 @@ internal suspend fun loadMALCharacterDetails(
 		http = http,
 		primary = Request.Builder().url("$JIKAN_API_BASE/characters/$id/full").header("Accept", "application/json").get().build(),
 		fallback = Request.Builder().url("$MAL_PUBLIC_FALLBACK_BASE/characters/$id/full").header("Accept", "application/json").get().build(),
+		originTimeoutMs = null,
 	) { root -> parseMALCharacterDetails(root, person) }
 }
 
@@ -67,32 +59,41 @@ private suspend fun <T> loadMALSupplementalCollection(
 	http = http,
 	primary = supplementalRequest(JIKAN_API_BASE, key, collection),
 	fallback = supplementalRequest(MAL_PUBLIC_FALLBACK_BASE, key, collection),
+	originTimeoutMs = MAL_SUPPLEMENTAL_ORIGIN_TIMEOUT_MS,
 	parser = parser,
 )
 
-private suspend fun requestMALSupplemental(http: CatalogHttp, request: Request): JsonObject = try {
-	withTimeout(MAL_SUPPLEMENTAL_ORIGIN_TIMEOUT_MS) {
-		http.request(ScrobblerService.MAL, request)
+private suspend fun requestMALSupplemental(
+	http: CatalogHttp,
+	request: Request,
+	originTimeoutMs: Long?,
+): JsonObject {
+	if (originTimeoutMs == null) return http.request(ScrobblerService.MAL, request)
+	return try {
+		withTimeout(originTimeoutMs) {
+			http.request(ScrobblerService.MAL, request)
+		}
+	} catch (e: TimeoutCancellationException) {
+		throw CatalogException(CatalogFailure(CatalogFailureKind.PROVIDER), e)
 	}
-} catch (e: TimeoutCancellationException) {
-	throw CatalogException(CatalogFailure(CatalogFailureKind.PROVIDER), e)
 }
 
 private suspend fun <T> loadMALSupplementalResource(
 	http: CatalogHttp,
 	primary: Request,
 	fallback: Request,
+	originTimeoutMs: Long?,
 	parser: (JsonObject) -> T,
 ): T {
 	val primaryFailure = try {
-		return parser(requestMALSupplemental(http, primary))
+		return parser(requestMALSupplemental(http, primary, originTimeoutMs))
 	} catch (e: CancellationException) {
 		throw e
 	} catch (e: Exception) {
 		e
 	}
 	try {
-		return parser(requestMALSupplemental(http, fallback))
+		return parser(requestMALSupplemental(http, fallback, originTimeoutMs))
 	} catch (e: CancellationException) {
 		throw e
 	} catch (e: Exception) {
