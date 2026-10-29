@@ -1,8 +1,8 @@
 package org.koitharu.kotatsu.discovery.data
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.longOrNull
@@ -24,32 +24,25 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 
 private const val JIKAN_API_BASE = "https://api.jikan.moe/v4"
 private const val MAL_PUBLIC_FALLBACK_BASE = "https://jikan.lucashdo.com/v1"
+private const val MAL_SUPPLEMENTAL_ORIGIN_TIMEOUT_MS = 6_000L
 
 internal data class MALCatalogSupplemental(
 	val characters: List<TrackerCatalogPerson>,
 	val statistics: TrackerCatalogStatistics?,
-	val partial: Boolean,
-)
+	val charactersFailure: CatalogFailure? = null,
+	val statisticsFailure: CatalogFailure? = null,
+) {
+	val partial: Boolean get() = charactersFailure != null || statisticsFailure != null
+}
 
-internal suspend fun loadMALCatalogSupplemental(http: CatalogHttp, key: TrackerCatalogKey): MALCatalogSupplemental = coroutineScope {
+internal suspend fun loadMALCharacters(http: CatalogHttp, key: TrackerCatalogKey): List<TrackerCatalogPerson> {
 	require(key.service == ScrobblerService.MAL)
-	val characters = async {
-		optionalMALSupplemental {
-			loadMALSupplementalCollection(http, key, "characters", ::parseMALCharacters)
-		}
-	}
-	val statistics = async {
-		optionalMALSupplemental {
-			loadMALSupplementalCollection(http, key, "statistics", ::parseMALStatistics)
-		}
-	}
-	val characterResult = characters.await()
-	val statisticsResult = statistics.await()
-	MALCatalogSupplemental(
-		characters = characterResult.getOrDefault(emptyList()),
-		statistics = statisticsResult.getOrNull(),
-		partial = characterResult.isFailure || statisticsResult.isFailure,
-	)
+	return loadMALSupplementalCollection(http, key, "characters", ::parseMALCharacters)
+}
+
+internal suspend fun loadMALStatistics(http: CatalogHttp, key: TrackerCatalogKey): TrackerCatalogStatistics {
+	require(key.service == ScrobblerService.MAL)
+	return loadMALSupplementalCollection(http, key, "statistics", ::parseMALStatistics)
 }
 
 internal suspend fun loadMALCharacterDetails(
@@ -77,6 +70,14 @@ private suspend fun <T> loadMALSupplementalCollection(
 	parser = parser,
 )
 
+private suspend fun requestMALSupplemental(http: CatalogHttp, request: Request): JsonObject = try {
+	withTimeout(MAL_SUPPLEMENTAL_ORIGIN_TIMEOUT_MS) {
+		http.request(ScrobblerService.MAL, request)
+	}
+} catch (e: TimeoutCancellationException) {
+	throw CatalogException(CatalogFailure(CatalogFailureKind.PROVIDER), e)
+}
+
 private suspend fun <T> loadMALSupplementalResource(
 	http: CatalogHttp,
 	primary: Request,
@@ -84,14 +85,14 @@ private suspend fun <T> loadMALSupplementalResource(
 	parser: (JsonObject) -> T,
 ): T {
 	val primaryFailure = try {
-		return parser(http.request(ScrobblerService.MAL, primary))
+		return parser(requestMALSupplemental(http, primary))
 	} catch (e: CancellationException) {
 		throw e
 	} catch (e: Exception) {
 		e
 	}
 	try {
-		return parser(http.request(ScrobblerService.MAL, fallback))
+		return parser(requestMALSupplemental(http, fallback))
 	} catch (e: CancellationException) {
 		throw e
 	} catch (e: Exception) {
@@ -105,14 +106,6 @@ private fun supplementalRequest(base: String, key: TrackerCatalogKey, collection
 	.header("Accept", "application/json")
 	.get()
 	.build()
-
-private suspend fun <T> optionalMALSupplemental(block: suspend () -> T): Result<T> = try {
-	Result.success(block())
-} catch (e: CancellationException) {
-	throw e
-} catch (e: Exception) {
-	Result.failure(e)
-}
 
 internal fun parseMALCharacters(root: JsonObject): List<TrackerCatalogPerson> {
 	val rows = root.array("data") ?: throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
