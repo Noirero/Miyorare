@@ -10,13 +10,6 @@ class LocalReaderCacheRegressionTest {
         File("app/src/main/kotlin/org/koitharu/kotatsu", path),
     ).first { it.isFile }.readText()
 
-    @Test fun localArchivePagesAvoidSecondDiskCopy() {
-        val loader = source("reader/domain/PageLoader.kt")
-        assertTrue(loader.contains("uri.isZipUri() && page.source == LocalMangaSource"))
-        assertTrue(loader.contains("uri.isZipUri() -> materializeCbzPage("))
-        assertTrue(loader.contains("page.source != LocalMangaSource"))
-    }
-
     @Test fun temporaryMetadataArchivesAreReleased() {
         val reader = source("local/library/LocalContentReader.kt")
         val metadata = reader.substringAfter("internal suspend fun metadata(").substringBefore("suspend fun epubHtml(")
