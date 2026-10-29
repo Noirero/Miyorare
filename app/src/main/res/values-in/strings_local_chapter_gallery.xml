@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_gallery_details">Detail</string>
+    <string name="local_gallery_title">Galeri Bab</string>
+    <string name="local_gallery_reading">Sedang dibaca</string>
+    <string name="local_gallery_read">Dibaca</string>
+</resources>
