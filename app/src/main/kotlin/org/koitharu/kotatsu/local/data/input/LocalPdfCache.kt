@@ -29,6 +29,9 @@ object LocalPdfCache {
 	private const val COVER_MAX_RENDER_DIMENSION = 768
 	private const val PDF_RENDER_CONCURRENCY = 2
 	private const val RENDER_LOCK_STRIPES = 32
+	private const val PDF_CACHE_BUDGET_BYTES = 64L * 1024 * 1024
+	private const val PDF_CACHE_ACTIVE_GRACE_MS = 2L * 60 * 1000
+	private val pruneLock = Any()
 	// Rendering every page at 4x/4096px made long local PDFs spend tens of seconds in PNG deflate,
 	// increased GC pressure and could contribute to foreground ANRs while the library UI was active.
 	// 2560px is still comfortably above typical phone display resolution while cutting bitmap area,
@@ -166,6 +169,7 @@ object LocalPdfCache {
 			val pdf = File(sourceMarker.readText())
 			validateSourceIdentity(pdf, outputDir)
 			if (file.isUsableCacheFile()) {
+				file.setLastModified(System.currentTimeMillis())
 				return@withTargetLock file
 			}
 			withRenderPermit {
@@ -243,7 +247,28 @@ object LocalPdfCache {
 			tempFile.copyTo(outputFile, overwrite = true)
 			tempFile.delete()
 		}
+		pruneRenderedPages(outputFile)
 		return outputFile
+	}
+
+	/** Best-effort budget for rendered PDF pages; never remove source markers or a recent page. */
+	private fun pruneRenderedPages(current: File) = synchronized(pruneLock) {
+		val root = current.parentFile?.parentFile ?: return@synchronized
+		if (root.name != CACHE_DIR_NAME) return@synchronized
+		val pages = root.listFiles().orEmpty().flatMap { dir ->
+			if (!dir.isDirectory) emptyList() else dir.listFiles().orEmpty().filter { file ->
+				file.isFile && file.name.startsWith("page_") && file.name.endsWith(".png")
+			}
+		}
+		var bytes = pages.sumOf { it.length() }
+		if (bytes <= PDF_CACHE_BUDGET_BYTES) return@synchronized
+		val cutoff = System.currentTimeMillis() - PDF_CACHE_ACTIVE_GRACE_MS
+		for (page in pages.sortedBy { it.lastModified() }) {
+			if (bytes <= PDF_CACHE_BUDGET_BYTES) break
+			if (page == current || page.lastModified() >= cutoff) continue
+			val size = page.length()
+			if (page.delete()) bytes -= size
+		}
 	}
 
 	private fun renderBitmap(renderer: PdfRenderer, pageIndex: Int, maxRenderDimension: Int): Bitmap =
