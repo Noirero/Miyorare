@@ -20,6 +20,7 @@ import org.koitharu.kotatsu.scrobbling.common.data.text
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 
 private const val JIKAN_API_BASE = "https://api.jikan.moe/v4"
+private const val TENRAI_API_BASE = "https://api.tenrai.org/v1"
 
 internal data class MALCatalogSupplemental(
 	val characters: List<TrackerCatalogPerson>,
@@ -29,8 +30,16 @@ internal data class MALCatalogSupplemental(
 
 internal suspend fun loadMALCatalogSupplemental(http: CatalogHttp, key: TrackerCatalogKey): MALCatalogSupplemental = coroutineScope {
 	require(key.service == ScrobblerService.MAL)
-	val characters = async { optionalMALSupplemental { parseMALCharacters(http.request(ScrobblerService.MAL, jikanRequest(key, "characters"))) } }
-	val statistics = async { optionalMALSupplemental { parseMALStatistics(http.request(ScrobblerService.MAL, jikanRequest(key, "statistics"))) } }
+	val characters = async {
+		optionalMALSupplemental {
+			loadMALSupplementalCollection(http, key, "characters", ::parseMALCharacters)
+		}
+	}
+	val statistics = async {
+		optionalMALSupplemental {
+			loadMALSupplementalCollection(http, key, "statistics", ::parseMALStatistics)
+		}
+	}
 	val characterResult = characters.await()
 	val statisticsResult = statistics.await()
 	MALCatalogSupplemental(
@@ -40,8 +49,31 @@ internal suspend fun loadMALCatalogSupplemental(http: CatalogHttp, key: TrackerC
 	)
 }
 
-private fun jikanRequest(key: TrackerCatalogKey, collection: String): Request = Request.Builder()
-	.url("$JIKAN_API_BASE/manga/${key.remoteId}/$collection")
+private suspend fun <T> loadMALSupplementalCollection(
+	http: CatalogHttp,
+	key: TrackerCatalogKey,
+	collection: String,
+	parser: (JsonObject) -> T,
+): T {
+	val primaryFailure = try {
+		return parser(http.request(ScrobblerService.MAL, supplementalRequest(JIKAN_API_BASE, key, collection)))
+	} catch (e: CancellationException) {
+		throw e
+	} catch (e: Exception) {
+		e
+	}
+	try {
+		return parser(http.request(ScrobblerService.MAL, supplementalRequest(TENRAI_API_BASE, key, collection)))
+	} catch (e: CancellationException) {
+		throw e
+	} catch (e: Exception) {
+		e.addSuppressed(primaryFailure)
+		throw e
+	}
+}
+
+private fun supplementalRequest(base: String, key: TrackerCatalogKey, collection: String): Request = Request.Builder()
+	.url("$base/manga/${key.remoteId}/$collection")
 	.header("Accept", "application/json")
 	.get()
 	.build()
