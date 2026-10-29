@@ -28,4 +28,5 @@
     <string name="smart_local_bulk_delete_warning">Hapus file dari %1$d koleksi terpilih? Tindakan ini tidak dapat dibatalkan. Entri library lain mungkin bergantung pada file tersebut.</string>
     <string name="smart_local_bulk_removed">Memproses %1$d koleksi terpilih</string>
     <string name="smart_local_deselect_all">Batalkan semua pilihan</string>
+    <string name="smart_local_refresh_selected">Segarkan koleksi terpilih</string>
 </resources>
