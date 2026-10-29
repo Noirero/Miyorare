@@ -20,7 +20,7 @@ import org.koitharu.kotatsu.scrobbling.common.data.text
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 
 private const val JIKAN_API_BASE = "https://api.jikan.moe/v4"
-private const val TENRAI_API_BASE = "https://api.tenrai.org/v1"
+private const val MAL_PUBLIC_FALLBACK_BASE = "https://jikan.lucashdo.com/v1"
 
 internal data class MALCatalogSupplemental(
 	val characters: List<TrackerCatalogPerson>,
@@ -63,7 +63,7 @@ private suspend fun <T> loadMALSupplementalCollection(
 		e
 	}
 	try {
-		return parser(http.request(ScrobblerService.MAL, supplementalRequest(TENRAI_API_BASE, key, collection)))
+		return parser(http.request(ScrobblerService.MAL, supplementalRequest(MAL_PUBLIC_FALLBACK_BASE, key, collection)))
 	} catch (e: CancellationException) {
 		throw e
 	} catch (e: Exception) {
@@ -91,10 +91,14 @@ internal fun parseMALCharacters(root: JsonObject): List<TrackerCatalogPerson> {
 	return rows.mapNotNull { value ->
 		val edge = value as? JsonObject ?: return@mapNotNull null
 		val character = edge.obj("character") ?: return@mapNotNull null
-		val id = character.jikanLong("mal_id")?.takeIf { it > 0L }?.toString() ?: return@mapNotNull null
+		val id = character.catalogLong("mal_id", "malId")?.takeIf { it > 0L }?.toString() ?: return@mapNotNull null
 		val name = character.text("name")?.trim()?.takeIf(String::isNotEmpty) ?: return@mapNotNull null
 		val imageUrl = character.obj("images")?.let { images ->
-			images.obj("jpg")?.text("image_url") ?: images.obj("webp")?.text("image_url")
+			images.obj("jpg")?.text("image_url")
+				?: images.obj("webp")?.text("image_url")
+				?: images.text("large")
+				?: images.text("medium")
+				?: images.text("small")
 		}
 		TrackerCatalogPerson(
 			id = id,
@@ -110,18 +114,18 @@ internal fun parseMALStatistics(root: JsonObject): TrackerCatalogStatistics {
 	val data = root.obj("data") ?: throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
 	val scores = data.array("scores").orEmpty().mapNotNull { value ->
 		val row = value as? JsonObject ?: return@mapNotNull null
-		val score = row.jikanLong("score")?.toInt()?.takeIf { it in 1..10 } ?: return@mapNotNull null
-		val votes = row.jikanLong("votes") ?: return@mapNotNull null
+		val score = row.catalogLong("score")?.toInt()?.takeIf { it in 1..10 } ?: return@mapNotNull null
+		val votes = row.catalogLong("votes") ?: return@mapNotNull null
 		val percentage = row.catalogDouble("percentage")?.takeIf { it in 0.0..100.0 }
 		TrackerCatalogScoreDistribution(score, votes, percentage)
 	}.distinctBy { it.score }.sortedByDescending { it.score }
 	val statistics = TrackerCatalogStatistics(
-		reading = data.jikanLong("reading"),
-		completed = data.jikanLong("completed"),
-		onHold = data.jikanLong("on_hold"),
-		dropped = data.jikanLong("dropped"),
-		planToRead = data.jikanLong("plan_to_read"),
-		total = data.jikanLong("total"),
+		reading = data.catalogLong("reading"),
+		completed = data.catalogLong("completed"),
+		onHold = data.catalogLong("on_hold", "onHold"),
+		dropped = data.catalogLong("dropped"),
+		planToRead = data.catalogLong("plan_to_read", "planToRead"),
+		total = data.catalogLong("total"),
 		scores = scores,
 	)
 	if (listOf(statistics.reading, statistics.completed, statistics.onHold, statistics.dropped, statistics.planToRead, statistics.total).all { it == null } && scores.isEmpty()) {
@@ -130,4 +134,6 @@ internal fun parseMALStatistics(root: JsonObject): TrackerCatalogStatistics {
 	return statistics
 }
 
-private fun JsonObject.jikanLong(key: String): Long? = (this[key] as? JsonPrimitive)?.longOrNull?.takeIf { it >= 0L }
+private fun JsonObject.catalogLong(vararg keys: String): Long? = keys.firstNotNullOfOrNull { key ->
+	(this[key] as? JsonPrimitive)?.longOrNull?.takeIf { it >= 0L }
+}
