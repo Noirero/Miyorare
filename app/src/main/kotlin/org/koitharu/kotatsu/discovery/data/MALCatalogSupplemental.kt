@@ -10,6 +10,9 @@ import okhttp3.Request
 import org.koitharu.kotatsu.discovery.domain.CatalogFailure
 import org.koitharu.kotatsu.discovery.domain.CatalogFailureKind
 import org.koitharu.kotatsu.discovery.domain.CatalogException
+import org.koitharu.kotatsu.discovery.domain.CatalogRelatedMediaKind
+import org.koitharu.kotatsu.discovery.domain.TrackerCatalogCharacterDetails
+import org.koitharu.kotatsu.discovery.domain.TrackerCatalogCharacterWork
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogKey
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogPerson
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogScoreDistribution
@@ -49,21 +52,46 @@ internal suspend fun loadMALCatalogSupplemental(http: CatalogHttp, key: TrackerC
 	)
 }
 
+internal suspend fun loadMALCharacterDetails(
+	http: CatalogHttp,
+	person: TrackerCatalogPerson,
+): TrackerCatalogCharacterDetails {
+	val id = person.id?.toLongOrNull()?.takeIf { it > 0L }
+		?: throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
+	return loadMALSupplementalResource(
+		http = http,
+		primary = Request.Builder().url("$JIKAN_API_BASE/characters/$id/full").header("Accept", "application/json").get().build(),
+		fallback = Request.Builder().url("$MAL_PUBLIC_FALLBACK_BASE/characters/$id/full").header("Accept", "application/json").get().build(),
+	) { root -> parseMALCharacterDetails(root, person) }
+}
+
 private suspend fun <T> loadMALSupplementalCollection(
 	http: CatalogHttp,
 	key: TrackerCatalogKey,
 	collection: String,
 	parser: (JsonObject) -> T,
+): T = loadMALSupplementalResource(
+	http = http,
+	primary = supplementalRequest(JIKAN_API_BASE, key, collection),
+	fallback = supplementalRequest(MAL_PUBLIC_FALLBACK_BASE, key, collection),
+	parser = parser,
+)
+
+private suspend fun <T> loadMALSupplementalResource(
+	http: CatalogHttp,
+	primary: Request,
+	fallback: Request,
+	parser: (JsonObject) -> T,
 ): T {
 	val primaryFailure = try {
-		return parser(http.request(ScrobblerService.MAL, supplementalRequest(JIKAN_API_BASE, key, collection)))
+		return parser(http.request(ScrobblerService.MAL, primary))
 	} catch (e: CancellationException) {
 		throw e
 	} catch (e: Exception) {
 		e
 	}
 	try {
-		return parser(http.request(ScrobblerService.MAL, supplementalRequest(MAL_PUBLIC_FALLBACK_BASE, key, collection)))
+		return parser(http.request(ScrobblerService.MAL, fallback))
 	} catch (e: CancellationException) {
 		throw e
 	} catch (e: Exception) {
@@ -93,19 +121,12 @@ internal fun parseMALCharacters(root: JsonObject): List<TrackerCatalogPerson> {
 		val character = edge.obj("character") ?: return@mapNotNull null
 		val id = character.catalogLong("mal_id", "malId")?.takeIf { it > 0L }?.toString() ?: return@mapNotNull null
 		val name = character.text("name")?.trim()?.takeIf(String::isNotEmpty) ?: return@mapNotNull null
-		val imageUrl = character.obj("images")?.let { images ->
-			images.obj("jpg")?.text("image_url")
-				?: images.obj("webp")?.text("image_url")
-				?: images.text("large")
-				?: images.text("medium")
-				?: images.text("small")
-		}
 		TrackerCatalogPerson(
 			id = id,
 			name = name,
-			imageUrl = imageUrl,
+			imageUrl = character.catalogImage(),
 			roles = listOfNotNull(edge.text("role")?.trim()?.takeIf(String::isNotEmpty)),
-			providerUrl = character.text("url"),
+			providerUrl = character.text("url") ?: "https://myanimelist.net/character/$id",
 		)
 	}.distinctBy { it.id }
 }
@@ -132,6 +153,87 @@ internal fun parseMALStatistics(root: JsonObject): TrackerCatalogStatistics {
 		throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
 	}
 	return statistics
+}
+
+internal fun parseMALCharacterDetails(
+	root: JsonObject,
+	seed: TrackerCatalogPerson,
+): TrackerCatalogCharacterDetails {
+	val data = root.obj("data") ?: throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
+	val id = data.catalogLong("mal_id", "malId")?.takeIf { it > 0L }?.toString()
+		?: throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
+	if (seed.id != null && seed.id != id) throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
+	val name = data.text("name")?.trim()?.takeIf(String::isNotEmpty)
+		?: seed.name.takeIf(String::isNotBlank)
+		?: throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
+	val person = TrackerCatalogPerson(
+		id = id,
+		name = name,
+		imageUrl = data.catalogImage() ?: seed.imageUrl,
+		roles = seed.roles,
+		providerUrl = data.text("url") ?: seed.providerUrl ?: "https://myanimelist.net/character/$id",
+	)
+	val works = buildList {
+		addAll(parseMALCharacterWorks(data, "manga", CatalogRelatedMediaKind.MANGA))
+		addAll(parseMALCharacterWorks(data, "anime", CatalogRelatedMediaKind.ANIME))
+	}.distinctBy { "${it.mediaKind}:${it.remoteId}" }
+	return TrackerCatalogCharacterDetails(
+		person = person,
+		nativeName = data.catalogText("name_kanji", "nameKanji"),
+		nicknames = data.catalogStrings("nicknames"),
+		about = data.text("about")?.trim()?.takeIf(String::isNotEmpty),
+		favorites = data.catalogLong("favorites"),
+		voices = parseMALCharacterVoices(data),
+		works = works,
+	)
+}
+
+private fun parseMALCharacterWorks(
+	data: JsonObject,
+	key: String,
+	kind: CatalogRelatedMediaKind,
+): List<TrackerCatalogCharacterWork> = data.array(key).orEmpty().mapNotNull { value ->
+	val edge = value as? JsonObject ?: return@mapNotNull null
+	val node = edge.obj(key) ?: edge
+	val id = node.catalogLong("mal_id", "malId")?.takeIf { it > 0L }?.toString() ?: return@mapNotNull null
+	val title = node.text("title")?.trim()?.takeIf(String::isNotEmpty) ?: return@mapNotNull null
+	val providerPath = if (kind == CatalogRelatedMediaKind.ANIME) "anime" else "manga"
+	TrackerCatalogCharacterWork(
+		service = ScrobblerService.MAL,
+		remoteId = id,
+		title = title,
+		coverUrl = node.catalogImage(),
+		providerUrl = node.text("url") ?: "https://myanimelist.net/$providerPath/$id",
+		mediaKind = kind,
+		role = edge.text("role") ?: node.text("role"),
+	)
+}
+
+private fun parseMALCharacterVoices(data: JsonObject): List<TrackerCatalogPerson> = data.array("voices").orEmpty().mapNotNull { value ->
+	val edge = value as? JsonObject ?: return@mapNotNull null
+	val node = edge.obj("person") ?: edge
+	val id = node.catalogLong("mal_id", "malId")?.takeIf { it > 0L }?.toString() ?: return@mapNotNull null
+	val name = node.text("name")?.trim()?.takeIf(String::isNotEmpty) ?: return@mapNotNull null
+	val language = edge.text("language") ?: node.text("language")
+	TrackerCatalogPerson(
+		id = id,
+		name = name,
+		imageUrl = node.catalogImage(),
+		roles = listOfNotNull(language?.trim()?.takeIf(String::isNotEmpty)),
+		providerUrl = node.text("url") ?: "https://myanimelist.net/people/$id",
+	)
+}.distinctBy { it.id }
+
+private fun JsonObject.catalogImage(): String? {
+	val images = obj("images")
+	return images?.obj("jpg")?.catalogText("large_image_url", "largeImageUrl", "image_url", "imageUrl", "small_image_url", "smallImageUrl")
+		?: images?.obj("webp")?.catalogText("large_image_url", "largeImageUrl", "image_url", "imageUrl", "small_image_url", "smallImageUrl")
+		?: images?.catalogText("large", "medium", "small")
+		?: catalogText("image_url", "imageUrl")
+}
+
+private fun JsonObject.catalogText(vararg keys: String): String? = keys.firstNotNullOfOrNull { key ->
+	text(key)?.trim()?.takeIf(String::isNotEmpty)
 }
 
 private fun JsonObject.catalogLong(vararg keys: String): Long? = keys.firstNotNullOfOrNull { key ->
