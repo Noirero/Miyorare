@@ -82,4 +82,5 @@
     <string name="smart_local_delete_group_message">Delete this virtual group? Files will not be changed.</string>
     <string name="smart_local_rename_group">Rename group</string>
     <string name="smart_local_export_selected">Export selected collections (ZIP)</string>
+    <string name="smart_local_bulk_result">Selected: %1$d · Succeeded: %2$d · Failed: %3$d</string>
 </resources>
