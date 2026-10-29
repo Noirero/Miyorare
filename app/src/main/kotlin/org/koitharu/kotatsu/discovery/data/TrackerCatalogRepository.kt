@@ -106,7 +106,7 @@ class TrackerCatalogRepository(
 		return safe
 	}
 
-	suspend fun malSupplemental(key: TrackerCatalogKey): MALCatalogSupplemental = coroutineScope {
+	internal suspend fun malSupplemental(key: TrackerCatalogKey): MALCatalogSupplemental = coroutineScope {
 		require(key.service == ScrobblerService.MAL)
 		val mal = provider(ScrobblerService.MAL) as? MALCatalogProvider
 			?: throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
