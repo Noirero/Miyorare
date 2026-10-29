@@ -60,6 +60,7 @@ class LocalListViewModel @Inject constructor(
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), FilterCoordinator.Owner {
 	override val content = MutableStateFlow<List<ListModel>>(listOf(LoadingState))
 	val onMangaRemoved = MutableEventFlow<Int>()
+	val exportedArchives = MutableEventFlow<List<java.io.File>>()
 	val exclusions = MutableEventFlow<Map<String, String>>()
 	val scanCompleted = MutableEventFlow<Boolean>()
 	val coverCacheReport = MutableEventFlow<SmartLocalCoverCacheReport>()
@@ -169,6 +170,11 @@ class LocalListViewModel @Inject constructor(
 	fun ungroup(ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.ungroup(ids); revision.value++ } }
 	fun renameGroup(oldName: String, newName: String) { launchLoadingJob(Dispatchers.IO) { library.renameGroup(oldName, newName); if (activeGroup.value == oldName) activeGroup.value = newName.trim(); revision.value++ } }
 	fun deleteGroup(name: String) { launchLoadingJob(Dispatchers.IO) { library.deleteGroup(name); if (activeGroup.value == name) activeGroup.value = null; revision.value++ } }
+
+	fun exportSelected(ids: Set<Long>) {
+		if (ids.isEmpty()) return
+		launchLoadingJob(Dispatchers.IO) { exportedArchives.call(library.exportSelected(ids)) }
+	}
 
 	fun updateAuthors(ids: Set<Long>, input: String) {
 		if (ids.isEmpty()) return
