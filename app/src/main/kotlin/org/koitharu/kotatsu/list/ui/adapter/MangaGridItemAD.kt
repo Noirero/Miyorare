@@ -359,7 +359,7 @@ fun mangaGridItemAD(
 		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank() && !usesCoverOverlay
 
 		binding.imageViewContinue.isVisible = item.showContinueReading && !usesCoverOverlay
-		if (item.showContinueReading && !usesModernCover) {
+		if (item.showContinueReading && !usesCoverOverlay) {
 			binding.imageViewContinue.setOnClickListener { view ->
 				clickListener.onReadClick(item.toMangaWithOverride(), view)
 			}
