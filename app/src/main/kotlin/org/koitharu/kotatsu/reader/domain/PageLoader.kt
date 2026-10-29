@@ -72,7 +72,6 @@ import org.koitharu.kotatsu.download.ui.worker.DownloadSlowdownDispatcher
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
-import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -362,17 +361,11 @@ class PageLoader @Inject constructor(
 	): Uri = semaphore.withPermit {
 		val pageUrl = getPageUrl(page)
 		check(pageUrl.isNotBlank()) { "Cannot obtain full image url for $page" }
-		if (!skipCache && page.source != LocalMangaSource) {
+		if (!skipCache) {
 			cache.get(pageUrl)?.let { return it.toUri() }
 		}
 		val uri = pageUrl.toUri()
 		return when {
-			uri.isZipUri() && page.source == LocalMangaSource -> {
-				// Local archives already have a seekable backing file. Avoid storing a second
-				// full-size copy of each extracted image in the shared disk page cache.
-				if (uri.scheme == URI_SCHEME_ZIP) uri else uri.buildUpon().scheme(URI_SCHEME_ZIP).build()
-			}
-
 			uri.isZipUri() -> materializeCbzPage(
 				if (uri.scheme == URI_SCHEME_ZIP) uri else uri.buildUpon().scheme(URI_SCHEME_ZIP).build(),
 				pageUrl,
