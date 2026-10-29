@@ -281,6 +281,22 @@ class SmartLocalLibrary @Inject constructor(
         }
     }
 
+    suspend fun renameGroup(oldName: String, newName: String) = withContext(Dispatchers.IO) {
+        val normalized = newName.trim()
+        require(normalized.isNotEmpty() && normalized.length <= 80)
+        initialize()
+        mutex.withLock {
+            val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+            require(json.has(oldName)) { "Group no longer exists" }
+            require(oldName == normalized || !json.has(normalized)) { "Group already exists" }
+            val members = json.getJSONArray(oldName)
+            json.remove(oldName)
+            json.put(normalized, members)
+            check(prefs.edit().putString("virtual_groups", json.toString()).commit())
+            publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1))
+        }
+    }
+
     suspend fun deleteGroup(name: String) = withContext(Dispatchers.IO) {
         initialize()
         mutex.withLock {
