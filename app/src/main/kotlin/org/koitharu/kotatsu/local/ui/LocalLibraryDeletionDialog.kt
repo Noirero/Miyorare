@@ -5,7 +5,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.koitharu.kotatsu.R
 
 /** Shared two-level removal policy for scanned titles, including Details/Reader chapter selection. */
-fun showLocalLibraryDeletionDialog(context: Context, count: Int, hide: () -> Unit, deleteFromDevice: () -> Unit) {
+fun showLocalLibraryDeletionDialog(context: Context, hide: () -> Unit, deleteFromDevice: () -> Unit, count: Int = 1) {
     require(count > 0) { "Deletion selection must not be empty" }
     MaterialAlertDialogBuilder(context).setTitle(context.getString(R.string.smart_local_bulk_delete_title, count))
         .setItems(arrayOf(context.getString(R.string.smart_local_hide), context.getString(R.string.smart_local_delete_device))) { _, choice ->
