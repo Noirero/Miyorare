@@ -167,6 +167,7 @@ class LocalListViewModel @Inject constructor(
 	fun createGroup(name: String, ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.createGroup(name, ids); revision.value++ } }
 	fun addToGroup(name: String, ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.addToGroup(name, ids); revision.value++ } }
 	fun ungroup(ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.ungroup(ids); revision.value++ } }
+	fun renameGroup(oldName: String, newName: String) { launchLoadingJob(Dispatchers.IO) { library.renameGroup(oldName, newName); if (activeGroup.value == oldName) activeGroup.value = newName.trim(); revision.value++ } }
 	fun deleteGroup(name: String) { launchLoadingJob(Dispatchers.IO) { library.deleteGroup(name); if (activeGroup.value == name) activeGroup.value = null; revision.value++ } }
 
 	fun updateAuthors(ids: Set<Long>, input: String) {
