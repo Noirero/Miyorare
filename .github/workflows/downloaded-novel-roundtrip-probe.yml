@@ -55,6 +55,6 @@ jobs:
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
 
 # Diagnostic-only workflow. Remove it once the producer/consumer boundary is proven.

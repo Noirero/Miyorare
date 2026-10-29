@@ -202,4 +202,4 @@ jobs:
           name: ${{ steps.apk.outputs.apk_name }}
           path: ${{ steps.apk.outputs.apk_name }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3

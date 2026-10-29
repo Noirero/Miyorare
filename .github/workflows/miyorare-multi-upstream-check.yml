@@ -61,3 +61,4 @@ jobs:
           name: miyorare-multi-upstream-intake
           path: build/miyorare-multi-upstream/intake.json
           if-no-files-found: error
+          retention-days: 1
