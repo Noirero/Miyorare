@@ -1,0 +1,174 @@
+name: Miyori PR Status
+
+# Trusted metadata/status layer only. It never checks out PR head code.
+# Core CI execution remains owned by the existing GitHub Actions workflows.
+
+on:
+  workflow_run:
+    workflows:
+      - PR Compile & Unit Check
+      - Miyorare Identity Guard
+      - Beta to Main Release Gate
+      - Promotion to Main Gate
+    types:
+      - completed
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
+      - unlabeled
+      - edited
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull request number whose status card should be refreshed'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: >-
+    miyori-pr-status-${{
+      github.event_name == 'workflow_dispatch' && inputs.pr_number ||
+      github.event_name == 'pull_request_target' && github.event.pull_request.number ||
+      github.event.workflow_run.pull_requests[0].number ||
+      github.run_id
+    }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Refresh PR status card
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'pull_request_target' ||
+      (github.event.workflow_run.event == 'pull_request' &&
+       github.event.workflow_run.pull_requests[0].number != null)
+    runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: >-
+        ${{
+          github.event_name == 'workflow_dispatch' && inputs.pr_number ||
+          github.event_name == 'pull_request_target' && github.event.pull_request.number ||
+          github.event.workflow_run.pull_requests[0].number
+        }}
+
+    steps:
+      - name: Validate target PR number
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::PR number must be a positive integer."
+            exit 1
+          }
+
+      - name: Checkout trusted default-branch automation code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Generate bot installation token
+        id: miyori-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.MIYORI_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.MIYORI_BOT_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Verify bot identity and current PR state
+        id: target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          BOT_LOGIN="${APP_SLUG}[bot]"
+          ACTUAL_LOGIN="$(gh api "/users/${BOT_LOGIN}" --jq '.login')"
+          [[ "$ACTUAL_LOGIN" == "$BOT_LOGIN" ]] || {
+            echo "::error::Resolved bot login '$ACTUAL_LOGIN' did not match expected '$BOT_LOGIN'."
+            exit 1
+          }
+
+          PR_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state')"
+          PR_HEAD_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          echo "state=$PR_STATE" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Render current-head status card
+        if: steps.target.outputs.state == 'open'
+        shell: bash
+        env:
+          MIYORI_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/miyori_status.py \
+            --pr-number "$PR_NUMBER" \
+            --output "$RUNNER_TEMP/miyori-status.md"
+
+      - name: Publish or update persistent status card
+        if: steps.target.outputs.state == 'open'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+
+          BOT_LOGIN="${APP_SLUG}[bot]"
+          CARD_MARKER='<!-- miyori-status-card:v1 -->'
+          LEGACY_MARKER='<!-- miyori-status:identity-guard -->'
+
+          mapfile -t CARD_IDS < <(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${CARD_MARKER}\"))) | .id"
+          )
+
+          COMMENT_ID=''
+          if (( ${#CARD_IDS[@]} > 0 )); then
+            COMMENT_ID="${CARD_IDS[0]}"
+            if (( ${#CARD_IDS[@]} > 1 )); then
+              echo "::warning::Multiple status cards exist on PR #${PR_NUMBER}; updating the first discovered card only."
+            fi
+          else
+            COMMENT_ID="$(
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+                --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${LEGACY_MARKER}\"))) | .id" \
+                | head -n 1
+            )"
+          fi
+
+          BODY="$(cat "$RUNNER_TEMP/miyori-status.md")"
+          if [[ -n "$COMMENT_ID" ]]; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
+              -f body="$BODY" >/dev/null
+          else
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -f body="$BODY" >/dev/null
+          fi
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## PR status"
+            echo
+            echo "- Target PR: #${PR_NUMBER}"
+            echo "- Current head: \`${{ steps.target.outputs.head_sha }}\`"
+            echo "- PR state: \`${{ steps.target.outputs.state }}\`"
+            echo "- Tracked gates: PR Compile & Unit Check, Identity Guard, Beta to Main Release Gate, Promotion to Main Gate"
+            echo "- Tracked CI labels: ci:owner-request, ci:user-issue, ci:theme, ci:runtime-required, non-theme, skip-device-test"
+            echo "- Authority: status/comment only"
+          } >> "$GITHUB_STEP_SUMMARY"
