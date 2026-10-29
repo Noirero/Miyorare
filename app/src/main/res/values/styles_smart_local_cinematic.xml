@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+ <style name="ThemeOverlay.Miyorare.SmartLocalDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+  <item name="colorSurface">@color/smart_local_surface</item>
+  <item name="colorOnSurface">@color/smart_local_cream</item>
+  <item name="colorPrimary">@color/smart_local_gold</item>
+  <item name="colorOnSurfaceVariant">@color/smart_local_muted</item>
+  <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Miyorare.SmartLocalDialog</item>
+ </style>
+ <style name="ShapeAppearance.Miyorare.SmartLocalDialog" parent="ShapeAppearance.Material3.MediumComponent">
+  <item name="cornerSize">22dp</item>
+ </style>
+</resources>
