@@ -7,7 +7,6 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RawQuery
 import androidx.room.Transaction
-import androidx.room.Upsert
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
@@ -29,6 +28,12 @@ import org.koitharu.kotatsu.list.domain.toOrderBy
 @Dao
 abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 
+	/**
+	 * Private read-space and Private membership are authoritative while isolation is enabled. A title
+	 * read from Private remains hidden even without a favourite membership; a title that exists in both
+	 * Normal and Private also remains hidden until its Private membership is removed. The explicit
+	 * isolation-disabled marker is the only override that exposes Private history here.
+	 */
 	@Transaction
 	@Query(
 		"""
@@ -36,8 +41,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		WHERE deleted_at = 0
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		ORDER BY updated_at DESC LIMIT :limit OFFSET :offset
 		""",
@@ -51,8 +58,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		WHERE deleted_at = 0
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		ORDER BY manga_id
 		LIMIT :limit
@@ -68,8 +77,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 			AND manga_id > :afterMangaId
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		ORDER BY manga_id
 		LIMIT :limit
@@ -84,8 +95,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		WHERE history.deleted_at = 0 AND (manga.title LIKE :query OR manga.alt_title LIKE :query)
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		LIMIT :limit
 		""",
@@ -99,8 +112,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		WHERE history.deleted_at = 0 AND manga.author LIKE :query
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		LIMIT :limit
 		""",
@@ -115,8 +130,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 			AND EXISTS(SELECT 1 FROM tags LEFT JOIN manga_tags ON manga_tags.tag_id = tags.tag_id WHERE manga_tags.manga_id = manga.manga_id AND tags.title LIKE :query)
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		LIMIT :limit
 		""",
@@ -130,8 +147,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		WHERE deleted_at = 0
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		ORDER BY updated_at DESC
 		""",
@@ -145,8 +164,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		WHERE deleted_at = 0
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		ORDER BY updated_at DESC LIMIT :limit
 		""",
@@ -164,8 +185,8 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 			.where("history.deleted_at = 0")
 			.where(
 				"(" + PrivateFavouritesIsolation.DISABLED_MARKER_EXISTS_SQL +
-					" OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0) " +
-					"OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0))",
+					" OR (history.space != 1 AND NOT EXISTS(SELECT 1 FROM private_favourites pf " +
+					"WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)))",
 			)
 			.where("history.updated_at >= $minUpdatedAt")
 			.filters(filterOptions)
@@ -191,8 +212,8 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 			.join("LEFT JOIN manga ON history.manga_id = manga.manga_id")
 			.where("history.deleted_at = 0")
 			.where(
-				"EXISTS(SELECT 1 FROM private_favourites pf " +
-					"WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)",
+				"(history.space = 1 OR EXISTS(SELECT 1 FROM private_favourites pf " +
+					"WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0))",
 			)
 			.where("history.updated_at >= $minUpdatedAt")
 			.filters(filterOptions)
@@ -213,8 +234,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		SELECT manga_id FROM history WHERE deleted_at = 0
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		""",
 	)
@@ -225,8 +248,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		SELECT manga_id FROM history WHERE deleted_at = 0 AND percent > 0
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		""",
 	)
@@ -239,8 +264,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		WHERE history.deleted_at = 0
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		GROUP BY manga_tags.tag_id
 		ORDER BY COUNT(manga_tags.manga_id) DESC
@@ -254,8 +281,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		WHERE history.deleted_at = 0
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+				OR (
+					history.space != 1
+					AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				)
 			)
 		GROUP BY manga.source ORDER BY COUNT(manga.source) DESC LIMIT :limit
 		""",
@@ -295,14 +324,18 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		"""
 		SELECT * FROM history
 		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
-			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			OR (
+				history.space != 1
+				AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+			)
 		""",
 	)
 	abstract suspend fun findAllForSync(): List<HistoryEntity>
 
-	@Upsert
-	abstract suspend fun upsertForSync(entity: HistoryEntity)
+	/** Remote sync may update reading progress, but it must not overwrite local History privacy ownership. */
+	suspend fun upsertForSync(entity: HistoryEntity) {
+		upsert(entity)
+	}
 
 	@Query(
 		"UPDATE history SET page = :page, chapter_id = :chapterId, scroll = :scroll, percent = :percent, updated_at = :updatedAt, chapters = :chapters, deleted_at = 0 WHERE manga_id = :mangaId",
@@ -316,6 +349,9 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		chapters: Int,
 		updatedAt: Long,
 	): Int
+
+	@Query("UPDATE history SET space = :space WHERE manga_id = :mangaId")
+	abstract suspend fun updateSpace(mangaId: Long, space: Int)
 
 	suspend fun delete(mangaId: Long) = setDeletedAt(mangaId, System.currentTimeMillis())
 

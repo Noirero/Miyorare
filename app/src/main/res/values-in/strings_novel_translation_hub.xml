@@ -2,11 +2,6 @@
 <resources>
     <string name="novel_translation_engine">Mesin terjemahan</string>
     <string name="novel_translation_title">Terjemahan</string>
-    <string name="novel_translation_built_in">Built-in</string>
-    <string name="novel_translation_built_in_summary">Terjemahan sistem Android • Di perangkat saat paket bahasa sudah terpasang • Runtime terjemahan tidak dibundel di Miyorare</string>
-    <string name="novel_translation_built_in_info">Menggunakan layanan terjemahan di perangkat milik sistem Android/OEM. Paket bahasa dikelola oleh perangkat. Built-in membutuhkan Android 12 atau lebih baru dan mungkin tidak tersedia di semua perangkat.</string>
-    <string name="novel_translation_manage_system_translation">Kelola terjemahan sistem</string>
-    <string name="novel_translation_system_settings_unavailable">Pengaturan terjemahan sistem tidak tersedia di perangkat ini.</string>
     <string name="novel_translation_online">Miyorare Online</string>
     <string name="novel_translation_online_summary">Online • Tidak perlu API key</string>
     <string name="novel_translation_ai">Terjemahan AI</string>

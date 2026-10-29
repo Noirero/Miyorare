@@ -1,9 +1,11 @@
 package org.koitharu.kotatsu.discovery.data
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -15,8 +17,15 @@ import org.koitharu.kotatsu.scrobbling.common.data.text
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 
 internal const val MAL_CATALOG_FIELDS = "media_type,nsfw,mean"
+private const val MAL_HOME_SECTION_TIMEOUT_MS = 12_000L
 
-class MALCatalogProvider(private val http: CatalogHttp, private val clientId: String) : TrackerCatalogProvider {
+class MALCatalogProvider(
+	private val http: CatalogHttp,
+	private val clientId: String,
+	private val homeSectionTimeoutMs: Long = MAL_HOME_SECTION_TIMEOUT_MS,
+) : TrackerCatalogProvider {
+	init { require(homeSectionTimeoutMs > 0L) }
+
 	override val catalogService = ScrobblerService.MAL
 	override val catalogCapabilities = setOf(
 		CatalogCapability.HOME,
@@ -27,6 +36,8 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 		CatalogCapability.NOVEL,
 		CatalogCapability.STAFF,
 		CatalogCapability.RECOMMENDATIONS,
+		CatalogCapability.CHARACTERS,
+		CatalogCapability.CHARACTER_DETAILS,
 		CatalogCapability.RELATIONS,
 	)
 	private val sectionTypes = listOf(CatalogSectionType.TOP_RANKED, CatalogSectionType.POPULAR, CatalogSectionType.MOST_FAVORITED)
@@ -42,8 +53,10 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 		val keys = filter.kinds.flatMap { kind -> sectionTypes.map { CatalogSectionKey(catalogService, kind, it) } }
 		TrackerCatalogHome(keys.map { key -> async {
 			try {
-				val page = ranking(key, allowAdult, 1, CatalogCachePolicy.HOME_PAGE_SIZE)
+				val page = withTimeout(homeSectionTimeoutMs) { ranking(key, allowAdult, 1, CatalogCachePolicy.HOME_PAGE_SIZE) }
 				TrackerCatalogSection(key, page.items, page.nextPage)
+			} catch (_: TimeoutCancellationException) {
+				TrackerCatalogSection(key, emptyList(), failure = CatalogFailure(CatalogFailureKind.PROVIDER))
 			} catch (e: CancellationException) { throw e }
 			catch (e: Exception) { TrackerCatalogSection(key, emptyList(), failure = e.catalogFailure()) }
 		} }.awaitAll())
@@ -67,8 +80,8 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 
 	override suspend fun details(key: TrackerCatalogKey, allowAdult: Boolean): TrackerCatalogDetails {
 		require(key.service == catalogService)
-		val fields = "$MAL_CATALOG_FIELDS,alternative_titles,synopsis,rank,popularity,num_list_users,status,start_date,genres," +
-			"authors{node{first_name,last_name},role}," +
+		val fields = "$MAL_CATALOG_FIELDS,alternative_titles,synopsis,rank,popularity,num_list_users,status,start_date,end_date,num_chapters,num_volumes,genres," +
+			"authors{node{first_name,last_name},role},serialization{name}," +
 			"recommendations{node{id,title,media_type,nsfw,mean,main_picture}}," +
 			"related_manga{node{id,title,media_type,nsfw,main_picture},relation_type,relation_type_formatted}," +
 			"related_anime{node{id,title,nsfw,main_picture},relation_type,relation_type_formatted}"
@@ -88,11 +101,17 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 				providerUrl = null,
 			)
 		}
-		var partial = false
+		val supplemental = loadMALCatalogSupplemental(http, key)
+		var partial = supplemental.partial
 		val recommendations = try {
 			root.array("recommendations")?.let { rows -> catalogRows(rows) { row -> row.obj("node")?.let { parseMALCard(it, allowAdult) } } }.orEmpty()
 		} catch (_: CatalogException) { partial = true; emptyList() }
 		val relatedWorks = try { malCatalogRelatedWorks(root, allowAdult) } catch (_: Exception) { partial = true; emptyList() }
+		val rank = root.catalogInt("rank")
+		val popularity = root.catalogInt("popularity")
+		val serialization = root.array("serialization").orEmpty().mapNotNull { row ->
+			(row as? JsonObject)?.obj("node")?.text("name")
+		}.distinct().joinToString(", ").takeIf(String::isNotBlank)
 		return TrackerCatalogDetails(
 			item = item,
 			alternativeTitles = alternatives,
@@ -101,14 +120,29 @@ class MALCatalogProvider(private val http: CatalogHttp, private val clientId: St
 			staff = staffPeople.map { (listOf(it.name) + it.roles).joinToString(" · ") },
 			status = root.text("status"),
 			startDate = root.text("start_date"),
-			rank = root.catalogInt("rank"),
-			popularity = root.catalogInt("popularity"),
+			endDate = root.text("end_date"),
+			chapterCount = root.catalogInt("num_chapters")?.takeIf { it > 0 },
+			volumeCount = root.catalogInt("num_volumes")?.takeIf { it > 0 },
+			serialization = serialization,
+			stats = buildList {
+				root.catalogDouble("mean")?.takeIf { it in 0.0..10.0 }?.let { add(TrackerCatalogStat(CatalogStatKind.MEAN_SCORE, it, 10.0)) }
+				rank?.takeIf { it > 0 }?.let { add(TrackerCatalogStat(CatalogStatKind.RANK, it.toDouble())) }
+				popularity?.takeIf { it > 0 }?.let { add(TrackerCatalogStat(CatalogStatKind.POPULARITY_RANK, it.toDouble())) }
+				root.catalogInt("num_list_users")?.takeIf { it > 0 }?.let { add(TrackerCatalogStat(CatalogStatKind.MEMBERS, it.toDouble())) }
+			},
+			rank = rank,
+			popularity = popularity,
 			recommendations = recommendations,
 			partial = partial,
+			characters = supplemental.characters,
 			staffPeople = staffPeople,
 			relatedWorks = relatedWorks,
+			statistics = supplemental.statistics,
 		)
 	}
+
+	override suspend fun characterDetails(person: TrackerCatalogPerson): TrackerCatalogCharacterDetails =
+		loadMALCharacterDetails(http, person)
 
 	private fun url(path: String, adult: Boolean, page: Int, size: Int) = "https://api.myanimelist.net/v2/$path".toHttpUrl().newBuilder()
 		.addQueryParameter("limit", size.toString()).addQueryParameter("offset", ((page - 1) * size).toString())

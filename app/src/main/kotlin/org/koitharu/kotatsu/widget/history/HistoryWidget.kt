@@ -62,15 +62,19 @@ class HistoryWidget : AppWidgetProvider() {
 		if (mangaId == 0L) return
 		runAsync(context, TAG) { appContext ->
 			val entryPoint = appContext.widgetEntryPoint()
-			// Collection widgets can be a frame behind a membership change. Re-check before opening so
-			// an item moved from Normal to Private-only cannot be launched from a stale RemoteViews row.
+			// Collection widgets can be a frame behind a privacy change. Re-check both current
+			// Private membership and the persisted read space before opening a stale Normal History row.
+			// The explicit isolation-disabled mode remains the only override, matching HistoryDao.
 			val isPrivate = runCatching {
 				entryPoint.favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
 			}.getOrDefault(false)
-			val isNormal = runCatching {
-				entryPoint.favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+			val isPrivateHistory = runCatching {
+				entryPoint.database.getHistoryDao().find(mangaId)?.space == FavouriteSpace.PRIVATE.dbValue
 			}.getOrDefault(false)
-			if (isPrivate && !isNormal) {
+			val isolationDisabled = runCatching {
+				entryPoint.favouritesRepository.isPrivateIsolationDisabled()
+			}.getOrDefault(false)
+			if ((isPrivate || isPrivateHistory) && !isolationDisabled) {
 				nudgeAll(appContext)
 				return@runAsync
 			}

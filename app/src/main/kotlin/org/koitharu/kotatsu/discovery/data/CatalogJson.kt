@@ -32,7 +32,8 @@ internal fun catalogPageNumber(page: Int) { require(page in 1..CatalogCachePolic
 
 internal fun parseAniListCard(root: JsonObject, allowAdult: Boolean): TrackerCatalogItem? {
 	if (root.text("type")?.let { it != "MANGA" } == true) return null
-	val kind = when (root.text("format")) {
+	val providerType = root.text("format")
+	val kind = when (providerType) {
 		"NOVEL" -> CatalogMediaKind.NOVEL
 		"MANGA", "ONE_SHOT" -> CatalogMediaKind.MANGA
 		else -> invalidCatalog()
@@ -42,12 +43,13 @@ internal fun parseAniListCard(root: JsonObject, allowAdult: Boolean): TrackerCat
 	return TrackerCatalogItem(
 		TrackerCatalogKey(org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService.ANILIST, kind, root.catalogId()), name,
 		catalogUrl(root.obj("coverImage")?.text("large")), catalogUrl(root.text("siteUrl")),
-		root.catalogDouble("averageScore")?.takeIf { it in 0.0..100.0 }?.div(10), root.catalogBoolean("isAdult"),
+		root.catalogDouble("averageScore")?.takeIf { it in 0.0..100.0 }?.div(10), root.catalogBoolean("isAdult"), providerType,
 	).forPolicy(allowAdult)
 }
 
 internal fun parseMALCard(root: JsonObject, allowAdult: Boolean): TrackerCatalogItem? {
-	val kind = when (root.text("media_type")) {
+	val providerType = root.text("media_type")
+	val kind = when (providerType) {
 		"novel", "light_novel" -> CatalogMediaKind.NOVEL
 		"manga", "one_shot", "doujinshi", "manhwa", "manhua", "oel" -> CatalogMediaKind.MANGA
 		else -> invalidCatalog()
@@ -57,14 +59,15 @@ internal fun parseMALCard(root: JsonObject, allowAdult: Boolean): TrackerCatalog
 	return TrackerCatalogItem(
 		TrackerCatalogKey(org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService.MAL, kind, id), root.text("title") ?: invalidCatalog(),
 		catalogUrl(root.obj("main_picture")?.text("large") ?: root.obj("main_picture")?.text("medium")), "https://myanimelist.net/manga/$id",
-		root.catalogDouble("mean")?.takeIf { it in 0.0..10.0 }, adult,
+		root.catalogDouble("mean")?.takeIf { it in 0.0..10.0 }, adult, providerType,
 	).forPolicy(allowAdult)
 }
 
 internal fun parseKitsuCard(root: JsonObject, allowAdult: Boolean): TrackerCatalogItem? {
 	if (root.text("type") != "manga") invalidCatalog()
 	val attrs = root.obj("attributes") ?: invalidCatalog()
-	val kind = when (attrs.text("subtype")) {
+	val providerType = attrs.text("subtype")
+	val kind = when (providerType) {
 		"novel" -> CatalogMediaKind.NOVEL
 		"manga", "manhwa", "manhua", "oneshot", "doujin", "oel" -> CatalogMediaKind.MANGA
 		else -> invalidCatalog()
@@ -74,6 +77,6 @@ internal fun parseKitsuCard(root: JsonObject, allowAdult: Boolean): TrackerCatal
 	return TrackerCatalogItem(
 		TrackerCatalogKey(org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService.KITSU, kind, id), attrs.text("canonicalTitle") ?: invalidCatalog(),
 		catalogUrl(attrs.obj("posterImage")?.text("large") ?: attrs.obj("posterImage")?.text("medium")), "https://kitsu.app/manga/${attrs.text("slug")?.takeIf { it.matches(Regex("[a-zA-Z0-9_-]+")) } ?: id}",
-		attrs.catalogDouble("averageRating")?.takeIf { it in 0.0..100.0 }?.div(10), adult,
+		attrs.catalogDouble("averageRating")?.takeIf { it in 0.0..100.0 }?.div(10), adult, providerType,
 	).forPolicy(allowAdult)
 }

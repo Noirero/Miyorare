@@ -40,26 +40,27 @@ internal fun publicCatalogClient(base: OkHttpClient): OkHttpClient = base.newBui
 class CatalogHttp @Inject constructor(@BaseHttpClient base: OkHttpClient) {
 	private val client = publicCatalogClient(base)
 	private val requests = Semaphore(3)
-	private val resetTimes = ConcurrentHashMap<ScrobblerService, Long>()
+	private val resetTimes = ConcurrentHashMap<String, Long>()
 
 	suspend fun request(service: ScrobblerService, request: Request): JsonObject = requests.withPermit {
 		val now = System.currentTimeMillis()
-		resetTimes[service]?.takeIf { it > now }?.let { throw CatalogException(CatalogFailure(CatalogFailureKind.RATE_LIMITED, it)) }
 		val url = request.url
-		val host = when (service) {
-			ScrobblerService.ANILIST -> "graphql.anilist.co"
-			ScrobblerService.MAL -> "api.myanimelist.net"
-			ScrobblerService.KITSU -> "kitsu.app"
-			ScrobblerService.MANGABAKA -> "api.mangabaka.org"
+		val hosts = when (service) {
+			ScrobblerService.ANILIST -> setOf("graphql.anilist.co")
+			ScrobblerService.MAL -> setOf("api.myanimelist.net", "api.jikan.moe", "jikan.lucashdo.com")
+			ScrobblerService.KITSU -> setOf("kitsu.app")
+			ScrobblerService.MANGABAKA -> setOf("api.mangabaka.org")
 			else -> throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
 		}
-		require(url.scheme == "https" && url.host == host && url.port == 443 && url.username.isEmpty() && url.password.isEmpty())
+		require(url.scheme == "https" && url.host in hosts && url.port == 443 && url.username.isEmpty() && url.password.isEmpty())
+		val rateKey = "${service.name}:${url.host}"
+		resetTimes[rateKey]?.takeIf { it > now }?.let { throw CatalogException(CatalogFailure(CatalogFailureKind.RATE_LIMITED, it)) }
 		val publicRequest = request.newBuilder().removeHeader("Authorization").removeHeader("Cookie")
 			.header("User-Agent", "Miyorare").build()
 		client.newCall(publicRequest).awaitTrackerDetails { response ->
 			val reset = catalogRetryAt(response.header("Retry-After"), response.header("X-RateLimit-Reset"), System.currentTimeMillis())
 			if (response.code == 429 || response.header("X-RateLimit-Remaining") == "0") {
-				if (reset != null) resetTimes[service] = reset
+				if (reset != null) resetTimes[rateKey] = reset
 			}
 			if (response.code == 429) throw CatalogException(CatalogFailure(CatalogFailureKind.RATE_LIMITED, reset))
 			if (!response.isSuccessful) throw CatalogException(CatalogFailure(CatalogFailureKind.PROVIDER))

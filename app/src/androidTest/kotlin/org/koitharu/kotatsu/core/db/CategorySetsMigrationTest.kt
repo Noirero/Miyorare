@@ -10,6 +10,7 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.migrations.Migration49To50
+import org.koitharu.kotatsu.core.db.migrations.Migration50To51
 import org.koitharu.kotatsu.favourites.data.*
 import org.koitharu.kotatsu.favourites.domain.CategorySetIdentity
 
@@ -45,7 +46,9 @@ class CategorySetsMigrationTest {
 			}
 			initial.close()
 			repeat(2) {
-				val migrated = Room.databaseBuilder(context, MangaDatabase::class.java, name).addMigrations(Migration49To50()).build()
+				val migrated = Room.databaseBuilder(context, MangaDatabase::class.java, name)
+					.addMigrations(Migration49To50(), Migration50To51())
+					.build()
 				try {
 					assertTrue(migrated.openHelper.writableDatabase.isOpen) // Room validates the migrated schema.
 					assertEquals(categories, (migrated.getFavouriteCategoriesDao().findAllForSync() + migrated.getFavouriteCategoriesDao().findAllInSpace(1)).sortedBy { it.categoryId })

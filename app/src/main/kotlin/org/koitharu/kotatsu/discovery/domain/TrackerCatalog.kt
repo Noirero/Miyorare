@@ -52,6 +52,33 @@ data class TrackerCatalogPerson(
 	init { require(name.isNotBlank()) }
 }
 
+data class TrackerCatalogScoreDistribution(
+	val score: Int,
+	val votes: Long,
+	val percentage: Double? = null,
+) {
+	init {
+		require(score in 1..10)
+		require(votes >= 0L)
+		require(percentage == null || percentage.isFinite() && percentage in 0.0..100.0)
+	}
+}
+
+data class TrackerCatalogStatistics(
+	val reading: Long? = null,
+	val completed: Long? = null,
+	val onHold: Long? = null,
+	val dropped: Long? = null,
+	val planToRead: Long? = null,
+	val total: Long? = null,
+	val scores: List<TrackerCatalogScoreDistribution> = emptyList(),
+) {
+	init {
+		require(listOfNotNull(reading, completed, onHold, dropped, planToRead, total).all { it >= 0L })
+		require(scores.map { it.score }.distinct().size == scores.size)
+	}
+}
+
 enum class CatalogRelatedMediaKind { MANGA, NOVEL, ANIME, OTHER }
 
 data class TrackerCatalogRelatedWork(
@@ -78,6 +105,40 @@ data class TrackerCatalogRelatedWork(
 		}
 }
 
+data class TrackerCatalogCharacterWork(
+	val service: ScrobblerService,
+	val remoteId: String,
+	val title: String,
+	val coverUrl: String? = null,
+	val providerUrl: String? = null,
+	val mediaKind: CatalogRelatedMediaKind,
+	val role: String? = null,
+) {
+	init {
+		require(remoteId.toLongOrNull()?.let { it > 0 && it.toString() == remoteId } == true)
+		require(title.isNotBlank())
+	}
+
+	val catalogKey: TrackerCatalogKey?
+		get() = when (mediaKind) {
+			CatalogRelatedMediaKind.MANGA -> TrackerCatalogKey(service, CatalogMediaKind.MANGA, remoteId)
+			CatalogRelatedMediaKind.NOVEL -> TrackerCatalogKey(service, CatalogMediaKind.NOVEL, remoteId)
+			CatalogRelatedMediaKind.ANIME, CatalogRelatedMediaKind.OTHER -> null
+		}
+}
+
+data class TrackerCatalogCharacterDetails(
+	val person: TrackerCatalogPerson,
+	val nativeName: String? = null,
+	val nicknames: List<String> = emptyList(),
+	val about: String? = null,
+	val favorites: Long? = null,
+	val voices: List<TrackerCatalogPerson> = emptyList(),
+	val works: List<TrackerCatalogCharacterWork> = emptyList(),
+) {
+	init { require(favorites == null || favorites >= 0L) }
+}
+
 enum class CatalogSectionType {
 	RECENT,
 	TRENDING,
@@ -98,6 +159,31 @@ data class TrackerCatalogSection(
 	val failure: CatalogFailure? = null,
 )
 data class TrackerCatalogHome(val sections: List<TrackerCatalogSection>, val savedAt: Long = 0)
+
+enum class CatalogStatKind {
+	WEIGHTED_SCORE,
+	MEAN_SCORE,
+	COMMUNITY_APPROVAL,
+	RANK,
+	RATING_RANK,
+	POPULARITY_RANK,
+	READERS,
+	MEMBERS,
+	USERS,
+	FAVORITES,
+}
+
+data class TrackerCatalogStat(
+	val kind: CatalogStatKind,
+	val value: Double,
+	val scale: Double? = null,
+) {
+	init {
+		require(value.isFinite() && value >= 0.0)
+		require(scale == null || scale.isFinite() && scale > 0.0)
+	}
+}
+
 data class TrackerCatalogDetails(
 	val item: TrackerCatalogItem,
 	val alternativeTitles: List<String> = emptyList(),
@@ -107,6 +193,15 @@ data class TrackerCatalogDetails(
 	val staff: List<String> = emptyList(),
 	val status: String? = null,
 	val startDate: String? = null,
+	val endDate: String? = null,
+	val chapterCount: Int? = null,
+	val volumeCount: Int? = null,
+	val source: String? = null,
+	val serialization: String? = null,
+	val ageRating: String? = null,
+	/** Provider-native statistics retain their original semantics/scale instead of collapsing to one generic score. */
+	val stats: List<TrackerCatalogStat> = emptyList(),
+	/** Legacy/general-provider fields retained for providers that do not expose [stats] yet. */
 	val rank: Int? = null,
 	val popularity: Int? = null,
 	val recommendations: List<TrackerCatalogItem> = emptyList(),
@@ -114,10 +209,12 @@ data class TrackerCatalogDetails(
 	val characters: List<TrackerCatalogPerson> = emptyList(),
 	val staffPeople: List<TrackerCatalogPerson> = emptyList(),
 	val relatedWorks: List<TrackerCatalogRelatedWork> = emptyList(),
+	/** Full provider community statistics when the catalogue backend exposes them. */
+	val statistics: TrackerCatalogStatistics? = null,
 )
 
 enum class CatalogCapability {
-	HOME, SEARCH, DETAILS, SECTION_PAGING, MANGA, NOVEL, STAFF, RECOMMENDATIONS, CHARACTERS, RELATIONS,
+	HOME, SEARCH, DETAILS, SECTION_PAGING, MANGA, NOVEL, STAFF, RECOMMENDATIONS, CHARACTERS, CHARACTER_DETAILS, RELATIONS,
 }
 enum class CatalogFailureKind { OFFLINE, RATE_LIMITED, PROVIDER, INVALID_DATA, UNSUPPORTED }
 data class CatalogFailure(val kind: CatalogFailureKind, val retryAt: Long? = null)
@@ -137,6 +234,8 @@ interface TrackerCatalogProvider {
 	suspend fun search(query: String, filter: CatalogFilter, allowAdult: Boolean, page: Int): TrackerCatalogPage
 	suspend fun details(key: TrackerCatalogKey, allowAdult: Boolean): TrackerCatalogDetails
 	suspend fun browseSection(key: CatalogSectionKey, allowAdult: Boolean, page: Int): TrackerCatalogPage
+	suspend fun characterDetails(person: TrackerCatalogPerson): TrackerCatalogCharacterDetails =
+		throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
 }
 
 data class CatalogHomeRequest(val service: ScrobblerService, val filter: CatalogFilter, val allowAdult: Boolean)

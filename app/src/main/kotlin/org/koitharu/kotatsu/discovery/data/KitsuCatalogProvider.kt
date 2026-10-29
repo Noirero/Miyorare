@@ -83,6 +83,8 @@ class KitsuCatalogProvider(private val http: CatalogHttp) : TrackerCatalogProvid
 		val staffPeople = staffDeferred.await()
 		val relations = relationsDeferred.await()
 		val partial = characters.partial || staffPeople.partial || relations.partial
+		val ratingRank = attrs.catalogInt("ratingRank")
+		val popularityRank = attrs.catalogInt("popularityRank")
 		TrackerCatalogDetails(
 			item = item,
 			alternativeTitles = attrs.obj("titles")?.values.orEmpty().mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf(String::isNotBlank) }.distinct(),
@@ -92,8 +94,20 @@ class KitsuCatalogProvider(private val http: CatalogHttp) : TrackerCatalogProvid
 			staff = staffPeople.items.map { (listOf(it.name) + it.roles).joinToString(" · ") },
 			status = attrs.text("status"),
 			startDate = attrs.text("startDate"),
-			rank = attrs.catalogInt("ratingRank"),
-			popularity = attrs.catalogInt("popularityRank"),
+			endDate = attrs.text("endDate"),
+			chapterCount = attrs.catalogInt("chapterCount")?.takeIf { it > 0 },
+			volumeCount = attrs.catalogInt("volumeCount")?.takeIf { it > 0 },
+			serialization = attrs.text("serialization"),
+			ageRating = listOfNotNull(attrs.text("ageRating"), attrs.text("ageRatingGuide")).distinct().joinToString(" · ").takeIf(String::isNotBlank),
+			stats = buildList {
+				attrs.catalogDouble("averageRating")?.takeIf { it in 0.0..100.0 }?.let { add(TrackerCatalogStat(CatalogStatKind.COMMUNITY_APPROVAL, it, 100.0)) }
+				ratingRank?.takeIf { it > 0 }?.let { add(TrackerCatalogStat(CatalogStatKind.RATING_RANK, it.toDouble())) }
+				popularityRank?.takeIf { it > 0 }?.let { add(TrackerCatalogStat(CatalogStatKind.POPULARITY_RANK, it.toDouble())) }
+				attrs.catalogInt("userCount")?.takeIf { it > 0 }?.let { add(TrackerCatalogStat(CatalogStatKind.USERS, it.toDouble())) }
+				attrs.catalogInt("favoritesCount")?.takeIf { it > 0 }?.let { add(TrackerCatalogStat(CatalogStatKind.FAVORITES, it.toDouble())) }
+			},
+			rank = ratingRank,
+			popularity = popularityRank,
 			partial = partial,
 			characters = characters.items,
 			staffPeople = staffPeople.items,
