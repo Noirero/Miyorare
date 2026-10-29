@@ -1,80 +1,78 @@
-## Miyorare v1.4.15
+## Miyorare v1.4.16
 
-This release expands Miyorare's discovery ecosystem, strengthens persistent cover handling, and introduces a major new iteration of source migration. Migration improvements in this release are still **Beta / not yet stable**, while Discovery gains MangaBaka and tracker-account integration.
+This release strengthens Miyorare's global source infrastructure, expands MyAnimeList-powered Discovery details, and improves privacy isolation for reading history. Source Migration also receives additional refinements while remaining **Beta / not yet stable**.
 
 ### ✨ What's New
 
-- **MangaBaka in Discovery** — MangaBaka joins the Discovery catalog ecosystem with dedicated catalog support.
-- **MangaBaka Personal Home** — Discovery can provide a personalized MangaBaka home experience with dedicated browsing and “See all” screens.
-- **Tracker catalog accounts** — Discovery now includes account infrastructure and UI for supported tracker catalogs.
-- **Manual migration search (Beta)** — source migration now provides a dedicated manual search flow when automatic candidate matching is not enough. This migration functionality is still under active development and should be considered **Beta / not yet stable**.
-- **Broader migration search controls (Beta)** — migration can search through explicit scopes and use global search integration to find replacement titles more flexibly. The expanded migration flow is **not yet considered stable**.
-- **Persistent cover storage** — Miyorare now has dedicated persistent storage for manga covers instead of relying solely on ordinary image-cache behavior.
+- **Official Global Source settings** — Miyorare now provides dedicated settings and controls for supported Official Global Sources.
+- **Global Source network controls** — dedicated network policy infrastructure gives Miyorare more control over how Official Global Sources communicate and recover from network problems.
+- **MyAnimeList extended details** — MyAnimeList-backed Discovery titles can now expose richer supplemental information through the tracker details experience.
+- **Private History isolation** — reading history now has dedicated isolation behavior for manga associated with Private Favourites, keeping private activity separated from normal History surfaces.
 
 ### 🚀 Improvements
 
-- **Migration search & matching (Beta)** — candidate discovery and matching have been expanded to work with the new search scopes and manual/global search paths. These migration improvements remain **Beta / not yet stable**.
-- **Lossless migration copy (Beta)** — migration has a dedicated copy path designed to preserve related user/library data while moving a title to its replacement source. This functionality is still **Beta** and may receive further changes.
-- **Batch migration controls (Beta)** — batch migration controls, scheduling, background work, and execution policies have been substantially expanded, but the overall migration system remains **not yet stable**.
-- **Migration session preferences (Beta)** — migration can retain additional session/search choices instead of treating each operation as completely isolated. This remains part of the **Beta migration system**.
-- **Discovery catalog data** — AniList, Kitsu, and MyAnimeList providers received additional catalog data and supplemental information handling.
-- **Tracker details & relations** — tracker-backed details now have richer relation-reading infrastructure and expanded people information.
-- **MangaBaka tracker details** — MangaBaka is integrated more deeply into tracker-backed title information.
-- **Persistent cover restoration** — stored covers are integrated with Miyorare's image loading and restoration path for more durable artwork availability.
-- **Discovery snapshots** — catalog snapshot handling has been improved for mixed and supplemental catalog data.
+- **Official Global Source resilience** — global sources gain dedicated resilience handling for more reliable behavior during network and source failures.
+- **Tsuki source runtime** — the plugin runtime and source configuration infrastructure have been expanded to support the new Official Global Source controls.
+- **MyAnimeList catalog details** — MAL catalog data now includes additional supplemental information and richer details presentation.
+- **Tracker details presentation** — Discovery's supplemental details UI has been substantially expanded to present richer tracker-backed information.
+- **AniList, Kitsu & MAL catalog reliability** — catalog providers received additional request, parsing, and data-handling improvements.
+- **MAL catalog fallback behavior** — MyAnimeList Discovery has additional fallback and timeout handling when supplemental or home data cannot be retrieved normally.
+- **Private History handling** — History storage, repository queries, reader updates, and the History widget now coordinate with Private Favourites isolation.
+- **Migration manual search (Beta)** — manual migration search received additional source-selection and follow-up behavior. Migration remains **Beta / not yet stable**.
+- **Migration candidate search (Beta)** — migration search received further matching and source-picker refinements while the overall migration system remains under active development.
 
 ### 🐞 Fixes
 
-- **Migration (Beta)** — improved preservation of library and user data when copying entries during source migration.
-- **Migration (Beta)** — improved candidate matching for direct searches and broader search scopes.
-- **Migration (Beta)** — improved behavior when automatic matching cannot confidently find a replacement.
-- **Migration (Beta)** — improved batch migration state, work scope, and execution handling.
-- Improved image disk-cache behavior alongside the new persistent cover storage path.
-- Improved cover restoration behavior when normal cached artwork is no longer available.
-- Improved tracker relation reading so relation data remains isolated and handled consistently.
-- Improved Discovery catalog snapshot and supplemental-data handling.
-- Added regression coverage for **Beta migration**, persistent covers, MangaBaka Discovery, tracker accounts, tracker relations, and Discovery catalog behavior.
+- Fixed History behavior that could allow reading activity associated with Private Favourites to appear on normal History surfaces.
+- Improved History persistence and query behavior to preserve Private/Normal isolation consistently.
+- Improved History widget behavior so private reading activity follows the same isolation rules.
+- Improved MyAnimeList catalog detail loading and supplemental-data fallback behavior.
+- Improved timeout handling for MyAnimeList Discovery home/catalog requests.
+- Improved AniList and Kitsu catalog request and parsing behavior.
+- Improved Official Global Source recovery and network-policy behavior.
+- **Migration (Beta)** — improved manual search follow-up and source selection behavior.
+- Added database migration support for the updated History privacy model.
+- Added regression coverage for Private History isolation, MAL details and fallback behavior, Official Global Source resilience, and **Beta migration** behavior.
 
-> **Migration status:** The migration features described in this release are still **Beta / not yet stable**. They are under active development and may receive further behavioral, UI, and compatibility changes in future releases.
+> **Migration status:** Migration functionality remains **Beta / not yet stable**. It is still under active development and may receive further behavior, UI, and compatibility changes in future releases.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Rilis ini memperluas ekosistem Discovery Miyorare, memperkuat penanganan persistent cover, dan menghadirkan iterasi besar baru untuk source migration. Peningkatan migration pada rilis ini masih berstatus **Beta / belum stabil**, sementara Discovery mendapat integrasi MangaBaka dan akun tracker.
+Rilis ini memperkuat infrastructure global source Miyorare, memperluas detail Discovery berbasis MyAnimeList, dan meningkatkan isolasi privasi untuk riwayat membaca. Source Migration juga mendapat penyempurnaan tambahan, tetapi masih berstatus **Beta / belum stabil**.
 
 ### ✨ Yang Baru
 
-- **MangaBaka di Discovery** — MangaBaka bergabung dengan ekosistem katalog Discovery melalui dukungan katalog khusus.
-- **MangaBaka Personal Home** — Discovery dapat menyediakan pengalaman MangaBaka personal dengan browsing khusus dan layar “See all”.
-- **Akun tracker catalog** — Discovery sekarang memiliki infrastructure dan UI akun untuk tracker catalog yang didukung.
-- **Manual migration search (Beta)** — source migration sekarang memiliki alur pencarian manual khusus ketika automatic candidate matching tidak mencukupi. Fungsi migration ini masih dalam pengembangan aktif dan berstatus **Beta / belum stabil**.
-- **Kontrol pencarian migration lebih luas (Beta)** — migration dapat menggunakan search scope khusus dan integrasi global search untuk menemukan judul pengganti secara lebih fleksibel. Alur migration yang diperluas ini **belum dianggap stabil**.
-- **Persistent cover storage** — Miyorare sekarang memiliki penyimpanan persisten khusus untuk cover manga dan tidak hanya bergantung pada image cache biasa.
+- **Pengaturan Official Global Source** — Miyorare sekarang menyediakan pengaturan dan kontrol khusus untuk Official Global Sources yang didukung.
+- **Kontrol jaringan Global Source** — network policy infrastructure khusus memberikan kontrol yang lebih baik terhadap komunikasi dan pemulihan Official Global Source ketika terjadi masalah jaringan.
+- **Detail MyAnimeList yang lebih lengkap** — judul Discovery berbasis MyAnimeList sekarang dapat menampilkan supplemental information yang lebih kaya melalui pengalaman tracker details.
+- **Isolasi Private History** — riwayat membaca sekarang memiliki mekanisme isolasi khusus untuk manga yang terkait dengan Private Favourites sehingga aktivitas private tetap terpisah dari History normal.
 
 ### 🚀 Peningkatan
 
-- **Migration search & matching (Beta)** — candidate discovery dan matching diperluas agar bekerja dengan search scope baru serta jalur manual/global search. Peningkatan migration ini masih **Beta / belum stabil**.
-- **Lossless migration copy (Beta)** — migration memiliki jalur copy khusus yang dirancang untuk mempertahankan data user/library terkait saat judul dipindahkan ke source pengganti. Fungsi ini masih **Beta** dan dapat berubah lagi.
-- **Batch migration controls (Beta)** — kontrol batch migration, scheduling, background work, dan execution policy diperluas secara signifikan, tetapi keseluruhan sistem migration masih **belum stabil**.
-- **Migration session preferences (Beta)** — migration dapat mempertahankan pilihan session/search tambahan sehingga setiap operasi tidak selalu dimulai sepenuhnya dari awal. Ini masih menjadi bagian dari **sistem migration Beta**.
-- **Data Discovery catalog** — provider AniList, Kitsu, dan MyAnimeList mendapat tambahan data katalog dan supplemental information handling.
-- **Tracker details & relations** — detail berbasis tracker sekarang memiliki infrastructure pembacaan relation yang lebih kaya serta informasi people yang diperluas.
-- **MangaBaka tracker details** — MangaBaka terintegrasi lebih dalam dengan informasi judul berbasis tracker.
-- **Persistent cover restoration** — cover tersimpan diintegrasikan dengan image loading dan restoration path Miyorare agar artwork tersedia lebih tahan lama.
-- **Discovery snapshots** — penanganan catalog snapshot ditingkatkan untuk mixed dan supplemental catalog data.
+- **Reliability Official Global Source** — global source mendapat resilience handling khusus agar lebih andal ketika terjadi masalah jaringan atau source.
+- **Tsuki source runtime** — plugin runtime dan source configuration infrastructure diperluas untuk mendukung kontrol Official Global Source yang baru.
+- **Detail katalog MyAnimeList** — data katalog MAL sekarang memiliki supplemental information tambahan dan tampilan detail yang lebih kaya.
+- **Tampilan tracker details** — supplemental details UI di Discovery diperluas secara substansial untuk menampilkan informasi berbasis tracker yang lebih lengkap.
+- **Reliability katalog AniList, Kitsu & MAL** — provider katalog mendapat peningkatan tambahan pada request, parsing, dan data handling.
+- **Fallback katalog MAL** — MyAnimeList Discovery mendapat fallback dan timeout handling tambahan ketika supplemental atau home data tidak dapat diperoleh secara normal.
+- **Penanganan Private History** — penyimpanan History, repository query, update dari reader, dan History widget sekarang terkoordinasi dengan isolasi Private Favourites.
+- **Migration manual search (Beta)** — manual migration search mendapat peningkatan pada source selection dan follow-up behavior. Migration tetap **Beta / belum stabil**.
+- **Migration candidate search (Beta)** — migration search mendapat penyempurnaan tambahan pada matching dan source picker sementara keseluruhan sistem masih dalam pengembangan aktif.
 
 ### 🐞 Perbaikan
 
-- **Migration (Beta)** — meningkatkan pemeliharaan data library dan user ketika entry disalin selama source migration.
-- **Migration (Beta)** — meningkatkan candidate matching untuk direct search dan search scope yang lebih luas.
-- **Migration (Beta)** — meningkatkan perilaku ketika automatic matching tidak dapat menemukan pengganti dengan cukup yakin.
-- **Migration (Beta)** — meningkatkan batch migration state, work scope, dan execution handling.
-- Meningkatkan image disk-cache behavior bersama persistent cover storage yang baru.
-- Meningkatkan cover restoration ketika artwork dari cache biasa sudah tidak tersedia.
-- Meningkatkan pembacaan tracker relations agar relation data tetap terisolasi dan ditangani secara konsisten.
-- Meningkatkan penanganan Discovery catalog snapshot dan supplemental data.
-- Menambahkan regression coverage untuk **migration Beta**, persistent cover, MangaBaka Discovery, tracker accounts, tracker relations, dan perilaku Discovery catalog.
+- Memperbaiki History yang dapat membuat aktivitas membaca terkait Private Favourites muncul pada History normal.
+- Meningkatkan persistence dan query History agar isolasi Private/Normal tetap konsisten.
+- Meningkatkan History widget agar aktivitas membaca private mengikuti aturan isolasi yang sama.
+- Meningkatkan pemuatan detail katalog MyAnimeList dan fallback supplemental data.
+- Meningkatkan timeout handling untuk request MyAnimeList Discovery home/catalog.
+- Meningkatkan request dan parsing katalog AniList serta Kitsu.
+- Meningkatkan recovery dan network-policy behavior untuk Official Global Source.
+- **Migration (Beta)** — meningkatkan manual search follow-up dan source selection behavior.
+- Menambahkan database migration untuk mendukung model privasi History yang diperbarui.
+- Menambahkan regression coverage untuk Private History isolation, MAL details dan fallback, Official Global Source resilience, serta behavior **migration Beta**.
 
-> **Status Migration:** Fitur-fitur migration yang dijelaskan pada rilis ini masih berstatus **Beta / belum stabil**. Sistem tersebut masih dalam pengembangan aktif dan dapat menerima perubahan behavior, UI, maupun compatibility pada rilis berikutnya.
+> **Status Migration:** Fungsi Migration masih berstatus **Beta / belum stabil**. Sistem tersebut masih dalam pengembangan aktif dan dapat menerima perubahan behavior, UI, maupun compatibility pada rilis berikutnya.
 
 </details>
