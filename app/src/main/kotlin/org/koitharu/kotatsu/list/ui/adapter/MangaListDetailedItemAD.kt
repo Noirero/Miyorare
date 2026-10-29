@@ -4,7 +4,6 @@ import androidx.core.view.isVisible
 import androidx.core.content.ContextCompat
 import android.view.ViewGroup
 import androidx.core.view.updateLayoutParams
-import androidx.core.view.updateLayoutParams
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
