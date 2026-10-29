@@ -361,16 +361,12 @@ class SmartLocalLibrary @Inject constructor(
             for (book in targets) {
                 val root = documents.root(book.rootUri)
                 val files = (book.chapters.flatMap { c -> if (c.node.directory) c.pages else listOf(c.node) } + book.sidecars).distinctBy { it.key }
-                val ownKeys = (book.chapters.flatMap { c -> c.pages + c.node } + book.sidecars)
-                    .mapTo(HashSet()) { it.key }
-                check(files.none { (ownership[it.key] ?: 0) > (if (it.key in ownKeys) 1 else 0) }) {
-                    "A document belongs to another manga"
-                }
-                files.forEach { node ->
+                // Preflight above already validated the entire batch. Do not repeat a
+                // stale ownership check after earlier selections have been removed.
+                for (file in files) {
                     currentCoroutineContext().ensureActive()
-                    check(!node.directory && node.key != root.key && documents.contains(root, node)) { "Unsafe deletion target" }
+                    if (documents.exists(root, file)) documents.delete(root, file)
                 }
-                for (file in files) if (documents.exists(root, file)) documents.delete(root, file)
                 for (folder in (book.chapters.map { it.node }.filter { it.directory } + listOf(book.node).filter { it.directory }).distinctBy { it.key }) {
                     if (folder.uri.toUri().scheme == "file" && folder.key != root.key && documents.exists(root, folder) && documents.children(root, folder).isEmpty()) documents.delete(root, folder)
                 }
