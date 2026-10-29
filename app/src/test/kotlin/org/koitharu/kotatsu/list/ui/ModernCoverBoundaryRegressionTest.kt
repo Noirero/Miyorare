@@ -17,7 +17,7 @@ class ModernCoverBoundaryRegressionTest {
 	@Test fun browsingOptInIsExplicitAndPickerAndListDelegatesStayLegacy() {
 		val adapter = source("list/ui/adapter/MangaListAdapter.kt")
 		val grid = source("list/ui/adapter/MangaGridItemAD.kt")
-		assertTrue(grid.contains("binding.favouriteCoverOverlays.isVisible = usesModernCover"))
+		assertTrue(grid.contains("binding.favouriteCoverOverlays.isVisible = usesCoverOverlay"))
 		assertTrue(grid.contains("coverContext.usesCollectionBorder(designStyle)"))
 		assertFalse(grid.contains("isVisible = isNormalModernFavourites"))
 		assertTrue(adapter.contains("coverContext: ModernCoverContext = ModernCoverContext.LEGACY"))
@@ -67,13 +67,31 @@ class ModernCoverBoundaryRegressionTest {
 		assertFalse(grid.contains("applyGridAppearance(hasCollectionBorder"))
 		assertTrue(grid.contains("if (usesModernCover && coverHeight > 0)"))
 		assertTrue(grid.contains("binding.textViewTitle.setTextColor(if (normalNeon) normalGlass!!.content else onSurface)"))
-		assertTrue(grid.contains("if (!usesModernCover && (item.isSaved || item.isFavorite)"))
+		assertTrue(grid.contains("if (!usesCoverOverlay && (item.isSaved || item.isFavorite)"))
 		val cover = source("list/ui/FavouriteCoverOverlayView.kt")
 		assertFalse(cover.contains("preservedProgress"))
 		assertTrue(cover.contains("h - px(FavouriteCoverOverlayMetrics.PROGRESS_RESERVED_DP) - gap"))
 		assertTrue(cover.contains("chapterCounter.background = shape(R.color.favourite_cover_protection"))
 		assertTrue(cover.contains("counterNumber.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.badgeSp)"))
 		assertTrue(cover.contains("context.getString(R.string.chapters)"))
+	}
+
+	@Test fun cinematicLocalRestoresRealModernCoverStatusesWithoutChangingCardGeometry() {
+		val grid = source("list/ui/adapter/MangaGridItemAD.kt")
+		val local = source("local/ui/LocalListFragment.kt")
+		assertTrue(local.contains("localCinematic = true"))
+		assertTrue(grid.contains("val usesCoverOverlay = usesModernCover || localCinematic"))
+		assertTrue(grid.contains("binding.favouriteCoverOverlays.isVisible = usesCoverOverlay"))
+		assertTrue(grid.contains("if (localCinematic) it.copy(legacyCounter = item.counter) else it"))
+		assertTrue(grid.contains("useModernCoverOverlay = usesCoverOverlay"))
+		assertTrue(grid.contains("applyGridAppearance(usesModernCover, visualScale)"))
+		assertTrue(grid.contains("if (localCinematic) {"))
+		assertTrue(grid.contains("R.drawable.bg_smart_local_cinematic_selectable"))
+		val overlay = source("list/ui/FavouriteCoverOverlayView.kt")
+		assertTrue(overlay.contains("local.isVisible = value.isLocalSource"))
+		assertTrue(overlay.contains("chapterCounter.isVisible = value.legacyCounter > 0"))
+		assertTrue(overlay.contains("statusItems[index].isVisible = active"))
+		assertTrue(overlay.contains("action.setOnClickListener"))
 	}
 
 	private fun source(path: String) = sequenceOf(
