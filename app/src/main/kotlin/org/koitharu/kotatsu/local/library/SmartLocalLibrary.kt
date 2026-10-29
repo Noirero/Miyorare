@@ -43,6 +43,11 @@ class SmartLocalLibrary @Inject constructor(
     private val dataRepository: MangaDataRepository, private val db: MangaDatabase,
     private val coverCache: SmartLocalCoverCache,
 ) {
+    // Disposable, independently budgeted chapter-gallery thumbnails. Never store reader pages.
+    private val chapterGalleryCache by lazy {
+        SmartLocalCoverCache(File(context.cacheDir, "smart-local-chapter-gallery"),
+            maxBytes = 48L * 1024 * 1024, maxEntries = 512)
+    }
     private val mutex = Mutex()
     private val prefs by lazy { context.getSharedPreferences("smart_local_library", Context.MODE_PRIVATE) }
     private val indexFile get() = AtomicFile(File(context.filesDir, "smart-local-index.json"))
@@ -301,6 +306,28 @@ class SmartLocalLibrary @Inject constructor(
         val historiesByKey = snapshot.mapNotNull { book -> histories[book.id]?.let { book.node.key to it } }.toMap()
         projectLocalCollection(snapshot, historiesByKey, query, type, readingFilter, sort, showExtensions)
             .map { it.toManga(showExtensions) }
+    }
+
+    /**
+     * Cover-sized chapter preview only. Never enumerate reader pages, render every PDF page,
+     * or populate the reader's page cache. Reuses bounded archive/PDF cover extraction.
+     */
+    suspend fun chapterGalleryThumbnail(chapter: MangaChapter): ByteArray? = withContext(Dispatchers.IO) {
+        val (book, localChapter) = requireChapter(chapter.url)
+        val candidates = if (localChapter.node.directory) localChapter.pages.take(1)
+            else listOf(localChapter.node)
+        if (candidates.isEmpty()) return@withContext null
+        val plan = LocalCoverPlan(book.rootUri, candidates, book.scannedAt)
+        val cacheId = "${book.id}:${localChapter.id}".longHashCode()
+        val isCurrent = {
+            state.value.books.any { current ->
+                current.id == book.id && current.rootUri == book.rootUri &&
+                    current.chapters.any { it.id == localChapter.id && it.node == localChapter.node }
+            }
+        }
+        chapterGalleryCache.getOrGenerateScoped(cacheId, plan, isCurrent) { publish ->
+            contentReader.cover(plan, publish)
+        }
     }
 
     suspend fun pages(chapter: MangaChapter): List<MangaPage> = withContext(Dispatchers.IO) {
