@@ -75,7 +75,7 @@ jobs:
           name: pr-jvm-evidence
           path: app/build/reports/tests/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
 
   android-runtime:
     name: Android runtime validation — Android 15
@@ -176,7 +176,7 @@ jobs:
             app/build/reports/migration-process/
             app/build/reports/android-runtime-diagnostics/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
 
       # skip-device-test suppresses only the owner-facing physical-device APK artifact.
       # Automated Android 15 runtime/instrumentation validation above still runs.
@@ -187,4 +187,4 @@ jobs:
           name: on-device-cover-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
