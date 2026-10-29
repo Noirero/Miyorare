@@ -303,7 +303,7 @@ fun mangaGridItemAD(
 			binding.imageViewCover.strokeColor = ColorStateList.valueOf(gold)
 			binding.imageViewCover.strokeWidth = density
 			binding.textViewTitle.setTextColor(cream)
-			itemView.background = ContextCompat.getDrawable(context, R.drawable.bg_smart_local_cinematic_card)
+			itemView.background = ContextCompat.getDrawable(context, R.drawable.bg_smart_local_cinematic_selectable)
 		}
 		val baseMargin = if (item.isGridSpacingIncreased) gridMarginIncreased else gridMargin
 		val styledBaseMargin = if (localCinematic) {
