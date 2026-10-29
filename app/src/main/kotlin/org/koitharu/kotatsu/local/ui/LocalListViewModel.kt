@@ -41,6 +41,7 @@ import javax.inject.Inject
 sealed interface LocalLibraryAction {
 	data object ContinueAll : LocalLibraryAction
 	data object Restore : LocalLibraryAction
+	data object Groups : LocalLibraryAction
 	data class Acknowledge(val ids: Set<Long>) : LocalLibraryAction
 	data class Diagnosis(val issue: LocalDiagnosis) : LocalLibraryAction
 }
@@ -161,6 +162,13 @@ class LocalListViewModel @Inject constructor(
 	fun restore(key: String) { launchLoadingJob(Dispatchers.IO) { library.restore(key) } }
 	fun acknowledgeDiscoveries(ids: Set<Long>) { launchJob(Dispatchers.IO) { library.acknowledgeDiscoveries(ids) } }
 
+	private val activeGroup = MutableStateFlow<String?>(null)
+	fun setGroupFilter(name: String?) { activeGroup.value = name; revision.value++ }
+	fun createGroup(name: String, ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.createGroup(name, ids); revision.value++ } }
+	fun addToGroup(name: String, ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.addToGroup(name, ids); revision.value++ } }
+	fun ungroup(ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.ungroup(ids); revision.value++ } }
+	fun deleteGroup(name: String) { launchLoadingJob(Dispatchers.IO) { library.deleteGroup(name); if (activeGroup.value == name) activeGroup.value = null; revision.value++ } }
+
 	fun updateAuthors(ids: Set<Long>, input: String) {
 		if (ids.isEmpty()) return
 		val authors = input.split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() }
@@ -223,8 +231,12 @@ class LocalListViewModel @Inject constructor(
 				}
 			}
 		}
+		val groups = library.groups()
+		if (groups.isNotEmpty()) result += ListHeader(context.getString(R.string.smart_local_groups_count, groups.size),
+			R.string.smart_local_manage_groups, LocalLibraryAction.Groups)
 		result += SmartLocalCollectionHeaderModel(mode)
-		val manga = library.list(query, type).skipNsfwIfNeeded()
+		val groupMembers = activeGroup.value?.let { groups[it] }
+		val manga = library.list(query, type).filter { groupMembers == null || snapshot.books.any { book -> book.id == it.id && book.node.key in groupMembers } }.skipNsfwIfNeeded()
 		val models = mangaListMapper.toListModelList(manga, mode, MangaListMapper.NO_SAVED)
 		val booksById = snapshot.books.associateBy { it.id }
 		for (model in models) {
