@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/smart_local_gold">
+ <item>
+  <selector>
+   <item android:state_activated="true" android:drawable="@drawable/bg_smart_local_cinematic_selected"/>
+   <item android:state_selected="true" android:drawable="@drawable/bg_smart_local_cinematic_selected"/>
+   <item android:drawable="@drawable/bg_smart_local_cinematic_card"/>
+  </selector>
+ </item>
+</ripple>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+ <string name="smart_local_archive_eyebrow">MIYORARE / ARSIP PRIBADI</string>
+ <string name="smart_local_archive_title">File di Perangkat</string>
+ <string name="smart_local_archive_subtitle">Koleksi cerita yang tersimpan di perangkatmu</string>
+ <string name="smart_local_archive_folders">Folder</string>
+ <string name="smart_local_archive_titles">Judul</string>
+ <string name="smart_local_archive_chapters">Bab</string>
+</resources>

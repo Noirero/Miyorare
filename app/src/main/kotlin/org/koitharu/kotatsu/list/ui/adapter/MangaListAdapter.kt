@@ -20,6 +20,7 @@ open class MangaListAdapter(
 	 */
 	gridVisualScaleProvider: (() -> Float)? = null,
 	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
+	localCinematic: Boolean = false,
 ) : BaseListAdapter<ListModel>() {
 
 	init {
@@ -30,18 +31,20 @@ open class MangaListAdapter(
 		} else {
 			null
 		}
-		addDelegate(ListItemType.MANGA_LIST, mangaListItemAD(listener, titleClickListener, coverContext))
-		addDelegate(ListItemType.MANGA_LIST_DETAILED, mangaListDetailedItemAD(listener, titleClickListener, coverContext))
+		addDelegate(ListItemType.MANGA_LIST, if (localCinematic) mangaListItemAD(listener, titleClickListener, coverContext, localCinematic = true)
+			else mangaListItemAD(listener, titleClickListener, coverContext))
+		addDelegate(ListItemType.MANGA_LIST_DETAILED, if (localCinematic) mangaListDetailedItemAD(listener, titleClickListener, coverContext, localCinematic = true)
+			else mangaListDetailedItemAD(listener, titleClickListener, coverContext))
 		addDelegate(
 			ListItemType.MANGA_GRID,
-			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider, coverContext),
+			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider, coverContext, localCinematic),
 		)
 		addDelegate(ListItemType.FOOTER_LOADING, loadingFooterAD())
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())
 		addDelegate(ListItemType.STATE_ERROR, errorStateListAD(listener))
 		addDelegate(ListItemType.FOOTER_ERROR, errorFooterAD(listener))
-		addDelegate(ListItemType.STATE_EMPTY, emptyStateListAD(listener))
-		addDelegate(ListItemType.HEADER, listHeaderAD(listener))
+		addDelegate(ListItemType.STATE_EMPTY, emptyStateListAD(listener, localCinematic))
+		addDelegate(ListItemType.HEADER, listHeaderAD(listener, localCinematic))
 		addDelegate(ListItemType.SMART_LOCAL_PANEL, smartLocalPanelAD(listener))
 		addDelegate(ListItemType.SMART_LOCAL_RESUME, smartLocalResumeAD(listener))
 		addDelegate(ListItemType.SMART_LOCAL_COLLECTION_HEADER, smartLocalCollectionHeaderAD(listener))

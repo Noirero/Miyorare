@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.list.ui.adapter
 
 import androidx.core.view.isVisible
+import androidx.core.content.ContextCompat
+import android.view.ViewGroup
 import androidx.core.view.updateLayoutParams
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
@@ -19,6 +21,7 @@ fun mangaListDetailedItemAD(
 	clickListener: MangaDetailsClickListener,
 	titleClickListener: OnListItemClickListener<MangaListModel>? = null,
 	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
+	localCinematic: Boolean = false,
 ) = adapterDelegateViewBinding<MangaDetailedListModel, ListModel, ItemMangaListDetailsBinding>(
 	{ inflater, parent -> ItemMangaListDetailsBinding.inflate(inflater, parent, false) },
 ) {
@@ -32,6 +35,22 @@ fun mangaListDetailedItemAD(
 	}
 
 	bind { payloads ->
+		if (localCinematic) {
+			itemView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+				val density = context.resources.displayMetrics.density
+				val horizontal = (10f * density).toInt()
+				val vertical = (5f * density).toInt()
+				setMargins(horizontal, vertical, horizontal, vertical)
+			}
+			itemView.background = ContextCompat.getDrawable(context, R.drawable.bg_smart_local_cinematic_selectable)
+			binding.imageViewCover.shapeAppearanceModel = binding.imageViewCover.shapeAppearanceModel.toBuilder()
+				.setAllCornerSizes(12f * context.resources.displayMetrics.density).build()
+			binding.imageViewCover.strokeColor = android.content.res.ColorStateList.valueOf(
+				ContextCompat.getColor(context, R.color.smart_local_edge))
+			binding.imageViewCover.strokeWidth = context.resources.displayMetrics.density
+			binding.textViewTitle.setTextColor(ContextCompat.getColor(context, R.color.smart_local_cream))
+			binding.textViewAuthor.setTextColor(ContextCompat.getColor(context, R.color.smart_local_muted))
+		}
 		binding.textViewTitle.text = item.title
 		val secondary = buildList {
 			item.manga.authors.joinToString(", ").takeIf { it.isNotBlank() }?.let(::add)
