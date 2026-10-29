@@ -185,13 +185,30 @@ class LocalListViewModel @Inject constructor(
 		}
 	}
 
+	data class BulkDeleteResult(val requested: Int, val succeeded: Int, val failed: Int)
+	val bulkDeleteResults = MutableEventFlow<BulkDeleteResult>()
+
 	fun delete(ids: Set<Long>, fromDevice: Boolean) {
+		if (ids.isEmpty()) return
 		launchLoadingJob(Dispatchers.IO) {
 			val managed = library.state.value.books.filter { it.id in ids }.mapTo(HashSet()) { it.id }
-			if (managed.isEmpty()) return@launchLoadingJob
-			if (fromDevice) library.deleteFromDevice(managed) else library.hide(managed)
+			if (managed.isEmpty()) {
+				bulkDeleteResults.call(BulkDeleteResult(ids.size, 0, ids.size))
+				return@launchLoadingJob
+			}
+			var failure: Exception? = null
+			try {
+				if (fromDevice) library.deleteFromDevice(managed) else library.hide(managed)
+			} catch (error: Exception) {
+				failure = error
+			}
+			// Count only entries actually removed from the published index. A failed
+			// physical operation must never be reported as a successful whole batch.
+			val remaining = library.state.value.books.mapTo(HashSet()) { it.id }
+			val succeeded = managed.count { it !in remaining }
 			revision.value++
-			onMangaRemoved.call(managed.size)
+			bulkDeleteResults.call(BulkDeleteResult(ids.size, succeeded, ids.size - succeeded))
+			if (failure != null) throw failure
 		}
 	}
 
