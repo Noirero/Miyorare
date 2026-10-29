@@ -164,6 +164,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	}
 
 	private fun showDeletionChoices(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
 		showLocalLibraryDeletionDialog(requireContext(),
 			{ viewModel.delete(ids, false); mode?.finish() },
 			{ viewModel.delete(ids, true); mode?.finish() }, ids.size)
