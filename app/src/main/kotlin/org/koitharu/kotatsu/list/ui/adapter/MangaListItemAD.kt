@@ -33,6 +33,11 @@ fun mangaListItemAD(
 	bind {
 		if (localCinematic) {
 			itemView.background = ContextCompat.getDrawable(context, R.drawable.bg_smart_local_cinematic_selectable)
+			binding.imageViewCover.shapeAppearanceModel = binding.imageViewCover.shapeAppearanceModel.toBuilder()
+				.setAllCornerSizes(12f * context.resources.displayMetrics.density).build()
+			binding.imageViewCover.strokeColor = android.content.res.ColorStateList.valueOf(
+				ContextCompat.getColor(context, R.color.smart_local_edge))
+			binding.imageViewCover.strokeWidth = context.resources.displayMetrics.density
 			binding.textViewTitle.setTextColor(ContextCompat.getColor(context, R.color.smart_local_cream))
 			binding.textViewSubtitle.setTextColor(ContextCompat.getColor(context, R.color.smart_local_muted))
 		}
