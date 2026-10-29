@@ -97,6 +97,7 @@ class DetailsExpressiveActivity :
 	BaseActivity<ActivityDetailsExpressiveBinding>() {
 
 	@Inject lateinit var mangaRepositoryFactory: org.koitharu.kotatsu.core.parser.MangaRepository.Factory
+	@Inject lateinit var smartLocalLibrary: org.koitharu.kotatsu.local.library.SmartLocalLibrary
 	@Inject lateinit var coil: ImageLoader
 	@Inject lateinit var settings: AppSettings
 	@Inject lateinit var database: MangaDatabase
@@ -485,8 +486,7 @@ class DetailsExpressiveActivity :
 					bottomContentPadding = with(density) { bottomInset.intValue.toDp() },
 					onScroll = ::onContentScroll,
 					coverForChapter = { chapter ->
-						val repo = mangaRepositoryFactory.create(chapter.source)
-						repo.getPages(chapter).firstOrNull()?.let { repo.getPageUrl(it) }
+						smartLocalLibrary.chapterGalleryThumbnail(chapter)
 					},
 					actions = actions,
 				)
