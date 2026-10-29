@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -47,6 +48,7 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 @Composable
 internal fun LocalChapterGallery(
     chapters: List<ChapterListItem>,
+    mangaTitle: String,
     imageLoader: ImageLoader,
     bottomPadding: Dp,
     topPadding: Dp,
@@ -64,6 +66,16 @@ internal fun LocalChapterGallery(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(text = mangaTitle, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    text = stringResource(R.string.local_gallery_chapter_count, chapters.size),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         items(chapters, key = { it.chapter.url + ":" + it.chapter.id }) { item ->
             val cover by produceState<String?>(
                 initialValue = null,
