@@ -70,6 +70,7 @@ class TrackerCatalogRepository(
 			if (section.failure != null) previous?.sections?.find { it.key == section.key }?.copy(failure = section.failure) ?: section.copy(items = emptyList())
 			else section.copy(items = items)
 		}
+		// A partial refresh must not renew the lifetime of an older retained section indefinitely.
 		val savedAt = if (sections.any { it.failure != null }) minOf(previous?.savedAt ?: now(), now() - CatalogCachePolicy.FRESH_MS - 1) else now()
 		val home = TrackerCatalogHome(sections, savedAt)
 		cacheWrites.getOrPut(key) { Mutex() }.withLock {
@@ -106,52 +107,42 @@ class TrackerCatalogRepository(
 		return safe
 	}
 
-	internal suspend fun malSupplemental(key: TrackerCatalogKey): MALCatalogSupplemental = coroutineScope {
+	internal suspend fun malCharacters(key: TrackerCatalogKey): List<TrackerCatalogPerson> {
 		require(key.service == ScrobblerService.MAL)
 		val mal = provider(ScrobblerService.MAL) as? MALCatalogProvider
 			?: throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
-		val characters = async {
-			cachedMALValue(malCharactersCache, key) { mal.supplementalCharacters(key) }
-		}
-		val statistics = async {
-			cachedMALValue(malStatisticsCache, key) { mal.supplementalStatistics(key) }
-		}
-		val characterResult = characters.await()
-		val statisticsResult = statistics.await()
-		MALCatalogSupplemental(
-			characters = characterResult.getOrDefault(emptyList()),
-			statistics = statisticsResult.getOrNull(),
-			charactersFailure = characterResult.exceptionOrNull()?.catalogFailure(),
-			statisticsFailure = statisticsResult.exceptionOrNull()?.catalogFailure(),
-		)
+		return cachedMALValue(malCharactersCache, key) { mal.supplementalCharacters(key) }
+	}
+
+	internal suspend fun malStatistics(key: TrackerCatalogKey): TrackerCatalogStatistics {
+		require(key.service == ScrobblerService.MAL)
+		val mal = provider(ScrobblerService.MAL) as? MALCatalogProvider
+			?: throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
+		return cachedMALValue(malStatisticsCache, key) { mal.supplementalStatistics(key) }
 	}
 
 	private suspend fun <T> cachedMALValue(
 		cache: LinkedHashMap<TrackerCatalogKey, Pair<Long, T>>,
 		key: TrackerCatalogKey,
 		load: suspend () -> T,
-	): Result<T> {
-		mutex.withLock { cache[key] }?.takeIf { CatalogCachePolicy.isFresh(it.first, now()) }?.let { return Result.success(it.second) }
-		return try {
-			val value = load()
-			mutex.withLock {
-				cache.remove(key)
-				cache[key] = now() to value
-				while (cache.size > 64) cache.remove(cache.keys.first())
-			}
-			Result.success(value)
-		} catch (e: CancellationException) {
-			throw e
-		} catch (e: Exception) {
-			Result.failure(e)
+	): T {
+		mutex.withLock { cache[key] }?.takeIf { CatalogCachePolicy.isFresh(it.first, now()) }?.let { return it.second }
+		val value = load()
+		mutex.withLock {
+			cache.remove(key)
+			cache[key] = now() to value
+			while (cache.size > 64) cache.remove(cache.keys.first())
 		}
+		return value
 	}
 
 	suspend fun characterDetails(service: ScrobblerService, person: TrackerCatalogPerson): TrackerCatalogCharacterDetails {
 		val id = person.id?.toLongOrNull()?.takeIf { it > 0L && it.toString() == person.id }
 			?: throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
 		val provider = provider(service)
-		if (CatalogCapability.CHARACTER_DETAILS !in provider.catalogCapabilities) throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
+		if (CatalogCapability.CHARACTER_DETAILS !in provider.catalogCapabilities) {
+			throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
+		}
 		val result = provider.characterDetails(person)
 		require(result.person.id == id.toString())
 		return result.copy(person = result.person.copy(roles = person.roles))
@@ -162,7 +153,8 @@ class TrackerCatalogRepository(
 		return copy(items = items.mapNotNull { it.forPolicy(adult) }.distinctBy { it.key }, nextPage = nextPage?.takeIf { it in 2..CatalogCachePolicy.MAX_PAGE })
 	}
 
-	private fun CatalogMediaKind.matches(filter: CatalogFilter): Boolean = this in filter.kinds || this == CatalogMediaKind.MIXED && filter == CatalogFilter.ALL
+	private fun CatalogMediaKind.matches(filter: CatalogFilter): Boolean =
+		this in filter.kinds || this == CatalogMediaKind.MIXED && filter == CatalogFilter.ALL
 
 	private fun CatalogMediaKind.itemKinds(filter: CatalogFilter): List<CatalogMediaKind> = when (this) {
 		CatalogMediaKind.MIXED -> filter.kinds
