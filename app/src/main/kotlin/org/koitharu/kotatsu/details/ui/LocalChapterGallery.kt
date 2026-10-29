@@ -27,13 +27,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.BitmapFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import coil3.ImageLoader
-import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.parsers.model.MangaChapter
@@ -47,10 +49,9 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 internal fun LocalChapterGallery(
     chapters: List<ChapterListItem>,
     mangaTitle: String,
-    imageLoader: ImageLoader,
     bottomPadding: Dp,
     topPadding: Dp,
-    coverForChapter: suspend (MangaChapter) -> String?,
+    coverForChapter: suspend (MangaChapter) -> ByteArray?,
     onChapterClick: (ChapterListItem) -> Unit,
 ) {
     val context = LocalContext.current
@@ -75,12 +76,18 @@ internal fun LocalChapterGallery(
             }
         }
         items(chapters, key = { it.chapter.url + ":" + it.chapter.id }) { item ->
-            val cover by produceState<String?>(
+            val cover by produceState<androidx.compose.ui.graphics.ImageBitmap?>(
                 initialValue = null,
                 key1 = item.chapter.url,
                 key2 = item.chapter.id,
             ) {
-                value = runCatchingCancellable { coverForChapter(item.chapter) }.getOrNull()
+                value = runCatchingCancellable {
+                    withContext(Dispatchers.IO) {
+                        coverForChapter(item.chapter)?.let { bytes ->
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                        }
+                    }
+                }.getOrNull()
             }
             Column(
                 modifier = Modifier.fillMaxWidth().clickable { onChapterClick(item) },
@@ -93,9 +100,8 @@ internal fun LocalChapterGallery(
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         if (cover != null) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(context).data(cover).build(),
-                                imageLoader = imageLoader,
+                            Image(
+                                bitmap = cover!!,
                                 contentDescription = item.getTitle(context.resources),
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),

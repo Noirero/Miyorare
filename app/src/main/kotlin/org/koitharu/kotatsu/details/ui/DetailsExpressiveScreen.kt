@@ -156,7 +156,7 @@ fun DetailsExpressiveScreen(
 	topInset: Dp,
 	bottomContentPadding: Dp,
 	onScroll: (Int) -> Unit,
-	coverForChapter: suspend (MangaChapter) -> String? = { null },
+	coverForChapter: suspend (MangaChapter) -> ByteArray? = { null },
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
@@ -281,7 +281,6 @@ fun DetailsExpressiveScreen(
 				LocalChapterGallery(
 					chapters = chapters,
 					mangaTitle = manga?.title.orEmpty(),
-					imageLoader = imageLoader,
 					topPadding = topInset,
 					bottomPadding = bottomContentPadding,
 					coverForChapter = coverForChapter,
