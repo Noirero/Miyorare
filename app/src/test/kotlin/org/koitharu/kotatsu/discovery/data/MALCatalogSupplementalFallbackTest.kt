@@ -26,20 +26,20 @@ class MALCatalogSupplementalFallbackTest {
 		.build()
 
 	@Test
-	fun `Tenrai restores MAL characters and statistics when Jikan is unavailable`() = runBlocking {
+	fun `fallback restores MAL characters and statistics when primary supplemental origin is unavailable`() = runBlocking {
 		val requested = mutableListOf<String>()
 		val http = CatalogHttp(OkHttpClient.Builder().addInterceptor { chain ->
 			val request = chain.request()
 			requested += "${request.url.host}${request.url.encodedPath}"
 			when {
 				request.url.host == "api.jikan.moe" -> response(request, 503)
-				request.url.host == "api.tenrai.org" && request.url.encodedPath.endsWith("/characters") -> response(
+				request.url.host == "jikan.lucashdo.com" && request.url.encodedPath.endsWith("/characters") -> response(
 					request,
-					body = """{"data":[{"character":{"mal_id":40,"url":"https://myanimelist.net/character/40/Luffy","images":{"jpg":{"image_url":"https://cdn.myanimelist.net/images/characters/40.jpg"}},"name":"Monkey D. Luffy"},"role":"Main"},{"character":{"mal_id":62,"url":"https://myanimelist.net/character/62/Zoro","images":{"jpg":{"image_url":"https://cdn.myanimelist.net/images/characters/62.jpg"}},"name":"Roronoa Zoro"},"role":"Main"}]}""",
+					body = """{"data":[{"character":{"malId":40,"images":{"large":"https://cdn.myanimelist.net/images/characters/40.jpg"},"name":"Monkey D. Luffy"},"role":"Main"},{"character":{"malId":62,"images":{"medium":"https://cdn.myanimelist.net/images/characters/62.jpg"},"name":"Roronoa Zoro"},"role":"Main"}]}""",
 				)
-				request.url.host == "api.tenrai.org" && request.url.encodedPath.endsWith("/statistics") -> response(
+				request.url.host == "jikan.lucashdo.com" && request.url.encodedPath.endsWith("/statistics") -> response(
 					request,
-					body = """{"data":{"reading":100,"completed":200,"on_hold":30,"dropped":20,"plan_to_read":400,"total":750,"scores":[{"score":10,"votes":300,"percentage":50.0}]}}""",
+					body = """{"data":{"reading":100,"completed":200,"onHold":30,"dropped":20,"planToRead":400,"total":750,"scores":[{"score":10,"votes":300,"percentage":50.0}]}}""",
 				)
 				else -> response(
 					request,
@@ -54,15 +54,18 @@ class MALCatalogSupplementalFallbackTest {
 		assertFalse(details.partial)
 		assertEquals(listOf("Monkey D. Luffy", "Roronoa Zoro"), details.characters.map { it.name })
 		assertEquals("https://cdn.myanimelist.net/images/characters/40.jpg", details.characters.first().imageUrl)
+		assertEquals("Main", details.characters.first().roles.single())
+		assertEquals(30L, details.statistics?.onHold)
+		assertEquals(400L, details.statistics?.planToRead)
 		assertEquals(750L, details.statistics?.total)
 		assertTrue(requested.contains("api.jikan.moe/v4/manga/13/characters"))
 		assertTrue(requested.contains("api.jikan.moe/v4/manga/13/statistics"))
-		assertTrue(requested.contains("api.tenrai.org/v1/manga/13/characters"))
-		assertTrue(requested.contains("api.tenrai.org/v1/manga/13/statistics"))
+		assertTrue(requested.contains("jikan.lucashdo.com/v1/manga/13/characters"))
+		assertTrue(requested.contains("jikan.lucashdo.com/v1/manga/13/statistics"))
 	}
 
 	@Test
-	fun `Tenrai fallback is credential free and remains MAL scoped`() = runBlocking {
+	fun `fallback is credential free and remains MAL scoped`() = runBlocking {
 		var calls = 0
 		val http = CatalogHttp(OkHttpClient.Builder().addInterceptor { chain ->
 			val request = chain.request()
@@ -74,16 +77,16 @@ class MALCatalogSupplementalFallbackTest {
 
 		http.request(
 			ScrobblerService.MAL,
-			Request.Builder().url("https://api.tenrai.org/v1/manga/13/statistics")
+			Request.Builder().url("https://jikan.lucashdo.com/v1/manga/13/statistics")
 				.header("Authorization", "fixture").header("Cookie", "fixture").build(),
 		)
 		assertEquals(1, calls)
 		try {
 			http.request(
 				ScrobblerService.ANILIST,
-				Request.Builder().url("https://api.tenrai.org/v1/manga/13/statistics").build(),
+				Request.Builder().url("https://jikan.lucashdo.com/v1/manga/13/statistics").build(),
 			)
-			fail("Tenrai must only be available inside the MAL catalogue boundary")
+			fail("Fallback must only be available inside the MAL catalogue boundary")
 		} catch (_: IllegalArgumentException) {
 			// Expected: provider/host boundary stays fail-closed.
 		}
