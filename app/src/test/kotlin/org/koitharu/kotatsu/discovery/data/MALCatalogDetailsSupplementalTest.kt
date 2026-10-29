@@ -49,7 +49,7 @@ class MALCatalogDetailsSupplementalTest {
 	}
 
 	@Test
-	fun `supplemental metadata loads independently and caches successful components`() = runBlocking {
+	fun `supplemental components load independently and cache successful reads`() = runBlocking {
 		var characterCalls = 0
 		var statisticsCalls = 0
 		val http = CatalogHttp(OkHttpClient.Builder().addInterceptor { chain ->
@@ -63,20 +63,21 @@ class MALCatalogDetailsSupplementalTest {
 					statisticsCalls++
 					response(request, body = """{"data":{"reading":120,"completed":340,"on_hold":12,"dropped":9,"plan_to_read":800,"total":1281,"scores":[]}}""")
 				}
-				else -> response(request, body = """{"id":13,"title":"Work","media_type":"manga","nsfw":"white","authors":[],"recommendations":[],"related_manga":[],"related_anime":[]}""")
+				else -> response(request, 404)
 			}
 		}.build())
-		val provider = MALCatalogProvider(http, "fixture-public-id")
-		val repository = TrackerCatalogRepository(setOf(provider), store())
+		val repository = TrackerCatalogRepository(setOf(MALCatalogProvider(http, "fixture-public-id")), store())
 		val key = TrackerCatalogKey(ScrobblerService.MAL, CatalogMediaKind.MANGA, "13")
 
-		val first = repository.malSupplemental(key)
-		val second = repository.malSupplemental(key)
+		val firstCharacters = repository.malCharacters(key)
+		val firstStatistics = repository.malStatistics(key)
+		val secondCharacters = repository.malCharacters(key)
+		val secondStatistics = repository.malStatistics(key)
 
-		assertFalse(first.partial)
-		assertEquals("Character 1", first.characters.single().name)
-		assertEquals(1281L, first.statistics?.total)
-		assertEquals(first, second)
+		assertEquals("Character 1", firstCharacters.single().name)
+		assertEquals(1281L, firstStatistics.total)
+		assertEquals(firstCharacters, secondCharacters)
+		assertEquals(firstStatistics, secondStatistics)
 		assertEquals(1, characterCalls)
 		assertEquals(1, statisticsCalls)
 	}
@@ -100,12 +101,12 @@ class MALCatalogDetailsSupplementalTest {
 		val key = TrackerCatalogKey(ScrobblerService.MAL, CatalogMediaKind.MANGA, "13")
 
 		val firstDetails = repository.details(key, false)
-		val supplemental = repository.malSupplemental(key)
+		val characters = runCatching { repository.malCharacters(key) }
+		val statistics = repository.malStatistics(key)
 		val secondDetails = repository.details(key, false)
 
-		assertTrue(supplemental.partial)
-		assertTrue(supplemental.characters.isEmpty())
-		assertEquals(6L, supplemental.statistics?.total)
+		assertTrue(characters.isFailure)
+		assertEquals(6L, statistics.total)
 		assertEquals(firstDetails, secondDetails)
 		assertEquals(1, officialCalls)
 	}
