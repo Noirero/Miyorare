@@ -67,4 +67,7 @@
     <string name="smart_local_bulk_removed">Processed %1$d selected collections</string>
     <string name="smart_local_deselect_all">Deselect all</string>
     <string name="smart_local_refresh_selected">Refresh folders containing selected collections</string>
+    <string name="smart_local_edit_authors">Edit authors for selected collections</string>
+    <string name="smart_local_authors_hint">Authors separated by commas</string>
+    <string name="smart_local_authors_warning">Replace authors for %1$d selected collections? An empty value clears authors.</string>
 </resources>
