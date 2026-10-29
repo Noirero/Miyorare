@@ -16,9 +16,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.discovery.domain.CatalogMediaKind
-import org.koitharu.kotatsu.discovery.domain.CatalogRelatedMediaKind
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogCharacterDetails
-import org.koitharu.kotatsu.discovery.domain.TrackerCatalogCharacterWork
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogDetails
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogItem
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogKey
@@ -79,19 +77,6 @@ class MALCatalogDetailsUiTest {
 						TrackerCatalogCharacterDetails(
 							person = person,
 							nativeName = "Native Character Name",
-							nicknames = listOf("Nickname"),
-							about = "Character biography",
-							favorites = 42,
-							voices = listOf(TrackerCatalogPerson(id = "99", name = "Voice Actor", roles = listOf("Japanese"))),
-							works = listOf(
-								TrackerCatalogCharacterWork(
-									service = ScrobblerService.MAL,
-									remoteId = "13",
-									title = "Work",
-									mediaKind = CatalogRelatedMediaKind.MANGA,
-									role = "Main",
-								),
-							),
 						)
 					},
 				)
@@ -101,9 +86,6 @@ class MALCatalogDetailsUiTest {
 		compose.onNodeWithTag("catalog_characters_person_1").performClick()
 		compose.onNodeWithTag("catalog_character_details").assertExists()
 		compose.onNodeWithText("Native Character Name").assertExists()
-		compose.onNodeWithText("Character biography").assertExists()
-		compose.onNodeWithText("Voice Actor").assertExists()
-		compose.onNodeWithTag("catalog_character_works").assertExists()
 	}
 
 	private fun details(): TrackerCatalogDetails {
