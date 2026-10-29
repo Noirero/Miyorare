@@ -134,13 +134,22 @@ open class LocalContentReader @Inject constructor(
         metadataCache.get(key)?.let { return@withContext it }
         val ext = LocalTreeScanner.extension(chapter.node.name)
         val metadata = when (ext) {
-            "epub" -> EpubParser.parse(materialize(root, chapter.node)).let { LocalMetadata(it.title, it.authors, it.description) }
-            "cbz", "zip" -> ZipFile(materialize(root, chapter.node)).use { zip ->
-                val entry = zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("index.json", true) }
-                    ?: zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("ComicInfo.xml", true) }
-                entry?.let { zip.getInputStream(it).use { input ->
-                    if (it.name.equals("index.json", true)) LocalMetadata.readJson(input) else LocalMetadata.readXml(input)
-                } } ?: LocalMetadata()
+            "epub", "cbz", "zip" -> {
+                val file = materialize(root, chapter.node)
+                try {
+                    when (ext) {
+                        "epub" -> EpubParser.parse(file).let { LocalMetadata(it.title, it.authors, it.description) }
+                        else -> ZipFile(file).use { zip ->
+                            val entry = zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("index.json", true) }
+                                ?: zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("ComicInfo.xml", true) }
+                            entry?.let { zip.getInputStream(it).use { input ->
+                                if (it.name.equals("index.json", true)) LocalMetadata.readJson(input) else LocalMetadata.readXml(input)
+                            } } ?: LocalMetadata()
+                        }
+                    }
+                } finally {
+                    withContext(NonCancellable) { releaseMaterialized(file) }
+                }
             }
             else -> LocalMetadata()
         }
