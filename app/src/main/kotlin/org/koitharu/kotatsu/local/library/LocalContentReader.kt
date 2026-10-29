@@ -159,6 +159,7 @@ open class LocalContentReader @Inject constructor(
 
     suspend fun epubHtml(root: Node, chapter: LocalChapter): String = withContext(Dispatchers.IO) {
         val file = materialize(root, chapter.node)
+        try {
         val book = EpubParser.parse(file)
         check(book.spine.isNotEmpty()) { "EPUB has no readable content" }
         ZipFile(file).use { zip ->
@@ -191,15 +192,19 @@ open class LocalContentReader @Inject constructor(
                 append("</body></html>")
             }
         }
+        } finally { withContext(NonCancellable) { releaseMaterialized(file) } }
     }
 
     suspend fun epubImage(root: Node, chapter: LocalChapter, source: String): ByteArray? = withContext(Dispatchers.IO) {
         if (!source.startsWith("local-epub:")) return@withContext null
         val path = source.removePrefix("local-epub:")
         if (!safeEntry(path) || !LocalTreeScanner.isImage(path)) return@withContext null
-        ZipFile(materialize(root, chapter.node)).use { zip ->
-            zip.getEntry(path)?.let { entry -> zip.getInputStream(entry).use { it.readBytesLimited(32 * 1024 * 1024) } }
-        }
+        val file = materialize(root, chapter.node)
+        try {
+            ZipFile(file).use { zip ->
+                zip.getEntry(path)?.let { entry -> zip.getInputStream(entry).use { it.readBytesLimited(32 * 1024 * 1024) } }
+            }
+        } finally { withContext(NonCancellable) { releaseMaterialized(file) } }
     }
 
     internal open suspend fun cover(
