@@ -16,8 +16,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -103,10 +101,10 @@ internal fun LocalChapterGallery(
                                 modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
                             )
                         } else {
-                            androidx.compose.material3.Icon(
-                                imageVector = Icons.Outlined.Book,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            Text(
+                                text = "📖",
+                                style = MaterialTheme.typography.headlineLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         if (!item.isUnread) {
