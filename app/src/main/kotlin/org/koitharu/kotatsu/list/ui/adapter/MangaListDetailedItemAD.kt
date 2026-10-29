@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.list.ui.adapter
 
 import androidx.core.view.isVisible
 import androidx.core.content.ContextCompat
+import android.view.ViewGroup
+import androidx.core.view.updateLayoutParams
 import androidx.core.view.updateLayoutParams
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
@@ -35,6 +37,12 @@ fun mangaListDetailedItemAD(
 
 	bind { payloads ->
 		if (localCinematic) {
+			itemView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+				val density = context.resources.displayMetrics.density
+				val horizontal = (10f * density).toInt()
+				val vertical = (5f * density).toInt()
+				setMargins(horizontal, vertical, horizontal, vertical)
+			}
 			itemView.background = ContextCompat.getDrawable(context, R.drawable.bg_smart_local_cinematic_selectable)
 			binding.imageViewCover.shapeAppearanceModel = binding.imageViewCover.shapeAppearanceModel.toBuilder()
 				.setAllCornerSizes(12f * context.resources.displayMetrics.density).build()
