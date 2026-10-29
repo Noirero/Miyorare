@@ -185,4 +185,4 @@ jobs:
             ${{ runner.temp }}/runtime-release/*.apk
             ${{ runner.temp }}/runtime-release/manifest.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3

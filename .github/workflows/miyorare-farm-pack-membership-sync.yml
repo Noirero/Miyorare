@@ -292,7 +292,7 @@ jobs:
             build/source-registry.json
             build/farm-pack-membership-report.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
 
       - name: Summary
         if: always()
