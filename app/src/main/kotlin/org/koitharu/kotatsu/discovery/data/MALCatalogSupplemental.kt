@@ -118,14 +118,14 @@ internal fun parseMALCharacters(root: JsonObject): List<TrackerCatalogPerson> {
 	val rows = root.array("data") ?: throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
 	return rows.mapNotNull { value ->
 		val edge = value as? JsonObject ?: return@mapNotNull null
-		val character = edge.obj("character") ?: return@mapNotNull null
+		val character = edge.obj("character") ?: edge
 		val id = character.catalogLong("mal_id", "malId")?.takeIf { it > 0L }?.toString() ?: return@mapNotNull null
 		val name = character.text("name")?.trim()?.takeIf(String::isNotEmpty) ?: return@mapNotNull null
 		TrackerCatalogPerson(
 			id = id,
 			name = name,
 			imageUrl = character.catalogImage(),
-			roles = listOfNotNull(edge.text("role")?.trim()?.takeIf(String::isNotEmpty)),
+			roles = listOfNotNull((edge.text("role") ?: character.text("role"))?.trim()?.takeIf(String::isNotEmpty)),
 			providerUrl = character.text("url") ?: "https://myanimelist.net/character/$id",
 		)
 	}.distinctBy { it.id }
@@ -133,6 +133,7 @@ internal fun parseMALCharacters(root: JsonObject): List<TrackerCatalogPerson> {
 
 internal fun parseMALStatistics(root: JsonObject): TrackerCatalogStatistics {
 	val data = root.obj("data") ?: throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
+	val status = data.obj("status") ?: data
 	val scores = data.array("scores").orEmpty().mapNotNull { value ->
 		val row = value as? JsonObject ?: return@mapNotNull null
 		val score = row.catalogLong("score")?.toInt()?.takeIf { it in 1..10 } ?: return@mapNotNull null
@@ -141,12 +142,12 @@ internal fun parseMALStatistics(root: JsonObject): TrackerCatalogStatistics {
 		TrackerCatalogScoreDistribution(score, votes, percentage)
 	}.distinctBy { it.score }.sortedByDescending { it.score }
 	val statistics = TrackerCatalogStatistics(
-		reading = data.catalogLong("reading"),
-		completed = data.catalogLong("completed"),
-		onHold = data.catalogLong("on_hold", "onHold"),
-		dropped = data.catalogLong("dropped"),
-		planToRead = data.catalogLong("plan_to_read", "planToRead"),
-		total = data.catalogLong("total"),
+		reading = status.catalogLong("reading", "inProgress"),
+		completed = status.catalogLong("completed"),
+		onHold = status.catalogLong("on_hold", "onHold"),
+		dropped = status.catalogLong("dropped"),
+		planToRead = status.catalogLong("plan_to_read", "planToRead", "planned"),
+		total = status.catalogLong("total"),
 		scores = scores,
 	)
 	if (listOf(statistics.reading, statistics.completed, statistics.onHold, statistics.dropped, statistics.planToRead, statistics.total).all { it == null } && scores.isEmpty()) {
