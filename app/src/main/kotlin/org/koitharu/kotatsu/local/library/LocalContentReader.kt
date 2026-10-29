@@ -134,13 +134,22 @@ open class LocalContentReader @Inject constructor(
         metadataCache.get(key)?.let { return@withContext it }
         val ext = LocalTreeScanner.extension(chapter.node.name)
         val metadata = when (ext) {
-            "epub" -> EpubParser.parse(materialize(root, chapter.node)).let { LocalMetadata(it.title, it.authors, it.description) }
-            "cbz", "zip" -> ZipFile(materialize(root, chapter.node)).use { zip ->
-                val entry = zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("index.json", true) }
-                    ?: zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("ComicInfo.xml", true) }
-                entry?.let { zip.getInputStream(it).use { input ->
-                    if (it.name.equals("index.json", true)) LocalMetadata.readJson(input) else LocalMetadata.readXml(input)
-                } } ?: LocalMetadata()
+            "epub", "cbz", "zip" -> {
+                val file = materialize(root, chapter.node)
+                try {
+                    when (ext) {
+                        "epub" -> EpubParser.parse(file).let { LocalMetadata(it.title, it.authors, it.description) }
+                        else -> ZipFile(file).use { zip ->
+                            val entry = zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("index.json", true) }
+                                ?: zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("ComicInfo.xml", true) }
+                            entry?.let { zip.getInputStream(it).use { input ->
+                                if (it.name.equals("index.json", true)) LocalMetadata.readJson(input) else LocalMetadata.readXml(input)
+                            } } ?: LocalMetadata()
+                        }
+                    }
+                } finally {
+                    withContext(NonCancellable) { releaseMaterialized(file) }
+                }
             }
             else -> LocalMetadata()
         }
@@ -150,47 +159,52 @@ open class LocalContentReader @Inject constructor(
 
     suspend fun epubHtml(root: Node, chapter: LocalChapter): String = withContext(Dispatchers.IO) {
         val file = materialize(root, chapter.node)
-        val book = EpubParser.parse(file)
-        check(book.spine.isNotEmpty()) { "EPUB has no readable content" }
-        ZipFile(file).use { zip ->
-            buildString {
-                append("<html><body>")
-                for (item in book.spine.filter { chapter.epubSection == null || it.href == chapter.epubSection }) {
-                    currentCoroutineContext().ensureActive()
-                    val entry = zip.getEntry(item.href) ?: throw IOException("Missing EPUB section: ${item.href}")
-                    val html = zip.getInputStream(entry).use { it.readBytesLimited(16 * 1024 * 1024).toString(Charsets.UTF_8) }
-                    val doc = Jsoup.parse(html)
-                    doc.select("script, iframe, object").remove()
-                    for (image in doc.select("img[src]")) {
-                        val path = EpubParser.resolveHref(item.href.substringBeforeLast('/', ""), image.attr("src"))
-                        if (safeEntry(path)) image.attr("src", "local-epub:$path") else image.remove()
-                    }
-                    val entries = book.toc.filter { it.href == item.href }
-                    if (entries.isEmpty()) {
-                        doc.body().prependChild(org.jsoup.nodes.Element("miyorare-section").attr("data-title", item.title))
-                    } else for (section in entries.asReversed()) {
-                        val marker = org.jsoup.nodes.Element("miyorare-section").attr("data-title", section.title)
-                        val target = section.fragment?.let { fragment ->
-                            val id = runCatching { java.net.URLDecoder.decode(fragment.replace("+", "%2B"), "UTF-8") }.getOrDefault(fragment)
-                            doc.getElementById(id)
+        try {
+            val book = EpubParser.parse(file)
+            check(book.spine.isNotEmpty()) { "EPUB has no readable content" }
+            ZipFile(file).use { zip ->
+                buildString {
+                    append("<html><body>")
+                    for (item in book.spine.filter { chapter.epubSection == null || it.href == chapter.epubSection }) {
+                        currentCoroutineContext().ensureActive()
+                        val entry = zip.getEntry(item.href) ?: throw IOException("Missing EPUB section: ${item.href}")
+                        val html = zip.getInputStream(entry).use { it.readBytesLimited(16 * 1024 * 1024).toString(Charsets.UTF_8) }
+                        val doc = Jsoup.parse(html)
+                        doc.select("script, iframe, object").remove()
+                        for (image in doc.select("img[src]")) {
+                            val path = EpubParser.resolveHref(item.href.substringBeforeLast('/', ""), image.attr("src"))
+                            if (safeEntry(path)) image.attr("src", "local-epub:$path") else image.remove()
                         }
-                        if (target != null) target.before(marker) else doc.body().prependChild(marker)
+                        val entries = book.toc.filter { it.href == item.href }
+                        if (entries.isEmpty()) {
+                            doc.body().prependChild(org.jsoup.nodes.Element("miyorare-section").attr("data-title", item.title))
+                        } else for (section in entries.asReversed()) {
+                            val marker = org.jsoup.nodes.Element("miyorare-section").attr("data-title", section.title)
+                            val target = section.fragment?.let { fragment ->
+                                val id = runCatching { java.net.URLDecoder.decode(fragment.replace("+", "%2B"), "UTF-8") }.getOrDefault(fragment)
+                                doc.getElementById(id)
+                            }
+                            if (target != null) target.before(marker) else doc.body().prependChild(marker)
+                        }
+                        append(doc.body().html())
+                        check(length <= 32 * 1024 * 1024) { "EPUB volume is too large" }
                     }
-                    append(doc.body().html())
-                    check(length <= 32 * 1024 * 1024) { "EPUB volume is too large" }
+                    append("</body></html>")
                 }
-                append("</body></html>")
             }
-        }
+        } finally { withContext(NonCancellable) { releaseMaterialized(file) } }
     }
 
     suspend fun epubImage(root: Node, chapter: LocalChapter, source: String): ByteArray? = withContext(Dispatchers.IO) {
         if (!source.startsWith("local-epub:")) return@withContext null
         val path = source.removePrefix("local-epub:")
         if (!safeEntry(path) || !LocalTreeScanner.isImage(path)) return@withContext null
-        ZipFile(materialize(root, chapter.node)).use { zip ->
-            zip.getEntry(path)?.let { entry -> zip.getInputStream(entry).use { it.readBytesLimited(32 * 1024 * 1024) } }
-        }
+        val file = materialize(root, chapter.node)
+        try {
+            ZipFile(file).use { zip ->
+                zip.getEntry(path)?.let { entry -> zip.getInputStream(entry).use { it.readBytesLimited(32 * 1024 * 1024) } }
+            }
+        } finally { withContext(NonCancellable) { releaseMaterialized(file) } }
     }
 
     internal open suspend fun cover(
