@@ -32,4 +32,14 @@
     <string name="smart_local_edit_authors">Ubah penulis koleksi terpilih</string>
     <string name="smart_local_authors_hint">Nama penulis dipisahkan koma</string>
     <string name="smart_local_authors_warning">Ganti penulis untuk %1$d koleksi terpilih? Kosongkan untuk menghapus nama penulis.</string>
+    <string name="smart_local_create_group">Buat grup virtual</string>
+    <string name="smart_local_add_group">Tambahkan ke grup virtual</string>
+    <string name="smart_local_ungroup">Keluarkan dari grup</string>
+    <string name="smart_local_group_name">Nama grup</string>
+    <string name="smart_local_manage_groups">Kelola grup virtual</string>
+    <string name="smart_local_groups_count">%1$d grup virtual</string>
+    <string name="smart_local_all_groups">Semua koleksi</string>
+    <string name="smart_local_show_group">Tampilkan grup</string>
+    <string name="smart_local_delete_group">Hapus grup</string>
+    <string name="smart_local_delete_group_message">Hapus grup virtual ini? Berkas tidak akan berubah.</string>
 </resources>
