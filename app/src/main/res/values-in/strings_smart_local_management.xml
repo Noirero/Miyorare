@@ -24,4 +24,6 @@
     <string name="smart_local_diagnosis_message">Lokasi: %s\n\nPeriksa izin dan isi folder. Struktur yang ambigu perlu diperiksa. Untuk memulihkan akses, pilih folder yang sama kembali.</string>
     <string-array name="smart_local_reading_filters"><item>Semua</item><item>Belum dibaca</item><item>Sedang dibaca</item><item>Selesai</item></string-array>
     <string-array name="smart_local_sorts"><item>Terakhir dibaca</item><item>Terbaru</item><item>Judul A–Z</item><item>Judul Z–A</item><item>Bab terbaru</item></string-array>
+    <string name="smart_local_bulk_delete_title">Kelola %1$d koleksi terpilih</string>
+    <string name="smart_local_bulk_delete_warning">Hapus file dari %1$d koleksi terpilih? Tindakan ini tidak dapat dibatalkan. Entri library lain mungkin bergantung pada file tersebut.</string>
 </resources>
