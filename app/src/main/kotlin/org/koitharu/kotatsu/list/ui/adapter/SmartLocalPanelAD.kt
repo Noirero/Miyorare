@@ -29,9 +29,9 @@ fun smartLocalPanelAD(listener: MangaListListener) =
 				context.resources.getQuantityString(R.plurals.smart_local_titles, item.titleCount, item.titleCount),
 				context.resources.getQuantityString(R.plurals.smart_local_chapters, item.chapterCount, item.chapterCount),
 			).joinToString(" • ")
-			binding.textViewFolderCount.text = item.folderCount.toString()
-			binding.textViewTitleCount.text = item.titleCount.toString()
-			binding.textViewChapterCount.text = item.chapterCount.toString()
+			binding.textViewFolderCount?.text = item.folderCount.toString()
+			binding.textViewTitleCount?.text = item.titleCount.toString()
+			binding.textViewChapterCount?.text = item.chapterCount.toString()
 			binding.buttonSort.text = context.resources.getStringArray(R.array.smart_local_sorts)[item.sort.ordinal]
 			binding.buttonFilter.text = if (item.readingFilter == org.koitharu.kotatsu.local.library.LocalReadingFilter.ALL) context.getString(R.string.filter)
 				else context.resources.getStringArray(R.array.smart_local_reading_filters)[item.readingFilter.ordinal]
