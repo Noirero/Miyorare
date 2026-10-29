@@ -133,6 +133,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean = when (item.itemId) {
 		R.id.action_remove -> { showDeletionChoices(selectedItemsIds, mode); true }
 		R.id.action_smart_local_deselect -> { controller.clear(); true }
+		R.id.action_smart_local_refresh_selected -> { viewModel.refreshSelected(controller.snapshot()); mode?.finish(); true }
 		R.id.action_smart_local_info -> {
 			viewModel.library.state.value.books.firstOrNull { it.id in selectedItemsIds }?.let(::showInformation)
 			true
