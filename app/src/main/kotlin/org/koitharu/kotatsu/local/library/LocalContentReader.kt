@@ -160,38 +160,38 @@ open class LocalContentReader @Inject constructor(
     suspend fun epubHtml(root: Node, chapter: LocalChapter): String = withContext(Dispatchers.IO) {
         val file = materialize(root, chapter.node)
         try {
-        val book = EpubParser.parse(file)
-        check(book.spine.isNotEmpty()) { "EPUB has no readable content" }
-        ZipFile(file).use { zip ->
-            buildString {
-                append("<html><body>")
-                for (item in book.spine.filter { chapter.epubSection == null || it.href == chapter.epubSection }) {
-                    currentCoroutineContext().ensureActive()
-                    val entry = zip.getEntry(item.href) ?: throw IOException("Missing EPUB section: ${item.href}")
-                    val html = zip.getInputStream(entry).use { it.readBytesLimited(16 * 1024 * 1024).toString(Charsets.UTF_8) }
-                    val doc = Jsoup.parse(html)
-                    doc.select("script, iframe, object").remove()
-                    for (image in doc.select("img[src]")) {
-                        val path = EpubParser.resolveHref(item.href.substringBeforeLast('/', ""), image.attr("src"))
-                        if (safeEntry(path)) image.attr("src", "local-epub:$path") else image.remove()
-                    }
-                    val entries = book.toc.filter { it.href == item.href }
-                    if (entries.isEmpty()) {
-                        doc.body().prependChild(org.jsoup.nodes.Element("miyorare-section").attr("data-title", item.title))
-                    } else for (section in entries.asReversed()) {
-                        val marker = org.jsoup.nodes.Element("miyorare-section").attr("data-title", section.title)
-                        val target = section.fragment?.let { fragment ->
-                            val id = runCatching { java.net.URLDecoder.decode(fragment.replace("+", "%2B"), "UTF-8") }.getOrDefault(fragment)
-                            doc.getElementById(id)
+            val book = EpubParser.parse(file)
+            check(book.spine.isNotEmpty()) { "EPUB has no readable content" }
+            ZipFile(file).use { zip ->
+                buildString {
+                    append("<html><body>")
+                    for (item in book.spine.filter { chapter.epubSection == null || it.href == chapter.epubSection }) {
+                        currentCoroutineContext().ensureActive()
+                        val entry = zip.getEntry(item.href) ?: throw IOException("Missing EPUB section: ${item.href}")
+                        val html = zip.getInputStream(entry).use { it.readBytesLimited(16 * 1024 * 1024).toString(Charsets.UTF_8) }
+                        val doc = Jsoup.parse(html)
+                        doc.select("script, iframe, object").remove()
+                        for (image in doc.select("img[src]")) {
+                            val path = EpubParser.resolveHref(item.href.substringBeforeLast('/', ""), image.attr("src"))
+                            if (safeEntry(path)) image.attr("src", "local-epub:$path") else image.remove()
                         }
-                        if (target != null) target.before(marker) else doc.body().prependChild(marker)
+                        val entries = book.toc.filter { it.href == item.href }
+                        if (entries.isEmpty()) {
+                            doc.body().prependChild(org.jsoup.nodes.Element("miyorare-section").attr("data-title", item.title))
+                        } else for (section in entries.asReversed()) {
+                            val marker = org.jsoup.nodes.Element("miyorare-section").attr("data-title", section.title)
+                            val target = section.fragment?.let { fragment ->
+                                val id = runCatching { java.net.URLDecoder.decode(fragment.replace("+", "%2B"), "UTF-8") }.getOrDefault(fragment)
+                                doc.getElementById(id)
+                            }
+                            if (target != null) target.before(marker) else doc.body().prependChild(marker)
+                        }
+                        append(doc.body().html())
+                        check(length <= 32 * 1024 * 1024) { "EPUB volume is too large" }
                     }
-                    append(doc.body().html())
-                    check(length <= 32 * 1024 * 1024) { "EPUB volume is too large" }
+                    append("</body></html>")
                 }
-                append("</body></html>")
             }
-        }
         } finally { withContext(NonCancellable) { releaseMaterialized(file) } }
     }
 
