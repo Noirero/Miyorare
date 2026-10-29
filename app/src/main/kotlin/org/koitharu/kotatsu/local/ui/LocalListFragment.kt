@@ -211,15 +211,21 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		val names = groups.keys.sorted()
 		val labels = arrayOf(getString(R.string.smart_local_all_groups)) + names.map { it + " (" + (groups[it]?.size ?: 0) + ")" }
 		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
-			.setTitle(R.string.smart_local_manage_groups).setItems(labels.toTypedArray()) { _, index ->
+			.setTitle(R.string.smart_local_manage_groups).setItems(labels) { _, index ->
 				if (index == 0) viewModel.setGroupFilter(null) else {
 					val name = names[index - 1]
 					MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
 						.setTitle(name).setItems(arrayOf(getString(R.string.smart_local_show_group), getString(R.string.smart_local_rename_group), getString(R.string.smart_local_delete_group))) { _, choice ->
-							if (choice == 0) viewModel.setGroupFilter(name) else if (choice == 1) showRenameGroup(name) else MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
-								.setTitle(R.string.smart_local_delete_group).setMessage(R.string.smart_local_delete_group_message)
-								.setPositiveButton(android.R.string.ok) { _, _ -> viewModel.deleteGroup(name) }
-								.setNegativeButton(android.R.string.cancel, null).show()
+							when (choice) {
+								0 -> viewModel.setGroupFilter(name)
+								1 -> showRenameGroup(name)
+								else -> {
+									MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+										.setTitle(R.string.smart_local_delete_group).setMessage(R.string.smart_local_delete_group_message)
+										.setPositiveButton(android.R.string.ok) { _, _ -> viewModel.deleteGroup(name) }
+										.setNegativeButton(android.R.string.cancel, null).show()
+								}
+							}
 						}.setNegativeButton(android.R.string.cancel, null).show()
 				}
 			}.setNegativeButton(android.R.string.cancel, null).show()
