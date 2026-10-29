@@ -35,7 +35,7 @@ fun mangaListDetailedItemAD(
 
 	bind { payloads ->
 		if (localCinematic) {
-			itemView.background = ContextCompat.getDrawable(context, R.drawable.bg_smart_local_cinematic_card)
+			itemView.background = ContextCompat.getDrawable(context, R.drawable.bg_smart_local_cinematic_selectable)
 			binding.textViewTitle.setTextColor(ContextCompat.getColor(context, R.color.smart_local_cream))
 			binding.textViewAuthor.setTextColor(ContextCompat.getColor(context, R.color.smart_local_muted))
 		}
