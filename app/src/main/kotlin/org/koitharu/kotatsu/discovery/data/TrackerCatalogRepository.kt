@@ -105,18 +105,6 @@ class TrackerCatalogRepository(
 		return safe
 	}
 
-	suspend fun characterDetails(service: ScrobblerService, person: TrackerCatalogPerson): TrackerCatalogCharacterDetails {
-		val id = person.id?.toLongOrNull()?.takeIf { it > 0L && it.toString() == person.id }
-			?: throw CatalogException(CatalogFailure(CatalogFailureKind.INVALID_DATA))
-		val provider = provider(service)
-		if (CatalogCapability.CHARACTER_DETAILS !in provider.catalogCapabilities) {
-			throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
-		}
-		val result = provider.characterDetails(person)
-		require(result.person.id == id.toString())
-		return result.copy(person = result.person.copy(roles = person.roles))
-	}
-
 	private fun TrackerCatalogPage.checked(service: ScrobblerService, kinds: List<CatalogMediaKind>, adult: Boolean): TrackerCatalogPage {
 		require(items.all { it.key.service == service && it.key.kind in kinds })
 		return copy(items = items.mapNotNull { it.forPolicy(adult) }.distinctBy { it.key }, nextPage = nextPage?.takeIf { it in 2..CatalogCachePolicy.MAX_PAGE })
