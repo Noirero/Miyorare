@@ -129,12 +129,8 @@ jobs:
           from pathlib import Path
           p = Path('app/src/main/AndroidManifest.xml')
           text = p.read_text(encoding='utf-8')
-          old = '''<activity
-\t\t\tandroid:name="org.koitharu.kotatsu.settings.SettingsActivity"
-\t\t\tandroid:exported="false"'''
-          new = '''<activity
-\t\t\tandroid:name="org.koitharu.kotatsu.settings.SettingsActivity"
-\t\t\tandroid:exported="true"'''
+          old = '''<activity\n\t\t\tandroid:name="org.koitharu.kotatsu.settings.SettingsActivity"\n\t\t\tandroid:exported="false"'''
+          new = '''<activity\n\t\t\tandroid:name="org.koitharu.kotatsu.settings.SettingsActivity"\n\t\t\tandroid:exported="true"'''
           if old not in text:
               raise SystemExit('SettingsActivity export marker not found')
           p.write_text(text.replace(old, new, 1), encoding='utf-8')
