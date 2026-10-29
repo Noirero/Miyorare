@@ -13,7 +13,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import org.koitharu.kotatsu.discovery.domain.CatalogMediaKind
+import org.koitharu.kotatsu.discovery.domain.CatalogRelatedMediaKind
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogKey
+import org.koitharu.kotatsu.discovery.domain.TrackerCatalogPerson
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 
 class MALCatalogSupplementalFallbackTest {
@@ -62,6 +64,46 @@ class MALCatalogSupplementalFallbackTest {
 		assertTrue(requested.contains("api.jikan.moe/v4/manga/13/statistics"))
 		assertTrue(requested.contains("jikan.lucashdo.com/v1/manga/13/characters"))
 		assertTrue(requested.contains("jikan.lucashdo.com/v1/manga/13/statistics"))
+	}
+
+	@Test
+	fun `character profile falls back and preserves full internal profile data`() = runBlocking {
+		val requested = mutableListOf<String>()
+		val http = CatalogHttp(OkHttpClient.Builder().addInterceptor { chain ->
+			val request = chain.request()
+			requested += "${request.url.host}${request.url.encodedPath}"
+			when (request.url.host) {
+				"api.jikan.moe" -> response(request, 503)
+				"jikan.lucashdo.com" -> response(
+					request,
+					body = """{"data":{"malId":40,"name":"Monkey D. Luffy","nameKanji":"モンキー・D・ルフィ","nicknames":["Straw Hat"],"images":{"large":"https://cdn.myanimelist.net/images/characters/40-large.jpg"},"about":"Captain of the Straw Hat Pirates.","favorites":123456,"manga":[{"role":"Main","manga":{"malId":13,"title":"One Piece","images":{"large":"https://cdn.myanimelist.net/images/manga/13.jpg"}}}],"anime":[{"role":"Main","anime":{"malId":21,"title":"One Piece","images":{"large":"https://cdn.myanimelist.net/images/anime/21.jpg"}}}],"voices":[{"language":"Japanese","person":{"malId":185,"name":"Mayumi Tanaka","images":{"large":"https://cdn.myanimelist.net/images/people/185.jpg"}}}]}}""",
+				)
+				else -> response(request, 404)
+			}
+		}.build())
+		val seed = TrackerCatalogPerson(
+			id = "40",
+			name = "Monkey D. Luffy",
+			imageUrl = "https://cdn.myanimelist.net/images/characters/40.jpg",
+			roles = listOf("Main"),
+		)
+
+		val profile = MALCatalogProvider(http, "fixture-public-id").characterDetails(seed)
+
+		assertEquals("40", profile.person.id)
+		assertEquals("Monkey D. Luffy", profile.person.name)
+		assertEquals("モンキー・D・ルフィ", profile.nativeName)
+		assertEquals(listOf("Straw Hat"), profile.nicknames)
+		assertEquals("Captain of the Straw Hat Pirates.", profile.about)
+		assertEquals(123456L, profile.favorites)
+		assertEquals(2, profile.works.size)
+		assertEquals(CatalogRelatedMediaKind.MANGA, profile.works.first().mediaKind)
+		assertEquals("13", profile.works.first().remoteId)
+		assertEquals("Main", profile.works.first().role)
+		assertEquals("Mayumi Tanaka", profile.voices.single().name)
+		assertEquals("Japanese", profile.voices.single().roles.single())
+		assertTrue(requested.contains("api.jikan.moe/v4/characters/40/full"))
+		assertTrue(requested.contains("jikan.lucashdo.com/v1/characters/40/full"))
 	}
 
 	@Test
