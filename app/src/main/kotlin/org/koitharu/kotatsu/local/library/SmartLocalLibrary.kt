@@ -337,6 +337,27 @@ class SmartLocalLibrary @Inject constructor(
                     .mapTo(HashSet()) { it.key }
                 for (key in ownedKeys) ownership[key] = (ownership[key] ?: 0) + 1
             }
+            // Validate the entire batch before touching any physical document. A later
+            // shared-file or unsafe-path failure must not delete earlier selections.
+            for (book in targets) {
+                currentCoroutineContext().ensureActive()
+                val root = documents.root(book.rootUri)
+                val files = (book.chapters.flatMap { chapter ->
+                    if (chapter.node.directory) chapter.pages else listOf(chapter.node)
+                } + book.sidecars).distinctBy { it.key }
+                val ownKeys = (book.chapters.flatMap { chapter -> chapter.pages + chapter.node } + book.sidecars)
+                    .mapTo(HashSet()) { it.key }
+                check(files.none { (ownership[it.key] ?: 0) > (if (it.key in ownKeys) 1 else 0) }) {
+                    "A document belongs to another manga"
+                }
+                for (file in files) {
+                    currentCoroutineContext().ensureActive()
+                    check(!file.directory && file.key != root.key && documents.contains(root, file)) {
+                        "Unsafe deletion target"
+                    }
+                }
+            }
+            // I/O can still fail after preflight; the recovery scan below handles that case.
             for (book in targets) {
                 val root = documents.root(book.rootUri)
                 val files = (book.chapters.flatMap { c -> if (c.node.directory) c.pages else listOf(c.node) } + book.sidecars).distinctBy { it.key }
