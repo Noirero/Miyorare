@@ -161,7 +161,7 @@ fun DetailsExpressiveScreen(
 ) {
 	val manga = details?.toManga()
 	val managed = manga?.url?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it) } == true
-	val galleryAvailable = managed && indexedLocalBook?.contentType != org.koitharu.kotatsu.local.library.LocalContentType.NOVEL
+	val galleryAvailable = managed && indexedLocalBook?.contentType == org.koitharu.kotatsu.local.library.LocalContentType.MANGA
 	var gallerySelected by rememberSaveable(manga?.id) { mutableStateOf(false) }
 	var chaptersExpanded by rememberSaveable(manga?.id) { mutableStateOf(true) }
 	var heroExpanded by rememberSaveable(manga?.id) { mutableStateOf(false) }
