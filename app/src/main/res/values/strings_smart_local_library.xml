@@ -62,4 +62,12 @@
     </string-array>
     <item name="action_smart_local_info" type="id" />
     <item name="action_smart_local_restore" type="id" />
+    <string name="smart_local_bulk_delete_title">Manage %1$d selected collections</string>
+    <string name="smart_local_bulk_delete_warning">Delete files from %1$d selected collections? This cannot be undone. Other library entries may depend on these files.</string>
+    <string name="smart_local_bulk_removed">Processed %1$d selected collections</string>
+    <string name="smart_local_deselect_all">Deselect all</string>
+    <string name="smart_local_refresh_selected">Refresh folders containing selected collections</string>
+    <string name="smart_local_edit_authors">Edit authors for selected collections</string>
+    <string name="smart_local_authors_hint">Authors separated by commas</string>
+    <string name="smart_local_authors_warning">Replace authors for %1$d selected collections? An empty value clears authors.</string>
 </resources>

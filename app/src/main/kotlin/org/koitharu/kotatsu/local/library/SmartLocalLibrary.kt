@@ -118,16 +118,21 @@ class SmartLocalLibrary @Inject constructor(
         mutableChanges.emit(Unit)
     }
 
-    suspend fun scan() = withContext(Dispatchers.IO) {
+    suspend fun scan(selectedRoots: Set<String>? = null) = withContext(Dispatchers.IO) {
         initialize()
+        if (selectedRoots != null && selectedRoots.isEmpty()) return@withContext
         mutex.withLock {
             val previous = state.value
             val previousByKey = previous.books.associateBy { it.node.key }
             val exclusions = readExclusions().keys
+            val authorOverrides = JSONObject(prefs.getString("author_overrides", "{}").orEmpty())
             val confirmed = prefs.getStringSet("confirmed", emptySet()).orEmpty().toSet()
+            val activeRoots = previous.roots.filter { selectedRoots == null || it.uri in selectedRoots }
             val books = LinkedHashMap<String, LocalBook>()
+            previous.books.filter { book -> activeRoots.none { it.uri == book.rootUri } }.forEach { books[it.node.key] = it }
             val diagnoses = ArrayList<LocalDiagnosis>()
-            for (root in previous.roots) {
+            diagnoses += previous.diagnoses.filter { issue -> activeRoots.none { it.uri == issue.rootUri } }
+            for (root in activeRoots) {
                 currentCoroutineContext().ensureActive()
                 val result = runCatchingCancellable {
                     documents.withAccess(root.uri) { node, access -> LocalTreeScanner().scan(node, access, confirmed, exclusions) }
@@ -158,7 +163,8 @@ class SmartLocalLibrary @Inject constructor(
                         metadata.firstNotNullOfOrNull { it.description } ?: old?.description, explicitCover ?: metadataCover ?: chapters.firstOrNull()?.pages?.firstOrNull()?.uri,
                         entry.ignored, old?.addedAt ?: System.currentTimeMillis(), System.currentTimeMillis(),
                         pendingLocalDiscoveries(old?.newChapters ?: 0, discovered, chapters.size))
-                    books.putIfAbsent(book.node.key, book)
+                    val override = authorOverrides.optString(book.node.key).takeIf { authorOverrides.has(book.node.key) }
+                    books.putIfAbsent(book.node.key, if (override != null) book.copy(authors = override.split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() }) else book)
                 }
                 scanned.issues.forEach { diagnoses += LocalDiagnosis(root.uri, it.node, it.reason, it.candidates) }
             }
@@ -199,6 +205,27 @@ class SmartLocalLibrary @Inject constructor(
         mutableChanges.emit(Unit)
     }
 
+    /** Bulk author override is kept separate from scanner metadata so rescans preserve user edits. */
+    suspend fun setAuthors(ids: Set<Long>, authors: Set<String>) = withContext(Dispatchers.IO) {
+        initialize()
+        mutex.withLock {
+            val selected = state.value.books.filter { it.id in ids }
+            if (selected.isEmpty()) return@withLock
+            val overrides = JSONObject(prefs.getString("author_overrides", "{}").orEmpty())
+            val encoded = authors.joinToString(",")
+            selected.forEach { overrides.put(it.node.key, encoded) }
+            check(prefs.edit().putString("author_overrides", overrides.toString()).commit())
+            val updated = state.value.books.map { if (it.id in ids) it.copy(authors = authors) else it }
+            db.withTransaction {
+                for (book in updated.filter { it.id in ids }) {
+                    dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
+                }
+            }
+            publishLocked(state.value.copy(books = updated))
+        }
+        mutableChanges.emit(Unit)
+    }
+
     suspend fun acknowledgeDiscoveries(ids: Set<Long>? = null) = withContext(Dispatchers.IO) {
         initialize()
         mutex.withLock { publishLocked(state.value.copy(books = state.value.books.map { if (ids == null || it.id in ids) it.copy(newChapters = 0) else it })) }
@@ -219,12 +246,22 @@ class SmartLocalLibrary @Inject constructor(
         initialize()
         try { mutex.withLock {
             val targets = state.value.books.filter { it.id in ids }
+            // Calculate ownership once for the complete batch, including selected books.
+            // A shared file must never be removed while another indexed book refers to it.
+            val ownership = HashMap<String, Int>()
+            for (indexedBook in state.value.books) {
+                val ownedKeys = (indexedBook.chapters.flatMap { c -> c.pages + c.node } + indexedBook.sidecars)
+                    .mapTo(HashSet()) { it.key }
+                for (key in ownedKeys) ownership[key] = (ownership[key] ?: 0) + 1
+            }
             for (book in targets) {
                 val root = documents.root(book.rootUri)
                 val files = (book.chapters.flatMap { c -> if (c.node.directory) c.pages else listOf(c.node) } + book.sidecars).distinctBy { it.key }
-                val otherOwned = state.value.books.filter { it.id != book.id }
-                    .flatMap { b -> b.chapters.flatMap { c -> c.pages + c.node } + b.sidecars }.mapTo(HashSet()) { it.key }
-                check(files.none { it.key in otherOwned }) { "A document belongs to another manga" }
+                val ownKeys = (book.chapters.flatMap { c -> c.pages + c.node } + book.sidecars)
+                    .mapTo(HashSet()) { it.key }
+                check(files.none { (ownership[it.key] ?: 0) > (if (it.key in ownKeys) 1 else 0) }) {
+                    "A document belongs to another manga"
+                }
                 files.forEach { node ->
                     currentCoroutineContext().ensureActive()
                     check(!node.directory && node.key != root.key && documents.contains(root, node)) { "Unsafe deletion target" }

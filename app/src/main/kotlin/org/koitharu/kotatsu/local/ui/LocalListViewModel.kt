@@ -58,7 +58,7 @@ class LocalListViewModel @Inject constructor(
 	@ApplicationContext private val context: Context,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), FilterCoordinator.Owner {
 	override val content = MutableStateFlow<List<ListModel>>(listOf(LoadingState))
-	val onMangaRemoved = MutableEventFlow<Unit>()
+	val onMangaRemoved = MutableEventFlow<Int>()
 	val exclusions = MutableEventFlow<Map<String, String>>()
 	val scanCompleted = MutableEventFlow<Boolean>()
 	val coverCacheReport = MutableEventFlow<SmartLocalCoverCacheReport>()
@@ -101,6 +101,17 @@ class LocalListViewModel @Inject constructor(
 		if (refreshJob?.isActive == true || folderJob?.isActive == true) return
 		refreshJob = launchLoadingJob(Dispatchers.IO) {
 			library.scan()
+			revision.value++
+			scanCompleted.call(library.state.value.diagnoses.isEmpty())
+		}
+	}
+
+	fun refreshSelected(ids: Set<Long>) {
+		if (ids.isEmpty() || refreshJob?.isActive == true || folderJob?.isActive == true) return
+		val roots = library.state.value.books.filter { it.id in ids }.mapTo(HashSet()) { it.rootUri }
+		if (roots.isEmpty()) return
+		refreshJob = launchLoadingJob(Dispatchers.IO) {
+			library.scan(roots)
 			revision.value++
 			scanCompleted.call(library.state.value.diagnoses.isEmpty())
 		}
@@ -150,12 +161,22 @@ class LocalListViewModel @Inject constructor(
 	fun restore(key: String) { launchLoadingJob(Dispatchers.IO) { library.restore(key) } }
 	fun acknowledgeDiscoveries(ids: Set<Long>) { launchJob(Dispatchers.IO) { library.acknowledgeDiscoveries(ids) } }
 
+	fun updateAuthors(ids: Set<Long>, input: String) {
+		if (ids.isEmpty()) return
+		val authors = input.split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() }
+		launchLoadingJob(Dispatchers.IO) {
+			library.setAuthors(ids, authors)
+			revision.value++
+		}
+	}
+
 	fun delete(ids: Set<Long>, fromDevice: Boolean) {
 		launchLoadingJob(Dispatchers.IO) {
 			val managed = library.state.value.books.filter { it.id in ids }.mapTo(HashSet()) { it.id }
+			if (managed.isEmpty()) return@launchLoadingJob
 			if (fromDevice) library.deleteFromDevice(managed) else library.hide(managed)
 			revision.value++
-			onMangaRemoved.call(Unit)
+			onMangaRemoved.call(managed.size)
 		}
 	}
 

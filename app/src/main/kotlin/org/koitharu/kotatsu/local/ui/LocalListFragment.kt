@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.local.ui
 
 import android.os.Bundle
+import android.widget.EditText
 import androidx.core.content.ContextCompat
 import android.view.Menu
 import android.view.MenuInflater
@@ -74,8 +75,8 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 			scanProgressSnackbar = null
 			Snackbar.make(binding.recyclerView, if (complete) R.string.smart_local_scan_complete else R.string.smart_local_scan_attention, Snackbar.LENGTH_LONG).show()
 		}
-		viewModel.onMangaRemoved.observeEvent(viewLifecycleOwner) {
-			Snackbar.make(binding.recyclerView, R.string.removal_completed, Snackbar.LENGTH_SHORT).show()
+		viewModel.onMangaRemoved.observeEvent(viewLifecycleOwner) { count ->
+			Snackbar.make(binding.recyclerView, getString(R.string.smart_local_bulk_removed, count), Snackbar.LENGTH_LONG).show()
 		}
 		viewModel.exclusions.observeEvent(viewLifecycleOwner) { exclusions ->
 			val entries = exclusions.entries.toList()
@@ -132,6 +133,9 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
 	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean = when (item.itemId) {
 		R.id.action_remove -> { showDeletionChoices(selectedItemsIds, mode); true }
+		R.id.action_smart_local_deselect -> { controller.clear(); true }
+		R.id.action_smart_local_refresh_selected -> { viewModel.refreshSelected(controller.snapshot()); mode?.finish(); true }
+		R.id.action_smart_local_edit_authors -> { showBulkAuthorEditor(controller.snapshot(), mode); true }
 		R.id.action_smart_local_info -> {
 			viewModel.library.state.value.books.firstOrNull { it.id in selectedItemsIds }?.let(::showInformation)
 			true
@@ -162,10 +166,29 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 			}.setNegativeButton(android.R.string.cancel, null).show()
 	}
 
+	private fun showBulkAuthorEditor(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
+		val input = EditText(requireContext()).apply {
+			hint = getString(R.string.smart_local_authors_hint)
+			setSingleLine(false)
+			setPadding(48, 24, 48, 24)
+		}
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+			.setTitle(R.string.smart_local_edit_authors)
+			.setMessage(getString(R.string.smart_local_authors_warning, ids.size))
+			.setView(input)
+			.setPositiveButton(android.R.string.ok) { _, _ ->
+				viewModel.updateAuthors(ids, input.text.toString())
+				mode?.finish()
+			}
+			.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
 	private fun showDeletionChoices(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
 		showLocalLibraryDeletionDialog(requireContext(),
 			{ viewModel.delete(ids, false); mode?.finish() },
-			{ viewModel.delete(ids, true); mode?.finish() })
+			{ viewModel.delete(ids, true); mode?.finish() }, ids.size)
 	}
 
 	private fun showFilters() {
