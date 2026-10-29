@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
  android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginVertical="7dp" android:layout_marginHorizontal="12dp" android:clickable="true" android:focusable="true" app:cardElevation="5dp" app:cardCornerRadius="22dp" app:cardBackgroundColor="@color/smart_local_surface" app:strokeColor="@color/smart_local_edge" app:strokeWidth="1dp">
- <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="14dp" android:orientation="horizontal" android:gravity="center_vertical">
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="14dp" android:background="@drawable/bg_smart_local_archive_resume" android:orientation="horizontal" android:gravity="center_vertical">
   <org.koitharu.kotatsu.image.ui.CoverImageView android:id="@+id/imageView_cover" android:layout_width="76dp" android:layout_height="108dp"
-   android:importantForAccessibility="no" app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Kotatsu.Cover" />
+   android:importantForAccessibility="no" app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Kotatsu.Cover" app:strokeColor="@color/smart_local_gold" app:strokeWidth="1dp" />
   <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginHorizontal="12dp" android:orientation="vertical">
    <TextView android:id="@+id/textView_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="2" android:ellipsize="end" android:textAppearance="?textAppearanceTitleMedium" android:textColor="@color/smart_local_cream" />
    <TextView android:id="@+id/textView_subtitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="2" android:ellipsize="end" android:textAppearance="?textAppearanceBodyMedium" android:textColor="@color/smart_local_muted" />
