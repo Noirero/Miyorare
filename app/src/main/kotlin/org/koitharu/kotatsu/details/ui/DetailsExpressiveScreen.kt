@@ -3,6 +3,15 @@
 package org.koitharu.kotatsu.details.ui
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.input.pointer.pointerInput
+import org.koitharu.kotatsu.parsers.model.MangaChapter
 
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -147,10 +156,13 @@ fun DetailsExpressiveScreen(
 	topInset: Dp,
 	bottomContentPadding: Dp,
 	onScroll: (Int) -> Unit,
+	coverForChapter: suspend (MangaChapter) -> String? = { null },
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
 	val managed = manga?.url?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it) } == true
+	val galleryAvailable = managed && indexedLocalBook?.contentType == org.koitharu.kotatsu.local.library.LocalContentType.MANGA
+	var gallerySelected by rememberSaveable(manga?.id) { mutableStateOf(false) }
 	var chaptersExpanded by rememberSaveable(manga?.id) { mutableStateOf(true) }
 	var heroExpanded by rememberSaveable(manga?.id) { mutableStateOf(false) }
 	var titleOverflow by remember(manga?.id) { mutableStateOf(false) }
@@ -234,9 +246,25 @@ fun DetailsExpressiveScreen(
 			}.collect(onScroll)
 		}
 
+		var dragDistance by remember { mutableStateOf(0f) }
+		val gallerySwipe = if (galleryAvailable) Modifier.pointerInput(gallerySelected) {
+			detectHorizontalDragGestures(
+				onDragStart = { dragDistance = 0f },
+				onHorizontalDrag = { change, amount ->
+					dragDistance += amount
+					change.consume()
+				},
+				onDragEnd = {
+					if (dragDistance > 60f) gallerySelected = true
+					if (dragDistance < -60f) gallerySelected = false
+					dragDistance = 0f
+				},
+			)
+		} else Modifier
 		Box(
 			modifier = Modifier
 				.fillMaxSize()
+				.then(gallerySwipe)
 				.background(if (palette.isModern) Color.Transparent else screenSurface),
 		) {
 			if (isBackdropEnabled && backdropUrl != null) {
@@ -249,7 +277,17 @@ fun DetailsExpressiveScreen(
 				)
 			}
 
-			LazyColumn(
+			if (galleryAvailable && gallerySelected) {
+				LocalChapterGallery(
+					chapters = chapters,
+					mangaTitle = manga?.title.orEmpty(),
+					imageLoader = imageLoader,
+					topPadding = topInset,
+					bottomPadding = bottomContentPadding,
+					coverForChapter = coverForChapter,
+					onChapterClick = actions.onChapterClick,
+				)
+			} else LazyColumn(
 				state = listState,
 				modifier = Modifier.fillMaxSize(),
 				horizontalAlignment = Alignment.CenterHorizontally,
@@ -515,6 +553,30 @@ fun DetailsExpressiveScreen(
 
 				item(contentType = "bottom-spacer") {
 					Spacer(Modifier.height(bottomContentPadding + 28.dp))
+				}
+			}
+
+			if (galleryAvailable) {
+				Surface(
+					modifier = Modifier
+						.align(Alignment.BottomCenter)
+						.padding(bottom = bottomContentPadding + 12.dp),
+					shape = RoundedCornerShape(24.dp),
+					color = scheme.surfaceContainerHigh,
+					shadowElevation = 6.dp,
+				) {
+					Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(4.dp)) {
+						listOf(false to R.string.local_gallery_details, true to R.string.local_gallery_title).forEach { (selected, label) ->
+							Surface(
+								shape = RoundedCornerShape(20.dp),
+								color = if (gallerySelected == selected) scheme.primaryContainer else Color.Transparent,
+								modifier = Modifier.clickable { gallerySelected = selected },
+							) {
+								Text(stringResource(label), modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+									color = if (gallerySelected == selected) scheme.onPrimaryContainer else scheme.onSurface)
+							}
+						}
+					}
 				}
 			}
 
