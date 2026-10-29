@@ -67,7 +67,7 @@ internal fun LocalChapterGallery(
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(text = mangaTitle, style = MaterialTheme.typography.titleLarge)
+                Text(text = mangaTitle, style = MaterialTheme.typography.titleLarge, color = androidx.compose.ui.graphics.Color.White)
                 Text(
                     text = stringResource(R.string.local_gallery_chapter_count, chapters.size),
                     style = MaterialTheme.typography.bodyMedium,
