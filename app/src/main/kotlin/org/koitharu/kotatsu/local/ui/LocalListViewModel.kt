@@ -58,7 +58,7 @@ class LocalListViewModel @Inject constructor(
 	@ApplicationContext private val context: Context,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), FilterCoordinator.Owner {
 	override val content = MutableStateFlow<List<ListModel>>(listOf(LoadingState))
-	val onMangaRemoved = MutableEventFlow<Unit>()
+	val onMangaRemoved = MutableEventFlow<Int>()
 	val exclusions = MutableEventFlow<Map<String, String>>()
 	val scanCompleted = MutableEventFlow<Boolean>()
 	val coverCacheReport = MutableEventFlow<SmartLocalCoverCacheReport>()
@@ -153,9 +153,10 @@ class LocalListViewModel @Inject constructor(
 	fun delete(ids: Set<Long>, fromDevice: Boolean) {
 		launchLoadingJob(Dispatchers.IO) {
 			val managed = library.state.value.books.filter { it.id in ids }.mapTo(HashSet()) { it.id }
+			if (managed.isEmpty()) return@launchLoadingJob
 			if (fromDevice) library.deleteFromDevice(managed) else library.hide(managed)
 			revision.value++
-			onMangaRemoved.call(Unit)
+			onMangaRemoved.call(managed.size)
 		}
 	}
 
