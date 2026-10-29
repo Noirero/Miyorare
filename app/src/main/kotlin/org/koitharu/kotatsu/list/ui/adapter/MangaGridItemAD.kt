@@ -94,6 +94,9 @@ fun mangaGridItemAD(
 		MiyorareDesignStyle.CLASSIC,
 	)
 	val usesModernCover = !localCinematic && coverContext.usesOverlay(designStyle)
+	// Restore the original cover indicators on On-device Files without applying the
+	// global Modern card geometry, palette or spacing to its cinematic cards.
+	val usesCoverOverlay = usesModernCover || localCinematic
 	val hasCollectionBorder = !localCinematic && coverContext.usesCollectionBorder(designStyle)
 	val isPrivateFavouritesHost = context.findActivity()?.intent?.getIntExtra(
 		EXTRA_FAVOURITE_SPACE,
@@ -331,30 +334,31 @@ fun mangaGridItemAD(
 		}
 
 		val isTitleOverCover = item.isTitleOverCover && !item.isTitleHidden
-		binding.favouriteCoverOverlays.isVisible = usesModernCover
-		if (usesModernCover) {
+		binding.favouriteCoverOverlays.isVisible = usesCoverOverlay
+		if (usesCoverOverlay) {
 			binding.layoutIndicators.apply {
 				translationX = 0f
 				translationY = 0f
 				alpha = 1f
 			}
 			binding.favouriteCoverOverlays.bind(
-				ModernCoverState.from(item, coverContext),
+				ModernCoverState.from(item, if (localCinematic) ModernCoverContext.COLLECTION else coverContext)
+					.let { if (localCinematic) it.copy(legacyCounter = item.counter) else it },
 			) { view ->
 				clickListener.onReadClick(item.toMangaWithOverride(), view)
 			}
 		}
 		binding.textViewTitleOverlay.text = item.title
 		binding.textViewTitle.text = item.title
-		binding.textViewTitleOverlay.isVisible = isTitleOverCover && !usesModernCover
+		binding.textViewTitleOverlay.isVisible = isTitleOverCover && !usesCoverOverlay
 		binding.viewScrim.isVisible = isTitleOverCover
 		binding.textViewTitle.isVisible = !item.isTitleHidden && !isTitleOverCover
 		binding.progressView.setProgress(item.progress, PAYLOAD_PROGRESS_CHANGED in payloads)
-		binding.imageViewPin.isVisible = item.isPinned && !usesModernCover
+		binding.imageViewPin.isVisible = item.isPinned && !usesCoverOverlay
 		binding.textViewLanguage.text = item.languageLabel
-		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank() && !usesModernCover
+		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank() && !usesCoverOverlay
 
-		binding.imageViewContinue.isVisible = item.showContinueReading && !usesModernCover
+		binding.imageViewContinue.isVisible = item.showContinueReading && !usesCoverOverlay
 		if (item.showContinueReading && !usesModernCover) {
 			binding.imageViewContinue.setOnClickListener { view ->
 				clickListener.onReadClick(item.toMangaWithOverride(), view)
@@ -370,12 +374,12 @@ fun mangaGridItemAD(
 			item.isLocalSource,
 			item.isFavorite,
 			item.counter,
-			useModernCoverOverlay = usesModernCover,
+			useModernCoverOverlay = usesCoverOverlay,
 		)
 		// Legacy Corner Mark offsets belong only to the legacy renderer.
 		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
 			topMargin = context.resources.getDimensionPixelSize(R.dimen.card_indicator_offset) +
-				if (!usesModernCover && (item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
+				if (!usesCoverOverlay && (item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
 					context.resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_height) +
 						context.resources.getDimensionPixelSize(R.dimen.library_indicator_spacing)
 				} else 0
@@ -386,7 +390,7 @@ fun mangaGridItemAD(
 			persistCover = coverContext == ModernCoverContext.COLLECTION,
 		)
 		binding.badge.number = item.counter
-		binding.badge.isVisible = item.counter > 0 && !usesModernCover
+		binding.badge.isVisible = item.counter > 0 && !usesCoverOverlay
 	}
 }
 
