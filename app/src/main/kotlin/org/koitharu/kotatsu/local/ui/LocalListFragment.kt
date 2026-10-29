@@ -79,7 +79,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		}
 		viewModel.exclusions.observeEvent(viewLifecycleOwner) { exclusions ->
 			val entries = exclusions.entries.toList()
-			MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_restore)
+			MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(R.string.smart_local_restore)
 				.setItems(entries.map { it.value }.toTypedArray()) { _, index -> viewModel.restore(entries[index].key) }
 				.setNegativeButton(android.R.string.cancel, null).show()
 		}
@@ -110,7 +110,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 			is LocalLibraryAction.Diagnosis -> showDiagnosis(action.issue)
 			is List<*> -> {
 				val diagnoses = action.filterIsInstance<LocalDiagnosis>()
-				MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_diagnosis)
+				MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(R.string.smart_local_diagnosis)
 					.setItems(diagnoses.map { diagnosisLabel(it) }.toTypedArray()) { _, i -> showDiagnosis(diagnoses[i]) }
 					.setNegativeButton(android.R.string.cancel, null).show()
 			}
@@ -146,16 +146,16 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	private fun showFolderManager() {
 		val roots = viewModel.library.state.value.roots
 		val labels = roots.map { it.name } + getString(R.string.smart_local_add_folder)
-		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_manage_folders)
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(R.string.smart_local_manage_folders)
 			.setItems(labels.toTypedArray()) { _, index ->
 				if (index == roots.size) addFolder() else showFolderActions(roots[index])
 			}.setNegativeButton(android.R.string.cancel, null).show()
 	}
 
 	private fun showFolderActions(root: LocalFolder) {
-		MaterialAlertDialogBuilder(requireContext()).setTitle(root.name)
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(root.name)
 			.setItems(arrayOf(getString(R.string.rescan), getString(R.string.smart_local_detach))) { _, index ->
-				if (index == 0) viewModel.onRefresh() else MaterialAlertDialogBuilder(requireContext())
+				if (index == 0) viewModel.onRefresh() else MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
 					.setTitle(R.string.smart_local_detach).setMessage(R.string.smart_local_detach_message)
 					.setPositiveButton(R.string.smart_local_detach) { _, _ -> viewModel.removeFolder(root.uri) }
 					.setNegativeButton(android.R.string.cancel, null).show()
@@ -171,13 +171,13 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	private fun showFilters() {
 		val options = arrayOf(getString(R.string.smart_local_reading_filter),
 			getString(R.string.smart_local_extensions), getString(R.string.smart_local_restore))
-		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.filter).setItems(options) { _, index ->
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(R.string.filter).setItems(options) { _, index ->
 			when (index) {
-				0 -> MaterialAlertDialogBuilder(requireContext()).setTitle(options[0])
+				0 -> MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(options[0])
 					.setSingleChoiceItems(resources.getStringArray(R.array.smart_local_reading_filters), viewModel.library.readingFilter.ordinal) { dialog, choice ->
 						viewModel.updateOptions(viewModel.library.showExtensions, LocalReadingFilter.entries[choice], viewModel.library.sort); dialog.dismiss()
 					}.setNegativeButton(android.R.string.cancel, null).show()
-				1 -> MaterialAlertDialogBuilder(requireContext()).setTitle(options[1])
+				1 -> MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(options[1])
 					.setSingleChoiceItems(arrayOf(getString(R.string.smart_local_extension_off), getString(R.string.smart_local_extension_on)),
 						if (viewModel.library.showExtensions) 1 else 0) { dialog, choice ->
 						viewModel.updateOptions(choice == 1, viewModel.library.readingFilter, viewModel.library.sort); dialog.dismiss()
@@ -188,7 +188,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	}
 
 	private fun showSort() {
-		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.sort_order)
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(R.string.sort_order)
 			.setSingleChoiceItems(resources.getStringArray(R.array.smart_local_sorts), viewModel.library.sort.ordinal) { dialog, choice ->
 				viewModel.updateOptions(viewModel.library.showExtensions, viewModel.library.readingFilter, LocalLibrarySort.entries[choice])
 				dialog.dismiss()
@@ -206,10 +206,10 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	}
 
 	private fun showDiagnosis(issue: LocalDiagnosis) {
-		val builder = MaterialAlertDialogBuilder(requireContext()).setTitle(diagnosisLabel(issue))
+		val builder = MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(diagnosisLabel(issue))
 			.setNegativeButton(android.R.string.cancel, null)
 		if (issue.candidates.isNotEmpty()) builder.setItems(issue.candidates.map { it.name }.toTypedArray()) { _, i ->
-			MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_confirm_boundary)
+			MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(R.string.smart_local_confirm_boundary)
 				.setMessage(getString(R.string.smart_local_confirm_boundary_message, issue.candidates[i].name))
 				.setPositiveButton(android.R.string.ok) { _, _ -> viewModel.confirmFolder(issue, issue.candidates[i]) }
 				.setNegativeButton(android.R.string.cancel, null).show()
@@ -219,11 +219,11 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
 	private fun showCoverCache(report: SmartLocalCoverCacheReport) {
 		val storage = report.storage
-		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_cover_cache)
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(R.string.smart_local_cover_cache)
 			.setMessage(getString(R.string.smart_local_cover_cache_summary,
 				android.text.format.Formatter.formatFileSize(requireContext(), storage.bytes), storage.entries))
 			.setPositiveButton(R.string.smart_local_cover_cache_clear) { _, _ ->
-				MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_cover_cache_clear)
+				MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(R.string.smart_local_cover_cache_clear)
 					.setMessage(R.string.smart_local_cover_cache_clear_message)
 					.setPositiveButton(R.string.smart_local_cover_cache_clear) { _, _ -> viewModel.clearCoverCache() }
 					.setNegativeButton(android.R.string.cancel, null).show()
@@ -240,13 +240,13 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 				appendLine("${event.reason} ${event.cacheKey?.take(12).orEmpty()} ${event.sourceKind.orEmpty()} candidate=${event.candidateIndex} bytes=${event.entryBytes} sourceBytes=${event.sourceBytes} ms=${event.elapsedNanos / 1_000_000}")
 			}
 		}
-		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_cover_cache_diagnostics)
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(R.string.smart_local_cover_cache_diagnostics)
 			.setMessage(text).setPositiveButton(android.R.string.ok, null)
 			.setNeutralButton(R.string.smart_local_cover_cache_reset_measurement) { _, _ -> viewModel.resetCoverDiagnostics() }.show()
 	}
 
 	private fun showInformation(book: LocalBook) {
-		MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.smart_local_information)
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog).setTitle(R.string.smart_local_information)
 			.setMessage(getString(R.string.smart_local_information_message_localized, book.node.uri,
 				resources.getQuantityString(R.plurals.smart_local_chapters, book.chapters.size, book.chapters.size),
 				android.text.format.Formatter.formatFileSize(requireContext(), book.size),
