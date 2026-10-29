@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.list.ui.adapter
 
 import androidx.core.view.isVisible
+import androidx.core.content.ContextCompat
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
@@ -17,6 +18,7 @@ fun mangaListItemAD(
 	clickListener: MangaDetailsClickListener,
 	titleClickListener: OnListItemClickListener<MangaListModel>? = null,
 	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
+	localCinematic: Boolean = false,
 ) = adapterDelegateViewBinding<MangaCompactListModel, ListModel, ItemMangaListBinding>(
 	{ inflater, parent -> ItemMangaListBinding.inflate(inflater, parent, false) },
 ) {
@@ -29,6 +31,11 @@ fun mangaListItemAD(
 	}
 
 	bind {
+		if (localCinematic) {
+			itemView.background = ContextCompat.getDrawable(context, R.drawable.bg_smart_local_cinematic_card)
+			binding.textViewTitle.setTextColor(ContextCompat.getColor(context, R.color.smart_local_cream))
+			binding.textViewSubtitle.setTextColor(ContextCompat.getColor(context, R.color.smart_local_muted))
+		}
 		itemView.setTooltipCompat(item.getSummary(context))
 		binding.textViewTitle.text = item.title
 		val info = buildList {
