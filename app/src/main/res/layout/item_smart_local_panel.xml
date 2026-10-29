@@ -20,7 +20,7 @@
   <com.google.android.material.button.MaterialButton android:id="@+id/button_manage_folders"
    style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent"
    android:layout_height="wrap_content" android:minHeight="48dp" app:cornerRadius="18dp"
-   app:strokeColor="@color/smart_local_edge" android:textColor="@color/smart_local_gold" app:icon="@drawable/ic_folder_outline" app:iconTint="@color/smart_local_gold"
+   app:strokeColor="@color/smart_local_edge" android:textColor="@color/smart_local_gold"
    android:text="@string/smart_local_manage_folders"/>
  </LinearLayout>
  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
