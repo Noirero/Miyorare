@@ -118,16 +118,19 @@ class SmartLocalLibrary @Inject constructor(
         mutableChanges.emit(Unit)
     }
 
-    suspend fun scan() = withContext(Dispatchers.IO) {
+    suspend fun scan(selectedRoots: Set<String>? = null) = withContext(Dispatchers.IO) {
         initialize()
         mutex.withLock {
             val previous = state.value
             val previousByKey = previous.books.associateBy { it.node.key }
             val exclusions = readExclusions().keys
             val confirmed = prefs.getStringSet("confirmed", emptySet()).orEmpty().toSet()
+            val activeRoots = previous.roots.filter { selectedRoots == null || it.uri in selectedRoots }
             val books = LinkedHashMap<String, LocalBook>()
+            previous.books.filter { book -> activeRoots.none { it.uri == book.rootUri } }.forEach { books[it.node.key] = it }
             val diagnoses = ArrayList<LocalDiagnosis>()
-            for (root in previous.roots) {
+            diagnoses += previous.diagnoses.filter { issue -> activeRoots.none { it.uri == issue.rootUri } }
+            for (root in activeRoots) {
                 currentCoroutineContext().ensureActive()
                 val result = runCatchingCancellable {
                     documents.withAccess(root.uri) { node, access -> LocalTreeScanner().scan(node, access, confirmed, exclusions) }
