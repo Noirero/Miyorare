@@ -18,7 +18,7 @@ internal object SmartLocalLocationFormatter {
 
         val volume = documentId.substringBefore(':', "")
         val relative = if (':' in documentId) documentId.substringAfter(':') else documentId
-        val parts = relative.split('/').filter { it.isNotBlank() }
+        val parts = relative.split('/').map { it.trim() }.filter { it.isNotBlank() }
         val root = when {
             volume.equals("primary", ignoreCase = true) -> "Internal storage"
             volume.matches(Regex("[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}")) -> "SD card ($volume)"
