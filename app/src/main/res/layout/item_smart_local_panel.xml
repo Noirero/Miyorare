@@ -9,7 +9,7 @@
    android:layout_marginStart="8dp" android:minHeight="48dp" android:minWidth="48dp" android:maxWidth="168dp" app:cornerRadius="18dp" app:strokeColor="@color/smart_local_edge" android:textColor="@color/smart_local_gold" android:text="@string/smart_local_manage_folders" />
  </LinearLayout>
  <com.google.android.material.button.MaterialButtonToggleGroup android:layout_width="match_parent" android:layout_height="wrap_content"
-  app:singleSelection="true" app:selectionRequired="true" android:layout_marginTop="16dp" android:layout_marginBottom="10dp" app:checkedButton="@id/chip_all">
+  app:singleSelection="true" app:selectionRequired="true" android:layout_marginTop="16dp" android:layout_marginBottom="10dp">
   <com.google.android.material.button.MaterialButton android:id="@+id/chip_all" style="@style/Widget.Material3.Button.OutlinedButton"
    android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" app:cornerRadius="22dp" app:strokeColor="@color/smart_local_edge" android:textColor="@color/smart_local_cream" android:text="@string/smart_local_type_all" />
   <com.google.android.material.button.MaterialButton android:id="@+id/chip_manga" style="@style/Widget.Material3.Button.OutlinedButton"
