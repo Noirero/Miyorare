@@ -120,6 +120,7 @@ class SmartLocalLibrary @Inject constructor(
 
     suspend fun scan(selectedRoots: Set<String>? = null) = withContext(Dispatchers.IO) {
         initialize()
+        if (selectedRoots != null && selectedRoots.isEmpty()) return@withContext
         mutex.withLock {
             val previous = state.value
             val previousByKey = previous.books.associateBy { it.node.key }
