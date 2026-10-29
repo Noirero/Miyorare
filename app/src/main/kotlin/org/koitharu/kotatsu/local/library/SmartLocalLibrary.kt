@@ -73,7 +73,10 @@ class SmartLocalLibrary @Inject constructor(
             }.getOrNull()
             val books = saved?.optJSONArray("books")?.objects()?.mapNotNull { json ->
                 runCatching { json.toLocalBook() }.getOrNull()
-            }.orEmpty().filter { it.rootUri in roots.map { r -> r.uri } && it.node.key !in exclusions }
+            }.orEmpty().filter { it.rootUri in roots.map { r -> r.uri } && it.node.key !in exclusions }.map { book ->
+                val overrides = JSONObject(prefs.getString("author_overrides", "{}").orEmpty())
+                if (!overrides.has(book.node.key)) book else book.copy(authors = overrides.optString(book.node.key).split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() })
+            }
             val diagnoses = saved?.optJSONArray("diagnoses")?.objects()?.mapNotNull { json ->
                 runCatching { LocalDiagnosis(json.getString("root"), json.optJSONObject("node")?.toNode(),
                     json.getString("reason"), json.optJSONArray("candidates")?.objects()?.map { it.toNode() }.orEmpty()) }.getOrNull()
