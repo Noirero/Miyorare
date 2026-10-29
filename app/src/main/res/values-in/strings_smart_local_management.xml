@@ -44,4 +44,5 @@
     <string name="smart_local_delete_group_message">Hapus grup virtual ini? Berkas tidak akan berubah.</string>
     <string name="smart_local_rename_group">Ganti nama grup</string>
     <string name="smart_local_export_selected">Ekspor koleksi terpilih (ZIP)</string>
+    <string name="smart_local_bulk_result">Dipilih: %1$d · Berhasil: %2$d · Gagal: %3$d</string>
 </resources>
