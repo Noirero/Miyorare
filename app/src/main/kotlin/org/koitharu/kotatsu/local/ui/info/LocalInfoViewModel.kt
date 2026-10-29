@@ -73,7 +73,7 @@ class LocalInfoViewModel @Inject constructor(
 		if (isSmartLocal) {
 			val book = requireNotNull(library.book(manga.id))
 			indexedBook.value = book
-			path.value = book.node.uri
+			path.value = SmartLocalLocationFormatter.format(book.node.uri)
 			size.value = book.size
 			return@launchLoadingJob
 		}

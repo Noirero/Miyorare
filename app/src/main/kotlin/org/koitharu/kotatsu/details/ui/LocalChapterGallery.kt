@@ -67,11 +67,11 @@ internal fun LocalChapterGallery(
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(text = mangaTitle, style = MaterialTheme.typography.titleLarge)
+                Text(text = mangaTitle, style = MaterialTheme.typography.titleLarge, color = androidx.compose.ui.graphics.Color.White)
                 Text(
                     text = stringResource(R.string.local_gallery_chapter_count, chapters.size),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.82f),
                 )
             }
         }
@@ -131,6 +131,7 @@ internal fun LocalChapterGallery(
                 Text(
                     text = item.chapter.title?.takeIf { it.isNotBlank() } ?: item.getTitle(context.resources),
                     style = MaterialTheme.typography.bodySmall,
+                    color = androidx.compose.ui.graphics.Color.White,
                     maxLines = 2,
                     minLines = 2,
                 )

@@ -82,7 +82,7 @@ class ModernCoverBoundaryRegressionTest {
 		assertTrue(local.contains("localCinematic = true"))
 		assertTrue(grid.contains("val usesCoverOverlay = usesModernCover || localCinematic"))
 		assertTrue(grid.contains("binding.favouriteCoverOverlays.isVisible = usesCoverOverlay"))
-		assertTrue(grid.contains("if (localCinematic) it.copy(legacyCounter = item.counter) else it"))
+		assertTrue(grid.contains("if (localCinematic) it.copy(legacyCounter = item.counter, isLocalSource = true, languageLabel = null) else it"))
 		assertTrue(grid.contains("useModernCoverOverlay = usesCoverOverlay"))
 		assertTrue(grid.contains("applyGridAppearance(usesModernCover, visualScale)"))
 		assertTrue(grid.contains("if (localCinematic) {"))
