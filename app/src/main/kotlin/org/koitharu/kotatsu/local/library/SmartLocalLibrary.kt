@@ -226,6 +226,68 @@ class SmartLocalLibrary @Inject constructor(
         mutableChanges.emit(Unit)
     }
 
+    /** Virtual groups never move or modify physical documents. */
+    fun groups(): Map<String, Set<String>> {
+        val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+        return json.keys().asSequence().associateWith { name ->
+            val members = json.optJSONArray(name) ?: JSONArray()
+            (0 until members.length()).mapTo(LinkedHashSet()) { members.getString(it) }
+        }
+    }
+
+    suspend fun createGroup(name: String, ids: Set<Long>) = withContext(Dispatchers.IO) {
+        require(name.isNotBlank() && name.length <= 80) { "Invalid group name" }
+        initialize()
+        mutex.withLock {
+            val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+            val normalized = name.trim()
+            require(!json.has(normalized)) { "Group already exists" }
+            val members = state.value.books.filter { it.id in ids }.map { it.node.key }
+            require(members.isNotEmpty()) { "Select at least one collection" }
+            json.put(normalized, JSONArray(members))
+            check(prefs.edit().putString("virtual_groups", json.toString()).commit())
+            publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1))
+        }
+    }
+
+    suspend fun addToGroup(name: String, ids: Set<Long>) = withContext(Dispatchers.IO) {
+        initialize()
+        mutex.withLock {
+            val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+            require(json.has(name)) { "Group no longer exists" }
+            val existing = json.getJSONArray(name)
+            val members = (0 until existing.length()).mapTo(LinkedHashSet()) { existing.getString(it) }
+            members += state.value.books.filter { it.id in ids }.map { it.node.key }
+            json.put(name, JSONArray(members.toList()))
+            check(prefs.edit().putString("virtual_groups", json.toString()).commit())
+            publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1))
+        }
+    }
+
+    suspend fun ungroup(ids: Set<Long>) = withContext(Dispatchers.IO) {
+        initialize()
+        mutex.withLock {
+            val keys = state.value.books.filter { it.id in ids }.mapTo(HashSet()) { it.node.key }
+            val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+            for (name in json.keys().asSequence().toList()) {
+                val old = json.getJSONArray(name)
+                json.put(name, JSONArray((0 until old.length()).map { old.getString(it) }.filterNot { it in keys }))
+            }
+            check(prefs.edit().putString("virtual_groups", json.toString()).commit())
+            publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1))
+        }
+    }
+
+    suspend fun deleteGroup(name: String) = withContext(Dispatchers.IO) {
+        initialize()
+        mutex.withLock {
+            val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+            json.remove(name)
+            check(prefs.edit().putString("virtual_groups", json.toString()).commit())
+            publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1))
+        }
+    }
+
     suspend fun acknowledgeDiscoveries(ids: Set<Long>? = null) = withContext(Dispatchers.IO) {
         initialize()
         mutex.withLock { publishLocked(state.value.copy(books = state.value.books.map { if (ids == null || it.id in ids) it.copy(newChapters = 0) else it })) }
