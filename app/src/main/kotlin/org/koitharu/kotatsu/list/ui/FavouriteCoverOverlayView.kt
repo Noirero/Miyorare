@@ -254,7 +254,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		// Metadata precedes the action in compaction priority. Measure even a previously GONE group.
 		measureNatural(metadata, w)
 		val showMetadata = (value.isLocalSource || !value.languageLabel.isNullOrBlank()) &&
-			metadata.measuredWidth <= innerWidth && usedTop + gap <= titleTop - gap - metadata.measuredHeight
+			metadata.measuredWidth <= innerWidth && (usedTop + gap <= titleTop - gap - metadata.measuredHeight ||\n\t\t\t\t(value.isLocalSource && !showTitle && metadata.measuredHeight + inset <= titleTop))
 		val target = px(FavouriteCoverOverlayMetrics.ACTION_TOUCH_DP)
 		if (styledActionSize != px(metrics.actionSize)) {
 			val circleInset = ((target - px(metrics.actionSize)) / 2).coerceAtLeast(0)
