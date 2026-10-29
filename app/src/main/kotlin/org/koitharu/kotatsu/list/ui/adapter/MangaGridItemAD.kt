@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.list.ui.adapter
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import androidx.core.content.ContextCompat
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
@@ -52,6 +53,7 @@ fun mangaGridItemAD(
 	titleClickListener: OnListItemClickListener<MangaListModel>? = null,
 	gridVisualScaleProvider: (() -> Float)? = null,
 	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
+	localCinematic: Boolean = false,
 ) = adapterDelegateViewBinding<MangaGridModel, ListModel, ItemMangaGridBinding>(
 	{ inflater, parent -> ItemMangaGridBinding.inflate(inflater, parent, false) },
 ) {
@@ -91,8 +93,8 @@ fun mangaGridItemAD(
 		MiyorareAppearance.KEY_DESIGN_STYLE,
 		MiyorareDesignStyle.CLASSIC,
 	)
-	val usesModernCover = coverContext.usesOverlay(designStyle)
-	val hasCollectionBorder = coverContext.usesCollectionBorder(designStyle)
+	val usesModernCover = !localCinematic && coverContext.usesOverlay(designStyle)
+	val hasCollectionBorder = !localCinematic && coverContext.usesCollectionBorder(designStyle)
 	val isPrivateFavouritesHost = context.findActivity()?.intent?.getIntExtra(
 		EXTRA_FAVOURITE_SPACE,
 		FavouriteSpace.NORMAL.dbValue,
@@ -293,8 +295,20 @@ fun mangaGridItemAD(
 		val visualScale = visualScaleProvider?.invoke()?.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
 			?: DEFAULT_FIXED_GRID_SCALE
 		applyGridAppearance(usesModernCover, visualScale)
+		if (localCinematic) {
+			val gold = ContextCompat.getColor(context, R.color.smart_local_gold)
+			val cream = ContextCompat.getColor(context, R.color.smart_local_cream)
+			binding.imageViewCover.shapeAppearanceModel = defaultCoverShape.toBuilder()
+				.setAllCornerSizes(18f * density).build()
+			binding.imageViewCover.strokeColor = ColorStateList.valueOf(gold)
+			binding.imageViewCover.strokeWidth = density
+			binding.textViewTitle.setTextColor(cream)
+			itemView.background = ContextCompat.getDrawable(context, R.drawable.bg_smart_local_cinematic_card)
+		}
 		val baseMargin = if (item.isGridSpacingIncreased) gridMarginIncreased else gridMargin
-		val styledBaseMargin = if (isNormalModernFavourites) {
+		val styledBaseMargin = if (localCinematic) {
+			(7f * density).roundToInt()
+		} else if (isNormalModernFavourites) {
 			val marginDp = if (item.isGridSpacingIncreased) {
 				MiyorareFavouritesVisualSpec.GRID_ITEM_MARGIN_INCREASED_DP
 			} else {
