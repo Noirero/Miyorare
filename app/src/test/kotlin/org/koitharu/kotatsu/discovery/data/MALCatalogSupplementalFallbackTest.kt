@@ -76,7 +76,7 @@ class MALCatalogSupplementalFallbackTest {
 				"api.jikan.moe" -> response(request, 503)
 				"jikan.lucashdo.com" -> response(
 					request,
-					body = """{"data":{"malId":40,"name":"Monkey D. Luffy","nameKanji":"モンキー・D・ルフィ","nicknames":["Straw Hat"],"images":{"large":"https://cdn.myanimelist.net/images/characters/40-large.jpg"},"about":"Captain of the Straw Hat Pirates.","favorites":123456,"manga":[{"role":"Main","manga":{"malId":13,"title":"One Piece","images":{"large":"https://cdn.myanimelist.net/images/manga/13.jpg"}}}],"anime":[{"role":"Main","anime":{"malId":21,"title":"One Piece","images":{"large":"https://cdn.myanimelist.net/images/anime/21.jpg"}}}],"voices":[{"language":"Japanese","person":{"malId":185,"name":"Mayumi Tanaka","images":{"large":"https://cdn.myanimelist.net/images/people/185.jpg"}}}]}}""",
+					body = """{"data":{"malId":40,"name":"Monkey D. Luffy","nameKanji":"モンキー・D・ルフィ","nicknames":["Straw Hat"],"imageUrl":"https://cdn.myanimelist.net/images/characters/40-large.jpg","images":{"large":"https://cdn.myanimelist.net/images/characters/40-large.jpg"},"about":"Captain of the Straw Hat Pirates.","favorites":123456,"manga":[{"malId":13,"title":"One Piece","imageUrl":"https://cdn.myanimelist.net/images/manga/13.jpg","role":"Main"}],"anime":[{"malId":21,"title":"One Piece","imageUrl":"https://cdn.myanimelist.net/images/anime/21.jpg","role":"Main"}],"voices":[{"malId":185,"name":"Mayumi Tanaka","imageUrl":"https://cdn.myanimelist.net/images/people/185.jpg","language":"Japanese"}]}}""",
 				)
 				else -> response(request, 404)
 			}
@@ -99,8 +99,10 @@ class MALCatalogSupplementalFallbackTest {
 		assertEquals(2, profile.works.size)
 		assertEquals(CatalogRelatedMediaKind.MANGA, profile.works.first().mediaKind)
 		assertEquals("13", profile.works.first().remoteId)
+		assertEquals("https://cdn.myanimelist.net/images/manga/13.jpg", profile.works.first().coverUrl)
 		assertEquals("Main", profile.works.first().role)
 		assertEquals("Mayumi Tanaka", profile.voices.single().name)
+		assertEquals("https://cdn.myanimelist.net/images/people/185.jpg", profile.voices.single().imageUrl)
 		assertEquals("Japanese", profile.voices.single().roles.single())
 		assertTrue(requested.contains("api.jikan.moe/v4/characters/40/full"))
 		assertTrue(requested.contains("jikan.lucashdo.com/v1/characters/40/full"))
