@@ -246,9 +246,25 @@ fun DetailsExpressiveScreen(
 			}.collect(onScroll)
 		}
 
+		var dragDistance by remember { mutableStateOf(0f) }
+		val gallerySwipe = if (galleryAvailable) Modifier.pointerInput(gallerySelected) {
+			detectHorizontalDragGestures(
+				onDragStart = { dragDistance = 0f },
+				onHorizontalDrag = { change, amount ->
+					dragDistance += amount
+					change.consume()
+				},
+				onDragEnd = {
+					if (dragDistance > 60f) gallerySelected = true
+					if (dragDistance < -60f) gallerySelected = false
+					dragDistance = 0f
+				},
+			)
+		} else Modifier
 		Box(
 			modifier = Modifier
 				.fillMaxSize()
+				.then(gallerySwipe)
 				.background(if (palette.isModern) Color.Transparent else screenSurface),
 		) {
 			if (isBackdropEnabled && backdropUrl != null) {
@@ -540,25 +556,11 @@ fun DetailsExpressiveScreen(
 			}
 
 			if (galleryAvailable) {
-				var dragDistance by remember { mutableStateOf(0f) }
 				Surface(
 					modifier = Modifier
 						.align(Alignment.BottomCenter)
 						.padding(bottom = bottomContentPadding + 12.dp)
-						.pointerInput(gallerySelected) {
-							detectHorizontalDragGestures(
-								onDragStart = { dragDistance = 0f },
-								onHorizontalDrag = { change, amount ->
-									dragDistance += amount
-									change.consume()
-								},
-								onDragEnd = {
-									if (dragDistance > 60f) gallerySelected = true
-									if (dragDistance < -60f) gallerySelected = false
-									dragDistance = 0f
-								},
-							)
-						},
+
 					shape = RoundedCornerShape(24.dp),
 					color = scheme.surfaceContainerHigh,
 					shadowElevation = 6.dp,
