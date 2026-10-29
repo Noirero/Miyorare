@@ -38,4 +38,7 @@
 		android:id="@+id/action_smart_local_edit_authors"
 		android:title="@string/smart_local_edit_authors"
 		app:showAsAction="never" />
+	<item android:id="@+id/action_smart_local_create_group" android:title="@string/smart_local_create_group" app:showAsAction="never" />
+	<item android:id="@+id/action_smart_local_add_group" android:title="@string/smart_local_add_group" app:showAsAction="never" />
+	<item android:id="@+id/action_smart_local_ungroup" android:title="@string/smart_local_ungroup" app:showAsAction="never" />
 </menu>
