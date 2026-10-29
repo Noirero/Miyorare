@@ -43,4 +43,5 @@
     <string name="smart_local_delete_group">Hapus grup</string>
     <string name="smart_local_delete_group_message">Hapus grup virtual ini? Berkas tidak akan berubah.</string>
     <string name="smart_local_rename_group">Ganti nama grup</string>
+    <string name="smart_local_export_selected">Ekspor koleksi terpilih (ZIP)</string>
 </resources>
