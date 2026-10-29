@@ -30,4 +30,8 @@
 		android:id="@+id/action_smart_local_deselect"
 		android:title="@string/smart_local_deselect_all"
 		app:showAsAction="never" />
+	<item
+		android:id="@+id/action_smart_local_refresh_selected"
+		android:title="@string/smart_local_refresh_selected"
+		app:showAsAction="never" />
 </menu>
