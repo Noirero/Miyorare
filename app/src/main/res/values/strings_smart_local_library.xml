@@ -62,4 +62,6 @@
     </string-array>
     <item name="action_smart_local_info" type="id" />
     <item name="action_smart_local_restore" type="id" />
+    <string name="smart_local_bulk_delete_title">Manage %1$d selected collections</string>
+    <string name="smart_local_bulk_delete_warning">Delete files from %1$d selected collections? This cannot be undone. Other library entries may depend on these files.</string>
 </resources>
