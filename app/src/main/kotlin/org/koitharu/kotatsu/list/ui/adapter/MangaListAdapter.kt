@@ -41,7 +41,7 @@ open class MangaListAdapter(
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())
 		addDelegate(ListItemType.STATE_ERROR, errorStateListAD(listener))
 		addDelegate(ListItemType.FOOTER_ERROR, errorFooterAD(listener))
-		addDelegate(ListItemType.STATE_EMPTY, emptyStateListAD(listener))
+		addDelegate(ListItemType.STATE_EMPTY, emptyStateListAD(listener, localCinematic))
 		addDelegate(ListItemType.HEADER, listHeaderAD(listener))
 		addDelegate(ListItemType.SMART_LOCAL_PANEL, smartLocalPanelAD(listener))
 		addDelegate(ListItemType.SMART_LOCAL_RESUME, smartLocalResumeAD(listener))
