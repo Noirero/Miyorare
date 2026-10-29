@@ -83,7 +83,7 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 						val trackingEditor by viewModel.trackingEditor.collectAsState()
 						val knownTracking by viewModel.knownTracking.collectAsState()
 						val displayedDetails by produceState<TrackerCatalogDetails?>(
-							initialValue = state.details,
+							state.details,
 							state.details?.item?.key,
 							state.loading,
 						) {
