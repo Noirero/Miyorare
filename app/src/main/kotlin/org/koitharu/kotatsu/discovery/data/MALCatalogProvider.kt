@@ -37,6 +37,7 @@ class MALCatalogProvider(
 		CatalogCapability.STAFF,
 		CatalogCapability.RECOMMENDATIONS,
 		CatalogCapability.CHARACTERS,
+		CatalogCapability.CHARACTER_DETAILS,
 		CatalogCapability.RELATIONS,
 	)
 	private val sectionTypes = listOf(CatalogSectionType.TOP_RANKED, CatalogSectionType.POPULAR, CatalogSectionType.MOST_FAVORITED)
@@ -139,6 +140,9 @@ class MALCatalogProvider(
 			statistics = supplemental.statistics,
 		)
 	}
+
+	override suspend fun characterDetails(person: TrackerCatalogPerson): TrackerCatalogCharacterDetails =
+		loadMALCharacterDetails(http, person)
 
 	private fun url(path: String, adult: Boolean, page: Int, size: Int) = "https://api.myanimelist.net/v2/$path".toHttpUrl().newBuilder()
 		.addQueryParameter("limit", size.toString()).addQueryParameter("offset", ((page - 1) * size).toString())
