@@ -37,11 +37,11 @@ class MALCatalogSupplementalFallbackTest {
 				request.url.host == "api.jikan.moe" -> response(request, 503)
 				request.url.host == "jikan.lucashdo.com" && request.url.encodedPath.endsWith("/characters") -> response(
 					request,
-					body = """{"data":[{"character":{"malId":40,"images":{"large":"https://cdn.myanimelist.net/images/characters/40.jpg"},"name":"Monkey D. Luffy"},"role":"Main"},{"character":{"malId":62,"images":{"medium":"https://cdn.myanimelist.net/images/characters/62.jpg"},"name":"Roronoa Zoro"},"role":"Main"}]}""",
+					body = """{"data":[{"malId":40,"name":"Monkey D. Luffy","imageUrl":"https://cdn.myanimelist.net/images/characters/40.jpg","role":"Main","favorites":100,"voiceActors":[]},{"malId":62,"name":"Roronoa Zoro","imageUrl":"https://cdn.myanimelist.net/images/characters/62.jpg","role":"Main","favorites":90,"voiceActors":[]}]}""",
 				)
 				request.url.host == "jikan.lucashdo.com" && request.url.encodedPath.endsWith("/statistics") -> response(
 					request,
-					body = """{"data":{"reading":100,"completed":200,"onHold":30,"dropped":20,"planToRead":400,"total":750,"scores":[{"score":10,"votes":300,"percentage":50.0}]}}""",
+					body = """{"data":{"status":{"inProgress":100,"completed":200,"onHold":30,"dropped":20,"planned":400,"total":750},"scores":[{"score":10,"votes":300,"percentage":50.0}],"fetchedAt":"2026-10-29T00:00:00.000Z"}}""",
 				)
 				else -> response(
 					request,
@@ -57,6 +57,7 @@ class MALCatalogSupplementalFallbackTest {
 		assertEquals(listOf("Monkey D. Luffy", "Roronoa Zoro"), details.characters.map { it.name })
 		assertEquals("https://cdn.myanimelist.net/images/characters/40.jpg", details.characters.first().imageUrl)
 		assertEquals("Main", details.characters.first().roles.single())
+		assertEquals(100L, details.statistics?.reading)
 		assertEquals(30L, details.statistics?.onHold)
 		assertEquals(400L, details.statistics?.planToRead)
 		assertEquals(750L, details.statistics?.total)
