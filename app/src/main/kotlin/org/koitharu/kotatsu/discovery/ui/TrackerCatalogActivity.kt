@@ -40,6 +40,11 @@ import org.koitharu.kotatsu.scrobbling.common.ui.ScrobblerAuthHelper
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import javax.inject.Inject
 
+private data class ProgressiveSupplementalState<T>(
+	val data: T? = null,
+	val failed: Boolean = false,
+)
+
 @AndroidEntryPoint
 class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 	@Inject lateinit var imageLoader: ImageLoader
@@ -82,27 +87,43 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 						val tracking by viewModel.tracking.collectAsState()
 						val trackingEditor by viewModel.trackingEditor.collectAsState()
 						val knownTracking by viewModel.knownTracking.collectAsState()
-						val displayedDetails by produceState<TrackerCatalogDetails?>(
-							state.details,
-							state.details?.item?.key,
-							state.loading,
+						val malKey = state.details?.item?.key?.takeIf {
+							!state.loading && it.service == ScrobblerService.MAL
+						}
+						val progressiveCharacters by produceState(
+							initialValue = ProgressiveSupplementalState<List<TrackerCatalogPerson>>(),
+							key1 = malKey,
 						) {
-							val core = state.details
-							value = core
-							if (!state.loading && core?.item?.key?.service == ScrobblerService.MAL) {
-								try {
-									val supplemental = catalogRepository.malSupplemental(core.item.key)
-									value = core.copy(
-										characters = supplemental.characters,
-										statistics = supplemental.statistics,
-										partial = core.partial || supplemental.partial,
-									)
+							if (malKey != null) {
+								value = try {
+									ProgressiveSupplementalState(data = catalogRepository.malCharacters(malKey))
 								} catch (e: CancellationException) {
 									throw e
 								} catch (_: Exception) {
-									value = core.copy(partial = true)
+									ProgressiveSupplementalState(failed = true)
 								}
 							}
+						}
+						val progressiveStatistics by produceState(
+							initialValue = ProgressiveSupplementalState<TrackerCatalogStatistics>(),
+							key1 = malKey,
+						) {
+							if (malKey != null) {
+								value = try {
+									ProgressiveSupplementalState(data = catalogRepository.malStatistics(malKey))
+								} catch (e: CancellationException) {
+									throw e
+								} catch (_: Exception) {
+									ProgressiveSupplementalState(failed = true)
+								}
+							}
+						}
+						val displayedDetails = state.details?.let { core ->
+							if (malKey == null) core else core.copy(
+								characters = progressiveCharacters.data.orEmpty(),
+								statistics = progressiveStatistics.data,
+								partial = core.partial || progressiveCharacters.failed || progressiveStatistics.failed,
+							)
 						}
 						TrackerCatalogScreen(
 							state = state.copy(details = displayedDetails),
