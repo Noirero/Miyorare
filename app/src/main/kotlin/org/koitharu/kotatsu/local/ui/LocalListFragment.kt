@@ -90,8 +90,10 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 			scanProgressSnackbar = null
 			Snackbar.make(binding.recyclerView, if (complete) R.string.smart_local_scan_complete else R.string.smart_local_scan_attention, Snackbar.LENGTH_LONG).show()
 		}
-		viewModel.onMangaRemoved.observeEvent(viewLifecycleOwner) { count ->
-			Snackbar.make(binding.recyclerView, getString(R.string.smart_local_bulk_removed, count), Snackbar.LENGTH_LONG).show()
+		viewModel.bulkDeleteResults.observeEvent(viewLifecycleOwner) { result ->
+			val message = getString(R.string.smart_local_bulk_result,
+				result.requested, result.succeeded, result.failed)
+			Snackbar.make(binding.recyclerView, message, Snackbar.LENGTH_LONG).show()
 		}
 		viewModel.exclusions.observeEvent(viewLifecycleOwner) { exclusions ->
 			val entries = exclusions.entries.toList()
