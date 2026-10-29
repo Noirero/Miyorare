@@ -1,14 +1,8 @@
 package org.koitharu.kotatsu.discovery
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.test.assertDoesNotExist
-import androidx.compose.ui.test.assertExists
-import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollToNode
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
 import org.junit.After
@@ -39,7 +33,13 @@ class MALCatalogDetailsUiTest {
 	@Test
 	fun statisticsAreCollapsedByDefaultAndExpandOnDemand() {
 		compose.setContent {
-			MaterialTheme { CatalogSupplementalDetails(details(), loader) {} }
+			MaterialTheme {
+				CatalogSupplementalDetails(
+					details = details(),
+					imageLoader = loader,
+					onItem = {},
+				)
+			}
 		}
 
 		compose.onNodeWithTag("catalog_statistics").assertExists()
@@ -55,7 +55,13 @@ class MALCatalogDetailsUiTest {
 	@Test
 	fun MALCharactersPreviewTenAndViewAllExposesTheFullReturnedList() {
 		compose.setContent {
-			MaterialTheme { CatalogSupplementalDetails(details(), loader) {} }
+			MaterialTheme {
+				CatalogSupplementalDetails(
+					details = details(),
+					imageLoader = loader,
+					onItem = {},
+				)
+			}
 		}
 
 		compose.onNodeWithText("Character 11").assertDoesNotExist()
