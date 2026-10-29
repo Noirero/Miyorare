@@ -16,11 +16,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,6 +58,7 @@ internal fun CatalogSupplementalDetails(
 	imageLoader: ImageLoader,
 	onItem: (TrackerCatalogKey) -> Unit,
 ) {
+	var selectedCharacter by remember { mutableStateOf<TrackerCatalogPerson?>(null) }
 	Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		details.statistics?.let { CatalogStatisticsSection(it) }
 		if (details.characters.isNotEmpty()) {
@@ -65,6 +68,7 @@ internal fun CatalogSupplementalDetails(
 				imageLoader = imageLoader,
 				tag = "characters",
 				viewAll = details.item.key.service == ScrobblerService.MAL,
+				onPerson = { selectedCharacter = it },
 			)
 		}
 		if (details.staffPeople.isNotEmpty()) {
@@ -73,6 +77,14 @@ internal fun CatalogSupplementalDetails(
 		if (details.relatedWorks.isNotEmpty()) {
 			CatalogRelatedWorksLane(details.relatedWorks, imageLoader, onItem)
 		}
+	}
+	selectedCharacter?.let { person ->
+		CatalogCharacterDetailsSheet(
+			person = person,
+			workTitle = details.item.title,
+			imageLoader = imageLoader,
+			onDismiss = { selectedCharacter = null },
+		)
 	}
 }
 
@@ -110,11 +122,7 @@ private fun CatalogStatisticsSection(statistics: TrackerCatalogStatistics) {
 				statistics.planToRead?.let { CatalogStatisticRow(stringResource(R.string.hub_plan_to_read), formatCatalogPeopleCount(it)) }
 				statistics.total?.let { CatalogStatisticRow(stringResource(R.string.hub_total), formatCatalogPeopleCount(it)) }
 				if (statistics.scores.isNotEmpty()) {
-					Text(
-						stringResource(R.string.hub_score_distribution),
-						style = MaterialTheme.typography.labelLarge,
-						modifier = Modifier.padding(top = 4.dp),
-					)
+					Text(stringResource(R.string.hub_score_distribution), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
 					statistics.scores.forEach { score ->
 						val percentage = score.percentage?.let { String.format(Locale.getDefault(), "%.1f%%", it) }
 						CatalogStatisticRow(
@@ -143,6 +151,7 @@ private fun CatalogPeopleLane(
 	imageLoader: ImageLoader,
 	tag: String,
 	viewAll: Boolean = false,
+	onPerson: ((TrackerCatalogPerson) -> Unit)? = null,
 ) {
 	var expanded by rememberSaveable(tag, people.size) { mutableStateOf(false) }
 	val canExpand = viewAll && people.size > MAL_CHARACTER_PREVIEW_COUNT
@@ -165,21 +174,28 @@ private fun CatalogPeopleLane(
 			horizontalArrangement = Arrangement.spacedBy(12.dp),
 		) {
 			items(visiblePeople, key = { person -> "${person.id}:${person.name}:${person.roles.joinToString()}" }) { person ->
-				CatalogPersonCard(person, imageLoader)
+				CatalogPersonCard(person, imageLoader, tag, onPerson?.let { handler -> { handler(person) } })
 			}
 		}
 	}
 }
 
 @Composable
-private fun CatalogPersonCard(person: TrackerCatalogPerson, imageLoader: ImageLoader) {
+private fun CatalogPersonCard(
+	person: TrackerCatalogPerson,
+	imageLoader: ImageLoader,
+	tag: String,
+	onClick: (() -> Unit)? = null,
+) {
 	val uriHandler = LocalUriHandler.current
 	val providerUrl = safeCatalogHttps(person.providerUrl)
 	val image = safeCatalogHttps(person.imageUrl)
-	val cardModifier = Modifier.width(112.dp).let { base ->
-		if (providerUrl == null) base else base.clickable { runCatching { uriHandler.openUri(providerUrl) } }
-	}
-	Column(cardModifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+	val click = onClick ?: providerUrl?.let { url -> { runCatching { uriHandler.openUri(url) }; Unit } }
+	val cardModifier = Modifier.width(112.dp).let { base -> if (click == null) base else base.clickable(onClick = click) }
+	Column(
+		cardModifier.testTag("catalog_${tag}_person_${person.id ?: person.name}"),
+		verticalArrangement = Arrangement.spacedBy(6.dp),
+	) {
 		val imageModifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(16.dp))
 		if (image != null) {
 			AsyncImage(
@@ -187,8 +203,7 @@ private fun CatalogPersonCard(person: TrackerCatalogPerson, imageLoader: ImageLo
 				imageLoader = imageLoader,
 				contentDescription = null,
 				contentScale = ContentScale.Crop,
-				modifier = imageModifier.background(MaterialTheme.colorScheme.surfaceContainerHighest)
-					.testTag("catalog_person_image"),
+				modifier = imageModifier.background(MaterialTheme.colorScheme.surfaceContainerHighest).testTag("catalog_person_image"),
 			)
 		} else {
 			Box(
@@ -212,6 +227,55 @@ private fun CatalogPersonCard(person: TrackerCatalogPerson, imageLoader: ImageLo
 }
 
 @Composable
+private fun CatalogCharacterDetailsSheet(
+	person: TrackerCatalogPerson,
+	workTitle: String,
+	imageLoader: ImageLoader,
+	onDismiss: () -> Unit,
+) {
+	val uriHandler = LocalUriHandler.current
+	val image = safeCatalogHttps(person.imageUrl)
+	val providerUrl = safeCatalogHttps(person.providerUrl)
+	ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("catalog_character_details")) {
+		Column(
+			modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+			horizontalAlignment = Alignment.CenterHorizontally,
+			verticalArrangement = Arrangement.spacedBy(12.dp),
+		) {
+			Text(stringResource(R.string.hub_character_details), style = MaterialTheme.typography.titleMedium)
+			val portrait = Modifier.width(180.dp).height(240.dp).clip(RoundedCornerShape(20.dp))
+			if (image != null) {
+				AsyncImage(
+					model = image,
+					imageLoader = imageLoader,
+					contentDescription = person.name,
+					contentScale = ContentScale.Crop,
+					modifier = portrait.background(MaterialTheme.colorScheme.surfaceContainerHighest),
+				)
+			} else {
+				Box(portrait.background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
+					Text(person.name.take(1), style = MaterialTheme.typography.displaySmall)
+				}
+			}
+			Text(person.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+			if (person.roles.isNotEmpty()) {
+				CatalogStatisticRow(stringResource(R.string.hub_character_role), person.roles.joinToString(" · "))
+			}
+			CatalogStatisticRow(stringResource(R.string.hub_appears_in), workTitle)
+			providerUrl?.let { url ->
+				TextButton(
+					onClick = { runCatching { uriHandler.openUri(url) } },
+					modifier = Modifier.heightIn(min = 48.dp).testTag("catalog_character_open_provider"),
+				) {
+					Text(stringResource(R.string.hub_open_character_page))
+				}
+			}
+			Box(Modifier.height(8.dp))
+		}
+	}
+}
+
+@Composable
 private fun CatalogRelatedWorksLane(
 	items: List<TrackerCatalogRelatedWork>,
 	imageLoader: ImageLoader,
@@ -219,10 +283,7 @@ private fun CatalogRelatedWorksLane(
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("catalog_related_works")) {
 		Text(stringResource(R.string.hub_related_works), style = MaterialTheme.typography.titleMedium)
-		LazyRow(
-			contentPadding = PaddingValues(end = 8.dp),
-			horizontalArrangement = Arrangement.spacedBy(12.dp),
-		) {
+		LazyRow(contentPadding = PaddingValues(end = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 			items(items, key = { work -> "${work.service}:${work.mediaKind}:${work.remoteId}:${work.relation}" }) { work ->
 				CatalogRelatedWorkCard(work, imageLoader, onItem)
 			}
@@ -241,28 +302,17 @@ private fun CatalogRelatedWorkCard(
 	val providerUrl = safeCatalogHttps(work.providerUrl)
 	val relation = catalogRelationLabel(work)
 	val media = catalogRelatedMediaName(work.mediaKind)
-	val format = work.format?.replace('_', ' ')?.trim()?.takeIf { value ->
-		value.isNotEmpty() && !value.equals(media, ignoreCase = true)
-	}
+	val format = work.format?.replace('_', ' ')?.trim()?.takeIf { value -> value.isNotEmpty() && !value.equals(media, ignoreCase = true) }
 	val details = listOfNotNull(media, format).joinToString(" · ")
 	val click = work.catalogKey?.let { key -> { onItem(key) } }
 		?: providerUrl?.let { url -> { runCatching { uriHandler.openUri(url) }; Unit } }
 	val modifier = Modifier.width(128.dp).let { base -> if (click == null) base else base.clickable(onClick = click) }
 	Column(modifier.testTag("catalog_related_${work.service}_${work.remoteId}"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-		val cover = Modifier.fillMaxWidth().height(176.dp).clip(RoundedCornerShape(16.dp))
-			.background(MaterialTheme.colorScheme.surfaceContainerHighest)
+		val cover = Modifier.fillMaxWidth().height(176.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest)
 		if (image != null) {
-			AsyncImage(
-				model = image,
-				imageLoader = imageLoader,
-				contentDescription = null,
-				contentScale = ContentScale.Crop,
-				modifier = cover,
-			)
+			AsyncImage(model = image, imageLoader = imageLoader, contentDescription = null, contentScale = ContentScale.Crop, modifier = cover)
 		} else {
-			Box(cover, contentAlignment = Alignment.Center) {
-				Text(work.title.take(1), style = MaterialTheme.typography.headlineMedium)
-			}
+			Box(cover, contentAlignment = Alignment.Center) { Text(work.title.take(1), style = MaterialTheme.typography.headlineMedium) }
 		}
 		Text(relation, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
 		Text(work.title, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -300,7 +350,5 @@ private fun catalogRelatedMediaName(kind: CatalogRelatedMediaKind): String = whe
 private fun formatCatalogPeopleCount(value: Long): String = NumberFormat.getIntegerInstance(Locale.getDefault()).format(value)
 
 private fun safeCatalogHttps(value: String?): String? = value?.let {
-	runCatching { URI(it) }.getOrNull()?.takeIf { uri ->
-		uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null
-	}?.toString()
+	runCatching { URI(it) }.getOrNull()?.takeIf { uri -> uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null }?.toString()
 }
