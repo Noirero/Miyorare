@@ -31,8 +31,10 @@ open class MangaListAdapter(
 		} else {
 			null
 		}
-		addDelegate(ListItemType.MANGA_LIST, mangaListItemAD(listener, titleClickListener, coverContext, localCinematic))
-		addDelegate(ListItemType.MANGA_LIST_DETAILED, mangaListDetailedItemAD(listener, titleClickListener, coverContext, localCinematic))
+		addDelegate(ListItemType.MANGA_LIST, if (localCinematic) mangaListItemAD(listener, titleClickListener, coverContext, localCinematic = true)
+			else mangaListItemAD(listener, titleClickListener, coverContext))
+		addDelegate(ListItemType.MANGA_LIST_DETAILED, if (localCinematic) mangaListDetailedItemAD(listener, titleClickListener, coverContext, localCinematic = true)
+			else mangaListDetailedItemAD(listener, titleClickListener, coverContext))
 		addDelegate(
 			ListItemType.MANGA_GRID,
 			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider, coverContext, localCinematic),
