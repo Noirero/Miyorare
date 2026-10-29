@@ -34,4 +34,8 @@
 		android:id="@+id/action_smart_local_refresh_selected"
 		android:title="@string/smart_local_refresh_selected"
 		app:showAsAction="never" />
+	<item
+		android:id="@+id/action_smart_local_edit_authors"
+		android:title="@string/smart_local_edit_authors"
+		app:showAsAction="never" />
 </menu>
