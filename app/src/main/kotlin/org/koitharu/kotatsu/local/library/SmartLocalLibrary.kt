@@ -125,6 +125,7 @@ class SmartLocalLibrary @Inject constructor(
             val previous = state.value
             val previousByKey = previous.books.associateBy { it.node.key }
             val exclusions = readExclusions().keys
+            val authorOverrides = JSONObject(prefs.getString("author_overrides", "{}").orEmpty())
             val confirmed = prefs.getStringSet("confirmed", emptySet()).orEmpty().toSet()
             val activeRoots = previous.roots.filter { selectedRoots == null || it.uri in selectedRoots }
             val books = LinkedHashMap<String, LocalBook>()
@@ -162,7 +163,8 @@ class SmartLocalLibrary @Inject constructor(
                         metadata.firstNotNullOfOrNull { it.description } ?: old?.description, explicitCover ?: metadataCover ?: chapters.firstOrNull()?.pages?.firstOrNull()?.uri,
                         entry.ignored, old?.addedAt ?: System.currentTimeMillis(), System.currentTimeMillis(),
                         pendingLocalDiscoveries(old?.newChapters ?: 0, discovered, chapters.size))
-                    books.putIfAbsent(book.node.key, book)
+                    val override = authorOverrides.optString(book.node.key).takeIf { authorOverrides.has(book.node.key) }
+                    books.putIfAbsent(book.node.key, if (override != null) book.copy(authors = override.split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() }) else book)
                 }
                 scanned.issues.forEach { diagnoses += LocalDiagnosis(root.uri, it.node, it.reason, it.candidates) }
             }
@@ -199,6 +201,27 @@ class SmartLocalLibrary @Inject constructor(
             targets.forEach { exclusions[it.node.key] = it.node.name }
             saveExclusions(exclusions)
             publishLocked(state.value.copy(books = state.value.books.filterNot { it.id in ids }, excludedCount = exclusions.size))
+        }
+        mutableChanges.emit(Unit)
+    }
+
+    /** Bulk author override is kept separate from scanner metadata so rescans preserve user edits. */
+    suspend fun setAuthors(ids: Set<Long>, authors: Set<String>) = withContext(Dispatchers.IO) {
+        initialize()
+        mutex.withLock {
+            val selected = state.value.books.filter { it.id in ids }
+            if (selected.isEmpty()) return@withLock
+            val overrides = JSONObject(prefs.getString("author_overrides", "{}").orEmpty())
+            val encoded = authors.joinToString(",")
+            selected.forEach { overrides.put(it.node.key, encoded) }
+            check(prefs.edit().putString("author_overrides", overrides.toString()).commit())
+            val updated = state.value.books.map { if (it.id in ids) it.copy(authors = authors) else it }
+            db.withTransaction {
+                for (book in updated.filter { it.id in ids }) {
+                    dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
+                }
+            }
+            publishLocked(state.value.copy(books = updated))
         }
         mutableChanges.emit(Unit)
     }
