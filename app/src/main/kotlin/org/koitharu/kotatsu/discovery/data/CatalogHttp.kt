@@ -47,7 +47,7 @@ class CatalogHttp @Inject constructor(@BaseHttpClient base: OkHttpClient) {
 		val url = request.url
 		val hosts = when (service) {
 			ScrobblerService.ANILIST -> setOf("graphql.anilist.co")
-			ScrobblerService.MAL -> setOf("api.myanimelist.net", "api.jikan.moe", "api.tenrai.org")
+			ScrobblerService.MAL -> setOf("api.myanimelist.net", "api.jikan.moe", "jikan.lucashdo.com")
 			ScrobblerService.KITSU -> setOf("kitsu.app")
 			ScrobblerService.MANGABAKA -> setOf("api.mangabaka.org")
 			else -> throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
