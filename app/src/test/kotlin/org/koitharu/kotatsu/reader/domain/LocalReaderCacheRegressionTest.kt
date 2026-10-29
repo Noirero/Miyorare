@@ -23,6 +23,12 @@ class LocalReaderCacheRegressionTest {
         assertTrue(metadata.contains("withContext(NonCancellable) { releaseMaterialized(file) }"))
     }
 
+    @Test fun temporaryEpubArchivesAreReleased() {
+        val reader = source("local/library/LocalContentReader.kt")
+        val epub = reader.substringAfter("suspend fun epubHtml(").substringBefore("internal open suspend fun cover(")
+        assertTrue(epub.split("releaseMaterialized(file)").size >= 3)
+    }
+
     @Test fun pdfRenderCacheHasBudgetAndProtectsRecentPages() {
         val pdf = source("local/data/input/LocalPdfCache.kt")
         assertTrue(pdf.contains("PDF_CACHE_BUDGET_BYTES = 64L * 1024 * 1024"))
