@@ -1,6 +1,9 @@
 package org.koitharu.kotatsu.local.ui
 
 import android.os.Bundle
+import android.content.Intent
+import androidx.core.content.FileProvider
+import org.koitharu.kotatsu.BuildConfig
 import android.widget.EditText
 import androidx.core.content.ContextCompat
 import android.view.Menu
@@ -68,6 +71,18 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		viewModel.coverCacheReport.observeEvent(viewLifecycleOwner) { showCoverCache(it) }
 		viewModel.coverCacheCleared.observeEvent(viewLifecycleOwner) {
 			Snackbar.make(binding.recyclerView, R.string.smart_local_cover_cache_cleared, Snackbar.LENGTH_SHORT).show()
+		}
+		viewModel.exportedArchives.observeEvent(viewLifecycleOwner) { files ->
+			if (files.isNotEmpty()) {
+				val uris = ArrayList(files.map { FileProvider.getUriForFile(requireContext(), "${BuildConfig.APPLICATION_ID}.files", it) })
+				val intent = Intent(if (uris.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
+					type = "application/zip"
+					addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+					if (uris.size == 1) putExtra(Intent.EXTRA_STREAM, uris.single())
+					else putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+				}
+				startActivity(Intent.createChooser(intent, getString(R.string.smart_local_export_selected)))
+			}
 		}
 		viewModel.resumeIntent.observeEvent(viewLifecycleOwner) { router.openReader(it) }
 		viewModel.scanCompleted.observeEvent(viewLifecycleOwner) { complete ->
@@ -140,6 +155,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		R.id.action_smart_local_create_group -> { showCreateGroup(controller.snapshot(), mode); true }
 		R.id.action_smart_local_add_group -> { showAddGroup(controller.snapshot(), mode); true }
 		R.id.action_smart_local_ungroup -> { viewModel.ungroup(controller.snapshot()); mode?.finish(); true }
+		R.id.action_smart_local_export -> { viewModel.exportSelected(controller.snapshot()); mode?.finish(); true }
 		R.id.action_smart_local_info -> {
 			viewModel.library.state.value.books.firstOrNull { it.id in selectedItemsIds }?.let(::showInformation)
 			true
