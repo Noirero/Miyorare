@@ -281,7 +281,6 @@ fun DetailsExpressiveScreen(
 				LocalChapterGallery(
 					chapters = chapters,
 					mangaTitle = manga?.title.orEmpty(),
-					imageLoader = imageLoader,
 					topPadding = topInset,
 					bottomPadding = bottomContentPadding,
 					coverForChapter = coverForChapter,
