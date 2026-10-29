@@ -13,4 +13,8 @@
     <string name="hub_score_value">%1$d/10</string>
     <string name="hub_view_all">View all</string>
     <string name="hub_show_less">Show less</string>
+    <string name="hub_character_details">Character details</string>
+    <string name="hub_character_role">Role</string>
+    <string name="hub_appears_in">Appears in</string>
+    <string name="hub_open_character_page">Open character page</string>
 </resources>
