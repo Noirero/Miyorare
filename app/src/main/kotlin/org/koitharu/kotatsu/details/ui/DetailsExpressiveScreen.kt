@@ -560,8 +560,7 @@ fun DetailsExpressiveScreen(
 				Surface(
 					modifier = Modifier
 						.align(Alignment.BottomCenter)
-						.padding(bottom = bottomContentPadding + 12.dp)
-
+						.padding(bottom = bottomContentPadding + 12.dp),
 					shape = RoundedCornerShape(24.dp),
 					color = scheme.surfaceContainerHigh,
 					shadowElevation = 6.dp,
