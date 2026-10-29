@@ -66,4 +66,5 @@
     <string name="smart_local_bulk_delete_warning">Delete files from %1$d selected collections? This cannot be undone. Other library entries may depend on these files.</string>
     <string name="smart_local_bulk_removed">Processed %1$d selected collections</string>
     <string name="smart_local_deselect_all">Deselect all</string>
+    <string name="smart_local_refresh_selected">Refresh selected collections</string>
 </resources>
