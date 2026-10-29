@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
@@ -18,6 +19,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import coil3.ImageLoader
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
@@ -31,11 +33,17 @@ import org.koitharu.kotatsu.core.ui.miyorareViewPalette
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.databinding.ActivityTrackerCatalogBinding
+import org.koitharu.kotatsu.discovery.data.TrackerCatalogRepository
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.ui.ScrobblerAuthHelper
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import javax.inject.Inject
+
+private data class ProgressiveSupplementalState<T>(
+	val data: T? = null,
+	val failed: Boolean = false,
+)
 
 @AndroidEntryPoint
 class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
@@ -43,6 +51,7 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 	@Inject lateinit var settings: AppSettings
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
 	@Inject lateinit var scrobblerAuthHelper: ScrobblerAuthHelper
+	@Inject lateinit var catalogRepository: TrackerCatalogRepository
 
 	private val viewModel by viewModels<TrackerCatalogViewModel>()
 	private val mangaBakaSeeAllViewModel by viewModels<MangaBakaSeeAllViewModel>()
@@ -78,8 +87,46 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 						val tracking by viewModel.tracking.collectAsState()
 						val trackingEditor by viewModel.trackingEditor.collectAsState()
 						val knownTracking by viewModel.knownTracking.collectAsState()
+						val malKey = state.details?.item?.key?.takeIf {
+							!state.loading && it.service == ScrobblerService.MAL
+						}
+						val progressiveCharacters by produceState(
+							initialValue = ProgressiveSupplementalState<List<TrackerCatalogPerson>>(),
+							key1 = malKey,
+						) {
+							if (malKey != null) {
+								value = try {
+									ProgressiveSupplementalState(data = catalogRepository.malCharacters(malKey))
+								} catch (e: CancellationException) {
+									throw e
+								} catch (_: Exception) {
+									ProgressiveSupplementalState(failed = true)
+								}
+							}
+						}
+						val progressiveStatistics by produceState(
+							initialValue = ProgressiveSupplementalState<TrackerCatalogStatistics>(),
+							key1 = malKey,
+						) {
+							if (malKey != null) {
+								value = try {
+									ProgressiveSupplementalState(data = catalogRepository.malStatistics(malKey))
+								} catch (e: CancellationException) {
+									throw e
+								} catch (_: Exception) {
+									ProgressiveSupplementalState(failed = true)
+								}
+							}
+						}
+						val displayedDetails = state.details?.let { core ->
+							if (malKey == null) core else core.copy(
+								characters = progressiveCharacters.data.orEmpty(),
+								statistics = progressiveStatistics.data,
+								partial = core.partial || progressiveCharacters.failed || progressiveStatistics.failed,
+							)
+						}
 						TrackerCatalogScreen(
-							state = state,
+							state = state.copy(details = displayedDetails),
 							section = viewModel.section,
 							imageLoader = imageLoader,
 							onBack = { onBackPressedDispatcher.onBackPressed() },
@@ -185,10 +232,7 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 		fun mangaBakaExploreIntent(context: Context, type: MangaBakaExploreType): Intent =
 			Intent(context, TrackerCatalogActivity::class.java)
 				.putExtra(MangaBakaSeeAllArguments.MODE, MangaBakaSeeAllMode.EXPLORE.name)
-				.putExtra(
-					MangaBakaSeeAllArguments.FILTER,
-					(if (type == MangaBakaExploreType.NOVEL) CatalogFilter.NOVEL else CatalogFilter.MANGA).name,
-				)
+				.putExtra(MangaBakaSeeAllArguments.FILTER, (if (type == MangaBakaExploreType.NOVEL) CatalogFilter.NOVEL else CatalogFilter.MANGA).name)
 				.putExtra(MangaBakaSeeAllArguments.TYPE, type.name)
 	}
 }
