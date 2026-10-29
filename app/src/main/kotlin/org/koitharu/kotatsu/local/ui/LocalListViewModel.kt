@@ -161,6 +161,15 @@ class LocalListViewModel @Inject constructor(
 	fun restore(key: String) { launchLoadingJob(Dispatchers.IO) { library.restore(key) } }
 	fun acknowledgeDiscoveries(ids: Set<Long>) { launchJob(Dispatchers.IO) { library.acknowledgeDiscoveries(ids) } }
 
+	fun updateAuthors(ids: Set<Long>, input: String) {
+		if (ids.isEmpty()) return
+		val authors = input.split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() }
+		launchLoadingJob(Dispatchers.IO) {
+			library.setAuthors(ids, authors)
+			revision.value++
+		}
+	}
+
 	fun delete(ids: Set<Long>, fromDevice: Boolean) {
 		launchLoadingJob(Dispatchers.IO) {
 			val managed = library.state.value.books.filter { it.id in ids }.mapTo(HashSet()) { it.id }
