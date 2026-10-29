@@ -32,6 +32,8 @@ import org.koitharu.kotatsu.core.util.ext.toZipUri
 import org.koitharu.kotatsu.local.data.input.EpubParser
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -360,6 +362,59 @@ class SmartLocalLibrary @Inject constructor(
             throw error
         }
         mutableChanges.emit(Unit)
+    }
+
+    /** Shareable, non-destructive ZIP exports. Never expose the original SAF grant to another app. */
+    suspend fun exportSelected(ids: Set<Long>): List<File> = withContext(Dispatchers.IO) {
+        initialize()
+        val selected = state.value.books.filter { it.id in ids }
+        require(selected.isNotEmpty()) { "No collections selected" }
+        val directory = File(context.cacheDir, "smart-local-exports").apply { mkdirs() }
+        val exported = ArrayList<File>()
+        try {
+            for (book in selected) {
+                currentCoroutineContext().ensureActive()
+                val root = documents.root(book.rootUri)
+                val output = File.createTempFile("local-", ".zip", directory)
+                try {
+                    var bytes = 0L
+                    val entries = (book.chapters.flatMap { chapter ->
+                        if (chapter.node.directory) chapter.pages.map { chapter.node.name to it }
+                        else listOf("chapters" to chapter.node)
+                    } + book.sidecars.map { "metadata" to it }).distinctBy { it.second.key }
+                    ZipOutputStream(output.outputStream().buffered()).use { zip ->
+                        for ((index, item) in entries.withIndex()) {
+                            val (folder, node) = item
+                            currentCoroutineContext().ensureActive()
+                            check(!node.directory && documents.contains(root, node)) { "Export source is outside selected root" }
+                            val safeFolder = folder.replace(Regex("[^a-zA-Z0-9._ -]"), "_").take(60).ifBlank { "files" }
+                            val safeName = node.name.replace(Regex("[^a-zA-Z0-9._ -]"), "_").take(100).ifBlank { "file" }
+                            zip.putNextEntry(ZipEntry("$safeFolder/$index-$safeName"))
+                            documents.input(node).use { input ->
+                                val buffer = ByteArray(32 * 1024)
+                                while (true) {
+                                    currentCoroutineContext().ensureActive()
+                                    val read = input.read(buffer)
+                                    if (read < 0) break
+                                    bytes += read
+                                    check(bytes <= 1024L * 1024 * 1024) { "Export exceeds 1 GiB safety limit" }
+                                    zip.write(buffer, 0, read)
+                                }
+                            }
+                            zip.closeEntry()
+                        }
+                    }
+                    exported += output
+                } catch (error: Exception) {
+                    output.delete()
+                    throw error
+                }
+            }
+            exported.toList()
+        } catch (error: Exception) {
+            exported.forEach { it.delete() }
+            throw error
+        }
     }
 
     suspend fun deleteChapters(mangaId: Long, ids: Set<Long>) = withContext(Dispatchers.IO) {
