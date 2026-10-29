@@ -105,6 +105,40 @@ data class TrackerCatalogRelatedWork(
 		}
 }
 
+data class TrackerCatalogCharacterWork(
+	val service: ScrobblerService,
+	val remoteId: String,
+	val title: String,
+	val coverUrl: String? = null,
+	val providerUrl: String? = null,
+	val mediaKind: CatalogRelatedMediaKind,
+	val role: String? = null,
+) {
+	init {
+		require(remoteId.toLongOrNull()?.let { it > 0 && it.toString() == remoteId } == true)
+		require(title.isNotBlank())
+	}
+
+	val catalogKey: TrackerCatalogKey?
+		get() = when (mediaKind) {
+			CatalogRelatedMediaKind.MANGA -> TrackerCatalogKey(service, CatalogMediaKind.MANGA, remoteId)
+			CatalogRelatedMediaKind.NOVEL -> TrackerCatalogKey(service, CatalogMediaKind.NOVEL, remoteId)
+			CatalogRelatedMediaKind.ANIME, CatalogRelatedMediaKind.OTHER -> null
+		}
+}
+
+data class TrackerCatalogCharacterDetails(
+	val person: TrackerCatalogPerson,
+	val nativeName: String? = null,
+	val nicknames: List<String> = emptyList(),
+	val about: String? = null,
+	val favorites: Long? = null,
+	val voices: List<TrackerCatalogPerson> = emptyList(),
+	val works: List<TrackerCatalogCharacterWork> = emptyList(),
+) {
+	init { require(favorites == null || favorites >= 0L) }
+}
+
 enum class CatalogSectionType {
 	RECENT,
 	TRENDING,
@@ -180,7 +214,7 @@ data class TrackerCatalogDetails(
 )
 
 enum class CatalogCapability {
-	HOME, SEARCH, DETAILS, SECTION_PAGING, MANGA, NOVEL, STAFF, RECOMMENDATIONS, CHARACTERS, RELATIONS,
+	HOME, SEARCH, DETAILS, SECTION_PAGING, MANGA, NOVEL, STAFF, RECOMMENDATIONS, CHARACTERS, CHARACTER_DETAILS, RELATIONS,
 }
 enum class CatalogFailureKind { OFFLINE, RATE_LIMITED, PROVIDER, INVALID_DATA, UNSUPPORTED }
 data class CatalogFailure(val kind: CatalogFailureKind, val retryAt: Long? = null)
@@ -200,6 +234,8 @@ interface TrackerCatalogProvider {
 	suspend fun search(query: String, filter: CatalogFilter, allowAdult: Boolean, page: Int): TrackerCatalogPage
 	suspend fun details(key: TrackerCatalogKey, allowAdult: Boolean): TrackerCatalogDetails
 	suspend fun browseSection(key: CatalogSectionKey, allowAdult: Boolean, page: Int): TrackerCatalogPage
+	suspend fun characterDetails(person: TrackerCatalogPerson): TrackerCatalogCharacterDetails =
+		throw CatalogException(CatalogFailure(CatalogFailureKind.UNSUPPORTED))
 }
 
 data class CatalogHomeRequest(val service: ScrobblerService, val filter: CatalogFilter, val allowAdult: Boolean)
