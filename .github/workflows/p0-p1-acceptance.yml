@@ -99,7 +99,7 @@ jobs:
           name: p0-p1-jvm-acceptance
           path: app/build/reports/tests/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
 
   android-acceptance:
     name: P0/P1 Android 15 acceptance
@@ -198,7 +198,7 @@ jobs:
             app/build/outputs/androidTest-results/connected/
             app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
 
 
   # Expensive final-only visual verification. During UI editing this job stays dormant:
@@ -282,4 +282,4 @@ jobs:
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
