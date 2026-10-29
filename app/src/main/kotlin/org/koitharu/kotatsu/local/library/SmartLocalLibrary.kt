@@ -219,12 +219,22 @@ class SmartLocalLibrary @Inject constructor(
         initialize()
         try { mutex.withLock {
             val targets = state.value.books.filter { it.id in ids }
+            // Calculate ownership once for the complete batch, including selected books.
+            // A shared file must never be removed while another indexed book refers to it.
+            val ownership = HashMap<String, Int>()
+            for (indexedBook in state.value.books) {
+                val ownedKeys = (indexedBook.chapters.flatMap { c -> c.pages + c.node } + indexedBook.sidecars)
+                    .mapTo(HashSet()) { it.key }
+                for (key in ownedKeys) ownership[key] = (ownership[key] ?: 0) + 1
+            }
             for (book in targets) {
                 val root = documents.root(book.rootUri)
                 val files = (book.chapters.flatMap { c -> if (c.node.directory) c.pages else listOf(c.node) } + book.sidecars).distinctBy { it.key }
-                val otherOwned = state.value.books.filter { it.id != book.id }
-                    .flatMap { b -> b.chapters.flatMap { c -> c.pages + c.node } + b.sidecars }.mapTo(HashSet()) { it.key }
-                check(files.none { it.key in otherOwned }) { "A document belongs to another manga" }
+                val ownKeys = (book.chapters.flatMap { c -> c.pages + c.node } + book.sidecars)
+                    .mapTo(HashSet()) { it.key }
+                check(files.none { (ownership[it.key] ?: 0) > (if (it.key in ownKeys) 1 else 0) }) {
+                    "A document belongs to another manga"
+                }
                 files.forEach { node ->
                     currentCoroutineContext().ensureActive()
                     check(!node.directory && node.key != root.key && documents.contains(root, node)) { "Unsafe deletion target" }
