@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.local.ui
 
 import android.os.Bundle
+import androidx.core.content.ContextCompat
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
@@ -43,6 +44,8 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
+		// On-device-only surface: no global theme or shared list style is modified.
+		binding.recyclerView.setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.smart_local_ink))
 		addMenuProvider(
 			LocalListMenuProvider(
 				onImportClick = ::addFolder,
