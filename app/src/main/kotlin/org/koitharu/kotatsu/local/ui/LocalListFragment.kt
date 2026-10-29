@@ -21,6 +21,8 @@ import org.koitharu.kotatsu.core.util.ext.tryLaunch
 import org.koitharu.kotatsu.databinding.FragmentListBinding
 import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.list.ui.MangaListFragment
+import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
+import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.local.library.*
 import org.koitharu.kotatsu.remotelist.ui.RemoteListFragment
@@ -28,6 +30,12 @@ import org.koitharu.kotatsu.remotelist.ui.RemoteListFragment
 class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	override val viewModel by viewModels<LocalListViewModel>()
 	override val filterCoordinator get() = viewModel.filterCoordinator
+	override fun onCreateAdapter() = MangaListAdapter(
+		listener = this,
+		coverContext = coverContext,
+		sizeResolver = DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false),
+		localCinematic = true,
+	)
 	private var scanProgressSnackbar: Snackbar? = null
 	private val folderPicker = OpenDocumentTreeHelper(this) { uri ->
 		uri?.let {
