@@ -107,6 +107,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		when (val action = item.payload) {
 			LocalLibraryAction.ContinueAll -> viewModel.showAllContinueReading()
 			LocalLibraryAction.Restore -> viewModel.requestExclusions()
+			LocalLibraryAction.Groups -> showGroups()
 			is LocalLibraryAction.Acknowledge -> viewModel.acknowledgeDiscoveries(action.ids)
 			is LocalLibraryAction.Diagnosis -> showDiagnosis(action.issue)
 			is List<*> -> {
@@ -136,6 +137,9 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		R.id.action_smart_local_deselect -> { controller.clear(); true }
 		R.id.action_smart_local_refresh_selected -> { viewModel.refreshSelected(controller.snapshot()); mode?.finish(); true }
 		R.id.action_smart_local_edit_authors -> { showBulkAuthorEditor(controller.snapshot(), mode); true }
+		R.id.action_smart_local_create_group -> { showCreateGroup(controller.snapshot(), mode); true }
+		R.id.action_smart_local_add_group -> { showAddGroup(controller.snapshot(), mode); true }
+		R.id.action_smart_local_ungroup -> { viewModel.ungroup(controller.snapshot()); mode?.finish(); true }
 		R.id.action_smart_local_info -> {
 			viewModel.library.state.value.books.firstOrNull { it.id in selectedItemsIds }?.let(::showInformation)
 			true
@@ -163,6 +167,45 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 					.setTitle(R.string.smart_local_detach).setMessage(R.string.smart_local_detach_message)
 					.setPositiveButton(R.string.smart_local_detach) { _, _ -> viewModel.removeFolder(root.uri) }
 					.setNegativeButton(android.R.string.cancel, null).show()
+			}.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
+	private fun showCreateGroup(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
+		val input = EditText(requireContext()).apply { hint = getString(R.string.smart_local_group_name); setSingleLine(true) }
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+			.setTitle(R.string.smart_local_create_group).setView(input)
+			.setPositiveButton(android.R.string.ok) { _, _ ->
+				val name = input.text.toString().trim()
+				if (name.isNotEmpty() && name.length <= 80) { viewModel.createGroup(name, ids); mode?.finish() }
+			}.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
+	private fun showAddGroup(ids: Set<Long>, mode: ActionMode?) {
+		val groups = viewModel.library.groups().keys.sorted()
+		if (groups.isEmpty()) { showCreateGroup(ids, mode); return }
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+			.setTitle(R.string.smart_local_add_group).setItems(groups.toTypedArray()) { _, index ->
+				viewModel.addToGroup(groups[index], ids); mode?.finish()
+			}.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
+	private fun showGroups() {
+		val groups = viewModel.library.groups()
+		val names = groups.keys.sorted()
+		val labels = arrayOf(getString(R.string.smart_local_all_groups)) + names.map { it + " (" + (groups[it]?.size ?: 0) + ")" }
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+			.setTitle(R.string.smart_local_manage_groups).setItems(labels.toTypedArray()) { _, index ->
+				if (index == 0) viewModel.setGroupFilter(null) else {
+					val name = names[index - 1]
+					MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+						.setTitle(name).setItems(arrayOf(getString(R.string.smart_local_show_group), getString(R.string.smart_local_delete_group))) { _, choice ->
+							if (choice == 0) viewModel.setGroupFilter(name) else MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+								.setTitle(R.string.smart_local_delete_group).setMessage(R.string.smart_local_delete_group_message)
+								.setPositiveButton(android.R.string.ok) { _, _ -> viewModel.deleteGroup(name) }
+								.setNegativeButton(android.R.string.cancel, null).show()
+						}.setNegativeButton(android.R.string.cancel, null).show()
+				}
 			}.setNegativeButton(android.R.string.cancel, null).show()
 	}
 
