@@ -1,0 +1,96 @@
+name: Miyori Diagnostics
+
+# Manual-only identity/capability diagnostic. This is not a CI gate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_number:
+        description: 'Issue or pull request number that should receive the diagnostic comment'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: miyori-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify Miyori Bot identity and comment capability
+    runs-on: ubuntu-latest
+    env:
+      TARGET_NUMBER: ${{ inputs.target_number }}
+
+    steps:
+      - name: Validate target number
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::target_number must be a positive integer."
+            exit 1
+          }
+
+      - name: Generate Miyori Bot installation token
+        id: miyori-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.MIYORI_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.MIYORI_BOT_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Verify GitHub App bot identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          BOT_LOGIN="${APP_SLUG}[bot]"
+          ACTUAL_LOGIN="$(gh api "/users/${BOT_LOGIN}" --jq '.login')"
+          [[ "$ACTUAL_LOGIN" == "$BOT_LOGIN" ]] || {
+            echo "::error::Resolved bot login '$ACTUAL_LOGIN' did not match expected '$BOT_LOGIN'."
+            exit 1
+          }
+          echo "Authenticated GitHub App bot: $BOT_LOGIN"
+
+      - name: Publish diagnostic comment
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.miyori-token.outputs.token }}
+          APP_SLUG: ${{ steps.miyori-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          MARKER="<!-- miyori-diagnostic:${GITHUB_RUN_ID} -->"
+          BODY=$(cat <<EOF
+          ${MARKER}
+          🌸 **Miyori diagnostic passed.**
+
+          Identity: \`${APP_SLUG}[bot]\`
+          Scope: issue/PR comments and owner-authorized safe control actions.
+          No code push, merge, release, Actions write, or administration authority.
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          EOF
+          )
+
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+            -f body="$BODY" >/dev/null
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Miyori diagnostics"
+            echo
+            echo "- Target issue/PR: #${TARGET_NUMBER}"
+            echo "- App slug: \`${{ steps.miyori-token.outputs.app-slug }}\`"
+            echo "- Core CI execution: unchanged"
+          } >> "$GITHUB_STEP_SUMMARY"

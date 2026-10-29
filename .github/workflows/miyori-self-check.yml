@@ -1,0 +1,38 @@
+name: Miyori Self Check
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/miyori-*.yml'
+      - '.github/scripts/miyori_*.py'
+      - '.github/scripts/test_miyori_*.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify Miyori automation contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact workflow head
+        uses: actions/checkout@v5
+
+      - name: Compile Miyori Python helpers
+        run: |
+          python3 -m py_compile \
+            .github/scripts/miyori_status.py \
+            .github/scripts/miyori_report.py \
+            .github/scripts/miyori_command.py
+
+      - name: Run Miyori unit tests
+        working-directory: .github/scripts
+        run: >-
+          python3 -m unittest
+          test_miyori_status.py
+          test_miyori_report.py
+          test_miyori_command.py
+
+      - name: Enforce Miyori permission and mutation boundary
+        run: python3 .github/scripts/test_miyori_policy.py
