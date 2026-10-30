@@ -425,6 +425,15 @@ class SmartLocalCoverPipelineTest {
         assertClosedDescriptors()
     }
 
+    @Test fun pipeBackedImageWithoutSafeSizeRetainsSharedCacheFallback() {
+        val cap = 32L * 1024L * 1024L
+        assertTrue(LocalReaderPageCachePolicy.fitsSmallSafImage(cap))
+        assertTrue(LocalReaderPageCachePolicy.fitsSmallSafImage(512L * 1024L))
+        assertFalse(LocalReaderPageCachePolicy.fitsSmallSafImage(cap + 1))
+        assertFalse(LocalReaderPageCachePolicy.fitsSmallSafImage(null))
+        assertFalse(LocalReaderPageCachePolicy.fitsSmallSafImage(0))
+    }
+
     @Test fun localPageCacheRetainsWarmEntriesWithoutUsingGlobalPageCache() = runBlocking {
         val key = "reader-small-cache-isolation-${UUID.randomUUID()}"
         val bytes = ByteArray(512 * 1024) { 0x38 }
