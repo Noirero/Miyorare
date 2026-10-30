@@ -91,4 +91,6 @@
     <string name="smart_local_move_selected">Move selected files</string>
     <string name="smart_local_move_complete">%1$d files moved</string>
     <string name="smart_local_reset_text">Restore scanned metadata</string>
+    <string name="smart_local_group_count_short">%1$d collections</string>
+    <string name="smart_local_groups_remaining">+ %1$d more groups</string>
 </resources>
