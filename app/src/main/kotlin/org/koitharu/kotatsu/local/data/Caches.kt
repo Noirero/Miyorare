@@ -8,8 +8,4 @@ annotation class PageCache
 
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
-annotation class LocalReaderPageCache
-
-@Qualifier
-@Retention(AnnotationRetention.BINARY)
 annotation class FaviconCache
