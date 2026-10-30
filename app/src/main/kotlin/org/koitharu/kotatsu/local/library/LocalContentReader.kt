@@ -49,6 +49,7 @@ open class LocalContentReader @Inject constructor(
     private val activeFiles = MaterializedCachePins()
     // Each Reader load attempt owns at most one pin per backing. Access under cacheMutex.
     private val readerLeases = HashMap<Any, MutableSet<String>>()
+    private val recentlyReleased = HashMap<String, Long>()
     private val metadataCache = android.util.LruCache<String, LocalMetadata>(32)
     private val cacheDir get() = File(context.cacheDir, "smart-local-content").also { it.mkdirs() }
 
@@ -81,6 +82,7 @@ open class LocalContentReader @Inject constructor(
             // artifact; reopening it for a cover must not invalidate an active Reader marker.
             if (!activeFiles.isPinned(target.name)) target.setLastModified(System.currentTimeMillis())
             activeFiles.acquire(target.name)
+            recentlyReleased.remove(target.name)
             trimMaterializedCacheLocked()
             target
         }
@@ -105,8 +107,9 @@ open class LocalContentReader @Inject constructor(
             val names = readerLeases.remove(token).orEmpty()
             for (name in names) {
                 activeFiles.release(name)
-                // Keep the artifact available for in-flight image requests. The normal budgeted
-                // eviction pass reclaims unpinned backing rather than deleting it on release.
+                // Give in-flight image requests time to finish even after the chapter snapshot
+                // is removed. This does not mutate the backing mtime used by PDF cache identity.
+                if (!activeFiles.isPinned(name)) recentlyReleased[name] = System.currentTimeMillis()
             }
             trimMaterializedCacheLocked()
         }
@@ -124,6 +127,8 @@ open class LocalContentReader @Inject constructor(
     }
 
     private fun trimMaterializedCacheLocked() {
+        val now = System.currentTimeMillis()
+        recentlyReleased.entries.removeAll { now - it.value >= RELEASE_GRACE_MS }
         // Crash leftovers are never published backing URLs. Ignore recent partials that may
         // belong to another in-flight materialization, and remove only stale partial files.
         val staleBefore = System.currentTimeMillis() - STALE_PARTIAL_AGE_MS
@@ -133,7 +138,7 @@ open class LocalContentReader @Inject constructor(
         var total = cacheDir.listFiles().orEmpty().sumOf { it.length() }
         for (old in cacheDir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
             if (total <= MATERIALIZED_CACHE_MAX_BYTES) break
-            if (activeFiles.isPinned(old.name)) continue
+            if (activeFiles.isPinned(old.name) || old.name in recentlyReleased) continue
             val size = old.length()
             if (old.delete()) total -= size
         }
@@ -401,6 +406,7 @@ open class LocalContentReader @Inject constructor(
     private companion object {
         const val MATERIALIZED_CACHE_MAX_BYTES = 512L * 1024 * 1024
         const val STALE_PARTIAL_AGE_MS = 60L * 60 * 1000
+        const val RELEASE_GRACE_MS = 60L * 1000
     }
 }
 
