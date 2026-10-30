@@ -272,65 +272,56 @@ plan_from_paths() {
   emit_plan targeted
 }
 
-# Conservative PR-level gate. Proven non-runtime changes can skip the emulator;
-# all other changes run a mapped suite or the full suite.
+# Conservative classification: only documentation-only diffs skip Android runtime.
 classify_paths() {
   local path
-  local runtime=false
-  local full=false
-  local mapped=false
   local count=0
+  local has_runtime=false
+  local full=false
   for path in "$@"; do
     [[ -z "$path" ]] && continue
     ((count+=1))
     case "$path" in
-      *.md|*.txt|*.rst|LICENSE|NOTICE|.editorconfig|.gitignore)
-        ;;
+      *.md|*.txt|*.rst|LICENSE|NOTICE|.editorconfig|.gitignore) ;;
       *)
-        runtime=true
+        has_runtime=true
+        MAPPED=false
+        REQUIRE_FULL=false
         plan_path "$path"
+        if [[ "$MAPPED" != true || "$REQUIRE_FULL" == true ]]; then
+          full=true
+        fi
         ;;
     esac
   done
-  if (( count == 0 )); then
-    # Empty or unavailable diff must not silently skip required validation.
+  if ((count==0)); then
     printf 'run_runtime=true\nfull=true\n'
-    return 0
-  fi
-  if [[ "$runtime" == false ]]; then
+  elif [[ "$has_runtime" == false ]]; then
     printf 'run_runtime=false\nfull=false\n'
-  elif [[ "$REQUIRE_FULL" == true || "$MAPPED" != true ]]; then
+  elif [[ "$full" == true ]]; then
     printf 'run_runtime=true\nfull=true\n'
   else
-    # Mixed mapped/unmapped changes cannot be assumed to have targeted coverage.
-    # Only mapped source families and known non-runtime metadata qualify.
-    for path in "$@"; do
-      case "$path" in
-        *.md|*.txt|*.rst|LICENSE|NOTICE|.editorconfig|.gitignore) ;;
-        *)
-          CLASSES=()
-          MAPPED=false
-          REQUIRE_FULL=false
-          plan_path "$path"
-          if [[ "$REQUIRE_FULL" == true || "$MAPPED" != true ]]; then
-            full=true
-            break
-          fi
-          ;;
-      esac
-    done
-    if [[ "$full" == true ]]; then
-      printf 'run_runtime=true\nfull=true\n'
-    else
-      printf 'run_runtime=true\nfull=false\n'
-    fi
+    printf 'run_runtime=true\nfull=false\n'
   fi
 }
 
 classify_self_test() {
   local result
   result="$(classify_paths README.md docs/guide.md)"
-  [[ "$result" ==   local out
+  [[ "$result" == "$(printf 'run_runtime=false\nfull=false')" ]]
+  result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=false')" ]]
+  result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt app/src/main/kotlin/unknown/Unknown.kt)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  result="$(classify_paths .github/workflows/pr-compile-unit-check.yml)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  result="$(classify_paths)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  echo 'Runtime risk classifier self-test: PASS'
+}
+
+self_test() {
+  local out
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
   grep -q '^mode=targeted$' <<<"$out"
   grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
@@ -388,287 +379,4 @@ if [[ "$CLASSIFY" == true ]]; then
   classify_paths "${PATHS[@]}"
   exit 0
 fi
-plan_from_paths "$FULL" "${PATHS[@]}"
-run_runtime=false\nfull=false' ]]
-  result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt)"
-  [[ "$result" ==   local out
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
-  grep -q '^mode=targeted$' <<<"$out"
-  grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/library/LocalContentReader.kt')"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalStorageCache.kt')"
-  grep -q 'FastDownloadedNovelResolutionTest' <<<"$out"
-  ! grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt')"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
-  grep -q 'DiscoveryCatalogUiTest' <<<"$out"
-  grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"
-  grep -q 'LocalBackupIdentityTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/Foo.kt')"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  out="$(plan_from_paths false 'kotatsu-runtime/src/main/kotlin/example/Foo.kt')"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-
-  if plan_from_paths false 'gradle/libs.versions.toml' >/dev/null 2>&1; then
-    echo 'Expected shared build infrastructure to require full runtime.' >&2
-    return 1
-  fi
-  if plan_from_paths false 'README.md' >/dev/null 2>&1; then
-    echo 'Expected an unmapped runtime request to fail closed.' >&2
-    return 1
-  fi
-
-  out="$(plan_from_paths true 'README.md')"
-  grep -q '^mode=full$' <<<"$out"
-  grep -q 'CategorySetsUiTest' <<<"$out"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-mapfile -t PATHS
-plan_from_paths "$FULL" "${PATHS[@]}"
-run_runtime=true\nfull=false' ]]
-  result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt app/src/main/kotlin/unknown/Unknown.kt)"
-  [[ "$result" ==   local out
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
-  grep -q '^mode=targeted$' <<<"$out"
-  grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/library/LocalContentReader.kt')"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalStorageCache.kt')"
-  grep -q 'FastDownloadedNovelResolutionTest' <<<"$out"
-  ! grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt')"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
-  grep -q 'DiscoveryCatalogUiTest' <<<"$out"
-  grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"
-  grep -q 'LocalBackupIdentityTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/Foo.kt')"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  out="$(plan_from_paths false 'kotatsu-runtime/src/main/kotlin/example/Foo.kt')"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-
-  if plan_from_paths false 'gradle/libs.versions.toml' >/dev/null 2>&1; then
-    echo 'Expected shared build infrastructure to require full runtime.' >&2
-    return 1
-  fi
-  if plan_from_paths false 'README.md' >/dev/null 2>&1; then
-    echo 'Expected an unmapped runtime request to fail closed.' >&2
-    return 1
-  fi
-
-  out="$(plan_from_paths true 'README.md')"
-  grep -q '^mode=full$' <<<"$out"
-  grep -q 'CategorySetsUiTest' <<<"$out"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-mapfile -t PATHS
-plan_from_paths "$FULL" "${PATHS[@]}"
-run_runtime=true\nfull=true' ]]
-  result="$(classify_paths .github/workflows/pr-compile-unit-check.yml)"
-  [[ "$result" ==   local out
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
-  grep -q '^mode=targeted$' <<<"$out"
-  grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/library/LocalContentReader.kt')"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalStorageCache.kt')"
-  grep -q 'FastDownloadedNovelResolutionTest' <<<"$out"
-  ! grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt')"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
-  grep -q 'DiscoveryCatalogUiTest' <<<"$out"
-  grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"
-  grep -q 'LocalBackupIdentityTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/Foo.kt')"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  out="$(plan_from_paths false 'kotatsu-runtime/src/main/kotlin/example/Foo.kt')"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-
-  if plan_from_paths false 'gradle/libs.versions.toml' >/dev/null 2>&1; then
-    echo 'Expected shared build infrastructure to require full runtime.' >&2
-    return 1
-  fi
-  if plan_from_paths false 'README.md' >/dev/null 2>&1; then
-    echo 'Expected an unmapped runtime request to fail closed.' >&2
-    return 1
-  fi
-
-  out="$(plan_from_paths true 'README.md')"
-  grep -q '^mode=full$' <<<"$out"
-  grep -q 'CategorySetsUiTest' <<<"$out"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-mapfile -t PATHS
-plan_from_paths "$FULL" "${PATHS[@]}"
-run_runtime=true\nfull=true' ]]
-  result="$(classify_paths)"
-  [[ "$result" ==   local out
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
-  grep -q '^mode=targeted$' <<<"$out"
-  grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/library/LocalContentReader.kt')"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalStorageCache.kt')"
-  grep -q 'FastDownloadedNovelResolutionTest' <<<"$out"
-  ! grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt')"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
-  grep -q 'DiscoveryCatalogUiTest' <<<"$out"
-  grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"
-  grep -q 'LocalBackupIdentityTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/Foo.kt')"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  out="$(plan_from_paths false 'kotatsu-runtime/src/main/kotlin/example/Foo.kt')"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-
-  if plan_from_paths false 'gradle/libs.versions.toml' >/dev/null 2>&1; then
-    echo 'Expected shared build infrastructure to require full runtime.' >&2
-    return 1
-  fi
-  if plan_from_paths false 'README.md' >/dev/null 2>&1; then
-    echo 'Expected an unmapped runtime request to fail closed.' >&2
-    return 1
-  fi
-
-  out="$(plan_from_paths true 'README.md')"
-  grep -q '^mode=full$' <<<"$out"
-  grep -q 'CategorySetsUiTest' <<<"$out"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-mapfile -t PATHS
-plan_from_paths "$FULL" "${PATHS[@]}"
-run_runtime=true\nfull=true' ]]
-  echo 'Runtime risk classifier self-test: PASS'
-}
-
-self_test() {
-  local out
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
-  grep -q '^mode=targeted$' <<<"$out"
-  grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/library/LocalContentReader.kt')"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalStorageCache.kt')"
-  grep -q 'FastDownloadedNovelResolutionTest' <<<"$out"
-  ! grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt')"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
-  grep -q 'DiscoveryCatalogUiTest' <<<"$out"
-  grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"
-  grep -q 'LocalBackupIdentityTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/Foo.kt')"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  out="$(plan_from_paths false 'kotatsu-runtime/src/main/kotlin/example/Foo.kt')"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-
-  if plan_from_paths false 'gradle/libs.versions.toml' >/dev/null 2>&1; then
-    echo 'Expected shared build infrastructure to require full runtime.' >&2
-    return 1
-  fi
-  if plan_from_paths false 'README.md' >/dev/null 2>&1; then
-    echo 'Expected an unmapped runtime request to fail closed.' >&2
-    return 1
-  fi
-
-  out="$(plan_from_paths true 'README.md')"
-  grep -q '^mode=full$' <<<"$out"
-  grep -q 'CategorySetsUiTest' <<<"$out"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-mapfile -t PATHS
 plan_from_paths "$FULL" "${PATHS[@]}"
