@@ -169,6 +169,6 @@ jobs:
             echo "- Current head: \`${{ steps.target.outputs.head_sha }}\`"
             echo "- PR state: \`${{ steps.target.outputs.state }}\`"
             echo "- Tracked gates: PR Compile & Unit Check, Identity Guard, Beta to Main Release Gate, Promotion to Main Gate"
-            echo "- Tracked CI labels: ci:owner-request, ci:user-issue, ci:theme, ci:runtime-required, non-theme, skip-device-test"
+            echo "- Tracked CI labels: ci:owner-request, ci:user-issue, ci:theme, ci:runtime-required, ci:runtime-full, non-theme, skip-device-test"
             echo "- Authority: status/comment only"
           } >> "$GITHUB_STEP_SUMMARY"

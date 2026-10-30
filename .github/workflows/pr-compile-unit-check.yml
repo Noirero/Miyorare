@@ -59,11 +59,10 @@ jobs:
       - name: Validate Cloudflare Worker bundle
         run: npm run check:cloudflare --prefix browser-auth-helper
 
-      - name: Compile debug sources and validate Android resources
-        run: ./gradlew compileDebugSources processPreviewMainManifest processReleaseMainManifest --max-workers=4 --no-daemon --stacktrace
-
-      - name: Build production Kotatsu Runtime Pack
-        run: ./gradlew :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
+      # Run build checks in one Gradle invocation to avoid repeated daemonless startup
+      # while preserving every compile, resource, manifest and runtime-pack task.
+      - name: Compile, validate resources and build Kotatsu Runtime Pack
+        run: ./gradlew compileDebugSources processPreviewMainManifest processReleaseMainManifest :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
 
       - name: Run JVM unit tests
         run: ./gradlew testDebugUnitTest --max-workers=4 --no-daemon --stacktrace
