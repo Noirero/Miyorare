@@ -256,7 +256,9 @@ interface AppModule {
 			context = context,
 			dir = CacheDir.LOCAL_READER_PAGES,
 			defaultSize = FileSize.MEGABYTES.convert(48, FileSize.BYTES),
-			minSize = FileSize.MEGABYTES.convert(16, FileSize.BYTES),
+			// A supported SAF archive page can be up to 32 MiB. Never evict a single active
+			// extracted page immediately on storage-constrained devices.
+			minSize = FileSize.MEGABYTES.convert(36, FileSize.BYTES),
 		)
 
 		@Provides
