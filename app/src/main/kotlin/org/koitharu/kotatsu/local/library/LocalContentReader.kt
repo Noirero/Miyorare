@@ -48,7 +48,7 @@ open class LocalContentReader @Inject constructor(
     // their own reference and release it as soon as extraction finishes.
     private val activeFiles = MaterializedCachePins()
     // Each Reader load attempt owns at most one pin per backing. Access under cacheMutex.
-    private val readerLeases = HashMap<Any, MutableSet<String>>()
+    private val readerLeases = ReaderBackingLeaseOwners()
     private val recentlyReleased = HashMap<String, Long>()
     private val metadataCache = android.util.LruCache<String, LocalMetadata>(32)
     private val cacheDir get() = File(context.cacheDir, "smart-local-content").also { it.mkdirs() }
@@ -104,7 +104,7 @@ open class LocalContentReader @Inject constructor(
      */
     suspend fun releaseReaderLease(token: Any) = withContext(Dispatchers.IO) {
         cacheMutex.withLock {
-            val names = readerLeases.remove(token).orEmpty()
+            val names = readerLeases.release(token)
             for (name in names) {
                 activeFiles.release(name)
                 // Give in-flight image requests time to finish even after the chapter snapshot
@@ -118,8 +118,7 @@ open class LocalContentReader @Inject constructor(
     private suspend fun retainReaderLease(token: Any, file: File) {
         if (file.parentFile != cacheDir) return
         cacheMutex.withLock {
-            val names = readerLeases.getOrPut(token) { HashSet() }
-            if (!names.add(file.name)) {
+            if (!readerLeases.retain(token, file.name)) {
                 // materialize() acquired again for the same owner; preserve the original pin.
                 activeFiles.release(file.name)
             }
