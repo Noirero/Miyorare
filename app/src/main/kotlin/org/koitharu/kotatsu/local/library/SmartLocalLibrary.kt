@@ -450,6 +450,92 @@ class SmartLocalLibrary @Inject constructor(
     }
 
     /** Shareable, non-destructive ZIP exports. Never expose the original SAF grant to another app. */
+    /** Move standalone file collections through copy-and-verify, never a blind SAF rename. */
+    suspend fun moveSelectedFiles(ids: Set<Long>, destinationUri: Uri): Int = withContext(Dispatchers.IO) {
+        initialize()
+        val moved = mutex.withLock {
+            val selected = state.value.books.filter { it.id in ids }
+            require(selected.isNotEmpty() && selected.size == ids.size) { "Selected collections changed" }
+            require(selected.all { !it.node.directory && it.chapters.size == 1 &&
+                it.chapters.single().node.key == it.node.key && it.sidecars.isEmpty() }) {
+                "Move currently supports standalone file collections only"
+            }
+            val destination = documents.root(destinationUri.toString())
+            check(destination.directory) { "Choose a destination folder" }
+            val allOwners = state.value.books.flatMap { book ->
+                (book.chapters.flatMap { it.pages + it.node } + book.sidecars).distinctBy { it.key }
+                    .map { it.key to book.id }
+            }.groupBy({ it.first }, { it.second })
+            val sources = selected.map { book ->
+                val root = documents.root(book.rootUri)
+                check(documents.contains(root, book.node) && book.node.key != root.key) { "Unsafe source" }
+                check(allOwners[book.node.key].orEmpty().distinct().size == 1) { "Shared file cannot be moved" }
+                check(!documents.contains(root, destination) && !documents.contains(destination, root)) {
+                    "Destination must not overlap the source library root"
+                }
+                root to book.node
+            }
+            val names = sources.map { it.second.name.lowercase(java.util.Locale.ROOT) }
+            check(names.size == names.toSet().size) { "Selected files have conflicting names" }
+            val existing = documents.children(destination, destination).mapTo(HashSet()) { it.name.lowercase(java.util.Locale.ROOT) }
+            check(names.none { it in existing }) { "Destination filename collision" }
+            val created = ArrayList<Node>()
+            try {
+                for ((_, source) in sources) {
+                    currentCoroutineContext().ensureActive()
+                    val copy = documents.createFile(destination, source.name)
+                    created += copy
+                    val sourceDigest = java.security.MessageDigest.getInstance("SHA-256")
+                    var bytes = 0L
+                    documents.input(source).use { input ->
+                        documents.output(copy).use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            while (true) {
+                                currentCoroutineContext().ensureActive()
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                sourceDigest.update(buffer, 0, count)
+                                output.write(buffer, 0, count)
+                                bytes += count
+                            }
+                        }
+                    }
+                    val copiedDigest = java.security.MessageDigest.getInstance("SHA-256")
+                    var copiedBytes = 0L
+                    documents.input(copy).use { input ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            copiedDigest.update(buffer, 0, count)
+                            copiedBytes += count
+                        }
+                    }
+                    check(bytes == copiedBytes && sourceDigest.digest().contentEquals(copiedDigest.digest())) {
+                        "Destination verification failed for ${source.name}"
+                    }
+                }
+            } catch (error: Exception) {
+                // No source was deleted. Roll back only files created by this operation.
+                for (copy in created.asReversed()) runCatching { documents.delete(destination, copy) }
+                throw error
+            }
+            // Only verified copies reach this point. A provider may still refuse a source
+            // deletion: leave the verified destination intact rather than risk data loss.
+            var deleted = 0
+            for ((root, source) in sources) {
+                currentCoroutineContext().ensureActive()
+                if (documents.exists(root, source)) documents.delete(root, source)
+                deleted++
+            }
+            deleted
+        }
+        // Reconcile the library only after releasing the operation mutex.
+        scan()
+        moved
+    }
+
     suspend fun exportSelected(ids: Set<Long>): List<File> = withContext(Dispatchers.IO) {
         initialize()
         val selected = state.value.books.filter { it.id in ids }
