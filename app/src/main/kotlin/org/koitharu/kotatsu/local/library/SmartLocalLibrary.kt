@@ -77,7 +77,8 @@ class SmartLocalLibrary @Inject constructor(
                 runCatching { json.toLocalBook() }.getOrNull()
             }.orEmpty().filter { it.rootUri in roots.map { r -> r.uri } && it.node.key !in exclusions }.map { book ->
                 val overrides = JSONObject(prefs.getString("author_overrides", "{}").orEmpty())
-                if (!overrides.has(book.node.key)) book else book.copy(authors = overrides.optString(book.node.key).split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() })
+                val withAuthors = if (!overrides.has(book.node.key)) book else book.copy(authors = overrides.optString(book.node.key).split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() })
+                applyTextOverrides(withAuthors)
             }
             val diagnoses = saved?.optJSONArray("diagnoses")?.objects()?.mapNotNull { json ->
                 runCatching { LocalDiagnosis(json.getString("root"), json.optJSONObject("node")?.toNode(),
@@ -197,7 +198,8 @@ class SmartLocalLibrary @Inject constructor(
                         entry.ignored, old?.addedAt ?: System.currentTimeMillis(), System.currentTimeMillis(),
                         pendingLocalDiscoveries(old?.newChapters ?: 0, discovered, chapters.size))
                     val override = authorOverrides.optString(book.node.key).takeIf { authorOverrides.has(book.node.key) }
-                    books.putIfAbsent(book.node.key, if (override != null) book.copy(authors = override.split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() }) else book)
+                    val withAuthors = if (override != null) book.copy(authors = override.split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() }) else book
+                    books.putIfAbsent(book.node.key, applyTextOverrides(withAuthors))
                 }
                 scanned.issues.forEach { diagnoses += LocalDiagnosis(root.uri, it.node, it.reason, it.candidates) }
             }
@@ -251,6 +253,44 @@ class SmartLocalLibrary @Inject constructor(
             val updated = state.value.books.map { if (it.id in ids) it.copy(authors = authors) else it }
             db.withTransaction {
                 for (book in updated.filter { it.id in ids }) {
+                    dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
+                }
+            }
+            publishLocked(state.value.copy(books = updated))
+        }
+        mutableChanges.emit(Unit)
+    }
+
+    /** Persist manual title/description overrides independently of scanner sidecars. */
+    private fun applyTextOverrides(book: LocalBook): LocalBook {
+        val overrides = JSONObject(prefs.getString("text_overrides", "{}").orEmpty())
+        val entry = overrides.optJSONObject(book.node.key) ?: return book
+        return book.copy(
+            title = if (entry.has("title")) entry.optString("title").takeIf { it.isNotBlank() } else book.title,
+            description = if (entry.has("description")) entry.optString("description") else book.description,
+        )
+    }
+
+    suspend fun setTextMetadata(ids: Set<Long>, title: String?, description: String?) = withContext(Dispatchers.IO) {
+        require(title != null || description != null) { "No metadata fields supplied" }
+        require(title == null || title.length <= 300) { "Title too long" }
+        require(description == null || description.length <= 20_000) { "Description too long" }
+        initialize()
+        mutex.withLock {
+            val selected = state.value.books.filter { it.id in ids }
+            if (selected.isEmpty()) return@withLock
+            val overrides = JSONObject(prefs.getString("text_overrides", "{}").orEmpty())
+            for (book in selected) {
+                val entry = overrides.optJSONObject(book.node.key) ?: JSONObject()
+                if (title != null) entry.put("title", title)
+                if (description != null) entry.put("description", description)
+                overrides.put(book.node.key, entry)
+            }
+            check(prefs.edit().putString("text_overrides", overrides.toString()).commit())
+            val updated = state.value.books.map { if (it.id in ids) applyTextOverrides(it) else it }
+            db.withTransaction {
+                for (book in updated.filter { it.id in ids }) {
+                    currentCoroutineContext().ensureActive()
                     dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
                 }
             }
