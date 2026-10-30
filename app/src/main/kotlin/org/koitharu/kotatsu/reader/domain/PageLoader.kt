@@ -73,6 +73,7 @@ import org.koitharu.kotatsu.core.util.progress.ProgressDeferred
 import org.koitharu.kotatsu.download.ui.worker.DownloadSlowdownDispatcher
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.LocalReaderPageCache
+import org.koitharu.kotatsu.local.data.LocalReaderPageCachePolicy
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
 import org.koitharu.kotatsu.local.library.SmartLocalArchivePageUri
@@ -377,7 +378,7 @@ class PageLoader @Inject constructor(
 		val pageUrl = getPageUrl(page)
 		check(pageUrl.isNotBlank()) { "Cannot obtain full image url for $page" }
 		val uri = pageUrl.toUri()
-		val pageCache = if (page.source == LocalMangaSource) localPageCache else cache
+		val pageCache = if (LocalReaderPageCachePolicy.usesSmallCache(page, uri)) localPageCache else cache
 		if (!skipCache && !(page.source == LocalMangaSource && uri.scheme == ContentResolver.SCHEME_CONTENT)) {
 			pageCache[pageUrl]?.let { return it.toUri() }
 		}
