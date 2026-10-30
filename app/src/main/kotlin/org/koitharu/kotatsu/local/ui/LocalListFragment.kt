@@ -210,10 +210,18 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
 	private fun showBulkTextEditor(ids: Set<Long>, mode: ActionMode?) {
 		if (ids.isEmpty()) return
-		val fields = arrayOf(getString(R.string.smart_local_edit_title), getString(R.string.smart_local_edit_description))
+		val fields = arrayOf(getString(R.string.smart_local_edit_title), getString(R.string.smart_local_edit_description),
+			getString(R.string.smart_local_reset_text))
 		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
 			.setTitle(R.string.smart_local_edit_text)
 			.setItems(fields) { _, selected ->
+				if (selected == 2) {
+					MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+						.setTitle(R.string.smart_local_reset_text)
+						.setMessage(getString(R.string.smart_local_bulk_edit_count, ids.size))
+						.setPositiveButton(android.R.string.ok) { _, _ -> viewModel.resetTextMetadata(ids); mode?.finish() }
+						.setNegativeButton(android.R.string.cancel, null).show()
+				} else {
 				val input = EditText(requireContext()).apply { setSingleLine(selected == 0) }
 				MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
 					.setTitle(fields[selected])
@@ -226,6 +234,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 						mode?.finish()
 					}
 					.setNegativeButton(android.R.string.cancel, null).show()
+				}
 			}
 			.setNegativeButton(android.R.string.cancel, null).show()
 	}
