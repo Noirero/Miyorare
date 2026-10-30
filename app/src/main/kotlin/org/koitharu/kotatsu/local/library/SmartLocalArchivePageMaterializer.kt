@@ -5,6 +5,8 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okio.source
 import okio.use
 import org.koitharu.kotatsu.core.util.MimeTypes
@@ -14,12 +16,16 @@ import java.io.InterruptedIOException
 
 /** Shared Reader and gallery path for one verified, bounded SAF archive image. */
 internal object SmartLocalArchivePageMaterializer {
+    // Page galleries can request many thumbnails at once. Bound the temporary decompression
+    // buffers so concurrent Reader/gallery requests cannot multiply peak memory usage.
+    private val readMutex = Mutex()
+
     suspend fun materialize(
         context: Context,
         pageUri: Uri,
         cacheKey: String,
         cache: LocalStorageCache,
-    ): File {
+    ): File = readMutex.withLock {
         val (document, entry) = SmartLocalArchivePageUri.parse(pageUri)
         val bytes = runInterruptible(Dispatchers.IO) {
             val descriptor = requireNotNull(context.contentResolver.openFileDescriptor(document, "r")) {
