@@ -496,10 +496,15 @@ class SmartLocalCoverPipelineTest {
         assertFalse("Large books must keep their previous page-cache route",
             LocalReaderPageCachePolicy.usesSmallCache(largePage, Uri.parse(largePage.url)))
         ActivityScenario.launch(MangaUpdatesAuthActivity::class.java).use { scenario ->
-            lateinit var pageLoader: PageLoader
+            lateinit var loaderEntryPoint: SmallLocalReaderPageLoaderEntryPoint
             scenario.onActivity { activity ->
-                pageLoader = EntryPointAccessors.fromActivity(
-                    activity, SmallLocalReaderPageLoaderEntryPoint::class.java).pageLoader()
+                loaderEntryPoint = EntryPointAccessors.fromActivity(
+                    activity, SmallLocalReaderPageLoaderEntryPoint::class.java)
+            }
+            // Resolving PageLoader initializes the HTTP client. Do that on a worker thread:
+            // NetworkModule intentionally rejects first-time client construction on the UI thread.
+            val pageLoader = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                loaderEntryPoint.pageLoader()
             }
             val directStart = System.nanoTime()
             val direct = withTimeout(30_000) { pageLoader.loadPage(folderPage, force = false) }
