@@ -45,4 +45,8 @@
     <string name="smart_local_rename_group">Ganti nama grup</string>
     <string name="smart_local_export_selected">Ekspor koleksi terpilih (ZIP)</string>
     <string name="smart_local_bulk_result">Dipilih: %1$d · Berhasil: %2$d · Gagal: %3$d</string>
+    <string name="smart_local_edit_text">Edit judul atau deskripsi</string>
+    <string name="smart_local_edit_title">Judul</string>
+    <string name="smart_local_edit_description">Deskripsi</string>
+    <string name="smart_local_bulk_edit_count">Terapkan ke %1$d koleksi terpilih</string>
 </resources>
