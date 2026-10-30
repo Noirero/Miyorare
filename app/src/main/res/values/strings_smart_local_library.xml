@@ -83,4 +83,8 @@
     <string name="smart_local_rename_group">Rename group</string>
     <string name="smart_local_export_selected">Export selected collections (ZIP)</string>
     <string name="smart_local_bulk_result">Selected: %1$d · Succeeded: %2$d · Failed: %3$d</string>
+    <string name="smart_local_edit_text">Edit title or description</string>
+    <string name="smart_local_edit_title">Title</string>
+    <string name="smart_local_edit_description">Description</string>
+    <string name="smart_local_bulk_edit_count">Apply to %1$d selected collections</string>
 </resources>
