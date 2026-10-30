@@ -170,6 +170,16 @@ class LocalListViewModel @Inject constructor(
 	fun renameGroup(oldName: String, newName: String) { launchLoadingJob(Dispatchers.IO) { library.renameGroup(oldName, newName); if (activeGroup.value == oldName) activeGroup.value = newName.trim(); revision.value++ } }
 	fun deleteGroup(name: String) { launchLoadingJob(Dispatchers.IO) { library.deleteGroup(name); if (activeGroup.value == name) activeGroup.value = null; revision.value++ } }
 
+	val moveResults = MutableEventFlow<Int>()
+	fun moveSelected(ids: Set<Long>, destination: Uri) {
+		if (ids.isEmpty()) return
+		launchLoadingJob(Dispatchers.IO) {
+			val count = library.moveSelectedFiles(ids, destination)
+			revision.value++
+			moveResults.call(count)
+		}
+	}
+
 	fun exportSelected(ids: Set<Long>) {
 		if (ids.isEmpty()) return
 		launchLoadingJob(Dispatchers.IO) { exportedArchives.call(library.exportSelected(ids)) }
