@@ -282,6 +282,7 @@ class SmartLocalCoverPipelineTest {
 
     @Test fun coverReleaseAndThumbnailClearPreserveRealReaderBackingAndLazyPages() = runBlocking {
         put("reader.pdf", pdf(Color.RED))
+        descriptorMode("reader.pdf", "pipe")
         library.scan()
         val book = library.state.value.books.single()
         val chapter = book.chapters.single()
@@ -309,6 +310,7 @@ class SmartLocalCoverPipelineTest {
 
     @Test fun readerPdfLeaseReleasePreservesLazyPageSource() = runBlocking {
         put("leased.pdf", pdf(Color.GREEN))
+        descriptorMode("leased.pdf", "pipe")
         library.scan()
         val book = library.state.value.books.single()
         val documents = LocalDocuments(context)
@@ -329,6 +331,7 @@ class SmartLocalCoverPipelineTest {
 
     @Test fun twoArchiveOwnersReleaseIndependentlyWithoutInvalidatingZipPages() = runBlocking {
         put("leased.cbz", archive(png(Color.BLUE)))
+        descriptorMode("leased.cbz", "pipe")
         library.scan()
         val book = library.state.value.books.single()
         val documents = LocalDocuments(context)
@@ -348,6 +351,44 @@ class SmartLocalCoverPipelineTest {
         }
         reader.releaseReaderLease(second)
         assertTrue("Recently released archive remains available for pending page loads", backing.exists())
+        assertClosedDescriptors()
+    }
+
+    @Test fun seekableSafPdfOpensReaderWithoutCopyingDocument() = runBlocking {
+        put("direct.pdf", pdf(Color.GREEN), padding = 1024 * 1024)
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val pages = reader.pages(root, book.chapters.single(), book.toManga(false, true).chapters!!.single())
+        assertEquals(1, pages.size)
+        assertTrue("Seekable PDF should not materialize a full backing copy", contentFiles().isEmpty())
+        assertEquals(0, counts.materialize)
+        val target = File(Uri.parse(pages.single().url).path!!)
+        readerPageDirectories += target.parentFile!!
+        assertTrue(org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(target).length() > 0)
+        assertTrue(contentFiles().isEmpty())
+        assertClosedDescriptors()
+    }
+
+    @Test fun seekableSafArchiveIndexesReaderWithoutCopyingDocument() = runBlocking {
+        val image = png(Color.BLUE)
+        put("direct.cbz", archive(image, "Images/001.png"), padding = 1024 * 1024)
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val original = book.toManga(false, true).chapters!!.single()
+        val pages = reader.pages(root, book.chapters.single(), original)
+        assertEquals(1, pages.size)
+        assertEquals(SmartLocalArchivePageUri.SCHEME, Uri.parse(pages.single().url).scheme)
+        assertTrue(contentFiles().isEmpty())
+        val (document, entry) = SmartLocalArchivePageUri.parse(Uri.parse(pages.single().url))
+        resolver.openFileDescriptor(document, "r")!!.use { descriptor ->
+            ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.dup(descriptor.fileDescriptor)).use { stream ->
+                val bytes = IndexedArchiveCoverReader(stream.channel) {}.readReaderPage(entry)
+                assertArrayEquals(image, bytes)
+            }
+        }
+        assertTrue(contentFiles().isEmpty())
         assertClosedDescriptors()
     }
 
