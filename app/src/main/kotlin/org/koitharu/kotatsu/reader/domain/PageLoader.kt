@@ -518,8 +518,8 @@ class PageLoader @Inject constructor(
 	companion object {
 
 		private const val PROGRESS_UNDEFINED = -1f
-		// Leave headroom for nearby pages under the 48 MiB local Reader budget.
-		private const val MAX_LOCAL_PAGE_ITEM_BYTES = 40L * 1024 * 1024
+		// Keep a single entry below the 16 MiB minimum budget even on storage-constrained devices.
+		private const val MAX_LOCAL_PAGE_ITEM_BYTES = 12L * 1024 * 1024
 		private const val PREFETCH_MAX_PARALLELISM = 2
 		private const val PREFETCH_LIMIT_DEFAULT = 6
 		private const val PREFETCH_LIMIT_MEDIUM = 8
