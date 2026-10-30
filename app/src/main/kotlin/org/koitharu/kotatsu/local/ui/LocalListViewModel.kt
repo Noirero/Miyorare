@@ -302,7 +302,8 @@ class LocalListViewModel @Inject constructor(
 			}
 			if (cards.size > 4) {
 				result += ListHeader(
-					context.getString(R.string.smart_local_groups_remaining, cards.size - 4),
+					if (showAllGroups.value) context.getString(R.string.smart_local_groups_count, cards.size)
+					else context.getString(R.string.smart_local_groups_remaining, cards.size - 4),
 					if (showAllGroups.value) R.string.smart_local_show_less else R.string.smart_local_see_all,
 					LocalLibraryAction.ToggleGroups,
 				)
