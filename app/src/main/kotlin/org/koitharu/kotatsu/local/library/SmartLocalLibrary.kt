@@ -596,29 +596,13 @@ class SmartLocalLibrary @Inject constructor(
                 }
                 // Recheck source/destination equality immediately before any deletion.
                 // An external writer may have modified a source after its initial copy.
-                suspend fun digest(node: Node): Pair<Long, ByteArray> {
-                    val hash = java.security.MessageDigest.getInstance("SHA-256")
-                    var size = 0L
-                    documents.input(node).use { input ->
-                        val buffer = ByteArray(64 * 1024)
-                        while (true) {
-                            currentCoroutineContext().ensureActive()
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            hash.update(buffer, 0, count)
-                            size += count
-                        }
-                    }
-                    return size to hash.digest()
-                }
                 try {
                     for ((source, copy) in copiedFiles) {
-                        val original = digest(source)
-                        val destinationDigest = digest(copy)
-                        check(original.first == destinationDigest.first &&
-                            original.second.contentEquals(destinationDigest.second)) {
-                            "Source changed during move: ${source.name}"
-                        }
+                        LocalMoveVerifier.verify(
+                            source = { documents.input(source) },
+                            destination = { documents.input(copy) },
+                            checkCancelled = { currentCoroutineContext().ensureActive() },
+                        )
                     }
                 } catch (error: Exception) {
                     // Verification failed before deletion: original files are intact.
