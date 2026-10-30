@@ -183,10 +183,13 @@ open class LocalContentReader @Inject constructor(
             if (extension == "pdf" &&
                 chapter.node.uri.toUri().scheme == ContentResolver.SCHEME_CONTENT) {
                 val direct = try {
-                    documents.withReadDescriptor(root, chapter.node, { descriptor ->
+                    // Refresh metadata when opening Reader. Library scan snapshots may be stale.
+                    val current = documents.stat(root, chapter.node)
+                    documents.withReadDescriptor(root, current, { descriptor ->
                         LocalPdfCache.renderPagesFromDocument(
-                            descriptor, chapter.node.uri,
-                            "${chapter.node.key}:${chapter.node.size}:${chapter.node.modified}"
+                            descriptor, current.uri,
+                            "${current.key}:${current.size}:${current.modified}",
+                            current.size, current.modified,
                         )
                     })
                 } catch (error: kotlinx.coroutines.CancellationException) {
