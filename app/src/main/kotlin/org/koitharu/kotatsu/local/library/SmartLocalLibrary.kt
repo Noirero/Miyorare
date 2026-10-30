@@ -588,10 +588,11 @@ class SmartLocalLibrary @Inject constructor(
                     check(copiedFiles.size == trees.sumOf { it.files.size }) { "Copy incomplete" }
                 } catch (error: Exception) {
                     // Source remains untouched until all destination files are verified.
-                    for (node in created.asReversed()) runCatching {
+                    val rollbackFailures = LocalMoveRollback.cleanup(created) { node ->
                         if (node.directory) documents.deleteEmptyDirectory(destination, node)
                         else documents.delete(destination, node)
                     }
+                    rollbackFailures.forEach(error::addSuppressed)
                     throw error
                 }
                 // Recheck source/destination equality immediately before any deletion.
@@ -607,10 +608,11 @@ class SmartLocalLibrary @Inject constructor(
                     }
                 } catch (error: Exception) {
                     // Verification failed before deletion: original files are intact.
-                    for (node in created.asReversed()) runCatching {
+                    val rollbackFailures = LocalMoveRollback.cleanup(created) { node ->
                         if (node.directory) documents.deleteEmptyDirectory(destination, node)
                         else documents.delete(destination, node)
                     }
+                    rollbackFailures.forEach(error::addSuppressed)
                     throw error
                 }
                 var movedCount = 0
