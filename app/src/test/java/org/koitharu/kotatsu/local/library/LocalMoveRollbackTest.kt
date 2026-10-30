@@ -25,4 +25,15 @@ class LocalMoveRollbackTest {
         assertEquals(1, failures.size)
         assertTrue(failures.single() is IOException)
     }
+    @Test fun cancellationFailureDoesNotPreventRemainingRollback() {
+        val removed = mutableListOf<String>()
+        val failures = LocalMoveRollback.cleanup(listOf("folder", "page1", "page2")) {
+            removed += it
+            if (it == "page2") throw java.util.concurrent.CancellationException("cancelled during cleanup")
+        }
+        assertEquals(listOf("page2", "page1", "folder"), removed)
+        assertEquals(1, failures.size)
+        assertTrue(failures.single() is java.util.concurrent.CancellationException)
+    }
+
 }
