@@ -218,7 +218,7 @@ open class LocalContentReader @Inject constructor(
                             val archive = IndexedArchiveCoverReader(input.channel) { coroutine.ensureActive() }
                             archive.readerPageNames(::isArchiveImage)
                                 ?.sortedWith(LocalTreeScanner.NATURAL)
-                                ?.map { SmartLocalArchivePageUri.create(chapter.node.uri, it, archive.archiveVersion) }
+                                ?.map { SmartLocalArchivePageUri.create(chapter.node.uri, it, archive.archiveVersion, chapter.node.size) }
                         }
                     })
                 } catch (error: kotlinx.coroutines.CancellationException) {

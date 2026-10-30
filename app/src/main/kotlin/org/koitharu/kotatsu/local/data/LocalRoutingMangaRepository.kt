@@ -2,10 +2,12 @@ package org.koitharu.kotatsu.local.data
 
 import android.content.ContentResolver
 import android.content.Context
+import android.provider.DocumentsContract
 import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import okio.source
 import okio.use
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.local.library.SmartLocalLibrary
@@ -24,7 +26,8 @@ class LocalRoutingMangaRepository @Inject constructor(
 	private val legacy: LocalMangaRepository,
 	private val library: SmartLocalLibrary,
 	@ApplicationContext private val context: Context,
-	@PageCache private val pageCache: LocalStorageCache,
+	@LocalReaderPageCache private val localPageCache: LocalStorageCache,
+	@PageCache private val sharedPageCache: LocalStorageCache,
 ) : MangaRepository by legacy {
 
 	val smartLocalChanges get() = library.changes
@@ -45,6 +48,26 @@ class LocalRoutingMangaRepository @Inject constructor(
 	override suspend fun getPageUrl(page: MangaPage): String {
 		val uri = page.url.toUri()
 		if (uri.scheme != ContentResolver.SCHEME_CONTENT) return legacy.getPageUrl(page)
+		// A seekable document can be decoded directly by the Reader's URI/region decoder.
+		// Keep the old disk-backed path for pipe-only or rejected SAF providers.
+		if (page.source == LocalMangaSource && SeekableLocalPage.canOpenDirectly(context.contentResolver, uri)) {
+			return page.url
+		}
+		// Pipe-only documents have to be copied for region decoding. An unknown or
+		// oversized page must retain the established larger cache to avoid evicting
+		// its own output during publication.
+		val size = runCatching {
+			context.contentResolver.query(
+				uri, arrayOf(DocumentsContract.Document.COLUMN_SIZE), null, null, null,
+			)?.use { cursor ->
+				if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
+			}
+		}.getOrNull()
+		val pageCache = if (LocalReaderPageCachePolicy.fitsSmallSafImage(size)) {
+			localPageCache
+		} else {
+			sharedPageCache
+		}
 		pageCache[page.url]?.let { return it.toUri().toString() }
 		val input = requireNotNull(context.contentResolver.openInputStream(uri)) {
 			"Cannot open on-device page: $uri"
