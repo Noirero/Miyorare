@@ -266,7 +266,7 @@ class SmartLocalLibrary @Inject constructor(
         val overrides = JSONObject(prefs.getString("text_overrides", "{}").orEmpty())
         val entry = overrides.optJSONObject(book.node.key) ?: return book
         return book.copy(
-            title = if (entry.has("title")) entry.optString("title").takeIf { it.isNotBlank() } else book.title,
+            title = if (entry.has("title")) entry.optString("title").ifBlank { book.title } else book.title,
             description = if (entry.has("description")) entry.optString("description") else book.description,
         )
     }
