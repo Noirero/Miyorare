@@ -242,6 +242,23 @@ interface AppModule {
 			minSize = FileSize.MEGABYTES.convert(20, FileSize.BYTES),
 		)
 
+		/**
+		 * Dedicated disposable cache for extracted local pages. Remote/download HTTP pages retain
+		 * the existing 200 MiB @PageCache; local Reader keeps recent pages for quick backtracking
+		 * without letting archived image duplicates accumulate to the global cache's limit.
+		 */
+		@Provides
+		@Singleton
+		@LocalReaderPageCache
+		fun provideLocalReaderPageCache(
+			@ApplicationContext context: Context,
+		) = LocalStorageCache(
+			context = context,
+			dir = CacheDir.LOCAL_READER_PAGES,
+			defaultSize = FileSize.MEGABYTES.convert(48, FileSize.BYTES),
+			minSize = FileSize.MEGABYTES.convert(16, FileSize.BYTES),
+		)
+
 		@Provides
 		@Singleton
 		@FaviconCache
