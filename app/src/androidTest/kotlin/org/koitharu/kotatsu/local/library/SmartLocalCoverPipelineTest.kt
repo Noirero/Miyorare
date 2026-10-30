@@ -444,7 +444,9 @@ class SmartLocalCoverPipelineTest {
 
         // Simulate an existing downloaded chapter: a real local CBZ path, not an HTTP page.
         val downloaded = File(context.storage, "saved-${UUID.randomUUID()}.cbz")
-        downloaded.writeBytes(archive(original, "001.png"))
+        val unrelated = ByteArray(5 * 1024 * 1024).also { java.util.Random(9).nextBytes(it) }
+        downloaded.writeBytes(archiveEntries("unrelated.bin" to unrelated, "001.png" to original))
+        assertTrue(downloaded.length() >= 5L * 1024 * 1024)
         val zipPage = MangaPage(
             id = UUID.randomUUID().mostSignificantBits,
             url = downloaded.toZipUri("001.png").toString(),
