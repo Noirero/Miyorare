@@ -47,6 +47,8 @@ open class LocalContentReader @Inject constructor(
     // maintenance cannot invalidate a still-open/previous chapter. Temporary cover users acquire
     // their own reference and release it as soon as extraction finishes.
     private val activeFiles = MaterializedCachePins()
+    // Each Reader load attempt owns at most one pin per backing. Access under cacheMutex.
+    private val readerLeases = HashMap<Any, MutableSet<String>>()
     private val metadataCache = android.util.LruCache<String, LocalMetadata>(32)
     private val cacheDir get() = File(context.cacheDir, "smart-local-content").also { it.mkdirs() }
 
@@ -94,6 +96,32 @@ open class LocalContentReader @Inject constructor(
         }
     }
 
+    /**
+     * Release an unpublished attempt or a chapter/preview removed from Reader state.
+     * A different owner referencing the same backing retains its own pin.
+     */
+    suspend fun releaseReaderLease(token: Any) = withContext(Dispatchers.IO) {
+        cacheMutex.withLock {
+            val names = readerLeases.remove(token).orEmpty()
+            for (name in names) {
+                activeFiles.release(name)
+                if (!activeFiles.isPinned(name)) File(cacheDir, name).delete()
+            }
+            trimMaterializedCacheLocked()
+        }
+    }
+
+    private suspend fun retainReaderLease(token: Any, file: File) {
+        if (file.parentFile != cacheDir) return
+        cacheMutex.withLock {
+            val names = readerLeases.getOrPut(token) { HashSet() }
+            if (!names.add(file.name)) {
+                // materialize() acquired again for the same owner; preserve the original pin.
+                activeFiles.release(file.name)
+            }
+        }
+    }
+
     private fun trimMaterializedCacheLocked() {
         var total = cacheDir.listFiles().orEmpty().sumOf { it.length() }
         for (old in cacheDir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
@@ -124,8 +152,11 @@ open class LocalContentReader @Inject constructor(
                         .map { file.toZipUri(it.name).toString() }.toList()
                 }
                 check(urls.isNotEmpty()) { "No readable pages in ${chapter.node.name}" }
-                urls.mapIndexed { i, url -> MangaPage(id = "${original.id}:$i".longHashCode(), url = url,
+                val pages = urls.mapIndexed { i, url -> MangaPage(id = "${original.id}:$i".longHashCode(), url = url,
                     preview = null, source = LocalMangaSource) }
+                val lease = currentCoroutineContext()[ReaderBackingLeaseContext]
+                if (lease != null) retainReaderLease(lease.token, file)
+                pages
             } catch (error: Throwable) {
                 // No page URLs were published: release the backing even on cancellation.
                 withContext(NonCancellable) { releaseMaterialized(file) }
