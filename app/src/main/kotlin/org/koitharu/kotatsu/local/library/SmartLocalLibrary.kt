@@ -525,7 +525,7 @@ class SmartLocalLibrary @Inject constructor(
                 check(names.none { it in existing }) { "Destination filename collision" }
                 val created = ArrayList<Node>()
                 val copiedFiles = ArrayList<Pair<Node, Node>>()
-                fun copyTree(source: Node, targetParent: Node, sourceRoot: Node) {
+                suspend fun copyTree(source: Node, targetParent: Node, sourceRoot: Node) {
                     currentCoroutineContext().ensureActive()
                     if (source.directory) {
                         val folder = documents.createDirectory(targetParent, source.name)
