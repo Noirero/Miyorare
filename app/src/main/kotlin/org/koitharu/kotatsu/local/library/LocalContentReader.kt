@@ -154,6 +154,29 @@ open class LocalContentReader @Inject constructor(
             listOf(MangaPage(id = chapter.id, url = chapter.url, preview = null, source = LocalMangaSource))
         } else {
             val extension = LocalTreeScanner.extension(chapter.node.name)
+            // A seekable PDF descriptor is sufficient to enumerate pages. Page bitmaps are
+            // rendered lazily by reopening that authorized document, not by copying its bytes.
+            if (extension == "pdf" &&
+                chapter.node.uri.toUri().scheme == ContentResolver.SCHEME_CONTENT) {
+                val direct = try {
+                    documents.withReadDescriptor(root, chapter.node, { descriptor ->
+                        LocalPdfCache.renderPagesFromDocument(
+                            descriptor, chapter.node.uri,
+                            "${chapter.node.key}:${chapter.node.size}:${chapter.node.modified}"
+                        )
+                    })
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                }
+                if (!direct.isNullOrEmpty()) {
+                    return@withContext direct.mapIndexed { index, file ->
+                        MangaPage(id = "${original.id}:$index".longHashCode(), url = file.toUri().toString(),
+                            preview = null, source = LocalMangaSource)
+                    }
+                }
+            }
             // SAF providers with a seekable descriptor can expose indexed archive pages without
             // copying the whole file into app storage. Incompatible formats/providers use the
             // existing materialized backing path, including its Reader lease.
