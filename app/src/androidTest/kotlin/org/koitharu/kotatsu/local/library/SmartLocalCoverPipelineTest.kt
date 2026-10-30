@@ -492,6 +492,32 @@ class SmartLocalCoverPipelineTest {
         assertClosedDescriptors()
     }
 
+    @Test fun concurrentSeekablePageRequestsRemainBoundedAndReturnCorrectImages() = runBlocking {
+        val expected = (0 until 4).associate { index ->
+            "${index + 1}.png" to png(listOf(Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW)[index])
+        }
+        put("parallel.cbz", archiveEntries(*expected.toList().toTypedArray()))
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val pages = reader.pages(root, book.chapters.single(),
+            book.toManga(false, true).chapters!!.single())
+        assertEquals(4, pages.size)
+        val outputs = (0 until 12).map { index ->
+            async(kotlinx.coroutines.Dispatchers.IO) {
+                val page = pages[index % pages.size]
+                val uri = Uri.parse(page.url)
+                val (_, entry) = SmartLocalArchivePageUri.parse(uri)
+                val stored = SmartLocalArchivePageMaterializer.materialize(
+                    context, uri, page.url, pageStorage)
+                entry to stored.readBytes()
+            }
+        }.awaitAll()
+        outputs.forEach { (entry, bytes) -> assertArrayEquals(expected[entry], bytes) }
+        assertTrue("Concurrent direct pages must not create whole-archive backing", contentFiles().isEmpty())
+        assertClosedDescriptors()
+    }
+
     @Test fun failedPdfRenderStillReleasesTemporaryMaterialization() = runBlocking {
         put("broken.pdf", byteArrayOf(1, 2, 3))
         library.scan()
