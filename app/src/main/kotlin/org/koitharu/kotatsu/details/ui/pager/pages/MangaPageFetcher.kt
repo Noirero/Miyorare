@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.core.util.ext.isNetworkUri
 import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.LocalReaderPageCache
+import org.koitharu.kotatsu.local.data.LocalReaderPageCachePolicy
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
 import org.koitharu.kotatsu.local.library.SmartLocalArchivePageUri
@@ -63,9 +64,10 @@ class MangaPageFetcher(
 		}
 		val pageUrl = repo.getPageUrl(page)
 		val imageHeaders = repo.getImageRequestHeaders(pageUrl, page)
-		val selectedCache = if (page.source == LocalMangaSource) localPageCache else pagesCache
+		val pageUri = pageUrl.toUri()
+		val selectedCache = if (LocalReaderPageCachePolicy.usesSmallCache(page, pageUri)) localPageCache else pagesCache
 		if (options.diskCachePolicy.readEnabled &&
-            !(page.source == LocalMangaSource && pageUrl.toUri().scheme == "content")) {
+            !(page.source == LocalMangaSource && pageUri.scheme == "content")) {
 			selectedCache[pageUrl]?.let { file ->
 				return SourceFetchResult(
 					source = ImageSource(file.toOkioPath(), options.fileSystem),
@@ -74,7 +76,6 @@ class MangaPageFetcher(
 				)
 			}
 		}
-        val pageUri = pageUrl.toUri()
         if (page.source == LocalMangaSource && pageUri.scheme == SmartLocalArchivePageUri.SCHEME) {
             val file = SmartLocalArchivePageMaterializer.materialize(options.context, pageUri, pageUrl, selectedCache)
             return SourceFetchResult(
