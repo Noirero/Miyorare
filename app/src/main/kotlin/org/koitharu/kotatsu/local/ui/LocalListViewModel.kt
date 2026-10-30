@@ -288,7 +288,8 @@ class LocalListViewModel @Inject constructor(
 			for ((name, members) in groups.toSortedMap()) {
 				val count = LocalGroupVisibility.count(groups, name, available)
 				result += ListHeader(context.getString(R.string.smart_local_group_card, name, count),
-					R.string.smart_local_show_group, LocalLibraryAction.GroupCard(name))
+					R.string.smart_local_show_group, LocalLibraryAction.GroupCard(name),
+					badge = count.toString(), buttonStyle = ListHeader.ButtonStyle.OUTLINED)
 			}
 		}
 		result += SmartLocalCollectionHeaderModel(mode)
