@@ -520,7 +520,30 @@ class SmartLocalCoverPipelineTest {
             val reopened = withTimeout(30_000) { pageLoader.loadPage(zipPage, force = false) }
             val warmMs = (System.nanoTime() - warmStart) / 1_000_000
             assertEquals(extracted, reopened)
+
+            // An unusually large image inside a sub-100 MiB CBZ must retain the original
+            // shared-cache fallback and its warm hit, not disappear from the 48 MiB cache.
+            val largePageBytes = ByteArray(13 * 1024 * 1024).also {
+                java.util.Random(31).nextBytes(it)
+            }
+            val largeChapter = File(context.storage, "large-page-${UUID.randomUUID()}.cbz")
+            largeChapter.writeBytes(archiveEntries("001.png" to largePageBytes))
+            val largeEntry = zipPage.copy(
+                id = UUID.randomUUID().mostSignificantBits,
+                url = largeChapter.toZipUri("001.png").toString(),
+            )
+            assertTrue(LocalReaderPageCachePolicy.usesSmallCache(
+                largeEntry, Uri.parse(largeEntry.url)))
+            val largeResult = withTimeout(30_000) { pageLoader.loadPage(largeEntry, force = false) }
+            assertEquals(largePageBytes.size.toLong(), File(largeResult.path!!).length())
+            assertNull(localPageStorage[largeEntry.url])
+            assertNotNull(pageStorage[largeEntry.url])
+            assertEquals(largeResult, withTimeout(30_000) {
+                pageLoader.loadPage(largeEntry, force = false)
+            })
+
             pageLoader.invalidate(clearCache = true)
+            assertNull(pageStorage[largeEntry.url])
             assertNull("Explicit Reader cache invalidation must clear local extracts",
                 localPageStorage[zipPage.url])
             println("READER_SMALL_END_TO_END_SAMPLE bookBytes=${downloaded.length()} " +
