@@ -120,6 +120,38 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
         }
     }
 
+    /** Create a directory only when its name is unused; never merge trees implicitly. */
+    fun createDirectory(parent: Node, name: String): Node {
+        require(parent.directory && name.isNotBlank() && name != "." && name != ".." &&
+            '/' !in name && '\\' !in name) { "Invalid destination folder" }
+        check(children(parent, parent).none { it.name.equals(name, ignoreCase = true) }) {
+            "Destination already contains $name"
+        }
+        val uri = parent.uri.toUri()
+        return if (uri.scheme == ContentResolver.SCHEME_FILE) {
+            val folder = File(uri.toFile(), name)
+            check(folder.mkdir()) { "Cannot create destination folder: $name" }
+            fileNode(folder)
+        } else {
+            val created = DocumentsContract.createDocument(resolver, uri,
+                DocumentsContract.Document.MIME_TYPE_DIR, name)
+                ?: throw IOException("Cannot create destination folder: $name")
+            query(created).singleOrNull() ?: Node(
+                "${uri.authority}:${DocumentsContract.getDocumentId(created)}",
+                created.toString(), name, true, 0L, 0L)
+        }
+    }
+
+    /** Remove only an empty directory, including SAF folders. */
+    fun deleteEmptyDirectory(root: Node, folder: Node) {
+        check(folder.directory && folder.key != root.key && contains(root, folder))
+        check(children(root, folder).isEmpty()) { "Folder is not empty: ${folder.name}" }
+        val uri = folder.uri.toUri()
+        val deleted = if (uri.scheme == ContentResolver.SCHEME_FILE) uri.toFile().delete()
+            else DocumentsContract.deleteDocument(resolver, uri)
+        if (!deleted) throw IOException("Cannot delete empty folder: ${folder.name}")
+    }
+
     fun output(node: Node): java.io.OutputStream {
         check(!node.directory) { "Cannot write a directory" }
         val uri = node.uri.toUri()
