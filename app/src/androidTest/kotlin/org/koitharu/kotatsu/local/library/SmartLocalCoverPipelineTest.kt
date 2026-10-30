@@ -66,6 +66,7 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.LocalReaderPageCache
+import org.koitharu.kotatsu.local.data.LocalReaderPageCachePolicy
 import org.koitharu.kotatsu.local.data.LocalRoutingMangaRepository
 import org.koitharu.kotatsu.core.image.BitmapDecoderCompat
 import org.koitharu.kotatsu.core.image.MiyorareImageDiskCache
@@ -453,6 +454,14 @@ class SmartLocalCoverPipelineTest {
             preview = null,
             source = LocalMangaSource,
         )
+        assertTrue(LocalReaderPageCachePolicy.usesSmallCache(zipPage, Uri.parse(zipPage.url)))
+        val large = File(context.storage, "large-${UUID.randomUUID()}.cbz")
+        java.io.RandomAccessFile(large, "rw").use {
+            it.setLength(LocalReaderPageCachePolicy.MAX_SMALL_ARCHIVE_BYTES + 1)
+        }
+        val largePage = zipPage.copy(url = large.toZipUri("001.png").toString())
+        assertFalse("Large books must keep their previous page-cache route",
+            LocalReaderPageCachePolicy.usesSmallCache(largePage, Uri.parse(largePage.url)))
         ActivityScenario.launch(MangaUpdatesAuthActivity::class.java).use { scenario ->
             lateinit var pageLoader: PageLoader
             scenario.onActivity { activity ->
@@ -513,6 +522,8 @@ class SmartLocalCoverPipelineTest {
         val pages = reader.pages(root, book.chapters.single(), original)
         assertEquals(1, pages.size)
         assertEquals(SmartLocalArchivePageUri.SCHEME, Uri.parse(pages.single().url).scheme)
+        assertTrue("Small seekable SAF archives must use the bounded local cache",
+            LocalReaderPageCachePolicy.usesSmallCache(pages.single(), Uri.parse(pages.single().url)))
         assertTrue(contentFiles().isEmpty())
         val (document, entry) = SmartLocalArchivePageUri.parse(Uri.parse(pages.single().url))
         resolver.openFileDescriptor(document, "r")!!.use { descriptor ->
