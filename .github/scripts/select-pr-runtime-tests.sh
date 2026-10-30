@@ -294,13 +294,13 @@ classify_paths() {
   done
   if (( count == 0 )); then
     # Empty or unavailable diff must not silently skip required validation.
-    printf 'run_runtime=true\\nfull=true\\n'
+    printf 'run_runtime=true\nfull=true\n'
     return 0
   fi
   if [[ "$runtime" == false ]]; then
-    printf 'run_runtime=false\\nfull=false\\n'
+    printf 'run_runtime=false\nfull=false\n'
   elif [[ "$REQUIRE_FULL" == true || "$MAPPED" != true ]]; then
-    printf 'run_runtime=true\\nfull=true\\n'
+    printf 'run_runtime=true\nfull=true\n'
   else
     # Mixed mapped/unmapped changes cannot be assumed to have targeted coverage.
     # Only mapped source families and known non-runtime metadata qualify.
@@ -320,9 +320,9 @@ classify_paths() {
       esac
     done
     if [[ "$full" == true ]]; then
-      printf 'run_runtime=true\\nfull=true\\n'
+      printf 'run_runtime=true\nfull=true\n'
     else
-      printf 'run_runtime=true\\nfull=false\\n'
+      printf 'run_runtime=true\nfull=false\n'
     fi
   fi
 }
@@ -389,7 +389,7 @@ if [[ "$CLASSIFY" == true ]]; then
   exit 0
 fi
 plan_from_paths "$FULL" "${PATHS[@]}"
-run_runtime=false\\nfull=false' ]]
+run_runtime=false\nfull=false' ]]
   result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt)"
   [[ "$result" ==   local out
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
@@ -445,7 +445,7 @@ fi
 
 mapfile -t PATHS
 plan_from_paths "$FULL" "${PATHS[@]}"
-run_runtime=true\\nfull=false' ]]
+run_runtime=true\nfull=false' ]]
   result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt app/src/main/kotlin/unknown/Unknown.kt)"
   [[ "$result" ==   local out
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
@@ -501,7 +501,7 @@ fi
 
 mapfile -t PATHS
 plan_from_paths "$FULL" "${PATHS[@]}"
-run_runtime=true\\nfull=true' ]]
+run_runtime=true\nfull=true' ]]
   result="$(classify_paths .github/workflows/pr-compile-unit-check.yml)"
   [[ "$result" ==   local out
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
@@ -557,7 +557,7 @@ fi
 
 mapfile -t PATHS
 plan_from_paths "$FULL" "${PATHS[@]}"
-run_runtime=true\\nfull=true' ]]
+run_runtime=true\nfull=true' ]]
   result="$(classify_paths)"
   [[ "$result" ==   local out
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
@@ -613,7 +613,7 @@ fi
 
 mapfile -t PATHS
 plan_from_paths "$FULL" "${PATHS[@]}"
-run_runtime=true\\nfull=true' ]]
+run_runtime=true\nfull=true' ]]
   echo 'Runtime risk classifier self-test: PASS'
 }
 
