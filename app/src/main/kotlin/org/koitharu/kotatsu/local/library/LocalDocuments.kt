@@ -159,6 +159,19 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
         else resolver.openOutputStream(uri, "wt") ?: throw IOException("Cannot write: ${node.name}")
     }
 
+    /** Refresh file size/modified metadata without enumerating sibling collections. */
+    fun stat(root: Node, node: Node): Node {
+        check(!node.directory && contains(root, node)) { "File outside selected root" }
+        val uri = node.uri.toUri()
+        return if (uri.scheme == ContentResolver.SCHEME_FILE) {
+            val file = uri.toFile()
+            if (!file.isFile) throw IOException("Selected file is unavailable")
+            fileNode(file)
+        } else {
+            query(uri).singleOrNull() ?: throw IOException("Selected file is unavailable")
+        }
+    }
+
     fun input(node: Node): InputStream {
         val uri = node.uri.toUri()
         return if (uri.scheme == ContentResolver.SCHEME_FILE) uri.toFile().inputStream()
