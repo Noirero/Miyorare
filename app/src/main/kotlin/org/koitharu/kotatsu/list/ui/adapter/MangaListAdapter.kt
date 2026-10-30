@@ -48,6 +48,7 @@ open class MangaListAdapter(
 		addDelegate(ListItemType.SMART_LOCAL_PANEL, smartLocalPanelAD(listener))
 		addDelegate(ListItemType.SMART_LOCAL_RESUME, smartLocalResumeAD(listener))
 		addDelegate(ListItemType.SMART_LOCAL_COLLECTION_HEADER, smartLocalCollectionHeaderAD(listener))
+		addDelegate(ListItemType.SMART_LOCAL_GROUP_ROW, smartLocalGroupRowAD(listener))
 		addDelegate(ListItemType.QUICK_FILTER, quickFilterAD(listener))
 		addDelegate(ListItemType.TIP, tipAD(listener, onTipClose))
 		addDelegate(ListItemType.INFO, infoAD())
