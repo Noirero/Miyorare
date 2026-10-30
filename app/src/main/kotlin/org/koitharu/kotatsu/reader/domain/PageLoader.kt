@@ -462,8 +462,13 @@ class PageLoader @Inject constructor(
 		val entryName = requireNotNull(uri.fragment) { "CBZ entry is null: $uri" }
 		ZipFile(file).use { zip ->
 			val entry = requireNotNull(zip.getEntry(entryName)) { "CBZ entry not found: $entryName" }
+			// A single oversized page must not be evicted while it is being published.
+			// Such rare pages retain the established global cache path instead.
+			val storage = if (pageCache === localPageCache &&
+				(entry.size < 0L || entry.size > MAX_LOCAL_PAGE_ITEM_BYTES)) cache else pageCache
+			if (reuseCache && storage !== pageCache) storage[cacheKey]?.let { return@withLock it.toUri() }
 			zip.getInputStream(entry).source().use { source ->
-				pageCache.set(
+				storage.set(
 					cacheKey,
 					source,
 					MimeTypes.getMimeTypeFromExtension(entry.name),
@@ -513,6 +518,8 @@ class PageLoader @Inject constructor(
 	companion object {
 
 		private const val PROGRESS_UNDEFINED = -1f
+		// Leave headroom for nearby pages under the 48 MiB local Reader budget.
+		private const val MAX_LOCAL_PAGE_ITEM_BYTES = 40L * 1024 * 1024
 		private const val PREFETCH_MAX_PARALLELISM = 2
 		private const val PREFETCH_LIMIT_DEFAULT = 6
 		private const val PREFETCH_LIMIT_MEDIUM = 8
