@@ -53,4 +53,6 @@
     <string name="smart_local_move_selected">Pindahkan file terpilih</string>
     <string name="smart_local_move_complete">%1$d file berhasil dipindahkan</string>
     <string name="smart_local_reset_text">Pulihkan metadata otomatis</string>
+    <string name="smart_local_group_count_short">%1$d koleksi</string>
+    <string name="smart_local_groups_remaining">+ %1$d grup lainnya</string>
 </resources>

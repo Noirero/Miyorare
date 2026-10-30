@@ -29,6 +29,7 @@ import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.list.ui.model.SmartLocalPanelModel
 import org.koitharu.kotatsu.list.ui.model.SmartLocalResumeModel
+import org.koitharu.kotatsu.list.ui.model.SmartLocalGroupRowModel
 import org.koitharu.kotatsu.list.ui.model.SmartLocalCollectionHeaderModel
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.reader.ui.ReaderState
@@ -43,6 +44,7 @@ sealed interface LocalLibraryAction {
 	data object Restore : LocalLibraryAction
 	data class GroupCard(val name: String) : LocalLibraryAction
 	data object Groups : LocalLibraryAction
+	data object ToggleGroups : LocalLibraryAction
 	data class Acknowledge(val ids: Set<Long>) : LocalLibraryAction
 	data class Diagnosis(val issue: LocalDiagnosis) : LocalLibraryAction
 }
@@ -70,6 +72,7 @@ class LocalListViewModel @Inject constructor(
 	fun clearCoverCache() { launchJob(Dispatchers.IO) { library.clearCoverCache(); coverCacheCleared.call(Unit) } }
 	fun resetCoverDiagnostics() { library.resetCoverDiagnostics(); requestCoverCacheReport() }
 	private val showAllReading = MutableStateFlow(savedStateHandle["all_reading"] ?: false)
+	private val showAllGroups = MutableStateFlow(savedStateHandle["all_groups"] ?: false)
 	private val revision = MutableStateFlow(0)
 	private val localQuery = MutableStateFlow(savedStateHandle["local_query"] ?: "")
 	private val contentType = MutableStateFlow(restoreLocalContentSelection(
@@ -163,6 +166,11 @@ class LocalListViewModel @Inject constructor(
 	fun acknowledgeDiscoveries(ids: Set<Long>) { launchJob(Dispatchers.IO) { library.acknowledgeDiscoveries(ids) } }
 
 	private val activeGroup = MutableStateFlow<String?>(null)
+	fun toggleGroups() {
+		showAllGroups.value = !showAllGroups.value
+		savedStateHandle["all_groups"] = showAllGroups.value
+		revision.value++
+	}
 	fun setGroupFilter(name: String?) { activeGroup.value = name; revision.value++ }
 	fun createGroup(name: String, ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.createGroup(name, ids); revision.value++ } }
 	fun addToGroup(name: String, ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.addToGroup(name, ids); revision.value++ } }
@@ -285,11 +293,17 @@ class LocalListViewModel @Inject constructor(
 			result += ListHeader(context.getString(R.string.smart_local_groups_count, groups.size),
 				R.string.smart_local_manage_groups, LocalLibraryAction.Groups)
 			val available = snapshot.books.mapTo(HashSet()) { it.node.key }
-			for ((name, members) in groups.toSortedMap()) {
-				val count = LocalGroupVisibility.count(groups, name, available)
-				result += ListHeader(context.getString(R.string.smart_local_group_card, name, count),
-					R.string.smart_local_show_group, LocalLibraryAction.GroupCard(name),
-					badge = count.toString(), buttonStyle = ListHeader.ButtonStyle.OUTLINED)
+			val cards = groups.keys.sorted().map { name ->
+				SmartLocalGroupRowModel.Group(name, LocalGroupVisibility.count(groups, name, available))
+			}
+			result += SmartLocalGroupRowModel.rows(cards, showAllGroups.value)
+			if (cards.size > SmartLocalGroupRowModel.COLLAPSED_LIMIT) {
+				result += ListHeader(
+					if (showAllGroups.value) context.getString(R.string.smart_local_groups_count, cards.size)
+					else context.getString(R.string.smart_local_groups_remaining, cards.size - SmartLocalGroupRowModel.COLLAPSED_LIMIT),
+					if (showAllGroups.value) R.string.smart_local_show_less else R.string.smart_local_see_all,
+					LocalLibraryAction.ToggleGroups,
+				)
 			}
 		}
 		result += SmartLocalCollectionHeaderModel(mode)
