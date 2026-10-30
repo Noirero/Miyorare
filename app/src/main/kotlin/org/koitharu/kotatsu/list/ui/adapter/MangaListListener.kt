@@ -22,4 +22,6 @@ interface MangaListListener : MangaDetailsClickListener, ListStateHolderListener
 	fun onSmartLocalResume(manga: org.koitharu.kotatsu.parsers.model.Manga) = Unit
 
 	fun onSmartLocalManageFoldersClick(view: View) = Unit
+
+	fun onSmartLocalGroupSelected(name: String) = Unit
 }
