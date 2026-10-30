@@ -14,6 +14,15 @@ import java.io.File
 internal object LocalReaderPageCachePolicy {
     const val MAX_SMALL_ARCHIVE_BYTES = 100L * 1024 * 1024
 
+    /**
+     * Local cache reserves at least 36 MiB, so a pipe-backed single image must fit
+     * comfortably below that limit. Unknown lengths fail back to the shared page cache.
+     */
+    fun fitsSmallSafImage(bytes: Long?): Boolean =
+        bytes != null && bytes in 1..MAX_SMALL_SAF_IMAGE_BYTES
+
+    private const val MAX_SMALL_SAF_IMAGE_BYTES = 32L * 1024 * 1024
+
     fun usesSmallCache(page: MangaPage, url: Uri): Boolean {
         if (page.source != LocalMangaSource) return false
         return when {
