@@ -119,7 +119,7 @@ jobs:
 
   android-runtime:
     name: Android runtime validation — Android 15
-    if: needs.runtime-risk.outputs.run_runtime == 'true'
+    if: needs.runtime-risk.outputs.run_runtime == 'true' && (github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full'))
     needs: [compile-unit, runtime-risk]
     runs-on: ubuntu-latest
     timeout-minutes: 45
