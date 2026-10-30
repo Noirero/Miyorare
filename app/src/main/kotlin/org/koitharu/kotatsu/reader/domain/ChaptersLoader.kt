@@ -37,9 +37,15 @@ class ChaptersLoader @Inject constructor(
 	val size: Int
 		get() = chapters.size()
 
+    private var initializedMangaId: Long? = null
+
 	suspend fun init(manga: MangaDetails) = mutex.withLock {
-        releaseAllLocked()
-        chapterPages.clear()
+        val mangaId = manga.toManga().id
+        if (initializedMangaId != mangaId) {
+            releaseAllLocked()
+            chapterPages.clear()
+            initializedMangaId = mangaId
+        }
 		chapters.clear()
 		sourceChapters.clear()
 		manga.allChapters.forEach {
@@ -147,7 +153,7 @@ class ChaptersLoader @Inject constructor(
 
 	/** Preview owners are retained only while their chapter is expanded. */
     suspend fun loadPreviewPages(chapterId: Long): List<ReaderPage> = mutex.withLock {
-        previewOwners[chapterId]?.let { return@withLock loadChapterWithoutNewLease(chapterId) }
+        previewOwners[chapterId]?.let { return@withLock loadChapter(chapterId, it) }
         val token = Any()
         try {
             val pages = loadChapter(chapterId, token)
@@ -178,11 +184,6 @@ class ChaptersLoader @Inject constructor(
 
     private suspend fun releaseLease(token: Any) {
         withContext(NonCancellable) { localContentReader.releaseReaderLease(token) }
-    }
-
-    private suspend fun loadChapterWithoutNewLease(chapterId: Long): List<ReaderPage> {
-        // Preview reloads still use the existing URL set through the repository's stable backing.
-        return loadChapter(chapterId, previewOwners.getValue(chapterId))
     }
 
     private suspend fun loadChapter(chapterId: Long, token: Any): List<ReaderPage> =
