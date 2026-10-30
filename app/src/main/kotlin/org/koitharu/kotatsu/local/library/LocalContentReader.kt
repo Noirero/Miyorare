@@ -93,7 +93,7 @@ open class LocalContentReader @Inject constructor(
         cacheMutex.withLock {
             activeFiles.release(file.name)
             // A cover-only copy is temporary. A concurrent/retained Reader reference wins.
-            if (!activeFiles.isPinned(file.name)) file.delete()
+            if (!activeFiles.isPinned(file.name) && file.name !in recentlyReleased) file.delete()
             trimMaterializedCacheLocked()
         }
     }
