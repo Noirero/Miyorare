@@ -536,6 +536,7 @@ class SmartLocalLibrary @Inject constructor(
                     if (source.directory) {
                         val folder = documents.createDirectory(targetParent, source.name)
                         created += folder
+                        check(folder.name == source.name) { "Provider renamed destination folder" }
                         for (child in documents.children(sourceRoot, source)) {
                             check(documents.contains(sourceRoot, child)) { "Source escaped its root" }
                             copyTree(child, folder, sourceRoot)
@@ -543,6 +544,7 @@ class SmartLocalLibrary @Inject constructor(
                     } else {
                         val copy = documents.createFile(targetParent, source.name)
                         created += copy
+                        check(copy.name == source.name) { "Provider renamed destination file" }
                         val originalDigest = java.security.MessageDigest.getInstance("SHA-256")
                         var originalSize = 0L
                         documents.input(source).use { input ->
