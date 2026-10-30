@@ -7,6 +7,11 @@ import androidx.core.net.toFile
 import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.asContextElement
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -50,8 +55,18 @@ open class LocalContentReader @Inject constructor(
     // Each Reader load attempt owns at most one pin per backing. Access under cacheMutex.
     private val readerLeases = ReaderBackingLeaseOwners()
     private val recentlyReleased = HashMap<String, Long>()
+    private val maintenanceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var cleanupJob: Job? = null // Read/write while holding cacheMutex.
     private val metadataCache = android.util.LruCache<String, LocalMetadata>(32)
     private val cacheDir get() = File(context.cacheDir, "smart-local-content").also { it.mkdirs() }
+
+    init {
+        // A killed process has no live Reader owners. Reclaim old, unpinned backing on first
+        // use instead of carrying the previous process's large SAF copies indefinitely.
+        maintenanceScope.launch {
+            cacheMutex.withLock { trimMaterializedCacheLocked(RETAINED_BACKING_BUDGET_BYTES) }
+        }
+    }
 
     open suspend fun materialize(root: Node, node: Node): File = withContext(Dispatchers.IO) {
         check(documents.contains(root, node)) { "Content outside selected root" }
@@ -112,6 +127,15 @@ open class LocalContentReader @Inject constructor(
                 if (!activeFiles.isPinned(name)) recentlyReleased[name] = System.currentTimeMillis()
             }
             trimMaterializedCacheLocked()
+            if (names.isNotEmpty()) scheduleRetainedCleanupLocked()
+        }
+    }
+
+    private fun scheduleRetainedCleanupLocked() {
+        cleanupJob?.cancel()
+        cleanupJob = maintenanceScope.launch {
+            delay(RELEASE_GRACE_MS)
+            cacheMutex.withLock { trimMaterializedCacheLocked(RETAINED_BACKING_BUDGET_BYTES) }
         }
     }
 
@@ -125,7 +149,7 @@ open class LocalContentReader @Inject constructor(
         }
     }
 
-    private fun trimMaterializedCacheLocked() {
+    private fun trimMaterializedCacheLocked(targetBytes: Long = MATERIALIZED_CACHE_MAX_BYTES) {
         val now = System.currentTimeMillis()
         recentlyReleased.entries.removeAll { now - it.value >= RELEASE_GRACE_MS }
         // Crash leftovers are never published backing URLs. Ignore recent partials that may
@@ -136,7 +160,7 @@ open class LocalContentReader @Inject constructor(
         }.forEach { it.delete() }
         var total = cacheDir.listFiles().orEmpty().sumOf { it.length() }
         for (old in cacheDir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
-            if (total <= MATERIALIZED_CACHE_MAX_BYTES) break
+            if (total <= targetBytes) break
             if (activeFiles.isPinned(old.name) || old.name in recentlyReleased) continue
             val size = old.length()
             if (old.delete()) total -= size
@@ -484,6 +508,7 @@ open class LocalContentReader @Inject constructor(
 
     private companion object {
         const val MATERIALIZED_CACHE_MAX_BYTES = 512L * 1024 * 1024
+        const val RETAINED_BACKING_BUDGET_BYTES = 96L * 1024 * 1024
         const val STALE_PARTIAL_AGE_MS = 60L * 60 * 1000
         const val RELEASE_GRACE_MS = 60L * 1000
     }
