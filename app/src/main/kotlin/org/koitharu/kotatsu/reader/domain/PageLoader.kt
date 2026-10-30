@@ -40,6 +40,7 @@ import okio.source
 import okio.use
 import org.jetbrains.annotations.Blocking
 import org.koitharu.kotatsu.core.LocalizedAppContext
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.image.BitmapDecoderCompat
 import org.koitharu.kotatsu.core.network.CommonHeaders
 import org.koitharu.kotatsu.core.network.MangaHttpClient
@@ -72,6 +73,8 @@ import org.koitharu.kotatsu.download.ui.worker.DownloadSlowdownDispatcher
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
+import org.koitharu.kotatsu.local.library.SmartLocalArchivePageUri
+import org.koitharu.kotatsu.local.library.SmartLocalArchivePageMaterializer
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -366,6 +369,9 @@ class PageLoader @Inject constructor(
 		}
 		val uri = pageUrl.toUri()
 		return when {
+            uri.scheme == SmartLocalArchivePageUri.SCHEME && page.source == LocalMangaSource ->
+                materializeSeekableArchivePage(uri, pageUrl, reuseCache = !skipCache)
+
 			uri.isZipUri() -> materializeCbzPage(
 				if (uri.scheme == URI_SCHEME_ZIP) uri else uri.buildUpon().scheme(URI_SCHEME_ZIP).build(),
 				pageUrl,
@@ -407,6 +413,20 @@ class PageLoader @Inject constructor(
 			}
 		}
 	}
+
+    /**
+     * A seekable SAF archive is read directly through its scoped document descriptor.
+     * Only the requested entry is decoded into the established bounded page disk cache.
+     * Unsupported archives are selected for the existing backing-copy path during enumeration.
+     */
+    private suspend fun materializeSeekableArchivePage(
+        uri: Uri,
+        cacheKey: String,
+        reuseCache: Boolean,
+    ): Uri = cbzMaterializeLock.withLock {
+        if (reuseCache) cache[cacheKey]?.let { return@withLock it.toUri() }
+        SmartLocalArchivePageMaterializer.materialize(context, uri, cacheKey, cache).toUri()
+    }
 
 	/**
 	 * Reader used to hand a zip: URI straight to Coil, which re-opened and re-indexed the same CBZ

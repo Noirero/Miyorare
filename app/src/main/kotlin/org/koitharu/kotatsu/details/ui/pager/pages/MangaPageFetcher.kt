@@ -1,7 +1,10 @@
 package org.koitharu.kotatsu.details.ui.pager.pages
 
+import androidx.core.net.toFile
 import androidx.core.net.toUri
 import coil3.ImageLoader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import coil3.decode.DataSource
 import coil3.decode.ImageSource
 import coil3.fetch.FetchResult
@@ -20,6 +23,7 @@ import okio.Path.Companion.toOkioPath
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.network.imageproxy.ImageProxyInterceptor
 import org.koitharu.kotatsu.core.model.isExternalSource
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.util.MimeTypes
 import org.koitharu.kotatsu.core.util.ext.fetch
@@ -27,6 +31,9 @@ import org.koitharu.kotatsu.core.util.ext.isNetworkUri
 import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.PageCache
+import org.koitharu.kotatsu.local.data.input.LocalPdfCache
+import org.koitharu.kotatsu.local.library.SmartLocalArchivePageUri
+import org.koitharu.kotatsu.local.library.SmartLocalArchivePageMaterializer
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.util.mimeType
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -63,6 +70,26 @@ class MangaPageFetcher(
 				)
 			}
 		}
+        val pageUri = pageUrl.toUri()
+        if (page.source == LocalMangaSource && pageUri.scheme == SmartLocalArchivePageUri.SCHEME) {
+            val file = SmartLocalArchivePageMaterializer.materialize(options.context, pageUri, pageUrl, pagesCache)
+            return SourceFetchResult(
+                source = ImageSource(file.toOkioPath(), options.fileSystem),
+                mimeType = MimeTypes.getMimeTypeFromExtension(file.name)?.toString(),
+                dataSource = DataSource.DISK,
+            )
+        }
+        if (page.source == LocalMangaSource && pageUri.scheme == "file") {
+            val localFile = pageUri.toFile()
+            if (LocalPdfCache.isPdfPage(localFile)) {
+                val file = runInterruptible(Dispatchers.IO) { LocalPdfCache.materializePage(localFile) }
+                return SourceFetchResult(
+                    source = ImageSource(file.toOkioPath(), options.fileSystem),
+                    mimeType = "image/png",
+                    dataSource = DataSource.DISK,
+                )
+            }
+        }
 		return loadPage(pageUrl, imageHeaders, repo)
 	}
 

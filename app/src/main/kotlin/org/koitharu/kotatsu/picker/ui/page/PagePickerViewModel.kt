@@ -4,6 +4,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -30,6 +33,11 @@ class PagePickerViewModel @Inject constructor(
 	private val detailsLoadUseCase: DetailsLoadUseCase,
 	settings: AppSettings,
 ) : BaseViewModel() {
+
+    override fun onCleared() {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { chaptersLoader.close() }
+        super.onCleared()
+    }
 
 	private val intent = MangaIntent(savedStateHandle)
 

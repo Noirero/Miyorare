@@ -11,6 +11,7 @@ import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Bundle
+import android.os.Debug
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -54,6 +55,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.local.data.LocalStorageCache
+import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.core.image.MiyorareImageDiskCache
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
@@ -69,6 +72,7 @@ class SmartLocalCoverPipelineTest {
     @get:Rule var hilt = HiltAndroidRule(this)
     @Inject lateinit var repository: MangaDataRepository
     @Inject lateinit var database: MangaDatabase
+    @Inject @PageCache lateinit var pageStorage: LocalStorageCache
     private lateinit var context: FixtureContext
     private lateinit var library: SmartLocalLibrary
     private lateinit var reader: CountingReader
@@ -282,6 +286,7 @@ class SmartLocalCoverPipelineTest {
 
     @Test fun coverReleaseAndThumbnailClearPreserveRealReaderBackingAndLazyPages() = runBlocking {
         put("reader.pdf", pdf(Color.RED))
+        descriptorMode("reader.pdf", "pipe")
         library.scan()
         val book = library.state.value.books.single()
         val chapter = book.chapters.single()
@@ -309,6 +314,7 @@ class SmartLocalCoverPipelineTest {
 
     @Test fun readerPdfLeaseReleasePreservesLazyPageSource() = runBlocking {
         put("leased.pdf", pdf(Color.GREEN))
+        descriptorMode("leased.pdf", "pipe")
         library.scan()
         val book = library.state.value.books.single()
         val documents = LocalDocuments(context)
@@ -329,6 +335,7 @@ class SmartLocalCoverPipelineTest {
 
     @Test fun twoArchiveOwnersReleaseIndependentlyWithoutInvalidatingZipPages() = runBlocking {
         put("leased.cbz", archive(png(Color.BLUE)))
+        descriptorMode("leased.cbz", "pipe")
         library.scan()
         val book = library.state.value.books.single()
         val documents = LocalDocuments(context)
@@ -348,6 +355,166 @@ class SmartLocalCoverPipelineTest {
         }
         reader.releaseReaderLease(second)
         assertTrue("Recently released archive remains available for pending page loads", backing.exists())
+        assertClosedDescriptors()
+    }
+
+    @Test fun seekableSafPdfOpensReaderWithoutCopyingDocument() = runBlocking {
+        put("direct.pdf", pdf(Color.GREEN))
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val pages = reader.pages(root, book.chapters.single(), book.toManga(false, true).chapters!!.single())
+        assertEquals(1, pages.size)
+        assertTrue("Seekable PDF should not materialize a full backing copy", contentFiles().isEmpty())
+        assertEquals(0, counts.materialize)
+        val target = File(Uri.parse(pages.single().url).path!!)
+        readerPageDirectories += target.parentFile!!
+        assertTrue(org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(target).length() > 0)
+        assertTrue(contentFiles().isEmpty())
+        assertClosedDescriptors()
+    }
+
+    @Test fun seekableSafArchiveIndexesReaderWithoutCopyingDocument() = runBlocking {
+        val image = png(Color.BLUE)
+        val unrelated = ByteArray(256 * 1024).also { java.util.Random(17).nextBytes(it) }
+        put("direct.cbz", archiveEntries("unrelated.bin" to unrelated, "Images/001.png" to image))
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val original = book.toManga(false, true).chapters!!.single()
+        val pages = reader.pages(root, book.chapters.single(), original)
+        assertEquals(1, pages.size)
+        assertEquals(SmartLocalArchivePageUri.SCHEME, Uri.parse(pages.single().url).scheme)
+        assertTrue(contentFiles().isEmpty())
+        val (document, entry) = SmartLocalArchivePageUri.parse(Uri.parse(pages.single().url))
+        resolver.openFileDescriptor(document, "r")!!.use { descriptor ->
+            ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.dup(descriptor.fileDescriptor)).use { stream ->
+                val bytes = IndexedArchiveCoverReader(stream.channel) {}.readReaderPage(entry)
+                assertArrayEquals(image, bytes)
+            }
+        }
+        assertTrue(contentFiles().isEmpty())
+        assertClosedDescriptors()
+    }
+
+    @Test fun replacingSeekableArchiveChangesCacheIdentityAndRejectsPendingOldPage() = runBlocking {
+        val imageA = png(Color.BLUE)
+        val imageB = png(Color.RED)
+        put("replace.cbz", archive(imageA, "001.png"))
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val original = book.toManga(false, true).chapters!!.single()
+        val oldPage = reader.pages(root, book.chapters.single(), original).single()
+        val oldUri = Uri.parse(oldPage.url)
+        val oldFile = SmartLocalArchivePageMaterializer.materialize(context, oldUri, oldPage.url, pageStorage)
+        assertArrayEquals(imageA, oldFile.readBytes())
+        put("replace.cbz", archive(imageB, "001.png"))
+        val freshPage = reader.pages(root, book.chapters.single(), original).single()
+        assertNotEquals("Different archive contents must not share a page cache key", oldPage.url, freshPage.url)
+        assertNotEquals(SmartLocalArchivePageUri.version(oldUri),
+            SmartLocalArchivePageUri.version(Uri.parse(freshPage.url)))
+        val freshFile = SmartLocalArchivePageMaterializer.materialize(
+            context, Uri.parse(freshPage.url), freshPage.url, pageStorage)
+        assertArrayEquals(imageB, freshFile.readBytes())
+        assertTrue(runCatching {
+            SmartLocalArchivePageMaterializer.materialize(context, oldUri, oldPage.url, pageStorage)
+        }.exceptionOrNull() is IOException)
+        assertTrue(contentFiles().isEmpty())
+        assertClosedDescriptors()
+    }
+
+    @Test fun changingPdfSourceRejectsStaleRenderedPageAndNewReaderGetsFreshIdentity() = runBlocking {
+        put("replace.pdf", pdf(Color.RED))
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val original = book.toManga(false, true).chapters!!.single()
+        val previousPage = reader.pages(root, book.chapters.single(), original).single()
+        val previous = File(Uri.parse(previousPage.url).path!!)
+        readerPageDirectories += previous.parentFile!!
+        assertTrue(org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(previous).isFile)
+        put("replace.pdf", pdf(Color.BLUE))
+        assertTrue("Cached PDF page must check source version even when bitmap exists",
+            runCatching {
+                org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(previous)
+            }.exceptionOrNull() is IOException)
+        val fresh = reader.pages(root, book.chapters.single(), original).single()
+        assertNotEquals(previousPage.url, fresh.url)
+        val freshFile = File(Uri.parse(fresh.url).path!!)
+        readerPageDirectories += freshFile.parentFile!!
+        assertTrue(org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(freshFile).isFile)
+        assertTrue(contentFiles().isEmpty())
+        assertClosedDescriptors()
+    }
+
+    @Test fun readerColdWarmAndPipeFallbackReportMeasuredStorageTimeAndHeap() = runBlocking {
+        val image = png(Color.GREEN)
+        val unrelated = ByteArray(256 * 1024).also { java.util.Random(23).nextBytes(it) }
+        val archive = archiveEntries("unrelated.bin" to unrelated, "001.png" to image)
+        put("seekable.cbz", archive)
+        put("stream.cbz", archive)
+        descriptorMode("stream.cbz", "pipe")
+        library.scan()
+        val root = LocalDocuments(context).root(rootUri)
+        val books = library.state.value.books.associateBy { it.node.name }
+        val directBook = requireNotNull(books["seekable.cbz"])
+        val pipeBook = requireNotNull(books["stream.cbz"])
+        val directOriginal = directBook.toManga(false, true).chapters!!.single()
+        val pipeOriginal = pipeBook.toManga(false, true).chapters!!.single()
+        val before = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
+        val directStart = System.nanoTime()
+        val direct = reader.pages(root, directBook.chapters.single(), directOriginal).single()
+        val first = SmartLocalArchivePageMaterializer.materialize(
+            context, Uri.parse(direct.url), direct.url, pageStorage)
+        assertArrayEquals(image, first.readBytes())
+        val directMs = (System.nanoTime() - directStart) / 1_000_000
+        val directBacking = contentFiles().sumOf { it.length() }
+        assertEquals("Direct seekable Reader must not duplicate the whole archive", 0L, directBacking)
+        val warmStart = System.nanoTime()
+        val warm = reader.pages(root, directBook.chapters.single(), directOriginal).single()
+        assertEquals(direct.url, warm.url)
+        val warmMs = (System.nanoTime() - warmStart) / 1_000_000
+        val token = Any()
+        val pipeStart = System.nanoTime()
+        val pipe = withContext(ReaderBackingLeaseContext(token)) {
+            reader.pages(root, pipeBook.chapters.single(), pipeOriginal).single()
+        }
+        val pipeMs = (System.nanoTime() - pipeStart) / 1_000_000
+        val fallbackBacking = contentFiles().sumOf { it.length() }
+        assertTrue("Non-seekable fallback must retain a usable source", fallbackBacking >= archive.size)
+        assertEquals(org.koitharu.kotatsu.core.util.ext.URI_SCHEME_ZIP, Uri.parse(pipe.url).scheme)
+        reader.releaseReaderLease(token)
+        val after = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
+        println("READER_PERF_SAMPLE sourceBytes=${archive.size} directBackingBytes=$directBacking " +
+            "fallbackBackingBytes=$fallbackBacking directColdMs=$directMs warmOpenMs=$warmMs " +
+            "pipeColdMs=$pipeMs javaHeapBeforeBytes=$before javaHeapAfterBytes=$after")
+        assertClosedDescriptors()
+    }
+
+    @Test fun concurrentSeekablePageRequestsRemainBoundedAndReturnCorrectImages() = runBlocking {
+        val expected = (0 until 4).associate { index ->
+            "${index + 1}.png" to png(listOf(Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW)[index])
+        }
+        put("parallel.cbz", archiveEntries(*expected.toList().toTypedArray()))
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val pages = reader.pages(root, book.chapters.single(),
+            book.toManga(false, true).chapters!!.single())
+        assertEquals(4, pages.size)
+        val outputs = (0 until 12).map { index ->
+            async(kotlinx.coroutines.Dispatchers.IO) {
+                val page = pages[index % pages.size]
+                val uri = Uri.parse(page.url)
+                val (_, entry) = SmartLocalArchivePageUri.parse(uri)
+                val stored = SmartLocalArchivePageMaterializer.materialize(
+                    context, uri, page.url, pageStorage)
+                entry to stored.readBytes()
+            }
+        }.awaitAll()
+        outputs.forEach { (entry, bytes) -> assertArrayEquals(expected[entry], bytes) }
+        assertTrue("Concurrent direct pages must not create whole-archive backing", contentFiles().isEmpty())
         assertClosedDescriptors()
     }
 

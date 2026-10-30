@@ -83,6 +83,39 @@ class IndexedArchiveCoverReaderTest {
         }
     }
 
+    @Test fun seekableReaderIndexesPagesAndInflatesOnlyRequestedEntry() {
+        val unrelated = ByteArray(4 * 1024 * 1024).also { java.util.Random(73).nextBytes(it) }
+        val wanted = byteArrayOf(2, 5, 8, 13)
+        read(zip("payload.bin" to unrelated, "Images/002.png" to byteArrayOf(3),
+            "Images/001.png" to wanted)) { reader ->
+            val pages = reader.readerPageNames { it.endsWith(".png") }
+            assertEquals(listOf("Images/002.png", "Images/001.png"), pages)
+            assertArrayEquals(wanted, reader.readReaderPage("Images/001.png"))
+            assertTrue(reader.bytesRead < unrelated.size / 10)
+        }
+    }
+
+    @Test fun unsupportedReaderImageFallsBackBeforePagesArePublished() {
+        val archive = zip("001.png" to byteArrayOf(1))
+        val record = (0..archive.size - 46).first {
+            archive[it] == 0x50.toByte() && archive[it + 1] == 0x4b.toByte() &&
+                archive[it + 2] == 1.toByte() && archive[it + 3] == 2.toByte()
+        }
+        // The declared page exceeds the Reader's per-entry safety limit.
+        val length = IndexedArchiveCoverReader.MAX_READER_PAGE_BYTES.toLong() + 1
+        for (index in 0..3) archive[record + 24 + index] = (length ushr (index * 8)).toByte()
+        read(archive) { assertNull(it.readerPageNames { name -> name.endsWith(".png") }) }
+    }
+
+    @Test fun indexedArchiveMetadataRespectsSidecarNameAndContents() {
+        val payload = "{\"title\":\"sample\"}".toByteArray()
+        read(zip("ComicInfo.XML" to byteArrayOf(1), "INDEX.JSON" to payload)) {
+            val (name, bytes) = requireNotNull(it.readerMetadata())
+            assertEquals("INDEX.JSON", name)
+            assertArrayEquals(payload, bytes)
+        }
+    }
+
     @Test fun cancellationDuringIndexWorkPropagatesWithoutBeingTreatedAsAFormatFallback() {
         val file = temporary.newFile().apply { writeBytes(zip("cover.jpg" to byteArrayOf(1))) }
         var checks = 0
