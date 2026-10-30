@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.reader.domain
 
 import android.content.Context
-import android.os.ParcelFileDescriptor
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.Animatable
@@ -74,8 +73,8 @@ import org.koitharu.kotatsu.download.ui.worker.DownloadSlowdownDispatcher
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
-import org.koitharu.kotatsu.local.library.IndexedArchiveCoverReader
 import org.koitharu.kotatsu.local.library.SmartLocalArchivePageUri
+import org.koitharu.kotatsu.local.library.SmartLocalArchivePageMaterializer
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -426,26 +425,7 @@ class PageLoader @Inject constructor(
         reuseCache: Boolean,
     ): Uri = cbzMaterializeLock.withLock {
         if (reuseCache) cache[cacheKey]?.let { return@withLock it.toUri() }
-        val (document, entry) = SmartLocalArchivePageUri.parse(uri)
-        val bytes = runInterruptible(Dispatchers.IO) {
-            val descriptor = requireNotNull(context.contentResolver.openFileDescriptor(document, "r")) {
-                "Local archive document is unavailable"
-            }
-            descriptor.use {
-                ParcelFileDescriptor.AutoCloseInputStream(
-                    ParcelFileDescriptor.dup(it.fileDescriptor)
-                ).use { input ->
-                    IndexedArchiveCoverReader(input.channel) {
-                        if (Thread.currentThread().isInterrupted) {
-                            throw java.io.InterruptedIOException("Archive read cancelled")
-                        }
-                    }.readReaderPage(entry)
-                }
-            }
-        }
-        bytes.inputStream().source().use { source ->
-            cache.set(cacheKey, source, MimeTypes.getMimeTypeFromExtension(entry)).toUri()
-        }
+        SmartLocalArchivePageMaterializer.materialize(context, uri, cacheKey, cache).toUri()
     }
 
 	/**
