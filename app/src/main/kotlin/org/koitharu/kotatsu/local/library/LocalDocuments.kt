@@ -101,7 +101,7 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
     /** Create a new file only when the destination has no matching name. Never overwrite. */
     fun createFile(directory: Node, name: String, mimeType: String = "application/octet-stream"): Node {
         require(directory.directory && name.isNotBlank() && name != "." && name != ".." &&
-            '/' !in name && '\\\\' !in name) { "Invalid destination filename" }
+            '/' !in name && '\\' !in name) { "Invalid destination filename" }
         check(children(directory, directory).none { it.name.equals(name, ignoreCase = true) }) {
             "Destination already contains $name"
         }
