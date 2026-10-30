@@ -35,11 +35,15 @@ internal object SmartLocalArchivePageMaterializer {
                 ParcelFileDescriptor.AutoCloseInputStream(
                     ParcelFileDescriptor.dup(it.fileDescriptor)
                 ).use { input ->
-                    IndexedArchiveCoverReader(input.channel) {
+                    val reader = IndexedArchiveCoverReader(input.channel) {
                         if (Thread.currentThread().isInterrupted) {
                             throw InterruptedIOException("Archive page read cancelled")
                         }
-                    }.readReaderPage(entry)
+                    }
+                    if (reader.archiveVersion != SmartLocalArchivePageUri.version(pageUri)) {
+                        throw java.io.IOException("Archive changed while Reader page was pending")
+                    }
+                    reader.readReaderPage(entry)
                 }
             }
         }
