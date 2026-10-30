@@ -466,6 +466,11 @@ class SmartLocalLibrary @Inject constructor(
             }
             val destination = documents.root(destinationUri.toString())
             check(destination.directory) { "Choose a destination folder" }
+            // An unregistered destination would make a successful move disappear from
+            // the library on the reconciliation scan. Require an indexed destination.
+            check(state.value.roots.any { it.uri == destinationUri.toString() }) {
+                "Add the destination folder to the local library before moving"
+            }
             val allOwners = state.value.books.flatMap { book ->
                 (book.chapters.flatMap { it.pages + it.node } + book.sidecars).distinctBy { it.key }
                     .map { it.key to book.id }
@@ -530,8 +535,10 @@ class SmartLocalLibrary @Inject constructor(
             var deleted = 0
             for ((root, source) in sources) {
                 currentCoroutineContext().ensureActive()
-                if (documents.exists(root, source)) documents.delete(root, source)
-                deleted++
+                if (documents.exists(root, source)) {
+                    documents.delete(root, source)
+                    deleted++
+                }
             }
             deleted
         } } catch (error: Exception) {
