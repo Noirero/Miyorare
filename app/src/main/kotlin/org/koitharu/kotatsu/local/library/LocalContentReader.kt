@@ -212,10 +212,10 @@ open class LocalContentReader @Inject constructor(
                         ParcelFileDescriptor.AutoCloseInputStream(
                             ParcelFileDescriptor.dup(descriptor.fileDescriptor)
                         ).use { input ->
-                            IndexedArchiveCoverReader(input.channel) { coroutine.ensureActive() }
-                                .readerPageNames(::isArchiveImage)
+                            val archive = IndexedArchiveCoverReader(input.channel) { coroutine.ensureActive() }
+                            archive.readerPageNames(::isArchiveImage)
                                 ?.sortedWith(LocalTreeScanner.NATURAL)
-                                ?.map { SmartLocalArchivePageUri.create(chapter.node.uri, it) }
+                                ?.map { SmartLocalArchivePageUri.create(chapter.node.uri, it, archive.archiveVersion) }
                         }
                     })
                 } catch (error: kotlinx.coroutines.CancellationException) {
