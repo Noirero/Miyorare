@@ -27,7 +27,7 @@ object LocalPdfCache {
 
 	private const val CACHE_DIR_NAME = "local_pdf_pages"
 	private const val SOURCE_FILE_NAME = ".source"
-    private const val DOCUMENT_SOURCE_PREFIX = "document\\n"
+    private const val DOCUMENT_SOURCE_PREFIX = "document\n"
 	private const val COVER_FILE_NAME = "cover.png"
 	private const val COVER_MAX_RENDER_DIMENSION = 768
 	private const val PDF_RENDER_CONCURRENCY = 2
@@ -156,10 +156,10 @@ object LocalPdfCache {
             if (renderer.pageCount <= 0) throw IOException("PDF has no pages")
             renderer.pageCount
         }
-        val key = digestKey("saf-pdf\\u0000$identity")
+        val key = digestKey("saf-pdf\u0000$identity")
         val outputDir = File(pdfCacheRoot(), key)
         ensureOutputDir(outputDir)
-        val marker = "$DOCUMENT_SOURCE_PREFIX$key\\n$documentUri"
+        val marker = "$DOCUMENT_SOURCE_PREFIX$key\n$documentUri"
         val sourceMarker = File(outputDir, SOURCE_FILE_NAME)
         withTargetLock(sourceMarker) {
             if (!sourceMarker.isFile || sourceMarker.readText() != marker) {
@@ -194,7 +194,7 @@ object LocalPdfCache {
 			}
             val source = sourceMarker.readText()
             if (source.startsWith(DOCUMENT_SOURCE_PREFIX)) {
-                val parts = source.removePrefix(DOCUMENT_SOURCE_PREFIX).split('\\n', limit = 2)
+                val parts = source.removePrefix(DOCUMENT_SOURCE_PREFIX).split('\n', limit = 2)
                 if (parts.size != 2 || parts[0] != outputDir.name) {
                     throw IOException("PDF document cache identity mismatch")
                 }
