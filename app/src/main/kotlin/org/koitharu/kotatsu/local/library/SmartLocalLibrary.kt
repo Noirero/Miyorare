@@ -640,6 +640,15 @@ class SmartLocalLibrary @Inject constructor(
                     currentCoroutineContext().ensureActive()
                     for (file in tree.files) {
                         currentCoroutineContext().ensureActive()
+                        // Narrow the mutation window: a source can change after the
+                        // batch verification while earlier files are being removed.
+                        val copy = copiedFiles.first { it.first.key == file.key }.second
+                        val deletionContext = currentCoroutineContext()
+                        LocalMoveVerifier.verify(
+                            source = { documents.input(file) },
+                            destination = { documents.input(copy) },
+                            checkCancelled = { deletionContext.ensureActive() },
+                        )
                         documents.delete(tree.root, file)
                     }
                     // Deepest first, empty-only; never recursively delete unknown additions.
