@@ -115,16 +115,22 @@ open class LocalContentReader @Inject constructor(
             listOf(MangaPage(id = chapter.id, url = chapter.url, preview = null, source = LocalMangaSource))
         } else {
             val file = materialize(root, chapter.node)
-            val urls = if (LocalTreeScanner.extension(chapter.node.name) == "pdf") {
-                LocalPdfCache.renderPages(file).map { it.toUri().toString() }
-            } else ZipFile(file).use { zip ->
-                zip.entries().asSequence().filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
-                    .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name })
-                    .map { file.toZipUri(it.name).toString() }.toList()
+            try {
+                val urls = if (LocalTreeScanner.extension(chapter.node.name) == "pdf") {
+                    LocalPdfCache.renderPages(file).map { it.toUri().toString() }
+                } else ZipFile(file).use { zip ->
+                    zip.entries().asSequence().filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
+                        .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name })
+                        .map { file.toZipUri(it.name).toString() }.toList()
+                }
+                check(urls.isNotEmpty()) { "No readable pages in ${chapter.node.name}" }
+                urls.mapIndexed { i, url -> MangaPage(id = "${original.id}:$i".longHashCode(), url = url,
+                    preview = null, source = LocalMangaSource) }
+            } catch (error: Throwable) {
+                // No page URLs were published: release the backing even on cancellation.
+                withContext(NonCancellable) { releaseMaterialized(file) }
+                throw error
             }
-            check(urls.isNotEmpty()) { "No readable pages in ${chapter.node.name}" }
-            urls.mapIndexed { i, url -> MangaPage(id = "${original.id}:$i".longHashCode(), url = url,
-                preview = null, source = LocalMangaSource) }
         }
     }
 
