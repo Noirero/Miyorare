@@ -286,7 +286,7 @@ class LocalListViewModel @Inject constructor(
 				R.string.smart_local_manage_groups, LocalLibraryAction.Groups)
 			val available = snapshot.books.mapTo(HashSet()) { it.node.key }
 			for ((name, members) in groups.toSortedMap()) {
-				val count = members.count { it in available }
+				val count = LocalGroupVisibility.count(groups, name, available)
 				result += ListHeader(context.getString(R.string.smart_local_group_card, name, count),
 					R.string.smart_local_show_group, LocalLibraryAction.GroupCard(name))
 			}
@@ -294,10 +294,11 @@ class LocalListViewModel @Inject constructor(
 		result += SmartLocalCollectionHeaderModel(mode)
 		// A deleted/renamed active group must not silently expose every title.
 		val selectedGroup = activeGroup.value
-		val groupMembers = selectedGroup?.let { groups[it] }
+		val booksByKey = snapshot.books.associateBy { it.id }
 		val manga = library.list(query, type).filter { item ->
-			selectedGroup == null || (groupMembers != null &&
-				snapshot.books.any { book -> book.id == item.id && book.node.key in groupMembers })
+			booksByKey[item.id]?.let { book ->
+				LocalGroupVisibility.visible(selectedGroup, groups, book.node.key)
+			} == true
 		}.skipNsfwIfNeeded()
 		val models = mangaListMapper.toListModelList(manga, mode, MangaListMapper.NO_SAVED)
 		val booksById = snapshot.books.associateBy { it.id }
