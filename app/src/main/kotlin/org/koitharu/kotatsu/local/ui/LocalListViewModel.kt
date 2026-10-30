@@ -185,6 +185,14 @@ class LocalListViewModel @Inject constructor(
 		launchLoadingJob(Dispatchers.IO) { exportedArchives.call(library.exportSelected(ids)) }
 	}
 
+	fun resetTextMetadata(ids: Set<Long>) {
+		if (ids.isEmpty()) return
+		launchLoadingJob(Dispatchers.IO) {
+			library.clearTextMetadata(ids)
+			revision.value++
+		}
+	}
+
 	fun updateTextMetadata(ids: Set<Long>, title: String?, description: String?) {
 		if (ids.isEmpty() || (title == null && description == null)) return
 		launchLoadingJob(Dispatchers.IO) {
