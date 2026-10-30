@@ -121,6 +121,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	override fun onEmptyActionClick() = addFolder()
 	override fun onFilterClick(view: View?) = showFilters()
 	override fun onSmartLocalQueryChanged(query: String) = viewModel.setLocalQuery(query)
+	override fun onSmartLocalGroupSelected(name: String) = viewModel.setGroupFilter(name)
 	override fun onSmartLocalFilterClick(view: View) = showFilters()
 	override fun onSmartLocalTypeChanged(type: LocalContentType?) = viewModel.setContentType(type)
 	override fun onSmartLocalResume(manga: org.koitharu.kotatsu.parsers.model.Manga) = viewModel.resume(manga)
