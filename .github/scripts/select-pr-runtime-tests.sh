@@ -67,6 +67,9 @@ add_migration_suite() {
 }
 
 add_local_download_suite() {
+  # Reader-source changes must exercise SAF descriptor, PDF lazy-page and pipe fallback tests,
+  # not just local downloads. Keep this class in both targeted and full plans.
+  add_class org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest
   add_class org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest
@@ -137,6 +140,7 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.settings.sources.migration.MigrationBatchControlsTest
   add_class org.koitharu.kotatsu.alternatives.domain.MigrationBatchVisibilityTest
   add_class org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest
+  add_class org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest
   add_class org.koitharu.kotatsu.details.domain.FavouriteReleasePredictionsTest
   add_class org.koitharu.kotatsu.details.ui.prediction.ReleasePredictionHeaderTest
   add_class org.koitharu.kotatsu.details.ui.prediction.ChapterReleasePredictionSheetTest
@@ -258,6 +262,9 @@ self_test() {
   grep -q '^mode=targeted$' <<<"$out"
   grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
 
+  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/library/LocalContentReader.kt')"
+  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
   grep -q 'DiscoveryCatalogUiTest' <<<"$out"
   grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
@@ -285,7 +292,21 @@ self_test() {
   out="$(plan_from_paths true 'README.md')"
   grep -q '^mode=full$' <<<"$out"
   grep -q 'CategorySetsUiTest' <<<"$out"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
+  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+  grep -q '^run_runtime_isolation=true
+  grep -q '^run_migration_persistence=true$' <<<"$out"
+
+  echo 'Runtime selector self-test: PASS'
+}
+
+if [[ "$SELF_TEST" == true ]]; then
+  self_test
+  exit 0
+fi
+
+mapfile -t PATHS
+plan_from_paths "$FULL" "${PATHS[@]}"
+ <<<"$out"
   grep -q '^run_migration_persistence=true$' <<<"$out"
 
   echo 'Runtime selector self-test: PASS'
