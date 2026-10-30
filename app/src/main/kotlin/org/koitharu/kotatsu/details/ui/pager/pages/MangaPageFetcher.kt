@@ -64,7 +64,8 @@ class MangaPageFetcher(
 		val pageUrl = repo.getPageUrl(page)
 		val imageHeaders = repo.getImageRequestHeaders(pageUrl, page)
 		val selectedCache = if (page.source == LocalMangaSource) localPageCache else pagesCache
-		if (options.diskCachePolicy.readEnabled && pageUrl.toUri().scheme != "content") {
+		if (options.diskCachePolicy.readEnabled &&
+            !(page.source == LocalMangaSource && pageUrl.toUri().scheme == "content")) {
 			selectedCache[pageUrl]?.let { file ->
 				return SourceFetchResult(
 					source = ImageSource(file.toOkioPath(), options.fileSystem),
