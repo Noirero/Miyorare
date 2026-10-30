@@ -138,9 +138,6 @@ class SmartLocalLibrary @Inject constructor(
             val confirmed = prefs.getStringSet("confirmed", emptySet()).orEmpty().toSet()
             val targets = if (selectedIds == null) emptyList() else previous.books.filter { it.id in selectedIds }
             require(selectedIds == null || targets.size == selectedIds.size) { "Selected collection is no longer indexed" }
-            // A file title has no directory boundary to scan in isolation. Refuse rather
-            // than silently rescanning and mutating unrelated titles in its parent.
-            require(targets.all { it.node.directory }) { "Selective refresh requires a folder collection" }
             val activeRoots = previous.roots.filter { root ->
                 (selectedRoots == null || root.uri in selectedRoots) &&
                     (selectedIds == null || targets.any { it.rootUri == root.uri })
@@ -162,8 +159,13 @@ class SmartLocalLibrary @Inject constructor(
                             val rootNode = documents.root(root.uri)
                             check(documents.contains(rootNode, target.node)) { "Selected collection outside its root" }
                             val coroutine = currentCoroutineContext()
-                            val access = documents.access(target.node) { coroutine.ensureActive() }
-                            val scanned = LocalTreeScanner().scan(target.node, access, confirmed + target.node.key, exclusions)
+                            val scanned = if (target.node.directory) {
+                                val access = documents.access(target.node) { coroutine.ensureActive() }
+                                LocalTreeScanner().scan(target.node, access, confirmed + target.node.key, exclusions)
+                            } else {
+                                check(documents.exists(rootNode, target.node)) { "Selected file is unavailable" }
+                                LocalTreeScanner().scanFile(target.node)
+                            }
                             result.entries.addAll(scanned.entries)
                             result.issues.addAll(scanned.issues)
                         }
