@@ -36,6 +36,25 @@ class LocalMoveVerifierTest {
         }
     }
 
+    @Test fun sourceMutationDuringVerificationIsRejected() {
+        val original = byteArrayOf(1, 2, 3, 4)
+        val mutableSource = original.copyOf()
+        assertThrows(IllegalStateException::class.java) {
+            LocalMoveVerifier.verify(
+                source = {
+                    object : ByteArrayInputStream(mutableSource) {
+                        override fun read(b: ByteArray, off: Int, len: Int): Int {
+                            // Simulate an external writer changing bytes during the read.
+                            mutableSource[2] = 99
+                            return super.read(b, off, len)
+                        }
+                    }
+                },
+                destination = { ByteArrayInputStream(original) },
+            )
+        }
+    }
+
     @Test fun cancellationPropagatesBeforeDeletion() {
         assertThrows(java.util.concurrent.CancellationException::class.java) {
             LocalMoveVerifier.verify({ ByteArrayInputStream(byteArrayOf(1)) },
