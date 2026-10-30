@@ -67,8 +67,7 @@ add_migration_suite() {
 }
 
 add_local_download_suite() {
-  # Reader-source changes must exercise SAF descriptor, PDF lazy-page and pipe fallback tests,
-  # not just local downloads. Keep this class in both targeted and full plans.
+  # On-device Reader changes require real SAF/descriptor/lazy-PDF runtime coverage.
   add_class org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest
   add_class org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest
@@ -293,20 +292,7 @@ self_test() {
   grep -q '^mode=full$' <<<"$out"
   grep -q 'CategorySetsUiTest' <<<"$out"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  grep -q '^run_runtime_isolation=true
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-mapfile -t PATHS
-plan_from_paths "$FULL" "${PATHS[@]}"
- <<<"$out"
+  grep -q '^run_runtime_isolation=true$' <<<"$out"
   grep -q '^run_migration_persistence=true$' <<<"$out"
 
   echo 'Runtime selector self-test: PASS'
