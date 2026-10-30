@@ -94,14 +94,40 @@ internal class IndexedArchiveCoverReader(private val channel: FileChannel, priva
         return fallback
     }
 
+    /**
+     * Only enable direct Reader access if every image can be read using the bounded positional
+     * decoder. Unsupported entries fall back to the established seekable-copy path as a whole,
+     * so no chapter mixes two source identities.
+     */
+    fun readerPageNames(isSafeImage: (String) -> Boolean): List<String>? {
+        val images = entries.filter { !it.name.endsWith('/') && isSafeImage(it.name) }
+        if (images.isEmpty() || images.any {
+                it.flags and 0x41 != 0 || it.method !in setOf(0, 8) ||
+                    it.size !in 1..MAX_READER_PAGE_BYTES.toLong() ||
+                    it.compressedSize !in 1..MAX_READER_PAGE_BYTES.toLong()
+            }) return null
+        return images.map { it.name }
+    }
+
+    /** Decode a single indexed image. CRC and declared output length must match. */
+    fun readReaderPage(name: String): ByteArray {
+        val entry = entries.firstOrNull { it.name == name }
+            ?: throw IOException("Archive page does not exist")
+        if (entry.name.endsWith('/') || entry.size !in 1..MAX_READER_PAGE_BYTES.toLong()) {
+            throw IOException("Unsupported archive page size")
+        }
+        return readEntry(entry, MAX_READER_PAGE_BYTES, MAX_READER_PAGE_BYTES)
+            ?: throw IOException("Unsupported or corrupt archive page")
+    }
+
     /** Bounded metadata reads for container/OPF discovery; this never parses EPUB Reader content. */
     fun metadata(name: String): ByteArray? = entries.firstOrNull { it.name == name }?.let {
         try { if (it.compressedSize > MAX_METADATA_BYTES + 1024) null else readEntry(it, MAX_METADATA_BYTES) } catch (_: IOException) { null }
     }
 
-    private fun readEntry(entry: Entry, limit: Int): ByteArray? {
+    private fun readEntry(entry: Entry, limit: Int, compressedLimit: Int = BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES): ByteArray? {
         if (entry.flags and 0x41 != 0 || entry.method !in setOf(0, 8) || entry.size !in 1..limit.toLong() ||
-            entry.compressedSize !in 1..BoundedArchiveCoverReader.MAX_CANDIDATE_BYTES.toLong()) return null
+            entry.compressedSize !in 1..compressedLimit.toLong()) return null
         val header = read(entry.offset, 30)
         if (header.u32(0) != LOCAL_SIGNATURE || header.u16(6) != entry.flags || header.u16(8) != entry.method) throw IOException("Inconsistent ZIP local header")
         if (entry.flags and 8 == 0 && (header.u32(14) != entry.crc || header.u32(18) != entry.compressedSize || header.u32(22) != entry.size)) throw IOException("Inconsistent ZIP entry version")
@@ -171,6 +197,7 @@ internal class IndexedArchiveCoverReader(private val channel: FileChannel, priva
         const val MAX_DIRECTORY_BYTES = 2 * 1024 * 1024
         const val MAX_INDEX_ENTRIES = 4096
         const val MAX_METADATA_BYTES = 256 * 1024
+        const val MAX_READER_PAGE_BYTES = 32 * 1024 * 1024
         private const val MAX_END_BYTES = 65535 + 22
         private const val END_SIGNATURE = 0x06054b50L
         private const val CENTRAL_SIGNATURE = 0x02014b50L
