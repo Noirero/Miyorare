@@ -355,7 +355,7 @@ class SmartLocalCoverPipelineTest {
     }
 
     @Test fun seekableSafPdfOpensReaderWithoutCopyingDocument() = runBlocking {
-        put("direct.pdf", pdf(Color.GREEN), padding = 1024 * 1024)
+        put("direct.pdf", pdf(Color.GREEN))
         library.scan()
         val book = library.state.value.books.single()
         val root = LocalDocuments(context).root(rootUri)
@@ -372,7 +372,8 @@ class SmartLocalCoverPipelineTest {
 
     @Test fun seekableSafArchiveIndexesReaderWithoutCopyingDocument() = runBlocking {
         val image = png(Color.BLUE)
-        put("direct.cbz", archive(image, "Images/001.png"), padding = 1024 * 1024)
+        val unrelated = ByteArray(1024 * 1024).also { java.util.Random(17).nextBytes(it) }
+        put("direct.cbz", archiveEntries("unrelated.bin" to unrelated, "Images/001.png" to image))
         library.scan()
         val book = library.state.value.books.single()
         val root = LocalDocuments(context).root(rootUri)
