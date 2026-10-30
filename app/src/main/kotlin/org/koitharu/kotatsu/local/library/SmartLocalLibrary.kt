@@ -288,15 +288,25 @@ class SmartLocalLibrary @Inject constructor(
                 if (description != null) entry.put("description", description)
                 overrides.put(book.node.key, entry)
             }
+            val previousOverrides = prefs.getString("text_overrides", null)
             check(prefs.edit().putString("text_overrides", overrides.toString()).commit())
-            val updated = state.value.books.map { if (it.id in ids) applyTextOverrides(it) else it }
-            db.withTransaction {
-                for (book in updated.filter { it.id in ids }) {
-                    currentCoroutineContext().ensureActive()
-                    dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
+            try {
+                val updated = state.value.books.map { if (it.id in ids) applyTextOverrides(it) else it }
+                db.withTransaction {
+                    for (book in updated.filter { it.id in ids }) {
+                        currentCoroutineContext().ensureActive()
+                        dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
+                    }
                 }
+                publishLocked(state.value.copy(books = updated))
+            } catch (failure: Exception) {
+                // Preferences and Room cannot share one transaction. Restore the
+                // previous override snapshot if the database update fails.
+                if (!prefs.edit().putString("text_overrides", previousOverrides).commit()) {
+                    failure.addSuppressed(IllegalStateException("Could not restore metadata overrides"))
+                }
+                throw failure
             }
-            publishLocked(state.value.copy(books = updated))
         }
         mutableChanges.emit(Unit)
     }
