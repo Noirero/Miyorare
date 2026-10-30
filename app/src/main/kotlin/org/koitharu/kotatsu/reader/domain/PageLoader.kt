@@ -278,6 +278,7 @@ class PageLoader @Inject constructor(
 		loaderScope.cancelChildrenAndJoin()
 		if (clearCache) {
 			cache.clear()
+			localPageCache.clear()
 		}
 	}
 
