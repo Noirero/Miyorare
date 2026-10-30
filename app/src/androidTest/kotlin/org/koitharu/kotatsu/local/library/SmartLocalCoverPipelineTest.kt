@@ -483,7 +483,7 @@ class SmartLocalCoverPipelineTest {
         val pipeMs = (System.nanoTime() - pipeStart) / 1_000_000
         val fallbackBacking = contentFiles().sumOf { it.length() }
         assertTrue("Non-seekable fallback must retain a usable source", fallbackBacking >= archive.size)
-        assertTrue(pipe.url.startsWith("zip:"))
+        assertEquals(org.koitharu.kotatsu.core.util.ext.URI_SCHEME_ZIP, Uri.parse(pipe.url).scheme)
         reader.releaseReaderLease(token)
         val after = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
         println("READER_PERF_SAMPLE sourceBytes=${archive.size} directBackingBytes=$directBacking " +
