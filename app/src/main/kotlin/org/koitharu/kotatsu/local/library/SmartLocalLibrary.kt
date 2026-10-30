@@ -310,6 +310,12 @@ class SmartLocalLibrary @Inject constructor(
             val overrides = JSONObject(prefs.getString("text_overrides", "{}").orEmpty())
             selected.forEach { overrides.remove(it.node.key) }
             check(prefs.edit().putString("text_overrides", overrides.toString()).commit())
+            // Clear the in-memory fallback too: scan() otherwise reuses old.title and
+            // old.description when no metadata sidecar provides replacements.
+            val cleared = state.value.books.map { book ->
+                if (book.id in ids) book.copy(title = null, description = null) else book
+            }
+            publishLocked(state.value.copy(books = cleared))
         }
         scan()
     }
