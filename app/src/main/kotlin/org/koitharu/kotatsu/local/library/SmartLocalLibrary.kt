@@ -635,6 +635,7 @@ class SmartLocalLibrary @Inject constructor(
                     rollbackFailures.forEach(error::addSuppressed)
                     throw error
                 }
+                val copiedBySourceKey = copiedFiles.associate { (source, copy) -> source.key to copy }
                 var movedCount = 0
                 for (tree in trees) {
                     currentCoroutineContext().ensureActive()
@@ -642,7 +643,7 @@ class SmartLocalLibrary @Inject constructor(
                         currentCoroutineContext().ensureActive()
                         // Narrow the mutation window: a source can change after the
                         // batch verification while earlier files are being removed.
-                        val copy = copiedFiles.first { it.first.key == file.key }.second
+                        val copy = checkNotNull(copiedBySourceKey[file.key]) { "Verified copy missing" }
                         val deletionContext = currentCoroutineContext()
                         LocalMoveVerifier.verify(
                             source = { documents.input(file) },
