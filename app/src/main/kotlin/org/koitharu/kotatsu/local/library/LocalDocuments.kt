@@ -98,6 +98,35 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
         }
     }
 
+    /** Create a new file only when the destination has no matching name. Never overwrite. */
+    fun createFile(directory: Node, name: String, mimeType: String = "application/octet-stream"): Node {
+        require(directory.directory && name.isNotBlank() && name != "." && name != ".." &&
+            '/' !in name && '\\\\' !in name) { "Invalid destination filename" }
+        check(children(directory, directory).none { it.name.equals(name, ignoreCase = true) }) {
+            "Destination already contains $name"
+        }
+        val uri = directory.uri.toUri()
+        return if (uri.scheme == ContentResolver.SCHEME_FILE) {
+            val file = File(uri.toFile(), name)
+            check(file.createNewFile()) { "Destination already exists: $name" }
+            fileNode(file)
+        } else {
+            val created = DocumentsContract.createDocument(resolver, uri, mimeType, name)
+                ?: throw IOException("Cannot create destination file: $name")
+            query(created).singleOrNull() ?: run {
+                val documentId = DocumentsContract.getDocumentId(created)
+                Node("${uri.authority}:$documentId", created.toString(), name, false, 0L, 0L)
+            }
+        }
+    }
+
+    fun output(node: Node): java.io.OutputStream {
+        check(!node.directory) { "Cannot write a directory" }
+        val uri = node.uri.toUri()
+        return if (uri.scheme == ContentResolver.SCHEME_FILE) uri.toFile().outputStream()
+        else resolver.openOutputStream(uri, "wt") ?: throw IOException("Cannot write: ${node.name}")
+    }
+
     fun input(node: Node): InputStream {
         val uri = node.uri.toUri()
         return if (uri.scheme == ContentResolver.SCHEME_FILE) uri.toFile().inputStream()
