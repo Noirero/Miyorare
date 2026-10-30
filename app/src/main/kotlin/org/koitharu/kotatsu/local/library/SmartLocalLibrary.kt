@@ -529,6 +529,16 @@ class SmartLocalLibrary @Inject constructor(
                     check(files.isNotEmpty()) { "Cannot move an empty collection" }
                     SourceTree(root, book.node, files, folders)
                 }
+                // Preflight all source trees as one batch. Overlapping selected roots
+                // or shared physical descendants must never be copied and deleted twice.
+                val allSourceKeys = HashSet<String>()
+                for (tree in trees) {
+                    for (node in tree.folders + tree.files) {
+                        check(allSourceKeys.add(node.key)) {
+                            "Selected collections overlap or share a physical document"
+                        }
+                    }
+                }
                 val names = trees.map { it.top.name.lowercase(java.util.Locale.ROOT) }
                 check(names.size == names.toSet().size) { "Selected collections have conflicting names" }
                 val existing = documents.children(destination, destination)
