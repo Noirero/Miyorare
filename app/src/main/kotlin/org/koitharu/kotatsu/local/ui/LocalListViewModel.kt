@@ -296,14 +296,11 @@ class LocalListViewModel @Inject constructor(
 			val cards = groups.keys.sorted().map { name ->
 				SmartLocalGroupRowModel.Group(name, LocalGroupVisibility.count(groups, name, available))
 			}
-			val visible = if (showAllGroups.value) cards else cards.take(4)
-			for (pair in visible.chunked(2)) {
-				result += SmartLocalGroupRowModel(pair[0], pair.getOrNull(1))
-			}
-			if (cards.size > 4) {
+			result += SmartLocalGroupRowModel.rows(cards, showAllGroups.value)
+			if (cards.size > SmartLocalGroupRowModel.COLLAPSED_LIMIT) {
 				result += ListHeader(
 					if (showAllGroups.value) context.getString(R.string.smart_local_groups_count, cards.size)
-					else context.getString(R.string.smart_local_groups_remaining, cards.size - 4),
+					else context.getString(R.string.smart_local_groups_remaining, cards.size - SmartLocalGroupRowModel.COLLAPSED_LIMIT),
 					if (showAllGroups.value) R.string.smart_local_show_less else R.string.smart_local_see_all,
 					LocalLibraryAction.ToggleGroups,
 				)
