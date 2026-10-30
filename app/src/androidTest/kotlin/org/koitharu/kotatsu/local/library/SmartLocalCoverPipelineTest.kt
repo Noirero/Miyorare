@@ -50,10 +50,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import okhttp3.internal.platform.PlatformRegistry
-import okio.source
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -64,23 +62,19 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.local.data.LocalStorageCache
-import org.koitharu.kotatsu.local.data.LocalStorageManager
-import org.koitharu.kotatsu.local.data.CacheDir
 import org.koitharu.kotatsu.local.data.PageCache
-import org.koitharu.kotatsu.local.data.LocalReaderPageCache
-import org.koitharu.kotatsu.local.data.LocalReaderPageCachePolicy
 import org.koitharu.kotatsu.local.data.LocalRoutingMangaRepository
 import org.koitharu.kotatsu.core.image.BitmapDecoderCompat
 import org.koitharu.kotatsu.core.image.MiyorareImageDiskCache
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
 import org.koitharu.kotatsu.core.util.ext.toZipUri
-import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.local.library.LocalTreeScanner.Node
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaPage
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivity
 
@@ -92,9 +86,7 @@ class SmartLocalCoverPipelineTest {
     @Inject lateinit var repository: MangaDataRepository
     @Inject lateinit var database: MangaDatabase
     @Inject @PageCache lateinit var pageStorage: LocalStorageCache
-    @Inject @LocalReaderPageCache lateinit var localPageStorage: LocalStorageCache
     @Inject lateinit var localRouting: LocalRoutingMangaRepository
-    @Inject lateinit var storageManager: LocalStorageManager
     private lateinit var context: FixtureContext
     private lateinit var library: SmartLocalLibrary
     private lateinit var reader: CountingReader
@@ -380,7 +372,7 @@ class SmartLocalCoverPipelineTest {
         assertClosedDescriptors()
     }
 
-    @Test fun seekableSafFolderPageUsesOriginalContentWithoutCacheCopy() = runBlocking {
+    @Test fun seekableOnDeviceImageDoesNotCreatePageCacheCopy() = runBlocking {
         val image = png(Color.GREEN)
         put("Images/001.png", image)
         library.scan()
@@ -389,24 +381,25 @@ class SmartLocalCoverPipelineTest {
         val page = reader.pages(root, book.chapters.single(),
             book.toManga(false, true).chapters!!.single()).single()
         assertEquals("content", Uri.parse(page.url).scheme)
-        val resolved = localRouting.getPageUrl(page)
-        assertEquals("Seekable SAF images must not create disposable page copies", page.url, resolved)
-        assertNull(localPageStorage[page.url])
-        assertNull(pageStorage[page.url])
-        resolver.openInputStream(Uri.parse(resolved))!!.use { source ->
-            val decoder = BitmapDecoderCompat.createRegionDecoder(source)
-            assertNotNull("Direct source must support Reader region decoding", decoder)
+        val result = localRouting.getPageUrl(page)
+        assertEquals("Direct SAF page must retain its original document URI", page.url, result)
+        assertNull("Direct SAF reading must not duplicate the image", pageStorage[page.url])
+        resolver.openInputStream(Uri.parse(result))!!.use { input ->
+            val decoder = BitmapDecoderCompat.createRegionDecoder(input)
+            assertNotNull("Reader must still support region decoding", decoder)
             try {
                 val tile = decoder!!.decodeRegion(Rect(0, 0, 1, 1), BitmapFactory.Options())
                 assertNotNull(tile)
                 tile!!.recycle()
-            } finally { decoder!!.recycle() }
+            } finally {
+                decoder!!.recycle()
+            }
         }
         assertTrue(contentFiles().isEmpty())
         assertClosedDescriptors()
     }
 
-    @Test fun pipeOnlySafFolderPageKeepsSafeLocalCacheFallback() = runBlocking {
+    @Test fun nonSeekableOnDeviceImageUsesOriginalPageCacheFallback() = runBlocking {
         val image = png(Color.BLUE)
         put("Streaming/001.png", image)
         descriptorMode("Streaming/001.png", "pipe")
@@ -415,148 +408,44 @@ class SmartLocalCoverPipelineTest {
         val root = LocalDocuments(context).root(rootUri)
         val page = reader.pages(root, book.chapters.single(),
             book.toManga(false, true).chapters!!.single()).single()
-        val resolved = localRouting.getPageUrl(page)
-        assertEquals("file", Uri.parse(resolved).scheme)
-        val file = File(Uri.parse(resolved).path!!)
-        assertArrayEquals(image, file.readBytes())
-        assertNotNull(localPageStorage[page.url])
-        assertNull("Local pages must not occupy the global 200 MiB cache", pageStorage[page.url])
+        val result = localRouting.getPageUrl(page)
+        assertEquals("file", Uri.parse(result).scheme)
+        assertArrayEquals(image, File(Uri.parse(result).path!!).readBytes())
+        assertNotNull("Pipe fallback must use the original global Pages cache",
+            pageStorage[page.url])
         assertTrue(contentFiles().isEmpty())
         assertClosedDescriptors()
     }
 
-    @Test fun pipeBackedImageWithoutSafeSizeRetainsSharedCacheFallback() {
-        val cap = 32L * 1024L * 1024L
-        assertTrue(LocalReaderPageCachePolicy.fitsSmallSafImage(cap))
-        assertTrue(LocalReaderPageCachePolicy.fitsSmallSafImage(512L * 1024L))
-        assertFalse(LocalReaderPageCachePolicy.fitsSmallSafImage(cap + 1))
-        assertFalse(LocalReaderPageCachePolicy.fitsSmallSafImage(null))
-        assertFalse(LocalReaderPageCachePolicy.fitsSmallSafImage(0))
-    }
-
-    @Test fun localPageCacheRetainsWarmEntriesWithoutUsingGlobalPageCache() = runBlocking {
-        val key = "reader-small-cache-isolation-${UUID.randomUUID()}"
-        val bytes = ByteArray(512 * 1024) { 0x38 }
-        val first = localPageStorage.set(key, bytes.inputStream().source(), null)
-        assertTrue(first.isFile)
-        assertEquals(bytes.size.toLong(), first.length())
-        assertNotNull(localPageStorage[key])
-        assertNull(pageStorage[key])
-        println("READER_SMALL_PAGE_SAMPLE pageBytes=${bytes.size} directFolderCopyBytes=0 " +
-            "localCacheWarmHit=true globalPageCacheUntouched=true")
-    }
-
-    @Test fun smallLocalPageCacheEvictsOlderCopiesAndCountsAsPagesCache() = runBlocking {
-        // A synthetic 56 MiB read-ahead sequence: exercise retention, not image decoding.
-        // It deliberately exceeds only the local 48 MiB budget, not the 200 MiB global one.
-        val prefix = "small-cache-budget-${UUID.randomUUID()}"
-        val chunk = ByteArray(1024 * 1024) { 0x39 }
-        val firstKey = "$prefix:0"
-        val lastKey = "$prefix:55"
-        repeat(56) { index ->
-            localPageStorage.set("$prefix:$index", chunk.inputStream().source(), null)
-        }
-        val localBytes = storageManager.computeCacheSize(CacheDir.LOCAL_READER_PAGES)
-        val combinedPagesBytes = storageManager.computeCacheSize(CacheDir.PAGES)
-        assertTrue("Local reader cache should remain bounded", localBytes <= 50L * 1024 * 1024)
-        assertTrue("Pages accounting must include the local cache", combinedPagesBytes >= localBytes)
-        assertNull("Older extracted copies should be evicted", localPageStorage[firstKey])
-        assertNotNull("Recently viewed pages should remain warm", localPageStorage[lastKey])
-        assertNull("Local extracts must not enter the global cache", pageStorage[lastKey])
-        println("READER_SMALL_CACHE_BUDGET sourceSequenceBytes=${56L * chunk.size} " +
-            "localCacheBytes=$localBytes pagesReportedBytes=$combinedPagesBytes")
-    }
-
-    @Test fun realPageLoaderUsesDirectFolderAndBoundedDownloadedCbzCache() = runBlocking {
-        val original = png(Color.YELLOW)
-        put("Images/001.png", original)
-        library.scan()
-        val book = library.state.value.books.single()
-        val root = LocalDocuments(context).root(rootUri)
-        val folderPage = reader.pages(root, book.chapters.single(),
-            book.toManga(false, true).chapters!!.single()).single()
-
-        // Simulate an existing downloaded chapter: a real local CBZ path, not an HTTP page.
-        val downloaded = File(context.storage, "saved-${UUID.randomUUID()}.cbz")
-        val unrelated = ByteArray(5 * 1024 * 1024).also { java.util.Random(9).nextBytes(it) }
-        downloaded.writeBytes(archiveEntries("unrelated.bin" to unrelated, "001.png" to original))
-        assertTrue(downloaded.length() >= 5L * 1024 * 1024)
-        val zipPage = MangaPage(
+    @Test fun downloadedCbzPageKeepsOriginalPageCache() = runBlocking {
+        val image = png(Color.YELLOW)
+        val downloaded = File(context.storage, "download-${UUID.randomUUID()}.cbz")
+        downloaded.writeBytes(archive(image, "001.png"))
+        val page = MangaPage(
             id = UUID.randomUUID().mostSignificantBits,
             url = downloaded.toZipUri("001.png").toString(),
             preview = null,
             source = LocalMangaSource,
         )
-        assertTrue(LocalReaderPageCachePolicy.usesSmallCache(zipPage, Uri.parse(zipPage.url)))
-        val large = File(context.storage, "large-${UUID.randomUUID()}.cbz")
-        java.io.RandomAccessFile(large, "rw").use {
-            it.setLength(LocalReaderPageCachePolicy.MAX_SMALL_ARCHIVE_BYTES + 1)
-        }
-        val largePage = zipPage.copy(url = large.toZipUri("001.png").toString())
-        assertFalse("Large books must keep their previous page-cache route",
-            LocalReaderPageCachePolicy.usesSmallCache(largePage, Uri.parse(largePage.url)))
+        assertEquals(page.url, localRouting.getPageUrl(page))
         ActivityScenario.launch(MangaUpdatesAuthActivity::class.java).use { scenario ->
-            lateinit var loaderEntryPoint: SmallLocalReaderPageLoaderEntryPoint
+            lateinit var entryPoint: OnDeviceReaderPageLoaderTestEntryPoint
             scenario.onActivity { activity ->
-                loaderEntryPoint = EntryPointAccessors.fromActivity(
-                    activity, SmallLocalReaderPageLoaderEntryPoint::class.java)
+                entryPoint = EntryPointAccessors.fromActivity(
+                    activity, OnDeviceReaderPageLoaderTestEntryPoint::class.java)
             }
-            // Resolving PageLoader initializes the HTTP client. Do that on a worker thread:
-            // NetworkModule intentionally rejects first-time client construction on the UI thread.
+            // Hilt's network client is intentionally created off the Android UI thread.
             val pageLoader = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                loaderEntryPoint.pageLoader()
+                entryPoint.pageLoader()
             }
-            val directStart = System.nanoTime()
-            val direct = withTimeout(30_000) { pageLoader.loadPage(folderPage, force = false) }
-            val directMs = (System.nanoTime() - directStart) / 1_000_000
-            assertEquals(folderPage.url, direct.toString())
-            assertNull(localPageStorage[folderPage.url])
-
-            val coldStart = System.nanoTime()
-            val extracted = withTimeout(30_000) { pageLoader.loadPage(zipPage, force = false) }
-            val coldMs = (System.nanoTime() - coldStart) / 1_000_000
-            assertEquals("file", extracted.scheme)
-            assertArrayEquals(original, File(extracted.path!!).readBytes())
-            assertNotNull("Downloaded CBZ must use the isolated local page cache",
-                localPageStorage[zipPage.url])
-            assertNull("Downloaded pages must not be added to global page cache",
-                pageStorage[zipPage.url])
-            val warmStart = System.nanoTime()
-            val reopened = withTimeout(30_000) { pageLoader.loadPage(zipPage, force = false) }
-            val warmMs = (System.nanoTime() - warmStart) / 1_000_000
-            assertEquals(extracted, reopened)
-
-            // An unusually large image inside a sub-100 MiB CBZ must retain the original
-            // shared-cache fallback and its warm hit, not disappear from the 48 MiB cache.
-            val largePageBytes = ByteArray(13 * 1024 * 1024).also {
-                java.util.Random(31).nextBytes(it)
-            }
-            val largeChapter = File(context.storage, "large-page-${UUID.randomUUID()}.cbz")
-            largeChapter.writeBytes(archiveEntries("001.png" to largePageBytes))
-            val largeEntry = zipPage.copy(
-                id = UUID.randomUUID().mostSignificantBits,
-                url = largeChapter.toZipUri("001.png").toString(),
-            )
-            assertTrue(LocalReaderPageCachePolicy.usesSmallCache(
-                largeEntry, Uri.parse(largeEntry.url)))
-            val largeResult = withTimeout(30_000) { pageLoader.loadPage(largeEntry, force = false) }
-            assertEquals(largePageBytes.size.toLong(), File(largeResult.path!!).length())
-            assertNull(localPageStorage[largeEntry.url])
-            assertNotNull(pageStorage[largeEntry.url])
-            assertEquals(largeResult, withTimeout(30_000) {
-                pageLoader.loadPage(largeEntry, force = false)
-            })
-
-            pageLoader.invalidate(clearCache = true)
-            assertNull(pageStorage[largeEntry.url])
-            assertNull("Explicit Reader cache invalidation must clear local extracts",
-                localPageStorage[zipPage.url])
-            println("READER_SMALL_END_TO_END_SAMPLE bookBytes=${downloaded.length()} " +
-                "decodedPageBytes=${original.size} directFolderCopyBytes=0 " +
-                "directOpenMs=$directMs cbzColdMs=$coldMs cbzWarmMs=$warmMs")
+            val first = pageLoader.loadPage(page, force = false)
+            assertEquals("file", first.scheme)
+            assertArrayEquals(image, File(first.path!!).readBytes())
+            assertNotNull("Downloaded pages must use the original shared cache",
+                pageStorage[page.url])
+            val reopened = pageLoader.loadPage(page, force = false)
+            assertEquals(first, reopened)
         }
-        assertTrue(contentFiles().isEmpty())
-        assertClosedDescriptors()
     }
 
     @Test fun seekableSafPdfOpensReaderWithoutCopyingDocument() = runBlocking {
@@ -586,8 +475,6 @@ class SmartLocalCoverPipelineTest {
         val pages = reader.pages(root, book.chapters.single(), original)
         assertEquals(1, pages.size)
         assertEquals(SmartLocalArchivePageUri.SCHEME, Uri.parse(pages.single().url).scheme)
-        assertTrue("Small seekable SAF archives must use the bounded local cache",
-            LocalReaderPageCachePolicy.usesSmallCache(pages.single(), Uri.parse(pages.single().url)))
         assertTrue(contentFiles().isEmpty())
         val (document, entry) = SmartLocalArchivePageUri.parse(Uri.parse(pages.single().url))
         resolver.openFileDescriptor(document, "r")!!.use { descriptor ->
@@ -1484,6 +1371,6 @@ class SmartLocalCoverPipelineTest {
 
 @EntryPoint
 @InstallIn(ActivityComponent::class)
-internal interface SmallLocalReaderPageLoaderEntryPoint {
+internal interface OnDeviceReaderPageLoaderTestEntryPoint {
     fun pageLoader(): PageLoader
 }
