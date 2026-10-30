@@ -34,8 +34,14 @@
 		android:id="@+id/action_smart_local_refresh_selected"
 		android:title="@string/smart_local_refresh_selected"
 		app:showAsAction="never" />
+	<item android:id="@+id/action_smart_local_edit_text" android:title="@string/smart_local_edit_text" app:showAsAction="never" />
 	<item
 		android:id="@+id/action_smart_local_edit_authors"
 		android:title="@string/smart_local_edit_authors"
 		app:showAsAction="never" />
+	<item android:id="@+id/action_smart_local_create_group" android:title="@string/smart_local_create_group" app:showAsAction="never" />
+	<item android:id="@+id/action_smart_local_add_group" android:title="@string/smart_local_add_group" app:showAsAction="never" />
+	<item android:id="@+id/action_smart_local_ungroup" android:title="@string/smart_local_ungroup" app:showAsAction="never" />
+	<item android:id="@+id/action_smart_local_export" android:title="@string/smart_local_export_selected" app:showAsAction="never" />
+	<item android:id="@+id/action_smart_local_move" android:title="@string/smart_local_move_selected" app:showAsAction="never" />
 </menu>

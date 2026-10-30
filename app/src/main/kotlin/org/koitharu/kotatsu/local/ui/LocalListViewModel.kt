@@ -41,6 +41,8 @@ import javax.inject.Inject
 sealed interface LocalLibraryAction {
 	data object ContinueAll : LocalLibraryAction
 	data object Restore : LocalLibraryAction
+	data class GroupCard(val name: String) : LocalLibraryAction
+	data object Groups : LocalLibraryAction
 	data class Acknowledge(val ids: Set<Long>) : LocalLibraryAction
 	data class Diagnosis(val issue: LocalDiagnosis) : LocalLibraryAction
 }
@@ -59,6 +61,7 @@ class LocalListViewModel @Inject constructor(
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), FilterCoordinator.Owner {
 	override val content = MutableStateFlow<List<ListModel>>(listOf(LoadingState))
 	val onMangaRemoved = MutableEventFlow<Int>()
+	val exportedArchives = MutableEventFlow<List<java.io.File>>()
 	val exclusions = MutableEventFlow<Map<String, String>>()
 	val scanCompleted = MutableEventFlow<Boolean>()
 	val coverCacheReport = MutableEventFlow<SmartLocalCoverCacheReport>()
@@ -108,10 +111,8 @@ class LocalListViewModel @Inject constructor(
 
 	fun refreshSelected(ids: Set<Long>) {
 		if (ids.isEmpty() || refreshJob?.isActive == true || folderJob?.isActive == true) return
-		val roots = library.state.value.books.filter { it.id in ids }.mapTo(HashSet()) { it.rootUri }
-		if (roots.isEmpty()) return
 		refreshJob = launchLoadingJob(Dispatchers.IO) {
-			library.scan(roots)
+			library.refreshSelected(ids)
 			revision.value++
 			scanCompleted.call(library.state.value.diagnoses.isEmpty())
 		}
@@ -161,6 +162,45 @@ class LocalListViewModel @Inject constructor(
 	fun restore(key: String) { launchLoadingJob(Dispatchers.IO) { library.restore(key) } }
 	fun acknowledgeDiscoveries(ids: Set<Long>) { launchJob(Dispatchers.IO) { library.acknowledgeDiscoveries(ids) } }
 
+	private val activeGroup = MutableStateFlow<String?>(null)
+	fun setGroupFilter(name: String?) { activeGroup.value = name; revision.value++ }
+	fun createGroup(name: String, ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.createGroup(name, ids); revision.value++ } }
+	fun addToGroup(name: String, ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.addToGroup(name, ids); revision.value++ } }
+	fun ungroup(ids: Set<Long>) { launchLoadingJob(Dispatchers.IO) { library.ungroup(ids); revision.value++ } }
+	fun renameGroup(oldName: String, newName: String) { launchLoadingJob(Dispatchers.IO) { library.renameGroup(oldName, newName); if (activeGroup.value == oldName) activeGroup.value = newName.trim(); revision.value++ } }
+	fun deleteGroup(name: String) { launchLoadingJob(Dispatchers.IO) { library.deleteGroup(name); if (activeGroup.value == name) activeGroup.value = null; revision.value++ } }
+
+	val moveResults = MutableEventFlow<Int>()
+	fun moveSelected(ids: Set<Long>, destination: Uri) {
+		if (ids.isEmpty()) return
+		launchLoadingJob(Dispatchers.IO) {
+			val count = library.moveSelectedFiles(ids, destination)
+			revision.value++
+			moveResults.call(count)
+		}
+	}
+
+	fun exportSelected(ids: Set<Long>) {
+		if (ids.isEmpty()) return
+		launchLoadingJob(Dispatchers.IO) { exportedArchives.call(library.exportSelected(ids)) }
+	}
+
+	fun resetTextMetadata(ids: Set<Long>) {
+		if (ids.isEmpty()) return
+		launchLoadingJob(Dispatchers.IO) {
+			library.clearTextMetadata(ids)
+			revision.value++
+		}
+	}
+
+	fun updateTextMetadata(ids: Set<Long>, title: String?, description: String?) {
+		if (ids.isEmpty() || (title == null && description == null)) return
+		launchLoadingJob(Dispatchers.IO) {
+			library.setTextMetadata(ids, title, description)
+			revision.value++
+		}
+	}
+
 	fun updateAuthors(ids: Set<Long>, input: String) {
 		if (ids.isEmpty()) return
 		val authors = input.split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() }
@@ -170,13 +210,30 @@ class LocalListViewModel @Inject constructor(
 		}
 	}
 
+	data class BulkDeleteResult(val requested: Int, val succeeded: Int, val failed: Int)
+	val bulkDeleteResults = MutableEventFlow<BulkDeleteResult>()
+
 	fun delete(ids: Set<Long>, fromDevice: Boolean) {
+		if (ids.isEmpty()) return
 		launchLoadingJob(Dispatchers.IO) {
 			val managed = library.state.value.books.filter { it.id in ids }.mapTo(HashSet()) { it.id }
-			if (managed.isEmpty()) return@launchLoadingJob
-			if (fromDevice) library.deleteFromDevice(managed) else library.hide(managed)
+			if (managed.isEmpty()) {
+				bulkDeleteResults.call(BulkDeleteResult(ids.size, 0, ids.size))
+				return@launchLoadingJob
+			}
+			var failure: Exception? = null
+			try {
+				if (fromDevice) library.deleteFromDevice(managed) else library.hide(managed)
+			} catch (error: Exception) {
+				failure = error
+			}
+			// Count only entries actually removed from the published index. A failed
+			// physical operation must never be reported as a successful whole batch.
+			val remaining = library.state.value.books.mapTo(HashSet()) { it.id }
+			val succeeded = managed.count { it !in remaining }
 			revision.value++
-			onMangaRemoved.call(managed.size)
+			bulkDeleteResults.call(BulkDeleteResult(ids.size, succeeded, ids.size - succeeded))
+			if (failure != null) throw failure
 		}
 	}
 
@@ -223,8 +280,27 @@ class LocalListViewModel @Inject constructor(
 				}
 			}
 		}
+		val groups = library.groups()
+		if (groups.isNotEmpty()) {
+			result += ListHeader(context.getString(R.string.smart_local_groups_count, groups.size),
+				R.string.smart_local_manage_groups, LocalLibraryAction.Groups)
+			val available = snapshot.books.mapTo(HashSet()) { it.node.key }
+			for ((name, members) in groups.toSortedMap()) {
+				val count = LocalGroupVisibility.count(groups, name, available)
+				result += ListHeader(context.getString(R.string.smart_local_group_card, name, count),
+					R.string.smart_local_show_group, LocalLibraryAction.GroupCard(name),
+					badge = count.toString(), buttonStyle = ListHeader.ButtonStyle.OUTLINED)
+			}
+		}
 		result += SmartLocalCollectionHeaderModel(mode)
-		val manga = library.list(query, type).skipNsfwIfNeeded()
+		// A deleted/renamed active group must not silently expose every title.
+		val selectedGroup = activeGroup.value
+		val booksByKey = snapshot.books.associateBy { it.id }
+		val manga = library.list(query, type).filter { item ->
+			selectedGroup == null || booksByKey[item.id]?.let { book ->
+				LocalGroupVisibility.visible(selectedGroup, groups, book.node.key)
+			} == true
+		}.skipNsfwIfNeeded()
 		val models = mangaListMapper.toListModelList(manga, mode, MangaListMapper.NO_SAVED)
 		val booksById = snapshot.books.associateBy { it.id }
 		for (model in models) {

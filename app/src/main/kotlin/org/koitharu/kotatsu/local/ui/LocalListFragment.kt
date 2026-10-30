@@ -1,6 +1,9 @@
 package org.koitharu.kotatsu.local.ui
 
 import android.os.Bundle
+import android.content.Intent
+import androidx.core.content.FileProvider
+import org.koitharu.kotatsu.BuildConfig
 import android.widget.EditText
 import androidx.core.content.ContextCompat
 import android.view.Menu
@@ -38,6 +41,12 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		localCinematic = true,
 	)
 	private var scanProgressSnackbar: Snackbar? = null
+	private var pendingMoveIds: Set<Long> = emptySet()
+	private val moveFolderPicker = OpenDocumentTreeHelper(this) { uri ->
+		val selected = pendingMoveIds
+		pendingMoveIds = emptySet()
+		if (uri != null && selected.isNotEmpty()) viewModel.moveSelected(selected, uri)
+	}
 	private val folderPicker = OpenDocumentTreeHelper(this) { uri ->
 		uri?.let {
 			scanProgressSnackbar?.dismiss()
@@ -69,14 +78,31 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		viewModel.coverCacheCleared.observeEvent(viewLifecycleOwner) {
 			Snackbar.make(binding.recyclerView, R.string.smart_local_cover_cache_cleared, Snackbar.LENGTH_SHORT).show()
 		}
+		viewModel.moveResults.observeEvent(viewLifecycleOwner) { count ->
+			Snackbar.make(binding.recyclerView, getString(R.string.smart_local_move_complete, count), Snackbar.LENGTH_LONG).show()
+		}
+		viewModel.exportedArchives.observeEvent(viewLifecycleOwner) { files ->
+			if (files.isNotEmpty()) {
+				val uris = ArrayList(files.map { FileProvider.getUriForFile(requireContext(), "${BuildConfig.APPLICATION_ID}.files", it) })
+				val intent = Intent(if (uris.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
+					type = "application/zip"
+					addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+					if (uris.size == 1) putExtra(Intent.EXTRA_STREAM, uris.single())
+					else putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+				}
+				startActivity(Intent.createChooser(intent, getString(R.string.smart_local_export_selected)))
+			}
+		}
 		viewModel.resumeIntent.observeEvent(viewLifecycleOwner) { router.openReader(it) }
 		viewModel.scanCompleted.observeEvent(viewLifecycleOwner) { complete ->
 			scanProgressSnackbar?.dismiss()
 			scanProgressSnackbar = null
 			Snackbar.make(binding.recyclerView, if (complete) R.string.smart_local_scan_complete else R.string.smart_local_scan_attention, Snackbar.LENGTH_LONG).show()
 		}
-		viewModel.onMangaRemoved.observeEvent(viewLifecycleOwner) { count ->
-			Snackbar.make(binding.recyclerView, getString(R.string.smart_local_bulk_removed, count), Snackbar.LENGTH_LONG).show()
+		viewModel.bulkDeleteResults.observeEvent(viewLifecycleOwner) { result ->
+			val message = getString(R.string.smart_local_bulk_result,
+				result.requested, result.succeeded, result.failed)
+			Snackbar.make(binding.recyclerView, message, Snackbar.LENGTH_LONG).show()
 		}
 		viewModel.exclusions.observeEvent(viewLifecycleOwner) { exclusions ->
 			val entries = exclusions.entries.toList()
@@ -107,6 +133,8 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		when (val action = item.payload) {
 			LocalLibraryAction.ContinueAll -> viewModel.showAllContinueReading()
 			LocalLibraryAction.Restore -> viewModel.requestExclusions()
+			LocalLibraryAction.Groups -> showGroups()
+			is LocalLibraryAction.GroupCard -> viewModel.setGroupFilter(action.name)
 			is LocalLibraryAction.Acknowledge -> viewModel.acknowledgeDiscoveries(action.ids)
 			is LocalLibraryAction.Diagnosis -> showDiagnosis(action.issue)
 			is List<*> -> {
@@ -136,6 +164,20 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		R.id.action_smart_local_deselect -> { controller.clear(); true }
 		R.id.action_smart_local_refresh_selected -> { viewModel.refreshSelected(controller.snapshot()); mode?.finish(); true }
 		R.id.action_smart_local_edit_authors -> { showBulkAuthorEditor(controller.snapshot(), mode); true }
+		R.id.action_smart_local_edit_text -> { showBulkTextEditor(controller.snapshot(), mode); true }
+		R.id.action_smart_local_create_group -> { showCreateGroup(controller.snapshot(), mode); true }
+		R.id.action_smart_local_add_group -> { showAddGroup(controller.snapshot(), mode); true }
+		R.id.action_smart_local_ungroup -> { viewModel.ungroup(controller.snapshot()); mode?.finish(); true }
+		R.id.action_smart_local_export -> { viewModel.exportSelected(controller.snapshot()); mode?.finish(); true }
+		R.id.action_smart_local_move -> {
+			pendingMoveIds = controller.snapshot()
+			if (!moveFolderPicker.tryLaunch(null)) {
+				pendingMoveIds = emptySet()
+				Snackbar.make(requireView(), R.string.operation_not_supported, Snackbar.LENGTH_LONG).show()
+			}
+			mode?.finish()
+			true
+		}
 		R.id.action_smart_local_info -> {
 			viewModel.library.state.value.books.firstOrNull { it.id in selectedItemsIds }?.let(::showInformation)
 			true
@@ -163,6 +205,92 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 					.setTitle(R.string.smart_local_detach).setMessage(R.string.smart_local_detach_message)
 					.setPositiveButton(R.string.smart_local_detach) { _, _ -> viewModel.removeFolder(root.uri) }
 					.setNegativeButton(android.R.string.cancel, null).show()
+			}.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
+	private fun showBulkTextEditor(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
+		val fields = arrayOf(getString(R.string.smart_local_edit_title), getString(R.string.smart_local_edit_description),
+			getString(R.string.smart_local_reset_text))
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+			.setTitle(R.string.smart_local_edit_text)
+			.setItems(fields) { _, selected ->
+				if (selected == 2) {
+					MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+						.setTitle(R.string.smart_local_reset_text)
+						.setMessage(getString(R.string.smart_local_bulk_edit_count, ids.size))
+						.setPositiveButton(android.R.string.ok) { _, _ -> viewModel.resetTextMetadata(ids); mode?.finish() }
+						.setNegativeButton(android.R.string.cancel, null).show()
+				} else {
+				val input = EditText(requireContext()).apply { setSingleLine(selected == 0) }
+				MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+					.setTitle(fields[selected])
+					.setMessage(getString(R.string.smart_local_bulk_edit_count, ids.size))
+					.setView(input)
+					.setPositiveButton(android.R.string.ok) { _, _ ->
+						val value = input.text.toString()
+						if (selected == 0) viewModel.updateTextMetadata(ids, value, null)
+						else viewModel.updateTextMetadata(ids, null, value)
+						mode?.finish()
+					}
+					.setNegativeButton(android.R.string.cancel, null).show()
+				}
+			}
+			.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
+	private fun showCreateGroup(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
+		val input = EditText(requireContext()).apply { hint = getString(R.string.smart_local_group_name); setSingleLine(true) }
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+			.setTitle(R.string.smart_local_create_group).setView(input)
+			.setPositiveButton(android.R.string.ok) { _, _ ->
+				val name = input.text.toString().trim()
+				if (name.isNotEmpty() && name.length <= 80) { viewModel.createGroup(name, ids); mode?.finish() }
+			}.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
+	private fun showAddGroup(ids: Set<Long>, mode: ActionMode?) {
+		val groups = viewModel.library.groups().keys.sorted()
+		if (groups.isEmpty()) { showCreateGroup(ids, mode); return }
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+			.setTitle(R.string.smart_local_add_group).setItems(groups.toTypedArray()) { _, index ->
+				viewModel.addToGroup(groups[index], ids); mode?.finish()
+			}.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
+	private fun showGroups() {
+		val groups = viewModel.library.groups()
+		val names = groups.keys.sorted()
+		val labels = arrayOf(getString(R.string.smart_local_all_groups)) + names.map { it + " (" + (groups[it]?.size ?: 0) + ")" }
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+			.setTitle(R.string.smart_local_manage_groups).setItems(labels) { _, index ->
+				if (index == 0) viewModel.setGroupFilter(null) else {
+					val name = names[index - 1]
+					MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+						.setTitle(name).setItems(arrayOf(getString(R.string.smart_local_show_group), getString(R.string.smart_local_rename_group), getString(R.string.smart_local_delete_group))) { _, choice ->
+							when (choice) {
+								0 -> viewModel.setGroupFilter(name)
+								1 -> showRenameGroup(name)
+								else -> {
+									MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+										.setTitle(R.string.smart_local_delete_group).setMessage(R.string.smart_local_delete_group_message)
+										.setPositiveButton(android.R.string.ok) { _, _ -> viewModel.deleteGroup(name) }
+										.setNegativeButton(android.R.string.cancel, null).show()
+								}
+							}
+						}.setNegativeButton(android.R.string.cancel, null).show()
+				}
+			}.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
+	private fun showRenameGroup(name: String) {
+		val input = EditText(requireContext()).apply { setText(name); setSingleLine(true) }
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+			.setTitle(R.string.smart_local_rename_group).setView(input)
+			.setPositiveButton(android.R.string.ok) { _, _ ->
+				val renamed = input.text.toString().trim()
+				if (renamed.isNotEmpty() && renamed.length <= 80) viewModel.renameGroup(name, renamed)
 			}.setNegativeButton(android.R.string.cancel, null).show()
 	}
 
