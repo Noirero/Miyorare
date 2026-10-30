@@ -8,6 +8,7 @@ import androidx.core.net.toUri
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -473,7 +474,7 @@ class SmartLocalLibrary @Inject constructor(
                 publishLocked(state.value.copy(books = state.value.books.filterNot { it.id == book.id }, excludedCount = exclusions.size))
             }
         } } catch (error: Exception) {
-            runCatchingCancellable { scan() }
+            withContext(NonCancellable) { runCatching { scan() } }
             throw error
         }
         mutableChanges.emit(Unit)
@@ -644,7 +645,7 @@ class SmartLocalLibrary @Inject constructor(
             }
         } catch (error: Exception) {
             // Once source deletion starts, verified copies must be retained.
-            runCatchingCancellable { scan() }
+            withContext(NonCancellable) { runCatching { scan() } }
             throw error
         }
         scan()
@@ -720,7 +721,7 @@ class SmartLocalLibrary @Inject constructor(
                 if (chapter.node.directory && chapter.node.uri.toUri().scheme == "file" && chapter.node.key != root.key && documents.exists(root, chapter.node) && documents.children(root, chapter.node).isEmpty()) documents.delete(root, chapter.node)
             }
         } } catch (error: Exception) {
-            runCatchingCancellable { scan() }
+            withContext(NonCancellable) { runCatching { scan() } }
             throw error
         }
         scan()
