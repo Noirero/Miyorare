@@ -412,6 +412,7 @@ class SmartLocalLibrary @Inject constructor(
         initialize()
         try { mutex.withLock {
             val targets = state.value.books.filter { it.id in ids }
+            require(targets.size == ids.size) { "Selected collections changed" }
             // Calculate ownership once for the complete batch, including selected books.
             // A shared file must never be removed while another indexed book refers to it.
             val ownership = HashMap<String, Int>()
@@ -449,6 +450,10 @@ class SmartLocalLibrary @Inject constructor(
                 for (file in files) {
                     currentCoroutineContext().ensureActive()
                     if (documents.exists(root, file)) documents.delete(root, file)
+                }
+                // Never hide a collection while any owned physical file remains.
+                check(files.none { documents.exists(root, it) }) {
+                    "Deletion incomplete for ${book.node.name}; collection remains visible"
                 }
                 for (folder in (book.chapters.map { it.node }.filter { it.directory } + listOf(book.node).filter { it.directory }).distinctBy { it.key }) {
                     if (folder.uri.toUri().scheme == "file" && folder.key != root.key && documents.exists(root, folder) && documents.children(root, folder).isEmpty()) documents.delete(root, folder)
