@@ -372,9 +372,9 @@ classify_self_test() {
   result="$(classify_paths README.md docs/guide.md)"
   [[ "$result" == "$(printf 'run_runtime=false\nfull=false')" ]]
   result="$(classify_paths app/src/main/assets/important.txt)"
-  [[ "$result" == "$(printf 'run_runtime=true\\nfull=true')" ]]
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
   result="$(classify_paths .github/ISSUE_TEMPLATE/config.md)"
-  [[ "$result" == "$(printf 'run_runtime=true\\nfull=true')" ]]
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
   result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt)"
   [[ "$result" == "$(printf 'run_runtime=true\nfull=false')" ]]
   result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt app/src/main/kotlin/unknown/Unknown.kt)"
