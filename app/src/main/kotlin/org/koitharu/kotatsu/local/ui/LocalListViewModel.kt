@@ -110,10 +110,8 @@ class LocalListViewModel @Inject constructor(
 
 	fun refreshSelected(ids: Set<Long>) {
 		if (ids.isEmpty() || refreshJob?.isActive == true || folderJob?.isActive == true) return
-		val roots = library.state.value.books.filter { it.id in ids }.mapTo(HashSet()) { it.rootUri }
-		if (roots.isEmpty()) return
 		refreshJob = launchLoadingJob(Dispatchers.IO) {
-			library.scan(roots)
+			library.refreshSelected(ids)
 			revision.value++
 			scanCompleted.call(library.state.value.diagnoses.isEmpty())
 		}
