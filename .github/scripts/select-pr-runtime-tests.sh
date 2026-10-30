@@ -67,8 +67,6 @@ add_migration_suite() {
 }
 
 add_local_download_suite() {
-  # On-device Reader changes require real SAF/descriptor/lazy-PDF runtime coverage.
-  add_class org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest
   add_class org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest
@@ -76,6 +74,12 @@ add_local_download_suite() {
   add_class org.koitharu.kotatsu.favourites.domain.DownloadedLocalStateTest
   add_class org.koitharu.kotatsu.local.data.LocalChapterDeleteStateTest
   add_class org.koitharu.kotatsu.details.domain.DetailsLiveLocalStateTest
+  MAPPED=true
+}
+
+add_local_reader_suite() {
+  # Reader/SAF-specific regression tests; unrelated local/download edits keep the lighter suite.
+  add_class org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest
   MAPPED=true
 }
 
@@ -168,6 +172,17 @@ add_full_suite() {
 plan_path() {
   local path="$1"
   case "$path" in
+    app/src/main/kotlin/org/koitharu/kotatsu/local/library/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/local/library/*|app/src/main/kotlin/org/koitharu/kotatsu/local/data/input/LocalPdfCache.kt)
+      add_local_download_suite
+      add_local_reader_suite ;;
+
+    app/src/main/kotlin/org/koitharu/kotatsu/details/ui/pager/pages/MangaPageFetcher.kt)
+      add_tracker_suite
+      add_local_reader_suite ;;
+
+    app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt|app/src/main/kotlin/org/koitharu/kotatsu/picker/ui/page/PagePickerViewModel.kt)
+      add_local_reader_suite ;;
+
     app/src/main/kotlin/org/koitharu/kotatsu/history/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/history/*)
       add_history_suite ;;
 
@@ -262,6 +277,11 @@ self_test() {
   grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/library/LocalContentReader.kt')"
+  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalStorageCache.kt')"
+  grep -q 'FastDownloadedNovelResolutionTest' <<<"$out"
+  ! grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt')"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
