@@ -58,7 +58,9 @@ class LocalStorageManager @Inject constructor(
 	}
 
 	suspend fun computeCacheSize(cache: CacheDir) = withContext(Dispatchers.IO) {
-		getCacheDirs(cache.dir).sumOf { it.computeSize() }
+		val dirs = getCacheDirs(cache.dir)
+		if (cache == CacheDir.PAGES) dirs += getCacheDirs(CacheDir.LOCAL_READER_PAGES.dir)
+		dirs.sumOf { it.computeSize() }
 	}
 
 	suspend fun computeCacheSize() = withContext(Dispatchers.IO) {
@@ -74,7 +76,11 @@ class LocalStorageManager @Inject constructor(
 	}
 
 	suspend fun clearCache(cache: CacheDir) = runInterruptible(Dispatchers.IO) {
-		getCacheDirs(cache.dir).forEach { it.deleteRecursively() }
+		val dirs = getCacheDirs(cache.dir)
+		// Local Reader pages are still pages, not miscellaneous app data. Clearing "Pages"
+		// must clear both caches, while keeping the remote cache budget unchanged.
+		if (cache == CacheDir.PAGES) dirs += getCacheDirs(CacheDir.LOCAL_READER_PAGES.dir)
+		dirs.forEach { it.deleteRecursively() }
 	}
 
 	suspend fun getReadableDirs(): List<File> = runInterruptible(Dispatchers.IO) {
