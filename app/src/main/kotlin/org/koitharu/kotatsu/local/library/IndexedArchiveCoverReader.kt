@@ -120,6 +120,16 @@ internal class IndexedArchiveCoverReader(private val channel: FileChannel, priva
             ?: throw IOException("Unsupported or corrupt archive page")
     }
 
+    /** Read an optional chapter metadata sidecar without inflating the archive. */
+    fun readerMetadata(): Pair<String, ByteArray>? {
+        val entry = entries.firstOrNull { it.name.equals("index.json", true) }
+            ?: entries.firstOrNull { it.name.equals("ComicInfo.xml", true) }
+            ?: return null
+        if (entry.size !in 1..MAX_METADATA_BYTES.toLong()) return null
+        val bytes = readEntry(entry, MAX_METADATA_BYTES) ?: return null
+        return entry.name to bytes
+    }
+
     /** Bounded metadata reads for container/OPF discovery; this never parses EPUB Reader content. */
     fun metadata(name: String): ByteArray? = entries.firstOrNull { it.name == name }?.let {
         try { if (it.compressedSize > MAX_METADATA_BYTES + 1024) null else readEntry(it, MAX_METADATA_BYTES) } catch (_: IOException) { null }
