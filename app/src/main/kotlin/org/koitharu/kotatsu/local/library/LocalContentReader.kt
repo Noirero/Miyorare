@@ -105,7 +105,8 @@ open class LocalContentReader @Inject constructor(
             val names = readerLeases.remove(token).orEmpty()
             for (name in names) {
                 activeFiles.release(name)
-                if (!activeFiles.isPinned(name)) File(cacheDir, name).delete()
+                // Keep the artifact available for in-flight image requests. The normal budgeted
+                // eviction pass reclaims unpinned backing rather than deleting it on release.
             }
             trimMaterializedCacheLocked()
         }
