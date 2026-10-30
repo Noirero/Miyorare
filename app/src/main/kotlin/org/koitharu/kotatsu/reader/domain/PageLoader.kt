@@ -72,8 +72,6 @@ import org.koitharu.kotatsu.core.util.ext.withProgress
 import org.koitharu.kotatsu.core.util.progress.ProgressDeferred
 import org.koitharu.kotatsu.download.ui.worker.DownloadSlowdownDispatcher
 import org.koitharu.kotatsu.local.data.LocalStorageCache
-import org.koitharu.kotatsu.local.data.LocalReaderPageCache
-import org.koitharu.kotatsu.local.data.LocalReaderPageCachePolicy
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
 import org.koitharu.kotatsu.local.library.SmartLocalArchivePageUri
@@ -96,7 +94,6 @@ class PageLoader @Inject constructor(
 	lifecycle: ActivityRetainedLifecycle,
 	@MangaHttpClient private val okHttp: OkHttpClient,
 	@PageCache private val cache: LocalStorageCache,
-	@LocalReaderPageCache private val localPageCache: LocalStorageCache,
 	private val coil: ImageLoader,
 	private val settings: AppSettings,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
@@ -208,14 +205,14 @@ class PageLoader @Inject constructor(
 				cache.set(uri.toString(), image).toUri()
 			}
 		} else if (uri.scheme == ContentResolver.SCHEME_CONTENT) {
-			// A direct SAF image must never be rewritten in-place during decoder recovery.
-			val bitmap = runInterruptible(Dispatchers.IO) {
-				val stream = requireNotNull(context.contentResolver.openInputStream(uri)) {
-					"Cannot reopen local image"
+			// Never overwrite a document owned by an Android SAF provider on decode fallback.
+			val image = runInterruptible(Dispatchers.IO) {
+				val input = requireNotNull(context.contentResolver.openInputStream(uri)) {
+					"Cannot reopen on-device page: $uri"
 				}
-				stream.use { BitmapDecoderCompat.decode(it, null) }
+				input.use { BitmapDecoderCompat.decode(it, null) }
 			}
-			bitmap.use { image -> localPageCache.set(uri.toString(), image).toUri() }
+			image.use { cache.set(uri.toString(), it).toUri() }
 		} else {
 			val file = uri.toFile()
 			runInterruptible(Dispatchers.IO) {
@@ -278,7 +275,6 @@ class PageLoader @Inject constructor(
 		loaderScope.cancelChildrenAndJoin()
 		if (clearCache) {
 			cache.clear()
-			localPageCache.clear()
 		}
 	}
 
@@ -379,25 +375,19 @@ class PageLoader @Inject constructor(
 		val pageUrl = getPageUrl(page)
 		check(pageUrl.isNotBlank()) { "Cannot obtain full image url for $page" }
 		val uri = pageUrl.toUri()
-		val pageCache = if (LocalReaderPageCachePolicy.usesSmallCache(page, uri)) localPageCache else cache
 		if (!skipCache && !(page.source == LocalMangaSource && uri.scheme == ContentResolver.SCHEME_CONTENT)) {
-			pageCache[pageUrl]?.let { return it.toUri() }
-			// Rare oversized CBZ entries keep their previous shared-cache backing.
-			// Check it before re-opening/re-indexing the archive on a warm page turn.
-			if (pageCache !== cache && uri.isZipUri()) {
-				cache[pageUrl]?.let { return it.toUri() }
-			}
+			cache.get(pageUrl)?.let { return it.toUri() }
 		}
 		return when {
+			// Seekable On-device folder images are decoded from their original SAF descriptor.
 			uri.scheme == ContentResolver.SCHEME_CONTENT && page.source == LocalMangaSource -> uri
 
             uri.scheme == SmartLocalArchivePageUri.SCHEME && page.source == LocalMangaSource ->
-                materializeSeekableArchivePage(uri, pageUrl, pageCache, reuseCache = !skipCache)
+                materializeSeekableArchivePage(uri, pageUrl, reuseCache = !skipCache)
 
 			uri.isZipUri() -> materializeCbzPage(
 				if (uri.scheme == URI_SCHEME_ZIP) uri else uri.buildUpon().scheme(URI_SCHEME_ZIP).build(),
 				pageUrl,
-				pageCache,
 				reuseCache = !skipCache,
 			)
 
@@ -445,11 +435,10 @@ class PageLoader @Inject constructor(
     private suspend fun materializeSeekableArchivePage(
         uri: Uri,
         cacheKey: String,
-        pageCache: LocalStorageCache,
         reuseCache: Boolean,
     ): Uri = cbzMaterializeLock.withLock {
-        if (reuseCache) pageCache[cacheKey]?.let { return@withLock it.toUri() }
-        SmartLocalArchivePageMaterializer.materialize(context, uri, cacheKey, pageCache).toUri()
+        if (reuseCache) cache[cacheKey]?.let { return@withLock it.toUri() }
+        SmartLocalArchivePageMaterializer.materialize(context, uri, cacheKey, cache).toUri()
     }
 
 	/**
@@ -461,21 +450,15 @@ class PageLoader @Inject constructor(
 	private suspend fun materializeCbzPage(
 		uri: Uri,
 		cacheKey: String,
-		pageCache: LocalStorageCache,
 		reuseCache: Boolean,
 	): Uri = cbzMaterializeLock.withLock {
-		if (reuseCache) pageCache[cacheKey]?.let { return@withLock it.toUri() }
+		if (reuseCache) cache[cacheKey]?.let { return@withLock it.toUri() }
 		val file = File(requireNotNull(uri.schemeSpecificPart) { "CBZ path is null: $uri" })
 		val entryName = requireNotNull(uri.fragment) { "CBZ entry is null: $uri" }
 		ZipFile(file).use { zip ->
 			val entry = requireNotNull(zip.getEntry(entryName)) { "CBZ entry not found: $entryName" }
-			// A single oversized page must not be evicted while it is being published.
-			// Such rare pages retain the established global cache path instead.
-			val storage = if (pageCache === localPageCache &&
-				(entry.size < 0L || entry.size > MAX_LOCAL_PAGE_ITEM_BYTES)) cache else pageCache
-			if (reuseCache && storage !== pageCache) storage[cacheKey]?.let { return@withLock it.toUri() }
 			zip.getInputStream(entry).source().use { source ->
-				storage.set(
+				cache.set(
 					cacheKey,
 					source,
 					MimeTypes.getMimeTypeFromExtension(entry.name),
@@ -525,8 +508,6 @@ class PageLoader @Inject constructor(
 	companion object {
 
 		private const val PROGRESS_UNDEFINED = -1f
-		// Keep a single entry below the 16 MiB minimum budget even on storage-constrained devices.
-		private const val MAX_LOCAL_PAGE_ITEM_BYTES = 12L * 1024 * 1024
 		private const val PREFETCH_MAX_PARALLELISM = 2
 		private const val PREFETCH_LIMIT_DEFAULT = 6
 		private const val PREFETCH_LIMIT_MEDIUM = 8
