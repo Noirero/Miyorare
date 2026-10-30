@@ -123,28 +123,55 @@ class SmartLocalLibrary @Inject constructor(
         mutableChanges.emit(Unit)
     }
 
-    suspend fun scan(selectedRoots: Set<String>? = null) = withContext(Dispatchers.IO) {
+    suspend fun refreshSelected(ids: Set<Long>) = scan(selectedIds = ids)
+
+    suspend fun scan(selectedRoots: Set<String>? = null, selectedIds: Set<Long>? = null) = withContext(Dispatchers.IO) {
         initialize()
         if (selectedRoots != null && selectedRoots.isEmpty()) return@withContext
+        if (selectedIds != null && selectedIds.isEmpty()) return@withContext
         mutex.withLock {
             val previous = state.value
             val previousByKey = previous.books.associateBy { it.node.key }
             val exclusions = readExclusions().keys
             val authorOverrides = JSONObject(prefs.getString("author_overrides", "{}").orEmpty())
             val confirmed = prefs.getStringSet("confirmed", emptySet()).orEmpty().toSet()
-            val activeRoots = previous.roots.filter { selectedRoots == null || it.uri in selectedRoots }
+            val targets = if (selectedIds == null) emptyList() else previous.books.filter { it.id in selectedIds }
+            require(selectedIds == null || targets.size == selectedIds.size) { "Selected collection is no longer indexed" }
+            // A file title has no directory boundary to scan in isolation. Refuse rather
+            // than silently rescanning and mutating unrelated titles in its parent.
+            require(targets.all { it.node.directory }) { "Selective refresh requires a folder collection" }
+            val activeRoots = previous.roots.filter { root ->
+                (selectedRoots == null || root.uri in selectedRoots) &&
+                    (selectedIds == null || targets.any { it.rootUri == root.uri })
+            }
             val books = LinkedHashMap<String, LocalBook>()
-            previous.books.filter { book -> activeRoots.none { it.uri == book.rootUri } }.forEach { books[it.node.key] = it }
+            previous.books.filter { book -> activeRoots.none { it.uri == book.rootUri } ||
+                (selectedIds != null && book.id !in selectedIds) }.forEach { books[it.node.key] = it }
             val diagnoses = ArrayList<LocalDiagnosis>()
-            diagnoses += previous.diagnoses.filter { issue -> activeRoots.none { it.uri == issue.rootUri } }
+            diagnoses += previous.diagnoses.filter { issue -> activeRoots.none { it.uri == issue.rootUri } || selectedIds != null }
             for (root in activeRoots) {
                 currentCoroutineContext().ensureActive()
                 val result = runCatchingCancellable {
-                    documents.withAccess(root.uri) { node, access -> LocalTreeScanner().scan(node, access, confirmed, exclusions) }
+                    if (selectedIds == null) {
+                        documents.withAccess(root.uri) { node, access -> LocalTreeScanner().scan(node, access, confirmed, exclusions) }
+                    } else {
+                        val result = LocalTreeScanner.Result()
+                        for (target in targets.filter { it.rootUri == root.uri }) {
+                            currentCoroutineContext().ensureActive()
+                            val rootNode = documents.root(root.uri)
+                            check(documents.contains(rootNode, target.node)) { "Selected collection outside its root" }
+                            val access = documents.access(target.node) { currentCoroutineContext().ensureActive() }
+                            val scanned = LocalTreeScanner().scan(target.node, access, confirmed + target.node.key, exclusions)
+                            result.entries.addAll(scanned.entries)
+                            result.issues.addAll(scanned.issues)
+                        }
+                        result
+                    }
                 }
                 val scanned = result.getOrNull()
                 if (scanned == null) {
-                    previous.books.filter { it.rootUri == root.uri && it.node.key !in exclusions }.forEach { books[it.node.key] = it }
+                    previous.books.filter { it.rootUri == root.uri && it.node.key !in exclusions &&
+                        (selectedIds == null || it.id in selectedIds) }.forEach { books[it.node.key] = it }
                     diagnoses += LocalDiagnosis(root.uri, null, "unavailable")
                     continue
                 }
