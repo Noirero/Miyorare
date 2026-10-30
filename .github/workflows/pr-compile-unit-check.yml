@@ -39,7 +39,7 @@ jobs:
           set -euo pipefail
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/runtime-changed-files.txt"
-          bash .github/scripts/select-pr-runtime-tests.sh --self-test
+          bash -x .github/scripts/select-pr-runtime-tests.sh --self-test
           plan="$(bash .github/scripts/select-pr-runtime-tests.sh --classify < "$RUNNER_TEMP/runtime-changed-files.txt")"
           targeted_available=false
           if bash .github/scripts/select-pr-runtime-tests.sh < "$RUNNER_TEMP/runtime-changed-files.txt" >/dev/null 2>&1; then
@@ -81,7 +81,7 @@ jobs:
 
       - name: Validate runtime selector and wrapper
         run: |
-          bash .github/scripts/select-pr-runtime-tests.sh --self-test
+          bash -x .github/scripts/select-pr-runtime-tests.sh --self-test
           bash -n .github/scripts/run-selected-android-runtime.sh
 
       - name: Install browser auth helper tooling
