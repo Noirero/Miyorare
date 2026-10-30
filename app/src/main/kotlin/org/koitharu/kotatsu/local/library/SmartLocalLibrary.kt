@@ -299,6 +299,19 @@ class SmartLocalLibrary @Inject constructor(
         mutableChanges.emit(Unit)
     }
 
+    /** Remove manual text overrides; rescan restores scanner-derived metadata. */
+    suspend fun clearTextMetadata(ids: Set<Long>) = withContext(Dispatchers.IO) {
+        initialize()
+        mutex.withLock {
+            val selected = state.value.books.filter { it.id in ids }
+            if (selected.isEmpty()) return@withLock
+            val overrides = JSONObject(prefs.getString("text_overrides", "{}").orEmpty())
+            selected.forEach { overrides.remove(it.node.key) }
+            check(prefs.edit().putString("text_overrides", overrides.toString()).commit())
+        }
+        scan()
+    }
+
     /** Virtual groups never move or modify physical documents. */
     fun groups(): Map<String, Set<String>> {
         val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
