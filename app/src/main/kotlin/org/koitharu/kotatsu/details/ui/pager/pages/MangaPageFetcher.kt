@@ -70,6 +70,26 @@ class MangaPageFetcher(
 				)
 			}
 		}
+        val pageUri = pageUrl.toUri()
+        if (page.source == LocalMangaSource && pageUri.scheme == SmartLocalArchivePageUri.SCHEME) {
+            val file = SmartLocalArchivePageMaterializer.materialize(options.context, pageUri, pageUrl, pagesCache)
+            return SourceFetchResult(
+                source = ImageSource(file.toOkioPath(), options.fileSystem),
+                mimeType = MimeTypes.getMimeTypeFromExtension(file.name)?.toString(),
+                dataSource = DataSource.DISK,
+            )
+        }
+        if (page.source == LocalMangaSource && pageUri.scheme == "file") {
+            val localFile = pageUri.toFile()
+            if (LocalPdfCache.isPdfPage(localFile)) {
+                val file = runInterruptible(Dispatchers.IO) { LocalPdfCache.materializePage(localFile) }
+                return SourceFetchResult(
+                    source = ImageSource(file.toOkioPath(), options.fileSystem),
+                    mimeType = "image/png",
+                    dataSource = DataSource.DISK,
+                )
+            }
+        }
 		return loadPage(pageUrl, imageHeaders, repo)
 	}
 
