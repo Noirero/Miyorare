@@ -296,7 +296,7 @@ class LocalListViewModel @Inject constructor(
 		val selectedGroup = activeGroup.value
 		val booksByKey = snapshot.books.associateBy { it.id }
 		val manga = library.list(query, type).filter { item ->
-			booksByKey[item.id]?.let { book ->
+			selectedGroup == null || booksByKey[item.id]?.let { book ->
 				LocalGroupVisibility.visible(selectedGroup, groups, book.node.key)
 			} == true
 		}.skipNsfwIfNeeded()
