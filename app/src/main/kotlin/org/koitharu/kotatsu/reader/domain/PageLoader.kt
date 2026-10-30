@@ -382,6 +382,11 @@ class PageLoader @Inject constructor(
 		val pageCache = if (LocalReaderPageCachePolicy.usesSmallCache(page, uri)) localPageCache else cache
 		if (!skipCache && !(page.source == LocalMangaSource && uri.scheme == ContentResolver.SCHEME_CONTENT)) {
 			pageCache[pageUrl]?.let { return it.toUri() }
+			// Rare oversized CBZ entries keep their previous shared-cache backing.
+			// Check it before re-opening/re-indexing the archive on a warm page turn.
+			if (pageCache !== cache && uri.isZipUri()) {
+				cache[pageUrl]?.let { return it.toUri() }
+			}
 		}
 		return when {
 			uri.scheme == ContentResolver.SCHEME_CONTENT && page.source == LocalMangaSource -> uri
