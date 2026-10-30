@@ -460,8 +460,13 @@ class SmartLocalLibrary @Inject constructor(
                 check(files.none { documents.exists(root, it) }) {
                     "Deletion incomplete for ${book.node.name}; collection remains visible"
                 }
-                for (folder in (book.chapters.map { it.node }.filter { it.directory } + listOf(book.node).filter { it.directory }).distinctBy { it.key }) {
-                    if (folder.uri.toUri().scheme == "file" && folder.key != root.key && documents.exists(root, folder) && documents.children(root, folder).isEmpty()) documents.delete(root, folder)
+                for (folder in (book.chapters.map { it.node }.filter { it.directory } +
+                    listOf(book.node).filter { it.directory }).distinctBy { it.key }) {
+                    if (folder.key != root.key && documents.exists(root, folder)) {
+                        // Empty-only SAF and filesystem cleanup. Unknown/new files prevent
+                        // a misleading success and remain visible after recovery scan.
+                        documents.deleteEmptyDirectory(root, folder)
+                    }
                 }
                 val exclusions = readExclusions().toMutableMap().also { it[book.node.key] = book.node.name }
                 saveExclusions(exclusions)
