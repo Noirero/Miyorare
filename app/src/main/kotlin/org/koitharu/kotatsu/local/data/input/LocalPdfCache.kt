@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.local.data.input
 
 import android.content.ContentResolver
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Matrix
@@ -151,15 +152,23 @@ object LocalPdfCache {
      * source marker; future page requests reopen the document via its existing tree grant.
      * An unsupported descriptor must fall back before this method is called.
      */
-    fun renderPagesFromDocument(descriptor: ParcelFileDescriptor, documentUri: String, identity: String): List<File> {
+    fun renderPagesFromDocument(
+        descriptor: ParcelFileDescriptor,
+        documentUri: String,
+        identity: String,
+        expectedSize: Long,
+        expectedModified: Long,
+    ): List<File> {
         val pageCount = PdfRenderer(ParcelFileDescriptor.dup(descriptor.fileDescriptor)).use { renderer ->
             if (renderer.pageCount <= 0) throw IOException("PDF has no pages")
             renderer.pageCount
         }
+        val document = Uri.parse(documentUri)
+        validateDocumentSource(document, expectedSize, expectedModified)
         val key = digestKey("saf-pdf\u0000$identity")
         val outputDir = File(pdfCacheRoot(), key)
         ensureOutputDir(outputDir)
-        val marker = "$DOCUMENT_SOURCE_PREFIX$key\n$documentUri"
+        val marker = "$DOCUMENT_SOURCE_PREFIX$key\n$documentUri\n$expectedSize\n$expectedModified"
         val sourceMarker = File(outputDir, SOURCE_FILE_NAME)
         withTargetLock(sourceMarker) {
             if (!sourceMarker.isFile || sourceMarker.readText() != marker) {
@@ -194,14 +203,21 @@ object LocalPdfCache {
 			}
             val source = sourceMarker.readText()
             if (source.startsWith(DOCUMENT_SOURCE_PREFIX)) {
-                val parts = source.removePrefix(DOCUMENT_SOURCE_PREFIX).split('\n', limit = 2)
-                if (parts.size != 2 || parts[0] != outputDir.name) {
+                val parts = source.removePrefix(DOCUMENT_SOURCE_PREFIX).split('\n', limit = 4)
+                if (parts.size != 4 || parts[0] != outputDir.name) {
                     throw IOException("PDF document cache identity mismatch")
                 }
                 val uri = Uri.parse(parts[1])
                 if (uri.scheme != ContentResolver.SCHEME_CONTENT) {
                     throw IOException("Invalid PDF document source")
                 }
+                val expectedSize = parts[2].toLongOrNull()
+                    ?: throw IOException("Invalid PDF size marker")
+                val expectedModified = parts[3].toLongOrNull()
+                    ?: throw IOException("Invalid PDF modified marker")
+                // Validate even a warm cached page: a replaced document must never display stale
+                // content under the previous Reader identity.
+                validateDocumentSource(uri, expectedSize, expectedModified)
                 if (file.isUsableCacheFile()) {
                     file.setLastModified(System.currentTimeMillis())
                     return@withTargetLock file
@@ -211,7 +227,14 @@ object LocalPdfCache {
                         if (pageIndex !in 0 until renderer.pageCount) {
                             throw IOException("PDF document page is out of range")
                         }
-                        renderPage(renderer, pageIndex, outputDir)
+                        renderPage(renderer, pageIndex, outputDir).also {
+                            try {
+                                validateDocumentSource(uri, expectedSize, expectedModified)
+                            } catch (error: Throwable) {
+                                it.delete()
+                                throw error
+                            }
+                        }
                     }
                 }
             } else {
@@ -244,6 +267,31 @@ object LocalPdfCache {
 			PdfRenderer(descriptor).use(block)
 		}
 	}
+
+    /**
+     * SAF document revisions are verified against the version captured when Reader opened.
+     * Providers without comparable metadata retain the legacy copied-backing path. A source
+     * changing in-place while a page renders is never published as the previous revision.
+     */
+    private fun validateDocumentSource(uri: Uri, expectedSize: Long, expectedModified: Long) {
+        if (expectedSize <= 0L || expectedModified <= 0L) {
+            throw IOException("PDF provider cannot verify document revision")
+        }
+        val context = checkNotNull(PlatformRegistry.applicationContext) {
+            "Application context is not initialized"
+        }
+        val columns = arrayOf(
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+        )
+        val current = context.contentResolver.query(uri, columns, null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst() || cursor.isNull(0) || cursor.isNull(1)) null
+            else cursor.getLong(0) to cursor.getLong(1)
+        } ?: throw IOException("PDF document revision is unavailable")
+        if (current.first != expectedSize || current.second != expectedModified) {
+            throw IOException("PDF document changed while Reader was open")
+        }
+    }
 
     private inline fun <T> openRenderer(uri: Uri, block: (PdfRenderer) -> T): T {
         val context = checkNotNull(PlatformRegistry.applicationContext) {
