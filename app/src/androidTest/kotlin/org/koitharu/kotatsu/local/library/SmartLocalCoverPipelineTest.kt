@@ -64,6 +64,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.local.data.LocalStorageCache
+import org.koitharu.kotatsu.local.data.LocalStorageManager
+import org.koitharu.kotatsu.local.data.CacheDir
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.LocalReaderPageCache
 import org.koitharu.kotatsu.local.data.LocalReaderPageCachePolicy
@@ -92,6 +94,7 @@ class SmartLocalCoverPipelineTest {
     @Inject @PageCache lateinit var pageStorage: LocalStorageCache
     @Inject @LocalReaderPageCache lateinit var localPageStorage: LocalStorageCache
     @Inject lateinit var localRouting: LocalRoutingMangaRepository
+    @Inject lateinit var storageManager: LocalStorageManager
     private lateinit var context: FixtureContext
     private lateinit var library: SmartLocalLibrary
     private lateinit var reader: CountingReader
@@ -432,6 +435,27 @@ class SmartLocalCoverPipelineTest {
         assertNull(pageStorage[key])
         println("READER_SMALL_PAGE_SAMPLE pageBytes=${bytes.size} directFolderCopyBytes=0 " +
             "localCacheWarmHit=true globalPageCacheUntouched=true")
+    }
+
+    @Test fun smallLocalPageCacheEvictsOlderCopiesAndCountsAsPagesCache() = runBlocking {
+        // A synthetic 56 MiB read-ahead sequence: exercise retention, not image decoding.
+        // It deliberately exceeds only the local 48 MiB budget, not the 200 MiB global one.
+        val prefix = "small-cache-budget-${UUID.randomUUID()}"
+        val chunk = ByteArray(1024 * 1024) { 0x39 }
+        val firstKey = "$prefix:0"
+        val lastKey = "$prefix:55"
+        repeat(56) { index ->
+            localPageStorage.set("$prefix:$index", chunk.inputStream().source(), null)
+        }
+        val localBytes = storageManager.computeCacheSize(CacheDir.LOCAL_READER_PAGES)
+        val combinedPagesBytes = storageManager.computeCacheSize(CacheDir.PAGES)
+        assertTrue("Local reader cache should remain bounded", localBytes <= 50L * 1024 * 1024)
+        assertTrue("Pages accounting must include the local cache", combinedPagesBytes >= localBytes)
+        assertNull("Older extracted copies should be evicted", localPageStorage[firstKey])
+        assertNotNull("Recently viewed pages should remain warm", localPageStorage[lastKey])
+        assertNull("Local extracts must not enter the global cache", pageStorage[lastKey])
+        println("READER_SMALL_CACHE_BUDGET sourceSequenceBytes=${56L * chunk.size} " +
+            "localCacheBytes=$localBytes pagesReportedBytes=$combinedPagesBytes")
     }
 
     @Test fun realPageLoaderUsesDirectFolderAndBoundedDownloadedCbzCache() = runBlocking {
