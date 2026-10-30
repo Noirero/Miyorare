@@ -147,9 +147,11 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
         check(folder.directory && folder.key != root.key && contains(root, folder))
         check(children(root, folder).isEmpty()) { "Folder is not empty: ${folder.name}" }
         val uri = folder.uri.toUri()
-        val deleted = if (uri.scheme == ContentResolver.SCHEME_FILE) uri.toFile().delete()
-            else DocumentsContract.deleteDocument(resolver, uri)
-        if (!deleted) throw IOException("Cannot delete empty folder: ${folder.name}")
+        // SAF deleteDocument may recursively delete a directory after a concurrent
+        // writer adds a child. It has no atomic empty-directory-only contract.
+        // Retain empty SAF shells rather than risk deleting unverified new content.
+        if (uri.scheme != ContentResolver.SCHEME_FILE) return
+        if (!uri.toFile().delete()) throw IOException("Cannot delete empty folder: ${folder.name}")
     }
 
     fun output(node: Node): java.io.OutputStream {
