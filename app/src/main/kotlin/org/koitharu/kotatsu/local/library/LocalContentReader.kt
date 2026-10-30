@@ -123,6 +123,12 @@ open class LocalContentReader @Inject constructor(
     }
 
     private fun trimMaterializedCacheLocked() {
+        // Crash leftovers are never published backing URLs. Ignore recent partials that may
+        // belong to another in-flight materialization, and remove only stale partial files.
+        val staleBefore = System.currentTimeMillis() - STALE_PARTIAL_AGE_MS
+        cacheDir.listFiles().orEmpty().filter {
+            it.name.endsWith(".partial") && it.lastModified() < staleBefore
+        }.forEach { it.delete() }
         var total = cacheDir.listFiles().orEmpty().sumOf { it.length() }
         for (old in cacheDir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
             if (total <= MATERIALIZED_CACHE_MAX_BYTES) break
@@ -393,6 +399,7 @@ open class LocalContentReader @Inject constructor(
 
     private companion object {
         const val MATERIALIZED_CACHE_MAX_BYTES = 512L * 1024 * 1024
+        const val STALE_PARTIAL_AGE_MS = 60L * 60 * 1000
     }
 }
 
