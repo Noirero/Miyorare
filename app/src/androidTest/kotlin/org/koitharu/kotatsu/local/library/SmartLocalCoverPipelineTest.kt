@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.drawable.Animatable
 import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.pdf.PdfDocument
@@ -46,6 +47,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.internal.platform.PlatformRegistry
+import okio.source
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -57,6 +59,9 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.PageCache
+import org.koitharu.kotatsu.local.data.LocalReaderPageCache
+import org.koitharu.kotatsu.local.data.LocalRoutingMangaRepository
+import org.koitharu.kotatsu.core.image.BitmapDecoderCompat
 import org.koitharu.kotatsu.core.image.MiyorareImageDiskCache
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
@@ -73,6 +78,8 @@ class SmartLocalCoverPipelineTest {
     @Inject lateinit var repository: MangaDataRepository
     @Inject lateinit var database: MangaDatabase
     @Inject @PageCache lateinit var pageStorage: LocalStorageCache
+    @Inject @LocalReaderPageCache lateinit var localPageStorage: LocalStorageCache
+    @Inject lateinit var localRouting: LocalRoutingMangaRepository
     private lateinit var context: FixtureContext
     private lateinit var library: SmartLocalLibrary
     private lateinit var reader: CountingReader
@@ -356,6 +363,63 @@ class SmartLocalCoverPipelineTest {
         reader.releaseReaderLease(second)
         assertTrue("Recently released archive remains available for pending page loads", backing.exists())
         assertClosedDescriptors()
+    }
+
+    @Test fun seekableSafFolderPageUsesOriginalContentWithoutCacheCopy() = runBlocking {
+        val image = png(Color.GREEN)
+        put("Images/001.png", image)
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val page = reader.pages(root, book.chapters.single(),
+            book.toManga(false, true).chapters!!.single()).single()
+        assertEquals("content", Uri.parse(page.url).scheme)
+        val resolved = localRouting.getPageUrl(page)
+        assertEquals("Seekable SAF images must not create disposable page copies", page.url, resolved)
+        assertNull(localPageStorage[page.url])
+        assertNull(pageStorage[page.url])
+        resolver.openInputStream(Uri.parse(resolved))!!.use { source ->
+            val decoder = BitmapDecoderCompat.createRegionDecoder(source)
+            assertNotNull("Direct source must support Reader region decoding", decoder)
+            try {
+                val tile = decoder!!.decodeRegion(Rect(0, 0, 1, 1), BitmapFactory.Options())
+                assertNotNull(tile)
+                tile!!.recycle()
+            } finally { decoder!!.recycle() }
+        }
+        assertTrue(contentFiles().isEmpty())
+        assertClosedDescriptors()
+    }
+
+    @Test fun pipeOnlySafFolderPageKeepsSafeLocalCacheFallback() = runBlocking {
+        val image = png(Color.BLUE)
+        put("Streaming/001.png", image)
+        descriptorMode("Streaming/001.png", "pipe")
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val page = reader.pages(root, book.chapters.single(),
+            book.toManga(false, true).chapters!!.single()).single()
+        val resolved = localRouting.getPageUrl(page)
+        assertEquals("file", Uri.parse(resolved).scheme)
+        val file = File(Uri.parse(resolved).path!!)
+        assertArrayEquals(image, file.readBytes())
+        assertNotNull(localPageStorage[page.url])
+        assertNull("Local pages must not occupy the global 200 MiB cache", pageStorage[page.url])
+        assertTrue(contentFiles().isEmpty())
+        assertClosedDescriptors()
+    }
+
+    @Test fun localPageCacheRetainsWarmEntriesWithoutUsingGlobalPageCache() = runBlocking {
+        val key = "reader-small-cache-isolation-${UUID.randomUUID()}"
+        val bytes = ByteArray(512 * 1024) { 0x38 }
+        val first = localPageStorage.set(key, bytes.inputStream().source(), null)
+        assertTrue(first.isFile)
+        assertEquals(bytes.size.toLong(), first.length())
+        assertNotNull(localPageStorage[key])
+        assertNull(pageStorage[key])
+        println("READER_SMALL_PAGE_SAMPLE pageBytes=${bytes.size} directFolderCopyBytes=0 " +
+            "localCacheWarmHit=true globalPageCacheUntouched=true")
     }
 
     @Test fun seekableSafPdfOpensReaderWithoutCopyingDocument() = runBlocking {
