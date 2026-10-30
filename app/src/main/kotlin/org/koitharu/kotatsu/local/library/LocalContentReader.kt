@@ -153,9 +153,39 @@ open class LocalContentReader @Inject constructor(
         } else if (LocalTreeScanner.extension(chapter.node.name) == "epub") {
             listOf(MangaPage(id = chapter.id, url = chapter.url, preview = null, source = LocalMangaSource))
         } else {
+            val extension = LocalTreeScanner.extension(chapter.node.name)
+            // SAF providers with a seekable descriptor can expose indexed archive pages without
+            // copying the whole file into app storage. Incompatible formats/providers use the
+            // existing materialized backing path, including its Reader lease.
+            if ((extension == "cbz" || extension == "zip") &&
+                chapter.node.uri.toUri().scheme == ContentResolver.SCHEME_CONTENT) {
+                val coroutine = currentCoroutineContext()
+                val direct = try {
+                    documents.withReadDescriptor(root, chapter.node, { descriptor ->
+                        ParcelFileDescriptor.AutoCloseInputStream(
+                            ParcelFileDescriptor.dup(descriptor.fileDescriptor)
+                        ).use { input ->
+                            IndexedArchiveCoverReader(input.channel) { coroutine.ensureActive() }
+                                .readerPageNames(::isArchiveImage)
+                                ?.sortedWith(LocalTreeScanner.NATURAL)
+                                ?.map { SmartLocalArchivePageUri.create(chapter.node.uri, it) }
+                        }
+                    })
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                }
+                if (!direct.isNullOrEmpty()) {
+                    return@withContext direct.mapIndexed { index, url ->
+                        MangaPage(id = "${original.id}:$index".longHashCode(), url = url,
+                            preview = null, source = LocalMangaSource)
+                    }
+                }
+            }
             val file = materialize(root, chapter.node)
             try {
-                val urls = if (LocalTreeScanner.extension(chapter.node.name) == "pdf") {
+                val urls = if (extension == "pdf") {
                     LocalPdfCache.renderPages(file).map { it.toUri().toString() }
                 } else ZipFile(file).use { zip ->
                     zip.entries().asSequence().filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
