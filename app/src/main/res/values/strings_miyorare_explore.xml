@@ -2,6 +2,6 @@
 <resources>
 	<!-- Explore view selector. Kept separate so the hybrid Browse experiment does not pollute legacy strings. -->
 	<string name="explore_sources_label">Sources</string>
-	<string name="explore_view_modern">Modern</string>
+	<string name="explore_view_modern">Grid</string>
 	<string name="explore_view_list">List</string>
 </resources>
