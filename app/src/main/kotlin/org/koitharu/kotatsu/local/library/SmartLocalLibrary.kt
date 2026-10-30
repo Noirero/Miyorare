@@ -606,13 +606,22 @@ class SmartLocalLibrary @Inject constructor(
                     }
                     return size to hash.digest()
                 }
-                for ((source, copy) in copiedFiles) {
-                    val original = digest(source)
-                    val destinationDigest = digest(copy)
-                    check(original.first == destinationDigest.first &&
-                        original.second.contentEquals(destinationDigest.second)) {
-                        "Source changed during move: ${source.name}"
+                try {
+                    for ((source, copy) in copiedFiles) {
+                        val original = digest(source)
+                        val destinationDigest = digest(copy)
+                        check(original.first == destinationDigest.first &&
+                            original.second.contentEquals(destinationDigest.second)) {
+                            "Source changed during move: ${source.name}"
+                        }
                     }
+                } catch (error: Exception) {
+                    // Verification failed before deletion: original files are intact.
+                    for (node in created.asReversed()) runCatching {
+                        if (node.directory) documents.deleteEmptyDirectory(destination, node)
+                        else documents.delete(destination, node)
+                    }
+                    throw error
                 }
                 var movedCount = 0
                 for (tree in trees) {
