@@ -6,8 +6,8 @@
 	<string name="visual_effects_full">Penuh</string>
 	<string name="miyorare_appearance_group">Tema tampilan</string>
 	<string name="miyorare_design_style">Gaya desain</string>
-	<string name="miyorare_design_classic">Klasik</string>
-	<string name="miyorare_design_modern">Miyorare Modern</string>
+	<string name="miyorare_design_classic">Material 3</string>
+	<string name="miyorare_design_modern">Miyorare UI</string>
 	<string name="miyorare_display_mode">Mode tampilan</string>
 	<string name="miyorare_modern_theme">Tema Modern</string>
 	<string name="miyorare_theme_miyorare">Miyorare</string>
@@ -37,6 +37,6 @@
 	<string name="miyorare_custom_background_failed">Gambar itu tidak dapat digunakan</string>
 	<string name="miyorare_custom_background_preview">Preview background</string>
 	<string name="miyorare_reset_appearance">Atur ulang tampilan</string>
-	<string name="miyorare_reset_appearance_summary">Kembalikan Klasik, mode Sistem, dan tema tampilan bawaan</string>
+	<string name="miyorare_reset_appearance_summary">Kembalikan Material 3, mode Sistem, dan tema tampilan bawaan</string>
 	<string name="miyorare_reset_appearance_confirm">Atur ulang pilihan tema saja? Daftar manga, pengaturan reader, navigasi, dan data konten tidak akan berubah.</string>
 </resources>
