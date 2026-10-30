@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.util.MimeTypes
 import org.koitharu.kotatsu.core.util.ext.fetch
 import org.koitharu.kotatsu.core.util.ext.isNetworkUri
+import org.koitharu.kotatsu.core.util.ext.isZipUri
 import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.LocalReaderPageCache
@@ -68,7 +69,9 @@ class MangaPageFetcher(
 		val selectedCache = if (LocalReaderPageCachePolicy.usesSmallCache(page, pageUri)) localPageCache else pagesCache
 		if (options.diskCachePolicy.readEnabled &&
             !(page.source == LocalMangaSource && pageUri.scheme == "content")) {
-			selectedCache[pageUrl]?.let { file ->
+			val cached = selectedCache[pageUrl]
+				?: if (selectedCache === localPageCache && pageUri.isZipUri()) pagesCache[pageUrl] else null
+			cached?.let { file ->
 				return SourceFetchResult(
 					source = ImageSource(file.toOkioPath(), options.fileSystem),
 					mimeType = MimeTypes.getMimeTypeFromExtension(file.name)?.toString(),
