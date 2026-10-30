@@ -163,8 +163,7 @@ class SmartLocalLibrary @Inject constructor(
                                 val access = documents.access(target.node) { coroutine.ensureActive() }
                                 LocalTreeScanner().scan(target.node, access, confirmed + target.node.key, exclusions)
                             } else {
-                                check(documents.exists(rootNode, target.node)) { "Selected file is unavailable" }
-                                LocalTreeScanner().scanFile(target.node)
+                                LocalTreeScanner().scanFile(documents.stat(rootNode, target.node))
                             }
                             result.entries.addAll(scanned.entries)
                             result.issues.addAll(scanned.issues)
