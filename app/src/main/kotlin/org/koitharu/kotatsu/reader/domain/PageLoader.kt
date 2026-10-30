@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.reader.domain
 
+import android.content.ContentResolver
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
@@ -71,6 +72,7 @@ import org.koitharu.kotatsu.core.util.ext.withProgress
 import org.koitharu.kotatsu.core.util.progress.ProgressDeferred
 import org.koitharu.kotatsu.download.ui.worker.DownloadSlowdownDispatcher
 import org.koitharu.kotatsu.local.data.LocalStorageCache
+import org.koitharu.kotatsu.local.data.LocalReaderPageCache
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
 import org.koitharu.kotatsu.local.library.SmartLocalArchivePageUri
@@ -93,6 +95,7 @@ class PageLoader @Inject constructor(
 	lifecycle: ActivityRetainedLifecycle,
 	@MangaHttpClient private val okHttp: OkHttpClient,
 	@PageCache private val cache: LocalStorageCache,
+	@LocalReaderPageCache private val localPageCache: LocalStorageCache,
 	private val coil: ImageLoader,
 	private val settings: AppSettings,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
@@ -203,6 +206,15 @@ class PageLoader @Inject constructor(
 			}.use { image ->
 				cache.set(uri.toString(), image).toUri()
 			}
+		} else if (uri.scheme == ContentResolver.SCHEME_CONTENT) {
+			// A direct SAF image must never be rewritten in-place during decoder recovery.
+			val bitmap = runInterruptible(Dispatchers.IO) {
+				val stream = requireNotNull(context.contentResolver.openInputStream(uri)) {
+					"Cannot reopen local image"
+				}
+				stream.use { BitmapDecoderCompat.decode(it, null) }
+			}
+			bitmap.use { image -> localPageCache.set(uri.toString(), image).toUri() }
 		} else {
 			val file = uri.toFile()
 			runInterruptible(Dispatchers.IO) {
@@ -364,17 +376,21 @@ class PageLoader @Inject constructor(
 	): Uri = semaphore.withPermit {
 		val pageUrl = getPageUrl(page)
 		check(pageUrl.isNotBlank()) { "Cannot obtain full image url for $page" }
-		if (!skipCache) {
-			cache.get(pageUrl)?.let { return it.toUri() }
-		}
 		val uri = pageUrl.toUri()
+		val pageCache = if (page.source == LocalMangaSource) localPageCache else cache
+		if (!skipCache && !(page.source == LocalMangaSource && uri.scheme == ContentResolver.SCHEME_CONTENT)) {
+			pageCache[pageUrl]?.let { return it.toUri() }
+		}
 		return when {
+			uri.scheme == ContentResolver.SCHEME_CONTENT && page.source == LocalMangaSource -> uri
+
             uri.scheme == SmartLocalArchivePageUri.SCHEME && page.source == LocalMangaSource ->
-                materializeSeekableArchivePage(uri, pageUrl, reuseCache = !skipCache)
+                materializeSeekableArchivePage(uri, pageUrl, pageCache, reuseCache = !skipCache)
 
 			uri.isZipUri() -> materializeCbzPage(
 				if (uri.scheme == URI_SCHEME_ZIP) uri else uri.buildUpon().scheme(URI_SCHEME_ZIP).build(),
 				pageUrl,
+				pageCache,
 				reuseCache = !skipCache,
 			)
 
@@ -422,10 +438,11 @@ class PageLoader @Inject constructor(
     private suspend fun materializeSeekableArchivePage(
         uri: Uri,
         cacheKey: String,
+        pageCache: LocalStorageCache,
         reuseCache: Boolean,
     ): Uri = cbzMaterializeLock.withLock {
-        if (reuseCache) cache[cacheKey]?.let { return@withLock it.toUri() }
-        SmartLocalArchivePageMaterializer.materialize(context, uri, cacheKey, cache).toUri()
+        if (reuseCache) pageCache[cacheKey]?.let { return@withLock it.toUri() }
+        SmartLocalArchivePageMaterializer.materialize(context, uri, cacheKey, pageCache).toUri()
     }
 
 	/**
@@ -437,15 +454,16 @@ class PageLoader @Inject constructor(
 	private suspend fun materializeCbzPage(
 		uri: Uri,
 		cacheKey: String,
+		pageCache: LocalStorageCache,
 		reuseCache: Boolean,
 	): Uri = cbzMaterializeLock.withLock {
-		if (reuseCache) cache[cacheKey]?.let { return@withLock it.toUri() }
+		if (reuseCache) pageCache[cacheKey]?.let { return@withLock it.toUri() }
 		val file = File(requireNotNull(uri.schemeSpecificPart) { "CBZ path is null: $uri" })
 		val entryName = requireNotNull(uri.fragment) { "CBZ entry is null: $uri" }
 		ZipFile(file).use { zip ->
 			val entry = requireNotNull(zip.getEntry(entryName)) { "CBZ entry not found: $entryName" }
 			zip.getInputStream(entry).source().use { source ->
-				cache.set(
+				pageCache.set(
 					cacheKey,
 					source,
 					MimeTypes.getMimeTypeFromExtension(entry.name),
