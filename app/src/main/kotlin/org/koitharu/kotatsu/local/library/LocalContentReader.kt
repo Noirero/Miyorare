@@ -206,6 +206,30 @@ open class LocalContentReader @Inject constructor(
         }
     }
 
+    private suspend fun indexedArchiveMetadata(root: Node, node: Node): LocalMetadata? {
+        if (node.uri.toUri().scheme != ContentResolver.SCHEME_CONTENT) return null
+        val coroutine = currentCoroutineContext()
+        return try {
+            documents.withReadDescriptor(root, node, { descriptor ->
+                ParcelFileDescriptor.AutoCloseInputStream(
+                    ParcelFileDescriptor.dup(descriptor.fileDescriptor)
+                ).use { input ->
+                    val archive = IndexedArchiveCoverReader(input.channel) { coroutine.ensureActive() }
+                    val metadata = archive.readerMetadata()
+                    if (metadata == null) LocalMetadata()
+                    else metadata.second.inputStream().use { source ->
+                        if (metadata.first.equals("index.json", true)) LocalMetadata.readJson(source)
+                        else LocalMetadata.readXml(source)
+                    }
+                }
+            })
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null // Unsupported provider/archive: preserve the existing seekable-copy fallback.
+        }
+    }
+
     /** Enrich only when a title is opened. Scanning thousands of archives never copies/opens each book. */
     internal suspend fun metadata(root: Node, chapter: LocalChapter): LocalMetadata = withContext(Dispatchers.IO) {
         val key = "${chapter.node.key}:${chapter.node.modified}:${chapter.node.size}"
@@ -213,6 +237,8 @@ open class LocalContentReader @Inject constructor(
         val ext = LocalTreeScanner.extension(chapter.node.name)
         val metadata = when (ext) {
             "epub", "cbz", "zip" -> {
+                val indexed = if (ext != "epub") indexedArchiveMetadata(root, chapter.node) else null
+                if (indexed != null) indexed else {
                 val file = materialize(root, chapter.node)
                 try {
                     when (ext) {
@@ -227,6 +253,7 @@ open class LocalContentReader @Inject constructor(
                     }
                 } finally {
                     withContext(NonCancellable) { releaseMaterialized(file) }
+                }
                 }
             }
             else -> LocalMetadata()
