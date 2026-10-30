@@ -41,18 +41,11 @@ jobs:
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/runtime-changed-files.txt"
           bash .github/scripts/select-pr-runtime-tests.sh --self-test
           plan="$(bash .github/scripts/select-pr-runtime-tests.sh --classify < "$RUNNER_TEMP/runtime-changed-files.txt")"
-          if [[ "$LABEL_FULL" == "true" ]]; then
-            plan="$(printf 'run_runtime=true\nfull=true\n')"
-          elif [[ "$LABEL_RUNTIME" == "true" ]]; then
-            plan="${plan/run_runtime=false/run_runtime=true}"
-            if [[ "$plan" == *"run_runtime=true"* && "$plan" == *"full=false"* ]]; then
-              if ! bash .github/scripts/select-pr-runtime-tests.sh < "$RUNNER_TEMP/runtime-changed-files.txt" >/dev/null 2>&1; then
-                plan="$(printf 'run_runtime=true\nfull=true\n')"
-              fi
-            fi
-          elif [[ "$DRAFT" == "true" ]]; then
-            plan="$(printf 'run_runtime=false\nfull=false\n')"
+          targeted_available=false
+          if bash .github/scripts/select-pr-runtime-tests.sh < "$RUNNER_TEMP/runtime-changed-files.txt" >/dev/null 2>&1; then
+            targeted_available=true
           fi
+          plan="$(printf '%s\n' "$plan" | DRAFT="$DRAFT" LABEL_RUNTIME="$LABEL_RUNTIME" LABEL_FULL="$LABEL_FULL" TARGETED_AVAILABLE="$targeted_available" bash .github/scripts/select-pr-runtime-tests.sh --policy)"
           printf '%s\n' "$plan" | tee -a "$GITHUB_OUTPUT"
 
   compile-unit:
