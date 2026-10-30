@@ -113,7 +113,10 @@ internal class IndexedArchiveCoverReader(private val channel: FileChannel, priva
     fun readReaderPage(name: String): ByteArray {
         val entry = entries.firstOrNull { it.name == name }
             ?: throw IOException("Archive page does not exist")
-        if (entry.name.endsWith('/') || entry.size !in 1..MAX_READER_PAGE_BYTES.toLong()) {
+        if (entry.name.endsWith('/') || !LocalTreeScanner.isImage(entry.name) ||
+            entry.name.startsWith('/') || '\\' in entry.name || ':' in entry.name ||
+            entry.name.split('/').any { it == ".." } ||
+            entry.size !in 1..MAX_READER_PAGE_BYTES.toLong()) {
             throw IOException("Unsupported archive page size")
         }
         return readEntry(entry, MAX_READER_PAGE_BYTES, MAX_READER_PAGE_BYTES)
@@ -125,8 +128,11 @@ internal class IndexedArchiveCoverReader(private val channel: FileChannel, priva
         val entry = entries.firstOrNull { it.name.equals("index.json", true) }
             ?: entries.firstOrNull { it.name.equals("ComicInfo.xml", true) }
             ?: return null
-        if (entry.size !in 1..MAX_METADATA_BYTES.toLong()) return null
-        val bytes = readEntry(entry, MAX_METADATA_BYTES) ?: return null
+        // An existing but unsupported sidecar must use the full ZIP fallback, not silently
+        // discard metadata that the legacy reader could have parsed.
+        if (entry.size !in 1..MAX_METADATA_BYTES.toLong()) throw IOException("Unsupported archive metadata")
+        val bytes = readEntry(entry, MAX_METADATA_BYTES)
+            ?: throw IOException("Unsupported archive metadata")
         return entry.name to bytes
     }
 
