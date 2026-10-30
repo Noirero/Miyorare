@@ -135,6 +135,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 			LocalLibraryAction.ContinueAll -> viewModel.showAllContinueReading()
 			LocalLibraryAction.Restore -> viewModel.requestExclusions()
 			LocalLibraryAction.Groups -> showGroups()
+			LocalLibraryAction.ToggleGroups -> viewModel.toggleGroups()
 			is LocalLibraryAction.GroupCard -> viewModel.setGroupFilter(action.name)
 			is LocalLibraryAction.Acknowledge -> viewModel.acknowledgeDiscoveries(action.ids)
 			is LocalLibraryAction.Diagnosis -> showDiagnosis(action.issue)
