@@ -174,6 +174,14 @@ class LocalListViewModel @Inject constructor(
 		launchLoadingJob(Dispatchers.IO) { exportedArchives.call(library.exportSelected(ids)) }
 	}
 
+	fun updateTextMetadata(ids: Set<Long>, title: String?, description: String?) {
+		if (ids.isEmpty() || (title == null && description == null)) return
+		launchLoadingJob(Dispatchers.IO) {
+			library.setTextMetadata(ids, title, description)
+			revision.value++
+		}
+	}
+
 	fun updateAuthors(ids: Set<Long>, input: String) {
 		if (ids.isEmpty()) return
 		val authors = input.split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() }
