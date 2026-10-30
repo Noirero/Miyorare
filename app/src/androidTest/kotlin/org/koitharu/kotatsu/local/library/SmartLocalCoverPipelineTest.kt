@@ -15,6 +15,7 @@ import android.os.Bundle
 import android.os.Debug
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
@@ -27,6 +28,10 @@ import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.size.ScaleDrawable
 import coil3.toBitmap
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.android.components.ActivityComponent
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import java.io.ByteArrayOutputStream
@@ -45,6 +50,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import okhttp3.internal.platform.PlatformRegistry
 import okio.source
@@ -65,10 +71,15 @@ import org.koitharu.kotatsu.core.image.BitmapDecoderCompat
 import org.koitharu.kotatsu.core.image.MiyorareImageDiskCache
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
+import org.koitharu.kotatsu.core.util.ext.toZipUri
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.local.library.LocalTreeScanner.Node
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
+import org.koitharu.kotatsu.parsers.model.MangaPage
+import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivity
 
 /** Executes real ImageRequests, domain owners, SAF copies, PdfRenderer, and encoded thumbnails. */
 @HiltAndroidTest
@@ -420,6 +431,57 @@ class SmartLocalCoverPipelineTest {
         assertNull(pageStorage[key])
         println("READER_SMALL_PAGE_SAMPLE pageBytes=${bytes.size} directFolderCopyBytes=0 " +
             "localCacheWarmHit=true globalPageCacheUntouched=true")
+    }
+
+    @Test fun realPageLoaderUsesDirectFolderAndBoundedDownloadedCbzCache() = runBlocking {
+        val original = png(Color.YELLOW)
+        put("Images/001.png", original)
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val folderPage = reader.pages(root, book.chapters.single(),
+            book.toManga(false, true).chapters!!.single()).single()
+
+        // Simulate an existing downloaded chapter: a real local CBZ path, not an HTTP page.
+        val downloaded = File(context.storage, "saved-${UUID.randomUUID()}.cbz")
+        downloaded.writeBytes(archive(original, "001.png"))
+        val zipPage = MangaPage(
+            id = UUID.randomUUID().mostSignificantBits,
+            url = downloaded.toZipUri("001.png").toString(),
+            preview = null,
+            source = LocalMangaSource,
+        )
+        ActivityScenario.launch(MangaUpdatesAuthActivity::class.java).use { scenario ->
+            lateinit var pageLoader: PageLoader
+            scenario.onActivity { activity ->
+                pageLoader = EntryPointAccessors.fromActivity(
+                    activity, SmallLocalReaderPageLoaderEntryPoint::class.java).pageLoader()
+            }
+            val directStart = System.nanoTime()
+            val direct = withTimeout(30_000) { pageLoader.loadPage(folderPage, force = false) }
+            val directMs = (System.nanoTime() - directStart) / 1_000_000
+            assertEquals(folderPage.url, direct.toString())
+            assertNull(localPageStorage[folderPage.url])
+
+            val coldStart = System.nanoTime()
+            val extracted = withTimeout(30_000) { pageLoader.loadPage(zipPage, force = false) }
+            val coldMs = (System.nanoTime() - coldStart) / 1_000_000
+            assertEquals("file", extracted.scheme)
+            assertArrayEquals(original, File(extracted.path!!).readBytes())
+            assertNotNull("Downloaded CBZ must use the isolated local page cache",
+                localPageStorage[zipPage.url])
+            assertNull("Downloaded pages must not be added to global page cache",
+                pageStorage[zipPage.url])
+            val warmStart = System.nanoTime()
+            val reopened = withTimeout(30_000) { pageLoader.loadPage(zipPage, force = false) }
+            val warmMs = (System.nanoTime() - warmStart) / 1_000_000
+            assertEquals(extracted, reopened)
+            println("READER_SMALL_END_TO_END_SAMPLE bookBytes=${downloaded.length()} " +
+                "decodedPageBytes=${original.size} directFolderCopyBytes=0 " +
+                "directOpenMs=$directMs cbzColdMs=$coldMs cbzWarmMs=$warmMs")
+        }
+        assertTrue(contentFiles().isEmpty())
+        assertClosedDescriptors()
     }
 
     @Test fun seekableSafPdfOpensReaderWithoutCopyingDocument() = runBlocking {
@@ -1342,3 +1404,9 @@ class SmartLocalCoverPipelineTest {
     }
 }
 
+
+@EntryPoint
+@InstallIn(ActivityComponent::class)
+internal interface SmallLocalReaderPageLoaderEntryPoint {
+    fun pageLoader(): PageLoader
+}
