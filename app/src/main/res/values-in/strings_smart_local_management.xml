@@ -52,4 +52,5 @@
     <string name="smart_local_group_card">%1$s · %2$d koleksi</string>
     <string name="smart_local_move_selected">Pindahkan file terpilih</string>
     <string name="smart_local_move_complete">%1$d file berhasil dipindahkan</string>
+    <string name="smart_local_reset_text">Pulihkan metadata otomatis</string>
 </resources>
