@@ -292,8 +292,13 @@ class LocalListViewModel @Inject constructor(
 			}
 		}
 		result += SmartLocalCollectionHeaderModel(mode)
-		val groupMembers = activeGroup.value?.let { groups[it] }
-		val manga = library.list(query, type).filter { groupMembers == null || snapshot.books.any { book -> book.id == it.id && book.node.key in groupMembers } }.skipNsfwIfNeeded()
+		// A deleted/renamed active group must not silently expose every title.
+		val selectedGroup = activeGroup.value
+		val groupMembers = selectedGroup?.let { groups[it] }
+		val manga = library.list(query, type).filter { item ->
+			selectedGroup == null || (groupMembers != null &&
+				snapshot.books.any { book -> book.id == item.id && book.node.key in groupMembers })
+		}.skipNsfwIfNeeded()
 		val models = mangaListMapper.toListModelList(manga, mode, MangaListMapper.NO_SAVED)
 		val booksById = snapshot.books.associateBy { it.id }
 		for (model in models) {
