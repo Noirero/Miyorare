@@ -596,12 +596,13 @@ class SmartLocalLibrary @Inject constructor(
                 }
                 // Recheck source/destination equality immediately before any deletion.
                 // An external writer may have modified a source after its initial copy.
+                val verificationContext = currentCoroutineContext()
                 try {
                     for ((source, copy) in copiedFiles) {
                         LocalMoveVerifier.verify(
                             source = { documents.input(source) },
                             destination = { documents.input(copy) },
-                            checkCancelled = { currentCoroutineContext().ensureActive() },
+                            checkCancelled = { verificationContext.ensureActive() },
                         )
                     }
                 } catch (error: Exception) {
