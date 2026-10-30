@@ -7,6 +7,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
+import java.security.MessageDigest
 import java.util.zip.CRC32
 import java.util.zip.Inflater
 import java.util.zip.InflaterInputStream
@@ -20,6 +21,8 @@ internal class IndexedArchiveCoverReader(private val channel: FileChannel, priva
         val crc: Long, val compressedSize: Long, val size: Long, val offset: Long)
     private val entries: List<Entry>
     private val directoryOffset: Long
+    /** Stable cache identity from the central index and archive length, not SAF timestamps. */
+    val archiveVersion: String
     var bytesRead = 0L
         private set
 
@@ -41,6 +44,10 @@ internal class IndexedArchiveCoverReader(private val channel: FileChannel, priva
             throw IOException("Unsupported or oversized ZIP directory")
         }
         val directory = read(directoryOffset, size.toInt())
+        archiveVersion = MessageDigest.getInstance("SHA-256").apply {
+            update(java.nio.ByteBuffer.allocate(8).putLong(length).array())
+            update(directory)
+        }.digest().joinToString("") { "%02x".format(it) }
         var position = 0
         val result = ArrayList<Entry>(count)
         repeat(count) {
