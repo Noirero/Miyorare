@@ -41,6 +41,12 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		localCinematic = true,
 	)
 	private var scanProgressSnackbar: Snackbar? = null
+	private var pendingMoveIds: Set<Long> = emptySet()
+	private val moveFolderPicker = OpenDocumentTreeHelper(this) { uri ->
+		val selected = pendingMoveIds
+		pendingMoveIds = emptySet()
+		if (uri != null && selected.isNotEmpty()) viewModel.moveSelected(selected, uri)
+	}
 	private val folderPicker = OpenDocumentTreeHelper(this) { uri ->
 		uri?.let {
 			scanProgressSnackbar?.dismiss()
@@ -71,6 +77,9 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		viewModel.coverCacheReport.observeEvent(viewLifecycleOwner) { showCoverCache(it) }
 		viewModel.coverCacheCleared.observeEvent(viewLifecycleOwner) {
 			Snackbar.make(binding.recyclerView, R.string.smart_local_cover_cache_cleared, Snackbar.LENGTH_SHORT).show()
+		}
+		viewModel.moveResults.observeEvent(viewLifecycleOwner) { count ->
+			Snackbar.make(binding.recyclerView, getString(R.string.smart_local_move_complete, count), Snackbar.LENGTH_LONG).show()
 		}
 		viewModel.exportedArchives.observeEvent(viewLifecycleOwner) { files ->
 			if (files.isNotEmpty()) {
@@ -160,6 +169,15 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		R.id.action_smart_local_add_group -> { showAddGroup(controller.snapshot(), mode); true }
 		R.id.action_smart_local_ungroup -> { viewModel.ungroup(controller.snapshot()); mode?.finish(); true }
 		R.id.action_smart_local_export -> { viewModel.exportSelected(controller.snapshot()); mode?.finish(); true }
+		R.id.action_smart_local_move -> {
+			pendingMoveIds = controller.snapshot()
+			if (!moveFolderPicker.tryLaunch(null)) {
+				pendingMoveIds = emptySet()
+				Snackbar.make(requireView(), R.string.operation_not_supported, Snackbar.LENGTH_LONG).show()
+			}
+			mode?.finish()
+			true
+		}
 		R.id.action_smart_local_info -> {
 			viewModel.library.state.value.books.firstOrNull { it.id in selectedItemsIds }?.let(::showInformation)
 			true
