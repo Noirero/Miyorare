@@ -160,7 +160,8 @@ class SmartLocalLibrary @Inject constructor(
                             currentCoroutineContext().ensureActive()
                             val rootNode = documents.root(root.uri)
                             check(documents.contains(rootNode, target.node)) { "Selected collection outside its root" }
-                            val access = documents.access(target.node) { currentCoroutineContext().ensureActive() }
+                            val coroutine = currentCoroutineContext()
+                            val access = documents.access(target.node) { coroutine.ensureActive() }
                             val scanned = LocalTreeScanner().scan(target.node, access, confirmed + target.node.key, exclusions)
                             result.entries.addAll(scanned.entries)
                             result.issues.addAll(scanned.issues)
