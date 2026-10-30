@@ -43,6 +43,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import okhttp3.internal.platform.PlatformRegistry
 import org.json.JSONArray
 import org.json.JSONObject
@@ -303,6 +304,50 @@ class SmartLocalCoverPipelineTest {
         // LocalPdfCache's pre-existing Reader page API remains responsible for lazy pages.
         assertTrue(org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(page).length() > 0)
         assertEquals(3, counts.materialize)
+        assertClosedDescriptors()
+    }
+
+    @Test fun readerPdfLeaseReleasePreservesLazyPageSource() = runBlocking {
+        put("leased.pdf", pdf(Color.GREEN))
+        library.scan()
+        val book = library.state.value.books.single()
+        val documents = LocalDocuments(context)
+        val root = documents.root(rootUri)
+        val token = Any()
+        val pages = withContext(ReaderBackingLeaseContext(token)) {
+            reader.pages(root, book.chapters.single(), book.toManga(false, true).chapters!!.single())
+        }
+        val backing = contentFiles().single()
+        readerPageDirectories += File(Uri.parse(pages.single().url).path!!).parentFile!!
+        assertTrue(backing.exists())
+        reader.releaseReaderLease(token)
+        assertTrue("Released backing must survive in-flight lazy rendering", backing.exists())
+        val target = File(Uri.parse(pages.single().url).path!!)
+        assertTrue(org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(target).length() > 0)
+        assertClosedDescriptors()
+    }
+
+    @Test fun twoArchiveOwnersReleaseIndependentlyWithoutInvalidatingZipPages() = runBlocking {
+        put("leased.cbz", archive(png(Color.BLUE)))
+        library.scan()
+        val book = library.state.value.books.single()
+        val documents = LocalDocuments(context)
+        val root = documents.root(rootUri)
+        val chapter = book.chapters.single()
+        val original = book.toManga(false, true).chapters!!.single()
+        val first = Any()
+        val second = Any()
+        val firstPages = withContext(ReaderBackingLeaseContext(first)) { reader.pages(root, chapter, original) }
+        val secondPages = withContext(ReaderBackingLeaseContext(second)) { reader.pages(root, chapter, original) }
+        assertEquals(firstPages.map { it.url }, secondPages.map { it.url })
+        val backing = contentFiles().single()
+        reader.releaseReaderLease(first)
+        assertTrue(backing.exists())
+        java.util.zip.ZipFile(backing).use { zip ->
+            assertTrue(zip.entries().asSequence().any { !it.isDirectory && it.name.endsWith(".png") })
+        }
+        reader.releaseReaderLease(second)
+        assertTrue("Recently released archive remains available for pending page loads", backing.exists())
         assertClosedDescriptors()
     }
 

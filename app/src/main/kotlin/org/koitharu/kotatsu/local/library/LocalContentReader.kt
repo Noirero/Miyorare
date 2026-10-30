@@ -47,6 +47,9 @@ open class LocalContentReader @Inject constructor(
     // maintenance cannot invalidate a still-open/previous chapter. Temporary cover users acquire
     // their own reference and release it as soon as extraction finishes.
     private val activeFiles = MaterializedCachePins()
+    // Each Reader load attempt owns at most one pin per backing. Access under cacheMutex.
+    private val readerLeases = ReaderBackingLeaseOwners()
+    private val recentlyReleased = HashMap<String, Long>()
     private val metadataCache = android.util.LruCache<String, LocalMetadata>(32)
     private val cacheDir get() = File(context.cacheDir, "smart-local-content").also { it.mkdirs() }
 
@@ -79,6 +82,7 @@ open class LocalContentReader @Inject constructor(
             // artifact; reopening it for a cover must not invalidate an active Reader marker.
             if (!activeFiles.isPinned(target.name)) target.setLastModified(System.currentTimeMillis())
             activeFiles.acquire(target.name)
+            recentlyReleased.remove(target.name)
             trimMaterializedCacheLocked()
             target
         }
@@ -89,16 +93,51 @@ open class LocalContentReader @Inject constructor(
         cacheMutex.withLock {
             activeFiles.release(file.name)
             // A cover-only copy is temporary. A concurrent/retained Reader reference wins.
-            if (!activeFiles.isPinned(file.name)) file.delete()
+            if (!activeFiles.isPinned(file.name) && file.name !in recentlyReleased) file.delete()
             trimMaterializedCacheLocked()
         }
     }
 
+    /**
+     * Release an unpublished attempt or a chapter/preview removed from Reader state.
+     * A different owner referencing the same backing retains its own pin.
+     */
+    suspend fun releaseReaderLease(token: Any) = withContext(Dispatchers.IO) {
+        cacheMutex.withLock {
+            val names = readerLeases.release(token)
+            for (name in names) {
+                activeFiles.release(name)
+                // Give in-flight image requests time to finish even after the chapter snapshot
+                // is removed. This does not mutate the backing mtime used by PDF cache identity.
+                if (!activeFiles.isPinned(name)) recentlyReleased[name] = System.currentTimeMillis()
+            }
+            trimMaterializedCacheLocked()
+        }
+    }
+
+    private suspend fun retainReaderLease(token: Any, file: File) {
+        if (file.parentFile != cacheDir) return
+        cacheMutex.withLock {
+            if (!readerLeases.retain(token, file.name)) {
+                // materialize() acquired again for the same owner; preserve the original pin.
+                activeFiles.release(file.name)
+            }
+        }
+    }
+
     private fun trimMaterializedCacheLocked() {
+        val now = System.currentTimeMillis()
+        recentlyReleased.entries.removeAll { now - it.value >= RELEASE_GRACE_MS }
+        // Crash leftovers are never published backing URLs. Ignore recent partials that may
+        // belong to another in-flight materialization, and remove only stale partial files.
+        val staleBefore = System.currentTimeMillis() - STALE_PARTIAL_AGE_MS
+        cacheDir.listFiles().orEmpty().filter {
+            it.name.endsWith(".partial") && it.lastModified() < staleBefore
+        }.forEach { it.delete() }
         var total = cacheDir.listFiles().orEmpty().sumOf { it.length() }
         for (old in cacheDir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
             if (total <= MATERIALIZED_CACHE_MAX_BYTES) break
-            if (activeFiles.isPinned(old.name)) continue
+            if (activeFiles.isPinned(old.name) || old.name in recentlyReleased) continue
             val size = old.length()
             if (old.delete()) total -= size
         }
@@ -115,16 +154,25 @@ open class LocalContentReader @Inject constructor(
             listOf(MangaPage(id = chapter.id, url = chapter.url, preview = null, source = LocalMangaSource))
         } else {
             val file = materialize(root, chapter.node)
-            val urls = if (LocalTreeScanner.extension(chapter.node.name) == "pdf") {
-                LocalPdfCache.renderPages(file).map { it.toUri().toString() }
-            } else ZipFile(file).use { zip ->
-                zip.entries().asSequence().filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
-                    .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name })
-                    .map { file.toZipUri(it.name).toString() }.toList()
+            try {
+                val urls = if (LocalTreeScanner.extension(chapter.node.name) == "pdf") {
+                    LocalPdfCache.renderPages(file).map { it.toUri().toString() }
+                } else ZipFile(file).use { zip ->
+                    zip.entries().asSequence().filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
+                        .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name })
+                        .map { file.toZipUri(it.name).toString() }.toList()
+                }
+                check(urls.isNotEmpty()) { "No readable pages in ${chapter.node.name}" }
+                val pages = urls.mapIndexed { i, url -> MangaPage(id = "${original.id}:$i".longHashCode(), url = url,
+                    preview = null, source = LocalMangaSource) }
+                val lease = currentCoroutineContext()[ReaderBackingLeaseContext]
+                if (lease != null) retainReaderLease(lease.token, file)
+                pages
+            } catch (error: Throwable) {
+                // No page URLs were published: release the backing even on cancellation.
+                withContext(NonCancellable) { releaseMaterialized(file) }
+                throw error
             }
-            check(urls.isNotEmpty()) { "No readable pages in ${chapter.node.name}" }
-            urls.mapIndexed { i, url -> MangaPage(id = "${original.id}:$i".longHashCode(), url = url,
-                preview = null, source = LocalMangaSource) }
         }
     }
 
@@ -356,6 +404,8 @@ open class LocalContentReader @Inject constructor(
 
     private companion object {
         const val MATERIALIZED_CACHE_MAX_BYTES = 512L * 1024 * 1024
+        const val STALE_PARTIAL_AGE_MS = 60L * 60 * 1000
+        const val RELEASE_GRACE_MS = 60L * 1000
     }
 }
 

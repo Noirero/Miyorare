@@ -7,6 +7,9 @@ import androidx.annotation.WorkerThread
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -131,6 +134,13 @@ class ReaderViewModel @Inject constructor(
     mangaRepositoryFactory = mangaRepositoryFactory,
     chapterPersonalRepository = chapterPersonalRepository,
 ) {
+    override fun onCleared() {
+        // The ViewModel scope is cancelled during teardown; use an independent IO job to release
+        // Reader-owned backing without blocking the main thread.
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { chaptersLoader.close() }
+        super.onCleared()
+    }
+
     private val intent = MangaIntent(savedStateHandle)
     private val pageMetadataRecoverySession = PageMetadataRecoverySession()
 
