@@ -154,6 +154,7 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 		R.id.action_smart_local_deselect -> { controller.clear(); true }
 		R.id.action_smart_local_refresh_selected -> { viewModel.refreshSelected(controller.snapshot()); mode?.finish(); true }
 		R.id.action_smart_local_edit_authors -> { showBulkAuthorEditor(controller.snapshot(), mode); true }
+		R.id.action_smart_local_edit_text -> { showBulkTextEditor(controller.snapshot(), mode); true }
 		R.id.action_smart_local_create_group -> { showCreateGroup(controller.snapshot(), mode); true }
 		R.id.action_smart_local_add_group -> { showAddGroup(controller.snapshot(), mode); true }
 		R.id.action_smart_local_ungroup -> { viewModel.ungroup(controller.snapshot()); mode?.finish(); true }
@@ -186,6 +187,28 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 					.setPositiveButton(R.string.smart_local_detach) { _, _ -> viewModel.removeFolder(root.uri) }
 					.setNegativeButton(android.R.string.cancel, null).show()
 			}.setNegativeButton(android.R.string.cancel, null).show()
+	}
+
+	private fun showBulkTextEditor(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
+		val fields = arrayOf(getString(R.string.smart_local_edit_title), getString(R.string.smart_local_edit_description))
+		MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+			.setTitle(R.string.smart_local_edit_text)
+			.setItems(fields) { _, selected ->
+				val input = EditText(requireContext()).apply { setSingleLine(selected == 0) }
+				MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_Miyorare_SmartLocalDialog)
+					.setTitle(fields[selected])
+					.setMessage(getString(R.string.smart_local_bulk_edit_count, ids.size))
+					.setView(input)
+					.setPositiveButton(android.R.string.ok) { _, _ ->
+						val value = input.text.toString()
+						if (selected == 0) viewModel.updateTextMetadata(ids, value, null)
+						else viewModel.updateTextMetadata(ids, null, value)
+						mode?.finish()
+					}
+					.setNegativeButton(android.R.string.cancel, null).show()
+			}
+			.setNegativeButton(android.R.string.cancel, null).show()
 	}
 
 	private fun showCreateGroup(ids: Set<Long>, mode: ActionMode?) {
