@@ -453,7 +453,11 @@ class SmartLocalLibrary @Inject constructor(
     /** Move standalone file collections through copy-and-verify, never a blind SAF rename. */
     suspend fun moveSelectedFiles(ids: Set<Long>, destinationUri: Uri): Int = withContext(Dispatchers.IO) {
         initialize()
-        val moved = mutex.withLock {
+        if (destinationUri.scheme == "content") {
+            context.contentResolver.takePersistableUriPermission(destinationUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        }
+        val moved = try { mutex.withLock {
             val selected = state.value.books.filter { it.id in ids }
             require(selected.isNotEmpty() && selected.size == ids.size) { "Selected collections changed" }
             require(selected.all { !it.node.directory && it.chapters.size == 1 &&
@@ -530,6 +534,10 @@ class SmartLocalLibrary @Inject constructor(
                 deleted++
             }
             deleted
+        } } catch (error: Exception) {
+            // If source deletion partially succeeded, rediscover the actual files.
+            runCatchingCancellable { scan() }
+            throw error
         }
         // Reconcile the library only after releasing the operation mutex.
         scan()
