@@ -511,6 +511,9 @@ class SmartLocalCoverPipelineTest {
             val reopened = withTimeout(30_000) { pageLoader.loadPage(zipPage, force = false) }
             val warmMs = (System.nanoTime() - warmStart) / 1_000_000
             assertEquals(extracted, reopened)
+            pageLoader.invalidate(clearCache = true)
+            assertNull("Explicit Reader cache invalidation must clear local extracts",
+                localPageStorage[zipPage.url])
             println("READER_SMALL_END_TO_END_SAMPLE bookBytes=${downloaded.length()} " +
                 "decodedPageBytes=${original.size} directFolderCopyBytes=0 " +
                 "directOpenMs=$directMs cbzColdMs=$coldMs cbzWarmMs=$warmMs")
