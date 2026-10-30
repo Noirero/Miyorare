@@ -284,7 +284,13 @@ classify_paths() {
     [[ -z "$path" ]] && continue
     ((count+=1))
     case "$path" in
-      *.md|*.txt|*.rst|LICENSE|NOTICE|.editorconfig|.gitignore) ;;
+      README.md|README.*.md|CHANGELOG.md|CONTRIBUTING.md|LICENSE|LICENSE.*|NOTICE|.editorconfig|.gitignore|docs/*.md|docs/*.txt|docs/*.rst|*.md)
+        # Markdown outside the root or docs/ can be build/runtime input.
+        if [[ "$path" == */* && "$path" != docs/* ]]; then
+          has_runtime=true; full=true
+        fi
+        ;;
+      docs/*) has_runtime=true; full=true ;;
       *)
         has_runtime=true
         MAPPED=false
@@ -324,7 +330,11 @@ resolve_policy() {
   elif [[ "$draft" == true ]]; then
     run=false; full=false
   fi
-  [[ "$full" == false ]] || run=true
+  if [[ "$draft" == true && "$required" == false && "$force_full" == false ]]; then
+    run=false; full=false
+  elif [[ "$full" == true ]]; then
+    run=true
+  fi
   printf 'run_runtime=%s\nfull=%s\n' "$run" "$full"
 }
 
@@ -339,6 +349,7 @@ policy_self_test() {
   policy_check false false false false false false false false
   policy_check true false false false false true true false
   policy_check true true false false false false true true
+  policy_check true true true false false false false false
   # Label additions/removals, including priority of full over required.
   policy_check false false false true false false true true
   policy_check true false false true false true true false
@@ -360,6 +371,10 @@ classify_self_test() {
   local result
   result="$(classify_paths README.md docs/guide.md)"
   [[ "$result" == "$(printf 'run_runtime=false\nfull=false')" ]]
+  result="$(classify_paths app/src/main/assets/important.txt)"
+  [[ "$result" == "$(printf 'run_runtime=true\\nfull=true')" ]]
+  result="$(classify_paths .github/ISSUE_TEMPLATE/config.md)"
+  [[ "$result" == "$(printf 'run_runtime=true\\nfull=true')" ]]
   result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt)"
   [[ "$result" == "$(printf 'run_runtime=true\nfull=false')" ]]
   result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt app/src/main/kotlin/unknown/Unknown.kt)"
