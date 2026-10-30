@@ -41,6 +41,7 @@ import javax.inject.Inject
 sealed interface LocalLibraryAction {
 	data object ContinueAll : LocalLibraryAction
 	data object Restore : LocalLibraryAction
+	data class GroupCard(val name: String) : LocalLibraryAction
 	data object Groups : LocalLibraryAction
 	data class Acknowledge(val ids: Set<Long>) : LocalLibraryAction
 	data class Diagnosis(val issue: LocalDiagnosis) : LocalLibraryAction
@@ -262,8 +263,16 @@ class LocalListViewModel @Inject constructor(
 			}
 		}
 		val groups = library.groups()
-		if (groups.isNotEmpty()) result += ListHeader(context.getString(R.string.smart_local_groups_count, groups.size),
-			R.string.smart_local_manage_groups, LocalLibraryAction.Groups)
+		if (groups.isNotEmpty()) {
+			result += ListHeader(context.getString(R.string.smart_local_groups_count, groups.size),
+				R.string.smart_local_manage_groups, LocalLibraryAction.Groups)
+			val available = snapshot.books.mapTo(HashSet()) { it.node.key }
+			for ((name, members) in groups.toSortedMap()) {
+				val count = members.count { it in available }
+				result += ListHeader(context.getString(R.string.smart_local_group_card, name, count),
+					R.string.smart_local_show_group, LocalLibraryAction.GroupCard(name))
+			}
+		}
 		result += SmartLocalCollectionHeaderModel(mode)
 		val groupMembers = activeGroup.value?.let { groups[it] }
 		val manga = library.list(query, type).filter { groupMembers == null || snapshot.books.any { book -> book.id == it.id && book.node.key in groupMembers } }.skipNsfwIfNeeded()
