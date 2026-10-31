@@ -25,6 +25,32 @@ class MihonExtensionLoaderTest {
 	}
 
 	@Test
+	fun `source class lookup ignores non-string package metadata`() {
+		val metadata = mapOf<String, Any?>(
+			"org.chromium.content.browser.NUM_SANDBOXED_SERVICES" to 5,
+			"tachiyomi.extension.nsfw" to true,
+			"tachiyomi.extension.class" to 123,
+			"tachiyomi.novelextension.factory" to ".NovelFactory",
+		)
+		assertEquals(".NovelFactory", MihonExtensionLoader.readSourceClassNames(metadata))
+		assertEquals(
+			".AnimeFactory",
+			MihonExtensionLoader.readSourceClassNames(
+				mapOf("com.example.animeextension.factory" to ".AnimeFactory"),
+			),
+		)
+		assertEquals(
+			null,
+			MihonExtensionLoader.readSourceClassNames(
+				mapOf<String, Any?>(
+					"org.chromium.content.browser.NUM_SANDBOXED_SERVICES" to 5,
+					"tachiyomi.extension.class" to false,
+				),
+			),
+		)
+	}
+
+	@Test
 	fun `parseNsfwFlag supports integer metadata`() {
 		assertTrue(MihonExtensionLoader.parseNsfwFlag(1))
 	}
