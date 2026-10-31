@@ -83,6 +83,7 @@ class MigrationBatchPolicyTest {
 		val failed = MigrationBatchPolicy.process(request, { true }, { error("No scan here") }, { throw IllegalStateException("collision") })
 		val successful = MigrationBatchPolicy.process(request.copy(mangaId = 2), { true }, { error("No scan here") }, { replacement })
 		assertEquals(MigrationBatchStatus.ERROR, failed.status)
+		assertEquals(replacement.source.name, failed.destinationSource)
 		assertEquals(MigrationBatchStatus.MIGRATED, successful.status)
 		val retry = MigrationBatchPolicy.process(request, { true }, { error("No scan here") }, { replacement })
 		assertEquals(MigrationBatchStatus.MIGRATED, retry.status)
