@@ -137,4 +137,16 @@ class MigrationFlowScreenTest {
 		compose.onNodeWithText("Review").performClick()
 		compose.onNodeWithTag("migration-batch-migrate").assertDoesNotExist()
 	}
+	@Test
+	fun readyStatusWithoutAValidSelectionCannotBeExecuted() {
+		val original = screenState(MigrationBatchStatus.READY)
+		val snapshot = checkNotNull(original.batchItems[1L])
+		val malformed = original.copy(batchItems = mapOf(
+			1L to snapshot.copy(outcome = snapshot.outcome.copy(selection = null)),
+		))
+		show(malformed)
+		compose.onNodeWithText("Review").performClick()
+		compose.onNodeWithTag("migration-batch-migrate").assertDoesNotExist()
+	}
+
 }
