@@ -151,7 +151,6 @@ class DownloadMaintenanceUseCase @Inject constructor(
 	) {
 		val scannedPaths = files.mapTo(HashSet()) { it.canonicalPath }
 		val ownershipDao = database.getFavouriteDownloadIndexDao()
-		val localDao = database.getLocalMangaIndexDao()
 		val favouriteIds = FavouriteSpace.entries.flatMapTo(HashSet()) { space ->
 			favourites.getAllManga(space).map { it.id }
 		}
@@ -159,12 +158,9 @@ class DownloadMaintenanceUseCase @Inject constructor(
 
 		val staleOwnership = FavouriteSpace.entries.flatMap { ownershipDao.findEntries(it.dbValue) }
 			.filter { it.mangaId in favouriteIds && DownloadMaintenanceAbsence.isConfirmedMissing(it.path, scannedPaths, roots, emptyContainers) }
-		val staleLocal = localDao.findEntries(favouriteIds)
-			.filter { DownloadMaintenanceAbsence.isConfirmedMissing(it.path, scannedPaths, roots) }
-		if (staleOwnership.isEmpty() && staleLocal.isEmpty()) return
+		if (staleOwnership.isEmpty()) return
 		database.withTransaction {
 			for (entry in staleOwnership) ownershipDao.deleteIfPath(entry.space, entry.mangaId, entry.path)
-			for (entry in staleLocal) localDao.deleteIfPath(entry.mangaId, entry.path)
 		}
 	}
 
