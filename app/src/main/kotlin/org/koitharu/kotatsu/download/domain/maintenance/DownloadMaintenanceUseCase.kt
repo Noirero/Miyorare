@@ -73,9 +73,6 @@ class DownloadMaintenanceUseCase @Inject constructor(
 						isPrivate = rootsBySpace[ FavouriteSpace.PRIVATE ].orEmpty().any { it.canonicalPath == root.canonicalPath })
 				}
 				mutableState.value = mutableState.value.copy(total = files.size)
-				// Only reconcile absence after every configured destination was scanned successfully.
-				// This also releases obsolete ownership before verifying a replacement physical copy.
-				if (scanComplete) reconcileMissingDownloads(files, rootsBySpace)
 				phase(DownloadMaintenancePhase.IDENTIFYING)
 				val memberships = FavouriteSpace.entries.associateWith { space -> favourites.getAllManga(space).mapTo(HashSet()) { it.id } }
 				val candidates = database.getMangaDao().findDownloadMaintenanceCandidates().map { it.toManga() }
@@ -98,6 +95,7 @@ class DownloadMaintenanceUseCase @Inject constructor(
 				val duplicateIds = expected.flatMap { (path, mangas) -> mangas.map { it.id to path } }
 					.groupBy({ it.first }, { it.second }).filterValues { it.distinct().size > 1 }.keys
 				val emptyContainers = HashSet<String>()
+				var verificationComplete = true
 				for ((position, file) in files.withIndex()) {
 					currentCoroutineContext().ensureActive()
 					phase(DownloadMaintenancePhase.VERIFYING)
@@ -118,13 +116,16 @@ class DownloadMaintenanceUseCase @Inject constructor(
 						error.printStackTraceDebug()
 						DownloadMaintenanceItem(path, DownloadMaintenanceStatus.FAILED, DownloadMaintenanceReason.IO_ERROR)
 					}
+					if (result.status == DownloadMaintenanceStatus.FAILED ||
+						result.reason == DownloadMaintenanceReason.STORAGE_UNAVAILABLE ||
+						result.reason == DownloadMaintenanceReason.STORAGE_CHANGED) verificationComplete = false
 					if (result.reason == DownloadMaintenanceReason.UNSUPPORTED_ARTIFACT &&
 						result.status == DownloadMaintenanceStatus.UNRESOLVED) emptyContainers += path
 					items += result.copy(isPrivate = isPrivate)
 					mutableState.value = mutableState.value.copy(scanned = position + 1)
 				}
 				phase(DownloadMaintenancePhase.FINALIZING)
-				if (scanComplete && emptyContainers.isNotEmpty()) {
+				if (scanComplete && verificationComplete) {
 					reconcileMissingDownloads(files, rootsBySpace, emptyContainers)
 				}
 				// A completed scan must invalidate cards even when no verified artifact changed.
