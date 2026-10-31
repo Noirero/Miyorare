@@ -19,7 +19,7 @@ adb logcat -d -b events -v time > "$preflight_dir/events-before.txt" 2>&1
 focused="$(grep -E 'mCurrentFocus=|mFocusedWindow=' "$preflight_dir/window-before.txt" | tail -1 || true)"
 printf 'Preflight window focus: %s\n' "$focused"
 launcher_anr=false
-if grep -Eiq 'am_anr.*com\\.google\\.android\\.apps\\.nexuslauncher' "$preflight_dir/events-before.txt"; then
+if grep -Eiq 'am_anr.*com[.]google[.]android[.]apps[.]nexuslauncher' "$preflight_dir/events-before.txt"; then
   launcher_anr=true
 fi
 if [[ "$launcher_anr" == true ]] && grep -Eiq 'Application Not Responding|Application Error|AppNotRespondingDialog|isn.t responding' <<< "$focused"; then
