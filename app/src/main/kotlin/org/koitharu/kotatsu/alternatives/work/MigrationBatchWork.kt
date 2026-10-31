@@ -97,6 +97,7 @@ internal object MigrationBatchWork {
 	fun output(outcome: MigrationBatchOutcome, searchProgress: MigrationSearchProgress? = null): Data = Data.Builder()
 		.putString("result_status", outcome.status.name)
 		.putString("result_target_source", outcome.selection?.source)
+		.putString("result_target_title", outcome.destinationTitle)
 		.putLong("result_target_id", outcome.selection?.id ?: outcome.destinationId ?: 0L)
 		.putString("result_fingerprint", outcome.selection?.fingerprint)
 		.putString("search_phase", searchProgress?.phase?.name)
@@ -165,7 +166,7 @@ internal object MigrationBatchWork {
 			source = source,
 			generation = generation(info.tags),
 			batchName = batch,
-			outcome = MigrationBatchOutcome(status, selection, destinationId),
+			outcome = MigrationBatchOutcome(status, selection, destinationId, data.getString("result_target_title")),
 			running = terminalStatus == null && !info.state.isFinished,
 			searchProgress = searchProgress(data),
 			searchScope = searchScope(info.tags),

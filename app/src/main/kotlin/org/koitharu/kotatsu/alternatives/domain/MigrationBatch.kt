@@ -38,6 +38,8 @@ data class MigrationBatchOutcome(
 	val status: MigrationBatchStatus,
 	val selection: MigrationSelection? = null,
 	val destinationId: Long? = null,
+	/** A display hint only. Execution still validates the selected source/id. */
+	val destinationTitle: String? = null,
 )
 
 data class MigrationBatchSnapshot(
@@ -88,9 +90,13 @@ object MigrationBatchPolicy {
 			discovery.assessment.best?.manga?.let {
 				if (rawSelection) MigrationSelection.fromSearchResult(it) else MigrationSelection.of(it)
 			},
+			destinationTitle = discovery.assessment.best?.manga?.title,
 		)
 		discovery.assessment?.state == MigrationMatchState.NO_REPLACEMENT -> MigrationBatchOutcome(MigrationBatchStatus.NO_REPLACEMENT)
-		else -> MigrationBatchOutcome(MigrationBatchStatus.NEEDS_REVIEW)
+		else -> MigrationBatchOutcome(
+			MigrationBatchStatus.NEEDS_REVIEW,
+			destinationTitle = discovery.assessment?.best?.manga?.title,
+		)
 	}
 
 	fun latest(snapshots: Collection<MigrationBatchSnapshot>): Map<Long, MigrationBatchSnapshot> =
@@ -151,13 +157,13 @@ object MigrationBatchPolicy {
 				val selected = checkNotNull(request.selection) { "Batch migration requires a READY selection" }
 				val result = migrate(selected)
 				if (result == null) MigrationBatchOutcome(MigrationBatchStatus.HEALTHY)
-				else MigrationBatchOutcome(MigrationBatchStatus.MIGRATED, destinationId = result.id)
+				else MigrationBatchOutcome(MigrationBatchStatus.MIGRATED, destinationId = result.id, destinationTitle = result.title)
 			}
 			MigrationBatchAction.COPY -> {
 				val selected = checkNotNull(request.selection) { "Batch copy requires a READY selection" }
 				val result = copy(selected)
 				if (result == null) MigrationBatchOutcome(MigrationBatchStatus.HEALTHY)
-				else MigrationBatchOutcome(MigrationBatchStatus.COPIED, destinationId = result.id)
+				else MigrationBatchOutcome(MigrationBatchStatus.COPIED, destinationId = result.id, destinationTitle = result.title)
 			}
 		}
 	} catch (error: CancellationException) {

@@ -117,7 +117,7 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 				candidate = result.manga))
 			result.manga?.let { candidate ->
 				persistCandidate(candidate)
-				return ready(seed, candidate, query, providerFailures + sourceFailures)
+				return ready(seed, candidate, result.candidates, query, providerFailures + sourceFailures)
 			}
 		}
 		return noReplacement(
@@ -153,7 +153,7 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		)
 		if (candidate != null) {
 			persistCandidate(candidate)
-			ready(seed, candidate, query, providerFailures + failures)
+			ready(seed, candidate, results.flatMap(SourceResult::candidates), query, providerFailures + failures)
 		} else {
 			noReplacement(seed, successful == 0 && (failures > 0 || providerFailures > 0), providerFailures + failures)
 		}
@@ -173,14 +173,14 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		val eligible = searched.getOrDefault(emptyList()).filterNot { result -> result.id == seed.id }
 		val candidate = chooseCandidate(seed.title, eligible) ?: return SourceResult(null, false)
 		if (!canPersistCandidate(candidate)) return SourceResult(null, false)
-		if (!requireDetails) return SourceResult(candidate, false)
+		if (!requireDetails) return SourceResult(candidate, false, eligible)
 		val details = runCatchingCancellable { mangaRepositoryFactory.create(source).getDetails(candidate) }.getOrNull()
 			?: return SourceResult(null, true)
 		if (details.id != candidate.id || details.source.name != candidate.source.name) {
 			return SourceResult(null, true)
 		}
 		if (!canPersistCandidate(details)) return SourceResult(null, false)
-		return SourceResult(details, false)
+		return SourceResult(details, false, eligible.map { if (it.id == candidate.id && it.source.name == candidate.source.name) details else it })
 	}
 
 	private suspend fun canPersistCandidate(candidate: Manga): Boolean {
@@ -207,12 +207,29 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 			?.first
 	}
 
-	private fun ready(seed: Manga, candidate: Manga, query: String, failures: Int): MigrationDiscovery {
-		val ranked = candidateMatcher.rank(seed, listOf(MigrationCandidateObservation(candidate, setOf(query))))
-		val match = ranked.firstOrNull() ?: return noReplacement(seed, false, failures)
+	private fun ready(
+		seed: Manga,
+		candidate: Manga,
+		candidates: List<Manga>,
+		query: String,
+		failures: Int,
+	): MigrationDiscovery {
+		// Use the same confidence and ambiguity policy as other migration discovery paths.
+		// Source ordering and chapter-count strategy may propose a candidate, but they must not
+		// turn an unverified or contested match into permission for automatic migration.
+		val assessment = candidateMatcher.assess(
+			seed,
+			candidates.map { MigrationCandidateObservation(it, setOf(query)) },
+		)
+		val chosenIsBest = assessment.best?.manga?.let {
+			it.id == candidate.id && it.source.name == candidate.source.name
+		} == true
+		val reviewedAssessment = if (chosenIsBest) assessment else {
+			assessment.copy(state = MigrationMatchState.NEEDS_REVIEW)
+		}
 		return MigrationDiscovery(
 			seed = seed,
-			assessment = MigrationMatchAssessment(MigrationMatchState.READY, match, listOf(match)),
+			assessment = reviewedAssessment,
 			sourceHealthy = false,
 			partialFailureCount = failures,
 		)
@@ -276,7 +293,11 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		mangaDataRepository.findMangaById(mangaId, withChapters = true),
 	) { "Manga $mangaId not found" }
 
-	private data class SourceResult(val manga: Manga?, val failed: Boolean)
+	private data class SourceResult(
+		val manga: Manga?,
+		val failed: Boolean,
+		val candidates: List<Manga> = emptyList(),
+	)
 
 	private companion object {
 		const val MIN_ELIGIBLE_SIMILARITY = 0.4

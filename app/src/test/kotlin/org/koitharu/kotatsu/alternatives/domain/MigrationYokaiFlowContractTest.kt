@@ -24,6 +24,14 @@ class MigrationYokaiFlowContractTest {
 	}
 
 	@Test
+	fun `automatic matching must use shared confidence gate before declaring ready`() {
+		val automatic = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
+		assertTrue(automatic.contains("candidateMatcher.assess("))
+		assertTrue(automatic.contains("assessment.copy(state=MigrationMatchState.NEEDS_REVIEW)"))
+		assertFalse(automatic.contains("MigrationMatchAssessment(MigrationMatchState.READY,match,listOf(match))"))
+	}
+
+	@Test
 	fun `automatic matching follows Yokai source order and threshold rules`() {
 		val source = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
 

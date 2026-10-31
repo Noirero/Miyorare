@@ -240,7 +240,22 @@ class SourceMangaListViewModel @Inject constructor(
 					val privateOnly = privateIds.toHashSet()
 					val relevantIds = manga.mapTo(hashSetOf()) { it.id }
 					val snapshots = works.mapNotNull(MigrationBatchWork::snapshot)
-						.filter { it.mangaId in relevantIds }
+						.filter { item ->
+							if (item.mangaId in relevantIds) return@filter true
+							// Replacing a manga removes its old id from the source list. Preserve its durable
+							// completed outcome for review only when the destination is still in the visible
+							// library; never use an old WorkManager tag to reveal a private-only entry.
+							val isCompleted = item.outcome.status == MigrationBatchStatus.MIGRATED ||
+								item.outcome.status == MigrationBatchStatus.COPIED
+							val belongsToSession = if (explicitMangaIds.isNotEmpty()) {
+								item.mangaId in explicitMangaIds
+							} else {
+								item.source in sourceKeys
+							}
+							if (!isCompleted || !belongsToSession) return@filter false
+							val destinationId = item.outcome.destinationId ?: return@filter false
+							destinationId !in privateOnly && database.getMangaDao().isMigrationEntryVisible(destinationId)
+						}
 						.filterNot { it.mangaId in privateOnly }
 						.mapNotNull { item ->
 							if (item.outcome.destinationId !in privateOnly) item
@@ -391,6 +406,13 @@ data class SourceMangaListState(
 	}
 
 	val visibleManga: List<Manga> get() = manga.filter { filter == null || status(it.id) == filter }
+	val completedResults: List<MigrationBatchSnapshot> get() {
+		val visibleIds = manga.mapTo(hashSetOf(), Manga::id)
+		return batchItems.values.filter {
+			it.mangaId !in visibleIds && (it.outcome.status == MigrationBatchStatus.MIGRATED ||
+				it.outcome.status == MigrationBatchStatus.COPIED)
+		}.sortedByDescending(MigrationBatchSnapshot::generation)
+	}
 	val readyCount: Int get() = MigrationBatchPolicy.readyRequests(
 		manga = manga,
 		snapshots = batchItems,

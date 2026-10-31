@@ -6,6 +6,8 @@ import org.junit.Test
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchRequest
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchOutcome
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchScope
 
 class MigrationBatchWorkScopeTest {
@@ -36,6 +38,14 @@ class MigrationBatchWorkScopeTest {
 
 		assertEquals(MigrationSearchScope.MIYORARE, MigrationBatchWork.searchScope(tags))
 		assertEquals(MigrationBatchDiscoveryMode.DIRECT_SEARCH, MigrationBatchWork.discoveryMode(tags))
+	}
+
+	@Test fun `candidate title is retained with the per item work outcome`() {
+		val data = MigrationBatchWork.output(MigrationBatchOutcome(
+			status = MigrationBatchStatus.NEEDS_REVIEW,
+			destinationTitle = "Ambiguous Candidate",
+		))
+		assertEquals("Ambiguous Candidate", data.getString("result_target_title"))
 	}
 
 	@Test fun `legacy queued work defaults to all sources and current source check`() {

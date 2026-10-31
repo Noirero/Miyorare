@@ -60,12 +60,14 @@ class MigrationBatchPolicyTest {
 		assertTrue(outcome.selection!!.isRawSearchIdentity)
 		assertEquals("NEW", outcome.selection!!.source)
 		assertEquals(101L, outcome.selection!!.id)
+		assertEquals(replacement.title, outcome.destinationTitle)
 	}
 	@Test fun incompleteAndAmbiguousSearchesNeverBecomeReadyCounts() {
 		assertEquals(MigrationBatchStatus.INCOMPLETE, MigrationBatchPolicy.assess(ready().copy(incomplete = true)).status)
 		val ambiguous = ready().copy(assessment = ready().assessment!!.copy(state = MigrationMatchState.NEEDS_REVIEW))
 		assertEquals(MigrationBatchStatus.NEEDS_REVIEW, MigrationBatchPolicy.assess(ambiguous).status)
 		assertNull(MigrationBatchPolicy.assess(ambiguous).selection)
+		assertEquals(replacement.title, MigrationBatchPolicy.assess(ambiguous).destinationTitle)
 	}
 	@Test fun durableGenerationsBeatArrivalOrderAndOldReadySnapshots() {
 		val old = snapshot(1, 1, MigrationBatchStatus.READY, MigrationSelection.of(replacement))
@@ -99,6 +101,7 @@ class MigrationBatchPolicyTest {
 		assertEquals(1, copyCalls)
 		assertEquals(MigrationBatchStatus.COPIED, result.status)
 		assertEquals(replacement.id, result.destinationId)
+		assertEquals(replacement.title, result.destinationTitle)
 	}
 	@Test fun replayAfterCommitOrPrivacyRemovalDoesNotExecuteAgain() = runTest {
 		var calls = 0
