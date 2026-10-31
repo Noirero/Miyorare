@@ -184,6 +184,7 @@ private fun MigrationSearchSetup(
 	val context = LocalContext.current
 	var origin by rememberSaveable { mutableStateOf("All") }
 	var advanced by rememberSaveable { mutableStateOf(false) }
+	var showSources by rememberSaveable { mutableStateOf(false) }
 	var expandedFamily by rememberSaveable { mutableStateOf<String?>(null) }
 	val sourceByName = state.availableSources.associateBy(MangaSource::name)
 	val selected = state.selectedSourceNames.mapNotNull(sourceByName::get)
@@ -235,12 +236,16 @@ private fun MigrationSearchSetup(
 					}
 				}
 				Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-					Text("Pilih source tujuan", modifier = Modifier.weight(1f),
-						style = MaterialTheme.typography.titleSmall)
-					TextButton(enabled = enabled, onClick = onSelectAllSources) { Text("Semua") }
-					TextButton(enabled = enabled, onClick = onClearSources) { Text("Kosongkan") }
+					TextButton(onClick = { showSources = !showSources },
+						modifier = Modifier.weight(1f)) {
+						Text(if (showSources) "Sembunyikan source tujuan" else "Lihat dan atur source tujuan")
+					}
+					if (showSources) {
+						TextButton(enabled = enabled, onClick = onSelectAllSources) { Text("Semua") }
+						TextButton(enabled = enabled, onClick = onClearSources) { Text("Kosongkan") }
+					}
 				}
-				for ((key, group) in grouped) {
+				if (showSources) for ((key, group) in grouped) {
 					val family = group.size > 1
 					if (family) {
 						Row(Modifier.fillMaxWidth().clickable {
