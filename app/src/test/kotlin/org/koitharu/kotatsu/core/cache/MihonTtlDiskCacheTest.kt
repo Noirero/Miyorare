@@ -1,6 +1,9 @@
 package org.koitharu.kotatsu.core.cache
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -25,7 +28,7 @@ class MihonTtlDiskCacheTest {
             directory = entries,
             indexFile = index,
             ttl = 1.hours,
-            scope = this,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             saveDelay = ZERO,
             now = { clock },
         )
@@ -47,7 +50,7 @@ class MihonTtlDiskCacheTest {
             directory = root.resolve("entries"),
             indexFile = root.resolve("index/cache.index"),
             ttl = 1.hours,
-            scope = this,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             saveDelay = ZERO,
         )
         cache.put("image") { it.write(byteArrayOf(1, 2, 3)) }
