@@ -317,6 +317,20 @@ internal fun MigrationBatchControls(
 			Text(stringResource(R.string.migration_batch_progress, state.batchCompleted, state.batchTotal))
 		}
 		if (state.migratedCount > 0) Text(stringResource(R.string.migration_batch_done, state.migratedCount))
+		val outcomeCounts = state.batchItems.values.groupingBy { it.outcome.status }.eachCount()
+		val outcomeSummary = listOf(
+			MigrationBatchStatus.MIGRATED,
+			MigrationBatchStatus.COPIED,
+			MigrationBatchStatus.ERROR,
+			MigrationBatchStatus.SKIPPED,
+			MigrationBatchStatus.INTERRUPTED,
+		).mapNotNull { status ->
+			val count = outcomeCounts[status] ?: 0
+			if (count == 0) null else stringResource(R.string.migration_batch_filter_count, stringResource(status.labelRes()), count)
+		}
+		if (outcomeSummary.isNotEmpty()) {
+			Text(outcomeSummary.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+		}
 		if (state.unconfirmedCount > 0) Text(stringResource(R.string.migration_batch_check_library))
 		if (state.batchBusy && state.ownedBatchName == null) Text(stringResource(R.string.migration_batch_other_active))
 
