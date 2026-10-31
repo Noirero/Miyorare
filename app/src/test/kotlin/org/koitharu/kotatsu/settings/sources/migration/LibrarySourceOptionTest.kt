@@ -46,6 +46,23 @@ class LibrarySourceOptionTest {
 		assertEquals(2, merged.size)
 	}
 
+	@Test
+	fun `family presentation keeps every exact source variant`() {
+		val merged = mergeLibrarySourceOptions(listOf(
+			option("MIHON_101:E-Hentai", "E-Hentai (EN)", 2, false, 101, "family:ehentai"),
+			option("MIHON_102:E-Hentai", "E-Hentai (JA)", 3, false, 102, "family:ehentai"),
+			option("MIHON_103:E-Hentai", "E-Hentai (ZH)", 4, false, 103, "family:ehentai"),
+		))
+		val family = merged.single()
+		assertEquals(3, family.variants.size)
+		assertEquals(9, family.mangaCount)
+		assertEquals(
+			setOf("MIHON_101:E-Hentai", "MIHON_102:E-Hentai", "MIHON_103:E-Hentai"),
+			family.variants.mapTo(hashSetOf()) { it.key },
+		)
+		assertEquals(3, family.sourceKeys.size)
+	}
+
 	private fun option(
 		key: String,
 		title: String,
