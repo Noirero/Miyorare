@@ -27,9 +27,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -188,6 +190,8 @@ fun DetailsExpressiveScreen(
 
 	MaterialTheme(colorScheme = baseScheme, typography = typography) {
 		val scheme = MaterialTheme.colorScheme
+		// Bare Details containers do not set a semantic foreground; do not inherit the host color.
+		CompositionLocalProvider(LocalContentColor provides scheme.onSurface) {
 		val palette = LocalMiyorareVisualPalette.current
 		val lightMode = scheme.background.luminance() >= 0.5f
 		val accentColor = if (palette.isModern && palette.adaptiveCustomBackground) {
@@ -593,6 +597,7 @@ fun DetailsExpressiveScreen(
 			key(chapter.personalKey) {
 				ChapterPersonalNoteViewer(item = chapter, onDismiss = { noteChapter = null })
 			}
+		}
 		}
 	}
 }
