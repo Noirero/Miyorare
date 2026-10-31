@@ -434,9 +434,9 @@ private fun SourceMangaRow(
 			}
 			Text(stringResource(status.labelRes()), style = MaterialTheme.typography.bodySmall,
 				color = MaterialTheme.colorScheme.primary)
-			targetTitle?.let { title ->
+			if (targetTitle != null || targetSource != null) {
 				Text(
-					listOfNotNull(title, targetSource).joinToString(" · "),
+					listOfNotNull(targetTitle, targetSource).joinToString(" · "),
 					style = MaterialTheme.typography.bodySmall,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
 					maxLines = 2,

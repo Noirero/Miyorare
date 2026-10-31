@@ -178,8 +178,16 @@ object MigrationBatchPolicy {
 			rawSelection = request.discoveryMode != MigrationBatchDiscoveryMode.CHECK_CURRENT,
 		)
 	} catch (error: MigrateUseCase.SourceChangedException) {
-		MigrationBatchOutcome(MigrationBatchStatus.INTERRUPTED, destinationId = request.selection?.id)
+		MigrationBatchOutcome(
+			MigrationBatchStatus.INTERRUPTED,
+			destinationId = request.selection?.id,
+			destinationSource = request.selection?.source,
+		)
 	} catch (error: Exception) {
-		MigrationBatchOutcome(MigrationBatchStatus.ERROR, destinationId = request.selection?.id)
+		MigrationBatchOutcome(
+			MigrationBatchStatus.ERROR,
+			destinationId = request.selection?.id,
+			destinationSource = request.selection?.source,
+		)
 	}
 }
