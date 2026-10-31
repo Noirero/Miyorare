@@ -310,7 +310,9 @@ class SourceMangaListViewModel @Inject constructor(
 	private fun mangaFlow(): Flow<List<MangaWithTags>> = if (explicitMangaIds.isNotEmpty()) {
 		flow {
 			val dao = database.getMangaDao()
-			val visible = dao.findByIds(explicitMangaIds).filter { dao.isMigrationEntryVisible(it.manga.id) }
+			// Explicit multi-selection can exceed SQLite's per-statement bind-variable limit.
+			val visible = explicitMangaIds.chunked(500).flatMap { dao.findByIds(it) }
+				.filter { dao.isMigrationEntryVisible(it.manga.id) }
 			emit(visible)
 		}
 	} else {
