@@ -44,8 +44,10 @@ class MigrationBatchWorkScopeTest {
 		val data = MigrationBatchWork.output(MigrationBatchOutcome(
 			status = MigrationBatchStatus.NEEDS_REVIEW,
 			destinationTitle = "Ambiguous Candidate",
+			destinationSource = "NEW_SOURCE",
 		))
 		assertEquals("Ambiguous Candidate", data.getString("result_target_title"))
+		assertEquals("NEW_SOURCE", data.getString("result_target_source"))
 	}
 
 	@Test fun `legacy queued work defaults to all sources and current source check`() {

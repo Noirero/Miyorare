@@ -61,6 +61,7 @@ class MigrationBatchPolicyTest {
 		assertEquals("NEW", outcome.selection!!.source)
 		assertEquals(101L, outcome.selection!!.id)
 		assertEquals(replacement.title, outcome.destinationTitle)
+		assertEquals(replacement.source.name, outcome.destinationSource)
 	}
 	@Test fun incompleteAndAmbiguousSearchesNeverBecomeReadyCounts() {
 		assertEquals(MigrationBatchStatus.INCOMPLETE, MigrationBatchPolicy.assess(ready().copy(incomplete = true)).status)
@@ -102,6 +103,7 @@ class MigrationBatchPolicyTest {
 		assertEquals(MigrationBatchStatus.COPIED, result.status)
 		assertEquals(replacement.id, result.destinationId)
 		assertEquals(replacement.title, result.destinationTitle)
+		assertEquals(replacement.source.name, result.destinationSource)
 	}
 	@Test fun replayAfterCommitOrPrivacyRemovalDoesNotExecuteAgain() = runTest {
 		var calls = 0

@@ -319,7 +319,7 @@ private fun SourceMangaListScreen(
 				status = state.status(manga.id),
 				targetTitle = state.batchItems[manga.id]?.outcome?.destinationTitle
 					?.takeIf { state.status(manga.id) != MigrationBatchStatus.UNCHECKED },
-				targetSource = state.batchItems[manga.id]?.outcome?.selection?.source,
+				targetSource = state.batchItems[manga.id]?.outcome?.destinationSource,
 				onClick = { onMangaClick(manga) },
 				onLongClick = { onMangaLongClick(manga) },
 			)
@@ -340,7 +340,10 @@ private fun SourceMangaListScreen(
 				ListItem(
 					headlineContent = { Text(result.outcome.destinationTitle ?: result.outcome.destinationId?.toString().orEmpty()) },
 					supportingContent = {
-						Text("${result.source} · ${stringResource(result.outcome.status.labelRes())}")
+						Text(
+							listOfNotNull(result.outcome.destinationSource, stringResource(result.outcome.status.labelRes()))
+								.joinToString(" · "),
+						)
 					},
 				)
 			}
