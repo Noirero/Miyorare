@@ -149,16 +149,11 @@ class DownloadMaintenanceUseCase @Inject constructor(
 			favourites.getAllManga(space).map { it.id }
 		}
 		val roots = rootsBySpace.values.flatten().distinctBy { it.canonicalPath }
-		fun isConfirmedMissing(path: String): Boolean {
-			val file = File(path)
-			if (file.canonicalPath in scannedPaths || file.exists()) return false
-			return roots.any { root -> file.inside(root) } &&
-				roots.filter { root -> file.inside(root) }.all { it.isDirectory && it.canRead() }
-		}
+
 		val staleOwnership = FavouriteSpace.entries.flatMap { ownershipDao.findEntries(it.dbValue) }
-			.filter { it.mangaId in favouriteIds && isConfirmedMissing(it.path) }
+			.filter { it.mangaId in favouriteIds && DownloadMaintenanceAbsence.isConfirmedMissing(it.path, scannedPaths, roots) }
 		val staleLocal = localDao.findEntries(favouriteIds)
-			.filter { isConfirmedMissing(it.path) }
+			.filter { DownloadMaintenanceAbsence.isConfirmedMissing(it.path, scannedPaths, roots) }
 		if (staleOwnership.isEmpty() && staleLocal.isEmpty()) return
 		database.withTransaction {
 			for (entry in staleOwnership) ownershipDao.deleteIfPath(entry.space, entry.mangaId, entry.path)
@@ -320,3 +315,13 @@ internal object DownloadMaintenanceOwnership {
 }
 
 private fun File.inside(root: File): Boolean = canonicalPath == root.canonicalPath || canonicalPath.startsWith(root.canonicalPath.trimEnd(File.separatorChar) + File.separator)
+
+/** Pure absence policy: a missing file is not evidence when its destination is unavailable. */
+internal object DownloadMaintenanceAbsence {
+	fun isConfirmedMissing(path: String, scannedPaths: Set<String>, roots: List<File>): Boolean {
+		val file = File(path)
+		if (file.canonicalPath in scannedPaths || file.exists()) return false
+		val matching = roots.filter { root -> file.inside(root) }
+		return matching.isNotEmpty() && matching.all { it.isDirectory && it.canRead() }
+	}
+}
