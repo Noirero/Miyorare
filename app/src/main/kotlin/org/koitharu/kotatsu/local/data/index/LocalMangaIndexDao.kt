@@ -50,6 +50,9 @@ interface LocalMangaIndexDao {
 	@Upsert
 	suspend fun upsert(entity: LocalMangaIndexEntity)
 
+	@Query("DELETE FROM local_index WHERE manga_id = :mangaId AND path = :path")
+	suspend fun deleteIfPath(mangaId: Long, path: String)
+
 	@Query("DELETE FROM local_index WHERE manga_id = :mangaId")
 	suspend fun delete(mangaId: Long)
 

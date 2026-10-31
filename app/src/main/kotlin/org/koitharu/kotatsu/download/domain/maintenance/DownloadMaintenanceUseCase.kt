@@ -66,7 +66,9 @@ class DownloadMaintenanceUseCase @Inject constructor(
 				phase(DownloadMaintenancePhase.SCANNING)
 				val rootsBySpace = FavouriteSpace.entries.associateWith { destinations.readableRoots(it) }
 				val roots = (storage.getConfiguredDirs() + rootsBySpace.values.flatten()).distinctBy { it.canonicalPath }
+				var scanComplete = true
 				val files = LocalDownloadScanner.scan(roots) { root ->
+					scanComplete = false
 					items += DownloadMaintenanceItem(root.path, DownloadMaintenanceStatus.UNAVAILABLE_STORAGE, DownloadMaintenanceReason.STORAGE_UNAVAILABLE,
 						isPrivate = rootsBySpace[ FavouriteSpace.PRIVATE ].orEmpty().any { it.canonicalPath == root.canonicalPath })
 				}
@@ -92,6 +94,8 @@ class DownloadMaintenanceUseCase @Inject constructor(
 				}
 				val duplicateIds = expected.flatMap { (path, mangas) -> mangas.map { it.id to path } }
 					.groupBy({ it.first }, { it.second }).filterValues { it.distinct().size > 1 }.keys
+				val emptyContainers = HashSet<String>()
+				var verificationComplete = true
 				for ((position, file) in files.withIndex()) {
 					currentCoroutineContext().ensureActive()
 					phase(DownloadMaintenancePhase.VERIFYING)
@@ -112,10 +116,21 @@ class DownloadMaintenanceUseCase @Inject constructor(
 						error.printStackTraceDebug()
 						DownloadMaintenanceItem(path, DownloadMaintenanceStatus.FAILED, DownloadMaintenanceReason.IO_ERROR)
 					}
+					if (result.status == DownloadMaintenanceStatus.FAILED ||
+						result.reason == DownloadMaintenanceReason.STORAGE_UNAVAILABLE ||
+						result.reason == DownloadMaintenanceReason.STORAGE_CHANGED) verificationComplete = false
+					if (result.reason == DownloadMaintenanceReason.UNSUPPORTED_ARTIFACT &&
+						result.status == DownloadMaintenanceStatus.UNRESOLVED) emptyContainers += path
 					items += result.copy(isPrivate = isPrivate)
 					mutableState.value = mutableState.value.copy(scanned = position + 1)
 				}
 				phase(DownloadMaintenancePhase.FINALIZING)
+				if (scanComplete && verificationComplete) {
+					reconcileMissingDownloads(files, rootsBySpace, emptyContainers)
+				}
+				// A completed scan must invalidate cards even when no verified artifact changed.
+				// The event is also used by the existing Favorites index-backed refresh pipeline.
+				changes.emit(null)
 			}
 		} catch (cancelled: CancellationException) {
 			items += DownloadMaintenanceItem("", DownloadMaintenanceStatus.UNRESOLVED, DownloadMaintenanceReason.CANCELLED)
@@ -126,6 +141,36 @@ class DownloadMaintenanceUseCase @Inject constructor(
 		} finally {
 			mutableState.value = mutableState.value.copy(running = false, phase = DownloadMaintenancePhase.COMPLETED, result = DownloadMaintenanceResult(items.toList()))
 			mutex.unlock()
+		}
+	}
+
+	/** Remove only entries whose physical container is confirmed absent in a fully readable destination. */
+	private suspend fun reconcileMissingDownloads(
+		files: List<File>,
+		rootsBySpace: Map<FavouriteSpace, List<File>>,
+		emptyContainers: Set<String> = emptySet(),
+	) {
+		val scannedPaths = files.mapTo(HashSet()) { it.canonicalPath }
+		val ownershipDao = database.getFavouriteDownloadIndexDao()
+		val localDao = database.getLocalMangaIndexDao()
+		val favouriteIds = FavouriteSpace.entries.flatMapTo(HashSet()) { space ->
+			favourites.getAllManga(space).map { it.id }
+		}
+		val roots = rootsBySpace.values.flatten().distinctBy { it.canonicalPath }
+
+		val staleOwnership = FavouriteSpace.entries.flatMap { ownershipDao.findEntries(it.dbValue) }
+			.filter { it.mangaId in favouriteIds && DownloadMaintenanceAbsence.isConfirmedMissing(it.path, scannedPaths, roots, emptyContainers) }
+		// Only remote favourite entries inside configured download destinations are eligible.
+		// Local-source content and other Local index owners are outside this maintenance scope.
+		val staleLocal = localDao.findEntries(favouriteIds)
+			.filter { entry ->
+				entry.mangaId in favouriteIds && roots.any { root -> File(entry.path).inside(File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME)) } &&
+					DownloadMaintenanceAbsence.isConfirmedMissing(entry.path, scannedPaths, roots, emptyContainers)
+			}
+		if (staleOwnership.isEmpty() && staleLocal.isEmpty()) return
+		database.withTransaction {
+			for (entry in staleOwnership) ownershipDao.deleteIfPath(entry.space, entry.mangaId, entry.path)
+			for (entry in staleLocal) localDao.deleteIfPath(entry.mangaId, entry.path)
 		}
 	}
 
@@ -257,8 +302,10 @@ class DownloadMaintenanceUseCase @Inject constructor(
 		}
 		for (space in plan) {
 			val previous = existing.firstOrNull { it.space == space.dbValue }
-			// A second physical copy must not displace another owned (possibly unmounted) download.
-			if (previous != null && File(previous.path).canonicalPath != path) continue
+			// A second valid copy must not displace an existing or unmounted owned copy.
+			// An absent copy in a readable configured root may be replaced by this verified copy.
+			if (previous != null && File(previous.path).canonicalPath != path &&
+				!DownloadMaintenanceAbsence.isConfirmedMissing(previous.path, emptySet(), roots.values.flatten())) continue
 			if (previous?.path != path) { dao.upsert(FavouriteDownloadIndexEntity(id, space.dbValue, path)); changed = true }
 		}
 		changed to plan.isNotEmpty()
@@ -283,3 +330,13 @@ internal object DownloadMaintenanceOwnership {
 }
 
 private fun File.inside(root: File): Boolean = canonicalPath == root.canonicalPath || canonicalPath.startsWith(root.canonicalPath.trimEnd(File.separatorChar) + File.separator)
+
+/** Pure absence policy: a missing file is not evidence when its destination is unavailable. */
+internal object DownloadMaintenanceAbsence {
+	fun isConfirmedMissing(path: String, scannedPaths: Set<String>, roots: List<File>, emptyContainers: Set<String> = emptySet()): Boolean {
+		val file = File(path)
+		if (file.canonicalPath !in emptyContainers && (file.canonicalPath in scannedPaths || file.exists())) return false
+		val matching = roots.filter { root -> file.inside(root) }
+		return matching.isNotEmpty() && matching.all { it.isDirectory && it.canRead() }
+	}
+}
