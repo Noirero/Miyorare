@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.ui.MangaListViewModel
 import org.koitharu.kotatsu.list.ui.model.ListModel
+import org.koitharu.kotatsu.list.ui.model.DownloadVerification
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
@@ -184,6 +185,45 @@ class DownloadedLocalStateTest {
 			assertFalse("An unchanged download must not blink during card metadata refresh", missingBadge)
 		} finally {
 			indexJob.cancel(); ownershipJob.cancel()
+		}
+	}
+
+	/**
+	 * Reproduces entry into Favourites with durable ownership already committed.
+	 * Unlike completionUpdatesBadgeAndBothNativeFiltersWithoutDetails, no completion event
+	 * or Details navigation can repair the state after the ViewModel starts.
+	 *
+	 * A false card emission is a real UI regression even if the asynchronous lookup
+	 * eventually corrects it. The test records emissions instead of inspecting source.
+	 */
+	@Test fun preexistingDownloadNeverPublishesFalseBadgeBeforeEnrichmentCompletes() = runBlocking {
+		val remote = remote(810_019L)
+		favourite(remote)
+		val copy = download(root, remote)
+		db.getFavouriteDownloadIndexDao().upsert(
+			listOf(FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, copy.file.canonicalPath)),
+		)
+		local.rememberDownloadedIdentity(remote, copy)
+		assertEquals(setOf(remote.id), classifier.getKnownDownloadedIds(FavouriteSpace.NORMAL, listOf(remote.id)))
+
+		val vm = favouritesViewModel()
+		val observed = mutableListOf<DownloadVerification?>()
+		val observer = launch(start = CoroutineStart.UNDISPATCHED) {
+			vm.content.collect { models ->
+				models.grid(remote.id)?.let { observed += it.downloadVerification }
+			}
+		}
+		try {
+			vm.awaitContent("preexisting downloaded badge without Details or completion event") {
+				it.grid(remote.id)?.downloadVerification == DownloadVerification.VERIFIED_DOWNLOADED
+			}
+			assertTrue("Expected a verified downloaded card emission: $observed", observed.contains(DownloadVerification.VERIFIED_DOWNLOADED))
+			assertFalse(
+				"An indexed preexisting download was rendered as false before enrichment: $observed",
+				observed.contains(DownloadVerification.VERIFIED_NOT_DOWNLOADED),
+			)
+		} finally {
+			observer.cancel()
 		}
 	}
 

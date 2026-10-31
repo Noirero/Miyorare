@@ -6,6 +6,9 @@ import org.koitharu.kotatsu.list.ui.ListModelDiffCallback.Companion.PAYLOAD_ANYT
 import org.koitharu.kotatsu.list.ui.ListModelDiffCallback.Companion.PAYLOAD_PROGRESS_CHANGED
 import org.koitharu.kotatsu.parsers.model.Manga
 
+/** Download badge authority for space-scoped Favourites; null means legacy hosts. */
+enum class DownloadVerification { UNRESOLVED, VERIFIED_DOWNLOADED, VERIFIED_NOT_DOWNLOADED }
+
 data class MangaGridModel(
 	override val manga: Manga,
 	override val override: MangaOverride?,
@@ -13,6 +16,7 @@ data class MangaGridModel(
 	val progress: ReadingProgress?,
 	val isFavorite: Boolean,
 	val isSaved: Boolean,
+	val downloadVerification: DownloadVerification? = null,
 	val isTitleHidden: Boolean = false,
 	val isTitleOverCover: Boolean = true,
 	val isGridSpacingIncreased: Boolean = false,
@@ -31,6 +35,7 @@ data class MangaGridModel(
 		previousState.unreadCount != unreadCount -> PAYLOAD_ANYTHING_CHANGED
 		previousState.isFavorite != isFavorite ||
 			previousState.isSaved != isSaved ||
+			previousState.downloadVerification != downloadVerification ||
 			previousState.isTitleHidden != isTitleHidden ||
 			previousState.isTitleOverCover != isTitleOverCover ||
 			previousState.isGridSpacingIncreased != isGridSpacingIncreased ||

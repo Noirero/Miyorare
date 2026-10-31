@@ -92,8 +92,9 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 	}
 
 	private fun resetVisibility(value: ModernCoverState) {
-		listOf(value.isFavorite, value.isSaved, value.isPinned).forEachIndexed { index, active ->
+		listOf(value.isFavorite, value.isSaved || value.downloadVerification == org.koitharu.kotatsu.list.ui.model.DownloadVerification.UNRESOLVED, value.isPinned).forEachIndexed { index, active ->
 			statusItems[index].isVisible = active
+			if (index == 1) statusItems[index].alpha = if (value.downloadVerification == org.koitharu.kotatsu.list.ui.model.DownloadVerification.UNRESOLVED) 0.35f else 1f
 		}
 		statuses.isVisible = statusItems.any { it.isVisible }
 		val hasReadingState = value.readingState != ModernCoverReadingState.NONE
