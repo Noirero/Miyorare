@@ -372,7 +372,7 @@ class SmartLocalCoverPipelineTest {
         assertClosedDescriptors()
     }
 
-    @Test fun seekableOnDeviceImageDoesNotCreatePageCacheCopy() = runBlocking {
+    @Test fun seekableOnDeviceReaderIsIsolatedFromGalleryCache() = runBlocking {
         val image = png(Color.GREEN)
         put("Images/001.png", image)
         library.scan()
@@ -381,25 +381,50 @@ class SmartLocalCoverPipelineTest {
         val page = reader.pages(root, book.chapters.single(),
             book.toManga(false, true).chapters!!.single()).single()
         assertEquals("content", Uri.parse(page.url).scheme)
-        val result = localRouting.getPageUrl(page)
-        assertEquals("Direct SAF page must retain its original document URI", page.url, result)
-        assertNull("Direct SAF reading must not duplicate the image", pageStorage[page.url])
-        resolver.openInputStream(Uri.parse(result))!!.use { input ->
-            val decoder = BitmapDecoderCompat.createRegionDecoder(input)
-            assertNotNull("Reader must still support region decoding", decoder)
-            try {
-                val tile = decoder!!.decodeRegion(Rect(0, 0, 1, 1), BitmapFactory.Options())
-                assertNotNull(tile)
-                tile!!.recycle()
-            } finally {
-                decoder!!.recycle()
+
+        ActivityScenario.launch(MangaUpdatesAuthActivity::class.java).use { scenario ->
+            lateinit var entryPoint: OnDeviceReaderPageLoaderTestEntryPoint
+            scenario.onActivity { activity ->
+                entryPoint = EntryPointAccessors.fromActivity(
+                    activity, OnDeviceReaderPageLoaderTestEntryPoint::class.java)
             }
+            val pageLoader = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                entryPoint.pageLoader()
+            }
+            val readerUri = pageLoader.loadPage(page, force = false)
+            assertEquals("Reader alone must use the original SAF URI", page.url, readerUri.toString())
+            assertNull("Reader must not create duplicate page-cache copies", pageStorage[page.url])
+
+            resolver.openInputStream(readerUri)!!.use { input ->
+                val decoder = BitmapDecoderCompat.createRegionDecoder(input)
+                assertNotNull("Reader must retain region-decode compatibility", decoder)
+                try {
+                    val tile = decoder!!.decodeRegion(Rect(0, 0, 1, 1), BitmapFactory.Options())
+                    assertNotNull(tile)
+                    tile!!.recycle()
+                } finally {
+                    decoder!!.recycle()
+                }
+            }
+
+            // The shared repository contract is also used by Gallery, downloads, and
+            // Reader-mode detection. It must still provide a cached file as on main.
+            val galleryUrl = localRouting.getPageUrl(page)
+            assertEquals("file", Uri.parse(galleryUrl).scheme)
+            assertArrayEquals(image, File(Uri.parse(galleryUrl).path!!).readBytes())
+            assertNotNull("Gallery retains the default shared cache path", pageStorage[page.url])
+            assertEquals(galleryUrl, localRouting.getPageUrl(page))
+
+            // A new Reader request must still bypass an existing Gallery cache copy.
+            val revisitedPage = page.copy(id = UUID.randomUUID().mostSignificantBits)
+            val revisited = pageLoader.loadPage(revisitedPage, force = false)
+            assertEquals(page.url, revisited.toString())
         }
         assertTrue(contentFiles().isEmpty())
         assertClosedDescriptors()
     }
 
-    @Test fun nonSeekableOnDeviceImageUsesOriginalPageCacheFallback() = runBlocking {
+    @Test fun nonSeekableOnDeviceReaderUsesDefaultSharedCacheFallback() = runBlocking {
         val image = png(Color.BLUE)
         put("Streaming/001.png", image)
         descriptorMode("Streaming/001.png", "pipe")
@@ -408,11 +433,22 @@ class SmartLocalCoverPipelineTest {
         val root = LocalDocuments(context).root(rootUri)
         val page = reader.pages(root, book.chapters.single(),
             book.toManga(false, true).chapters!!.single()).single()
-        val result = localRouting.getPageUrl(page)
-        assertEquals("file", Uri.parse(result).scheme)
-        assertArrayEquals(image, File(Uri.parse(result).path!!).readBytes())
-        assertNotNull("Pipe fallback must use the original global Pages cache",
-            pageStorage[page.url])
+        ActivityScenario.launch(MangaUpdatesAuthActivity::class.java).use { scenario ->
+            lateinit var entryPoint: OnDeviceReaderPageLoaderTestEntryPoint
+            scenario.onActivity { activity ->
+                entryPoint = EntryPointAccessors.fromActivity(
+                    activity, OnDeviceReaderPageLoaderTestEntryPoint::class.java)
+            }
+            val pageLoader = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                entryPoint.pageLoader()
+            }
+            val readerUri = pageLoader.loadPage(page, force = false)
+            assertEquals("file", readerUri.scheme)
+            assertArrayEquals(image, File(readerUri.path!!).readBytes())
+            assertNotNull("Pipe-backed images use the original shared PageCache",
+                pageStorage[page.url])
+            assertEquals(readerUri.toString(), localRouting.getPageUrl(page))
+        }
         assertTrue(contentFiles().isEmpty())
         assertClosedDescriptors()
     }
