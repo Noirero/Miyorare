@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - Amain2
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
 
 concurrency:
   group: pr-compile-unit-${{ github.event.pull_request.number }}
@@ -14,6 +14,40 @@ permissions:
   contents: read
 
 jobs:
+  runtime-risk:
+    name: Classify Android runtime risk
+    runs-on: ubuntu-latest
+    outputs:
+      run_runtime: ${{ steps.classify.outputs.run_runtime }}
+      full: ${{ steps.classify.outputs.full }}
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+      - name: Classify changed paths and labels
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LABEL_RUNTIME: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') }}
+          LABEL_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/runtime-changed-files.txt"
+          bash .github/scripts/select-pr-runtime-tests.sh --self-test
+          plan="$(bash .github/scripts/select-pr-runtime-tests.sh --classify < "$RUNNER_TEMP/runtime-changed-files.txt")"
+          targeted_available=false
+          if bash .github/scripts/select-pr-runtime-tests.sh < "$RUNNER_TEMP/runtime-changed-files.txt" >/dev/null 2>&1; then
+            targeted_available=true
+          fi
+          plan="$(printf '%s\n' "$plan" | DRAFT="$DRAFT" LABEL_RUNTIME="$LABEL_RUNTIME" LABEL_FULL="$LABEL_FULL" TARGETED_AVAILABLE="$targeted_available" bash .github/scripts/select-pr-runtime-tests.sh --policy)"
+          printf '%s\n' "$plan" | tee -a "$GITHUB_OUTPUT"
+
   compile-unit:
     name: Compile, resources & unit tests
     # Explicit runtime validation also applies to drafts waiting for owner decisions.
@@ -78,8 +112,8 @@ jobs:
 
   android-runtime:
     name: Android runtime validation — Android 15
-    if: contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full')
-    needs: compile-unit
+    if: needs.runtime-risk.outputs.run_runtime == 'true' && (github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full'))
+    needs: [compile-unit, runtime-risk]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -110,7 +144,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          FULL_RUNTIME: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') }}
+          FULL_RUNTIME: ${{ needs.runtime-risk.outputs.full }}
         run: |
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/runtime-changed-files.txt"
