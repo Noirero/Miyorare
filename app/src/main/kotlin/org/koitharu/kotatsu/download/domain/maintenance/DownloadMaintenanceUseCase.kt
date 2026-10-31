@@ -151,6 +151,7 @@ class DownloadMaintenanceUseCase @Inject constructor(
 	) {
 		val scannedPaths = files.mapTo(HashSet()) { it.canonicalPath }
 		val ownershipDao = database.getFavouriteDownloadIndexDao()
+		val localDao = database.getLocalMangaIndexDao()
 		val favouriteIds = FavouriteSpace.entries.flatMapTo(HashSet()) { space ->
 			favourites.getAllManga(space).map { it.id }
 		}
@@ -158,9 +159,17 @@ class DownloadMaintenanceUseCase @Inject constructor(
 
 		val staleOwnership = FavouriteSpace.entries.flatMap { ownershipDao.findEntries(it.dbValue) }
 			.filter { it.mangaId in favouriteIds && DownloadMaintenanceAbsence.isConfirmedMissing(it.path, scannedPaths, roots, emptyContainers) }
-		if (staleOwnership.isEmpty()) return
+		// Only remote favourite entries inside configured download destinations are eligible.
+		// Local-source content and other Local index owners are outside this maintenance scope.
+		val staleLocal = localDao.findEntries(favouriteIds)
+			.filter { entry ->
+				entry.mangaId in favouriteIds && roots.any { root -> File(entry.path).inside(File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME)) } &&
+					DownloadMaintenanceAbsence.isConfirmedMissing(entry.path, scannedPaths, roots)
+			}
+		if (staleOwnership.isEmpty() && staleLocal.isEmpty()) return
 		database.withTransaction {
 			for (entry in staleOwnership) ownershipDao.deleteIfPath(entry.space, entry.mangaId, entry.path)
+			for (entry in staleLocal) localDao.deleteIfPath(entry.mangaId, entry.path)
 		}
 	}
 
