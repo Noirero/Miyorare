@@ -32,6 +32,7 @@ TRACKED_LABELS = (
     "ci:user-issue",
     "ci:theme",
     "ci:runtime-required",
+    "ci:runtime-full",
     "non-theme",
     "skip-device-test",
 )
