@@ -383,6 +383,7 @@ class FavouritesListViewModel @Inject constructor(
 			)
 			scheduleCardEnrichment(enrichmentKey)
 			val matchingEnrichment = currentCardEnrichment?.takeIf { cached ->
+				cached.key.revision == enrichmentKey.revision &&
 				cached.key.includeUnread == enrichmentKey.includeUnread &&
 					cached.key.includeDownloaded == enrichmentKey.includeDownloaded &&
 				enrichmentKey.ids.size >= cached.key.ids.size &&
