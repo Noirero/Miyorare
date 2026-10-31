@@ -165,7 +165,7 @@ class DownloadMaintenanceUseCase @Inject constructor(
 		val staleLocal = localDao.findEntries(favouriteIds)
 			.filter { entry ->
 				entry.mangaId in favouriteIds && roots.any { root -> File(entry.path).inside(File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME)) } &&
-					DownloadMaintenanceAbsence.isConfirmedMissing(entry.path, scannedPaths, roots)
+					DownloadMaintenanceAbsence.isConfirmedMissing(entry.path, scannedPaths, roots, emptyContainers)
 			}
 		if (staleOwnership.isEmpty() && staleLocal.isEmpty()) return
 		database.withTransaction {
