@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -92,7 +93,7 @@ class MigrationLandingScreenTest {
 				)
 			}
 		}
-		compose.onNodeWithText("Cari judul atau source").performTextInput("Story 2")
+		compose.onNodeWithTag("migration-landing-search").performTextInput("Story 2")
 		compose.onNodeWithText("Story 1").assertDoesNotExist()
 		compose.onNodeWithText("Story 2").assertExists()
 		compose.onNodeWithText("1 manga dipilih").assertExists()
