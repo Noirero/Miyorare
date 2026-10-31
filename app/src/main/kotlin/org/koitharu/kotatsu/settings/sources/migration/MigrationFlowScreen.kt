@@ -497,6 +497,11 @@ private fun MigrationResultsStep(
 			verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			item {
 				Text("Progress dan hasil", style = MaterialTheme.typography.titleLarge)
+				if (state.failed) {
+					Text("Pekerjaan tidak dapat dimulai atau statusnya gagal dimuat. Periksa hasil lalu coba lagi.",
+						color = MaterialTheme.colorScheme.error,
+						style = MaterialTheme.typography.bodySmall)
+				}
 				if (inProgress) {
 					Text("Batch sedang berjalan · " + state.batchCompleted + " / " + state.batchTotal)
 					LinearProgressIndicator(progress = {
