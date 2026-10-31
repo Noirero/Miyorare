@@ -218,7 +218,10 @@ private fun MigrationManualSearchScreen(
 					}
 				}
 			}
-			for (source in state.sources.filter { sourceFilter == null || it.name == sourceFilter }) {
+			for (source in state.sources.filter { source ->
+				sourceFilter == source.name ||
+					(sourceFilter == null && state.groups[source.name]?.manga?.isNotEmpty() == true)
+			}) {
 				val group = state.groups[source.name]
 				item(key = "source:" + source.name) {
 					Text(source.getTitle(context).toString(), style = MaterialTheme.typography.titleSmall)
