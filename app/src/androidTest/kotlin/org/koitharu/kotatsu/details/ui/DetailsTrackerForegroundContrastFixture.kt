@@ -62,7 +62,7 @@ internal object DetailsTrackerForegroundContrastFixture {
         val poison = if (dark) Color.Black else Color.White
         val person = TrackerPerson("person-1", "Staff contrast target", null, listOf("Story role"))
         val recommendation = TrackerRecommendation(
-            TrackerTarget(service, "recommendation-1"),
+            TrackerTarget(service, "7"),
             "Recommendation contrast target",
             null,
             TrackerRecommendationKind.RECOMMENDATION,
