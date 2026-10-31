@@ -187,6 +187,45 @@ class DownloadedLocalStateTest {
 		}
 	}
 
+	/**
+	 * Reproduces entry into Favourites with durable ownership already committed.
+	 * Unlike completionUpdatesBadgeAndBothNativeFiltersWithoutDetails, no completion event
+	 * or Details navigation can repair the state after the ViewModel starts.
+	 *
+	 * A false card emission is a real UI regression even if the asynchronous lookup
+	 * eventually corrects it. The test records emissions instead of inspecting source.
+	 */
+	@Test fun preexistingDownloadNeverPublishesFalseBadgeBeforeEnrichmentCompletes() = runBlocking {
+		val remote = remote(810_019L)
+		favourite(remote)
+		val copy = download(root, remote)
+		db.getFavouriteDownloadIndexDao().upsert(
+			listOf(FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, copy.file.canonicalPath)),
+		)
+		local.rememberDownloadedIdentity(remote, copy)
+		assertEquals(setOf(remote.id), classifier.getKnownDownloadedIds(FavouriteSpace.NORMAL, listOf(remote.id)))
+
+		val vm = favouritesViewModel()
+		val observed = mutableListOf<Boolean>()
+		val observer = launch(start = CoroutineStart.UNDISPATCHED) {
+			vm.content.collect { models ->
+				models.grid(remote.id)?.let { observed += it.isSaved }
+			}
+		}
+		try {
+			vm.awaitContent("preexisting downloaded badge without Details or completion event") {
+				it.grid(remote.id)?.isSaved == true
+			}
+			assertTrue("Expected a downloaded card emission: $observed", observed.contains(true))
+			assertFalse(
+				"An indexed preexisting download was rendered as false before enrichment: $observed",
+				observed.contains(false),
+			)
+		} finally {
+			observer.cancel()
+		}
+	}
+
 	@Test fun ownershipCompletionCanPrecedeLocalIndexWithoutLosingMetadataOrMembership() = runBlocking {
 		val remote = remote(810_017L)
 		favourite(remote)
