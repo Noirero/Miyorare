@@ -517,6 +517,41 @@ class DownloadMaintenanceRegressionTest {
 		}
 	}
 
+
+	/**
+	 * Reproduces the reported physical-file-present / chapter-icon-false divergence:
+	 * a legacy index knows chapter 1, while chapter 2's valid CBZ exists beside it.
+	 * Details must not let an incomplete sidecar hide a verified physical chapter.
+	 */
+	@Test fun legacyIndexMustNotHideAdditionalDownloadedChapterInDetails() = runBlocking {
+		val base = remote()
+		val second = requireNotNull(base.chapters).single().copy(
+			id = 102L, title = "Chapter 2", number = 2f, url = "https://example.invalid/chapter/2",
+		)
+		val remote = base.copy(chapters = requireNotNull(base.chapters) + second)
+		data.storeManga(remote, replaceExisting = true, detailsFetched = true)
+		val folder = folder("downloads/Source (EN)/Maintenance")
+		chapterFile(folder, "Chapter 1.cbz")
+		val chapter2 = chapterFile(folder, "Chapter 2.cbz")
+		val legacyIndex = MangaIndex(null).apply {
+			setMangaInfo(remote.copy(chapters = listOf(requireNotNull(remote.chapters).first())))
+			addChapter(IndexedValue(0, requireNotNull(remote.chapters).first()), "Chapter 1.cbz")
+		}
+		val indexFile = File(folder, "index.json").apply { writeText(legacyIndex.toString()) }
+		val originalIndex = indexFile.readBytes()
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, folder.path),
+		)
+		val resolved = requireNotNull(resolver.findSavedManga(remote, FavouriteSpace.NORMAL))
+		val rows = MangaDetails(remote).copy(localManga = resolved).mapChapters(
+			-1L, 0, null, emptyList(), false, false,
+		)
+		assertTrue("Physical chapter 2 exists but Details presents not-downloaded: $rows",
+			rows.any { it.chapter.id == second.id && it.isDownloaded })
+		assertTrue(chapter2.isFile)
+		assertArrayEquals("A read-only Details lookup must not rewrite the user's index", originalIndex, indexFile.readBytes())
+	}
+
 	private fun remote(): Manga {
 		val source = MissingMangaSource("MAINTENANCE_TEST")
 		ids += 950_010L
