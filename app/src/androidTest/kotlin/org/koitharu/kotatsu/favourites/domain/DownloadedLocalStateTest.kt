@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.ui.MangaListViewModel
 import org.koitharu.kotatsu.list.ui.model.ListModel
+import org.koitharu.kotatsu.list.ui.model.DownloadVerification
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
@@ -206,20 +207,20 @@ class DownloadedLocalStateTest {
 		assertEquals(setOf(remote.id), classifier.getKnownDownloadedIds(FavouriteSpace.NORMAL, listOf(remote.id)))
 
 		val vm = favouritesViewModel()
-		val observed = mutableListOf<Boolean>()
+		val observed = mutableListOf<DownloadVerification?>()
 		val observer = launch(start = CoroutineStart.UNDISPATCHED) {
 			vm.content.collect { models ->
-				models.grid(remote.id)?.let { observed += it.isSaved }
+				models.grid(remote.id)?.let { observed += it.downloadVerification }
 			}
 		}
 		try {
 			vm.awaitContent("preexisting downloaded badge without Details or completion event") {
 				it.grid(remote.id)?.isSaved == true
 			}
-			assertTrue("Expected a downloaded card emission: $observed", observed.contains(true))
+			assertTrue("Expected a verified downloaded card emission: $observed", observed.contains(DownloadVerification.VERIFIED_DOWNLOADED))
 			assertFalse(
 				"An indexed preexisting download was rendered as false before enrichment: $observed",
-				observed.contains(false),
+				observed.contains(DownloadVerification.VERIFIED_NOT_DOWNLOADED),
 			)
 		} finally {
 			observer.cancel()
