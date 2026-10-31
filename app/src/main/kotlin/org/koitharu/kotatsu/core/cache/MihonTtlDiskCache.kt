@@ -193,7 +193,7 @@ internal class MihonTtlDiskCache(
                     // Left by a write that never finished
                     TEMP_INFIX in file.name -> null.also { file.delete() }
                     // Written after the index was last saved
-                    else -> indexed[file.name]
+                    else -> indexed[file.name]?.takeIf { it.size == file.length() && file.isFile }
                         ?: Entry(file, file.length(), file.lastModified()).also { unindexed = true }
                 }
             }
