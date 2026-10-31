@@ -282,12 +282,9 @@ private fun BrokenSourcesMigrationScreen(
 								style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f),
 							)
 							TextButton(onClick = {
-								val ids = visibleManga.map(Manga::id)
-								if (ids.all(state.selectedMangaIds::contains)) {
-									onSelectManga(state.selectedMangaIds - ids.toSet())
-								} else {
-									onSelectManga(state.selectedMangaIds + ids)
-								}
+								onSelectManga(MigrationSelectionPolicy.toggleVisible(
+									state.selectedMangaIds, visibleManga.mapTo(hashSetOf()) { it.id },
+								))
 							}, enabled = visibleManga.isNotEmpty()) {
 								Text(if (visibleManga.isNotEmpty() &&
 									visibleManga.all { it.id in state.selectedMangaIds }) "Batalkan pilihan"
