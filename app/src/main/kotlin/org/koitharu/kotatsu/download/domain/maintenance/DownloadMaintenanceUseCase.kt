@@ -66,11 +66,16 @@ class DownloadMaintenanceUseCase @Inject constructor(
 				phase(DownloadMaintenancePhase.SCANNING)
 				val rootsBySpace = FavouriteSpace.entries.associateWith { destinations.readableRoots(it) }
 				val roots = (storage.getConfiguredDirs() + rootsBySpace.values.flatten()).distinctBy { it.canonicalPath }
+				var scanComplete = true
 				val files = LocalDownloadScanner.scan(roots) { root ->
+					scanComplete = false
 					items += DownloadMaintenanceItem(root.path, DownloadMaintenanceStatus.UNAVAILABLE_STORAGE, DownloadMaintenanceReason.STORAGE_UNAVAILABLE,
 						isPrivate = rootsBySpace[ FavouriteSpace.PRIVATE ].orEmpty().any { it.canonicalPath == root.canonicalPath })
 				}
 				mutableState.value = mutableState.value.copy(total = files.size)
+				// Only reconcile absence after every configured destination was scanned successfully.
+				// This also releases obsolete ownership before verifying a replacement physical copy.
+				if (scanComplete) reconcileMissingDownloads(files, rootsBySpace)
 				phase(DownloadMaintenancePhase.IDENTIFYING)
 				val memberships = FavouriteSpace.entries.associateWith { space -> favourites.getAllManga(space).mapTo(HashSet()) { it.id } }
 				val candidates = database.getMangaDao().findDownloadMaintenanceCandidates().map { it.toManga() }
@@ -116,6 +121,9 @@ class DownloadMaintenanceUseCase @Inject constructor(
 					mutableState.value = mutableState.value.copy(scanned = position + 1)
 				}
 				phase(DownloadMaintenancePhase.FINALIZING)
+				// A completed scan must invalidate cards even when no verified artifact changed.
+				// The event is also used by the existing Favorites index-backed refresh pipeline.
+				changes.emit(null)
 			}
 		} catch (cancelled: CancellationException) {
 			items += DownloadMaintenanceItem("", DownloadMaintenanceStatus.UNRESOLVED, DownloadMaintenanceReason.CANCELLED)
@@ -126,6 +134,35 @@ class DownloadMaintenanceUseCase @Inject constructor(
 		} finally {
 			mutableState.value = mutableState.value.copy(running = false, phase = DownloadMaintenancePhase.COMPLETED, result = DownloadMaintenanceResult(items.toList()))
 			mutex.unlock()
+		}
+	}
+
+	/** Remove only entries whose physical container is confirmed absent in a fully readable destination. */
+	private suspend fun reconcileMissingDownloads(
+		files: List<File>,
+		rootsBySpace: Map<FavouriteSpace, List<File>>,
+	) {
+		val scannedPaths = files.mapTo(HashSet()) { it.canonicalPath }
+		val ownershipDao = database.getFavouriteDownloadIndexDao()
+		val localDao = database.getLocalMangaIndexDao()
+		val favouriteIds = FavouriteSpace.entries.flatMapTo(HashSet()) { space ->
+			favourites.getAllManga(space).map { it.id }
+		}
+		val roots = rootsBySpace.values.flatten().distinctBy { it.canonicalPath }
+		fun isConfirmedMissing(path: String): Boolean {
+			val file = File(path)
+			if (file.canonicalPath in scannedPaths || file.exists()) return false
+			return roots.any { root -> file.inside(root) } &&
+				roots.filter { root -> file.inside(root) }.all { it.isDirectory && it.canRead() }
+		}
+		val staleOwnership = FavouriteSpace.entries.flatMap { ownershipDao.findEntries(it.dbValue) }
+			.filter { it.mangaId in favouriteIds && isConfirmedMissing(it.path) }
+		val staleLocal = localDao.findEntries(favouriteIds)
+			.filter { isConfirmedMissing(it.path) }
+		if (staleOwnership.isEmpty() && staleLocal.isEmpty()) return
+		database.withTransaction {
+			for (entry in staleOwnership) ownershipDao.deleteIfPath(entry.space, entry.mangaId, entry.path)
+			for (entry in staleLocal) localDao.deleteIfPath(entry.mangaId, entry.path)
 		}
 	}
 
