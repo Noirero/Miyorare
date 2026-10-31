@@ -401,10 +401,13 @@ internal fun MigrationBatchControls(
 				}
 			},
 			confirmButton = {
-				TextButton(onClick = {
+				TextButton(
+					modifier = Modifier.testTag("migration-batch-confirm"),
+					onClick = {
 					pendingAction = null
 					if (action == MigrationBatchAction.MIGRATE) onMigrateReady() else onCopyReady()
-				}) {
+				},
+				) {
 					Text(pluralStringResource(
 						if (action == MigrationBatchAction.MIGRATE) R.plurals.migration_batch_migrate_ready
 						else R.plurals.migration_batch_copy_ready,

@@ -113,7 +113,11 @@ class MigrationBatchControlsTest {
 		)
 		compose.onNodeWithText(context.getString(R.string.migration_batch_summary, 1, 1, 1)).fetchSemanticsNode()
 		compose.onNodeWithTag("migration-batch-migrate").performScrollTo().performClick()
+		assertEquals(0, migrations)
+		compose.onNodeWithTag("migration-batch-confirm").performClick()
 		compose.onNodeWithTag("migration-batch-copy").performScrollTo().performClick()
+		assertEquals(0, copies)
+		compose.onNodeWithTag("migration-batch-confirm").performClick()
 		assertEquals(1, migrations)
 		assertEquals(1, copies)
 	}

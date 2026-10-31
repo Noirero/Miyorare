@@ -129,6 +129,23 @@ class SourceMangaListStateTest {
 	}
 
 	@Test
+	fun `completed replacement remains visible after old entry leaves source list`() {
+		val config = migrationConfigKey(listOf("NEW"), MigrationSourceStrategy.FIRST_MATCH, null)
+		val state = SourceMangaListState(
+			isLoading = false,
+			manga = listOf(manga(2L)),
+			batchItems = mapOf(
+				1L to snapshot(1L, MigrationBatchStatus.MIGRATED, config),
+				2L to snapshot(2L, MigrationBatchStatus.ERROR, config),
+				3L to snapshot(3L, MigrationBatchStatus.COPIED, config),
+				4L to snapshot(4L, MigrationBatchStatus.INTERRUPTED, config),
+			),
+		)
+		assertEquals(listOf(1L, 3L), state.completedResults.map { it.mangaId })
+		assertEquals(0, state.readyCount)
+	}
+
+	@Test
 	fun `migrated and copied stay final when migration setup changes`() {
 		val oldConfig = migrationConfigKey(listOf("A", "B"), MigrationSourceStrategy.FIRST_MATCH, null)
 		val state = SourceMangaListState(
