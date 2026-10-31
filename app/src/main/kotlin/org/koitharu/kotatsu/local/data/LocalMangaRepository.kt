@@ -522,6 +522,8 @@ class LocalMangaRepository @Inject constructor(
 		// physical artifacts must be matched independently instead of hidden by the old sidecar.
 		val canRecoverExtras = !remoteManga.source.isNovelSource &&
 			unindexed.isNotEmpty() && unindexed.all { it.extension.equals("cbz", true) || it.extension.equals("zip", true) }
+		// Preserve the existing fallback for EPUB/PDF/other unsupported legacy mismatches.
+		if (unindexed.isNotEmpty() && !canRecoverExtras) return null
 
 		val linked = ArrayList<MangaChapter>()
 		val remoteIds = HashSet<Long>()
