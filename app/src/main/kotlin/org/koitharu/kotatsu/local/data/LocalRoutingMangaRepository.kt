@@ -6,7 +6,6 @@ import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import okio.source
 import okio.use
-import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.local.library.SmartLocalLibrary
@@ -46,13 +45,6 @@ class LocalRoutingMangaRepository @Inject constructor(
 	override suspend fun getPageUrl(page: MangaPage): String {
 		val uri = page.url.toUri()
 		if (uri.scheme != ContentResolver.SCHEME_CONTENT) return legacy.getPageUrl(page)
-		// Only On-device Files Reader images use the new direct-descriptor path.
-		// All non-seekable images retain the existing shared PageCache behavior.
-		if (page.source == LocalMangaSource &&
-			SeekableLocalPage.canOpenDirectly(context.contentResolver, uri)
-		) {
-			return page.url
-		}
 		pageCache[page.url]?.let { return it.toUri().toString() }
 		val input = requireNotNull(context.contentResolver.openInputStream(uri)) {
 			"Cannot open on-device page: $uri"
