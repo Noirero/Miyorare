@@ -317,11 +317,14 @@ classify_paths() {
 # changed-label payload. Therefore labeled/unlabeled/synchronize/reopened
 # resolve identically for the same PR state.
 resolve_policy() {
-  local run="$1" full="$2" draft="$3" required="$4" force_full="$5" mapped="$6"
+  local run="$1" full="$2" draft="$3" required="$4" force_full="$5" mapped="$6" user_issue="$7" theme="$8"
   local v
-  for v in "$run" "$full" "$draft" "$required" "$force_full" "$mapped"; do
+  for v in "$run" "$full" "$draft" "$required" "$force_full" "$mapped" "$user_issue" "$theme"; do
     [[ "$v" == true || "$v" == false ]] || return 2
   done
+  if [[ "$user_issue" == true || "$theme" == true ]]; then
+    required=true
+  fi
   if [[ "$force_full" == true ]]; then
     run=true; full=true
   elif [[ "$required" == true ]]; then
@@ -341,7 +344,7 @@ resolve_policy() {
 policy_self_test() {
   local got expected
   policy_check() {
-    got="$(resolve_policy "$1" "$2" "$3" "$4" "$5" "$6")"
+    got="$(resolve_policy "$1" "$2" "$3" "$4" "$5" "$6" "${9:-false}" "${10:-false}")"
     expected="$(printf 'run_runtime=%s\nfull=%s' "$7" "$8")"
     [[ "$got" == "$expected" ]] || { echo "Policy mismatch: $got != $expected" >&2; return 1; }
   }
@@ -356,6 +359,11 @@ policy_self_test() {
   policy_check false false false false true false true true
   policy_check true false false true true true true true
   policy_check false false false false false false false false
+  # Documentation-only PRs must run Android Runtime for either mandatory label.
+  policy_check false false false false false false true true true false
+  policy_check false false false false false false true true false true
+  policy_check false false true false false false true true true false
+  policy_check false false true false false false true true false true
   # Draft and ready_for_review event transitions.
   policy_check true false true false false true false false
   policy_check true false false false false true true false
@@ -363,7 +371,7 @@ policy_self_test() {
   policy_check false false true false true false true true
   # Same PR state on opened, synchronize, reopened, labeled, unlabeled:
   # the resolver has no event-dependent branch.
-  if resolve_policy invalid false false false false false >/dev/null 2>&1; then return 1; fi
+  if resolve_policy invalid false false false false false false false >/dev/null 2>&1; then return 1; fi
   echo 'Runtime label/event policy self-test: PASS'
 }
 
@@ -442,11 +450,11 @@ if [[ "$SELF_TEST" == true ]]; then
 fi
 
 if [[ "$POLICY" == true ]]; then
-  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}"
+  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}"
   input="$(cat)"
   run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
   full="$(sed -n 's/^full=//p' <<< "$input")"
-  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE"
+  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME"
   exit 0
 fi
 mapfile -t PATHS
