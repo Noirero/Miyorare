@@ -87,7 +87,7 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class BrokenSourcesMigrationFragment :
-	BaseComposeSettingsFragment(R.string.migrate_broken_sources) {
+	BaseComposeSettingsFragment(R.string.manga_migration) {
 
 	private val viewModel by viewModels<BrokenSourcesMigrationViewModel>()
 
@@ -167,6 +167,7 @@ private fun BrokenSourcesMigrationScreen(
 	var query by rememberSaveable { mutableStateOf("") }
 	var showSelected by rememberSaveable { mutableStateOf(false) }
 	var expandedGroup by rememberSaveable { mutableStateOf<String?>(null) }
+	var showSourceFilters by rememberSaveable { mutableStateOf(false) }
 	var variantFilter by rememberSaveable { mutableStateOf<String?>(null) }
 	val context = LocalContext.current
 	val allowedKeys = state.sources.flatMapTo(hashSetOf()) { it.sourceKeys }
@@ -223,11 +224,14 @@ private fun BrokenSourcesMigrationScreen(
 					if (state.sources.isNotEmpty()) {
 						item {
 							Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-								Text("Kelompok source", style = MaterialTheme.typography.titleSmall,
-									modifier = Modifier.weight(1f))
+								TextButton(onClick = { showSourceFilters = !showSourceFilters },
+									modifier = Modifier.weight(1f)) {
+									Text(if (showSourceFilters) "Sembunyikan filter source" else "Filter source (" + state.sources.size + ")")
+								}
 								TextButton(onClick = { variantFilter = null }) { Text("Semua source") }
 							}
 						}
+						if (showSourceFilters) {
 						items(state.sources, key = LibrarySourceOption::key) { group ->
 							val multi = group.variants.size > 1
 							Column {
@@ -273,6 +277,7 @@ private fun BrokenSourcesMigrationScreen(
 									}
 								}
 							}
+						}
 						}
 					}
 					item {
