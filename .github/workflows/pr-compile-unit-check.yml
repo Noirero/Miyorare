@@ -52,8 +52,8 @@ jobs:
 
   compile-unit:
     name: Compile, resources & unit tests
-    # Explicit runtime validation also applies to drafts waiting for owner decisions.
-    if: github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') || contains(github.event.pull_request.labels.*.name, 'ci:user-issue') || contains(github.event.pull_request.labels.*.name, 'ci:theme')
+    # Owner-request drafts run compile/unit checks without implicitly requesting Android runtime.
+    if: github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:owner-request') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') || contains(github.event.pull_request.labels.*.name, 'ci:user-issue') || contains(github.event.pull_request.labels.*.name, 'ci:theme')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
