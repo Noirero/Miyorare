@@ -215,7 +215,7 @@ class DownloadedLocalStateTest {
 		}
 		try {
 			vm.awaitContent("preexisting downloaded badge without Details or completion event") {
-				it.grid(remote.id)?.isSaved == true
+				it.grid(remote.id)?.downloadVerification == DownloadVerification.VERIFIED_DOWNLOADED
 			}
 			assertTrue("Expected a verified downloaded card emission: $observed", observed.contains(DownloadVerification.VERIFIED_DOWNLOADED))
 			assertFalse(
