@@ -2,9 +2,6 @@ package org.koitharu.kotatsu.settings.sources.migration
 
 import android.os.Bundle
 import android.view.LayoutInflater
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
@@ -56,11 +53,11 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
-import androidx.core.view.MenuProvider
 import androidx.core.view.doOnDetach
 import androidx.core.view.updatePadding
 import androidx.fragment.app.viewModels
@@ -76,7 +73,6 @@ import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.core.exceptions.resolve.CaptchaHandler.Companion.suppressCaptchaErrors
 import org.koitharu.kotatsu.core.ui.image.FaviconDrawable
-import org.koitharu.kotatsu.core.util.ext.addMenuProvider
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.main.ui.nav.DrawablePainter
 import org.koitharu.kotatsu.settings.SettingsActivity
@@ -127,32 +123,15 @@ class BrokenSourcesMigrationFragment :
 		super.onViewCreated(view, savedInstanceState)
 		// The fragment container is laid out for the collapsed appbar (ScrollingViewBehavior), so
 		// while the appbar is expanded the bottom of this view is pushed off-screen. Compensate
-		// with bottom padding equal to the appbar's current expansion so the Fix bar stays visible.
+		// with bottom padding equal to the appbar's current expansion so the bottom action remains visible.
 		val appBar = (requireActivity() as AppBarOwner).appBar
 		val offsetListener = AppBarLayout.OnOffsetChangedListener { bar, verticalOffset ->
 			view.updatePadding(bottom = bar.totalScrollRange + verticalOffset)
 		}
 		appBar.addOnOffsetChangedListener(offsetListener)
 		view.doOnDetach { appBar.removeOnOffsetChangedListener(offsetListener) }
-		addMenuProvider(object : MenuProvider {
-			override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-				menu.add(Menu.NONE, MENU_INFO, Menu.NONE, R.string.migration_information).apply {
-					setIcon(R.drawable.ic_info)
-					setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-				}
-			}
-
-			override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
-				if (menuItem.itemId != MENU_INFO) return false
-				viewModel.toggleInfo()
-				return true
-			}
-		})
 	}
 
-	private companion object {
-		const val MENU_INFO = 0x4D4947
-	}
 }
 
 @Composable
@@ -211,7 +190,7 @@ internal fun BrokenSourcesMigrationScreen(
 						OutlinedTextField(
 							value = query, onValueChange = { query = it },
 							label = { Text("Cari judul atau source") }, singleLine = true,
-							modifier = Modifier.fillMaxWidth(),
+							modifier = Modifier.fillMaxWidth().testTag("migration-landing-search"),
 						)
 					}
 					item {
