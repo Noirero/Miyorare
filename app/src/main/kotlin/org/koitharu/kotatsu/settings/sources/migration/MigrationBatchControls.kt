@@ -17,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationSearchPhase
 import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
@@ -61,6 +62,7 @@ internal fun MigrationBatchControls(
 	onRetrySources: () -> Unit,
 ) {
 	var filterExpanded by remember { mutableStateOf(false) }
+	var pendingAction by remember { mutableStateOf<MigrationBatchAction?>(null) }
 	val context = LocalContext.current
 	val activeProgress = state.batchItems.values.firstOrNull { it.running && it.searchProgress != null }?.searchProgress
 	val selectedSet = state.selectedSourceNames.toHashSet()
@@ -315,6 +317,20 @@ internal fun MigrationBatchControls(
 			Text(stringResource(R.string.migration_batch_progress, state.batchCompleted, state.batchTotal))
 		}
 		if (state.migratedCount > 0) Text(stringResource(R.string.migration_batch_done, state.migratedCount))
+		val outcomeCounts = state.batchItems.values.groupingBy { it.outcome.status }.eachCount()
+		val outcomeSummary = listOf(
+			MigrationBatchStatus.MIGRATED,
+			MigrationBatchStatus.COPIED,
+			MigrationBatchStatus.ERROR,
+			MigrationBatchStatus.SKIPPED,
+			MigrationBatchStatus.INTERRUPTED,
+		).mapNotNull { status ->
+			val count = outcomeCounts[status] ?: 0
+			if (count == 0) null else stringResource(R.string.migration_batch_filter_count, stringResource(status.labelRes()), count)
+		}
+		if (outcomeSummary.isNotEmpty()) {
+			Text(outcomeSummary.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+		}
 		if (state.unconfirmedCount > 0) Text(stringResource(R.string.migration_batch_check_library))
 		if (state.batchBusy && state.ownedBatchName == null) Text(stringResource(R.string.migration_batch_other_active))
 
@@ -330,14 +346,14 @@ internal fun MigrationBatchControls(
 		}
 		if (state.readyCount > 0) {
 			Button(
-				onClick = onMigrateReady,
+				onClick = { pendingAction = MigrationBatchAction.MIGRATE },
 				enabled = controlsEnabled,
 				modifier = Modifier.fillMaxWidth().testTag("migration-batch-migrate"),
 			) {
 				Text(pluralStringResource(R.plurals.migration_batch_migrate_ready, state.readyCount, state.readyCount))
 			}
 			OutlinedButton(
-				onClick = onCopyReady,
+				onClick = { pendingAction = MigrationBatchAction.COPY },
 				enabled = controlsEnabled,
 				modifier = Modifier.fillMaxWidth().testTag("migration-batch-copy"),
 			) {
@@ -364,6 +380,45 @@ internal fun MigrationBatchControls(
 				}
 			}
 		}
+	}
+	pendingAction?.let { action ->
+		AlertDialog(
+			onDismissRequest = { pendingAction = null },
+			title = { Text(stringResource(R.string.manga_migration)) },
+			text = {
+				Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+					Text(pluralStringResource(
+						if (action == MigrationBatchAction.MIGRATE) R.plurals.migration_batch_migrate_ready
+						else R.plurals.migration_batch_copy_ready,
+						state.readyCount, state.readyCount,
+					))
+					Text(stringResource(
+						R.string.migration_batch_summary,
+						state.readyCount,
+						state.manga.count { state.status(it.id) == MigrationBatchStatus.NEEDS_REVIEW },
+						state.manga.count { state.status(it.id) == MigrationBatchStatus.NO_REPLACEMENT },
+					))
+				}
+			},
+			confirmButton = {
+				TextButton(
+					modifier = Modifier.testTag("migration-batch-confirm"),
+					onClick = {
+					pendingAction = null
+					if (action == MigrationBatchAction.MIGRATE) onMigrateReady() else onCopyReady()
+				},
+				) {
+					Text(pluralStringResource(
+						if (action == MigrationBatchAction.MIGRATE) R.plurals.migration_batch_migrate_ready
+						else R.plurals.migration_batch_copy_ready,
+						state.readyCount, state.readyCount,
+					))
+				}
+			},
+			dismissButton = {
+				TextButton(onClick = { pendingAction = null }) { Text(stringResource(android.R.string.cancel)) }
+			},
+		)
 	}
 }
 

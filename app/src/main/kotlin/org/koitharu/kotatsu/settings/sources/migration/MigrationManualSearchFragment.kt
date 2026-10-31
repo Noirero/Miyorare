@@ -15,7 +15,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -164,6 +166,7 @@ private fun MigrationManualSearchScreen(
 	}
 
 	val selected = state.selected
+	var pendingAction by remember(selected?.id, selected?.source) { mutableStateOf<MigrationExecutionMode?>(null) }
 	val selectionIsInResults = selected != null && state.groups[selected.source.name]
 		?.manga
 		.orEmpty()
@@ -229,8 +232,8 @@ private fun MigrationManualSearchScreen(
 					imageLoader = imageLoader,
 					busy = busy,
 					onOpenResult = onOpenResult,
-					onMigrate = onMigrate,
-					onCopy = onCopy,
+					onMigrate = { pendingAction = MigrationExecutionMode.MIGRATE },
+					onCopy = { pendingAction = MigrationExecutionMode.COPY },
 					onClearSelection = onClearSelection,
 				)
 			}
@@ -297,8 +300,8 @@ private fun MigrationManualSearchScreen(
 							imageLoader = imageLoader,
 							busy = busy,
 							onOpenResult = onOpenResult,
-							onMigrate = onMigrate,
-							onCopy = onCopy,
+							onMigrate = { pendingAction = MigrationExecutionMode.MIGRATE },
+							onCopy = { pendingAction = MigrationExecutionMode.COPY },
 							onClearSelection = onClearSelection,
 						)
 					}
@@ -306,6 +309,42 @@ private fun MigrationManualSearchScreen(
 				}
 			}
 		}
+	}
+	val seed = state.seed
+	if (pendingAction != null && selected != null && seed != null) {
+		AlertDialog(
+			onDismissRequest = { pendingAction = null },
+			title = { Text(stringResource(R.string.manga_migration)) },
+			text = {
+				Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+					Text(seed.title, style = MaterialTheme.typography.titleMedium)
+					Text(stringResource(R.string.migration_current_source, seed.source.getTitle(context)))
+					HorizontalDivider()
+					Text(stringResource(R.string.migration_new_selection), style = MaterialTheme.typography.labelMedium)
+					Text(selected.title, style = MaterialTheme.typography.titleMedium)
+					Text(selected.source.getTitle(context).toString())
+				}
+			},
+			confirmButton = {
+				TextButton(
+					onClick = {
+						val mode = pendingAction
+						pendingAction = null
+						if (mode == MigrationExecutionMode.MIGRATE) onMigrate()
+						else if (mode == MigrationExecutionMode.COPY) onCopy()
+					},
+					enabled = !busy,
+				) {
+					Text(stringResource(
+						if (pendingAction == MigrationExecutionMode.MIGRATE) R.string.migration_yokai_migrate_now
+						else R.string.migration_yokai_copy_now,
+					))
+				}
+			},
+			dismissButton = {
+				TextButton(onClick = { pendingAction = null }) { Text(stringResource(android.R.string.cancel)) }
+			},
+		)
 	}
 }
 

@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,6 +50,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.doOnDetach
 import androidx.core.view.updatePadding
@@ -306,7 +308,7 @@ private fun SourceMangaListScreen(
 				onRetrySources = onRetrySources,
 			)
 		}
-		if (state.manga.isEmpty() && !state.failed) item {
+		if (state.manga.isEmpty() && state.completedResults.isEmpty() && state.unconfirmedResults.isEmpty() && !state.failed) item {
 			Text(stringResource(R.string.migration_batch_empty), modifier = Modifier.padding(20.dp))
 		}
 		items(state.visibleManga, key = Manga::id) { manga ->
@@ -315,6 +317,9 @@ private fun SourceMangaListScreen(
 				imageLoader = imageLoader,
 				isSelected = manga.id in state.selectedIds,
 				status = state.status(manga.id),
+				targetTitle = state.batchItems[manga.id]?.outcome?.destinationTitle
+					?.takeIf { state.status(manga.id) != MigrationBatchStatus.UNCHECKED },
+				targetSource = state.batchItems[manga.id]?.outcome?.destinationSource,
 				onClick = { onMangaClick(manga) },
 				onLongClick = { onMangaLongClick(manga) },
 			)
@@ -322,6 +327,46 @@ private fun SourceMangaListScreen(
 				modifier = Modifier.padding(start = 92.dp, end = 16.dp),
 				color = MaterialTheme.colorScheme.outlineVariant,
 			)
+		}
+		if (state.completedResults.isNotEmpty()) {
+			item(key = "completed-header") {
+				Text(
+					stringResource(R.string.migration_batch_done, state.completedResults.size),
+					style = MaterialTheme.typography.titleMedium,
+					modifier = Modifier.padding(16.dp),
+				)
+			}
+			items(state.completedResults, key = { "completed:${it.mangaId}:${it.generation}" }) { result ->
+				ListItem(
+					headlineContent = { Text(result.outcome.destinationTitle ?: result.outcome.destinationId?.toString().orEmpty()) },
+					supportingContent = {
+						Text(
+							listOfNotNull(result.outcome.destinationSource, stringResource(result.outcome.status.labelRes()))
+								.joinToString(" · "),
+						)
+					},
+				)
+			}
+		}
+		if (state.unconfirmedResults.isNotEmpty()) {
+			item(key = "unconfirmed-header") {
+				Text(
+					stringResource(R.string.migration_batch_check_library),
+					style = MaterialTheme.typography.titleMedium,
+					modifier = Modifier.padding(16.dp),
+				)
+			}
+			items(state.unconfirmedResults, key = { "unconfirmed:${it.mangaId}:${it.generation}" }) { result ->
+				ListItem(
+					headlineContent = { Text(result.outcome.destinationTitle ?: result.outcome.destinationId?.toString().orEmpty()) },
+					supportingContent = {
+						Text(
+							listOfNotNull(result.outcome.destinationSource, stringResource(result.outcome.status.labelRes()))
+								.joinToString(" · "),
+						)
+					},
+				)
+			}
 		}
 	}
 }
@@ -333,6 +378,8 @@ private fun SourceMangaRow(
 	imageLoader: ImageLoader,
 	isSelected: Boolean,
 	status: MigrationBatchStatus,
+	targetTitle: String?,
+	targetSource: String?,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
 ) {
@@ -407,6 +454,15 @@ private fun SourceMangaRow(
 			}
 			Text(stringResource(status.labelRes()), style = MaterialTheme.typography.bodySmall,
 				color = MaterialTheme.colorScheme.primary)
+			if (targetTitle != null || targetSource != null) {
+				Text(
+					listOfNotNull(targetTitle, targetSource).joinToString(" · "),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					maxLines = 2,
+					overflow = TextOverflow.Ellipsis,
+				)
+			}
 		}
 	}
 }
