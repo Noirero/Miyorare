@@ -54,18 +54,17 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 
 	fun toggleManga(mangaId: Long) {
 		_state.update { current ->
-			if (current.manga.none { it.id == mangaId }) current else current.copy(
-				selectedMangaIds = current.selectedMangaIds.toMutableSet().apply {
-					if (!add(mangaId)) remove(mangaId)
-				},
-			)
+			current.copy(selectedMangaIds = MigrationSelectionPolicy.toggle(
+				current.selectedMangaIds, current.manga.mapTo(hashSetOf()) { it.id }, mangaId,
+			))
 		}
 	}
 
 	fun selectManga(ids: Collection<Long>) {
 		_state.update { current ->
-			val visibleIds = current.manga.mapTo(hashSetOf()) { it.id }
-			current.copy(selectedMangaIds = ids.filterTo(linkedSetOf(), visibleIds::contains))
+			current.copy(selectedMangaIds = MigrationSelectionPolicy.replace(
+				ids, current.manga.mapTo(hashSetOf()) { it.id },
+			))
 		}
 	}
 
