@@ -101,7 +101,7 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 					contentColor = MaterialTheme.colorScheme.onSurface,
 				) {
 					val state by viewModel.state.collectAsState()
-					SourceMangaListScreen(
+					MigrationFlowScreen(
 						state = state,
 						imageLoader = imageLoader,
 						onRetry = viewModel::retry,
