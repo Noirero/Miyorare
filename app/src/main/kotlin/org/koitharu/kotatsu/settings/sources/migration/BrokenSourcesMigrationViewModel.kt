@@ -65,7 +65,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 	fun selectManga(ids: Collection<Long>) {
 		_state.update { current ->
 			val visibleIds = current.manga.mapTo(hashSetOf()) { it.id }
-			current.copy(selectedMangaIds = ids.filterTo(linkedSetOf())(visibleIds::contains))
+			current.copy(selectedMangaIds = ids.filterTo(linkedSetOf(), visibleIds::contains))
 		}
 	}
 
