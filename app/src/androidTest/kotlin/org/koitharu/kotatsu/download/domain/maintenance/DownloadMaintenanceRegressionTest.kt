@@ -497,19 +497,23 @@ class DownloadMaintenanceRegressionTest {
 		val source = folder("downloads/Source (EN)")
 		val owned = folder("downloads/Source (EN)/Maintenance")
 		chapterFile(owned, "Chapter 1.cbz")
+		// This unenumerated candidate must not be pruned merely because the root itself is readable.
+		// A complete successful scan would prove it missing; a failed subtree traversal cannot.
+		val uncertainPath = File(source, "Unenumerated")
+		assertFalse(uncertainPath.exists())
 		db.getFavouriteDownloadIndexDao().upsert(
-			FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, owned.path),
+			FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, uncertainPath.path),
 		)
 		assertTrue(root.canRead())
 		try {
 			assertTrue("Cannot build unreadable-subtree fixture", source.setReadable(false, false))
 			assertFalse("Fixture still readable, cannot test an incomplete scan", source.canRead())
-			assertFalse("Fixture path still visible, would not test false-absence cleanup", owned.exists())
+			assertFalse("Missing candidate must be absent for a meaningful absence-policy test", uncertainPath.exists())
 			val unavailable = ArrayList<File>()
 			LocalDownloadScanner.scan(listOf(root), unavailable::add)
 			assertTrue("Nested subtree failure must make root scan incomplete", root in unavailable)
 			maintenance.run()
-			assertEquals(owned.path, db.getFavouriteDownloadIndexDao().findEntry(
+			assertEquals(uncertainPath.path, db.getFavouriteDownloadIndexDao().findEntry(
 				FavouriteSpace.NORMAL.dbValue, remote.id,
 			)?.path)
 		} finally {
@@ -542,6 +546,13 @@ class DownloadMaintenanceRegressionTest {
 		db.getFavouriteDownloadIndexDao().upsert(
 			FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, folder.path),
 		)
+		val physical = LocalMangaParser(folder, ignoreDirectoryIndex = true).getManga(withDetails = true)
+		assertTrue("Index-free parse omitted Chapter 2: ${physical.manga.chapters}",
+			physical.manga.chapters.orEmpty().any { it.url.contains("Chapter%202") || it.title?.contains("Chapter 2") == true })
+		val linked = LegacyChapterDownloadCompat.linkToRemote(remote, physical)
+		assertTrue("Legacy matcher did not link the physical Chapter 2: ${linked.manga.chapters}",
+			linked.manga.chapters.orEmpty().any { it.id == second.id && it.source == LocalMangaSource })
+
 		val resolved = requireNotNull(resolver.findSavedManga(remote, FavouriteSpace.NORMAL))
 		val rows = MangaDetails(remote).copy(localManga = resolved).mapChapters(
 			-1L, 0, null, emptyList(), false, false,
