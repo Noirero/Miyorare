@@ -29,6 +29,22 @@ class DownloadMaintenanceAbsenceTest {
 		assertFalse(DownloadMaintenanceAbsence.isConfirmedMissing(path, setOf(path), listOf(root)))
 	}
 
+	@Test fun verifiedEmptyContainerIsStale() {
+		val root = temp.newFolder("downloads")
+		val empty = File(root, "manga").apply { mkdir() }
+		assertTrue(DownloadMaintenanceAbsence.isConfirmedMissing(
+			empty.path, setOf(empty.canonicalPath), listOf(root), setOf(empty.canonicalPath),
+		))
+	}
+
+	@Test fun unverifiedContainerIsNotRemoved() {
+		val root = temp.newFolder("downloads")
+		val unreadable = File(root, "unverified").apply { mkdir() }
+		assertFalse(DownloadMaintenanceAbsence.isConfirmedMissing(
+			unreadable.path, setOf(unreadable.canonicalPath), listOf(root),
+		))
+	}
+
 	@Test fun inaccessibleDestinationIsNotTreatedAsEmpty() {
 		val unavailable = File(temp.root, "unmounted")
 		assertFalse(DownloadMaintenanceAbsence.isConfirmedMissing(
