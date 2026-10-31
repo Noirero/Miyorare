@@ -21,6 +21,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchPolicy
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
 import org.koitharu.kotatsu.core.model.getTitle
@@ -124,7 +126,11 @@ internal fun MigrationFlowScreen(
 		}
 	}
 	pendingAction?.let { action ->
-		val ready = state.manga.filter { state.status(it.id) == MigrationBatchStatus.READY }
+		val readyIds = MigrationBatchPolicy.readyRequests(
+			manga = state.manga, snapshots = state.batchItems,
+			discoveryMode = MigrationBatchDiscoveryMode.YOKAI, configKey = state.configKey,
+		).mapTo(hashSetOf()) { it.mangaId }
+		val ready = state.manga.filter { it.id in readyIds }
 		AlertDialog(
 			onDismissRequest = { pendingAction = null },
 			title = { Text(if (action == MigrationBatchAction.COPY) "Konfirmasi salin" else "Konfirmasi migrasi") },
@@ -340,7 +346,11 @@ private fun MigrationReviewStep(
 	onResults: () -> Unit,
 ) {
 	var filter by rememberSaveable { mutableStateOf("Semua") }
-	val ready = state.manga.filter { state.status(it.id) == MigrationBatchStatus.READY }
+	val readyIds = MigrationBatchPolicy.readyRequests(
+			manga = state.manga, snapshots = state.batchItems,
+			discoveryMode = MigrationBatchDiscoveryMode.YOKAI, configKey = state.configKey,
+		).mapTo(hashSetOf()) { it.mangaId }
+		val ready = state.manga.filter { it.id in readyIds }
 	val review = state.manga.filter {
 		state.status(it.id) in setOf(MigrationBatchStatus.NEEDS_REVIEW, MigrationBatchStatus.INCOMPLETE,
 			MigrationBatchStatus.ERROR, MigrationBatchStatus.INTERRUPTED,
