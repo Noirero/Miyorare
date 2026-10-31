@@ -33,6 +33,8 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           LABEL_RUNTIME: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') }}
           LABEL_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') }}
+          LABEL_USER_ISSUE: ${{ contains(github.event.pull_request.labels.*.name, 'ci:user-issue') }}
+          LABEL_THEME: ${{ contains(github.event.pull_request.labels.*.name, 'ci:theme') }}
           DRAFT: ${{ github.event.pull_request.draft }}
         shell: bash
         run: |
@@ -45,13 +47,13 @@ jobs:
           if bash .github/scripts/select-pr-runtime-tests.sh < "$RUNNER_TEMP/runtime-changed-files.txt" >/dev/null 2>&1; then
             targeted_available=true
           fi
-          plan="$(printf '%s\n' "$plan" | DRAFT="$DRAFT" LABEL_RUNTIME="$LABEL_RUNTIME" LABEL_FULL="$LABEL_FULL" TARGETED_AVAILABLE="$targeted_available" bash .github/scripts/select-pr-runtime-tests.sh --policy)"
+          plan="$(printf '%s\n' "$plan" | DRAFT="$DRAFT" LABEL_RUNTIME="$LABEL_RUNTIME" LABEL_FULL="$LABEL_FULL" LABEL_USER_ISSUE="$LABEL_USER_ISSUE" LABEL_THEME="$LABEL_THEME" TARGETED_AVAILABLE="$targeted_available" bash .github/scripts/select-pr-runtime-tests.sh --policy)"
           printf '%s\n' "$plan" | tee -a "$GITHUB_OUTPUT"
 
   compile-unit:
     name: Compile, resources & unit tests
     # Explicit runtime validation also applies to drafts waiting for owner decisions.
-    if: github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full')
+    if: github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') || contains(github.event.pull_request.labels.*.name, 'ci:user-issue') || contains(github.event.pull_request.labels.*.name, 'ci:theme')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -112,7 +114,7 @@ jobs:
 
   android-runtime:
     name: Android runtime validation — Android 15
-    if: needs.runtime-risk.outputs.run_runtime == 'true' && (github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full'))
+    if: needs.runtime-risk.outputs.run_runtime == 'true' && (github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') || contains(github.event.pull_request.labels.*.name, 'ci:user-issue') || contains(github.event.pull_request.labels.*.name, 'ci:theme'))
     needs: [compile-unit, runtime-risk]
     runs-on: ubuntu-latest
     timeout-minutes: 45
