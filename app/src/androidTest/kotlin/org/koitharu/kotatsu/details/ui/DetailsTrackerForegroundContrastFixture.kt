@@ -24,6 +24,8 @@ import coil3.ImageLoader
 import org.junit.Assert.assertTrue
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.prefs.DetailsUiMode
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
@@ -73,7 +75,16 @@ internal object DetailsTrackerForegroundContrastFixture {
             staff = TrackerResult.Success(listOf(person)),
             recommendations = TrackerResult.Success(listOf(recommendation)),
         )
-        val details = MangaDetails(SampleData.mangaDetails, null, null, "Contrast fixture", true)
+        // SampleData's LOCAL source is not a file URI; use an isolated non-local catalog fixture.
+        val source = MangaSource("MIHON_424242")
+        val manga = SampleData.mangaDetails.copy(
+            source = source,
+            url = "https://example.invalid/manga/tracker-foreground",
+            publicUrl = "https://example.invalid/manga/tracker-foreground",
+            chapters = emptyList(),
+        )
+        check(!manga.isLocal)
+        val details = MangaDetails(manga, null, null, "Contrast fixture", true)
         compose.setContent {
             MaterialTheme(colorScheme = scheme) {
                 CompositionLocalProvider(
