@@ -52,6 +52,20 @@ class TrackerPeopleSectionTest {
 
 	@After fun closeLoader() { loader.shutdown() }
 
+    // Selected by the existing Details Android 15 runtime suite; unlike a new standalone test
+    // class these checks are guaranteed to execute under the current CI selector.
+    @Test fun darkTrackerForegroundIgnoresIncorrectBlackAmbient() =
+        DetailsTrackerForegroundContrastFixture.checkForeground(compose, context, loader, dark = true, amoled = false, custom = false)
+
+    @Test fun lightTrackerForegroundIgnoresIncorrectWhiteAmbient() =
+        DetailsTrackerForegroundContrastFixture.checkForeground(compose, context, loader, dark = false, amoled = false, custom = false)
+
+    @Test fun amoledTrackerForegroundIgnoresIncorrectBlackAmbient() =
+        DetailsTrackerForegroundContrastFixture.checkForeground(compose, context, loader, dark = true, amoled = true, custom = false)
+
+    @Test fun customDarkTrackerForegroundIgnoresIncorrectBlackAmbient() =
+        DetailsTrackerForegroundContrastFixture.checkForeground(compose, context, loader, dark = true, amoled = false, custom = true)
+
 	@Test fun characterPortraitNameAndRoleAndStaffAreRenderedWithProviderAttribution() {
 		setContent(DetailsPeopleUiState(providers = listOf(provider(
 			TrackerResult.Success(listOf(TrackerPerson("1", "Character One", "https://portrait.invalid/1.png", listOf("MAIN")))),
