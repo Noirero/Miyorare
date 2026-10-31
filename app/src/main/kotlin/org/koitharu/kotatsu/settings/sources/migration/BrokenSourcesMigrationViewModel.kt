@@ -6,7 +6,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,12 +17,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.entity.toMangaList
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.getStoredTitleOrNull
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.kotatsumigration.data.KotatsuSourceMap
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
+import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.settings.sources.catalog.ExternalExtensionRepoRepository
 import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreManager
 import org.koitharu.kotatsu.sources.compat.SourceAliasRegistry
@@ -39,44 +44,80 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 	private val _state = MutableStateFlow(BrokenSourcesMigrationState(isLoading = true))
 	val state: StateFlow<BrokenSourcesMigrationState> = _state.asStateFlow()
 
+	private var sourceJob: Job? = null
+
 	init {
 		observeSources()
 	}
 
+	fun retry() = observeSources()
+
+	fun toggleManga(mangaId: Long) {
+		_state.update { current ->
+			if (current.manga.none { it.id == mangaId }) current else current.copy(
+				selectedMangaIds = current.selectedMangaIds.toMutableSet().apply {
+					if (!add(mangaId)) remove(mangaId)
+				},
+			)
+		}
+	}
+
+	fun selectManga(ids: Collection<Long>) {
+		_state.update { current ->
+			val visibleIds = current.manga.mapTo(hashSetOf()) { it.id }
+			current.copy(selectedMangaIds = ids.filterTo(linkedSetOf())(visibleIds::contains))
+		}
+	}
+
 	private fun observeSources() {
-		viewModelScope.launch {
-			_state.update { it.copy(isLoading = true) }
-			val metadata = withContext(Dispatchers.IO) {
-				extensionManager.ensureReady()
-				extensionStoreManager.initialize()
-				val installedIds = extensionManager.getMihonMangaSources()
-					.mapTo(hashSetOf()) { it.sourceId }
-				val repositoryIcons = buildMap {
-					for (storeState in extensionStoreManager.states.value) {
-						if (!storeState.store.enabled) continue
-						for (extension in storeState.catalog) {
-							val iconUrl = extension.iconUrl ?: extensionRepoRepository.resolveIconUrl(
-								storeState.store.indexUrl,
-								extension.packageName,
-							)
-							for (source in extension.sources) {
-								val id = source.id.toLongOrNull() ?: continue
-								putIfAbsent(id, iconUrl)
+		sourceJob?.cancel()
+		sourceJob = viewModelScope.launch {
+			_state.update { it.copy(isLoading = true, loadFailed = false) }
+			try {
+				val metadata = withContext(Dispatchers.IO) {
+					extensionManager.ensureReady()
+					extensionStoreManager.initialize()
+					val installedIds = extensionManager.getMihonMangaSources()
+						.mapTo(hashSetOf()) { it.sourceId }
+					val repositoryIcons = buildMap {
+						for (storeState in extensionStoreManager.states.value) {
+							if (!storeState.store.enabled) continue
+							for (extension in storeState.catalog) {
+								val iconUrl = extension.iconUrl ?: extensionRepoRepository.resolveIconUrl(
+									storeState.store.indexUrl, extension.packageName,
+								)
+								for (source in extension.sources) {
+									val id = source.id.toLongOrNull() ?: continue
+									putIfAbsent(id, iconUrl)
+								}
 							}
 						}
 					}
+					SourceMetadata(installedIds, repositoryIcons)
 				}
-				SourceMetadata(installedIds, repositoryIcons)
-			}
-			database.getMangaDao().observeLibrarySourceUsage().collect { usages ->
-				val sources = withContext(Dispatchers.IO) { buildOptions(usages, metadata) }
-				_state.update { current ->
-					current.copy(
-						isLoading = false,
-						sources = sources,
-						selectedSources = current.selectedSources.intersect(sources.mapTo(hashSetOf()) { it.key }),
-					)
+				database.getMangaDao().observeLibrarySourceUsage().collectLatest { usages ->
+					val sources = withContext(Dispatchers.IO) { buildOptions(usages, metadata) }
+					val keys = usages.map { it.source }
+					if (keys.isEmpty()) {
+						_state.update { current -> current.copy(
+							isLoading = false, sources = sources, manga = emptyList(),
+							selectedMangaIds = emptySet(),
+						) }
+					} else {
+						database.getMangaDao().observeLibraryMangaBySources(keys).collect { entries ->
+							val manga = entries.toMangaList()
+							val available = manga.mapTo(hashSetOf()) { it.id }
+							_state.update { current -> current.copy(
+								isLoading = false, loadFailed = false, sources = sources, manga = manga,
+								selectedMangaIds = current.selectedMangaIds.intersect(available),
+							) }
+						}
+					}
 				}
+			} catch (cancelled: CancellationException) {
+				throw cancelled
+			} catch (failure: Exception) {
+				_state.update { it.copy(isLoading = false, loadFailed = true) }
 			}
 		}
 	}
@@ -192,6 +233,9 @@ internal fun mergeLibrarySourceOptions(
 				iconUrl = iconSource.iconUrl,
 				sourceId = group.firstNotNullOfOrNull { it.sourceId },
 				canonicalKey = canonicalKey,
+				variants = group.map { option ->
+					LibrarySourceVariant(option.key, option.title, option.mangaCount)
+				},
 			)
 		}
 		.sortedBy { it.title.lowercase() }
@@ -210,6 +254,9 @@ data class BrokenSourcesMigrationState(
 	val isInfoVisible: Boolean = false,
 	val sources: List<LibrarySourceOption> = emptyList(),
 	val selectedSources: Set<String> = emptySet(),
+	val manga: List<Manga> = emptyList(),
+	val selectedMangaIds: Set<Long> = emptySet(),
+	val loadFailed: Boolean = false,
 )
 
 @Immutable
@@ -225,7 +272,11 @@ data class LibrarySourceOption(
 	val sourceId: Long? = null,
 	/** Provider-neutral grouping key. Display titles are deliberately not used as identity. */
 	val canonicalKey: String = sourceId?.let { "catalogue:$it" } ?: "stored:$key",
+	val variants: List<LibrarySourceVariant> = emptyList(),
 )
+
+@Immutable
+data class LibrarySourceVariant(val key: String, val title: String, val mangaCount: Int)
 
 private data class SourceMetadata(
 	val installedIds: Set<Long>,
