@@ -156,7 +156,7 @@ class BrokenSourcesMigrationFragment :
 }
 
 @Composable
-private fun BrokenSourcesMigrationScreen(
+internal fun BrokenSourcesMigrationScreen(
 	state: BrokenSourcesMigrationState,
 	imageLoader: ImageLoader,
 	onToggleManga: (Long) -> Unit,
