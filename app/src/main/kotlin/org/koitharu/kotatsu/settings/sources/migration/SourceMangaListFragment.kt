@@ -308,7 +308,7 @@ private fun SourceMangaListScreen(
 				onRetrySources = onRetrySources,
 			)
 		}
-		if (state.manga.isEmpty() && state.completedResults.isEmpty() && !state.failed) item {
+		if (state.manga.isEmpty() && state.completedResults.isEmpty() && state.unconfirmedResults.isEmpty() && !state.failed) item {
 			Text(stringResource(R.string.migration_batch_empty), modifier = Modifier.padding(20.dp))
 		}
 		items(state.visibleManga, key = Manga::id) { manga ->
@@ -337,6 +337,26 @@ private fun SourceMangaListScreen(
 				)
 			}
 			items(state.completedResults, key = { "completed:${it.mangaId}:${it.generation}" }) { result ->
+				ListItem(
+					headlineContent = { Text(result.outcome.destinationTitle ?: result.outcome.destinationId?.toString().orEmpty()) },
+					supportingContent = {
+						Text(
+							listOfNotNull(result.outcome.destinationSource, stringResource(result.outcome.status.labelRes()))
+								.joinToString(" · "),
+						)
+					},
+				)
+			}
+		}
+		if (state.unconfirmedResults.isNotEmpty()) {
+			item(key = "unconfirmed-header") {
+				Text(
+					stringResource(R.string.migration_batch_check_library),
+					style = MaterialTheme.typography.titleMedium,
+					modifier = Modifier.padding(16.dp),
+				)
+			}
+			items(state.unconfirmedResults, key = { "unconfirmed:${it.mangaId}:${it.generation}" }) { result ->
 				ListItem(
 					headlineContent = { Text(result.outcome.destinationTitle ?: result.outcome.destinationId?.toString().orEmpty()) },
 					supportingContent = {

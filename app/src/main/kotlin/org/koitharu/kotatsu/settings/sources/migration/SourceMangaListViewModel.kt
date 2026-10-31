@@ -243,16 +243,19 @@ class SourceMangaListViewModel @Inject constructor(
 						.filter { item ->
 							if (item.mangaId in relevantIds) return@filter true
 							// Replacing a manga removes its old id from the source list. Preserve its durable
-							// completed outcome for review only when the destination is still in the visible
-							// library; never use an old WorkManager tag to reveal a private-only entry.
-							val isCompleted = item.outcome.status == MigrationBatchStatus.MIGRATED ||
-								item.outcome.status == MigrationBatchStatus.COPIED
+							// outcome for review only when the destination is still in the public library.
+							// Failures after Room commit can remove the old entry; preserve their uncertain
+							// status too, never interpreting them as completed. Do not expose Private-only data.
+							val isReported = item.outcome.status == MigrationBatchStatus.MIGRATED ||
+								item.outcome.status == MigrationBatchStatus.COPIED ||
+								item.outcome.status == MigrationBatchStatus.ERROR ||
+								item.outcome.status == MigrationBatchStatus.INTERRUPTED
 							val belongsToSession = if (explicitMangaIds.isNotEmpty()) {
 								item.mangaId in explicitMangaIds
 							} else {
 								item.source in sourceKeys
 							}
-							if (!isCompleted || !belongsToSession) return@filter false
+							if (!isReported || !belongsToSession) return@filter false
 							val destinationId = item.outcome.destinationId ?: return@filter false
 							destinationId !in privateOnly && database.getMangaDao().isMigrationEntryVisible(destinationId)
 						}
@@ -277,7 +280,8 @@ class SourceMangaListViewModel @Inject constructor(
 							it.outcome.status == MigrationBatchStatus.MIGRATED || it.outcome.status == MigrationBatchStatus.COPIED
 						},
 						unconfirmedCount = latest.values.count {
-							it.mangaId !in visible && it.outcome.status == MigrationBatchStatus.INTERRUPTED
+							it.mangaId !in visible && (it.outcome.status == MigrationBatchStatus.INTERRUPTED ||
+								it.outcome.status == MigrationBatchStatus.ERROR)
 						},
 					)
 				}.flowOn(Dispatchers.IO).collect { projection ->
@@ -411,6 +415,14 @@ data class SourceMangaListState(
 		return batchItems.values.filter {
 			it.mangaId !in visibleIds && (it.outcome.status == MigrationBatchStatus.MIGRATED ||
 				it.outcome.status == MigrationBatchStatus.COPIED)
+		}.sortedByDescending(MigrationBatchSnapshot::generation)
+	}
+	/** Source may disappear after commit while cleanup reports an error/interruption. */
+	val unconfirmedResults: List<MigrationBatchSnapshot> get() {
+		val visibleIds = manga.mapTo(hashSetOf(), Manga::id)
+		return batchItems.values.filter {
+			it.mangaId !in visibleIds && (it.outcome.status == MigrationBatchStatus.ERROR ||
+				it.outcome.status == MigrationBatchStatus.INTERRUPTED)
 		}.sortedByDescending(MigrationBatchSnapshot::generation)
 	}
 	val readyCount: Int get() = MigrationBatchPolicy.readyRequests(

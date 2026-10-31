@@ -139,9 +139,11 @@ class SourceMangaListStateTest {
 				2L to snapshot(2L, MigrationBatchStatus.ERROR, config),
 				3L to snapshot(3L, MigrationBatchStatus.COPIED, config),
 				4L to snapshot(4L, MigrationBatchStatus.INTERRUPTED, config),
+				5L to snapshot(5L, MigrationBatchStatus.ERROR, config),
 			),
 		)
 		assertEquals(listOf(1L, 3L), state.completedResults.map { it.mangaId })
+		assertEquals(listOf(4L, 5L), state.unconfirmedResults.map { it.mangaId })
 		assertEquals(0, state.readyCount)
 	}
 
