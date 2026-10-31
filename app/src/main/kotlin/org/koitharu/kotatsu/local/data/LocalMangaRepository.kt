@@ -557,9 +557,14 @@ class LocalMangaRepository @Inject constructor(
 				}
 				for (chapter in mapped.manga.chapters.orEmpty()) {
 					if (chapter.id !in remoteIds || chapter.id in alreadyLinked) continue
-					val actual = chapter.url.toUri().path?.let { path ->
-						runCatching { File(path).canonicalPath }.getOrNull()
-					} ?: continue
+					// Directory-backed Local URIs store the physical chapter in the fragment, not
+					// the path. Resolve both before comparing against the verified extras whitelist.
+					val chapterUri = chapter.url.toUri()
+					val base = chapterUri.path?.let(::File) ?: continue
+					val artifact = if (base.isDirectory && !chapterUri.fragment.isNullOrBlank()) {
+						File(base, chapterUri.fragment!!)
+					} else base
+					val actual = runCatching { artifact.canonicalPath }.getOrNull() ?: continue
 					if (actual !in extras) continue
 					linked += chapter
 					alreadyLinked += chapter.id
