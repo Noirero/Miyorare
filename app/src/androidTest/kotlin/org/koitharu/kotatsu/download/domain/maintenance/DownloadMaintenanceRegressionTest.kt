@@ -24,11 +24,15 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MissingMangaSource
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.LocalDownloadScanner
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
@@ -36,6 +40,7 @@ import org.koitharu.kotatsu.local.data.MangaIndex
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import java.io.File
@@ -53,6 +58,8 @@ class DownloadMaintenanceRegressionTest {
 	@Inject lateinit var data: MangaDataRepository
 	@Inject lateinit var index: LocalMangaIndex
 	@Inject lateinit var local: LocalMangaRepository
+	@Inject lateinit var resolver: DownloadedMangaResolver
+	@Inject lateinit var favourites: FavouritesRepository
 	@Inject @org.koitharu.kotatsu.local.data.LocalStorageChanges lateinit var events: kotlinx.coroutines.flow.MutableSharedFlow<LocalManga?>
 	private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 	private lateinit var root: File
@@ -407,6 +414,153 @@ class DownloadMaintenanceRegressionTest {
 		File(root, "index.json.new").mkdir()
 		assertTrue(runCatching { DownloadIndexRepair.write(index, "replacement") }.isFailure)
 		assertEquals("previous", index.readText())
+	}
+
+
+	/**
+	 * A global local_index row/alias represents only one copy. Space-owned rows must still let
+	 * Details resolve both physical copies and present their chapters as downloaded.
+	 */
+	@Test fun duplicateMangaIdCopiesUseSpaceOwnershipBeforeGlobalLocalIndex() = runBlocking {
+		val remote = remote()
+		data.storeManga(remote, replaceExisting = true, detailsFetched = true)
+		val normal = folder("downloads/Source (EN)/Maintenance")
+		val privateCopy = folder("private/downloads/Source (EN)/Maintenance")
+		chapterFile(normal, "Chapter 1.cbz")
+		chapterFile(privateCopy, "Chapter 1.cbz")
+
+		// Deliberately keep only the Private path in the global index and alias.
+		index.rememberVerifiedPath(remote.id, privateCopy)
+		val localPrivate = LocalMangaParser(privateCopy, true).getManga(true)
+		index.registerDownloadAlias(remote.id, localPrivate.manga.id, privateCopy)
+		db.getFavouriteDownloadIndexDao().upsert(listOf(
+			FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, normal.path),
+			FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.PRIVATE.dbValue, privateCopy.path),
+		))
+		assertEquals(privateCopy.path, db.getLocalMangaIndexDao().findPath(remote.id))
+		for ((space, expectedPath) in listOf(FavouriteSpace.NORMAL to normal, FavouriteSpace.PRIVATE to privateCopy)) {
+			val resolved = requireNotNull(resolver.findSavedManga(remote, space)) { "Missing $space copy" }
+			assertEquals(expectedPath, resolved.file.canonicalFile)
+			assertTrue(resolved.manga.chapters.orEmpty().any { it.id == 101L && it.source == LocalMangaSource })
+			val rows = MangaDetails(remote).copy(localManga = resolved).mapChapters(
+				currentChapterId = -1L,
+				newCount = 0,
+				branch = null,
+				bookmarks = emptyList(),
+				isGrid = false,
+				isDownloadedOnly = false,
+			)
+			assertTrue("Downloaded icon missing in $space: $rows", rows.any { it.chapter.id == 101L && it.isDownloaded })
+		}
+	}
+
+	/** A shared physical root cannot transfer one space's download to the other. */
+	@Test fun sharedRootRequiresExplicitOwnershipEvenWhenGlobalIndexAndAliasExist() = runBlocking {
+		val remote = remote()
+		data.storeManga(remote, replaceExisting = true, detailsFetched = true)
+		prefs.edit(commit = true) { remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT) }
+		val copy = folder("downloads/Source (EN)/Maintenance")
+		chapterFile(copy, "Chapter 1.cbz")
+		index.rememberVerifiedPath(remote.id, copy)
+		val parsed = LocalMangaParser(copy, true).getManga(true)
+		index.registerDownloadAlias(remote.id, parsed.manga.id, copy)
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, copy.path),
+		)
+		assertNotNull(resolver.findSavedManga(remote, FavouriteSpace.NORMAL))
+		assertNull("Shared-root Local index/alias must not leak into Private", resolver.findSavedManga(remote, FavouriteSpace.PRIVATE))
+
+		// If both spaces have independently explicit ownership, they may reference the same artifact.
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.PRIVATE.dbValue, copy.path),
+		)
+		val privateResolved = requireNotNull(resolver.findSavedManga(remote, FavouriteSpace.PRIVATE))
+		assertEquals(copy, privateResolved.file.canonicalFile)
+		assertTrue(MangaDetails(remote).copy(localManga = privateResolved).mapChapters(
+			-1L, 0, null, emptyList(), false, false,
+		).any { it.chapter.id == 101L && it.isDownloaded })
+	}
+
+	/**
+	 * The configured root is readable while a nested source directory cannot be traversed.
+	 * Such a scan is incomplete and must not remove an otherwise owned download.
+	 */
+	@Test fun unreadableSubtreeNeverProvesDownloadMissing() = runBlocking {
+		val remote = remote()
+		data.storeManga(remote, replaceExisting = true, detailsFetched = true)
+		val category = favourites.createCategory(
+			"Partial scan ${remote.id}", org.koitharu.kotatsu.list.domain.ListSortOrder.NEWEST,
+			false, false, true, FavouriteSpace.NORMAL,
+		)
+		favourites.updateCategoryMemberships(listOf(remote), mapOf(category.id to true), FavouriteSpace.NORMAL)
+
+		val source = folder("downloads/Source (EN)")
+		val owned = folder("downloads/Source (EN)/Maintenance")
+		chapterFile(owned, "Chapter 1.cbz")
+		// This unenumerated candidate must not be pruned merely because the root itself is readable.
+		// A complete successful scan would prove it missing; a failed subtree traversal cannot.
+		val uncertainPath = File(source, "Unenumerated")
+		assertFalse(uncertainPath.exists())
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, uncertainPath.path),
+		)
+		assertTrue(root.canRead())
+		try {
+			assertTrue("Cannot build unreadable-subtree fixture", source.setReadable(false, false))
+			assertFalse("Fixture still readable, cannot test an incomplete scan", source.canRead())
+			assertFalse("Missing candidate must be absent for a meaningful absence-policy test", uncertainPath.exists())
+			val unavailable = ArrayList<File>()
+			LocalDownloadScanner.scan(listOf(root), unavailable::add)
+			assertTrue("Nested subtree failure must make root scan incomplete", root in unavailable)
+			maintenance.run()
+			assertEquals(uncertainPath.path, db.getFavouriteDownloadIndexDao().findEntry(
+				FavouriteSpace.NORMAL.dbValue, remote.id,
+			)?.path)
+		} finally {
+			assertTrue("Cannot restore test directory permissions", source.setReadable(true, false))
+		}
+	}
+
+
+	/**
+	 * Reproduces the reported physical-file-present / chapter-icon-false divergence:
+	 * a legacy index knows chapter 1, while chapter 2's valid CBZ exists beside it.
+	 * Details must not let an incomplete sidecar hide a verified physical chapter.
+	 */
+	@Test fun legacyIndexMustNotHideAdditionalDownloadedChapterInDetails() = runBlocking {
+		val base = remote()
+		val second = requireNotNull(base.chapters).single().copy(
+			id = 102L, title = "Chapter 2", number = 2f, url = "https://example.invalid/chapter/2",
+		)
+		val remote = base.copy(chapters = requireNotNull(base.chapters) + second)
+		data.storeManga(remote, replaceExisting = true, detailsFetched = true)
+		val folder = folder("downloads/Source (EN)/Maintenance")
+		chapterFile(folder, "Chapter 1.cbz")
+		val chapter2 = chapterFile(folder, "Chapter 2.cbz")
+		val legacyIndex = MangaIndex(null).apply {
+			setMangaInfo(remote.copy(chapters = listOf(requireNotNull(remote.chapters).first())))
+			addChapter(IndexedValue(0, requireNotNull(remote.chapters).first()), "Chapter 1.cbz")
+		}
+		val indexFile = File(folder, "index.json").apply { writeText(legacyIndex.toString()) }
+		val originalIndex = indexFile.readBytes()
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, folder.path),
+		)
+		val physical = LocalMangaParser(folder, ignoreDirectoryIndex = true).getManga(withDetails = true)
+		assertTrue("Index-free parse omitted Chapter 2: ${physical.manga.chapters}",
+			physical.manga.chapters.orEmpty().any { it.url.contains("Chapter%202") || it.title?.contains("Chapter 2") == true })
+		val linked = LegacyChapterDownloadCompat.linkToRemote(remote, physical)
+		assertTrue("Legacy matcher did not link the physical Chapter 2: ${linked.manga.chapters}",
+			linked.manga.chapters.orEmpty().any { it.id == second.id && it.source == LocalMangaSource })
+
+		val resolved = requireNotNull(resolver.findSavedManga(remote, FavouriteSpace.NORMAL))
+		val rows = MangaDetails(remote).copy(localManga = resolved).mapChapters(
+			-1L, 0, null, emptyList(), false, false,
+		)
+		assertTrue("Physical chapter 2 exists but Details presents not-downloaded: $rows",
+			rows.any { it.chapter.id == second.id && it.isDownloaded })
+		assertTrue(chapter2.isFile)
+		assertArrayEquals("A read-only Details lookup must not rewrite the user's index", originalIndex, indexFile.readBytes())
 	}
 
 	private fun remote(): Manga {
