@@ -218,21 +218,32 @@ class MihonExtensionLoader @Inject constructor(
 			return hasFeature || readSourceClassNames(appInfo.metaData) != null
 		}
 
+		/** Limit reads to extension metadata; installed apps may contain arbitrary typed entries. */
+		private fun isSourceClassMetadataKey(key: String): Boolean =
+			key in METADATA_SOURCE_CLASS_KEYS ||
+				key in METADATA_SOURCE_FACTORY_KEYS ||
+				key.endsWith(".animeextension.class", ignoreCase = true) ||
+				key.endsWith(".animeextension.factory", ignoreCase = true)
+
 		/** The `;`-separated source class list, from whichever namespace the APK declares it under. */
 		internal fun readSourceClassNames(metaData: Bundle?): String? =
 			metaData?.let { bundle ->
-				readSourceClassNames(bundle.keySet().associateWith(bundle::getString))
+				readSourceClassNames(
+					bundle.keySet().asSequence()
+						.filter(::isSourceClassMetadataKey)
+						.associateWith { key -> bundle.get(key) },
+				)
 			}
 
-		internal fun readSourceClassNames(metaData: Map<String, String?>): String? {
-			return METADATA_SOURCE_CLASS_KEYS.firstNotNullOfOrNull(metaData::get)
-				?: METADATA_SOURCE_FACTORY_KEYS.firstNotNullOfOrNull(metaData::get)
+		internal fun readSourceClassNames(metaData: Map<String, *>): String? {
+			return METADATA_SOURCE_CLASS_KEYS.firstNotNullOfOrNull { metaData[it] as? String }
+				?: METADATA_SOURCE_FACTORY_KEYS.firstNotNullOfOrNull { metaData[it] as? String }
 				?: metaData.asSequence()
 					.filter { (key, _) ->
 						key.endsWith(".animeextension.class", ignoreCase = true) ||
 							key.endsWith(".animeextension.factory", ignoreCase = true)
 					}
-					.mapNotNull { it.value }
+					.mapNotNull { it.value as? String }
 					.firstOrNull()
 		}
 
