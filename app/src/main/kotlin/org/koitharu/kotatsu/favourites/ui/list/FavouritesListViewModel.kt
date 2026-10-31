@@ -416,7 +416,7 @@ class FavouritesListViewModel @Inject constructor(
 				emptyList(),
 				emptyList(),
 				matchingEnrichment?.snapshot ?: emptyCardSnapshot,
-				if (display.options.showDownloaded) matchingEnrichment?.downloadedIds ?: emptySet() else null,
+				if (display.options.showDownloaded) matchingEnrichment?.downloadedIds else null,
 			)
 			return@contentTransform listOf(header) + mapped
 		}
@@ -483,7 +483,7 @@ class FavouritesListViewModel @Inject constructor(
 		val downloadedIds = when {
 			!usesSpaceScopedDownloadStatus || !display.options.showDownloaded -> null
 			filterDownloadedIds != null -> filterDownloadedIds
-			else -> matchingEnrichment?.downloadedIds ?: emptySet()
+			else -> matchingEnrichment?.downloadedIds
 		}
 		visible.mapList(
 			display.options.listMode,
@@ -981,6 +981,13 @@ class FavouritesListViewModel @Inject constructor(
 			val mangaId = model.manga.id
 			val isPinned = mangaId in pinnedSet
 			val source = model.manga.source
+			val downloadVerification = if (usesSpaceScopedDownloadStatus && display.showDownloaded) {
+				when {
+					downloadedIds == null -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.UNRESOLVED
+					mangaId in downloadedIds -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.VERIFIED_DOWNLOADED
+					else -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.VERIFIED_NOT_DOWNLOADED
+				}
+			} else null
 			val isSaved = display.showDownloaded && if (downloadedIds != null) {
 				mangaId in downloadedIds
 			} else {
@@ -998,6 +1005,7 @@ class FavouritesListViewModel @Inject constructor(
 					progress = progress,
 					isFavorite = if (usePermanentStatus) mangaId in libraryIds else model.isFavorite,
 					isSaved = isSaved,
+					downloadVerification = downloadVerification,
 					isPinned = mangaId in persistedPins,
 					isTitleOverCover = display.titleOverCover,
 					isGridSpacingIncreased = display.gridSpacingIncreased,
