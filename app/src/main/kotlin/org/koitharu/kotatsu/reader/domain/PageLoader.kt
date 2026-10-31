@@ -71,6 +71,7 @@ import org.koitharu.kotatsu.core.util.ext.use
 import org.koitharu.kotatsu.core.util.ext.withProgress
 import org.koitharu.kotatsu.core.util.progress.ProgressDeferred
 import org.koitharu.kotatsu.download.ui.worker.DownloadSlowdownDispatcher
+import org.koitharu.kotatsu.local.data.SeekableLocalPage
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
@@ -263,6 +264,24 @@ class PageLoader @Inject constructor(
 		return getRepository(page.source).getPageUrl(page)
 	}
 
+	/**
+	 * The repository URL contract is shared with Gallery, downloads, and Reader-mode detection.
+	 * Only the Reader's page-load path may skip copying seekable On-device SAF images.
+	 */
+	private suspend fun getReaderPageUrl(page: MangaPage): String {
+		if (page.source == LocalMangaSource) {
+			val uri = page.url.toUri()
+			if (uri.scheme == ContentResolver.SCHEME_CONTENT &&
+				runInterruptible(Dispatchers.IO) {
+					SeekableLocalPage.canOpenDirectly(context.contentResolver, uri)
+				}
+			) {
+				return page.url
+			}
+		}
+		return getPageUrl(page)
+	}
+
 	suspend fun invalidate(clearCache: Boolean) {
 		synchronized(tasks) {
 			tasks.clear()
@@ -372,7 +391,7 @@ class PageLoader @Inject constructor(
 		isPrefetch: Boolean,
 		skipCache: Boolean,
 	): Uri = semaphore.withPermit {
-		val pageUrl = getPageUrl(page)
+		val pageUrl = getReaderPageUrl(page)
 		check(pageUrl.isNotBlank()) { "Cannot obtain full image url for $page" }
 		val uri = pageUrl.toUri()
 		if (!skipCache && !(page.source == LocalMangaSource && uri.scheme == ContentResolver.SCHEME_CONTENT)) {
