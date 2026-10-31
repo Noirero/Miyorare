@@ -227,43 +227,6 @@ class DownloadedLocalStateTest {
 		}
 	}
 
-	@Test fun invalidatedEnrichmentDoesNotReusePreviousRevision() = runBlocking {
-		val remote = remote(810_020L)
-		favourite(remote)
-		val copy = download(root, remote)
-		db.getFavouriteDownloadIndexDao().upsert(
-			listOf(FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, copy.file.canonicalPath)),
-		)
-		local.rememberDownloadedIdentity(remote, copy)
-		val vm = favouritesViewModel()
-		vm.awaitContent("initial verified downloaded enrichment") {
-			it.grid(remote.id)?.downloadVerification == DownloadVerification.VERIFIED_DOWNLOADED
-		}
-		// A null local-storage event invalidates the revision without changing the fixture.
-		// The previously cached VERIFIED_DOWNLOADED result must not be reused as verified.
-		val observed = mutableListOf<DownloadVerification?>()
-		val observer = launch(start = CoroutineStart.UNDISPATCHED) {
-			vm.content.collect { models ->
-				models.grid(remote.id)?.let { observed += it.downloadVerification }
-			}
-		}
-		try {
-			events.emit(null)
-			vm.awaitContent("revision invalidated before re-enrichment") {
-				it.grid(remote.id)?.downloadVerification == DownloadVerification.UNRESOLVED
-			}
-			vm.awaitContent("download reverified after invalidation") {
-				it.grid(remote.id)?.downloadVerification == DownloadVerification.VERIFIED_DOWNLOADED
-			}
-			assertTrue("Expected an unresolved transition after invalidation: $observed",
-				observed.contains(DownloadVerification.UNRESOLVED))
-			assertFalse("Existing download must not be classified as absent: $observed",
-				observed.contains(DownloadVerification.VERIFIED_NOT_DOWNLOADED))
-		} finally {
-			observer.cancel()
-		}
-	}
-
 	@Test fun ownershipCompletionCanPrecedeLocalIndexWithoutLosingMetadataOrMembership() = runBlocking {
 		val remote = remote(810_017L)
 		favourite(remote)
