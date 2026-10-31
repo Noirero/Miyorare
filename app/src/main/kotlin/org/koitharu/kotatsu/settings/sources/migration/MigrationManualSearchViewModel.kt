@@ -65,7 +65,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 
 	fun setQuery(value: String) {
 		if (state.value.searching || state.value.migrating || state.value.skipping) return
-		_state.update { it.copy(query = value, selected = null, errorMessage = null) }
+		_state.update { it.copy(query = value, selected = null, groups = emptyMap(), errorMessage = null) }
 	}
 
 	fun select(candidate: Manga) {
