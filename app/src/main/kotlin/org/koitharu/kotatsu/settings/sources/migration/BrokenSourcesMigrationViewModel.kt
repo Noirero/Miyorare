@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.settings.sources.migration
 
 import android.content.Context
 import androidx.compose.runtime.Immutable
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,6 +34,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class BrokenSourcesMigrationViewModel @Inject constructor(
+	private val savedStateHandle: SavedStateHandle,
 	private val database: MangaDatabase,
 	private val extensionManager: MihonExtensionManager,
 	private val extensionRepoRepository: ExternalExtensionRepoRepository,
@@ -42,10 +44,17 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 	@ApplicationContext private val context: Context,
 ) : ViewModel() {
 
-	private val _state = MutableStateFlow(BrokenSourcesMigrationState(isLoading = true))
+	private val _state = MutableStateFlow(BrokenSourcesMigrationState(
+		isLoading = true,
+		selectedMangaIds = savedStateHandle.get<LongArray>(SELECTED_IDS)?.toSet().orEmpty(),
+	))
 	val state: StateFlow<BrokenSourcesMigrationState> = _state.asStateFlow()
 
 	private var sourceJob: Job? = null
+
+	private fun persistSelectedIds() {
+		savedStateHandle[SELECTED_IDS] = _state.value.selectedMangaIds.toLongArray()
+	}
 
 	init {
 		observeSources()
@@ -59,6 +68,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 				current.selectedMangaIds, current.manga.mapTo(hashSetOf()) { it.id }, mangaId,
 			))
 		}
+		persistSelectedIds()
 	}
 
 	fun selectManga(ids: Collection<Long>) {
@@ -67,6 +77,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 				ids, current.manga.mapTo(hashSetOf()) { it.id },
 			))
 		}
+		persistSelectedIds()
 	}
 
 	private fun observeSources() {
@@ -103,6 +114,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 							isLoading = false, sources = sources, manga = emptyList(),
 							selectedMangaIds = emptySet(),
 						) }
+						persistSelectedIds()
 					} else {
 						database.getMangaDao().observeLibraryMangaBySources(keys).collect { entries ->
 							val manga = entries.toMangaList()
@@ -111,6 +123,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 								isLoading = false, loadFailed = false, sources = sources, manga = manga,
 								selectedMangaIds = current.selectedMangaIds.intersect(available),
 							) }
+							persistSelectedIds()
 						}
 					}
 				}
@@ -211,6 +224,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 
 	private companion object {
 		const val MIHON_PREFIX = "MIHON_"
+		const val SELECTED_IDS = "migration_selected_manga_ids"
 	}
 }
 
