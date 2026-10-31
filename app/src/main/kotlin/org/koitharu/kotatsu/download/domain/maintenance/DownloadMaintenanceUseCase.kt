@@ -302,8 +302,10 @@ class DownloadMaintenanceUseCase @Inject constructor(
 		}
 		for (space in plan) {
 			val previous = existing.firstOrNull { it.space == space.dbValue }
-			// A second physical copy must not displace another owned (possibly unmounted) download.
-			if (previous != null && File(previous.path).canonicalPath != path) continue
+			// A second valid copy must not displace an existing or unmounted owned copy.
+			// An absent copy in a readable configured root may be replaced by this verified copy.
+			if (previous != null && File(previous.path).canonicalPath != path &&
+				!DownloadMaintenanceAbsence.isConfirmedMissing(previous.path, emptySet(), roots.values.flatten())) continue
 			if (previous?.path != path) { dao.upsert(FavouriteDownloadIndexEntity(id, space.dbValue, path)); changed = true }
 		}
 		changed to plan.isNotEmpty()
