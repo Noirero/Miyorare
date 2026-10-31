@@ -308,7 +308,7 @@ private fun SourceMangaListScreen(
 				onRetrySources = onRetrySources,
 			)
 		}
-		if (state.manga.isEmpty() && !state.failed) item {
+		if (state.manga.isEmpty() && state.completedResults.isEmpty() && !state.failed) item {
 			Text(stringResource(R.string.migration_batch_empty), modifier = Modifier.padding(20.dp))
 		}
 		items(state.visibleManga, key = Manga::id) { manga ->
