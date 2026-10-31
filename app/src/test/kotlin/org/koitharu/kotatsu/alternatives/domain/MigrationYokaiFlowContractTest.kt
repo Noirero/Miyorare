@@ -76,7 +76,7 @@ class MigrationYokaiFlowContractTest {
 		assertTrue(manual.contains("if(selected.size==1)selectedelseselected.filterNot{it==seed.source}"))
 		assertTrue(manual.contains("validSourceNames"))
 		assertTrue(manual.contains("takeIf{it.source.nameinvalidSourceNames}"))
-		assertTrue(manual.contains("copy(query=value,selected=null,errorMessage=null)"))
+		assertTrue(manual.contains("copy(query=value,selected=null,groups=emptyMap(),errorMessage=null)"))
 	}
 
 	@Test
