@@ -28,11 +28,8 @@ import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.util.MimeTypes
 import org.koitharu.kotatsu.core.util.ext.fetch
 import org.koitharu.kotatsu.core.util.ext.isNetworkUri
-import org.koitharu.kotatsu.core.util.ext.isZipUri
 import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.local.data.LocalStorageCache
-import org.koitharu.kotatsu.local.data.LocalReaderPageCache
-import org.koitharu.kotatsu.local.data.LocalReaderPageCachePolicy
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
 import org.koitharu.kotatsu.local.library.SmartLocalArchivePageUri
@@ -46,7 +43,6 @@ import javax.inject.Inject
 class MangaPageFetcher(
 	private val okHttpClient: OkHttpClient,
 	private val pagesCache: LocalStorageCache,
-	private val localPageCache: LocalStorageCache,
 	private val options: Options,
 	private val page: MangaPage,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
@@ -65,13 +61,8 @@ class MangaPageFetcher(
 		}
 		val pageUrl = repo.getPageUrl(page)
 		val imageHeaders = repo.getImageRequestHeaders(pageUrl, page)
-		val pageUri = pageUrl.toUri()
-		val selectedCache = if (LocalReaderPageCachePolicy.usesSmallCache(page, pageUri)) localPageCache else pagesCache
-		if (options.diskCachePolicy.readEnabled &&
-            !(page.source == LocalMangaSource && pageUri.scheme == "content")) {
-			val cached = selectedCache[pageUrl]
-				?: if (selectedCache === localPageCache && pageUri.isZipUri()) pagesCache[pageUrl] else null
-			cached?.let { file ->
+		if (options.diskCachePolicy.readEnabled) {
+			pagesCache[pageUrl]?.let { file ->
 				return SourceFetchResult(
 					source = ImageSource(file.toOkioPath(), options.fileSystem),
 					mimeType = MimeTypes.getMimeTypeFromExtension(file.name)?.toString(),
@@ -79,8 +70,9 @@ class MangaPageFetcher(
 				)
 			}
 		}
+        val pageUri = pageUrl.toUri()
         if (page.source == LocalMangaSource && pageUri.scheme == SmartLocalArchivePageUri.SCHEME) {
-            val file = SmartLocalArchivePageMaterializer.materialize(options.context, pageUri, pageUrl, selectedCache)
+            val file = SmartLocalArchivePageMaterializer.materialize(options.context, pageUri, pageUrl, pagesCache)
             return SourceFetchResult(
                 source = ImageSource(file.toOkioPath(), options.fileSystem),
                 mimeType = MimeTypes.getMimeTypeFromExtension(file.name)?.toString(),
@@ -162,7 +154,6 @@ class MangaPageFetcher(
 	class Factory @Inject constructor(
 		@MangaHttpClient private val okHttpClient: OkHttpClient,
 		@PageCache private val pagesCache: LocalStorageCache,
-		@LocalReaderPageCache private val localPageCache: LocalStorageCache,
 		private val mangaRepositoryFactory: MangaRepository.Factory,
 		private val imageProxyInterceptor: ImageProxyInterceptor,
 	) : Fetcher.Factory<MangaPage> {
@@ -170,7 +161,6 @@ class MangaPageFetcher(
 		override fun create(data: MangaPage, options: Options, imageLoader: ImageLoader) = MangaPageFetcher(
 			okHttpClient = okHttpClient,
 			pagesCache = pagesCache,
-			localPageCache = localPageCache,
 			options = options,
 			page = data,
 			mangaRepositoryFactory = mangaRepositoryFactory,

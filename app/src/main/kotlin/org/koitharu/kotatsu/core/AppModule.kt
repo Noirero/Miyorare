@@ -59,7 +59,6 @@ import org.koitharu.kotatsu.details.ui.pager.pages.MangaPageKeyer
 import org.koitharu.kotatsu.local.data.CacheDir
 import org.koitharu.kotatsu.local.data.FaviconCache
 import org.koitharu.kotatsu.local.data.LocalStorageCache
-import org.koitharu.kotatsu.local.data.LocalReaderPageCache
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -240,25 +239,6 @@ interface AppModule {
 			dir = CacheDir.PAGES,
 			defaultSize = FileSize.MEGABYTES.convert(200, FileSize.BYTES),
 			minSize = FileSize.MEGABYTES.convert(20, FileSize.BYTES),
-		)
-
-		/**
-		 * Dedicated disposable cache for extracted local pages. Remote/download HTTP pages retain
-		 * the existing 200 MiB @PageCache; local Reader keeps recent pages for quick backtracking
-		 * without letting archived image duplicates accumulate to the global cache's limit.
-		 */
-		@Provides
-		@Singleton
-		@LocalReaderPageCache
-		fun provideLocalReaderPageCache(
-			@ApplicationContext context: Context,
-		) = LocalStorageCache(
-			context = context,
-			dir = CacheDir.LOCAL_READER_PAGES,
-			defaultSize = FileSize.MEGABYTES.convert(48, FileSize.BYTES),
-			// A supported SAF archive page can be up to 32 MiB. Never evict a single active
-			// extracted page immediately on storage-constrained devices.
-			minSize = FileSize.MEGABYTES.convert(36, FileSize.BYTES),
 		)
 
 		@Provides

@@ -13,19 +13,13 @@ internal object SmartLocalArchivePageUri {
     private const val HOST = "page"
     private const val DOCUMENT = "document"
     private const val VERSION = "version"
-    private const val SOURCE_SIZE = "sourceSize"
 
-    fun create(documentUri: String, entry: String, version: String, sourceSize: Long = -1L): String =
+    fun create(documentUri: String, entry: String, version: String): String =
         Uri.Builder().scheme(SCHEME).authority(HOST)
             .appendQueryParameter(DOCUMENT, documentUri)
             .appendQueryParameter(VERSION, version)
-            .apply { if (sourceSize > 0L) appendQueryParameter(SOURCE_SIZE, sourceSize.toString()) }
             .fragment(entry)
             .build().toString()
-
-    /** Size is only a cache-budget hint; an absent/untrusted size uses the established cache. */
-    fun sourceSize(uri: Uri): Long? =
-        uri.getQueryParameter(SOURCE_SIZE)?.toLongOrNull()?.takeIf { it > 0L }
 
     fun version(uri: Uri): String {
         require(uri.scheme == SCHEME && uri.authority == HOST) { "Invalid local archive page" }
