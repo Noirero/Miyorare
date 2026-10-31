@@ -97,6 +97,7 @@ class DownloadMaintenanceUseCase @Inject constructor(
 				}
 				val duplicateIds = expected.flatMap { (path, mangas) -> mangas.map { it.id to path } }
 					.groupBy({ it.first }, { it.second }).filterValues { it.distinct().size > 1 }.keys
+				val emptyContainers = HashSet<String>()
 				for ((position, file) in files.withIndex()) {
 					currentCoroutineContext().ensureActive()
 					phase(DownloadMaintenancePhase.VERIFYING)
@@ -117,10 +118,15 @@ class DownloadMaintenanceUseCase @Inject constructor(
 						error.printStackTraceDebug()
 						DownloadMaintenanceItem(path, DownloadMaintenanceStatus.FAILED, DownloadMaintenanceReason.IO_ERROR)
 					}
+					if (result.reason == DownloadMaintenanceReason.UNSUPPORTED_ARTIFACT &&
+						result.status == DownloadMaintenanceStatus.UNRESOLVED) emptyContainers += path
 					items += result.copy(isPrivate = isPrivate)
 					mutableState.value = mutableState.value.copy(scanned = position + 1)
 				}
 				phase(DownloadMaintenancePhase.FINALIZING)
+				if (scanComplete && emptyContainers.isNotEmpty()) {
+					reconcileMissingDownloads(files, rootsBySpace, emptyContainers)
+				}
 				// A completed scan must invalidate cards even when no verified artifact changed.
 				// The event is also used by the existing Favorites index-backed refresh pipeline.
 				changes.emit(null)
@@ -141,6 +147,7 @@ class DownloadMaintenanceUseCase @Inject constructor(
 	private suspend fun reconcileMissingDownloads(
 		files: List<File>,
 		rootsBySpace: Map<FavouriteSpace, List<File>>,
+		emptyContainers: Set<String> = emptySet(),
 	) {
 		val scannedPaths = files.mapTo(HashSet()) { it.canonicalPath }
 		val ownershipDao = database.getFavouriteDownloadIndexDao()
@@ -151,7 +158,7 @@ class DownloadMaintenanceUseCase @Inject constructor(
 		val roots = rootsBySpace.values.flatten().distinctBy { it.canonicalPath }
 
 		val staleOwnership = FavouriteSpace.entries.flatMap { ownershipDao.findEntries(it.dbValue) }
-			.filter { it.mangaId in favouriteIds && DownloadMaintenanceAbsence.isConfirmedMissing(it.path, scannedPaths, roots) }
+			.filter { it.mangaId in favouriteIds && DownloadMaintenanceAbsence.isConfirmedMissing(it.path, scannedPaths, roots, emptyContainers) }
 		val staleLocal = localDao.findEntries(favouriteIds)
 			.filter { DownloadMaintenanceAbsence.isConfirmedMissing(it.path, scannedPaths, roots) }
 		if (staleOwnership.isEmpty() && staleLocal.isEmpty()) return
@@ -318,9 +325,9 @@ private fun File.inside(root: File): Boolean = canonicalPath == root.canonicalPa
 
 /** Pure absence policy: a missing file is not evidence when its destination is unavailable. */
 internal object DownloadMaintenanceAbsence {
-	fun isConfirmedMissing(path: String, scannedPaths: Set<String>, roots: List<File>): Boolean {
+	fun isConfirmedMissing(path: String, scannedPaths: Set<String>, roots: List<File>, emptyContainers: Set<String> = emptySet()): Boolean {
 		val file = File(path)
-		if (file.canonicalPath in scannedPaths || file.exists()) return false
+		if (file.canonicalPath !in emptyContainers && (file.canonicalPath in scannedPaths || file.exists())) return false
 		val matching = roots.filter { root -> file.inside(root) }
 		return matching.isNotEmpty() && matching.all { it.isDirectory && it.canRead() }
 	}
