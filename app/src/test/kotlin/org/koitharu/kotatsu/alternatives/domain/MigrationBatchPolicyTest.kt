@@ -5,6 +5,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.alternatives.work.MigrationBatchWork
 import org.koitharu.kotatsu.parsers.model.Manga
 
 class MigrationBatchPolicyTest {
@@ -151,4 +152,23 @@ class MigrationBatchPolicyTest {
 			fail("Cancellation must propagate to WorkManager")
 		} catch (_: CancellationException) { }
 	}
+
+    @Test fun errorPhaseSurvivesDurableWorkOutputAndDoesNotPersistRawThrowable() = runTest {
+        val selection = MigrationSelection.of(replacement)
+        val request = MigrationBatchRequest(1L, "OLD", MigrationBatchAction.MIGRATE, selection)
+        val result = MigrationBatchPolicy.process(
+            request, { true }, { error("No discovery") },
+            { throw MigrationExecutionStageException(
+                MigrationFailureStage.DATA_CONFLICT,
+                IllegalStateException("secret private title and source URL"),
+            ) },
+        )
+        assertEquals(MigrationBatchStatus.ERROR, result.status)
+        assertEquals(MigrationFailureStage.DATA_CONFLICT, result.failureStage)
+        val durable = MigrationBatchWork.output(result)
+        assertEquals("ERROR", durable.getString("result_status"))
+        assertEquals("DATA_CONFLICT", durable.getString("result_failure_stage"))
+        assertFalse(durable.toString().contains("secret private title"))
+        assertNull(durable.getString("result_fingerprint"))
+    }
 }
