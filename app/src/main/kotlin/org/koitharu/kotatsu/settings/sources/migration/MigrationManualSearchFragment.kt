@@ -74,8 +74,8 @@ class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga
 						contentColor = MaterialTheme.colorScheme.onSurface,
 					) {
 						val state by viewModel.state.collectAsState()
-						LaunchedEffect(state.skipped) {
-							if (state.skipped) requireActivity().onBackPressedDispatcher.onBackPressed()
+						LaunchedEffect(state.skipped, state.selectedReady) {
+							if (state.skipped || state.selectedReady) requireActivity().onBackPressedDispatcher.onBackPressed()
 						}
 						MigrationManualSearchScreen(
 							state = state,
@@ -84,6 +84,7 @@ class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga
 							onSearch = viewModel::search,
 							onSelect = viewModel::select,
 							onClearSelection = viewModel::clearSelection,
+							onUseSelected = viewModel::useSelected,
 							onMigrate = viewModel::migrateSelected,
 							onCopy = viewModel::copySelected,
 							onSkip = viewModel::skip,
@@ -141,6 +142,7 @@ private fun MigrationManualSearchScreen(
 	onSearch: () -> Unit,
 	onSelect: (Manga) -> Unit,
 	onClearSelection: () -> Unit,
+	onUseSelected: () -> Unit,
 	onMigrate: () -> Unit,
 	onCopy: () -> Unit,
 	onSkip: () -> Unit,
@@ -274,15 +276,9 @@ private fun MigrationManualSearchScreen(
 						maxLines = 1, overflow = TextOverflow.Ellipsis)
 					Text(selected.source.getTitle(context).toString(),
 						style = MaterialTheme.typography.bodySmall)
-					Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-						Button(onClick = { pendingAction = MigrationExecutionMode.MIGRATE },
-							enabled = !busy, modifier = Modifier.weight(1f).testTag("migration-manual-migrate")) {
-							Text("Migrasikan")
-						}
-						OutlinedButton(onClick = { pendingAction = MigrationExecutionMode.COPY },
-							enabled = !busy, modifier = Modifier.weight(1f).testTag("migration-manual-copy")) {
-							Text("Salin")
-						}
+					Button(onClick = onUseSelected, enabled = !busy,
+						modifier = Modifier.fillMaxWidth().testTag("migration-manual-use")) {
+						Text("Gunakan kandidat")
 					}
 					TextButton(onClick = onClearSelection, enabled = !busy) { Text("Ganti kandidat") }
 				} else {
@@ -295,39 +291,6 @@ private fun MigrationManualSearchScreen(
 				}
 			}
 		}
-	}
-	if (pendingAction != null && selected != null && state.seed != null) {
-		val action = pendingAction
-		AlertDialog(
-			onDismissRequest = { pendingAction = null },
-			title = { Text(if (action == MigrationExecutionMode.COPY) "Konfirmasi salin"
-				else "Konfirmasi migrasi") },
-			text = {
-				Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-					Text("Asal", style = MaterialTheme.typography.labelMedium)
-					Text(state.seed.title)
-					Text(state.seed.source.getTitle(context).toString(),
-						style = MaterialTheme.typography.bodySmall)
-					HorizontalDivider()
-					Text("Pengganti", style = MaterialTheme.typography.labelMedium)
-					Text(selected.title)
-					Text(selected.source.getTitle(context).toString(),
-						style = MaterialTheme.typography.bodySmall)
-					Text(if (action == MigrationExecutionMode.COPY)
-						"Salin mempertahankan manga asal."
-						else "Migrasi mengganti source dan menjaga data yang kompatibel. File unduhan tidak dihapus.",
-						style = MaterialTheme.typography.bodySmall)
-				}
-			},
-			confirmButton = {
-				TextButton(enabled = !busy, modifier = Modifier.testTag("migration-manual-confirm"),
-					onClick = {
-						pendingAction = null
-						if (action == MigrationExecutionMode.COPY) onCopy() else onMigrate()
-					}) { Text(if (action == MigrationExecutionMode.COPY) "Salin" else "Migrasikan") }
-			},
-			dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("Batal") } },
-		)
 	}
 }
 
