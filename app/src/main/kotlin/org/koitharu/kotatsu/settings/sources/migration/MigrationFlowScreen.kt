@@ -419,8 +419,10 @@ private fun MigrationSearchSetup(
 		}
 		Surface(tonalElevation = 3.dp) {
 			Column(Modifier.fillMaxWidth().padding(12.dp)) {
-				if (state.batchBusy) OutlinedButton(onClick = onViewProgress,
-					modifier = Modifier.fillMaxWidth()) { Text("Lihat pencarian") }
+				if (state.batchBusy || state.completedResults.isNotEmpty()) OutlinedButton(onClick = onViewProgress,
+					modifier = Modifier.fillMaxWidth()) {
+					Text(if (state.batchBusy) "Lihat pencarian" else "Lihat hasil")
+				}
 				Button(onClick = onSearch,
 					enabled = enabled && state.manga.isNotEmpty() &&
 						state.selectedSourceNames.any { it in eligibleNames } &&

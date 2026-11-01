@@ -407,13 +407,13 @@ class MigrationFlowScreenTest {
 			coverUrl = "https://fixture.invalid/history.jpg")
 		val original = checkNotNull(base.batchItems[1L])
 		val state = base.copy(
-			manga = listOf(manga(99L)),
+			manga = emptyList(),
 			targetManga = mapOf(1L to target),
 			batchItems = mapOf(1L to original.copy(outcome = original.outcome.copy(
 				destinationId = target.id, destinationSource = target.source.name))))
 		val opened = mutableListOf<Manga>()
 		show(state, onOpenTarget = { opened += it })
-		compose.onNodeWithTag("migration-batch-search").performClick()
+		compose.onNodeWithText("Lihat hasil").performClick()
 		compose.onNodeWithTag("migration-completed-title-1").performClick()
 		compose.onNodeWithTag("migration-completed-cover-1").performClick()
 		assertEquals(listOf(target, target), opened)
