@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.favourites.ui.container
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -67,6 +68,8 @@ import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListWorkOwner
+import org.koitharu.kotatsu.main.ui.MainActivity
+import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import javax.inject.Inject
 import kotlin.math.roundToInt
@@ -162,6 +165,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		}
 
 		setupPrivateHub(binding)
+		binding.textFavouritesTitle.setOnClickListener { switchFavouritesSpace() }
 		binding.stubEmpty.setOnInflateListener(this)
 		binding.toggleContentType.addOnButtonCheckedListener { _, checkedId, isChecked ->
 			if (!isChecked) return@addOnButtonCheckedListener
@@ -212,6 +216,24 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 		if (shouldRestoreInlineSearch && !isHidden) {
 			enterInlineSearch()
+		}
+	}
+
+	private fun switchFavouritesSpace() {
+		if (viewModel.favouriteSpace == FavouriteSpace.PRIVATE) {
+			// Return to the Normal library even if Private was opened from a different main tab.
+			startActivity(
+				Intent(requireContext(), MainActivity::class.java)
+					.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+					.putExtra(MainActivity.EXTRA_OPEN_NORMAL_FAVOURITES, true),
+			)
+			requireActivity().finish()
+		} else {
+			// Reuse the authenticated entry point behind the existing Favourites long-press.
+			startActivity(
+				Intent(requireContext(), ProtectActivity::class.java)
+					.putExtra(ProtectActivity.EXTRA_PRIVATE_FAVOURITES, true),
+			)
 		}
 	}
 
