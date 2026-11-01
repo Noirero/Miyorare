@@ -14,6 +14,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.platform.LocalContext
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
@@ -65,7 +67,7 @@ class MigrationLandingScreenTest {
 				MaterialTheme {
 					BrokenSourcesMigrationScreen(
 						state = state(), imageLoader = loader,
-						onRetry = {}, onOpenManga = { opened = it.toList() },
+						onRetry = {}, onOpenManga = { ids, _ -> opened = ids.toList() },
 					)
 				}
 			}
@@ -84,7 +86,7 @@ class MigrationLandingScreenTest {
 				MaterialTheme {
 					BrokenSourcesMigrationScreen(
 						state = state(), imageLoader = loader,
-						onRetry = {}, onOpenManga = { opened = it.toList() },
+						onRetry = {}, onOpenManga = { ids, _ -> opened = ids.toList() },
 					)
 				}
 			}
@@ -96,6 +98,49 @@ class MigrationLandingScreenTest {
 		compose.onNodeWithText("Story 2").assertDoesNotExist()
 		compose.onNodeWithText("Migrasikan semua (1)").performClick()
 		assertEquals(listOf(2L), opened)
+	}
+
+	@Test
+	fun longPressTitleSelectsAndRoutesOnlySelectedMangaToBatch() {
+		var opened = emptyList<Long>()
+		var action: org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction? = null
+		compose.setContent {
+			CompositionLocalProvider(LocalContext provides themedContext) {
+				MaterialTheme {
+					BrokenSourcesMigrationScreen(
+						state = state(), imageLoader = loader, onRetry = {},
+						onOpenManga = { ids, preferred -> opened = ids.toList(); action = preferred },
+					)
+				}
+			}
+		}
+		compose.onNodeWithText("E-Hentai (EN)").performClick()
+		compose.onNodeWithText("Story 1").performTouchInput { longClick() }
+		compose.onNodeWithText("1 terpilih").assertExists()
+		compose.onNodeWithText("Salin (1)").performClick()
+		assertEquals(listOf(1L), opened)
+		assertEquals(org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction.COPY, action)
+	}
+
+	@Test
+	fun coverOpensDetailsWithoutStartingMigration() {
+		var openedDetails = 0L
+		var migrated = 0
+		compose.setContent {
+			CompositionLocalProvider(LocalContext provides themedContext) {
+				MaterialTheme {
+					BrokenSourcesMigrationScreen(
+						state = state(), imageLoader = loader, onRetry = {},
+						onOpenManga = { _, _ -> migrated++ },
+						onOpenDetails = { openedDetails = it.id },
+					)
+				}
+			}
+		}
+		compose.onNodeWithText("E-Hentai (EN)").performClick()
+		compose.onNodeWithTag("migration-landing-cover-1").performClick()
+		assertEquals(1L, openedDetails)
+		assertEquals(0, migrated)
 	}
 
 }
