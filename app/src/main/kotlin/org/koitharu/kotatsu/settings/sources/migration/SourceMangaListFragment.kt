@@ -70,6 +70,8 @@ import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
+import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -146,6 +148,7 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 							}
 						},
 						onMangaLongClick = { viewModel.toggleSelection(it.id) },
+						onOpenTarget = { manga -> router.openDetails(manga) },
 					)
 				}
 			}
@@ -246,14 +249,16 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 		const val ARG_SOURCE_KEYS = "source_keys"
 		const val ARG_SOURCE_TITLE = "source_title"
 		const val ARG_MANGA_IDS = "manga_ids"
+		const val ARG_PREFERRED_ACTION = "migration_preferred_action"
 
 		fun args(sourceKeys: Collection<String>, sourceTitle: String) = Bundle(2).apply {
 			putStringArray(ARG_SOURCE_KEYS, sourceKeys.toTypedArray())
 			putString(ARG_SOURCE_TITLE, sourceTitle)
 		}
 
-		fun argsForMangaIds(mangaIds: Collection<Long>, title: String) = Bundle(2).apply {
+		fun argsForMangaIds(mangaIds: Collection<Long>, title: String, preferredAction: MigrationBatchAction? = null) = Bundle(3).apply {
 			putLongArray(ARG_MANGA_IDS, mangaIds.toLongArray())
+			putString(ARG_PREFERRED_ACTION, preferredAction?.name)
 			putString(ARG_SOURCE_TITLE, title)
 		}
 	}
