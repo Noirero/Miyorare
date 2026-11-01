@@ -66,6 +66,7 @@ internal fun MigrationFlowScreen(
 ) {
 	var step by rememberSaveable { mutableIntStateOf(0) }
 	var pendingAction by remember { mutableStateOf<MigrationBatchAction?>(null) }
+	var pendingCancellation by remember { mutableStateOf(false) }
 	val busy = state.batchBusy || state.scheduling
 	BackHandler(enabled = step > 0 && !busy) { step = 0 }
 
@@ -106,7 +107,7 @@ internal fun MigrationFlowScreen(
 			onRetry = { step = 0 },
 			onContinue = { pendingAction = MigrationBatchAction.MIGRATE },
 			onCopy = { pendingAction = MigrationBatchAction.COPY },
-			onCancel = onCancel,
+			onCancel = { pendingCancellation = true },
 			onMigrateOne = onMigrateOne,
 			onCopyOne = onCopyOne,
 			onSkipOne = onSkipOne,
@@ -122,28 +123,10 @@ internal fun MigrationFlowScreen(
 		AlertDialog(
 			onDismissRequest = { pendingAction = null },
 			title = { Text(if (action == MigrationBatchAction.COPY) "Konfirmasi salin" else "Konfirmasi migrasi") },
-			text = {
-				Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-					Text(ready.size.toString() + " manga siap", fontWeight = FontWeight.SemiBold)
-					Text(
-						if (action == MigrationBatchAction.COPY)
-							"Salin membuat entri pengganti tanpa menghapus manga asal."
-						else
-							"Migrasi mengganti source manga terpilih. Data pembaca dipertahankan; file unduhan tidak dipindahkan atau dihapus.",
-						style = MaterialTheme.typography.bodySmall,
-					)
-					ready.take(6).forEach { manga ->
-						val destination = state.batchItems[manga.id]?.outcome
-						Text(manga.title + "\n" + manga.source.getTitle(LocalContext.current) +
-							" → " + (destination?.destinationTitle ?: "Belum diketahui") +
-							" · " + (destination?.destinationSource ?: ""),
-							style = MaterialTheme.typography.bodySmall,
-						)
-					}
-					if (ready.size > 6) Text("Dan " + (ready.size - 6) + " manga lainnya",
-						style = MaterialTheme.typography.bodySmall)
-				}
-			},
+			text = { Text(
+				(if (action == MigrationBatchAction.COPY) "Salin " else "Migrasikan ") +
+				ready.size + " manga yang ditemukan?"
+			) },
 			confirmButton = {
 				TextButton(
 					enabled = ready.isNotEmpty() && !busy,
@@ -158,6 +141,16 @@ internal fun MigrationFlowScreen(
 			dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("Batal") } },
 		)
 	}
+	if (pendingCancellation) AlertDialog(
+		onDismissRequest = { pendingCancellation = false },
+		title = { Text("Hentikan pencarian?") },
+		text = { Text("Pekerjaan yang belum selesai akan dibatalkan.") },
+		confirmButton = { TextButton(onClick = {
+			pendingCancellation = false
+			onCancel()
+		}) { Text("Hentikan") } },
+		dismissButton = { TextButton(onClick = { pendingCancellation = false }) { Text("Batal") } },
+	)
 }
 
 @Composable
