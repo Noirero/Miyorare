@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.settings.sources.migration
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -81,12 +82,13 @@ class MigrationFlowScreenTest {
 		onOpenTarget: (Manga) -> Unit = {},
 		onMigrateOne: (Long) -> Unit = {},
 		onCopyOne: (Long) -> Unit = {},
-		onCancel: () -> Unit = {},
+		onCancel: (String) -> Unit = {},
+		stateProvider: () -> SourceMangaListState = { state },
 	) {
 		compose.setContent {
 			MaterialTheme {
 				MigrationFlowScreen(
-					state = state, imageLoader = loader,
+					state = stateProvider(), imageLoader = loader,
 					onRetry = {}, onSearch = {},
 					onMigrateReady = onMigrate, onCopyReady = onCopy,
 					onCancel = onCancel, onFilter = {},
@@ -308,7 +310,7 @@ class MigrationFlowScreenTest {
 
     @Test
     fun foreignBatchCanBeCancelledFromSourceSetupWithConfirmation() {
-        var cancellations = 0
+        val cancelled = mutableListOf<String>()
         val state = screenState(MigrationBatchStatus.UNCHECKED).copy(
             batchBusy = true,
             ownedBatchName = null,
@@ -316,12 +318,12 @@ class MigrationFlowScreenTest {
             batchCompleted = 0,
             batchTotal = 0,
         )
-        show(state, onCancel = { cancellations++ })
+        show(state, onCancel = { cancelled += it })
         compose.onNodeWithText("Batch migrasi lain sedang berjalan").assertExists()
         compose.onNodeWithText("Batalkan").performClick()
-        assertEquals(0, cancellations)
+        assertEquals(emptyList<String>(), cancelled)
         compose.onNodeWithText("Hentikan").performClick()
-        assertEquals(1, cancellations)
+        assertEquals(listOf("migration_batch:foreign-session"), cancelled)
     }
 
     @Test
@@ -340,6 +342,26 @@ class MigrationFlowScreenTest {
         compose.onNodeWithText("Batalkan").performClick()
         compose.onNodeWithText("Hentikan").performClick()
         assertEquals(1, cancellations)
+    }
+
+    @Test
+    fun changedActiveBatchCannotBeCancelledUsingPreviousConfirmation() {
+        val first = "migration_batch:original"
+        val replacement = "migration_batch:replacement"
+        val liveState = mutableStateOf(screenState(MigrationBatchStatus.UNCHECKED).copy(
+            batchBusy = true,
+            ownedBatchName = null,
+            activeBatchName = first,
+        ))
+        val cancelled = mutableListOf<String>()
+        show(liveState.value, onCancel = { cancelled += it }, stateProvider = { liveState.value })
+        compose.onNodeWithText("Batalkan").performClick()
+        compose.runOnUiThread {
+            liveState.value = liveState.value.copy(activeBatchName = replacement)
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Hentikan").performClick()
+        assertEquals(emptyList<String>(), cancelled)
     }
 
     @Test

@@ -221,10 +221,11 @@ class SourceMangaListViewModel @Inject constructor(
 		}
 	}
 
-	fun cancelBatch() {
-		val batch = state.value.activeBatchName ?: return
+	fun cancelBatch(confirmedBatch: String) {
+		// Reject a stale UI confirmation instead of cancelling a replacement session.
+		if (state.value.activeBatchName != confirmedBatch) return
 		viewModelScope.launch {
-			runCatchingCancellable { batchScheduler.cancel(batch) }
+			runCatchingCancellable { batchScheduler.cancel(confirmedBatch) }
 				.onFailure { _state.update { it.copy(failed = true) } }
 		}
 	}

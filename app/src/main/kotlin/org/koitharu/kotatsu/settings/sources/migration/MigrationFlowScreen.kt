@@ -58,7 +58,7 @@ internal fun MigrationFlowScreen(
 	onSearch: () -> Unit,
 	onMigrateReady: () -> Unit,
 	onCopyReady: () -> Unit,
-	onCancel: () -> Unit,
+	onCancel: (String) -> Unit,
 	onFilter: (MigrationBatchStatus?) -> Unit,
 	onToggleSource: (String) -> Unit,
 	onSelectAllSources: () -> Unit,
@@ -77,7 +77,8 @@ internal fun MigrationFlowScreen(
 ) {
 	var step by rememberSaveable { mutableIntStateOf(0) }
 	var pendingAction by remember { mutableStateOf<MigrationBatchAction?>(null) }
-	var pendingCancellation by remember { mutableStateOf(false) }
+	// Capture the exact batch the user agreed to stop, not whatever is active later.
+	var pendingCancellationBatch by remember { mutableStateOf<String?>(null) }
 	val busy = state.batchBusy || state.scheduling
 	BackHandler(enabled = step > 0 && !busy) { step = 0 }
 
@@ -110,7 +111,7 @@ internal fun MigrationFlowScreen(
 			onRetrySources = onRetrySources,
 			onSearch = { onSearch(); step = 1 },
 			onViewProgress = { step = 1 },
-			onCancelActive = { pendingCancellation = true },
+			onCancelActive = { pendingCancellationBatch = state.activeBatchName },
 		)
 		else -> MigrationReviewStep(
 			state = state,
@@ -120,7 +121,7 @@ internal fun MigrationFlowScreen(
 			onRetry = { step = 0 },
 			onContinue = { pendingAction = MigrationBatchAction.MIGRATE },
 			onCopy = { pendingAction = MigrationBatchAction.COPY },
-			onCancel = { pendingCancellation = true },
+			onCancel = { pendingCancellationBatch = state.activeBatchName },
 			onMigrateOne = onMigrateOne,
 			onCopyOne = onCopyOne,
 			onSkipOne = onSkipOne,
@@ -154,18 +155,21 @@ internal fun MigrationFlowScreen(
 			dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("Batal") } },
 		)
 	}
-	if (pendingCancellation) AlertDialog(
-		onDismissRequest = { pendingCancellation = false },
-		title = { Text("Hentikan pencarian?") },
-		text = { Text(if (state.ownedBatchName == null)
-			"Batch migrasi lain masih berjalan. Hentikan batch aktif tersebut? Periksa hasil migrasi sebelum mencoba ulang."
-			else "Pekerjaan yang belum selesai akan dibatalkan. Periksa hasil migrasi sebelum mencoba ulang.") },
-		confirmButton = { TextButton(onClick = {
-			pendingCancellation = false
-			onCancel()
-		}) { Text("Hentikan") } },
-		dismissButton = { TextButton(onClick = { pendingCancellation = false }) { Text("Batal") } },
-	)
+	pendingCancellationBatch?.let { confirmedBatch ->
+		AlertDialog(
+			onDismissRequest = { pendingCancellationBatch = null },
+			title = { Text("Hentikan pencarian?") },
+			text = { Text(if (state.ownedBatchName != confirmedBatch)
+				"Batch migrasi lain masih berjalan. Hentikan batch aktif tersebut? Periksa hasil migrasi sebelum mencoba ulang."
+				else "Pekerjaan yang belum selesai akan dibatalkan. Periksa hasil migrasi sebelum mencoba ulang.") },
+			confirmButton = { TextButton(onClick = {
+				pendingCancellationBatch = null
+				// The active session may have changed while confirmation was open.
+				if (state.activeBatchName == confirmedBatch) onCancel(confirmedBatch)
+			}) { Text("Hentikan") } },
+			dismissButton = { TextButton(onClick = { pendingCancellationBatch = null }) { Text("Batal") } },
+		)
+	}
 }
 
 /**
