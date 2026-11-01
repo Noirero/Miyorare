@@ -355,8 +355,9 @@ private fun MigrationSearchSetup(
 				if (state.batchBusy) OutlinedButton(onClick = onViewProgress,
 					modifier = Modifier.fillMaxWidth()) { Text("Lihat pencarian") }
 				Button(onClick = onSearch,
-					enabled = enabled && state.manga.isNotEmpty() && state.selectedSourceNames.isNotEmpty()
-						&& !state.sourceSelectionLoading && !state.sourceSelectionFailed,
+					enabled = enabled && state.manga.isNotEmpty() &&
+						state.selectedSourceNames.any { it in eligibleNames } &&
+						!state.sourceSelectionLoading && !state.sourceSelectionFailed,
 					modifier = Modifier.fillMaxWidth().height(52.dp).testTag("migration-batch-search")) {
 					Text("Mulai mencari (" + state.manga.size + ")")
 				}
