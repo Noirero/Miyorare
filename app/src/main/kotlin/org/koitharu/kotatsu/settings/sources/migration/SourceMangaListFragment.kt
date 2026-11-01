@@ -157,18 +157,7 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
-		val appBar = (requireActivity() as AppBarOwner).appBar
-		val listener = AppBarLayout.OnOffsetChangedListener { bar, offset -> view.updatePadding(bottom = bar.totalScrollRange + offset) }
-		appBar.addOnOffsetChangedListener(listener)
-		view.doOnDetach { appBar.removeOnOffsetChangedListener(listener) }
-		viewLifecycleOwner.lifecycleScope.launch {
-			viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-				viewModel.state
-					.map { it.selectedIds }
-					.distinctUntilChanged()
-					.collect(::syncActionMode)
-			}
-		}
+		bindMigrationContentInsets(view, (requireActivity() as AppBarOwner).appBar)
 	}
 
 	override fun onResume() {
