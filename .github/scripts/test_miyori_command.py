@@ -14,6 +14,7 @@ class MiyoriCommandTests(unittest.TestCase):
             "/miyori labels": "labels",
             "/miyori readiness": "readiness",
             "/miyori head": "head",
+            "/miyori tests": "tests",
             "/miyori require-runtime": "require-runtime",
         }
         for text, parsed in expected.items():
