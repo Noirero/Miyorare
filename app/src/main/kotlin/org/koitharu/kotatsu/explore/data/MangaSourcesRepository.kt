@@ -86,11 +86,11 @@ class MangaSourcesRepository @Inject constructor(
 		mihonExtensionManager?.ensureReady()
 		lnPluginManager?.initialize()
 		tsukiPluginManager?.initialize()
-		return (
-			mihonExtensionManager?.getMihonMangaSources().orEmpty() +
-				lnPluginManager?.getAll().orEmpty() +
-				tsukiPluginManager?.getAvailableSources().orEmpty()
-			).distinctBy(MangaSource::name)
+		return buildList<MangaSource> {
+			addAll(mihonExtensionManager?.getMihonMangaSources().orEmpty())
+			addAll(lnPluginManager?.getAll().orEmpty())
+			addAll(tsukiPluginManager?.getAvailableSources().orEmpty())
+		}.distinctBy(MangaSource::name)
 	}
 
 
