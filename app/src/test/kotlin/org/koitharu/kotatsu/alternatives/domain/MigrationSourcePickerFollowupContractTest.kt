@@ -39,8 +39,11 @@ class MigrationSourcePickerFollowupContractTest {
 	fun `source first entry supports single and whole source actions`() {
 		val source = source("org/koitharu/kotatsu/settings/sources/migration/BrokenSourcesMigrationFragment.kt")
 		assertTrue(source.contains("Text(\"Pilihsource\""))
-		assertTrue(source.contains("onOpenManga(listOf(item.id))"))
-		assertTrue(source.contains("onOpenManga(ids)"))
+		assertTrue(source.contains("onOpenManga(listOf(item.id),null)"))
+		assertTrue(source.contains("onOpenManga(ids,null)"))
+		assertTrue(source.contains("onOpenManga(currentSelected,MigrationBatchAction.COPY)"))
+		assertTrue(source.contains("onOpenManga(currentSelected,MigrationBatchAction.MIGRATE)"))
+		assertTrue(source.contains("onOpenDetails(item)"))
 		assertFalse(source.contains("onToggleManga=viewModel::toggleManga"))
 	}
 
