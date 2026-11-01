@@ -117,6 +117,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	private val viewModel by viewModels<MainViewModel>()
 	private val searchSuggestionViewModel by viewModels<SearchSuggestionViewModel>()
 	private lateinit var navigationDelegate: MainNavigationDelegate
+	private var pendingNormalFavouritesNavigation = false
 	private lateinit var fadingAppbarMediator: FadingAppbarMediator
 	private val overflowMenuProviders = mutableListOf<OverflowMenuProviderEntry>()
 	private var isSearchFullyShown = false
@@ -235,12 +236,28 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	override fun onNewIntent(intent: Intent) {
 		super.onNewIntent(intent)
 		setIntent(intent)
-		if (::navigationDelegate.isInitialized) openNormalFavouritesIfRequested(intent)
+		openNormalFavouritesIfRequested(intent)
+	}
+
+	override fun onResumeFragments() {
+		super.onResumeFragments()
+		deliverPendingNormalFavouritesNavigation()
 	}
 
 	private fun openNormalFavouritesIfRequested(intent: Intent?) {
 		if (intent?.getBooleanExtra(EXTRA_OPEN_NORMAL_FAVOURITES, false) != true) return
 		intent.removeExtra(EXTRA_OPEN_NORMAL_FAVOURITES)
+		pendingNormalFavouritesNavigation = true
+		if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+			deliverPendingNormalFavouritesNavigation()
+		}
+	}
+
+	private fun deliverPendingNormalFavouritesNavigation() {
+		if (!pendingNormalFavouritesNavigation || !::navigationDelegate.isInitialized ||
+			supportFragmentManager.isStateSaved
+		) return
+		pendingNormalFavouritesNavigation = false
 		navigationDelegate.showNormalFavourites()
 	}
 
