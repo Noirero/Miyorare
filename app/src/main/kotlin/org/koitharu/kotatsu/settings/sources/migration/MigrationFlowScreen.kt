@@ -192,7 +192,10 @@ internal fun destinationGroups(
 			key = key,
 			label = if (first is MihonMangaSource) first.displayName else variants.first().getTitle(context).toString(),
 			origin = variants.first().exploreSourceOrigin(),
-			sources = variants.sortedBy { it.getTitle(context).toString().lowercase() },
+			sources = variants.sortedBy { source ->
+				val raw = source.unwrap()
+				if (raw is MihonMangaSource) raw.language else source.getTitle(context).toString().lowercase()
+			},
 		)
 	}
 
@@ -261,7 +264,7 @@ private fun MigrationSearchSetup(
 						val count = if (tab == "Semua") groups.size
 							else groups.count { it.origin.migrationTabTitle() == tab }
 						Tab(selected = selectedTab == tab, onClick = { activeTab = tab },
-							text = { Text("$" + "{tab} ($" + "{count})") })
+							text = { Text(tab + " (" + count + ")") })
 					}
 				}
 				Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -300,7 +303,10 @@ private fun MigrationSearchSetup(
 						if (group.sources.size == 1 || isExpanded) {
 							group.sources.forEach { source ->
 								val index = state.selectedSourceNames.indexOf(source.name)
-								val label = source.getTitle(context).toString()
+								val raw = source.unwrap()
+								val label = if (raw is MihonMangaSource && group.sources.size > 1)
+									raw.displayName + " (" + raw.language + ")"
+								else source.getTitle(context).toString()
 								Row(Modifier.fillMaxWidth().clickable(enabled = enabled) {
 									onToggleSource(source.name)
 								}.padding(start = if (group.sources.size > 1) 28.dp else 0.dp, top = 4.dp, bottom = 4.dp),
