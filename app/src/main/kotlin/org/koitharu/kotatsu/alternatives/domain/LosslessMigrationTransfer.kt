@@ -388,7 +388,9 @@ class LosslessMigrationTransfer @Inject constructor(
 		for (source in dao.findEntries(listOf(oldId))) {
 			val target = dao.findEntry(source.space, newId)
 			if (target != null && !samePath(target.path, source.path)) {
-				conflict("Downloaded ownership path conflicts for favourite space ${source.space}")
+				// Two distinct physical containers cannot share a destination owner.
+				// Keep the original index/path intact; migration must not relabel either file.
+				continue
 			}
 			if (target == null) {
 				dao.upsert(FavouriteDownloadIndexEntity(newId, source.space, source.path))
