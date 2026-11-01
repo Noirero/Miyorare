@@ -582,6 +582,8 @@ private fun MigrationMangaReviewItem(
                             "Gagal membaca detail source tujuan; periksa jaringan/source, lalu coba lagi."
                         MigrationFailureStage.DESTINATION_STORAGE ->
                             "Gagal menyimpan detail kandidat; periksa penyimpanan sebelum mengulang."
+                        MigrationFailureStage.DATA_CONFLICT ->
+                            "Ada konflik data/riwayat dengan kandidat; periksa library atau pilih kandidat lain."
                         MigrationFailureStage.DATA_TRANSFER ->
                             "Transfer data tidak selesai; periksa library dan riwayat sebelum mengulang."
                         MigrationFailureStage.UNKNOWN, null ->
