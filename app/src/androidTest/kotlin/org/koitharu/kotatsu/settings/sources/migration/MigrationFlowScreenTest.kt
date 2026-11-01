@@ -381,4 +381,42 @@ class MigrationFlowScreenTest {
             "Gagal membaca detail source tujuan; periksa jaringan/source, lalu coba lagi.",
         ).assertExists()
     }
+	@Test
+	fun migratedCoverAndTitleOpenDestinationDetails() {
+		val base = screenState(MigrationBatchStatus.MIGRATED)
+		val target = manga(100L).copy(title = "Completed target", source = destination,
+			coverUrl = "https://fixture.invalid/completed.jpg")
+		val original = checkNotNull(base.batchItems[1L])
+		val state = base.copy(
+			targetManga = mapOf(1L to target),
+			batchItems = mapOf(1L to original.copy(outcome = original.outcome.copy(
+				destinationId = target.id, destinationSource = target.source.name,
+				destinationTitle = target.title))))
+		val opened = mutableListOf<Manga>()
+		show(state, onOpenTarget = { opened += it })
+		compose.onNodeWithTag("migration-batch-search").performClick()
+		compose.onNodeWithTag("migration-target-title-1").performClick()
+		compose.onNodeWithTag("migration-target-cover-1").performClick()
+		assertEquals(listOf(target, target), opened)
+	}
+
+	@Test
+	fun historyCoverAndTitleOpenDestinationAfterOriginalLeavesSourceList() {
+		val base = screenState(MigrationBatchStatus.MIGRATED)
+		val target = manga(200L).copy(title = "History target", source = destination,
+			coverUrl = "https://fixture.invalid/history.jpg")
+		val original = checkNotNull(base.batchItems[1L])
+		val state = base.copy(
+			manga = emptyList(),
+			targetManga = mapOf(1L to target),
+			batchItems = mapOf(1L to original.copy(outcome = original.outcome.copy(
+				destinationId = target.id, destinationSource = target.source.name))))
+		val opened = mutableListOf<Manga>()
+		show(state, onOpenTarget = { opened += it })
+		compose.onNodeWithText("Lihat hasil").performClick()
+		compose.onNodeWithTag("migration-completed-title-1").performClick()
+		compose.onNodeWithTag("migration-completed-cover-1").performClick()
+		assertEquals(listOf(target, target), opened)
+	}
+
 }
