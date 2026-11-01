@@ -121,7 +121,7 @@ jobs:
           cd candidate
           python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py --validate-only \
             --platform "$TARGET_PLATFORM" --targets "$TEST_TARGETS" \
-            --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA" --pr-number "$PR_NUMBER" --pr-number "$PR_NUMBER"
+            --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA" --pr-number "$PR_NUMBER"
           {
             echo "## Diagnostic scope (non-gating)"
             echo "- PR: #$PR_NUMBER"
