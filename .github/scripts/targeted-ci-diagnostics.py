@@ -197,9 +197,9 @@ def main() -> int:
     passes = sum(r["exit_code"] == 0 for r in runs)
     summary = [
         "## Manual targeted CI diagnostic (non-gating)",
-        f"- Exact HEAD: \`{actual}\`",
+        f"- Exact HEAD: `{actual}`",
         f"- Platform: **{args.platform}**; mode: **{args.mode}**; repeats: **{args.repeats}**",
-        f"- Targets: \`{', '.join(targets)}\`",
+        f"- Targets: `{', '.join(targets)}`",
         f"- Result: **{passes}/{len(runs)} invocations passed**",
         "- A passing diagnostic does not replace mandatory PR CI or authorize merge.",
         "",
