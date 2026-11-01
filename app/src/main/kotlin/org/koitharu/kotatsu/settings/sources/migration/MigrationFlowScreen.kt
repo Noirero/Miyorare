@@ -34,8 +34,6 @@ import org.koitharu.kotatsu.explore.ui.adapter.exploreSourceOrigin
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import org.koitharu.kotatsu.lnreader.model.LnMangaSource
-import org.koitharu.kotatsu.explore.ui.adapter.ExploreSourceOrigin
-import org.koitharu.kotatsu.explore.ui.adapter.exploreSourceOrigin
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
