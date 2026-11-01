@@ -185,6 +185,12 @@ def main() -> int:
             started = time.monotonic()
             code = run_command(build_command(args.platform, group), directory / "gradle.log")
             count, failures = collect_results(args.platform, directory)
+            # A zero-test run must never be reported as a passing targeted diagnostic.
+            if count == 0:
+                failures.append("No JUnit test cases were recorded; cannot confirm execution")
+                code = 1
+            elif failures and code == 0:
+                code = 1
             if code != 0 and args.platform == "android":
                 android_failure_evidence(directory)
             runs.append({
