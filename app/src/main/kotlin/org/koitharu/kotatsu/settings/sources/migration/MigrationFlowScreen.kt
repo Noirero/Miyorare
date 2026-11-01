@@ -305,8 +305,19 @@ private fun MigrationSearchSetup(
 										if (!add(group.key)) remove(group.key)
 									})
 								}.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-									Text(group.label + " (" + group.sources.size + ")", modifier = Modifier.weight(1f),
-										maxLines = 2, overflow = TextOverflow.Ellipsis)
+									Column(Modifier.weight(1f)) {
+										Text(group.label + " (" + group.sources.size + ")",
+											maxLines = 2, overflow = TextOverflow.Ellipsis)
+										val groupPriorities = eligibleGroup.mapNotNull { source ->
+											state.selectedSourceNames.indexOf(source.name).takeIf { it >= 0 }?.plus(1)
+										}.sorted()
+										if (groupPriorities.isNotEmpty()) Text(
+											"Prioritas: " + groupPriorities.joinToString(", "),
+											style = MaterialTheme.typography.labelSmall,
+											color = MaterialTheme.colorScheme.primary,
+											maxLines = 1, overflow = TextOverflow.Ellipsis,
+										)
+									}
 									Text(if (isExpanded) "⌄" else "›", style = MaterialTheme.typography.titleMedium)
 								}
 							}
