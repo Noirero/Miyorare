@@ -58,52 +58,44 @@ class MigrationLandingScreenTest {
 	)
 
 	@Test
-	fun explicitSelectionAndSearchControlTheBottomAction() {
-		var current by mutableStateOf(state())
-		var continued = 0
+	fun sourceFirstNavigationOpensASelectedManga() {
+		var opened = emptyList<Long>()
 		compose.setContent {
 			CompositionLocalProvider(LocalContext provides themedContext) {
 				MaterialTheme {
 					BrokenSourcesMigrationScreen(
-					state = current, imageLoader = loader,
-					onToggleManga = { id ->
-						current = current.copy(selectedMangaIds = MigrationSelectionPolicy.toggle(
-							current.selectedMangaIds, current.manga.mapTo(hashSetOf()) { it.id }, id))
-					},
-					onSelectManga = { ids -> current = current.copy(selectedMangaIds = ids.toSet()) },
-					onRetry = {}, onContinue = { continued++ },
+						state = state(), imageLoader = loader,
+						onRetry = {}, onOpenManga = { opened = it.toList() },
 					)
 				}
 			}
 		}
-		compose.onNodeWithText("Lanjut ke pencarian").assertIsNotEnabled()
+		compose.onNodeWithText("Pilih source").assertExists()
+		compose.onNodeWithText("E-Hentai (EN)").performClick()
 		compose.onNodeWithText("Story 1").performClick()
-		compose.onNodeWithText("Lanjut ke pencarian").assertIsEnabled().performClick()
-		assertEquals(1, continued)
-		compose.onNodeWithText("Filter source (1)").performClick()
-		compose.onNodeWithText("E-Hentai (2)").assertExists()
-		compose.onNodeWithText("E-Hentai (2)").performClick()
-		compose.onNodeWithText("E-Hentai (JA)").assertExists()
+		assertEquals(listOf(1L), opened)
 	}
 
 	@Test
-	fun searchFiltersMangaWithoutChangingSelectedIds() {
-		var current by mutableStateOf(state().copy(selectedMangaIds = setOf(1L)))
+	fun sourceAllAndSearchUseOnlyTheExactSourceIdentity() {
+		var opened = emptyList<Long>()
 		compose.setContent {
 			CompositionLocalProvider(LocalContext provides themedContext) {
 				MaterialTheme {
 					BrokenSourcesMigrationScreen(
-					state = current, imageLoader = loader,
-					onToggleManga = {},
-					onSelectManga = { ids -> current = current.copy(selectedMangaIds = ids.toSet()) },
-					onRetry = {}, onContinue = {},
+						state = state(), imageLoader = loader,
+						onRetry = {}, onOpenManga = { opened = it.toList() },
 					)
 				}
 			}
 		}
-		compose.onNodeWithTag("migration-landing-search").performTextInput("Story 2")
+		compose.onNodeWithText("E-Hentai (JA)").performClick()
+		compose.onNodeWithText("Story 2").assertExists()
 		compose.onNodeWithText("Story 1").assertDoesNotExist()
-		compose.onNode(hasText("Story 2") and hasText("Belum diperiksa dalam sesi ini")).assertExists()
-		compose.onNodeWithText("1 manga dipilih").assertExists()
+		compose.onNodeWithTag("migration-landing-search").performTextInput("Nothing")
+		compose.onNodeWithText("Story 2").assertDoesNotExist()
+		compose.onNodeWithText("Migrasikan semua (1)").performClick()
+		assertEquals(listOf(2L), opened)
 	}
+
 }
