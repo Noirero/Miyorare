@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.settings.sources.migration
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -15,6 +16,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
+import org.koitharu.kotatsu.alternatives.domain.MigrationFailureStage
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchOutcome
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchSnapshot
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
@@ -80,14 +82,16 @@ class MigrationFlowScreenTest {
 		onOpenTarget: (Manga) -> Unit = {},
 		onMigrateOne: (Long) -> Unit = {},
 		onCopyOne: (Long) -> Unit = {},
+		onCancel: (String) -> Unit = {},
+		stateProvider: () -> SourceMangaListState = { state },
 	) {
 		compose.setContent {
 			MaterialTheme {
 				MigrationFlowScreen(
-					state = state, imageLoader = loader,
+					state = stateProvider(), imageLoader = loader,
 					onRetry = {}, onSearch = {},
 					onMigrateReady = onMigrate, onCopyReady = onCopy,
-					onCancel = {}, onFilter = {},
+					onCancel = onCancel, onFilter = {},
 					onToggleSource = {}, onSelectAllSources = {}, onClearSources = {},
 					onMoveSource = { _, _ -> }, onStrategy = {},
 					onExtraSearch = {}, onSkipSetup = {}, onRetrySources = {},
@@ -303,4 +307,78 @@ class MigrationFlowScreenTest {
 		assertEquals(2, manual)
 	}
 
+
+    @Test
+    fun foreignBatchCanBeCancelledFromSourceSetupWithConfirmation() {
+        val cancelled = mutableListOf<String>()
+        val state = screenState(MigrationBatchStatus.UNCHECKED).copy(
+            batchBusy = true,
+            ownedBatchName = null,
+            activeBatchName = "migration_batch:foreign-session",
+            batchCompleted = 0,
+            batchTotal = 0,
+        )
+        show(state, onCancel = { cancelled += it })
+        compose.onNodeWithText("Batch migrasi lain sedang berjalan").assertExists()
+        compose.onNodeWithText("Batalkan").performClick()
+        assertEquals(emptyList<String>(), cancelled)
+        compose.onNodeWithText("Hentikan").performClick()
+        assertEquals(listOf("migration_batch:foreign-session"), cancelled)
+    }
+
+    @Test
+    fun foreignBatchReviewDoesNotShowMisleadingZeroProgressAndCanCancel() {
+        var cancellations = 0
+        val state = screenState(MigrationBatchStatus.UNCHECKED).copy(
+            batchBusy = true,
+            ownedBatchName = null,
+            activeBatchName = "migration_batch:foreign-session",
+            batchTotal = 0,
+        )
+        show(state, onCancel = { cancellations++ })
+        compose.onNodeWithText("Lihat pencarian").performClick()
+        compose.onNodeWithText("Memproses 0/0").assertDoesNotExist()
+        compose.onNodeWithText("Batch migrasi lain sedang berjalan").assertExists()
+        compose.onNodeWithText("Batalkan").performClick()
+        compose.onNodeWithText("Hentikan").performClick()
+        assertEquals(1, cancellations)
+    }
+
+    @Test
+    fun changedActiveBatchCannotBeCancelledUsingPreviousConfirmation() {
+        val first = "migration_batch:original"
+        val replacement = "migration_batch:replacement"
+        val liveState = mutableStateOf(screenState(MigrationBatchStatus.UNCHECKED).copy(
+            batchBusy = true,
+            ownedBatchName = null,
+            activeBatchName = first,
+        ))
+        val cancelled = mutableListOf<String>()
+        show(liveState.value, onCancel = { cancelled += it }, stateProvider = { liveState.value })
+        compose.onNodeWithText("Batalkan").performClick()
+        compose.runOnUiThread {
+            liveState.value = liveState.value.copy(activeBatchName = replacement)
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Hentikan").performClick()
+        assertEquals(emptyList<String>(), cancelled)
+    }
+
+    @Test
+    fun terminalErrorShowsStageRatherThanSearchingPlaceholder() {
+        val original = screenState(MigrationBatchStatus.ERROR)
+        val failed = checkNotNull(original.batchItems[1L])
+        val state = original.copy(batchItems = mapOf(
+            1L to failed.copy(outcome = failed.outcome.copy(
+                failureStage = MigrationFailureStage.DESTINATION_DETAILS,
+            )),
+        ))
+        show(state)
+        compose.onNodeWithTag("migration-batch-search").performClick()
+        compose.onNodeWithText("Migrasi gagal").assertExists()
+        compose.onNodeWithText("Mencari...").assertDoesNotExist()
+        compose.onNodeWithText(
+            "Gagal membaca detail source tujuan; periksa jaringan/source, lalu coba lagi.",
+        ).assertExists()
+    }
 }

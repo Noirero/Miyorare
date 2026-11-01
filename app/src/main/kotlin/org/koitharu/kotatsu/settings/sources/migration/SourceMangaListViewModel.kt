@@ -221,10 +221,11 @@ class SourceMangaListViewModel @Inject constructor(
 		}
 	}
 
-	fun cancelBatch() {
-		val batch = state.value.ownedBatchName ?: return
+	fun cancelBatch(confirmedBatch: String) {
+		// Reject a stale UI confirmation instead of cancelling a replacement session.
+		if (state.value.activeBatchName != confirmedBatch) return
 		viewModelScope.launch {
-			runCatchingCancellable { batchScheduler.cancel(batch) }
+			runCatchingCancellable { batchScheduler.cancel(confirmedBatch) }
 				.onFailure { _state.update { it.copy(failed = true) } }
 		}
 	}
@@ -308,6 +309,9 @@ class SourceMangaListViewModel @Inject constructor(
 						sourceId to candidate
 					}.toMap()
 					val owned = snapshots.firstOrNull { it.running }?.batchName
+                    val active = works.firstOrNull {
+                        !it.state.isFinished && !MigrationBatchWork.isTerminal(it)
+                    }?.let(MigrationBatchWork::snapshot)?.batchName
 					val batch = snapshots.filter { it.batchName == owned }
 					SourceMangaListState(
 						isLoading = false,
@@ -316,6 +320,7 @@ class SourceMangaListViewModel @Inject constructor(
 						batchItems = latest,
 						batchBusy = works.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) },
 						ownedBatchName = owned,
+                        activeBatchName = active,
 						batchCompleted = batch.count { !it.running },
 						batchTotal = batch.size,
 						migratedCount = latest.values.count {
@@ -443,6 +448,7 @@ data class SourceMangaListState(
 	val batchItems: Map<Long, MigrationBatchSnapshot> = emptyMap(),
 	val batchBusy: Boolean = false,
 	val ownedBatchName: String? = null,
+    val activeBatchName: String? = null,
 	val scheduling: Boolean = false,
 	val batchCompleted: Int = 0,
 	val batchTotal: Int = 0,

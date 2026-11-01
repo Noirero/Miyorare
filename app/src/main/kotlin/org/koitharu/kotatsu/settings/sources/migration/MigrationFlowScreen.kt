@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.alternatives.domain.MigrationFailureStage
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchPolicy
@@ -57,7 +58,7 @@ internal fun MigrationFlowScreen(
 	onSearch: () -> Unit,
 	onMigrateReady: () -> Unit,
 	onCopyReady: () -> Unit,
-	onCancel: () -> Unit,
+	onCancel: (String) -> Unit,
 	onFilter: (MigrationBatchStatus?) -> Unit,
 	onToggleSource: (String) -> Unit,
 	onSelectAllSources: () -> Unit,
@@ -76,7 +77,8 @@ internal fun MigrationFlowScreen(
 ) {
 	var step by rememberSaveable { mutableIntStateOf(0) }
 	var pendingAction by remember { mutableStateOf<MigrationBatchAction?>(null) }
-	var pendingCancellation by remember { mutableStateOf(false) }
+	// Capture the exact batch the user agreed to stop, not whatever is active later.
+	var pendingCancellationBatch by remember { mutableStateOf<String?>(null) }
 	val busy = state.batchBusy || state.scheduling
 	BackHandler(enabled = step > 0 && !busy) { step = 0 }
 
@@ -109,6 +111,7 @@ internal fun MigrationFlowScreen(
 			onRetrySources = onRetrySources,
 			onSearch = { onSearch(); step = 1 },
 			onViewProgress = { step = 1 },
+			onCancelActive = { pendingCancellationBatch = state.activeBatchName },
 		)
 		else -> MigrationReviewStep(
 			state = state,
@@ -118,7 +121,7 @@ internal fun MigrationFlowScreen(
 			onRetry = { step = 0 },
 			onContinue = { pendingAction = MigrationBatchAction.MIGRATE },
 			onCopy = { pendingAction = MigrationBatchAction.COPY },
-			onCancel = { pendingCancellation = true },
+			onCancel = { pendingCancellationBatch = state.activeBatchName },
 			onMigrateOne = onMigrateOne,
 			onCopyOne = onCopyOne,
 			onSkipOne = onSkipOne,
@@ -152,16 +155,21 @@ internal fun MigrationFlowScreen(
 			dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("Batal") } },
 		)
 	}
-	if (pendingCancellation) AlertDialog(
-		onDismissRequest = { pendingCancellation = false },
-		title = { Text("Hentikan pencarian?") },
-		text = { Text("Pekerjaan yang belum selesai akan dibatalkan.") },
-		confirmButton = { TextButton(onClick = {
-			pendingCancellation = false
-			onCancel()
-		}) { Text("Hentikan") } },
-		dismissButton = { TextButton(onClick = { pendingCancellation = false }) { Text("Batal") } },
-	)
+	pendingCancellationBatch?.let { confirmedBatch ->
+		AlertDialog(
+			onDismissRequest = { pendingCancellationBatch = null },
+			title = { Text("Hentikan pencarian?") },
+			text = { Text(if (state.ownedBatchName != confirmedBatch)
+				"Batch migrasi lain masih berjalan. Hentikan batch aktif tersebut? Periksa hasil migrasi sebelum mencoba ulang."
+				else "Pekerjaan yang belum selesai akan dibatalkan. Periksa hasil migrasi sebelum mencoba ulang.") },
+			confirmButton = { TextButton(onClick = {
+				pendingCancellationBatch = null
+				// The active session may have changed while confirmation was open.
+				if (state.activeBatchName == confirmedBatch) onCancel(confirmedBatch)
+			}) { Text("Hentikan") } },
+			dismissButton = { TextButton(onClick = { pendingCancellationBatch = null }) { Text("Batal") } },
+		)
+	}
 }
 
 /**
@@ -251,6 +259,7 @@ private fun MigrationSearchSetup(
 	onRetrySources: () -> Unit,
 	onSearch: () -> Unit,
 	onViewProgress: () -> Unit,
+	onCancelActive: () -> Unit,
 ) {
 	val context = LocalContext.current
 	var showOptions by rememberSaveable { mutableStateOf(false) }
@@ -273,6 +282,15 @@ private fun MigrationSearchSetup(
 		}
 	val selectedSet = state.selectedSourceNames.toSet()
 	Column(Modifier.fillMaxSize()) {
+		if (state.batchBusy && state.ownedBatchName == null) {
+			Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+				Text("Batch migrasi lain sedang berjalan", modifier = Modifier.weight(1f),
+					style = MaterialTheme.typography.bodySmall)
+				TextButton(onClick = onCancelActive, enabled = state.activeBatchName != null) {
+					Text("Batalkan")
+				}
+			}
+		}
 		Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
 			verticalAlignment = Alignment.CenterVertically) {
 			Text("Pilih source tujuan", style = MaterialTheme.typography.titleLarge,
@@ -469,9 +487,10 @@ private fun MigrationReviewStep(
 		if (busy) {
 			LinearProgressIndicator(Modifier.fillMaxWidth())
 			Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-				Text("Memproses " + state.batchCompleted + "/" + state.batchTotal,
+				Text(if (state.batchTotal == 0) "Batch migrasi lain sedang berjalan"
+					else "Memproses " + state.batchCompleted + "/" + state.batchTotal,
 					modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-				TextButton(onClick = onCancel, enabled = state.ownedBatchName != null) { Text("Batalkan") }
+				TextButton(onClick = onCancel, enabled = state.activeBatchName != null) { Text("Batalkan") }
 			}
 		}
 		if (state.failed) {
@@ -486,6 +505,7 @@ private fun MigrationReviewStep(
 				MigrationMangaReviewItem(manga, imageLoader, status,
 					outcome?.destinationTitle, outcome?.destinationSource,
 					onClick = { onMangaClick(manga) },
+					failureStage = outcome?.failureStage,
 					targetManga = state.readyTarget(manga.id), onOpenTarget = onOpenTarget,
 					onMigrate = if (!busy && manga.id in readyIds) ({ onMigrateOne(manga.id) }) else null,
 					onCopy = if (!busy && manga.id in readyIds) ({ onCopyOne(manga.id) }) else null,
@@ -545,6 +565,7 @@ private fun MigrationMangaReviewItem(
 	onMigrate: (() -> Unit)? = null,
 	onCopy: (() -> Unit)? = null,
 	onSkip: (() -> Unit)? = null,
+	failureStage: MigrationFailureStage? = null,
 ) {
 	val context = LocalContext.current
 	var menuExpanded by remember { mutableStateOf(false) }
@@ -591,8 +612,12 @@ private fun MigrationMangaReviewItem(
 						onLongClick = onClick,
 					)).testTag("migration-target-title-" + manga.id)
 				) {
-				Text(targetTitle ?: if (status == MigrationBatchStatus.NO_REPLACEMENT)
-					"Tidak ditemukan" else "Mencari...",
+				Text(targetTitle ?: when (status) {
+					MigrationBatchStatus.NO_REPLACEMENT -> "Tidak ditemukan"
+					MigrationBatchStatus.ERROR -> "Migrasi gagal"
+					MigrationBatchStatus.INTERRUPTED -> "Migrasi terhenti"
+					else -> "Mencari..."
+				},
 					style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
 				val publicSource = targetManga?.source?.getTitle(context)?.takeIf(String::isNotBlank)
 					?: targetSource?.takeUnless { it.startsWith("MIHON_") || it.startsWith("TSUKI:")
@@ -601,6 +626,22 @@ private fun MigrationMangaReviewItem(
 					style = MaterialTheme.typography.labelSmall, maxLines = 1)
 				Text(stringResource(status.labelRes()), style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.primary)
+				if (status == MigrationBatchStatus.ERROR) {
+					val explanation = when (failureStage) {
+						MigrationFailureStage.DESTINATION_DETAILS ->
+							"Gagal membaca detail source tujuan; periksa jaringan/source, lalu coba lagi."
+						MigrationFailureStage.DESTINATION_STORAGE ->
+							"Gagal menyimpan detail kandidat; periksa penyimpanan sebelum mengulang."
+						MigrationFailureStage.DATA_CONFLICT ->
+							"Ada konflik data/riwayat dengan kandidat; periksa library atau pilih kandidat lain."
+						MigrationFailureStage.DATA_TRANSFER ->
+							"Transfer data tidak selesai; periksa library dan riwayat sebelum mengulang."
+						MigrationFailureStage.UNKNOWN, null ->
+							"Penyebab belum diketahui; periksa data library sebelum mengulang."
+					}
+					Text(explanation, style = MaterialTheme.typography.labelSmall,
+						color = MaterialTheme.colorScheme.error)
+				}
 				}
 			}
 			Box {

@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.alternatives.domain
 
 import dagger.Reusable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
@@ -165,7 +166,8 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		source: MangaSource,
 		requireDetails: Boolean,
 	): SourceResult {
-		val searched = globalSearch.search(source, query)
+		val searched = withTimeoutOrNull(90_000L) { globalSearch.search(source, query) }
+            ?: return SourceResult(null, true)
 		if (searched.isFailure) return SourceResult(null, true)
 		// MangaEntity uses manga_id as its sole primary key. Different source implementations may
 		// legitimately emit the same numeric id, so such a candidate cannot be persisted alongside
@@ -174,7 +176,9 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		val candidate = chooseCandidate(seed.title, eligible) ?: return SourceResult(null, false)
 		if (!canPersistCandidate(candidate)) return SourceResult(null, false)
 		if (!requireDetails) return SourceResult(candidate, false, eligible)
-		val details = runCatchingCancellable { mangaRepositoryFactory.create(source).getDetails(candidate) }.getOrNull()
+		val details = runCatchingCancellable {
+            withTimeoutOrNull(90_000L) { mangaRepositoryFactory.create(source).getDetails(candidate) }
+        }.getOrNull()
 			?: return SourceResult(null, true)
 		if (details.id != candidate.id || details.source.name != candidate.source.name) {
 			return SourceResult(null, true)

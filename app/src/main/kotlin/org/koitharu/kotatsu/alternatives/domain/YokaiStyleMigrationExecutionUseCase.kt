@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.alternatives.domain
 
 import dagger.Reusable
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -41,17 +43,31 @@ class YokaiStyleMigrationExecutionUseCase @Inject constructor(
 		}
 
 		val repository = mangaRepositoryFactory.create(storedCandidate.source)
-		val details = repository.getDetails(storedCandidate)
+		val details = try {
+            withTimeoutOrNull(90_000L) { repository.getDetails(storedCandidate) }
+                ?: error("Destination source detail request timed out")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            throw MigrationExecutionStageException(MigrationFailureStage.DESTINATION_DETAILS, failure)
+        }
 		check(details.id == selection.id && details.source.name == selection.source) {
 			"Selected replacement identity changed while refreshing details"
 		}
-		mangaDataRepository.storeManga(
-			manga = details,
-			replaceExisting = true,
-			stripAppliedOverride = false,
-			detailsFetched = true,
-		)
-		when (mode) {
+		try {
+            mangaDataRepository.storeManga(
+                manga = details,
+                replaceExisting = true,
+                stripAppliedOverride = false,
+                detailsFetched = true,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            throw MigrationExecutionStageException(MigrationFailureStage.DESTINATION_STORAGE, failure)
+        }
+		try {
+        when (mode) {
 			MigrationExecutionMode.MIGRATE -> migrateUseCase(
 				oldManga = old,
 				newManga = details,
@@ -59,7 +75,18 @@ class YokaiStyleMigrationExecutionUseCase @Inject constructor(
 				requireLibraryEntry = true,
 			)
 			MigrationExecutionMode.COPY -> copyUseCase(old, details)
-		}
+        }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (changed: MigrateUseCase.SourceChangedException) {
+            throw changed
+        } catch (failure: Exception) {
+            throw MigrationExecutionStageException(
+                if (failure is LosslessMigrationConflictException) MigrationFailureStage.DATA_CONFLICT
+                else MigrationFailureStage.DATA_TRANSFER,
+                failure,
+            )
+        }
 		return details
 	}
 }
