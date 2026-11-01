@@ -178,15 +178,32 @@ class SourceMangaListViewModel @Inject constructor(
 
 	fun copyReady() = executeReady(MigrationBatchAction.COPY)
 
-	private fun executeReady(action: MigrationBatchAction) {
+	fun migrateOne(mangaId: Long) = executeReady(MigrationBatchAction.MIGRATE, mangaId)
+
+	fun copyOne(mangaId: Long) = executeReady(MigrationBatchAction.COPY, mangaId)
+
+	private fun executeReady(action: MigrationBatchAction, mangaId: Long? = null) {
 		val current = state.value
 		enqueue(MigrationBatchPolicy.readyRequests(
-			manga = current.manga,
+			manga = current.manga.filter { mangaId == null || it.id == mangaId },
 			snapshots = current.batchItems,
 			discoveryMode = MigrationBatchDiscoveryMode.YOKAI,
 			configKey = current.configKey,
 			action = action,
 		))
+	}
+
+	fun skipOne(mangaId: Long) {
+		val current = state.value
+		if (current.batchBusy || current.scheduling) return
+		val manga = current.manga.firstOrNull { it.id == mangaId } ?: return
+		viewModelScope.launch {
+			runCatchingCancellable {
+				batchScheduler.markSkipped(mangaId = manga.id, source = manga.source.name, configKey = current.configKey)
+			}.onSuccess { marked ->
+				if (!marked) _state.update { it.copy(failed = true) }
+			}.onFailure { _state.update { it.copy(failed = true) } }
+		}
 	}
 
 	private fun enqueue(requests: List<MigrationBatchRequest>) {
