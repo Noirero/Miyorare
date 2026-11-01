@@ -506,7 +506,8 @@ private fun MigrationReviewStep(
 					outcome?.destinationTitle, outcome?.destinationSource,
 					onClick = { onMangaClick(manga) },
 					failureStage = outcome?.failureStage,
-					targetManga = state.readyTarget(manga.id), onOpenTarget = onOpenTarget,
+					targetManga = state.readyTarget(manga.id) ?: state.completedTarget(manga.id),
+					onOpenTarget = onOpenTarget,
 					onMigrate = if (!busy && manga.id in readyIds) ({ onMigrateOne(manga.id) }) else null,
 					onCopy = if (!busy && manga.id in readyIds) ({ onCopyOne(manga.id) }) else null,
 					onSkip = if (!busy) ({ onSkipOne(manga.id) }) else null)
@@ -515,8 +516,17 @@ private fun MigrationReviewStep(
 			if (state.completedResults.isNotEmpty()) {
 				item { Text("Hasil sebelumnya", style = MaterialTheme.typography.titleSmall) }
 				items(state.completedResults, key = { "done:" + it.mangaId + ":" + it.generation }) { snapshot ->
-					Text((snapshot.outcome.destinationTitle ?: "Manga") + " · " +
-						stringResource(snapshot.outcome.status.labelRes()), style = MaterialTheme.typography.bodySmall)
+					val target = state.completedTarget(snapshot.mangaId)
+					if (target != null) {
+						MigrationCompletedResultItem(
+							mangaId = snapshot.mangaId, manga = target,
+							status = snapshot.outcome.status,
+							imageLoader = imageLoader, onOpenTarget = onOpenTarget,
+						)
+					} else {
+						Text((snapshot.outcome.destinationTitle ?: "Manga") + " · " +
+							stringResource(snapshot.outcome.status.labelRes()), style = MaterialTheme.typography.bodySmall)
+					}
 				}
 			}
 		}
@@ -539,6 +549,41 @@ private fun MigrationReviewStep(
 						else "Pilih kandidat secara manual jika belum ditemukan.",
 						style = MaterialTheme.typography.bodySmall)
 				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun MigrationCompletedResultItem(
+	mangaId: Long,
+	manga: Manga,
+	status: MigrationBatchStatus,
+	imageLoader: ImageLoader,
+	onOpenTarget: (Manga) -> Unit,
+) {
+	val context = LocalContext.current
+	val request = remember(manga.id, manga.coverUrl, manga.source) {
+		manga.coverUrl?.let { ImageRequest.Builder(context).data(it).mangaSourceExtra(manga.source).build() }
+	}
+	Surface(tonalElevation = 1.dp, shape = MaterialTheme.shapes.medium) {
+		Row(Modifier.fillMaxWidth().padding(9.dp),
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+			if (request != null) AsyncImage(
+				model = request, imageLoader = imageLoader, contentDescription = manga.title,
+				modifier = Modifier.width(58.dp).height(76.dp)
+					.testTag("migration-completed-cover-" + mangaId)
+					.clickable { onOpenTarget(manga) },
+			)
+			Column(Modifier.weight(1f)
+				.testTag("migration-completed-title-" + mangaId)
+				.clickable { onOpenTarget(manga) }) {
+				Text(manga.title, style = MaterialTheme.typography.bodyMedium,
+					maxLines = 2, overflow = TextOverflow.Ellipsis)
+				Text(manga.source.getTitle(context).toString(), style = MaterialTheme.typography.labelSmall)
+				Text(stringResource(status.labelRes()), style = MaterialTheme.typography.labelSmall,
+					color = MaterialTheme.colorScheme.primary)
 			}
 		}
 	}
@@ -599,20 +644,21 @@ private fun MigrationMangaReviewItem(
 						contentDescription = targetManga.title,
 						modifier = Modifier.width(58.dp).height(76.dp)
 							.testTag("migration-target-cover-" + manga.id)
-							.combinedClickable(
+							.then(if (status == MigrationBatchStatus.READY) Modifier.combinedClickable(
 								onClick = { onOpenTarget(targetManga) },
 								onLongClick = onClick,
-							),
+							) else Modifier.clickable { onOpenTarget(targetManga) }),
 					)
 				}
 				Column(
 					(if (targetManga == null) Modifier.clickable(onClick = onClick)
-					else Modifier.combinedClickable(
+					else if (status == MigrationBatchStatus.READY) Modifier.combinedClickable(
 						onClick = { onOpenTarget(targetManga) },
 						onLongClick = onClick,
-					)).testTag("migration-target-title-" + manga.id)
+					) else Modifier.clickable { onOpenTarget(targetManga) })
+						.testTag("migration-target-title-" + manga.id)
 				) {
-				Text(targetTitle ?: when (status) {
+				Text(targetManga?.title ?: targetTitle ?: when (status) {
 					MigrationBatchStatus.NO_REPLACEMENT -> "Tidak ditemukan"
 					MigrationBatchStatus.ERROR -> "Migrasi gagal"
 					MigrationBatchStatus.INTERRUPTED -> "Migrasi terhenti"
