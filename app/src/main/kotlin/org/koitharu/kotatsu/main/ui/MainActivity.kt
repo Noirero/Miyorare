@@ -939,7 +939,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	companion object {
 		const val EXTRA_OPEN_NORMAL_FAVOURITES = "open_normal_favourites"
 
-
 		private const val FAB_SHRINK_DELAY_MS = 1500L
 		private const val ACTION_MODE_TOP_BAR_FADE_DURATION_MS = 150L
 		private const val EXPLORE_WARMUP_IDLE_DELAY_MS = 900L
