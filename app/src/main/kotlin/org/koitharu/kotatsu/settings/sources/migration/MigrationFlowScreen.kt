@@ -188,148 +188,91 @@ private fun MigrationSearchSetup(
 	onViewProgress: () -> Unit,
 ) {
 	val context = LocalContext.current
-	var origin by rememberSaveable { mutableStateOf("All") }
-	var advanced by rememberSaveable { mutableStateOf(false) }
-	var showSources by rememberSaveable { mutableStateOf(false) }
-	var expandedFamily by rememberSaveable { mutableStateOf<String?>(null) }
-	val sourceByName = state.availableSources.associateBy(MangaSource::name)
-	val selected = state.selectedSourceNames.mapNotNull(sourceByName::get)
-	val visible = state.availableSources.filter { source ->
-		when (origin) {
-			"Miyorare" -> source.exploreSourceOrigin() == ExploreSourceOrigin.MIYORARE_PACK
-			"Store" -> source.exploreSourceOrigin() == ExploreSourceOrigin.EXTENSION_STORE
-			else -> true
-		}
-	}
-	val grouped = visible.groupBy { source ->
-		if (EhentaiSourceFamily.isKnownStoredSource(source.name)) "family:ehentai"
-		else "source:" + source.name
-	}
+	var showOptions by rememberSaveable { mutableStateOf(false) }
+	val orderedSources = state.selectedSourceNames.mapNotNull { name ->
+		state.availableSources.firstOrNull { it.name == name }
+	} + state.availableSources.filterNot { it.name in state.selectedSourceNames }
 	Column(Modifier.fillMaxSize()) {
-		Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
-			verticalArrangement = Arrangement.spacedBy(11.dp)) {
-			Text("Cari pengganti", style = MaterialTheme.typography.titleLarge)
-			Text(state.manga.size.toString() + " manga dipilih. Cari pada source tujuan yang kompatibel.",
-				style = MaterialTheme.typography.bodyMedium)
-			if (state.sourceSelectionLoading) {
-				LinearProgressIndicator(Modifier.fillMaxWidth())
-				Text(stringResource(R.string.migration_loading_sources))
-			} else if (state.sourceSelectionFailed) {
-				Text(stringResource(R.string.migration_source_list_failed), color = MaterialTheme.colorScheme.error)
+		Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+			verticalAlignment = Alignment.CenterVertically) {
+			Text("Pilih source tujuan", style = MaterialTheme.typography.titleLarge,
+				modifier = Modifier.weight(1f))
+			TextButton(onClick = { showOptions = true }) { Text("Opsi") }
+		}
+		when {
+			state.sourceSelectionLoading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+			state.sourceSelectionFailed -> Column(Modifier.padding(16.dp)) {
+				Text(stringResource(R.string.migration_source_list_failed))
 				TextButton(onClick = onRetrySources) { Text(stringResource(R.string.migration_retry)) }
-			} else if (state.availableSources.isEmpty()) {
-				Text(stringResource(R.string.migration_no_sources_available))
-			} else {
-				Surface(color = MaterialTheme.colorScheme.surfaceContainerLow,
-					shape = MaterialTheme.shapes.medium) {
-					Column(Modifier.fillMaxWidth().padding(12.dp)) {
-						Text("Source tujuan terpilih: " + selected.size, fontWeight = FontWeight.SemiBold)
-						Text(
-							if (selected.isEmpty()) "Belum ada source tujuan."
-							else selected.take(3).joinToString(" · ") { it.getTitle(context).toString() } +
-								if (selected.size > 3) " · +" + (selected.size - 3) + " lainnya" else "",
-							style = MaterialTheme.typography.bodySmall,
-						)
-						Text("Filter di bawah hanya mengubah daftar yang terlihat, bukan pilihan pencarian.",
-							style = MaterialTheme.typography.labelSmall,
-							color = MaterialTheme.colorScheme.onSurfaceVariant)
-					}
+			}
+			state.availableSources.isEmpty() -> Text(stringResource(R.string.migration_no_sources_available),
+				modifier = Modifier.padding(16.dp))
+			else -> {
+				Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+					horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+					TextButton(onClick = onSelectAllSources, enabled = enabled) { Text("Semua") }
+					TextButton(onClick = onClearSources, enabled = enabled) { Text("Kosongkan") }
+					Text(state.selectedSourceNames.size.toString() + " dipilih",
+						modifier = Modifier.align(Alignment.CenterVertically),
+						style = MaterialTheme.typography.bodySmall)
 				}
-				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					listOf("All", "Miyorare", "Store").forEach { category ->
-						FilterChip(selected = origin == category, onClick = { origin = category },
-							label = { Text(category) })
-					}
-				}
-				Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-					TextButton(onClick = { showSources = !showSources },
-						modifier = Modifier.weight(1f)) {
-						Text(if (showSources) "Sembunyikan source tujuan" else "Lihat dan atur source tujuan")
-					}
-					if (showSources) {
-						TextButton(enabled = enabled, onClick = onSelectAllSources) { Text("Semua") }
-						TextButton(enabled = enabled, onClick = onClearSources) { Text("Kosongkan") }
-					}
-				}
-				if (showSources) for ((key, group) in grouped) {
-					val family = group.size > 1
-					if (family) {
-						Row(Modifier.fillMaxWidth().clickable {
-							expandedFamily = if (expandedFamily == key) null else key
-						}.padding(vertical = 8.dp)) {
-							Text("E-Hentai (" + group.size + ")", modifier = Modifier.weight(1f),
-								style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-							Text(if (expandedFamily == key) "⌃" else "⌄")
-						}
-					}
-					if (!family || expandedFamily == key) {
-						for (source in group) {
-							Row(Modifier.fillMaxWidth().clickable(enabled = enabled) {
-								onToggleSource(source.name)
-							}.padding(start = if (family) 14.dp else 0.dp, top = 5.dp, bottom = 5.dp),
-								verticalAlignment = Alignment.CenterVertically) {
-								Checkbox(
-									checked = source.name in state.selectedSourceNames,
-									onCheckedChange = { onToggleSource(source.name) },
-									enabled = enabled,
-								)
-								Text(source.getTitle(context).toString(), style = MaterialTheme.typography.bodyMedium)
+				LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+					verticalArrangement = Arrangement.spacedBy(4.dp)) {
+					items(orderedSources, key = MangaSource::name) { source ->
+						val index = state.selectedSourceNames.indexOf(source.name)
+						Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { onToggleSource(source.name) }
+							.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+							Checkbox(checked = index >= 0, enabled = enabled,
+								onCheckedChange = { onToggleSource(source.name) })
+							Text(source.getTitle(context).toString(), modifier = Modifier.weight(1f),
+								maxLines = 2, overflow = TextOverflow.Ellipsis)
+							if (index >= 0) {
+								TextButton(onClick = { onMoveSource(source.name, -1) },
+									enabled = enabled && index > 0) { Text("↑") }
+								TextButton(onClick = { onMoveSource(source.name, 1) },
+									enabled = enabled && index < state.selectedSourceNames.lastIndex) { Text("↓") }
 							}
 						}
 					}
-				}
-				TextButton(onClick = { advanced = !advanced }) {
-					Text(if (advanced) "Sembunyikan pengaturan lanjutan" else "Pengaturan lanjutan")
-				}
-				if (advanced) {
-					Text("Prioritas pencarian", style = MaterialTheme.typography.titleSmall)
-					selected.forEachIndexed { index, source ->
-						Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-							Text((index + 1).toString() + ". " + source.getTitle(context),
-								modifier = Modifier.weight(1f), maxLines = 1,
-								overflow = TextOverflow.Ellipsis)
-							TextButton(enabled = enabled && index > 0,
-								onClick = { onMoveSource(source.name, -1) }) { Text("↑") }
-							TextButton(enabled = enabled && index < selected.lastIndex,
-								onClick = { onMoveSource(source.name, 1) }) { Text("↓") }
-						}
-					}
-					Text("Strategi", style = MaterialTheme.typography.titleSmall)
-					for (strategy in MigrationSourceStrategy.entries) {
-						Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-							RadioButton(selected = state.sourceStrategy == strategy,
-								onClick = { onStrategy(strategy) }, enabled = enabled)
-							Text(if (strategy == MigrationSourceStrategy.FIRST_MATCH)
-								"Gunakan source pertama yang cocok" else "Bandingkan jumlah chapter")
-						}
-					}
-					OutlinedTextField(value = state.extraSearchParams,
-						onValueChange = onExtraSearch, enabled = enabled, singleLine = true,
-						label = { Text("Parameter pencarian tambahan") },
-						modifier = Modifier.fillMaxWidth())
-					Row(verticalAlignment = Alignment.CenterVertically) {
-						Checkbox(checked = state.skipSetup, onCheckedChange = onSkipSetup, enabled = enabled)
-						Text("Gunakan pengaturan ini lain kali")
-					}
-				}
-				if (state.sourcePoolFailureCount > 0) {
-					Text(stringResource(R.string.migration_partial_provider_pool),
-						style = MaterialTheme.typography.bodySmall)
 				}
 			}
 		}
 		Surface(tonalElevation = 3.dp) {
 			Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
 				if (state.batchBusy) {
-					Text("Pekerjaan migrasi masih berlangsung", style = MaterialTheme.typography.bodySmall)
-					OutlinedButton(onClick = onViewProgress, modifier = Modifier.fillMaxWidth()) { Text("Lihat progres") }
+					OutlinedButton(onClick = onViewProgress, modifier = Modifier.fillMaxWidth()) { Text("Lihat pencarian") }
 				}
-				Button(
-					onClick = onSearch,
+				Button(onClick = onSearch,
 					enabled = enabled && state.manga.isNotEmpty() && state.selectedSourceNames.isNotEmpty()
-						&& !state.sourceSelectionLoading && !state.sourceSelectionFailed,
-					modifier = Modifier.fillMaxWidth().height(52.dp).testTag("migration-batch-search"),
-				) { Text("Cari pengganti untuk " + state.manga.size + " manga") }
+					&& !state.sourceSelectionLoading && !state.sourceSelectionFailed,
+					modifier = Modifier.fillMaxWidth().height(52.dp).testTag("migration-batch-search")) {
+					Text("Mulai mencari (" + state.manga.size + ")")
+				}
+			}
+		}
+	}
+	if (showOptions) {
+		ModalBottomSheet(onDismissRequest = { showOptions = false }) {
+			Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
+				verticalArrangement = Arrangement.spacedBy(10.dp)) {
+				Text("Opsi pencarian", style = MaterialTheme.typography.titleLarge)
+				for (strategy in MigrationSourceStrategy.entries) {
+					Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { onStrategy(strategy) },
+						verticalAlignment = Alignment.CenterVertically) {
+						RadioButton(selected = state.sourceStrategy == strategy,
+							onClick = { onStrategy(strategy) }, enabled = enabled)
+						Text(if (strategy == MigrationSourceStrategy.FIRST_MATCH) "Gunakan source pertama"
+							else "Gunakan yang memiliki chapter terbanyak")
+					}
+				}
+				OutlinedTextField(value = state.extraSearchParams, onValueChange = onExtraSearch,
+					enabled = enabled, label = { Text("Parameter pencarian tambahan") },
+						modifier = Modifier.fillMaxWidth())
+				Row(verticalAlignment = Alignment.CenterVertically) {
+					Checkbox(checked = state.skipSetup, onCheckedChange = onSkipSetup, enabled = enabled)
+					Text("Gunakan pengaturan ini berikutnya")
+				}
+				Button(onClick = { showOptions = false }, modifier = Modifier.fillMaxWidth()) { Text("Selesai") }
 			}
 		}
 	}
