@@ -12,6 +12,8 @@ class TargetedDiagnosticsReportTests(unittest.TestCase):
         return {
             "id": 99, "name": mt.DIAGNOSTIC_NAME,
             "event": "workflow_dispatch",
+            "head_branch": "main",
+            "path": ".github/workflows/manual-targeted-ci-diagnostics.yml@main",
             "display_title": f"Diagnostic PR #42 @ {self.sha}",
             "status": "completed", "conclusion": "failure",
             "html_url": "https://github.com/Noirero/Miyorare/actions/runs/99",
@@ -33,6 +35,8 @@ class TargetedDiagnosticsReportTests(unittest.TestCase):
         self.assertIsNone(mt.matching_run([self.make_run()], 42, "b" * 40))
         injected = dict(self.make_run(), display_title="Diagnostic PR #42 @ " + self.sha + " unrelated")
         self.assertIsNone(mt.matching_run([injected], 42, self.sha))
+        non_main = dict(self.make_run(), head_branch="feature/untrusted")
+        self.assertIsNone(mt.matching_run([non_main], 42, self.sha))
 
     def test_inconsistent_sample_does_not_claim_root_cause(self):
         text = mt.render_report(42, self.sha, self.make_run(), self.evidence())
