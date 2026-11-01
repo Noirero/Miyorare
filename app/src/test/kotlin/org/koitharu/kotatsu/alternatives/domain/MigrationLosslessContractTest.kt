@@ -53,8 +53,23 @@ class MigrationLosslessContractTest {
 		assertTrue(transfer.contains("throwLosslessMigrationConflictException(message)"))
 		assertTrue(transfer.contains("Destinationmangaalreadyhasdifferentreadinghistory"))
 		assertTrue(transfer.contains("Per-chapternotesconflict"))
-		assertTrue(transfer.contains("Downloadedownershippathconflicts"))
+		assertTrue(transfer.contains("if(target!=null&&!samePath(target.path,source.path)){"))
 	}
+
+	@Test
+	fun `download alias conflict does not block committed user state or misassign paths`() {
+		val migrate = source("org/koitharu/kotatsu/alternatives/domain/MigrateUseCase.kt")
+		val transfer = source("org/koitharu/kotatsu/alternatives/domain/LosslessMigrationTransfer.kt")
+
+		assertTrue(migrate.contains("runCatchingCancellable{localMangaIndex.prepareDownloadIdentityMove("))
+		assertTrue(migrate.contains("}.onFailure{it.printStackTraceDebug()}.getOrNull()"))
+		val ownership = transfer.substringAfter("privatesuspendfunmigrateDownloadOwnership")
+			.substringBefore("privatesuspendfunmigrateScrobblingRows")
+		assertTrue(ownership.contains("if(target!=null&&!samePath(target.path,source.path)){"))
+		assertTrue(ownership.contains("continue"))
+		assertTrue(ownership.indexOf("continue") < ownership.indexOf("dao.delete(source.space,oldId)"))
+	}
+
 
 	@Test
 	fun `source replacement never performs physical download deletion or local index rekey`() {
