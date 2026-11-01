@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -89,7 +90,13 @@ class MangaSourcesRepository @Inject constructor(
 		return buildList<MangaSource> {
 			addAll(mihonExtensionManager?.getMihonMangaSources().orEmpty())
 			addAll(lnPluginManager?.getAll().orEmpty())
-			addAll(tsukiPluginManager?.getAvailableSources().orEmpty())
+			// getAvailableSources() excludes disabled/incompatible installed plugins.
+			// The picker inventory counts installation, not activation.
+			tsukiPluginManager?.getPlugins().orEmpty().forEach { plugin ->
+				plugin.sources.forEach { descriptor ->
+					add(TsukiMangaSource(plugin, descriptor))
+				}
+			}
 		}.distinctBy(MangaSource::name)
 	}
 
