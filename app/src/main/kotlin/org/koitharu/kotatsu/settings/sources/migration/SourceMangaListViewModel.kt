@@ -41,10 +41,13 @@ class SourceMangaListViewModel @Inject constructor(
 	val sourceTitle: String = savedStateHandle[SourceMangaListFragment.ARG_SOURCE_TITLE] ?: "Manga migration"
 	private val sourceKeys: List<String> = savedStateHandle.get<Array<String>>(SourceMangaListFragment.ARG_SOURCE_KEYS)
 		?.toList().orEmpty()
+	private val preferredAction: MigrationBatchAction? = savedStateHandle.get<String>(SourceMangaListFragment.ARG_PREFERRED_ACTION)
+		?.let { name -> MigrationBatchAction.entries.firstOrNull { it.name == name } }
 	private val explicitMangaIds: List<Long> = savedStateHandle.get<LongArray>(SourceMangaListFragment.ARG_MANGA_IDS)
 		?.toList().orEmpty()
 
 	private val _state = MutableStateFlow(SourceMangaListState(
+		preferredAction = preferredAction,
 		filter = savedStateHandle.get<String>(FILTER)?.let { raw -> MigrationBatchStatus.entries.find { it.name == raw } },
 		selectedSourceNames = migrationPreferences.selectedSourceNames,
 		sourceStrategy = migrationPreferences.sourceStrategy,
@@ -283,11 +286,31 @@ class SourceMangaListViewModel @Inject constructor(
 							else null
 						}
 					val latest = MigrationBatchPolicy.latest(snapshots)
+					// Search candidates are stored by the existing discovery use case. Resolve their
+					// real covers/details from Room; never invent a Manga from WorkManager title hints.
+					// Respect the Private-only boundary even if a candidate id is present in history.
+					val candidateIds = latest.values.mapNotNull { snapshot ->
+						snapshot.outcome.selection?.id?.takeIf {
+							snapshot.outcome.status == MigrationBatchStatus.READY &&
+								snapshot.discoveryMode == MigrationBatchDiscoveryMode.YOKAI &&
+								it !in privateOnly
+						}
+					}.distinct()
+					val candidates = candidateIds.chunked(500)
+						.flatMap { database.getMangaDao().findByIds(it) }
+						.toMangaList().associateBy(Manga::id)
+					val targetManga = latest.mapNotNull { (sourceId, snapshot) ->
+						val selection = snapshot.outcome.selection ?: return@mapNotNull null
+						val candidate = candidates[selection.id] ?: return@mapNotNull null
+						if (candidate.source.name != selection.source) return@mapNotNull null
+						sourceId to candidate
+					}.toMap()
 					val owned = snapshots.firstOrNull { it.running }?.batchName
 					val batch = snapshots.filter { it.batchName == owned }
 					SourceMangaListState(
 						isLoading = false,
 						manga = manga,
+						targetManga = targetManga,
 						batchItems = latest,
 						batchBusy = works.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) },
 						ownedBatchName = owned,
@@ -307,6 +330,7 @@ class SourceMangaListViewModel @Inject constructor(
 							filter = current.filter,
 							scheduling = current.scheduling,
 							selectedIds = current.selectedIds.intersect(projection.manga.mapTo(hashSetOf()) { it.id }),
+							preferredAction = current.preferredAction,
 							availableSources = current.availableSources,
 							selectedSourceNames = current.selectedSourceNames,
 							sourceStrategy = current.sourceStrategy,
@@ -396,6 +420,8 @@ data class SourceMangaListState(
 	val failed: Boolean = false,
 	val manga: List<Manga> = emptyList(),
 	val selectedIds: Set<Long> = emptySet(),
+	val preferredAction: MigrationBatchAction? = null,
+	val targetManga: Map<Long, Manga> = emptyMap(),
 	val filter: MigrationBatchStatus? = null,
 	val availableSources: List<MangaSource> = emptyList(),
 	/** Ordered destination source identities; FIRST_MATCH uses this exact order. */
