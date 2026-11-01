@@ -214,22 +214,19 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		query: String,
 		failures: Int,
 	): MigrationDiscovery {
-		// Use the same confidence and ambiguity policy as other migration discovery paths.
-		// Source ordering and chapter-count strategy may propose a candidate, but they must not
-		// turn an unverified or contested match into permission for automatic migration.
-		val assessment = candidateMatcher.assess(
+		// Baseline candidate selection follows the configured source order / chapter-count strategy.
+		// Ranking can order alternatives for manual search, but it is not an execution gate here.
+		val ranked = candidateMatcher.rank(
 			seed,
-			candidates.map { MigrationCandidateObservation(it, setOf(query)) },
+			(candidates + candidate).distinctBy { it.source.name to it.id }
+				.map { MigrationCandidateObservation(it, setOf(query)) },
 		)
-		val chosenIsBest = assessment.best?.manga?.let {
-			it.id == candidate.id && it.source.name == candidate.source.name
-		} == true
-		val reviewedAssessment = if (chosenIsBest) assessment else {
-			assessment.copy(state = MigrationMatchState.NEEDS_REVIEW)
-		}
+		val selected = ranked.firstOrNull {
+			it.manga.id == candidate.id && it.manga.source.name == candidate.source.name
+		} ?: error("Search result must be representable as a migration candidate")
 		return MigrationDiscovery(
 			seed = seed,
-			assessment = reviewedAssessment,
+			assessment = MigrationMatchAssessment(MigrationMatchState.READY, selected, ranked),
 			sourceHealthy = false,
 			partialFailureCount = failures,
 		)

@@ -67,6 +67,8 @@ class MigrationFlowScreenTest {
 		onMigrate: () -> Unit = {},
 		onCopy: () -> Unit = {},
 		onOpenManual: (Manga) -> Unit = {},
+		onMigrateOne: (Long) -> Unit = {},
+		onCopyOne: (Long) -> Unit = {},
 	) {
 		compose.setContent {
 			MaterialTheme {
@@ -79,6 +81,7 @@ class MigrationFlowScreenTest {
 					onMoveSource = { _, _ -> }, onStrategy = {},
 					onExtraSearch = {}, onSkipSetup = {}, onRetrySources = {},
 					onMangaClick = onOpenManual, onMangaLongClick = {},
+					onMigrateOne = onMigrateOne, onCopyOne = onCopyOne,
 				)
 			}
 		}
@@ -88,19 +91,19 @@ class MigrationFlowScreenTest {
 	fun readyReviewRequiresExplicitConfirmationBeforeMigration() {
 		var invoked = 0
 		show(screenState(MigrationBatchStatus.READY), onMigrate = { invoked++ })
-		compose.onNodeWithText("Review").performClick()
+		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithTag("migration-batch-migrate").performClick()
 		assertEquals(0, invoked)
 		compose.onNodeWithTag("migration-batch-confirm").performClick()
 		assertEquals(1, invoked)
-		compose.onNodeWithText("Progress dan hasil").assertExists()
+		compose.onNodeWithText("Hasil pencarian").assertExists()
 	}
 
 	@Test
 	fun copyAndMigrateUseTheSameConfirmationPath() {
 		var copies = 0
 		show(screenState(MigrationBatchStatus.READY), onCopy = { copies++ })
-		compose.onNodeWithText("Review").performClick()
+		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithTag("migration-batch-copy").performClick()
 		assertEquals(0, copies)
 		compose.onNodeWithTag("migration-batch-confirm").performClick()
@@ -112,19 +115,40 @@ class MigrationFlowScreenTest {
 		var reviewed = 0
 		show(screenState(MigrationBatchStatus.NEEDS_REVIEW, MigrationBatchStatus.NO_REPLACEMENT),
 			onOpenManual = { reviewed++ })
-		compose.onNodeWithText("Review").performClick()
+		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithTag("migration-batch-migrate").assertDoesNotExist()
 		compose.onNodeWithText("Story 1").performClick()
 		assertEquals(1, reviewed)
 	}
 
+
 	@Test
-	fun destinationOriginFilterDoesNotHideActualSelectionSummary() {
+	fun singleMigrateExecutesFromTheCandidateMenuWithoutAnotherReviewScreen() {
+		var executed = 0L
+		show(screenState(MigrationBatchStatus.READY), onMigrateOne = { executed = it })
+		compose.onNodeWithTag("migration-batch-search").performClick()
+		compose.onNodeWithText("⋮").performClick()
+		compose.onNodeWithText("Migrasikan").performClick()
+		assertEquals(1L, executed)
+	}
+
+	@Test
+	fun singleCopyUsesTheSameCandidateMenuWithoutMigrating() {
+		var copied = 0L
+		show(screenState(MigrationBatchStatus.READY), onCopyOne = { copied = it })
+		compose.onNodeWithTag("migration-batch-search").performClick()
+		compose.onNodeWithText("⋮").performClick()
+		compose.onNodeWithText("Salin").performClick()
+		assertEquals(1L, copied)
+	}
+
+	@Test
+	fun sourceSelectionIsVisibleWithoutExtraFilterTabs() {
 		show(screenState(MigrationBatchStatus.UNCHECKED))
-		compose.onNodeWithText("Store").performClick()
-		compose.onNodeWithText("Source tujuan terpilih: 1").assertExists()
+		compose.onNodeWithText("Pilih source tujuan").assertExists()
 		compose.onNodeWithTag("migration-batch-search").assertExists()
 	}
+
 
 	@Test
 	fun aDifferentConfigMakesOldReadyStatusNonActionable() {
@@ -132,7 +156,7 @@ class MigrationFlowScreenTest {
 			sourceStrategy = MigrationSourceStrategy.MOST_CHAPTERS,
 		)
 		show(stale)
-		compose.onNodeWithText("Review").performClick()
+		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithTag("migration-batch-migrate").assertDoesNotExist()
 	}
 	@Test
@@ -143,7 +167,7 @@ class MigrationFlowScreenTest {
 			1L to snapshot.copy(outcome = snapshot.outcome.copy(selection = null)),
 		))
 		show(malformed)
-		compose.onNodeWithText("Review").performClick()
+		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithTag("migration-batch-migrate").assertDoesNotExist()
 	}
 

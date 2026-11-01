@@ -1,8 +1,6 @@
 package org.koitharu.kotatsu.alternatives.domain
 
 import dagger.Reusable
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -15,7 +13,7 @@ enum class MigrationExecutionMode { MIGRATE, COPY }
  *
  * Search/manual review chooses and persists a stable source/id. Execution never searches for that
  * candidate again. It reloads the exact persisted identity, refreshes details from that exact source,
- * proves a page can be resolved, then hands the replacement to Miyorare's lossless transfer path.
+ * verifies the persisted identity, then uses the application's data-transfer boundary.
  */
 @Reusable
 class YokaiStyleMigrationExecutionUseCase @Inject constructor(
@@ -47,15 +45,6 @@ class YokaiStyleMigrationExecutionUseCase @Inject constructor(
 		check(details.id == selection.id && details.source.name == selection.source) {
 			"Selected replacement identity changed while refreshing details"
 		}
-		val chapter = details.chapters?.lastOrNull()
-			?: error("Selected replacement has no readable chapters")
-		val firstPage = repository.getPages(chapter).firstOrNull()
-			?: error("Selected replacement chapter has no pages")
-		val pageUrl = repository.getPageUrl(firstPage)
-		check(pageUrl.toHttpUrlOrNull() != null || (details.source.isExternalSource() && pageUrl.isNotEmpty())) {
-			"Selected replacement page could not be resolved"
-		}
-
 		mangaDataRepository.storeManga(
 			manga = details,
 			replaceExisting = true,

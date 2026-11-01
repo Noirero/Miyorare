@@ -104,6 +104,43 @@ class MigrationBatchScheduler @Inject constructor(private val workManager: WorkM
 		finished.state == WorkInfo.State.SUCCEEDED
 	}
 
+
+	/** Persist a manual replacement for later Copy/Migrate without executing it on selection. */
+	suspend fun markSelected(
+		mangaId: Long,
+		source: String,
+		selection: MigrationSelection,
+		destinationTitle: String,
+		configKey: String,
+	): Boolean = schedulingMutex.withLock {
+		val existing = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await()
+		if (existing.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) }) return@withLock false
+		val previous = existing.maxOfOrNull { MigrationBatchWork.generation(it.tags) } ?: 0L
+		check(previous < Long.MAX_VALUE)
+		val generation = previous + 1L
+		val batchName = "${MigrationBatchWork.TAG}:selected:${UUID.randomUUID()}"
+		val marker = OneTimeWorkRequestBuilder<MigrationBatchCancellationMarkerWorker>()
+			.setInputData(MigrationBatchWork.output(MigrationBatchOutcome(
+				MigrationBatchStatus.READY,
+				selection = selection,
+				destinationTitle = destinationTitle,
+				destinationSource = selection.source,
+			)))
+			.keepResultsForAtLeast(30, TimeUnit.DAYS)
+			.apply {
+				MigrationBatchWork.tags(
+					mangaId = mangaId, source = source, generation = generation,
+					batch = batchName, destinationId = selection.id,
+					discoveryMode = MigrationBatchDiscoveryMode.YOKAI,
+					configKey = configKey,
+				).forEach { addTag(it) }
+			}
+			.build()
+		workManager.enqueue(marker).await()
+		val finished = checkNotNull(workManager.getWorkInfoByIdFlow(marker.id).first { it?.state?.isFinished == true })
+		finished.state == WorkInfo.State.SUCCEEDED
+	}
+
 	suspend fun cancel(batchName: String) = schedulingMutex.withLock {
 		require(batchName.startsWith(MigrationBatchWork.TAG + ":"))
 		val before = workManager.getWorkInfosByTag(MigrationBatchWork.TAG).await()

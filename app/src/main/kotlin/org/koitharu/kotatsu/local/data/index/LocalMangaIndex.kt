@@ -443,7 +443,13 @@ class LocalMangaIndex @Inject constructor(
 		val targetIndexedAlias = db.getLocalMangaIndexDao().findPath(newRemoteMangaId)?.let { path ->
 			DownloadPathAlias(localMangaId = newRemoteMangaId, path = normalizePath(File(path)))
 		}
-		check((targetAlias == null || targetAlias == migrationAlias) &&
+		// A destination may already own a different downloaded container through the favourites
+		// index. It is unsafe to create a second alias to the source container for that target.
+		val targetFavouriteConflict = db.getFavouriteDownloadIndexDao()
+			.findEntries(listOf(newRemoteMangaId))
+			.any { normalizePath(File(it.path)) != sourceAlias.path }
+		check(!targetFavouriteConflict &&
+			(targetAlias == null || targetAlias == migrationAlias) &&
 			(targetIndexedAlias == null || targetIndexedAlias.sameContainer(sourceAlias))) {
 			"Migration target already points to a different downloaded container or chapter mapping"
 		}

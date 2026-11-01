@@ -125,6 +125,39 @@ class MigrationManualSearchViewModel @Inject constructor(
 		}
 	}
 
+	/** Selecting a manual result returns it to the same result list; execution is a separate action. */
+	fun useSelected() {
+		val current = state.value
+		val candidate = current.selected ?: return
+		val seed = current.seed ?: return
+		if (current.migrating || current.skipping || candidate.id == mangaId) return
+		searchJob?.cancel()
+		_state.update { it.copy(searching = false, migrating = true, errorMessage = null) }
+		viewModelScope.launch {
+			runCatchingCancellable {
+				withContext(Dispatchers.IO) {
+					check(canPersistCandidate(candidate)) {
+						"Selected result already belongs to another source"
+					}
+					mangaDataRepository.storeManga(
+						manga = candidate, replaceExisting = true, stripAppliedOverride = false,
+					)
+					check(batchScheduler.markSelected(
+						mangaId = mangaId,
+						source = seed.source.name,
+						selection = MigrationSelection.fromSearchResult(candidate),
+						destinationTitle = candidate.title,
+						configKey = sessionConfigKey,
+					)) { "Another migration batch is still running" }
+				}
+			}.onSuccess {
+				_state.update { it.copy(migrating = false, selectedReady = true) }
+			}.onFailure { error ->
+				_state.update { it.copy(migrating = false, errorMessage = error.message ?: error::class.java.simpleName) }
+			}
+		}
+	}
+
 	fun migrateSelected() = executeSelected(MigrationExecutionMode.MIGRATE)
 
 	fun copySelected() = executeSelected(MigrationExecutionMode.COPY)
@@ -255,6 +288,7 @@ data class MigrationManualSearchState(
 	val migrating: Boolean = false,
 	val skipping: Boolean = false,
 	val skipped: Boolean = false,
+	val selectedReady: Boolean = false,
 	val seed: Manga? = null,
 	val query: String = "",
 	val sources: List<MangaSource> = emptyList(),
