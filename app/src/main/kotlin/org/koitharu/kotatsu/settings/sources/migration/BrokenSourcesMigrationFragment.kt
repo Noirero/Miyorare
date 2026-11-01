@@ -272,6 +272,7 @@ internal fun BrokenSourcesMigrationScreen(
 								}
 								Box(Modifier.width(48.dp).height(68.dp)
 									.clip(RoundedCornerShape(8.dp))
+									.testTag("migration-landing-cover-" + item.id)
 									.combinedClickable(
 										onClick = { if (currentSelected.isNotEmpty()) toggle(item.id) else onOpenDetails(item) },
 										onLongClick = { toggle(item.id) },
