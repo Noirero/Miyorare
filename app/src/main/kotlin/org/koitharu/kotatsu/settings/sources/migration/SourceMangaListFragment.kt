@@ -158,6 +158,14 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
 		bindMigrationContentInsets(view, (requireActivity() as AppBarOwner).appBar)
+		viewLifecycleOwner.lifecycleScope.launch {
+			viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+				viewModel.state
+					.map { it.selectedIds }
+					.distinctUntilChanged()
+					.collect(::syncActionMode)
+			}
+		}
 	}
 
 	override fun onResume() {
