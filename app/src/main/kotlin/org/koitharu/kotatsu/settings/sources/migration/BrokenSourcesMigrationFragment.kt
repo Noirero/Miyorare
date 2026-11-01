@@ -7,6 +7,8 @@ import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -70,6 +72,9 @@ import coil3.request.ImageRequest
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
 import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.core.exceptions.resolve.CaptchaHandler.Companion.suppressCaptchaErrors
 import org.koitharu.kotatsu.core.ui.image.FaviconDrawable
@@ -103,15 +108,16 @@ class BrokenSourcesMigrationFragment :
 					state = state,
 					imageLoader = imageLoader,
 					onRetry = viewModel::retry,
-					onOpenManga = { mangaIds ->
+					onOpenManga = { mangaIds, preferredAction ->
 						if (mangaIds.isNotEmpty()) (requireActivity() as SettingsActivity).openFragment(
 							SourceMangaListFragment::class.java,
 							SourceMangaListFragment.argsForMangaIds(
-								mangaIds, getString(R.string.manga_migration),
+								mangaIds, getString(R.string.manga_migration), preferredAction,
 							),
 							isFromRoot = false,
 						)
 					},
+					onOpenDetails = { manga -> router.openDetails(manga) },
 				)
 			}
 		}
@@ -132,25 +138,36 @@ class BrokenSourcesMigrationFragment :
 
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun BrokenSourcesMigrationScreen(
 	state: BrokenSourcesMigrationState,
 	imageLoader: ImageLoader,
 	onRetry: () -> Unit,
-	onOpenManga: (Collection<Long>) -> Unit,
+	onOpenManga: (Collection<Long>, MigrationBatchAction?) -> Unit,
+	onOpenDetails: (Manga) -> Unit = {},
 ) {
-	// A source row opens its manga. "Semua" opens the same migration for all its manga.
-	// Exact stored source keys, rather than display titles, define both actions.
 	var sourceKey by rememberSaveable { mutableStateOf<String?>(null) }
 	var query by rememberSaveable { mutableStateOf("") }
+	var novelTab by rememberSaveable { mutableStateOf(false) }
+	var selectedIds by rememberSaveable { mutableStateOf(arrayListOf<Long>()) }
+	val selected = selectedIds.toSet()
 	val context = LocalContext.current
+	val hasManga = state.manga.any { !it.isNovelContent }
+	val hasNovel = state.manga.any { it.isNovelContent }
+	val showNovel = !hasManga || (hasNovel && novelTab)
+	val domainManga = state.manga.filter { it.isNovelContent == showNovel }
 	val sourceRows = state.sources.flatMap { group ->
-		group.variants.map { variant -> group to variant }
+		group.variants.mapNotNull { variant ->
+			val count = domainManga.count { it.source.name == variant.key }
+			if (count > 0) Triple(group, variant, count) else null
+		}
 	}
 	val activeSource = sourceRows.firstOrNull { it.second.key == sourceKey }
+	fun clearSelection() { selectedIds = arrayListOf() }
 	androidx.activity.compose.BackHandler(enabled = activeSource != null) {
-		sourceKey = null
-		query = ""
+		if (selectedIds.isNotEmpty()) clearSelection()
+		else { sourceKey = null; query = "" }
 	}
 	Column(Modifier.fillMaxSize()) {
 		when {
@@ -162,79 +179,134 @@ internal fun BrokenSourcesMigrationScreen(
 				Text("Daftar source tidak dapat dimuat", style = MaterialTheme.typography.titleMedium)
 				TextButton(onClick = onRetry) { Text(stringResource(R.string.migration_retry)) }
 			}
-			activeSource == null -> LazyColumn(
-				modifier = Modifier.fillMaxSize().nestedScroll(rememberNestedScrollInteropConnection()),
-				contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-				verticalArrangement = Arrangement.spacedBy(10.dp),
-			) {
-				item { Text("Pilih source", style = MaterialTheme.typography.titleLarge) }
-				if (sourceRows.isEmpty()) item { Text("Tidak ada manga yang dapat dimigrasikan.") }
-				items(sourceRows, key = { it.second.key }) { (group, variant) ->
-					val ids = state.manga.filter { it.source.name == variant.key }.map(Manga::id)
-					Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-						.clickable { sourceKey = variant.key; query = "" }
-						.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-						SourceIcon(group, imageLoader)
-						Spacer(Modifier.width(12.dp))
-						Column(Modifier.weight(1f)) {
-							Text(variant.title, style = MaterialTheme.typography.bodyMedium,
-								fontWeight = FontWeight.SemiBold)
-							Text(pluralStringResource(R.plurals.manga_count, ids.size, ids.size),
-								style = MaterialTheme.typography.bodySmall)
-							if (group.isUnavailable) Text("Source tidak tersedia",
-								style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+			activeSource == null -> {
+				Column(Modifier.fillMaxSize()) {
+					Text("Pilih source", style = MaterialTheme.typography.titleLarge,
+						modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+					if (hasManga && hasNovel) {
+						Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+							FilterChip(selected = !novelTab, onClick = { novelTab = false; sourceKey = null; clearSelection() },
+								label = { Text("Manga") })
+							FilterChip(selected = novelTab, onClick = { novelTab = true; sourceKey = null; clearSelection() },
+								label = { Text("Novel") })
 						}
-						TextButton(onClick = { onOpenManga(ids) }, enabled = ids.isNotEmpty()) { Text("Semua") }
+					}
+					LazyColumn(
+						modifier = Modifier.weight(1f).nestedScroll(rememberNestedScrollInteropConnection()),
+						contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+						verticalArrangement = Arrangement.spacedBy(10.dp),
+					) {
+						if (sourceRows.isEmpty()) item { Text("Tidak ada judul yang dapat dimigrasikan.") }
+						items(sourceRows, key = { it.second.key }) { (group, variant, count) ->
+							val ids = domainManga.filter { it.source.name == variant.key }.map(Manga::id)
+							Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+								.clickable { sourceKey = variant.key; query = ""; clearSelection() }
+								.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+								SourceIcon(group, imageLoader)
+								Spacer(Modifier.width(12.dp))
+								Column(Modifier.weight(1f)) {
+									Text(variant.title, style = MaterialTheme.typography.bodyMedium,
+										fontWeight = FontWeight.SemiBold)
+									Text(pluralStringResource(R.plurals.manga_count, count, count),
+										style = MaterialTheme.typography.bodySmall)
+									if (group.isUnavailable) Text("Source tidak tersedia",
+										style = MaterialTheme.typography.labelSmall,
+										color = MaterialTheme.colorScheme.error)
+								}
+								TextButton(onClick = { onOpenManga(ids, null) }) { Text("Semua") }
+							}
+						}
 					}
 				}
 			}
 			else -> {
 				val source = activeSource.second
-				val manga = state.manga.filter { item ->
-					item.source.name == source.key &&
-						(query.isBlank() || item.title.contains(query.trim(), ignoreCase = true))
+				val sourceManga = domainManga.filter { it.source.name == source.key }
+				val manga = sourceManga.filter {
+					query.isBlank() || it.title.contains(query.trim(), ignoreCase = true)
+				}
+				val currentSelected = selected.intersect(sourceManga.mapTo(hashSetOf(), Manga::id))
+				fun toggle(id: Long) {
+					selectedIds = ArrayList(currentSelected.toMutableSet().apply {
+						if (!add(id)) remove(id)
+					})
 				}
 				Column(Modifier.fillMaxSize()) {
 					Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
 						verticalAlignment = Alignment.CenterVertically) {
-						TextButton(onClick = { sourceKey = null; query = "" }) { Text("‹ Source") }
+						TextButton(onClick = { sourceKey = null; query = ""; clearSelection() }) { Text("‹ Source") }
 						Text(source.title, style = MaterialTheme.typography.titleMedium,
 							modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+					}
+					if (currentSelected.isNotEmpty()) {
+						Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+							verticalAlignment = Alignment.CenterVertically) {
+							Text("${currentSelected.size} terpilih", modifier = Modifier.weight(1f),
+								style = MaterialTheme.typography.titleSmall)
+							TextButton(onClick = { selectedIds = ArrayList(sourceManga.map(Manga::id)) }) {
+								Text("Pilih semua")
+							}
+							TextButton(onClick = { clearSelection() }) { Text("Batal") }
+						}
 					}
 					LazyColumn(Modifier.weight(1f),
 						contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
 						verticalArrangement = Arrangement.spacedBy(8.dp)) {
 						item {
 							OutlinedTextField(value = query, onValueChange = { query = it },
-								label = { Text("Cari manga") }, singleLine = true,
+								label = { Text(if (showNovel) "Cari novel" else "Cari manga") }, singleLine = true,
 								modifier = Modifier.fillMaxWidth().testTag("migration-landing-search"))
 						}
 						items(manga, key = Manga::id) { item ->
+							val checked = item.id in currentSelected
 							Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-								.clickable { onOpenManga(listOf(item.id)) }
-								.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+								.then(if (checked) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)) else Modifier)
+								.combinedClickable(
+									onClick = { if (currentSelected.isNotEmpty()) toggle(item.id) else onOpenManga(listOf(item.id), null) },
+									onLongClick = { toggle(item.id) },
+								).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
 								val cover = remember(item.id, item.coverUrl, item.source) {
 									item.coverUrl?.let {
 										ImageRequest.Builder(context).data(it).mangaSourceExtra(item.source).build()
 									}
 								}
-								if (cover != null) AsyncImage(model = cover, imageLoader = imageLoader,
-									contentDescription = null, modifier = Modifier.width(48.dp).height(68.dp)
-										.clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+								Box(Modifier.width(48.dp).height(68.dp)
+									.clip(RoundedCornerShape(8.dp))
+									.combinedClickable(
+										onClick = { if (currentSelected.isNotEmpty()) toggle(item.id) else onOpenDetails(item) },
+										onLongClick = { toggle(item.id) },
+									)) {
+									if (cover != null) AsyncImage(model = cover, imageLoader = imageLoader,
+										contentDescription = item.title, modifier = Modifier.fillMaxSize(),
+										contentScale = ContentScale.Crop)
+								}
 								Spacer(Modifier.width(12.dp))
 								Column(Modifier.weight(1f)) {
 									Text(item.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
 									Text(item.source.getTitle(context).toString(),
 										style = MaterialTheme.typography.bodySmall)
 								}
-								Text("›")
+								if (currentSelected.isNotEmpty()) Checkbox(
+									checked = checked, onCheckedChange = { toggle(item.id) },
+								) else Text("›")
 							}
 						}
 					}
 					Surface(tonalElevation = 3.dp) {
-						Button(onClick = { onOpenManga(state.manga.filter { it.source.name == source.key }.map(Manga::id)) },
-							modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
-							Text("Migrasikan semua (" + state.manga.count { it.source.name == source.key } + ")")
+						if (currentSelected.isNotEmpty()) {
+							Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp),
+								horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+								androidx.compose.material3.OutlinedButton(
+									onClick = { onOpenManga(currentSelected, MigrationBatchAction.COPY) },
+									modifier = Modifier.weight(1f)) { Text("Salin (${currentSelected.size})") }
+								Button(onClick = { onOpenManga(currentSelected, MigrationBatchAction.MIGRATE) },
+									modifier = Modifier.weight(1f)) { Text("Migrasikan (${currentSelected.size})") }
+							}
+						} else {
+							Button(onClick = { onOpenManga(sourceManga.map(Manga::id), null) },
+								modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
+								Text("Migrasikan semua (${sourceManga.size})")
+							}
 						}
 					}
 				}
