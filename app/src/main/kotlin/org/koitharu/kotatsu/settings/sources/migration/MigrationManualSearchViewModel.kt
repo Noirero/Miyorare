@@ -223,7 +223,8 @@ class MigrationManualSearchViewModel @Inject constructor(
 					) { "Another migration batch is still running" }
 					val expected = if (mode == MigrationExecutionMode.COPY) MigrationBatchStatus.COPIED else MigrationBatchStatus.MIGRATED
 					check(snapshot.outcome.status == expected) {
-						"Migration execution ended with ${snapshot.outcome.status.name.lowercase()}"
+						"Migration execution ended with ${snapshot.outcome.status.name.lowercase()}" +
+                            (snapshot.outcome.failureStage?.let { " at ${it.name.lowercase()}" } ?: "")
 					}
 					val destinationId = checkNotNull(snapshot.outcome.destinationId) { "Migration result has no destination" }
 					checkNotNull(mangaDataRepository.findMangaById(destinationId, withChapters = false)) {
