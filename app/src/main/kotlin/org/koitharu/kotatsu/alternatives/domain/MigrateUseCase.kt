@@ -103,10 +103,14 @@ class MigrateUseCase @Inject constructor(
 				// before Room may commit so process death cannot lose the destination override copy.
 				chapterReadOverridesMigrationStore.persistCurrent(newDetails.id)
 			}
+			// Download remapping is optional compatibility work, not candidate or transfer admission.
+			// Any unresolved alias keeps its original owner and physical file untouched.
 			preparedDownloadIdentity = if (losslessPlan != null) {
-				localMangaIndex.prepareDownloadIdentityMove(
-					oldDetails.id, newDetails.id, chapterTargets = losslessPlan.chapterTargets.mapValues { it.value.id },
-				)
+				runCatchingCancellable {
+					localMangaIndex.prepareDownloadIdentityMove(
+						oldDetails.id, newDetails.id, chapterTargets = losslessPlan.chapterTargets.mapValues { it.value.id },
+					)
+				}.onFailure { it.printStackTraceDebug() }.getOrNull()
 			} else {
 				null
 			}
