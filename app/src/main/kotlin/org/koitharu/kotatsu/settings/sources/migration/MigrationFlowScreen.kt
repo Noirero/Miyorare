@@ -274,97 +274,71 @@ private fun MigrationReviewStep(
 	onRetry: () -> Unit,
 	onContinue: () -> Unit,
 	onCopy: () -> Unit,
-	onResults: () -> Unit,
+	onCancel: () -> Unit,
+	onMigrateOne: (Long) -> Unit,
+	onCopyOne: (Long) -> Unit,
+	onSkipOne: (Long) -> Unit,
 ) {
-	var filter by rememberSaveable { mutableStateOf("Semua") }
 	val readyIds = MigrationBatchPolicy.readyRequests(
-			manga = state.manga, snapshots = state.batchItems,
-			discoveryMode = MigrationBatchDiscoveryMode.YOKAI, configKey = state.configKey,
-		).mapTo(hashSetOf()) { it.mangaId }
-		val ready = state.manga.filter { it.id in readyIds }
-	val review = state.manga.filter {
-		state.status(it.id) in setOf(MigrationBatchStatus.NEEDS_REVIEW, MigrationBatchStatus.INCOMPLETE,
-			MigrationBatchStatus.ERROR, MigrationBatchStatus.INTERRUPTED,
-			MigrationBatchStatus.UNCHECKED, MigrationBatchStatus.SKIPPED, MigrationBatchStatus.HEALTHY)
-	}
-	val missing = state.manga.filter { state.status(it.id) == MigrationBatchStatus.NO_REPLACEMENT }
-	val queued = state.manga.filter { state.status(it.id) in setOf(
-		MigrationBatchStatus.QUEUED, MigrationBatchStatus.CHECKING, MigrationBatchStatus.MIGRATING) }
-	val display = when (filter) {
-		"Siap" -> ready
-		"Perlu review" -> review
-		"Tidak ditemukan" -> missing
-		else -> state.manga
-	}
+		manga = state.manga, snapshots = state.batchItems,
+		discoveryMode = MigrationBatchDiscoveryMode.YOKAI, configKey = state.configKey,
+	).mapTo(hashSetOf()) { it.mangaId }
+	val busy = state.batchBusy || state.scheduling
 	Column(Modifier.fillMaxSize()) {
+		Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+			verticalAlignment = Alignment.CenterVertically) {
+			Text("Hasil pencarian", style = MaterialTheme.typography.titleLarge,
+				modifier = Modifier.weight(1f))
+			TextButton(onClick = onRetry, enabled = !busy) { Text("Source") }
+		}
+		if (busy) {
+			LinearProgressIndicator(Modifier.fillMaxWidth())
+			Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+				Text("Memproses " + state.batchCompleted + "/" + state.batchTotal,
+					modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+				TextButton(onClick = onCancel, enabled = state.ownedBatchName != null) { Text("Batalkan") }
+			}
+		}
+		if (state.failed) {
+			Text("Sebagian pekerjaan tidak dapat dijalankan. Periksa hasil atau coba lagi.",
+				modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
+		}
 		LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp),
-			verticalArrangement = Arrangement.spacedBy(12.dp)) {
-			item {
-				Text("Review kandidat", style = MaterialTheme.typography.titleLarge)
-				Text("Periksa pengganti sebelum migrasi. Kandidat meragukan tidak akan dipindahkan otomatis.",
-					style = MaterialTheme.typography.bodySmall)
-				if (state.batchBusy || state.scheduling) {
-					LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 12.dp))
-					Text("Pencarian atau migrasi masih berjalan", style = MaterialTheme.typography.bodySmall)
-				}
-			}
-			item {
-				Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-					ReviewCount("Siap", ready.size, Modifier.weight(1f))
-					ReviewCount("Perlu review", review.size, Modifier.weight(1f))
-					ReviewCount("Tidak ada", missing.size, Modifier.weight(1f))
-				}
-			}
-			item {
-				Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-					horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-					listOf("Semua", "Siap", "Perlu review", "Tidak ditemukan").forEach { category ->
-						FilterChip(selected = filter == category, onClick = { filter = category },
-							label = { Text(category) })
-					}
-				}
-			}
-			items(display, key = Manga::id) { manga ->
+			verticalArrangement = Arrangement.spacedBy(10.dp)) {
+			items(state.manga, key = Manga::id) { manga ->
 				val status = state.status(manga.id)
 				val outcome = state.batchItems[manga.id]?.outcome
 				MigrationMangaReviewItem(manga, imageLoader, status,
 					outcome?.destinationTitle, outcome?.destinationSource,
-					onClick = { onMangaClick(manga) })
+					onClick = { onMangaClick(manga) },
+					onMigrate = if (!busy && manga.id in readyIds) ({ onMigrateOne(manga.id) }) else null,
+					onCopy = if (!busy && manga.id in readyIds) ({ onCopyOne(manga.id) }) else null,
+					onSkip = if (!busy) ({ onSkipOne(manga.id) }) else null)
 			}
-			if (queued.isNotEmpty()) item {
-				Text(queued.size.toString() + " manga masih dalam antrean/proses.",
-					style = MaterialTheme.typography.bodySmall)
-			}
-			if (display.isEmpty()) item {
-				Text("Tidak ada manga dalam kategori ini.", style = MaterialTheme.typography.bodySmall)
-			}
-			if (state.completedResults.isNotEmpty()) item {
-				Text("Riwayat hasil selesai (" + state.completedResults.size + ")",
-					style = MaterialTheme.typography.titleSmall)
-			}
-			items(state.completedResults, key = { "done:" + it.mangaId + ":" + it.generation }) { snapshot ->
-				Text((snapshot.outcome.destinationTitle ?: "Manga") + " · " +
-					stringResource(snapshot.outcome.status.labelRes()), style = MaterialTheme.typography.bodySmall)
+			if (state.manga.isEmpty()) item { Text("Tidak ada manga dalam sesi ini.") }
+			if (state.completedResults.isNotEmpty()) {
+				item { Text("Hasil sebelumnya", style = MaterialTheme.typography.titleSmall) }
+				items(state.completedResults, key = { "done:" + it.mangaId + ":" + it.generation }) { snapshot ->
+					Text((snapshot.outcome.destinationTitle ?: "Manga") + " · " +
+						stringResource(snapshot.outcome.status.labelRes()), style = MaterialTheme.typography.bodySmall)
+				}
 			}
 		}
 		Surface(tonalElevation = 3.dp) {
 			Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
-				if (ready.isNotEmpty() && !state.batchBusy && !state.scheduling) {
+				if (readyIds.isNotEmpty() && !busy) {
 					Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()
 						.testTag("migration-batch-migrate")) {
-						Text("Tinjau migrasi " + ready.size + " manga siap")
+						Text("Migrasikan (" + readyIds.size + ")")
 					}
 					OutlinedButton(onClick = onCopy, modifier = Modifier.fillMaxWidth()
 						.testTag("migration-batch-copy")) {
-						Text("Salin " + ready.size + " manga siap")
+						Text("Salin (" + readyIds.size + ")")
 					}
 				} else {
-					Text(if (state.batchBusy) "Menunggu proses selesai" else "Belum ada kandidat siap.",
+					Text(if (busy) "Pencarian / migrasi sedang berjalan"
+						else "Pilih kandidat secara manual jika belum ditemukan.",
 						style = MaterialTheme.typography.bodySmall)
-				}
-				Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-					TextButton(onClick = onRetry) { Text("Ubah pencarian") }
-					TextButton(onClick = onResults) { Text("Lihat hasil") }
 				}
 			}
 		}
@@ -386,32 +360,55 @@ private fun ReviewCount(title: String, count: Int, modifier: Modifier = Modifier
 private fun MigrationMangaReviewItem(
 	manga: Manga, imageLoader: ImageLoader, status: MigrationBatchStatus,
 	targetTitle: String?, targetSource: String?, onClick: () -> Unit,
+	onMigrate: (() -> Unit)? = null,
+	onCopy: (() -> Unit)? = null,
+	onSkip: (() -> Unit)? = null,
 ) {
 	val context = LocalContext.current
+	var menuExpanded by remember { mutableStateOf(false) }
 	Surface(tonalElevation = 1.dp, shape = MaterialTheme.shapes.medium) {
-		Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(10.dp),
-			horizontalArrangement = Arrangement.spacedBy(12.dp),
-			verticalAlignment = Alignment.CenterVertically) {
-			val request = remember(manga.id, manga.coverUrl, manga.source) {
-				manga.coverUrl?.let {
-					ImageRequest.Builder(context).data(it).mangaSourceExtra(manga.source).build()
+		Row(Modifier.fillMaxWidth().padding(9.dp),
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+			Column(Modifier.weight(1f).clickable(onClick = onClick)) {
+				val request = remember(manga.id, manga.coverUrl, manga.source) {
+					manga.coverUrl?.let {
+						ImageRequest.Builder(context).data(it).mangaSourceExtra(manga.source).build()
+					}
 				}
-			}
-			if (request != null) {
-				AsyncImage(model = request, imageLoader = imageLoader,
-					contentDescription = null, modifier = Modifier.width(48.dp).height(66.dp))
-			}
-			Column(Modifier.weight(1f)) {
-				Text(manga.title, style = MaterialTheme.typography.bodyMedium,
+				if (request != null) AsyncImage(model = request, imageLoader = imageLoader,
+					contentDescription = null, modifier = Modifier.width(58.dp).height(76.dp))
+				Text(manga.title, style = MaterialTheme.typography.bodySmall,
 					maxLines = 2, overflow = TextOverflow.Ellipsis)
-				Text(manga.source.getTitle(context).toString() + " → " +
-					(targetSource ?: "Belum ada source tujuan"),
-					style = MaterialTheme.typography.bodySmall)
-				if (targetTitle != null) Text(targetTitle, style = MaterialTheme.typography.bodySmall,
+				Text(manga.source.getTitle(context).toString(), style = MaterialTheme.typography.labelSmall,
 					maxLines = 1, overflow = TextOverflow.Ellipsis)
+			}
+			Text("→", style = MaterialTheme.typography.titleMedium)
+			Column(Modifier.weight(1f).clickable(onClick = onClick)) {
+				Text(targetTitle ?: if (status == MigrationBatchStatus.NO_REPLACEMENT)
+					"Tidak ditemukan" else "Mencari...",
+					style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+				if (targetSource != null) Text(targetSource,
+					style = MaterialTheme.typography.labelSmall, maxLines = 1)
 				Text(stringResource(status.labelRes()), style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.primary)
-				Text("Tinjau / pilih kandidat ›", style = MaterialTheme.typography.labelSmall)
+			}
+			Box {
+				TextButton(onClick = { menuExpanded = true }) { Text("⋮") }
+				DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+				DropdownMenuItem(text = { Text("Cari manual") }, onClick = {
+					menuExpanded = false; onClick()
+				})
+				if (onMigrate != null) DropdownMenuItem(text = { Text("Migrasikan") }, onClick = {
+					menuExpanded = false; onMigrate()
+				})
+				if (onCopy != null) DropdownMenuItem(text = { Text("Salin") }, onClick = {
+					menuExpanded = false; onCopy()
+				})
+				if (onSkip != null) DropdownMenuItem(text = { Text("Lewati") }, onClick = {
+					menuExpanded = false; onSkip()
+				})
+			}
 			}
 		}
 	}
