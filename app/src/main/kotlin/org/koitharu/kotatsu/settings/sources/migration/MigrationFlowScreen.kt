@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.alternatives.domain.MigrationFailureStage
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchPolicy
@@ -106,6 +107,7 @@ internal fun MigrationFlowScreen(
 			onRetrySources = onRetrySources,
 			onSearch = { onSearch(); step = 1 },
 			onViewProgress = { step = 1 },
+            onCancelActive = { pendingCancellation = true },
 		)
 		else -> MigrationReviewStep(
 			state = state,
@@ -152,7 +154,9 @@ internal fun MigrationFlowScreen(
 	if (pendingCancellation) AlertDialog(
 		onDismissRequest = { pendingCancellation = false },
 		title = { Text("Hentikan pencarian?") },
-		text = { Text("Pekerjaan yang belum selesai akan dibatalkan.") },
+		text = { Text(if (state.ownedBatchName == null)
+            "Batch migrasi lain masih berjalan. Hentikan batch aktif tersebut? Periksa hasil migrasi sebelum mencoba ulang."
+            else "Pekerjaan yang belum selesai akan dibatalkan. Periksa hasil migrasi sebelum mencoba ulang.") },
 		confirmButton = { TextButton(onClick = {
 			pendingCancellation = false
 			onCancel()
@@ -220,6 +224,7 @@ private fun MigrationSearchSetup(
 	onRetrySources: () -> Unit,
 	onSearch: () -> Unit,
 	onViewProgress: () -> Unit,
+    onCancelActive: () -> Unit,
 ) {
 	val context = LocalContext.current
 	var showOptions by rememberSaveable { mutableStateOf(false) }
@@ -237,6 +242,16 @@ private fun MigrationSearchSetup(
 			else it.sortedByDescending { group -> group.label.lowercase() } }
 	val selectedSet = state.selectedSourceNames.toSet()
 	Column(Modifier.fillMaxSize()) {
+        if (state.batchBusy && state.ownedBatchName == null) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("Batch migrasi lain sedang berjalan",
+                    modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onCancelActive, enabled = state.activeBatchName != null) {
+                    Text("Batalkan")
+                }
+            }
+        }
 		Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
 			verticalAlignment = Alignment.CenterVertically) {
 			Text("Pilih source tujuan", style = MaterialTheme.typography.titleLarge,
@@ -431,9 +446,10 @@ private fun MigrationReviewStep(
 		if (busy) {
 			LinearProgressIndicator(Modifier.fillMaxWidth())
 			Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-				Text("Memproses " + state.batchCompleted + "/" + state.batchTotal,
+				Text(if (state.batchTotal == 0) "Batch migrasi lain sedang berjalan"
+                    else "Memproses " + state.batchCompleted + "/" + state.batchTotal,
 					modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-				TextButton(onClick = onCancel, enabled = state.ownedBatchName != null) { Text("Batalkan") }
+				TextButton(onClick = onCancel, enabled = state.activeBatchName != null) { Text("Batalkan") }
 			}
 		}
 		if (state.failed) {
@@ -445,9 +461,11 @@ private fun MigrationReviewStep(
 			items(state.manga, key = Manga::id) { manga ->
 				val status = state.status(manga.id)
 				val outcome = state.batchItems[manga.id]?.outcome
+                val failureStage = outcome?.failureStage
 				MigrationMangaReviewItem(manga, imageLoader, status,
 					outcome?.destinationTitle, outcome?.destinationSource,
 					onClick = { onMangaClick(manga) },
+                    failureStage = failureStage,
 					targetManga = state.readyTarget(manga.id), onOpenTarget = onOpenTarget,
 					onMigrate = if (!busy && manga.id in readyIds) ({ onMigrateOne(manga.id) }) else null,
 					onCopy = if (!busy && manga.id in readyIds) ({ onCopyOne(manga.id) }) else null,
@@ -507,6 +525,7 @@ private fun MigrationMangaReviewItem(
 	onMigrate: (() -> Unit)? = null,
 	onCopy: (() -> Unit)? = null,
 	onSkip: (() -> Unit)? = null,
+    failureStage: MigrationFailureStage? = null,
 ) {
 	val context = LocalContext.current
 	var menuExpanded by remember { mutableStateOf(false) }

@@ -83,11 +83,23 @@ class MigrationBatchPolicyTest {
 		val failed = MigrationBatchPolicy.process(request, { true }, { error("No scan here") }, { throw IllegalStateException("collision") })
 		val successful = MigrationBatchPolicy.process(request.copy(mangaId = 2), { true }, { error("No scan here") }, { replacement })
 		assertEquals(MigrationBatchStatus.ERROR, failed.status)
+        assertEquals(MigrationFailureStage.UNKNOWN, failed.failureStage)
 		assertEquals(replacement.source.name, failed.destinationSource)
 		assertEquals(MigrationBatchStatus.MIGRATED, successful.status)
 		val retry = MigrationBatchPolicy.process(request, { true }, { error("No scan here") }, { replacement })
 		assertEquals(MigrationBatchStatus.MIGRATED, retry.status)
 	}
+	@Test fun failureStageIsPreservedWithoutTreatingAnExecutionErrorAsSuccess() = runTest {
+        val request = MigrationBatchRequest(1, "OLD", MigrationBatchAction.MIGRATE, MigrationSelection.of(replacement))
+        val failed = MigrationBatchPolicy.process(
+            request, { true }, { error("No scan") },
+            { throw MigrationExecutionStageException(MigrationFailureStage.DESTINATION_DETAILS, IllegalStateException("private remote detail")) },
+        )
+        assertEquals(MigrationBatchStatus.ERROR, failed.status)
+        assertEquals(MigrationFailureStage.DESTINATION_DETAILS, failed.failureStage)
+        assertNotEquals(MigrationBatchStatus.MIGRATED, failed.status)
+    }
+
 	@Test fun copyActionUsesCopyExecutorAndReportsCopied() = runTest {
 		var migrateCalls = 0
 		var copyCalls = 0
