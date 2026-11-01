@@ -32,6 +32,17 @@ class MigrationYokaiFlowContractTest {
 	}
 
 	@Test
+	fun `download state is not an input to candidate discovery or ordering`() {
+		val search = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
+		for (forbidden in listOf("LocalMangaIndex", "DownloadPathAlias", "getFavouriteDownloadIndexDao",
+			"downloadOwnership", "downloadIdentity", "downloadedChapters")) {
+			assertFalse("Discovery must not consult $forbidden", search.contains(forbidden))
+		}
+		assertTrue(search.contains("chooseCandidate(seed.title,eligible)"))
+		assertTrue(search.contains("MigrationMatchAssessment(MigrationMatchState.READY,selected,ranked)"))
+	}
+
+	@Test
 	fun `automatic matching follows Yokai source order and threshold rules`() {
 		val source = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
 
