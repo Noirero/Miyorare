@@ -436,7 +436,7 @@ private fun MigrationReviewStep(
 				MigrationMangaReviewItem(manga, imageLoader, status,
 					outcome?.destinationTitle, outcome?.destinationSource,
 					onClick = { onMangaClick(manga) },
-					targetManga = state.targetManga[manga.id], onOpenTarget = onOpenTarget,
+					targetManga = state.readyTarget(manga.id), onOpenTarget = onOpenTarget,
 					onMigrate = if (!busy && manga.id in readyIds) ({ onMigrateOne(manga.id) }) else null,
 					onCopy = if (!busy && manga.id in readyIds) ({ onCopyOne(manga.id) }) else null,
 					onSkip = if (!busy) ({ onSkipOne(manga.id) }) else null)
