@@ -143,7 +143,16 @@ class MigrationFlowScreenTest {
 	}
 
 	@Test
-	fun sourceSelectionIsVisibleWithoutExtraFilterTabs() {
+	fun destinationTabsCountInstalledLogicalGroups() {
+		show(screenState(MigrationBatchStatus.UNCHECKED))
+		compose.onNodeWithText("Semua (1)").assertExists()
+		compose.onNodeWithText("Other (1)").assertExists()
+		compose.onNodeWithText("A–Z").performClick()
+		compose.onNodeWithText("Z–A").assertExists()
+	}
+
+	@Test
+	fun sourceSelectionKeepsSearchActionAvailable() {
 		show(screenState(MigrationBatchStatus.UNCHECKED))
 		compose.onNodeWithText("Pilih source tujuan").assertExists()
 		compose.onNodeWithTag("migration-batch-search").assertExists()
