@@ -97,12 +97,7 @@ class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
-		val appBar = (requireActivity() as AppBarOwner).appBar
-		val listener = AppBarLayout.OnOffsetChangedListener { bar, offset ->
-			view.updatePadding(bottom = bar.totalScrollRange + offset)
-		}
-		appBar.addOnOffsetChangedListener(listener)
-		view.doOnDetach { appBar.removeOnOffsetChangedListener(listener) }
+		bindMigrationContentInsets(view, (requireActivity() as AppBarOwner).appBar)
 	}
 
 	companion object {
@@ -269,7 +264,7 @@ private fun MigrationManualSearchScreen(
 			}
 		}
 		Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surfaceContainer) {
-			Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp),
+			Column(Modifier.fillMaxWidth().padding(12.dp),
 				verticalArrangement = Arrangement.spacedBy(7.dp)) {
 				if (selected != null) {
 					Text("Pengganti: " + selected.title, style = MaterialTheme.typography.bodyMedium,

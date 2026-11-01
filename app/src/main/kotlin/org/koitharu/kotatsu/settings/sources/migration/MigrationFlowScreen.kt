@@ -29,6 +29,9 @@ import org.koitharu.kotatsu.alternatives.domain.MigrationBatchPolicy
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLangCode
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageFlag
 import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.explore.ui.adapter.ExploreSourceOrigin
 import org.koitharu.kotatsu.explore.ui.adapter.exploreSourceOrigin
@@ -107,7 +110,7 @@ internal fun MigrationFlowScreen(
 			onRetrySources = onRetrySources,
 			onSearch = { onSearch(); step = 1 },
 			onViewProgress = { step = 1 },
-            onCancelActive = { pendingCancellation = true },
+			onCancelActive = { pendingCancellation = true },
 		)
 		else -> MigrationReviewStep(
 			state = state,
@@ -155,8 +158,8 @@ internal fun MigrationFlowScreen(
 		onDismissRequest = { pendingCancellation = false },
 		title = { Text("Hentikan pencarian?") },
 		text = { Text(if (state.ownedBatchName == null)
-            "Batch migrasi lain masih berjalan. Hentikan batch aktif tersebut? Periksa hasil migrasi sebelum mencoba ulang."
-            else "Pekerjaan yang belum selesai akan dibatalkan. Periksa hasil migrasi sebelum mencoba ulang.") },
+			"Batch migrasi lain masih berjalan. Hentikan batch aktif tersebut? Periksa hasil migrasi sebelum mencoba ulang."
+			else "Pekerjaan yang belum selesai akan dibatalkan. Periksa hasil migrasi sebelum mencoba ulang.") },
 		confirmButton = { TextButton(onClick = {
 			pendingCancellation = false
 			onCancel()
@@ -174,6 +177,8 @@ internal data class MigrationDestinationGroup(
 	val label: String,
 	val origin: ExploreSourceOrigin?,
 	val sources: List<org.koitharu.kotatsu.parsers.model.MangaSource>,
+	/** Non-null for per-language groups of Tsuki/UMA/Gekkoushi providers. */
+	val languageCode: String? = null,
 )
 
 internal fun destinationGroups(
@@ -183,23 +188,49 @@ internal fun destinationGroups(
 	.groupBy { source ->
 		when (val raw = source.unwrap()) {
 			is MihonMangaSource -> "store:" + raw.pkgName
-			is TsukiMangaSource -> "plugin:" + raw.plugin.provider.name + ":" + raw.plugin.pluginId
+			is TsukiMangaSource -> "language:" + raw.plugin.provider.name + ":" + migrationLanguageCode(raw.language)
 			is LnMangaSource -> "novel:" + raw.pluginId
 			else -> "source:" + source.name
 		}
 	}
 	.map { (key, variants) ->
 		val first = variants.first().unwrap()
+		val lang = (first as? TsukiMangaSource)?.let { migrationLanguageCode(it.language) }
 		MigrationDestinationGroup(
 			key = key,
-			label = if (first is MihonMangaSource) first.displayName else variants.first().getTitle(context).toString(),
+			label = when {
+				lang != null -> migrationLanguageLabel(lang)
+				first is MihonMangaSource -> first.displayName
+				else -> variants.first().getTitle(context).toString()
+			},
 			origin = variants.first().exploreSourceOrigin(),
 			sources = variants.sortedBy { source ->
 				val raw = source.unwrap()
 				if (raw is MihonMangaSource) raw.language else source.getTitle(context).toString().lowercase()
 			},
+			languageCode = lang,
 		)
 	}
+
+/** Presentation-only language identity; migration selection continues to use source.name. */
+internal fun migrationLanguageCode(raw: String): String {
+	val normalized = getExternalExtensionLangCode(raw).substringBefore('-').substringBefore('_').lowercase()
+	return normalized.takeUnless { it.isBlank() || it in setOf("all", "mul", "und", "other", "global") } ?: "other"
+}
+
+internal fun migrationLanguageLabel(code: String): String = when (code) {
+	"id" -> "🇮🇩 Indonesia"
+	"en" -> "🇬🇧 English"
+	"other" -> "🏳️ Other / Global"
+	else -> getExternalExtensionLanguageFlag(code) + " " + getExternalExtensionLanguageDisplayName(code)
+}
+
+internal fun migrationLanguageRank(code: String?): Int = when (code) {
+	"id" -> 0
+	"en" -> 1
+	"other" -> 999
+	else -> 2
+}
 
 private fun ExploreSourceOrigin?.migrationTabTitle(): String = when (this) {
 	ExploreSourceOrigin.MIYORARE_PACK -> "Miyorare"
@@ -224,7 +255,7 @@ private fun MigrationSearchSetup(
 	onRetrySources: () -> Unit,
 	onSearch: () -> Unit,
 	onViewProgress: () -> Unit,
-    onCancelActive: () -> Unit,
+	onCancelActive: () -> Unit,
 ) {
 	val context = LocalContext.current
 	var showOptions by rememberSaveable { mutableStateOf(false) }
@@ -238,20 +269,24 @@ private fun MigrationSearchSetup(
 	val tabs = listOf("Semua") + order.filter { name -> groups.any { it.origin.migrationTabTitle() == name } }
 	val selectedTab = activeTab.takeIf { it in tabs } ?: "Semua"
 	val visibleGroups = groups.filter { selectedTab == "Semua" || it.origin.migrationTabTitle() == selectedTab }
-		.let { if (sortAscending) it.sortedBy { group -> group.label.lowercase() }
-			else it.sortedByDescending { group -> group.label.lowercase() } }
+		.let { filtered ->
+			if (selectedTab in setOf("Miyorare", "UMA", "Gekkoushi"))
+				filtered.sortedWith(compareBy<MigrationDestinationGroup> { migrationLanguageRank(it.languageCode) }
+					.thenBy { it.label.lowercase() })
+			else if (sortAscending) filtered.sortedBy { it.label.lowercase() }
+			else filtered.sortedByDescending { it.label.lowercase() }
+		}
 	val selectedSet = state.selectedSourceNames.toSet()
 	Column(Modifier.fillMaxSize()) {
-        if (state.batchBusy && state.ownedBatchName == null) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text("Batch migrasi lain sedang berjalan",
-                    modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onCancelActive, enabled = state.activeBatchName != null) {
-                    Text("Batalkan")
-                }
-            }
-        }
+		if (state.batchBusy && state.ownedBatchName == null) {
+			Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+				Text("Batch migrasi lain sedang berjalan", modifier = Modifier.weight(1f),
+					style = MaterialTheme.typography.bodySmall)
+				TextButton(onClick = onCancelActive, enabled = state.activeBatchName != null) {
+					Text("Batalkan")
+				}
+			}
+		}
 		Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
 			verticalAlignment = Alignment.CenterVertically) {
 			Text("Pilih source tujuan", style = MaterialTheme.typography.titleLarge,
@@ -275,8 +310,9 @@ private fun MigrationSearchSetup(
 					divider = {},
 				) {
 					tabs.forEach { tab ->
-						val count = if (tab == "Semua") groups.size
-							else groups.count { it.origin.migrationTabTitle() == tab }
+						val count = groups
+							.filter { tab == "Semua" || it.origin.migrationTabTitle() == tab }
+							.sumOf { if (it.languageCode == null) 1 else it.sources.size }
 						Tab(selected = selectedTab == tab, onClick = { activeTab = tab },
 							text = { Text(tab + " (" + count + ")") })
 					}
@@ -307,7 +343,7 @@ private fun MigrationSearchSetup(
 						val isExpanded = group.key in expandedKeys
 						val eligibleGroup = group.sources.filter { it.name in eligibleNames }
 						val allChecked = eligibleGroup.isNotEmpty() && eligibleGroup.all { it.name in selectedSet }
-						if (group.sources.size > 1) {
+						if (group.sources.size > 1 || group.languageCode != null) {
 							Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
 								verticalAlignment = Alignment.CenterVertically) {
 								Checkbox(checked = allChecked, enabled = enabled && eligibleGroup.isNotEmpty(), onCheckedChange = {
@@ -337,8 +373,9 @@ private fun MigrationSearchSetup(
 								}
 							}
 						}
-						if (group.sources.size == 1 || isExpanded) {
-							group.sources.forEach { source ->
+						if ((group.languageCode == null && group.sources.size == 1) || isExpanded) {
+							val orderedSources = if (sortAscending) group.sources else group.sources.reversed()
+							orderedSources.forEach { source ->
 								val index = state.selectedSourceNames.indexOf(source.name)
 								val sourceEnabled = enabled && source.name in eligibleNames
 								val raw = source.unwrap()
@@ -347,7 +384,7 @@ private fun MigrationSearchSetup(
 								else source.getTitle(context).toString()
 								Row(Modifier.fillMaxWidth().clickable(enabled = sourceEnabled) {
 									onToggleSource(source.name)
-								}.padding(start = if (group.sources.size > 1) 28.dp else 0.dp, top = 4.dp, bottom = 4.dp),
+								}.padding(start = if (group.sources.size > 1 || group.languageCode != null) 28.dp else 0.dp, top = 4.dp, bottom = 4.dp),
 									verticalAlignment = Alignment.CenterVertically) {
 									Checkbox(checked = index >= 0, enabled = sourceEnabled,
 										onCheckedChange = { onToggleSource(source.name) })
@@ -377,7 +414,7 @@ private fun MigrationSearchSetup(
 			}
 		}
 		Surface(tonalElevation = 3.dp) {
-			Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
+			Column(Modifier.fillMaxWidth().padding(12.dp)) {
 				if (state.batchBusy) OutlinedButton(onClick = onViewProgress,
 					modifier = Modifier.fillMaxWidth()) { Text("Lihat pencarian") }
 				Button(onClick = onSearch,
@@ -447,7 +484,7 @@ private fun MigrationReviewStep(
 			LinearProgressIndicator(Modifier.fillMaxWidth())
 			Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
 				Text(if (state.batchTotal == 0) "Batch migrasi lain sedang berjalan"
-                    else "Memproses " + state.batchCompleted + "/" + state.batchTotal,
+					else "Memproses " + state.batchCompleted + "/" + state.batchTotal,
 					modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
 				TextButton(onClick = onCancel, enabled = state.activeBatchName != null) { Text("Batalkan") }
 			}
@@ -461,11 +498,10 @@ private fun MigrationReviewStep(
 			items(state.manga, key = Manga::id) { manga ->
 				val status = state.status(manga.id)
 				val outcome = state.batchItems[manga.id]?.outcome
-                val failureStage = outcome?.failureStage
 				MigrationMangaReviewItem(manga, imageLoader, status,
 					outcome?.destinationTitle, outcome?.destinationSource,
 					onClick = { onMangaClick(manga) },
-                    failureStage = failureStage,
+					failureStage = outcome?.failureStage,
 					targetManga = state.readyTarget(manga.id), onOpenTarget = onOpenTarget,
 					onMigrate = if (!busy && manga.id in readyIds) ({ onMigrateOne(manga.id) }) else null,
 					onCopy = if (!busy && manga.id in readyIds) ({ onCopyOne(manga.id) }) else null,
@@ -481,7 +517,7 @@ private fun MigrationReviewStep(
 			}
 		}
 		Surface(tonalElevation = 3.dp) {
-			Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
+			Column(Modifier.fillMaxWidth().padding(12.dp)) {
 				if (readyIds.isNotEmpty() && !busy) {
 					if (state.preferredAction == MigrationBatchAction.COPY) {
 						Button(onClick = onCopy, modifier = Modifier.fillMaxWidth()
@@ -525,7 +561,7 @@ private fun MigrationMangaReviewItem(
 	onMigrate: (() -> Unit)? = null,
 	onCopy: (() -> Unit)? = null,
 	onSkip: (() -> Unit)? = null,
-    failureStage: MigrationFailureStage? = null,
+	failureStage: MigrationFailureStage? = null,
 ) {
 	val context = LocalContext.current
 	var menuExpanded by remember { mutableStateOf(false) }
@@ -558,40 +594,50 @@ private fun MigrationMangaReviewItem(
 						model = targetRequest, imageLoader = imageLoader,
 						contentDescription = targetManga.title,
 						modifier = Modifier.width(58.dp).height(76.dp)
+							.testTag("migration-target-cover-" + manga.id)
 							.combinedClickable(
-								onClick = onClick,
-								onLongClick = { onOpenTarget(targetManga) },
+								onClick = { onOpenTarget(targetManga) },
+								onLongClick = onClick,
 							),
 					)
 				}
-				Column(Modifier.clickable(onClick = onClick)) {
+				Column(
+					(if (targetManga == null) Modifier.clickable(onClick = onClick)
+					else Modifier.combinedClickable(
+						onClick = { onOpenTarget(targetManga) },
+						onLongClick = onClick,
+					)).testTag("migration-target-title-" + manga.id)
+				) {
 				Text(targetTitle ?: when (status) {
-                    MigrationBatchStatus.NO_REPLACEMENT -> "Tidak ditemukan"
-                    MigrationBatchStatus.ERROR -> "Migrasi gagal"
-                    MigrationBatchStatus.INTERRUPTED -> "Migrasi terhenti"
-                    else -> "Mencari..."
-                },
+					MigrationBatchStatus.NO_REPLACEMENT -> "Tidak ditemukan"
+					MigrationBatchStatus.ERROR -> "Migrasi gagal"
+					MigrationBatchStatus.INTERRUPTED -> "Migrasi terhenti"
+					else -> "Mencari..."
+				},
 					style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-				if (targetSource != null) Text(targetSource,
+				val publicSource = targetManga?.source?.getTitle(context)?.takeIf(String::isNotBlank)
+					?: targetSource?.takeUnless { it.startsWith("MIHON_") || it.startsWith("TSUKI:")
+						|| it.startsWith("LN_") }
+				if (publicSource != null) Text(publicSource,
 					style = MaterialTheme.typography.labelSmall, maxLines = 1)
 				Text(stringResource(status.labelRes()), style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.primary)
-                if (status == MigrationBatchStatus.ERROR) {
-                    val explanation = when (failureStage) {
-                        MigrationFailureStage.DESTINATION_DETAILS ->
-                            "Gagal membaca detail source tujuan; periksa jaringan/source, lalu coba lagi."
-                        MigrationFailureStage.DESTINATION_STORAGE ->
-                            "Gagal menyimpan detail kandidat; periksa penyimpanan sebelum mengulang."
-                        MigrationFailureStage.DATA_CONFLICT ->
-                            "Ada konflik data/riwayat dengan kandidat; periksa library atau pilih kandidat lain."
-                        MigrationFailureStage.DATA_TRANSFER ->
-                            "Transfer data tidak selesai; periksa library dan riwayat sebelum mengulang."
-                        MigrationFailureStage.UNKNOWN, null ->
-                            "Penyebab belum diketahui; periksa data library sebelum mengulang."
-                    }
-                    Text(explanation, style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error)
-                }
+				if (status == MigrationBatchStatus.ERROR) {
+					val explanation = when (failureStage) {
+						MigrationFailureStage.DESTINATION_DETAILS ->
+							"Gagal membaca detail source tujuan; periksa jaringan/source, lalu coba lagi."
+						MigrationFailureStage.DESTINATION_STORAGE ->
+							"Gagal menyimpan detail kandidat; periksa penyimpanan sebelum mengulang."
+						MigrationFailureStage.DATA_CONFLICT ->
+							"Ada konflik data/riwayat dengan kandidat; periksa library atau pilih kandidat lain."
+						MigrationFailureStage.DATA_TRANSFER ->
+							"Transfer data tidak selesai; periksa library dan riwayat sebelum mengulang."
+						MigrationFailureStage.UNKNOWN, null ->
+							"Penyebab belum diketahui; periksa data library sebelum mengulang."
+					}
+					Text(explanation, style = MaterialTheme.typography.labelSmall,
+						color = MaterialTheme.colorScheme.error)
+				}
 				}
 			}
 			Box {
@@ -671,8 +717,7 @@ private fun MigrationResultsStep(
 				Column {
 					Text(result.outcome.destinationTitle ?: "Manga selesai",
 						style = MaterialTheme.typography.bodyMedium)
-					Text(result.outcome.destinationSource.orEmpty() + " · " +
-						stringResource(result.outcome.status.labelRes()),
+					Text(stringResource(result.outcome.status.labelRes()),
 						style = MaterialTheme.typography.bodySmall)
 				}
 			}
@@ -709,7 +754,7 @@ private fun MigrationResultsStep(
 			}
 		}
 		Surface(tonalElevation = 3.dp) {
-			Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
+			Column(Modifier.fillMaxWidth().padding(12.dp)) {
 				Button(onClick = onSearchAgain, modifier = Modifier.fillMaxWidth()) {
 					Text("Kembali ke pencarian")
 				}

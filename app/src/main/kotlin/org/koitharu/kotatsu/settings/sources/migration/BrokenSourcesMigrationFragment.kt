@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -103,7 +104,12 @@ class BrokenSourcesMigrationFragment :
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
 			MiyorareTheme {
-				val state by viewModel.state.collectAsState()
+				Surface(
+					modifier = Modifier.fillMaxSize(),
+					color = Color.Transparent,
+					contentColor = MaterialTheme.colorScheme.onSurface,
+				) {
+					val state by viewModel.state.collectAsState()
 				BrokenSourcesMigrationScreen(
 					state = state,
 					imageLoader = imageLoader,
@@ -119,6 +125,7 @@ class BrokenSourcesMigrationFragment :
 					},
 					onOpenDetails = { manga -> router.openDetails(manga) },
 				)
+				}
 			}
 		}
 	}
@@ -128,12 +135,7 @@ class BrokenSourcesMigrationFragment :
 		// The fragment container is laid out for the collapsed appbar (ScrollingViewBehavior), so
 		// while the appbar is expanded the bottom of this view is pushed off-screen. Compensate
 		// with bottom padding equal to the appbar's current expansion so the bottom action remains visible.
-		val appBar = (requireActivity() as AppBarOwner).appBar
-		val offsetListener = AppBarLayout.OnOffsetChangedListener { bar, verticalOffset ->
-			view.updatePadding(bottom = bar.totalScrollRange + verticalOffset)
-		}
-		appBar.addOnOffsetChangedListener(offsetListener)
-		view.doOnDetach { appBar.removeOnOffsetChangedListener(offsetListener) }
+		bindMigrationContentInsets(view, (requireActivity() as AppBarOwner).appBar)
 	}
 
 }
@@ -295,7 +297,7 @@ internal fun BrokenSourcesMigrationScreen(
 					}
 					Surface(tonalElevation = 3.dp) {
 						if (currentSelected.isNotEmpty()) {
-							Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp),
+							Row(Modifier.fillMaxWidth().padding(12.dp),
 								horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 								androidx.compose.material3.OutlinedButton(
 									onClick = { onOpenManga(currentSelected, MigrationBatchAction.COPY) },
@@ -305,7 +307,7 @@ internal fun BrokenSourcesMigrationScreen(
 							}
 						} else {
 							Button(onClick = { onOpenManga(sourceManga.map(Manga::id), null) },
-								modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
+								modifier = Modifier.fillMaxWidth().padding(12.dp)) {
 								Text("Migrasikan semua (${sourceManga.size})")
 							}
 						}
