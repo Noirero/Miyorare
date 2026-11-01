@@ -50,6 +50,7 @@ ALLOWED_COMMANDS = {
     "/miyori labels",
     "/miyori readiness",
     "/miyori head",
+    "/miyori tests",
     "/miyori require-runtime",
 }
 
@@ -133,6 +134,13 @@ def main() -> int:
     for item in READ_ONLY_COMMANDS:
         if f'"{item}"' not in report:
             fail(f"Read-only report implementation is missing {item}")
+
+    reporter = (SCRIPTS / "miyori_tests.py").read_text(encoding="utf-8")
+    for evidence_guard in ("matching_run", "pr_number", "sha", "read_evidence"):
+        if evidence_guard not in reporter:
+            fail(f"Targeted diagnostics read-only reporter is missing {evidence_guard}")
+    if "github.actor == github.repository_owner" not in command:
+        fail("Targeted diagnostics reporting must remain owner-only.")
 
     diagnostics = (WORKFLOWS / "miyori-diagnostics.yml").read_text(encoding="utf-8")
     if "workflow_dispatch:" not in diagnostics or "issue_comment:" in diagnostics:
