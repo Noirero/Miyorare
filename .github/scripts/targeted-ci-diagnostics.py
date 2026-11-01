@@ -55,6 +55,9 @@ def self_test() -> None:
     ]
     assert build_command("jvm", ["com.example.A#one"])[-2:] == ["--tests", "com.example.A.one"]
     assert build_command("android", ["com.example.A#one"])[-1].endswith("com.example.A#one")
+    assert missing_targets(["com.example.A#one"], {("com.example.A", "one")}) == []
+    assert missing_targets(["com.example.A#other"], {("com.example.A", "one")}) == ["com.example.A#other"]
+    assert missing_targets(["com.example.A", "com.example.B"], {("com.example.A", "one")}) == ["com.example.B"]
     for bad in ["com.example.Test;rm -rf .", "com.example.Test\nother", "Test",
                 "com.example.Test,,com.example.Other", "com.example.Test,com.example.Test"]:
         try:
@@ -204,12 +207,15 @@ def main() -> int:
                     shutil.rmtree(root)
             started = time.monotonic()
             code = run_command(build_command(args.platform, group), directory / "gradle.log")
-            count, failures = collect_results(args.platform, directory)
-            # A zero-test run must never be reported as a passing targeted diagnostic.
+            count, failures, observed = collect_results(args.platform, directory)
+            missing = missing_targets(group, observed)
+            if missing:
+                failures.append("Missing requested test results: " + ", ".join(missing))
+                code = 1
             if count == 0:
                 failures.append("No JUnit test cases were recorded; cannot confirm execution")
                 code = 1
-            elif failures and code == 0:
+            if failures and code == 0:
                 code = 1
             if code != 0 and args.platform == "android":
                 android_failure_evidence(directory)
