@@ -24,11 +24,11 @@ class MigrationYokaiFlowContractTest {
 	}
 
 	@Test
-	fun `automatic matching must use shared confidence gate before declaring ready`() {
+	fun `baseline automatic candidate follows source order without additional scoring gate`() {
 		val automatic = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
-		assertTrue(automatic.contains("candidateMatcher.assess("))
-		assertTrue(automatic.contains("assessment.copy(state=MigrationMatchState.NEEDS_REVIEW)"))
-		assertFalse(automatic.contains("MigrationMatchAssessment(MigrationMatchState.READY,match,listOf(match))"))
+		assertTrue(automatic.contains("MigrationMatchAssessment(MigrationMatchState.READY,selected,ranked)"))
+		assertFalse(automatic.contains("candidateMatcher.assess("))
+		assertFalse(automatic.contains("assessment.copy(state=MigrationMatchState.NEEDS_REVIEW)"))
 	}
 
 	@Test
@@ -125,7 +125,7 @@ class MigrationYokaiFlowContractTest {
 		assertTrue(source.contains("findMangaById(selection.id,withChapters=false)"))
 		assertTrue(source.contains("storedCandidate.source.name==selection.source"))
 		assertTrue(source.contains("repository.getDetails(storedCandidate)"))
-		assertTrue(source.contains("repository.getPages(chapter)"))
+		assertFalse(source.contains("repository.getPages(chapter)"))
 		assertTrue(source.contains("MigrationExecutionMode.MIGRATE->migrateUseCase("))
 		assertTrue(source.contains("lossless=true"))
 		assertTrue(source.contains("requireLibraryEntry=true"))
