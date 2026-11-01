@@ -81,7 +81,11 @@ class YokaiStyleMigrationExecutionUseCase @Inject constructor(
         } catch (changed: MigrateUseCase.SourceChangedException) {
             throw changed
         } catch (failure: Exception) {
-            throw MigrationExecutionStageException(MigrationFailureStage.DATA_TRANSFER, failure)
+            throw MigrationExecutionStageException(
+                if (failure is LosslessMigrationConflictException) MigrationFailureStage.DATA_CONFLICT
+                else MigrationFailureStage.DATA_TRANSFER,
+                failure,
+            )
         }
 		return details
 	}
