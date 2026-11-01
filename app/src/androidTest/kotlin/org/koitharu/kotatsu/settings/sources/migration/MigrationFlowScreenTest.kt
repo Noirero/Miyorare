@@ -100,7 +100,7 @@ class MigrationFlowScreenTest {
 	fun copyAndMigrateUseTheSameConfirmationPath() {
 		var copies = 0
 		show(screenState(MigrationBatchStatus.READY), onCopy = { copies++ })
-		compose.onNodeWithText("Review").performClick()
+		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithTag("migration-batch-copy").performClick()
 		assertEquals(0, copies)
 		compose.onNodeWithTag("migration-batch-confirm").performClick()
@@ -112,7 +112,7 @@ class MigrationFlowScreenTest {
 		var reviewed = 0
 		show(screenState(MigrationBatchStatus.NEEDS_REVIEW, MigrationBatchStatus.NO_REPLACEMENT),
 			onOpenManual = { reviewed++ })
-		compose.onNodeWithText("Review").performClick()
+		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithTag("migration-batch-migrate").assertDoesNotExist()
 		compose.onNodeWithText("Story 1").performClick()
 		assertEquals(1, reviewed)
@@ -132,7 +132,7 @@ class MigrationFlowScreenTest {
 			sourceStrategy = MigrationSourceStrategy.MOST_CHAPTERS,
 		)
 		show(stale)
-		compose.onNodeWithText("Review").performClick()
+		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithTag("migration-batch-migrate").assertDoesNotExist()
 	}
 	@Test
@@ -143,7 +143,7 @@ class MigrationFlowScreenTest {
 			1L to snapshot.copy(outcome = snapshot.outcome.copy(selection = null)),
 		))
 		show(malformed)
-		compose.onNodeWithText("Review").performClick()
+		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithTag("migration-batch-migrate").assertDoesNotExist()
 	}
 
