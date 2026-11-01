@@ -577,6 +577,7 @@ private fun MigrationMangaReviewItem(
 						model = targetRequest, imageLoader = imageLoader,
 						contentDescription = targetManga.title,
 						modifier = Modifier.width(58.dp).height(76.dp)
+							.testTag("migration-target-cover-" + manga.id)
 							.combinedClickable(
 								onClick = { onOpenTarget(targetManga) },
 								onLongClick = onClick,
@@ -584,11 +585,11 @@ private fun MigrationMangaReviewItem(
 					)
 				}
 				Column(
-					if (targetManga == null) Modifier.clickable(onClick = onClick)
+					(if (targetManga == null) Modifier.clickable(onClick = onClick)
 					else Modifier.combinedClickable(
 						onClick = { onOpenTarget(targetManga) },
 						onLongClick = onClick,
-					)
+					)).testTag("migration-target-title-" + manga.id)
 				) {
 				Text(targetTitle ?: if (status == MigrationBatchStatus.NO_REPLACEMENT)
 					"Tidak ditemukan" else "Mencari...",
