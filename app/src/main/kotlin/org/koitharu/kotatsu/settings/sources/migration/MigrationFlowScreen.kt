@@ -228,7 +228,9 @@ private fun MigrationSearchSetup(
 	var activeTab by rememberSaveable { mutableStateOf("Semua") }
 	var sortAscending by rememberSaveable { mutableStateOf(true) }
 	var expandedKeys by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
-	val groups = remember(state.availableSources, context) { destinationGroups(state.availableSources, context) }
+	val installed = state.installedSources.ifEmpty { state.availableSources }
+	val groups = remember(installed, context) { destinationGroups(installed, context) }
+	val eligibleNames = state.availableSources.mapTo(hashSetOf(), MangaSource::name)
 	val order = listOf("Miyorare", "Store", "UMA", "Gekkoushi", "Other")
 	val tabs = listOf("Semua") + order.filter { name -> groups.any { it.origin.migrationTabTitle() == name } }
 	val selectedTab = activeTab.takeIf { it in tabs } ?: "Semua"
@@ -280,12 +282,13 @@ private fun MigrationSearchSetup(
 					verticalArrangement = Arrangement.spacedBy(4.dp)) {
 					items(visibleGroups, key = MigrationDestinationGroup::key) { group ->
 						val isExpanded = group.key in expandedKeys
-						val allChecked = group.sources.all { it.name in selectedSet }
+						val eligibleGroup = group.sources.filter { it.name in eligibleNames }
+						val allChecked = eligibleGroup.isNotEmpty() && eligibleGroup.all { it.name in selectedSet }
 						if (group.sources.size > 1) {
 							Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
 								verticalAlignment = Alignment.CenterVertically) {
-								Checkbox(checked = allChecked, enabled = enabled, onCheckedChange = {
-									group.sources.forEach { source ->
+								Checkbox(checked = allChecked, enabled = enabled && eligibleGroup.isNotEmpty(), onCheckedChange = {
+									eligibleGroup.forEach { source ->
 										if ((source.name in selectedSet) == allChecked) onToggleSource(source.name)
 									}
 								})
@@ -303,18 +306,25 @@ private fun MigrationSearchSetup(
 						if (group.sources.size == 1 || isExpanded) {
 							group.sources.forEach { source ->
 								val index = state.selectedSourceNames.indexOf(source.name)
+								val sourceEnabled = enabled && source.name in eligibleNames
 								val raw = source.unwrap()
 								val label = if (raw is MihonMangaSource && group.sources.size > 1)
 									raw.displayName + " (" + raw.language + ")"
 								else source.getTitle(context).toString()
-								Row(Modifier.fillMaxWidth().clickable(enabled = enabled) {
+								Row(Modifier.fillMaxWidth().clickable(enabled = sourceEnabled) {
 									onToggleSource(source.name)
 								}.padding(start = if (group.sources.size > 1) 28.dp else 0.dp, top = 4.dp, bottom = 4.dp),
 									verticalAlignment = Alignment.CenterVertically) {
-									Checkbox(checked = index >= 0, enabled = enabled,
+									Checkbox(checked = index >= 0, enabled = sourceEnabled,
 										onCheckedChange = { onToggleSource(source.name) })
-									Text(label, modifier = Modifier.weight(1f),
-										maxLines = 2, overflow = TextOverflow.Ellipsis)
+									Column(modifier = Modifier.weight(1f)) {
+										Text(label, maxLines = 2, overflow = TextOverflow.Ellipsis)
+										if (!sourceEnabled && source.name !in eligibleNames) Text(
+											"Tidak kompatibel dengan judul terpilih",
+											style = MaterialTheme.typography.labelSmall,
+											color = MaterialTheme.colorScheme.onSurfaceVariant,
+										)
+									}
 									if (index >= 0) {
 										TextButton(onClick = { onMoveSource(source.name, -1) },
 											enabled = enabled && index > 0) { Text("↑") }
