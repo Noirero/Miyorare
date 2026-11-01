@@ -143,6 +143,7 @@ def android_failure_evidence(directory: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--platform", choices=["android", "jvm"])
     parser.add_argument("--targets")
     parser.add_argument("--mode", choices=["isolated", "grouped"])
@@ -164,6 +165,9 @@ def main() -> int:
     actual = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     if actual.lower() != args.expected_sha.lower():
         parser.error("Checked-out HEAD differs from expected SHA")
+    if args.validate_only:
+        print(f"Validated {len(targets)} target(s), {args.mode}, {args.repeats} repeat(s), exact SHA {actual}")
+        return 0
 
     ARTIFACT.mkdir(exist_ok=True)
     batches = [[target] for target in targets] if args.mode == "isolated" else [targets]
