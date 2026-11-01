@@ -171,6 +171,16 @@ class MainNavigationDelegate(
 		setCounter(item.id, counter)
 	}
 
+	/** Open Normal Favourites even when the owner has hidden its bottom-nav shortcut. */
+	fun showNormalFavourites() {
+		val item = navBar.menu.findItem(R.id.nav_favorites)
+		if (item?.isVisible == true) {
+			navBar.selectedItemId = R.id.nav_favorites
+		} else {
+			setPrimaryFragment(FavouritesContainerFragment::class.java)
+		}
+	}
+
 	fun syncSelectedItem() {
 		val fragment = primaryFragment ?: return
 		onFragmentChanged(fragment, fromUser = false)
