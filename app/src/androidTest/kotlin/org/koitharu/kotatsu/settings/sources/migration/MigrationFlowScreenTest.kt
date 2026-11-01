@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.settings.sources.migration
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -42,6 +43,7 @@ class MigrationFlowScreenTest {
 			isLoading = false,
 			manga = statuses.indices.map { manga(it.toLong() + 1L) },
 			availableSources = listOf(destination),
+			installedSources = listOf(destination),
 			selectedSourceNames = listOf(destination.name),
 			batchItems = statuses.mapIndexed { index, status ->
 				MigrationBatchSnapshot(
@@ -149,6 +151,31 @@ class MigrationFlowScreenTest {
 		compose.onNodeWithText("Other (1)").assertExists()
 		compose.onNodeWithText("A–Z").performClick()
 		compose.onNodeWithText("Z–A").assertExists()
+	}
+
+	@Test
+	fun installedInventoryWithoutCompatibleSourcesStillShowsCountedTabs() {
+		val state = screenState(MigrationBatchStatus.UNCHECKED).copy(availableSources = emptyList())
+		show(state)
+		compose.onNodeWithText("Semua (1)").assertExists()
+		compose.onNodeWithText("Tidak ada source kompatibel untuk judul yang dipilih.").assertExists()
+		compose.onNodeWithTag("migration-batch-search").assertIsNotEnabled()
+	}
+
+	@Test
+	fun selectedSourcePriorityIsVisibleIndependentlyOfAlphabeticalSort() {
+		val other = MangaSource("ALPHA")
+		val state = screenState(MigrationBatchStatus.UNCHECKED).copy(
+			installedSources = listOf(other, destination),
+			availableSources = listOf(other, destination),
+			selectedSourceNames = listOf(destination.name, other.name),
+		)
+		show(state)
+		compose.onNodeWithText("Prioritas 1").assertExists()
+		compose.onNodeWithText("Prioritas 2").assertExists()
+		compose.onNodeWithText("A–Z").performClick()
+		compose.onNodeWithText("Z–A").assertExists()
+		compose.onNodeWithText("Prioritas 1").assertExists()
 	}
 
 	@Test

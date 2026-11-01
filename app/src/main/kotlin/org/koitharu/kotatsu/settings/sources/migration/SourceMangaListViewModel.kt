@@ -379,12 +379,12 @@ class SourceMangaListViewModel @Inject constructor(
 							.distinctBy(MangaSource::name)
 							.sortedBy(MangaSource::name),
 						providerFailureCount = pools.sumOf(MigrationSourcePool::providerFailureCount),
-					) to sourcesRepository.getEnabledSources()
+					) to sourcesRepository.getInstalledMigrationSources()
 				}
 			}.onSuccess { (pool, installed) ->
-				// Installed runtime registration supplies tab/group counts even when a provider is
-				// incompatible with the current manga/novel session. Only pool.allSources is executable.
-				val installedSources = (installed + pool.allSources).distinctBy(MangaSource::name)
+				// Inventory is sourced only from installed extension/plugin managers. The
+				// separate pool is the sole authority for migration execution eligibility.
+				val installedSources = installed
 				val availableNames = pool.allSources.mapTo(hashSetOf(), MangaSource::name)
 				val rememberedConfigured = migrationPreferences.selectedSourceNames
 				val currentConfigured = state.value.selectedSourceNames
@@ -459,6 +459,18 @@ data class SourceMangaListState(
 			status == MigrationBatchStatus.MIGRATED || status == MigrationBatchStatus.COPIED -> status
 			snapshot.discoveryMode == MigrationBatchDiscoveryMode.YOKAI && snapshot.configKey == configKey -> status
 			else -> MigrationBatchStatus.UNCHECKED
+		}
+	}
+
+	/** Never display a persisted cover/details candidate for a stale or different search config. */
+	fun readyTarget(mangaId: Long): Manga? {
+		val snapshot = batchItems[mangaId] ?: return null
+		val candidate = targetManga[mangaId] ?: return null
+		val selected = snapshot.outcome.selection ?: return null
+		return candidate.takeIf {
+			status(mangaId) == MigrationBatchStatus.READY &&
+				!snapshot.running &&
+				selected.id == it.id && selected.source == it.source.name
 		}
 	}
 

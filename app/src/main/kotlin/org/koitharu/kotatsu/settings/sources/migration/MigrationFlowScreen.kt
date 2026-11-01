@@ -179,7 +179,7 @@ internal fun destinationGroups(
 	.groupBy { source ->
 		when (val raw = source.unwrap()) {
 			is MihonMangaSource -> "store:" + raw.pkgName
-			is TsukiMangaSource -> "plugin:" + raw.plugin.pluginId
+			is TsukiMangaSource -> "plugin:" + raw.plugin.provider.name + ":" + raw.plugin.pluginId
 			is LnMangaSource -> "novel:" + raw.pluginId
 			else -> "source:" + source.name
 		}
@@ -226,7 +226,7 @@ private fun MigrationSearchSetup(
 	var activeTab by rememberSaveable { mutableStateOf("Semua") }
 	var sortAscending by rememberSaveable { mutableStateOf(true) }
 	var expandedKeys by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
-	val installed = state.installedSources.ifEmpty { state.availableSources }
+	val installed = state.installedSources
 	val groups = remember(installed, context) { destinationGroups(installed, context) }
 	val eligibleNames = state.availableSources.mapTo(hashSetOf(), MangaSource::name)
 	val order = listOf("Miyorare", "Store", "UMA", "Gekkoushi", "Other")
@@ -252,8 +252,7 @@ private fun MigrationSearchSetup(
 				Text(stringResource(R.string.migration_source_list_failed))
 				TextButton(onClick = onRetrySources) { Text(stringResource(R.string.migration_retry)) }
 			}
-			state.availableSources.isEmpty() -> Text(stringResource(R.string.migration_no_sources_available),
-				modifier = Modifier.padding(16.dp))
+			groups.isEmpty() -> Text("Tidak ada extension atau plugin terinstal.", modifier = Modifier.padding(16.dp))
 			else -> {
 				ScrollableTabRow(
 					selectedTabIndex = tabs.indexOf(selectedTab),
@@ -275,6 +274,17 @@ private fun MigrationSearchSetup(
 					Text(state.selectedSourceNames.size.toString() + " source dipilih",
 						style = MaterialTheme.typography.bodySmall)
 				}
+				if (eligibleNames.isEmpty()) {
+					Text("Tidak ada source kompatibel untuk judul yang dipilih.",
+						modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+						color = MaterialTheme.colorScheme.onSurfaceVariant)
+				}
+				if (state.sourceStrategy == MigrationSourceStrategy.FIRST_MATCH && selectedSet.isNotEmpty()) {
+					Text("Angka prioritas menentukan urutan pencarian, terlepas dari urutan A–Z/Z–A.",
+						modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant)
+				}
 				LazyColumn(Modifier.weight(1f),
 					contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
 					verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -295,8 +305,19 @@ private fun MigrationSearchSetup(
 										if (!add(group.key)) remove(group.key)
 									})
 								}.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-									Text(group.label + " (" + group.sources.size + ")", modifier = Modifier.weight(1f),
-										maxLines = 2, overflow = TextOverflow.Ellipsis)
+									Column(Modifier.weight(1f)) {
+										Text(group.label + " (" + group.sources.size + ")",
+											maxLines = 2, overflow = TextOverflow.Ellipsis)
+										val groupPriorities = eligibleGroup.mapNotNull { source ->
+											state.selectedSourceNames.indexOf(source.name).takeIf { it >= 0 }?.plus(1)
+										}.sorted()
+										if (groupPriorities.isNotEmpty()) Text(
+											"Prioritas: " + groupPriorities.joinToString(", "),
+											style = MaterialTheme.typography.labelSmall,
+											color = MaterialTheme.colorScheme.primary,
+											maxLines = 1, overflow = TextOverflow.Ellipsis,
+										)
+									}
 									Text(if (isExpanded) "⌄" else "›", style = MaterialTheme.typography.titleMedium)
 								}
 							}
@@ -324,6 +345,10 @@ private fun MigrationSearchSetup(
 										)
 									}
 									if (index >= 0) {
+										Text("Prioritas " + (index + 1),
+											modifier = Modifier.testTag("migration-priority-" + source.name),
+											style = MaterialTheme.typography.labelSmall,
+											color = MaterialTheme.colorScheme.primary)
 										TextButton(onClick = { onMoveSource(source.name, -1) },
 											enabled = enabled && index > 0) { Text("↑") }
 										TextButton(onClick = { onMoveSource(source.name, 1) },
@@ -341,8 +366,9 @@ private fun MigrationSearchSetup(
 				if (state.batchBusy) OutlinedButton(onClick = onViewProgress,
 					modifier = Modifier.fillMaxWidth()) { Text("Lihat pencarian") }
 				Button(onClick = onSearch,
-					enabled = enabled && state.manga.isNotEmpty() && state.selectedSourceNames.isNotEmpty()
-						&& !state.sourceSelectionLoading && !state.sourceSelectionFailed,
+					enabled = enabled && state.manga.isNotEmpty() &&
+						state.selectedSourceNames.any { it in eligibleNames } &&
+						!state.sourceSelectionLoading && !state.sourceSelectionFailed,
 					modifier = Modifier.fillMaxWidth().height(52.dp).testTag("migration-batch-search")) {
 					Text("Mulai mencari (" + state.manga.size + ")")
 				}
@@ -422,7 +448,7 @@ private fun MigrationReviewStep(
 				MigrationMangaReviewItem(manga, imageLoader, status,
 					outcome?.destinationTitle, outcome?.destinationSource,
 					onClick = { onMangaClick(manga) },
-					targetManga = state.targetManga[manga.id], onOpenTarget = onOpenTarget,
+					targetManga = state.readyTarget(manga.id), onOpenTarget = onOpenTarget,
 					onMigrate = if (!busy && manga.id in readyIds) ({ onMigrateOne(manga.id) }) else null,
 					onCopy = if (!busy && manga.id in readyIds) ({ onCopyOne(manga.id) }) else null,
 					onSkip = if (!busy) ({ onSkipOne(manga.id) }) else null)
