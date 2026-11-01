@@ -308,7 +308,7 @@ class SourceMangaListViewModel @Inject constructor(
 						if (identity.first in privateOnly) return@mapNotNull null
 						sourceId to identity
 					}.toMap()
-					val candidates = targetIdentities.values.map(Pair<Long, String>::first).distinct()
+					val candidates = targetIdentities.values.map { it.first }.distinct()
 						.chunked(500).flatMap { database.getMangaDao().findByIds(it) }
 						.toMangaList().associateBy(Manga::id)
 					val targetManga = targetIdentities.mapNotNull { (sourceId, identity) ->

@@ -347,12 +347,15 @@ class MigrationFlowScreenTest {
 			))),
 			targetManga = mapOf(1L to target),
 		)
-		var opened: Long? = null
-		show(state, onOpenTarget = { opened = it.id })
+		val liveState = mutableStateOf(initial)
+		val opened = mutableListOf<Long>()
+		show(liveState.value, onOpenTarget = { opened += it.id }, stateProvider = { liveState.value })
 		compose.onNodeWithTag("migration-batch-search").performClick()
-		compose.onNodeWithTag("migration-completed-target-cover-1").assertExists()
+		compose.runOnUiThread { liveState.value = state }
+		compose.waitForIdle()
+		compose.onNodeWithTag("migration-completed-target-cover-1").assertExists().performClick()
 		compose.onNodeWithTag("migration-completed-target-title-1").performClick()
-		assertEquals(101L, opened)
+		assertEquals(listOf(101L, 101L), opened)
 	}
 
 	@Test

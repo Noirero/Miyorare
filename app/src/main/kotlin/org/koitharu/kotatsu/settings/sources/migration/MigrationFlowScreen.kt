@@ -565,16 +565,18 @@ private fun MigrationCompletedTargetItem(
 		}
 	}
 	Surface(tonalElevation = 1.dp, shape = MaterialTheme.shapes.medium) {
-		Row(Modifier.fillMaxWidth().clickable { onOpenTarget(manga) }.padding(9.dp),
+		Row(Modifier.fillMaxWidth().padding(9.dp),
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(9.dp)) {
 			if (request != null) AsyncImage(
 				model = request, imageLoader = imageLoader,
 				contentDescription = manga.title,
 				modifier = Modifier.width(58.dp).height(76.dp)
-					.testTag("migration-completed-target-cover-" + originalId),
+					.testTag("migration-completed-target-cover-" + originalId)
+					.clickable { onOpenTarget(manga) },
 			)
-			Column(Modifier.testTag("migration-completed-target-title-" + originalId)) {
+			Column(Modifier.testTag("migration-completed-target-title-" + originalId)
+				.clickable { onOpenTarget(manga) }) {
 				Text(manga.title, style = MaterialTheme.typography.bodySmall, maxLines = 2,
 					overflow = TextOverflow.Ellipsis)
 				Text(stringResource(status.labelRes()), style = MaterialTheme.typography.labelSmall,
