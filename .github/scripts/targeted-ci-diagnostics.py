@@ -84,10 +84,11 @@ def run_command(cmd: Sequence[str], log_path: Path) -> int:
             return proc.wait()
 
 
-def collect_results(platform: str, directory: Path) -> tuple[int, list[str]]:
+def collect_results(platform: str, directory: Path) -> tuple[int, list[str], set[tuple[str, str]]]:
     roots = [JVM_RESULTS] if platform == "jvm" else [ANDROID_RESULTS, ANDROID_REPORTS]
     count = 0
     failures: list[str] = []
+    observed: set[tuple[str, str]] = set()
     for root in roots:
         if not root.exists():
             continue
@@ -100,6 +101,7 @@ def collect_results(platform: str, directory: Path) -> tuple[int, list[str]]:
                 doc = ET.parse(file).getroot()
                 for case in doc.iter("testcase"):
                     count += 1
+                    observed.add((case.attrib.get("classname", ""), case.attrib.get("name", "")))
                     for error in list(case):
                         if error.tag in ("failure", "error"):
                             failures.append(
@@ -108,7 +110,22 @@ def collect_results(platform: str, directory: Path) -> tuple[int, list[str]]:
                             )
             except ET.ParseError:
                 failures.append(f"Cannot parse test XML: {file}")
-    return count, failures[:20]
+    return count, failures[:20], observed
+
+
+def missing_targets(targets: Sequence[str], observed: set[tuple[str, str]]) -> list[str]:
+    missing = []
+    for target in targets:
+        classname, separator, method = target.partition("#")
+        if not any(
+            actual_class == classname and (
+                not separator or actual_method == method or actual_method.startswith(method + "[")
+            )
+            for actual_class, actual_method in observed
+        ):
+            missing.append(target)
+    return missing
+
 
 
 def android_failure_evidence(directory: Path) -> None:
