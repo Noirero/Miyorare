@@ -179,7 +179,7 @@ internal fun destinationGroups(
 	.groupBy { source ->
 		when (val raw = source.unwrap()) {
 			is MihonMangaSource -> "store:" + raw.pkgName
-			is TsukiMangaSource -> "plugin:" + raw.plugin.pluginId
+			is TsukiMangaSource -> "plugin:" + raw.plugin.provider.name + ":" + raw.plugin.pluginId
 			is LnMangaSource -> "novel:" + raw.pluginId
 			else -> "source:" + source.name
 		}
@@ -226,7 +226,7 @@ private fun MigrationSearchSetup(
 	var activeTab by rememberSaveable { mutableStateOf("Semua") }
 	var sortAscending by rememberSaveable { mutableStateOf(true) }
 	var expandedKeys by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
-	val installed = state.installedSources.ifEmpty { state.availableSources }
+	val installed = state.installedSources
 	val groups = remember(installed, context) { destinationGroups(installed, context) }
 	val eligibleNames = state.availableSources.mapTo(hashSetOf(), MangaSource::name)
 	val order = listOf("Miyorare", "Store", "UMA", "Gekkoushi", "Other")
@@ -252,8 +252,7 @@ private fun MigrationSearchSetup(
 				Text(stringResource(R.string.migration_source_list_failed))
 				TextButton(onClick = onRetrySources) { Text(stringResource(R.string.migration_retry)) }
 			}
-			state.availableSources.isEmpty() -> Text(stringResource(R.string.migration_no_sources_available),
-				modifier = Modifier.padding(16.dp))
+			groups.isEmpty() -> Text("Tidak ada extension atau plugin terinstal.", modifier = Modifier.padding(16.dp))
 			else -> {
 				ScrollableTabRow(
 					selectedTabIndex = tabs.indexOf(selectedTab),
@@ -274,6 +273,17 @@ private fun MigrationSearchSetup(
 					TextButton(onClick = onClearSources, enabled = enabled) { Text("Kosongkan") }
 					Text(state.selectedSourceNames.size.toString() + " source dipilih",
 						style = MaterialTheme.typography.bodySmall)
+				}
+				if (eligibleNames.isEmpty()) {
+					Text("Tidak ada source kompatibel untuk judul yang dipilih.",
+						modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+						color = MaterialTheme.colorScheme.onSurfaceVariant)
+				}
+				if (state.sourceStrategy == MigrationSourceStrategy.FIRST_MATCH && selectedSet.isNotEmpty()) {
+					Text("Angka prioritas menentukan urutan pencarian, terlepas dari urutan A–Z/Z–A.",
+						modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
 				LazyColumn(Modifier.weight(1f),
 					contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -324,6 +334,10 @@ private fun MigrationSearchSetup(
 										)
 									}
 									if (index >= 0) {
+										Text("Prioritas " + (index + 1),
+											modifier = Modifier.testTag("migration-priority-" + source.name),
+											style = MaterialTheme.typography.labelSmall,
+											color = MaterialTheme.colorScheme.primary)
 										TextButton(onClick = { onMoveSource(source.name, -1) },
 											enabled = enabled && index > 0) { Text("↑") }
 										TextButton(onClick = { onMoveSource(source.name, 1) },
