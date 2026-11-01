@@ -462,6 +462,18 @@ data class SourceMangaListState(
 		}
 	}
 
+	/** Never display a persisted cover/details candidate for a stale or different search config. */
+	fun readyTarget(mangaId: Long): Manga? {
+		val snapshot = batchItems[mangaId] ?: return null
+		val candidate = targetManga[mangaId] ?: return null
+		val selected = snapshot.outcome.selection ?: return null
+		return candidate.takeIf {
+			status(mangaId) == MigrationBatchStatus.READY &&
+				!snapshot.running &&
+				selected.id == it.id && selected.source == it.source.name
+		}
+	}
+
 	val visibleManga: List<Manga> get() = manga.filter { filter == null || status(it.id) == filter }
 	val completedResults: List<MigrationBatchSnapshot> get() {
 		val visibleIds = manga.mapTo(hashSetOf(), Manga::id)
