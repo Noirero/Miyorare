@@ -6,6 +6,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
 import org.junit.After
@@ -20,6 +22,12 @@ import org.koitharu.kotatsu.alternatives.domain.MigrationSelection
 import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
 import org.koitharu.kotatsu.alternatives.domain.migrationConfigKey
 import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiCompatibilityStatus
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
+import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
 import org.koitharu.kotatsu.parsers.model.Manga
 
 class MigrationFlowScreenTest {
@@ -69,6 +77,7 @@ class MigrationFlowScreenTest {
 		onMigrate: () -> Unit = {},
 		onCopy: () -> Unit = {},
 		onOpenManual: (Manga) -> Unit = {},
+		onOpenTarget: (Manga) -> Unit = {},
 		onMigrateOne: (Long) -> Unit = {},
 		onCopyOne: (Long) -> Unit = {},
 	) {
@@ -83,6 +92,7 @@ class MigrationFlowScreenTest {
 					onMoveSource = { _, _ -> }, onStrategy = {},
 					onExtraSearch = {}, onSkipSetup = {}, onRetrySources = {},
 					onMangaClick = onOpenManual, onMangaLongClick = {},
+					onOpenTarget = onOpenTarget,
 					onMigrateOne = onMigrateOne, onCopyOne = onCopyOne,
 				)
 			}
@@ -205,6 +215,92 @@ class MigrationFlowScreenTest {
 		show(malformed)
 		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithTag("migration-batch-migrate").assertDoesNotExist()
+	}
+
+	private fun tsuki(provider: TsukiPluginProvider, lang: String, name: String): TsukiMangaSource {
+		val descriptor = TsukiSourceDescriptor(name = name, title = name, locale = lang, contentType = "MANGA")
+		return TsukiMangaSource(
+			plugin = TsukiPluginDescriptor(
+				pluginId = provider.wireName + "-" + name,
+				displayName = name,
+				provider = provider,
+				version = "1",
+				origin = "",
+				sha256 = "",
+				fileSize = 0L,
+				lastModified = 0L,
+				requiredApi = null,
+				compatibility = TsukiCompatibilityStatus.COMPATIBLE,
+				state = TsukiPluginState.ENABLED,
+				sources = listOf(descriptor),
+			),
+			descriptor = descriptor,
+		)
+	}
+
+	@Test
+	fun tsukiDestinationsGroupByProviderAndLanguageWithoutChangingSourceIdentity() {
+		val asura = tsuki(TsukiPluginProvider.MIYORARE, "id", "Asura")
+		val doujindi = tsuki(TsukiPluginProvider.MIYORARE, "id-ID", "Doujindi")
+		val english = tsuki(TsukiPluginProvider.MIYORARE, "en", "Bitcave")
+		val global = tsuki(TsukiPluginProvider.MIYORARE, "other", "Global")
+		val uma = tsuki(TsukiPluginProvider.UMA, "id", "UmaComic")
+		val groups = destinationGroups(listOf(asura, doujindi, english, global, uma), context)
+		assertEquals(4, groups.size)
+		assertEquals(listOf(asura.name, doujindi.name).toSet(),
+			groups.single { it.label == "🇮🇩 Indonesia" && it.origin?.name == "MIYORARE_PACK" }
+				.sources.map { it.name }.toSet())
+		assertEquals(1, groups.single { it.label == "🇬🇧 English" }.sources.size)
+		assertEquals(1, groups.single { it.label == "🏳️ Other / Global" }.sources.size)
+		assertEquals(1, groups.single { it.origin?.name == "UMA" }.sources.size)
+
+		val state = screenState(MigrationBatchStatus.UNCHECKED).copy(
+			installedSources = listOf(asura, doujindi, english, global, uma),
+			availableSources = listOf(asura, doujindi, english, global, uma),
+			selectedSourceNames = listOf(english.name),
+		)
+		show(state)
+		compose.onNodeWithText("Miyorare (4)").performClick()
+		compose.onNodeWithText("🇮🇩 Indonesia (2)").assertExists()
+		compose.onNodeWithText("🇬🇧 English (1)").assertExists()
+		compose.onNodeWithText("🏳️ Other / Global (1)").assertExists()
+		compose.onNodeWithText("🇮🇩 Indonesia (2)").performClick()
+		compose.onNodeWithText("Asura").assertExists()
+		compose.onNodeWithText("Doujindi").assertExists()
+	}
+
+	@Test
+	fun internalSourceIdIsNotShownAsCandidateTitleOrSubtitle() {
+		val original = screenState(MigrationBatchStatus.READY)
+		val snapshot = checkNotNull(original.batchItems[1L])
+		val state = original.copy(batchItems = mapOf(1L to snapshot.copy(
+			outcome = snapshot.outcome.copy(destinationSource = "MIHON_26770799414")
+		)))
+		show(state)
+		compose.onNodeWithTag("migration-batch-search").performClick()
+		compose.onNodeWithText("MIHON_26770799414").assertDoesNotExist()
+		compose.onNodeWithText("Replacement").assertExists()
+	}
+
+	@Test
+	fun targetTitleTapOpensDetailsAndLongPressOpensCandidateSelection() {
+		val base = screenState(MigrationBatchStatus.READY)
+		val target = manga(100L).copy(title = "Replacement", source = destination,
+			coverUrl = "https://fixture.invalid/cover.jpg")
+		val state = base.copy(targetManga = mapOf(1L to target))
+		var details = 0
+		var manual = 0
+		show(state, onOpenManual = { manual++ }, onOpenTarget = { details++ })
+		compose.onNodeWithTag("migration-batch-search").performClick()
+		compose.onNodeWithTag("migration-target-title-1").performClick()
+		assertEquals(1, details)
+		assertEquals(0, manual)
+		compose.onNodeWithTag("migration-target-title-1").performTouchInput { longClick() }
+		assertEquals(1, manual)
+		compose.onNodeWithTag("migration-target-cover-1").performClick()
+		assertEquals(2, details)
+		compose.onNodeWithTag("migration-target-cover-1").performTouchInput { longClick() }
+		assertEquals(2, manual)
 	}
 
 }
