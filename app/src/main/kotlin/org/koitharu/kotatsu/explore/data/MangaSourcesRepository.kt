@@ -26,7 +26,6 @@ import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
-import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton

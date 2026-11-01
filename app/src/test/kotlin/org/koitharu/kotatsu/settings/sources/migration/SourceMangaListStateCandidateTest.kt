@@ -9,7 +9,7 @@ import org.koitharu.kotatsu.alternatives.domain.MigrationBatchSnapshot
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
 import org.koitharu.kotatsu.alternatives.domain.MigrationSelection
 import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.core.model.MangaSource
 
 class SourceMangaListStateCandidateTest {
 	private fun manga(id: Long, source: String) = Manga(
