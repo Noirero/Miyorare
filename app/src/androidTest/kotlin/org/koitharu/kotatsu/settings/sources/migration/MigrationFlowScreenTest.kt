@@ -67,6 +67,8 @@ class MigrationFlowScreenTest {
 		onMigrate: () -> Unit = {},
 		onCopy: () -> Unit = {},
 		onOpenManual: (Manga) -> Unit = {},
+		onMigrateOne: (Long) -> Unit = {},
+		onCopyOne: (Long) -> Unit = {},
 	) {
 		compose.setContent {
 			MaterialTheme {
@@ -79,6 +81,7 @@ class MigrationFlowScreenTest {
 					onMoveSource = { _, _ -> }, onStrategy = {},
 					onExtraSearch = {}, onSkipSetup = {}, onRetrySources = {},
 					onMangaClick = onOpenManual, onMangaLongClick = {},
+					onMigrateOne = onMigrateOne, onCopyOne = onCopyOne,
 				)
 			}
 		}
@@ -116,6 +119,27 @@ class MigrationFlowScreenTest {
 		compose.onNodeWithTag("migration-batch-migrate").assertDoesNotExist()
 		compose.onNodeWithText("Story 1").performClick()
 		assertEquals(1, reviewed)
+	}
+
+
+	@Test
+	fun singleMigrateExecutesFromTheCandidateMenuWithoutAnotherReviewScreen() {
+		var executed = 0L
+		show(screenState(MigrationBatchStatus.READY), onMigrateOne = { executed = it })
+		compose.onNodeWithTag("migration-batch-search").performClick()
+		compose.onNodeWithText("⋮").performClick()
+		compose.onNodeWithText("Migrasikan").performClick()
+		assertEquals(1L, executed)
+	}
+
+	@Test
+	fun singleCopyUsesTheSameCandidateMenuWithoutMigrating() {
+		var copied = 0L
+		show(screenState(MigrationBatchStatus.READY), onCopyOne = { copied = it })
+		compose.onNodeWithTag("migration-batch-search").performClick()
+		compose.onNodeWithText("⋮").performClick()
+		compose.onNodeWithText("Salin").performClick()
+		assertEquals(1L, copied)
 	}
 
 	@Test
