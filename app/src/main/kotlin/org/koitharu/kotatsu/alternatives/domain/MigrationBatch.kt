@@ -12,7 +12,7 @@ enum class MigrationBatchStatus {
 enum class MigrationBatchAction { CHECK, MIGRATE, COPY }
 
 /** Phase-only failure evidence. Never persist raw exception messages or source URLs. */
-enum class MigrationFailureStage { DESTINATION_DETAILS, DESTINATION_STORAGE, DATA_TRANSFER, UNKNOWN }
+enum class MigrationFailureStage { DESTINATION_DETAILS, DESTINATION_STORAGE, DATA_CONFLICT, DATA_TRANSFER, UNKNOWN }
 
 class MigrationExecutionStageException(
     val stage: MigrationFailureStage,
