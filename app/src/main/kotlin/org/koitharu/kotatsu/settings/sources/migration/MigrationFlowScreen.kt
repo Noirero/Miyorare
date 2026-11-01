@@ -578,16 +578,25 @@ private fun MigrationMangaReviewItem(
 						contentDescription = targetManga.title,
 						modifier = Modifier.width(58.dp).height(76.dp)
 							.combinedClickable(
-								onClick = onClick,
-								onLongClick = { onOpenTarget(targetManga) },
+								onClick = { onOpenTarget(targetManga) },
+								onLongClick = onClick,
 							),
 					)
 				}
-				Column(Modifier.clickable(onClick = onClick)) {
+				Column(
+					if (targetManga == null) Modifier.clickable(onClick = onClick)
+					else Modifier.combinedClickable(
+						onClick = { onOpenTarget(targetManga) },
+						onLongClick = onClick,
+					)
+				) {
 				Text(targetTitle ?: if (status == MigrationBatchStatus.NO_REPLACEMENT)
 					"Tidak ditemukan" else "Mencari...",
 					style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-				if (targetSource != null) Text(targetSource,
+				val publicSource = targetManga?.source?.getTitle(context)?.takeIf(String::isNotBlank)
+					?: targetSource?.takeUnless { it.startsWith("MIHON_") || it.startsWith("TSUKI:")
+						|| it.startsWith("LN_") }
+				if (publicSource != null) Text(publicSource,
 					style = MaterialTheme.typography.labelSmall, maxLines = 1)
 				Text(stringResource(status.labelRes()), style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.primary)
@@ -670,8 +679,7 @@ private fun MigrationResultsStep(
 				Column {
 					Text(result.outcome.destinationTitle ?: "Manga selesai",
 						style = MaterialTheme.typography.bodyMedium)
-					Text(result.outcome.destinationSource.orEmpty() + " · " +
-						stringResource(result.outcome.status.labelRes()),
+					Text(stringResource(result.outcome.status.labelRes()),
 						style = MaterialTheme.typography.bodySmall)
 				}
 			}
