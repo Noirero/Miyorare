@@ -565,13 +565,31 @@ private fun MigrationMangaReviewItem(
 					)
 				}
 				Column(Modifier.clickable(onClick = onClick)) {
-				Text(targetTitle ?: if (status == MigrationBatchStatus.NO_REPLACEMENT)
-					"Tidak ditemukan" else "Mencari...",
+				Text(targetTitle ?: when (status) {
+                    MigrationBatchStatus.NO_REPLACEMENT -> "Tidak ditemukan"
+                    MigrationBatchStatus.ERROR -> "Migrasi gagal"
+                    MigrationBatchStatus.INTERRUPTED -> "Migrasi terhenti"
+                    else -> "Mencari..."
+                },
 					style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
 				if (targetSource != null) Text(targetSource,
 					style = MaterialTheme.typography.labelSmall, maxLines = 1)
 				Text(stringResource(status.labelRes()), style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.primary)
+                if (status == MigrationBatchStatus.ERROR) {
+                    val explanation = when (failureStage) {
+                        MigrationFailureStage.DESTINATION_DETAILS ->
+                            "Gagal membaca detail source tujuan; periksa jaringan/source, lalu coba lagi."
+                        MigrationFailureStage.DESTINATION_STORAGE ->
+                            "Gagal menyimpan detail kandidat; periksa penyimpanan sebelum mengulang."
+                        MigrationFailureStage.DATA_TRANSFER ->
+                            "Transfer data tidak selesai; periksa library dan riwayat sebelum mengulang."
+                        MigrationFailureStage.UNKNOWN, null ->
+                            "Penyebab belum diketahui; periksa data library sebelum mengulang."
+                    }
+                    Text(explanation, style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error)
+                }
 				}
 			}
 			Box {
