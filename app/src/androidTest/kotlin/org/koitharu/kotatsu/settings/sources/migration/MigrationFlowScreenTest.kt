@@ -88,12 +88,12 @@ class MigrationFlowScreenTest {
 	fun readyReviewRequiresExplicitConfirmationBeforeMigration() {
 		var invoked = 0
 		show(screenState(MigrationBatchStatus.READY), onMigrate = { invoked++ })
-		compose.onNodeWithText("Review").performClick()
+		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithTag("migration-batch-migrate").performClick()
 		assertEquals(0, invoked)
 		compose.onNodeWithTag("migration-batch-confirm").performClick()
 		assertEquals(1, invoked)
-		compose.onNodeWithText("Progress dan hasil").assertExists()
+		compose.onNodeWithText("Hasil pencarian").assertExists()
 	}
 
 	@Test
@@ -119,12 +119,12 @@ class MigrationFlowScreenTest {
 	}
 
 	@Test
-	fun destinationOriginFilterDoesNotHideActualSelectionSummary() {
+	fun sourceSelectionIsVisibleWithoutExtraFilterTabs() {
 		show(screenState(MigrationBatchStatus.UNCHECKED))
-		compose.onNodeWithText("Store").performClick()
-		compose.onNodeWithText("Source tujuan terpilih: 1").assertExists()
+		compose.onNodeWithText("Pilih source tujuan").assertExists()
 		compose.onNodeWithTag("migration-batch-search").assertExists()
 	}
+
 
 	@Test
 	fun aDifferentConfigMakesOldReadyStatusNonActionable() {
