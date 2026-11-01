@@ -49,6 +49,27 @@ jobs:
           fi
           plan="$(printf '%s\n' "$plan" | DRAFT="$DRAFT" LABEL_RUNTIME="$LABEL_RUNTIME" LABEL_FULL="$LABEL_FULL" LABEL_USER_ISSUE="$LABEL_USER_ISSUE" LABEL_THEME="$LABEL_THEME" TARGETED_AVAILABLE="$targeted_available" bash .github/scripts/select-pr-runtime-tests.sh --policy)"
           printf '%s\n' "$plan" | tee -a "$GITHUB_OUTPUT"
+          # Explain the existing classifier's decision; never change its outputs or gates.
+          run_runtime="$(sed -n 's/^run_runtime=//p' <<< "$plan" | tail -1)"
+          full_runtime="$(sed -n 's/^full=//p' <<< "$plan" | tail -1)"
+          {
+            echo '## Android runtime selection'
+            echo "- Exact PR HEAD: \`$HEAD_SHA\`"
+            echo "- Runtime requested: **$run_runtime**, full suite: **$full_runtime**"
+            echo "- Owner/user/theme/override flags: $LABEL_RUNTIME / $LABEL_USER_ISSUE / $LABEL_THEME / $LABEL_FULL"
+            if [[ "$run_runtime" == false ]]; then
+              echo '- Reason: this PR has no runtime-relevant changed paths and no mandatory override.'
+            elif [[ "$full_runtime" == true ]]; then
+              echo '- Reason: shared/unmapped runtime risk or an explicit full-runtime override.'
+            else
+              echo '- Reason: changed paths are mapped to targeted runtime suites by the existing selector.'
+            fi
+            echo '- Changed paths used for the decision:'
+            echo '```text'
+            cat "$RUNNER_TEMP/runtime-changed-files.txt"
+            echo '```'
+            echo '- This explanation does not modify the required PR checks.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   compile-unit:
     name: Compile, resources & unit tests
@@ -85,6 +106,7 @@ jobs:
         run: |
           bash .github/scripts/select-pr-runtime-tests.sh --self-test
           bash -n .github/scripts/run-selected-android-runtime.sh
+          python3 .github/scripts/targeted-ci-diagnostics.py --self-test
 
       - name: Install browser auth helper tooling
         run: npm install --prefix browser-auth-helper --ignore-scripts
@@ -161,6 +183,13 @@ jobs:
           while IFS= read -r line; do
             printf '%s\n' "$line" >> "$GITHUB_OUTPUT"
           done <<< "$plan"
+          {
+            echo '## Exact Android test selection'
+            echo 'The existing selector produced the following runtime plan:'
+            echo '```text'
+            printf '%s\n' "$plan"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build runtime APKs before booting the emulator
         env:
