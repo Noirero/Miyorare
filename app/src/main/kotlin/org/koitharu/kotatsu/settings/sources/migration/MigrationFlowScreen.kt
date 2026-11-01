@@ -153,6 +153,7 @@ internal fun MigrationFlowScreen(
 	)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MigrationSearchSetup(
 	state: SourceMangaListState,
