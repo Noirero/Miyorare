@@ -65,6 +65,8 @@ add_migration_suite() {
   add_class org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.MigrationNonRoomDurabilityRegressionTest
   add_class org.koitharu.kotatsu.settings.sources.migration.MigrationBatchControlsTest
+  add_class org.koitharu.kotatsu.settings.sources.migration.MigrationFlowScreenTest
+  add_class org.koitharu.kotatsu.settings.sources.migration.MigrationLandingScreenTest
   add_class org.koitharu.kotatsu.alternatives.domain.MigrationBatchVisibilityTest
   RUN_MIGRATION_PERSISTENCE=true
   MAPPED=true
@@ -145,6 +147,8 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.MigrationNonRoomDurabilityRegressionTest
   add_class org.koitharu.kotatsu.settings.sources.migration.MigrationBatchControlsTest
+  add_class org.koitharu.kotatsu.settings.sources.migration.MigrationFlowScreenTest
+  add_class org.koitharu.kotatsu.settings.sources.migration.MigrationLandingScreenTest
   add_class org.koitharu.kotatsu.alternatives.domain.MigrationBatchVisibilityTest
   add_class org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest
   add_class org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest

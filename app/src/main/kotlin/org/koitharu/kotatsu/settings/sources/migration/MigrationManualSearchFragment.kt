@@ -6,6 +6,8 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,6 +19,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -145,205 +148,185 @@ private fun MigrationManualSearchScreen(
 ) {
 	val context = LocalContext.current
 	val busy = state.migrating || state.skipping
+	var sourceFilter by rememberSaveable { mutableStateOf<String?>(null) }
+	val selected = state.selected
+	var pendingAction by remember(selected?.id, selected?.source) {
+		mutableStateOf<MigrationExecutionMode?>(null)
+	}
 	if (state.loading) {
 		Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 		return
 	}
 	state.completed?.let { manga ->
-		Column(
-			Modifier.fillMaxSize().padding(20.dp),
-			verticalArrangement = Arrangement.spacedBy(12.dp),
-		) {
-			Text(
-				stringResource(
-					if (state.completedMode == MigrationExecutionMode.COPY) R.string.migration_copied else R.string.migration_completed,
-				),
-				style = MaterialTheme.typography.titleLarge,
-			)
-			Button(onClick = { onOpenResult(manga) }) { Text(stringResource(R.string.migration_open_result)) }
+		Column(Modifier.fillMaxSize().padding(20.dp),
+			verticalArrangement = Arrangement.spacedBy(12.dp)) {
+			Text(if (state.completedMode == MigrationExecutionMode.COPY) "Manga berhasil disalin"
+				else "Migrasi berhasil", style = MaterialTheme.typography.titleLarge)
+			Text(manga.title, style = MaterialTheme.typography.titleMedium)
+			Button(onClick = { onOpenResult(manga) }) {
+				Text(stringResource(R.string.migration_open_result))
+			}
 		}
 		return
 	}
-
-	val selected = state.selected
-	var pendingAction by remember(selected?.id, selected?.source) { mutableStateOf<MigrationExecutionMode?>(null) }
-	val selectionIsInResults = selected != null && state.groups[selected.source.name]
-		?.manga
-		.orEmpty()
-		.any { candidate -> candidate.sameMigrationIdentity(selected) }
-
-	LazyColumn(
-		modifier = Modifier.fillMaxSize().nestedScroll(rememberNestedScrollInteropConnection()).navigationBarsPadding(),
-		contentPadding = PaddingValues(20.dp),
-		verticalArrangement = Arrangement.spacedBy(12.dp),
-	) {
-		item {
-			state.seed?.let { seed ->
-				Text(seed.title, style = MaterialTheme.typography.titleLarge)
-				Text(stringResource(R.string.migration_current_source, seed.source.getTitle(context)))
-			}
-		}
-		item {
-			OutlinedTextField(
-				value = state.query,
-				onValueChange = onQueryChange,
-				enabled = !state.searching && !busy,
-				modifier = Modifier.fillMaxWidth().testTag("migration-manual-query"),
-				label = { Text(stringResource(R.string.search)) },
-				singleLine = true,
-			)
-			Spacer(Modifier.height(8.dp))
-			Button(
-				onClick = onSearch,
-				enabled = !state.searching && !busy && state.query.isNotBlank() && state.sources.isNotEmpty(),
-				modifier = Modifier.fillMaxWidth().testTag("migration-manual-search"),
-			) {
-				if (state.searching) {
-					CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-					Spacer(Modifier.width(8.dp))
+	Column(Modifier.fillMaxSize()) {
+		LazyColumn(
+			Modifier.weight(1f).nestedScroll(rememberNestedScrollInteropConnection()),
+			contentPadding = PaddingValues(16.dp),
+			verticalArrangement = Arrangement.spacedBy(12.dp),
+		) {
+			item {
+				Text("Pilih pengganti", style = MaterialTheme.typography.titleLarge)
+				state.seed?.let { seed ->
+					Text(seed.title, style = MaterialTheme.typography.titleMedium)
+					Text(seed.source.getTitle(context).toString() + " → source tujuan",
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
-				Text(stringResource(R.string.migration_yokai_manual_search))
 			}
-			TextButton(
-				onClick = onSkip,
-				enabled = !busy,
-				modifier = Modifier.fillMaxWidth().testTag("migration-manual-skip"),
-			) {
-				if (state.skipping) {
-					CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-					Spacer(Modifier.width(8.dp))
-				}
-				Text(stringResource(R.string.migration_yokai_skip_manga))
-			}
-		}
-
-		state.errorMessage?.let { message ->
-			item { Text(message, color = MaterialTheme.colorScheme.error) }
-		}
-
-		// A candidate restored from the previous Yokai batch can exist before its manual-search group
-		// has produced results. Keep that selection actionable until the matching row appears; normal
-		// user selections render inline at the exact row that was tapped below.
-		if (selected != null && !selectionIsInResults) {
-			item(key = "selection-fallback:${selected.source.name}:${selected.id}") {
-				MigrationManualSelectionCard(
-					state = state,
-					selected = selected,
-					imageLoader = imageLoader,
-					busy = busy,
-					onOpenResult = onOpenResult,
-					onMigrate = { pendingAction = MigrationExecutionMode.MIGRATE },
-					onCopy = { pendingAction = MigrationExecutionMode.COPY },
-					onClearSelection = onClearSelection,
+			item {
+				OutlinedTextField(
+					value = state.query, onValueChange = onQueryChange,
+					enabled = !state.searching && !busy, singleLine = true,
+					label = { Text("Cari judul pengganti") }, modifier = Modifier.fillMaxWidth()
+						.testTag("migration-manual-query"),
 				)
-			}
-		}
-
-		for (source in state.sources) {
-			val group = state.groups[source.name]
-			item(key = "header:${source.name}") {
-				Text(source.getTitle(context), style = MaterialTheme.typography.titleMedium)
-				when {
-					group == null && state.searching -> LinearProgressIndicator(Modifier.fillMaxWidth())
-					group?.loading == true -> LinearProgressIndicator(Modifier.fillMaxWidth())
-					group?.errorMessage != null -> Text(
-						group.errorMessage,
-						style = MaterialTheme.typography.bodySmall,
-						color = MaterialTheme.colorScheme.error,
-					)
-					group != null && !group.loading && group.manga.isEmpty() -> Text(
-						stringResource(R.string.nothing_found),
-						style = MaterialTheme.typography.bodySmall,
-					)
+				Spacer(Modifier.height(8.dp))
+				Button(onClick = onSearch, enabled = !state.searching && !busy &&
+					state.query.isNotBlank() && state.sources.isNotEmpty(),
+					modifier = Modifier.fillMaxWidth().testTag("migration-manual-search")) {
+					Text(if (state.searching) "Mencari..." else "Cari ulang")
 				}
 			}
-			items(
-				items = group?.manga.orEmpty(),
-				key = { manga -> "${source.name}:${manga.id}" },
-			) { manga ->
-				Column(Modifier.fillMaxWidth()) {
-					Row(
-						modifier = Modifier
-							.fillMaxWidth()
-							.clickable(enabled = !busy) { onSelect(manga) }
-							.padding(vertical = 10.dp)
-							.testTag("migration-manual-result"),
-						verticalAlignment = Alignment.CenterVertically,
-						horizontalArrangement = Arrangement.spacedBy(12.dp),
-					) {
-						MigrationMangaCover(
-							manga = manga,
-							imageLoader = imageLoader,
-							modifier = Modifier.width(64.dp).aspectRatio(0.72f),
-						)
-						Column(Modifier.weight(1f)) {
-							Text(
-								manga.title,
-								style = MaterialTheme.typography.bodyLarge,
-								maxLines = 2,
-								overflow = TextOverflow.Ellipsis,
-							)
-							manga.authors.firstOrNull()?.let { author ->
-								Text(
-									author,
-									style = MaterialTheme.typography.bodySmall,
-									maxLines = 1,
-									overflow = TextOverflow.Ellipsis,
-								)
+			state.errorMessage?.let { error ->
+				item {
+					Text(error, color = MaterialTheme.colorScheme.error)
+				}
+			}
+			item {
+				Text("Hasil pencarian", style = MaterialTheme.typography.titleMedium)
+				if (state.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
+				Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+					horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+					FilterChip(selected = sourceFilter == null, onClick = { sourceFilter = null },
+						label = { Text("Semua") })
+					for (source in state.sources) {
+						val count = state.groups[source.name]?.manga?.size ?: 0
+						FilterChip(selected = sourceFilter == source.name,
+							onClick = { sourceFilter = source.name },
+							label = { Text(source.getTitle(context).toString() + " (" + count + ")") })
+					}
+				}
+			}
+			for (source in state.sources.filter { source ->
+				sourceFilter == source.name ||
+					(sourceFilter == null && state.groups[source.name]?.manga?.isNotEmpty() == true)
+			}) {
+				val group = state.groups[source.name]
+				item(key = "source:" + source.name) {
+					Text(source.getTitle(context).toString(), style = MaterialTheme.typography.titleSmall)
+					when {
+						group?.loading == true -> LinearProgressIndicator(Modifier.fillMaxWidth())
+						group?.errorMessage != null -> Text("Pencarian source ini gagal. Coba lagi.",
+							style = MaterialTheme.typography.bodySmall,
+							color = MaterialTheme.colorScheme.error)
+						group != null && group.manga.isEmpty() -> Text("Tidak ada kandidat",
+							style = MaterialTheme.typography.bodySmall)
+					}
+				}
+				items(group?.manga.orEmpty(), key = { manga -> source.name + ":" + manga.id }) { manga ->
+					val checked = manga.sameMigrationIdentity(selected)
+					Surface(tonalElevation = if (checked) 3.dp else 0.dp,
+						shape = MaterialTheme.shapes.medium) {
+						Row(
+							Modifier.fillMaxWidth().clickable(enabled = !busy) { onSelect(manga) }
+								.padding(vertical = 8.dp, horizontal = 6.dp)
+								.testTag("migration-manual-result"),
+							verticalAlignment = Alignment.CenterVertically,
+							horizontalArrangement = Arrangement.spacedBy(12.dp),
+						) {
+							MigrationMangaCover(
+								manga = manga, imageLoader = imageLoader,
+								modifier = Modifier.width(55.dp).aspectRatio(0.72f))
+							Column(Modifier.weight(1f)) {
+								Text(manga.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+								Text(manga.source.getTitle(context).toString(),
+									style = MaterialTheme.typography.bodySmall)
+								manga.authors.firstOrNull()?.let { author ->
+									Text(author, style = MaterialTheme.typography.labelSmall)
+								}
 							}
+							RadioButton(selected = checked, onClick = { onSelect(manga) },
+								enabled = !busy)
 						}
 					}
-					if (manga.sameMigrationIdentity(selected)) {
-						MigrationManualSelectionCard(
-							state = state,
-							selected = manga,
-							imageLoader = imageLoader,
-							busy = busy,
-							onOpenResult = onOpenResult,
-							onMigrate = { pendingAction = MigrationExecutionMode.MIGRATE },
-							onCopy = { pendingAction = MigrationExecutionMode.COPY },
-							onClearSelection = onClearSelection,
-						)
+				}
+			}
+			if (!state.searching && state.groups.values.all { it.manga.isEmpty() }) {
+				item { Text("Belum ada kandidat yang ditemukan.", style = MaterialTheme.typography.bodySmall) }
+			}
+		}
+		Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surfaceContainer) {
+			Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp),
+				verticalArrangement = Arrangement.spacedBy(7.dp)) {
+				if (selected != null) {
+					Text("Pengganti: " + selected.title, style = MaterialTheme.typography.bodyMedium,
+						maxLines = 1, overflow = TextOverflow.Ellipsis)
+					Text(selected.source.getTitle(context).toString(),
+						style = MaterialTheme.typography.bodySmall)
+					Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+						Button(onClick = { pendingAction = MigrationExecutionMode.MIGRATE },
+							enabled = !busy, modifier = Modifier.weight(1f).testTag("migration-manual-migrate")) {
+							Text("Migrasikan")
+						}
+						OutlinedButton(onClick = { pendingAction = MigrationExecutionMode.COPY },
+							enabled = !busy, modifier = Modifier.weight(1f).testTag("migration-manual-copy")) {
+							Text("Salin")
+						}
 					}
-					HorizontalDivider()
+					TextButton(onClick = onClearSelection, enabled = !busy) { Text("Ganti kandidat") }
+				} else {
+					Text("Pilih kandidat pengganti untuk melanjutkan.",
+						style = MaterialTheme.typography.bodySmall)
+				}
+				TextButton(onClick = onSkip, enabled = !busy,
+					modifier = Modifier.testTag("migration-manual-skip")) {
+					Text(if (state.skipping) "Melewati..." else "Lewati manga ini")
 				}
 			}
 		}
 	}
-	val seed = state.seed
-	if (pendingAction != null && selected != null && seed != null) {
+	if (pendingAction != null && selected != null && state.seed != null) {
+		val action = pendingAction
 		AlertDialog(
 			onDismissRequest = { pendingAction = null },
-			title = { Text(stringResource(R.string.manga_migration)) },
+			title = { Text(if (action == MigrationExecutionMode.COPY) "Konfirmasi salin"
+				else "Konfirmasi migrasi") },
 			text = {
-				Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-					Text(seed.title, style = MaterialTheme.typography.titleMedium)
-					Text(stringResource(R.string.migration_current_source, seed.source.getTitle(context)))
+				Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+					Text("Asal", style = MaterialTheme.typography.labelMedium)
+					Text(state.seed.title)
+					Text(state.seed.source.getTitle(context).toString(),
+						style = MaterialTheme.typography.bodySmall)
 					HorizontalDivider()
-					Text(stringResource(R.string.migration_new_selection), style = MaterialTheme.typography.labelMedium)
-					Text(selected.title, style = MaterialTheme.typography.titleMedium)
-					Text(selected.source.getTitle(context).toString())
+					Text("Pengganti", style = MaterialTheme.typography.labelMedium)
+					Text(selected.title)
+					Text(selected.source.getTitle(context).toString(),
+						style = MaterialTheme.typography.bodySmall)
+					Text(if (action == MigrationExecutionMode.COPY)
+						"Salin mempertahankan manga asal."
+						else "Migrasi mengganti source dan menjaga data yang kompatibel. File unduhan tidak dihapus.",
+						style = MaterialTheme.typography.bodySmall)
 				}
 			},
 			confirmButton = {
-				TextButton(
+				TextButton(enabled = !busy, modifier = Modifier.testTag("migration-manual-confirm"),
 					onClick = {
-						val mode = pendingAction
 						pendingAction = null
-						if (mode == MigrationExecutionMode.MIGRATE) onMigrate()
-						else if (mode == MigrationExecutionMode.COPY) onCopy()
-					},
-					enabled = !busy,
-				) {
-					Text(stringResource(
-						if (pendingAction == MigrationExecutionMode.MIGRATE) R.string.migration_yokai_migrate_now
-						else R.string.migration_yokai_copy_now,
-					))
-				}
+						if (action == MigrationExecutionMode.COPY) onCopy() else onMigrate()
+					}) { Text(if (action == MigrationExecutionMode.COPY) "Salin" else "Migrasikan") }
 			},
-			dismissButton = {
-				TextButton(onClick = { pendingAction = null }) { Text(stringResource(android.R.string.cancel)) }
-			},
+			dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("Batal") } },
 		)
 	}
 }

@@ -22,15 +22,18 @@ class MigrationSourcePickerFollowupContractTest {
 	}
 
 	@Test
-	fun `manual result selection expands confirmation at the selected result row`() {
+	fun `manual candidate selection uses a visible bottom action and explicit confirmation`() {
 		val source = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchFragment.kt")
 
-		assertTrue(source.contains("selectionIsInResults"))
-		assertTrue(source.contains("if(selected!=null&&!selectionIsInResults)"))
-		assertTrue(source.contains("if(manga.sameMigrationIdentity(selected)){MigrationManualSelectionCard("))
+		assertTrue(source.contains("valchecked=manga.sameMigrationIdentity(selected)"))
 		assertTrue(source.contains("clickable(enabled=!busy){onSelect(manga)}"))
+		assertTrue(source.contains("RadioButton(selected=checked,onClick={onSelect(manga)}"))
+		assertTrue(source.contains("pendingAction=MigrationExecutionMode.MIGRATE"))
+		assertTrue(source.contains("pendingAction=MigrationExecutionMode.COPY"))
+		assertTrue(source.contains("if(pendingAction!=null&&selected!=null&&state.seed!=null)"))
+		assertTrue(source.contains("if(action==MigrationExecutionMode.COPY)onCopy()elseonMigrate()"))
 		assertTrue(source.contains("privatefunManga.sameMigrationIdentity(other:Manga?)"))
-		assertFalse(source.contains("state.selected?.let{selected->item{Card("))
+		assertFalse(source.contains("if(manga.sameMigrationIdentity(selected)){MigrationManualSelectionCard("))
 	}
 
 	private fun source(relativePath: String): String {
