@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -103,7 +104,12 @@ class BrokenSourcesMigrationFragment :
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
 			MiyorareTheme {
-				val state by viewModel.state.collectAsState()
+				Surface(
+					modifier = Modifier.fillMaxSize(),
+					color = Color.Transparent,
+					contentColor = MaterialTheme.colorScheme.onSurface,
+				) {
+					val state by viewModel.state.collectAsState()
 				BrokenSourcesMigrationScreen(
 					state = state,
 					imageLoader = imageLoader,
@@ -119,6 +125,7 @@ class BrokenSourcesMigrationFragment :
 					},
 					onOpenDetails = { manga -> router.openDetails(manga) },
 				)
+				}
 			}
 		}
 	}
