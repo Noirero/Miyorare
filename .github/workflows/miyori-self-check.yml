@@ -18,6 +18,9 @@ jobs:
     steps:
       - name: Checkout exact workflow head
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Compile Miyori Python helpers
         run: |
