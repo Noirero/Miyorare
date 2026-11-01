@@ -28,6 +28,10 @@ def matching_run(runs: list[dict[str, Any]], number: int, sha: str) -> dict[str,
     for run in sorted(runs, key=lambda x: (x.get("created_at") or "", x.get("id") or 0), reverse=True):
         if run.get("name") != DIAGNOSTIC_NAME or run.get("event") != "workflow_dispatch":
             continue
+        if run.get("head_branch") != "main" or not str(run.get("path") or "").startswith(
+            ".github/workflows/manual-targeted-ci-diagnostics.yml@"
+        ):
+            continue
         match = TITLE_RE.fullmatch(str(run.get("display_title") or ""))
         if match and int(match[1]) == number and match[2].lower() == sha.lower():
             return run
@@ -99,7 +103,7 @@ def render_report(number: int, sha: str, run: dict[str, Any] | None,
                   evidence: dict[str, Any] | None) -> str:
     lines = [
         f"🌸 **Targeted diagnostics for PR #{number}**", "",
-        f"- Current PR HEAD: \`{sha}\`",
+        f"- Current PR HEAD: `{sha}`",
         "- Scope: read-only diagnostic; **not** a mandatory CI gate or merge approval.",
     ]
     if run is None:
@@ -112,7 +116,8 @@ def render_report(number: int, sha: str, run: dict[str, Any] | None,
         f"- Workflow: {url}" if url.startswith("https://github.com/") else "- Workflow: link unavailable",
         f"- Run state: {run.get('status', 'unknown')} / {run.get('conclusion') or 'pending'}",
     ])
-    if evidence is None or evidence.get("sha", "").lower() != sha.lower() or evidence.get("pr_number") != number:
+    if (evidence is None or str(evidence.get("sha", "")).lower() != sha.lower()
+            or evidence.get("pr_number") != number):
         lines.append("- Per-test evidence unavailable or could not be verified for this PR HEAD.")
         return "\n".join(lines)
 
