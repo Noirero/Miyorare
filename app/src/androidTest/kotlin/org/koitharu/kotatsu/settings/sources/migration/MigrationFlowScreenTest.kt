@@ -287,6 +287,78 @@ class MigrationFlowScreenTest {
 	}
 
 	@Test
+	fun completedMigrationShowsDestinationCoverAndOpensDetailsFromTitleAndCover() {
+		val initial = screenState(MigrationBatchStatus.MIGRATED, MigrationBatchStatus.COPIED)
+		val firstTarget = manga(101L).copy(title = "New home A", source = destination,
+			coverUrl = "https://fixture.invalid/cover-a.jpg")
+		val secondTarget = manga(102L).copy(title = "New home B", source = destination,
+			coverUrl = "https://fixture.invalid/cover-b.jpg")
+		val snapshots = initial.batchItems.mapValues { (oldId, snapshot) ->
+			val target = if (oldId == 1L) firstTarget else secondTarget
+			snapshot.copy(outcome = snapshot.outcome.copy(
+				destinationId = target.id, destinationSource = target.source.name,
+				destinationTitle = target.title,
+			))
+		}
+		val state = initial.copy(batchItems = snapshots,
+			targetManga = mapOf(1L to firstTarget, 2L to secondTarget))
+		val opened = mutableListOf<Long>()
+		show(state, onOpenTarget = { opened += it.id })
+		compose.onNodeWithTag("migration-batch-search").performClick()
+		compose.onNodeWithTag("migration-target-cover-1").assertExists().performClick()
+		compose.onNodeWithTag("migration-target-title-2").performClick()
+		assertEquals(listOf(101L, 102L), opened)
+	}
+
+	@Test
+	fun completedTargetIgnoresStaleConfigButRejectsMismatchedIdentity() {
+		val initial = screenState(MigrationBatchStatus.MIGRATED)
+		val target = manga(101L).copy(source = destination, coverUrl = "https://fixture.invalid/cover.jpg")
+		val result = checkNotNull(initial.batchItems[1L]).copy(
+			configKey = "previous-search-config",
+			outcome = checkNotNull(initial.batchItems[1L]).outcome.copy(
+				destinationId = target.id, destinationSource = destination.name,
+			),
+		)
+		val state = initial.copy(batchItems = mapOf(1L to result), targetManga = mapOf(1L to target))
+		assertEquals(target, state.displayTarget(1L))
+		assertEquals(null, state.copy(batchItems = mapOf(1L to result.copy(
+			outcome = result.outcome.copy(destinationSource = "DIFFERENT")
+		))).displayTarget(1L))
+		assertEquals(null, state.copy(batchItems = mapOf(1L to result.copy(
+			outcome = result.outcome.copy(destinationId = 9876L)
+		))).displayTarget(1L))
+		assertEquals(null, state.copy(batchItems = mapOf(1L to result.copy(
+			outcome = result.outcome.copy(status = MigrationBatchStatus.ERROR)
+		))).displayTarget(1L))
+	}
+
+	@Test
+	fun completedResultWithoutOriginalEntryOpensStoredDestinationDetails() {
+		val initial = screenState(MigrationBatchStatus.MIGRATED)
+		val target = manga(101L).copy(title = "New home", source = destination,
+			coverUrl = "https://fixture.invalid/cover.jpg")
+		val snapshot = checkNotNull(initial.batchItems[1L])
+		val state = initial.copy(
+			manga = emptyList(),
+			batchItems = mapOf(1L to snapshot.copy(outcome = snapshot.outcome.copy(
+				destinationId = target.id, destinationSource = target.source.name,
+				destinationTitle = target.title,
+			))),
+			targetManga = mapOf(1L to target),
+		)
+		val liveState = mutableStateOf(initial)
+		val opened = mutableListOf<Long>()
+		show(liveState.value, onOpenTarget = { opened += it.id }, stateProvider = { liveState.value })
+		compose.onNodeWithTag("migration-batch-search").performClick()
+		compose.runOnUiThread { liveState.value = state }
+		compose.waitForIdle()
+		compose.onNodeWithTag("migration-completed-target-cover-1").assertExists().performClick()
+		compose.onNodeWithTag("migration-completed-target-title-1").performClick()
+		assertEquals(listOf(101L, 101L), opened)
+	}
+
+	@Test
 	fun targetTitleTapOpensDetailsAndLongPressOpensCandidateSelection() {
 		val base = screenState(MigrationBatchStatus.READY)
 		val target = manga(100L).copy(title = "Replacement", source = destination,

@@ -289,23 +289,35 @@ class SourceMangaListViewModel @Inject constructor(
 							else null
 						}
 					val latest = MigrationBatchPolicy.latest(snapshots)
-					// Search candidates are stored by the existing discovery use case. Resolve their
-					// real covers/details from Room; never invent a Manga from WorkManager title hints.
-					// Respect the Private-only boundary even if a candidate id is present in history.
-					val candidateIds = latest.values.mapNotNull { snapshot ->
-						snapshot.outcome.selection?.id?.takeIf {
-							snapshot.outcome.status == MigrationBatchStatus.READY &&
-								snapshot.discoveryMode == MigrationBatchDiscoveryMode.YOKAI &&
-								it !in privateOnly
-						}
-					}.distinct()
-					val candidates = candidateIds.chunked(500)
-						.flatMap { database.getMangaDao().findByIds(it) }
+					// Resolve real stored Manga identities for ready candidates AND successful
+					// destinations. WorkManager titles alone cannot supply covers or detail navigation.
+					// Never resolve an uncertain result or cross the Private-only boundary.
+					val targetIdentities = latest.mapNotNull { (sourceId, snapshot) ->
+						if (snapshot.running) return@mapNotNull null
+						val outcome = snapshot.outcome
+						val identity = when (outcome.status) {
+							MigrationBatchStatus.READY ->
+								if (snapshot.discoveryMode == MigrationBatchDiscoveryMode.YOKAI)
+									outcome.selection?.let { it.id to it.source } else null
+							MigrationBatchStatus.MIGRATED, MigrationBatchStatus.COPIED ->
+								outcome.destinationId?.let { id ->
+									outcome.destinationSource?.let { source -> id to source }
+								}
+							else -> null
+						} ?: return@mapNotNull null
+						if (identity.first in privateOnly) return@mapNotNull null
+						sourceId to identity
+					}.toMap()
+					val candidates = targetIdentities.values.map { it.first }.distinct()
+						.chunked(500).flatMap { database.getMangaDao().findByIds(it) }
 						.toMangaList().associateBy(Manga::id)
-					val targetManga = latest.mapNotNull { (sourceId, snapshot) ->
-						val selection = snapshot.outcome.selection ?: return@mapNotNull null
-						val candidate = candidates[selection.id] ?: return@mapNotNull null
-						if (candidate.source.name != selection.source) return@mapNotNull null
+					val targetManga = targetIdentities.mapNotNull { (sourceId, identity) ->
+						val candidate = candidates[identity.first] ?: return@mapNotNull null
+						if (candidate.source.name != identity.second) return@mapNotNull null
+						val status = latest[sourceId]?.outcome?.status
+						if (status == MigrationBatchStatus.MIGRATED || status == MigrationBatchStatus.COPIED) {
+							if (!database.getMangaDao().isMigrationEntryVisible(candidate.id)) return@mapNotNull null
+						}
 						sourceId to candidate
 					}.toMap()
 					val owned = snapshots.firstOrNull { it.running }?.batchName
@@ -468,15 +480,20 @@ data class SourceMangaListState(
 		}
 	}
 
-	/** Never display a persisted cover/details candidate for a stale or different search config. */
-	fun readyTarget(mangaId: Long): Manga? {
+	/** A validated, locally stored target; a completed result stays valid across search config changes. */
+	fun displayTarget(mangaId: Long): Manga? {
 		val snapshot = batchItems[mangaId] ?: return null
 		val candidate = targetManga[mangaId] ?: return null
-		val selected = snapshot.outcome.selection ?: return null
-		return candidate.takeIf {
-			status(mangaId) == MigrationBatchStatus.READY &&
-				!snapshot.running &&
-				selected.id == it.id && selected.source == it.source.name
+		if (snapshot.running) return null
+		return when (status(mangaId)) {
+			MigrationBatchStatus.READY -> snapshot.outcome.selection?.let { selected ->
+				candidate.takeIf { selected.id == it.id && selected.source == it.source.name }
+			}
+			MigrationBatchStatus.MIGRATED, MigrationBatchStatus.COPIED -> candidate.takeIf {
+				snapshot.outcome.destinationId == it.id &&
+					snapshot.outcome.destinationSource == it.source.name
+			}
+			else -> null
 		}
 	}
 
