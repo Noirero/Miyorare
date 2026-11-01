@@ -8,7 +8,7 @@ import miyori_tests as mt
 class TargetedDiagnosticsReportTests(unittest.TestCase):
     sha = "a" * 40
 
-    def run(self):
+    def make_run(self):
         return {
             "id": 99, "name": mt.DIAGNOSTIC_NAME,
             "event": "workflow_dispatch",
@@ -28,14 +28,14 @@ class TargetedDiagnosticsReportTests(unittest.TestCase):
         }
 
     def test_exact_sha_match_required(self):
-        self.assertEqual(mt.matching_run([self.run()], 42, self.sha)["id"], 99)
-        self.assertIsNone(mt.matching_run([self.run()], 43, self.sha))
-        self.assertIsNone(mt.matching_run([self.run()], 42, "b" * 40))
-        injected = dict(self.run(), display_title="Diagnostic PR #42 @ " + self.sha + " unrelated")
+        self.assertEqual(mt.matching_run([self.make_run()], 42, self.sha)["id"], 99)
+        self.assertIsNone(mt.matching_run([self.make_run()], 43, self.sha))
+        self.assertIsNone(mt.matching_run([self.make_run()], 42, "b" * 40))
+        injected = dict(self.make_run(), display_title="Diagnostic PR #42 @ " + self.sha + " unrelated")
         self.assertIsNone(mt.matching_run([injected], 42, self.sha))
 
     def test_inconsistent_sample_does_not_claim_root_cause(self):
-        text = mt.render_report(42, self.sha, self.run(), self.evidence())
+        text = mt.render_report(42, self.sha, self.make_run(), self.evidence())
         self.assertIn("passed: **1**; failed: **1**", text)
         self.assertIn("inconsistent results", text)
         self.assertIn("root cause remains unknown", text)
@@ -43,7 +43,7 @@ class TargetedDiagnosticsReportTests(unittest.TestCase):
 
     def test_stale_artifact_is_not_used(self):
         stale = dict(self.evidence(), sha="b" * 40)
-        text = mt.render_report(42, self.sha, self.run(), stale)
+        text = mt.render_report(42, self.sha, self.make_run(), stale)
         self.assertIn("could not be verified", text)
         self.assertNotIn("passed: **1**", text)
 
@@ -56,7 +56,7 @@ class TargetedDiagnosticsReportTests(unittest.TestCase):
         evidence = dict(self.evidence(), runs=[
             {"index": 1, "targets": ["org.example.A#test"], "exit_code": 0, "reported_tests": 0}
         ])
-        text = mt.render_report(42, self.sha, self.run(), evidence)
+        text = mt.render_report(42, self.sha, self.make_run(), evidence)
         self.assertIn("passed: **0**; failed: **1**", text)
 
 
