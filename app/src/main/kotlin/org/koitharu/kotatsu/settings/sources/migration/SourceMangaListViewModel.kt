@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.toMangaList
 import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -36,6 +37,7 @@ class SourceMangaListViewModel @Inject constructor(
 	private val batchScheduler: MigrationBatchScheduler,
 	private val yokaiSearch: YokaiStyleMigrationSearchUseCase,
 	private val migrationPreferences: MigrationSessionPreferences,
+	private val sourcesRepository: MangaSourcesRepository,
 ) : ViewModel() {
 
 	val sourceTitle: String = savedStateHandle[SourceMangaListFragment.ARG_SOURCE_TITLE] ?: "Manga migration"
@@ -331,6 +333,7 @@ class SourceMangaListViewModel @Inject constructor(
 							scheduling = current.scheduling,
 							selectedIds = current.selectedIds.intersect(projection.manga.mapTo(hashSetOf()) { it.id }),
 							preferredAction = current.preferredAction,
+							installedSources = current.installedSources,
 							availableSources = current.availableSources,
 							selectedSourceNames = current.selectedSourceNames,
 							sourceStrategy = current.sourceStrategy,
@@ -376,9 +379,12 @@ class SourceMangaListViewModel @Inject constructor(
 							.distinctBy(MangaSource::name)
 							.sortedBy(MangaSource::name),
 						providerFailureCount = pools.sumOf(MigrationSourcePool::providerFailureCount),
-					)
+					) to sourcesRepository.getEnabledSources()
 				}
-			}.onSuccess { pool ->
+			}.onSuccess { (pool, installed) ->
+				// Installed runtime registration supplies tab/group counts even when a provider is
+				// incompatible with the current manga/novel session. Only pool.allSources is executable.
+				val installedSources = (installed + pool.allSources).distinctBy(MangaSource::name)
 				val availableNames = pool.allSources.mapTo(hashSetOf(), MangaSource::name)
 				val rememberedConfigured = migrationPreferences.selectedSourceNames
 				val currentConfigured = state.value.selectedSourceNames
@@ -391,6 +397,7 @@ class SourceMangaListViewModel @Inject constructor(
 				}
 				_state.update { current -> current.copy(
 					availableSources = pool.allSources,
+					installedSources = installedSources,
 					selectedSourceNames = selected,
 					sourceSelectionLoading = false,
 					sourceSelectionFailed = false,
@@ -424,6 +431,7 @@ data class SourceMangaListState(
 	val targetManga: Map<Long, Manga> = emptyMap(),
 	val filter: MigrationBatchStatus? = null,
 	val availableSources: List<MangaSource> = emptyList(),
+	val installedSources: List<MangaSource> = emptyList(),
 	/** Ordered destination source identities; FIRST_MATCH uses this exact order. */
 	val selectedSourceNames: List<String> = emptyList(),
 	val sourceStrategy: MigrationSourceStrategy = MigrationSourceStrategy.FIRST_MATCH,
