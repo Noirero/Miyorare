@@ -1,4 +1,5 @@
 name: Manual Targeted CI Diagnostics
+run-name: Diagnostic PR #${{ inputs.pr_number }} @ ${{ inputs.expected_sha }}
 
 # Deliberately non-gating. Normal PR CI keeps its existing mandatory checks.
 # GitHub makes new workflow_dispatch definitions available after they reach the
@@ -54,6 +55,8 @@ concurrency:
 
 jobs:
   diagnose:
+    # Workflow and diagnostic script must come from the trusted default branch.
+    if: github.ref == 'refs/heads/main'
     name: Read-only exact-HEAD targeted diagnostics
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -81,12 +84,27 @@ jobs:
             echo "::error::The PR is closed or its HEAD differs from the requested SHA."
             exit 1
           fi
+          source_repo="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.repo.full_name')"
+          test "$source_repo" = "$GITHUB_REPOSITORY" || {
+            echo "::error::Forked PRs are not supported by this diagnostic runner."
+            exit 1
+          }
           echo "Verified PR #$PR_NUMBER at $EXPECTED_SHA (no refs modified)"
 
-      - name: Checkout exact PR commit
+      - name: Checkout trusted diagnostic implementation
+        uses: actions/checkout@v5
+        with:
+          # The trusted workflow definition and its script must be the same revision.
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout exact PR commit to an isolated folder
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.expected_sha }}
+          path: candidate
           persist-credentials: false
           fetch-depth: 1
 
@@ -96,12 +114,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(git -C trusted rev-parse HEAD)" = "${{ github.workflow_sha }}"
+          test "$(git -C candidate rev-parse HEAD)" = "$EXPECTED_SHA"
           test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')" = "$EXPECTED_SHA"
-          python3 .github/scripts/targeted-ci-diagnostics.py --self-test
-          python3 .github/scripts/targeted-ci-diagnostics.py --validate-only \
+          python3 trusted/.github/scripts/targeted-ci-diagnostics.py --self-test
+          cd candidate
+          python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py --validate-only \
             --platform "$TARGET_PLATFORM" --targets "$TEST_TARGETS" \
-            --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA"
+            --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA" --pr-number "$PR_NUMBER" --pr-number "$PR_NUMBER"
           {
             echo "## Diagnostic scope (non-gating)"
             echo "- PR: #$PR_NUMBER"
@@ -128,6 +148,7 @@ jobs:
       - name: Build debug and instrumentation APK once
         if: inputs.platform == 'android'
         run: |
+          cd candidate
           ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest \
             --max-workers=2 --no-daemon --stacktrace
 
@@ -138,9 +159,10 @@ jobs:
       - name: Run selected JVM diagnostics
         if: inputs.platform == 'jvm'
         run: |
-          python3 .github/scripts/targeted-ci-diagnostics.py \
+          cd candidate
+          python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py \
             --platform "$TARGET_PLATFORM" --targets "$TEST_TARGETS" \
-            --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA"
+            --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA" --pr-number "$PR_NUMBER"
 
       - name: Run selected Android 15 diagnostics
         if: inputs.platform == 'android'
@@ -153,15 +175,16 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            python3 .github/scripts/targeted-ci-diagnostics.py \
+            cd candidate
+            python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py \
               --platform "$TARGET_PLATFORM" --targets "$TEST_TARGETS" \
-              --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA"
+              --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA" --pr-number "$PR_NUMBER"
 
       - name: Upload targeted diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: targeted-diagnostic-evidence
-          path: diagnostics-evidence/
+          path: candidate/diagnostics-evidence/
           retention-days: 3
           if-no-files-found: warn

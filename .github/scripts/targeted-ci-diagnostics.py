@@ -149,17 +149,20 @@ def main() -> int:
     parser.add_argument("--mode", choices=["isolated", "grouped"])
     parser.add_argument("--repeats", choices=[1, 3, 5], type=int)
     parser.add_argument("--expected-sha")
+    parser.add_argument("--pr-number", type=int)
     args = parser.parse_args()
 
     if args.self_test:
         self_test()
         return 0
-    if None in (args.platform, args.targets, args.mode, args.repeats, args.expected_sha):
-        parser.error("--platform, --targets, --mode, --repeats and --expected-sha are required")
+    if None in (args.platform, args.targets, args.mode, args.repeats, args.expected_sha, args.pr_number):
+        parser.error("--platform, --targets, --mode, --repeats, --expected-sha and --pr-number are required")
     try:
         targets = parse_targets(args.targets, args.mode, args.repeats)
     except ValueError as exc:
         parser.error(str(exc))
+    if args.pr_number <= 0:
+        parser.error("PR number must be a positive integer")
     if not SHA_RE.fullmatch(args.expected_sha):
         parser.error("expected SHA must be a 40-character Git commit hash")
     actual = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
@@ -203,7 +206,7 @@ def main() -> int:
     passes = sum(r["exit_code"] == 0 for r in runs)
     summary = [
         "## Manual targeted CI diagnostic (non-gating)",
-        f"- Exact HEAD: `{actual}`",
+        f"- PR: **#{args.pr_number}**; exact HEAD: `{actual}`",
         f"- Platform: **{args.platform}**; mode: **{args.mode}**; repeats: **{args.repeats}**",
         f"- Targets: `{', '.join(targets)}`",
         f"- Result: **{passes}/{len(runs)} invocations passed**",
@@ -222,7 +225,7 @@ def main() -> int:
     message = "\n".join(summary) + "\n"
     (ARTIFACT / "summary.md").write_text(message, encoding="utf-8")
     (ARTIFACT / "results.json").write_text(json.dumps({
-        "sha": actual, "platform": args.platform, "mode": args.mode,
+        "sha": actual, "pr_number": args.pr_number, "platform": args.platform, "mode": args.mode,
         "targets": targets, "runs": runs,
     }, indent=2), encoding="utf-8")
     with Path(__import__("os").environ.get("GITHUB_STEP_SUMMARY", "/dev/null")).open("a", encoding="utf-8") as out:
