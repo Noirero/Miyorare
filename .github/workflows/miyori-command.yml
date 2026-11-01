@@ -25,6 +25,7 @@ on:
           - /miyori labels
           - /miyori readiness
           - /miyori head
+          - /miyori tests
           - /miyori require-runtime
 
 permissions:
@@ -169,6 +170,15 @@ jobs:
             --pr-number "$TARGET_NUMBER" \
             --output "$RUNNER_TEMP/miyori-report.md"
 
+      - name: Render exact-head diagnostic evidence (read-only)
+        if: steps.parse.outputs.command == 'tests' && steps.target.outputs.is_pr == 'true' && steps.target.outputs.state == 'open'
+        shell: bash
+        env:
+          MIYORI_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/miyori_tests.py             --pr-number "$TARGET_NUMBER"             --output "$RUNNER_TEMP/miyori-tests.md"
+
       - name: Require Android Runtime validation
         if: steps.parse.outputs.command == 'require-runtime' && steps.target.outputs.is_pr == 'true' && steps.target.outputs.state == 'open'
         shell: bash
@@ -210,6 +220,7 @@ jobs:
           - \`/miyori labels\` — inspect CI label consistency.
           - \`/miyori readiness\` — report technical readiness.
           - \`/miyori head\` — report exact-head evidence.
+          - \`/miyori tests\` — summarize exact-head targeted diagnostic evidence.
           - \`/miyori require-runtime\` — add the safe runtime-required override.
 
           Commands are accepted only from the repository owner. Miyori cannot push code, merge, publish releases, rerun arbitrary workflows, or weaken validation.
@@ -232,6 +243,150 @@ jobs:
                 RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; no live report was generated."
               else
                 RESPONSE="${RESPONSE_MARKER}"$'\n'"$(cat "$RUNNER_TEMP/miyori-report.md")"
+              fi
+              ;;
+            tests)
+              if [[ "$IS_PR" != "true" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 This command requires a pull request target."
+              elif [[ "$PR_STATE" != "open" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; no label was changed."
+              else
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🛡️ Added the runtime-required override to PR #${TARGET_NUMBER}. This action can only strengthen validation."
+              fi
+              ;;
+            *)
+              RESPONSE=$(cat <<EOF
+          ${RESPONSE_MARKER}
+          🌸 Command not recognized. Use \`/miyori help\` for the exact allowlist.
+          EOF
+              )
+              ;;
+          esac
+
+          COMMENT_ID="$(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+              --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${RESPONSE_MARKER}\"))) | .id" \
+              | head -n 1
+          )"
+
+          if [[ -n "$COMMENT_ID" ]]; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
+              -f body="$RESPONSE" >/dev/null
+          else
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+              -f body="$RESPONSE" >/dev/null
+          fi
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Owner command"
+            echo
+            echo "- Target: #${TARGET_NUMBER}"
+            echo "- Parsed command: \`${{ steps.parse.outputs.command }}\`"
+            echo "- Owner-only: yes"
+            echo "- Mutation allowlist: add runtime-required override only"
+          } >> "$GITHUB_STEP_SUMMARY"
+\n'"🌸 This command requires a pull request target."
+              elif [[ "$PR_STATE" != "open" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 This command requires a pull request target."
+              elif [[ "$PR_STATE" != "open" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; no label was changed."
+              else
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🛡️ Added the runtime-required override to PR #${TARGET_NUMBER}. This action can only strengthen validation."
+              fi
+              ;;
+            *)
+              RESPONSE=$(cat <<EOF
+          ${RESPONSE_MARKER}
+          🌸 Command not recognized. Use \`/miyori help\` for the exact allowlist.
+          EOF
+              )
+              ;;
+          esac
+
+          COMMENT_ID="$(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+              --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${RESPONSE_MARKER}\"))) | .id" \
+              | head -n 1
+          )"
+
+          if [[ -n "$COMMENT_ID" ]]; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
+              -f body="$RESPONSE" >/dev/null
+          else
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+              -f body="$RESPONSE" >/dev/null
+          fi
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Owner command"
+            echo
+            echo "- Target: #${TARGET_NUMBER}"
+            echo "- Parsed command: \`${{ steps.parse.outputs.command }}\`"
+            echo "- Owner-only: yes"
+            echo "- Mutation allowlist: add runtime-required override only"
+          } >> "$GITHUB_STEP_SUMMARY"
+\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; no live report was generated."
+              else
+                RESPONSE="${RESPONSE_MARKER}"
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 This command requires a pull request target."
+              elif [[ "$PR_STATE" != "open" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; no label was changed."
+              else
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🛡️ Added the runtime-required override to PR #${TARGET_NUMBER}. This action can only strengthen validation."
+              fi
+              ;;
+            *)
+              RESPONSE=$(cat <<EOF
+          ${RESPONSE_MARKER}
+          🌸 Command not recognized. Use \`/miyori help\` for the exact allowlist.
+          EOF
+              )
+              ;;
+          esac
+
+          COMMENT_ID="$(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+              --jq ".[] | select(.user.login == \"${BOT_LOGIN}\" and (.body | contains(\"${RESPONSE_MARKER}\"))) | .id" \
+              | head -n 1
+          )"
+
+          if [[ -n "$COMMENT_ID" ]]; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
+              -f body="$RESPONSE" >/dev/null
+          else
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${TARGET_NUMBER}/comments" \
+              -f body="$RESPONSE" >/dev/null
+          fi
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Owner command"
+            echo
+            echo "- Target: #${TARGET_NUMBER}"
+            echo "- Parsed command: \`${{ steps.parse.outputs.command }}\`"
+            echo "- Owner-only: yes"
+            echo "- Mutation allowlist: add runtime-required override only"
+          } >> "$GITHUB_STEP_SUMMARY"
+\n'"$(cat "$RUNNER_TEMP/miyori-tests.md")"
               fi
               ;;
             require-runtime)
