@@ -60,11 +60,14 @@ internal fun MigrationFlowScreen(
 	onRetrySources: () -> Unit,
 	onMangaClick: (Manga) -> Unit,
 	onMangaLongClick: (Manga) -> Unit,
+	onMigrateOne: (Long) -> Unit = {},
+	onCopyOne: (Long) -> Unit = {},
+	onSkipOne: (Long) -> Unit = {},
 ) {
 	var step by rememberSaveable { mutableIntStateOf(0) }
 	var pendingAction by remember { mutableStateOf<MigrationBatchAction?>(null) }
 	val busy = state.batchBusy || state.scheduling
-	BackHandler(enabled = step > 0 && !state.scheduling) { step-- }
+	BackHandler(enabled = step > 0 && !busy) { step = 0 }
 
 	if (state.isLoading) {
 		Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -79,52 +82,37 @@ internal fun MigrationFlowScreen(
 		return
 	}
 
-	Column(Modifier.fillMaxSize()) {
-		Row(
-			Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp),
-			horizontalArrangement = Arrangement.spacedBy(8.dp),
-		) {
-			listOf("Cari", "Review", "Hasil").forEachIndexed { index, label ->
-				FilterChip(
-					selected = step == index,
-					onClick = { step = index },
-					label = { Text(label) },
-				)
-			}
-		}
-		when (step) {
-			0 -> MigrationSearchSetup(
-				state = state,
-				enabled = !busy,
-				onToggleSource = onToggleSource,
-				onSelectAllSources = onSelectAllSources,
-				onClearSources = onClearSources,
-				onMoveSource = onMoveSource,
-				onStrategy = onStrategy,
-				onExtraSearch = onExtraSearch,
-				onSkipSetup = onSkipSetup,
-				onRetrySources = onRetrySources,
-				onSearch = { onSearch(); step = 1 },
-				onViewProgress = { step = 2 },
-			)
-			1 -> MigrationReviewStep(
-				state = state,
-				imageLoader = imageLoader,
-				onMangaClick = onMangaClick,
-				onRetry = { step = 0 },
-				onContinue = { pendingAction = MigrationBatchAction.MIGRATE },
-				onCopy = { pendingAction = MigrationBatchAction.COPY },
-				onResults = { step = 2 },
-			)
-			else -> MigrationResultsStep(
-				state = state,
-				imageLoader = imageLoader,
-				onCancel = onCancel,
-				onReview = onMangaClick,
-				onSearchAgain = { step = 0 },
-			)
-		}
+	// Source setup and the live results are the only two navigation surfaces.
+	// The same result list holds discovery, manual intervention, progress and completed outcomes.
+	when (step) {
+		0 -> MigrationSearchSetup(
+			state = state,
+			enabled = !busy,
+			onToggleSource = onToggleSource,
+			onSelectAllSources = onSelectAllSources,
+			onClearSources = onClearSources,
+			onMoveSource = onMoveSource,
+			onStrategy = onStrategy,
+			onExtraSearch = onExtraSearch,
+			onSkipSetup = onSkipSetup,
+			onRetrySources = onRetrySources,
+			onSearch = { onSearch(); step = 1 },
+			onViewProgress = { step = 1 },
+		)
+		else -> MigrationReviewStep(
+			state = state,
+			imageLoader = imageLoader,
+			onMangaClick = onMangaClick,
+			onRetry = { step = 0 },
+			onContinue = { pendingAction = MigrationBatchAction.MIGRATE },
+			onCopy = { pendingAction = MigrationBatchAction.COPY },
+			onCancel = onCancel,
+			onMigrateOne = onMigrateOne,
+			onCopyOne = onCopyOne,
+			onSkipOne = onSkipOne,
+		)
 	}
+
 	pendingAction?.let { action ->
 		val readyIds = MigrationBatchPolicy.readyRequests(
 			manga = state.manga, snapshots = state.batchItems,
@@ -162,7 +150,7 @@ internal fun MigrationFlowScreen(
 					onClick = {
 						pendingAction = null
 						if (action == MigrationBatchAction.COPY) onCopyReady() else onMigrateReady()
-						step = 2
+						step = 1
 					},
 					modifier = Modifier.testTag("migration-batch-confirm"),
 				) { Text(if (action == MigrationBatchAction.COPY) "Salin" else "Migrasikan") }
