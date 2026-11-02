@@ -288,12 +288,13 @@ private fun HeroSourceCard(
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
 	val cardContent: @Composable () -> Unit = {
 		Row(
-			modifier = Modifier.fillMaxWidth(),
+			modifier = Modifier.fillMaxWidth().fillMaxHeight(),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
 			Column(
 				modifier = Modifier
 					.weight(1f)
+					.fillMaxHeight()
 					.testTag("hero-source-content")
 					.clickable(onClick = onSourceClick)
 					.padding(
