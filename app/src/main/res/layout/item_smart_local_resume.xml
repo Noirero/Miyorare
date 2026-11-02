@@ -8,8 +8,8 @@
    <TextView android:id="@+id/textView_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="2" android:ellipsize="end" android:textAppearance="?textAppearanceTitleMedium" android:textColor="@color/smart_local_cream" />
    <TextView android:id="@+id/textView_subtitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="2" android:ellipsize="end" android:textAppearance="?textAppearanceBodyMedium" android:textColor="@color/smart_local_muted" />
    <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:max="100" app:trackCornerRadius="4dp" app:indicatorColor="@color/smart_local_gold" app:trackColor="@color/smart_local_ink" />
-   <TextView android:id="@+id/textView_progress" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textAppearance="?textAppearanceBodySmall" android:textColor="@color/smart_local_gold" />
+   <TextView android:id="@+id/textView_progress" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textAppearance="?textAppearanceBodySmall" android:textColor="@color/smart_local_accent_text" />
   </LinearLayout>
-  <ImageView android:layout_width="48dp" android:layout_height="48dp" android:padding="8dp" android:src="@drawable/ic_play_circle" android:importantForAccessibility="no" app:tint="@color/smart_local_gold" />
+  <ImageView android:layout_width="48dp" android:layout_height="48dp" android:padding="8dp" android:src="@drawable/ic_play_circle" android:importantForAccessibility="no" app:tint="@color/smart_local_accent_text" />
  </LinearLayout>
 </com.google.android.material.card.MaterialCardView>
