@@ -437,8 +437,7 @@ private fun HeroSourceCard(
 			.border(
 				BorderStroke(if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp, edgeBrush),
 				shape,
-			)
-			,
+			),
 	) {
 		cardContent()
 	}
