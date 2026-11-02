@@ -505,13 +505,15 @@ class SmartLocalCoverPipelineTest {
         // chunks to the existing SAF fixture provider, avoiding Binder transaction limits.
         val name = "raster-reader.pdf"
         val raster = rasterPdf(18)
-        raster.asList().chunked(256 * 1024).forEachIndexed { index, chunk ->
-            val isLast = (index + 1) * 256 * 1024 >= raster.size
+        var offset = 0
+        while (offset < raster.size) {
+            val end = minOf(offset + 256 * 1024, raster.size)
             call("fixture-put-chunk", name, Bundle().apply {
-                putByteArray("bytes", chunk.toByteArray())
-                putBoolean("first", index == 0)
-                putBoolean("last", isLast)
+                putByteArray("bytes", raster.copyOfRange(offset, end))
+                putBoolean("first", offset == 0)
+                putBoolean("last", end == raster.size)
             })
+            offset = end
         }
         library.scan()
         val book = library.state.value.books.single()
