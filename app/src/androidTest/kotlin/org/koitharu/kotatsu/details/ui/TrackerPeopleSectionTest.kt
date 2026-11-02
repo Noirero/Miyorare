@@ -124,7 +124,7 @@ class TrackerPeopleSectionTest {
         val afterFetches = fetches[firstId]!!.get()
         assertEquals("Revisit must skip decode while bounded Coil memory retains thumbnail", initialDecodes, afterDecodes)
         assertEquals("Revisit must skip derived disk fetch on memory hit", initialFetches, afterFetches)
-        assertTrue("Bounded Coil memory should serve a revisit", loader.memoryCache?.size ?: 0L > 0L)
+        assertTrue("Bounded Coil memory should serve a revisit", (loader.memoryCache?.size ?: 0L) > 0L)
         android.util.Log.i("LocalGalleryDecodeProbe",
             "SYNTHETIC firstChapter initialDecodes=$initialDecodes afterDecodes=$afterDecodes " +
                 "initialFetches=$initialFetches afterFetches=$afterFetches " +
