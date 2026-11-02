@@ -124,6 +124,13 @@ class DetailsExpressiveActions(
 	val onReleasePredictionClick: () -> Unit = {},
 )
 
+/**
+ * The on-device chapter gallery does not own the Details pull-to-refresh gesture.
+ * Re-evaluate on tab changes, including restore after returning from Reader.
+ */
+internal fun detailsPullRefreshAllowed(gallerySelected: Boolean, firstItem: Int, firstOffset: Int): Boolean =
+	!gallerySelected && firstItem == 0 && firstOffset == 0
+
 @Composable
 fun DetailsExpressiveScreen(
 	details: MangaDetails?,
@@ -244,9 +251,12 @@ fun DetailsExpressiveScreen(
 			}
 		}
 
-		LaunchedEffect(listState) {
+		// Only the Details list owns pull-to-refresh. The on-device chapter grid has its
+		// own scroll state and deliberately does not support pull-to-refresh.
+		LaunchedEffect(listState, gallerySelected) {
 			snapshotFlow {
-				if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) 0 else 1
+				if (detailsPullRefreshAllowed(gallerySelected, listState.firstVisibleItemIndex,
+						listState.firstVisibleItemScrollOffset)) 0 else 1
 			}.collect(onScroll)
 		}
 
