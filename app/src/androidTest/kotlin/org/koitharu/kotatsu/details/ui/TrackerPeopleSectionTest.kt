@@ -209,13 +209,14 @@ class TrackerPeopleSectionTest {
             amoled = false,
             effectLevel = VisualEffectLevel.LIGHT,
         )
+        val mangaState = mutableStateOf(manga)
         var sourceNavigations = 0
         compose.setContent {
             MaterialTheme(colorScheme = colors.colorScheme) {
                 CompositionLocalProvider(LocalMiyorareVisualPalette provides colors.visualPalette) {
                     Box(androidx.compose.ui.Modifier.width(width.dp)) {
                         HeroSourceStatusRow(
-                            manga = manga,
+                            manga = mangaState.value,
                             sourceTitle = veryLongSource,
                             imageLoader = loader,
                             status = "Masih lanjut",
@@ -259,6 +260,13 @@ class TrackerPeopleSectionTest {
         compose.onNodeWithText(releaseText, useUnmergedTree = true).assertExists()
         compose.runOnIdle { assertEquals(1, sourceNavigations) }
         assertTextOverflow(sourceText, expected = true)
+
+        // A different manga/source reuses the composable slot but must reset transient expansion.
+        toggle.performClick()
+        compose.onNodeWithTag("hero-status-card").assertDoesNotExist()
+        compose.runOnIdle { mangaState.value = manga.copy(source = MangaSource("MIHON_424243")) }
+        compose.onNodeWithTag("hero-status-card").assertExists()
+        compose.runOnIdle { assertEquals(1, sourceNavigations) }
     }
 
     private fun assertTextOverflow(node: SemanticsNodeInteraction, expected: Boolean) {
