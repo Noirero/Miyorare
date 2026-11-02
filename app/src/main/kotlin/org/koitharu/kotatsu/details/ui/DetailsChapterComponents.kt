@@ -341,7 +341,8 @@ private fun HeroSourceCard(
 			) {
 				Icon(
 					painter = painterResource(R.drawable.ic_chevron_right),
-					contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand),
+					contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand) +
+						": " + stringResource(R.string.details_source),
 					tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
 					modifier = Modifier.size(if (palette.isModern) 14.dp else 12.dp)
 						.rotate(if (expanded) 180f else 0f),
