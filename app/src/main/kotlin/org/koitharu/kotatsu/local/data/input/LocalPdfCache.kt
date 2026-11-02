@@ -34,7 +34,6 @@ object LocalPdfCache {
 	private const val PDF_RENDER_CONCURRENCY = 2
 	private const val RENDER_LOCK_STRIPES = 32
 	private const val PDF_CACHE_BUDGET_BYTES = 64L * 1024 * 1024
-	private const val PDF_CACHE_ACTIVE_GRACE_MS = 2L * 60 * 1000
 	private val pruneLock = Any()
 	// Rendering every page at 4x/4096px made long local PDFs spend tens of seconds in PNG deflate,
 	// increased GC pressure and could contribute to foreground ANRs while the library UI was active.
