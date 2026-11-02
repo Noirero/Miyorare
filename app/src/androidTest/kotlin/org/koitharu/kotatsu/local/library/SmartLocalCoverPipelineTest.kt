@@ -500,7 +500,8 @@ class SmartLocalCoverPipelineTest {
         assertClosedDescriptors()
     }
 
-    @Test fun galleryChapterThumbnailRevisitUsesExistingDerivedDiskOwner() = runBlocking {
+    @Test fun galleryChapterThumbnailRevisitUsesExistingDerivedDiskOwner() {
+        runBlocking {
         put("gallery.pdf", pdf(Color.GREEN))
         library.scan()
         val book = library.state.value.books.single()
@@ -520,6 +521,7 @@ class SmartLocalCoverPipelineTest {
             .put("requests", 9).put("renderCalls", counts.render)
             .put("galleryDiskBytes", galleryFiles.sumOf { it.length() })
             .put("readerPageBytes", 0))
+        }
     }
 
     @Test fun pdfReaderDirectCacheStagesReportSeparateDiskCosts() = runBlocking {
