@@ -24,6 +24,7 @@ fun listHeaderAD(
 	var badge: BadgeDrawable? = null
 	val defaultButtonMinHeight = binding.buttonMore.minHeight
 	val defaultHeaderBackground = itemView.background
+	val defaultTitleColors = binding.textViewTitle.textColors
 	val defaultHeaderEllipsize = binding.textViewTitle.ellipsize
 	val defaultButtonMinimumHeight = binding.buttonMore.minimumHeight
 	val defaultRootPaddingBottom = binding.root.paddingBottom
@@ -49,8 +50,17 @@ fun listHeaderAD(
 		androidx.core.view.ViewCompat.setAccessibilityHeading(binding.textViewTitle, isChapterToggle)
 		itemView.isSelected = isChapterToggle && currentItem.badge != null
 		binding.textViewTitle.text = currentItem.getText(context)
+		val noticeForeground = if (notice) MaterialColors.getColor(
+			binding.textViewTitle, com.google.android.material.R.attr.colorOnSecondaryContainer,
+		) else 0
+		binding.textViewTitle.setTextColor(when {
+			notice -> ColorStateList.valueOf(noticeForeground)
+			localCinematic -> ColorStateList.valueOf(androidx.core.content.ContextCompat.getColor(context, R.color.smart_local_cream))
+			else -> defaultTitleColors
+		})
+		binding.textViewTitle.compoundDrawableTintList =
+			if (notice) ColorStateList.valueOf(noticeForeground) else null
 		if (localCinematic) {
-			binding.textViewTitle.setTextColor(androidx.core.content.ContextCompat.getColor(context, R.color.smart_local_cream))
 			androidx.core.view.ViewCompat.setAccessibilityHeading(binding.textViewTitle, true)
 		}
 		if (currentItem.buttonTextRes == 0) {
@@ -133,8 +143,11 @@ fun listHeaderAD(
 				R.string.smart_local_chapter_toggle_description, context.getString(currentItem.buttonTextRes),
 				currentItem.getText(context), currentItem.badge.orEmpty(),
 			).trim()
-			if (localCinematic) {
-				binding.buttonMore.setTextColor(androidx.core.content.ContextCompat.getColor(context, R.color.smart_local_gold))
+			if (notice) {
+				// The notice container follows Material light/dark theme; so must its foreground.
+				binding.buttonMore.setTextColor(noticeForeground)
+			} else if (localCinematic) {
+				binding.buttonMore.setTextColor(androidx.core.content.ContextCompat.getColor(context, R.color.smart_local_accent_text))
 			}
 			badge = itemView.bindBadge(badge, currentItem.badge)
 		}

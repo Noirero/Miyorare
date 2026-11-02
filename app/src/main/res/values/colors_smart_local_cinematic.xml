@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Private palette for On-Device Files; never overrides global theme attributes. -->
-    <color name="smart_local_ink">#101C2B</color>
-    <color name="smart_local_surface">#17283A</color>
-    <color name="smart_local_edge">#52667B</color>
+    <!-- Light On-Device Files palette. The original cinematic colors live in values-night. -->
+    <color name="smart_local_ink">#F7F4EF</color>
+    <color name="smart_local_surface">#FFFFFF</color>
+    <color name="smart_local_edge">#B9B7B2</color>
     <color name="smart_local_gold">#F0C28D</color>
-    <color name="smart_local_cream">#F5E9D9</color>
-    <color name="smart_local_muted">#B9C7D4</color>
+    <color name="smart_local_cream">#203247</color>
+    <color name="smart_local_muted">#53647B</color>
+    <color name="smart_local_accent_text">#85512F</color>
+    <color name="smart_local_on_accent">#101C2B</color>
 </resources>
