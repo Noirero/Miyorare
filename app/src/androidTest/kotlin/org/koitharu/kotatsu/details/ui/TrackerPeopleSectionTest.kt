@@ -233,7 +233,12 @@ class TrackerPeopleSectionTest {
         val sourceText = compose.onNodeWithTag("hero-source-title", useUnmergedTree = true)
         val sourceContent = compose.onNodeWithTag("hero-source-content")
         val toggle = compose.onNodeWithTag("hero-source-toggle")
+        val expandSource = context.getString(R.string.expand) + ": " + context.getString(R.string.details_source)
+        val collapseSource = context.getString(R.string.collapse) + ": " + context.getString(R.string.details_source)
         val releaseText = context.getString(R.string.details_release_active)
+
+        // The chapter-list chevron also exposes "Expand"; source must be distinguishable.
+        toggle.assert(hasContentDescription(expandSource))
 
         // Both cards render by default. A deliberately long source gets one-line ellipsis.
         compose.onNodeWithTag("hero-status-card").assertExists()
@@ -246,6 +251,7 @@ class TrackerPeopleSectionTest {
 
         // Exclusive child click: toggling the chevron never invokes source routing.
         toggle.performClick()
+        toggle.assert(hasContentDescription(collapseSource))
         compose.onNodeWithTag("hero-status-card").assertDoesNotExist()
         compose.onNodeWithText(veryLongSource, useUnmergedTree = true).assertExists()
         assertTextOverflow(sourceText, expected = false)
@@ -255,6 +261,7 @@ class TrackerPeopleSectionTest {
         sourceContent.performClick()
         compose.runOnIdle { assertEquals(1, sourceNavigations) }
         toggle.performClick()
+        toggle.assert(hasContentDescription(expandSource))
         compose.onNodeWithTag("hero-status-card").assertExists()
         compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertExists()
         compose.onNodeWithText(releaseText, useUnmergedTree = true).assertExists()
