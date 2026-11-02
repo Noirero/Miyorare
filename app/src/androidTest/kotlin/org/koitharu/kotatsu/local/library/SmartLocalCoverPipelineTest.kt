@@ -500,6 +500,92 @@ class SmartLocalCoverPipelineTest {
         assertClosedDescriptors()
     }
 
+    @Test fun pdfReaderDirectCacheStagesReportSeparateDiskCosts() = runBlocking {
+        measureReaderPdfCacheStages(seekable = true)
+    }
+
+    @Test fun pdfReaderFallbackCacheStagesReportSeparateDiskCosts() = runBlocking {
+        measureReaderPdfCacheStages(seekable = false)
+    }
+
+    /**
+     * Synthetic multi-page PDF measurements. This deliberately does not change renderer,
+     * eviction, grace period, backing ownership, or PDF cover behavior.
+     */
+    private suspend fun measureReaderPdfCacheStages(seekable: Boolean) {
+        val name = if (seekable) "measurement-direct.pdf" else "measurement-fallback.pdf"
+        put(name, multiPagePdf(12))
+        if (!seekable) descriptorMode(name, "pipe")
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val token = Any()
+        val observations = JSONArray()
+
+        fun measure(phase: String) {
+            val pdfRoot = File(context.cacheDir, "local_pdf_pages")
+            val rendered = pdfRoot.listFiles().orEmpty().filter { it.isDirectory }.flatMap { dir ->
+                dir.listFiles().orEmpty().filter { it.isFile && it.name.startsWith("page_") && it.name.endsWith(".png") }
+            }
+            val backing = contentFiles().filter { it.isFile }
+            observations.put(JSONObject()
+                .put("phase", phase)
+                .put("renderedPageCount", rendered.size)
+                .put("renderedPageBytes", rendered.sumOf { it.length() })
+                .put("averageRenderedPageBytes", if (rendered.isEmpty()) 0L else rendered.sumOf { it.length() } / rendered.size)
+                .put("backingFileCount", backing.size)
+                .put("backingBytes", backing.sumOf { it.length() })
+                .put("combinedBytes", rendered.sumOf { it.length() } + backing.sumOf { it.length() }))
+        }
+        measure("before_open")
+        val pages = withContext(ReaderBackingLeaseContext(token)) {
+            reader.pages(root, book.chapters.single(), book.toManga(false, true).chapters!!.single())
+        }
+        assertEquals(12, pages.size)
+        readerPageDirectories += File(Uri.parse(pages.first().url).path!!).parentFile!!
+        measure("after_open")
+        if (seekable) assertTrue("Seekable PDF must not create a backing copy", contentFiles().isEmpty())
+        else assertTrue("Pipe PDF must own an app backing copy", contentFiles().any { it.isFile })
+
+        fun render(index: Int) {
+            val target = File(Uri.parse(pages[index].url).path!!)
+            assertTrue("Failed PDF page $index", org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(target).length() > 0L)
+        }
+        render(0)
+        measure("first_page")
+        for (index in 1..3) render(index)
+        measure("several_pages")
+        for (index in 8..10) render(index)
+        measure("jump_forward")
+        render(1)
+        measure("back_previous")
+        reader.releaseReaderLease(token)
+        measure("after_close_release")
+        // Cleanup is delayed and conditional on the retained-backing budget. Do not
+        // falsely report this immediate snapshot as a post-grace cleanup measurement.
+        writeSurvey(if (seekable) "pdf-reader-direct" else "pdf-reader-fallback",
+            JSONObject().put("dataset", "SYNTHETIC_12_PAGE_PDF")
+                .put("cleanupAfterGraceMeasured", false)
+                .put("storageStages", observations))
+        assertClosedDescriptors()
+    }
+
+    private fun multiPagePdf(pageCount: Int): ByteArray {
+        val document = PdfDocument()
+        try {
+            repeat(pageCount) { index ->
+                val page = document.startPage(PdfDocument.PageInfo.Builder(300, 450, index + 1).create())
+                page.canvas.drawColor(if (index % 2 == 0) Color.BLUE else Color.GREEN)
+                page.canvas.drawText("Test page $index", 24f, 48f, android.graphics.Paint().apply {
+                    color = Color.WHITE
+                    textSize = 22f
+                })
+                document.finishPage(page)
+            }
+            return ByteArrayOutputStream().also { document.writeTo(it) }.toByteArray()
+        } finally { document.close() }
+    }
+
     @Test fun seekableSafArchiveIndexesReaderWithoutCopyingDocument() = runBlocking {
         val image = png(Color.BLUE)
         val unrelated = ByteArray(256 * 1024).also { java.util.Random(17).nextBytes(it) }
