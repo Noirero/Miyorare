@@ -516,7 +516,7 @@ class SmartLocalCoverPipelineTest {
         assertTrue("Gallery thumbnail belongs to its existing disk owner", galleryFiles.any { it.name.endsWith(".thumb") })
         assertTrue("Chapter previews must not create Reader PDF page artifacts",
             pageRoot.listFiles().orEmpty().flatMap { it.listFiles().orEmpty().asList() }.none { it.name.startsWith("page_") })
-        writeSurvey("gallery-disk-owner", JSONObject().put("dataset", "SYNTHETIC_ONE_CHAPTER_PDF")
+        android.util.Log.i("OnDeviceCacheProbe", "REPORT gallery-disk-owner " + JSONObject().put("dataset", "SYNTHETIC_ONE_CHAPTER_PDF")
             .put("requests", 9).put("renderCalls", counts.render)
             .put("galleryDiskBytes", galleryFiles.sumOf { it.length() })
             .put("readerPageBytes", 0))
@@ -589,8 +589,8 @@ class SmartLocalCoverPipelineTest {
             kotlinx.coroutines.delay(65_000L)
             measure("after_cleanup_grace")
         }
-        writeSurvey(if (seekable) "pdf-reader-direct" else "pdf-reader-fallback",
-            JSONObject().put("dataset", "SYNTHETIC_12_PAGE_PDF")
+        android.util.Log.i("OnDeviceCacheProbe",
+            "REPORT " + (if (seekable) "pdf-reader-direct" else "pdf-reader-fallback") + " " + JSONObject().put("dataset", "SYNTHETIC_12_PAGE_PDF")
                 .put("cleanupAfterGraceMeasured", !seekable)
                 .put("storageStages", observations))
         assertClosedDescriptors()
