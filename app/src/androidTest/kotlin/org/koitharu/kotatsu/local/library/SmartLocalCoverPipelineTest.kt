@@ -533,17 +533,25 @@ class SmartLocalCoverPipelineTest {
             var cacheHits = 0
             var cacheMisses = 0
             var cumulativeBytes = 0L
+            val byteBudget = 64L * 1024 * 1024
 
             fun pageFiles() = pageDir.listFiles().orEmpty().filter {
                 it.isFile && it.name.startsWith("page_") && it.name.endsWith(".png")
             }
+            fun globalPageFiles() = File(context.cacheDir, "local_pdf_pages")
+                .listFiles().orEmpty().filter { it.isDirectory }.flatMap { dir ->
+                    dir.listFiles().orEmpty().filter { it.isFile && it.name.startsWith("page_") && it.name.endsWith(".png") }
+                }
             fun measure(phase: String) {
                 val retained = pageFiles()
+                val globalRetained = globalPageFiles()
                 val backing = contentFiles().filter { it.isFile }
                 stages.put(JSONObject()
                     .put("phase", phase)
                     .put("renderedPageCount", retained.size)
                     .put("renderedPageBytes", retained.sumOf { it.length() })
+                    .put("globalRenderedPageBytes", globalRetained.sumOf { it.length() })
+                    .put("globalRenderedPageCount", globalRetained.size)
                     .put("backingFileCount", backing.size)
                     .put("backingBytes", backing.sumOf { it.length() })
                     .put("combinedBytes", retained.sumOf { it.length() } + backing.sumOf { it.length() })
@@ -554,7 +562,10 @@ class SmartLocalCoverPipelineTest {
                 val marker = File(Uri.parse(pages[index].url).path!!)
                 val warm = marker.isFile && marker.length() > 0L
                 val output = org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(marker)
-                assertTrue("Invalid raster page $index", output.length() > 0L)
+                assertTrue("Current raster page must survive pruning: $index", output.isFile && output.length() > 0L)
+                val totalRetained = globalPageFiles().sumOf { it.length() }
+                assertTrue("PDF rendered-page budget exceeded after page $index: $totalRetained",
+                    totalRetained <= maxOf(byteBudget, output.length()))
                 if (warm) cacheHits++ else {
                     cacheMisses++
                     sizes += output.length()
@@ -571,21 +582,33 @@ class SmartLocalCoverPipelineTest {
             measure("four_pages")
             for (i in 4..9) render(i)
             measure("ten_pages")
+            assertFalse("Oldest large page must be evicted when byte budget is full",
+                File(Uri.parse(pages.first().url).path!!).isFile)
+            // The immediate previous page fits in the LRU working set and must not be re-rendered.
+            val hitsBeforeBack = cacheHits
+            render(8)
+            assertEquals("Immediate backwards navigation must hit the cache", hitsBeforeBack + 1, cacheHits)
+            measure("back_to_recent_page")
             if (direct) {
                 for (i in 10..16) render(i)
                 measure("seventeen_pages")
-                render(0)
-                measure("back_to_first")
+                assertFalse("Oldest large page must not survive seventeen rendered pages",
+                    File(Uri.parse(pages.first().url).path!!).isFile)
+                val hitsBeforeRecent = cacheHits
+                render(15)
+                assertEquals("Recent page should survive the bounded LRU", hitsBeforeRecent + 1, cacheHits)
+                measure("back_to_recent_after_seventeen")
                 reader.releaseReaderLease(token)
                 measure("after_reader_release")
-                // No prune is triggered by the timer alone: a new render after the active
-                // two-minute grace runs the existing best-effort budget eviction.
+                // The budget is already bounded: time passing must not require another render
+                // to bring the cache below 64 MiB.
                 kotlinx.coroutines.delay(125_000L)
                 measure("after_grace_before_new_render")
+                assertTrue(globalPageFiles().sumOf { it.length() } <= byteBudget)
                 render(17)
                 measure("after_grace_and_new_page")
             } else {
-                render(2)
+                render(9)
                 measure("back_to_cached_page")
                 reader.releaseReaderLease(token)
                 measure("after_reader_release")
@@ -602,7 +625,7 @@ class SmartLocalCoverPipelineTest {
                     .put("averagePageBytes", if (sizes.isEmpty()) 0L else sizes.sum() / sizes.size)
                     .put("totalRenderedBytes", cumulativeBytes)
                     .put("cacheHits", cacheHits).put("cacheMisses", cacheMisses)
-                    .put("softBudgetBytes", 64L * 1024 * 1024)
+                    .put("effectiveBudgetBytes", byteBudget)
                     .put("stages", stages))
             assertClosedDescriptors()
         }
