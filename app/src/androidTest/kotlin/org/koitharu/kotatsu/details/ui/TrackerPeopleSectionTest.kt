@@ -1,6 +1,19 @@
 package org.koitharu.kotatsu.details.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.miyorareThemeColors
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
@@ -168,6 +181,105 @@ class TrackerPeopleSectionTest {
         compose.runOnIdle { revision.longValue = 2L }
         compose.waitUntil(15_000) { (decodes[firstId]?.get() ?: 0) == 2 }
         assertEquals("New thumbnail identity must fetch fresh bytes", 2, fetches[firstId]!!.get())
+    }
+
+
+    @Test fun compactHeroSourceToggleKeepsRoutingAndUnclipsStatus() =
+        verifySourceStatusInteraction(centered = false, compactExpanded = false, width = 220)
+
+    @Test fun centeredHeroSourceToggleKeepsRoutingAndUnclipsStatus() =
+        verifySourceStatusInteraction(centered = true, compactExpanded = false, width = 320)
+
+    @Test fun expandedCompactHeroSourceToggleKeepsRoutingAndUnclipsStatus() =
+        verifySourceStatusInteraction(centered = false, compactExpanded = true, width = 220)
+
+    private fun verifySourceStatusInteraction(centered: Boolean, compactExpanded: Boolean, width: Int) {
+        val veryLongSource = "Synthetic Extension With A Very Long Official Source Name And Multiple Additional Words"
+        val source = MangaSource("MIHON_424242")
+        val manga = SampleData.mangaDetails.copy(
+            source = source,
+            url = "https://example.invalid/manga/hero-source-status",
+            publicUrl = "https://example.invalid/manga/hero-source-status",
+        )
+        val colors = miyorareThemeColors(
+            preset = MiyorareThemePreset.MIYORARE,
+            customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
+            darkTheme = true,
+            amoled = false,
+            effectLevel = VisualEffectLevel.LIGHT,
+        )
+        val mangaState = mutableStateOf(manga)
+        var sourceNavigations = 0
+        compose.setContent {
+            MaterialTheme(colorScheme = colors.colorScheme) {
+                CompositionLocalProvider(LocalMiyorareVisualPalette provides colors.visualPalette) {
+                    Box(androidx.compose.ui.Modifier.width(width.dp)) {
+                        HeroSourceStatusRow(
+                            manga = mangaState.value,
+                            sourceTitle = veryLongSource,
+                            imageLoader = loader,
+                            status = "Masih lanjut",
+                            showActiveRelease = true,
+                            accent = colors.colorScheme.primary,
+                            centered = centered,
+                            compactExpanded = compactExpanded,
+                            onSourceClick = { sourceNavigations++ },
+                        )
+                    }
+                }
+            }
+        }
+
+        val sourceText = compose.onNodeWithTag("hero-source-title", useUnmergedTree = true)
+        val sourceContent = compose.onNodeWithTag("hero-source-content")
+        val toggle = compose.onNodeWithTag("hero-source-toggle")
+        val expandSource = context.getString(R.string.expand) + ": " + context.getString(R.string.details_source)
+        val collapseSource = context.getString(R.string.collapse) + ": " + context.getString(R.string.details_source)
+        val releaseText = context.getString(R.string.details_release_active)
+
+        // The chapter-list chevron also exposes "Expand"; source must be distinguishable.
+        compose.onNodeWithContentDescription(expandSource).assertIsDisplayed()
+
+        // Both cards render by default. A deliberately long source gets one-line ellipsis.
+        compose.onNodeWithTag("hero-status-card").assertExists()
+        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
+        assertTextOverflow(sourceText, expected = true)
+        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertIsDisplayed()
+        assertTextOverflow(compose.onNodeWithText("Masih lanjut", useUnmergedTree = true), expected = false)
+        assertTextOverflow(compose.onNodeWithText(releaseText, useUnmergedTree = true), expected = false)
+
+        // Exclusive child click: toggling the chevron never invokes source routing.
+        toggle.performClick()
+        compose.onNodeWithContentDescription(collapseSource).assertIsDisplayed()
+        compose.onNodeWithTag("hero-status-card").assertDoesNotExist()
+        compose.onNodeWithText(veryLongSource, useUnmergedTree = true).assertExists()
+        assertTextOverflow(sourceText, expected = false)
+        compose.runOnIdle { assertEquals(0, sourceNavigations) }
+
+        // Clicking the content still invokes the original navigation callback.
+        sourceContent.performClick()
+        compose.runOnIdle { assertEquals(1, sourceNavigations) }
+        toggle.performClick()
+        compose.onNodeWithContentDescription(expandSource).assertIsDisplayed()
+        compose.onNodeWithTag("hero-status-card").assertExists()
+        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertExists()
+        compose.runOnIdle { assertEquals(1, sourceNavigations) }
+        assertTextOverflow(sourceText, expected = true)
+
+        // A different manga/source reuses the composable slot but must reset transient expansion.
+        toggle.performClick()
+        compose.onNodeWithTag("hero-status-card").assertDoesNotExist()
+        compose.runOnIdle { mangaState.value = manga.copy(source = MangaSource("MIHON_424243")) }
+        compose.onNodeWithTag("hero-status-card").assertExists()
+        compose.runOnIdle { assertEquals(1, sourceNavigations) }
+    }
+
+    private fun assertTextOverflow(node: SemanticsNodeInteraction, expected: Boolean) {
+        val results = mutableListOf<TextLayoutResult>()
+        node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+        assertEquals("Unexpected hero text clipping/overflow", expected, results.single().hasVisualOverflow)
     }
 
 	@Test fun characterPortraitNameAndRoleAndStaffAreRenderedWithProviderAttribution() {
