@@ -27,6 +27,10 @@ import coil3.request.ImageResult
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import android.content.res.Configuration
+import android.graphics.Canvas
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import android.graphics.Bitmap
 import android.graphics.Color
 import java.io.ByteArrayOutputStream
@@ -72,6 +76,37 @@ class TrackerPeopleSectionTest {
 
     @Test fun customDarkTrackerForegroundIgnoresIncorrectBlackAmbient() =
         DetailsTrackerForegroundContrastFixture.checkForeground(compose, context, loader, dark = true, amoled = false, custom = true)
+
+    @Test fun onDeviceLightAndDarkPaletteResourcesRenderWithDistinctSurfaces() {
+        fun themed(mode: Int) = context.createConfigurationContext(
+            Configuration(context.resources.configuration).apply {
+                uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or mode
+            }
+        )
+        val light = themed(Configuration.UI_MODE_NIGHT_NO)
+        val dark = themed(Configuration.UI_MODE_NIGHT_YES)
+        assertEquals(Color.rgb(247, 244, 239), ContextCompat.getColor(light, R.color.smart_local_ink))
+        assertEquals(Color.rgb(16, 28, 43), ContextCompat.getColor(dark, R.color.smart_local_ink))
+        assertEquals(Color.rgb(32, 50, 71), ContextCompat.getColor(light, R.color.smart_local_cream))
+        assertEquals(Color.rgb(245, 233, 217), ContextCompat.getColor(dark, R.color.smart_local_cream))
+
+        fun drawableLuminance(ctx: android.content.Context, id: Int): Double {
+            val image = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+            try {
+                val d = ContextCompat.getDrawable(ctx, id) ?: error("Missing local background: $id")
+                d.setBounds(0, 0, image.width, image.height)
+                d.draw(Canvas(image))
+                return ColorUtils.calculateLuminance(image.getPixel(128, 128))
+            } finally {
+                image.recycle()
+            }
+        }
+        for (id in listOf(R.drawable.bg_smart_local_archive_hero,
+                R.drawable.bg_smart_local_archive_stat, R.drawable.bg_smart_local_archive_resume)) {
+            assertTrue("Local day background must be bright", drawableLuminance(light, id) >= 0.55)
+            assertTrue("Local night background must stay cinematic", drawableLuminance(dark, id) < 0.25)
+        }
+    }
 
     @Test fun onDeviceGalleryRevisitReusesDecodedThumbnailAndInvalidatesOnRevision() {
         val chapterItems = (0 until 48).map { index ->
