@@ -500,6 +500,28 @@ class SmartLocalCoverPipelineTest {
         assertClosedDescriptors()
     }
 
+    @Test fun galleryChapterThumbnailRevisitUsesExistingDerivedDiskOwner() = runBlocking {
+        put("gallery.pdf", pdf(Color.GREEN))
+        library.scan()
+        val book = library.state.value.books.single()
+        val chapter = book.toManga(false, true).chapters!!.single()
+        val pageRoot = File(context.cacheDir, "local_pdf_pages")
+        val first = library.chapterGalleryThumbnail(chapter)
+        assertNotNull(first)
+        val initialRenders = counts.render
+        assertTrue("First chapter thumbnail should require one PDF render", initialRenders > 0)
+        repeat(8) { assertArrayEquals(first, library.chapterGalleryThumbnail(chapter)) }
+        assertEquals("Warm gallery thumbnails must not regenerate the PDF", initialRenders, counts.render)
+        val galleryFiles = File(context.cacheDir, "smart-local-chapter-gallery").listFiles().orEmpty().filter { it.isFile }
+        assertTrue("Gallery thumbnail belongs to its existing disk owner", galleryFiles.any { it.name.endsWith(".thumb") })
+        assertTrue("Chapter previews must not create Reader PDF page artifacts",
+            pageRoot.listFiles().orEmpty().flatMap { it.listFiles().orEmpty().asList() }.none { it.name.startsWith("page_") })
+        writeSurvey("gallery-disk-owner", JSONObject().put("dataset", "SYNTHETIC_ONE_CHAPTER_PDF")
+            .put("requests", 9).put("renderCalls", counts.render)
+            .put("galleryDiskBytes", galleryFiles.sumOf { it.length() })
+            .put("readerPageBytes", 0))
+    }
+
     @Test fun pdfReaderDirectCacheStagesReportSeparateDiskCosts() = runBlocking {
         measureReaderPdfCacheStages(seekable = true)
     }
