@@ -14,6 +14,7 @@ COMMANDS = {
     "/miyori labels": "labels",
     "/miyori readiness": "readiness",
     "/miyori head": "head",
+    "/miyori tests": "tests",
     "/miyori require-runtime": "require-runtime",
 }
 

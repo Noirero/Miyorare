@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.reader.domain
 
+import android.content.ContentResolver
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
@@ -40,6 +41,7 @@ import okio.source
 import okio.use
 import org.jetbrains.annotations.Blocking
 import org.koitharu.kotatsu.core.LocalizedAppContext
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.image.BitmapDecoderCompat
 import org.koitharu.kotatsu.core.network.CommonHeaders
 import org.koitharu.kotatsu.core.network.MangaHttpClient
@@ -69,9 +71,12 @@ import org.koitharu.kotatsu.core.util.ext.use
 import org.koitharu.kotatsu.core.util.ext.withProgress
 import org.koitharu.kotatsu.core.util.progress.ProgressDeferred
 import org.koitharu.kotatsu.download.ui.worker.DownloadSlowdownDispatcher
+import org.koitharu.kotatsu.local.data.SeekableLocalPage
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.input.LocalPdfCache
+import org.koitharu.kotatsu.local.library.SmartLocalArchivePageUri
+import org.koitharu.kotatsu.local.library.SmartLocalArchivePageMaterializer
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -200,6 +205,15 @@ class PageLoader @Inject constructor(
 			}.use { image ->
 				cache.set(uri.toString(), image).toUri()
 			}
+		} else if (uri.scheme == ContentResolver.SCHEME_CONTENT) {
+			// Never overwrite a document owned by an Android SAF provider on decode fallback.
+			val image = runInterruptible(Dispatchers.IO) {
+				val input = requireNotNull(context.contentResolver.openInputStream(uri)) {
+					"Cannot reopen on-device page: $uri"
+				}
+				input.use { BitmapDecoderCompat.decode(it, null) }
+			}
+			image.use { cache.set(uri.toString(), it).toUri() }
 		} else {
 			val file = uri.toFile()
 			runInterruptible(Dispatchers.IO) {
@@ -248,6 +262,24 @@ class PageLoader @Inject constructor(
 
 	suspend fun getPageUrl(page: MangaPage): String {
 		return getRepository(page.source).getPageUrl(page)
+	}
+
+	/**
+	 * The repository URL contract is shared with Gallery, downloads, and Reader-mode detection.
+	 * Only the Reader's page-load path may skip copying seekable On-device SAF images.
+	 */
+	private suspend fun getReaderPageUrl(page: MangaPage): String {
+		if (page.source == LocalMangaSource) {
+			val uri = page.url.toUri()
+			if (uri.scheme == ContentResolver.SCHEME_CONTENT &&
+				runInterruptible(Dispatchers.IO) {
+					SeekableLocalPage.canOpenDirectly(context.contentResolver, uri)
+				}
+			) {
+				return page.url
+			}
+		}
+		return getPageUrl(page)
 	}
 
 	suspend fun invalidate(clearCache: Boolean) {
@@ -359,13 +391,19 @@ class PageLoader @Inject constructor(
 		isPrefetch: Boolean,
 		skipCache: Boolean,
 	): Uri = semaphore.withPermit {
-		val pageUrl = getPageUrl(page)
+		val pageUrl = getReaderPageUrl(page)
 		check(pageUrl.isNotBlank()) { "Cannot obtain full image url for $page" }
-		if (!skipCache) {
+		val uri = pageUrl.toUri()
+		if (!skipCache && !(page.source == LocalMangaSource && uri.scheme == ContentResolver.SCHEME_CONTENT)) {
 			cache.get(pageUrl)?.let { return it.toUri() }
 		}
-		val uri = pageUrl.toUri()
 		return when {
+			// Seekable On-device folder images are decoded from their original SAF descriptor.
+			uri.scheme == ContentResolver.SCHEME_CONTENT && page.source == LocalMangaSource -> uri
+
+            uri.scheme == SmartLocalArchivePageUri.SCHEME && page.source == LocalMangaSource ->
+                materializeSeekableArchivePage(uri, pageUrl, reuseCache = !skipCache)
+
 			uri.isZipUri() -> materializeCbzPage(
 				if (uri.scheme == URI_SCHEME_ZIP) uri else uri.buildUpon().scheme(URI_SCHEME_ZIP).build(),
 				pageUrl,
@@ -407,6 +445,20 @@ class PageLoader @Inject constructor(
 			}
 		}
 	}
+
+    /**
+     * A seekable SAF archive is read directly through its scoped document descriptor.
+     * Only the requested entry is decoded into the established bounded page disk cache.
+     * Unsupported archives are selected for the existing backing-copy path during enumeration.
+     */
+    private suspend fun materializeSeekableArchivePage(
+        uri: Uri,
+        cacheKey: String,
+        reuseCache: Boolean,
+    ): Uri = cbzMaterializeLock.withLock {
+        if (reuseCache) cache[cacheKey]?.let { return@withLock it.toUri() }
+        SmartLocalArchivePageMaterializer.materialize(context, uri, cacheKey, cache).toUri()
+    }
 
 	/**
 	 * Reader used to hand a zip: URI straight to Coil, which re-opened and re-indexed the same CBZ

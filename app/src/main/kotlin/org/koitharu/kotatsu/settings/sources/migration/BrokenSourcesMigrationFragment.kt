@@ -2,15 +2,17 @@ package org.koitharu.kotatsu.settings.sources.migration
 
 import android.os.Bundle
 import android.view.LayoutInflater
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +27,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -36,10 +41,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -47,10 +56,11 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
-import androidx.core.view.MenuProvider
 import androidx.core.view.doOnDetach
 import androidx.core.view.updatePadding
 import androidx.fragment.app.viewModels
@@ -62,20 +72,24 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
 import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.core.exceptions.resolve.CaptchaHandler.Companion.suppressCaptchaErrors
 import org.koitharu.kotatsu.core.ui.image.FaviconDrawable
-import org.koitharu.kotatsu.core.util.ext.addMenuProvider
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.main.ui.nav.DrawablePainter
 import org.koitharu.kotatsu.settings.SettingsActivity
+import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class BrokenSourcesMigrationFragment :
-	BaseComposeSettingsFragment(R.string.migrate_broken_sources) {
+	BaseComposeSettingsFragment(R.string.manga_migration) {
 
 	private val viewModel by viewModels<BrokenSourcesMigrationViewModel>()
 
@@ -90,31 +104,28 @@ class BrokenSourcesMigrationFragment :
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
 			MiyorareTheme {
-				val state by viewModel.state.collectAsState()
+				Surface(
+					modifier = Modifier.fillMaxSize(),
+					color = Color.Transparent,
+					contentColor = MaterialTheme.colorScheme.onSurface,
+				) {
+					val state by viewModel.state.collectAsState()
 				BrokenSourcesMigrationScreen(
 					state = state,
 					imageLoader = imageLoader,
-					onToggle = viewModel::toggle,
-					onToggleRecommended = {
-						viewModel.toggleAll(state.sources.filter { it.isUnavailable }.map { it.key })
-					},
-					onOpenSource = { source ->
-						(requireActivity() as SettingsActivity).openFragment(
+					onRetry = viewModel::retry,
+					onOpenManga = { mangaIds, preferredAction ->
+						if (mangaIds.isNotEmpty()) (requireActivity() as SettingsActivity).openFragment(
 							SourceMangaListFragment::class.java,
-							SourceMangaListFragment.args(source.sourceKeys, source.title),
+							SourceMangaListFragment.argsForMangaIds(
+								mangaIds, getString(R.string.manga_migration), preferredAction,
+							),
 							isFromRoot = false,
 						)
 					},
-					onFix = {
-						val rawSources = state.sources
-							.filter { it.key in state.selectedSources }
-							.flatMapTo(linkedSetOf()) { it.sourceKeys }
-						(requireActivity() as SettingsActivity).openFragment(
-							SourceMangaListFragment::class.java,
-							SourceMangaListFragment.args(rawSources, getString(R.string.manga_migration)), false,
-						)
-					},
+					onOpenDetails = { manga -> router.openDetails(manga) },
 				)
+				}
 			}
 		}
 	}
@@ -123,164 +134,184 @@ class BrokenSourcesMigrationFragment :
 		super.onViewCreated(view, savedInstanceState)
 		// The fragment container is laid out for the collapsed appbar (ScrollingViewBehavior), so
 		// while the appbar is expanded the bottom of this view is pushed off-screen. Compensate
-		// with bottom padding equal to the appbar's current expansion so the Fix bar stays visible.
-		val appBar = (requireActivity() as AppBarOwner).appBar
-		val offsetListener = AppBarLayout.OnOffsetChangedListener { bar, verticalOffset ->
-			view.updatePadding(bottom = bar.totalScrollRange + verticalOffset)
-		}
-		appBar.addOnOffsetChangedListener(offsetListener)
-		view.doOnDetach { appBar.removeOnOffsetChangedListener(offsetListener) }
-		addMenuProvider(object : MenuProvider {
-			override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-				menu.add(Menu.NONE, MENU_INFO, Menu.NONE, R.string.migration_information).apply {
-					setIcon(R.drawable.ic_info)
-					setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-				}
-			}
-
-			override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
-				if (menuItem.itemId != MENU_INFO) return false
-				viewModel.toggleInfo()
-				return true
-			}
-		})
+		// with bottom padding equal to the appbar's current expansion so the bottom action remains visible.
+		bindMigrationContentInsets(view, (requireActivity() as AppBarOwner).appBar)
 	}
 
-	private companion object {
-		const val MENU_INFO = 0x4D4947
-	}
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun BrokenSourcesMigrationScreen(
+internal fun BrokenSourcesMigrationScreen(
 	state: BrokenSourcesMigrationState,
 	imageLoader: ImageLoader,
-	onToggle: (String) -> Unit,
-	onToggleRecommended: () -> Unit,
-	onOpenSource: (LibrarySourceOption) -> Unit,
-	onFix: () -> Unit,
+	onRetry: () -> Unit,
+	onOpenManga: (Collection<Long>, MigrationBatchAction?) -> Unit,
+	onOpenDetails: (Manga) -> Unit = {},
 ) {
-	val unavailableSources = state.sources.filter(LibrarySourceOption::isUnavailable)
-	val mihonSources = state.sources.filterNot(LibrarySourceOption::isUnavailable)
-
-	Column(
-		modifier = Modifier.fillMaxSize(),
-	) {
-		AnimatedVisibility(visible = state.isInfoVisible) {
-			Column {
-				Column(
-					modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-				) {
-					Text(
-						text = stringResource(R.string.migration_review_description),
-						style = MaterialTheme.typography.bodyMedium,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
-				}
-				HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-			}
+	var sourceKey by rememberSaveable { mutableStateOf<String?>(null) }
+	var query by rememberSaveable { mutableStateOf("") }
+	var novelTab by rememberSaveable { mutableStateOf(false) }
+	var selectedIds by rememberSaveable { mutableStateOf(arrayListOf<Long>()) }
+	val selected = selectedIds.toSet()
+	val context = LocalContext.current
+	val hasManga = state.manga.any { !it.isNovelContent }
+	val hasNovel = state.manga.any { it.isNovelContent }
+	val showNovel = !hasManga || (hasNovel && novelTab)
+	val domainManga = state.manga.filter { it.isNovelContent == showNovel }
+	val sourceRows = state.sources.flatMap { group ->
+		group.variants.mapNotNull { variant ->
+			val count = domainManga.count { it.source.name == variant.key }
+			if (count > 0) Triple(group, variant, count) else null
 		}
-
+	}
+	val activeSource = sourceRows.firstOrNull { it.second.key == sourceKey }
+	fun clearSelection() { selectedIds = arrayListOf() }
+	androidx.activity.compose.BackHandler(enabled = activeSource != null) {
+		if (selectedIds.isNotEmpty()) clearSelection()
+		else { sourceKey = null; query = "" }
+	}
+	Column(Modifier.fillMaxSize()) {
 		when {
-			state.isLoading -> Box(
-				modifier = Modifier.fillMaxWidth().weight(1f),
-				contentAlignment = Alignment.Center,
-			) {
+			state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
 				CircularProgressIndicator()
 			}
-
-			state.sources.isEmpty() -> Box(
-				modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
-				contentAlignment = Alignment.Center,
-			) {
-				Column(horizontalAlignment = Alignment.CenterHorizontally) {
-					Text(
-						text = stringResource(R.string.no_sources_to_migrate),
-						style = MaterialTheme.typography.titleMedium,
-					)
-					Spacer(Modifier.height(8.dp))
-					Text(
-						text = stringResource(R.string.no_sources_to_migrate_summary),
-						style = MaterialTheme.typography.bodyMedium,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
+			state.loadFailed -> Column(Modifier.fillMaxSize().padding(24.dp),
+				verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+				Text("Daftar source tidak dapat dimuat", style = MaterialTheme.typography.titleMedium)
+				TextButton(onClick = onRetry) { Text(stringResource(R.string.migration_retry)) }
+			}
+			activeSource == null -> {
+				Column(Modifier.fillMaxSize()) {
+					Text("Pilih source", style = MaterialTheme.typography.titleLarge,
+						modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+					if (hasManga && hasNovel) {
+						Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+							FilterChip(selected = !novelTab, onClick = { novelTab = false; sourceKey = null; clearSelection() },
+								label = { Text("Manga") })
+							FilterChip(selected = novelTab, onClick = { novelTab = true; sourceKey = null; clearSelection() },
+								label = { Text("Novel") })
+						}
+					}
+					LazyColumn(
+						modifier = Modifier.weight(1f).nestedScroll(rememberNestedScrollInteropConnection()),
+						contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+						verticalArrangement = Arrangement.spacedBy(10.dp),
+					) {
+						if (sourceRows.isEmpty()) item { Text("Tidak ada judul yang dapat dimigrasikan.") }
+						items(sourceRows, key = { it.second.key }) { (group, variant, count) ->
+							val ids = domainManga.filter { it.source.name == variant.key }.map(Manga::id)
+							Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+								.clickable { sourceKey = variant.key; query = ""; clearSelection() }
+								.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+								SourceIcon(group, imageLoader)
+								Spacer(Modifier.width(12.dp))
+								Column(Modifier.weight(1f)) {
+									Text(variant.title, style = MaterialTheme.typography.bodyMedium,
+										fontWeight = FontWeight.SemiBold)
+									Text(pluralStringResource(R.plurals.manga_count, count, count),
+										style = MaterialTheme.typography.bodySmall)
+									if (group.isUnavailable) Text("Source tidak tersedia",
+										style = MaterialTheme.typography.labelSmall,
+										color = MaterialTheme.colorScheme.error)
+								}
+								TextButton(onClick = { onOpenManga(ids, null) }) { Text("Semua") }
+							}
+						}
+					}
 				}
 			}
-
-			else -> LazyColumn(
-				modifier = Modifier
-					.fillMaxWidth()
-					.weight(1f)
-					.nestedScroll(rememberNestedScrollInteropConnection()),
-			) {
-				if (unavailableSources.isNotEmpty()) {
-					item {
-						SourceSectionHeader(
-							title = stringResource(R.string.recommended),
-							isChecked = unavailableSources.all { it.key in state.selectedSources },
-							onToggle = onToggleRecommended,
-							topPadding = 8.dp,
-						)
-					}
-					items(unavailableSources, key = LibrarySourceOption::key) { source ->
-						SourceCheckboxRow(
-							source = source,
-							imageLoader = imageLoader,
-							isChecked = source.key in state.selectedSources,
-							onToggle = { onToggle(source.key) },
-							onOpenManga = { onOpenSource(source) },
-						)
-						SourceDivider()
-					}
+			else -> {
+				val source = activeSource.second
+				val sourceManga = domainManga.filter { it.source.name == source.key }
+				val manga = sourceManga.filter {
+					query.isBlank() || it.title.contains(query.trim(), ignoreCase = true)
 				}
-				if (mihonSources.isNotEmpty()) {
-					item {
-						SourceSectionHeader(
-							title = stringResource(R.string.mihon_sources),
-							topPadding = 28.dp,
-						)
-					}
-					items(mihonSources, key = LibrarySourceOption::key) { source ->
-						SourceCheckboxRow(
-							source = source,
-							imageLoader = imageLoader,
-							isChecked = source.key in state.selectedSources,
-							onToggle = { onToggle(source.key) },
-							onOpenManga = { onOpenSource(source) },
-						)
-						SourceDivider()
-					}
+				val currentSelected = selected.intersect(sourceManga.mapTo(hashSetOf(), Manga::id))
+				fun toggle(id: Long) {
+					selectedIds = ArrayList(currentSelected.toMutableSet().apply {
+						if (!add(id)) remove(id)
+					})
 				}
-				item { Spacer(Modifier.height(12.dp)) }
-			}
-		}
-
-		Surface(
-			tonalElevation = 3.dp,
-			shadowElevation = 6.dp,
-			color = MaterialTheme.colorScheme.surfaceContainer,
-		) {
-			Column(modifier = Modifier.navigationBarsPadding()) {
-				HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-				Button(
-					onClick = onFix,
-					enabled = state.selectedSources.isNotEmpty(),
-					modifier = Modifier
-						.fillMaxWidth()
-						.padding(horizontal = 16.dp, vertical = 12.dp)
-						.height(52.dp),
-				) {
-					Text(
-						if (state.selectedSources.isEmpty()) {
-							stringResource(R.string.migration_review_list)
+				Column(Modifier.fillMaxSize()) {
+					Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+						verticalAlignment = Alignment.CenterVertically) {
+						TextButton(onClick = { sourceKey = null; query = ""; clearSelection() }) { Text("‹ Source") }
+						Text(source.title, style = MaterialTheme.typography.titleMedium,
+							modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+					}
+					if (currentSelected.isNotEmpty()) {
+						Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+							verticalAlignment = Alignment.CenterVertically) {
+							Text("${currentSelected.size} terpilih", modifier = Modifier.weight(1f),
+								style = MaterialTheme.typography.titleSmall)
+							TextButton(onClick = { selectedIds = ArrayList(sourceManga.map(Manga::id)) }) {
+								Text("Pilih semua")
+							}
+							TextButton(onClick = { clearSelection() }) { Text("Batal") }
+						}
+					}
+					LazyColumn(Modifier.weight(1f),
+						contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+						verticalArrangement = Arrangement.spacedBy(8.dp)) {
+						item {
+							OutlinedTextField(value = query, onValueChange = { query = it },
+								label = { Text(if (showNovel) "Cari novel" else "Cari manga") }, singleLine = true,
+								modifier = Modifier.fillMaxWidth().testTag("migration-landing-search"))
+						}
+						items(manga, key = Manga::id) { item ->
+							val checked = item.id in currentSelected
+							Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+								.then(if (checked) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)) else Modifier)
+								.combinedClickable(
+									onClick = { if (currentSelected.isNotEmpty()) toggle(item.id) else onOpenManga(listOf(item.id), null) },
+									onLongClick = { toggle(item.id) },
+								).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+								val cover = remember(item.id, item.coverUrl, item.source) {
+									item.coverUrl?.let {
+										ImageRequest.Builder(context).data(it).mangaSourceExtra(item.source).build()
+									}
+								}
+								Box(Modifier.width(48.dp).height(68.dp)
+									.clip(RoundedCornerShape(8.dp))
+									.testTag("migration-landing-cover-" + item.id)
+									.combinedClickable(
+										onClick = { if (currentSelected.isNotEmpty()) toggle(item.id) else onOpenDetails(item) },
+										onLongClick = { toggle(item.id) },
+									)) {
+									if (cover != null) AsyncImage(model = cover, imageLoader = imageLoader,
+										contentDescription = item.title, modifier = Modifier.fillMaxSize(),
+										contentScale = ContentScale.Crop)
+								}
+								Spacer(Modifier.width(12.dp))
+								Column(Modifier.weight(1f)) {
+									Text(item.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+									Text(item.source.getTitle(context).toString(),
+										style = MaterialTheme.typography.bodySmall)
+								}
+								if (currentSelected.isNotEmpty()) Checkbox(
+									checked = checked, onCheckedChange = { toggle(item.id) },
+								) else Text("›")
+							}
+						}
+					}
+					Surface(tonalElevation = 3.dp) {
+						if (currentSelected.isNotEmpty()) {
+							Row(Modifier.fillMaxWidth().padding(12.dp),
+								horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+								androidx.compose.material3.OutlinedButton(
+									onClick = { onOpenManga(currentSelected, MigrationBatchAction.COPY) },
+									modifier = Modifier.weight(1f)) { Text("Salin (${currentSelected.size})") }
+								Button(onClick = { onOpenManga(currentSelected, MigrationBatchAction.MIGRATE) },
+									modifier = Modifier.weight(1f)) { Text("Migrasikan (${currentSelected.size})") }
+							}
 						} else {
-							pluralStringResource(
-								R.plurals.migration_review_sources,
-								state.selectedSources.size,
-								state.selectedSources.size,
-							)
-						},
-					)
+							Button(onClick = { onOpenManga(sourceManga.map(Manga::id), null) },
+								modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+								Text("Migrasikan semua (${sourceManga.size})")
+							}
+						}
+					}
 				}
 			}
 		}

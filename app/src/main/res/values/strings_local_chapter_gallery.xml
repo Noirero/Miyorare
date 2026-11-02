@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_gallery_details">Details</string>
+    <string name="local_gallery_title">Chapter gallery</string>
+    <string name="local_gallery_reading">Reading</string>
+    <string name="local_gallery_read">Read</string>
+    <string name="local_gallery_chapter_count">%1$d chapters</string>
+</resources>

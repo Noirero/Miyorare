@@ -25,6 +25,7 @@ on:
           - /miyori labels
           - /miyori readiness
           - /miyori head
+          - /miyori tests
           - /miyori require-runtime
 
 permissions:
@@ -169,6 +170,17 @@ jobs:
             --pr-number "$TARGET_NUMBER" \
             --output "$RUNNER_TEMP/miyori-report.md"
 
+      - name: Render exact-head diagnostic evidence (read-only)
+        if: steps.parse.outputs.command == 'tests' && steps.target.outputs.is_pr == 'true' && steps.target.outputs.state == 'open'
+        shell: bash
+        env:
+          MIYORI_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/miyori_tests.py \
+            --pr-number "$TARGET_NUMBER" \
+            --output "$RUNNER_TEMP/miyori-tests.md"
+
       - name: Require Android Runtime validation
         if: steps.parse.outputs.command == 'require-runtime' && steps.target.outputs.is_pr == 'true' && steps.target.outputs.state == 'open'
         shell: bash
@@ -210,6 +222,7 @@ jobs:
           - \`/miyori labels\` — inspect CI label consistency.
           - \`/miyori readiness\` — report technical readiness.
           - \`/miyori head\` — report exact-head evidence.
+          - \`/miyori tests\` — summarize exact-head targeted diagnostics.
           - \`/miyori require-runtime\` — add the safe runtime-required override.
 
           Commands are accepted only from the repository owner. Miyori cannot push code, merge, publish releases, rerun arbitrary workflows, or weaken validation.
@@ -232,6 +245,15 @@ jobs:
                 RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; no live report was generated."
               else
                 RESPONSE="${RESPONSE_MARKER}"$'\n'"$(cat "$RUNNER_TEMP/miyori-report.md")"
+              fi
+              ;;
+            tests)
+              if [[ "$IS_PR" != "true" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 This command requires a pull request target."
+              elif [[ "$PR_STATE" != "open" ]]; then
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"🌸 PR #${TARGET_NUMBER} is ${PR_STATE}; no live report was generated."
+              else
+                RESPONSE="${RESPONSE_MARKER}"$'\n'"$(cat "$RUNNER_TEMP/miyori-tests.md")"
               fi
               ;;
             require-runtime)

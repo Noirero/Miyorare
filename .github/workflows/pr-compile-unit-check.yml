@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - Amain2
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
 
 concurrency:
   group: pr-compile-unit-${{ github.event.pull_request.number }}
@@ -14,10 +14,67 @@ permissions:
   contents: read
 
 jobs:
+  runtime-risk:
+    name: Classify Android runtime risk
+    runs-on: ubuntu-latest
+    outputs:
+      run_runtime: ${{ steps.classify.outputs.run_runtime }}
+      full: ${{ steps.classify.outputs.full }}
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+      - name: Classify changed paths and labels
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LABEL_RUNTIME: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') }}
+          LABEL_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') }}
+          LABEL_USER_ISSUE: ${{ contains(github.event.pull_request.labels.*.name, 'ci:user-issue') }}
+          LABEL_THEME: ${{ contains(github.event.pull_request.labels.*.name, 'ci:theme') }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/runtime-changed-files.txt"
+          bash .github/scripts/select-pr-runtime-tests.sh --self-test
+          plan="$(bash .github/scripts/select-pr-runtime-tests.sh --classify < "$RUNNER_TEMP/runtime-changed-files.txt")"
+          targeted_available=false
+          if bash .github/scripts/select-pr-runtime-tests.sh < "$RUNNER_TEMP/runtime-changed-files.txt" >/dev/null 2>&1; then
+            targeted_available=true
+          fi
+          plan="$(printf '%s\n' "$plan" | DRAFT="$DRAFT" LABEL_RUNTIME="$LABEL_RUNTIME" LABEL_FULL="$LABEL_FULL" LABEL_USER_ISSUE="$LABEL_USER_ISSUE" LABEL_THEME="$LABEL_THEME" TARGETED_AVAILABLE="$targeted_available" bash .github/scripts/select-pr-runtime-tests.sh --policy)"
+          printf '%s\n' "$plan" | tee -a "$GITHUB_OUTPUT"
+          # Explain the existing classifier's decision; never change its outputs or gates.
+          run_runtime="$(sed -n 's/^run_runtime=//p' <<< "$plan" | tail -1)"
+          full_runtime="$(sed -n 's/^full=//p' <<< "$plan" | tail -1)"
+          {
+            echo '## Android runtime selection'
+            echo "- Exact PR HEAD: \`$HEAD_SHA\`"
+            echo "- Runtime requested: **$run_runtime**, full suite: **$full_runtime**"
+            echo "- Owner/user/theme/override flags: $LABEL_RUNTIME / $LABEL_USER_ISSUE / $LABEL_THEME / $LABEL_FULL"
+            if [[ "$run_runtime" == false ]]; then
+              echo '- Reason: this PR has no runtime-relevant changed paths and no mandatory override.'
+            elif [[ "$full_runtime" == true ]]; then
+              echo '- Reason: shared/unmapped runtime risk or an explicit full-runtime override.'
+            else
+              echo '- Reason: changed paths are mapped to targeted runtime suites by the existing selector.'
+            fi
+            echo '- Changed paths used for the decision:'
+            echo '```text'
+            cat "$RUNNER_TEMP/runtime-changed-files.txt"
+            echo '```'
+            echo '- This explanation does not modify the required PR checks.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   compile-unit:
     name: Compile, resources & unit tests
-    # Explicit runtime validation also applies to drafts waiting for owner decisions.
-    if: github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full')
+    # Owner-request drafts run compile/unit checks without implicitly requesting Android runtime.
+    if: github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:owner-request') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') || contains(github.event.pull_request.labels.*.name, 'ci:user-issue') || contains(github.event.pull_request.labels.*.name, 'ci:theme')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -49,6 +106,7 @@ jobs:
         run: |
           bash .github/scripts/select-pr-runtime-tests.sh --self-test
           bash -n .github/scripts/run-selected-android-runtime.sh
+          python3 .github/scripts/targeted-ci-diagnostics.py --self-test
 
       - name: Install browser auth helper tooling
         run: npm install --prefix browser-auth-helper --ignore-scripts
@@ -59,11 +117,10 @@ jobs:
       - name: Validate Cloudflare Worker bundle
         run: npm run check:cloudflare --prefix browser-auth-helper
 
-      - name: Compile debug sources and validate Android resources
-        run: ./gradlew compileDebugSources processPreviewMainManifest processReleaseMainManifest --max-workers=4 --no-daemon --stacktrace
-
-      - name: Build production Kotatsu Runtime Pack
-        run: ./gradlew :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
+      # Run build checks in one Gradle invocation to avoid repeated daemonless startup
+      # while preserving every compile, resource, manifest and runtime-pack task.
+      - name: Compile, validate resources and build Kotatsu Runtime Pack
+        run: ./gradlew compileDebugSources processPreviewMainManifest processReleaseMainManifest :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
 
       - name: Run JVM unit tests
         run: ./gradlew testDebugUnitTest --max-workers=4 --no-daemon --stacktrace
@@ -79,8 +136,8 @@ jobs:
 
   android-runtime:
     name: Android runtime validation — Android 15
-    if: contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full')
-    needs: compile-unit
+    if: needs.runtime-risk.outputs.run_runtime == 'true' && (github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') || contains(github.event.pull_request.labels.*.name, 'ci:user-issue') || contains(github.event.pull_request.labels.*.name, 'ci:theme'))
+    needs: [compile-unit, runtime-risk]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -111,7 +168,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          FULL_RUNTIME: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') }}
+          FULL_RUNTIME: ${{ needs.runtime-risk.outputs.full }}
         run: |
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/runtime-changed-files.txt"
@@ -126,6 +183,13 @@ jobs:
           while IFS= read -r line; do
             printf '%s\n' "$line" >> "$GITHUB_OUTPUT"
           done <<< "$plan"
+          {
+            echo '## Exact Android test selection'
+            echo 'The existing selector produced the following runtime plan:'
+            echo '```text'
+            printf '%s\n' "$plan"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build runtime APKs before booting the emulator
         env:

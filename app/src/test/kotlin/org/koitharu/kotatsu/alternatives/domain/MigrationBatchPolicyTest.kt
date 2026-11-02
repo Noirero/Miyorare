@@ -5,6 +5,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.alternatives.work.MigrationBatchWork
 import org.koitharu.kotatsu.parsers.model.Manga
 
 class MigrationBatchPolicyTest {
@@ -60,12 +61,15 @@ class MigrationBatchPolicyTest {
 		assertTrue(outcome.selection!!.isRawSearchIdentity)
 		assertEquals("NEW", outcome.selection!!.source)
 		assertEquals(101L, outcome.selection!!.id)
+		assertEquals(replacement.title, outcome.destinationTitle)
+		assertEquals(replacement.source.name, outcome.destinationSource)
 	}
 	@Test fun incompleteAndAmbiguousSearchesNeverBecomeReadyCounts() {
 		assertEquals(MigrationBatchStatus.INCOMPLETE, MigrationBatchPolicy.assess(ready().copy(incomplete = true)).status)
 		val ambiguous = ready().copy(assessment = ready().assessment!!.copy(state = MigrationMatchState.NEEDS_REVIEW))
 		assertEquals(MigrationBatchStatus.NEEDS_REVIEW, MigrationBatchPolicy.assess(ambiguous).status)
 		assertNull(MigrationBatchPolicy.assess(ambiguous).selection)
+		assertEquals(replacement.title, MigrationBatchPolicy.assess(ambiguous).destinationTitle)
 	}
 	@Test fun durableGenerationsBeatArrivalOrderAndOldReadySnapshots() {
 		val old = snapshot(1, 1, MigrationBatchStatus.READY, MigrationSelection.of(replacement))
@@ -80,10 +84,23 @@ class MigrationBatchPolicyTest {
 		val failed = MigrationBatchPolicy.process(request, { true }, { error("No scan here") }, { throw IllegalStateException("collision") })
 		val successful = MigrationBatchPolicy.process(request.copy(mangaId = 2), { true }, { error("No scan here") }, { replacement })
 		assertEquals(MigrationBatchStatus.ERROR, failed.status)
+        assertEquals(MigrationFailureStage.UNKNOWN, failed.failureStage)
+		assertEquals(replacement.source.name, failed.destinationSource)
 		assertEquals(MigrationBatchStatus.MIGRATED, successful.status)
 		val retry = MigrationBatchPolicy.process(request, { true }, { error("No scan here") }, { replacement })
 		assertEquals(MigrationBatchStatus.MIGRATED, retry.status)
 	}
+	@Test fun failureStageIsPreservedWithoutTreatingAnExecutionErrorAsSuccess() = runTest {
+        val request = MigrationBatchRequest(1, "OLD", MigrationBatchAction.MIGRATE, MigrationSelection.of(replacement))
+        val failed = MigrationBatchPolicy.process(
+            request, { true }, { error("No scan") },
+            { throw MigrationExecutionStageException(MigrationFailureStage.DESTINATION_DETAILS, IllegalStateException("private remote detail")) },
+        )
+        assertEquals(MigrationBatchStatus.ERROR, failed.status)
+        assertEquals(MigrationFailureStage.DESTINATION_DETAILS, failed.failureStage)
+        assertNotEquals(MigrationBatchStatus.MIGRATED, failed.status)
+    }
+
 	@Test fun copyActionUsesCopyExecutorAndReportsCopied() = runTest {
 		var migrateCalls = 0
 		var copyCalls = 0
@@ -99,6 +116,8 @@ class MigrationBatchPolicyTest {
 		assertEquals(1, copyCalls)
 		assertEquals(MigrationBatchStatus.COPIED, result.status)
 		assertEquals(replacement.id, result.destinationId)
+		assertEquals(replacement.title, result.destinationTitle)
+		assertEquals(replacement.source.name, result.destinationSource)
 	}
 	@Test fun replayAfterCommitOrPrivacyRemovalDoesNotExecuteAgain() = runTest {
 		var calls = 0
@@ -133,4 +152,23 @@ class MigrationBatchPolicyTest {
 			fail("Cancellation must propagate to WorkManager")
 		} catch (_: CancellationException) { }
 	}
+
+    @Test fun errorPhaseSurvivesDurableWorkOutputAndDoesNotPersistRawThrowable() = runTest {
+        val selection = MigrationSelection.of(replacement)
+        val request = MigrationBatchRequest(1L, "OLD", MigrationBatchAction.MIGRATE, selection)
+        val result = MigrationBatchPolicy.process(
+            request, { true }, { error("No discovery") },
+            { throw MigrationExecutionStageException(
+                MigrationFailureStage.DATA_CONFLICT,
+                IllegalStateException("secret private title and source URL"),
+            ) },
+        )
+        assertEquals(MigrationBatchStatus.ERROR, result.status)
+        assertEquals(MigrationFailureStage.DATA_CONFLICT, result.failureStage)
+        val durable = MigrationBatchWork.output(result)
+        assertEquals("ERROR", durable.getString("result_status"))
+        assertEquals("DATA_CONFLICT", durable.getString("result_failure_stage"))
+        assertFalse(durable.toString().contains("secret private title"))
+        assertNull(durable.getString("result_fingerprint"))
+    }
 }

@@ -18,13 +18,17 @@ jobs:
     steps:
       - name: Checkout exact workflow head
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Compile Miyori Python helpers
         run: |
           python3 -m py_compile \
             .github/scripts/miyori_status.py \
             .github/scripts/miyori_report.py \
-            .github/scripts/miyori_command.py
+            .github/scripts/miyori_command.py \
+            .github/scripts/miyori_tests.py
 
       - name: Run Miyori unit tests
         working-directory: .github/scripts
@@ -33,6 +37,7 @@ jobs:
           test_miyori_status.py
           test_miyori_report.py
           test_miyori_command.py
+          test_miyori_tests.py
 
       - name: Enforce Miyori permission and mutation boundary
         run: python3 .github/scripts/test_miyori_policy.py

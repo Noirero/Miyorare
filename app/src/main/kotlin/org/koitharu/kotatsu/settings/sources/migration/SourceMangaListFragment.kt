@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,6 +50,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.doOnDetach
 import androidx.core.view.updatePadding
@@ -68,6 +70,8 @@ import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
+import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
+import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -99,13 +103,16 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 					contentColor = MaterialTheme.colorScheme.onSurface,
 				) {
 					val state by viewModel.state.collectAsState()
-					SourceMangaListScreen(
+					MigrationFlowScreen(
 						state = state,
 						imageLoader = imageLoader,
 						onRetry = viewModel::retry,
 						onSearch = viewModel::searchAll,
 						onMigrateReady = viewModel::migrateReady,
 						onCopyReady = viewModel::copyReady,
+						onMigrateOne = viewModel::migrateOne,
+						onCopyOne = viewModel::copyOne,
+						onSkipOne = viewModel::skipOne,
 						onCancel = viewModel::cancelBatch,
 						onFilter = viewModel::setFilter,
 						onToggleSource = viewModel::toggleSource,
@@ -141,6 +148,7 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 							}
 						},
 						onMangaLongClick = { viewModel.toggleSelection(it.id) },
+						onOpenTarget = { manga -> router.openDetails(manga) },
 					)
 				}
 			}
@@ -149,10 +157,7 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
-		val appBar = (requireActivity() as AppBarOwner).appBar
-		val listener = AppBarLayout.OnOffsetChangedListener { bar, offset -> view.updatePadding(bottom = bar.totalScrollRange + offset) }
-		appBar.addOnOffsetChangedListener(listener)
-		view.doOnDetach { appBar.removeOnOffsetChangedListener(listener) }
+		bindMigrationContentInsets(view, (requireActivity() as AppBarOwner).appBar)
 		viewLifecycleOwner.lifecycleScope.launch {
 			viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
 				viewModel.state
@@ -241,14 +246,16 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 		const val ARG_SOURCE_KEYS = "source_keys"
 		const val ARG_SOURCE_TITLE = "source_title"
 		const val ARG_MANGA_IDS = "manga_ids"
+		const val ARG_PREFERRED_ACTION = "migration_preferred_action"
 
 		fun args(sourceKeys: Collection<String>, sourceTitle: String) = Bundle(2).apply {
 			putStringArray(ARG_SOURCE_KEYS, sourceKeys.toTypedArray())
 			putString(ARG_SOURCE_TITLE, sourceTitle)
 		}
 
-		fun argsForMangaIds(mangaIds: Collection<Long>, title: String) = Bundle(2).apply {
+		fun argsForMangaIds(mangaIds: Collection<Long>, title: String, preferredAction: MigrationBatchAction? = null) = Bundle(3).apply {
 			putLongArray(ARG_MANGA_IDS, mangaIds.toLongArray())
+			putString(ARG_PREFERRED_ACTION, preferredAction?.name)
 			putString(ARG_SOURCE_TITLE, title)
 		}
 	}
@@ -306,7 +313,7 @@ private fun SourceMangaListScreen(
 				onRetrySources = onRetrySources,
 			)
 		}
-		if (state.manga.isEmpty() && !state.failed) item {
+		if (state.manga.isEmpty() && state.completedResults.isEmpty() && state.unconfirmedResults.isEmpty() && !state.failed) item {
 			Text(stringResource(R.string.migration_batch_empty), modifier = Modifier.padding(20.dp))
 		}
 		items(state.visibleManga, key = Manga::id) { manga ->
@@ -315,6 +322,9 @@ private fun SourceMangaListScreen(
 				imageLoader = imageLoader,
 				isSelected = manga.id in state.selectedIds,
 				status = state.status(manga.id),
+				targetTitle = state.batchItems[manga.id]?.outcome?.destinationTitle
+					?.takeIf { state.status(manga.id) != MigrationBatchStatus.UNCHECKED },
+				targetSource = state.batchItems[manga.id]?.outcome?.destinationSource,
 				onClick = { onMangaClick(manga) },
 				onLongClick = { onMangaLongClick(manga) },
 			)
@@ -322,6 +332,46 @@ private fun SourceMangaListScreen(
 				modifier = Modifier.padding(start = 92.dp, end = 16.dp),
 				color = MaterialTheme.colorScheme.outlineVariant,
 			)
+		}
+		if (state.completedResults.isNotEmpty()) {
+			item(key = "completed-header") {
+				Text(
+					stringResource(R.string.migration_batch_done, state.completedResults.size),
+					style = MaterialTheme.typography.titleMedium,
+					modifier = Modifier.padding(16.dp),
+				)
+			}
+			items(state.completedResults, key = { "completed:${it.mangaId}:${it.generation}" }) { result ->
+				ListItem(
+					headlineContent = { Text(result.outcome.destinationTitle ?: result.outcome.destinationId?.toString().orEmpty()) },
+					supportingContent = {
+						Text(
+							listOfNotNull(result.outcome.destinationSource, stringResource(result.outcome.status.labelRes()))
+								.joinToString(" · "),
+						)
+					},
+				)
+			}
+		}
+		if (state.unconfirmedResults.isNotEmpty()) {
+			item(key = "unconfirmed-header") {
+				Text(
+					stringResource(R.string.migration_batch_check_library),
+					style = MaterialTheme.typography.titleMedium,
+					modifier = Modifier.padding(16.dp),
+				)
+			}
+			items(state.unconfirmedResults, key = { "unconfirmed:${it.mangaId}:${it.generation}" }) { result ->
+				ListItem(
+					headlineContent = { Text(result.outcome.destinationTitle ?: result.outcome.destinationId?.toString().orEmpty()) },
+					supportingContent = {
+						Text(
+							listOfNotNull(result.outcome.destinationSource, stringResource(result.outcome.status.labelRes()))
+								.joinToString(" · "),
+						)
+					},
+				)
+			}
 		}
 	}
 }
@@ -333,6 +383,8 @@ private fun SourceMangaRow(
 	imageLoader: ImageLoader,
 	isSelected: Boolean,
 	status: MigrationBatchStatus,
+	targetTitle: String?,
+	targetSource: String?,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
 ) {
@@ -407,6 +459,15 @@ private fun SourceMangaRow(
 			}
 			Text(stringResource(status.labelRes()), style = MaterialTheme.typography.bodySmall,
 				color = MaterialTheme.colorScheme.primary)
+			if (targetTitle != null || targetSource != null) {
+				Text(
+					listOfNotNull(targetTitle, targetSource).joinToString(" · "),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					maxLines = 2,
+					overflow = TextOverflow.Ellipsis,
+				)
+			}
 		}
 	}
 }

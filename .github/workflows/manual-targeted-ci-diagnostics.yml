@@ -1,0 +1,190 @@
+name: Manual Targeted CI Diagnostics
+run-name: Diagnostic PR #${{ inputs.pr_number }} @ ${{ inputs.expected_sha }}
+
+# Deliberately non-gating. Normal PR CI keeps its existing mandatory checks.
+# GitHub makes new workflow_dispatch definitions available after they reach the
+# repository default branch; integration to Amain2 alone does not enable the UI.
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Open PR number to diagnose'
+        required: true
+        type: string
+      expected_sha:
+        description: 'Exact 40-character PR HEAD SHA (must still be current)'
+        required: true
+        type: string
+      platform:
+        description: 'Test runner'
+        required: true
+        default: android
+        type: choice
+        options:
+          - android
+          - jvm
+      test_targets:
+        description: 'Comma-separated fully qualified Class or Class#method (1–8)'
+        required: true
+        type: string
+      mode:
+        description: 'One target per invocation (isolated) or combined (grouped)'
+        required: true
+        default: isolated
+        type: choice
+        options:
+          - isolated
+          - grouped
+      repetitions:
+        description: 'Diagnostic repetitions (not automatic retry of normal PR CI)'
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '3'
+          - '5'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: targeted-diagnostic-${{ github.repository }}-${{ inputs.pr_number }}-${{ inputs.platform }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    # Workflow and diagnostic script must come from the trusted default branch.
+    if: github.ref == 'refs/heads/main'
+    name: Read-only exact-HEAD targeted diagnostics
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.project.kotlin.compiler.execution.strategy=in-process
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      PR_NUMBER: ${{ inputs.pr_number }}
+      TARGET_PLATFORM: ${{ inputs.platform }}
+      TEST_TARGETS: ${{ inputs.test_targets }}
+      TEST_MODE: ${{ inputs.mode }}
+      TEST_REPEATS: ${{ inputs.repetitions }}
+
+    steps:
+      - name: Verify current PR head before checkout
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "::error::Invalid PR number"; exit 1; }
+          [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || { echo "::error::Invalid SHA"; exit 1; }
+          current="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          state="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.state')"
+          if [[ "$state" != open || "$current" != "$EXPECTED_SHA" ]]; then
+            echo "::error::The PR is closed or its HEAD differs from the requested SHA."
+            exit 1
+          fi
+          source_repo="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.repo.full_name')"
+          test "$source_repo" = "$GITHUB_REPOSITORY" || {
+            echo "::error::Forked PRs are not supported by this diagnostic runner."
+            exit 1
+          }
+          echo "Verified PR #$PR_NUMBER at $EXPECTED_SHA (no refs modified)"
+
+      - name: Checkout trusted diagnostic implementation
+        uses: actions/checkout@v5
+        with:
+          # The trusted workflow definition and its script must be the same revision.
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout exact PR commit to an isolated folder
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_sha }}
+          path: candidate
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate checked-out SHA and diagnostic inputs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git -C trusted rev-parse HEAD)" = "${{ github.workflow_sha }}"
+          test "$(git -C candidate rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')" = "$EXPECTED_SHA"
+          python3 trusted/.github/scripts/targeted-ci-diagnostics.py --self-test
+          cd candidate
+          python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py --validate-only \
+            --platform "$TARGET_PLATFORM" --targets "$TEST_TARGETS" \
+            --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA" --pr-number "$PR_NUMBER"
+          {
+            echo "## Diagnostic scope (non-gating)"
+            echo "- PR: #$PR_NUMBER"
+            echo "- Exact SHA: \`$EXPECTED_SHA\`"
+            echo "- Platform/mode/repetitions: $TARGET_PLATFORM / $TEST_MODE / $TEST_REPEATS"
+            echo "- Target list: \`$TEST_TARGETS\`"
+            echo "- This workflow never replaces or overrides required PR CI checks."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Grant Gradle wrapper permission
+        run: chmod +x candidate/gradlew
+
+      - name: Build debug and instrumentation APK once
+        if: inputs.platform == 'android'
+        run: |
+          cd candidate
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest \
+            --max-workers=2 --no-daemon --stacktrace
+
+      - name: Enable KVM
+        if: inputs.platform == 'android'
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Run selected JVM diagnostics
+        if: inputs.platform == 'jvm'
+        run: |
+          cd candidate
+          python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py \
+            --platform "$TARGET_PLATFORM" --targets "$TEST_TARGETS" \
+            --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA" --pr-number "$PR_NUMBER"
+
+      - name: Run selected Android 15 diagnostics
+        if: inputs.platform == 'android'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            cd candidate
+            python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py \
+              --platform "$TARGET_PLATFORM" --targets "$TEST_TARGETS" \
+              --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA" --pr-number "$PR_NUMBER"
+
+      - name: Upload targeted diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: targeted-diagnostic-evidence
+          path: candidate/diagnostics-evidence/
+          retention-days: 3
+          if-no-files-found: warn

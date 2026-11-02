@@ -74,6 +74,32 @@ class MangaSourcesRepository @Inject constructor(
 		return buildSortedSourceInfoList(getAllEnabledSources()).map { it.mangaSource }
 	}
 
+	/**
+	 * Inventory for the migration picker, not an executable migration pool.
+	 * Read installed extension/plugin registrations independently of Explore visibility,
+	 * source enablement, and language filters. The migration use case remains the
+	 * authority for which of these sources can actually be selected for a given title.
+	 *
+	 * Bundled Kotatsu Runtime parsers are not user-installed extensions/plugins.
+	 */
+	suspend fun getInstalledMigrationSources(): List<MangaSource> {
+		mihonExtensionManager?.ensureReady()
+		lnPluginManager?.initialize()
+		tsukiPluginManager?.initialize()
+		return buildList<MangaSource> {
+			addAll(mihonExtensionManager?.getMihonMangaSources().orEmpty())
+			addAll(lnPluginManager?.getAll().orEmpty())
+			// getAvailableSources() excludes disabled/incompatible installed plugins.
+			// The picker inventory counts installation, not activation.
+			tsukiPluginManager?.getPlugins().orEmpty().forEach { plugin ->
+				plugin.sources.forEach { descriptor ->
+					add(TsukiMangaSource(plugin, descriptor))
+				}
+			}
+		}.distinctBy(MangaSource::name)
+	}
+
+
 	fun getPinnedSources(): Set<MangaSource> {
 		val sourcesByKey = getAllEnabledSources().associateBy(::sourceKeyOf)
 		return getPinnedSourceKeys()

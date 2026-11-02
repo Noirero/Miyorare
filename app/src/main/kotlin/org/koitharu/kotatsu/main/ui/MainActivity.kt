@@ -117,6 +117,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	private val viewModel by viewModels<MainViewModel>()
 	private val searchSuggestionViewModel by viewModels<SearchSuggestionViewModel>()
 	private lateinit var navigationDelegate: MainNavigationDelegate
+	private var pendingNormalFavouritesNavigation = false
 	private lateinit var fadingAppbarMediator: FadingAppbarMediator
 	private val overflowMenuProviders = mutableListOf<OverflowMenuProviderEntry>()
 	private var isSearchFullyShown = false
@@ -184,6 +185,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			}
 		}
 		navigationDelegate.onCreate(this, savedInstanceState)
+		openNormalFavouritesIfRequested(intent)
 		updateAppBackground(navigationDelegate.primaryFragment)
 		viewBinding.textViewTitle?.let { tv ->
 			navigationDelegate.observeTitle().observe(this) { tv.text = it }
@@ -229,6 +231,34 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		viewBinding.searchView.addTransitionListener(exitCallback)
 		observeFoldHinge()
 		initSearch()
+	}
+
+	override fun onNewIntent(intent: Intent) {
+		super.onNewIntent(intent)
+		setIntent(intent)
+		openNormalFavouritesIfRequested(intent)
+	}
+
+	override fun onResumeFragments() {
+		super.onResumeFragments()
+		deliverPendingNormalFavouritesNavigation()
+	}
+
+	private fun openNormalFavouritesIfRequested(intent: Intent?) {
+		if (intent?.getBooleanExtra(EXTRA_OPEN_NORMAL_FAVOURITES, false) != true) return
+		intent.removeExtra(EXTRA_OPEN_NORMAL_FAVOURITES)
+		pendingNormalFavouritesNavigation = true
+		if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+			deliverPendingNormalFavouritesNavigation()
+		}
+	}
+
+	private fun deliverPendingNormalFavouritesNavigation() {
+		if (!pendingNormalFavouritesNavigation || !::navigationDelegate.isInitialized ||
+			supportFragmentManager.isStateSaved
+		) return
+		pendingNormalFavouritesNavigation = false
+		navigationDelegate.showNormalFavourites()
 	}
 
 	override fun onUserInteraction() {
@@ -923,7 +953,8 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		awaitClose { removeTransitionListener(listener) }
 	}
 
-	private companion object {
+	companion object {
+		const val EXTRA_OPEN_NORMAL_FAVOURITES = "open_normal_favourites"
 
 		private const val FAB_SHRINK_DELAY_MS = 1500L
 		private const val ACTION_MODE_TOP_BAR_FADE_DURATION_MS = 150L

@@ -11,6 +11,15 @@ enum class MigrationBatchStatus {
 
 enum class MigrationBatchAction { CHECK, MIGRATE, COPY }
 
+/** Phase-only failure evidence. Never persist raw exception messages or source URLs. */
+enum class MigrationFailureStage { DESTINATION_DETAILS, DESTINATION_STORAGE, DATA_CONFLICT, DATA_TRANSFER, UNKNOWN }
+
+class MigrationExecutionStageException(
+    val stage: MigrationFailureStage,
+    cause: Throwable,
+) : IllegalStateException("Migration failed at ${stage.name}", cause)
+
+
 enum class MigrationBatchDiscoveryMode {
 	/** Legacy compatibility mode retained for already-persisted WorkManager rows. */
 	CHECK_CURRENT,
@@ -38,6 +47,10 @@ data class MigrationBatchOutcome(
 	val status: MigrationBatchStatus,
 	val selection: MigrationSelection? = null,
 	val destinationId: Long? = null,
+	/** A display hint only. Execution still validates the selected source/id. */
+	val destinationTitle: String? = null,
+	val destinationSource: String? = null,
+    val failureStage: MigrationFailureStage? = null,
 )
 
 data class MigrationBatchSnapshot(
@@ -88,9 +101,15 @@ object MigrationBatchPolicy {
 			discovery.assessment.best?.manga?.let {
 				if (rawSelection) MigrationSelection.fromSearchResult(it) else MigrationSelection.of(it)
 			},
+			destinationTitle = discovery.assessment.best?.manga?.title,
+			destinationSource = discovery.assessment.best?.manga?.source?.name,
 		)
 		discovery.assessment?.state == MigrationMatchState.NO_REPLACEMENT -> MigrationBatchOutcome(MigrationBatchStatus.NO_REPLACEMENT)
-		else -> MigrationBatchOutcome(MigrationBatchStatus.NEEDS_REVIEW)
+		else -> MigrationBatchOutcome(
+			MigrationBatchStatus.NEEDS_REVIEW,
+			destinationTitle = discovery.assessment?.best?.manga?.title,
+			destinationSource = discovery.assessment?.best?.manga?.source?.name,
+		)
 	}
 
 	fun latest(snapshots: Collection<MigrationBatchSnapshot>): Map<Long, MigrationBatchSnapshot> =
@@ -151,13 +170,13 @@ object MigrationBatchPolicy {
 				val selected = checkNotNull(request.selection) { "Batch migration requires a READY selection" }
 				val result = migrate(selected)
 				if (result == null) MigrationBatchOutcome(MigrationBatchStatus.HEALTHY)
-				else MigrationBatchOutcome(MigrationBatchStatus.MIGRATED, destinationId = result.id)
+				else MigrationBatchOutcome(MigrationBatchStatus.MIGRATED, destinationId = result.id, destinationTitle = result.title, destinationSource = result.source.name)
 			}
 			MigrationBatchAction.COPY -> {
 				val selected = checkNotNull(request.selection) { "Batch copy requires a READY selection" }
 				val result = copy(selected)
 				if (result == null) MigrationBatchOutcome(MigrationBatchStatus.HEALTHY)
-				else MigrationBatchOutcome(MigrationBatchStatus.COPIED, destinationId = result.id)
+				else MigrationBatchOutcome(MigrationBatchStatus.COPIED, destinationId = result.id, destinationTitle = result.title, destinationSource = result.source.name)
 			}
 		}
 	} catch (error: CancellationException) {
@@ -169,8 +188,17 @@ object MigrationBatchPolicy {
 			rawSelection = request.discoveryMode != MigrationBatchDiscoveryMode.CHECK_CURRENT,
 		)
 	} catch (error: MigrateUseCase.SourceChangedException) {
-		MigrationBatchOutcome(MigrationBatchStatus.INTERRUPTED, destinationId = request.selection?.id)
+		MigrationBatchOutcome(
+			MigrationBatchStatus.INTERRUPTED,
+			destinationId = request.selection?.id,
+			destinationSource = request.selection?.source,
+		)
 	} catch (error: Exception) {
-		MigrationBatchOutcome(MigrationBatchStatus.ERROR, destinationId = request.selection?.id)
+		MigrationBatchOutcome(
+			MigrationBatchStatus.ERROR,
+			destinationId = request.selection?.id,
+			destinationSource = request.selection?.source,
+            failureStage = (error as? MigrationExecutionStageException)?.stage ?: MigrationFailureStage.UNKNOWN,
+		)
 	}
 }

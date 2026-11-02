@@ -98,6 +98,82 @@ class LocalDocuments @Inject constructor(@ApplicationContext private val context
         }
     }
 
+    /** Create a new file only when the destination has no matching name. Never overwrite. */
+    fun createFile(directory: Node, name: String, mimeType: String = "application/octet-stream"): Node {
+        require(directory.directory && name.isNotBlank() && name != "." && name != ".." &&
+            '/' !in name && '\\' !in name) { "Invalid destination filename" }
+        check(children(directory, directory).none { it.name.equals(name, ignoreCase = true) }) {
+            "Destination already contains $name"
+        }
+        val uri = directory.uri.toUri()
+        return if (uri.scheme == ContentResolver.SCHEME_FILE) {
+            val file = File(uri.toFile(), name)
+            check(file.createNewFile()) { "Destination already exists: $name" }
+            fileNode(file)
+        } else {
+            val created = DocumentsContract.createDocument(resolver, uri, mimeType, name)
+                ?: throw IOException("Cannot create destination file: $name")
+            query(created).singleOrNull() ?: run {
+                val documentId = DocumentsContract.getDocumentId(created)
+                Node("${uri.authority}:$documentId", created.toString(), name, false, 0L, 0L)
+            }
+        }
+    }
+
+    /** Create a directory only when its name is unused; never merge trees implicitly. */
+    fun createDirectory(parent: Node, name: String): Node {
+        require(parent.directory && name.isNotBlank() && name != "." && name != ".." &&
+            '/' !in name && '\\' !in name) { "Invalid destination folder" }
+        check(children(parent, parent).none { it.name.equals(name, ignoreCase = true) }) {
+            "Destination already contains $name"
+        }
+        val uri = parent.uri.toUri()
+        return if (uri.scheme == ContentResolver.SCHEME_FILE) {
+            val folder = File(uri.toFile(), name)
+            check(folder.mkdir()) { "Cannot create destination folder: $name" }
+            fileNode(folder)
+        } else {
+            val created = DocumentsContract.createDocument(resolver, uri,
+                DocumentsContract.Document.MIME_TYPE_DIR, name)
+                ?: throw IOException("Cannot create destination folder: $name")
+            query(created).singleOrNull() ?: Node(
+                "${uri.authority}:${DocumentsContract.getDocumentId(created)}",
+                created.toString(), name, true, 0L, 0L)
+        }
+    }
+
+    /** Remove only an empty directory, including SAF folders. */
+    fun deleteEmptyDirectory(root: Node, folder: Node) {
+        check(folder.directory && folder.key != root.key && contains(root, folder))
+        check(children(root, folder).isEmpty()) { "Folder is not empty: ${folder.name}" }
+        val uri = folder.uri.toUri()
+        // SAF deleteDocument may recursively delete a directory after a concurrent
+        // writer adds a child. It has no atomic empty-directory-only contract.
+        // Retain empty SAF shells rather than risk deleting unverified new content.
+        if (uri.scheme != ContentResolver.SCHEME_FILE) return
+        if (!uri.toFile().delete()) throw IOException("Cannot delete empty folder: ${folder.name}")
+    }
+
+    fun output(node: Node): java.io.OutputStream {
+        check(!node.directory) { "Cannot write a directory" }
+        val uri = node.uri.toUri()
+        return if (uri.scheme == ContentResolver.SCHEME_FILE) uri.toFile().outputStream()
+        else resolver.openOutputStream(uri, "wt") ?: throw IOException("Cannot write: ${node.name}")
+    }
+
+    /** Refresh file size/modified metadata without enumerating sibling collections. */
+    fun stat(root: Node, node: Node): Node {
+        check(!node.directory && contains(root, node)) { "File outside selected root" }
+        val uri = node.uri.toUri()
+        return if (uri.scheme == ContentResolver.SCHEME_FILE) {
+            val file = uri.toFile()
+            if (!file.isFile) throw IOException("Selected file is unavailable")
+            fileNode(file)
+        } else {
+            query(uri).singleOrNull() ?: throw IOException("Selected file is unavailable")
+        }
+    }
+
     fun input(node: Node): InputStream {
         val uri = node.uri.toUri()
         return if (uri.scheme == ContentResolver.SCHEME_FILE) uri.toFile().inputStream()

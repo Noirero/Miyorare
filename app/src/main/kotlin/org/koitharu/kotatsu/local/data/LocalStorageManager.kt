@@ -58,7 +58,12 @@ class LocalStorageManager @Inject constructor(
 	}
 
 	suspend fun computeCacheSize(cache: CacheDir) = withContext(Dispatchers.IO) {
-		getCacheDirs(cache.dir).sumOf { it.computeSize() }
+		val dirs = getCacheDirs(cache.dir)
+		if (cache == CacheDir.PAGES) {
+			// Include leftover disposable pages from the discontinued Reader experiment.
+			dirs += getCacheDirs(OBSOLETE_LOCAL_READER_PAGES)
+		}
+		dirs.sumOf { it.computeSize() }
 	}
 
 	suspend fun computeCacheSize() = withContext(Dispatchers.IO) {
@@ -74,7 +79,12 @@ class LocalStorageManager @Inject constructor(
 	}
 
 	suspend fun clearCache(cache: CacheDir) = runInterruptible(Dispatchers.IO) {
-		getCacheDirs(cache.dir).forEach { it.deleteRecursively() }
+		val dirs = getCacheDirs(cache.dir)
+		if (cache == CacheDir.PAGES) {
+			// Clear old Reader-only extracts along with Pages Cache on upgraded installs.
+			dirs += getCacheDirs(OBSOLETE_LOCAL_READER_PAGES)
+		}
+		dirs.forEach { it.deleteRecursively() }
 	}
 
 	suspend fun getReadableDirs(): List<File> = runInterruptible(Dispatchers.IO) {
@@ -201,6 +211,10 @@ class LocalStorageManager @Inject constructor(
 		context.externalCacheDirs.filterNotNullTo(result)
 		return result
 	}
+
+    private companion object {
+        const val OBSOLETE_LOCAL_READER_PAGES = "local_reader_pages"
+    }
 
 	private fun calculateDiskCacheSize(cacheDirectory: File): Long {
 		return try {

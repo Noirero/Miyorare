@@ -6,10 +6,14 @@ set -euo pipefail
 
 FULL=false
 SELF_TEST=false
+CLASSIFY=false
+POLICY=false
 for arg in "$@"; do
   case "$arg" in
     --full) FULL=true ;;
     --self-test) SELF_TEST=true ;;
+    --classify) CLASSIFY=true ;;
+    --policy) POLICY=true ;;
     *) echo "Unknown argument: $arg" >&2; exit 64 ;;
   esac
 done
@@ -61,6 +65,8 @@ add_migration_suite() {
   add_class org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.MigrationNonRoomDurabilityRegressionTest
   add_class org.koitharu.kotatsu.settings.sources.migration.MigrationBatchControlsTest
+  add_class org.koitharu.kotatsu.settings.sources.migration.MigrationFlowScreenTest
+  add_class org.koitharu.kotatsu.settings.sources.migration.MigrationLandingScreenTest
   add_class org.koitharu.kotatsu.alternatives.domain.MigrationBatchVisibilityTest
   RUN_MIGRATION_PERSISTENCE=true
   MAPPED=true
@@ -74,6 +80,12 @@ add_local_download_suite() {
   add_class org.koitharu.kotatsu.favourites.domain.DownloadedLocalStateTest
   add_class org.koitharu.kotatsu.local.data.LocalChapterDeleteStateTest
   add_class org.koitharu.kotatsu.details.domain.DetailsLiveLocalStateTest
+  MAPPED=true
+}
+
+add_local_reader_suite() {
+  # Reader/SAF-specific regression tests; unrelated local/download edits keep the lighter suite.
+  add_class org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest
   MAPPED=true
 }
 
@@ -135,8 +147,11 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.MigrationNonRoomDurabilityRegressionTest
   add_class org.koitharu.kotatsu.settings.sources.migration.MigrationBatchControlsTest
+  add_class org.koitharu.kotatsu.settings.sources.migration.MigrationFlowScreenTest
+  add_class org.koitharu.kotatsu.settings.sources.migration.MigrationLandingScreenTest
   add_class org.koitharu.kotatsu.alternatives.domain.MigrationBatchVisibilityTest
   add_class org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest
+  add_class org.koitharu.kotatsu.local.library.SmartLocalCoverPipelineTest
   add_class org.koitharu.kotatsu.details.domain.FavouriteReleasePredictionsTest
   add_class org.koitharu.kotatsu.details.ui.prediction.ReleasePredictionHeaderTest
   add_class org.koitharu.kotatsu.details.ui.prediction.ChapterReleasePredictionSheetTest
@@ -165,6 +180,17 @@ add_full_suite() {
 plan_path() {
   local path="$1"
   case "$path" in
+    app/src/main/kotlin/org/koitharu/kotatsu/local/library/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/local/library/*|app/src/main/kotlin/org/koitharu/kotatsu/local/data/input/LocalPdfCache.kt)
+      add_local_download_suite
+      add_local_reader_suite ;;
+
+    app/src/main/kotlin/org/koitharu/kotatsu/details/ui/pager/pages/MangaPageFetcher.kt)
+      add_tracker_suite
+      add_local_reader_suite ;;
+
+    app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt|app/src/main/kotlin/org/koitharu/kotatsu/picker/ui/page/PagePickerViewModel.kt)
+      add_local_reader_suite ;;
+
     app/src/main/kotlin/org/koitharu/kotatsu/history/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/history/*)
       add_history_suite ;;
 
@@ -252,11 +278,139 @@ plan_from_paths() {
   emit_plan targeted
 }
 
+# Conservative classification: only documentation-only diffs skip Android runtime.
+classify_paths() {
+  local path
+  local count=0
+  local has_runtime=false
+  local full=false
+  for path in "$@"; do
+    [[ -z "$path" ]] && continue
+    ((count+=1))
+    case "$path" in
+      README.md|README.*.md|CHANGELOG.md|CONTRIBUTING.md|LICENSE|LICENSE.*|NOTICE|.editorconfig|.gitignore|docs/*.md|docs/*.txt|docs/*.rst|*.md)
+        # Markdown outside the root or docs/ can be build/runtime input.
+        if [[ "$path" == */* && "$path" != docs/* ]]; then
+          has_runtime=true; full=true
+        fi
+        ;;
+      docs/*) has_runtime=true; full=true ;;
+      *)
+        has_runtime=true
+        MAPPED=false
+        REQUIRE_FULL=false
+        plan_path "$path"
+        if [[ "$MAPPED" != true || "$REQUIRE_FULL" == true ]]; then
+          full=true
+        fi
+        ;;
+    esac
+  done
+  if ((count==0)); then
+    printf 'run_runtime=true\nfull=true\n'
+  elif [[ "$has_runtime" == false ]]; then
+    printf 'run_runtime=false\nfull=false\n'
+  elif [[ "$full" == true ]]; then
+    printf 'run_runtime=true\nfull=true\n'
+  else
+    printf 'run_runtime=true\nfull=false\n'
+  fi
+}
+
+# PR event policy is based on current labels and draft state, not the event's
+# changed-label payload. Therefore labeled/unlabeled/synchronize/reopened
+# resolve identically for the same PR state.
+resolve_policy() {
+  local run="$1" full="$2" draft="$3" required="$4" force_full="$5" mapped="$6" user_issue="$7" theme="$8"
+  local v
+  for v in "$run" "$full" "$draft" "$required" "$force_full" "$mapped" "$user_issue" "$theme"; do
+    [[ "$v" == true || "$v" == false ]] || return 2
+  done
+  if [[ "$user_issue" == true || "$theme" == true ]]; then
+    required=true
+  fi
+  if [[ "$force_full" == true ]]; then
+    run=true; full=true
+  elif [[ "$required" == true ]]; then
+    run=true
+    [[ "$mapped" == true ]] || full=true
+  elif [[ "$draft" == true ]]; then
+    run=false; full=false
+  fi
+  if [[ "$draft" == true && "$required" == false && "$force_full" == false ]]; then
+    run=false; full=false
+  elif [[ "$full" == true ]]; then
+    run=true
+  fi
+  printf 'run_runtime=%s\nfull=%s\n' "$run" "$full"
+}
+
+policy_self_test() {
+  local got expected
+  policy_check() {
+    got="$(resolve_policy "$1" "$2" "$3" "$4" "$5" "$6" "${9:-false}" "${10:-false}")"
+    expected="$(printf 'run_runtime=%s\nfull=%s' "$7" "$8")"
+    [[ "$got" == "$expected" ]] || { echo "Policy mismatch: $got != $expected" >&2; return 1; }
+  }
+  # File changes, including docs-only, mapped, and unknown paths.
+  policy_check false false false false false false false false
+  policy_check true false false false false true true false
+  policy_check true true false false false false true true
+  policy_check true true true false false false false false
+  # Label additions/removals, including priority of full over required.
+  policy_check false false false true false false true true
+  policy_check true false false true false true true false
+  policy_check false false false false true false true true
+  policy_check true false false true true true true true
+  policy_check false false false false false false false false
+  # Documentation-only PRs must run Android Runtime for either mandatory label.
+  policy_check false false false false false false true true true false
+  policy_check false false false false false false true true false true
+  policy_check false false true false false false true true true false
+  policy_check false false true false false false true true false true
+  # Draft and ready_for_review event transitions.
+  policy_check true false true false false true false false
+  policy_check true false false false false true true false
+  policy_check false false true true false false true true
+  policy_check false false true false true false true true
+  # Same PR state on opened, synchronize, reopened, labeled, unlabeled:
+  # the resolver has no event-dependent branch.
+  if resolve_policy invalid false false false false false false false >/dev/null 2>&1; then return 1; fi
+  echo 'Runtime label/event policy self-test: PASS'
+}
+
+classify_self_test() {
+  local result
+  result="$(classify_paths README.md docs/guide.md)"
+  [[ "$result" == "$(printf 'run_runtime=false\nfull=false')" ]]
+  result="$(classify_paths app/src/main/assets/important.txt)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  result="$(classify_paths .github/ISSUE_TEMPLATE/config.md)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=false')" ]]
+  result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt app/src/main/kotlin/unknown/Unknown.kt)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  result="$(classify_paths .github/workflows/pr-compile-unit-check.yml)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  result="$(classify_paths)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  echo 'Runtime risk classifier self-test: PASS'
+}
+
 self_test() {
   local out
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
   grep -q '^mode=targeted$' <<<"$out"
   grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
+
+  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/library/LocalContentReader.kt')"
+  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalStorageCache.kt')"
+  grep -q 'FastDownloadedNovelResolutionTest' <<<"$out"
+  ! grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt')"
+  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
   grep -q 'DiscoveryCatalogUiTest' <<<"$out"
@@ -285,9 +439,12 @@ self_test() {
   out="$(plan_from_paths true 'README.md')"
   grep -q '^mode=full$' <<<"$out"
   grep -q 'CategorySetsUiTest' <<<"$out"
+  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
   grep -q '^run_runtime_isolation=true$' <<<"$out"
   grep -q '^run_migration_persistence=true$' <<<"$out"
 
+  classify_self_test
+  policy_self_test
   echo 'Runtime selector self-test: PASS'
 }
 
@@ -296,5 +453,17 @@ if [[ "$SELF_TEST" == true ]]; then
   exit 0
 fi
 
+if [[ "$POLICY" == true ]]; then
+  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}"
+  input="$(cat)"
+  run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
+  full="$(sed -n 's/^full=//p' <<< "$input")"
+  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME"
+  exit 0
+fi
 mapfile -t PATHS
+if [[ "$CLASSIFY" == true ]]; then
+  classify_paths "${PATHS[@]}"
+  exit 0
+fi
 plan_from_paths "$FULL" "${PATHS[@]}"

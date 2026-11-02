@@ -7,6 +7,11 @@ import androidx.core.net.toFile
 import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.asContextElement
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -47,8 +52,21 @@ open class LocalContentReader @Inject constructor(
     // maintenance cannot invalidate a still-open/previous chapter. Temporary cover users acquire
     // their own reference and release it as soon as extraction finishes.
     private val activeFiles = MaterializedCachePins()
+    // Each Reader load attempt owns at most one pin per backing. Access under cacheMutex.
+    private val readerLeases = ReaderBackingLeaseOwners()
+    private val recentlyReleased = HashMap<String, Long>()
+    private val maintenanceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var cleanupJob: Job? = null // Read/write while holding cacheMutex.
     private val metadataCache = android.util.LruCache<String, LocalMetadata>(32)
     private val cacheDir get() = File(context.cacheDir, "smart-local-content").also { it.mkdirs() }
+
+    init {
+        // A killed process has no live Reader owners. Reclaim old, unpinned backing on first
+        // use instead of carrying the previous process's large SAF copies indefinitely.
+        maintenanceScope.launch {
+            cacheMutex.withLock { trimMaterializedCacheLocked(RETAINED_BACKING_BUDGET_BYTES) }
+        }
+    }
 
     open suspend fun materialize(root: Node, node: Node): File = withContext(Dispatchers.IO) {
         check(documents.contains(root, node)) { "Content outside selected root" }
@@ -79,6 +97,7 @@ open class LocalContentReader @Inject constructor(
             // artifact; reopening it for a cover must not invalidate an active Reader marker.
             if (!activeFiles.isPinned(target.name)) target.setLastModified(System.currentTimeMillis())
             activeFiles.acquire(target.name)
+            recentlyReleased.remove(target.name)
             trimMaterializedCacheLocked()
             target
         }
@@ -89,16 +108,60 @@ open class LocalContentReader @Inject constructor(
         cacheMutex.withLock {
             activeFiles.release(file.name)
             // A cover-only copy is temporary. A concurrent/retained Reader reference wins.
-            if (!activeFiles.isPinned(file.name)) file.delete()
+            if (!activeFiles.isPinned(file.name) && file.name !in recentlyReleased) file.delete()
             trimMaterializedCacheLocked()
         }
     }
 
-    private fun trimMaterializedCacheLocked() {
+    /**
+     * Release an unpublished attempt or a chapter/preview removed from Reader state.
+     * A different owner referencing the same backing retains its own pin.
+     */
+    suspend fun releaseReaderLease(token: Any) = withContext(Dispatchers.IO) {
+        cacheMutex.withLock {
+            val names = readerLeases.release(token)
+            for (name in names) {
+                activeFiles.release(name)
+                // Give in-flight image requests time to finish even after the chapter snapshot
+                // is removed. This does not mutate the backing mtime used by PDF cache identity.
+                if (!activeFiles.isPinned(name)) recentlyReleased[name] = System.currentTimeMillis()
+            }
+            trimMaterializedCacheLocked()
+            if (names.isNotEmpty()) scheduleRetainedCleanupLocked()
+        }
+    }
+
+    private fun scheduleRetainedCleanupLocked() {
+        cleanupJob?.cancel()
+        cleanupJob = maintenanceScope.launch {
+            delay(RELEASE_GRACE_MS)
+            cacheMutex.withLock { trimMaterializedCacheLocked(RETAINED_BACKING_BUDGET_BYTES) }
+        }
+    }
+
+    private suspend fun retainReaderLease(token: Any, file: File) {
+        if (file.parentFile != cacheDir) return
+        cacheMutex.withLock {
+            if (!readerLeases.retain(token, file.name)) {
+                // materialize() acquired again for the same owner; preserve the original pin.
+                activeFiles.release(file.name)
+            }
+        }
+    }
+
+    private fun trimMaterializedCacheLocked(targetBytes: Long = MATERIALIZED_CACHE_MAX_BYTES) {
+        val now = System.currentTimeMillis()
+        recentlyReleased.entries.removeAll { now - it.value >= RELEASE_GRACE_MS }
+        // Crash leftovers are never published backing URLs. Ignore recent partials that may
+        // belong to another in-flight materialization, and remove only stale partial files.
+        val staleBefore = System.currentTimeMillis() - STALE_PARTIAL_AGE_MS
+        cacheDir.listFiles().orEmpty().filter {
+            it.name.endsWith(".partial") && it.lastModified() < staleBefore
+        }.forEach { it.delete() }
         var total = cacheDir.listFiles().orEmpty().sumOf { it.length() }
         for (old in cacheDir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
-            if (total <= MATERIALIZED_CACHE_MAX_BYTES) break
-            if (activeFiles.isPinned(old.name)) continue
+            if (total <= targetBytes) break
+            if (activeFiles.isPinned(old.name) || old.name in recentlyReleased) continue
             val size = old.length()
             if (old.delete()) total -= size
         }
@@ -114,17 +177,106 @@ open class LocalContentReader @Inject constructor(
         } else if (LocalTreeScanner.extension(chapter.node.name) == "epub") {
             listOf(MangaPage(id = chapter.id, url = chapter.url, preview = null, source = LocalMangaSource))
         } else {
-            val file = materialize(root, chapter.node)
-            val urls = if (LocalTreeScanner.extension(chapter.node.name) == "pdf") {
-                LocalPdfCache.renderPages(file).map { it.toUri().toString() }
-            } else ZipFile(file).use { zip ->
-                zip.entries().asSequence().filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
-                    .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name })
-                    .map { file.toZipUri(it.name).toString() }.toList()
+            val extension = LocalTreeScanner.extension(chapter.node.name)
+            // A seekable PDF descriptor is sufficient to enumerate pages. Page bitmaps are
+            // rendered lazily by reopening that authorized document, not by copying its bytes.
+            if (extension == "pdf" &&
+                chapter.node.uri.toUri().scheme == ContentResolver.SCHEME_CONTENT) {
+                val direct = try {
+                    // Refresh metadata when opening Reader. Library scan snapshots may be stale.
+                    val current = documents.stat(root, chapter.node)
+                    documents.withReadDescriptor(root, current, { descriptor ->
+                        LocalPdfCache.renderPagesFromDocument(
+                            descriptor, current.uri,
+                            "${current.key}:${current.size}:${current.modified}",
+                            current.size, current.modified,
+                        )
+                    })
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                }
+                if (!direct.isNullOrEmpty()) {
+                    return@withContext direct.mapIndexed { index, file ->
+                        MangaPage(id = "${original.id}:$index".longHashCode(), url = file.toUri().toString(),
+                            preview = null, source = LocalMangaSource)
+                    }
+                }
             }
-            check(urls.isNotEmpty()) { "No readable pages in ${chapter.node.name}" }
-            urls.mapIndexed { i, url -> MangaPage(id = "${original.id}:$i".longHashCode(), url = url,
-                preview = null, source = LocalMangaSource) }
+            // SAF providers with a seekable descriptor can expose indexed archive pages without
+            // copying the whole file into app storage. Incompatible formats/providers use the
+            // existing materialized backing path, including its Reader lease.
+            if ((extension == "cbz" || extension == "zip") &&
+                chapter.node.uri.toUri().scheme == ContentResolver.SCHEME_CONTENT) {
+                val coroutine = currentCoroutineContext()
+                val direct = try {
+                    documents.withReadDescriptor(root, chapter.node, { descriptor ->
+                        ParcelFileDescriptor.AutoCloseInputStream(
+                            ParcelFileDescriptor.dup(descriptor.fileDescriptor)
+                        ).use { input ->
+                            val archive = IndexedArchiveCoverReader(input.channel) { coroutine.ensureActive() }
+                            archive.readerPageNames(::isArchiveImage)
+                                ?.sortedWith(LocalTreeScanner.NATURAL)
+                                ?.map { SmartLocalArchivePageUri.create(chapter.node.uri, it, archive.archiveVersion) }
+                        }
+                    })
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                }
+                if (!direct.isNullOrEmpty()) {
+                    return@withContext direct.mapIndexed { index, url ->
+                        MangaPage(id = "${original.id}:$index".longHashCode(), url = url,
+                            preview = null, source = LocalMangaSource)
+                    }
+                }
+            }
+            val file = materialize(root, chapter.node)
+            try {
+                val urls = if (extension == "pdf") {
+                    LocalPdfCache.renderPages(file).map { it.toUri().toString() }
+                } else ZipFile(file).use { zip ->
+                    zip.entries().asSequence().filter { !it.isDirectory && LocalTreeScanner.isImage(it.name) && safeEntry(it.name) }
+                        .sortedWith(compareBy(LocalTreeScanner.NATURAL) { it.name })
+                        .map { file.toZipUri(it.name).toString() }.toList()
+                }
+                check(urls.isNotEmpty()) { "No readable pages in ${chapter.node.name}" }
+                val pages = urls.mapIndexed { i, url -> MangaPage(id = "${original.id}:$i".longHashCode(), url = url,
+                    preview = null, source = LocalMangaSource) }
+                val lease = currentCoroutineContext()[ReaderBackingLeaseContext]
+                if (lease != null) retainReaderLease(lease.token, file)
+                pages
+            } catch (error: Throwable) {
+                // No page URLs were published: release the backing even on cancellation.
+                withContext(NonCancellable) { releaseMaterialized(file) }
+                throw error
+            }
+        }
+    }
+
+    private suspend fun indexedArchiveMetadata(root: Node, node: Node): LocalMetadata? {
+        if (node.uri.toUri().scheme != ContentResolver.SCHEME_CONTENT) return null
+        val coroutine = currentCoroutineContext()
+        return try {
+            documents.withReadDescriptor(root, node, { descriptor ->
+                ParcelFileDescriptor.AutoCloseInputStream(
+                    ParcelFileDescriptor.dup(descriptor.fileDescriptor)
+                ).use { input ->
+                    val archive = IndexedArchiveCoverReader(input.channel) { coroutine.ensureActive() }
+                    val metadata = archive.readerMetadata()
+                    if (metadata == null) LocalMetadata()
+                    else metadata.second.inputStream().use { source ->
+                        if (metadata.first.equals("index.json", true)) LocalMetadata.readJson(source)
+                        else LocalMetadata.readXml(source)
+                    }
+                }
+            })
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null // Unsupported provider/archive: preserve the existing seekable-copy fallback.
         }
     }
 
@@ -134,13 +286,25 @@ open class LocalContentReader @Inject constructor(
         metadataCache.get(key)?.let { return@withContext it }
         val ext = LocalTreeScanner.extension(chapter.node.name)
         val metadata = when (ext) {
-            "epub" -> EpubParser.parse(materialize(root, chapter.node)).let { LocalMetadata(it.title, it.authors, it.description) }
-            "cbz", "zip" -> ZipFile(materialize(root, chapter.node)).use { zip ->
-                val entry = zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("index.json", true) }
-                    ?: zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("ComicInfo.xml", true) }
-                entry?.let { zip.getInputStream(it).use { input ->
-                    if (it.name.equals("index.json", true)) LocalMetadata.readJson(input) else LocalMetadata.readXml(input)
-                } } ?: LocalMetadata()
+            "epub", "cbz", "zip" -> {
+                val indexed = if (ext != "epub") indexedArchiveMetadata(root, chapter.node) else null
+                if (indexed != null) indexed else {
+                val file = materialize(root, chapter.node)
+                try {
+                    when (ext) {
+                        "epub" -> EpubParser.parse(file).let { LocalMetadata(it.title, it.authors, it.description) }
+                        else -> ZipFile(file).use { zip ->
+                            val entry = zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("index.json", true) }
+                                ?: zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.equals("ComicInfo.xml", true) }
+                            entry?.let { zip.getInputStream(it).use { input ->
+                                if (it.name.equals("index.json", true)) LocalMetadata.readJson(input) else LocalMetadata.readXml(input)
+                            } } ?: LocalMetadata()
+                        }
+                    }
+                } finally {
+                    withContext(NonCancellable) { releaseMaterialized(file) }
+                }
+                }
             }
             else -> LocalMetadata()
         }
@@ -150,47 +314,52 @@ open class LocalContentReader @Inject constructor(
 
     suspend fun epubHtml(root: Node, chapter: LocalChapter): String = withContext(Dispatchers.IO) {
         val file = materialize(root, chapter.node)
-        val book = EpubParser.parse(file)
-        check(book.spine.isNotEmpty()) { "EPUB has no readable content" }
-        ZipFile(file).use { zip ->
-            buildString {
-                append("<html><body>")
-                for (item in book.spine.filter { chapter.epubSection == null || it.href == chapter.epubSection }) {
-                    currentCoroutineContext().ensureActive()
-                    val entry = zip.getEntry(item.href) ?: throw IOException("Missing EPUB section: ${item.href}")
-                    val html = zip.getInputStream(entry).use { it.readBytesLimited(16 * 1024 * 1024).toString(Charsets.UTF_8) }
-                    val doc = Jsoup.parse(html)
-                    doc.select("script, iframe, object").remove()
-                    for (image in doc.select("img[src]")) {
-                        val path = EpubParser.resolveHref(item.href.substringBeforeLast('/', ""), image.attr("src"))
-                        if (safeEntry(path)) image.attr("src", "local-epub:$path") else image.remove()
-                    }
-                    val entries = book.toc.filter { it.href == item.href }
-                    if (entries.isEmpty()) {
-                        doc.body().prependChild(org.jsoup.nodes.Element("miyorare-section").attr("data-title", item.title))
-                    } else for (section in entries.asReversed()) {
-                        val marker = org.jsoup.nodes.Element("miyorare-section").attr("data-title", section.title)
-                        val target = section.fragment?.let { fragment ->
-                            val id = runCatching { java.net.URLDecoder.decode(fragment.replace("+", "%2B"), "UTF-8") }.getOrDefault(fragment)
-                            doc.getElementById(id)
+        try {
+            val book = EpubParser.parse(file)
+            check(book.spine.isNotEmpty()) { "EPUB has no readable content" }
+            ZipFile(file).use { zip ->
+                buildString {
+                    append("<html><body>")
+                    for (item in book.spine.filter { chapter.epubSection == null || it.href == chapter.epubSection }) {
+                        currentCoroutineContext().ensureActive()
+                        val entry = zip.getEntry(item.href) ?: throw IOException("Missing EPUB section: ${item.href}")
+                        val html = zip.getInputStream(entry).use { it.readBytesLimited(16 * 1024 * 1024).toString(Charsets.UTF_8) }
+                        val doc = Jsoup.parse(html)
+                        doc.select("script, iframe, object").remove()
+                        for (image in doc.select("img[src]")) {
+                            val path = EpubParser.resolveHref(item.href.substringBeforeLast('/', ""), image.attr("src"))
+                            if (safeEntry(path)) image.attr("src", "local-epub:$path") else image.remove()
                         }
-                        if (target != null) target.before(marker) else doc.body().prependChild(marker)
+                        val entries = book.toc.filter { it.href == item.href }
+                        if (entries.isEmpty()) {
+                            doc.body().prependChild(org.jsoup.nodes.Element("miyorare-section").attr("data-title", item.title))
+                        } else for (section in entries.asReversed()) {
+                            val marker = org.jsoup.nodes.Element("miyorare-section").attr("data-title", section.title)
+                            val target = section.fragment?.let { fragment ->
+                                val id = runCatching { java.net.URLDecoder.decode(fragment.replace("+", "%2B"), "UTF-8") }.getOrDefault(fragment)
+                                doc.getElementById(id)
+                            }
+                            if (target != null) target.before(marker) else doc.body().prependChild(marker)
+                        }
+                        append(doc.body().html())
+                        check(length <= 32 * 1024 * 1024) { "EPUB volume is too large" }
                     }
-                    append(doc.body().html())
-                    check(length <= 32 * 1024 * 1024) { "EPUB volume is too large" }
+                    append("</body></html>")
                 }
-                append("</body></html>")
             }
-        }
+        } finally { withContext(NonCancellable) { releaseMaterialized(file) } }
     }
 
     suspend fun epubImage(root: Node, chapter: LocalChapter, source: String): ByteArray? = withContext(Dispatchers.IO) {
         if (!source.startsWith("local-epub:")) return@withContext null
         val path = source.removePrefix("local-epub:")
         if (!safeEntry(path) || !LocalTreeScanner.isImage(path)) return@withContext null
-        ZipFile(materialize(root, chapter.node)).use { zip ->
-            zip.getEntry(path)?.let { entry -> zip.getInputStream(entry).use { it.readBytesLimited(32 * 1024 * 1024) } }
-        }
+        val file = materialize(root, chapter.node)
+        try {
+            ZipFile(file).use { zip ->
+                zip.getEntry(path)?.let { entry -> zip.getInputStream(entry).use { it.readBytesLimited(32 * 1024 * 1024) } }
+            }
+        } finally { withContext(NonCancellable) { releaseMaterialized(file) } }
     }
 
     internal open suspend fun cover(
@@ -342,6 +511,9 @@ open class LocalContentReader @Inject constructor(
 
     private companion object {
         const val MATERIALIZED_CACHE_MAX_BYTES = 512L * 1024 * 1024
+        const val RETAINED_BACKING_BUDGET_BYTES = 96L * 1024 * 1024
+        const val STALE_PARTIAL_AGE_MS = 60L * 60 * 1000
+        const val RELEASE_GRACE_MS = 60L * 1000
     }
 }
 

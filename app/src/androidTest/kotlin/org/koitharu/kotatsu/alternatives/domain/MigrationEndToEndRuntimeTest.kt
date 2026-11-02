@@ -314,34 +314,35 @@ class MigrationEndToEndRuntimeTest {
         val containers = listOf(sourcePath, targetPath, aliasPath).flatMap { directory ->
             listOf(File(directory, "index.json"), File(directory, "chapter.cbz"))
         }.associateWith { it.readBytes() }
-        // No favourite_download_index target exists: the local_index row itself must veto collision.
-        val indexedCollision = runCatching {
-            migrateProvider.get()(source, destination, lossless = true, requireLibraryEntry = true)
-        }.exceptionOrNull()
-        assertTrue(indexedCollision is IllegalStateException)
-        assertTrue(indexedCollision?.message?.contains("different downloaded container") == true)
-        assertTrue(database.getMangaDao().isMigrationEntryVisible(source.id))
-        assertTrue(database.getFavouritesDao().findAllRaw(destination.id).isEmpty())
-        assertEquals("P5 note", notes.get(source.id))
-        assertNull(notes.get(destination.id))
+
+        // An unrelated destination download must not block source-state migration, claim the
+        // wrong container, or rewrite either set of downloaded files.
+        migrateProvider.get()(source, destination, lossless = true, requireLibraryEntry = true)
+        assertFalse(database.getMangaDao().isMigrationEntryVisible(source.id))
+        assertTrue(database.getMangaDao().isMigrationEntryVisible(destination.id))
+        assertEquals("P5 note", notes.get(destination.id))
         assertTrue(index.getDownloadAliasPaths(listOf(destination.id)).isEmpty())
         assertEquals(sourcePath.path, database.getLocalMangaIndexDao().findPath(source.id))
         assertEquals(targetPath.path, database.getLocalMangaIndexDao().findPath(destination.id))
 
-        // Isolate the alias-only collision. A valid alias must map a remote id to a distinct local id;
-        // registerDownloadAlias intentionally no-ops when remoteMangaId == localMangaId.
-        database.getLocalMangaIndexDao().delete(destination.id)
-        assertNull(database.getLocalMangaIndexDao().findPath(destination.id))
-        index.registerDownloadAlias(destination.id, aliasOwner.id, aliasPath)
-        assertEquals(aliasPath.path, index.getDownloadAliasPaths(listOf(destination.id))[destination.id])
-        val aliasCollision = runCatching {
-            migrateProvider.get()(source, destination, lossless = true, requireLibraryEntry = true)
-        }.exceptionOrNull()
-        assertTrue(aliasCollision is IllegalStateException)
-        assertEquals(aliasPath.path, index.getDownloadAliasPaths(listOf(destination.id))[destination.id])
-        assertEquals("P5 note", notes.get(source.id))
-        assertNull(notes.get(destination.id))
-        for ((file, bytes) in containers) assertArrayEquals("Collision must not touch " + file.name, bytes, file.readBytes())
+        // An existing alias is also independent ownership evidence. Migration must leave that
+        // alias intact, not overwrite it with the source's physical container.
+        val source2 = manga(994004, "P5_OLD")
+        val destination2 = manga(994005, "P5_NEW")
+        seed(source2, destination2)
+        val sourcePath2 = createDownload("collision-source-alias", source2)
+        database.getLocalMangaIndexDao().upsert(LocalMangaIndexEntity(source2.id, sourcePath2.path))
+        index.registerDownloadAlias(destination2.id, aliasOwner.id, aliasPath)
+        assertEquals(aliasPath.path, index.getDownloadAliasPaths(listOf(destination2.id))[destination2.id])
+        migrateProvider.get()(source2, destination2, lossless = true, requireLibraryEntry = true)
+        assertFalse(database.getMangaDao().isMigrationEntryVisible(source2.id))
+        assertTrue(database.getMangaDao().isMigrationEntryVisible(destination2.id))
+        assertEquals(aliasPath.path, index.getDownloadAliasPaths(listOf(destination2.id))[destination2.id])
+        assertEquals(sourcePath2.path, database.getLocalMangaIndexDao().findPath(source2.id))
+        assertEquals("P5 note", notes.get(destination2.id))
+        for ((file, bytes) in containers) {
+            assertArrayEquals("Collision must not touch " + file.name, bytes, file.readBytes())
+        }
     }
 
     private suspend fun seedFullState(manga: Manga) {

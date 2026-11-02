@@ -1,31 +1,80 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
  xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent"
- android:layout_height="wrap_content" android:orientation="vertical">
- <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-  <TextView android:id="@+id/textView_summary" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textAppearance="?textAppearanceTitleSmall" />
+ android:layout_height="wrap_content" android:orientation="vertical" android:paddingHorizontal="12dp" android:paddingTop="16dp" android:paddingBottom="12dp" android:background="@color/smart_local_ink">
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+  android:padding="18dp" android:orientation="vertical" android:background="@drawable/bg_smart_local_archive_hero">
+ <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+  android:text="@string/smart_local_archive_eyebrow" android:textColor="@color/smart_local_gold"
+  android:textAllCaps="true" android:letterSpacing="0.18" android:textSize="11sp" android:paddingTop="8dp"/>
+ <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+  android:text="@string/smart_local_archive_title" android:textColor="@color/smart_local_cream"
+  android:textSize="28sp" android:textStyle="bold" android:layout_marginTop="3dp"/>
+ <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+  android:text="@string/smart_local_archive_subtitle" android:textColor="@color/smart_local_muted"
+  android:textSize="13sp" android:layout_marginTop="4dp" android:layout_marginBottom="14dp"/>
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+  android:orientation="horizontal" android:gravity="center_vertical">
+  <TextView android:id="@+id/textView_summary" android:layout_width="0dp" android:layout_weight="1"
+   android:layout_height="wrap_content" android:visibility="gone"/>
   <com.google.android.material.button.MaterialButton android:id="@+id/button_manage_folders"
-   style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="wrap_content" android:layout_height="wrap_content"
-   android:layout_marginStart="8dp" android:minHeight="48dp" android:minWidth="48dp" android:maxWidth="168dp" android:text="@string/smart_local_manage_folders" />
+   style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent"
+   android:layout_height="wrap_content" android:minHeight="48dp" app:cornerRadius="18dp"
+   app:strokeColor="@color/smart_local_edge" android:textColor="@color/smart_local_gold"
+   android:text="@string/smart_local_manage_folders"/>
+ </LinearLayout>
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+  android:orientation="horizontal" android:layout_marginTop="12dp" android:baselineAligned="false">
+  <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+   android:minHeight="90dp" android:padding="12dp" android:orientation="vertical"
+   android:background="@drawable/bg_smart_local_archive_stat">
+   <TextView android:id="@+id/textView_folder_count" android:layout_width="match_parent"
+    android:layout_height="wrap_content" android:textColor="@color/smart_local_gold"
+    android:textSize="24sp" android:textStyle="bold"/>
+   <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:text="@string/smart_local_archive_folders" android:textSize="12sp"
+    android:textColor="@color/smart_local_muted"/>
+  </LinearLayout>
+  <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+   android:minHeight="90dp" android:layout_marginStart="8dp" android:padding="12dp"
+   android:orientation="vertical" android:background="@drawable/bg_smart_local_cinematic_card">
+   <TextView android:id="@+id/textView_title_count" android:layout_width="match_parent"
+    android:layout_height="wrap_content" android:textColor="@color/smart_local_gold"
+    android:textSize="24sp" android:textStyle="bold"/>
+   <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:text="@string/smart_local_archive_titles" android:textSize="12sp"
+    android:textColor="@color/smart_local_muted"/>
+  </LinearLayout>
+  <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+   android:minHeight="90dp" android:layout_marginStart="8dp" android:padding="12dp"
+   android:orientation="vertical" android:background="@drawable/bg_smart_local_cinematic_card">
+   <TextView android:id="@+id/textView_chapter_count" android:layout_width="match_parent"
+    android:layout_height="wrap_content" android:textColor="@color/smart_local_gold"
+    android:textSize="24sp" android:textStyle="bold"/>
+   <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:text="@string/smart_local_archive_chapters" android:textSize="12sp"
+    android:textColor="@color/smart_local_muted"/>
+  </LinearLayout>
+ </LinearLayout>
  </LinearLayout>
  <com.google.android.material.button.MaterialButtonToggleGroup android:layout_width="match_parent" android:layout_height="wrap_content"
-  app:singleSelection="true" app:selectionRequired="true">
+  app:singleSelection="true" app:selectionRequired="true" android:layout_marginTop="16dp" android:layout_marginBottom="10dp">
   <com.google.android.material.button.MaterialButton android:id="@+id/chip_all" style="@style/Widget.Material3.Button.OutlinedButton"
-   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/smart_local_type_all" />
+   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" app:cornerRadius="22dp" app:strokeColor="@color/smart_local_edge" app:backgroundTint="@color/smart_local_segment_fill" android:textColor="@color/smart_local_segment_text" android:text="@string/smart_local_type_all" />
   <com.google.android.material.button.MaterialButton android:id="@+id/chip_manga" style="@style/Widget.Material3.Button.OutlinedButton"
-   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/smart_local_type_manga" />
+   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" app:cornerRadius="22dp" app:strokeColor="@color/smart_local_edge" app:backgroundTint="@color/smart_local_segment_fill" android:textColor="@color/smart_local_segment_text" android:text="@string/smart_local_type_manga" />
   <com.google.android.material.button.MaterialButton android:id="@+id/chip_novel" style="@style/Widget.Material3.Button.OutlinedButton"
-   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/smart_local_type_novel" />
+   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" app:cornerRadius="22dp" app:strokeColor="@color/smart_local_edge" app:backgroundTint="@color/smart_local_segment_fill" android:textColor="@color/smart_local_segment_text" android:text="@string/smart_local_type_novel" />
  </com.google.android.material.button.MaterialButtonToggleGroup>
  <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-  android:layout_marginTop="8dp" android:hint="@string/smart_local_search_hint" app:startIconDrawable="@drawable/ic_search" app:endIconMode="clear_text">
+  android:layout_marginTop="8dp" android:hint="@string/smart_local_search_hint" app:startIconDrawable="@drawable/ic_search" app:endIconMode="clear_text" app:boxBackgroundMode="outline" app:boxCornerRadiusTopStart="16dp" app:boxCornerRadiusTopEnd="16dp" app:boxCornerRadiusBottomStart="16dp" app:boxCornerRadiusBottomEnd="16dp" app:boxStrokeColor="@color/smart_local_edge" app:hintTextColor="@color/smart_local_muted" app:startIconTint="@color/smart_local_gold" app:endIconTint="@color/smart_local_muted">
   <com.google.android.material.textfield.TextInputEditText android:id="@+id/editText_search" android:layout_width="match_parent" android:layout_height="wrap_content"
-   android:imeOptions="actionDone" android:inputType="text" android:maxLines="1" />
+   android:textColor="@color/smart_local_cream" android:textColorHint="@color/smart_local_muted" android:imeOptions="actionDone" android:inputType="text" android:maxLines="1" />
  </com.google.android.material.textfield.TextInputLayout>
- <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="8dp">
   <com.google.android.material.button.MaterialButton android:id="@+id/button_filter" style="@style/Widget.Material3.Button.OutlinedButton"
-   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/filter" app:icon="@drawable/ic_filter_funnel" />
+   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" app:cornerRadius="16dp" app:strokeColor="@color/smart_local_edge" android:textColor="@color/smart_local_cream" android:text="@string/filter" app:icon="@drawable/ic_filter_funnel" />
   <com.google.android.material.button.MaterialButton android:id="@+id/button_sort" style="@style/Widget.Material3.Button.OutlinedButton"
-   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:minHeight="48dp" android:text="@string/sort_order" />
+   android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:minHeight="48dp" app:cornerRadius="16dp" app:strokeColor="@color/smart_local_edge" android:textColor="@color/smart_local_cream" android:text="@string/sort_order" />
  </LinearLayout>
 </LinearLayout>

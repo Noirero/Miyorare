@@ -8,6 +8,7 @@ import androidx.core.net.toUri
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -32,6 +33,8 @@ import org.koitharu.kotatsu.core.util.ext.toZipUri
 import org.koitharu.kotatsu.local.data.input.EpubParser
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -43,6 +46,11 @@ class SmartLocalLibrary @Inject constructor(
     private val dataRepository: MangaDataRepository, private val db: MangaDatabase,
     private val coverCache: SmartLocalCoverCache,
 ) {
+    // Disposable, independently budgeted chapter-gallery thumbnails. Never store reader pages.
+    private val chapterGalleryCache by lazy {
+        SmartLocalCoverCache(File(context.cacheDir, "smart-local-chapter-gallery"),
+            maxBytes = 48L * 1024 * 1024, maxEntries = 512)
+    }
     private val mutex = Mutex()
     private val prefs by lazy { context.getSharedPreferences("smart_local_library", Context.MODE_PRIVATE) }
     private val indexFile get() = AtomicFile(File(context.filesDir, "smart-local-index.json"))
@@ -68,7 +76,11 @@ class SmartLocalLibrary @Inject constructor(
             }.getOrNull()
             val books = saved?.optJSONArray("books")?.objects()?.mapNotNull { json ->
                 runCatching { json.toLocalBook() }.getOrNull()
-            }.orEmpty().filter { it.rootUri in roots.map { r -> r.uri } && it.node.key !in exclusions }
+            }.orEmpty().filter { it.rootUri in roots.map { r -> r.uri } && it.node.key !in exclusions }.map { book ->
+                val overrides = JSONObject(prefs.getString("author_overrides", "{}").orEmpty())
+                val withAuthors = if (!overrides.has(book.node.key)) book else book.copy(authors = overrides.optString(book.node.key).split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() })
+                applyTextOverrides(withAuthors)
+            }
             val diagnoses = saved?.optJSONArray("diagnoses")?.objects()?.mapNotNull { json ->
                 runCatching { LocalDiagnosis(json.getString("root"), json.optJSONObject("node")?.toNode(),
                     json.getString("reason"), json.optJSONArray("candidates")?.objects()?.map { it.toNode() }.orEmpty()) }.getOrNull()
@@ -113,23 +125,57 @@ class SmartLocalLibrary @Inject constructor(
         mutableChanges.emit(Unit)
     }
 
-    suspend fun scan() = withContext(Dispatchers.IO) {
+    suspend fun refreshSelected(ids: Set<Long>) = scan(selectedIds = ids)
+
+    suspend fun scan(selectedRoots: Set<String>? = null, selectedIds: Set<Long>? = null) = withContext(Dispatchers.IO) {
         initialize()
+        if (selectedRoots != null && selectedRoots.isEmpty()) return@withContext
+        if (selectedIds != null && selectedIds.isEmpty()) return@withContext
         mutex.withLock {
             val previous = state.value
             val previousByKey = previous.books.associateBy { it.node.key }
             val exclusions = readExclusions().keys
+            val authorOverrides = JSONObject(prefs.getString("author_overrides", "{}").orEmpty())
             val confirmed = prefs.getStringSet("confirmed", emptySet()).orEmpty().toSet()
+            val targets = if (selectedIds == null) emptyList() else previous.books.filter { it.id in selectedIds }
+            require(selectedIds == null || targets.size == selectedIds.size) { "Selected collection is no longer indexed" }
+            val activeRoots = previous.roots.filter { root ->
+                (selectedRoots == null || root.uri in selectedRoots) &&
+                    (selectedIds == null || targets.any { it.rootUri == root.uri })
+            }
             val books = LinkedHashMap<String, LocalBook>()
+            previous.books.filter { book -> activeRoots.none { it.uri == book.rootUri } ||
+                (selectedIds != null && book.id !in selectedIds) }.forEach { books[it.node.key] = it }
             val diagnoses = ArrayList<LocalDiagnosis>()
-            for (root in previous.roots) {
+            diagnoses += previous.diagnoses.filter { issue -> activeRoots.none { it.uri == issue.rootUri } || selectedIds != null }
+            for (root in activeRoots) {
                 currentCoroutineContext().ensureActive()
                 val result = runCatchingCancellable {
-                    documents.withAccess(root.uri) { node, access -> LocalTreeScanner().scan(node, access, confirmed, exclusions) }
+                    if (selectedIds == null) {
+                        documents.withAccess(root.uri) { node, access -> LocalTreeScanner().scan(node, access, confirmed, exclusions) }
+                    } else {
+                        val result = LocalTreeScanner.Result()
+                        for (target in targets.filter { it.rootUri == root.uri }) {
+                            currentCoroutineContext().ensureActive()
+                            val rootNode = documents.root(root.uri)
+                            check(documents.contains(rootNode, target.node)) { "Selected collection outside its root" }
+                            val coroutine = currentCoroutineContext()
+                            val scanned = if (target.node.directory) {
+                                val access = documents.access(target.node) { coroutine.ensureActive() }
+                                LocalTreeScanner().scan(target.node, access, confirmed + target.node.key, exclusions)
+                            } else {
+                                LocalTreeScanner().scanFile(documents.stat(rootNode, target.node))
+                            }
+                            result.entries.addAll(scanned.entries)
+                            result.issues.addAll(scanned.issues)
+                        }
+                        result
+                    }
                 }
                 val scanned = result.getOrNull()
                 if (scanned == null) {
-                    previous.books.filter { it.rootUri == root.uri && it.node.key !in exclusions }.forEach { books[it.node.key] = it }
+                    previous.books.filter { it.rootUri == root.uri && it.node.key !in exclusions &&
+                        (selectedIds == null || it.id in selectedIds) }.forEach { books[it.node.key] = it }
                     diagnoses += LocalDiagnosis(root.uri, null, "unavailable")
                     continue
                 }
@@ -153,7 +199,9 @@ class SmartLocalLibrary @Inject constructor(
                         metadata.firstNotNullOfOrNull { it.description } ?: old?.description, explicitCover ?: metadataCover ?: chapters.firstOrNull()?.pages?.firstOrNull()?.uri,
                         entry.ignored, old?.addedAt ?: System.currentTimeMillis(), System.currentTimeMillis(),
                         pendingLocalDiscoveries(old?.newChapters ?: 0, discovered, chapters.size))
-                    books.putIfAbsent(book.node.key, book)
+                    val override = authorOverrides.optString(book.node.key).takeIf { authorOverrides.has(book.node.key) }
+                    val withAuthors = if (override != null) book.copy(authors = override.split(',').map { it.trim() }.filterTo(LinkedHashSet()) { it.isNotEmpty() }) else book
+                    books.putIfAbsent(book.node.key, applyTextOverrides(withAuthors))
                 }
                 scanned.issues.forEach { diagnoses += LocalDiagnosis(root.uri, it.node, it.reason, it.candidates) }
             }
@@ -194,6 +242,172 @@ class SmartLocalLibrary @Inject constructor(
         mutableChanges.emit(Unit)
     }
 
+    /** Bulk author override is kept separate from scanner metadata so rescans preserve user edits. */
+    suspend fun setAuthors(ids: Set<Long>, authors: Set<String>) = withContext(Dispatchers.IO) {
+        initialize()
+        mutex.withLock {
+            val selected = state.value.books.filter { it.id in ids }
+            if (selected.isEmpty()) return@withLock
+            val overrides = JSONObject(prefs.getString("author_overrides", "{}").orEmpty())
+            val encoded = authors.joinToString(",")
+            selected.forEach { overrides.put(it.node.key, encoded) }
+            check(prefs.edit().putString("author_overrides", overrides.toString()).commit())
+            val updated = state.value.books.map { if (it.id in ids) it.copy(authors = authors) else it }
+            db.withTransaction {
+                for (book in updated.filter { it.id in ids }) {
+                    dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
+                }
+            }
+            publishLocked(state.value.copy(books = updated))
+        }
+        mutableChanges.emit(Unit)
+    }
+
+    /** Persist manual title/description overrides independently of scanner sidecars. */
+    private fun applyTextOverrides(book: LocalBook): LocalBook {
+        val overrides = JSONObject(prefs.getString("text_overrides", "{}").orEmpty())
+        val entry = overrides.optJSONObject(book.node.key) ?: return book
+        return book.copy(
+            title = if (entry.has("title")) entry.optString("title").ifBlank { book.title } else book.title,
+            description = if (entry.has("description")) entry.optString("description") else book.description,
+        )
+    }
+
+    suspend fun setTextMetadata(ids: Set<Long>, title: String?, description: String?) = withContext(Dispatchers.IO) {
+        require(title != null || description != null) { "No metadata fields supplied" }
+        require(title == null || title.length <= 300) { "Title too long" }
+        require(description == null || description.length <= 20_000) { "Description too long" }
+        initialize()
+        mutex.withLock {
+            val selected = state.value.books.filter { it.id in ids }
+            if (selected.isEmpty()) return@withLock
+            val overrides = JSONObject(prefs.getString("text_overrides", "{}").orEmpty())
+            for (book in selected) {
+                val entry = overrides.optJSONObject(book.node.key) ?: JSONObject()
+                if (title != null) entry.put("title", title)
+                if (description != null) entry.put("description", description)
+                overrides.put(book.node.key, entry)
+            }
+            val previousOverrides = prefs.getString("text_overrides", null)
+            check(prefs.edit().putString("text_overrides", overrides.toString()).commit())
+            try {
+                val updated = state.value.books.map { if (it.id in ids) applyTextOverrides(it) else it }
+                db.withTransaction {
+                    for (book in updated.filter { it.id in ids }) {
+                        currentCoroutineContext().ensureActive()
+                        dataRepository.storeManga(book.toManga(showExtensions, true), replaceExisting = true)
+                    }
+                }
+                publishLocked(state.value.copy(books = updated))
+            } catch (failure: Exception) {
+                // Preferences and Room cannot share one transaction. Restore the
+                // previous override snapshot if the database update fails.
+                if (!prefs.edit().putString("text_overrides", previousOverrides).commit()) {
+                    failure.addSuppressed(IllegalStateException("Could not restore metadata overrides"))
+                }
+                throw failure
+            }
+        }
+        mutableChanges.emit(Unit)
+    }
+
+    /** Remove manual text overrides; rescan restores scanner-derived metadata. */
+    suspend fun clearTextMetadata(ids: Set<Long>) = withContext(Dispatchers.IO) {
+        initialize()
+        mutex.withLock {
+            val selected = state.value.books.filter { it.id in ids }
+            if (selected.isEmpty()) return@withLock
+            val overrides = JSONObject(prefs.getString("text_overrides", "{}").orEmpty())
+            selected.forEach { overrides.remove(it.node.key) }
+            check(prefs.edit().putString("text_overrides", overrides.toString()).commit())
+            // Clear the in-memory fallback too: scan() otherwise reuses old.title and
+            // old.description when no metadata sidecar provides replacements.
+            val cleared = state.value.books.map { book ->
+                if (book.id in ids) book.copy(title = null, description = null) else book
+            }
+            publishLocked(state.value.copy(books = cleared))
+        }
+        scan()
+    }
+
+    /** Virtual groups never move or modify physical documents. */
+    fun groups(): Map<String, Set<String>> {
+        val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+        return json.keys().asSequence().associateWith { name ->
+            val members = json.optJSONArray(name) ?: JSONArray()
+            (0 until members.length()).mapTo(LinkedHashSet()) { members.getString(it) }
+        }
+    }
+
+    suspend fun createGroup(name: String, ids: Set<Long>) = withContext(Dispatchers.IO) {
+        require(name.isNotBlank() && name.length <= 80) { "Invalid group name" }
+        initialize()
+        mutex.withLock {
+            val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+            val normalized = name.trim()
+            require(!json.has(normalized)) { "Group already exists" }
+            val members = state.value.books.filter { it.id in ids }.map { it.node.key }
+            require(members.isNotEmpty()) { "Select at least one collection" }
+            json.put(normalized, JSONArray(members))
+            check(prefs.edit().putString("virtual_groups", json.toString()).commit())
+            publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1))
+        }
+    }
+
+    suspend fun addToGroup(name: String, ids: Set<Long>) = withContext(Dispatchers.IO) {
+        initialize()
+        mutex.withLock {
+            val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+            require(json.has(name)) { "Group no longer exists" }
+            val existing = json.getJSONArray(name)
+            val members = (0 until existing.length()).mapTo(LinkedHashSet()) { existing.getString(it) }
+            members += state.value.books.filter { it.id in ids }.map { it.node.key }
+            json.put(name, JSONArray(members.toList()))
+            check(prefs.edit().putString("virtual_groups", json.toString()).commit())
+            publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1))
+        }
+    }
+
+    suspend fun ungroup(ids: Set<Long>) = withContext(Dispatchers.IO) {
+        initialize()
+        mutex.withLock {
+            val keys = state.value.books.filter { it.id in ids }.mapTo(HashSet()) { it.node.key }
+            val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+            for (name in json.keys().asSequence().toList()) {
+                val old = json.getJSONArray(name)
+                json.put(name, JSONArray((0 until old.length()).map { old.getString(it) }.filterNot { it in keys }))
+            }
+            check(prefs.edit().putString("virtual_groups", json.toString()).commit())
+            publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1))
+        }
+    }
+
+    suspend fun renameGroup(oldName: String, newName: String) = withContext(Dispatchers.IO) {
+        val normalized = newName.trim()
+        require(normalized.isNotEmpty() && normalized.length <= 80)
+        initialize()
+        mutex.withLock {
+            val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+            require(json.has(oldName)) { "Group no longer exists" }
+            require(oldName == normalized || !json.has(normalized)) { "Group already exists" }
+            val members = json.getJSONArray(oldName)
+            json.remove(oldName)
+            json.put(normalized, members)
+            check(prefs.edit().putString("virtual_groups", json.toString()).commit())
+            publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1))
+        }
+    }
+
+    suspend fun deleteGroup(name: String) = withContext(Dispatchers.IO) {
+        initialize()
+        mutex.withLock {
+            val json = JSONObject(prefs.getString("virtual_groups", "{}").orEmpty())
+            json.remove(name)
+            check(prefs.edit().putString("virtual_groups", json.toString()).commit())
+            publishLocked(state.value.copy(displayRevision = state.value.displayRevision + 1))
+        }
+    }
+
     suspend fun acknowledgeDiscoveries(ids: Set<Long>? = null) = withContext(Dispatchers.IO) {
         initialize()
         mutex.withLock { publishLocked(state.value.copy(books = state.value.books.map { if (ids == null || it.id in ids) it.copy(newChapters = 0) else it })) }
@@ -214,29 +428,297 @@ class SmartLocalLibrary @Inject constructor(
         initialize()
         try { mutex.withLock {
             val targets = state.value.books.filter { it.id in ids }
+            require(targets.size == ids.size) { "Selected collections changed" }
+            // Calculate ownership once for the complete batch, including selected books.
+            // A shared file must never be removed while another indexed book refers to it.
+            val ownership = HashMap<String, Int>()
+            for (indexedBook in state.value.books) {
+                val ownedKeys = (indexedBook.chapters.flatMap { c -> c.pages + c.node } + indexedBook.sidecars)
+                    .mapTo(HashSet()) { it.key }
+                for (key in ownedKeys) ownership[key] = (ownership[key] ?: 0) + 1
+            }
+            // Validate the entire batch before touching any physical document. A later
+            // shared-file or unsafe-path failure must not delete earlier selections.
+            for (book in targets) {
+                currentCoroutineContext().ensureActive()
+                val root = documents.root(book.rootUri)
+                val files = (book.chapters.flatMap { chapter ->
+                    if (chapter.node.directory) chapter.pages else listOf(chapter.node)
+                } + book.sidecars).distinctBy { it.key }
+                val ownKeys = (book.chapters.flatMap { chapter -> chapter.pages + chapter.node } + book.sidecars)
+                    .mapTo(HashSet()) { it.key }
+                check(files.none { (ownership[it.key] ?: 0) > (if (it.key in ownKeys) 1 else 0) }) {
+                    "A document belongs to another manga"
+                }
+                for (file in files) {
+                    currentCoroutineContext().ensureActive()
+                    check(!file.directory && file.key != root.key && documents.contains(root, file)) {
+                        "Unsafe deletion target"
+                    }
+                }
+            }
+            // I/O can still fail after preflight; the recovery scan below handles that case.
             for (book in targets) {
                 val root = documents.root(book.rootUri)
                 val files = (book.chapters.flatMap { c -> if (c.node.directory) c.pages else listOf(c.node) } + book.sidecars).distinctBy { it.key }
-                val otherOwned = state.value.books.filter { it.id != book.id }
-                    .flatMap { b -> b.chapters.flatMap { c -> c.pages + c.node } + b.sidecars }.mapTo(HashSet()) { it.key }
-                check(files.none { it.key in otherOwned }) { "A document belongs to another manga" }
-                files.forEach { node ->
+                // Preflight above already validated the entire batch. Do not repeat a
+                // stale ownership check after earlier selections have been removed.
+                for (file in files) {
                     currentCoroutineContext().ensureActive()
-                    check(!node.directory && node.key != root.key && documents.contains(root, node)) { "Unsafe deletion target" }
+                    if (documents.exists(root, file)) documents.delete(root, file)
                 }
-                for (file in files) if (documents.exists(root, file)) documents.delete(root, file)
-                for (folder in (book.chapters.map { it.node }.filter { it.directory } + listOf(book.node).filter { it.directory }).distinctBy { it.key }) {
-                    if (folder.uri.toUri().scheme == "file" && folder.key != root.key && documents.exists(root, folder) && documents.children(root, folder).isEmpty()) documents.delete(root, folder)
+                // Never hide a collection while any owned physical file remains.
+                check(files.none { documents.exists(root, it) }) {
+                    "Deletion incomplete for ${book.node.name}; collection remains visible"
+                }
+                for (folder in (book.chapters.map { it.node }.filter { it.directory } +
+                    listOf(book.node).filter { it.directory }).distinctBy { it.key }) {
+                    if (folder.key != root.key && documents.exists(root, folder)) {
+                        // Empty-only SAF and filesystem cleanup. Unknown/new files prevent
+                        // a misleading success and remain visible after recovery scan.
+                        documents.deleteEmptyDirectory(root, folder)
+                    }
                 }
                 val exclusions = readExclusions().toMutableMap().also { it[book.node.key] = book.node.name }
                 saveExclusions(exclusions)
                 publishLocked(state.value.copy(books = state.value.books.filterNot { it.id == book.id }, excludedCount = exclusions.size))
             }
         } } catch (error: Exception) {
-            runCatchingCancellable { scan() }
+            withContext(NonCancellable) { runCatching { scan() } }
             throw error
         }
         mutableChanges.emit(Unit)
+    }
+
+    /** Copy, independently verify, then remove sources. Never merge into an existing tree. */
+    suspend fun moveSelectedFiles(ids: Set<Long>, destinationUri: Uri): Int = withContext(Dispatchers.IO) {
+        initialize()
+        if (destinationUri.scheme == "content") {
+            context.contentResolver.takePersistableUriPermission(destinationUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        }
+        val moved = try {
+            mutex.withLock {
+                val selected = state.value.books.filter { it.id in ids }
+                require(selected.isNotEmpty() && selected.size == ids.size) { "Selected collections changed" }
+                val destination = documents.root(destinationUri.toString())
+                check(destination.directory) { "Choose a destination folder" }
+                check(state.value.roots.any { it.uri == destinationUri.toString() }) {
+                    "Add the destination folder to the local library before moving"
+                }
+                val ownership = state.value.books.flatMap { book ->
+                    (book.chapters.flatMap { it.pages + it.node } + book.sidecars).distinctBy { it.key }
+                        .map { it.key to book.id }
+                }.groupBy({ it.first }, { it.second })
+                data class SourceTree(val root: Node, val top: Node, val files: List<Node>, val folders: List<Node>)
+                val trees = selected.map { book ->
+                    currentCoroutineContext().ensureActive()
+                    val root = documents.root(book.rootUri)
+                    check(book.node.key != root.key && documents.contains(root, book.node)) { "Unsafe source" }
+                    check(!documents.contains(root, destination) && !documents.contains(destination, root)) {
+                        "Destination must not overlap source library root"
+                    }
+                    val files = ArrayList<Node>()
+                    val folders = ArrayList<Node>()
+                    val pending = java.util.ArrayDeque<Node>()
+                    val visited = HashSet<String>()
+                    pending.add(book.node)
+                    while (!pending.isEmpty()) {
+                        currentCoroutineContext().ensureActive()
+                        val node = pending.removeFirst()
+                        check(visited.add(node.key) && visited.size <= 100_000) { "Cyclic or oversized collection" }
+                        check(documents.contains(root, node)) { "Document outside source root" }
+                        check(ownership[node.key].orEmpty().distinct().all { it == book.id }) {
+                            "Shared document cannot be moved"
+                        }
+                        if (node.directory) {
+                            folders += node
+                            documents.children(root, node).forEach { pending.add(it) }
+                        } else files += node
+                    }
+                    check(files.isNotEmpty()) { "Cannot move an empty collection" }
+                    SourceTree(root, book.node, files, folders)
+                }
+                // Preflight all source trees as one batch. Overlapping selected roots
+                // or shared physical descendants must never be copied and deleted twice.
+                val allSourceKeys = HashSet<String>()
+                for (tree in trees) {
+                    for (node in tree.folders + tree.files) {
+                        check(allSourceKeys.add(node.key)) {
+                            "Selected collections overlap or share a physical document"
+                        }
+                    }
+                }
+                val names = trees.map { it.top.name.lowercase(java.util.Locale.ROOT) }
+                check(names.size == names.toSet().size) { "Selected collections have conflicting names" }
+                val existing = documents.children(destination, destination)
+                    .mapTo(HashSet()) { it.name.lowercase(java.util.Locale.ROOT) }
+                check(names.none { it in existing }) { "Destination filename collision" }
+                val created = ArrayList<Node>()
+                val copiedFiles = ArrayList<Pair<Node, Node>>()
+                suspend fun copyTree(source: Node, targetParent: Node, sourceRoot: Node) {
+                    currentCoroutineContext().ensureActive()
+                    if (source.directory) {
+                        val folder = documents.createDirectory(targetParent, source.name)
+                        created += folder
+                        check(folder.name == source.name) { "Provider renamed destination folder" }
+                        for (child in documents.children(sourceRoot, source)) {
+                            check(documents.contains(sourceRoot, child)) { "Source escaped its root" }
+                            copyTree(child, folder, sourceRoot)
+                        }
+                    } else {
+                        val copy = documents.createFile(targetParent, source.name)
+                        created += copy
+                        check(copy.name == source.name) { "Provider renamed destination file" }
+                        val originalDigest = java.security.MessageDigest.getInstance("SHA-256")
+                        var originalSize = 0L
+                        documents.input(source).use { input ->
+                            documents.output(copy).use { output ->
+                                val buffer = ByteArray(64 * 1024)
+                                while (true) {
+                                    currentCoroutineContext().ensureActive()
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    originalDigest.update(buffer, 0, count)
+                                    output.write(buffer, 0, count)
+                                    originalSize += count
+                                }
+                            }
+                        }
+                        val copyDigest = java.security.MessageDigest.getInstance("SHA-256")
+                        var copySize = 0L
+                        documents.input(copy).use { input ->
+                            val buffer = ByteArray(64 * 1024)
+                            while (true) {
+                                currentCoroutineContext().ensureActive()
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                copyDigest.update(buffer, 0, count)
+                                copySize += count
+                            }
+                        }
+                        check(originalSize == copySize && originalDigest.digest().contentEquals(copyDigest.digest())) {
+                            "Destination verification failed for ${source.name}"
+                        }
+                        copiedFiles += source to copy
+                    }
+                }
+                try {
+                    for (tree in trees) copyTree(tree.top, destination, tree.root)
+                    check(copiedFiles.size == trees.sumOf { it.files.size }) { "Copy incomplete" }
+                } catch (error: Exception) {
+                    // Source remains untouched until all destination files are verified.
+                    val rollbackFailures = LocalMoveRollback.cleanup(created) { node ->
+                        if (node.directory) documents.deleteEmptyDirectory(destination, node)
+                        else documents.delete(destination, node)
+                    }
+                    rollbackFailures.forEach(error::addSuppressed)
+                    throw error
+                }
+                // Recheck source/destination equality immediately before any deletion.
+                // An external writer may have modified a source after its initial copy.
+                val verificationContext = currentCoroutineContext()
+                try {
+                    for ((source, copy) in copiedFiles) {
+                        LocalMoveVerifier.verify(
+                            source = { documents.input(source) },
+                            destination = { documents.input(copy) },
+                            checkCancelled = { verificationContext.ensureActive() },
+                        )
+                    }
+                } catch (error: Exception) {
+                    // Verification failed before deletion: original files are intact.
+                    val rollbackFailures = LocalMoveRollback.cleanup(created) { node ->
+                        if (node.directory) documents.deleteEmptyDirectory(destination, node)
+                        else documents.delete(destination, node)
+                    }
+                    rollbackFailures.forEach(error::addSuppressed)
+                    throw error
+                }
+                val copiedBySourceKey = copiedFiles.associate { (source, copy) -> source.key to copy }
+                var movedCount = 0
+                for (tree in trees) {
+                    currentCoroutineContext().ensureActive()
+                    for (file in tree.files) {
+                        currentCoroutineContext().ensureActive()
+                        // Narrow the mutation window: a source can change after the
+                        // batch verification while earlier files are being removed.
+                        val copy = checkNotNull(copiedBySourceKey[file.key]) { "Verified copy missing" }
+                        val deletionContext = currentCoroutineContext()
+                        LocalMoveVerifier.verify(
+                            source = { documents.input(file) },
+                            destination = { documents.input(copy) },
+                            checkCancelled = { deletionContext.ensureActive() },
+                        )
+                        documents.delete(tree.root, file)
+                    }
+                    // Deepest first, empty-only; never recursively delete unknown additions.
+                    for (folder in tree.folders.asReversed()) {
+                        documents.deleteEmptyDirectory(tree.root, folder)
+                    }
+                    movedCount++
+                }
+                movedCount
+            }
+        } catch (error: Exception) {
+            // Once source deletion starts, verified copies must be retained.
+            withContext(NonCancellable) { runCatching { scan() } }
+            throw error
+        }
+        scan()
+        moved
+    }
+
+    suspend fun exportSelected(ids: Set<Long>): List<File> = withContext(Dispatchers.IO) {
+        initialize()
+        val selected = state.value.books.filter { it.id in ids }
+        require(selected.isNotEmpty()) { "No collections selected" }
+        val directory = File(context.cacheDir, "smart-local-exports").apply { mkdirs() }
+        val exported = ArrayList<File>()
+        try {
+            for (book in selected) {
+                currentCoroutineContext().ensureActive()
+                val root = documents.root(book.rootUri)
+                val output = File.createTempFile("local-", ".zip", directory)
+                try {
+                    var bytes = 0L
+                    val entries = (book.chapters.flatMap { chapter ->
+                        if (chapter.node.directory) chapter.pages.map { chapter.node.name to it }
+                        else listOf("chapters" to chapter.node)
+                    } + book.sidecars.map { "metadata" to it }).distinctBy { it.second.key }
+                    ZipOutputStream(output.outputStream().buffered()).use { zip ->
+                        for ((index, item) in entries.withIndex()) {
+                            val (folder, node) = item
+                            currentCoroutineContext().ensureActive()
+                            check(!node.directory && documents.contains(root, node)) { "Export source is outside selected root" }
+                            val safeFolder = folder.replace(Regex("[^a-zA-Z0-9._ -]"), "_").take(60).ifBlank { "files" }
+                            val safeName = node.name.replace(Regex("[^a-zA-Z0-9._ -]"), "_").take(100).ifBlank { "file" }
+                            zip.putNextEntry(ZipEntry("$safeFolder/$index-$safeName"))
+                            documents.input(node).use { input ->
+                                val buffer = ByteArray(32 * 1024)
+                                while (true) {
+                                    currentCoroutineContext().ensureActive()
+                                    val read = input.read(buffer)
+                                    if (read < 0) break
+                                    bytes += read
+                                    check(bytes <= 1024L * 1024 * 1024) { "Export exceeds 1 GiB safety limit" }
+                                    zip.write(buffer, 0, read)
+                                }
+                            }
+                            zip.closeEntry()
+                        }
+                    }
+                    exported += output
+                } catch (error: Exception) {
+                    output.delete()
+                    throw error
+                }
+            }
+            exported.toList()
+        } catch (error: Exception) {
+            exported.forEach { it.delete() }
+            throw error
+        }
     }
 
     suspend fun deleteChapters(mangaId: Long, ids: Set<Long>) = withContext(Dispatchers.IO) {
@@ -256,7 +738,7 @@ class SmartLocalLibrary @Inject constructor(
                 if (chapter.node.directory && chapter.node.uri.toUri().scheme == "file" && chapter.node.key != root.key && documents.exists(root, chapter.node) && documents.children(root, chapter.node).isEmpty()) documents.delete(root, chapter.node)
             }
         } } catch (error: Exception) {
-            runCatchingCancellable { scan() }
+            withContext(NonCancellable) { runCatching { scan() } }
             throw error
         }
         scan()
@@ -301,6 +783,28 @@ class SmartLocalLibrary @Inject constructor(
         val historiesByKey = snapshot.mapNotNull { book -> histories[book.id]?.let { book.node.key to it } }.toMap()
         projectLocalCollection(snapshot, historiesByKey, query, type, readingFilter, sort, showExtensions)
             .map { it.toManga(showExtensions) }
+    }
+
+    /**
+     * Cover-sized chapter preview only. Never enumerate reader pages, render every PDF page,
+     * or populate the reader's page cache. Reuses bounded archive/PDF cover extraction.
+     */
+    suspend fun chapterGalleryThumbnail(chapter: MangaChapter): ByteArray? = withContext(Dispatchers.IO) {
+        val (book, localChapter) = requireChapter(chapter.url)
+        val candidates = if (localChapter.node.directory) localChapter.pages.take(1)
+            else listOf(localChapter.node)
+        if (candidates.isEmpty()) return@withContext null
+        val plan = LocalCoverPlan(book.rootUri, candidates, book.scannedAt)
+        val cacheId = "${book.id}:${localChapter.id}".longHashCode()
+        val isCurrent = {
+            state.value.books.any { current ->
+                current.id == book.id && current.rootUri == book.rootUri &&
+                    current.chapters.any { it.id == localChapter.id && it.node == localChapter.node }
+            }
+        }
+        chapterGalleryCache.getOrGenerateScoped(cacheId, plan, isCurrent) { publish ->
+            contentReader.cover(plan, publish)
+        }
     }
 
     suspend fun pages(chapter: MangaChapter): List<MangaPage> = withContext(Dispatchers.IO) {

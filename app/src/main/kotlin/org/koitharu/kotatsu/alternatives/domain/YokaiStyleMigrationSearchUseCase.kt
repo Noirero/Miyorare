@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.alternatives.domain
 
 import dagger.Reusable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
@@ -117,7 +118,7 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 				candidate = result.manga))
 			result.manga?.let { candidate ->
 				persistCandidate(candidate)
-				return ready(seed, candidate, query, providerFailures + sourceFailures)
+				return ready(seed, candidate, result.candidates, query, providerFailures + sourceFailures)
 			}
 		}
 		return noReplacement(
@@ -153,7 +154,7 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		)
 		if (candidate != null) {
 			persistCandidate(candidate)
-			ready(seed, candidate, query, providerFailures + failures)
+			ready(seed, candidate, results.flatMap(SourceResult::candidates), query, providerFailures + failures)
 		} else {
 			noReplacement(seed, successful == 0 && (failures > 0 || providerFailures > 0), providerFailures + failures)
 		}
@@ -165,7 +166,8 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		source: MangaSource,
 		requireDetails: Boolean,
 	): SourceResult {
-		val searched = globalSearch.search(source, query)
+		val searched = withTimeoutOrNull(90_000L) { globalSearch.search(source, query) }
+            ?: return SourceResult(null, true)
 		if (searched.isFailure) return SourceResult(null, true)
 		// MangaEntity uses manga_id as its sole primary key. Different source implementations may
 		// legitimately emit the same numeric id, so such a candidate cannot be persisted alongside
@@ -173,14 +175,16 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		val eligible = searched.getOrDefault(emptyList()).filterNot { result -> result.id == seed.id }
 		val candidate = chooseCandidate(seed.title, eligible) ?: return SourceResult(null, false)
 		if (!canPersistCandidate(candidate)) return SourceResult(null, false)
-		if (!requireDetails) return SourceResult(candidate, false)
-		val details = runCatchingCancellable { mangaRepositoryFactory.create(source).getDetails(candidate) }.getOrNull()
+		if (!requireDetails) return SourceResult(candidate, false, eligible)
+		val details = runCatchingCancellable {
+            withTimeoutOrNull(90_000L) { mangaRepositoryFactory.create(source).getDetails(candidate) }
+        }.getOrNull()
 			?: return SourceResult(null, true)
 		if (details.id != candidate.id || details.source.name != candidate.source.name) {
 			return SourceResult(null, true)
 		}
 		if (!canPersistCandidate(details)) return SourceResult(null, false)
-		return SourceResult(details, false)
+		return SourceResult(details, false, eligible.map { if (it.id == candidate.id && it.source.name == candidate.source.name) details else it })
 	}
 
 	private suspend fun canPersistCandidate(candidate: Manga): Boolean {
@@ -207,12 +211,26 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 			?.first
 	}
 
-	private fun ready(seed: Manga, candidate: Manga, query: String, failures: Int): MigrationDiscovery {
-		val ranked = candidateMatcher.rank(seed, listOf(MigrationCandidateObservation(candidate, setOf(query))))
-		val match = ranked.firstOrNull() ?: return noReplacement(seed, false, failures)
+	private fun ready(
+		seed: Manga,
+		candidate: Manga,
+		candidates: List<Manga>,
+		query: String,
+		failures: Int,
+	): MigrationDiscovery {
+		// Baseline candidate selection follows the configured source order / chapter-count strategy.
+		// Ranking can order alternatives for manual search, but it is not an execution gate here.
+		val ranked = candidateMatcher.rank(
+			seed,
+			(candidates + candidate).distinctBy { it.source.name to it.id }
+				.map { MigrationCandidateObservation(it, setOf(query)) },
+		)
+		val selected = ranked.firstOrNull {
+			it.manga.id == candidate.id && it.manga.source.name == candidate.source.name
+		} ?: error("Search result must be representable as a migration candidate")
 		return MigrationDiscovery(
 			seed = seed,
-			assessment = MigrationMatchAssessment(MigrationMatchState.READY, match, listOf(match)),
+			assessment = MigrationMatchAssessment(MigrationMatchState.READY, selected, ranked),
 			sourceHealthy = false,
 			partialFailureCount = failures,
 		)
@@ -276,7 +294,11 @@ class YokaiStyleMigrationSearchUseCase @Inject constructor(
 		mangaDataRepository.findMangaById(mangaId, withChapters = true),
 	) { "Manga $mangaId not found" }
 
-	private data class SourceResult(val manga: Manga?, val failed: Boolean)
+	private data class SourceResult(
+		val manga: Manga?,
+		val failed: Boolean,
+		val candidates: List<Manga> = emptyList(),
+	)
 
 	private companion object {
 		const val MIN_ELIGIBLE_SIMILARITY = 0.4

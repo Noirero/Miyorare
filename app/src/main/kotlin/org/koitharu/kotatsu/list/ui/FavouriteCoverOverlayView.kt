@@ -92,8 +92,9 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 	}
 
 	private fun resetVisibility(value: ModernCoverState) {
-		listOf(value.isFavorite, value.isSaved, value.isPinned).forEachIndexed { index, active ->
+		listOf(value.isFavorite, value.isSaved || value.downloadVerification == org.koitharu.kotatsu.list.ui.model.DownloadVerification.UNRESOLVED, value.isPinned).forEachIndexed { index, active ->
 			statusItems[index].isVisible = active
+			if (index == 1) statusItems[index].alpha = if (value.downloadVerification == org.koitharu.kotatsu.list.ui.model.DownloadVerification.UNRESOLVED) 0.35f else 1f
 		}
 		statuses.isVisible = statusItems.any { it.isVisible }
 		val hasReadingState = value.readingState != ModernCoverReadingState.NONE
@@ -254,7 +255,8 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		// Metadata precedes the action in compaction priority. Measure even a previously GONE group.
 		measureNatural(metadata, w)
 		val showMetadata = (value.isLocalSource || !value.languageLabel.isNullOrBlank()) &&
-			metadata.measuredWidth <= innerWidth && usedTop + gap <= titleTop - gap - metadata.measuredHeight
+			metadata.measuredWidth <= innerWidth && (usedTop + gap <= titleTop - gap - metadata.measuredHeight ||
+				(value.isLocalSource && !showTitle && metadata.measuredHeight + inset <= titleTop))
 		val target = px(FavouriteCoverOverlayMetrics.ACTION_TOUCH_DP)
 		if (styledActionSize != px(metrics.actionSize)) {
 			val circleInset = ((target - px(metrics.actionSize)) / 2).coerceAtLeast(0)

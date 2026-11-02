@@ -500,7 +500,7 @@ class LocalMangaRepository @Inject constructor(
 	 * layouts use index.json; current sidecar-free manga folders and per-chapter novel EPUB folders
 	 * fall through to their deterministic one-listing fast paths below.
 	 */
-	private fun buildFastIndexedDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
+	private suspend fun buildFastIndexedDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
 		if (!root.isDirectory) return null
 		val indexPath = File(root, LocalMangaOutput.ENTRY_NAME_INDEX)
 		val index = MangaIndex.read(FileSystem.SYSTEM, indexPath.toOkioPath())
@@ -513,7 +513,17 @@ class LocalMangaRepository @Inject constructor(
 		}
 		val indexedInfo = index.getMangaInfo()?.takeIf { it.id == remoteManga.id } ?: return null
 		val represented = indexedInfo.chapters.orEmpty().mapNotNull { index.getChapterFileName(it.id) }.toSet()
-		if (root.listFiles()?.any { it.isFile && it.extension.lowercase(Locale.ROOT) in setOf("cbz", "zip", "epub", "pdf") && it.name !in represented } == true) return null
+		val entries = root.listFiles() ?: return null
+		val unindexed = entries.filter {
+			it.isFile && it.extension.lowercase(Locale.ROOT) in setOf("cbz", "zip", "epub", "pdf") && it.name !in represented
+		}
+		// An indexed legacy folder may also contain finished chapters added after its last index
+		// update. The indexed subset remains authoritative for its own identities; additional
+		// physical artifacts must be matched independently instead of hidden by the old sidecar.
+		val canRecoverExtras = !remoteManga.source.isNovelSource &&
+			unindexed.isNotEmpty() && unindexed.all { it.extension.equals("cbz", true) || it.extension.equals("zip", true) }
+		// Preserve the existing fallback for EPUB/PDF/other unsupported legacy mismatches.
+		if (unindexed.isNotEmpty() && !canRecoverExtras) return null
 
 		val linked = ArrayList<MangaChapter>()
 		val remoteIds = HashSet<Long>()
@@ -530,6 +540,36 @@ class LocalMangaRepository @Inject constructor(
 			val fileName = index.getChapterFileName(chapter.id) ?: continue
 			val file = File(root, fileName).takeIf { it.exists() } ?: continue
 			linked += chapter.copy(url = file.toUri().toString(), source = LocalMangaSource)
+		}
+		if (canRecoverExtras) {
+			// Slow compatibility parsing is reserved for an independently observed legacy mismatch;
+			// normal Details opens still use the bounded indexed or sidecar-free fast path.
+			val physical = runCatchingCancellable {
+				LocalMangaParser(root, ignoreDirectoryIndex = true).getManga(withDetails = true)
+			}.getOrNull()
+			if (physical != null) {
+				val mapped = LegacyChapterDownloadCompat.linkToRemote(remoteManga, physical)
+				val remoteIds = remoteManga.chapters.orEmpty().mapTo(HashSet()) { it.id }
+				val alreadyLinked = linked.mapTo(HashSet()) { it.id }
+				val rootPrefix = root.canonicalPath.trimEnd(File.separatorChar) + File.separator
+				val extras = unindexed.mapNotNullTo(HashSet()) { candidate ->
+					runCatching { candidate.canonicalPath.takeIf { it.startsWith(rootPrefix) } }.getOrNull()
+				}
+				for (chapter in mapped.manga.chapters.orEmpty()) {
+					if (chapter.id !in remoteIds || chapter.id in alreadyLinked) continue
+					// Directory-backed Local URIs store the physical chapter in the fragment, not
+					// the path. Resolve both before comparing against the verified extras whitelist.
+					val chapterUri = chapter.url.toUri()
+					val base = chapterUri.path?.let(::File) ?: continue
+					val artifact = if (base.isDirectory && !chapterUri.fragment.isNullOrBlank()) {
+						File(base, chapterUri.fragment!!)
+					} else base
+					val actual = runCatching { artifact.canonicalPath }.getOrNull() ?: continue
+					if (actual !in extras) continue
+					linked += chapter
+					alreadyLinked += chapter.id
+				}
+			}
 		}
 		if (linked.isEmpty()) return null
 		val rootUri = root.toUri().toString()

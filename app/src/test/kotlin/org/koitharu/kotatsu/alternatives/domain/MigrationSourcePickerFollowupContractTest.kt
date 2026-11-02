@@ -22,16 +22,31 @@ class MigrationSourcePickerFollowupContractTest {
 	}
 
 	@Test
-	fun `manual result selection expands confirmation at the selected result row`() {
-		val source = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchFragment.kt")
+	fun `manual candidate selection returns to results without executing`() {
+		val screen = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchFragment.kt")
+		val vm = source("org/koitharu/kotatsu/settings/sources/migration/MigrationManualSearchViewModel.kt")
+		val scheduler = source("org/koitharu/kotatsu/alternatives/work/MigrationBatchScheduler.kt")
 
-		assertTrue(source.contains("selectionIsInResults"))
-		assertTrue(source.contains("if(selected!=null&&!selectionIsInResults)"))
-		assertTrue(source.contains("if(manga.sameMigrationIdentity(selected)){MigrationManualSelectionCard("))
-		assertTrue(source.contains("clickable(enabled=!busy){onSelect(manga)}"))
-		assertTrue(source.contains("privatefunManga.sameMigrationIdentity(other:Manga?)"))
-		assertFalse(source.contains("state.selected?.let{selected->item{Card("))
+		assertTrue(screen.contains("onUseSelected=viewModel::useSelected"))
+		assertTrue(screen.contains("Button(onClick=onUseSelected"))
+		assertTrue(screen.contains("state.selectedReady"))
+		assertFalse(screen.contains("if(pendingAction!=null&&selected!=null"))
+		assertTrue(vm.contains("batchScheduler.markSelected("))
+		assertTrue(scheduler.contains("MigrationBatchOutcome(MigrationBatchStatus.READY"))
 	}
+
+	@Test
+	fun `source first entry supports single and whole source actions`() {
+		val source = source("org/koitharu/kotatsu/settings/sources/migration/BrokenSourcesMigrationFragment.kt")
+		assertTrue(source.contains("Text(\"Pilihsource\""))
+		assertTrue(source.contains("onOpenManga(listOf(item.id),null)"))
+		assertTrue(source.contains("onOpenManga(ids,null)"))
+		assertTrue(source.contains("onOpenManga(currentSelected,MigrationBatchAction.COPY)"))
+		assertTrue(source.contains("onOpenManga(currentSelected,MigrationBatchAction.MIGRATE)"))
+		assertTrue(source.contains("onOpenDetails(item)"))
+		assertFalse(source.contains("onToggleManga=viewModel::toggleManga"))
+	}
+
 
 	private fun source(relativePath: String): String {
 		var dir = File(System.getProperty("user.dir"))

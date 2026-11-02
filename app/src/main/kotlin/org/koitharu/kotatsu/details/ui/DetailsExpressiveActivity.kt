@@ -96,6 +96,8 @@ import javax.inject.Inject
 class DetailsExpressiveActivity :
 	BaseActivity<ActivityDetailsExpressiveBinding>() {
 
+	@Inject lateinit var mangaRepositoryFactory: org.koitharu.kotatsu.core.parser.MangaRepository.Factory
+	@Inject lateinit var smartLocalLibrary: org.koitharu.kotatsu.local.library.SmartLocalLibrary
 	@Inject lateinit var coil: ImageLoader
 	@Inject lateinit var settings: AppSettings
 	@Inject lateinit var database: MangaDatabase
@@ -483,6 +485,9 @@ class DetailsExpressiveActivity :
 					topInset = with(density) { topInset.intValue.toDp() },
 					bottomContentPadding = with(density) { bottomInset.intValue.toDp() },
 					onScroll = ::onContentScroll,
+					coverForChapter = { chapter ->
+						smartLocalLibrary.chapterGalleryThumbnail(chapter)
+					},
 					actions = actions,
 				)
 

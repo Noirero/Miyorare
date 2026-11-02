@@ -4,6 +4,9 @@ import android.net.Uri
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.combine
 import org.koitharu.kotatsu.R
@@ -41,6 +44,11 @@ class PagesViewModel @Inject constructor(
 	private val savedState: SavedStateHandle,
 	@ApplicationContext private val context: Context,
 ) : BaseViewModel() {
+
+    override fun onCleared() {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { chaptersLoader.close() }
+        super.onCleared()
+    }
 
 	private var loadingJob: Job? = null
 	private var loadingPrevJob: Job? = null
@@ -91,6 +99,7 @@ class PagesViewModel @Inject constructor(
 						if (current.isExpandable) {
 							if (showing) initExpandable(current, opened) else {
 								previews.clear(); failures.clear(); previousActive = null; thumbnails.value = emptyList()
+                                chaptersLoader.releasePreviewsExcept(emptySet())
 							}
 						} else doInit(current)
 					}
@@ -119,6 +128,7 @@ class PagesViewModel @Inject constructor(
 		failures.keys.retainAll(opened)
 		chaptersLoader.init(current.details)
 		updateExpandableList(current, opened)
+        chaptersLoader.releasePreviewsExcept(previews.keys)
 		for (chapter in chapters) {
 			if (chapter.id !in opened || chapter.id in previews || chapter.id in failures) continue
 			try {
@@ -194,6 +204,7 @@ class PagesViewModel @Inject constructor(
 	}
 
 	private suspend fun doInit(state: State) {
+        chaptersLoader.releasePreviewsExcept(emptySet())
 		chaptersLoader.init(state.details)
 		val initialChapterId = state.readerState?.chapterId?.takeIf {
 			chaptersLoader.peekChapter(it) != null

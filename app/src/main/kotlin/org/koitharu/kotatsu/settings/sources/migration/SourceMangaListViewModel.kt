@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.toMangaList
 import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -36,15 +37,19 @@ class SourceMangaListViewModel @Inject constructor(
 	private val batchScheduler: MigrationBatchScheduler,
 	private val yokaiSearch: YokaiStyleMigrationSearchUseCase,
 	private val migrationPreferences: MigrationSessionPreferences,
+	private val sourcesRepository: MangaSourcesRepository,
 ) : ViewModel() {
 
 	val sourceTitle: String = savedStateHandle[SourceMangaListFragment.ARG_SOURCE_TITLE] ?: "Manga migration"
 	private val sourceKeys: List<String> = savedStateHandle.get<Array<String>>(SourceMangaListFragment.ARG_SOURCE_KEYS)
 		?.toList().orEmpty()
+	private val preferredAction: MigrationBatchAction? = savedStateHandle.get<String>(SourceMangaListFragment.ARG_PREFERRED_ACTION)
+		?.let { name -> MigrationBatchAction.entries.firstOrNull { it.name == name } }
 	private val explicitMangaIds: List<Long> = savedStateHandle.get<LongArray>(SourceMangaListFragment.ARG_MANGA_IDS)
 		?.toList().orEmpty()
 
 	private val _state = MutableStateFlow(SourceMangaListState(
+		preferredAction = preferredAction,
 		filter = savedStateHandle.get<String>(FILTER)?.let { raw -> MigrationBatchStatus.entries.find { it.name == raw } },
 		selectedSourceNames = migrationPreferences.selectedSourceNames,
 		sourceStrategy = migrationPreferences.sourceStrategy,
@@ -178,15 +183,32 @@ class SourceMangaListViewModel @Inject constructor(
 
 	fun copyReady() = executeReady(MigrationBatchAction.COPY)
 
-	private fun executeReady(action: MigrationBatchAction) {
+	fun migrateOne(mangaId: Long) = executeReady(MigrationBatchAction.MIGRATE, mangaId)
+
+	fun copyOne(mangaId: Long) = executeReady(MigrationBatchAction.COPY, mangaId)
+
+	private fun executeReady(action: MigrationBatchAction, mangaId: Long? = null) {
 		val current = state.value
 		enqueue(MigrationBatchPolicy.readyRequests(
-			manga = current.manga,
+			manga = current.manga.filter { mangaId == null || it.id == mangaId },
 			snapshots = current.batchItems,
 			discoveryMode = MigrationBatchDiscoveryMode.YOKAI,
 			configKey = current.configKey,
 			action = action,
 		))
+	}
+
+	fun skipOne(mangaId: Long) {
+		val current = state.value
+		if (current.batchBusy || current.scheduling) return
+		val manga = current.manga.firstOrNull { it.id == mangaId } ?: return
+		viewModelScope.launch {
+			runCatchingCancellable {
+				batchScheduler.markSkipped(mangaId = manga.id, source = manga.source.name, configKey = current.configKey)
+			}.onSuccess { marked ->
+				if (!marked) _state.update { it.copy(failed = true) }
+			}.onFailure { _state.update { it.copy(failed = true) } }
+		}
 	}
 
 	private fun enqueue(requests: List<MigrationBatchRequest>) {
@@ -199,10 +221,11 @@ class SourceMangaListViewModel @Inject constructor(
 		}
 	}
 
-	fun cancelBatch() {
-		val batch = state.value.ownedBatchName ?: return
+	fun cancelBatch(confirmedBatch: String) {
+		// Reject a stale UI confirmation instead of cancelling a replacement session.
+		if (state.value.activeBatchName != confirmedBatch) return
 		viewModelScope.launch {
-			runCatchingCancellable { batchScheduler.cancel(batch) }
+			runCatchingCancellable { batchScheduler.cancel(confirmedBatch) }
 				.onFailure { _state.update { it.copy(failed = true) } }
 		}
 	}
@@ -240,7 +263,25 @@ class SourceMangaListViewModel @Inject constructor(
 					val privateOnly = privateIds.toHashSet()
 					val relevantIds = manga.mapTo(hashSetOf()) { it.id }
 					val snapshots = works.mapNotNull(MigrationBatchWork::snapshot)
-						.filter { it.mangaId in relevantIds }
+						.filter { item ->
+							if (item.mangaId in relevantIds) return@filter true
+							// Replacing a manga removes its old id from the source list. Preserve its durable
+							// outcome for review only when the destination is still in the public library.
+							// Failures after Room commit can remove the old entry; preserve their uncertain
+							// status too, never interpreting them as completed. Do not expose Private-only data.
+							val isReported = item.outcome.status == MigrationBatchStatus.MIGRATED ||
+								item.outcome.status == MigrationBatchStatus.COPIED ||
+								item.outcome.status == MigrationBatchStatus.ERROR ||
+								item.outcome.status == MigrationBatchStatus.INTERRUPTED
+							val belongsToSession = if (explicitMangaIds.isNotEmpty()) {
+								item.mangaId in explicitMangaIds
+							} else {
+								item.source in sourceKeys
+							}
+							if (!isReported || !belongsToSession) return@filter false
+							val destinationId = item.outcome.destinationId ?: return@filter false
+							destinationId !in privateOnly && database.getMangaDao().isMigrationEntryVisible(destinationId)
+						}
 						.filterNot { it.mangaId in privateOnly }
 						.mapNotNull { item ->
 							if (item.outcome.destinationId !in privateOnly) item
@@ -248,21 +289,56 @@ class SourceMangaListViewModel @Inject constructor(
 							else null
 						}
 					val latest = MigrationBatchPolicy.latest(snapshots)
+					// Resolve READY candidates and completed destinations from Room, never from
+					// WorkManager display hints. Preserve the Normal/Private and source-ID boundaries.
+					val destinationIds = latest.values.mapNotNull { snapshot ->
+						val outcome = snapshot.outcome
+						val id = when (outcome.status) {
+							MigrationBatchStatus.READY -> outcome.selection?.id?.takeIf {
+								snapshot.discoveryMode == MigrationBatchDiscoveryMode.YOKAI
+							}
+							MigrationBatchStatus.MIGRATED, MigrationBatchStatus.COPIED -> outcome.destinationId
+							else -> null
+						}
+						id?.takeUnless { it in privateOnly }
+					}.distinct()
+					val candidates = destinationIds.chunked(500)
+						.flatMap { database.getMangaDao().findByIds(it) }
+						.toMangaList().associateBy(Manga::id)
+					val targetManga = latest.mapNotNull { (sourceId, snapshot) ->
+						val outcome = snapshot.outcome
+						val completed = outcome.status == MigrationBatchStatus.MIGRATED ||
+							outcome.status == MigrationBatchStatus.COPIED
+						if (!completed && outcome.status != MigrationBatchStatus.READY) return@mapNotNull null
+						val id = if (completed) outcome.destinationId else outcome.selection?.id
+						val source = if (completed) outcome.destinationSource else outcome.selection?.source
+						if (id == null || source == null || id in privateOnly) return@mapNotNull null
+						val candidate = candidates[id] ?: return@mapNotNull null
+						if (candidate.source.name != source) return@mapNotNull null
+						if (completed && !database.getMangaDao().isMigrationEntryVisible(id)) return@mapNotNull null
+						sourceId to candidate
+					}.toMap()
 					val owned = snapshots.firstOrNull { it.running }?.batchName
+                    val active = works.firstOrNull {
+                        !it.state.isFinished && !MigrationBatchWork.isTerminal(it)
+                    }?.let(MigrationBatchWork::snapshot)?.batchName
 					val batch = snapshots.filter { it.batchName == owned }
 					SourceMangaListState(
 						isLoading = false,
 						manga = manga,
+						targetManga = targetManga,
 						batchItems = latest,
 						batchBusy = works.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) },
 						ownedBatchName = owned,
+                        activeBatchName = active,
 						batchCompleted = batch.count { !it.running },
 						batchTotal = batch.size,
 						migratedCount = latest.values.count {
 							it.outcome.status == MigrationBatchStatus.MIGRATED || it.outcome.status == MigrationBatchStatus.COPIED
 						},
 						unconfirmedCount = latest.values.count {
-							it.mangaId !in visible && it.outcome.status == MigrationBatchStatus.INTERRUPTED
+							it.mangaId !in visible && (it.outcome.status == MigrationBatchStatus.INTERRUPTED ||
+								it.outcome.status == MigrationBatchStatus.ERROR)
 						},
 					)
 				}.flowOn(Dispatchers.IO).collect { projection ->
@@ -271,6 +347,8 @@ class SourceMangaListViewModel @Inject constructor(
 							filter = current.filter,
 							scheduling = current.scheduling,
 							selectedIds = current.selectedIds.intersect(projection.manga.mapTo(hashSetOf()) { it.id }),
+							preferredAction = current.preferredAction,
+							installedSources = current.installedSources,
 							availableSources = current.availableSources,
 							selectedSourceNames = current.selectedSourceNames,
 							sourceStrategy = current.sourceStrategy,
@@ -291,7 +369,9 @@ class SourceMangaListViewModel @Inject constructor(
 	private fun mangaFlow(): Flow<List<MangaWithTags>> = if (explicitMangaIds.isNotEmpty()) {
 		flow {
 			val dao = database.getMangaDao()
-			val visible = dao.findByIds(explicitMangaIds).filter { dao.isMigrationEntryVisible(it.manga.id) }
+			// Explicit multi-selection can exceed SQLite's per-statement bind-variable limit.
+			val visible = explicitMangaIds.chunked(500).flatMap { dao.findByIds(it) }
+				.filter { dao.isMigrationEntryVisible(it.manga.id) }
 			emit(visible)
 		}
 	} else {
@@ -314,9 +394,12 @@ class SourceMangaListViewModel @Inject constructor(
 							.distinctBy(MangaSource::name)
 							.sortedBy(MangaSource::name),
 						providerFailureCount = pools.sumOf(MigrationSourcePool::providerFailureCount),
-					)
+					) to sourcesRepository.getInstalledMigrationSources()
 				}
-			}.onSuccess { pool ->
+			}.onSuccess { (pool, installed) ->
+				// Inventory is sourced only from installed extension/plugin managers. The
+				// separate pool is the sole authority for migration execution eligibility.
+				val installedSources = installed
 				val availableNames = pool.allSources.mapTo(hashSetOf(), MangaSource::name)
 				val rememberedConfigured = migrationPreferences.selectedSourceNames
 				val currentConfigured = state.value.selectedSourceNames
@@ -329,6 +412,7 @@ class SourceMangaListViewModel @Inject constructor(
 				}
 				_state.update { current -> current.copy(
 					availableSources = pool.allSources,
+					installedSources = installedSources,
 					selectedSourceNames = selected,
 					sourceSelectionLoading = false,
 					sourceSelectionFailed = false,
@@ -358,8 +442,11 @@ data class SourceMangaListState(
 	val failed: Boolean = false,
 	val manga: List<Manga> = emptyList(),
 	val selectedIds: Set<Long> = emptySet(),
+	val preferredAction: MigrationBatchAction? = null,
+	val targetManga: Map<Long, Manga> = emptyMap(),
 	val filter: MigrationBatchStatus? = null,
 	val availableSources: List<MangaSource> = emptyList(),
+	val installedSources: List<MangaSource> = emptyList(),
 	/** Ordered destination source identities; FIRST_MATCH uses this exact order. */
 	val selectedSourceNames: List<String> = emptyList(),
 	val sourceStrategy: MigrationSourceStrategy = MigrationSourceStrategy.FIRST_MATCH,
@@ -371,6 +458,7 @@ data class SourceMangaListState(
 	val batchItems: Map<Long, MigrationBatchSnapshot> = emptyMap(),
 	val batchBusy: Boolean = false,
 	val ownedBatchName: String? = null,
+    val activeBatchName: String? = null,
 	val scheduling: Boolean = false,
 	val batchCompleted: Int = 0,
 	val batchTotal: Int = 0,
@@ -390,7 +478,46 @@ data class SourceMangaListState(
 		}
 	}
 
+	/** Never display a persisted cover/details candidate for a stale or different search config. */
+	fun readyTarget(mangaId: Long): Manga? {
+		val snapshot = batchItems[mangaId] ?: return null
+		val candidate = targetManga[mangaId] ?: return null
+		val selected = snapshot.outcome.selection ?: return null
+		return candidate.takeIf {
+			status(mangaId) == MigrationBatchStatus.READY &&
+				!snapshot.running &&
+				selected.id == it.id && selected.source == it.source.name
+		}
+	}
+
+	/** Completed results use only the exact Room-backed destination identity. */
+	fun completedTarget(mangaId: Long): Manga? {
+		val snapshot = batchItems[mangaId] ?: return null
+		val target = targetManga[mangaId] ?: return null
+		return target.takeIf {
+			!snapshot.running &&
+				status(mangaId) in setOf(MigrationBatchStatus.MIGRATED, MigrationBatchStatus.COPIED) &&
+				snapshot.outcome.destinationId == it.id &&
+				snapshot.outcome.destinationSource == it.source.name
+		}
+	}
+
 	val visibleManga: List<Manga> get() = manga.filter { filter == null || status(it.id) == filter }
+	val completedResults: List<MigrationBatchSnapshot> get() {
+		val visibleIds = manga.mapTo(hashSetOf(), Manga::id)
+		return batchItems.values.filter {
+			it.mangaId !in visibleIds && (it.outcome.status == MigrationBatchStatus.MIGRATED ||
+				it.outcome.status == MigrationBatchStatus.COPIED)
+		}.sortedByDescending(MigrationBatchSnapshot::generation)
+	}
+	/** Source may disappear after commit while cleanup reports an error/interruption. */
+	val unconfirmedResults: List<MigrationBatchSnapshot> get() {
+		val visibleIds = manga.mapTo(hashSetOf(), Manga::id)
+		return batchItems.values.filter {
+			it.mangaId !in visibleIds && (it.outcome.status == MigrationBatchStatus.ERROR ||
+				it.outcome.status == MigrationBatchStatus.INTERRUPTED)
+		}.sortedByDescending(MigrationBatchSnapshot::generation)
+	}
 	val readyCount: Int get() = MigrationBatchPolicy.readyRequests(
 		manga = manga,
 		snapshots = batchItems,

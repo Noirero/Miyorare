@@ -110,6 +110,16 @@ public final class LocalTreeScanner {
         return result;
     }
 
+    /** Refresh one indexed archive/EPUB without enumerating or modifying sibling titles. */
+    public Result scanFile(Node file) throws IOException {
+        if (file.directory || !isBook(file.name)) throw new IOException("Unsupported single-file collection");
+        Result result = new Result();
+        result.entries.add(new Entry(file,
+            Collections.singletonList(new Chapter(file, Collections.emptyList())),
+            Collections.emptyList(), 0));
+        return result;
+    }
+
     private void classify(Tree t, Set<String> confirmed) {
         List<Tree> dirs = new ArrayList<>();
         List<Node> images = new ArrayList<>();

@@ -24,6 +24,25 @@ class MigrationYokaiFlowContractTest {
 	}
 
 	@Test
+	fun `baseline automatic candidate follows source order without additional scoring gate`() {
+		val automatic = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
+		assertTrue(automatic.contains("MigrationMatchAssessment(MigrationMatchState.READY,selected,ranked)"))
+		assertFalse(automatic.contains("candidateMatcher.assess("))
+		assertFalse(automatic.contains("assessment.copy(state=MigrationMatchState.NEEDS_REVIEW)"))
+	}
+
+	@Test
+	fun `download state is not an input to candidate discovery or ordering`() {
+		val search = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
+		for (forbidden in listOf("LocalMangaIndex", "DownloadPathAlias", "getFavouriteDownloadIndexDao",
+			"downloadOwnership", "downloadIdentity", "downloadedChapters")) {
+			assertFalse("Discovery must not consult $forbidden", search.contains(forbidden))
+		}
+		assertTrue(search.contains("chooseCandidate(seed.title,eligible)"))
+		assertTrue(search.contains("MigrationMatchAssessment(MigrationMatchState.READY,selected,ranked)"))
+	}
+
+	@Test
 	fun `automatic matching follows Yokai source order and threshold rules`() {
 		val source = source("org/koitharu/kotatsu/alternatives/domain/YokaiStyleMigrationSearchUseCase.kt")
 
@@ -68,7 +87,7 @@ class MigrationYokaiFlowContractTest {
 		assertTrue(manual.contains("if(selected.size==1)selectedelseselected.filterNot{it==seed.source}"))
 		assertTrue(manual.contains("validSourceNames"))
 		assertTrue(manual.contains("takeIf{it.source.nameinvalidSourceNames}"))
-		assertTrue(manual.contains("copy(query=value,selected=null,errorMessage=null)"))
+		assertTrue(manual.contains("copy(query=value,selected=null,groups=emptyMap(),errorMessage=null)"))
 	}
 
 	@Test
@@ -117,7 +136,7 @@ class MigrationYokaiFlowContractTest {
 		assertTrue(source.contains("findMangaById(selection.id,withChapters=false)"))
 		assertTrue(source.contains("storedCandidate.source.name==selection.source"))
 		assertTrue(source.contains("repository.getDetails(storedCandidate)"))
-		assertTrue(source.contains("repository.getPages(chapter)"))
+		assertFalse(source.contains("repository.getPages(chapter)"))
 		assertTrue(source.contains("MigrationExecutionMode.MIGRATE->migrateUseCase("))
 		assertTrue(source.contains("lossless=true"))
 		assertTrue(source.contains("requireLibraryEntry=true"))

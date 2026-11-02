@@ -65,7 +65,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 
 	fun setQuery(value: String) {
 		if (state.value.searching || state.value.migrating || state.value.skipping) return
-		_state.update { it.copy(query = value, selected = null, errorMessage = null) }
+		_state.update { it.copy(query = value, selected = null, groups = emptyMap(), errorMessage = null) }
 	}
 
 	fun select(candidate: Manga) {
@@ -122,6 +122,39 @@ class MigrationManualSearchViewModel @Inject constructor(
 				}.joinAll()
 			}
 			_state.update { it.copy(searching = false) }
+		}
+	}
+
+	/** Selecting a manual result returns it to the same result list; execution is a separate action. */
+	fun useSelected() {
+		val current = state.value
+		val candidate = current.selected ?: return
+		val seed = current.seed ?: return
+		if (current.migrating || current.skipping || candidate.id == mangaId) return
+		searchJob?.cancel()
+		_state.update { it.copy(searching = false, migrating = true, errorMessage = null) }
+		viewModelScope.launch {
+			runCatchingCancellable {
+				withContext(Dispatchers.IO) {
+					check(canPersistCandidate(candidate)) {
+						"Selected result already belongs to another source"
+					}
+					mangaDataRepository.storeManga(
+						manga = candidate, replaceExisting = true, stripAppliedOverride = false,
+					)
+					check(batchScheduler.markSelected(
+						mangaId = mangaId,
+						source = seed.source.name,
+						selection = MigrationSelection.fromSearchResult(candidate),
+						destinationTitle = candidate.title,
+						configKey = sessionConfigKey,
+					)) { "Another migration batch is still running" }
+				}
+			}.onSuccess {
+				_state.update { it.copy(migrating = false, selectedReady = true) }
+			}.onFailure { error ->
+				_state.update { it.copy(migrating = false, errorMessage = error.message ?: error::class.java.simpleName) }
+			}
 		}
 	}
 
@@ -190,7 +223,8 @@ class MigrationManualSearchViewModel @Inject constructor(
 					) { "Another migration batch is still running" }
 					val expected = if (mode == MigrationExecutionMode.COPY) MigrationBatchStatus.COPIED else MigrationBatchStatus.MIGRATED
 					check(snapshot.outcome.status == expected) {
-						"Migration execution ended with ${snapshot.outcome.status.name.lowercase()}"
+						"Migration execution ended with ${snapshot.outcome.status.name.lowercase()}" +
+                            (snapshot.outcome.failureStage?.let { " at ${it.name.lowercase()}" } ?: "")
 					}
 					val destinationId = checkNotNull(snapshot.outcome.destinationId) { "Migration result has no destination" }
 					checkNotNull(mangaDataRepository.findMangaById(destinationId, withChapters = false)) {
@@ -255,6 +289,7 @@ data class MigrationManualSearchState(
 	val migrating: Boolean = false,
 	val skipping: Boolean = false,
 	val skipped: Boolean = false,
+	val selectedReady: Boolean = false,
 	val seed: Manga? = null,
 	val query: String = "",
 	val sources: List<MangaSource> = emptyList(),

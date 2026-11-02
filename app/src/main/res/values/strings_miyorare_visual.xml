@@ -6,8 +6,8 @@
 	<string name="visual_effects_full">Full</string>
 	<string name="miyorare_appearance_group">Appearance theme</string>
 	<string name="miyorare_design_style">Design style</string>
-	<string name="miyorare_design_classic">Classic</string>
-	<string name="miyorare_design_modern">Miyorare Modern</string>
+	<string name="miyorare_design_classic">Material 3</string>
+	<string name="miyorare_design_modern">Miyorare UI</string>
 	<string name="miyorare_display_mode">Display mode</string>
 	<string name="miyorare_modern_theme">Modern theme</string>
 	<string name="miyorare_theme_miyorare">Miyorare</string>
@@ -37,6 +37,6 @@
 	<string name="miyorare_custom_background_failed">Couldn’t use that image</string>
 	<string name="miyorare_custom_background_preview">Background preview</string>
 	<string name="miyorare_reset_appearance">Reset appearance</string>
-	<string name="miyorare_reset_appearance_summary">Restore Classic, System mode and the default appearance theme</string>
+	<string name="miyorare_reset_appearance_summary">Restore Material 3, System mode and the default appearance theme</string>
 	<string name="miyorare_reset_appearance_confirm">Reset theme choices only? Manga lists, reader settings, navigation and content data will not change.</string>
 </resources>

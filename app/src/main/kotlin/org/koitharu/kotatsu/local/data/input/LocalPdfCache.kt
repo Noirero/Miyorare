@@ -1,5 +1,8 @@
 package org.koitharu.kotatsu.local.data.input
 
+import android.content.ContentResolver
+import android.net.Uri
+import android.provider.DocumentsContract
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Matrix
@@ -25,10 +28,14 @@ object LocalPdfCache {
 
 	private const val CACHE_DIR_NAME = "local_pdf_pages"
 	private const val SOURCE_FILE_NAME = ".source"
+    private const val DOCUMENT_SOURCE_PREFIX = "document\n"
 	private const val COVER_FILE_NAME = "cover.png"
 	private const val COVER_MAX_RENDER_DIMENSION = 768
 	private const val PDF_RENDER_CONCURRENCY = 2
 	private const val RENDER_LOCK_STRIPES = 32
+	private const val PDF_CACHE_BUDGET_BYTES = 64L * 1024 * 1024
+	private const val PDF_CACHE_ACTIVE_GRACE_MS = 2L * 60 * 1000
+	private val pruneLock = Any()
 	// Rendering every page at 4x/4096px made long local PDFs spend tens of seconds in PNG deflate,
 	// increased GC pressure and could contribute to foreground ANRs while the library UI was active.
 	// 2560px is still comfortably above typical phone display resolution while cutting bitmap area,
@@ -140,6 +147,37 @@ object LocalPdfCache {
 		return List(pageCount) { index -> File(outputDir, pageFileName(index)) }
 	}
 
+    /**
+     * A seekable SAF PDF needs only a descriptor for page enumeration. Persist a small internal
+     * source marker; future page requests reopen the document via its existing tree grant.
+     * An unsupported descriptor must fall back before this method is called.
+     */
+    fun renderPagesFromDocument(
+        descriptor: ParcelFileDescriptor,
+        documentUri: String,
+        identity: String,
+        expectedSize: Long,
+        expectedModified: Long,
+    ): List<File> {
+        val pageCount = PdfRenderer(ParcelFileDescriptor.dup(descriptor.fileDescriptor)).use { renderer ->
+            if (renderer.pageCount <= 0) throw IOException("PDF has no pages")
+            renderer.pageCount
+        }
+        val document = Uri.parse(documentUri)
+        validateDocumentSource(document, expectedSize, expectedModified)
+        val key = digestKey("saf-pdf\u0000$identity")
+        val outputDir = File(pdfCacheRoot(), key)
+        ensureOutputDir(outputDir)
+        val marker = "$DOCUMENT_SOURCE_PREFIX$key\n$documentUri\n$expectedSize\n$expectedModified"
+        val sourceMarker = File(outputDir, SOURCE_FILE_NAME)
+        withTargetLock(sourceMarker) {
+            if (!sourceMarker.isFile || sourceMarker.readText() != marker) {
+                sourceMarker.writeText(marker)
+            }
+        }
+        return List(pageCount) { index -> File(outputDir, pageFileName(index)) }
+    }
+
 	fun isPdfPage(file: File): Boolean {
 		return file.name.startsWith("page_") &&
 			file.name.endsWith(".png") &&
@@ -163,22 +201,61 @@ object LocalPdfCache {
 			if (!sourceMarker.isFile) {
 				throw IOException("PDF cache source is missing: $file")
 			}
-			val pdf = File(sourceMarker.readText())
-			validateSourceIdentity(pdf, outputDir)
-			if (file.isUsableCacheFile()) {
-				return@withTargetLock file
-			}
-			withRenderPermit {
-				openRenderer(pdf) { renderer ->
-					validateSourceIdentity(pdf, outputDir)
-					if (pageIndex !in 0 until renderer.pageCount) {
-						throw IOException("PDF page is out of range: $pageIndex for $pdf")
-					}
-					val result = renderPage(renderer, pageIndex, outputDir)
-					validateSourceIdentity(pdf, outputDir)
-					result
-				}
-			}
+            val source = sourceMarker.readText()
+            if (source.startsWith(DOCUMENT_SOURCE_PREFIX)) {
+                val parts = source.removePrefix(DOCUMENT_SOURCE_PREFIX).split('\n', limit = 4)
+                if (parts.size != 4 || parts[0] != outputDir.name) {
+                    throw IOException("PDF document cache identity mismatch")
+                }
+                val uri = Uri.parse(parts[1])
+                if (uri.scheme != ContentResolver.SCHEME_CONTENT) {
+                    throw IOException("Invalid PDF document source")
+                }
+                val expectedSize = parts[2].toLongOrNull()
+                    ?: throw IOException("Invalid PDF size marker")
+                val expectedModified = parts[3].toLongOrNull()
+                    ?: throw IOException("Invalid PDF modified marker")
+                // Validate even a warm cached page: a replaced document must never display stale
+                // content under the previous Reader identity.
+                validateDocumentSource(uri, expectedSize, expectedModified)
+                if (file.isUsableCacheFile()) {
+                    file.setLastModified(System.currentTimeMillis())
+                    return@withTargetLock file
+                }
+                withRenderPermit {
+                    openRenderer(uri) { renderer ->
+                        if (pageIndex !in 0 until renderer.pageCount) {
+                            throw IOException("PDF document page is out of range")
+                        }
+                        renderPage(renderer, pageIndex, outputDir).also {
+                            try {
+                                validateDocumentSource(uri, expectedSize, expectedModified)
+                            } catch (error: Throwable) {
+                                it.delete()
+                                throw error
+                            }
+                        }
+                    }
+                }
+            } else {
+                val pdf = File(source)
+                validateSourceIdentity(pdf, outputDir)
+                if (file.isUsableCacheFile()) {
+                    file.setLastModified(System.currentTimeMillis())
+                    return@withTargetLock file
+                }
+                withRenderPermit {
+                    openRenderer(pdf) { renderer ->
+                        validateSourceIdentity(pdf, outputDir)
+                        if (pageIndex !in 0 until renderer.pageCount) {
+                            throw IOException("PDF page is out of range: $pageIndex for $pdf")
+                        }
+                        val result = renderPage(renderer, pageIndex, outputDir)
+                        validateSourceIdentity(pdf, outputDir)
+                        result
+                    }
+                }
+            }
 		}
 	}
 
@@ -190,6 +267,42 @@ object LocalPdfCache {
 			PdfRenderer(descriptor).use(block)
 		}
 	}
+
+    /**
+     * SAF document revisions are verified against the version captured when Reader opened.
+     * Providers without comparable metadata retain the legacy copied-backing path. A source
+     * changing in-place while a page renders is never published as the previous revision.
+     */
+    private fun validateDocumentSource(uri: Uri, expectedSize: Long, expectedModified: Long) {
+        if (expectedSize <= 0L || expectedModified <= 0L) {
+            throw IOException("PDF provider cannot verify document revision")
+        }
+        val context = checkNotNull(PlatformRegistry.applicationContext) {
+            "Application context is not initialized"
+        }
+        val columns = arrayOf(
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+        )
+        val current = context.contentResolver.query(uri, columns, null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst() || cursor.isNull(0) || cursor.isNull(1)) null
+            else cursor.getLong(0) to cursor.getLong(1)
+        } ?: throw IOException("PDF document revision is unavailable")
+        if (current.first != expectedSize || current.second != expectedModified) {
+            throw IOException("PDF document changed while Reader was open")
+        }
+    }
+
+    private inline fun <T> openRenderer(uri: Uri, block: (PdfRenderer) -> T): T {
+        val context = checkNotNull(PlatformRegistry.applicationContext) {
+            "Application context is not initialized"
+        }
+        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+            ?: throw IOException("Cannot reopen PDF document")
+        return descriptor.use {
+            PdfRenderer(ParcelFileDescriptor.dup(it.fileDescriptor)).use(block)
+        }
+    }
 
 	private inline fun <T> withRenderPermit(block: () -> T): T {
 		renderPermits.acquire()
@@ -243,7 +356,28 @@ object LocalPdfCache {
 			tempFile.copyTo(outputFile, overwrite = true)
 			tempFile.delete()
 		}
+		pruneRenderedPages(outputFile)
 		return outputFile
+	}
+
+	/** Best-effort budget for rendered PDF pages; never remove source markers or a recent page. */
+	private fun pruneRenderedPages(current: File) = synchronized(pruneLock) {
+		val root = current.parentFile?.parentFile ?: return@synchronized
+		if (root.name != CACHE_DIR_NAME) return@synchronized
+		val pages = root.listFiles().orEmpty().flatMap { dir ->
+			if (!dir.isDirectory) emptyList() else dir.listFiles().orEmpty().filter { file ->
+				file.isFile && file.name.startsWith("page_") && file.name.endsWith(".png")
+			}
+		}
+		var bytes = pages.sumOf { it.length() }
+		if (bytes <= PDF_CACHE_BUDGET_BYTES) return@synchronized
+		val cutoff = System.currentTimeMillis() - PDF_CACHE_ACTIVE_GRACE_MS
+		for (page in pages.sortedBy { it.lastModified() }) {
+			if (bytes <= PDF_CACHE_BUDGET_BYTES) break
+			if (page == current || page.lastModified() >= cutoff) continue
+			val size = page.length()
+			if (page.delete()) bytes -= size
+		}
 	}
 
 	private fun renderBitmap(renderer: PdfRenderer, pageIndex: Int, maxRenderDimension: Int): Bitmap =
@@ -281,17 +415,23 @@ object LocalPdfCache {
 
 	private fun File.isUsableCacheFile(): Boolean = isFile && length() > 0L
 
-	private fun cacheDirFor(pdf: File): File {
-		val context = checkNotNull(PlatformRegistry.applicationContext) {
-			"Application context is not initialized"
-		}
-		return File(File(context.cacheDir, CACHE_DIR_NAME), cacheKey(pdf))
-	}
+	private fun cacheDirFor(pdf: File): File = File(pdfCacheRoot(), cacheKey(pdf))
+
+    private fun pdfCacheRoot(): File {
+        val context = checkNotNull(PlatformRegistry.applicationContext) {
+            "Application context is not initialized"
+        }
+        return File(context.cacheDir, CACHE_DIR_NAME)
+    }
 
 	private fun cacheKey(pdf: File): String {
 		val path = runCatching { pdf.canonicalPath }.getOrDefault(pdf.absolutePath)
 		val identity = "$path\u0000${pdf.length()}\u0000${pdf.lastModified()}"
-		val digest = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray(Charsets.UTF_8))
+		return digestKey(identity)
+    }
+
+    private fun digestKey(identity: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray(Charsets.UTF_8))
 		return buildString(digest.size * 2) {
 			for (byte in digest) {
 				append(((byte.toInt() ushr 4) and 0xF).toString(16))
