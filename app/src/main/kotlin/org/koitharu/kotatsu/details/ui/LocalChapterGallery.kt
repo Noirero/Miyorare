@@ -29,6 +29,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
+import coil3.ImageLoader
+import coil3.asImage
+import coil3.memory.MemoryCache
+import coil3.toBitmap
 import android.graphics.BitmapFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -53,6 +57,12 @@ internal fun LocalChapterGallery(
     topPadding: Dp,
     coverForChapter: suspend (MangaChapter) -> ByteArray?,
     onChapterClick: (ChapterListItem) -> Unit,
+    imageLoader: ImageLoader? = null,
+    thumbnailMemoryKey: suspend (MangaChapter) -> String? = { null },
+    galleryRevision: Long? = null,
+    // Test-only measurement hook; no production cache or retained bitmap ownership.
+    onThumbnailDecoded: (MangaChapter) -> Unit = {},
+    onThumbnailMemoryHit: (MangaChapter) -> Unit = {},
 ) {
     val context = LocalContext.current
     LazyVerticalGrid(
@@ -80,11 +90,24 @@ internal fun LocalChapterGallery(
                 initialValue = null,
                 key1 = item.chapter.url,
                 key2 = item.chapter.id,
+                key3 = galleryRevision,
             ) {
                 value = runCatchingCancellable {
                     withContext(Dispatchers.IO) {
+                        // Check bounded Coil memory before asking the derived disk owner for bytes.
+                        val memory = imageLoader?.memoryCache
+                        val key = thumbnailMemoryKey(item.chapter)?.let { MemoryCache.Key(it) }
+                        val reused = key?.let { memory?.get(it)?.image?.toBitmap() }
+                        if (reused != null) {
+                            onThumbnailMemoryHit(item.chapter)
+                            return@withContext reused.asImageBitmap()
+                        }
                         coverForChapter(item.chapter)?.let { bytes ->
-                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { bitmap ->
+                                onThumbnailDecoded(item.chapter)
+                                if (memory != null && key != null) memory[key] = MemoryCache.Value(bitmap.asImage())
+                                bitmap.asImageBitmap()
+                            }
                         }
                     }
                 }.getOrNull()

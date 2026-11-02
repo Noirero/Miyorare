@@ -789,6 +789,19 @@ class SmartLocalLibrary @Inject constructor(
      * Cover-sized chapter preview only. Never enumerate reader pages, render every PDF page,
      * or populate the reader's page cache. Reuses bounded archive/PDF cover extraction.
      */
+    /**
+     * Derived thumbnail presentation identity. Coil may cache decoded pixels but the existing
+     * gallery disk cache remains the source of truth. No source document is opened here.
+     */
+    suspend fun chapterGalleryMemoryKey(chapter: MangaChapter): String? = withContext(Dispatchers.IO) {
+        val (book, localChapter) = requireChapter(chapter.url)
+        val candidates = if (localChapter.node.directory) localChapter.pages.take(1)
+            else listOf(localChapter.node)
+        if (candidates.isEmpty()) return@withContext null
+        val plan = LocalCoverPlan(book.rootUri, candidates, book.scannedAt)
+        "smart-local-gallery:${book.id}:${localChapter.id}:${plan.fingerprint}:${chapterGalleryCache.clearEpoch}"
+    }
+
     suspend fun chapterGalleryThumbnail(chapter: MangaChapter): ByteArray? = withContext(Dispatchers.IO) {
         val (book, localChapter) = requireChapter(chapter.url)
         val candidates = if (localChapter.node.directory) localChapter.pages.take(1)

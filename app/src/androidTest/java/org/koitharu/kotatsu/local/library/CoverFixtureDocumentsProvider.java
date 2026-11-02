@@ -160,6 +160,9 @@ public class CoverFixtureDocumentsProvider extends DocumentsProvider {
             case "fixture-put":
                 put(Objects.requireNonNull(arg), Objects.requireNonNull(extras));
                 return new Bundle();
+            case "fixture-put-chunk":
+                appendFixtureChunk(Objects.requireNonNull(arg), Objects.requireNonNull(extras));
+                return new Bundle();
             default:
                 return super.call(method, arg, extras);
         }
@@ -203,6 +206,19 @@ public class CoverFixtureDocumentsProvider extends DocumentsProvider {
             throw new IllegalStateException("Cannot write cover fixture", error);
         }
         file.setLastModified(++revision);
+    }
+
+    /** Large synthetic PDFs are sent in bounded Binder chunks; publication finishes on last. */
+    private void appendFixtureChunk(String id, Bundle data) {
+        File target = file(id);
+        Objects.requireNonNull(target.getParentFile()).mkdirs();
+        byte[] bytes = Objects.requireNonNull(data.getByteArray("bytes"));
+        try (FileOutputStream stream = new FileOutputStream(target, !data.getBoolean("first"))) {
+            stream.write(bytes);
+        } catch (IOException error) {
+            throw new IllegalStateException("Cannot append PDF test fixture", error);
+        }
+        if (data.getBoolean("last")) target.setLastModified(++revision);
     }
 
     private File file(String id) {
