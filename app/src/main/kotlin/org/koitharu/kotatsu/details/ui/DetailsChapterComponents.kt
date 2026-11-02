@@ -287,21 +287,16 @@ private fun HeroSourceCard(
 	}
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
 	val cardContent: @Composable () -> Unit = {
-		Row(
-			modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-			verticalAlignment = Alignment.CenterVertically,
-		) {
+		Box(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
 			Column(
 				modifier = Modifier
-					.weight(1f)
+					.fillMaxWidth()
 					.fillMaxHeight()
 					.testTag("hero-source-content")
 					.clickable(onClick = onSourceClick)
 					.padding(
-						start = if (palette.isModern) 11.dp else 9.dp,
-						end = 2.dp,
-						top = if (palette.isModern) 10.dp else 9.dp,
-						bottom = if (palette.isModern) 10.dp else 9.dp,
+						horizontal = if (palette.isModern) 11.dp else 9.dp,
+						vertical = if (palette.isModern) 10.dp else 9.dp,
 					),
 				verticalArrangement = Arrangement.Center,
 			) {
@@ -330,13 +325,19 @@ private fun HeroSourceCard(
 						color = MaterialTheme.colorScheme.onSurface,
 						maxLines = if (expanded) Int.MAX_VALUE else 1,
 						overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
-						modifier = Modifier.weight(1f).testTag("hero-source-title"),
+						modifier = Modifier
+							.weight(1f)
+							.padding(end = 24.dp)
+							.testTag("hero-source-title"),
 					)
 				}
 			}
 			IconButton(
 				onClick = onToggleExpanded,
-				modifier = Modifier.size(32.dp).testTag("hero-source-toggle"),
+				modifier = Modifier
+					.align(Alignment.CenterEnd)
+					.size(32.dp)
+					.testTag("hero-source-toggle"),
 			) {
 				Icon(
 					painter = painterResource(R.drawable.ic_chevron_right),
