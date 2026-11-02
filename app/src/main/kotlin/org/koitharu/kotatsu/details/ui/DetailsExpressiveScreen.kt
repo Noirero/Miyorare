@@ -166,6 +166,7 @@ fun DetailsExpressiveScreen(
 	bottomContentPadding: Dp,
 	onScroll: (Int) -> Unit,
 	coverForChapter: suspend (MangaChapter) -> ByteArray? = { null },
+	galleryMemoryKey: suspend (MangaChapter) -> String? = { null },
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
@@ -298,6 +299,9 @@ fun DetailsExpressiveScreen(
 					topPadding = topInset,
 					bottomPadding = bottomContentPadding,
 					coverForChapter = coverForChapter,
+					imageLoader = imageLoader,
+					thumbnailMemoryKey = galleryMemoryKey,
+					galleryRevision = indexedLocalBook?.scannedAt,
 					onChapterClick = actions.onChapterClick,
 				)
 			} else LazyColumn(
