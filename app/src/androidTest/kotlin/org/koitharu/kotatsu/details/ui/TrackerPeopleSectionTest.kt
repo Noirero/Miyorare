@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
@@ -239,8 +240,9 @@ class TrackerPeopleSectionTest {
         // Both cards render by default. A deliberately long source gets one-line ellipsis.
         compose.onNodeWithTag("hero-status-card").assertExists()
         compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertExists()
+        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
         assertTextOverflow(sourceText, expected = true)
+        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertIsDisplayed()
         assertTextOverflow(compose.onNodeWithText("Masih lanjut", useUnmergedTree = true), expected = false)
         assertTextOverflow(compose.onNodeWithText(releaseText, useUnmergedTree = true), expected = false)
 
