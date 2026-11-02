@@ -360,7 +360,10 @@ object LocalPdfCache {
 		return outputFile
 	}
 
-	/** Best-effort budget for rendered PDF pages; never remove source markers or a recent page. */
+	/** Enforce the rendered-page byte budget after each render; keep the current page.
+	 * Recently accessed pages survive in LRU order while they fit, regardless of age.
+	 * Only a single current page larger than the budget may require an overshoot.
+	 */
 	private fun pruneRenderedPages(current: File) = synchronized(pruneLock) {
 		val root = current.parentFile?.parentFile ?: return@synchronized
 		if (root.name != CACHE_DIR_NAME) return@synchronized
@@ -371,10 +374,9 @@ object LocalPdfCache {
 		}
 		var bytes = pages.sumOf { it.length() }
 		if (bytes <= PDF_CACHE_BUDGET_BYTES) return@synchronized
-		val cutoff = System.currentTimeMillis() - PDF_CACHE_ACTIVE_GRACE_MS
 		for (page in pages.sortedBy { it.lastModified() }) {
 			if (bytes <= PDF_CACHE_BUDGET_BYTES) break
-			if (page == current || page.lastModified() >= cutoff) continue
+			if (page == current) continue
 			val size = page.length()
 			if (page.delete()) bytes -= size
 		}
