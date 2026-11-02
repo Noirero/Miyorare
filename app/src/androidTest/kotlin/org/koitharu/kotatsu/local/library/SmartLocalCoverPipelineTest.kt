@@ -583,11 +583,15 @@ class SmartLocalCoverPipelineTest {
         measure("back_previous")
         reader.releaseReaderLease(token)
         measure("after_close_release")
-        // Cleanup is delayed and conditional on the retained-backing budget. Do not
-        // falsely report this immediate snapshot as a post-grace cleanup measurement.
+        // The fallback backing cleanup is scheduled after 60 seconds and is budgeted;
+        // waiting past grace distinguishes transient retention from long-lived storage.
+        if (!seekable) {
+            kotlinx.coroutines.delay(65_000L)
+            measure("after_cleanup_grace")
+        }
         writeSurvey(if (seekable) "pdf-reader-direct" else "pdf-reader-fallback",
             JSONObject().put("dataset", "SYNTHETIC_12_PAGE_PDF")
-                .put("cleanupAfterGraceMeasured", false)
+                .put("cleanupAfterGraceMeasured", !seekable)
                 .put("storageStages", observations))
         assertClosedDescriptors()
     }
