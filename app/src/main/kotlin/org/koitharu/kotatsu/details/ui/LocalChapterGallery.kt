@@ -96,7 +96,7 @@ internal fun LocalChapterGallery(
                     withContext(Dispatchers.IO) {
                         // Check bounded Coil memory before asking the derived disk owner for bytes.
                         val memory = imageLoader?.memoryCache
-                        val key = thumbnailMemoryKey(item.chapter)?.let(MemoryCache::Key)
+                        val key = thumbnailMemoryKey(item.chapter)?.let { MemoryCache.Key(it) }
                         val reused = key?.let { memory?.get(it)?.image?.toBitmap() }
                         if (reused != null) {
                             onThumbnailMemoryHit(item.chapter)
