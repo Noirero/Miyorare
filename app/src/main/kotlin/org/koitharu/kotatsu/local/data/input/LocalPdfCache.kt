@@ -34,7 +34,6 @@ object LocalPdfCache {
 	private const val PDF_RENDER_CONCURRENCY = 2
 	private const val RENDER_LOCK_STRIPES = 32
 	private const val PDF_CACHE_BUDGET_BYTES = 64L * 1024 * 1024
-	private const val PDF_CACHE_ACTIVE_GRACE_MS = 2L * 60 * 1000
 	private val pruneLock = Any()
 	// Rendering every page at 4x/4096px made long local PDFs spend tens of seconds in PNG deflate,
 	// increased GC pressure and could contribute to foreground ANRs while the library UI was active.
@@ -360,7 +359,10 @@ object LocalPdfCache {
 		return outputFile
 	}
 
-	/** Best-effort budget for rendered PDF pages; never remove source markers or a recent page. */
+	/** Enforce the rendered-page byte budget after each render; keep the current page.
+	 * Recently accessed pages survive in LRU order while they fit, regardless of age.
+	 * Only a single current page larger than the budget may require an overshoot.
+	 */
 	private fun pruneRenderedPages(current: File) = synchronized(pruneLock) {
 		val root = current.parentFile?.parentFile ?: return@synchronized
 		if (root.name != CACHE_DIR_NAME) return@synchronized
@@ -371,10 +373,9 @@ object LocalPdfCache {
 		}
 		var bytes = pages.sumOf { it.length() }
 		if (bytes <= PDF_CACHE_BUDGET_BYTES) return@synchronized
-		val cutoff = System.currentTimeMillis() - PDF_CACHE_ACTIVE_GRACE_MS
 		for (page in pages.sortedBy { it.lastModified() }) {
 			if (bytes <= PDF_CACHE_BUDGET_BYTES) break
-			if (page == current || page.lastModified() >= cutoff) continue
+			if (page == current) continue
 			val size = page.length()
 			if (page.delete()) bytes -= size
 		}

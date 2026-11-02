@@ -27,12 +27,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import android.content.res.Configuration
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
+import coil3.ImageLoader
+import coil3.asImage
+import coil3.memory.MemoryCache
+import coil3.toBitmap
 import android.graphics.BitmapFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -53,8 +59,21 @@ internal fun LocalChapterGallery(
     topPadding: Dp,
     coverForChapter: suspend (MangaChapter) -> ByteArray?,
     onChapterClick: (ChapterListItem) -> Unit,
+    imageLoader: ImageLoader? = null,
+    thumbnailMemoryKey: suspend (MangaChapter) -> String? = { null },
+    galleryRevision: Long? = null,
+    // Test-only measurement hook; no production cache or retained bitmap ownership.
+    onThumbnailDecoded: (MangaChapter) -> Unit = {},
+    onThumbnailMemoryHit: (MangaChapter) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val lightMode = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_NIGHT_MASK) !=
+        Configuration.UI_MODE_NIGHT_YES
+    // Artwork can be pale or dark; only light-mode text needs a local surface-backed
+    // contrast layer. No changes to chapter covers, loader, or the shared backdrop.
+    val labelSurface = if (lightMode) Modifier
+        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f), RoundedCornerShape(8.dp))
+        .padding(horizontal = 6.dp, vertical = 3.dp) else Modifier
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         modifier = Modifier.fillMaxSize(),
@@ -67,11 +86,17 @@ internal fun LocalChapterGallery(
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(text = mangaTitle, style = MaterialTheme.typography.titleLarge, color = androidx.compose.ui.graphics.Color.White)
+                Text(
+                    text = mangaTitle,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = labelSurface,
+                )
                 Text(
                     text = stringResource(R.string.local_gallery_chapter_count, chapters.size),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.82f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = labelSurface,
                 )
             }
         }
@@ -80,11 +105,24 @@ internal fun LocalChapterGallery(
                 initialValue = null,
                 key1 = item.chapter.url,
                 key2 = item.chapter.id,
+                key3 = galleryRevision,
             ) {
                 value = runCatchingCancellable {
                     withContext(Dispatchers.IO) {
+                        // Check bounded Coil memory before asking the derived disk owner for bytes.
+                        val memory = imageLoader?.memoryCache
+                        val key = thumbnailMemoryKey(item.chapter)?.let { MemoryCache.Key(it) }
+                        val reused = key?.let { memory?.get(it)?.image?.toBitmap() }
+                        if (reused != null) {
+                            onThumbnailMemoryHit(item.chapter)
+                            return@withContext reused.asImageBitmap()
+                        }
                         coverForChapter(item.chapter)?.let { bytes ->
-                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { bitmap ->
+                                onThumbnailDecoded(item.chapter)
+                                if (memory != null && key != null) memory[key] = MemoryCache.Value(bitmap.asImage())
+                                bitmap.asImageBitmap()
+                            }
                         }
                     }
                 }.getOrNull()
@@ -131,7 +169,8 @@ internal fun LocalChapterGallery(
                 Text(
                     text = item.chapter.title?.takeIf { it.isNotBlank() } ?: item.getTitle(context.resources),
                     style = MaterialTheme.typography.bodySmall,
-                    color = androidx.compose.ui.graphics.Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = labelSurface,
                     maxLines = 2,
                     minLines = 2,
                 )

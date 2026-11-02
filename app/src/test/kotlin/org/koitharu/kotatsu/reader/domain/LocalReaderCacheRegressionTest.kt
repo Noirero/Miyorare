@@ -22,10 +22,12 @@ class LocalReaderCacheRegressionTest {
         assertTrue(epub.split("releaseMaterialized(file)").size >= 3)
     }
 
-    @Test fun pdfRenderCacheHasBudgetAndProtectsRecentPages() {
+    @Test fun pdfRenderCacheEnforcesBudgetAndProtectsCurrentPage() {
         val pdf = source("local/data/input/LocalPdfCache.kt")
         assertTrue(pdf.contains("PDF_CACHE_BUDGET_BYTES = 64L * 1024 * 1024"))
         assertTrue(pdf.contains("pruneRenderedPages(outputFile)"))
-        assertTrue(pdf.contains("page == current || page.lastModified() >= cutoff"))
+        assertTrue(pdf.contains("pages.sortedBy { it.lastModified() }"))
+        assertTrue(pdf.contains("if (page == current) continue"))
+        assertTrue(pdf.contains("if (bytes <= PDF_CACHE_BUDGET_BYTES) break"))
     }
 }

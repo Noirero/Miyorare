@@ -488,6 +488,9 @@ class DetailsExpressiveActivity :
 					coverForChapter = { chapter ->
 						smartLocalLibrary.chapterGalleryThumbnail(chapter)
 					},
+					galleryMemoryKey = { chapter ->
+						smartLocalLibrary.chapterGalleryMemoryKey(chapter)
+					},
 					actions = actions,
 				)
 

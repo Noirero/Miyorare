@@ -500,6 +500,284 @@ class SmartLocalCoverPipelineTest {
         assertClosedDescriptors()
     }
 
+    @Test fun rasterPdfRepresentativeMeasuresPageRetentionAndFallbackBacking() = runBlocking {
+        // Real PDF image payloads (not flat-color pages). Generate once and send in bounded
+        // chunks to the existing SAF fixture provider, avoiding Binder transaction limits.
+        val name = "raster-reader.pdf"
+        val raster = rasterPdf(18)
+        var offset = 0
+        while (offset < raster.size) {
+            val end = minOf(offset + 256 * 1024, raster.size)
+            call("fixture-put-chunk", name, Bundle().apply {
+                putByteArray("bytes", raster.copyOfRange(offset, end))
+                putBoolean("first", offset == 0)
+                putBoolean("last", end == raster.size)
+            })
+            offset = end
+        }
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+
+        suspend fun scenario(direct: Boolean) {
+            if (!direct) descriptorMode(name, "pipe")
+            val token = Any()
+            val pages = withContext(ReaderBackingLeaseContext(token)) {
+                reader.pages(root, book.chapters.single(), book.toManga(false, true).chapters!!.single())
+            }
+            assertEquals(18, pages.size)
+            val pageDir = File(Uri.parse(pages.first().url).path!!).parentFile!!
+            readerPageDirectories += pageDir
+            val sizes = ArrayList<Long>()
+            val stages = JSONArray()
+            var cacheHits = 0
+            var cacheMisses = 0
+            var cumulativeBytes = 0L
+            val byteBudget = 64L * 1024 * 1024
+
+            fun pageFiles() = pageDir.listFiles().orEmpty().filter {
+                it.isFile && it.name.startsWith("page_") && it.name.endsWith(".png")
+            }
+            fun globalPageFiles() = File(context.cacheDir, "local_pdf_pages")
+                .listFiles().orEmpty().filter { it.isDirectory }.flatMap { dir ->
+                    dir.listFiles().orEmpty().filter { it.isFile && it.name.startsWith("page_") && it.name.endsWith(".png") }
+                }
+            fun measure(phase: String) {
+                val retained = pageFiles()
+                val globalRetained = globalPageFiles()
+                val backing = contentFiles().filter { it.isFile }
+                stages.put(JSONObject()
+                    .put("phase", phase)
+                    .put("renderedPageCount", retained.size)
+                    .put("renderedPageBytes", retained.sumOf { it.length() })
+                    .put("globalRenderedPageBytes", globalRetained.sumOf { it.length() })
+                    .put("globalRenderedPageCount", globalRetained.size)
+                    .put("backingFileCount", backing.size)
+                    .put("backingBytes", backing.sumOf { it.length() })
+                    .put("combinedBytes", retained.sumOf { it.length() } + backing.sumOf { it.length() })
+                    .put("cumulativePageBytes", cumulativeBytes)
+                    .put("cacheHits", cacheHits).put("cacheMisses", cacheMisses))
+            }
+            fun render(index: Int) {
+                val marker = File(Uri.parse(pages[index].url).path!!)
+                val warm = marker.isFile && marker.length() > 0L
+                val output = org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(marker)
+                assertTrue("Current raster page must survive pruning: $index", output.isFile && output.length() > 0L)
+                val totalRetained = globalPageFiles().sumOf { it.length() }
+                assertTrue("PDF rendered-page budget exceeded after page $index: $totalRetained",
+                    totalRetained <= maxOf(byteBudget, output.length()))
+                if (warm) cacheHits++ else {
+                    cacheMisses++
+                    sizes += output.length()
+                    cumulativeBytes += output.length()
+                }
+            }
+
+            measure("before_pages")
+            if (direct) assertTrue("Direct descriptor must avoid backing copy", contentFiles().isEmpty())
+            else assertTrue("Pipe fallback must materialize backing", contentFiles().any { it.isFile })
+            render(0)
+            measure("first_page")
+            for (i in 1..3) render(i)
+            measure("four_pages")
+            for (i in 4..9) render(i)
+            measure("ten_pages")
+            assertFalse("Oldest large page must be evicted when byte budget is full",
+                File(Uri.parse(pages.first().url).path!!).isFile)
+            // The immediate previous page fits in the LRU working set and must not be re-rendered.
+            val hitsBeforeBack = cacheHits
+            render(8)
+            assertEquals("Immediate backwards navigation must hit the cache", hitsBeforeBack + 1, cacheHits)
+            measure("back_to_recent_page")
+            if (direct) {
+                for (i in 10..16) render(i)
+                measure("seventeen_pages")
+                assertFalse("Oldest large page must not survive seventeen rendered pages",
+                    File(Uri.parse(pages.first().url).path!!).isFile)
+                val hitsBeforeRecent = cacheHits
+                render(15)
+                assertEquals("Recent page should survive the bounded LRU", hitsBeforeRecent + 1, cacheHits)
+                measure("back_to_recent_after_seventeen")
+                reader.releaseReaderLease(token)
+                measure("after_reader_release")
+                // The budget is already bounded: time passing must not require another render
+                // to bring the cache below 64 MiB.
+                kotlinx.coroutines.delay(125_000L)
+                measure("after_grace_before_new_render")
+                assertTrue(globalPageFiles().sumOf { it.length() } <= byteBudget)
+                render(17)
+                measure("after_grace_and_new_page")
+            } else {
+                render(9)
+                measure("back_to_cached_page")
+                reader.releaseReaderLease(token)
+                measure("after_reader_release")
+            }
+            val sorted = sizes.sorted()
+            val p50 = if (sorted.isEmpty()) 0L else sorted[(sorted.size - 1) / 2]
+            val p95 = if (sorted.isEmpty()) 0L else sorted[(((sorted.size - 1) * 95) / 100)]
+            android.util.Log.i("OnDeviceCacheProbe", "REPORT " +
+                (if (direct) "pdf-reader-raster-direct" else "pdf-reader-raster-fallback") + " " +
+                JSONObject().put("dataset", "SYNTHETIC_18_PAGE_RASTER_PDF")
+                    .put("sourcePdfBytes", raster.size)
+                    .put("renderedSamples", sizes.size).put("pageP50Bytes", p50)
+                    .put("pageP95Bytes", p95)
+                    .put("averagePageBytes", if (sizes.isEmpty()) 0L else sizes.sum() / sizes.size)
+                    .put("totalRenderedBytes", cumulativeBytes)
+                    .put("cacheHits", cacheHits).put("cacheMisses", cacheMisses)
+                    .put("effectiveBudgetBytes", byteBudget)
+                    .put("stages", stages))
+            assertClosedDescriptors()
+        }
+
+        scenario(direct = true)
+        scenario(direct = false)
+    }
+
+    private fun rasterPdf(pageCount: Int): ByteArray {
+        val width = 640
+        val height = 960
+        val random = java.util.Random(20261102L)
+        val image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val row = IntArray(width)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                row[x] = Color.rgb(random.nextInt(256), random.nextInt(256), random.nextInt(256))
+            }
+            image.setPixels(row, 0, width, 0, y, width, 1)
+        }
+        val pdf = PdfDocument()
+        try {
+            repeat(pageCount) { index ->
+                val page = pdf.startPage(PdfDocument.PageInfo.Builder(width, height, index + 1).create())
+                page.canvas.drawBitmap(image, 0f, 0f, null)
+                page.canvas.drawText("Synthetic textured page ${index + 1}", 10f, 40f, android.graphics.Paint().apply {
+                    color = Color.WHITE
+                    textSize = 22f
+                })
+                pdf.finishPage(page)
+            }
+            return ByteArrayOutputStream().also { pdf.writeTo(it) }.toByteArray()
+        } finally {
+            pdf.close()
+            image.recycle()
+        }
+    }
+
+    @Test fun galleryChapterThumbnailRevisitUsesExistingDerivedDiskOwner() {
+        runBlocking {
+            put("gallery.pdf", pdf(Color.GREEN))
+            library.scan()
+            val book = library.state.value.books.single()
+            val chapter = book.toManga(false, true).chapters!!.single()
+            val pageRoot = File(context.cacheDir, "local_pdf_pages")
+            val first = library.chapterGalleryThumbnail(chapter)
+            assertNotNull(first)
+            val initialRenders = counts.render
+            assertTrue("First chapter thumbnail should require one PDF render", initialRenders > 0)
+            repeat(8) { assertArrayEquals(first, library.chapterGalleryThumbnail(chapter)) }
+            assertEquals("Warm gallery thumbnails must not regenerate the PDF", initialRenders, counts.render)
+            val galleryFiles = File(context.cacheDir, "smart-local-chapter-gallery").listFiles().orEmpty().filter { it.isFile }
+            assertTrue("Gallery thumbnail belongs to its existing disk owner", galleryFiles.any { it.name.endsWith(".thumb") })
+            assertTrue("Chapter previews must not create Reader PDF page artifacts",
+                pageRoot.listFiles().orEmpty().flatMap { it.listFiles().orEmpty().asList() }.none { it.name.startsWith("page_") })
+            android.util.Log.i("OnDeviceCacheProbe", "REPORT gallery-disk-owner " + JSONObject().put("dataset", "SYNTHETIC_ONE_CHAPTER_PDF")
+                .put("requests", 9).put("renderCalls", counts.render)
+                .put("galleryDiskBytes", galleryFiles.sumOf { it.length() })
+                .put("readerPageBytes", 0))
+        }
+    }
+
+    @Test fun pdfReaderDirectCacheStagesReportSeparateDiskCosts() = runBlocking {
+        measureReaderPdfCacheStages(seekable = true)
+    }
+
+    @Test fun pdfReaderFallbackCacheStagesReportSeparateDiskCosts() = runBlocking {
+        measureReaderPdfCacheStages(seekable = false)
+    }
+
+    /**
+     * Synthetic multi-page PDF measurements. This deliberately does not change renderer,
+     * eviction, grace period, backing ownership, or PDF cover behavior.
+     */
+    private suspend fun measureReaderPdfCacheStages(seekable: Boolean) {
+        val name = if (seekable) "measurement-direct.pdf" else "measurement-fallback.pdf"
+        put(name, multiPagePdf(12))
+        if (!seekable) descriptorMode(name, "pipe")
+        library.scan()
+        val book = library.state.value.books.single()
+        val root = LocalDocuments(context).root(rootUri)
+        val token = Any()
+        val observations = JSONArray()
+
+        fun measure(phase: String) {
+            val pdfRoot = File(context.cacheDir, "local_pdf_pages")
+            val rendered = pdfRoot.listFiles().orEmpty().filter { it.isDirectory }.flatMap { dir ->
+                dir.listFiles().orEmpty().filter { it.isFile && it.name.startsWith("page_") && it.name.endsWith(".png") }
+            }
+            val backing = contentFiles().filter { it.isFile }
+            observations.put(JSONObject()
+                .put("phase", phase)
+                .put("renderedPageCount", rendered.size)
+                .put("renderedPageBytes", rendered.sumOf { it.length() })
+                .put("averageRenderedPageBytes", if (rendered.isEmpty()) 0L else rendered.sumOf { it.length() } / rendered.size)
+                .put("backingFileCount", backing.size)
+                .put("backingBytes", backing.sumOf { it.length() })
+                .put("combinedBytes", rendered.sumOf { it.length() } + backing.sumOf { it.length() }))
+        }
+        measure("before_open")
+        val pages = withContext(ReaderBackingLeaseContext(token)) {
+            reader.pages(root, book.chapters.single(), book.toManga(false, true).chapters!!.single())
+        }
+        assertEquals(12, pages.size)
+        readerPageDirectories += File(Uri.parse(pages.first().url).path!!).parentFile!!
+        measure("after_open")
+        if (seekable) assertTrue("Seekable PDF must not create a backing copy", contentFiles().isEmpty())
+        else assertTrue("Pipe PDF must own an app backing copy", contentFiles().any { it.isFile })
+
+        fun render(index: Int) {
+            val target = File(Uri.parse(pages[index].url).path!!)
+            assertTrue("Failed PDF page $index", org.koitharu.kotatsu.local.data.input.LocalPdfCache.materializePage(target).length() > 0L)
+        }
+        render(0)
+        measure("first_page")
+        for (index in 1..3) render(index)
+        measure("several_pages")
+        for (index in 8..10) render(index)
+        measure("jump_forward")
+        render(1)
+        measure("back_previous")
+        reader.releaseReaderLease(token)
+        measure("after_close_release")
+        // The fallback backing cleanup is scheduled after 60 seconds and is budgeted;
+        // waiting past grace distinguishes transient retention from long-lived storage.
+        if (!seekable) {
+            kotlinx.coroutines.delay(65_000L)
+            measure("after_cleanup_grace")
+        }
+        android.util.Log.i("OnDeviceCacheProbe",
+            "REPORT " + (if (seekable) "pdf-reader-direct" else "pdf-reader-fallback") + " " + JSONObject().put("dataset", "SYNTHETIC_12_PAGE_PDF")
+                .put("cleanupAfterGraceMeasured", !seekable)
+                .put("storageStages", observations))
+        assertClosedDescriptors()
+    }
+
+    private fun multiPagePdf(pageCount: Int): ByteArray {
+        val document = PdfDocument()
+        try {
+            repeat(pageCount) { index ->
+                val page = document.startPage(PdfDocument.PageInfo.Builder(300, 450, index + 1).create())
+                page.canvas.drawColor(if (index % 2 == 0) Color.BLUE else Color.GREEN)
+                page.canvas.drawText("Test page $index", 24f, 48f, android.graphics.Paint().apply {
+                    color = Color.WHITE
+                    textSize = 22f
+                })
+                document.finishPage(page)
+            }
+            return ByteArrayOutputStream().also { document.writeTo(it) }.toByteArray()
+        } finally { document.close() }
+    }
+
     @Test fun seekableSafArchiveIndexesReaderWithoutCopyingDocument() = runBlocking {
         val image = png(Color.BLUE)
         val unrelated = ByteArray(256 * 1024).also { java.util.Random(17).nextBytes(it) }

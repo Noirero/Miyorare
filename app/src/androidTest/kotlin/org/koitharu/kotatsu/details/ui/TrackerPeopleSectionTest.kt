@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -25,6 +26,16 @@ import coil3.intercept.Interceptor
 import coil3.request.ImageResult
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import android.content.res.Configuration
+import android.graphics.Canvas
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
+import android.graphics.Bitmap
+import android.graphics.Color
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
@@ -65,6 +76,99 @@ class TrackerPeopleSectionTest {
 
     @Test fun customDarkTrackerForegroundIgnoresIncorrectBlackAmbient() =
         DetailsTrackerForegroundContrastFixture.checkForeground(compose, context, loader, dark = true, amoled = false, custom = true)
+
+    @Test fun onDeviceLightAndDarkPaletteResourcesRenderWithDistinctSurfaces() {
+        fun themed(mode: Int) = context.createConfigurationContext(
+            Configuration(context.resources.configuration).apply {
+                uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or mode
+            }
+        )
+        val light = themed(Configuration.UI_MODE_NIGHT_NO)
+        val dark = themed(Configuration.UI_MODE_NIGHT_YES)
+        assertEquals(Color.rgb(247, 244, 239), ContextCompat.getColor(light, R.color.smart_local_ink))
+        assertEquals(Color.rgb(16, 28, 43), ContextCompat.getColor(dark, R.color.smart_local_ink))
+        assertEquals(Color.rgb(32, 50, 71), ContextCompat.getColor(light, R.color.smart_local_cream))
+        assertEquals(Color.rgb(245, 233, 217), ContextCompat.getColor(dark, R.color.smart_local_cream))
+
+        fun drawableLuminance(ctx: android.content.Context, id: Int): Double {
+            val image = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+            try {
+                val d = ContextCompat.getDrawable(ctx, id) ?: error("Missing local background: $id")
+                d.setBounds(0, 0, image.width, image.height)
+                d.draw(Canvas(image))
+                return ColorUtils.calculateLuminance(image.getPixel(128, 128))
+            } finally {
+                image.recycle()
+            }
+        }
+        for (id in listOf(R.drawable.bg_smart_local_archive_hero,
+                R.drawable.bg_smart_local_archive_stat, R.drawable.bg_smart_local_archive_resume)) {
+            assertTrue("Local day background must be bright", drawableLuminance(light, id) >= 0.55)
+            assertTrue("Local night background must stay cinematic", drawableLuminance(dark, id) < 0.25)
+        }
+    }
+
+    @Test fun onDeviceGalleryRevisitReusesDecodedThumbnailAndInvalidatesOnRevision() {
+        val chapterItems = (0 until 48).map { index ->
+            ChapterListItem(SampleData.chapter.copy(
+                id = 70_000L + index, url = "local://gallery-probe/$index",
+                title = "Decode probe $index", number = index.toFloat(), uploadDate = 0L,
+            ), ChapterListItem.FLAG_UNREAD)
+        }
+        val firstId = chapterItems.first().chapter.id
+        val encoded = ByteArrayOutputStream().also { stream ->
+            Bitmap.createBitmap(48, 72, Bitmap.Config.ARGB_8888).apply {
+                eraseColor(Color.BLUE)
+                compress(Bitmap.CompressFormat.PNG, 100, stream)
+                recycle()
+            }
+        }.toByteArray()
+        val revision = androidx.compose.runtime.mutableLongStateOf(1L)
+        val decodes = ConcurrentHashMap<Long, AtomicInteger>()
+        val fetches = ConcurrentHashMap<Long, AtomicInteger>()
+        val memoryHits = ConcurrentHashMap<Long, AtomicInteger>()
+        compose.setContent {
+            MaterialTheme {
+                LocalChapterGallery(
+                    chapters = chapterItems, mangaTitle = "Decode probe",
+                    bottomPadding = 0.dp, topPadding = 0.dp,
+                    imageLoader = loader,
+                    galleryRevision = revision.longValue,
+                    thumbnailMemoryKey = { chapter -> "fixture-gallery:${chapter.id}:revision-${revision.longValue}" },
+                    coverForChapter = { chapter ->
+                        fetches.computeIfAbsent(chapter.id) { AtomicInteger() }.incrementAndGet()
+                        encoded
+                    },
+                    onChapterClick = {},
+                    onThumbnailDecoded = { chapter ->
+                        decodes.computeIfAbsent(chapter.id) { AtomicInteger() }.incrementAndGet()
+                    },
+                    onThumbnailMemoryHit = { chapter ->
+                        memoryHits.computeIfAbsent(chapter.id) { AtomicInteger() }.incrementAndGet()
+                    },
+                )
+            }
+        }
+        compose.waitUntil(15_000) { (decodes[firstId]?.get() ?: 0) == 1 }
+        val initialDecodes = decodes[firstId]!!.get()
+        val initialFetches = fetches[firstId]!!.get()
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Decode probe 40"))
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Decode probe 0"))
+        compose.waitUntil(15_000) { (memoryHits[firstId]?.get() ?: 0) > 0 }
+        val afterDecodes = decodes[firstId]!!.get()
+        val afterFetches = fetches[firstId]!!.get()
+        assertEquals("Revisit must skip decode while bounded Coil memory retains thumbnail", initialDecodes, afterDecodes)
+        assertEquals("Revisit must skip derived disk fetch on memory hit", initialFetches, afterFetches)
+        assertTrue("Bounded Coil memory should serve a revisit", (loader.memoryCache?.size ?: 0L) > 0L)
+        android.util.Log.i("LocalGalleryDecodeProbe",
+            "SYNTHETIC firstChapter initialDecodes=$initialDecodes afterDecodes=$afterDecodes " +
+                "initialFetches=$initialFetches afterFetches=$afterFetches " +
+                "memoryHits=${memoryHits[firstId]?.get()}")
+
+        compose.runOnIdle { revision.longValue = 2L }
+        compose.waitUntil(15_000) { (decodes[firstId]?.get() ?: 0) == 2 }
+        assertEquals("New thumbnail identity must fetch fresh bytes", 2, fetches[firstId]!!.get())
+    }
 
 	@Test fun characterPortraitNameAndRoleAndStaffAreRenderedWithProviderAttribution() {
 		setContent(DetailsPeopleUiState(providers = listOf(provider(

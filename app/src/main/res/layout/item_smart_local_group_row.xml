@@ -15,20 +15,20 @@
         android:layout_marginEnd="5dp"
         android:clickable="true"
         android:focusable="true"
-        app:cardBackgroundColor="#1D2B3D"
+        app:cardBackgroundColor="@color/smart_local_surface"
         app:cardCornerRadius="14dp"
         app:cardElevation="0dp"
-        app:strokeColor="#42566D"
+        app:strokeColor="@color/smart_local_edge"
         app:strokeWidth="1dp">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:minHeight="76dp" android:padding="12dp" android:orientation="vertical">
             <TextView android:id="@+id/firstCount" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:textColor="#EFC08D"
+                android:layout_height="wrap_content" android:textColor="@color/smart_local_accent_text"
                 android:textSize="12sp" />
             <TextView android:id="@+id/firstName" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="5dp"
                 android:maxLines="1" android:ellipsize="end"
-                android:textColor="#F2E7DD" android:textSize="14sp"
+                android:textColor="@color/smart_local_cream" android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
@@ -40,20 +40,20 @@
         android:layout_marginStart="5dp"
         android:clickable="true"
         android:focusable="true"
-        app:cardBackgroundColor="#1D2B3D"
+        app:cardBackgroundColor="@color/smart_local_surface"
         app:cardCornerRadius="14dp"
         app:cardElevation="0dp"
-        app:strokeColor="#42566D"
+        app:strokeColor="@color/smart_local_edge"
         app:strokeWidth="1dp">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:minHeight="76dp" android:padding="12dp" android:orientation="vertical">
             <TextView android:id="@+id/secondCount" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:textColor="#EFC08D"
+                android:layout_height="wrap_content" android:textColor="@color/smart_local_accent_text"
                 android:textSize="12sp" />
             <TextView android:id="@+id/secondName" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="5dp"
                 android:maxLines="1" android:ellipsize="end"
-                android:textColor="#F2E7DD" android:textSize="14sp"
+                android:textColor="@color/smart_local_cream" android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
