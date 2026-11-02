@@ -53,6 +53,8 @@ internal fun LocalChapterGallery(
     topPadding: Dp,
     coverForChapter: suspend (MangaChapter) -> ByteArray?,
     onChapterClick: (ChapterListItem) -> Unit,
+    // Test-only measurement hook; no production cache or retained bitmap ownership.
+    onThumbnailDecoded: (MangaChapter) -> Unit = {},
 ) {
     val context = LocalContext.current
     LazyVerticalGrid(
@@ -84,7 +86,10 @@ internal fun LocalChapterGallery(
                 value = runCatchingCancellable {
                     withContext(Dispatchers.IO) {
                         coverForChapter(item.chapter)?.let { bytes ->
-                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { bitmap ->
+                                onThumbnailDecoded(item.chapter)
+                                bitmap.asImageBitmap()
+                            }
                         }
                     }
                 }.getOrNull()
