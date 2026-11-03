@@ -5,10 +5,12 @@ import android.net.Uri
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import org.koitharu.kotatsu.backup.MihonBackupManager
 import org.koitharu.kotatsu.backup.MihonBackupManager.RestoreReport
 import org.koitharu.kotatsu.core.prefs.ColorScheme
 import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
@@ -53,6 +55,25 @@ class WelcomeViewModel @Inject constructor(
 	init {
 		launchJob(Dispatchers.Default) {
 			refreshStorageSummary()
+		}
+		// Restores and other preference writers must update the onboarding selection as well.
+		// The settings store is authoritative; the flows are only live UI projections.
+		launchJob(Dispatchers.Default) {
+			settings.observe(
+				AppSettings.KEY_THEME,
+				AppSettings.KEY_COLOR_THEME,
+				AppSettings.KEY_THEME_AMOLED,
+				MiyorareAppearance.KEY_DESIGN_STYLE,
+				MiyorareAppearance.KEY_THEME_PRESET,
+				MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
+			).collect {
+				selectedTheme.value = settings.theme
+				selectedColorScheme.value = settings.colorScheme
+				isAmoledEnabled.value = settings.isAmoledTheme
+				selectedDesignStyle.value = settings.miyorareDesignStyle
+				selectedThemePreset.value = settings.miyorareThemePreset
+				selectedPaletteSource.value = settings.miyorareModernPaletteSource
+			}
 		}
 	}
 
