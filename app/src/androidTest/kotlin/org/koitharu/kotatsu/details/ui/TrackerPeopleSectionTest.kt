@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.details.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
@@ -36,6 +37,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
 import coil3.intercept.Interceptor
@@ -306,6 +308,108 @@ class TrackerPeopleSectionTest {
         compose.onNodeWithContentDescription(expandLabel).assertIsDisplayed()
         assertCollapsedTextAndStatus()
         assertEquals(collapsedSource.width, sourceContent.fetchSemanticsNode().boundsInRoot.width, 1f)
+    }
+
+
+    @Test fun compactHeroLongTitleAndCreatorDoNotOverlapPinnedMetadata() =
+        verifyLongTitleCreatorClearance(compactExpanded = false, creator = "Royal Studio")
+
+    @Test fun expandedCompactHeroLongTitleAndCreatorDoNotOverlapPinnedMetadata() =
+        verifyLongTitleCreatorClearance(compactExpanded = true, creator = "Royal Studio")
+
+    @Test fun expandedCompactHeroLongCreatorDoesNotOverlapPinnedMetadata() =
+        verifyLongTitleCreatorClearance(
+            compactExpanded = true,
+            creator = "Royal Studio Creator And Illustration Department With An Extended Name",
+        )
+
+    private fun verifyLongTitleCreatorClearance(compactExpanded: Boolean, creator: String) {
+        val longTitle = "The Regressed Son Of A Duke Is An Assassin"
+        val sourceName = "Komik manga indonesia"
+        val manga = SampleData.mangaDetails.copy(
+            title = longTitle,
+            authors = setOf(creator),
+            altTitles = emptySet(),
+            state = MangaState.ONGOING,
+            source = MangaSource("MIHON_424242"),
+            url = "https://example.invalid/manga/long-title-cover-geometry",
+            publicUrl = "https://example.invalid/manga/long-title-cover-geometry",
+        )
+        val colors = miyorareThemeColors(
+            preset = MiyorareThemePreset.MIYORARE,
+            customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
+            darkTheme = true,
+            amoled = false,
+            effectLevel = VisualEffectLevel.LIGHT,
+        )
+        compose.setContent {
+            MaterialTheme(colorScheme = colors.colorScheme) {
+                CompositionLocalProvider(LocalMiyorareVisualPalette provides colors.visualPalette) {
+                    Column(Modifier.width(360.dp)) {
+                        ModernDetailsHero(
+                            centered = false, manga = manga, details = null,
+                            sourceTitle = sourceName, accent = colors.colorScheme.primary,
+                            imageLoader = loader, coverUrl = null, actions = heroNoopActions(),
+                            compactExpanded = compactExpanded,
+                        )
+                        Box(Modifier.width(360.dp).height(1.dp).testTag("hero-following-actions-anchor"))
+                    }
+                }
+            }
+        }
+
+        val cover = compose.onNodeWithTag("details-hero-cover")
+        val row = compose.onNodeWithTag("hero-source-status-row")
+        val source = compose.onNodeWithTag("hero-source-content")
+        val status = compose.onNodeWithTag("hero-status-card")
+        val followingActions = compose.onNodeWithTag("hero-following-actions-anchor")
+        val title = compose.onNodeWithText(longTitle, useUnmergedTree = true)
+        val creatorText = compose.onNodeWithText(creator, useUnmergedTree = true)
+        val density = context.resources.displayMetrics.density
+        val clearancePx = 3f * density
+
+        fun assertLongHeroGeometry() {
+            val coverBounds = cover.fetchSemanticsNode().boundsInRoot
+            val rowBounds = row.fetchSemanticsNode().boundsInRoot
+            val sourceBounds = source.fetchSemanticsNode().boundsInRoot
+            val statusBounds = status.fetchSemanticsNode().boundsInRoot
+            val titleBounds = title.fetchSemanticsNode().boundsInRoot
+            val creatorBounds = creatorText.fetchSemanticsNode().boundsInRoot
+
+            assertTrue("Title must have visible area: $titleBounds", titleBounds.height > 0f)
+            assertTrue("Creator must have visible area: $creatorBounds", creatorBounds.height > 0f)
+            assertTrue("Title must precede creator: $titleBounds / $creatorBounds",
+                titleBounds.bottom <= creatorBounds.top + 1f)
+            assertTrue(
+                "Creator must clear pinned Source/Status: creator=$creatorBounds, row=$rowBounds",
+                creatorBounds.bottom + clearancePx <= rowBounds.top + 1f,
+            )
+            assertTrue("Title must not intersect Source/Status",
+                titleBounds.bottom + clearancePx <= rowBounds.top + 1f)
+            assertTrue("Source must stay beside cover", sourceBounds.left >= coverBounds.right)
+            assertTrue("Source must stay within cover bottom", sourceBounds.bottom <= coverBounds.bottom + 1f)
+            assertTrue("Status must stay within cover bottom", statusBounds.bottom <= coverBounds.bottom + 1f)
+            assertEquals("Pinned metadata row must remain 72dp", 72f * density, rowBounds.height, 1.5f)
+            compose.onNodeWithTag("hero-source-expanded-detail").assertDoesNotExist()
+            compose.onNodeWithTag("hero-source-expanded-text").assertDoesNotExist()
+        }
+
+        assertLongHeroGeometry()
+        val initialSource = source.fetchSemanticsNode().boundsInRoot
+        val initialStatus = status.fetchSemanticsNode().boundsInRoot
+        val initialActions = followingActions.fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("hero-source-toggle").performClick()
+        val expandedSource = source.fetchSemanticsNode().boundsInRoot
+        assertTrue("Source must expand horizontally", expandedSource.width > initialSource.width)
+        assertTrue("Expanded Source must cover Status", expandedSource.right >= initialStatus.right - 1f)
+        compose.onNodeWithTag("hero-source-title", useUnmergedTree = true).assertTextEquals(sourceName)
+        assertLongHeroGeometry()
+        assertEquals("Source expansion must not shift following actions", initialActions.top,
+            followingActions.fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.onNodeWithTag("hero-source-toggle").performClick()
+        assertLongHeroGeometry()
+        assertEquals("Collapsed Source width must restore", initialSource.width,
+            source.fetchSemanticsNode().boundsInRoot.width, 1f)
     }
 
     @Test fun compactHeroSourceStatusRespectsCoverBottom() = verifyCoverBoundary(compactExpanded = false)

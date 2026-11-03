@@ -176,21 +176,38 @@ internal fun ModernDetailsHero(
 				forceRefresh = details?.isLoaded == true,
 				actions = actions,
 			)
-			// Pin metadata to the real cover height without modifying title/creator layout.
+			// Reserve cover-bottom space for Source/Status; title and creator must fit above it.
+			val hasPinnedMetadata = !manga.isLocal || manga.state != null
+			val titleCreatorClearance = 4.dp
+			val titleCreatorHeight = coverHeight - COMPACT_HERO_META_HEIGHT - titleCreatorClearance
+			val creatorMaxLines = if (hasPinnedMetadata) {
+				val density = LocalDensity.current
+				val titleLineHeight = with(density) { MaterialTheme.typography.headlineSmall.lineHeight.toDp() }
+				val creatorLineHeight = with(density) { MaterialTheme.typography.labelLarge.lineHeight.toDp() }
+				((titleCreatorHeight - titleLineHeight - 5.dp).value / creatorLineHeight.value)
+					.toInt().coerceAtLeast(1)
+			} else null
 			Box(modifier = Modifier.weight(1f).heightIn(min = coverHeight)) {
-				Column(modifier = Modifier.fillMaxWidth()) {
+				Column(modifier = if (hasPinnedMetadata) {
+					Modifier.fillMaxWidth().height(titleCreatorHeight)
+				} else {
+					Modifier.fillMaxWidth()
+				}) {
+					// Measure the creator first; ellipsize title only when its remaining space is insufficient.
 					HeroTexts(
 						centered = false, manga = manga, accent = accent, actions = actions,
 						showAuthors = false, compactExpanded = compactExpanded,
+						titleModifier = if (hasPinnedMetadata) Modifier.weight(1f, fill = false) else Modifier,
 						onTitleLayout = { if (!compactExpanded) onTitleOverflowChanged(it.hasVisualOverflow) },
 					)
 					CreatorMetaText(
 						centered = false, manga = manga, details = details, accent = accent,
 						actions = actions, compactExpanded = compactExpanded,
+						maxCompactLines = creatorMaxLines,
 						onOverflowChanged = onCreatorOverflowChanged,
 					)
 				}
-				if (!manga.isLocal || manga.state != null) {
+				if (hasPinnedMetadata) {
 					HeroSourceStatusRow(
 						manga = manga, sourceTitle = sourceTitle, imageLoader = imageLoader,
 						status = manga.state?.let { stringResource(it.titleResId) },
@@ -678,6 +695,7 @@ private fun CreatorMetaText(
 	accent: Color,
 	actions: DetailsExpressiveActions,
 	compactExpanded: Boolean = false,
+	maxCompactLines: Int? = null,
 	onOverflowChanged: (Boolean) -> Unit = {},
 ) {
 	val authors = manga.authors
@@ -728,7 +746,7 @@ private fun CreatorMetaText(
 				style = MaterialTheme.typography.labelLarge,
 				fontWeight = FontWeight.Medium,
 				color = accent,
-				maxLines = if (compactExpanded) Int.MAX_VALUE else 1,
+				maxLines = maxCompactLines ?: if (compactExpanded) Int.MAX_VALUE else 1,
 				overflow = TextOverflow.Ellipsis,
 				onTextLayout = { if (!compactExpanded) onOverflowChanged(it.hasVisualOverflow) },
 				modifier = Modifier.weight(1f),
