@@ -116,6 +116,11 @@ add_backup_suite() {
   MAPPED=true
 }
 
+add_onboarding_suite() {
+  add_class org.koitharu.kotatsu.main.ui.welcome.OnboardingAppearanceIntegrationTest
+  MAPPED=true
+}
+
 add_category_sets_data_suite() {
   add_class org.koitharu.kotatsu.core.db.CategorySetsMigrationTest
   add_class org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest
@@ -168,6 +173,10 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest
   add_class org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest
 
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/welcome/OnboardingAppearanceIntegrationTest.kt ]]; then
+    add_onboarding_suite
+  fi
+
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/data/PrivateHistoryIsolationRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   fi
@@ -180,6 +189,9 @@ add_full_suite() {
 plan_path() {
   local path="$1"
   case "$path" in
+    app/src/main/kotlin/org/koitharu/kotatsu/main/ui/welcome/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/welcome/*)
+      add_onboarding_suite ;;
+
     app/src/main/kotlin/org/koitharu/kotatsu/local/library/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/local/library/*|app/src/main/kotlin/org/koitharu/kotatsu/local/data/input/LocalPdfCache.kt)
       add_local_download_suite
       add_local_reader_suite ;;
@@ -411,6 +423,12 @@ self_test() {
   ! grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt')"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+
+  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/main/ui/welcome/OnboardingScreen.kt')"
+  grep -q '^mode=targeted$' <<<"$out"
+  grep -q 'OnboardingAppearanceIntegrationTest' <<<"$out"
+  out="$(plan_from_paths false 'app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/welcome/OnboardingAppearanceIntegrationTest.kt')"
+  grep -q 'OnboardingAppearanceIntegrationTest' <<<"$out"
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
   grep -q 'DiscoveryCatalogUiTest' <<<"$out"

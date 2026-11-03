@@ -138,6 +138,15 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		putEnumValue(MiyorareAppearance.KEY_THEME_PRESET, value)
 	}
 
+	val miyorareModernPaletteSource: MiyorareModernPaletteSource
+		get() = MiyorareModernPaletteSource.fromStoredValue(
+			prefs.getString(MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE, null),
+		)
+
+	fun setMiyorareModernPaletteSource(value: MiyorareModernPaletteSource) = prefs.edit {
+		putString(MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE, value.name)
+	}
+
 	val miyorareCustomAccent: String
 		get() = MiyorareAppearance.normalizeAccent(
 			prefs.getString(MiyorareAppearance.KEY_CUSTOM_ACCENT, null).orEmpty(),

@@ -5,9 +5,15 @@ import android.net.Uri
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import org.koitharu.kotatsu.backup.MihonBackupManager
 import org.koitharu.kotatsu.backup.MihonBackupManager.RestoreReport
 import org.koitharu.kotatsu.core.prefs.ColorScheme
+import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
@@ -35,6 +41,11 @@ class WelcomeViewModel @Inject constructor(
 
 	val selectedTheme = MutableStateFlow(settings.theme)
 	val selectedColorScheme = MutableStateFlow(settings.colorScheme)
+	val selectedDesignStyle = MutableStateFlow(settings.miyorareDesignStyle)
+	val selectedThemePreset = MutableStateFlow(settings.miyorareThemePreset)
+	val selectedPaletteSource = MutableStateFlow(settings.miyorareModernPaletteSource)
+	val customAccent: String get() = settings.miyorareCustomAccent
+	val customAdaptivePalette: MiyorareAdaptivePalette? get() = settings.miyorareAdaptivePalette
 	val isAmoledEnabled = MutableStateFlow(settings.isAmoledTheme)
 	val storageSummary = MutableStateFlow<String?>(null)
 	val onBackupRestored = MutableEventFlow<RestoreBackupResult>()
@@ -44,6 +55,25 @@ class WelcomeViewModel @Inject constructor(
 	init {
 		launchJob(Dispatchers.Default) {
 			refreshStorageSummary()
+		}
+		// Restores and other preference writers must update the onboarding selection as well.
+		// The settings store is authoritative; the flows are only live UI projections.
+		launchJob(Dispatchers.Default) {
+			settings.observe(
+				AppSettings.KEY_THEME,
+				AppSettings.KEY_COLOR_THEME,
+				AppSettings.KEY_THEME_AMOLED,
+				MiyorareAppearance.KEY_DESIGN_STYLE,
+				MiyorareAppearance.KEY_THEME_PRESET,
+				MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
+			).collect {
+				selectedTheme.value = settings.theme
+				selectedColorScheme.value = settings.colorScheme
+				isAmoledEnabled.value = settings.isAmoledTheme
+				selectedDesignStyle.value = settings.miyorareDesignStyle
+				selectedThemePreset.value = settings.miyorareThemePreset
+				selectedPaletteSource.value = settings.miyorareModernPaletteSource
+			}
 		}
 	}
 
@@ -61,6 +91,24 @@ class WelcomeViewModel @Inject constructor(
 		}
 		selectedColorScheme.value = colorScheme
 		settings.setColorScheme(colorScheme)
+	}
+
+	fun setDesignStyle(style: MiyorareDesignStyle) {
+		if (selectedDesignStyle.value == style) return
+		settings.setMiyorareDesignStyle(style)
+		selectedDesignStyle.value = style
+	}
+
+	fun setThemePreset(preset: MiyorareThemePreset) {
+		if (selectedThemePreset.value == preset) return
+		settings.setMiyorareThemePreset(preset)
+		selectedThemePreset.value = preset
+	}
+
+	fun setPaletteSource(source: MiyorareModernPaletteSource) {
+		if (selectedPaletteSource.value == source) return
+		settings.setMiyorareModernPaletteSource(source)
+		selectedPaletteSource.value = source
 	}
 
 	fun setAmoledTheme(isEnabled: Boolean) {
