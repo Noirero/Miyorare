@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import org.koitharu.kotatsu.core.model.MangaSource
@@ -54,6 +55,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestName
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.prefs.DetailsUiMode
@@ -69,6 +71,7 @@ import java.io.IOException
 /** Real Compose semantics with a portrait loader that can never reach the network. */
 class TrackerPeopleSectionTest {
 	@get:Rule val compose = createComposeRule()
+	@get:Rule val testName = TestName()
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 	private val loader = ImageLoader.Builder(context).components {
 		add(object : Interceptor {
@@ -199,6 +202,7 @@ class TrackerPeopleSectionTest {
     private fun verifySourceStatusInteraction(centered: Boolean, compactExpanded: Boolean, width: Int) {
         // A realistic extension name that must become fully visible within a cover-height card.
         val fullSourceName = "Komik manga indonesia"
+        val renderedStatus = "Masih lanjut"
         val manga = SampleData.mangaDetails.copy(
             source = MangaSource("MIHON_424242"),
             url = "https://example.invalid/manga/hero-source-status",
@@ -219,7 +223,7 @@ class TrackerPeopleSectionTest {
                     Box(Modifier.width(width.dp)) {
                         HeroSourceStatusRow(
                             manga = mangaState.value, sourceTitle = fullSourceName,
-                            imageLoader = loader, status = "Masih lanjut",
+                            imageLoader = loader, status = renderedStatus,
                             showActiveRelease = true, accent = colors.colorScheme.primary,
                             centered = centered, compactExpanded = compactExpanded,
                             onSourceClick = { sourceNavigations++ },
@@ -242,10 +246,10 @@ class TrackerPeopleSectionTest {
             sourceContent.assertIsDisplayed()
             statusCard.assertIsDisplayed()
             assertTextOverflow(sourceText, expected = true)
-            compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithText(renderedStatus, useUnmergedTree = true).assertIsDisplayed()
             compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
-            assertTextOverflow(compose.onNodeWithText("Masih lanjut", useUnmergedTree = true), expected = false)
-            assertTextOverflow(compose.onNodeWithText(releaseText, useUnmergedTree = true), expected = false)
+            assertTextOverflow(compose.onNodeWithText(renderedStatus, useUnmergedTree = true), expected = false, renderedStatus = renderedStatus)
+            assertTextOverflow(compose.onNodeWithText(releaseText, useUnmergedTree = true), expected = false, renderedStatus = renderedStatus)
         }
 
         compose.onNodeWithContentDescription(expandLabel).assertIsDisplayed()
@@ -261,7 +265,7 @@ class TrackerPeopleSectionTest {
         compose.onNodeWithContentDescription(collapseLabel).assertIsDisplayed()
         sourceContent.assertIsDisplayed()
         sourceText.assertTextEquals(fullSourceName)
-        assertTextOverflow(sourceText, expected = false)
+        assertTextOverflow(sourceText, expected = false, renderedStatus = renderedStatus)
         compose.onNodeWithTag("hero-source-expanded-detail").assertDoesNotExist()
         compose.onNodeWithTag("hero-source-expanded-text").assertDoesNotExist()
 
@@ -310,6 +314,7 @@ class TrackerPeopleSectionTest {
     @Test fun compactExpandedHeroSourceStatusRespectsCoverBottom() = verifyCoverBoundary(compactExpanded = true)
 
     private fun verifyCoverBoundary(compactExpanded: Boolean) {
+        val renderedStatus = context.getString(R.string.state_ongoing)
         val manga = SampleData.mangaDetails.copy(
             title = "Compact hero geometry",
             authors = emptySet(),
@@ -353,10 +358,10 @@ class TrackerPeopleSectionTest {
         status.assertIsDisplayed()
         val active = compose.onNodeWithText(context.getString(R.string.details_release_active), useUnmergedTree = true)
         active.assertIsDisplayed()
-        assertTextOverflow(active, expected = false)
-        val value = compose.onNodeWithText(context.getString(R.string.state_ongoing), useUnmergedTree = true)
+        assertTextOverflow(active, expected = false, renderedStatus = renderedStatus)
+        val value = compose.onNodeWithText(renderedStatus, useUnmergedTree = true)
         value.assertIsDisplayed()
-        assertTextOverflow(value, expected = false)
+        assertTextOverflow(value, expected = false, renderedStatus = renderedStatus)
 
         compose.onNodeWithTag("hero-source-toggle").performClick()
         val sourceAfter = source.fetchSemanticsNode().boundsInRoot
@@ -386,38 +391,59 @@ class TrackerPeopleSectionTest {
         onTrackerRecommendationProvider = {}, onMangaUpdatesProgressRetry = {},
     )
 
-    private fun assertTextOverflow(node: SemanticsNodeInteraction, expected: Boolean) {
+    private fun assertTextOverflow(
+        node: SemanticsNodeInteraction,
+        expected: Boolean,
+        renderedStatus: String? = null,
+    ) {
         val results = mutableListOf<TextLayoutResult>()
         node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
         val layout = results.single()
-        val budget = if (!expected && layout.hasVisualOverflow) compactStatusBudgetEvidence() else ""
+        // Diagnostics must never replace/mask the actual overflow assertion.
+        val evidence = if (!expected && layout.hasVisualOverflow) {
+            runCatching { compactStatusBudgetEvidence(renderedStatus) }
+                .getOrElse { "collectorError=${it::class.java.simpleName}: ${it.message}" }
+        } else ""
+        val textIdentity = node.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text)
+            ?.joinToString(separator = " | ") { it.text } ?: "<no text semantics>"
         assertEquals(
-            "Unexpected hero text overflow: lines=${layout.lineCount}, size=${layout.size}, " +
+            "test=${testName.methodName}, targetText='$textIdentity', " +
+                "lines=${layout.lineCount}, size=${layout.size}, " +
                 "overflowWidth=${layout.didOverflowWidth}, overflowHeight=${layout.didOverflowHeight}, " +
-                "intrinsicWidth=${layout.multiParagraph.maxIntrinsicWidth}; $budget",
+                "intrinsicWidth=${layout.multiParagraph.maxIntrinsicWidth}; $evidence",
             expected, layout.hasVisualOverflow,
         )
     }
 
-    // Only evaluated for an unexpected overflow; diagnostic, not a weaker assertion.
-    private fun compactStatusBudgetEvidence(): String {
+    // Fixture-aware evidence: each missing/ambiguous node is reported independently,
+    // without replacing the primary assertion with a diagnostic lookup exception.
+    private fun compactStatusBudgetEvidence(renderedStatus: String?): String {
         val density = context.resources.displayMetrics.density
         val card = compose.onNodeWithTag("hero-status-card").fetchSemanticsNode().boundsInRoot
         val row = compose.onNodeWithTag("hero-source-status-row").fetchSemanticsNode().boundsInRoot
         val labels = listOf(
             "header" to context.getString(R.string.status),
-            "value" to context.getString(R.string.state_ongoing),
+            "value" to renderedStatus,
             "release" to context.getString(R.string.details_release_active),
         )
         val children = labels.joinToString("; ") { (label, content) ->
-            val textNode = compose.onNodeWithText(content, useUnmergedTree = true)
-            val bounds = textNode.fetchSemanticsNode().boundsInRoot
-            val textLayout = mutableListOf<TextLayoutResult>()
-            textNode.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(textLayout) }
-            val result = textLayout.single()
-            "$label.bounds=$bounds, size=${result.size}, lines=${result.lineCount}, " +
-                "overflowWidth=${result.didOverflowWidth}, overflowHeight=${result.didOverflowHeight}, " +
-                "intrinsicWidth=${result.multiParagraph.maxIntrinsicWidth}"
+            if (content == null) {
+                "$label=missing(fixture value not provided)"
+            } else {
+                runCatching {
+                    val candidate = compose.onNodeWithText(content, useUnmergedTree = true)
+                    val bounds = candidate.fetchSemanticsNode().boundsInRoot
+                    val measured = mutableListOf<TextLayoutResult>()
+                    candidate.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(measured) }
+                    val result = measured.single()
+                    "$label.text='$content', bounds=$bounds, size=${result.size}, " +
+                        "lines=${result.lineCount}, overflowWidth=${result.didOverflowWidth}, " +
+                        "overflowHeight=${result.didOverflowHeight}, " +
+                        "intrinsicWidth=${result.multiParagraph.maxIntrinsicWidth}"
+                }.getOrElse { exception ->
+                    "$label=missing-or-ambiguous(text='$content', cause=${exception::class.java.simpleName})"
+                }
+            }
         }
         return "density=$density, card=$card, cardHeightDp=${card.height / density}, " +
             "row=$row, rowHeightDp=${row.height / density}; $children"
