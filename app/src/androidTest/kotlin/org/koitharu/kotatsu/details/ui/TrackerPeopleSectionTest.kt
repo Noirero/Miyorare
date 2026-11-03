@@ -232,48 +232,73 @@ class TrackerPeopleSectionTest {
 
         val sourceText = compose.onNodeWithTag("hero-source-title", useUnmergedTree = true)
         val sourceContent = compose.onNodeWithTag("hero-source-content")
+        val statusCard = compose.onNodeWithTag("hero-status-card")
+        val expandedPanel = compose.onNodeWithTag("hero-source-expanded-detail")
+        val expandedText = compose.onNodeWithTag("hero-source-expanded-text", useUnmergedTree = true)
         val toggle = compose.onNodeWithTag("hero-source-toggle")
-        val expandSource = context.getString(R.string.expand) + ": " + context.getString(R.string.details_source)
-        val collapseSource = context.getString(R.string.collapse) + ": " + context.getString(R.string.details_source)
+        val expandSource = context.getString(R.string.details_expand_source_details)
+        val collapseSource = context.getString(R.string.details_collapse_source_details)
         val releaseText = context.getString(R.string.details_release_active)
 
-        // The chapter-list chevron also exposes "Expand"; source must be distinguishable.
+        // Compact source title may ellipsize, but both siblings remain present.
         compose.onNodeWithContentDescription(expandSource).assertIsDisplayed()
-
-        // Both cards render by default. A deliberately long source gets one-line ellipsis.
-        compose.onNodeWithTag("hero-status-card").assertExists()
-        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
+        statusCard.assertIsDisplayed()
+        expandedPanel.assertDoesNotExist()
         assertTextOverflow(sourceText, expected = true)
         compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
         assertTextOverflow(compose.onNodeWithText("Masih lanjut", useUnmergedTree = true), expected = false)
         assertTextOverflow(compose.onNodeWithText(releaseText, useUnmergedTree = true), expected = false)
 
-        // Exclusive child click: toggling the chevron never invokes source routing.
+        // Relative bounds, not hard-coded pixel dimensions: expansion must not resize/reposition
+        // either sibling card. The detail panel appears beneath the original row.
+        val collapsedSourceBounds = sourceContent.fetchSemanticsNode().boundsInRoot
+        val collapsedStatusBounds = statusCard.fetchSemanticsNode().boundsInRoot
         toggle.performClick()
         compose.onNodeWithContentDescription(collapseSource).assertIsDisplayed()
-        compose.onNodeWithTag("hero-status-card").assertDoesNotExist()
-        compose.onNodeWithText(veryLongSource, useUnmergedTree = true).assertExists()
-        assertTextOverflow(sourceText, expected = false)
-        compose.runOnIdle { assertEquals(0, sourceNavigations) }
+        statusCard.assertIsDisplayed()
+        expandedPanel.assertIsDisplayed()
+        compose.onNodeWithText(veryLongSource, useUnmergedTree = true).assertIsDisplayed()
+        assertTextOverflow(sourceText, expected = true)
+        assertTextOverflow(expandedText, expected = false)
+        val expandedSourceBounds = sourceContent.fetchSemanticsNode().boundsInRoot
+        val expandedStatusBounds = statusCard.fetchSemanticsNode().boundsInRoot
+        val detailBounds = expandedPanel.fetchSemanticsNode().boundsInRoot
+        assertEquals("Source width must stay stable", collapsedSourceBounds.width, expandedSourceBounds.width, 1f)
+        assertEquals("Source left must stay stable", collapsedSourceBounds.left, expandedSourceBounds.left, 1f)
+        assertEquals("Status width must stay stable", collapsedStatusBounds.width, expandedStatusBounds.width, 1f)
+        assertEquals("Status left must stay stable", collapsedStatusBounds.left, expandedStatusBounds.left, 1f)
+        assertTrue("Disclosure belongs below the sibling row",
+            detailBounds.top >= maxOf(expandedSourceBounds.bottom, expandedStatusBounds.bottom))
+        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
+        compose.runOnIdle { assertEquals("Chevron must not navigate", 0, sourceNavigations) }
 
-        // Clicking the content still invokes the original navigation callback.
+        // The original source content still navigates exactly once.
         sourceContent.performClick()
         compose.runOnIdle { assertEquals(1, sourceNavigations) }
         toggle.performClick()
         compose.onNodeWithContentDescription(expandSource).assertIsDisplayed()
-        compose.onNodeWithTag("hero-status-card").assertExists()
-        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertExists()
-        compose.runOnIdle { assertEquals(1, sourceNavigations) }
+        expandedPanel.assertDoesNotExist()
+        statusCard.assertIsDisplayed()
         assertTextOverflow(sourceText, expected = true)
-
-        // A different manga/source reuses the composable slot but must reset transient expansion.
-        toggle.performClick()
-        compose.onNodeWithTag("hero-status-card").assertDoesNotExist()
-        compose.runOnIdle { mangaState.value = manga.copy(source = MangaSource("MIHON_424243")) }
-        compose.onNodeWithTag("hero-status-card").assertExists()
         compose.runOnIdle { assertEquals(1, sourceNavigations) }
+
+        // Same composable slot, different source identity: disclosure must reset.
+        toggle.performClick()
+        expandedPanel.assertExists()
+        compose.runOnIdle { mangaState.value = manga.copy(source = MangaSource("MIHON_424243")) }
+        expandedPanel.assertDoesNotExist()
+        statusCard.assertIsDisplayed()
+        compose.onNodeWithContentDescription(expandSource).assertExists()
+        compose.runOnIdle { assertEquals(1, sourceNavigations) }
+
+        // Manga identity is also part of the transient disclosure key.
+        toggle.performClick()
+        expandedPanel.assertExists()
+        compose.runOnIdle { mangaState.value = mangaState.value.copy(id = manga.id + 1) }
+        expandedPanel.assertDoesNotExist()
+        statusCard.assertIsDisplayed()
     }
 
     private fun assertTextOverflow(node: SemanticsNodeInteraction, expected: Boolean) {

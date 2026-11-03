@@ -213,8 +213,8 @@ internal fun ModernDetailsHero(
 }
 
 /**
- * Owns the transient presentation state for both sibling cards, shared by centered and
- * compact hero paths. No ViewModel state or source routing changes.
+ * Owns only transient Source disclosure state. The sibling row never changes its weights
+ * or visibility when a full source name is revealed below it.
  */
 @Composable
 internal fun HeroSourceStatusRow(
@@ -230,38 +230,75 @@ internal fun HeroSourceStatusRow(
 ) {
 	var sourceExpanded by remember(manga.id, manga.source) { mutableStateOf(false) }
 	val hasSource = !manga.isLocal
+	val fullSourceName = sourceTitle?.takeUnless { it.isBlank() } ?: manga.source.getTitle(LocalContext.current)
 	val minimumHeight = if (centered) 82.dp else if (compactExpanded) 78.dp else 60.dp
-	Row(
+	Column(modifier = Modifier.fillMaxWidth()) {
+		Row(
+			modifier = Modifier
+				.fillMaxWidth()
+				.heightIn(min = minimumHeight)
+				.height(IntrinsicSize.Min),
+			horizontalArrangement = Arrangement.spacedBy(if (centered) 10.dp else 8.dp),
+		) {
+			if (hasSource) {
+				HeroSourceCard(
+					manga = manga,
+					sourceTitle = fullSourceName,
+					imageLoader = imageLoader,
+					onSourceClick = onSourceClick,
+					expanded = sourceExpanded,
+					onToggleExpanded = { sourceExpanded = !sourceExpanded },
+					modifier = Modifier
+						.weight(if (status == null) 1f else 0.38f)
+						.fillMaxHeight(),
+				)
+			}
+			if (status != null) {
+				HeroStatusCard(
+					status = status,
+					showActiveRelease = showActiveRelease,
+					accent = accent,
+					modifier = Modifier
+						.weight(if (hasSource) 0.62f else 1f)
+						.fillMaxHeight()
+						.testTag("hero-status-card"),
+				)
+			}
+		}
+		if (hasSource && sourceExpanded) {
+			Spacer(Modifier.height(if (centered) 10.dp else 8.dp))
+			HeroExpandedSourceDetail(sourceName = fullSourceName)
+		}
+	}
+}
+
+/** A compact, non-navigating inline disclosure, using the same semantic hero surface. */
+@Composable
+private fun HeroExpandedSourceDetail(sourceName: String) {
+	val palette = LocalMiyorareVisualPalette.current
+	val colors = MaterialTheme.colorScheme
+	Surface(
 		modifier = Modifier
 			.fillMaxWidth()
-			.heightIn(min = minimumHeight)
-			.height(IntrinsicSize.Min),
-		horizontalArrangement = Arrangement.spacedBy(if (centered) 10.dp else 8.dp),
+			.testTag("hero-source-expanded-detail"),
+		shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp),
+		color = colors.surfaceContainerHigh,
+		border = BorderStroke(
+			0.75.dp,
+			if (palette.isModern) palette.borderHighlight.copy(alpha = 0.6f)
+			else colors.outlineVariant.copy(alpha = 0.6f),
+		),
 	) {
-		if (hasSource) {
-			HeroSourceCard(
-				manga = manga,
-				sourceTitle = sourceTitle,
-				imageLoader = imageLoader,
-				onSourceClick = onSourceClick,
-				expanded = sourceExpanded,
-				onToggleExpanded = { sourceExpanded = !sourceExpanded },
-				modifier = Modifier
-					.weight(if (status == null || sourceExpanded) 1f else 0.38f)
-					.fillMaxHeight(),
-			)
-		}
-		if (status != null && (!hasSource || !sourceExpanded)) {
-			HeroStatusCard(
-				status = status,
-				showActiveRelease = showActiveRelease,
-				accent = accent,
-				modifier = Modifier
-					.weight(if (hasSource) 0.62f else 1f)
-					.fillMaxHeight()
-					.testTag("hero-status-card"),
-			)
-		}
+		Text(
+			text = sourceName,
+			style = MaterialTheme.typography.labelMedium,
+			fontWeight = FontWeight.SemiBold,
+			color = colors.onSurface,
+			modifier = Modifier
+				.fillMaxWidth()
+				.padding(horizontal = 12.dp, vertical = 10.dp)
+				.testTag("hero-source-expanded-text"),
+		)
 	}
 }
 
@@ -323,8 +360,8 @@ private fun HeroSourceCard(
 						style = MaterialTheme.typography.labelMedium,
 						fontWeight = FontWeight.SemiBold,
 						color = MaterialTheme.colorScheme.onSurface,
-						maxLines = if (expanded) Int.MAX_VALUE else 1,
-						overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
 						modifier = Modifier
 							.weight(1f)
 							.padding(end = 24.dp)
@@ -341,8 +378,10 @@ private fun HeroSourceCard(
 			) {
 				Icon(
 					painter = painterResource(R.drawable.ic_chevron_right),
-					contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand) +
-						": " + stringResource(R.string.details_source),
+					contentDescription = stringResource(
+						if (expanded) R.string.details_collapse_source_details
+						else R.string.details_expand_source_details,
+					),
 					tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
 					modifier = Modifier.size(if (palette.isModern) 14.dp else 12.dp)
 						.rotate(if (expanded) 180f else 0f),

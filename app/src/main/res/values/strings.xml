@@ -1289,6 +1289,8 @@
 
 
     <string name="details_source">Source</string>
+    <string name="details_expand_source_details">Expand source details</string>
+    <string name="details_collapse_source_details">Collapse source details</string>
     <string name="details_release_active">Active release</string>
     <string name="details_read_more">Read more</string>
     <string name="details_show_all">See all</string>
