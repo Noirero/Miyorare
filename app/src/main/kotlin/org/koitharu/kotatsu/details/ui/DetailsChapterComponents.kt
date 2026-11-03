@@ -275,7 +275,6 @@ internal fun HeroSourceStatusRow(
 		if (status != null) {
 			HeroStatusCard(
 				status = status, showActiveRelease = showActiveRelease, accent = accent,
-				compact = !centered,
 				modifier = Modifier.align(Alignment.TopEnd).width(statusWidth)
 					.fillMaxHeight().testTag("hero-status-card"),
 			)
@@ -314,69 +313,61 @@ private fun HeroSourceCard(
 	}
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
 	val cardContent: @Composable () -> Unit = {
-		Box(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-			Column(
-				modifier = Modifier
-					.fillMaxWidth()
-					.fillMaxHeight()
-					.testTag("hero-source-content")
-					.clickable(onClick = onSourceClick)
-					.padding(
-						horizontal = 7.dp,
-						vertical = 5.dp,
-					),
-				verticalArrangement = Arrangement.Center,
+		Column(
+			modifier = Modifier
+				.fillMaxWidth()
+				.fillMaxHeight()
+				.testTag("hero-source-content")
+				.clickable(onClick = onSourceClick)
+				.padding(horizontal = if (palette.isModern) 11.dp else 9.dp, vertical = if (palette.isModern) 10.dp else 9.dp),
+			verticalArrangement = Arrangement.Center,
+		) {
+			Text(
+				text = stringResource(R.string.details_source),
+				style = MaterialTheme.typography.labelSmall,
+				color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (palette.isModern) 0.90f else 1f),
+				modifier = Modifier.testTag("hero-source-label"),
+			)
+			Spacer(Modifier.height(if (palette.isModern) 6.dp else 5.dp))
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(if (palette.isModern) 6.dp else 5.dp),
 			) {
-				Text(
-					text = stringResource(R.string.details_source),
-					style = MaterialTheme.typography.labelSmall,
-					color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (palette.isModern) 0.90f else 1f),
+				AsyncImage(
+					model = faviconRequest,
+					imageLoader = imageLoader,
+					contentDescription = null,
+					error = painterResource(R.drawable.ic_manga_source),
+					fallback = painterResource(R.drawable.ic_manga_source),
+					modifier = Modifier.size(if (palette.isModern) 18.dp else 17.dp).testTag("hero-source-favicon"),
 				)
-				Spacer(Modifier.height(3.dp))
-				Row(
-					verticalAlignment = Alignment.CenterVertically,
-					horizontalArrangement = Arrangement.spacedBy(if (palette.isModern) 6.dp else 5.dp),
+				Text(
+					text = if (expanded) srcText else "...",
+					style = MaterialTheme.typography.labelMedium,
+					fontWeight = FontWeight.SemiBold,
+					color = MaterialTheme.colorScheme.onSurface,
+					maxLines = if (expanded) 2 else 1,
+					overflow = TextOverflow.Clip,
+					modifier = Modifier.weight(1f)
+						.semantics { contentDescription = srcText }
+						.testTag("hero-source-title"),
+				)
+				IconButton(
+					onClick = onToggleExpanded,
+					modifier = Modifier.size(32.dp).testTag("hero-source-toggle"),
 				) {
-					AsyncImage(
-						model = faviconRequest,
-						imageLoader = imageLoader,
-						contentDescription = null,
-						error = painterResource(R.drawable.ic_manga_source),
-						fallback = painterResource(R.drawable.ic_manga_source),
-						modifier = Modifier.size(14.dp),
-					)
-					Text(
-						text = if (expanded) srcText else "...",
-						style = MaterialTheme.typography.labelMedium,
-						fontWeight = FontWeight.SemiBold,
-						color = MaterialTheme.colorScheme.onSurface,
-						maxLines = if (expanded) 2 else 1,
-						overflow = TextOverflow.Clip,
+					Icon(
+						painter = painterResource(R.drawable.ic_chevron_right),
+						contentDescription = stringResource(
+							if (expanded) R.string.details_collapse_source_details
+							else R.string.details_expand_source_details,
+						),
+						tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
 						modifier = Modifier
-							.weight(1f)
-							.padding(end = 24.dp)
-							.semantics { contentDescription = srcText }
-							.testTag("hero-source-title"),
+							.size(if (palette.isModern) 14.dp else 12.dp)
+							.rotate(if (expanded) 180f else 0f),
 					)
 				}
-			}
-			IconButton(
-				onClick = onToggleExpanded,
-				modifier = Modifier
-					.align(Alignment.CenterEnd)
-					.size(32.dp)
-					.testTag("hero-source-toggle"),
-			) {
-				Icon(
-					painter = painterResource(R.drawable.ic_chevron_right),
-					contentDescription = stringResource(
-						if (expanded) R.string.details_collapse_source_details
-						else R.string.details_expand_source_details,
-					),
-					tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-					modifier = Modifier.size(if (palette.isModern) 14.dp else 12.dp)
-						.rotate(if (expanded) 180f else 0f),
-				)
 			}
 		}
 	}
@@ -482,7 +473,6 @@ private fun HeroStatusCard(
 	status: String,
 	showActiveRelease: Boolean,
 	accent: Color,
-	compact: Boolean,
 	modifier: Modifier = Modifier,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
@@ -493,57 +483,6 @@ private fun HeroStatusCard(
 	}
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
 	val statusContent: @Composable () -> Unit = {
-		if (compact) {
-			// Preserve the original leading status icon + stacked label/value hierarchy.
-			Row(
-				modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 3.dp),
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(4.dp),
-			) {
-				val iconShape = RoundedCornerShape(50)
-				Box(
-					modifier = Modifier.size(32.dp)
-						.clip(iconShape)
-						.background(statusColor.copy(alpha = 0.12f))
-						.border(BorderStroke(1.dp, statusColor.copy(alpha = 0.66f)), iconShape)
-						.testTag("hero-status-icon"),
-					contentAlignment = Alignment.Center,
-				) {
-					Icon(
-						painter = painterResource(if (showActiveRelease) R.drawable.ic_infinity else R.drawable.ic_timelapse),
-						contentDescription = null,
-						tint = statusColor,
-						modifier = Modifier.size(19.dp),
-					)
-				}
-				Column(modifier = Modifier.weight(1f)) {
-					Text(
-						text = stringResource(R.string.status),
-						style = MaterialTheme.typography.labelSmall,
-						color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (palette.isModern) 0.90f else 1f),
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
-					)
-					Text(
-						text = status,
-						style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp, lineHeight = 16.sp),
-						fontWeight = FontWeight.SemiBold,
-						color = MaterialTheme.colorScheme.onSurface,
-						maxLines = 2,
-						overflow = TextOverflow.Ellipsis,
-					)
-					if (showActiveRelease) {
-						Text(
-							text = stringResource(R.string.details_release_active),
-							style = MaterialTheme.typography.labelSmall,
-							color = statusColor,
-							maxLines = 1,
-							overflow = TextOverflow.Ellipsis,
-						)
-					}
-				}
-			}
-		} else {
 		Row(
 			modifier = Modifier.padding(
 				horizontal = if (palette.isModern) 11.dp else 10.dp,
@@ -561,6 +500,7 @@ private fun HeroStatusCard(
 				Box(
 					modifier = Modifier
 						.size(40.dp)
+						.testTag("hero-status-icon")
 						.shadow(
 							elevation = if (palette.effectLevel == VisualEffectLevel.FULL) 5.dp else 2.dp,
 							shape = iconShape,
@@ -582,7 +522,7 @@ private fun HeroStatusCard(
 						painter = painterResource(if (showActiveRelease) R.drawable.ic_infinity else R.drawable.ic_timelapse),
 						contentDescription = null,
 						tint = statusColor,
-						modifier = Modifier.size(22.dp),
+						modifier = Modifier.size(22.dp).testTag("hero-status-glyph"),
 					)
 				}
 			} else {
@@ -590,14 +530,14 @@ private fun HeroStatusCard(
 					shape = iconShape,
 					color = statusColor.copy(alpha = 0.11f),
 					border = BorderStroke(1.dp, statusColor.copy(alpha = 0.66f)),
-					modifier = Modifier.size(40.dp),
+					modifier = Modifier.size(40.dp).testTag("hero-status-icon"),
 				) {
 					Box(contentAlignment = Alignment.Center) {
 						Icon(
 							painter = painterResource(if (showActiveRelease) R.drawable.ic_infinity else R.drawable.ic_timelapse),
 							contentDescription = null,
 							tint = statusColor,
-							modifier = Modifier.size(22.dp),
+							modifier = Modifier.size(22.dp).testTag("hero-status-glyph"),
 						)
 					}
 				}
@@ -607,13 +547,16 @@ private fun HeroStatusCard(
 					text = stringResource(R.string.status),
 					style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (palette.isModern) 0.90f else 1f),
+					modifier = Modifier.testTag("hero-status-label"),
 				)
 				Text(
 					text = status,
 					style = MaterialTheme.typography.titleSmall,
 					fontWeight = FontWeight.SemiBold,
 					color = MaterialTheme.colorScheme.onSurface,
-					modifier = Modifier.fillMaxWidth(),
+					maxLines = 2,
+					overflow = TextOverflow.Ellipsis,
+					modifier = Modifier.fillMaxWidth().testTag("hero-status-value"),
 				)
 				if (showActiveRelease) {
 					Spacer(Modifier.height(2.dp))
@@ -621,11 +564,11 @@ private fun HeroStatusCard(
 						text = stringResource(R.string.details_release_active),
 						style = MaterialTheme.typography.labelSmall,
 						color = statusColor,
-						modifier = Modifier.fillMaxWidth(),
+						maxLines = 1,
+						modifier = Modifier.testTag("hero-status-release"),
 					)
 				}
 			}
-		}
 		}
 	}
 

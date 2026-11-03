@@ -249,9 +249,10 @@ class TrackerPeopleSectionTest {
             sourceContent.assertIsDisplayed()
             statusCard.assertIsDisplayed()
             sourceText.assertTextEquals("...")
+            assertBetaSourceInternalGeometry()
+            assertBetaStatusInternalGeometry()
             assertReadableStatusText(compose.onNodeWithText(renderedStatus, useUnmergedTree = true), maxLines = 2)
-            assertReadableStatusText(compose.onNodeWithText(releaseText, useUnmergedTree = true), maxLines = 2)
-            if (!centered) compose.onNodeWithTag("hero-status-icon").assertIsDisplayed()
+            assertReadableStatusText(compose.onNodeWithText(releaseText, useUnmergedTree = true), maxLines = 1)
         }
 
         compose.onNodeWithContentDescription(expandLabel).assertIsDisplayed()
@@ -267,6 +268,8 @@ class TrackerPeopleSectionTest {
         compose.onNodeWithContentDescription(collapseLabel).assertIsDisplayed()
         sourceContent.assertIsDisplayed()
         sourceText.assertTextEquals(fullSourceName)
+        assertBetaSourceInternalGeometry()
+        assertSourceTextFullyVisible(sourceText)
         assertTextOverflow(sourceText, expected = false, renderedStatus = renderedStatus)
         compose.onNodeWithTag("hero-source-expanded-detail").assertDoesNotExist()
         compose.onNodeWithTag("hero-source-expanded-text").assertDoesNotExist()
@@ -412,6 +415,8 @@ class TrackerPeopleSectionTest {
 
         assertLongHeroGeometry()
         compose.onNodeWithTag("hero-source-title", useUnmergedTree = true).assertTextEquals("...")
+        assertBetaSourceInternalGeometry()
+        assertBetaStatusInternalGeometry()
         val initialSource = source.fetchSemanticsNode().boundsInRoot
         val initialStatus = status.fetchSemanticsNode().boundsInRoot
         val initialActions = followingActions.fetchSemanticsNode().boundsInRoot
@@ -422,7 +427,10 @@ class TrackerPeopleSectionTest {
         assertTrue("Expanded Source must stop before Status", expandedSource.right < expandedStatus.left)
         assertTrue("Status must shrink but retain visible width",
             expandedStatus.width > 0f && expandedStatus.width < initialStatus.width)
-        compose.onNodeWithTag("hero-source-title", useUnmergedTree = true).assertTextEquals(sourceName)
+        val fullSource = compose.onNodeWithTag("hero-source-title", useUnmergedTree = true)
+        fullSource.assertTextEquals(sourceName)
+        assertBetaSourceInternalGeometry()
+        assertSourceTextFullyVisible(fullSource)
         assertLongHeroGeometry()
         assertEquals("Source expansion must not shift following actions", initialActions.top,
             followingActions.fetchSemanticsNode().boundsInRoot.top, 1f)
@@ -484,6 +492,8 @@ class TrackerPeopleSectionTest {
         }
         assertTrue("Source must stay beside cover", sourceBefore.left >= cover.fetchSemanticsNode().boundsInRoot.right)
         status.assertIsDisplayed()
+        assertBetaSourceInternalGeometry()
+        assertBetaStatusInternalGeometry()
         val active = compose.onNodeWithText(context.getString(R.string.details_release_active), useUnmergedTree = true)
         if (!compactExpanded) assertReadableStatusText(active, maxLines = 2)
         val value = compose.onNodeWithText(renderedStatus, useUnmergedTree = true)
@@ -623,6 +633,89 @@ class TrackerPeopleSectionTest {
         onTrackerRecommendationsRefresh = {}, onTrackerRecommendationClick = {},
         onTrackerRecommendationProvider = {}, onMangaUpdatesProgressRetry = {},
     )
+
+    // Beta source identity: 1e687d3cdfdd9c1caa882aeb1947f1085f66a3f1
+    // Only interior spacing/icon dimensions are asserted here; card geometry remains owner-defined.
+    private fun assertBetaSourceInternalGeometry() {
+        val density = context.resources.displayMetrics.density
+        val tolerance = 1f
+        fun bounds(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val card = bounds("hero-source-content")
+        val label = bounds("hero-source-label")
+        val favicon = bounds("hero-source-favicon")
+        val name = bounds("hero-source-title")
+        val chevron = bounds("hero-source-toggle")
+        val evidence = "card=$card, label=$label, favicon=$favicon, name=$name, chevron=$chevron, density=$density"
+        assertEquals("Beta modern Source favicon 18dp; $evidence",
+            18f * density, favicon.width, tolerance)
+        assertEquals("Beta Source chevron target 32dp; $evidence",
+            32f * density, chevron.width, tolerance)
+        assertTrue("Beta Source horizontal padding 11dp; $evidence",
+            label.left + tolerance >= card.left + 11f * density)
+        assertTrue("Beta Source label spacing 6dp; $evidence",
+            favicon.top + tolerance >= label.bottom + 6f * density)
+        assertTrue("Beta Source favicon/name spacing 6dp; $evidence",
+            name.left + tolerance >= favicon.right + 6f * density)
+        assertTrue("Source name must have visible width; $evidence", name.width > 0f)
+        assertTrue("Source name must not overlap chevron; $evidence",
+            name.right <= chevron.left + tolerance)
+        assertTrue("Source chevron must stay inside card; $evidence",
+            chevron.right <= card.right + tolerance)
+    }
+
+    private fun assertBetaStatusInternalGeometry() {
+        val density = context.resources.displayMetrics.density
+        val tolerance = 1f
+        fun bounds(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val card = bounds("hero-status-card")
+        val icon = bounds("hero-status-icon")
+        val glyph = bounds("hero-status-glyph")
+        val label = bounds("hero-status-label")
+        val value = bounds("hero-status-value")
+        val release = bounds("hero-status-release")
+        val evidence = "card=$card, icon=$icon, glyph=$glyph, label=$label, value=$value, release=$release, density=$density"
+        assertEquals("Beta Status icon container 40dp; $evidence", 40f * density, icon.width, tolerance)
+        assertEquals("Beta Status glyph 22dp; $evidence", 22f * density, glyph.width, tolerance)
+        assertTrue("Beta Status left padding 11dp; $evidence",
+            icon.left + tolerance >= card.left + 11f * density)
+        assertTrue("Beta Status icon/text gap 9dp; $evidence",
+            label.left + tolerance >= icon.right + 9f * density)
+        assertTrue("Status label must precede value; $evidence",
+            label.bottom <= value.top + tolerance)
+        assertTrue("Status release must follow value with 2dp gap; $evidence",
+            release.top + tolerance >= value.bottom + 2f * density)
+        assertTrue("Status icon must be inside card; $evidence",
+            icon.right <= card.right + tolerance && icon.bottom <= card.bottom + tolerance)
+        assertTrue("Status text must be inside card; $evidence",
+            label.right <= card.right + tolerance && value.right <= card.right + tolerance &&
+                release.right <= card.right + tolerance &&
+                release.bottom <= card.bottom + tolerance)
+    }
+
+    private fun assertSourceTextFullyVisible(node: SemanticsNodeInteraction) {
+        node.assertIsDisplayed()
+        val layout = textLayout(node)
+        val bounds = node.fetchSemanticsNode().boundsInRoot
+        val tolerance = 1f
+        assertTrue("Expanded Source must have 1–2 lines: lines=${layout.lineCount}, bounds=$bounds",
+            layout.lineCount in 1..2)
+        assertTrue(
+            "Expanded Source must fit vertically: measured=${layout.size}, " +
+                "paragraphHeight=${layout.multiParagraph.height}, bounds=$bounds",
+            layout.getLineBottom(layout.lineCount - 1) <= layout.size.height + tolerance &&
+                layout.multiParagraph.height <= layout.size.height + tolerance,
+        )
+        for (line in 0 until layout.lineCount) {
+            assertFalse("Expanded Source cannot ellipsize line $line; measured=${layout.size}",
+                layout.isLineEllipsized(line))
+            val lineWidth = layout.getLineRight(line) - layout.getLineLeft(line)
+            assertTrue("Expanded Source line $line exceeds available width: " +
+                "lineWidth=$lineWidth, available=${layout.size.width}, bounds=$bounds",
+                lineWidth <= layout.size.width + tolerance)
+        }
+    }
 
     private fun textLayout(node: SemanticsNodeInteraction): TextLayoutResult {
         val results = mutableListOf<TextLayoutResult>()
