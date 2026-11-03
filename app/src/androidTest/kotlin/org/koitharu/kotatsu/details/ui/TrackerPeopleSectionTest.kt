@@ -550,7 +550,6 @@ class TrackerPeopleSectionTest {
         val next = compose.onNodeWithTag("hero-following-actions-anchor")
         sourceText.assertTextEquals("...")
         val collapsedStatusWidth = status.fetchSemanticsNode().boundsInRoot.width
-        val collapsedHeroNextTop = next.fetchSemanticsNode().boundsInRoot.top
         toggle.performClick()
         sourceText.assertTextEquals(sourceName)
         val sourceOpenWidth = source.fetchSemanticsNode().boundsInRoot.width
@@ -563,9 +562,37 @@ class TrackerPeopleSectionTest {
             source.fetchSemanticsNode().boundsInRoot.width, 1f)
         assertEquals("Hero expansion must preserve narrow Status width", statusNarrowWidth,
             status.fetchSemanticsNode().boundsInRoot.width, 1f)
-        assertTrue("Full title/creator should grow hero naturally",
-            next.fetchSemanticsNode().boundsInRoot.top > collapsedHeroNextTop)
-        assertTextFullyRendered(compose.onNodeWithText(title, useUnmergedTree = true))
+        val titleNode = compose.onNodeWithText(title, useUnmergedTree = true)
+        val creatorNode = compose.onNodeWithText(manga.authors.single(), useUnmergedTree = true)
+        assertTextFullyRendered(titleNode)
+        assertTextFullyRendered(creatorNode)
+        val coverBounds = compose.onNodeWithTag("details-hero-cover").fetchSemanticsNode().boundsInRoot
+        val titleBounds = titleNode.fetchSemanticsNode().boundsInRoot
+        val creatorBounds = creatorNode.fetchSemanticsNode().boundsInRoot
+        val rowBounds = compose.onNodeWithTag("hero-source-status-row")
+            .fetchSemanticsNode().boundsInRoot
+        val statusBounds = status.fetchSemanticsNode().boundsInRoot
+        val sourceBounds = source.fetchSemanticsNode().boundsInRoot
+        val nextBounds = next.fetchSemanticsNode().boundsInRoot
+        val density = context.resources.displayMetrics.density
+        val tolerancePx = 1f
+        val expectedExpandedSpacingPx = 8f * density // Modern LIGHT palette uses 8dp.
+        assertTrue("Expanded title must precede creator: $titleBounds / $creatorBounds",
+            titleBounds.bottom <= creatorBounds.top + tolerancePx)
+        assertTrue(
+            "Expanded creator must precede Source/Status with spacing: " +
+                "creator=$creatorBounds row=$rowBounds",
+            creatorBounds.bottom + expectedExpandedSpacingPx - tolerancePx <= rowBounds.top,
+        )
+        assertTrue("Expanded Status must stay inside Source/Status row",
+            statusBounds.top >= rowBounds.top - tolerancePx &&
+                statusBounds.bottom <= rowBounds.bottom + tolerancePx)
+        assertTrue("Expanded Source must stay inside Source/Status row",
+            sourceBounds.top >= rowBounds.top - tolerancePx &&
+                sourceBounds.bottom <= rowBounds.bottom + tolerancePx)
+        assertTrue("Following content must come after actual hero bottom: " +
+            "following=$nextBounds, cover=$coverBounds, row=$rowBounds",
+            nextBounds.top + tolerancePx >= maxOf(coverBounds.bottom, rowBounds.bottom))
 
         compose.runOnIdle { heroExpanded.value = false }
         sourceText.assertTextEquals(sourceName)
@@ -620,7 +647,15 @@ class TrackerPeopleSectionTest {
         val tolerancePx = 1f
         assertTrue("Status text must have 1..$maxLines readable lines",
             layout.lineCount in 1..maxLines)
-        assertFalse("Status text must not overflow vertically", layout.didOverflowHeight)
+        val lastLineBottomPx = layout.getLineBottom(layout.lineCount - 1)
+        val paragraphHeightPx = layout.multiParagraph.height
+        assertTrue(
+            "Status line exceeds measured height beyond 1px rounding: " +
+                "lineBottom=$lastLineBottomPx, paragraphHeight=$paragraphHeightPx, " +
+                "measuredHeight=${layout.size.height}, didOverflowHeight=${layout.didOverflowHeight}",
+            lastLineBottomPx <= layout.size.height + tolerancePx &&
+                paragraphHeightPx <= layout.size.height + tolerancePx,
+        )
         for (line in 0 until layout.lineCount) {
             val width = layout.getLineRight(line) - layout.getLineLeft(line)
             assertTrue("Status glyphs exceed allocated width: line=$width measured=${layout.size.width}",
