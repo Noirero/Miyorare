@@ -14,10 +14,19 @@ enum class MigrationBatchAction { CHECK, MIGRATE, COPY }
 /** Phase-only failure evidence. Never persist raw exception messages or source URLs. */
 enum class MigrationFailureStage { DESTINATION_DETAILS, DESTINATION_STORAGE, DATA_CONFLICT, DATA_TRANSFER, UNKNOWN }
 
+/** Non-sensitive, stable reason code persisted with the WorkManager result. */
+enum class MigrationConflictReason {
+    CHAPTER_MAPPING, DESTINATION_HISTORY, LIBRARY_STATE, READER_SETTINGS,
+    BOOKMARKS, TRACKING_STATE, CHAPTER_NOTES, OTHER_DATA,
+}
+
 class MigrationExecutionStageException(
     val stage: MigrationFailureStage,
     cause: Throwable,
-) : IllegalStateException("Migration failed at ${stage.name}", cause)
+) : IllegalStateException("Migration failed at ${stage.name}", cause) {
+    val conflictReason: MigrationConflictReason? =
+        (cause as? LosslessMigrationConflictException)?.reason
+}
 
 
 enum class MigrationBatchDiscoveryMode {
@@ -51,6 +60,7 @@ data class MigrationBatchOutcome(
 	val destinationTitle: String? = null,
 	val destinationSource: String? = null,
     val failureStage: MigrationFailureStage? = null,
+    val conflictReason: MigrationConflictReason? = null,
 )
 
 data class MigrationBatchSnapshot(
@@ -199,6 +209,7 @@ object MigrationBatchPolicy {
 			destinationId = request.selection?.id,
 			destinationSource = request.selection?.source,
             failureStage = (error as? MigrationExecutionStageException)?.stage ?: MigrationFailureStage.UNKNOWN,
+            conflictReason = (error as? MigrationExecutionStageException)?.conflictReason,
 		)
 	}
 }

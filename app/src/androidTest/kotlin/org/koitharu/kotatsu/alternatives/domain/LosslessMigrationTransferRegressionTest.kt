@@ -175,6 +175,89 @@ class LosslessMigrationTransferRegressionTest {
 	}
 
 	@Test
+    fun chapterMismatchWithSavedHistoryBlocksMigrationAndPreservesHistory() = runTest {
+        val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+        val settings = AppSettings(context)
+        val oldId = 983_001L
+        val newId = 983_002L
+        settings.setChapterReadOverrides(oldId, emptyMap())
+        settings.setChapterReadOverrides(newId, emptyMap())
+        try {
+            val oldChapter = chapter(983_101L, 7f, "MIGRATION_OLD", "/old/chapter-7")
+            val newChapter = chapter(983_201L, 8f, "MIGRATION_NEW", "/new/chapter-8")
+            val oldManga = manga(oldId, "MIGRATION_OLD", "/old/title", oldChapter)
+            val newManga = manga(newId, "MIGRATION_NEW", "/new/title", newChapter)
+            persistManga(database, oldManga)
+            persistManga(database, newManga)
+            database.getHistoryDao().insert(
+                HistoryEntity(mangaId = oldId, createdAt = 1L, updatedAt = 2L,
+                    chapterId = oldChapter.id, page = 3, scroll = 0.5f, percent = 0.4f,
+                    deletedAt = 0L, chaptersCount = 1),
+            )
+            val transfer = LosslessMigrationTransfer(
+                database, settings, MangaNotesRepository(context), MangaReaderProfileStore(context),
+            )
+            val plan = transfer.prepare(oldManga, newManga)
+            val failure = runCatching {
+                database.withTransaction { transfer.applyRoom(plan) }
+            }.exceptionOrNull()
+            assertTrue(failure is LosslessMigrationConflictException)
+            assertEquals(MigrationConflictReason.CHAPTER_MAPPING,
+                (failure as LosslessMigrationConflictException).reason)
+            assertEquals(oldChapter.id, database.getHistoryDao().find(oldId)?.chapterId)
+            assertNull(database.getHistoryDao().find(newId))
+        } finally {
+            settings.setChapterReadOverrides(oldId, emptyMap())
+            settings.setChapterReadOverrides(newId, emptyMap())
+            database.close()
+        }
+    }
+
+    @Test
+    fun existingDifferentTargetHistoryIsReportedSeparatelyAndPreserved() = runTest {
+        val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+        val settings = AppSettings(context)
+        val oldId = 984_001L
+        val newId = 984_002L
+        settings.setChapterReadOverrides(oldId, emptyMap())
+        settings.setChapterReadOverrides(newId, emptyMap())
+        try {
+            val oldChapter = chapter(984_101L, 7f, "MIGRATION_OLD", "/old/chapter-7")
+            val newChapter = chapter(984_201L, 7f, "MIGRATION_NEW", "/new/chapter-7")
+            val oldManga = manga(oldId, "MIGRATION_OLD", "/old/title", oldChapter)
+            val newManga = manga(newId, "MIGRATION_NEW", "/new/title", newChapter)
+            persistManga(database, oldManga)
+            persistManga(database, newManga)
+            database.getHistoryDao().insert(
+                HistoryEntity(mangaId = oldId, createdAt = 1L, updatedAt = 2L,
+                    chapterId = oldChapter.id, page = 3, scroll = 0.5f, percent = 0.4f,
+                    deletedAt = 0L, chaptersCount = 1),
+            )
+            database.getHistoryDao().insert(
+                HistoryEntity(mangaId = newId, createdAt = 4L, updatedAt = 5L,
+                    chapterId = newChapter.id, page = 1, scroll = 0.1f, percent = 0.2f,
+                    deletedAt = 0L, chaptersCount = 1),
+            )
+            val transfer = LosslessMigrationTransfer(
+                database, settings, MangaNotesRepository(context), MangaReaderProfileStore(context),
+            )
+            val plan = transfer.prepare(oldManga, newManga)
+            val failure = runCatching {
+                database.withTransaction { transfer.applyRoom(plan) }
+            }.exceptionOrNull()
+            assertTrue(failure is LosslessMigrationConflictException)
+            assertEquals(MigrationConflictReason.DESTINATION_HISTORY,
+                (failure as LosslessMigrationConflictException).reason)
+            assertEquals(oldChapter.id, database.getHistoryDao().find(oldId)?.chapterId)
+            assertEquals(newChapter.id, database.getHistoryDao().find(newId)?.chapterId)
+        } finally {
+            settings.setChapterReadOverrides(oldId, emptyMap())
+            settings.setChapterReadOverrides(newId, emptyMap())
+            database.close()
+        }
+    }
+
+    @Test
 	fun sourceReplacementRejectsDestinationAlreadyInDifferentLibraryGroup() = runTest {
 		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
 		val settings = AppSettings(context)

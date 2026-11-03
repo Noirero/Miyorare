@@ -91,7 +91,7 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 		for (source in oldFavourites) {
 			val target = targetFavourites[source.categoryId]
 			if (target != null && !sameFavourite(source, target)) {
-				conflict("Favourite category ${source.categoryId} conflicts at destination")
+				conflict("Favourite category ${source.categoryId} conflicts at destination", MigrationConflictReason.LIBRARY_STATE)
 			}
 			if (target == null) favouritesDao.upsert(source.copy(mangaId = newId))
 		}
@@ -102,7 +102,7 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 		for (source in oldPrivateFavourites) {
 			val target = targetPrivateFavourites[source.categoryId]
 			if (target != null && !samePrivateFavourite(source, target)) {
-				conflict("Private favourite category ${source.categoryId} conflicts at destination")
+				conflict("Private favourite category ${source.categoryId} conflicts at destination", MigrationConflictReason.LIBRARY_STATE)
 			}
 			if (target == null) privateFavouritesDao.upsert(source.copy(mangaId = newId))
 		}
@@ -113,7 +113,7 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 		val oldPreferences = preferencesDao.find(oldId)
 		val targetPreferences = preferencesDao.find(newId)
 		if (oldPreferences != null && targetPreferences != null && oldPreferences.copy(mangaId = newId) != targetPreferences) {
-			conflict("Destination manga already has different per-manga preferences")
+			conflict("Destination manga already has different per-manga preferences", MigrationConflictReason.READER_SETTINGS)
 		}
 		if (oldPreferences != null && targetPreferences == null) {
 			preferencesDao.upsert(oldPreferences.copy(mangaId = newId))
@@ -132,16 +132,16 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 			val oldMembers = groupsDao.findMembersByMangaIds(listOf(plan.oldManga.id), space.dbValue)
 			if (oldMembers.isEmpty()) continue
 			if (oldMembers.size != 1) {
-				conflict("Source manga belongs to multiple library groups in ${space.name}")
+				conflict("Source manga belongs to multiple library groups in ${space.name}", MigrationConflictReason.LIBRARY_STATE)
 			}
 			val source = oldMembers.single()
 			val targetMembers = groupsDao.findMembersByMangaIds(listOf(plan.newManga.id), space.dbValue)
 			if (targetMembers.any { it.groupId != source.groupId }) {
-				conflict("Destination manga already belongs to a different library group in ${space.name}")
+				conflict("Destination manga already belongs to a different library group in ${space.name}", MigrationConflictReason.LIBRARY_STATE)
 			}
 			val target = targetMembers.singleOrNull()
 			if (target != null && target.position != source.position) {
-				conflict("Library group ${source.groupId} has a different destination position")
+				conflict("Library group ${source.groupId} has a different destination position", MigrationConflictReason.LIBRARY_STATE)
 			}
 			if (target == null) groupsDao.insertMembers(listOf(source.copy(mangaId = plan.newManga.id)))
 
@@ -153,7 +153,7 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 				val copied = item.copy(mangaId = plan.newManga.id, chapterId = mappedChapterId)
 				val existing = targetTimeline[mappedChapterId]
 				if (existing != null && existing.position != copied.position) {
-					conflict("Library group ${source.groupId} timeline conflicts for chapter $mappedChapterId")
+					conflict("Library group ${source.groupId} timeline conflicts for chapter $mappedChapterId", MigrationConflictReason.LIBRARY_STATE)
 				}
 				if (existing == null) inserts += copied
 			}
@@ -166,7 +166,7 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 		for (source in dao.findAll(oldId)) {
 			val target = dao.find(source.scrobbler, newId)
 			if (target != null && !sameScrobbling(source, target)) {
-				conflict("Destination manga already has different scrobbling state for ${source.scrobbler}")
+				conflict("Destination manga already has different scrobbling state for ${source.scrobbler}", MigrationConflictReason.TRACKING_STATE)
 			}
 			if (target == null) {
 				dao.upsert(
@@ -195,7 +195,7 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 			)
 			val target = targetBookmarks[copied.pageId]
 			if (target != null && target != copied) {
-				conflict("Destination bookmark ${copied.pageId} conflicts with source bookmark")
+				conflict("Destination bookmark ${copied.pageId} conflicts with source bookmark", MigrationConflictReason.BOOKMARKS)
 			}
 			copied
 		}.filter { targetBookmarks[it.pageId] == null }
@@ -214,7 +214,7 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 		)
 		val target = dao.findIncludingDeleted(plan.newManga.id)
 		if (target != null && !sameHistory(copied, target)) {
-			conflict("Destination manga already has different reading history")
+			conflict("Destination manga already has different reading history", MigrationConflictReason.DESTINATION_HISTORY)
 		}
 		if (target == null) dao.insert(copied)
 	}
@@ -233,7 +233,7 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 		)
 		val target = dao.find(plan.newManga.id)
 		if (target != null && !sameTrack(copied, target)) {
-			conflict("Destination manga already has different tracker state")
+			conflict("Destination manga already has different tracker state", MigrationConflictReason.TRACKING_STATE)
 		}
 		if (target == null) dao.upsert(copied)
 	}
@@ -244,9 +244,9 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 		val mergedByTarget = LinkedHashMap<Pair<String, String>, ChapterPersonalEntity>()
 		for (source in dao.findAll(listOf(plan.oldManga.id))) {
 			val oldChapter = sourceByKey[source.source to source.url]
-				?: conflict("Per-chapter note/rating no longer resolves to a source chapter")
+				?: conflict("Per-chapter note/rating no longer resolves to a source chapter", MigrationConflictReason.CHAPTER_MAPPING)
 			val targetChapter = plan.chapterTargets[oldChapter.id]
-				?: conflict("Per-chapter note/rating chapter cannot be mapped safely")
+				?: conflict("Per-chapter note/rating chapter cannot be mapped safely", MigrationConflictReason.CHAPTER_MAPPING)
 			val key = targetChapter.source.name to targetChapter.url
 			val copied = ChapterPersonalEntity(
 				mangaId = plan.newManga.id,
@@ -267,12 +267,12 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 	private fun mappedChapterId(plan: LosslessMigrationTransfer.Plan, oldChapterId: Long, owner: String): Long {
 		if (oldChapterId == 0L) return 0L
 		return plan.chapterTargets[oldChapterId]?.id
-			?: conflict("$owner references chapter $oldChapterId that cannot be mapped safely")
+			?: conflict("$owner references chapter $oldChapterId that cannot be mapped safely", MigrationConflictReason.CHAPTER_MAPPING)
 	}
 
 	private fun mergeChapterPersonal(a: ChapterPersonalEntity, b: ChapterPersonalEntity): ChapterPersonalEntity {
-		if (a.rating != null && b.rating != null && a.rating != b.rating) conflict("Per-chapter ratings conflict")
-		if (!a.note.isNullOrBlank() && !b.note.isNullOrBlank() && a.note != b.note) conflict("Per-chapter notes conflict")
+		if (a.rating != null && b.rating != null && a.rating != b.rating) conflict("Per-chapter ratings conflict", MigrationConflictReason.CHAPTER_NOTES)
+		if (!a.note.isNullOrBlank() && !b.note.isNullOrBlank() && a.note != b.note) conflict("Per-chapter notes conflict", MigrationConflictReason.CHAPTER_NOTES)
 		return a.copy(
 			rating = a.rating ?: b.rating,
 			note = a.note?.takeIf { it.isNotBlank() } ?: b.note,
@@ -313,7 +313,8 @@ class LosslessMigrationCopyUseCase @Inject constructor(
 		chaptersCount = chaptersCount,
 	)
 
-	private fun conflict(message: String): Nothing = throw LosslessMigrationConflictException(message)
+	private fun conflict(message: String, reason: MigrationConflictReason): Nothing =
+		throw LosslessMigrationConflictException(message, reason)
 
 	private companion object {
 		val copyMutex = Mutex()
