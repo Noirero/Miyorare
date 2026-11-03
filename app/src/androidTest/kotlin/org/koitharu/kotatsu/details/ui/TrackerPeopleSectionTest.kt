@@ -248,9 +248,10 @@ class TrackerPeopleSectionTest {
         fun assertCollapsedTextAndStatus() {
             sourceContent.assertIsDisplayed()
             statusCard.assertIsDisplayed()
-            assertTextOverflow(sourceText, expected = true)
-            assertReadableSingleLineStatusText(compose.onNodeWithText(renderedStatus, useUnmergedTree = true))
-            assertReadableSingleLineStatusText(compose.onNodeWithText(releaseText, useUnmergedTree = true))
+            sourceText.assertTextEquals("...")
+            assertReadableStatusText(compose.onNodeWithText(renderedStatus, useUnmergedTree = true), maxLines = 2)
+            assertReadableStatusText(compose.onNodeWithText(releaseText, useUnmergedTree = true), maxLines = 2)
+            if (!centered) compose.onNodeWithTag("hero-status-icon").assertIsDisplayed()
         }
 
         compose.onNodeWithContentDescription(expandLabel).assertIsDisplayed()
@@ -274,13 +275,15 @@ class TrackerPeopleSectionTest {
         val expandedStatus = statusCard.fetchSemanticsNode().boundsInRoot
         val expandedRow = row.fetchSemanticsNode().boundsInRoot
         assertTrue("Expanded Source must grow rightward", expandedSource.width > collapsedSource.width)
-        assertTrue("Source must cover the old Status area", expandedSource.right >= collapsedStatus.right - 1f)
+        assertTrue("Source must stop before visible Status", expandedSource.right < expandedStatus.left)
+        assertTrue("Status must narrow but remain visible", expandedStatus.width > 0f &&
+            expandedStatus.width < collapsedStatus.width)
+        assertEquals("Status right edge stays fixed", collapsedStatus.right, expandedStatus.right, 1f)
         assertEquals("Source left unchanged", collapsedSource.left, expandedSource.left, 1f)
         assertEquals("Source top unchanged", collapsedSource.top, expandedSource.top, 1f)
         assertEquals("Source bottom unchanged", collapsedSource.bottom, expandedSource.bottom, 1f)
-        assertEquals("Status position unchanged", collapsedStatus.left, expandedStatus.left, 1f)
+        assertTrue("Status must shift right to make room for Source", expandedStatus.left > collapsedStatus.left)
         assertEquals("Status top unchanged", collapsedStatus.top, expandedStatus.top, 1f)
-        assertEquals("Status width unchanged", collapsedStatus.width, expandedStatus.width, 1f)
         assertEquals("Row height must not change", collapsedRow.height, expandedRow.height, 1f)
         assertEquals("Row top must not shift", collapsedRow.top, expandedRow.top, 1f)
         compose.runOnIdle { assertEquals("Chevron must not navigate", 0, sourceNavigations) }
@@ -292,6 +295,8 @@ class TrackerPeopleSectionTest {
         assertCollapsedTextAndStatus()
         assertEquals("Collapse restores Source width", collapsedSource.width,
             sourceContent.fetchSemanticsNode().boundsInRoot.width, 1f)
+        assertEquals("Collapse restores Status width", collapsedStatus.width,
+            statusCard.fetchSemanticsNode().boundsInRoot.width, 1f)
         compose.runOnIdle { assertEquals(1, sourceNavigations) }
 
         // Source identity and manga identity each reset transient expansion independently.
@@ -381,35 +386,53 @@ class TrackerPeopleSectionTest {
             assertTrue("Title must precede creator: $titleBounds / $creatorBounds",
                 titleBounds.bottom <= creatorBounds.top + 1f)
             assertTrue(
-                "Creator must clear pinned Source/Status: creator=$creatorBounds, row=$rowBounds",
+                "Creator must clear Source/Status: creator=$creatorBounds, row=$rowBounds",
                 creatorBounds.bottom + clearancePx <= rowBounds.top + 1f,
             )
             assertTrue("Title must not intersect Source/Status",
                 titleBounds.bottom + clearancePx <= rowBounds.top + 1f)
             assertTrue("Source must stay beside cover", sourceBounds.left >= coverBounds.right)
-            assertTrue("Source must stay within cover bottom", sourceBounds.bottom <= coverBounds.bottom + 1f)
-            assertTrue("Status must stay within cover bottom", statusBounds.bottom <= coverBounds.bottom + 1f)
-            assertEquals("Pinned metadata row must remain 72dp", 72f * density, rowBounds.height, 1.5f)
+            if (!compactExpanded) {
+                assertTrue("Collapsed Source stays within cover bottom",
+                    sourceBounds.bottom <= coverBounds.bottom + 1f)
+                assertTrue("Collapsed Status stays within cover bottom",
+                    statusBounds.bottom <= coverBounds.bottom + 1f)
+                assertTrue("Collapsed title at most two lines", textLayout(title).lineCount <= 2)
+                assertEquals("Collapsed creator exactly one line", 1, textLayout(creatorText).lineCount)
+            } else {
+                assertTextFullyRendered(title)
+                assertTextFullyRendered(creatorText)
+                assertTrue("Expanded title must render 3+ lines for this fixture",
+                    textLayout(title).lineCount >= 3)
+            }
+            assertEquals("Source/Status row remains 72dp", 72f * density, rowBounds.height, 1.5f)
             compose.onNodeWithTag("hero-source-expanded-detail").assertDoesNotExist()
             compose.onNodeWithTag("hero-source-expanded-text").assertDoesNotExist()
         }
 
         assertLongHeroGeometry()
+        compose.onNodeWithTag("hero-source-title", useUnmergedTree = true).assertTextEquals("...")
         val initialSource = source.fetchSemanticsNode().boundsInRoot
         val initialStatus = status.fetchSemanticsNode().boundsInRoot
         val initialActions = followingActions.fetchSemanticsNode().boundsInRoot
         compose.onNodeWithTag("hero-source-toggle").performClick()
         val expandedSource = source.fetchSemanticsNode().boundsInRoot
         assertTrue("Source must expand horizontally", expandedSource.width > initialSource.width)
-        assertTrue("Expanded Source must cover Status", expandedSource.right >= initialStatus.right - 1f)
+        val expandedStatus = status.fetchSemanticsNode().boundsInRoot
+        assertTrue("Expanded Source must stop before Status", expandedSource.right < expandedStatus.left)
+        assertTrue("Status must shrink but retain visible width",
+            expandedStatus.width > 0f && expandedStatus.width < initialStatus.width)
         compose.onNodeWithTag("hero-source-title", useUnmergedTree = true).assertTextEquals(sourceName)
         assertLongHeroGeometry()
         assertEquals("Source expansion must not shift following actions", initialActions.top,
             followingActions.fetchSemanticsNode().boundsInRoot.top, 1f)
         compose.onNodeWithTag("hero-source-toggle").performClick()
         assertLongHeroGeometry()
+        compose.onNodeWithTag("hero-source-title", useUnmergedTree = true).assertTextEquals("...")
         assertEquals("Collapsed Source width must restore", initialSource.width,
             source.fetchSemanticsNode().boundsInRoot.width, 1f)
+        assertEquals("Collapsed Status width must restore", initialStatus.width,
+            status.fetchSemanticsNode().boundsInRoot.width, 1f)
     }
 
     @Test fun compactHeroSourceStatusRespectsCoverBottom() = verifyCoverBoundary(compactExpanded = false)
@@ -455,26 +478,108 @@ class TrackerPeopleSectionTest {
         val rowBefore = row.fetchSemanticsNode().boundsInRoot
         val sourceBefore = source.fetchSemanticsNode().boundsInRoot
         val statusBefore = status.fetchSemanticsNode().boundsInRoot
-        assertTrue("Source must not exceed actual cover bottom", sourceBefore.bottom <= coverBottom + 1f)
-        assertTrue("Status must not exceed actual cover bottom", statusBefore.bottom <= coverBottom + 1f)
+        if (!compactExpanded) {
+            assertTrue("Collapsed Source must not exceed actual cover bottom", sourceBefore.bottom <= coverBottom + 1f)
+            assertTrue("Collapsed Status must not exceed actual cover bottom", statusBefore.bottom <= coverBottom + 1f)
+        }
         assertTrue("Source must stay beside cover", sourceBefore.left >= cover.fetchSemanticsNode().boundsInRoot.right)
         status.assertIsDisplayed()
         val active = compose.onNodeWithText(context.getString(R.string.details_release_active), useUnmergedTree = true)
-        assertReadableSingleLineStatusText(active)
+        if (!compactExpanded) assertReadableStatusText(active, maxLines = 2)
         val value = compose.onNodeWithText(renderedStatus, useUnmergedTree = true)
-        assertReadableSingleLineStatusText(value)
+        if (!compactExpanded) assertReadableStatusText(value, maxLines = 2)
 
         compose.onNodeWithTag("hero-source-toggle").performClick()
         val sourceAfter = source.fetchSemanticsNode().boundsInRoot
         val rowAfter = row.fetchSemanticsNode().boundsInRoot
-        assertTrue("Source expansion overlaps old Status", sourceAfter.right >= statusBefore.right - 1f)
+        val statusAfter = status.fetchSemanticsNode().boundsInRoot
+        assertTrue("Expanded Source leaves Status visible", sourceAfter.right < statusAfter.left)
+        assertTrue("Status becomes narrower", statusAfter.width > 0f &&
+            statusAfter.width < statusBefore.width)
         assertEquals("Expansion does not shift Source vertically", sourceBefore.top, sourceAfter.top, 1f)
         assertEquals("Expansion does not extend hero row", rowBefore.height, rowAfter.height, 1f)
-        assertTrue("Expanded Source stays within cover bottom", sourceAfter.bottom <= coverBottom + 1f)
+        if (!compactExpanded) {
+            assertTrue("Collapsed-hero expanded Source stays within cover bottom",
+                sourceAfter.bottom <= coverBottom + 1f)
+        }
         compose.onNodeWithTag("hero-source-toggle").performClick()
         status.assertIsDisplayed()
-        assertEquals("Collapse restores geometry", sourceBefore.width,
+        assertEquals("Collapse restores Source width", sourceBefore.width,
             source.fetchSemanticsNode().boundsInRoot.width, 1f)
+        assertEquals("Collapse restores Status width", statusBefore.width,
+            status.fetchSemanticsNode().boundsInRoot.width, 1f)
+    }
+
+    @Test fun expandingHeroPreservesSourceChevronState() {
+        val sourceName = "Komik manga indonesia"
+        val title = "The Regressed Son Of A Duke Is An Assassin"
+        val manga = SampleData.mangaDetails.copy(
+            title = title,
+            authors = setOf("Royal Studio Creator And Illustration Department With An Extended Name"),
+            altTitles = emptySet(), state = MangaState.ONGOING,
+            source = MangaSource("MIHON_424242"),
+            url = "https://example.invalid/manga/hero-independent-states",
+            publicUrl = "https://example.invalid/manga/hero-independent-states",
+        )
+        val heroExpanded = mutableStateOf(false)
+        val mangaState = mutableStateOf(manga)
+        val colors = miyorareThemeColors(
+            preset = MiyorareThemePreset.MIYORARE,
+            customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
+            darkTheme = true, amoled = false, effectLevel = VisualEffectLevel.LIGHT,
+        )
+        compose.setContent {
+            MaterialTheme(colorScheme = colors.colorScheme) {
+                CompositionLocalProvider(LocalMiyorareVisualPalette provides colors.visualPalette) {
+                    Column(Modifier.width(360.dp)) {
+                        ModernDetailsHero(
+                            centered = false, manga = mangaState.value, details = null,
+                            sourceTitle = sourceName, accent = colors.colorScheme.primary,
+                            imageLoader = loader, coverUrl = null, actions = heroNoopActions(),
+                            compactExpanded = heroExpanded.value,
+                        )
+                        Box(Modifier.height(1.dp).testTag("hero-following-actions-anchor"))
+                    }
+                }
+            }
+        }
+        val source = compose.onNodeWithTag("hero-source-content")
+        val status = compose.onNodeWithTag("hero-status-card")
+        val sourceText = compose.onNodeWithTag("hero-source-title", useUnmergedTree = true)
+        val toggle = compose.onNodeWithTag("hero-source-toggle")
+        val next = compose.onNodeWithTag("hero-following-actions-anchor")
+        sourceText.assertTextEquals("...")
+        val collapsedStatusWidth = status.fetchSemanticsNode().boundsInRoot.width
+        val collapsedHeroNextTop = next.fetchSemanticsNode().boundsInRoot.top
+        toggle.performClick()
+        sourceText.assertTextEquals(sourceName)
+        val sourceOpenWidth = source.fetchSemanticsNode().boundsInRoot.width
+        val statusNarrowWidth = status.fetchSemanticsNode().boundsInRoot.width
+        assertTrue(statusNarrowWidth > 0f && statusNarrowWidth < collapsedStatusWidth)
+
+        compose.runOnIdle { heroExpanded.value = true }
+        sourceText.assertTextEquals(sourceName)
+        assertEquals("Hero expansion must preserve Source width", sourceOpenWidth,
+            source.fetchSemanticsNode().boundsInRoot.width, 1f)
+        assertEquals("Hero expansion must preserve narrow Status width", statusNarrowWidth,
+            status.fetchSemanticsNode().boundsInRoot.width, 1f)
+        assertTrue("Full title/creator should grow hero naturally",
+            next.fetchSemanticsNode().boundsInRoot.top > collapsedHeroNextTop)
+        assertTextFullyRendered(compose.onNodeWithText(title, useUnmergedTree = true))
+
+        compose.runOnIdle { heroExpanded.value = false }
+        sourceText.assertTextEquals(sourceName)
+        toggle.performClick()
+        sourceText.assertTextEquals("...")
+        assertEquals("Source collapse restores Status width", collapsedStatusWidth,
+            status.fetchSemanticsNode().boundsInRoot.width, 1f)
+
+        toggle.performClick()
+        compose.runOnIdle { mangaState.value = manga.copy(source = MangaSource("MIHON_424243")) }
+        sourceText.assertTextEquals("...")
+        toggle.performClick()
+        compose.runOnIdle { mangaState.value = mangaState.value.copy(id = manga.id + 1) }
+        sourceText.assertTextEquals("...")
     }
 
     private fun heroNoopActions() = DetailsExpressiveActions(
@@ -492,37 +597,41 @@ class TrackerPeopleSectionTest {
         onTrackerRecommendationProvider = {}, onMangaUpdatesProgressRetry = {},
     )
 
-    /**
-     * Wrap-content Status text can set didOverflowWidth for subpixel rounding even when the
-     * measured width accommodates the intrinsic glyph width. Check readable geometry instead,
-     * keeping the strict overflow check for Source ellipsis/disclosure unchanged.
-     */
-    private fun assertReadableSingleLineStatusText(node: SemanticsNodeInteraction) {
-        node.assertIsDisplayed()
+    private fun textLayout(node: SemanticsNodeInteraction): TextLayoutResult {
         val results = mutableListOf<TextLayoutResult>()
         node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
-        val layout = results.single()
+        return results.single()
+    }
+
+    private fun assertTextFullyRendered(node: SemanticsNodeInteraction) {
+        node.assertIsDisplayed()
+        val layout = textLayout(node)
+        assertFalse("Full hero text must not overflow vertically", layout.didOverflowHeight)
+        for (line in 0 until layout.lineCount) {
+            assertFalse("Expanded hero must not ellipsize line $line", layout.isLineEllipsized(line))
+        }
+    }
+
+    private fun assertReadableStatusText(node: SemanticsNodeInteraction, maxLines: Int) {
+        node.assertIsDisplayed()
+        val layout = textLayout(node)
         val textBounds = node.fetchSemanticsNode().boundsInRoot
         val cardBounds = compose.onNodeWithTag("hero-status-card").fetchSemanticsNode().boundsInRoot
-        val roundingTolerancePx = 1f
-
-        assertEquals("Status text must remain on one readable line", 1, layout.lineCount)
+        val tolerancePx = 1f
+        assertTrue("Status text must have 1..$maxLines readable lines",
+            layout.lineCount in 1..maxLines)
         assertFalse("Status text must not overflow vertically", layout.didOverflowHeight)
-        assertTrue(
-            "Status text must fit intrinsic width: measured=${layout.size.width}, " +
-                "intrinsic=${layout.multiParagraph.maxIntrinsicWidth}",
-            layout.size.width.toFloat() + roundingTolerancePx >= layout.multiParagraph.maxIntrinsicWidth,
-        )
-        assertTrue(
-            "Status text must stay inside card horizontally: text=$textBounds card=$cardBounds",
-            textBounds.left >= cardBounds.left - roundingTolerancePx &&
-                textBounds.right <= cardBounds.right + roundingTolerancePx,
-        )
-        assertTrue(
-            "Status text must stay inside card vertically: text=$textBounds card=$cardBounds",
-            textBounds.top >= cardBounds.top - roundingTolerancePx &&
-                textBounds.bottom <= cardBounds.bottom + roundingTolerancePx,
-        )
+        for (line in 0 until layout.lineCount) {
+            val width = layout.getLineRight(line) - layout.getLineLeft(line)
+            assertTrue("Status glyphs exceed allocated width: line=$width measured=${layout.size.width}",
+                width <= layout.size.width + tolerancePx)
+        }
+        assertTrue("Status text must stay within card horizontally: $textBounds / $cardBounds",
+            textBounds.left >= cardBounds.left - tolerancePx &&
+                textBounds.right <= cardBounds.right + tolerancePx)
+        assertTrue("Status text must stay within card vertically: $textBounds / $cardBounds",
+            textBounds.top >= cardBounds.top - tolerancePx &&
+                textBounds.bottom <= cardBounds.bottom + tolerancePx)
     }
 
     private fun assertTextOverflow(

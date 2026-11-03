@@ -35,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,7 +45,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -108,6 +108,7 @@ internal fun ModernDetailsHero(
 	onCreatorOverflowChanged: (Boolean) -> Unit = {},
 ) {
 	val palette = LocalMiyorareVisualPalette.current
+	val heroSourceExpansionState = remember(manga.id, manga.source) { mutableStateOf(false) }
 	val nsfwLabel = when (manga.contentRating) {
 		ContentRating.SUGGESTIVE -> "16+"
 		ContentRating.ADULT -> "18+"
@@ -148,6 +149,7 @@ internal fun ModernDetailsHero(
 					accent = accent,
 					centered = true,
 					onSourceClick = { actions.onSourceClick(manga) },
+					sourceExpansionState = heroSourceExpansionState,
 				)
 			}
 		}
@@ -176,47 +178,60 @@ internal fun ModernDetailsHero(
 				forceRefresh = details?.isLoaded == true,
 				actions = actions,
 			)
-			// Reserve cover-bottom space for Source/Status; title and creator must fit above it.
-			val hasPinnedMetadata = !manga.isLocal || manga.state != null
-			val titleCreatorClearance = 4.dp
-			val titleCreatorHeight = coverHeight - COMPACT_HERO_META_HEIGHT - titleCreatorClearance
-			val creatorMaxLines = if (hasPinnedMetadata) {
-				val density = LocalDensity.current
-				val titleLineHeight = with(density) { MaterialTheme.typography.headlineSmall.lineHeight.toDp() }
-				val creatorLineHeight = with(density) { MaterialTheme.typography.labelLarge.lineHeight.toDp() }
-				((titleCreatorHeight - titleLineHeight - 5.dp).value / creatorLineHeight.value)
-					.toInt().coerceAtLeast(1)
-			} else null
+			val hasSourceStatus = !manga.isLocal || manga.state != null
 			Box(modifier = Modifier.weight(1f).heightIn(min = coverHeight)) {
-				Column(modifier = if (hasPinnedMetadata) {
-					Modifier.fillMaxWidth().height(titleCreatorHeight)
+				if (compactExpanded) {
+					// "Memperluas" restores the existing natural flow, independent of Source chevron.
+					Column(modifier = Modifier.fillMaxWidth()) {
+						HeroTexts(
+							centered = false, manga = manga, accent = accent, actions = actions,
+							showAuthors = false, compactExpanded = true,
+						)
+						CreatorMetaText(
+							centered = false, manga = manga, details = details, accent = accent,
+							actions = actions, compactExpanded = true,
+						)
+						if (hasSourceStatus) {
+							Spacer(Modifier.height(if (palette.isModern) 8.dp else 14.dp))
+							HeroSourceStatusRow(
+								manga = manga, sourceTitle = sourceTitle, imageLoader = imageLoader,
+								status = manga.state?.let { stringResource(it.titleResId) },
+								showActiveRelease = manga.state?.titleResId == R.string.state_ongoing,
+								accent = accent, centered = false, compactExpanded = true,
+								onSourceClick = { actions.onSourceClick(manga) },
+								sourceExpansionState = heroSourceExpansionState,
+							)
+						}
+					}
 				} else {
-					Modifier.fillMaxWidth()
-				}) {
-					// Measure the creator first; ellipsize title only when its remaining space is insufficient.
-					HeroTexts(
-						centered = false, manga = manga, accent = accent, actions = actions,
-						showAuthors = false, compactExpanded = compactExpanded,
-						titleModifier = if (hasPinnedMetadata) Modifier.weight(1f, fill = false) else Modifier,
-						onTitleLayout = { if (!compactExpanded) onTitleOverflowChanged(it.hasVisualOverflow) },
-					)
-					CreatorMetaText(
-						centered = false, manga = manga, details = details, accent = accent,
-						actions = actions, compactExpanded = compactExpanded,
-						maxCompactLines = creatorMaxLines,
-						onOverflowChanged = onCreatorOverflowChanged,
-					)
-				}
-				if (hasPinnedMetadata) {
-					HeroSourceStatusRow(
-						manga = manga, sourceTitle = sourceTitle, imageLoader = imageLoader,
-						status = manga.state?.let { stringResource(it.titleResId) },
-						showActiveRelease = manga.state?.titleResId == R.string.state_ongoing,
-						accent = accent, centered = false, compactExpanded = compactExpanded,
-						onSourceClick = { actions.onSourceClick(manga) },
-						modifier = Modifier.align(Alignment.TopStart)
-							.offset(y = coverHeight - COMPACT_HERO_META_HEIGHT),
-					)
+					// The collapsed hero alone reserves cover-bottom space for Source/Status.
+					Column(modifier = if (hasSourceStatus) {
+						Modifier.fillMaxWidth().height(coverHeight - COMPACT_HERO_META_HEIGHT - 4.dp)
+					} else Modifier.fillMaxWidth()) {
+						HeroTexts(
+							centered = false, manga = manga, accent = accent, actions = actions,
+							showAuthors = false, compactExpanded = false,
+							titleModifier = if (hasSourceStatus) Modifier.weight(1f, fill = false) else Modifier,
+							onTitleLayout = { onTitleOverflowChanged(it.hasVisualOverflow) },
+						)
+						CreatorMetaText(
+							centered = false, manga = manga, details = details, accent = accent,
+							actions = actions, compactExpanded = false,
+							onOverflowChanged = onCreatorOverflowChanged,
+						)
+					}
+					if (hasSourceStatus) {
+						HeroSourceStatusRow(
+							manga = manga, sourceTitle = sourceTitle, imageLoader = imageLoader,
+							status = manga.state?.let { stringResource(it.titleResId) },
+							showActiveRelease = manga.state?.titleResId == R.string.state_ongoing,
+							accent = accent, centered = false, compactExpanded = false,
+							onSourceClick = { actions.onSourceClick(manga) },
+							sourceExpansionState = heroSourceExpansionState,
+							modifier = Modifier.align(Alignment.TopStart)
+								.offset(y = coverHeight - COMPACT_HERO_META_HEIGHT),
+						)
+					}
 				}
 			}
 			}
@@ -224,7 +239,7 @@ internal fun ModernDetailsHero(
 	}
 }
 
-/** Source overlays Status in-place. No vertical disclosure or sibling reflow. */
+/** Source/Status share one row; Source-only expansion redistributes width. */
 @Composable
 internal fun HeroSourceStatusRow(
 	manga: Manga,
@@ -237,8 +252,11 @@ internal fun HeroSourceStatusRow(
 	compactExpanded: Boolean = false,
 	onSourceClick: () -> Unit,
 	modifier: Modifier = Modifier,
+	sourceExpansionState: MutableState<Boolean>? = null,
 ) {
-	var sourceExpanded by remember(manga.id, manga.source) { mutableStateOf(false) }
+	val localExpansionState = remember(manga.id, manga.source) { mutableStateOf(false) }
+	val expansionState = sourceExpansionState ?: localExpansionState
+	val sourceExpanded = expansionState.value
 	val hasSource = !manga.isLocal
 	val fullSourceName = sourceTitle?.takeUnless { it.isBlank() } ?: manga.source.getTitle(LocalContext.current)
 	val cardHeight = if (centered) 82.dp else COMPACT_HERO_META_HEIGHT
@@ -248,8 +266,12 @@ internal fun HeroSourceStatusRow(
 	) {
 		val availableWidth = maxWidth - if (hasSource && status != null) gap else 0.dp
 		val collapsedSourceWidth = if (status == null) maxWidth else availableWidth * 0.44f
-		val statusWidth = if (hasSource) availableWidth * 0.56f else maxWidth
-		// Status retains its collapsed geometry even when Source visually covers it.
+		val collapsedStatusWidth = if (hasSource) availableWidth - collapsedSourceWidth else maxWidth
+		val statusWidth = if (hasSource && sourceExpanded && status != null) {
+			(availableWidth * 0.22f).coerceIn(40.dp, 54.dp)
+		} else collapsedStatusWidth
+		val sourceWidth = if (status == null) maxWidth else availableWidth - statusWidth
+		// The Status card always retains a visible right-hand remainder.
 		if (status != null) {
 			HeroStatusCard(
 				status = status, showActiveRelease = showActiveRelease, accent = accent,
@@ -262,10 +284,9 @@ internal fun HeroSourceStatusRow(
 			HeroSourceCard(
 				manga = manga, sourceTitle = fullSourceName, imageLoader = imageLoader,
 				onSourceClick = onSourceClick, expanded = sourceExpanded,
-				onToggleExpanded = { sourceExpanded = !sourceExpanded },
+				onToggleExpanded = { expansionState.value = !expansionState.value },
 				modifier = Modifier.align(Alignment.TopStart)
-					.width(if (sourceExpanded) maxWidth else collapsedSourceWidth)
-					.fillMaxHeight().zIndex(if (sourceExpanded) 1f else 0f),
+					.width(sourceWidth).fillMaxHeight(),
 			)
 		}
 	}
@@ -325,15 +346,16 @@ private fun HeroSourceCard(
 						modifier = Modifier.size(14.dp),
 					)
 					Text(
-						text = srcText,
+						text = if (expanded) srcText else "...",
 						style = MaterialTheme.typography.labelMedium,
 						fontWeight = FontWeight.SemiBold,
 						color = MaterialTheme.colorScheme.onSurface,
 						maxLines = if (expanded) 2 else 1,
-						overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
+						overflow = TextOverflow.Clip,
 						modifier = Modifier
 							.weight(1f)
 							.padding(end = 24.dp)
+							.semantics { contentDescription = srcText }
 							.testTag("hero-source-title"),
 					)
 				}
@@ -472,30 +494,53 @@ private fun HeroStatusCard(
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
 	val statusContent: @Composable () -> Unit = {
 		if (compact) {
-			// Keep complete status and release on their own readable lines.
-			Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp)) {
-				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+			// Preserve the original leading status icon + stacked label/value hierarchy.
+			Row(
+				modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 3.dp),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(4.dp),
+			) {
+				val iconShape = RoundedCornerShape(50)
+				Box(
+					modifier = Modifier.size(32.dp)
+						.clip(iconShape)
+						.background(statusColor.copy(alpha = 0.12f))
+						.border(BorderStroke(1.dp, statusColor.copy(alpha = 0.66f)), iconShape)
+						.testTag("hero-status-icon"),
+					contentAlignment = Alignment.Center,
+				) {
 					Icon(
 						painter = painterResource(if (showActiveRelease) R.drawable.ic_infinity else R.drawable.ic_timelapse),
-						contentDescription = null, tint = statusColor,
-						modifier = Modifier.size(16.dp),
+						contentDescription = null,
+						tint = statusColor,
+						modifier = Modifier.size(19.dp),
 					)
+				}
+				Column(modifier = Modifier.weight(1f)) {
 					Text(
 						text = stringResource(R.string.status),
 						style = MaterialTheme.typography.labelSmall,
 						color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (palette.isModern) 0.90f else 1f),
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
 					)
-				}
-				Text(
-					text = status,
-					style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp, lineHeight = 16.sp),
-					fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface,
-				)
-				if (showActiveRelease) {
 					Text(
-						text = stringResource(R.string.details_release_active),
-						style = MaterialTheme.typography.labelSmall, color = statusColor,
+						text = status,
+						style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp, lineHeight = 16.sp),
+						fontWeight = FontWeight.SemiBold,
+						color = MaterialTheme.colorScheme.onSurface,
+						maxLines = 2,
+						overflow = TextOverflow.Ellipsis,
 					)
+					if (showActiveRelease) {
+						Text(
+							text = stringResource(R.string.details_release_active),
+							style = MaterialTheme.typography.labelSmall,
+							color = statusColor,
+							maxLines = 1,
+							overflow = TextOverflow.Ellipsis,
+						)
+					}
 				}
 			}
 		} else {
@@ -695,7 +740,6 @@ private fun CreatorMetaText(
 	accent: Color,
 	actions: DetailsExpressiveActions,
 	compactExpanded: Boolean = false,
-	maxCompactLines: Int? = null,
 	onOverflowChanged: (Boolean) -> Unit = {},
 ) {
 	val authors = manga.authors
@@ -746,7 +790,7 @@ private fun CreatorMetaText(
 				style = MaterialTheme.typography.labelLarge,
 				fontWeight = FontWeight.Medium,
 				color = accent,
-				maxLines = if (compactExpanded) maxCompactLines ?: Int.MAX_VALUE else 1,
+				maxLines = if (compactExpanded) Int.MAX_VALUE else 1,
 				overflow = TextOverflow.Ellipsis,
 				onTextLayout = { if (!compactExpanded) onOverflowChanged(it.hasVisualOverflow) },
 				modifier = Modifier.weight(1f),
