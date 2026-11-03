@@ -114,7 +114,8 @@ abstract class LibraryGroupsDao {
 
 	@Query(
 		"DELETE FROM library_group_members WHERE " +
-			"group_id IN (SELECT group_id FROM library_groups WHERE space = :space) AND NOT (" +
+			"group_id IN (SELECT group_id FROM library_groups WHERE space = :space) " +
+            "AND manga_id NOT IN (SELECT manga_id FROM manga WHERE preserved_to_manga_id IS NOT NULL) AND NOT (" +
 			"(:space = 0 AND EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = library_group_members.manga_id AND f.deleted_at = 0)) OR " +
 			"(:space = 1 AND EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = library_group_members.manga_id AND pf.deleted_at = 0))" +
 			")",

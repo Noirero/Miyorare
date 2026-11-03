@@ -94,6 +94,9 @@ class MigrationBatchWorker @AssistedInject constructor(
 					)
 				}
 			},
+            migrateDetailed = if (request.action == MigrationBatchAction.MIGRATE &&
+                request.discoveryMode == MigrationBatchDiscoveryMode.YOKAI
+            ) ({ selection -> yokaiExecute.migrateSimple(request.mangaId, selection) }) else null,
 			copy = { selection ->
 				check(request.discoveryMode == MigrationBatchDiscoveryMode.YOKAI) {
 					"Copy is only supported by the Yokai migration session"

@@ -27,4 +27,7 @@ data class MangaEntity(
 	@ColumnInfo(name = "details_updated_at", defaultValue = "0") val detailsUpdatedAt: Long = 0,
 	// True when the persisted chapter snapshot is authoritative, including a valid empty snapshot.
 	@ColumnInfo(name = "chapters_initialized", defaultValue = "0") val chaptersInitialized: Boolean = false,
+    // Durable recovery anchor. A preserved source must survive regular manga/chapter/group cleanup.
+    @ColumnInfo(name = "preserved_to_manga_id", defaultValue = "NULL")
+    val preservedToMangaId: Long? = null,
 )

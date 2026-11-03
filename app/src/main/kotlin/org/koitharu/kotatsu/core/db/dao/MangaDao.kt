@@ -443,10 +443,20 @@ abstract class MangaDao {
 			AND NOT EXISTS(SELECT * FROM suggestions WHERE suggestions.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM scrobblings WHERE scrobblings.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM local_index WHERE local_index.manga_id == manga.manga_id)
+            AND manga.preserved_to_manga_id IS NULL
 			AND manga.manga_id NOT IN (:idsToKeep)
 		""",
 	)
 	abstract suspend fun cleanup(idsToKeep: Set<Long>)
+
+    @Query("SELECT preserved_to_manga_id FROM manga WHERE manga_id = :id")
+    abstract suspend fun preservedDestination(id: Long): Long?
+
+    @Query("UPDATE manga SET preserved_to_manga_id = :destinationId WHERE manga_id = :sourceId")
+    abstract suspend fun markPreservedSource(sourceId: Long, destinationId: Long)
+
+    @Query("SELECT * FROM manga WHERE preserved_to_manga_id = :destinationId")
+    abstract suspend fun findPreservedSources(destinationId: Long): List<MangaEntity>
 
 	@Transaction
 	open suspend fun upsert(manga: MangaEntity, tags: Iterable<TagEntity>? = null) {
@@ -460,13 +470,14 @@ abstract class MangaDao {
 	 */
 	@Transaction
 	open suspend fun upsertWithCacheState(manga: MangaEntity, tags: Iterable<TagEntity>? = null) {
-		upsertRaw(manga)
+		upsertRaw(manga.copy(preservedToMangaId = preservedDestination(manga.id) ?: manga.preservedToMangaId))
 		upsertTags(manga.id, tags)
 	}
 
 	private suspend fun MangaEntity.preserveCacheState(): MangaEntity {
 		val previousUpdatedAt = getDetailsUpdatedAt(id) ?: return this
 		return copy(
+            preservedToMangaId = preservedDestination(id) ?: preservedToMangaId,
 			detailsUpdatedAt = previousUpdatedAt,
 			chaptersInitialized = isChaptersInitialized(id) == true,
 		)

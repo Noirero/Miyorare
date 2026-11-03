@@ -6,7 +6,7 @@ import java.security.MessageDigest
 
 enum class MigrationBatchStatus {
 	UNCHECKED, QUEUED, CHECKING, MIGRATING, READY, NEEDS_REVIEW, NO_REPLACEMENT,
-	INCOMPLETE, HEALTHY, MIGRATED, COPIED, SKIPPED, INTERRUPTED, ERROR,
+	INCOMPLETE, HEALTHY, MIGRATED, MIGRATED_PRESERVED, COPIED, SKIPPED, INTERRUPTED, ERROR,
 }
 
 enum class MigrationBatchAction { CHECK, MIGRATE, COPY }
@@ -62,6 +62,9 @@ data class MigrationBatchOutcome(
     val failureStage: MigrationFailureStage? = null,
     val conflictReason: MigrationConflictReason? = null,
 )
+
+/** Core migration can complete while some optional source records remain preserved. */
+data class MigrationTransferResult(val manga: Manga, val preserved: Boolean)
 
 data class MigrationBatchSnapshot(
 	val mangaId: Long,
@@ -169,6 +172,7 @@ object MigrationBatchPolicy {
 		discover: suspend () -> MigrationDiscovery,
 		migrate: suspend (MigrationSelection) -> Manga?,
 		copy: suspend (MigrationSelection) -> Manga? = migrate,
+		migrateDetailed: (suspend (MigrationSelection) -> MigrationTransferResult)? = null,
 	): MigrationBatchOutcome = try {
 		if (!canAccess()) MigrationBatchOutcome(MigrationBatchStatus.INTERRUPTED, destinationId = request.selection?.id)
 		else when (request.action) {
@@ -177,11 +181,15 @@ object MigrationBatchPolicy {
 				rawSelection = request.discoveryMode != MigrationBatchDiscoveryMode.CHECK_CURRENT,
 			)
 			MigrationBatchAction.MIGRATE -> {
-				val selected = checkNotNull(request.selection) { "Batch migration requires a READY selection" }
-				val result = migrate(selected)
-				if (result == null) MigrationBatchOutcome(MigrationBatchStatus.HEALTHY)
-				else MigrationBatchOutcome(MigrationBatchStatus.MIGRATED, destinationId = result.id, destinationTitle = result.title, destinationSource = result.source.name)
-			}
+                val selected = checkNotNull(request.selection) { "Batch migration requires a READY selection" }
+                val detailed = migrateDetailed?.invoke(selected)
+                val result = detailed?.manga ?: if (migrateDetailed == null) migrate(selected) else null
+                if (result == null) MigrationBatchOutcome(MigrationBatchStatus.HEALTHY)
+                else MigrationBatchOutcome(
+                    if (detailed?.preserved == true) MigrationBatchStatus.MIGRATED_PRESERVED else MigrationBatchStatus.MIGRATED,
+                    destinationId = result.id, destinationTitle = result.title, destinationSource = result.source.name,
+                )
+            }
 			MigrationBatchAction.COPY -> {
 				val selected = checkNotNull(request.selection) { "Batch copy requires a READY selection" }
 				val result = copy(selected)

@@ -23,6 +23,7 @@ class YokaiStyleMigrationExecutionUseCase @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val migrateUseCase: MigrateUseCase,
 	private val copyUseCase: LosslessMigrationCopyUseCase,
+    private val simpleMigrationTransfer: SimpleMigrationTransfer,
 ) {
 	suspend operator fun invoke(
 		mangaId: Long,
@@ -89,4 +90,52 @@ class YokaiStyleMigrationExecutionUseCase @Inject constructor(
         }
 		return details
 	}
+    /** Explicit simple-migration execution, isolated from legacy strict and Copy paths. */
+    suspend fun migrateSimple(mangaId: Long, selection: MigrationSelection): MigrationTransferResult {
+        val old = checkNotNull(mangaDataRepository.findMangaById(mangaId, withChapters = true)) {
+            "Source manga is no longer available"
+        }
+        val storedCandidate = checkNotNull(mangaDataRepository.findMangaById(selection.id, withChapters = false)) {
+            "Selected destination is no longer available"
+        }
+        check(storedCandidate.source.name == selection.source && old.id != storedCandidate.id) {
+            "Selected destination identity changed"
+        }
+        val details = try {
+            withTimeoutOrNull(90_000L) {
+                mangaRepositoryFactory.create(storedCandidate.source).getDetails(storedCandidate)
+            } ?: error("Destination source detail request timed out")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            throw MigrationExecutionStageException(MigrationFailureStage.DESTINATION_DETAILS, failure)
+        }
+        check(details.id == selection.id && details.source.name == selection.source) {
+            "Destination identity changed while refreshing details"
+        }
+        try {
+            mangaDataRepository.storeManga(
+                manga = details, replaceExisting = true,
+                stripAppliedOverride = false, detailsFetched = true,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            throw MigrationExecutionStageException(MigrationFailureStage.DESTINATION_STORAGE, failure)
+        }
+        val preserved = try {
+            simpleMigrationTransfer(old, details)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (changed: MigrateUseCase.SourceChangedException) {
+            throw changed
+        } catch (failure: Exception) {
+            throw MigrationExecutionStageException(
+                if (failure is LosslessMigrationConflictException) MigrationFailureStage.DATA_CONFLICT
+                else MigrationFailureStage.DATA_TRANSFER, failure,
+            )
+        }
+        return MigrationTransferResult(details, preserved)
+    }
+
 }

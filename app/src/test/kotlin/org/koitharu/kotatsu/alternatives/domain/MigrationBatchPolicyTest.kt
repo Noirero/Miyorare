@@ -101,6 +101,36 @@ class MigrationBatchPolicyTest {
         assertNotEquals(MigrationBatchStatus.MIGRATED, failed.status)
     }
 
+    @Test fun simpleMigrationPreservesSourceDataAsDistinctCompletedStatus() = runTest {
+        val request = MigrationBatchRequest(
+            1L, "OLD", MigrationBatchAction.MIGRATE, MigrationSelection.of(replacement),
+        )
+        val result = MigrationBatchPolicy.process(
+            request = request,
+            canAccess = { true },
+            discover = { error("No discovery") },
+            migrate = { error("Legacy strict migration must not run") },
+            migrateDetailed = { MigrationTransferResult(replacement, preserved = true) },
+        )
+        assertEquals(MigrationBatchStatus.MIGRATED_PRESERVED, result.status)
+        assertEquals(replacement.id, result.destinationId)
+        val saved = MigrationBatchWork.output(result)
+        assertEquals("MIGRATED_PRESERVED", saved.getString("result_status"))
+    }
+
+    @Test fun simpleMigrationWithAllRequiredAndOptionalDataReportsComplete() = runTest {
+        val request = MigrationBatchRequest(
+            1L, "OLD", MigrationBatchAction.MIGRATE, MigrationSelection.of(replacement),
+        )
+        val outcome = MigrationBatchPolicy.process(
+            request = request, canAccess = { true },
+            discover = { error("No discovery") },
+            migrate = { error("Legacy strict migration must not run") },
+            migrateDetailed = { MigrationTransferResult(replacement, preserved = false) },
+        )
+        assertEquals(MigrationBatchStatus.MIGRATED, outcome.status)
+    }
+
 	@Test fun copyActionUsesCopyExecutorAndReportsCopied() = runTest {
 		var migrateCalls = 0
 		var copyCalls = 0

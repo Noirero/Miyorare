@@ -677,6 +677,10 @@ private fun MigrationMangaReviewItem(
 					style = MaterialTheme.typography.labelSmall, maxLines = 1)
 				Text(stringResource(status.labelRes()), style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.primary)
+                if (status == MigrationBatchStatus.MIGRATED_PRESERVED) {
+                    Text("Sebagian data masih disimpan pada source asal.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
 				if (status == MigrationBatchStatus.ERROR) {
 					val explanation = when (failureStage) {
 						MigrationFailureStage.DESTINATION_DETAILS ->
@@ -742,7 +746,7 @@ private fun MigrationResultsStep(
 ) {
 	val inProgress = state.ownedBatchName != null && state.batchBusy
 	val completed = state.manga.filter { state.status(it.id) in setOf(
-		MigrationBatchStatus.MIGRATED, MigrationBatchStatus.COPIED) }
+		MigrationBatchStatus.MIGRATED, MigrationBatchStatus.MIGRATED_PRESERVED, MigrationBatchStatus.COPIED) }
 	val failures = state.manga.filter { state.status(it.id) == MigrationBatchStatus.ERROR }
 	val unresolved = state.manga.filter { state.status(it.id) in setOf(
 		MigrationBatchStatus.INTERRUPTED, MigrationBatchStatus.NEEDS_REVIEW,
@@ -789,7 +793,14 @@ private fun MigrationResultsStep(
 					Text(result.outcome.destinationTitle ?: "Manga selesai",
 						style = MaterialTheme.typography.bodyMedium)
 					Text(stringResource(result.outcome.status.labelRes()),
-						style = MaterialTheme.typography.bodySmall)
+                        style = MaterialTheme.typography.bodySmall)
+                    if (result.outcome.status == MigrationBatchStatus.MIGRATED_PRESERVED) {
+                        state.preservedSourceManga[result.mangaId]?.let { source ->
+                            TextButton(onClick = { onReview(source) }) {
+                                Text("Buka manga asal untuk memulihkan data tersimpan")
+                            }
+                        }
+                    }
 				}
 			}
 			if (failures.isNotEmpty()) item { Text("Gagal", style = MaterialTheme.typography.titleMedium) }

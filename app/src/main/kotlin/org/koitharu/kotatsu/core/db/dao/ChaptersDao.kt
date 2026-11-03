@@ -113,7 +113,7 @@ abstract class ChaptersDao {
 			AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
 			AND manga_id NOT IN (
 				SELECT manga_id FROM manga
-				WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+				WHERE preserved_to_manga_id IS NOT NULL OR (chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff)
 			)
 		""",
 	)
@@ -163,7 +163,7 @@ abstract class ChaptersDao {
 				AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
 				AND manga_id NOT IN (
 					SELECT manga_id FROM manga
-					WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+					WHERE preserved_to_manga_id IS NOT NULL OR (chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff)
 				)
 		)
 		""",
@@ -182,7 +182,7 @@ abstract class ChaptersDao {
 				AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
 				AND manga_id NOT IN (
 					SELECT manga_id FROM manga
-					WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+					WHERE preserved_to_manga_id IS NOT NULL OR (chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff)
 				)
 		)
 		""",
@@ -201,7 +201,7 @@ abstract class ChaptersDao {
 			AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
 			AND manga_id NOT IN (
 				SELECT manga_id FROM manga
-				WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+				WHERE preserved_to_manga_id IS NOT NULL OR (chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff)
 			)
 		""",
 	)
