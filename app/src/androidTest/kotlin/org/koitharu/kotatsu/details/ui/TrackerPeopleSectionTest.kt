@@ -390,8 +390,37 @@ class TrackerPeopleSectionTest {
         val results = mutableListOf<TextLayoutResult>()
         node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
         val layout = results.single()
-        assertEquals("Unexpected hero text overflow: lines=${layout.lineCount}, size=${layout.size}",
-            expected, layout.hasVisualOverflow)
+        val budget = if (!expected && layout.hasVisualOverflow) compactStatusBudgetEvidence() else ""
+        assertEquals(
+            "Unexpected hero text overflow: lines=${layout.lineCount}, size=${layout.size}, " +
+                "overflowWidth=${layout.didOverflowWidth}, overflowHeight=${layout.didOverflowHeight}, " +
+                "intrinsicWidth=${layout.multiParagraph.maxIntrinsicWidth}; $budget",
+            expected, layout.hasVisualOverflow,
+        )
+    }
+
+    // Only evaluated for an unexpected overflow; diagnostic, not a weaker assertion.
+    private fun compactStatusBudgetEvidence(): String {
+        val density = context.resources.displayMetrics.density
+        val card = compose.onNodeWithTag("hero-status-card").fetchSemanticsNode().boundsInRoot
+        val row = compose.onNodeWithTag("hero-source-status-row").fetchSemanticsNode().boundsInRoot
+        val labels = listOf(
+            "header" to context.getString(R.string.status),
+            "value" to context.getString(R.string.state_ongoing),
+            "release" to context.getString(R.string.details_release_active),
+        )
+        val children = labels.joinToString("; ") { (label, content) ->
+            val textNode = compose.onNodeWithText(content, useUnmergedTree = true)
+            val bounds = textNode.fetchSemanticsNode().boundsInRoot
+            val textLayout = mutableListOf<TextLayoutResult>()
+            textNode.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(textLayout) }
+            val result = textLayout.single()
+            "$label.bounds=$bounds, size=${result.size}, lines=${result.lineCount}, " +
+                "overflowWidth=${result.didOverflowWidth}, overflowHeight=${result.didOverflowHeight}, " +
+                "intrinsicWidth=${result.multiParagraph.maxIntrinsicWidth}"
+        }
+        return "density=$density, card=$card, cardHeightDp=${card.height / density}, " +
+            "row=$row, rowHeightDp=${row.height / density}; $children"
     }
 
 	@Test fun characterPortraitNameAndRoleAndStaffAreRenderedWithProviderAttribution() {
