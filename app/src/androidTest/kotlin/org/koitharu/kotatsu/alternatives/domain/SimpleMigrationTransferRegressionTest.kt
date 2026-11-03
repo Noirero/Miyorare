@@ -115,7 +115,7 @@ class SimpleMigrationTransferRegressionTest {
             groups.insertTimeline(listOf(LibraryGroupTimelineItemEntity(groupId, old.id, missing.id, 4)))
             db.getChaptersDao().replaceAll(old.id, old.chapters.orEmpty().mapIndexed { index, chapter ->
                 org.koitharu.kotatsu.core.db.entity.ChapterEntity(
-                    chapterId = chapter.id, mangaId = old.id, title = chapter.title,
+                    chapterId = chapter.id, mangaId = old.id, title = chapter.title.orEmpty(),
                     number = chapter.number, volume = chapter.volume, url = chapter.url,
                     scanlator = null, uploadDate = 0L, branch = null,
                     source = chapter.source.name, index = index,
@@ -310,7 +310,7 @@ class SimpleMigrationTransferRegressionTest {
         }
         val category = if (private) 997901L else 997900L
         db.getFavouriteCategoriesDao().upsert(FavouriteCategoryEntity(
-            category, 1, 0, "Fixture", "NAME", false, false, true, 0,
+            category.toInt(), 1, 0, "Fixture", "NAME", false, false, true, 0,
             if (private) 1 else 0,
         ))
         if (private) {
