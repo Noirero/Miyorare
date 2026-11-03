@@ -746,7 +746,7 @@ private fun CreatorMetaText(
 				style = MaterialTheme.typography.labelLarge,
 				fontWeight = FontWeight.Medium,
 				color = accent,
-				maxLines = maxCompactLines ?: if (compactExpanded) Int.MAX_VALUE else 1,
+				maxLines = if (compactExpanded) maxCompactLines ?: Int.MAX_VALUE else 1,
 				overflow = TextOverflow.Ellipsis,
 				onTextLayout = { if (!compactExpanded) onOverflowChanged(it.hasVisualOverflow) },
 				modifier = Modifier.weight(1f),
