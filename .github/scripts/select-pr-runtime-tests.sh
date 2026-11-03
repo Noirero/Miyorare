@@ -425,62 +425,7 @@ self_test() {
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/main/ui/welcome/OnboardingScreen.kt')"
-  grep -q '^mode=targeted
-  grep -q 'DiscoveryCatalogUiTest' <<<"$out"
-  grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"
-  grep -q 'LocalBackupIdentityTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/Foo.kt')"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  out="$(plan_from_paths false 'kotatsu-runtime/src/main/kotlin/example/Foo.kt')"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-
-  if plan_from_paths false 'gradle/libs.versions.toml' >/dev/null 2>&1; then
-    echo 'Expected shared build infrastructure to require full runtime.' >&2
-    return 1
-  fi
-  if plan_from_paths false 'README.md' >/dev/null 2>&1; then
-    echo 'Expected an unmapped runtime request to fail closed.' >&2
-    return 1
-  fi
-
-  out="$(plan_from_paths true 'README.md')"
-  grep -q '^mode=full$' <<<"$out"
-  grep -q 'CategorySetsUiTest' <<<"$out"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  classify_self_test
-  policy_self_test
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-if [[ "$POLICY" == true ]]; then
-  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}"
-  input="$(cat)"
-  run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
-  full="$(sed -n 's/^full=//p' <<< "$input")"
-  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME"
-  exit 0
-fi
-mapfile -t PATHS
-if [[ "$CLASSIFY" == true ]]; then
-  classify_paths "${PATHS[@]}"
-  exit 0
-fi
-plan_from_paths "$FULL" "${PATHS[@]}"
- <<<"$out"
+  grep -q '^mode=targeted$' <<<"$out"
   grep -q 'OnboardingAppearanceIntegrationTest' <<<"$out"
   out="$(plan_from_paths false 'app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/welcome/OnboardingAppearanceIntegrationTest.kt')"
   grep -q 'OnboardingAppearanceIntegrationTest' <<<"$out"
