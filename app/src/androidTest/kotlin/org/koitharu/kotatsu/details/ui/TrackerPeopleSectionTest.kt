@@ -312,8 +312,8 @@ class TrackerPeopleSectionTest {
     private fun verifyCoverBoundary(compactExpanded: Boolean) {
         val manga = SampleData.mangaDetails.copy(
             title = "Compact hero geometry",
-            authors = emptyList(),
-            altTitles = emptyList(),
+            authors = emptySet(),
+            altTitles = emptySet(),
             state = MangaState.ONGOING,
             source = MangaSource("MIHON_424242"),
             url = "https://example.invalid/manga/hero-cover-geometry",
