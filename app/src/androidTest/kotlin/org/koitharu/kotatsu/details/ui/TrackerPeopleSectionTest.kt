@@ -257,8 +257,8 @@ class TrackerPeopleSectionTest {
             )
             assertBetaSourceInternalGeometry()
             assertBetaStatusInternalGeometry()
-            assertReadableStatusText(compose.onNodeWithText(renderedStatus, useUnmergedTree = true), maxLines = 2)
-            assertReadableStatusText(compose.onNodeWithText(releaseText, useUnmergedTree = true), maxLines = 1)
+            assertReadableStatusText(compose.onNodeWithText(renderedStatus, useUnmergedTree = true), maxLines = 2, renderedStatus = renderedStatus)
+            assertReadableStatusText(compose.onNodeWithText(releaseText, useUnmergedTree = true), maxLines = 1, renderedStatus = renderedStatus)
         }
 
         compose.onNodeWithContentDescription(expandLabel).assertIsDisplayed()
@@ -501,9 +501,9 @@ class TrackerPeopleSectionTest {
         assertBetaSourceInternalGeometry()
         assertBetaStatusInternalGeometry()
         val active = compose.onNodeWithText(context.getString(R.string.details_release_active), useUnmergedTree = true)
-        if (!compactExpanded) assertReadableStatusText(active, maxLines = 2)
+        if (!compactExpanded) assertReadableStatusText(active, maxLines = 2, renderedStatus = renderedStatus)
         val value = compose.onNodeWithText(renderedStatus, useUnmergedTree = true)
-        if (!compactExpanded) assertReadableStatusText(value, maxLines = 2)
+        if (!compactExpanded) assertReadableStatusText(value, maxLines = 2, renderedStatus = renderedStatus)
 
         compose.onNodeWithTag("hero-source-toggle").performClick()
         val sourceAfter = source.fetchSemanticsNode().boundsInRoot
@@ -740,7 +740,11 @@ class TrackerPeopleSectionTest {
         }
     }
 
-    private fun assertReadableStatusText(node: SemanticsNodeInteraction, maxLines: Int) {
+    private fun assertReadableStatusText(
+        node: SemanticsNodeInteraction,
+        maxLines: Int,
+        renderedStatus: String? = null,
+    ) {
         node.assertIsDisplayed()
         val layout = textLayout(node)
         val textBounds = node.fetchSemanticsNode().boundsInRoot
@@ -750,12 +754,19 @@ class TrackerPeopleSectionTest {
             layout.lineCount in 1..maxLines)
         val lastLineBottomPx = layout.getLineBottom(layout.lineCount - 1)
         val paragraphHeightPx = layout.multiParagraph.height
+        val verticalFits = lastLineBottomPx <= layout.size.height + tolerancePx &&
+            paragraphHeightPx <= layout.size.height + tolerancePx
+        val diagnostic = if (!verticalFits) {
+            runCatching { compactStatusBudgetEvidence(renderedStatus) }
+                .getOrElse { "diagnosticCollectorError=${it::class.java.simpleName}: ${it.message}" }
+        } else ""
         assertTrue(
             "Status line exceeds measured height beyond 1px rounding: " +
+                "test=${testName.methodName}, lineCount=${layout.lineCount}, " +
                 "lineBottom=$lastLineBottomPx, paragraphHeight=$paragraphHeightPx, " +
-                "measuredHeight=${layout.size.height}, didOverflowHeight=${layout.didOverflowHeight}",
-            lastLineBottomPx <= layout.size.height + tolerancePx &&
-                paragraphHeightPx <= layout.size.height + tolerancePx,
+                "measuredSize=${layout.size}, didOverflowHeight=${layout.didOverflowHeight}; " +
+                diagnostic,
+            verticalFits,
         )
         for (line in 0 until layout.lineCount) {
             val width = layout.getLineRight(line) - layout.getLineLeft(line)
@@ -796,38 +807,88 @@ class TrackerPeopleSectionTest {
         )
     }
 
-    // Fixture-aware evidence: each missing/ambiguous node is reported independently,
-    // without replacing the primary assertion with a diagnostic lookup exception.
+    // Diagnostic only: do not rely on localized value strings or modify acceptance criteria.
+    // A missing/ambiguous child is reported independently without masking the primary failure.
     private fun compactStatusBudgetEvidence(renderedStatus: String?): String {
         val density = context.resources.displayMetrics.density
         val card = compose.onNodeWithTag("hero-status-card").fetchSemanticsNode().boundsInRoot
         val row = compose.onNodeWithTag("hero-source-status-row").fetchSemanticsNode().boundsInRoot
-        val labels = listOf(
-            "header" to context.getString(R.string.status),
-            "value" to renderedStatus,
-            "release" to context.getString(R.string.details_release_active),
-        )
-        val children = labels.joinToString("; ") { (label, content) ->
-            if (content == null) {
-                "$label=missing(fixture value not provided)"
-            } else {
-                runCatching {
-                    val candidate = compose.onNodeWithText(content, useUnmergedTree = true)
-                    val bounds = candidate.fetchSemanticsNode().boundsInRoot
-                    val measured = mutableListOf<TextLayoutResult>()
-                    candidate.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(measured) }
-                    val result = measured.single()
-                    "$label.text='$content', bounds=$bounds, size=${result.size}, " +
-                        "lines=${result.lineCount}, overflowWidth=${result.didOverflowWidth}, " +
-                        "overflowHeight=${result.didOverflowHeight}, " +
-                        "intrinsicWidth=${result.multiParagraph.maxIntrinsicWidth}"
-                }.getOrElse { exception ->
-                    "$label=missing-or-ambiguous(text='$content', cause=${exception::class.java.simpleName})"
-                }
-            }
-        }
-        return "density=$density, card=$card, cardHeightDp=${card.height / density}, " +
-            "row=$row, rowHeightDp=${row.height / density}; $children"
+        val horizontalPaddingDp = 11f
+        val verticalPaddingDp = 9f
+        val iconDp = 40f
+        val glyphDp = 22f
+        val iconTextGapDp = 9f
+        val releaseSpacingDp = 2f
+        val innerHeightPx = card.height - 2f * verticalPaddingDp * density
+        val innerTextWidthPx = card.width -
+            (2f * horizontalPaddingDp + iconDp + iconTextGapDp) * density
+
+        fun boundsEvidence(tag: String): String = runCatching {
+            val bounds = compose.onNodeWithTag(tag, useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            "$tag.bounds=$bounds, widthPx=${bounds.width}, heightPx=${bounds.height}, " +
+                "widthDp=${bounds.width / density}, heightDp=${bounds.height / density}"
+        }.getOrElse { "$tag=missing-or-ambiguous(${it::class.java.simpleName}: ${it.message})" }
+
+        val layouts = mutableMapOf<String, TextLayoutResult>()
+        val textBounds = mutableMapOf<String, androidx.compose.ui.geometry.Rect>()
+        fun textEvidence(label: String, tag: String): String = runCatching {
+            val node = compose.onNodeWithTag(tag, useUnmergedTree = true)
+            val semantics = node.fetchSemanticsNode()
+            val bounds = semantics.boundsInRoot
+            val layout = textLayout(node)
+            layouts[label] = layout
+            textBounds[label] = bounds
+            val actualText = runCatching {
+                semantics.config[SemanticsProperties.Text].joinToString(" | ") { it.text }
+            }.getOrNull() ?: "<missing text semantics>"
+            "$label.text='$actualText', bounds=$bounds, measuredSize=${layout.size}, " +
+                "lineCount=${layout.lineCount}, paragraphHeightPx=${layout.multiParagraph.height}, " +
+                "lastLineBottomPx=${layout.getLineBottom(layout.lineCount - 1)}, " +
+                "intrinsicWidthPx=${layout.multiParagraph.maxIntrinsicWidth}, " +
+                "overflowWidth=${layout.didOverflowWidth}, overflowHeight=${layout.didOverflowHeight}"
+        }.getOrElse { "$label=missing-or-ambiguous(${it::class.java.simpleName}: ${it.message})" }
+
+        val icon = boundsEvidence("hero-status-icon")
+        val glyph = boundsEvidence("hero-status-glyph")
+        val header = textEvidence("header", "hero-status-label")
+        val value = textEvidence("value", "hero-status-value")
+        val release = textEvidence("release", "hero-status-release")
+        val headerLayout = layouts["header"]
+        val valueLayout = layouts["value"]
+        val releaseLayout = layouts["release"]
+        val budget = if (headerLayout != null && valueLayout != null && releaseLayout != null) {
+            val requiredTextHeightPx = headerLayout.multiParagraph.height +
+                valueLayout.multiParagraph.height +
+                releaseSpacingDp * density + releaseLayout.multiParagraph.height
+            val measuredTextHeightPx = headerLayout.size.height + valueLayout.size.height +
+                releaseSpacingDp * density + releaseLayout.size.height
+            val minimumRequiredContentHeightPx = maxOf(iconDp * density, requiredTextHeightPx)
+            val requiredCardHeightPx = minimumRequiredContentHeightPx + 2f * verticalPaddingDp * density
+            val deficitPx = (requiredCardHeightPx - card.height).coerceAtLeast(0f)
+            val actualReleaseGapPx = textBounds["release"]?.top?.minus(textBounds["value"]?.bottom ?: 0f)
+            "headerRequiredHeightPx=${headerLayout.multiParagraph.height}, " +
+                "valueRequiredHeightPx=${valueLayout.multiParagraph.height}, " +
+                "valueLines=${valueLayout.lineCount}, " +
+                "releaseRequiredHeightPx=${releaseLayout.multiParagraph.height}, " +
+                "measuredTextStackHeightPx=$measuredTextHeightPx, " +
+                "requiredTextStackHeightPx=$requiredTextHeightPx, " +
+                "requiredCardHeightPx=$requiredCardHeightPx, " +
+                "deficitPx=$deficitPx, deficitDp=${deficitPx / density}, " +
+                "actualReleaseGapPx=$actualReleaseGapPx"
+        } else "verticalBudget=unknown(missing text layout)"
+
+        return "test=${testName.methodName}, fixtureStatus='$renderedStatus', density=$density; " +
+            "statusCard.bounds=$card, widthPx=${card.width}, widthDp=${card.width / density}, " +
+            "heightPx=${card.height}, heightDp=${card.height / density}; " +
+            "row.bounds=$row, widthPx=${row.width}, heightPx=${row.height}, " +
+            "rowHeightDp=${row.height / density}; " +
+            "paddingHorizontalDp=$horizontalPaddingDp, paddingVerticalDp=$verticalPaddingDp, " +
+            "innerHeightPx=$innerHeightPx, innerHeightDp=${innerHeightPx / density}, " +
+            "innerTextWidthPx=$innerTextWidthPx, innerTextWidthDp=${innerTextWidthPx / density}, " +
+            "iconExpectedDp=$iconDp, glyphExpectedDp=$glyphDp, " +
+            "iconTextGapDp=$iconTextGapDp, releaseSpacingDp=$releaseSpacingDp; " +
+            "$icon; $glyph; $header; $value; $release; $budget"
     }
 
 	@Test fun characterPortraitNameAndRoleAndStaffAreRenderedWithProviderAttribution() {
