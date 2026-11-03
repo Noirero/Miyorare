@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.alternatives.domain
 import dagger.Reusable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -24,6 +25,7 @@ class YokaiStyleMigrationExecutionUseCase @Inject constructor(
 	private val migrateUseCase: MigrateUseCase,
 	private val copyUseCase: LosslessMigrationCopyUseCase,
     private val simpleMigrationTransfer: SimpleMigrationTransfer,
+    private val database: MangaDatabase,
 ) {
 	suspend operator fun invoke(
 		mangaId: Long,
@@ -124,7 +126,15 @@ class YokaiStyleMigrationExecutionUseCase @Inject constructor(
             throw MigrationExecutionStageException(MigrationFailureStage.DESTINATION_STORAGE, failure)
         }
         val preserved = try {
-            simpleMigrationTransfer(old, details)
+            // Private-only data must remain behind its original isolation boundary.
+            // Until preserved Private entries have a secure archival visibility route,
+            // use the existing strict transfer rather than exposing retained history.
+            val privateMembership = database.getPrivateFavouritesDao().findAllRaw(old.id).isNotEmpty() &&
+                database.getFavouritesDao().findAllRaw(old.id).isEmpty()
+            if (privateMembership) {
+                migrateUseCase(old, details, lossless = true, requireLibraryEntry = true)
+                false
+            } else simpleMigrationTransfer(old, details)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (changed: MigrateUseCase.SourceChangedException) {

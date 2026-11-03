@@ -159,12 +159,14 @@ class SimpleMigrationTransferRegressionTest {
                 space = FavouriteSpace.PRIVATE.dbValue,
             ))
             groups.insertMembers(listOf(LibraryGroupMemberEntity(groupId, old.id, 1)))
-            transfer(db, settings, notes)(old, target)
-            assertTrue(groups.findMembersByMangaIds(listOf(old.id), 1).isEmpty())
-            assertEquals(1, groups.findMembersByMangaIds(listOf(target.id), 1).size)
+            val failure = runCatching { transfer(db, settings, notes)(old, target) }.exceptionOrNull()
+            assertTrue(failure is LosslessMigrationConflictException)
+            // Direct simple-path invocation must never remove the Private protection boundary.
+            assertEquals(1, groups.findMembersByMangaIds(listOf(old.id), 1).size)
+            assertTrue(groups.findMembersByMangaIds(listOf(target.id), 1).isEmpty())
             assertTrue(db.getFavouritesDao().findAllRaw(target.id).isEmpty())
-            assertTrue(db.getPrivateFavouritesDao().findAllRaw(old.id).isEmpty())
-            assertEquals(1, db.getPrivateFavouritesDao().findAllRaw(target.id).size)
+            assertEquals(1, db.getPrivateFavouritesDao().findAllRaw(old.id).size)
+            assertTrue(db.getPrivateFavouritesDao().findAllRaw(target.id).isEmpty())
         } finally { db.close() }
     }
 

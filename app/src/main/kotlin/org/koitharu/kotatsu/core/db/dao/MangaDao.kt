@@ -455,8 +455,9 @@ abstract class MangaDao {
     @Query("UPDATE manga SET preserved_to_manga_id = :destinationId WHERE manga_id = :sourceId")
     abstract suspend fun markPreservedSource(sourceId: Long, destinationId: Long)
 
-    @Query("SELECT * FROM manga WHERE preserved_to_manga_id = :destinationId")
-    abstract suspend fun findPreservedSources(destinationId: Long): List<MangaEntity>
+    @Transaction
+    @Query("SELECT * FROM manga WHERE preserved_to_manga_id IS NOT NULL")
+    abstract suspend fun findAllPreservedSources(): List<MangaWithTags>
 
 	@Transaction
 	open suspend fun upsert(manga: MangaEntity, tags: Iterable<TagEntity>? = null) {

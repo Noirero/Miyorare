@@ -42,6 +42,25 @@ class MigrationBatchWorker @AssistedInject constructor(
 	override suspend fun doWork(): Result {
 		setForeground(getForegroundInfo())
 		val request = MigrationBatchWork.request(inputData)
+        // Room ownership and preservation marker commit together. If WorkManager restarts
+        // after that commit but before output is saved, reconcile without executing twice.
+        if (request.action == MigrationBatchAction.MIGRATE &&
+            request.discoveryMode == MigrationBatchDiscoveryMode.YOKAI
+        ) {
+            val selected = request.selection
+            if (selected != null &&
+                database.getMangaDao().preservedDestination(request.mangaId) == selected.id &&
+                database.getMangaDao().find(selected.id)?.manga?.source == selected.source &&
+                database.getMangaDao().isMigrationEntryVisible(selected.id) &&
+                !database.getPrivateFavouritesDao().isPrivateOnly(selected.id)
+            ) {
+                return Result.success(MigrationBatchWork.output(MigrationBatchOutcome(
+                    status = MigrationBatchStatus.MIGRATED_PRESERVED,
+                    destinationId = selected.id,
+                    destinationSource = selected.source,
+                )))
+            }
+        }
 		setProgress(MigrationBatchWork.output(MigrationBatchOutcome(
 			if (request.action == MigrationBatchAction.CHECK) MigrationBatchStatus.CHECKING else MigrationBatchStatus.MIGRATING,
 		)))

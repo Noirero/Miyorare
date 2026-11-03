@@ -305,12 +305,14 @@ class SourceMangaListViewModel @Inject constructor(
 					val candidates = destinationIds.chunked(500)
 						.flatMap { database.getMangaDao().findByIds(it) }
 						.toMangaList().associateBy(Manga::id)
-					val retainedIds = latest.values.filter {
-                        it.outcome.status == MigrationBatchStatus.MIGRATED_PRESERVED
-                    }.map { it.mangaId }.distinct()
-                    val preservedSources = retainedIds.chunked(500)
-                        .flatMap { database.getMangaDao().findByIds(it) }
-                        .toMangaList().associateBy(Manga::id)
+                    // The marker survives WorkManager result expiry. Never expose Private-only data.
+                    val preservedRows = database.getMangaDao().findAllPreservedSources()
+                    val publicPreserved = preservedRows.filter { row ->
+                        val destinationId = row.manga.preservedToMangaId
+                        destinationId != null && destinationId !in privateOnly &&
+                            database.getMangaDao().isMigrationEntryVisible(destinationId)
+                    }
+                    val preservedSources = publicPreserved.toMangaList().associateBy(Manga::id)
 					val targetManga = latest.mapNotNull { (sourceId, snapshot) ->
 						val outcome = snapshot.outcome
 						val completed = outcome.status == MigrationBatchStatus.MIGRATED || outcome.status == MigrationBatchStatus.MIGRATED_PRESERVED ||

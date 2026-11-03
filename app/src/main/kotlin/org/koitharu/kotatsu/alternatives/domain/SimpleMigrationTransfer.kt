@@ -38,6 +38,11 @@ class SimpleMigrationTransfer @Inject constructor(
             require(oldManga.id != newManga.id) { "Replacement must use a distinct manga identity" }
             val oldId = oldManga.id
             val newId = newManga.id
+            if (database.getPrivateFavouritesDao().findAllRaw(oldId).isNotEmpty() &&
+                database.getFavouritesDao().findAllRaw(oldId).isEmpty()
+            ) {
+                conflict("Private-only source requires isolated migration", MigrationConflictReason.LIBRARY_STATE)
+            }
             val sourceNote = notes.get(oldId)
             val destinationNote = notes.get(newId)
             if (sourceNote != null && destinationNote != null && sourceNote != destinationNote) {
@@ -297,7 +302,7 @@ class SimpleMigrationTransfer @Inject constructor(
             // across parsers. Copy optional state only for the exact same provider chapter.
             target?.takeIf {
                 it.source.name == chapter.source.name && it.url == chapter.url &&
-                    it.title.trim().equals(chapter.title.trim(), ignoreCase = true)
+                    it.title?.trim().orEmpty().equals(chapter.title?.trim().orEmpty(), ignoreCase = true)
             }?.let { chapter.id to it }
         }.toMap()
         val counts = provisional.values.groupingBy { it.id }.eachCount()

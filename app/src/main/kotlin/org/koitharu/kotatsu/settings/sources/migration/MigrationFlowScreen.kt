@@ -803,6 +803,18 @@ private fun MigrationResultsStep(
                     }
 				}
 			}
+            val preserved = state.preservedSourceManga.values.toList()
+            if (preserved.isNotEmpty()) item {
+                Text("Data manga lama tersimpan", style = MaterialTheme.typography.titleMedium)
+            }
+            items(preserved, key = { "preserved:" + it.id }) { source ->
+                Column {
+                    Text(source.title, style = MaterialTheme.typography.bodyMedium)
+                    Text("Data yang belum dipindahkan tetap tersedia di manga asal.",
+                        style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { onReview(source) }) { Text("Buka manga asal") }
+                }
+            }
 			if (failures.isNotEmpty()) item { Text("Gagal", style = MaterialTheme.typography.titleMedium) }
 			items(failures, key = Manga::id) { manga ->
 				MigrationMangaReviewItem(manga, imageLoader, state.status(manga.id),
