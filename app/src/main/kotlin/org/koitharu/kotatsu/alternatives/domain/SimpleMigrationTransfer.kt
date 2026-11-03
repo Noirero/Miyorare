@@ -293,7 +293,12 @@ class SimpleMigrationTransfer @Inject constructor(
             val matches = candidates[chapter.volume to chapter.number].orEmpty()
             val target = if (matches.size == 1) matches.single()
                 else matches.filter { it.branch == chapter.branch }.singleOrNull()
-            target?.let { chapter.id to it }
+            // A chapter number alone does not verify equivalent content or page identity
+            // across parsers. Copy optional state only for the exact same provider chapter.
+            target?.takeIf {
+                it.source.name == chapter.source.name && it.url == chapter.url &&
+                    it.title.trim().equals(chapter.title.trim(), ignoreCase = true)
+            }?.let { chapter.id to it }
         }.toMap()
         val counts = provisional.values.groupingBy { it.id }.eachCount()
         return provisional.filterValues { counts[it.id] == 1 }

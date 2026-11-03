@@ -68,8 +68,8 @@ class SimpleMigrationTransferRegressionTest {
             assertNull(notes.get(oldId))
             assertNull(db.getHistoryDao().find(newId))
             assertEquals(sourceLast.id, db.getHistoryDao().find(oldId)?.chapterId)
-            assertEquals(targetFirst.id, db.getBookmarksDao().findAll(newId).single().chapterId)
-            assertEquals(mapOf(targetFirst.id to false), settings.getChapterReadOverrides(newId))
+            assertTrue(db.getBookmarksDao().findAll(newId).isEmpty())
+            assertTrue(settings.getChapterReadOverrides(newId).isEmpty())
             assertEquals(mapOf(sourceLast.id to true, sourceFirst.id to false),
                 settings.getChapterReadOverrides(oldId))
             assertEquals(1, groups.findMembersByMangaIds(listOf(newId), 0).size)
@@ -126,7 +126,7 @@ class SimpleMigrationTransferRegressionTest {
         val settings = AppSettings(context)
         val notes = MangaNotesRepository(context)
         val old = manga(997011L, "SIMPLE_OLD", 35)
-        val target = manga(997012L, "SIMPLE_NEW", 70)
+        val target = manga(997012L, "SIMPLE_OLD", 70)
         try {
             seed(db, old, target, private = false)
             val source = old.chapters.orEmpty().first { it.number == 12f }
@@ -193,7 +193,7 @@ class SimpleMigrationTransferRegressionTest {
         val settings = AppSettings(context)
         val notes = MangaNotesRepository(context)
         val old = manga(997061L, "SIMPLE_OLD", 1)
-        val target = manga(997062L, "SIMPLE_NEW", 2)
+        val target = manga(997062L, "SIMPLE_OLD", 2)
         try {
             seed(db, old, target, private = false)
             val sourceChapter = old.chapters.orEmpty().first()
