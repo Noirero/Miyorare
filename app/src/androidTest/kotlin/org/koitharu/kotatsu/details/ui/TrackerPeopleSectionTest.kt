@@ -404,8 +404,10 @@ class TrackerPeopleSectionTest {
             runCatching { compactStatusBudgetEvidence(renderedStatus) }
                 .getOrElse { "collectorError=${it::class.java.simpleName}: ${it.message}" }
         } else ""
-        val textIdentity = node.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text)
-            ?.joinToString(separator = " | ") { it.text } ?: "<no text semantics>"
+        val textIdentity = runCatching {
+            node.fetchSemanticsNode().config[SemanticsProperties.Text]
+        }.getOrNull()?.joinToString(separator = " | ") { item -> item.text }
+            ?: "<no text semantics>"
         assertEquals(
             "test=${testName.methodName}, targetText='$textIdentity', " +
                 "lines=${layout.lineCount}, size=${layout.size}, " +
