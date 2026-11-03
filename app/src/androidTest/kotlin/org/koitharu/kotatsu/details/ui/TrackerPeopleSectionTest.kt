@@ -538,7 +538,7 @@ class TrackerPeopleSectionTest {
                             imageLoader = loader, coverUrl = null, actions = heroNoopActions(),
                             compactExpanded = heroExpanded.value,
                         )
-                        Box(Modifier.height(1.dp).testTag("hero-following-actions-anchor"))
+                        Box(Modifier.width(360.dp).height(1.dp).testTag("hero-following-actions-anchor"))
                     }
                 }
             }
