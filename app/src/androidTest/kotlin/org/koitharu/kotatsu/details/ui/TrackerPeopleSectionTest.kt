@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.details.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -41,6 +42,7 @@ import coil3.request.ImageResult
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.koitharu.kotatsu.parsers.model.MangaState
 import android.content.res.Configuration
 import android.graphics.Canvas
 import androidx.core.content.ContextCompat
@@ -195,10 +197,10 @@ class TrackerPeopleSectionTest {
         verifySourceStatusInteraction(centered = false, compactExpanded = true, width = 220)
 
     private fun verifySourceStatusInteraction(centered: Boolean, compactExpanded: Boolean, width: Int) {
-        val veryLongSource = "Synthetic Extension With A Very Long Official Source Name And Multiple Additional Words"
-        val source = MangaSource("MIHON_424242")
+        // A realistic extension name that must become fully visible within a cover-height card.
+        val fullSourceName = "Komik manga indonesia"
         val manga = SampleData.mangaDetails.copy(
-            source = source,
+            source = MangaSource("MIHON_424242"),
             url = "https://example.invalid/manga/hero-source-status",
             publicUrl = "https://example.invalid/manga/hero-source-status",
         )
@@ -214,16 +216,12 @@ class TrackerPeopleSectionTest {
         compose.setContent {
             MaterialTheme(colorScheme = colors.colorScheme) {
                 CompositionLocalProvider(LocalMiyorareVisualPalette provides colors.visualPalette) {
-                    Box(androidx.compose.ui.Modifier.width(width.dp)) {
+                    Box(Modifier.width(width.dp)) {
                         HeroSourceStatusRow(
-                            manga = mangaState.value,
-                            sourceTitle = veryLongSource,
-                            imageLoader = loader,
-                            status = "Masih lanjut",
-                            showActiveRelease = true,
-                            accent = colors.colorScheme.primary,
-                            centered = centered,
-                            compactExpanded = compactExpanded,
+                            manga = mangaState.value, sourceTitle = fullSourceName,
+                            imageLoader = loader, status = "Masih lanjut",
+                            showActiveRelease = true, accent = colors.colorScheme.primary,
+                            centered = centered, compactExpanded = compactExpanded,
                             onSourceClick = { sourceNavigations++ },
                         )
                     }
@@ -231,76 +229,162 @@ class TrackerPeopleSectionTest {
             }
         }
 
+        val row = compose.onNodeWithTag("hero-source-status-row")
         val sourceText = compose.onNodeWithTag("hero-source-title", useUnmergedTree = true)
         val sourceContent = compose.onNodeWithTag("hero-source-content")
         val statusCard = compose.onNodeWithTag("hero-status-card")
-        val expandedPanel = compose.onNodeWithTag("hero-source-expanded-detail")
-        val expandedText = compose.onNodeWithTag("hero-source-expanded-text", useUnmergedTree = true)
         val toggle = compose.onNodeWithTag("hero-source-toggle")
-        val expandSource = context.getString(R.string.details_expand_source_details)
-        val collapseSource = context.getString(R.string.details_collapse_source_details)
+        val expandLabel = context.getString(R.string.details_expand_source_details)
+        val collapseLabel = context.getString(R.string.details_collapse_source_details)
         val releaseText = context.getString(R.string.details_release_active)
 
-        // Compact source title may ellipsize, but both siblings remain present.
-        compose.onNodeWithContentDescription(expandSource).assertIsDisplayed()
-        statusCard.assertIsDisplayed()
-        expandedPanel.assertDoesNotExist()
-        assertTextOverflow(sourceText, expected = true)
-        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertIsDisplayed()
-        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
-        assertTextOverflow(compose.onNodeWithText("Masih lanjut", useUnmergedTree = true), expected = false)
-        assertTextOverflow(compose.onNodeWithText(releaseText, useUnmergedTree = true), expected = false)
+        fun assertCollapsedTextAndStatus() {
+            sourceContent.assertIsDisplayed()
+            statusCard.assertIsDisplayed()
+            assertTextOverflow(sourceText, expected = true)
+            compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
+            assertTextOverflow(compose.onNodeWithText("Masih lanjut", useUnmergedTree = true), expected = false)
+            assertTextOverflow(compose.onNodeWithText(releaseText, useUnmergedTree = true), expected = false)
+        }
 
-        // Relative bounds, not hard-coded pixel dimensions: expansion must not resize/reposition
-        // either sibling card. The detail panel appears beneath the original row.
-        val collapsedSourceBounds = sourceContent.fetchSemanticsNode().boundsInRoot
-        val collapsedStatusBounds = statusCard.fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithContentDescription(expandLabel).assertIsDisplayed()
+        assertCollapsedTextAndStatus()
+        compose.onNodeWithTag("hero-source-expanded-detail").assertDoesNotExist()
+        compose.onNodeWithTag("hero-source-expanded-text").assertDoesNotExist()
+
+        val collapsedSource = sourceContent.fetchSemanticsNode().boundsInRoot
+        val collapsedStatus = statusCard.fetchSemanticsNode().boundsInRoot
+        val collapsedRow = row.fetchSemanticsNode().boundsInRoot
+
         toggle.performClick()
-        compose.onNodeWithContentDescription(collapseSource).assertIsDisplayed()
-        statusCard.assertIsDisplayed()
-        expandedPanel.assertIsDisplayed()
-        expandedText.assertIsDisplayed().assertTextEquals(veryLongSource)
-        assertTextOverflow(sourceText, expected = true)
-        assertTextOverflow(expandedText, expected = false)
-        val expandedSourceBounds = sourceContent.fetchSemanticsNode().boundsInRoot
-        val expandedStatusBounds = statusCard.fetchSemanticsNode().boundsInRoot
-        val detailBounds = expandedPanel.fetchSemanticsNode().boundsInRoot
-        assertEquals("Source width must stay stable", collapsedSourceBounds.width, expandedSourceBounds.width, 1f)
-        assertEquals("Source left must stay stable", collapsedSourceBounds.left, expandedSourceBounds.left, 1f)
-        assertEquals("Status width must stay stable", collapsedStatusBounds.width, expandedStatusBounds.width, 1f)
-        assertEquals("Status left must stay stable", collapsedStatusBounds.left, expandedStatusBounds.left, 1f)
-        assertTrue("Disclosure belongs below the sibling row",
-            detailBounds.top >= maxOf(expandedSourceBounds.bottom, expandedStatusBounds.bottom))
-        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertIsDisplayed()
-        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithContentDescription(collapseLabel).assertIsDisplayed()
+        sourceContent.assertIsDisplayed()
+        sourceText.assertTextEquals(fullSourceName)
+        assertTextOverflow(sourceText, expected = false)
+        compose.onNodeWithTag("hero-source-expanded-detail").assertDoesNotExist()
+        compose.onNodeWithTag("hero-source-expanded-text").assertDoesNotExist()
+
+        val expandedSource = sourceContent.fetchSemanticsNode().boundsInRoot
+        val expandedStatus = statusCard.fetchSemanticsNode().boundsInRoot
+        val expandedRow = row.fetchSemanticsNode().boundsInRoot
+        assertTrue("Expanded Source must grow rightward", expandedSource.width > collapsedSource.width)
+        assertTrue("Source must cover the old Status area", expandedSource.right >= collapsedStatus.right - 1f)
+        assertEquals("Source left unchanged", collapsedSource.left, expandedSource.left, 1f)
+        assertEquals("Source top unchanged", collapsedSource.top, expandedSource.top, 1f)
+        assertEquals("Source bottom unchanged", collapsedSource.bottom, expandedSource.bottom, 1f)
+        assertEquals("Status position unchanged", collapsedStatus.left, expandedStatus.left, 1f)
+        assertEquals("Status top unchanged", collapsedStatus.top, expandedStatus.top, 1f)
+        assertEquals("Status width unchanged", collapsedStatus.width, expandedStatus.width, 1f)
+        assertEquals("Row height must not change", collapsedRow.height, expandedRow.height, 1f)
+        assertEquals("Row top must not shift", collapsedRow.top, expandedRow.top, 1f)
         compose.runOnIdle { assertEquals("Chevron must not navigate", 0, sourceNavigations) }
 
-        // The original source content still navigates exactly once.
         sourceContent.performClick()
-        compose.runOnIdle { assertEquals(1, sourceNavigations) }
+        compose.runOnIdle { assertEquals("Source content navigates exactly once", 1, sourceNavigations) }
         toggle.performClick()
-        compose.onNodeWithContentDescription(expandSource).assertIsDisplayed()
-        expandedPanel.assertDoesNotExist()
-        statusCard.assertIsDisplayed()
-        assertTextOverflow(sourceText, expected = true)
+        compose.onNodeWithContentDescription(expandLabel).assertIsDisplayed()
+        assertCollapsedTextAndStatus()
+        assertEquals("Collapse restores Source width", collapsedSource.width,
+            sourceContent.fetchSemanticsNode().boundsInRoot.width, 1f)
         compose.runOnIdle { assertEquals(1, sourceNavigations) }
 
-        // Same composable slot, different source identity: disclosure must reset.
+        // Source identity and manga identity each reset transient expansion independently.
         toggle.performClick()
-        expandedPanel.assertExists()
+        assertTrue(sourceContent.fetchSemanticsNode().boundsInRoot.width > collapsedSource.width)
         compose.runOnIdle { mangaState.value = manga.copy(source = MangaSource("MIHON_424243")) }
-        expandedPanel.assertDoesNotExist()
-        statusCard.assertIsDisplayed()
-        compose.onNodeWithContentDescription(expandSource).assertExists()
-        compose.runOnIdle { assertEquals(1, sourceNavigations) }
+        compose.onNodeWithContentDescription(expandLabel).assertIsDisplayed()
+        assertCollapsedTextAndStatus()
+        assertEquals(collapsedSource.width, sourceContent.fetchSemanticsNode().boundsInRoot.width, 1f)
 
-        // Manga identity is also part of the transient disclosure key.
         toggle.performClick()
-        expandedPanel.assertExists()
+        assertTrue(sourceContent.fetchSemanticsNode().boundsInRoot.width > collapsedSource.width)
         compose.runOnIdle { mangaState.value = mangaState.value.copy(id = manga.id + 1) }
-        expandedPanel.assertDoesNotExist()
-        statusCard.assertIsDisplayed()
+        compose.onNodeWithContentDescription(expandLabel).assertIsDisplayed()
+        assertCollapsedTextAndStatus()
+        assertEquals(collapsedSource.width, sourceContent.fetchSemanticsNode().boundsInRoot.width, 1f)
     }
+
+    @Test fun compactHeroSourceStatusRespectsCoverBottom() = verifyCoverBoundary(compactExpanded = false)
+
+    @Test fun compactExpandedHeroSourceStatusRespectsCoverBottom() = verifyCoverBoundary(compactExpanded = true)
+
+    private fun verifyCoverBoundary(compactExpanded: Boolean) {
+        val manga = SampleData.mangaDetails.copy(
+            title = "Compact hero geometry",
+            authors = emptyList(),
+            altTitles = emptyList(),
+            state = MangaState.ONGOING,
+            source = MangaSource("MIHON_424242"),
+            url = "https://example.invalid/manga/hero-cover-geometry",
+            publicUrl = "https://example.invalid/manga/hero-cover-geometry",
+        )
+        val colors = miyorareThemeColors(
+            preset = MiyorareThemePreset.MIYORARE,
+            customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
+            darkTheme = true, amoled = false, effectLevel = VisualEffectLevel.LIGHT,
+        )
+        compose.setContent {
+            MaterialTheme(colorScheme = colors.colorScheme) {
+                CompositionLocalProvider(LocalMiyorareVisualPalette provides colors.visualPalette) {
+                    Box(Modifier.width(360.dp)) {
+                        ModernDetailsHero(
+                            centered = false, manga = manga, details = null,
+                            sourceTitle = "Komik manga indonesia",
+                            accent = colors.colorScheme.primary, imageLoader = loader,
+                            coverUrl = null, actions = heroNoopActions(),
+                            compactExpanded = compactExpanded,
+                        )
+                    }
+                }
+            }
+        }
+        val cover = compose.onNodeWithTag("details-hero-cover")
+        val source = compose.onNodeWithTag("hero-source-content")
+        val status = compose.onNodeWithTag("hero-status-card")
+        val row = compose.onNodeWithTag("hero-source-status-row")
+        val coverBottom = cover.fetchSemanticsNode().boundsInRoot.bottom
+        val rowBefore = row.fetchSemanticsNode().boundsInRoot
+        val sourceBefore = source.fetchSemanticsNode().boundsInRoot
+        val statusBefore = status.fetchSemanticsNode().boundsInRoot
+        assertTrue("Source must not exceed actual cover bottom", sourceBefore.bottom <= coverBottom + 1f)
+        assertTrue("Status must not exceed actual cover bottom", statusBefore.bottom <= coverBottom + 1f)
+        assertTrue("Source must stay beside cover", sourceBefore.left >= cover.fetchSemanticsNode().boundsInRoot.right)
+        status.assertIsDisplayed()
+        val active = compose.onNodeWithText(context.getString(R.string.details_release_active), useUnmergedTree = true)
+        active.assertIsDisplayed()
+        assertTextOverflow(active, expected = false)
+        val value = compose.onNodeWithText(context.getString(R.string.state_ongoing), useUnmergedTree = true)
+        value.assertIsDisplayed()
+        assertTextOverflow(value, expected = false)
+
+        compose.onNodeWithTag("hero-source-toggle").performClick()
+        val sourceAfter = source.fetchSemanticsNode().boundsInRoot
+        val rowAfter = row.fetchSemanticsNode().boundsInRoot
+        assertTrue("Source expansion overlaps old Status", sourceAfter.right >= statusBefore.right - 1f)
+        assertEquals("Expansion does not shift Source vertically", sourceBefore.top, sourceAfter.top, 1f)
+        assertEquals("Expansion does not extend hero row", rowBefore.height, rowAfter.height, 1f)
+        assertTrue("Expanded Source stays within cover bottom", sourceAfter.bottom <= coverBottom + 1f)
+        compose.onNodeWithTag("hero-source-toggle").performClick()
+        status.assertIsDisplayed()
+        assertEquals("Collapse restores geometry", sourceBefore.width,
+            source.fetchSemanticsNode().boundsInRoot.width, 1f)
+    }
+
+    private fun heroNoopActions() = DetailsExpressiveActions(
+        onTagClick = {}, onCoverClick = {}, onScrobblingMore = {}, onScrobblingCardClick = {},
+        onFavoriteClick = {}, onFavoriteLongClick = {}, onTitleClick = {}, onAuthorClick = {},
+        onRelatedMore = {}, onRelatedClick = {}, onRelatedMangaClick = {}, onRelatedKeywordMore = { _, _ -> },
+        onRelatedDiscoveryRequested = {}, onSourceClick = {}, onLocalClick = {},
+        onGenreRecommendationsVisibilityChanged = {}, onReadClick = {}, onIncognitoClick = {},
+        onForgetHistoryClick = {}, onChaptersClick = {}, onChapterOptionsClick = {},
+        onChapterOptionsSetDefaultClick = {}, onChapterOptionsResetClick = {},
+        onChapterClick = {}, onChapterDownloadClick = {}, onChapterPersonalClick = {},
+        onTrackerPeopleRequested = {}, onTrackerPeopleRetry = {}, onTrackerPeopleRefresh = {},
+        onTrackerRecommendationsRequested = {}, onTrackerRecommendationsRetry = {},
+        onTrackerRecommendationsRefresh = {}, onTrackerRecommendationClick = {},
+        onTrackerRecommendationProvider = {}, onMangaUpdatesProgressRetry = {},
+    )
 
     private fun assertTextOverflow(node: SemanticsNodeInteraction, expected: Boolean) {
         val results = mutableListOf<TextLayoutResult>()
