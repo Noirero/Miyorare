@@ -24,6 +24,8 @@ import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupTimelineItemEntity
 import org.koitharu.kotatsu.history.data.HistoryEntity
+import org.koitharu.kotatsu.stats.data.StatsEntity
+import org.koitharu.kotatsu.tracker.data.TrackLogEntity
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.ui.config.MangaReaderProfileStore
@@ -49,6 +51,11 @@ class SimpleMigrationTransferRegressionTest {
             val sourceFirst = old.chapters.orEmpty().first { it.number == 1f }
             settings.setChapterReadOverrides(oldId, mapOf(sourceLast.id to true, sourceFirst.id to false))
             db.getHistoryDao().insert(HistoryEntity(oldId, 1L, 2L, sourceLast.id, 7, 0.3f, 0.7f, 0L, 50))
+            db.getStatsDao().upsert(StatsEntity(oldId, startedAt = 40L, duration = 50L, pages = 6, chapters = 1))
+            db.getTrackLogsDao().insert(TrackLogEntity(
+                id = 997401L, mangaId = oldId, chapters = "Chapter 45",
+                chapterIds = sourceLast.id.toString(), createdAt = 45L, isUnread = true,
+            ))
             db.getBookmarksDao().insert(
                 BookmarkEntity(oldId, 997100L, sourceFirst.id, 3, 0,
                     "https://fixture.invalid/p.jpg", 10L, 0.3f, "keep me"),
@@ -68,6 +75,9 @@ class SimpleMigrationTransferRegressionTest {
             assertNull(notes.get(oldId))
             assertNull(db.getHistoryDao().find(newId))
             assertEquals(sourceLast.id, db.getHistoryDao().find(oldId)?.chapterId)
+            assertEquals(50L, db.getStatsDao().findAll(oldId).single().duration)
+            assertEquals(sourceLast.id.toString(), db.getTrackLogsDao().findAllForManga(oldId).single().chapterIds)
+            assertTrue(db.getStatsDao().findAll(newId).isEmpty())
             assertTrue(db.getBookmarksDao().findAll(newId).isEmpty())
             assertTrue(settings.getChapterReadOverrides(newId).isEmpty())
             assertEquals(mapOf(sourceLast.id to true, sourceFirst.id to false),
@@ -114,7 +124,7 @@ class SimpleMigrationTransferRegressionTest {
             assertTrue(transfer(db, settings, MangaNotesRepository(context))(old, target))
             groups.deleteMembersNotInLibrary(0)
             db.getChaptersDao().gc(listOf(old.id))
-            db.getMangaDao().cleanup(emptySet())
+            db.getMangaDao().cleanup(setOf(target.id))
             assertEquals(target.id, db.getMangaDao().preservedDestination(old.id))
             assertTrue(db.getChaptersDao().hasAny(old.id))
             assertTrue(groups.findTimeline(groupId).any { it.mangaId == old.id && it.chapterId == missing.id })
@@ -170,6 +180,31 @@ class SimpleMigrationTransferRegressionTest {
         } finally { db.close() }
     }
 
+    @Test fun unmappableOverrideDoesNotPreventLaterSafeOverrides() = runTest {
+        val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+        val settings = AppSettings(context)
+        val old = manga(997071L, "SIMPLE_SAME", 2)
+        val target = manga(997072L, "SIMPLE_SAME", 1)
+        try {
+            seed(db, old, target, private = false)
+            val unmappable = old.chapters.orEmpty().first { it.number == 2f }
+            val safe = old.chapters.orEmpty().first { it.number == 1f }
+            val destination = target.chapters.orEmpty().single()
+            settings.setChapterReadOverrides(old.id, linkedMapOf(
+                unmappable.id to true, safe.id to false,
+            ))
+            assertTrue(transfer(db, settings, MangaNotesRepository(context))(old, target))
+            assertEquals(mapOf(destination.id to false), settings.getChapterReadOverrides(target.id))
+            assertEquals(mapOf(unmappable.id to true, safe.id to false),
+                settings.getChapterReadOverrides(old.id))
+            assertEquals(target.id, db.getMangaDao().preservedDestination(old.id))
+        } finally {
+            settings.setChapterReadOverrides(old.id, emptyMap())
+            settings.setChapterReadOverrides(target.id, emptyMap())
+            db.close()
+        }
+    }
+
     @Test fun categoryCollisionDoesNotOverwriteDestinationOrConsumeSource() = runTest {
         val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
         val settings = AppSettings(context)
@@ -211,6 +246,34 @@ class SimpleMigrationTransferRegressionTest {
             assertEquals(targetBookmark, db.getBookmarksDao().findAll(target.id).single())
             assertEquals(target.id, db.getMangaDao().preservedDestination(old.id))
             assertTrue(db.getFavouritesDao().findAllRaw(old.id).isEmpty())
+        } finally { db.close() }
+    }
+
+    @Test fun groupPositionConflictRollsBackMandatoryMembership() = runTest {
+        val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+        val settings = AppSettings(context)
+        val notes = MangaNotesRepository(context)
+        val old = manga(997081L, "SIMPLE_OLD", 2)
+        val target = manga(997082L, "SIMPLE_NEW", 1)
+        try {
+            seed(db, old, target, private = false)
+            val groupDao = db.getLibraryGroupsDao()
+            val groupId = groupDao.insertGroup(LibraryGroupEntity(
+                title = "Same Group", coverUrl = null, createdAt = 1L, space = 0,
+            ))
+            groupDao.insertMembers(listOf(
+                LibraryGroupMemberEntity(groupId, old.id, 1),
+                LibraryGroupMemberEntity(groupId, target.id, 2),
+            ))
+            val failure = runCatching { transfer(db, settings, notes)(old, target) }.exceptionOrNull()
+            assertTrue(failure is LosslessMigrationConflictException)
+            assertEquals(MigrationConflictReason.LIBRARY_STATE,
+                (failure as LosslessMigrationConflictException).reason)
+            assertEquals(1, db.getFavouritesDao().findAllRaw(old.id).size)
+            assertTrue(db.getFavouritesDao().findAllRaw(target.id).isEmpty())
+            assertEquals(1, groupDao.findMembersByMangaIds(listOf(old.id), 0).size)
+            assertEquals(1, groupDao.findMembersByMangaIds(listOf(target.id), 0).size)
+            assertNull(db.getMangaDao().preservedDestination(old.id))
         } finally { db.close() }
     }
 

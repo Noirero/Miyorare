@@ -52,15 +52,15 @@ class SimpleMigrationTransfer @Inject constructor(
             val oldOverrides = settings.getChapterReadOverrides(oldId)
             val originalTargetOverrides = settings.getChapterReadOverrides(newId)
             val mergedOverrides = LinkedHashMap(originalTargetOverrides)
-            var preserved = oldOverrides.any { (id, value) ->
+            var preserved = false
+            for ((id, value) in oldOverrides) {
                 val targetId = targets[id]?.id
-                when {
-                    targetId == null -> true
-                    mergedOverrides[targetId] != null && mergedOverrides[targetId] != value -> true
-                    else -> {
-                        mergedOverrides[targetId] = value
-                        false
-                    }
+                if (targetId == null ||
+                    (mergedOverrides[targetId] != null && mergedOverrides[targetId] != value)
+                ) {
+                    preserved = true
+                } else {
+                    mergedOverrides[targetId] = value
                 }
             }
             val oldProfile = readerProfiles.get(oldId)
