@@ -17,6 +17,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationFailureStage
+import org.koitharu.kotatsu.alternatives.domain.MigrationConflictReason
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchOutcome
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchSnapshot
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchStatus
@@ -381,6 +382,23 @@ class MigrationFlowScreenTest {
             "Gagal membaca detail source tujuan; periksa jaringan/source, lalu coba lagi.",
         ).assertExists()
     }
+    @Test
+    fun chapterMappingFailureDisplaysAUsefulReason() {
+        val original = screenState(MigrationBatchStatus.ERROR)
+        val failed = checkNotNull(original.batchItems[1L])
+        val state = original.copy(batchItems = mapOf(
+            1L to failed.copy(outcome = failed.outcome.copy(
+                failureStage = MigrationFailureStage.DATA_CONFLICT,
+                conflictReason = MigrationConflictReason.CHAPTER_MAPPING,
+            )),
+        ))
+        show(state)
+        compose.onNodeWithTag("migration-batch-search").performClick()
+        compose.onNodeWithText(
+            "Chapter dengan data baca tidak dapat dipetakan secara aman; coba kandidat lain.",
+        ).assertExists()
+    }
+
 	@Test
 	fun migratedCoverAndTitleOpenDestinationDetails() {
 		val base = screenState(MigrationBatchStatus.MIGRATED)
