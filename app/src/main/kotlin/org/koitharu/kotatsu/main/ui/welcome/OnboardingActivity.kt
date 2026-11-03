@@ -25,6 +25,8 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.backup.local.ui.restore.RestoreDialogFragment
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.ColorScheme
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
 import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.observeEvent
@@ -43,6 +45,9 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
 
     @Inject
     lateinit var migrationManager: KotatsuMigrationManager
+
+    @Inject
+    lateinit var visualEffectPreferences: VisualEffectPreferences
 
     private var permissionStates by mutableStateOf(OnboardingPermissions(false, false, false))
 
@@ -131,12 +136,24 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
             MiyorareTheme {
                 val theme by viewModel.selectedTheme.collectAsState()
                 val colorScheme by viewModel.selectedColorScheme.collectAsState()
+                val designStyle by viewModel.selectedDesignStyle.collectAsState()
+                val themePreset by viewModel.selectedThemePreset.collectAsState()
+                val paletteSource by viewModel.selectedPaletteSource.collectAsState()
+                val effectLevel by visualEffectPreferences.level.collectAsState()
                 val amoled by viewModel.isAmoledEnabled.collectAsState()
                 val storage by viewModel.storageSummary.collectAsState()
                 val loading by viewModel.isLoading.collectAsState()
                 OnboardingScreen(
                     selectedTheme = theme,
                     selectedColorScheme = colorScheme,
+                    selectedDesignStyle = designStyle,
+                    selectedThemePreset = themePreset,
+                    selectedPaletteSource = paletteSource,
+                    customAccent = viewModel.customAccent,
+                    customAdaptivePalette = if (MiyorareCustomBackgroundStore.hasBackground(this@OnboardingActivity)) {
+                        viewModel.customAdaptivePalette
+                    } else null,
+                    effectLevel = effectLevel,
                     isAmoledEnabled = amoled,
                     storageSummary = storage,
                     isLoading = loading,
@@ -155,6 +172,9 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
                                 recreate()
                             }
                         },
+                        onDesignStyleChange = viewModel::setDesignStyle,
+                        onThemePresetChange = viewModel::setThemePreset,
+                        onPaletteSourceChange = viewModel::setPaletteSource,
                         onAmoledChange = { enabled ->
                             viewModel.setAmoledTheme(enabled)
                         },

@@ -65,6 +65,14 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.ColorScheme
+import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.settings.compose.MiyorarePalettePickerRow
+import org.koitharu.kotatsu.settings.compose.MiyorareVisualThemePickerRow
 
 private const val PAGE_COUNT = 4
 private val SCREEN_PADDING = 18.dp
@@ -81,6 +89,9 @@ data class OnboardingPermissions(
 data class OnboardingActions(
     val onThemeChange: (Int) -> Unit,
     val onColorSchemeChange: (String) -> Unit,
+    val onDesignStyleChange: (MiyorareDesignStyle) -> Unit,
+    val onThemePresetChange: (MiyorareThemePreset) -> Unit,
+    val onPaletteSourceChange: (MiyorareModernPaletteSource) -> Unit,
     val onAmoledChange: (Boolean) -> Unit,
     val onAmoledReset: () -> Unit,
     val onSelectDestination: () -> Unit,
@@ -100,6 +111,12 @@ data class OnboardingActions(
 fun OnboardingScreen(
     selectedTheme: Int,
     selectedColorScheme: ColorScheme,
+    selectedDesignStyle: MiyorareDesignStyle,
+    selectedThemePreset: MiyorareThemePreset,
+    selectedPaletteSource: MiyorareModernPaletteSource,
+    customAccent: String,
+    customAdaptivePalette: MiyorareAdaptivePalette?,
+    effectLevel: VisualEffectLevel,
     isAmoledEnabled: Boolean,
     storageSummary: String?,
     isLoading: Boolean,
@@ -162,6 +179,12 @@ fun OnboardingScreen(
                     0 -> WelcomeSlide(
                         selectedTheme = selectedTheme,
                         selectedColorScheme = selectedColorScheme,
+                        selectedDesignStyle = selectedDesignStyle,
+                        selectedThemePreset = selectedThemePreset,
+                        selectedPaletteSource = selectedPaletteSource,
+                        customAccent = customAccent,
+                        customAdaptivePalette = customAdaptivePalette,
+                        effectLevel = effectLevel,
                         isAmoledEnabled = isAmoledEnabled,
                         actions = actions,
                     )
@@ -170,6 +193,9 @@ fun OnboardingScreen(
                     else -> FinishSlide(
                         selectedTheme = selectedTheme,
                         selectedColorScheme = selectedColorScheme,
+                        selectedDesignStyle = selectedDesignStyle,
+                        selectedThemePreset = selectedThemePreset,
+                        selectedPaletteSource = selectedPaletteSource,
                         storageSummary = storageSummary,
                         actions = actions,
                     )
@@ -343,6 +369,12 @@ private fun GradientActionButton(
 private fun WelcomeSlide(
     selectedTheme: Int,
     selectedColorScheme: ColorScheme,
+    selectedDesignStyle: MiyorareDesignStyle,
+    selectedThemePreset: MiyorareThemePreset,
+    selectedPaletteSource: MiyorareModernPaletteSource,
+    customAccent: String,
+    customAdaptivePalette: MiyorareAdaptivePalette?,
+    effectLevel: VisualEffectLevel,
     isAmoledEnabled: Boolean,
     actions: OnboardingActions,
 ) {
@@ -389,22 +421,75 @@ private fun WelcomeSlide(
     Spacer(Modifier.height(16.dp))
 
     GlassSection(title = stringResource(R.string.modern_onboarding_preview_title)) {
-        LibraryPreview(selectedTheme, selectedColorScheme)
+        LibraryPreview(selectedTheme, selectedColorScheme, selectedDesignStyle, selectedThemePreset)
         Spacer(Modifier.height(14.dp))
         Text(
-            text = stringResource(R.string.color_theme),
+            text = stringResource(R.string.miyorare_design_style),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             color = colors.onSurface,
         )
         Spacer(Modifier.height(10.dp))
-        ColorSchemeStrip(selectedColorScheme, actions.onColorSchemeChange)
+        ChoiceButtonGroup(
+            selectedValue = selectedDesignStyle,
+            items = MiyorareDesignStyle.entries.map { it to it.titleResId },
+            onValueChange = actions.onDesignStyleChange,
+        )
+        Spacer(Modifier.height(12.dp))
+        if (selectedDesignStyle == MiyorareDesignStyle.MODERN) {
+            MiyorareVisualThemePickerRow(
+                selectedValue = selectedThemePreset.name,
+                onValueChange = { value ->
+                    MiyorareThemePreset.entries.firstOrNull { it.name == value }
+                        ?.let(actions.onThemePresetChange)
+                },
+                customAccent = customAccent,
+                adaptivePalette = customAdaptivePalette,
+                darkTheme = isDarkEnabled,
+                amoled = isAmoledEnabled,
+                effectLevel = effectLevel,
+                shape = INNER_SHAPE,
+            )
+            Spacer(Modifier.height(10.dp))
+            MiyorarePalettePickerRow(
+                selectedValue = selectedPaletteSource.name,
+                onValueChange = { value ->
+                    MiyorareModernPaletteSource.getAvailableList()
+                        .firstOrNull { it.name == value }
+                        ?.let(actions.onPaletteSourceChange)
+                },
+                visualPreset = selectedThemePreset,
+                customAccent = customAccent,
+                adaptivePalette = customAdaptivePalette,
+                darkTheme = isDarkEnabled,
+                amoled = isAmoledEnabled,
+                effectLevel = effectLevel,
+                shape = INNER_SHAPE,
+            )
+        } else {
+            Text(
+                text = stringResource(R.string.color_theme),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.onSurface,
+            )
+            Spacer(Modifier.height(10.dp))
+            ColorSchemeStrip(selectedColorScheme, actions.onColorSchemeChange)
+        }
     }
 
     Spacer(Modifier.height(12.dp))
 
     GlassSection(title = stringResource(R.string.theme)) {
-        ThemeButtonGroup(selectedTheme, actions.onThemeChange)
+        ChoiceButtonGroup(
+            selectedValue = selectedTheme,
+            items = listOf(
+                AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM to R.string.follow_system,
+                AppCompatDelegate.MODE_NIGHT_NO to R.string.light,
+                AppCompatDelegate.MODE_NIGHT_YES to R.string.dark,
+            ),
+            onValueChange = actions.onThemeChange,
+        )
         Spacer(Modifier.height(14.dp))
         HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.65f))
         Spacer(Modifier.height(12.dp))
@@ -513,8 +598,16 @@ private fun BenefitChips() {
 private fun LibraryPreview(
     selectedTheme: Int,
     selectedColorScheme: ColorScheme,
+    selectedDesignStyle: MiyorareDesignStyle,
+    selectedThemePreset: MiyorareThemePreset,
 ) {
     val colors = MaterialTheme.colorScheme
+    val visualPalette = LocalMiyorareVisualPalette.current
+    val appearanceNameRes = if (selectedDesignStyle == MiyorareDesignStyle.MODERN) {
+        selectedThemePreset.titleResId
+    } else {
+        selectedColorScheme.titleResId
+    }
     val themeNameRes = when (selectedTheme) {
         AppCompatDelegate.MODE_NIGHT_YES -> R.string.dark
         AppCompatDelegate.MODE_NIGHT_NO -> R.string.light
@@ -537,8 +630,8 @@ private fun LibraryPreview(
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            schemeSwatch(selectedColorScheme),
-                            colors.tertiary,
+                            visualPalette.activeGradientStart,
+                            visualPalette.activeGradientEnd,
                         ),
                     ),
                 ),
@@ -563,7 +656,7 @@ private fun LibraryPreview(
                 color = colors.onSurface,
             )
             Text(
-                text = "${stringResource(selectedColorScheme.titleResId)} · ${stringResource(themeNameRes)}",
+                text = "${stringResource(appearanceNameRes)} · ${stringResource(themeNameRes)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.onSurfaceVariant,
                 maxLines = 1,
@@ -698,28 +791,24 @@ private fun schemeSwatch(scheme: ColorScheme): Color = when (scheme) {
 }
 
 @Composable
-private fun ThemeButtonGroup(
-    selectedTheme: Int,
-    onThemeChange: (Int) -> Unit,
+private fun <T> ChoiceButtonGroup(
+    selectedValue: T,
+    items: List<Pair<T, Int>>,
+    onValueChange: (T) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    val items = listOf(
-        AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM to R.string.follow_system,
-        AppCompatDelegate.MODE_NIGHT_NO to R.string.light,
-        AppCompatDelegate.MODE_NIGHT_YES to R.string.dark,
-    )
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items.forEachIndexed { index, (mode, labelRes) ->
-            val selected = selectedTheme == mode
+        items.forEachIndexed { index, (value, labelRes) ->
+            val selected = selectedValue == value
             val background by animateColorAsState(
                 targetValue = if (selected) colors.primaryContainer else colors.surfaceContainerHighest,
-                label = "theme_option_$index",
+                label = "appearance_option_$index",
             )
             Surface(
-                onClick = { onThemeChange(mode) },
+                onClick = { onValueChange(value) },
                 modifier = Modifier
                     .weight(1f)
                     .height(54.dp),
@@ -974,6 +1063,9 @@ private fun SyncSlide(
 private fun FinishSlide(
     selectedTheme: Int,
     selectedColorScheme: ColorScheme,
+    selectedDesignStyle: MiyorareDesignStyle,
+    selectedThemePreset: MiyorareThemePreset,
+    selectedPaletteSource: MiyorareModernPaletteSource,
     storageSummary: String?,
     actions: OnboardingActions,
 ) {
@@ -1017,9 +1109,29 @@ private fun FinishSlide(
             value = stringResource(themeNameRes),
         )
         SummaryRow(
-            labelRes = R.string.modern_onboarding_summary_scheme,
-            value = stringResource(selectedColorScheme.titleResId),
+            labelRes = R.string.miyorare_design_style,
+            value = stringResource(selectedDesignStyle.titleResId),
         )
+        if (selectedDesignStyle == MiyorareDesignStyle.MODERN) {
+            SummaryRow(
+                labelRes = R.string.miyorare_modern_visual_theme,
+                value = stringResource(selectedThemePreset.titleResId),
+            )
+            SummaryRow(
+                labelRes = R.string.miyorare_colour_palette,
+                value = selectedPaletteSource.classicScheme?.let { classic ->
+                    stringResource(
+                        R.string.miyorare_palette_classic_format,
+                        stringResource(classic.titleResId),
+                    )
+                } ?: stringResource(R.string.miyorare_palette_match_theme),
+            )
+        } else {
+            SummaryRow(
+                labelRes = R.string.modern_onboarding_summary_scheme,
+                value = stringResource(selectedColorScheme.titleResId),
+            )
+        }
         SummaryRow(
             labelRes = R.string.modern_onboarding_summary_folder,
             value = storageSummary ?: stringResource(R.string.modern_onboarding_default_destination),

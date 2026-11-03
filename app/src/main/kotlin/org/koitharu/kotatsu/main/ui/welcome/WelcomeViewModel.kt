@@ -8,6 +8,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.backup.MihonBackupManager
 import org.koitharu.kotatsu.backup.MihonBackupManager.RestoreReport
 import org.koitharu.kotatsu.core.prefs.ColorScheme
+import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
@@ -35,6 +39,11 @@ class WelcomeViewModel @Inject constructor(
 
 	val selectedTheme = MutableStateFlow(settings.theme)
 	val selectedColorScheme = MutableStateFlow(settings.colorScheme)
+	val selectedDesignStyle = MutableStateFlow(settings.miyorareDesignStyle)
+	val selectedThemePreset = MutableStateFlow(settings.miyorareThemePreset)
+	val selectedPaletteSource = MutableStateFlow(settings.miyorareModernPaletteSource)
+	val customAccent: String get() = settings.miyorareCustomAccent
+	val customAdaptivePalette: MiyorareAdaptivePalette? get() = settings.miyorareAdaptivePalette
 	val isAmoledEnabled = MutableStateFlow(settings.isAmoledTheme)
 	val storageSummary = MutableStateFlow<String?>(null)
 	val onBackupRestored = MutableEventFlow<RestoreBackupResult>()
@@ -61,6 +70,24 @@ class WelcomeViewModel @Inject constructor(
 		}
 		selectedColorScheme.value = colorScheme
 		settings.setColorScheme(colorScheme)
+	}
+
+	fun setDesignStyle(style: MiyorareDesignStyle) {
+		if (selectedDesignStyle.value == style) return
+		settings.setMiyorareDesignStyle(style)
+		selectedDesignStyle.value = style
+	}
+
+	fun setThemePreset(preset: MiyorareThemePreset) {
+		if (selectedThemePreset.value == preset) return
+		settings.setMiyorareThemePreset(preset)
+		selectedThemePreset.value = preset
+	}
+
+	fun setPaletteSource(source: MiyorareModernPaletteSource) {
+		if (selectedPaletteSource.value == source) return
+		settings.setMiyorareModernPaletteSource(source)
+		selectedPaletteSource.value = source
 	}
 
 	fun setAmoledTheme(isEnabled: Boolean) {
