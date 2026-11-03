@@ -386,7 +386,7 @@ private fun WelcomeSlide(
     }
     val colors = MaterialTheme.colorScheme
 
-    LaunchedEffect(isDarkEnabled) {
+    LaunchedEffect(isDarkEnabled, isAmoledEnabled) {
         if (!isDarkEnabled && isAmoledEnabled) actions.onAmoledReset()
     }
 
