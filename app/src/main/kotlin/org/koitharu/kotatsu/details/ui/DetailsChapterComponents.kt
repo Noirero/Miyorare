@@ -456,7 +456,7 @@ private fun HeroStatusCard(
 	val statusContent: @Composable () -> Unit = {
 		if (compact) {
 			// Keep complete status and release on their own readable lines.
-			Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) {
+			Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp)) {
 				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
 					Icon(
 						painter = painterResource(if (showActiveRelease) R.drawable.ic_infinity else R.drawable.ic_timelapse),
@@ -470,7 +470,8 @@ private fun HeroStatusCard(
 					)
 				}
 				Text(
-					text = status, style = MaterialTheme.typography.titleSmall,
+					text = status,
+					style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp, lineHeight = 16.sp),
 					fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface,
 				)
 				if (showActiveRelease) {

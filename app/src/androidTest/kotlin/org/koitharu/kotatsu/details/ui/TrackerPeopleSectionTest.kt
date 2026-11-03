@@ -389,7 +389,9 @@ class TrackerPeopleSectionTest {
     private fun assertTextOverflow(node: SemanticsNodeInteraction, expected: Boolean) {
         val results = mutableListOf<TextLayoutResult>()
         node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
-        assertEquals("Unexpected hero text clipping/overflow", expected, results.single().hasVisualOverflow)
+        val layout = results.single()
+        assertEquals("Unexpected hero text overflow: lines=${layout.lineCount}, size=${layout.size}",
+            expected, layout.hasVisualOverflow)
     }
 
 	@Test fun characterPortraitNameAndRoleAndStaffAreRenderedWithProviderAttribution() {
