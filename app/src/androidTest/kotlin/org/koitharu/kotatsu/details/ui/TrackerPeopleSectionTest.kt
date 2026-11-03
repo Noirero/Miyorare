@@ -42,6 +42,7 @@ import coil3.intercept.Interceptor
 import coil3.request.ImageResult
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.koitharu.kotatsu.parsers.model.MangaState
 import android.content.res.Configuration
@@ -246,10 +247,8 @@ class TrackerPeopleSectionTest {
             sourceContent.assertIsDisplayed()
             statusCard.assertIsDisplayed()
             assertTextOverflow(sourceText, expected = true)
-            compose.onNodeWithText(renderedStatus, useUnmergedTree = true).assertIsDisplayed()
-            compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
-            assertTextOverflow(compose.onNodeWithText(renderedStatus, useUnmergedTree = true), expected = false, renderedStatus = renderedStatus)
-            assertTextOverflow(compose.onNodeWithText(releaseText, useUnmergedTree = true), expected = false, renderedStatus = renderedStatus)
+            assertReadableSingleLineStatusText(compose.onNodeWithText(renderedStatus, useUnmergedTree = true))
+            assertReadableSingleLineStatusText(compose.onNodeWithText(releaseText, useUnmergedTree = true))
         }
 
         compose.onNodeWithContentDescription(expandLabel).assertIsDisplayed()
@@ -357,11 +356,9 @@ class TrackerPeopleSectionTest {
         assertTrue("Source must stay beside cover", sourceBefore.left >= cover.fetchSemanticsNode().boundsInRoot.right)
         status.assertIsDisplayed()
         val active = compose.onNodeWithText(context.getString(R.string.details_release_active), useUnmergedTree = true)
-        active.assertIsDisplayed()
-        assertTextOverflow(active, expected = false, renderedStatus = renderedStatus)
+        assertReadableSingleLineStatusText(active)
         val value = compose.onNodeWithText(renderedStatus, useUnmergedTree = true)
-        value.assertIsDisplayed()
-        assertTextOverflow(value, expected = false, renderedStatus = renderedStatus)
+        assertReadableSingleLineStatusText(value)
 
         compose.onNodeWithTag("hero-source-toggle").performClick()
         val sourceAfter = source.fetchSemanticsNode().boundsInRoot
@@ -390,6 +387,39 @@ class TrackerPeopleSectionTest {
         onTrackerRecommendationsRefresh = {}, onTrackerRecommendationClick = {},
         onTrackerRecommendationProvider = {}, onMangaUpdatesProgressRetry = {},
     )
+
+    /**
+     * Wrap-content Status text can set didOverflowWidth for subpixel rounding even when the
+     * measured width accommodates the intrinsic glyph width. Check readable geometry instead,
+     * keeping the strict overflow check for Source ellipsis/disclosure unchanged.
+     */
+    private fun assertReadableSingleLineStatusText(node: SemanticsNodeInteraction) {
+        node.assertIsDisplayed()
+        val results = mutableListOf<TextLayoutResult>()
+        node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+        val layout = results.single()
+        val textBounds = node.fetchSemanticsNode().boundsInRoot
+        val cardBounds = compose.onNodeWithTag("hero-status-card").fetchSemanticsNode().boundsInRoot
+        val roundingTolerancePx = 1f
+
+        assertEquals("Status text must remain on one readable line", 1, layout.lineCount)
+        assertFalse("Status text must not overflow vertically", layout.didOverflowHeight)
+        assertTrue(
+            "Status text must fit intrinsic width: measured=${layout.size.width}, " +
+                "intrinsic=${layout.multiParagraph.maxIntrinsicWidth}",
+            layout.size.width.toFloat() + roundingTolerancePx >= layout.multiParagraph.maxIntrinsicWidth,
+        )
+        assertTrue(
+            "Status text must stay inside card horizontally: text=$textBounds card=$cardBounds",
+            textBounds.left >= cardBounds.left - roundingTolerancePx &&
+                textBounds.right <= cardBounds.right + roundingTolerancePx,
+        )
+        assertTrue(
+            "Status text must stay inside card vertically: text=$textBounds card=$cardBounds",
+            textBounds.top >= cardBounds.top - roundingTolerancePx &&
+                textBounds.bottom <= cardBounds.bottom + roundingTolerancePx,
+        )
+    }
 
     private fun assertTextOverflow(
         node: SemanticsNodeInteraction,
