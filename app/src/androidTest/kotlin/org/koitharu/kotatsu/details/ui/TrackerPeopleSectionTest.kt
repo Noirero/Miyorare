@@ -249,6 +249,12 @@ class TrackerPeopleSectionTest {
             sourceContent.assertIsDisplayed()
             statusCard.assertIsDisplayed()
             sourceText.assertTextEquals("...")
+            val dotsLayout = textLayout(sourceText)
+            assertEquals("Collapsed Source dots must use one line", 1, dotsLayout.lineCount)
+            assertTrue(
+                "Collapsed dots must fit: intrinsic=${dotsLayout.multiParagraph.maxIntrinsicWidth}, measured=${dotsLayout.size}",
+                dotsLayout.multiParagraph.maxIntrinsicWidth <= dotsLayout.size.width + 1f,
+            )
             assertBetaSourceInternalGeometry()
             assertBetaStatusInternalGeometry()
             assertReadableStatusText(compose.onNodeWithText(renderedStatus, useUnmergedTree = true), maxLines = 2)
@@ -408,7 +414,7 @@ class TrackerPeopleSectionTest {
                 assertTrue("Expanded title must render 3+ lines for this fixture",
                     textLayout(title).lineCount >= 3)
             }
-            assertEquals("Source/Status row remains 72dp", 72f * density, rowBounds.height, 1.5f)
+            assertEquals("Source/Status row remains 74dp", 74f * density, rowBounds.height, 1.5f)
             compose.onNodeWithTag("hero-source-expanded-detail").assertDoesNotExist()
             compose.onNodeWithTag("hero-source-expanded-text").assertDoesNotExist()
         }
@@ -658,6 +664,8 @@ class TrackerPeopleSectionTest {
         assertTrue("Beta Source favicon/name spacing 6dp; $evidence",
             name.left + tolerance >= favicon.right + 6f * density)
         assertTrue("Source name must have visible width; $evidence", name.width > 0f)
+        assertTrue("Source name must be inside its card; $evidence",
+            name.left >= card.left - tolerance && name.bottom <= card.bottom + tolerance)
         assertTrue("Source name must not overlap chevron; $evidence",
             name.right <= chevron.left + tolerance)
         assertTrue("Source chevron must stay inside card; $evidence",

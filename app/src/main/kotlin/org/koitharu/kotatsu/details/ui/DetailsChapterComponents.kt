@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -91,7 +92,7 @@ import org.koitharu.kotatsu.parsers.model.ContentRating
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 
-private val COMPACT_HERO_META_HEIGHT = 72.dp
+private val COMPACT_HERO_META_HEIGHT = 74.dp
 
 @Composable
 internal fun ModernDetailsHero(
@@ -313,65 +314,74 @@ private fun HeroSourceCard(
 	}
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
 	val cardContent: @Composable () -> Unit = {
-		Column(
-			modifier = Modifier
-				.fillMaxWidth()
-				.fillMaxHeight()
-				.testTag("hero-source-content")
-				.clickable(onClick = onSourceClick)
-				.padding(horizontal = if (palette.isModern) 11.dp else 9.dp, vertical = if (palette.isModern) 10.dp else 9.dp),
-			verticalArrangement = Arrangement.Center,
-		) {
-			Text(
-				text = stringResource(R.string.details_source),
-				style = MaterialTheme.typography.labelSmall,
-				color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (palette.isModern) 0.90f else 1f),
-				modifier = Modifier.testTag("hero-source-label"),
-			)
-			Spacer(Modifier.height(if (palette.isModern) 6.dp else 5.dp))
-			Row(
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(if (palette.isModern) 6.dp else 5.dp),
+		// Preserve beta typography, padding, spacing and favicon size. The owner-specific
+		// collapsed "..." needs the chevron outside the Row's width allocation.
+		val horizontalPadding = if (palette.isModern) 11.dp else 9.dp
+		val chevronTarget = 32.dp
+		Box(modifier = Modifier.fillMaxSize()) {
+			Column(
+				modifier = Modifier
+					.fillMaxSize()
+					.testTag("hero-source-content")
+					.clickable(onClick = onSourceClick)
+					.padding(
+						horizontal = horizontalPadding,
+						vertical = if (palette.isModern) 10.dp else 9.dp,
+					),
+				verticalArrangement = Arrangement.Center,
 			) {
-				AsyncImage(
-					model = faviconRequest,
-					imageLoader = imageLoader,
-					contentDescription = null,
-					error = painterResource(R.drawable.ic_manga_source),
-					fallback = painterResource(R.drawable.ic_manga_source),
-					modifier = Modifier.size(if (palette.isModern) 18.dp else 17.dp).testTag("hero-source-favicon"),
-				)
 				Text(
-					text = if (expanded) srcText else "...",
-					style = MaterialTheme.typography.labelMedium,
-					fontWeight = FontWeight.SemiBold,
-					color = MaterialTheme.colorScheme.onSurface,
-					maxLines = if (expanded) 2 else 1,
-					overflow = TextOverflow.Clip,
-					modifier = Modifier.weight(1f)
-						.semantics { contentDescription = srcText }
-						.testTag("hero-source-title"),
+					text = stringResource(R.string.details_source),
+					style = MaterialTheme.typography.labelSmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (palette.isModern) 0.90f else 1f),
+					modifier = Modifier.testTag("hero-source-label"),
 				)
-				IconButton(
-					onClick = onToggleExpanded,
-					modifier = Modifier.size(32.dp).testTag("hero-source-toggle"),
+				Spacer(Modifier.height(if (palette.isModern) 6.dp else 5.dp))
+				Row(
+					modifier = Modifier.fillMaxWidth().padding(end = chevronTarget - horizontalPadding),
+					verticalAlignment = Alignment.CenterVertically,
+					horizontalArrangement = Arrangement.spacedBy(if (palette.isModern) 6.dp else 5.dp),
 				) {
-					Icon(
-						painter = painterResource(R.drawable.ic_chevron_right),
-						contentDescription = stringResource(
-							if (expanded) R.string.details_collapse_source_details
-							else R.string.details_expand_source_details,
-						),
-						tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-						modifier = Modifier
-							.size(if (palette.isModern) 14.dp else 12.dp)
-							.rotate(if (expanded) 180f else 0f),
+					AsyncImage(
+						model = faviconRequest,
+						imageLoader = imageLoader,
+						contentDescription = null,
+						error = painterResource(R.drawable.ic_manga_source),
+						fallback = painterResource(R.drawable.ic_manga_source),
+						modifier = Modifier.size(if (palette.isModern) 18.dp else 17.dp)
+							.testTag("hero-source-favicon"),
+					)
+					Text(
+						text = if (expanded) srcText else "...",
+						style = MaterialTheme.typography.labelMedium,
+						fontWeight = FontWeight.SemiBold,
+						color = MaterialTheme.colorScheme.onSurface,
+						maxLines = if (expanded) 2 else 1,
+						overflow = TextOverflow.Clip,
+						modifier = Modifier.weight(1f)
+							.semantics { contentDescription = srcText }
+							.testTag("hero-source-title"),
 					)
 				}
 			}
+			IconButton(
+				onClick = onToggleExpanded,
+				modifier = Modifier.align(Alignment.CenterEnd)
+					.size(chevronTarget).testTag("hero-source-toggle"),
+			) {
+				Icon(
+					painter = painterResource(R.drawable.ic_chevron_right),
+					contentDescription = stringResource(
+						if (expanded) R.string.details_collapse_source_details
+						else R.string.details_expand_source_details,
+					),
+					tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier.size(if (palette.isModern) 14.dp else 12.dp)
+						.rotate(if (expanded) 180f else 0f),
+				)
+			}
 		}
 	}
-
 	if (!palette.isModern) {
 		Surface(
 			shape = shape,
