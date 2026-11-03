@@ -172,7 +172,13 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
                                 recreate()
                             }
                         },
-                        onDesignStyleChange = viewModel::setDesignStyle,
+                        onDesignStyleChange = { style ->
+                            if (viewModel.selectedDesignStyle.value != style) {
+                                viewModel.setDesignStyle(style)
+                                // BaseActivity applies the Classic/Modern Android theme overlay only in onCreate.
+                                recreate()
+                            }
+                        },
                         onThemePresetChange = viewModel::setThemePreset,
                         onPaletteSourceChange = viewModel::setPaletteSource,
                         onAmoledChange = { enabled ->
