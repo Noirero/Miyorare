@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
@@ -258,7 +259,7 @@ class TrackerPeopleSectionTest {
         compose.onNodeWithContentDescription(collapseSource).assertIsDisplayed()
         statusCard.assertIsDisplayed()
         expandedPanel.assertIsDisplayed()
-        compose.onNodeWithText(veryLongSource, useUnmergedTree = true).assertIsDisplayed()
+        expandedText.assertIsDisplayed().assertTextEquals(veryLongSource)
         assertTextOverflow(sourceText, expected = true)
         assertTextOverflow(expandedText, expected = false)
         val expandedSourceBounds = sourceContent.fetchSemanticsNode().boundsInRoot
