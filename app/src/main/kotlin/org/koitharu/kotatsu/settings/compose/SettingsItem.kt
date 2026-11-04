@@ -232,6 +232,7 @@ internal fun SettingsIconModern(
 	enabled: Boolean,
 	tintIcon: Boolean,
 	tintOverride: Color? = null,
+	applyImageAlpha: Boolean = true,
 ) {
 	val alpha = if (enabled) 1f else 0.5f
 	val shape = RoundedCornerShape(13.dp)
@@ -248,7 +249,7 @@ internal fun SettingsIconModern(
 			colorFilter = if (tintIcon) {
 				ColorFilter.tint((tintOverride ?: lerp(palette.primary, palette.secondary, 0.18f)).copy(alpha = alpha))
 			} else null,
-			alpha = alpha,
+			alpha = if (applyImageAlpha) alpha else 1f,
 		)
 	}
 }

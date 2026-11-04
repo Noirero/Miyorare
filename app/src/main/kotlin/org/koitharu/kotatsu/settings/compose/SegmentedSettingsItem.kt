@@ -74,6 +74,7 @@ fun SegmentedSettingsItem(
 						iconStyle.usesModernIcons(modern) -> SettingsIconModern(
 							iconRes = icon, palette = visualPalette, enabled = enabled, tintIcon = true,
 							tintOverride = if (modern) visualPalette.primary else null,
+							applyImageAlpha = false,
 						)
 						iconStyle == MiyorareSettingsIconStyle.MATERIAL_3 && modern -> SettingsIconBubble(
 							iconRes = icon,
