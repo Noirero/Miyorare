@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.migrations.Migration49To50
 import org.koitharu.kotatsu.core.db.migrations.Migration50To51
+import org.koitharu.kotatsu.core.db.migrations.Migration51To52
 import org.koitharu.kotatsu.favourites.data.*
 import org.koitharu.kotatsu.favourites.domain.CategorySetIdentity
 
@@ -36,21 +37,23 @@ class CategorySetsMigrationTest {
 			for (c in categories) initial.getFavouriteCategoriesDao().insert(c)
 			initial.getFavouritesDao().insert(normal)
 			initial.getPrivateFavouritesDao().insert(listOf(private))
-			// Category/membership schemas are unchanged by v50. Remove exactly the new tables to
-			// obtain a complete v49 database, including all unrelated Room tables and legacy rows.
+			// Construct the actual v49 schema from this modern fixture:
+            // remove both the v50 category-set tables and the v52 preservation column.
 			initial.openHelper.writableDatabase.apply {
 				execSQL("DROP TABLE favourite_category_set_assignments")
 				execSQL("DROP TABLE favourite_category_sets")
+                execSQL("ALTER TABLE manga DROP COLUMN preserved_to_manga_id")
 				execSQL("DROP TABLE room_master_table")
 				version = 49
 			}
 			initial.close()
 			repeat(2) {
 				val migrated = Room.databaseBuilder(context, MangaDatabase::class.java, name)
-					.addMigrations(Migration49To50(), Migration50To51())
+					.addMigrations(Migration49To50(), Migration50To51(), Migration51To52())
 					.build()
 				try {
 					assertTrue(migrated.openHelper.writableDatabase.isOpen) // Room validates the migrated schema.
+                    assertNull(migrated.getMangaDao().preservedDestination(manga.id))
 					assertEquals(categories, (migrated.getFavouriteCategoriesDao().findAllForSync() + migrated.getFavouriteCategoriesDao().findAllInSpace(1)).sortedBy { it.categoryId })
 					assertEquals(normal.toSet(), migrated.getFavouritesDao().findAllForSync().toSet())
 					assertEquals(55L, migrated.getFavouriteCategoriesDao().findAllForSync().first { it.categoryId == 44 }.deletedAt)

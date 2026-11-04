@@ -74,7 +74,13 @@ class SimpleMigrationTransferRegressionTest {
             assertEquals("Preserve my manga note", notes.get(newId))
             assertNull(notes.get(oldId))
             assertNull(db.getHistoryDao().find(newId))
-            assertEquals(sourceLast.id, db.getHistoryDao().find(oldId)?.chapterId)
+            // Optional progress is retained exactly, but no longer listed as active History.
+            assertNull(db.getHistoryDao().find(oldId))
+            val retained = checkNotNull(db.getHistoryDao().findIncludingDeleted(oldId))
+            assertEquals(sourceLast.id, retained.chapterId)
+            assertEquals(7, retained.page)
+            assertEquals(0.7f, retained.percent, 0f)
+            assertTrue(retained.deletedAt > 0L)
             assertEquals(50L, db.getStatsDao().findAll(oldId).single().duration)
             assertEquals(sourceLast.id.toString(), db.getTrackLogsDao().findAllForManga(oldId).single().chapterIds)
             assertTrue(db.getStatsDao().findAll(newId).isEmpty())
@@ -91,6 +97,15 @@ class SimpleMigrationTransferRegressionTest {
             assertTrue(groups.findTimeline(id).any { it.mangaId == oldId && it.chapterId == sourceLast.id })
             assertFalse(db.getMangaDao().isMigrationEntryVisible(oldId))
             assertTrue(db.getMangaDao().isMigrationEntryVisible(newId))
+            // Routine History GC cannot purge untransferred progress from a preserved source.
+            db.getHistoryDao().gc(Long.MAX_VALUE)
+            val afterGc = checkNotNull(db.getHistoryDao().findIncludingDeleted(oldId))
+            assertEquals(retained.chapterId, afterGc.chapterId)
+            assertEquals(retained.page, afterGc.page)
+            assertEquals(retained.percent, afterGc.percent, 0f)
+            // Recovery remains possible using the existing History recovery operation.
+            db.getHistoryDao().recover(oldId)
+            assertEquals(sourceLast.id, db.getHistoryDao().find(oldId)?.chapterId)
         } finally {
             notes.set(oldId, null); notes.set(newId, null)
             settings.setChapterReadOverrides(oldId, emptyMap())

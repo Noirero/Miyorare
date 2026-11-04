@@ -224,10 +224,13 @@ class SimpleMigrationTransfer @Inject constructor(
                     chaptersCount = newManga.chapters.orEmpty().count { it.branch == targetChapter.branch }
                         .takeIf { it > 0 } ?: sourceHistory.chaptersCount,
                 ))
-                if (sourceHistory.deletedAt == 0L) history.delete(oldId)
             } else {
                 preserved = true
             }
+            // A preserved, unmappable history must not leave the old manga active in
+            // History after Library ownership moves. Keep the entire original row as
+            // a recoverable tombstone; cleanup exempts sources marked preserved.
+            if (sourceHistory.deletedAt == 0L) history.delete(oldId)
         }
 
         val bookmarks = database.getBookmarksDao()
