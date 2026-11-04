@@ -25,25 +25,25 @@ concurrency:
 
 jobs:
   sync:
-    name: Sync approved Farm sources into beta packs
+    name: Sync approved Farm sources into Amain2 packs
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      TARGET_BRANCH: beta
+      TARGET_BRANCH: Amain2
       FARM_REPOSITORY: Noirero/Miyorare-Source-Packs
       FARM_BRANCH: compatibility-farm-foundation
     steps:
-      - name: Checkout automation control plane
+      - name: Checkout exact workflow control plane
         uses: actions/checkout@v5
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: control
           fetch-depth: 1
 
-      - name: Checkout protected beta target
+      - name: Checkout active Amain2 integration target
         uses: actions/checkout@v5
         with:
-          ref: beta
+          ref: Amain2
           path: target
           fetch-depth: 0
 
@@ -95,7 +95,7 @@ jobs:
           python3 \
             control/extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py
 
-      - name: Materialize ACTIVE Farm membership into beta manifest
+      - name: Materialize ACTIVE Farm membership into Amain2 manifest
         id: materialize
         shell: bash
         run: |
@@ -133,13 +133,13 @@ jobs:
             exit 1
           }
 
-      - name: Stop cleanly when beta is already synchronized
+      - name: Stop cleanly when Amain2 is already synchronized
         if: steps.materialize.outputs.changed != 'true'
         shell: bash
         run: |
-          echo "Compatibility Farm ACTIVE membership is already reflected in beta packs.json."
+          echo "Compatibility Farm ACTIVE membership is already reflected in Amain2 packs.json."
 
-      - name: Reuse identical pending beta sync PR
+      - name: Reuse identical pending Amain2 sync PR
         if: steps.materialize.outputs.changed == 'true'
         id: pending
         env:
@@ -164,17 +164,17 @@ jobs:
             actual_blob="$(gh api \
               "repos/$GITHUB_REPOSITORY/contents/extensions/miyorare-sources/packs.json?ref=$head_sha" \
               --jq '.sha' 2>/dev/null)" || {
-              echo "::error::Cannot inspect an existing beta sync PR #$number."
+              echo "::error::Cannot inspect an existing Amain2 sync PR #$number."
               exit 1
             }
             if [[ "$desired_blob" == "$actual_blob" ]]; then
               # Match the full change scope, not merely the desired manifest blob.
               changed_files="$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json files --jq '[.files[].path] | sort | join(",")')" || {
-                echo "::error::Cannot inspect changed files for beta sync PR #$number."
+                echo "::error::Cannot inspect changed files for Amain2 sync PR #$number."
                 exit 1
               }
               [[ "$changed_files" == "extensions/miyorare-sources/packs.json" ]] || {
-                echo "::error::Existing beta sync PR #$number contains unexpected paths: $changed_files"
+                echo "::error::Existing Amain2 sync PR #$number contains unexpected paths: $changed_files"
                 exit 1
               }
               echo "reuse=true" >> "$GITHUB_OUTPUT"
@@ -207,7 +207,7 @@ jobs:
             gh pr close "$pr" --repo "$GITHUB_REPOSITORY" --delete-branch || true
           done
 
-      - name: Commit synchronized beta manifest to automation branch
+      - name: Commit synchronized Amain2 manifest to automation branch
         if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         id: commit
         env:
@@ -229,7 +229,7 @@ jobs:
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "head_sha=$(git -C target rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Open protected beta sync pull request
+      - name: Open Amain2 integration sync pull request
         if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         id: pr
         env:
@@ -261,12 +261,12 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ && -n "$HEAD_BRANCH" && "$PR_NUMBER" =~ ^[0-9]+$ ]] || {
-            echo "::error::Missing or invalid exact-head beta sync PR identity."
+            echo "::error::Missing or invalid exact-head Amain2 sync PR identity."
             exit 1
           }
           live_sha="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
           [[ "$live_sha" == "$HEAD_SHA" ]] || {
-            echo "::error::The beta sync PR head moved before validation."
+            echo "::error::The Amain2 sync PR head moved before validation."
             exit 1
           }
 
@@ -345,7 +345,7 @@ jobs:
           set -euo pipefail
           gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 15
 
-      - name: Hold validated beta sync for protected branch review
+      - name: Hold validated Amain2 sync for owner review
         if: steps.materialize.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -356,11 +356,11 @@ jobs:
           set -euo pipefail
           live_sha="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
           [[ "$live_sha" == "$HEAD_SHA" ]] || {
-            echo "::error::The beta sync PR head moved after validation."
+            echo "::error::The Amain2 sync PR head moved after validation."
             exit 1
           }
           echo "PR #$PR_NUMBER passed the dispatched exact-head checks."
-          echo "Protected beta awaits owner-authorized review and merge; automatic merge is not attempted."
+          echo "Amain2 sync PR awaits owner-authorized review and merge; automatic merge is not attempted."
 
       - name: Upload sync evidence
         if: always()
@@ -377,7 +377,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo '## Compatibility Farm → Miyorare beta pack sync' >> "$GITHUB_STEP_SUMMARY"
+          echo '## Compatibility Farm → Miyorare Amain2 pack sync' >> "$GITHUB_STEP_SUMMARY"
           echo "Trigger mode: ${{ steps.farm.outputs.mode }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Source-Packs run: ${{ steps.farm.outputs.source_run_id }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Farm snapshot: ${{ steps.farm.outputs.sha }}" >> "$GITHUB_STEP_SUMMARY"
@@ -387,10 +387,10 @@ jobs:
           echo "UMA EN additions: ${{ steps.materialize.outputs.added_en }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Keiyoushi-only validated/not packable: ${{ steps.materialize.outputs.keiyoushi_only }}" >> "$GITHUB_STEP_SUMMARY"
           if [[ -n "${{ steps.pending.outputs.url }}" ]]; then
-            echo "Reused pending beta PR: ${{ steps.pending.outputs.url }} (exact-head validations checked or rerun)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Reused pending Amain2 PR: ${{ steps.pending.outputs.url }} (exact-head validations checked or rerun)" >> "$GITHUB_STEP_SUMMARY"
           fi
           if [[ "${{ steps.materialize.outputs.changed }}" == "true" ]]; then
-            echo "Pending owner review and merge into protected beta." >> "$GITHUB_STEP_SUMMARY"
+            echo "Pending owner review and merge into Amain2." >> "$GITHUB_STEP_SUMMARY"
           fi
           if [[ -n "${{ steps.pr.outputs.url }}" ]]; then
             echo "Automation PR: ${{ steps.pr.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
