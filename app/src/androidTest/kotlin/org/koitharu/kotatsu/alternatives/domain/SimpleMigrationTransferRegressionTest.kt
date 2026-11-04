@@ -9,6 +9,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.bookmarks.data.BookmarkEntity
+import org.koitharu.kotatsu.alternatives.work.completedSimpleMigration
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.core.db.entity.toEntity
@@ -92,6 +93,7 @@ class SimpleMigrationTransferRegressionTest {
             // Source group member remains only to prevent timeline's FK cascade deletion.
             assertEquals(1, groups.findMembersByMangaIds(listOf(oldId), 0).size)
             assertEquals(newId, db.getMangaDao().preservedDestination(oldId))
+            assertTrue(db.getMangaDao().isSimpleMigrationPreserved(oldId))
             // The regular group repair must not cascade-delete the preserved timeline.
             groups.deleteMembersNotInLibrary(FavouriteSpace.NORMAL.dbValue)
             assertTrue(groups.findTimeline(id).any { it.mangaId == oldId && it.chapterId == sourceLast.id })
@@ -159,6 +161,8 @@ class SimpleMigrationTransferRegressionTest {
             db.getHistoryDao().insert(HistoryEntity(old.id, 1L, 2L, source.id, 5, 0.2f, 0.7f, 0L, 35))
             val result = transfer(db, settings, notes)(old, target)
             assertFalse(result)
+            assertEquals(target.id, db.getMangaDao().preservedDestination(old.id))
+            assertFalse(db.getMangaDao().isSimpleMigrationPreserved(old.id))
             assertNull(db.getHistoryDao().find(old.id))
             assertEquals(destination.id, db.getHistoryDao().find(target.id)?.chapterId)
             assertTrue(db.getFavouritesDao().findAllRaw(old.id).isEmpty())
@@ -167,6 +171,71 @@ class SimpleMigrationTransferRegressionTest {
             settings.setChapterReadOverrides(old.id, emptyMap())
             settings.setChapterReadOverrides(target.id, emptyMap())
             db.close()
+        }
+    }
+
+
+    @Test fun bothCompleteAndPartialCheckpointsRecoverAfterRoomRestart() = runTest {
+        val dbName = "simple-migration-restart-regression"
+        context.deleteDatabase(dbName)
+        val settings = AppSettings(context)
+        val notes = MangaNotesRepository(context)
+        val fullOld = manga(997081L, "SIMPLE_RESTART", 1)
+        val fullNew = manga(997082L, "SIMPLE_RESTART", 1)
+        val partialOld = manga(997083L, "SIMPLE_RESTART", 2)
+        val partialNew = manga(997084L, "SIMPLE_RESTART", 1)
+        try {
+            val first = Room.databaseBuilder(context, MangaDatabase::class.java, dbName).build()
+            try {
+                seed(first, fullOld, fullNew, private = false)
+                seed(first, partialOld, partialNew, private = false)
+                val unmappedChapter = checkNotNull(partialOld.chapters).last()
+                first.getHistoryDao().insert(HistoryEntity(
+                    partialOld.id, 1L, 2L, unmappedChapter.id, 5, 0.2f, 0.7f, 0L, 2,
+                ))
+                assertFalse(transfer(first, settings, notes)(fullOld, fullNew))
+                assertTrue(transfer(first, settings, notes)(partialOld, partialNew))
+                assertFalse(first.getMangaDao().isMigrationEntryVisible(fullOld.id))
+                assertFalse(first.getMangaDao().isMigrationEntryVisible(partialOld.id))
+            } finally {
+                first.close()
+            }
+            // Recreating Room represents process-restart persistence without re-executing
+            // the transfer or relying on WorkManager's in-memory outcome.
+            val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, dbName).build()
+            try {
+                val completeRequest = MigrationBatchRequest(
+                    fullOld.id, fullOld.source.name, MigrationBatchAction.MIGRATE,
+                    selection = MigrationSelection.of(fullNew),
+                )
+                val partialRequest = MigrationBatchRequest(
+                    partialOld.id, partialOld.source.name, MigrationBatchAction.MIGRATE,
+                    selection = MigrationSelection.of(partialNew),
+                )
+                assertEquals(MigrationBatchStatus.MIGRATED,
+                    completedSimpleMigration(reopened, completeRequest)?.status)
+                assertEquals(MigrationBatchStatus.MIGRATED_PRESERVED,
+                    completedSimpleMigration(reopened, partialRequest)?.status)
+                assertNull(completedSimpleMigration(reopened,
+                    partialRequest.copy(selection = MigrationSelection.of(fullNew))))
+                // Repeated recovery is read-only; ownership and optional source progress survive.
+                assertEquals(MigrationBatchStatus.MIGRATED_PRESERVED,
+                    completedSimpleMigration(reopened, partialRequest)?.status)
+                assertEquals(1, reopened.getFavouritesDao().findAllRaw(fullNew.id).size)
+                assertEquals(1, reopened.getFavouritesDao().findAllRaw(partialNew.id).size)
+                assertTrue(reopened.getFavouritesDao().findAllRaw(fullOld.id).isEmpty())
+                assertTrue(reopened.getFavouritesDao().findAllRaw(partialOld.id).isEmpty())
+                reopened.getHistoryDao().gc(Long.MAX_VALUE)
+                reopened.getMangaDao().cleanup(emptySet())
+                assertEquals(partialNew.id, reopened.getMangaDao().preservedDestination(partialOld.id))
+                assertEquals(fullNew.id, reopened.getMangaDao().preservedDestination(fullOld.id))
+                assertEquals(checkNotNull(partialOld.chapters).last().id,
+                    reopened.getHistoryDao().findIncludingDeleted(partialOld.id)?.chapterId)
+            } finally {
+                reopened.close()
+            }
+        } finally {
+            context.deleteDatabase(dbName)
         }
     }
 

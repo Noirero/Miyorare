@@ -277,6 +277,7 @@ class ChapterPersistenceRegressionTest {
 			old.execSQL("DROP TABLE chapter_personal")
             // This fixture starts at the current schema; remove v52-only state before
             // declaring it a v48 database, so real 51->52 migration runs exactly once.
+            old.execSQL("ALTER TABLE manga DROP COLUMN simple_migration_preserved")
             old.execSQL("ALTER TABLE manga DROP COLUMN preserved_to_manga_id")
 			old.execSQL("DROP TABLE room_master_table")
 			old.version = 48

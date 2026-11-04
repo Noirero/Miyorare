@@ -88,9 +88,9 @@ class SimpleMigrationTransfer @Inject constructor(
                     val optionalPreserved = transferOptional(oldManga, newManga, targets)
                     val additionalPreserved = preservesAdditionalState(oldId)
                     val needsPreservation = corePreserved || optionalPreserved || additionalPreserved || preserved
-                    if (needsPreservation) {
-                        database.getMangaDao().markPreservedSource(oldId, newId)
-                    }
+                    // The marker is an atomic commit checkpoint for both complete and
+                    // partial transfers. The flag keeps their durable result distinct.
+                    database.getMangaDao().markPreservedSource(oldId, newId, needsPreservation)
                     needsPreservation
                 }
             } catch (failure: Throwable) {

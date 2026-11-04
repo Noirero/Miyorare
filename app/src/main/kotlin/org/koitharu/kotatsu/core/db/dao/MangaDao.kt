@@ -452,11 +452,14 @@ abstract class MangaDao {
     @Query("SELECT preserved_to_manga_id FROM manga WHERE manga_id = :id")
     abstract suspend fun preservedDestination(id: Long): Long?
 
-    @Query("UPDATE manga SET preserved_to_manga_id = :destinationId WHERE manga_id = :sourceId")
-    abstract suspend fun markPreservedSource(sourceId: Long, destinationId: Long)
+    @Query("SELECT simple_migration_preserved FROM manga WHERE manga_id = :id")
+    abstract suspend fun isSimpleMigrationPreserved(id: Long): Boolean
+
+    @Query("UPDATE manga SET preserved_to_manga_id = :destinationId, simple_migration_preserved = :preserved WHERE manga_id = :sourceId")
+    abstract suspend fun markPreservedSource(sourceId: Long, destinationId: Long, preserved: Boolean)
 
     @Transaction
-    @Query("SELECT * FROM manga WHERE preserved_to_manga_id IS NOT NULL")
+    @Query("SELECT * FROM manga WHERE preserved_to_manga_id IS NOT NULL AND simple_migration_preserved = 1")
     abstract suspend fun findAllPreservedSources(): List<MangaWithTags>
 
 	@Transaction
@@ -471,7 +474,10 @@ abstract class MangaDao {
 	 */
 	@Transaction
 	open suspend fun upsertWithCacheState(manga: MangaEntity, tags: Iterable<TagEntity>? = null) {
-		upsertRaw(manga.copy(preservedToMangaId = preservedDestination(manga.id) ?: manga.preservedToMangaId))
+		upsertRaw(manga.copy(
+            preservedToMangaId = preservedDestination(manga.id) ?: manga.preservedToMangaId,
+            simpleMigrationPreserved = isSimpleMigrationPreserved(manga.id) || manga.simpleMigrationPreserved,
+        ))
 		upsertTags(manga.id, tags)
 	}
 
@@ -479,6 +485,7 @@ abstract class MangaDao {
 		val previousUpdatedAt = getDetailsUpdatedAt(id) ?: return this
 		return copy(
             preservedToMangaId = preservedDestination(id) ?: preservedToMangaId,
+            simpleMigrationPreserved = isSimpleMigrationPreserved(id) || simpleMigrationPreserved,
 			detailsUpdatedAt = previousUpdatedAt,
 			chaptersInitialized = isChaptersInitialized(id) == true,
 		)

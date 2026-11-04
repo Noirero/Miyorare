@@ -42,6 +42,7 @@ class CategorySetsMigrationTest {
 			initial.openHelper.writableDatabase.apply {
 				execSQL("DROP TABLE favourite_category_set_assignments")
 				execSQL("DROP TABLE favourite_category_sets")
+                execSQL("ALTER TABLE manga DROP COLUMN simple_migration_preserved")
                 execSQL("ALTER TABLE manga DROP COLUMN preserved_to_manga_id")
 				execSQL("DROP TABLE room_master_table")
 				version = 49

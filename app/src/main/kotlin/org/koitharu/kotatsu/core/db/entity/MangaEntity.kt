@@ -30,4 +30,6 @@ data class MangaEntity(
     // Durable recovery anchor. A preserved source must survive regular manga/chapter/group cleanup.
     @ColumnInfo(name = "preserved_to_manga_id", defaultValue = "NULL")
     val preservedToMangaId: Long? = null,
+    @ColumnInfo(name = "simple_migration_preserved", defaultValue = "0")
+    val simpleMigrationPreserved: Boolean = false,
 )
