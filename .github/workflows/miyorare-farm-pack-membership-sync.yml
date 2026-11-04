@@ -139,8 +139,43 @@ jobs:
         run: |
           echo "Compatibility Farm ACTIVE membership is already reflected in beta packs.json."
 
-      - name: Close stale automation pull requests
+      - name: Reuse identical pending beta sync PR
         if: steps.materialize.outputs.changed == 'true'
+        id: pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FARM_SHA: ${{ steps.farm.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Reuse exact desired manifest instead of churning PRs/CI on schedule.
+          prefix="automation/farm-pack-sync-$(printf '%s' "$FARM_SHA" | cut -c1-12)-"
+          desired_blob="$(git -C target hash-object extensions/miyorare-sources/packs.json)"
+          while IFS=$'\t' read -r number name head_sha; do
+            [[ -n "$number" ]] || continue
+            [[ "$name" == "$prefix"* ]] || continue
+            actual_blob="$(gh api \
+              "repos/$GITHUB_REPOSITORY/contents/extensions/miyorare-sources/packs.json?ref=$head_sha" \
+              --jq '.sha' 2>/dev/null)" || continue
+            if [[ "$desired_blob" == "$actual_blob" ]]; then
+              echo "reuse=true" >> "$GITHUB_OUTPUT"
+              echo "number=$number" >> "$GITHUB_OUTPUT"
+              echo "url=https://github.com/$GITHUB_REPOSITORY/pull/$number" >> "$GITHUB_OUTPUT"
+              echo "Existing PR #$number already contains the desired Farm manifest."
+              exit 0
+            fi
+          done < <(
+            gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --base "$TARGET_BRANCH" \
+              --state open \
+              --json number,headRefName,headRefOid \
+              --jq '.[] | [.number, .headRefName, .headRefOid] | @tsv'
+          )
+          echo "reuse=false" >> "$GITHUB_OUTPUT"
+
+      - name: Close stale automation pull requests
+        if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -159,7 +194,7 @@ jobs:
           done
 
       - name: Commit synchronized beta manifest to automation branch
-        if: steps.materialize.outputs.changed == 'true'
+        if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         id: commit
         env:
           FARM_SHA: ${{ steps.farm.outputs.sha }}
@@ -181,7 +216,7 @@ jobs:
           echo "head_sha=$(git -C target rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Open protected beta sync pull request
-        if: steps.materialize.outputs.changed == 'true'
+        if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
@@ -201,7 +236,7 @@ jobs:
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch required validation on exact PR head
-        if: steps.materialize.outputs.changed == 'true'
+        if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         id: validations
         env:
           GH_TOKEN: ${{ github.token }}
@@ -246,7 +281,7 @@ jobs:
           echo "pack_run=$pack_run" >> "$GITHUB_OUTPUT"
 
       - name: Wait for Identity Guard
-        if: steps.materialize.outputs.changed == 'true'
+        if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.validations.outputs.identity_run }}
@@ -256,7 +291,7 @@ jobs:
           gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
 
       - name: Wait for Source Pack Check
-        if: steps.materialize.outputs.changed == 'true'
+        if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.validations.outputs.pack_run }}
@@ -265,8 +300,8 @@ jobs:
           set -euo pipefail
           gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 15
 
-      - name: Merge validated beta manifest automatically
-        if: steps.materialize.outputs.changed == 'true'
+      - name: Hold validated beta sync for protected branch review
+        if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -275,13 +310,12 @@ jobs:
         run: |
           set -euo pipefail
           live_sha="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
-          [[ "$live_sha" == "$HEAD_SHA" ]]
-          gh pr merge "$PR_NUMBER" \
-            --repo "$GITHUB_REPOSITORY" \
-            --squash \
-            --delete-branch
-          merged="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json mergedAt --jq '.mergedAt')"
-          [[ -n "$merged" && "$merged" != "null" ]]
+          [[ "$live_sha" == "$HEAD_SHA" ]] || {
+            echo "::error::The beta sync PR head moved after validation."
+            exit 1
+          }
+          echo "PR #$PR_NUMBER passed the dispatched exact-head checks."
+          echo "Protected beta awaits owner-authorized review and merge; automatic merge is not attempted."
 
       - name: Upload sync evidence
         if: always()
@@ -307,6 +341,12 @@ jobs:
           echo "UMA ID additions: ${{ steps.materialize.outputs.added_id }}" >> "$GITHUB_STEP_SUMMARY"
           echo "UMA EN additions: ${{ steps.materialize.outputs.added_en }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Keiyoushi-only validated/not packable: ${{ steps.materialize.outputs.keiyoushi_only }}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "${{ steps.pending.outputs.url }}" ]]; then
+            echo "Reused pending beta PR: ${{ steps.pending.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ "${{ steps.materialize.outputs.changed }}" == "true" ]]; then
+            echo "Pending owner review and merge into protected beta." >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [[ -n "${{ steps.pr.outputs.url }}" ]]; then
             echo "Automation PR: ${{ steps.pr.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
           fi
