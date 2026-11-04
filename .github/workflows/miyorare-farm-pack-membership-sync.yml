@@ -139,8 +139,57 @@ jobs:
         run: |
           echo "Compatibility Farm ACTIVE membership is already reflected in beta packs.json."
 
-      - name: Close stale automation pull requests
+      - name: Reuse identical pending beta sync PR
         if: steps.materialize.outputs.changed == 'true'
+        id: pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FARM_SHA: ${{ steps.farm.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Reuse exact desired manifest instead of churning PRs/CI on schedule.
+          prefix="automation/farm-pack-sync-$(printf '%s' "$FARM_SHA" | cut -c1-12)-"
+          desired_blob="$(git -C target hash-object extensions/miyorare-sources/packs.json)"
+          candidate_rows="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --base "$TARGET_BRANCH" \
+            --state open \
+            --limit 100 \
+            --json number,headRefName,headRefOid \
+            --jq '.[] | [.number, .headRefName, .headRefOid] | @tsv')"
+          while IFS=$'\t' read -r number name head_sha; do
+            [[ -n "$number" ]] || continue
+            [[ "$name" == "$prefix"* ]] || continue
+            actual_blob="$(gh api \
+              "repos/$GITHUB_REPOSITORY/contents/extensions/miyorare-sources/packs.json?ref=$head_sha" \
+              --jq '.sha' 2>/dev/null)" || {
+              echo "::error::Cannot inspect an existing beta sync PR #$number."
+              exit 1
+            }
+            if [[ "$desired_blob" == "$actual_blob" ]]; then
+              # Match the full change scope, not merely the desired manifest blob.
+              changed_files="$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json files --jq '[.files[].path] | sort | join(",")')" || {
+                echo "::error::Cannot inspect changed files for beta sync PR #$number."
+                exit 1
+              }
+              [[ "$changed_files" == "extensions/miyorare-sources/packs.json" ]] || {
+                echo "::error::Existing beta sync PR #$number contains unexpected paths: $changed_files"
+                exit 1
+              }
+              echo "reuse=true" >> "$GITHUB_OUTPUT"
+              echo "branch=$name" >> "$GITHUB_OUTPUT"
+              echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+              echo "number=$number" >> "$GITHUB_OUTPUT"
+              echo "url=https://github.com/$GITHUB_REPOSITORY/pull/$number" >> "$GITHUB_OUTPUT"
+              echo "Existing PR #$number already contains the desired Farm manifest."
+              exit 0
+            fi
+          done <<< "$candidate_rows"
+          echo "reuse=false" >> "$GITHUB_OUTPUT"
+
+      - name: Close stale automation pull requests
+        if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -159,7 +208,7 @@ jobs:
           done
 
       - name: Commit synchronized beta manifest to automation branch
-        if: steps.materialize.outputs.changed == 'true'
+        if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         id: commit
         env:
           FARM_SHA: ${{ steps.farm.outputs.sha }}
@@ -181,7 +230,7 @@ jobs:
           echo "head_sha=$(git -C target rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Open protected beta sync pull request
-        if: steps.materialize.outputs.changed == 'true'
+        if: steps.materialize.outputs.changed == 'true' && steps.pending.outputs.reuse != 'true'
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
@@ -200,48 +249,79 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
-      - name: Dispatch required validation on exact PR head
+      - name: Reuse or dispatch required exact-head validations
         if: steps.materialize.outputs.changed == 'true'
         id: validations
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_BRANCH: ${{ steps.commit.outputs.branch }}
-          HEAD_SHA: ${{ steps.commit.outputs.head_sha }}
+          HEAD_BRANCH: ${{ steps.pending.outputs.branch || steps.commit.outputs.branch }}
+          HEAD_SHA: ${{ steps.pending.outputs.head_sha || steps.commit.outputs.head_sha }}
+          PR_NUMBER: ${{ steps.pending.outputs.number || steps.pr.outputs.number }}
         shell: bash
         run: |
           set -euo pipefail
-          gh workflow run identity-guard.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref "$HEAD_BRANCH"
-          gh workflow run miyorare-source-pack-check.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref "$HEAD_BRANCH"
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ && -n "$HEAD_BRANCH" && "$PR_NUMBER" =~ ^[0-9]+$ ]] || {
+            echo "::error::Missing or invalid exact-head beta sync PR identity."
+            exit 1
+          }
+          live_sha="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
+          [[ "$live_sha" == "$HEAD_SHA" ]] || {
+            echo "::error::The beta sync PR head moved before validation."
+            exit 1
+          }
 
-          find_run() {
+          # Read the newest manual run for this branch and exact SHA, never
+          # accept status from a different commit or unrelated workflow.
+          latest_run() {
             local workflow="$1"
-            local id=""
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow "$workflow" \
+              --branch "$HEAD_BRANCH" \
+              --event workflow_dispatch \
+              --limit 100 \
+              --json databaseId,headSha,status,conclusion \
+              --jq ".[] | select(.headSha == \"$HEAD_SHA\") | [.databaseId, .status, (.conclusion // \"\")] | @tsv" \
+              | head -n 1
+          }
+
+          ensure_run() {
+            local workflow="$1" latest previous_id status conclusion id
+            latest="$(latest_run "$workflow")"
+            IFS=$'\t' read -r previous_id status conclusion <<< "$latest"
+            previous_id="${previous_id:-0}"
+            [[ "$previous_id" =~ ^[0-9]+$ ]] || {
+              echo "::error::Invalid existing workflow run ID for $workflow."
+              return 1
+            }
+
+            # Completed success is reusable proof; queued/running jobs are
+            # watched to completion. Failed/cancelled runs are never reused.
+            if (( previous_id > 0 )) && [[ "$conclusion" == success || "$status" != completed ]]; then
+              echo "Reuse exact-head $workflow run $previous_id ($status/$conclusion)." >&2
+              printf '%s\n' "$previous_id"
+              return 0
+            fi
+
+            gh workflow run "$workflow" \
+              --repo "$GITHUB_REPOSITORY" \
+              --ref "$HEAD_BRANCH" >&2
             for attempt in $(seq 1 60); do
-              id="$(gh run list \
-                --repo "$GITHUB_REPOSITORY" \
-                --workflow "$workflow" \
-                --branch "$HEAD_BRANCH" \
-                --event workflow_dispatch \
-                --limit 20 \
-                --json databaseId,headSha \
-                --jq ".[] | select(.headSha == \"$HEAD_SHA\") | .databaseId" \
-                | head -n 1)"
-              if [[ -n "$id" ]]; then
+              latest="$(latest_run "$workflow")"
+              IFS=$'\t' read -r id status conclusion <<< "$latest"
+              if [[ "${id:-}" =~ ^[0-9]+$ ]] && (( id > previous_id )); then
+                echo "Dispatched exact-head $workflow run $id." >&2
                 printf '%s\n' "$id"
                 return 0
               fi
               sleep 2
             done
-            echo "Could not resolve workflow_dispatch run for $workflow at $HEAD_SHA" >&2
+            echo "::error::Could not resolve new $workflow run at $HEAD_SHA." >&2
             return 1
           }
 
-          identity_run="$(find_run identity-guard.yml)"
-          pack_run="$(find_run miyorare-source-pack-check.yml)"
+          identity_run="$(ensure_run identity-guard.yml)"
+          pack_run="$(ensure_run miyorare-source-pack-check.yml)"
           echo "identity_run=$identity_run" >> "$GITHUB_OUTPUT"
           echo "pack_run=$pack_run" >> "$GITHUB_OUTPUT"
 
@@ -265,23 +345,22 @@ jobs:
           set -euo pipefail
           gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 15
 
-      - name: Merge validated beta manifest automatically
+      - name: Hold validated beta sync for protected branch review
         if: steps.materialize.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          HEAD_SHA: ${{ steps.commit.outputs.head_sha }}
+          PR_NUMBER: ${{ steps.pending.outputs.number || steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pending.outputs.head_sha || steps.commit.outputs.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
           live_sha="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
-          [[ "$live_sha" == "$HEAD_SHA" ]]
-          gh pr merge "$PR_NUMBER" \
-            --repo "$GITHUB_REPOSITORY" \
-            --squash \
-            --delete-branch
-          merged="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json mergedAt --jq '.mergedAt')"
-          [[ -n "$merged" && "$merged" != "null" ]]
+          [[ "$live_sha" == "$HEAD_SHA" ]] || {
+            echo "::error::The beta sync PR head moved after validation."
+            exit 1
+          }
+          echo "PR #$PR_NUMBER passed the dispatched exact-head checks."
+          echo "Protected beta awaits owner-authorized review and merge; automatic merge is not attempted."
 
       - name: Upload sync evidence
         if: always()
@@ -307,6 +386,12 @@ jobs:
           echo "UMA ID additions: ${{ steps.materialize.outputs.added_id }}" >> "$GITHUB_STEP_SUMMARY"
           echo "UMA EN additions: ${{ steps.materialize.outputs.added_en }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Keiyoushi-only validated/not packable: ${{ steps.materialize.outputs.keiyoushi_only }}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "${{ steps.pending.outputs.url }}" ]]; then
+            echo "Reused pending beta PR: ${{ steps.pending.outputs.url }} (exact-head validations checked or rerun)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ "${{ steps.materialize.outputs.changed }}" == "true" ]]; then
+            echo "Pending owner review and merge into protected beta." >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [[ -n "${{ steps.pr.outputs.url }}" ]]; then
             echo "Automation PR: ${{ steps.pr.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
           fi

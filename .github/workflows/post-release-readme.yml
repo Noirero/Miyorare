@@ -9,13 +9,12 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  actions: write
-  contents: write
-  pull-requests: write
+  actions: read
+  contents: read
 
 jobs:
-  update-readme:
-    name: Update published release verification
+  verify-release:
+    name: Verify published release provenance and APK
     if: github.event.release.prerelease == false && github.event.release.draft == false
     runs-on: ubuntu-latest
     env:
@@ -69,10 +68,16 @@ jobs:
           }
 
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" > release/source-run.json
-          RUN_NAME="$(jq -r '.name' release/source-run.json)"
+          RUN_PATH="$(jq -r '.path' release/source-run.json)"
           RUN_SHA="$(jq -r '.head_sha' release/source-run.json)"
-          [[ "$RUN_NAME" == "Miyorare Main Build" ]] || {
-            echo "::error::Recorded source run is not Miyorare Main Build."
+          RUN_EVENT="$(jq -r '.event' release/source-run.json)"
+          RUN_CONCLUSION="$(jq -r '.conclusion' release/source-run.json)"
+          [[ "$RUN_PATH" == ".github/workflows/main-build.yml" ]] || {
+            echo "::error::Recorded source run is not the official Main Build workflow."
+            exit 1
+          }
+          [[ "$RUN_EVENT" == "workflow_dispatch" && "$RUN_CONCLUSION" == "success" ]] || {
+            echo "::error::Recorded Main Build run was not a successful manual build."
             exit 1
           }
           [[ "$RUN_SHA" == "$RELEASE_COMMIT" ]] || {
@@ -94,110 +99,39 @@ jobs:
           echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
           echo "source_run_id=$SOURCE_RUN_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Update README from published APKs
-        env:
-          VERSION_NAME: ${{ steps.release.outputs.version_name }}
-          RELEASE_COMMIT: ${{ steps.release.outputs.release_commit }}
-          SOURCE_RUN_ID: ${{ steps.release.outputs.source_run_id }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          git fetch origin main
-          git checkout -B release-readme-base origin/main
-
-          python3 - <<'PY'
-          import hashlib
-          import os
-          from pathlib import Path
-
-          readme = Path('README.md')
-          start = '<!-- RELEASE_README_START -->'
-          end = '<!-- RELEASE_README_END -->'
-          text = readme.read_text()
-          if text.count(start) != 1 or text.count(end) != 1:
-              raise SystemExit('README release verification markers are missing or duplicated')
-
-          repo = os.environ['GITHUB_REPOSITORY']
-          version = os.environ['VERSION_NAME']
-          commit = os.environ['RELEASE_COMMIT']
-          run_id = os.environ['SOURCE_RUN_ID']
-          apk_files = sorted(Path('release').glob('*.apk'))
-          if not apk_files:
-              raise SystemExit('No published release APKs found while updating README')
-
-          apk_lines = []
-          for apk in apk_files:
-              digest = hashlib.sha256(apk.read_bytes()).hexdigest()
-              apk_lines.append(f'  - `{apk.name}` — `{digest}`')
-
-          block = '\n'.join([
-              start,
-              f'- **Versi:** [v{version}](https://github.com/{repo}/releases/tag/v{version})',
-              f'- **Commit:** [`{commit}`](https://github.com/{repo}/commit/{commit})',
-              f'- **GitHub Actions:** [run {run_id}](https://github.com/{repo}/actions/runs/{run_id})',
-              '- **APK dan SHA-256:**',
-              *apk_lines,
-              end,
-          ])
-
-          before, remainder = text.split(start, 1)
-          _, after = remainder.split(end, 1)
-          readme.write_text(before + block + after)
-          PY
-
-          if git diff --quiet -- README.md; then
-            echo "README release verification is already current."
-            exit 0
-          fi
-
-          mapfile -t stale < <(
-            gh pr list               --repo "$GITHUB_REPOSITORY"               --base main               --state open               --json number,headRefName               --jq '.[] | select(.headRefName | startswith("automation/release-readme-")) | .number'
-          )
-          for pr in "${stale[@]}"; do
-            gh pr close "$pr" --repo "$GITHUB_REPOSITORY" --delete-branch || true
-          done
-
-          branch="automation/release-readme-v${VERSION_NAME}-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
-          git switch -c "$branch"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          git commit -m "Update README release verification"
-          git push origin "HEAD:$branch"
-          head_sha="$(git rev-parse HEAD)"
-
-          url="$(gh pr create             --repo "$GITHUB_REPOSITORY"             --base main             --head "$branch"             --title "Update README for v${VERSION_NAME}"             --body "Automated post-release verification metadata for v${VERSION_NAME}. Release commit ${RELEASE_COMMIT}; originating Main Build run ${SOURCE_RUN_ID}.")"
-          pr_number="$(gh pr view "$url" --repo "$GITHUB_REPOSITORY" --json number --jq '.number')"
-
-          gh workflow run identity-guard.yml             --repo "$GITHUB_REPOSITORY"             --ref "$branch"
-
-          identity_run=""
-          for attempt in $(seq 1 60); do
-            identity_run="$(gh run list               --repo "$GITHUB_REPOSITORY"               --workflow identity-guard.yml               --branch "$branch"               --event workflow_dispatch               --limit 20               --json databaseId,headSha               --jq ".[] | select(.headSha == \"$head_sha\") | .databaseId"               | head -n 1)"
-            if [[ -n "$identity_run" ]]; then
-              break
-            fi
-            sleep 2
-          done
-          if [[ -z "$identity_run" ]]; then
-            echo "::error::Could not resolve Identity Guard for README PR head $head_sha."
+          # The release check remains independent of the README writer. Verify
+          # downloaded bytes against GitHub's published asset SHA-256 digest.
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > release/release.json
+          apk_count="$(jq -r '[.assets[] | select(.name | endswith(".apk"))] | length' release/release.json)"
+          [[ "$apk_count" == "1" ]] || {
+            echo "::error::Expected exactly one published APK asset; got $apk_count."
             exit 1
-          fi
-
-          gh run watch "$identity_run"             --repo "$GITHUB_REPOSITORY"             --exit-status             --interval 10
-
-          live_sha="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
-          [[ "$live_sha" == "$head_sha" ]]
-          gh pr merge "$pr_number"             --repo "$GITHUB_REPOSITORY"             --squash             --delete-branch
-          merged="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json mergedAt --jq '.mergedAt')"
-          [[ -n "$merged" && "$merged" != "null" ]]
+          }
+          asset_name="$(jq -r '.assets[] | select(.name | endswith(".apk")) | .name' release/release.json)"
+          asset_digest="$(jq -r '.assets[] | select(.name | endswith(".apk")) | (.digest // "")' release/release.json)"
+          [[ "$asset_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "::error::Published APK is missing a valid GitHub SHA-256 digest."
+            exit 1
+          }
+          [[ -f "release/$asset_name" ]] || {
+            echo "::error::Published APK asset was not downloaded."
+            exit 1
+          }
+          actual_digest="$(sha256sum "release/$asset_name" | awk '{print $1}')"
+          [[ "sha256:$actual_digest" == "$asset_digest" ]] || {
+            echo "::error::Published APK bytes do not match the reported SHA-256 digest."
+            exit 1
+          }
 
           {
-            echo "### Post-release README"
+            echo "### Published release verified"
             echo
-            echo "Release: `v${VERSION_NAME}`"
-            echo "Release commit: `${RELEASE_COMMIT}`"
-            echo "Originating Main Build run: `${SOURCE_RUN_ID}`"
-            echo "README PR: #${pr_number}"
+            echo "Release: $TAG"
+            echo "Source commit: $RELEASE_COMMIT"
+            echo "Main Build run: $SOURCE_RUN_ID"
+            echo "APK: $asset_name"
+            echo "SHA-256: $actual_digest"
+            echo
+            echo "README changes are owned by Release README Sync; this workflow does not write to main."
           } >> "$GITHUB_STEP_SUMMARY"
+
