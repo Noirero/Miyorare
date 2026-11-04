@@ -7,12 +7,13 @@ import miyori_status as ms
 class FakeClient:
     repository = "Noirero/Miyorare"
 
-    def __init__(self, *, pr=None, runs=None, jobs=None, artifacts=None, workflows=None):
+    def __init__(self, *, pr=None, runs=None, jobs=None, artifacts=None, workflows=None, last_label_change=None):
         self._pr = pr or {}
         self._runs = runs or []
         self._jobs = jobs or []
         self._artifacts = artifacts or []
         self._workflows = workflows or set(ms.GATES)
+        self._last_label_change = last_label_change
 
     def pull(self, number):
         data = dict(self._pr)
@@ -24,6 +25,9 @@ class FakeClient:
 
     def jobs_for_run(self, run_id):
         return self._jobs
+
+    def latest_label_change(self, number):
+        return self._last_label_change
 
     def artifacts_for_run(self, run_id):
         return self._artifacts
@@ -61,6 +65,7 @@ def run(name, *, number=10, attempt=1, status="completed", conclusion="success",
         "run_number": number,
         "run_attempt": attempt,
         "updated_at": "2026-10-28T00:00:00Z",
+        "created_at": "2026-10-27T00:00:00Z",
         "status": status,
         "conclusion": conclusion,
         "html_url": f"https://github.com/run/{run_id}",
@@ -188,6 +193,10 @@ class MiyoriStatusTests(unittest.TestCase):
         client = FakeClient(
             pr=pr,
             runs=[run("PR Compile & Unit Check")],
+            jobs=[{
+                "name": "Android runtime validation — Android 15",
+                "status": "completed", "conclusion": "success",
+            }],
             workflows=set(ms.GATES),
         )
         analysis = ms.analyze_pr(client=client, pr_number=123)
@@ -250,6 +259,116 @@ class MiyoriStatusTests(unittest.TestCase):
         self.assertEqual(len(client.calls), 2)
         self.assertIn("workflow-99", names)
         self.assertIn("Promotion to Main Gate", names)
+
+
+    def test_required_android_cannot_be_satisfied_by_skipped_or_absent_job(self):
+        pr = make_pr(labels=["ci:owner-request", "ci:runtime-required"])
+        state = [ms.GateState("PR Compile & Unit Check", True, run("PR Compile & Unit Check"))]
+        missing = ms.technical_readiness(pr=pr, states=state, label_errors=[])
+        self.assertEqual(missing[0], "waiting")
+        skipped = ms.technical_readiness(
+            pr=pr, states=state, label_errors=[],
+            android_job={"name": "Android runtime validation — Android 15",
+                         "status": "completed", "conclusion": "skipped"},
+        )
+        self.assertEqual(skipped[0], "blocked")
+
+    def test_full_runtime_and_theme_are_mandatory_even_for_owner_draft(self):
+        for label in ("ci:runtime-full", "ci:theme", "ci:user-issue"):
+            with self.subTest(label=label):
+                pr = make_pr(labels=["ci:owner-request", label])
+                states = [ms.GateState("PR Compile & Unit Check", True,
+                                       run("PR Compile & Unit Check"))]
+                self.assertEqual(
+                    ms.technical_readiness(pr=pr, states=states, label_errors=[])[0],
+                    "waiting",
+                )
+
+    def test_prior_success_is_stale_after_label_mutation(self):
+        pr = make_pr(labels=["ci:owner-request", "ci:runtime-required"])
+        client = FakeClient(
+            pr=pr, runs=[run("PR Compile & Unit Check")],
+            jobs=[{"name": "Android runtime validation — Android 15",
+                   "status": "completed", "conclusion": "success"}],
+            last_label_change="2026-10-28T02:00:00Z",
+        )
+        analysis = ms.analyze_pr(client=client, pr_number=123)
+        self.assertEqual(analysis["technical"][0], "waiting")
+        self.assertIn("new label policy", analysis["technical"][1])
+
+    def test_fresh_run_with_required_android_becomes_ready(self):
+        pr = make_pr(labels=["ci:owner-request", "ci:runtime-full"])
+        fresh = run("PR Compile & Unit Check")
+        fresh["created_at"] = "2026-10-29T00:00:00Z"
+        client = FakeClient(
+            pr=pr, runs=[fresh],
+            jobs=[{"name": "Android runtime validation — Android 15",
+                   "status": "completed", "conclusion": "success"}],
+            last_label_change="2026-10-28T02:00:00Z",
+        )
+        self.assertEqual(ms.analyze_pr(client=client, pr_number=123)["technical"][0],
+                         "ready")
+
+    def test_skipped_or_action_required_compile_cannot_mark_ready(self):
+        pr = make_pr(labels=["ci:owner-request"])
+        for result in ("skipped", "neutral", "action_required", "cancelled", "failure"):
+            with self.subTest(result=result):
+                states = [ms.GateState("PR Compile & Unit Check", True,
+                                       run("PR Compile & Unit Check", conclusion=result))]
+                self.assertEqual(
+                    ms.technical_readiness(pr=pr, states=states, label_errors=[])[0],
+                    "blocked",
+                )
+
+    def test_status_card_explains_action_required_and_cancelled(self):
+        for conclusion, phrase in (
+            ("action_required", "GitHub approval is required"),
+            ("cancelled", "not a test failure"),
+            ("skipped", "not evidence that mandatory checks passed"),
+        ):
+            with self.subTest(conclusion=conclusion):
+                pr = make_pr(labels=["ci:owner-request"])
+                client = FakeClient(
+                    pr=pr, runs=[run("PR Compile & Unit Check", conclusion=conclusion)]
+                )
+                status = ms.analyze_pr(client=client, pr_number=123)
+                card = ms.render_card(
+                    pr_number=123, analysis=status, client=client,
+                    server_url="https://github.com",
+                )
+                self.assertIn(phrase, card)
+
+    def test_missing_label_event_history_holds_readiness(self):
+        pr = make_pr(labels=["ci:owner-request"])
+        states = [ms.GateState("PR Compile & Unit Check", True,
+                               run("PR Compile & Unit Check"))]
+        self.assertEqual(
+            ms.technical_readiness(
+                pr=pr, states=states, label_errors=[], evidence_unavailable=True,
+            )[0],
+            "waiting",
+        )
+
+    def test_label_history_paginates_and_tracks_removed_labels(self):
+        class PagedClient(ms.GitHubClient):
+            repository = "Noirero/Miyorare"
+
+            def __init__(self):
+                self.calls = []
+
+            def get(self, path):
+                self.calls.append(path)
+                if "page=1" in path:
+                    return ([{"event": "unlabeled",
+                              "label": {"name": "ci:runtime-required"},
+                              "created_at": "2026-11-04T01:00:00Z"}]
+                            + [{"event": "assigned"}] * 99)
+                return [{"event": "labeled", "label": {"name": "ci:theme"},
+                         "created_at": "2026-11-04T02:00:00Z"}]
+
+        client = PagedClient()
+        self.assertEqual(client.latest_label_change(123), "2026-11-04T02:00:00Z")
+        self.assertEqual(len(client.calls), 2)
 
     def test_legacy_marker_is_distinct(self):
         self.assertNotEqual(ms.CARD_MARKER, ms.LEGACY_MARKER)
