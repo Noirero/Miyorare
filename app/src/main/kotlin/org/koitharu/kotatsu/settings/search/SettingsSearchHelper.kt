@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ColorScheme
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareFavouritesCardBorderStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareSettingsIconStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.download.ui.worker.DownloadPerformanceSettings
@@ -97,6 +98,7 @@ class SettingsSearchHelper @Inject constructor(
         section(R.string.settings_appearance_navigation) { sectionCrumbs ->
             group(sectionCrumbs, R.string.miyorare_appearance_group) { crumbs ->
                 addItem(MiyorareAppearance.KEY_DESIGN_STYLE, R.string.miyorare_design_style, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
+                addItem(MiyorareAppearance.KEY_SETTINGS_ICON_STYLE, R.string.miyorare_settings_icon_style, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java, keywordText = MiyorareSettingsIconStyle.entries.map { ctx.getString(it.titleResId) } + ctx.getString(R.string.miyorare_settings_icon_custom))
                 addItem(
                     MiyorareAppearance.KEY_THEME_PRESET,
                     R.string.miyorare_modern_visual_theme,

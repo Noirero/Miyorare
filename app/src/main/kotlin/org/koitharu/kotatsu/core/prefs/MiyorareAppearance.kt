@@ -16,6 +16,19 @@ enum class MiyorareFavouritesCardBorderStyle(
 	NONE(R.string.miyorare_favourites_border_none, hasStroke = false, hasGlow = false),
 }
 
+/** Icon chrome for Settings; custom action is deliberately not a persisted mode. */
+enum class MiyorareSettingsIconStyle(@StringRes val titleResId: Int) {
+	FOLLOW_THEME(R.string.miyorare_settings_icon_follow_theme),
+	MIYORARE(R.string.miyorare_settings_icon_modern),
+	MATERIAL_3(R.string.miyorare_settings_icon_classic);
+
+	fun usesModernIcons(modernTheme: Boolean): Boolean = when (this) {
+		FOLLOW_THEME -> modernTheme
+		MIYORARE -> true
+		MATERIAL_3 -> false
+	}
+}
+
 enum class MiyorareDesignStyle(@StringRes val titleResId: Int) {
 	CLASSIC(R.string.miyorare_design_classic),
 	MODERN(R.string.miyorare_design_modern),
@@ -161,6 +174,7 @@ data class MiyorareAdaptivePalette(
 /** Shared keys and validation for the single Miyorare appearance preference source. */
 object MiyorareAppearance {
 	const val KEY_DESIGN_STYLE = "miyorare_design_style"
+	const val KEY_SETTINGS_ICON_STYLE = "miyorare_settings_icon_style"
 	const val KEY_FAVOURITES_CARD_BORDER_STYLE = "miyorare_favourites_card_border_style"
 	const val KEY_THEME_PRESET = "miyorare_theme_preset"
 	const val KEY_MODERN_PALETTE_SOURCE = "miyorare_modern_palette_source"
