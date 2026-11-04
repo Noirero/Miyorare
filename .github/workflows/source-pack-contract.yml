@@ -207,45 +207,10 @@ jobs:
           assert 'miyorare_source_pack_snapshot_details' in detail
 
           sync = Path('.github/workflows/miyorare-farm-pack-membership-sync.yml').read_text(encoding='utf-8')
-          # Active integration routing: Farm directly proposes source-pack
-          # changes to Amain2, never to the held beta branch. The worker
-          # code comes from the same exact workflow event SHA.
+          # Farm directly proposes approved sources to the active integration
+          # branch. The control checkout must pin the workflow event SHA.
           assert 'TARGET_BRANCH: Amain2' in sync
-          assert ('ref: 
-          assert 'ref: Amain2' in sync
-          assert 'TARGET_BRANCH: beta' not in sync
-          assert 'ref: beta' not in sync
-          assert 'Sync approved Farm sources into Amain2 packs' in sync
-          assert 'farm_sha:' in sync
-          assert 'REQUESTED_FARM_SHA' in sync
-          assert 'mode="event"' in sync
-          assert 'mode="recovery"' in sync
-          assert 'cancel-in-progress: true' in sync
-          assert '$GITHUB_RUN_ATTEMPT' in sync
-          assert 'automation/farm-pack-sync-${FARM_SHA:0:12}-$GITHUB_RUN_ID-a$GITHUB_RUN_ATTEMPT' in sync
-          assert 'raw.githubusercontent.com/$FARM_REPOSITORY/$sha/compatibility/source-registry.json' in sync
-          assert 'Reuse identical pending Amain2 sync PR' in sync
-          assert 'desired_blob=' in sync
-          assert 'actual_blob=' in sync
-          # Reused PRs must prove manifest-only scope and successful
-          # exact-head Identity Guard + Source Pack Check. A matching
-          # manifest blob alone is not validation evidence.
-          assert 'changed_files=' in sync
-          assert 'steps.pending.outputs.branch || steps.commit.outputs.branch' in sync
-          assert 'steps.pending.outputs.head_sha || steps.commit.outputs.head_sha' in sync
-          assert 'steps.pending.outputs.number || steps.pr.outputs.number' in sync
-          assert 'Reuse or dispatch required exact-head validations' in sync
-          assert 'latest_run()' in sync
-          assert 'ensure_run()' in sync
-          assert '--event workflow_dispatch' in sync
-          assert '--json databaseId,headSha,status,conclusion' in sync
-          assert 'ensure_run identity-guard.yml' in sync
-          assert 'ensure_run miyorare-source-pack-check.yml' in sync
-          assert 'gh run watch "$RUN_ID"' in sync
-          assert 'Hold validated Amain2 sync for owner review' in sync
-          assert 'gh pr merge' not in sync
-          PY
- + '{{ github.sha }}') in sync
+          assert ('ref: ' + chr(36) + '{{ github.sha }}') in sync
           assert 'ref: Amain2' in sync
           assert 'TARGET_BRANCH: beta' not in sync
           assert 'ref: beta' not in sync
