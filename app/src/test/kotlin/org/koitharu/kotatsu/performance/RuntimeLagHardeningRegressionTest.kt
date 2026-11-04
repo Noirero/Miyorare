@@ -239,7 +239,11 @@ class RuntimeLagHardeningRegressionTest {
 		assertFalse(normalCategoryOverlay.contains("LayerDrawable("))
 		assertTrue(list.contains("shouldDrawFill=false"))
 		assertTrue(list.contains("shouldDrawStroke=false"))
-		assertTrue(list.contains("shouldDrawGlow=true"))
+		// Default retains glow; user-selectable Thin/None legitimately disable it.
+		assertTrue(list.contains("shouldDrawGlow=borderStyle.hasGlow"))
+		val appearance = source("kotlin/org/koitharu/kotatsu/core/prefs/MiyorareAppearance.kt")
+			.replace(Regex("\\s+"), "")
+		assertTrue(appearance.contains("DEFAULT(R.string.miyorare_favourites_border_default,hasStroke=true,hasGlow=true)"))
 	}
 
 	@Test
