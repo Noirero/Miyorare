@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.settings.sources.migration
 import android.view.ContextThemeWrapper
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import com.google.android.material.appbar.AppBarLayout
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
 import org.junit.After
@@ -176,21 +178,35 @@ class MigrationLandingScreenTest {
     }
     @Test
     fun contentInsetRecomputesAfterAppBarFirstLayout() {
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val appBar = AppBarLayout(themedContext)
-            val params = AppBarLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 240).apply {
-                scrollFlags = AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL
-            }
-            appBar.addView(View(themedContext), params)
-            val composeHost = View(themedContext)
-
-            bindMigrationContentInsets(composeHost, appBar)
-            appBar.measure(
-                View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.AT_MOST),
-            )
-            appBar.layout(0, 0, 360, appBar.measuredHeight)
-
+        lateinit var appBar: AppBarLayout
+        lateinit var composeHost: View
+        // A detached AppBarLayout has no real first-layout lifecycle. Attach both
+        // views to the composition so the assertion observes the actual layout.
+        compose.setContent {
+            AndroidView(factory = { context ->
+                FrameLayout(context).apply {
+                    appBar = AppBarLayout(context).apply {
+                        addView(View(context), AppBarLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, 240,
+                        ).apply {
+                            scrollFlags = AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL
+                        })
+                    }
+                    composeHost = View(context)
+                    addView(appBar, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ))
+                    addView(composeHost, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    ))
+                    bindMigrationContentInsets(composeHost, appBar)
+                }
+            })
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
             assertTrue("Fixture requires a collapsible app bar", appBar.totalScrollRange > 0)
             assertTrue(
                 "Footer must reserve the expanded toolbar overlap",
