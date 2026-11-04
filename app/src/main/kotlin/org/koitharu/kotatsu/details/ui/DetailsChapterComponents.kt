@@ -109,7 +109,7 @@ internal fun ModernDetailsHero(
 	onCreatorOverflowChanged: (Boolean) -> Unit = {},
 ) {
 	val palette = LocalMiyorareVisualPalette.current
-	val heroSourceExpansionState = remember(manga.id, manga.source) { mutableStateOf(false) }
+	val heroSourceVisibilityState = remember(manga.id, manga.source) { mutableStateOf(false) }
 	val nsfwLabel = when (manga.contentRating) {
 		ContentRating.SUGGESTIVE -> "16+"
 		ContentRating.ADULT -> "18+"
@@ -150,7 +150,7 @@ internal fun ModernDetailsHero(
 					accent = accent,
 					centered = true,
 					onSourceClick = { actions.onSourceClick(manga) },
-					sourceExpansionState = heroSourceExpansionState,
+					sourceVisibilityState = heroSourceVisibilityState,
 				)
 			}
 		}
@@ -182,7 +182,7 @@ internal fun ModernDetailsHero(
 			val hasSourceStatus = !manga.isLocal || manga.state != null
 			Box(modifier = Modifier.weight(1f).heightIn(min = coverHeight)) {
 				if (compactExpanded) {
-					// "Memperluas" restores the existing natural flow, independent of Source chevron.
+					// "Memperluas" restores the existing natural flow, independent of Source visibility.
 					Column(modifier = Modifier.fillMaxWidth()) {
 						HeroTexts(
 							centered = false, manga = manga, accent = accent, actions = actions,
@@ -200,7 +200,7 @@ internal fun ModernDetailsHero(
 								showActiveRelease = manga.state?.titleResId == R.string.state_ongoing,
 								accent = accent, centered = false, compactExpanded = true,
 								onSourceClick = { actions.onSourceClick(manga) },
-								sourceExpansionState = heroSourceExpansionState,
+								sourceVisibilityState = heroSourceVisibilityState,
 							)
 						}
 					}
@@ -228,7 +228,7 @@ internal fun ModernDetailsHero(
 							showActiveRelease = manga.state?.titleResId == R.string.state_ongoing,
 							accent = accent, centered = false, compactExpanded = false,
 							onSourceClick = { actions.onSourceClick(manga) },
-							sourceExpansionState = heroSourceExpansionState,
+							sourceVisibilityState = heroSourceVisibilityState,
 							modifier = Modifier.align(Alignment.TopStart)
 								.offset(y = coverHeight - COMPACT_HERO_META_HEIGHT),
 						)
@@ -240,7 +240,7 @@ internal fun ModernDetailsHero(
 	}
 }
 
-/** Source/Status share one row; Source-only expansion redistributes width. */
+/** Source visibility redistributes width without changing row height. */
 @Composable
 internal fun HeroSourceStatusRow(
 	manga: Manga,
@@ -253,11 +253,11 @@ internal fun HeroSourceStatusRow(
 	compactExpanded: Boolean = false,
 	onSourceClick: () -> Unit,
 	modifier: Modifier = Modifier,
-	sourceExpansionState: MutableState<Boolean>? = null,
+	sourceVisibilityState: MutableState<Boolean>? = null,
 ) {
-	val localExpansionState = remember(manga.id, manga.source) { mutableStateOf(false) }
-	val expansionState = sourceExpansionState ?: localExpansionState
-	val sourceExpanded = expansionState.value
+	val localVisibilityState = remember(manga.id, manga.source) { mutableStateOf(false) }
+	val visibilityState = sourceVisibilityState ?: localVisibilityState
+	val sourceVisible = visibilityState.value
 	val hasSource = !manga.isLocal
 	val fullSourceName = sourceTitle?.takeUnless { it.isBlank() } ?: manga.source.getTitle(LocalContext.current)
 	val cardHeight = if (centered) 82.dp else COMPACT_HERO_META_HEIGHT
@@ -268,7 +268,7 @@ internal fun HeroSourceStatusRow(
 		val availableWidth = maxWidth - if (hasSource && status != null) gap else 0.dp
 		val collapsedSourceWidth = if (status == null) maxWidth else availableWidth * 0.44f
 		val collapsedStatusWidth = if (hasSource) availableWidth - collapsedSourceWidth else maxWidth
-		val statusWidth = if (hasSource && sourceExpanded && status != null) {
+		val statusWidth = if (hasSource && sourceVisible && status != null) {
 			(availableWidth * 0.22f).coerceIn(40.dp, 54.dp)
 		} else collapsedStatusWidth
 		val sourceWidth = if (status == null) maxWidth else availableWidth - statusWidth
@@ -283,8 +283,8 @@ internal fun HeroSourceStatusRow(
 		if (hasSource) {
 			HeroSourceCard(
 				manga = manga, sourceTitle = fullSourceName, imageLoader = imageLoader,
-				onSourceClick = onSourceClick, expanded = sourceExpanded,
-				onToggleExpanded = { expansionState.value = !expansionState.value },
+				onSourceClick = onSourceClick, visible = sourceVisible,
+				onToggleVisibility = { visibilityState.value = !visibilityState.value },
 				modifier = Modifier.align(Alignment.TopStart)
 					.width(sourceWidth).fillMaxHeight(),
 			)
@@ -298,8 +298,8 @@ private fun HeroSourceCard(
 	sourceTitle: String?,
 	imageLoader: ImageLoader,
 	onSourceClick: () -> Unit,
-	expanded: Boolean,
-	onToggleExpanded: () -> Unit,
+	visible: Boolean,
+	onToggleVisibility: () -> Unit,
 	modifier: Modifier = Modifier,
 ) {
 	val context = LocalContext.current
@@ -317,7 +317,8 @@ private fun HeroSourceCard(
 		// Preserve beta typography, padding, spacing and favicon size. The owner-specific
 		// collapsed "..." needs the chevron outside the Row's width allocation.
 		val horizontalPadding = if (palette.isModern) 11.dp else 9.dp
-		val chevronTarget = 32.dp
+		val eyeTarget = 32.dp
+		val eyeShape = RoundedCornerShape(50)
 		Box(modifier = Modifier.fillMaxSize()) {
 			Column(
 				modifier = Modifier
@@ -338,11 +339,11 @@ private fun HeroSourceCard(
 				)
 				Spacer(Modifier.height(if (palette.isModern) 6.dp else 5.dp))
 				Row(
-					modifier = Modifier.fillMaxWidth().padding(end = chevronTarget - horizontalPadding),
+					modifier = Modifier.fillMaxWidth(),
 					verticalAlignment = Alignment.CenterVertically,
 					horizontalArrangement = Arrangement.spacedBy(if (palette.isModern) 6.dp else 5.dp),
 				) {
-					AsyncImage(
+					if (visible) AsyncImage(
 						model = faviconRequest,
 						imageLoader = imageLoader,
 						contentDescription = null,
@@ -352,11 +353,11 @@ private fun HeroSourceCard(
 							.testTag("hero-source-favicon"),
 					)
 					Text(
-						text = if (expanded) srcText else "...",
+						text = if (visible) srcText else "...",
 						style = MaterialTheme.typography.labelMedium,
 						fontWeight = FontWeight.SemiBold,
 						color = MaterialTheme.colorScheme.onSurface,
-						maxLines = if (expanded) 2 else 1,
+						maxLines = if (visible) Int.MAX_VALUE else 1,
 						overflow = TextOverflow.Clip,
 						modifier = Modifier.weight(1f)
 							.semantics { contentDescription = srcText }
@@ -365,19 +366,23 @@ private fun HeroSourceCard(
 				}
 			}
 			IconButton(
-				onClick = onToggleExpanded,
-				modifier = Modifier.align(Alignment.CenterEnd)
-					.size(chevronTarget).testTag("hero-source-toggle"),
+				onClick = onToggleVisibility,
+				modifier = Modifier.align(Alignment.TopEnd)
+					.offset(y = 5.dp)
+					.size(eyeTarget).clip(eyeShape)
+					.background(palette.secondary.copy(alpha = 0.11f))
+					.border(BorderStroke(0.75.dp, palette.secondary.copy(alpha = 0.30f)), eyeShape)
+					.testTag("hero-source-visibility-toggle"),
 			) {
 				Icon(
-					painter = painterResource(R.drawable.ic_chevron_right),
+					painter = painterResource(if (visible) R.drawable.ic_visibility else R.drawable.ic_visibility_off),
 					contentDescription = stringResource(
-						if (expanded) R.string.details_collapse_source_details
-						else R.string.details_expand_source_details,
+						if (visible) R.string.details_hide_source
+						else R.string.details_show_source,
 					),
 					tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-					modifier = Modifier.size(if (palette.isModern) 14.dp else 12.dp)
-						.rotate(if (expanded) 180f else 0f),
+					modifier = Modifier.size(if (palette.isModern) 18.dp else 17.dp)
+						.testTag(if (visible) "hero-source-eye-open" else "hero-source-eye-closed"),
 				)
 			}
 		}

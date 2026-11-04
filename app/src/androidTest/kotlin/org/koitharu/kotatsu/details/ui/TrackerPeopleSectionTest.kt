@@ -240,22 +240,28 @@ class TrackerPeopleSectionTest {
         val sourceText = compose.onNodeWithTag("hero-source-title", useUnmergedTree = true)
         val sourceContent = compose.onNodeWithTag("hero-source-content")
         val statusCard = compose.onNodeWithTag("hero-status-card")
-        val toggle = compose.onNodeWithTag("hero-source-toggle")
-        val expandLabel = context.getString(R.string.details_expand_source_details)
-        val collapseLabel = context.getString(R.string.details_collapse_source_details)
+        val toggle = compose.onNodeWithTag("hero-source-visibility-toggle")
+        val expandLabel = context.getString(R.string.details_show_source)
+        val collapseLabel = context.getString(R.string.details_hide_source)
         val releaseText = context.getString(R.string.details_release_active)
 
         fun assertCollapsedTextAndStatus() {
             sourceContent.assertIsDisplayed()
             statusCard.assertIsDisplayed()
+            compose.onNodeWithTag("hero-source-label", useUnmergedTree = true)
+                .assertTextEquals(context.getString(R.string.details_source))
+            compose.onNodeWithTag("hero-source-favicon", useUnmergedTree = true).assertDoesNotExist()
+            compose.onNodeWithTag("hero-source-eye-closed", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag("hero-source-eye-open", useUnmergedTree = true).assertDoesNotExist()
             sourceText.assertTextEquals("...")
+            compose.onNodeWithText(fullSourceName, useUnmergedTree = true).assertDoesNotExist()
             val dotsLayout = textLayout(sourceText)
             assertEquals("Collapsed Source dots must use one line", 1, dotsLayout.lineCount)
             assertTrue(
                 "Collapsed dots must fit: intrinsic=${dotsLayout.multiParagraph.maxIntrinsicWidth}, measured=${dotsLayout.size}",
                 dotsLayout.multiParagraph.maxIntrinsicWidth <= dotsLayout.size.width + 1f,
             )
-            assertBetaSourceInternalGeometry()
+            assertBetaSourceInternalGeometry(visible = false)
             assertBetaStatusInternalGeometry()
             assertReadableStatusText(compose.onNodeWithText(renderedStatus, useUnmergedTree = true), maxLines = 2, renderedStatus = renderedStatus)
             assertReadableStatusText(compose.onNodeWithText(releaseText, useUnmergedTree = true), maxLines = 1, renderedStatus = renderedStatus)
@@ -274,7 +280,10 @@ class TrackerPeopleSectionTest {
         compose.onNodeWithContentDescription(collapseLabel).assertIsDisplayed()
         sourceContent.assertIsDisplayed()
         sourceText.assertTextEquals(fullSourceName)
-        assertBetaSourceInternalGeometry()
+        compose.onNodeWithTag("hero-source-eye-open", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("hero-source-eye-closed", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("hero-source-favicon", useUnmergedTree = true).assertIsDisplayed()
+        assertBetaSourceInternalGeometry(visible = true)
         assertSourceTextFullyVisible(sourceText)
         assertTextOverflow(sourceText, expected = false, renderedStatus = renderedStatus)
         compose.onNodeWithTag("hero-source-expanded-detail").assertDoesNotExist()
@@ -295,7 +304,7 @@ class TrackerPeopleSectionTest {
         assertEquals("Status top unchanged", collapsedStatus.top, expandedStatus.top, 1f)
         assertEquals("Row height must not change", collapsedRow.height, expandedRow.height, 1f)
         assertEquals("Row top must not shift", collapsedRow.top, expandedRow.top, 1f)
-        compose.runOnIdle { assertEquals("Chevron must not navigate", 0, sourceNavigations) }
+        compose.runOnIdle { assertEquals("Eye toggle must not navigate", 0, sourceNavigations) }
 
         sourceContent.performClick()
         compose.runOnIdle { assertEquals("Source content navigates exactly once", 1, sourceNavigations) }
@@ -308,7 +317,7 @@ class TrackerPeopleSectionTest {
             statusCard.fetchSemanticsNode().boundsInRoot.width, 1f)
         compose.runOnIdle { assertEquals(1, sourceNavigations) }
 
-        // Source identity and manga identity each reset transient expansion independently.
+        // Source identity and manga identity each reset transient visibility independently.
         toggle.performClick()
         assertTrue(sourceContent.fetchSemanticsNode().boundsInRoot.width > collapsedSource.width)
         compose.runOnIdle { mangaState.value = manga.copy(source = MangaSource("MIHON_424243")) }
@@ -421,12 +430,12 @@ class TrackerPeopleSectionTest {
 
         assertLongHeroGeometry()
         compose.onNodeWithTag("hero-source-title", useUnmergedTree = true).assertTextEquals("...")
-        assertBetaSourceInternalGeometry()
+        assertBetaSourceInternalGeometry(visible = false)
         assertBetaStatusInternalGeometry()
         val initialSource = source.fetchSemanticsNode().boundsInRoot
         val initialStatus = status.fetchSemanticsNode().boundsInRoot
         val initialActions = followingActions.fetchSemanticsNode().boundsInRoot
-        compose.onNodeWithTag("hero-source-toggle").performClick()
+        compose.onNodeWithTag("hero-source-visibility-toggle").performClick()
         val expandedSource = source.fetchSemanticsNode().boundsInRoot
         assertTrue("Source must expand horizontally", expandedSource.width > initialSource.width)
         val expandedStatus = status.fetchSemanticsNode().boundsInRoot
@@ -435,12 +444,14 @@ class TrackerPeopleSectionTest {
             expandedStatus.width > 0f && expandedStatus.width < initialStatus.width)
         val fullSource = compose.onNodeWithTag("hero-source-title", useUnmergedTree = true)
         fullSource.assertTextEquals(sourceName)
-        assertBetaSourceInternalGeometry()
+        compose.onNodeWithTag("hero-source-favicon", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("hero-source-eye-open", useUnmergedTree = true).assertIsDisplayed()
+        assertBetaSourceInternalGeometry(visible = true)
         assertSourceTextFullyVisible(fullSource)
         assertLongHeroGeometry()
-        assertEquals("Source expansion must not shift following actions", initialActions.top,
+        assertEquals("Source visibility must not shift following actions", initialActions.top,
             followingActions.fetchSemanticsNode().boundsInRoot.top, 1f)
-        compose.onNodeWithTag("hero-source-toggle").performClick()
+        compose.onNodeWithTag("hero-source-visibility-toggle").performClick()
         assertLongHeroGeometry()
         compose.onNodeWithTag("hero-source-title", useUnmergedTree = true).assertTextEquals("...")
         assertEquals("Collapsed Source width must restore", initialSource.width,
@@ -498,14 +509,20 @@ class TrackerPeopleSectionTest {
         }
         assertTrue("Source must stay beside cover", sourceBefore.left >= cover.fetchSemanticsNode().boundsInRoot.right)
         status.assertIsDisplayed()
-        assertBetaSourceInternalGeometry()
+        assertBetaSourceInternalGeometry(visible = false)
         assertBetaStatusInternalGeometry()
+        val hiddenBudget = compactStatusBudgetEvidence(renderedStatus)
+        android.util.Log.i("MiyorareStatusBudget", "sourceVisible=false; $hiddenBudget")
+        compose.onNodeWithTag("hero-source-visibility-toggle").performClick()
+        val visibleBudget = compactStatusBudgetEvidence(renderedStatus)
+        android.util.Log.i("MiyorareStatusBudget", "sourceVisible=true; $visibleBudget")
+        compose.onNodeWithTag("hero-source-visibility-toggle").performClick()
         val active = compose.onNodeWithText(context.getString(R.string.details_release_active), useUnmergedTree = true)
         if (!compactExpanded) assertReadableStatusText(active, maxLines = 2, renderedStatus = renderedStatus)
         val value = compose.onNodeWithText(renderedStatus, useUnmergedTree = true)
         if (!compactExpanded) assertReadableStatusText(value, maxLines = 2, renderedStatus = renderedStatus)
 
-        compose.onNodeWithTag("hero-source-toggle").performClick()
+        compose.onNodeWithTag("hero-source-visibility-toggle").performClick()
         val sourceAfter = source.fetchSemanticsNode().boundsInRoot
         val rowAfter = row.fetchSemanticsNode().boundsInRoot
         val statusAfter = status.fetchSemanticsNode().boundsInRoot
@@ -518,7 +535,7 @@ class TrackerPeopleSectionTest {
             assertTrue("Collapsed-hero expanded Source stays within cover bottom",
                 sourceAfter.bottom <= coverBottom + 1f)
         }
-        compose.onNodeWithTag("hero-source-toggle").performClick()
+        compose.onNodeWithTag("hero-source-visibility-toggle").performClick()
         status.assertIsDisplayed()
         assertEquals("Collapse restores Source width", sourceBefore.width,
             source.fetchSemanticsNode().boundsInRoot.width, 1f)
@@ -526,7 +543,7 @@ class TrackerPeopleSectionTest {
             status.fetchSemanticsNode().boundsInRoot.width, 1f)
     }
 
-    @Test fun expandingHeroPreservesSourceChevronState() {
+    @Test fun expandingHeroPreservesSourceVisibilityState() {
         val sourceName = "Komik manga indonesia"
         val title = "The Regressed Son Of A Duke Is An Assassin"
         val manga = SampleData.mangaDetails.copy(
@@ -562,7 +579,7 @@ class TrackerPeopleSectionTest {
         val source = compose.onNodeWithTag("hero-source-content")
         val status = compose.onNodeWithTag("hero-status-card")
         val sourceText = compose.onNodeWithTag("hero-source-title", useUnmergedTree = true)
-        val toggle = compose.onNodeWithTag("hero-source-toggle")
+        val toggle = compose.onNodeWithTag("hero-source-visibility-toggle")
         val next = compose.onNodeWithTag("hero-following-actions-anchor")
         sourceText.assertTextEquals("...")
         val collapsedStatusWidth = status.fetchSemanticsNode().boundsInRoot.width
@@ -642,34 +659,45 @@ class TrackerPeopleSectionTest {
 
     // Beta source identity: 1e687d3cdfdd9c1caa882aeb1947f1085f66a3f1
     // Only interior spacing/icon dimensions are asserted here; card geometry remains owner-defined.
-    private fun assertBetaSourceInternalGeometry() {
+
+    private fun assertBetaSourceInternalGeometry(visible: Boolean) {
         val density = context.resources.displayMetrics.density
         val tolerance = 1f
         fun bounds(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot
         val card = bounds("hero-source-content")
         val label = bounds("hero-source-label")
-        val favicon = bounds("hero-source-favicon")
         val name = bounds("hero-source-title")
-        val chevron = bounds("hero-source-toggle")
-        val evidence = "card=$card, label=$label, favicon=$favicon, name=$name, chevron=$chevron, density=$density"
-        assertEquals("Beta modern Source favicon 18dp; $evidence",
-            18f * density, favicon.width, tolerance)
-        assertEquals("Beta Source chevron target 32dp; $evidence",
-            32f * density, chevron.width, tolerance)
+        val eye = bounds("hero-source-visibility-toggle")
+        val evidence = "card=$card, label=$label, name=$name, eye=$eye, visible=$visible, density=$density"
+        assertEquals("Visibility touch target must be 32dp; $evidence", 32f * density, eye.width, tolerance)
         assertTrue("Beta Source horizontal padding 11dp; $evidence",
             label.left + tolerance >= card.left + 11f * density)
-        assertTrue("Beta Source label spacing 6dp; $evidence",
-            favicon.top + tolerance >= label.bottom + 6f * density)
-        assertTrue("Beta Source favicon/name spacing 6dp; $evidence",
-            name.left + tolerance >= favicon.right + 6f * density)
-        assertTrue("Source name must have visible width; $evidence", name.width > 0f)
-        assertTrue("Source name must be inside its card; $evidence",
-            name.left >= card.left - tolerance && name.bottom <= card.bottom + tolerance)
-        assertTrue("Source name must not overlap chevron; $evidence",
-            name.right <= chevron.left + tolerance)
-        assertTrue("Source chevron must stay inside card; $evidence",
-            chevron.right <= card.right + tolerance)
+        assertTrue("Source text needs nonzero width; $evidence", name.width > 0f)
+        assertTrue("Source text must be inside Source card; $evidence",
+            name.left >= card.left - tolerance && name.right <= card.right + tolerance &&
+                name.bottom <= card.bottom + tolerance)
+        assertTrue("Eye must remain in Source card; $evidence",
+            eye.left >= card.left - tolerance && eye.right <= card.right + tolerance &&
+                eye.bottom <= card.bottom + tolerance)
+        assertTrue("Source text cannot overlap eye; $evidence",
+            name.right <= eye.left + tolerance || name.top >= eye.bottom - tolerance ||
+                name.bottom <= eye.top + tolerance)
+        assertTrue("Source label cannot overlap visibility control; $evidence",
+            label.right <= eye.left + tolerance || label.top >= eye.bottom - tolerance ||
+                label.bottom <= eye.top + tolerance)
+        if (visible) {
+            val favicon = bounds("hero-source-favicon")
+            assertEquals("Beta Source favicon 18dp; $evidence", 18f * density, favicon.width, tolerance)
+            assertTrue("Beta Source label spacing 6dp; $evidence",
+                favicon.top + tolerance >= label.bottom + 6f * density)
+            assertTrue("Beta favicon/name gap 6dp; $evidence",
+                name.left + tolerance >= favicon.right + 6f * density)
+        } else {
+            compose.onNodeWithTag("hero-source-favicon", useUnmergedTree = true).assertDoesNotExist()
+            assertTrue("Placeholder must follow label; $evidence",
+                name.top >= label.bottom - tolerance)
+        }
     }
 
     private fun assertBetaStatusInternalGeometry() {
@@ -707,8 +735,8 @@ class TrackerPeopleSectionTest {
         val layout = textLayout(node)
         val bounds = node.fetchSemanticsNode().boundsInRoot
         val tolerance = 1f
-        assertTrue("Expanded Source must have 1–2 lines: lines=${layout.lineCount}, bounds=$bounds",
-            layout.lineCount in 1..2)
+        assertTrue("Visible Source must have one or more lines: lines=${layout.lineCount}, bounds=$bounds",
+            layout.lineCount >= 1)
         assertTrue(
             "Expanded Source must fit vertically: measured=${layout.size}, " +
                 "paragraphHeight=${layout.multiParagraph.height}, bounds=$bounds",
