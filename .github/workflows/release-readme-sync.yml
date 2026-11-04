@@ -56,6 +56,24 @@ jobs:
           PY
           )
 
+          # Verify release provenance against the immutable release tag and run
+          # before editing notes or opening an automated README PR.
+          RELEASE_COMMIT="$(git rev-list -n 1 "$TAG")"
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ && "$RELEASE_COMMIT" == "$SOURCE_SHA" ]] || {
+            echo "::error::Release tag does not resolve to the recorded source SHA."
+            exit 1
+          }
+          RUN_JSON="$(mktemp)"
+          gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" > "$RUN_JSON"
+          [[ "$(jq -r '.name' "$RUN_JSON")" == "Miyorare Main Build" ]] || {
+            echo "::error::Recorded source run is not Miyorare Main Build."
+            exit 1
+          }
+          [[ "$(jq -r '.head_sha' "$RUN_JSON")" == "$SOURCE_SHA" ]] || {
+            echo "::error::Main Build run SHA differs from the release source SHA."
+            exit 1
+          }
+
           python3 .github/scripts/sync_release_readme.py normalize-release-body \
             --body "$BODY_FILE" \
             --version "$VERSION" \
