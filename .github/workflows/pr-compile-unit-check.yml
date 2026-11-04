@@ -31,6 +31,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LABEL_OWNER: ${{ contains(github.event.pull_request.labels.*.name, 'ci:owner-request') }}
           LABEL_RUNTIME: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') }}
           LABEL_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') }}
           LABEL_USER_ISSUE: ${{ contains(github.event.pull_request.labels.*.name, 'ci:user-issue') }}
@@ -47,7 +48,7 @@ jobs:
           if bash .github/scripts/select-pr-runtime-tests.sh < "$RUNNER_TEMP/runtime-changed-files.txt" >/dev/null 2>&1; then
             targeted_available=true
           fi
-          plan="$(printf '%s\n' "$plan" | DRAFT="$DRAFT" LABEL_RUNTIME="$LABEL_RUNTIME" LABEL_FULL="$LABEL_FULL" LABEL_USER_ISSUE="$LABEL_USER_ISSUE" LABEL_THEME="$LABEL_THEME" TARGETED_AVAILABLE="$targeted_available" bash .github/scripts/select-pr-runtime-tests.sh --policy)"
+          plan="$(printf '%s\n' "$plan" | DRAFT="$DRAFT" LABEL_OWNER="$LABEL_OWNER" LABEL_RUNTIME="$LABEL_RUNTIME" LABEL_FULL="$LABEL_FULL" LABEL_USER_ISSUE="$LABEL_USER_ISSUE" LABEL_THEME="$LABEL_THEME" TARGETED_AVAILABLE="$targeted_available" bash .github/scripts/select-pr-runtime-tests.sh --policy)"
           printf '%s\n' "$plan" | tee -a "$GITHUB_OUTPUT"
           # Explain the existing classifier's decision; never change its outputs or gates.
           run_runtime="$(sed -n 's/^run_runtime=//p' <<< "$plan" | tail -1)"
@@ -56,8 +57,10 @@ jobs:
             echo '## Android runtime selection'
             echo "- Exact PR HEAD: \`$HEAD_SHA\`"
             echo "- Runtime requested: **$run_runtime**, full suite: **$full_runtime**"
-            echo "- Owner/user/theme/override flags: $LABEL_RUNTIME / $LABEL_USER_ISSUE / $LABEL_THEME / $LABEL_FULL"
-            if [[ "$run_runtime" == false ]]; then
+            echo "- Owner/user/theme/override flags: $LABEL_OWNER / $LABEL_USER_ISSUE / $LABEL_THEME / $LABEL_RUNTIME / $LABEL_FULL"
+            if [[ "$LABEL_OWNER" == true && "$LABEL_RUNTIME" == false && "$LABEL_FULL" == false && "$LABEL_USER_ISSUE" == false && "$LABEL_THEME" == false ]]; then
+              echo '- Reason: owner-request runs the regular compile/resources/unit checks, while Android 15 is intentionally not selected unless a heavy label is added. Compile success alone does not prove Android runtime or release readiness.'
+            elif [[ "$run_runtime" == false ]]; then
               echo '- Reason: this PR has no runtime-relevant changed paths and no mandatory override.'
             elif [[ "$full_runtime" == true ]]; then
               echo '- Reason: shared/unmapped runtime risk or an explicit full-runtime override.'
