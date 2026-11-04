@@ -316,6 +316,41 @@ abstract class MangaDao {
 	)
 	abstract suspend fun isMigrationEntryVisible(mangaId: Long): Boolean
 
+    /**
+     * Normal migration eligibility is active Normal Disukai ownership, not reading history.
+     * Source parser installation is irrelevant; Private-only stays out of the Normal flow.
+     */
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM manga m
+            JOIN favourites f ON f.manga_id = m.manga_id AND f.deleted_at = 0
+            WHERE m.manga_id = :mangaId AND m.source NOT IN ('LOCAL', 'UNKNOWN')
+        )
+    """)
+    abstract suspend fun isNormalMigrationFavourite(mangaId: Long): Boolean
+
+    @Transaction
+    @Query("""
+        SELECT * FROM manga
+        WHERE source IN (:sources) AND source NOT IN ('LOCAL', 'UNKNOWN')
+            AND EXISTS(SELECT 1 FROM favourites f
+                WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+        ORDER BY title COLLATE NOCASE
+    """)
+    abstract fun observeNormalMigrationFavouritesBySources(sources: Collection<String>): Flow<List<MangaWithTags>>
+
+    @Query("""
+        SELECT source, MAX(source_title) AS sourceTitle, COUNT(*) AS mangaCount
+        FROM manga
+        WHERE source NOT IN ('LOCAL', 'UNKNOWN')
+            AND EXISTS(SELECT 1 FROM favourites f
+                WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+        GROUP BY source
+        ORDER BY sourceTitle COLLATE NOCASE, source COLLATE NOCASE
+    """)
+    abstract fun observeNormalMigrationSourceUsage(): Flow<List<LibrarySourceUsage>>
+
+
 	/** Internal ownership evidence for prepared/obsolete lossless download aliases, including Private. */
 	@Query("""
 		SELECT manga_id FROM (

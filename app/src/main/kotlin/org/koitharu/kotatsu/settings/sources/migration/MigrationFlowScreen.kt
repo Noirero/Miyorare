@@ -87,7 +87,17 @@ internal fun MigrationFlowScreen(
 		Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 		return
 	}
-	if (state.failed && state.manga.isEmpty()) {
+	if (state.explicitUnavailable && state.manga.isEmpty() &&
+        state.completedResults.isEmpty() && !state.isLoading
+    ) {
+        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+            Text(if (state.explicitNotFavourite)
+                "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
+                else "Manga tidak tersedia untuk migrasi melalui Disukai Normal.")
+        }
+        return
+    }
+    if (state.failed && state.manga.isEmpty()) {
 		Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center,
 			horizontalAlignment = Alignment.CenterHorizontally) {
 			Text("Sesi migrasi tidak dapat dimuat")
@@ -516,7 +526,14 @@ private fun MigrationReviewStep(
 					onCopy = if (!busy && manga.id in readyIds) ({ onCopyOne(manga.id) }) else null,
 					onSkip = if (!busy) ({ onSkipOne(manga.id) }) else null)
 			}
-			if (state.manga.isEmpty()) item { Text("Tidak ada manga dalam sesi ini.") }
+			if (state.manga.isEmpty()) item {
+                Text(when {
+                    state.explicitNotFavourite ->
+                        "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
+                    state.explicitUnavailable -> "Manga tidak tersedia untuk migrasi melalui Disukai Normal."
+                    else -> "Tidak ada manga dalam sesi ini."
+                })
+            }
 			if (state.completedResults.isNotEmpty()) {
 				item { Text("Hasil sebelumnya", style = MaterialTheme.typography.titleSmall) }
 				items(state.completedResults, key = { "done:" + it.mangaId + ":" + it.generation }) { snapshot ->

@@ -81,7 +81,7 @@ class SimpleMigrationTransfer @Inject constructor(
                     overrideDurability.persistCurrent(newId)
                 }
                 database.withTransaction {
-                    if (!database.getMangaDao().isMigrationEntryVisible(oldId) ||
+                    if (!database.getMangaDao().isNormalMigrationFavourite(oldId) ||
                         database.getPrivateFavouritesDao().isPrivateOnly(newId)
                     ) throw MigrateUseCase.SourceChangedException()
                     val corePreserved = transferCore(oldManga, newManga, targets)
@@ -127,6 +127,11 @@ class SimpleMigrationTransfer @Inject constructor(
 
         if (sourceNormal.isEmpty() && sourcePrivate.isEmpty()) {
             throw MigrateUseCase.SourceChangedException()
+        }
+        if (sourceNormal.isNotEmpty() && sourcePrivate.isNotEmpty()) {
+            // Normal migration must not silently operate on protected Private membership.
+            conflict("Mixed Normal/Private ownership requires authorized Private migration",
+                MigrationConflictReason.LIBRARY_STATE)
         }
         if (sourcePrivate.isNotEmpty() && sourceNormal.isEmpty() && targetNormal.isNotEmpty()) {
             conflict("Private-only source cannot replace an existing Normal library entry",

@@ -94,6 +94,10 @@ class YokaiStyleMigrationExecutionUseCase @Inject constructor(
 	}
     /** Explicit simple-migration execution, isolated from legacy strict and Copy paths. */
     suspend fun migrateSimple(mangaId: Long, selection: MigrationSelection): MigrationTransferResult {
+        // Revalidate at execution time, before any destination details are stored.
+        if (!database.getMangaDao().isNormalMigrationFavourite(mangaId)) {
+            throw MigrateUseCase.SourceChangedException()
+        }
         val old = checkNotNull(mangaDataRepository.findMangaById(mangaId, withChapters = true)) {
             "Source manga is no longer available"
         }

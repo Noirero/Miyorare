@@ -281,6 +281,35 @@ class SimpleMigrationTransferRegressionTest {
         }
     }
 
+
+    @Test fun mixedNormalPrivateOwnershipCannotBeTransferredFromNormalFlow() = runTest {
+        val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+        val settings = AppSettings(context)
+        val notes = MangaNotesRepository(context)
+        val old = manga(997081L, "SIMPLE_OLD", 2)
+        val target = manga(997082L, "SIMPLE_NEW", 3)
+        try {
+            seed(db, old, target, private = false)
+            db.getFavouriteCategoriesDao().upsert(FavouriteCategoryEntity(
+                997801, 1, 0, "Private Set", "NAME", false, false, true, 0, 1,
+            ))
+            db.getPrivateFavouritesDao().upsert(
+                PrivateFavouriteEntity(old.id, 997801L, 1, false, 1, 0),
+            )
+            val error = runCatching { transfer(db, settings, notes)(old, target) }.exceptionOrNull()
+            assertTrue(error is LosslessMigrationConflictException)
+            assertEquals(MigrationConflictReason.LIBRARY_STATE,
+                (error as LosslessMigrationConflictException).reason)
+            assertEquals(1, db.getFavouritesDao().findAllRaw(old.id).size)
+            assertEquals(1, db.getPrivateFavouritesDao().findAllRaw(old.id).size)
+            assertTrue(db.getFavouritesDao().findAllRaw(target.id).isEmpty())
+            assertTrue(db.getPrivateFavouritesDao().findAllRaw(target.id).isEmpty())
+            assertNull(db.getMangaDao().preservedDestination(old.id))
+        } finally {
+            db.close()
+        }
+    }
+
     @Test fun privateOnlySourceStaysPrivateWhenDestinationIsEmpty() = runTest {
         val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
         val settings = AppSettings(context)

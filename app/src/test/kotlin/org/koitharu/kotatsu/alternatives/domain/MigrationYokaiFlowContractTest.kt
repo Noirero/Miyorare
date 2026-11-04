@@ -175,7 +175,7 @@ class MigrationYokaiFlowContractTest {
 
 		assertTrue(source.contains("if(explicitMangaIds.isEmpty())return"))
 		assertTrue(source.contains("loadJob?.cancel()"))
-		assertTrue(source.contains("dao.isMigrationEntryVisible(it.manga.id)"))
+		assertTrue(source.contains("dao.isNormalMigrationFavourite(it.manga.id)"))
 	}
 
 	@Test

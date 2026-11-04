@@ -30,6 +30,18 @@ class MigrationBatchPolicyTest {
 		searchScope = searchScope,
 	)
 
+
+    @Test fun oldInterruptedHistoryOnlyDoesNotReappearWithoutOwnershipCheckpoint() {
+        assertFalse(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.INTERRUPTED, false))
+        assertFalse(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.ERROR, false))
+        assertFalse(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.READY, true))
+        assertTrue(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.INTERRUPTED, true))
+        assertTrue(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.ERROR, true))
+        assertTrue(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.MIGRATED, false))
+        assertTrue(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.MIGRATED_PRESERVED, false))
+        assertTrue(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.COPIED, false))
+    }
+
 	@Test fun onlyReadyVisibleCurrentSourceResultsBecomeBatchRequests() {
 		val states = listOf(MigrationBatchStatus.READY, MigrationBatchStatus.NEEDS_REVIEW, MigrationBatchStatus.NO_REPLACEMENT,
 			MigrationBatchStatus.INCOMPLETE, MigrationBatchStatus.ERROR, MigrationBatchStatus.SKIPPED, MigrationBatchStatus.INTERRUPTED)

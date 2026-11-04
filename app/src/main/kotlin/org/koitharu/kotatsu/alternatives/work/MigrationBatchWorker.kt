@@ -53,8 +53,11 @@ class MigrationBatchWorker @AssistedInject constructor(
 		val outcome = MigrationBatchPolicy.process(
 			request = request,
 			canAccess = {
-				database.getMangaDao().isMigrationEntryVisible(request.mangaId) &&
-					database.getMangaDao().find(request.mangaId)?.manga?.source == request.source
+				(if (request.discoveryMode == MigrationBatchDiscoveryMode.YOKAI) {
+                    database.getMangaDao().isNormalMigrationFavourite(request.mangaId)
+                } else {
+                    database.getMangaDao().isMigrationEntryVisible(request.mangaId)
+                }) && database.getMangaDao().find(request.mangaId)?.manga?.source == request.source
 			},
 			discover = {
 				val onProgress: suspend (MigrationDiscovery) -> Unit = { discovery ->
@@ -147,7 +150,7 @@ internal suspend fun completedSimpleMigration(
     val selected = request.selection ?: return null
     if (database.getMangaDao().preservedDestination(request.mangaId) != selected.id ||
         database.getMangaDao().find(selected.id)?.manga?.source != selected.source ||
-        !database.getMangaDao().isMigrationEntryVisible(selected.id) ||
+        !database.getMangaDao().isNormalMigrationFavourite(selected.id) ||
         database.getPrivateFavouritesDao().isPrivateOnly(selected.id)
     ) return null
     return MigrationBatchOutcome(

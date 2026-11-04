@@ -102,6 +102,18 @@ fun migrationConfigKey(
 }
 
 object MigrationBatchPolicy {
+    /**
+     * Inactive source rows are historical results, not candidates. An interrupted/errored
+     * source may be displayed only when Room proves a committed transfer to that target.
+     * WorkManager records are never modified by this UI projection.
+     */
+    fun shouldShowInactiveResult(status: MigrationBatchStatus, committedOwnership: Boolean): Boolean = when (status) {
+        MigrationBatchStatus.MIGRATED, MigrationBatchStatus.MIGRATED_PRESERVED,
+        MigrationBatchStatus.COPIED -> true
+        MigrationBatchStatus.ERROR, MigrationBatchStatus.INTERRUPTED -> committedOwnership
+        else -> false
+    }
+
 	fun assess(
 		discovery: MigrationDiscovery,
 		changed: Boolean = false,

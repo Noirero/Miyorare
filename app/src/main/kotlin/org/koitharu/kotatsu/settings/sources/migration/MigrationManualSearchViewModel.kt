@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.alternatives.domain.MigrationSourceStrategy
 import org.koitharu.kotatsu.alternatives.domain.YokaiStyleMigrationSearchUseCase
 import org.koitharu.kotatsu.alternatives.domain.migrationConfigKey
 import org.koitharu.kotatsu.alternatives.work.MigrationBatchScheduler
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
@@ -36,6 +37,7 @@ import javax.inject.Inject
 class MigrationManualSearchViewModel @Inject constructor(
 	private val savedStateHandle: SavedStateHandle,
 	private val mangaDataRepository: MangaDataRepository,
+    private val database: MangaDatabase,
 	private val yokaiSearch: YokaiStyleMigrationSearchUseCase,
 	private val globalSearch: MigrationGlobalSearchBridge,
 	private val batchScheduler: MigrationBatchScheduler,
@@ -136,7 +138,10 @@ class MigrationManualSearchViewModel @Inject constructor(
 		viewModelScope.launch {
 			runCatchingCancellable {
 				withContext(Dispatchers.IO) {
-					check(canPersistCandidate(candidate)) {
+                    check(database.getMangaDao().isNormalMigrationFavourite(mangaId)) {
+                        "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
+                    }
+                    check(canPersistCandidate(candidate)) {
 						"Selected result already belongs to another source"
 					}
 					mangaDataRepository.storeManga(
@@ -197,7 +202,10 @@ class MigrationManualSearchViewModel @Inject constructor(
 			runCatchingCancellable {
 				withContext(Dispatchers.IO) {
 					check(candidate.id != mangaId) { "Selected replacement conflicts with the source manga identity" }
-					check(canPersistCandidate(candidate)) {
+                    check(database.getMangaDao().isNormalMigrationFavourite(mangaId)) {
+                        "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
+                    }
+                    check(canPersistCandidate(candidate)) {
 						"Selected replacement id is already owned by a different source"
 					}
 					mangaDataRepository.storeManga(
@@ -248,7 +256,10 @@ class MigrationManualSearchViewModel @Inject constructor(
 		viewModelScope.launch {
 			runCatchingCancellable {
 				withContext(Dispatchers.IO) {
-					val seed = checkNotNull(mangaDataRepository.findMangaById(mangaId, withChapters = true))
+                    check(database.getMangaDao().isNormalMigrationFavourite(mangaId)) {
+                        "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
+                    }
+                    val seed = checkNotNull(mangaDataRepository.findMangaById(mangaId, withChapters = true))
 					val pool = yokaiSearch.sourcePool(mangaId)
 					val byName = pool.allSources.associateBy(MangaSource::name)
 					val selected = selectedSourceNames.mapNotNull(byName::get).distinctBy(MangaSource::name)

@@ -106,7 +106,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 					}
 					SourceMetadata(installedIds, repositoryIcons)
 				}
-				database.getMangaDao().observeLibrarySourceUsage().collectLatest { usages ->
+				database.getMangaDao().observeNormalMigrationSourceUsage().collectLatest { usages ->
 					val sources = withContext(Dispatchers.IO) { buildOptions(usages, metadata) }
 					val keys = usages.map { it.source }
 					if (keys.isEmpty()) {
@@ -116,7 +116,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 						) }
 						persistSelectedIds()
 					} else {
-						database.getMangaDao().observeLibraryMangaBySources(keys).collect { entries ->
+						database.getMangaDao().observeNormalMigrationFavouritesBySources(keys).collect { entries ->
 							val manga = entries.toMangaList()
 							val available = manga.mapTo(hashSetOf()) { it.id }
 							_state.update { current -> current.copy(

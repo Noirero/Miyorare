@@ -270,10 +270,14 @@ class SourceMangaListViewModel @Inject constructor(
 							// outcome for review only when the destination is still in the public library.
 							// Failures after Room commit can remove the old entry; preserve their uncertain
 							// status too, never interpreting them as completed. Do not expose Private-only data.
-							val isReported = item.outcome.status == MigrationBatchStatus.MIGRATED || item.outcome.status == MigrationBatchStatus.MIGRATED_PRESERVED ||
-								item.outcome.status == MigrationBatchStatus.COPIED ||
-								item.outcome.status == MigrationBatchStatus.ERROR ||
-								item.outcome.status == MigrationBatchStatus.INTERRUPTED
+							val committedOwnership = item.outcome.status in setOf(
+                                MigrationBatchStatus.ERROR, MigrationBatchStatus.INTERRUPTED,
+                            ) && item.outcome.destinationId?.let { targetId ->
+                                database.getMangaDao().preservedDestination(item.mangaId) == targetId
+                            } == true
+                            val isReported = MigrationBatchPolicy.shouldShowInactiveResult(
+                                item.outcome.status, committedOwnership,
+                            )
 							val belongsToSession = if (explicitMangaIds.isNotEmpty()) {
 								item.mangaId in explicitMangaIds
 							} else {
@@ -281,7 +285,8 @@ class SourceMangaListViewModel @Inject constructor(
 							}
 							if (!isReported || !belongsToSession) return@filter false
 							val destinationId = item.outcome.destinationId ?: return@filter false
-							destinationId !in privateOnly && database.getMangaDao().isMigrationEntryVisible(destinationId)
+							destinationId !in privateOnly &&
+                                database.getMangaDao().isNormalMigrationFavourite(destinationId)
 						}
 						.filterNot { it.mangaId in privateOnly }
 						.mapNotNull { item ->
@@ -289,6 +294,13 @@ class SourceMangaListViewModel @Inject constructor(
 							else if (item.mangaId in visible) item.copy(outcome = MigrationBatchOutcome(MigrationBatchStatus.NEEDS_REVIEW))
 							else null
 						}
+                    val explicitUnavailable = explicitMangaIds.isNotEmpty() && manga.isEmpty()
+                    val explicitNotFavourite = explicitUnavailable && explicitMangaIds
+                        .chunked(500).flatMap { database.getMangaDao().findByIds(it) }
+                        .any { row ->
+                            database.getFavouritesDao().findAllRaw(row.manga.id).isEmpty() &&
+                                database.getPrivateFavouritesDao().findAllRaw(row.manga.id).isEmpty()
+                        }
 					val latest = MigrationBatchPolicy.latest(snapshots).mapValues { (_, snapshot) ->
                         reconcileInterruptedSimpleMigration(database, snapshot)
                     }
@@ -313,7 +325,7 @@ class SourceMangaListViewModel @Inject constructor(
                     val publicPreserved = preservedRows.filter { row ->
                         val destinationId = row.manga.preservedToMangaId
                         destinationId != null && destinationId !in privateOnly &&
-                            database.getMangaDao().isMigrationEntryVisible(destinationId)
+                            database.getMangaDao().isNormalMigrationFavourite(destinationId)
                     }
                     val preservedSources = publicPreserved.toMangaList().associateBy(Manga::id)
 					val targetManga = latest.mapNotNull { (sourceId, snapshot) ->
@@ -326,7 +338,7 @@ class SourceMangaListViewModel @Inject constructor(
 						if (id == null || source == null || id in privateOnly) return@mapNotNull null
 						val candidate = candidates[id] ?: return@mapNotNull null
 						if (candidate.source.name != source) return@mapNotNull null
-						if (completed && !database.getMangaDao().isMigrationEntryVisible(id)) return@mapNotNull null
+						if (completed && !database.getMangaDao().isNormalMigrationFavourite(id)) return@mapNotNull null
 						sourceId to candidate
 					}.toMap()
 					val owned = snapshots.firstOrNull { it.running }?.batchName
@@ -339,7 +351,9 @@ class SourceMangaListViewModel @Inject constructor(
 						manga = manga,
 						targetManga = targetManga,
                         preservedSourceManga = preservedSources,
-						batchItems = latest,
+                        batchItems = latest,
+                        explicitUnavailable = explicitUnavailable,
+                        explicitNotFavourite = explicitNotFavourite,
 						batchBusy = works.any { !it.state.isFinished && !MigrationBatchWork.isTerminal(it) },
 						ownedBatchName = owned,
                         activeBatchName = active,
@@ -383,11 +397,11 @@ class SourceMangaListViewModel @Inject constructor(
 			val dao = database.getMangaDao()
 			// Explicit multi-selection can exceed SQLite's per-statement bind-variable limit.
 			val visible = explicitMangaIds.chunked(500).flatMap { dao.findByIds(it) }
-				.filter { dao.isMigrationEntryVisible(it.manga.id) }
+				.filter { dao.isNormalMigrationFavourite(it.manga.id) }
 			emit(visible)
 		}
 	} else {
-		database.getMangaDao().observeLibraryMangaBySources(sourceKeys)
+		database.getMangaDao().observeNormalMigrationFavouritesBySources(sourceKeys)
 	}
 
 	private fun loadSearchSources(manga: List<Manga>, force: Boolean = false) {
@@ -453,7 +467,9 @@ data class SourceMangaListState(
 	val isLoading: Boolean = true,
 	val failed: Boolean = false,
 	val manga: List<Manga> = emptyList(),
-	val selectedIds: Set<Long> = emptySet(),
+    val selectedIds: Set<Long> = emptySet(),
+    val explicitUnavailable: Boolean = false,
+    val explicitNotFavourite: Boolean = false,
 	val preferredAction: MigrationBatchAction? = null,
 	val targetManga: Map<Long, Manga> = emptyMap(),
 	val filter: MigrationBatchStatus? = null,
