@@ -64,6 +64,34 @@ class OnDeviceLightThemeRegressionTest {
         assertFalse(source("res/layout/item_smart_local_group_row.xml").contains("#1D2B3D"))
     }
 
+
+    @Test fun compactPanelUsesLocalPaletteRatherThanInheritedGlobalPurple() {
+        val layout = source("res/layout-w480dp/item_smart_local_panel.xml")
+        assertTrue(layout.contains("android:textColor=\"@color/smart_local_accent_text\""))
+        assertTrue(layout.contains("android:textColor=\"@color/smart_local_cream\""))
+        assertTrue(layout.contains("android:textColor=\"@color/smart_local_segment_text\""))
+        assertTrue(layout.contains("app:backgroundTint=\"@color/smart_local_segment_fill\""))
+        assertTrue(layout.contains("app:startIconTint=\"@color/smart_local_accent_text\""))
+        assertTrue(layout.contains("app:iconTint=\"@color/smart_local_accent_text\""))
+        for (id in listOf("button_manage_folders", "chip_all", "chip_manga", "chip_novel", "button_filter", "button_sort")) {
+            assertTrue(layout.contains("android:id=\"@+id/$id\""))
+        }
+    }
+
+    @Test fun compactResumeKeepsProgressLabelsAndCardClick() {
+        val layout = source("res/layout/item_smart_local_resume.xml")
+        val adapter = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/SmartLocalCollectionAD.kt")
+        assertTrue(layout.contains("android:layout_width=\"60dp\" android:layout_height=\"84dp\""))
+        assertTrue(layout.contains("android:layout_marginVertical=\"5dp\""))
+        assertTrue(layout.contains("android:id=\"@+id/progress\""))
+        assertTrue(layout.contains("android:id=\"@+id/textView_progress\""))
+        assertTrue(layout.contains("android:layout_weight=\"1\""))
+        assertTrue(layout.contains("android:layout_width=\"48dp\" android:layout_height=\"48dp\""))
+        assertTrue(adapter.contains("binding.root.setOnClickListener { listener.onSmartLocalResume(item.manga) }"))
+        assertTrue(adapter.contains("binding.progress.progress = item.progress"))
+        assertTrue(adapter.contains("binding.textViewProgress.text = NumberFormat.getPercentInstance()"))
+    }
+
     @Test fun noticeUsesMatchedSemanticForegroundInsteadOfCinematicColors() {
         val notice = source("res/drawable/bg_smart_local_notice.xml")
         val header = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/ListHeaderAD.kt")
