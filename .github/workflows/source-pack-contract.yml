@@ -218,6 +218,21 @@ jobs:
           assert 'Reuse identical pending beta sync PR' in sync
           assert 'desired_blob=' in sync
           assert 'actual_blob=' in sync
+          # Reused PRs must prove manifest-only scope and successful
+          # exact-head Identity Guard + Source Pack Check. A matching
+          # manifest blob alone is not validation evidence.
+          assert 'changed_files=' in sync
+          assert 'steps.pending.outputs.branch || steps.commit.outputs.branch' in sync
+          assert 'steps.pending.outputs.head_sha || steps.commit.outputs.head_sha' in sync
+          assert 'steps.pending.outputs.number || steps.pr.outputs.number' in sync
+          assert 'Reuse or dispatch required exact-head validations' in sync
+          assert 'latest_run()' in sync
+          assert 'ensure_run()' in sync
+          assert '--event workflow_dispatch' in sync
+          assert '--json databaseId,headSha,status,conclusion' in sync
+          assert 'ensure_run identity-guard.yml' in sync
+          assert 'ensure_run miyorare-source-pack-check.yml' in sync
+          assert 'gh run watch "$RUN_ID"' in sync
           assert 'Hold validated beta sync for protected branch review' in sync
           assert 'gh pr merge' not in sync
           PY
