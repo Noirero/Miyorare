@@ -56,6 +56,29 @@ jobs:
           PY
           )
 
+          # Verify release provenance against the immutable release tag and run
+          # before editing notes or opening an automated README PR.
+          RELEASE_COMMIT="$(git rev-list -n 1 "$TAG")"
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ && "$RELEASE_COMMIT" == "$SOURCE_SHA" ]] || {
+            echo "::error::Release tag does not resolve to the recorded source SHA."
+            exit 1
+          }
+          RUN_JSON="$(mktemp)"
+          gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" > "$RUN_JSON"
+          [[ "$(jq -r '.path' "$RUN_JSON")" == ".github/workflows/main-build.yml" ]] || {
+            echo "::error::Recorded source run is not the official Main Build workflow."
+            exit 1
+          }
+          [[ "$(jq -r '.event' "$RUN_JSON")" == "workflow_dispatch" && \
+             "$(jq -r '.conclusion' "$RUN_JSON")" == "success" ]] || {
+            echo "::error::Recorded Main Build run was not a successful manual build."
+            exit 1
+          }
+          [[ "$(jq -r '.head_sha' "$RUN_JSON")" == "$SOURCE_SHA" ]] || {
+            echo "::error::Main Build run SHA differs from the release source SHA."
+            exit 1
+          }
+
           python3 .github/scripts/sync_release_readme.py normalize-release-body \
             --body "$BODY_FILE" \
             --version "$VERSION" \
