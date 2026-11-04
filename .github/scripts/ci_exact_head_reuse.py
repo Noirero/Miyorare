@@ -14,6 +14,10 @@ import urllib.request
 from typing import Any, Callable
 
 COMPILE_JOB = "Compile, resources & unit tests"
+ACTUAL_BUILD_STEPS = {
+    "Compile, validate resources and build Kotatsu Runtime Pack",
+    "Run JVM unit tests",
+}
 
 
 def eligible_run(
@@ -71,13 +75,23 @@ def find_proof(
         ):
             continue
         jobs = jobs_for_run(int(run["id"]))
-        if any(
-            job.get("name") == COMPILE_JOB
-            and job.get("status") == "completed"
-            and job.get("conclusion") == "success"
-            for job in jobs
-        ):
-            return int(run["id"])
+        for job in jobs:
+            if (
+                job.get("name") != COMPILE_JOB
+                or job.get("status") != "completed"
+                or job.get("conclusion") != "success"
+            ):
+                continue
+            # Never use a reused job as the next reusable proof. Require the
+            # original compilation and JVM test steps to have actually passed.
+            completed_steps = {
+                step.get("name")
+                for step in (job.get("steps") or [])
+                if step.get("status") == "completed"
+                and step.get("conclusion") == "success"
+            }
+            if ACTUAL_BUILD_STEPS <= completed_steps:
+                return int(run["id"])
     return None
 
 
