@@ -50,10 +50,10 @@ PROMOTION_HEADS = {"beta", "Amain2"}
 STATUS_LABELS = {
     ("completed", "success"): "✅ passed",
     ("completed", "failure"): "❌ failed",
-    ("completed", "cancelled"): "⚪ cancelled",
-    ("completed", "skipped"): "⏭️ skipped",
+    ("completed", "cancelled"): "⚪ cancelled (no passing evidence)",
+    ("completed", "skipped"): "⏭️ skipped (conditional, not a passed test)",
     ("completed", "timed_out"): "⏱️ timed out",
-    ("completed", "action_required"): "⚠️ action required",
+    ("completed", "action_required"): "⚠️ action required (GitHub approval)",
     ("completed", "neutral"): "➖ neutral",
     ("completed", "stale"): "⚠️ stale",
     ("completed", "startup_failure"): "❌ startup failure",
@@ -126,6 +126,29 @@ class GitHubClient:
         )
         payload = self.get(f"/repos/{self.repository}/actions/runs?{query}")
         return list(payload.get("workflow_runs", []))
+
+    def latest_label_change(self, pr_number: int) -> str | None:
+        """Find the most recent CI-policy label mutation, including removals.
+
+        Exhaustively page GitHub issue events; fail closed if the history is
+        inaccessible or exceeds the pagination safety limit.
+        """
+        latest = None
+        for page in range(1, 11):
+            events = self.get(
+                f"/repos/{self.repository}/issues/{pr_number}/events?per_page=100&page={page}"
+            )
+            for event in events:
+                if (
+                    event.get("event") in {"labeled", "unlabeled"}
+                    and (event.get("label") or {}).get("name") in TRACKED_LABELS
+                ):
+                    at = event.get("created_at")
+                    if at and (latest is None or at > latest):
+                        latest = at
+            if len(events) < 100:
+                return latest
+        raise ValueError("CI label event history exceeded pagination safety limit")
 
     def jobs_for_run(self, run_id: int) -> list[dict[str, Any]]:
         payload = self.get(
@@ -310,12 +333,26 @@ def failure_details(client: GitHubClient, run: dict[str, Any]) -> list[str]:
 
 
 def technical_readiness(
-    *, pr: dict[str, Any], states: list[GateState], label_errors: list[str]
+    *,
+    pr: dict[str, Any],
+    states: list[GateState],
+    label_errors: list[str],
+    labels: set[str] | None = None,
+    android_job: dict[str, Any] | None = None,
+    last_label_change: str | None = None,
+    evidence_unavailable: bool = False,
 ) -> tuple[str, str]:
     if bool(pr.get("draft")):
         return "blocked", "draft PR"
     if label_errors:
         return "blocked", "label consistency error"
+    if evidence_unavailable:
+        return "waiting", "CI label or Android job evidence is temporarily unavailable"
+
+    labels = labels if labels is not None else tracked_label_set(pr)
+    mandatory_android = bool(
+        {"ci:runtime-required", "ci:runtime-full", "ci:user-issue", "ci:theme"} & labels
+    )
 
     applicable = [state for state in states if state.applicable]
     if not applicable:
@@ -328,10 +365,28 @@ def technical_readiness(
         conclusion = state.run.get("conclusion")
         if status != "completed":
             return "waiting", f"{state.name} is {status or 'pending'}"
-        if conclusion not in PASSING_CONCLUSIONS:
+        if state.name == "PR Compile & Unit Check":
+            # Neither a skipped nor neutral workflow is proof of its compile gate.
+            if last_label_change:
+                started = str(state.run.get("created_at") or "")
+                if not started or started < last_label_change:
+                    return "waiting", "new label policy needs a newer CI run"
+            if conclusion != "success":
+                return "blocked", f"{state.name} concluded {conclusion or 'unknown'}"
+            if mandatory_android:
+                if android_job is None:
+                    return "waiting", "required Android 15 job has not been observed"
+                if android_job.get("status") != "completed":
+                    return "waiting", "required Android 15 job is still running"
+                if android_job.get("conclusion") != "success":
+                    return "blocked", (
+                        "required Android 15 job concluded "
+                        f"{android_job.get('conclusion') or 'unknown'}"
+                    )
+        elif conclusion not in PASSING_CONCLUSIONS:
             return "blocked", f"{state.name} concluded {conclusion or 'unknown'}"
 
-    return "ready", "current-head applicable gates are non-blocking"
+    return "ready", "current-head applicable gates meet their checked requirements"
 
 
 def promotion_readiness(
@@ -446,8 +501,35 @@ def analyze_pr(
         base_ref=base_ref,
         body=str(pr.get("body") or ""),
     )
+    last_label_change = None
+    android_job = None
+    evidence_unavailable = False
+    if base_ref == "Amain2":
+        try:
+            last_label_change = client.latest_label_change(pr_number)
+            compile_run = latest.get("PR Compile & Unit Check")
+            if compile_run:
+                jobs = client.jobs_for_run(int(compile_run["id"]))
+                android_job = next(
+                    (job for job in jobs if job.get("name") ==
+                     "Android runtime validation — Android 15"),
+                    None,
+                )
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            evidence_unavailable = True
+            label_warnings.append(
+                f"CI evidence lookup unavailable ({type(exc).__name__}); "
+                "technical readiness is held."
+            )
+
     technical = technical_readiness(
-        pr=pr, states=states, label_errors=label_errors
+        pr=pr,
+        states=states,
+        label_errors=label_errors,
+        labels=labels,
+        android_job=android_job,
+        last_label_change=last_label_change,
+        evidence_unavailable=evidence_unavailable,
     )
     promotion = promotion_readiness(pr=pr, states=states)
     artifacts = (
@@ -466,6 +548,8 @@ def analyze_pr(
     return {
         "pr": pr,
         "states": states,
+        "android_job": android_job,
+        "last_label_change": last_label_change,
         "labels": labels,
         "label_errors": label_errors,
         "label_warnings": label_warnings,
@@ -513,6 +597,22 @@ def render_card(
             display = f"{display} · [run]({state.run_url})"
         lines.append(f"| {state.name} | {display} |")
 
+    if base_ref == "Amain2":
+        job = analysis.get("android_job")
+        mandatory = bool(
+            {"ci:runtime-required", "ci:runtime-full", "ci:user-issue", "ci:theme"}
+            & labels
+        )
+        kind = "required by label" if mandatory else "classifier-dependent"
+        if job:
+            display = STATUS_LABELS.get(
+                (job.get("status"), job.get("conclusion")),
+                STATUS_LABELS.get((job.get("status"), None), "❔ unknown"),
+            )
+        else:
+            display = "🕒 awaiting required job" if mandatory else "➖ not observed"
+        lines.append(f"| Android 15 ({kind}) | {display} |")
+
     technical = analysis["technical"]
     lines.extend(
         [
@@ -538,14 +638,30 @@ def render_card(
         attention.append(f"- **Label/traceability:** {item}")
 
     for state in applicable_states:
-        if not state.run or state.run.get("conclusion") not in FAILURE_CONCLUSIONS:
+        if not state.run:
             continue
-        details = failure_details(client, state.run)
-        detail_text = "; ".join(details)
-        attention.append(
-            f"- **{state.name}** needs attention: {detail_text}. "
-            f"[Open run]({state.run_url})"
-        )
+        conclusion = state.run.get("conclusion")
+        if conclusion == "action_required":
+            attention.append(
+                f"- **{state.name}:** GitHub approval is required to start this workflow. "
+                f"[Review run]({state.run_url})"
+            )
+        elif conclusion == "cancelled":
+            attention.append(
+                f"- **{state.name}:** cancelled, not a test failure; "
+                "look for a newer replacement run on the current head."
+            )
+        elif conclusion == "skipped":
+            attention.append(
+                f"- **{state.name}:** skipped by workflow conditions; "
+                "this is not evidence that mandatory checks passed."
+            )
+        elif conclusion in FAILURE_CONCLUSIONS:
+            details = failure_details(client, state.run)
+            attention.append(
+                f"- **{state.name}:** validation failed: {'; '.join(details)}. "
+                f"[Open run]({state.run_url})"
+            )
 
     for item in analysis["drift"]:
         attention.append(f"- **Automation drift:** {item}.")
