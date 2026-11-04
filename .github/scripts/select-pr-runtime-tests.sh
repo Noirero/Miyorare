@@ -61,6 +61,7 @@ add_mangaupdates_suite() {
 
 add_migration_suite() {
   add_class org.koitharu.kotatsu.alternatives.domain.LosslessMigrationTransferRegressionTest
+  add_class org.koitharu.kotatsu.alternatives.domain.SimpleMigrationTransferRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.LosslessMigrationCopyRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.MigrationNonRoomDurabilityRegressionTest
@@ -148,6 +149,7 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.scrobbling.mangaupdates.data.MangaUpdatesSessionStoreTest
   add_class org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivityTest
   add_class org.koitharu.kotatsu.alternatives.domain.LosslessMigrationTransferRegressionTest
+  add_class org.koitharu.kotatsu.alternatives.domain.SimpleMigrationTransferRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.LosslessMigrationCopyRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.MigrationNonRoomDurabilityRegressionTest
@@ -441,6 +443,7 @@ self_test() {
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/Foo.kt')"
   grep -q '^run_migration_persistence=true$' <<<"$out"
+  grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
 
   out="$(plan_from_paths false 'kotatsu-runtime/src/main/kotlin/example/Foo.kt')"
   grep -q '^run_runtime_isolation=true$' <<<"$out"
@@ -457,6 +460,7 @@ self_test() {
   out="$(plan_from_paths true 'README.md')"
   grep -q '^mode=full$' <<<"$out"
   grep -q 'CategorySetsUiTest' <<<"$out"
+  grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
   grep -q '^run_runtime_isolation=true$' <<<"$out"
   grep -q '^run_migration_persistence=true$' <<<"$out"
