@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
@@ -184,20 +186,20 @@ class TrackerPeopleSectionTest {
     }
 
 
-    @Test fun compactHeroSourceToggleKeepsRoutingAndUnclipsStatus() =
+    @Test fun compactHeroEyeShowsSourceAndCompressesStatus() =
         verifySourceStatusInteraction(centered = false, compactExpanded = false, width = 220)
 
-    @Test fun centeredHeroSourceToggleKeepsRoutingAndUnclipsStatus() =
+    @Test fun centeredHeroEyeShowsSourceAndCompressesStatus() =
         verifySourceStatusInteraction(centered = true, compactExpanded = false, width = 320)
 
-    @Test fun expandedCompactHeroSourceToggleKeepsRoutingAndUnclipsStatus() =
+    @Test fun expandedCompactHeroEyeShowsSourceAndCompressesStatus() =
         verifySourceStatusInteraction(centered = false, compactExpanded = true, width = 220)
 
     private fun verifySourceStatusInteraction(centered: Boolean, compactExpanded: Boolean, width: Int) {
-        val veryLongSource = "Synthetic Extension With A Very Long Official Source Name And Multiple Additional Words"
-        val source = MangaSource("MIHON_424242")
+        val sourceName = "Komik manga indonesia"
+        val renderedStatus = "Masih lanjut"
         val manga = SampleData.mangaDetails.copy(
-            source = source,
+            source = MangaSource("MIHON_424242"),
             url = "https://example.invalid/manga/hero-source-status",
             publicUrl = "https://example.invalid/manga/hero-source-status",
         )
@@ -216,9 +218,9 @@ class TrackerPeopleSectionTest {
                     Box(androidx.compose.ui.Modifier.width(width.dp)) {
                         HeroSourceStatusRow(
                             manga = mangaState.value,
-                            sourceTitle = veryLongSource,
+                            sourceTitle = sourceName,
                             imageLoader = loader,
-                            status = "Masih lanjut",
+                            status = renderedStatus,
                             showActiveRelease = true,
                             accent = colors.colorScheme.primary,
                             centered = centered,
@@ -232,48 +234,69 @@ class TrackerPeopleSectionTest {
 
         val sourceText = compose.onNodeWithTag("hero-source-title", useUnmergedTree = true)
         val sourceContent = compose.onNodeWithTag("hero-source-content")
+        val statusCard = compose.onNodeWithTag("hero-status-card")
         val toggle = compose.onNodeWithTag("hero-source-toggle")
-        val expandSource = context.getString(R.string.expand) + ": " + context.getString(R.string.details_source)
-        val collapseSource = context.getString(R.string.collapse) + ": " + context.getString(R.string.details_source)
+        val showLabel = context.getString(R.string.details_show_source)
+        val hideLabel = context.getString(R.string.details_hide_source)
         val releaseText = context.getString(R.string.details_release_active)
 
-        // The chapter-list chevron also exposes "Expand"; source must be distinguishable.
-        compose.onNodeWithContentDescription(expandSource).assertIsDisplayed()
+        fun assertHiddenWithNormalStatus() {
+            compose.onNodeWithContentDescription(showLabel).assertIsDisplayed()
+            compose.onNodeWithTag("hero-source-eye-off", useUnmergedTree = true).assertExists()
+            compose.onNodeWithTag("hero-source-eye-open", useUnmergedTree = true).assertDoesNotExist()
+            compose.onNodeWithText(context.getString(R.string.details_source), useUnmergedTree = true).assertIsDisplayed()
+            sourceText.assertTextEquals("...")
+            compose.onNodeWithTag("hero-source-favicon", useUnmergedTree = true).assertDoesNotExist()
+            compose.onNodeWithText(sourceName, useUnmergedTree = true).assertDoesNotExist()
+            statusCard.assertIsDisplayed()
+            compose.onNodeWithText(context.getString(R.string.status), useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithText(renderedStatus, useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag("hero-status-icon", useUnmergedTree = true).assertIsDisplayed()
+        }
 
-        // Both cards render by default. A deliberately long source gets one-line ellipsis.
-        compose.onNodeWithTag("hero-status-card").assertExists()
-        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
-        assertTextOverflow(sourceText, expected = true)
-        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertIsDisplayed()
-        assertTextOverflow(compose.onNodeWithText("Masih lanjut", useUnmergedTree = true), expected = false)
-        assertTextOverflow(compose.onNodeWithText(releaseText, useUnmergedTree = true), expected = false)
+        assertHiddenWithNormalStatus()
+        val normalSourceWidth = sourceContent.fetchSemanticsNode().boundsInRoot.width
+        val normalStatusWidth = statusCard.fetchSemanticsNode().boundsInRoot.width
 
-        // Exclusive child click: toggling the chevron never invokes source routing.
         toggle.performClick()
-        compose.onNodeWithContentDescription(collapseSource).assertIsDisplayed()
-        compose.onNodeWithTag("hero-status-card").assertDoesNotExist()
-        compose.onNodeWithText(veryLongSource, useUnmergedTree = true).assertExists()
+        compose.onNodeWithContentDescription(hideLabel).assertIsDisplayed()
+        compose.onNodeWithTag("hero-source-eye-open", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("hero-source-eye-off", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("hero-source-favicon", useUnmergedTree = true).assertIsDisplayed()
+        sourceText.assertTextEquals(sourceName)
         assertTextOverflow(sourceText, expected = false)
-        compose.runOnIdle { assertEquals(0, sourceNavigations) }
+        statusCard.assertIsDisplayed()
+        compose.onNodeWithTag("hero-status-icon", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.status), useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText(renderedStatus, useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertDoesNotExist()
+        assertTrue("Opened Source must get more width",
+            sourceContent.fetchSemanticsNode().boundsInRoot.width > normalSourceWidth)
+        assertTrue("Status must be narrower, not removed",
+            statusCard.fetchSemanticsNode().boundsInRoot.width < normalStatusWidth)
+        val statusAccessibility = statusCard.fetchSemanticsNode()
+            .config[SemanticsProperties.ContentDescription].joinToString(" ")
+        assertTrue("Icon-only Status must announce its value", statusAccessibility.contains(renderedStatus))
+        compose.runOnIdle { assertEquals("Eye click must not navigate", 0, sourceNavigations) }
 
-        // Clicking the content still invokes the original navigation callback.
         sourceContent.performClick()
-        compose.runOnIdle { assertEquals(1, sourceNavigations) }
-        toggle.performClick()
-        compose.onNodeWithContentDescription(expandSource).assertIsDisplayed()
-        compose.onNodeWithTag("hero-status-card").assertExists()
-        compose.onNodeWithText("Masih lanjut", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertExists()
-        compose.runOnIdle { assertEquals(1, sourceNavigations) }
-        assertTextOverflow(sourceText, expected = true)
+        compose.runOnIdle { assertEquals("Source content navigates once", 1, sourceNavigations) }
 
-        // A different manga/source reuses the composable slot but must reset transient expansion.
         toggle.performClick()
-        compose.onNodeWithTag("hero-status-card").assertDoesNotExist()
-        compose.runOnIdle { mangaState.value = manga.copy(source = MangaSource("MIHON_424243")) }
-        compose.onNodeWithTag("hero-status-card").assertExists()
+        assertHiddenWithNormalStatus()
+        assertEquals("Closing eye restores main Source sizing", normalSourceWidth,
+            sourceContent.fetchSemanticsNode().boundsInRoot.width, 1f)
+        assertEquals("Closing eye restores full Status sizing", normalStatusWidth,
+            statusCard.fetchSemanticsNode().boundsInRoot.width, 1f)
         compose.runOnIdle { assertEquals(1, sourceNavigations) }
+
+        toggle.performClick()
+        compose.runOnIdle { mangaState.value = manga.copy(source = MangaSource("MIHON_424243")) }
+        assertHiddenWithNormalStatus()
+        toggle.performClick()
+        compose.runOnIdle { mangaState.value = mangaState.value.copy(id = manga.id + 1) }
+        assertHiddenWithNormalStatus()
     }
 
     private fun assertTextOverflow(node: SemanticsNodeInteraction, expected: Boolean) {

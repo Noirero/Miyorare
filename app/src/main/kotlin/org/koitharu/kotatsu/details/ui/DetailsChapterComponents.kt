@@ -228,7 +228,8 @@ internal fun HeroSourceStatusRow(
 	compactExpanded: Boolean = false,
 	onSourceClick: () -> Unit,
 ) {
-	var sourceExpanded by remember(manga.id, manga.source) { mutableStateOf(false) }
+	var sourceVisible by remember(manga.id, manga.source) { mutableStateOf(false) }
+	val palette = LocalMiyorareVisualPalette.current
 	val hasSource = !manga.isLocal
 	val minimumHeight = if (centered) 82.dp else if (compactExpanded) 78.dp else 60.dp
 	Row(
@@ -244,22 +245,28 @@ internal fun HeroSourceStatusRow(
 				sourceTitle = sourceTitle,
 				imageLoader = imageLoader,
 				onSourceClick = onSourceClick,
-				expanded = sourceExpanded,
-				onToggleExpanded = { sourceExpanded = !sourceExpanded },
+				visible = sourceVisible,
+				onToggleVisibility = { sourceVisible = !sourceVisible },
 				modifier = Modifier
-					.weight(if (status == null || sourceExpanded) 1f else 0.38f)
+					.weight(if (status == null || sourceVisible) 1f else 0.38f)
 					.fillMaxHeight(),
 			)
 		}
-		if (status != null && (!hasSource || !sourceExpanded)) {
+		if (status != null) {
+			val iconOnly = hasSource && sourceVisible
+			val statusModifier = if (iconOnly) {
+				// Main hero is 40dp; retain the existing horizontal card padding.
+				val horizontalPadding = if (palette.isModern) 11.dp else 10.dp
+				Modifier.width(40.dp + horizontalPadding + horizontalPadding)
+			} else {
+				Modifier.weight(if (hasSource) 0.62f else 1f)
+			}
 			HeroStatusCard(
 				status = status,
 				showActiveRelease = showActiveRelease,
 				accent = accent,
-				modifier = Modifier
-					.weight(if (hasSource) 0.62f else 1f)
-					.fillMaxHeight()
-					.testTag("hero-status-card"),
+				iconOnly = iconOnly,
+				modifier = statusModifier.fillMaxHeight().testTag("hero-status-card"),
 			)
 		}
 	}
@@ -271,8 +278,8 @@ private fun HeroSourceCard(
 	sourceTitle: String?,
 	imageLoader: ImageLoader,
 	onSourceClick: () -> Unit,
-	expanded: Boolean,
-	onToggleExpanded: () -> Unit,
+	visible: Boolean,
+	onToggleVisibility: () -> Unit,
 	modifier: Modifier = Modifier,
 ) {
 	val context = LocalContext.current
@@ -310,21 +317,21 @@ private fun HeroSourceCard(
 					verticalAlignment = Alignment.CenterVertically,
 					horizontalArrangement = Arrangement.spacedBy(if (palette.isModern) 6.dp else 5.dp),
 				) {
-					AsyncImage(
+					if (visible) AsyncImage(
 						model = faviconRequest,
 						imageLoader = imageLoader,
 						contentDescription = null,
 						error = painterResource(R.drawable.ic_manga_source),
 						fallback = painterResource(R.drawable.ic_manga_source),
-						modifier = Modifier.size(if (palette.isModern) 18.dp else 17.dp),
+						modifier = Modifier.size(if (palette.isModern) 18.dp else 17.dp).testTag("hero-source-favicon"),
 					)
 					Text(
-						text = srcText,
+						text = if (visible) srcText else "...",
 						style = MaterialTheme.typography.labelMedium,
 						fontWeight = FontWeight.SemiBold,
 						color = MaterialTheme.colorScheme.onSurface,
-						maxLines = if (expanded) Int.MAX_VALUE else 1,
-						overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
+						maxLines = if (visible) Int.MAX_VALUE else 1,
+						overflow = if (visible) TextOverflow.Clip else TextOverflow.Ellipsis,
 						modifier = Modifier
 							.weight(1f)
 							.padding(end = 24.dp)
@@ -333,19 +340,18 @@ private fun HeroSourceCard(
 				}
 			}
 			IconButton(
-				onClick = onToggleExpanded,
+				onClick = onToggleVisibility,
 				modifier = Modifier
 					.align(Alignment.CenterEnd)
 					.size(32.dp)
 					.testTag("hero-source-toggle"),
 			) {
 				Icon(
-					painter = painterResource(R.drawable.ic_chevron_right),
-					contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand) +
-						": " + stringResource(R.string.details_source),
+					painter = painterResource(if (visible) R.drawable.ic_visibility else R.drawable.ic_visibility_off),
+					contentDescription = stringResource(if (visible) R.string.details_hide_source else R.string.details_show_source),
 					tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-					modifier = Modifier.size(if (palette.isModern) 14.dp else 12.dp)
-						.rotate(if (expanded) 180f else 0f),
+					modifier = Modifier.size(if (palette.isModern) 18.dp else 17.dp)
+						.testTag(if (visible) "hero-source-eye-open" else "hero-source-eye-off"),
 				)
 			}
 		}
@@ -451,6 +457,7 @@ private fun HeroStatusCard(
 	status: String,
 	showActiveRelease: Boolean,
 	accent: Color,
+	iconOnly: Boolean = false,
 	modifier: Modifier = Modifier,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
@@ -459,6 +466,12 @@ private fun HeroStatusCard(
 	} else {
 		accent
 	}
+	val statusLabel = stringResource(R.string.status)
+	val releaseLabel = if (showActiveRelease) stringResource(R.string.details_release_active) else null
+	val accessibleSummary = "$statusLabel: $status" + (releaseLabel?.let { ", $it" } ?: "")
+	val cardModifier = if (iconOnly) modifier.semantics(mergeDescendants = true) {
+		contentDescription = accessibleSummary
+	} else modifier
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
 	val statusContent: @Composable () -> Unit = {
 		Row(
@@ -478,6 +491,7 @@ private fun HeroStatusCard(
 				Box(
 					modifier = Modifier
 						.size(40.dp)
+						.testTag("hero-status-icon")
 						.shadow(
 							elevation = if (palette.effectLevel == VisualEffectLevel.FULL) 5.dp else 2.dp,
 							shape = iconShape,
@@ -507,7 +521,7 @@ private fun HeroStatusCard(
 					shape = iconShape,
 					color = statusColor.copy(alpha = 0.11f),
 					border = BorderStroke(1.dp, statusColor.copy(alpha = 0.66f)),
-					modifier = Modifier.size(40.dp),
+					modifier = Modifier.size(40.dp).testTag("hero-status-icon"),
 				) {
 					Box(contentAlignment = Alignment.Center) {
 						Icon(
@@ -519,7 +533,7 @@ private fun HeroStatusCard(
 					}
 				}
 			}
-			Column(modifier = Modifier.weight(1f)) {
+			if (!iconOnly) Column(modifier = Modifier.weight(1f)) {
 				Text(
 					text = stringResource(R.string.status),
 					style = MaterialTheme.typography.labelSmall,
@@ -552,7 +566,7 @@ private fun HeroStatusCard(
 			border = BorderStroke(0.9.dp, accent.copy(alpha = 0.34f)),
 			tonalElevation = 0.dp,
 			shadowElevation = 0.dp,
-			modifier = modifier,
+			modifier = cardModifier,
 		) {
 			statusContent()
 		}
@@ -628,7 +642,7 @@ private fun HeroStatusCard(
 	)
 
 	Box(
-		modifier = modifier
+		modifier = cardModifier
 			.shadow(
 				elevation = glowElevation,
 				shape = shape,
