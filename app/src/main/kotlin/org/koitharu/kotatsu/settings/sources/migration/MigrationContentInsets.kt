@@ -14,18 +14,25 @@ import com.google.android.material.appbar.AppBarLayout
  * inner migration action panels must not apply navigationBarsPadding a second time.
  */
 internal fun bindMigrationContentInsets(view: View, appBar: AppBarLayout) {
-    var appBarOverlap = appBar.totalScrollRange
+    var appBarOffset = 0
     var navigationBarBottom = 0
 
     fun update() {
-        view.updatePadding(bottom = appBarOverlap + navigationBarBottom)
+        val appBarOverlap = (appBar.totalScrollRange + appBarOffset).coerceAtLeast(0)
+        val bottomInset = appBarOverlap + navigationBarBottom
+        if (view.paddingBottom != bottomInset) view.updatePadding(bottom = bottomInset)
     }
 
-    val offsetListener = AppBarLayout.OnOffsetChangedListener { bar, offset ->
-        appBarOverlap = (bar.totalScrollRange + offset).coerceAtLeast(0)
+    val offsetListener = AppBarLayout.OnOffsetChangedListener { _, offset ->
+        appBarOffset = offset
         update()
     }
+    // totalScrollRange can still be zero at onViewCreated, before the expanded
+    // toolbar is measured. Without a second measurement the sticky footer can
+    // land beneath the system navigation bar on first entry to a source.
+    val layoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> update() }
     appBar.addOnOffsetChangedListener(offsetListener)
+    appBar.addOnLayoutChangeListener(layoutListener)
     ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
         navigationBarBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
         update()
@@ -34,6 +41,7 @@ internal fun bindMigrationContentInsets(view: View, appBar: AppBarLayout) {
     view.doOnAttach { ViewCompat.requestApplyInsets(it) }
     view.doOnDetach {
         appBar.removeOnOffsetChangedListener(offsetListener)
+        appBar.removeOnLayoutChangeListener(layoutListener)
         ViewCompat.setOnApplyWindowInsetsListener(view, null)
     }
     update()

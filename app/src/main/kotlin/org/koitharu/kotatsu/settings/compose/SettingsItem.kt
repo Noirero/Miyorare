@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import org.koitharu.kotatsu.core.prefs.MiyorareSettingsIconStyle
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.miyorareIconSurface
@@ -66,6 +68,8 @@ fun SettingsItem(
 ) {
 	val visualPalette = LocalMiyorareVisualPalette.current
 	val modern = visualPalette.isModern
+	val iconStyle = LocalSettingsIconStyle.current
+	val modernIcons = iconStyle.usesModernIcons(modern)
 	val largeFont = LocalDensity.current.fontScale >= 1.3f
 	val haptic = rememberHapticEffect()
 	val pendingHighlight by SettingsSearchHighlight.pendingTitle.collectAsState()
@@ -133,7 +137,7 @@ fun SettingsItem(
 		) {
 			if (icon != null) {
 				when {
-					modern -> SettingsIconModern(
+					modernIcons -> SettingsIconModern(
 						iconRes = icon,
 						palette = visualPalette,
 						enabled = enabled,
@@ -142,6 +146,15 @@ fun SettingsItem(
 					iconColors != null -> SettingsIconBubble(
 						iconRes = icon,
 						colors = iconColors,
+						enabled = enabled,
+						tintIcon = tintIcon,
+					)
+					iconStyle == MiyorareSettingsIconStyle.MATERIAL_3 && modern -> SettingsIconBubble(
+						iconRes = icon,
+						colors = CategoryIconColors(
+							MaterialTheme.colorScheme.primaryContainer,
+							MaterialTheme.colorScheme.onPrimaryContainer,
+						),
 						enabled = enabled,
 						tintIcon = tintIcon,
 					)
@@ -213,19 +226,36 @@ fun SwitchSettingsItem(
 	)
 }
 
+/**
+ * A manually selected Modern icon style must draw its inset surface even while the
+ * surrounding Settings theme is Material 3. The normal Classic palette deliberately
+ * has isModern=false and a transparent border highlight.
+ */
+internal fun MiyorareVisualPalette.forSettingsIconSurface(colors: ColorScheme): MiyorareVisualPalette =
+	if (isModern) this else copy(
+		isModern = true,
+		iconGradientStart = colors.primaryContainer,
+		selectedSurface = colors.surfaceContainerHigh,
+		iconGradientEnd = colors.secondaryContainer,
+		borderHighlight = colors.outlineVariant,
+	)
+
 @Composable
-private fun SettingsIconModern(
+internal fun SettingsIconModern(
 	@DrawableRes iconRes: Int,
 	palette: MiyorareVisualPalette,
 	enabled: Boolean,
 	tintIcon: Boolean,
+	tintOverride: Color? = null,
+	applyImageAlpha: Boolean = true,
 ) {
 	val alpha = if (enabled) 1f else 0.5f
 	val shape = RoundedCornerShape(13.dp)
+	val iconSurfacePalette = palette.forSettingsIconSurface(MaterialTheme.colorScheme)
 	Box(
 		modifier = Modifier
 			.size(40.dp)
-			.miyorareIconSurface(palette = palette, shape = shape, alpha = alpha),
+			.miyorareIconSurface(palette = iconSurfacePalette, shape = shape, alpha = alpha),
 		contentAlignment = Alignment.Center,
 	) {
 		androidx.compose.foundation.Image(
@@ -233,15 +263,15 @@ private fun SettingsIconModern(
 			contentDescription = null,
 			modifier = Modifier.size(21.dp),
 			colorFilter = if (tintIcon) {
-				ColorFilter.tint(lerp(palette.primary, palette.secondary, 0.18f).copy(alpha = alpha))
+				ColorFilter.tint((tintOverride ?: if (palette.isModern) lerp(palette.primary, palette.secondary, 0.18f) else MaterialTheme.colorScheme.onPrimaryContainer).copy(alpha = alpha))
 			} else null,
-			alpha = alpha,
+			alpha = if (applyImageAlpha) alpha else 1f,
 		)
 	}
 }
 
 @Composable
-private fun SettingsIconBubble(
+internal fun SettingsIconBubble(
 	@DrawableRes iconRes: Int,
 	colors: CategoryIconColors,
 	enabled: Boolean,
@@ -267,11 +297,12 @@ private fun SettingsIconBubble(
 }
 
 @Composable
-private fun SettingsIconPlain(
+internal fun SettingsIconPlain(
 	@DrawableRes iconRes: Int,
 	enabled: Boolean,
 	tintOverride: Color? = null,
 	tintIcon: Boolean = true,
+	applyImageAlpha: Boolean = true,
 ) {
 	val tint = (tintOverride ?: MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = if (enabled) 1f else 0.5f)
 	Box(
@@ -283,7 +314,7 @@ private fun SettingsIconPlain(
 			contentDescription = null,
 			modifier = Modifier.size(24.dp),
 			colorFilter = if (tintIcon) ColorFilter.tint(tint) else null,
-			alpha = if (enabled) 1f else 0.5f,
+			alpha = if (applyImageAlpha && !enabled) 0.5f else 1f,
 		)
 	}
 }

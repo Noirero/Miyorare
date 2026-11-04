@@ -1,12 +1,16 @@
 package org.koitharu.kotatsu.settings.sources.migration
 
 import android.view.ContextThemeWrapper
+import android.view.View
+import android.view.ViewGroup
+import com.google.android.material.appbar.AppBarLayout
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -21,6 +25,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
@@ -142,5 +147,56 @@ class MigrationLandingScreenTest {
 		assertEquals(1L, openedDetails)
 		assertEquals(0, migrated)
 	}
+ 
+    @Test
+    fun sourceBackAndToolbarUpUseSameNavigationAndFooterRemainsVisible() {
+        var up: (() -> Unit)? = null
+        compose.setContent {
+            CompositionLocalProvider(LocalContext provides themedContext) {
+                MaterialTheme {
+                    BrokenSourcesMigrationScreen(
+                        state = state(), imageLoader = loader, onRetry = {},
+                        onOpenManga = { _, _ -> },
+                        onSourceBackChanged = { up = it },
+                    )
+                }
+            }
+        }
+        compose.onNodeWithText("E-Hentai (EN)").performClick()
+        compose.onNodeWithTag("migration-landing-footer").assertIsDisplayed()
+        compose.onNodeWithText("Story 1").performTouchInput { longClick() }
+        compose.onNodeWithText("1 terpilih").assertExists()
+        compose.runOnIdle { checkNotNull(up).invoke() }
+        compose.onNodeWithText("Pilih source").assertExists()
+        compose.onNodeWithText("1 terpilih").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(null, up) }
+        compose.onNodeWithText("E-Hentai (EN)").performClick()
+        compose.onNodeWithText("‹ Source").performClick()
+        compose.onNodeWithText("Pilih source").assertExists()
+    }
+    @Test
+    fun contentInsetRecomputesAfterAppBarFirstLayout() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val appBar = AppBarLayout(themedContext)
+            val params = AppBarLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 240).apply {
+                scrollFlags = AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL
+            }
+            appBar.addView(View(themedContext), params)
+            val composeHost = View(themedContext)
+
+            bindMigrationContentInsets(composeHost, appBar)
+            appBar.measure(
+                View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.AT_MOST),
+            )
+            appBar.layout(0, 0, 360, appBar.measuredHeight)
+
+            assertTrue("Fixture requires a collapsible app bar", appBar.totalScrollRange > 0)
+            assertTrue(
+                "Footer must reserve the expanded toolbar overlap",
+                composeHost.paddingBottom >= appBar.totalScrollRange,
+            )
+        }
+    }
 
 }

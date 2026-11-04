@@ -38,6 +38,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -92,6 +94,19 @@ class BrokenSourcesMigrationFragment :
 	BaseComposeSettingsFragment(R.string.manga_migration) {
 
 	private val viewModel by viewModels<BrokenSourcesMigrationViewModel>()
+    private var sourceNavigationBack: (() -> Unit)? = null
+
+    /** Consumed by the host toolbar's Up button; Android Back is handled by Compose. */
+    internal fun navigateBackWithinSource(): Boolean {
+        val action = sourceNavigationBack ?: return false
+        action()
+        return true
+    }
+
+    override fun onDestroyView() {
+        sourceNavigationBack = null
+        super.onDestroyView()
+    }
 
 	@Inject
 	lateinit var imageLoader: ImageLoader
@@ -124,6 +139,7 @@ class BrokenSourcesMigrationFragment :
 						)
 					},
 					onOpenDetails = { manga -> router.openDetails(manga) },
+                    onSourceBackChanged = { sourceNavigationBack = it },
 				)
 				}
 			}
@@ -148,6 +164,7 @@ internal fun BrokenSourcesMigrationScreen(
 	onRetry: () -> Unit,
 	onOpenManga: (Collection<Long>, MigrationBatchAction?) -> Unit,
 	onOpenDetails: (Manga) -> Unit = {},
+    onSourceBackChanged: ((() -> Unit)?) -> Unit = {},
 ) {
 	var sourceKey by rememberSaveable { mutableStateOf<String?>(null) }
 	var query by rememberSaveable { mutableStateOf("") }
@@ -167,10 +184,10 @@ internal fun BrokenSourcesMigrationScreen(
 	}
 	val activeSource = sourceRows.firstOrNull { it.second.key == sourceKey }
 	fun clearSelection() { selectedIds = arrayListOf() }
-	androidx.activity.compose.BackHandler(enabled = activeSource != null) {
-		if (selectedIds.isNotEmpty()) clearSelection()
-		else { sourceKey = null; query = "" }
-	}
+    val leaveSource: () -> Unit = { sourceKey = null; query = ""; clearSelection() }
+    SideEffect { onSourceBackChanged(if (activeSource != null) leaveSource else null) }
+    DisposableEffect(Unit) { onDispose { onSourceBackChanged(null) } }
+    androidx.activity.compose.BackHandler(enabled = activeSource != null) { leaveSource() }
 	Column(Modifier.fillMaxSize()) {
 		when {
 			state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -236,7 +253,7 @@ internal fun BrokenSourcesMigrationScreen(
 				Column(Modifier.fillMaxSize()) {
 					Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
 						verticalAlignment = Alignment.CenterVertically) {
-						TextButton(onClick = { sourceKey = null; query = ""; clearSelection() }) { Text("‹ Source") }
+						TextButton(onClick = leaveSource) { Text("‹ Source") }
 						Text(source.title, style = MaterialTheme.typography.titleMedium,
 							modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
 					}
@@ -295,7 +312,7 @@ internal fun BrokenSourcesMigrationScreen(
 							}
 						}
 					}
-					Surface(tonalElevation = 3.dp) {
+					Surface(modifier = Modifier.testTag("migration-landing-footer"), tonalElevation = 3.dp) {
 						if (currentSelected.isNotEmpty()) {
 							Row(Modifier.fillMaxWidth().padding(12.dp),
 								horizontalArrangement = Arrangement.spacedBy(8.dp)) {

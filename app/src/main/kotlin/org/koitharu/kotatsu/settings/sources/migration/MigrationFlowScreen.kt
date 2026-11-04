@@ -75,6 +75,7 @@ internal fun MigrationFlowScreen(
 	onCopyOne: (Long) -> Unit = {},
 	onSkipOne: (Long) -> Unit = {},
 	onOpenTarget: (Manga) -> Unit = {},
+    onOpenSource: (Manga) -> Unit = {},
 ) {
 	var step by rememberSaveable { mutableIntStateOf(0) }
 	var pendingAction by remember { mutableStateOf<MigrationBatchAction?>(null) }
@@ -128,6 +129,7 @@ internal fun MigrationFlowScreen(
 			state = state,
 			imageLoader = imageLoader,
 			onMangaClick = onMangaClick,
+            onOpenSource = onOpenSource,
 			onOpenTarget = onOpenTarget,
 			onRetry = { step = 0 },
 			onContinue = { pendingAction = MigrationBatchAction.MIGRATE },
@@ -476,6 +478,7 @@ private fun MigrationReviewStep(
 	state: SourceMangaListState,
 	imageLoader: ImageLoader,
 	onMangaClick: (Manga) -> Unit,
+    onOpenSource: (Manga) -> Unit,
 	onOpenTarget: (Manga) -> Unit,
 	onRetry: () -> Unit,
 	onContinue: () -> Unit,
@@ -518,6 +521,7 @@ private fun MigrationReviewStep(
 				MigrationMangaReviewItem(manga, imageLoader, status,
 					outcome?.destinationTitle, outcome?.destinationSource,
 					onClick = { onMangaClick(manga) },
+                    onOpenSource = onOpenSource,
 					failureStage = outcome?.failureStage,
 					conflictReason = outcome?.conflictReason,
 					targetManga = state.readyTarget(manga.id) ?: state.completedTarget(manga.id),
@@ -628,6 +632,7 @@ private fun MigrationMangaReviewItem(
 	targetTitle: String?, targetSource: String?, onClick: () -> Unit,
 	targetManga: Manga? = null,
 	onOpenTarget: (Manga) -> Unit = {},
+    onOpenSource: (Manga) -> Unit = {},
 	onMigrate: (() -> Unit)? = null,
 	onCopy: (() -> Unit)? = null,
 	onSkip: (() -> Unit)? = null,
@@ -646,8 +651,12 @@ private fun MigrationMangaReviewItem(
 						ImageRequest.Builder(context).data(it).mangaSourceExtra(manga.source).build()
 					}
 				}
-				if (request != null) AsyncImage(model = request, imageLoader = imageLoader,
-					contentDescription = null, modifier = Modifier.width(58.dp).height(76.dp))
+                Box(Modifier.width(58.dp).height(76.dp)
+                    .testTag("migration-source-cover-" + manga.id)
+                    .clickable { onOpenSource(manga) }) {
+                    if (request != null) AsyncImage(model = request, imageLoader = imageLoader,
+                        contentDescription = manga.title, modifier = Modifier.fillMaxSize())
+                }
 				Text(manga.title, style = MaterialTheme.typography.bodySmall,
 					maxLines = 2, overflow = TextOverflow.Ellipsis)
 				Text(manga.source.getTitle(context).toString(), style = MaterialTheme.typography.labelSmall,

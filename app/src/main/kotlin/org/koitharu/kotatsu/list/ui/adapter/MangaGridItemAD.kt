@@ -23,6 +23,7 @@ import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareFavouritesCardBorderStyle
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
@@ -54,6 +55,7 @@ fun mangaGridItemAD(
 	gridVisualScaleProvider: (() -> Float)? = null,
 	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
 	localCinematic: Boolean = false,
+	normalFavouritesCardBorder: Boolean = false,
 ) = adapterDelegateViewBinding<MangaGridModel, ListModel, ItemMangaGridBinding>(
 	{ inflater, parent -> ItemMangaGridBinding.inflate(inflater, parent, false) },
 ) {
@@ -106,6 +108,14 @@ fun mangaGridItemAD(
 	// bridge is available at this exact bind moment. Palette lookup only controls colour/glass data;
 	// falling back to the legacy 2dp grid margin here made canonical cards ~130.5dp wide.
 	val isNormalModernFavourites = hasCollectionBorder && !isPrivateFavouritesHost
+	val normalBorderStyle = if (isNormalModernFavourites && normalFavouritesCardBorder) {
+		appearancePreferences.getEnumValue(
+			MiyorareAppearance.KEY_FAVOURITES_CARD_BORDER_STYLE,
+			MiyorareFavouritesCardBorderStyle.DEFAULT,
+		)
+	} else {
+		MiyorareFavouritesCardBorderStyle.DEFAULT
+	}
 	val normalGlass = if (hasCollectionBorder) {
 		context.miyorareViewPaletteFromPreferences()?.neonGlass()
 	} else {
@@ -183,9 +193,11 @@ fun mangaGridItemAD(
 			binding.imageViewCover.strokeColor = if (hasCollectionBorder) {
 				if (normalNeon) normalBorderTint else modernBorderTint
 			} else defaultCoverStrokeColor
-			binding.imageViewCover.strokeWidth = if (hasCollectionBorder) {
-				MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP * density
-			} else defaultCoverStrokeWidth
+			binding.imageViewCover.strokeWidth = when {
+				isNormalModernFavourites && normalFavouritesCardBorder && !normalBorderStyle.hasStroke -> 0f
+				hasCollectionBorder -> MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP * density
+				else -> defaultCoverStrokeWidth
+			}
 			binding.viewScrim.background = modernScrim
 			binding.textViewTitle.setTextColor(if (normalNeon) normalGlass!!.content else onSurface)
 			binding.textViewTitle.setTextSize(

@@ -81,6 +81,7 @@ class MigrationFlowScreenTest {
 		onCopy: () -> Unit = {},
 		onOpenManual: (Manga) -> Unit = {},
 		onOpenTarget: (Manga) -> Unit = {},
+        onOpenSource: (Manga) -> Unit = {},
 		onMigrateOne: (Long) -> Unit = {},
 		onCopyOne: (Long) -> Unit = {},
 		onCancel: (String) -> Unit = {},
@@ -97,7 +98,8 @@ class MigrationFlowScreenTest {
 					onMoveSource = { _, _ -> }, onStrategy = {},
 					onExtraSearch = {}, onSkipSetup = {}, onRetrySources = {},
 					onMangaClick = onOpenManual, onMangaLongClick = {},
-					onOpenTarget = onOpenTarget,
+                    onOpenTarget = onOpenTarget,
+                    onOpenSource = onOpenSource,
 					onMigrateOne = onMigrateOne, onCopyOne = onCopyOne,
 				)
 			}
@@ -286,6 +288,21 @@ class MigrationFlowScreenTest {
 		compose.onNodeWithText("MIHON_26770799414").assertDoesNotExist()
 		compose.onNodeWithText("Replacement").assertExists()
 	}
+
+
+    @Test
+    fun sourceCoverOpensOriginalDetailsInsteadOfManualSelection() {
+        val base = screenState(MigrationBatchStatus.MIGRATED_PRESERVED)
+        val source = manga(1L).copy(coverUrl = "https://fixture.invalid/source-cover.jpg")
+        val state = base.copy(manga = listOf(source))
+        var original = 0L
+        var manual = 0
+        show(state, onOpenManual = { manual++ }, onOpenSource = { original = it.id })
+        compose.onNodeWithTag("migration-batch-search").performClick()
+        compose.onNodeWithTag("migration-source-cover-1").performClick()
+        assertEquals(1L, original)
+        assertEquals(0, manual)
+    }
 
 	@Test
 	fun targetTitleTapOpensDetailsAndLongPressOpensCandidateSelection() {
