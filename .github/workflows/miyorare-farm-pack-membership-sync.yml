@@ -11,13 +11,11 @@ on:
         description: Optional Source-Packs workflow run ID that dispatched this exact snapshot.
         required: false
         type: string
-  schedule:
-    - cron: '4,34 * * * *'
 
 permissions:
-  actions: write
-  contents: write
-  pull-requests: write
+  actions: read
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: miyorare-farm-pack-membership-sync
@@ -25,7 +23,11 @@ concurrency:
 
 jobs:
   sync:
-    name: Sync approved Farm sources into beta packs
+    # This default-branch workflow is retired while beta is on HOLD.
+    # Approved Farm snapshots now dispatch to the version on Amain2.
+    # Keep this job fail-closed even for manual dispatch/reruns.
+    if: ${{ false }}
+    name: Legacy Farm sync disabled (beta HOLD)
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
