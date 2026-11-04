@@ -84,7 +84,7 @@ fun SegmentedSettingsItem(
 							),
 							enabled = enabled,
 						)
-						else -> SettingsIconPlain(iconRes = icon, enabled = enabled)
+						else -> SettingsIconPlain(iconRes = icon, enabled = enabled, applyImageAlpha = false)
 					}
 					Spacer(Modifier.width(12.dp))
 				}

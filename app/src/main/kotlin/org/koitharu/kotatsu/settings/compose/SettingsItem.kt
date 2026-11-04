@@ -302,6 +302,7 @@ internal fun SettingsIconPlain(
 	enabled: Boolean,
 	tintOverride: Color? = null,
 	tintIcon: Boolean = true,
+	applyImageAlpha: Boolean = true,
 ) {
 	val tint = (tintOverride ?: MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = if (enabled) 1f else 0.5f)
 	Box(
@@ -313,7 +314,7 @@ internal fun SettingsIconPlain(
 			contentDescription = null,
 			modifier = Modifier.size(24.dp),
 			colorFilter = if (tintIcon) ColorFilter.tint(tint) else null,
-			alpha = if (enabled) 1f else 0.5f,
+			alpha = if (applyImageAlpha && !enabled) 0.5f else 1f,
 		)
 	}
 }
