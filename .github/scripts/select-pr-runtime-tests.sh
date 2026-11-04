@@ -333,7 +333,7 @@ classify_paths() {
 # changed-label payload. Therefore labeled/unlabeled/synchronize/reopened
 # resolve identically for the same PR state.
 resolve_policy() {
-  local run="$1" full="$2" draft="$3" required="$4" force_full="$5" mapped="$6" user_issue="$7" theme="$8" owner="$9"
+  local run="$1" full="$2" draft="$3" required="$4" force_full="$5" mapped="$6" user_issue="$7" theme="$8" owner="${9:-false}"
   local v
   for v in "$run" "$full" "$draft" "$required" "$force_full" "$mapped" "$user_issue" "$theme" "$owner"; do
     [[ "$v" == true || "$v" == false ]] || return 2
