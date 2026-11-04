@@ -231,6 +231,7 @@ internal fun SettingsIconModern(
 	palette: MiyorareVisualPalette,
 	enabled: Boolean,
 	tintIcon: Boolean,
+	tintOverride: Color? = null,
 ) {
 	val alpha = if (enabled) 1f else 0.5f
 	val shape = RoundedCornerShape(13.dp)
@@ -245,7 +246,7 @@ internal fun SettingsIconModern(
 			contentDescription = null,
 			modifier = Modifier.size(21.dp),
 			colorFilter = if (tintIcon) {
-				ColorFilter.tint(lerp(palette.primary, palette.secondary, 0.18f).copy(alpha = alpha))
+				ColorFilter.tint((tintOverride ?: lerp(palette.primary, palette.secondary, 0.18f)).copy(alpha = alpha))
 			} else null,
 			alpha = alpha,
 		)
