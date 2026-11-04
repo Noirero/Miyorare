@@ -358,7 +358,7 @@ class MiyoriStatusTests(unittest.TestCase):
 
             def get(self, path):
                 self.calls.append(path)
-                if "page=1" in path:
+                if path.endswith("page=1"):
                     return ([{"event": "unlabeled",
                               "label": {"name": "ci:runtime-required"},
                               "created_at": "2026-11-04T01:00:00Z"}]
