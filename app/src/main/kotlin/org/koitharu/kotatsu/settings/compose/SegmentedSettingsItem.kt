@@ -37,14 +37,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.core.prefs.MiyorareSettingsIconStyle
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareAccentSurface
-import org.koitharu.kotatsu.core.ui.miyorareIconSurface
 import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.rememberHapticEffect
-import org.koitharu.kotatsu.main.ui.nav.rememberAnyDrawablePainter
 
 @Composable
 fun SegmentedSettingsItem(
@@ -60,7 +59,7 @@ fun SegmentedSettingsItem(
 ) {
 	val visualPalette = LocalMiyorareVisualPalette.current
 	val modern = visualPalette.isModern
-	val iconColor = if (modern) visualPalette.primary else MaterialTheme.colorScheme.onSurfaceVariant
+	val iconStyle = LocalSettingsIconStyle.current
 	val surfaceModifier = if (modern) modifier.miyorareSurface(visualPalette, shape) else modifier
 	Surface(
 		modifier = surfaceModifier,
@@ -71,27 +70,19 @@ fun SegmentedSettingsItem(
 		Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)) {
 			Row(verticalAlignment = Alignment.CenterVertically) {
 				if (icon != null) {
-					val iconShape = RoundedCornerShape(13.dp)
-					Box(
-						modifier = Modifier
-							.size(if (modern) 40.dp else 44.dp)
-							.let {
-								if (modern) {
-									it.miyorareIconSurface(
-										palette = visualPalette,
-										shape = iconShape,
-										alpha = if (enabled) 1f else 0.5f,
-									)
-								} else it
-							},
-						contentAlignment = Alignment.Center,
-					) {
-						androidx.compose.foundation.Image(
-							painter = rememberAnyDrawablePainter(icon),
-							contentDescription = null,
-							modifier = Modifier.size(if (modern) 21.dp else 24.dp),
-							colorFilter = ColorFilter.tint(iconColor.copy(alpha = if (enabled) 1f else 0.5f)),
+					when {
+						iconStyle.usesModernIcons(modern) -> SettingsIconModern(
+							iconRes = icon, palette = visualPalette, enabled = enabled, tintIcon = true,
 						)
+						iconStyle == MiyorareSettingsIconStyle.MATERIAL_3 && modern -> SettingsIconBubble(
+							iconRes = icon,
+							colors = CategoryIconColors(
+								MaterialTheme.colorScheme.primaryContainer,
+								MaterialTheme.colorScheme.onPrimaryContainer,
+							),
+							enabled = enabled,
+						)
+						else -> SettingsIconPlain(iconRes = icon, enabled = enabled)
 					}
 					Spacer(Modifier.width(12.dp))
 				}

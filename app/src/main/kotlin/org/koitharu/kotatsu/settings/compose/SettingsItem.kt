@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import org.koitharu.kotatsu.core.prefs.MiyorareSettingsIconStyle
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.miyorareIconSurface
@@ -66,6 +67,8 @@ fun SettingsItem(
 ) {
 	val visualPalette = LocalMiyorareVisualPalette.current
 	val modern = visualPalette.isModern
+	val iconStyle = LocalSettingsIconStyle.current
+	val modernIcons = iconStyle.usesModernIcons(modern)
 	val largeFont = LocalDensity.current.fontScale >= 1.3f
 	val haptic = rememberHapticEffect()
 	val pendingHighlight by SettingsSearchHighlight.pendingTitle.collectAsState()
@@ -133,7 +136,7 @@ fun SettingsItem(
 		) {
 			if (icon != null) {
 				when {
-					modern -> SettingsIconModern(
+					modernIcons -> SettingsIconModern(
 						iconRes = icon,
 						palette = visualPalette,
 						enabled = enabled,
@@ -142,6 +145,15 @@ fun SettingsItem(
 					iconColors != null -> SettingsIconBubble(
 						iconRes = icon,
 						colors = iconColors,
+						enabled = enabled,
+						tintIcon = tintIcon,
+					)
+					iconStyle == MiyorareSettingsIconStyle.MATERIAL_3 && modern -> SettingsIconBubble(
+						iconRes = icon,
+						colors = CategoryIconColors(
+							MaterialTheme.colorScheme.primaryContainer,
+							MaterialTheme.colorScheme.onPrimaryContainer,
+						),
 						enabled = enabled,
 						tintIcon = tintIcon,
 					)
@@ -214,7 +226,7 @@ fun SwitchSettingsItem(
 }
 
 @Composable
-private fun SettingsIconModern(
+internal fun SettingsIconModern(
 	@DrawableRes iconRes: Int,
 	palette: MiyorareVisualPalette,
 	enabled: Boolean,
@@ -241,7 +253,7 @@ private fun SettingsIconModern(
 }
 
 @Composable
-private fun SettingsIconBubble(
+internal fun SettingsIconBubble(
 	@DrawableRes iconRes: Int,
 	colors: CategoryIconColors,
 	enabled: Boolean,
@@ -267,7 +279,7 @@ private fun SettingsIconBubble(
 }
 
 @Composable
-private fun SettingsIconPlain(
+internal fun SettingsIconPlain(
 	@DrawableRes iconRes: Int,
 	enabled: Boolean,
 	tintOverride: Color? = null,

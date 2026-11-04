@@ -45,6 +45,7 @@ import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareSettingsIconStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareFavouritesCardBorderStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
@@ -120,6 +121,7 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
             AppSettings.KEY_UI_SCALE,
             MiyorareAppearance.KEY_DESIGN_STYLE,
             MiyorareAppearance.KEY_FAVOURITES_CARD_BORDER_STYLE,
+            MiyorareAppearance.KEY_SETTINGS_ICON_STYLE,
             MiyorareAppearance.KEY_THEME_PRESET,
             MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
             MiyorareAppearance.KEY_CUSTOM_ACCENT,
@@ -244,6 +246,7 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
             AppSettings.KEY_THEME_AMOLED,
             MiyorareAppearance.KEY_DESIGN_STYLE,
             MiyorareAppearance.KEY_FAVOURITES_CARD_BORDER_STYLE,
+            MiyorareAppearance.KEY_SETTINGS_ICON_STYLE,
             MiyorareAppearance.KEY_THEME_PRESET,
             MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
             MiyorareAppearance.KEY_CUSTOM_ACCENT,
@@ -275,6 +278,8 @@ private fun AppearanceScreen(
     val borderStyleValues = remember { MiyorareFavouritesCardBorderStyle.entries.map { it.name } }
     val designStyleEntries = remember { MiyorareDesignStyle.entries.map { ctx.getString(it.titleResId) } }
     val designStyleValues = remember { MiyorareDesignStyle.entries.map { it.name } }
+    val iconStyleEntries = remember { MiyorareSettingsIconStyle.entries.map { ctx.getString(it.titleResId) } }
+    val iconStyleValues = remember { MiyorareSettingsIconStyle.entries.map { it.name } }
     val customBackgroundIntensityEntries = remember {
         MiyorareCustomBackgroundIntensity.entries.map { ctx.getString(it.titleResId) }
     }
@@ -310,6 +315,7 @@ private fun AppearanceScreen(
         MiyorareFavouritesCardBorderStyle.DEFAULT.name,
     )
     var designStyle by rememberStringPref(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC.name)
+    var iconStyle by rememberStringPref(MiyorareAppearance.KEY_SETTINGS_ICON_STYLE, MiyorareSettingsIconStyle.FOLLOW_THEME.name)
     var modernTheme by rememberStringPref(MiyorareAppearance.KEY_THEME_PRESET, MiyorareThemePreset.MIYORARE.name)
     var modernPaletteSource by rememberStringPref(
         MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
@@ -403,6 +409,26 @@ private fun AppearanceScreen(
                         onValueChange = { designStyle = it },
                         icon = R.drawable.ic_appearance,
                         shape = pos.shape,
+                    )
+                }
+                item { pos ->
+                    ListSettingsItem(
+                        title = stringResource(R.string.miyorare_settings_icon_style),
+                        entries = iconStyleEntries,
+                        entryValues = iconStyleValues,
+                        selectedValue = iconStyle,
+                        onValueChange = { iconStyle = it },
+                        icon = R.drawable.ic_appearance,
+                        shape = pos.shape,
+                    )
+                }
+                item { pos ->
+                    ActionSettingsItem(
+                        title = stringResource(R.string.miyorare_settings_icon_custom),
+                        subtitle = stringResource(R.string.miyorare_settings_icon_custom_summary),
+                        icon = R.drawable.ic_appearance,
+                        shape = pos.shape,
+                        onClick = { Toast.makeText(ctx, R.string.miyorare_settings_icon_soon, Toast.LENGTH_SHORT).show() },
                     )
                 }
                 item { pos ->

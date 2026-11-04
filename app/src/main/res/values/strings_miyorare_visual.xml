@@ -10,6 +10,13 @@
 	<string name="miyorare_favourites_border_none">No border</string>
 	<string name="miyorare_appearance_group">Appearance theme</string>
 	<string name="miyorare_design_style">Design style</string>
+	<string name="miyorare_settings_icon_style">Settings icon style</string>
+	<string name="miyorare_settings_icon_follow_theme">Follow theme</string>
+	<string name="miyorare_settings_icon_modern">Miyorare UI / Modern</string>
+	<string name="miyorare_settings_icon_classic">Material 3 / Classic</string>
+	<string name="miyorare_settings_icon_custom">Custom icons</string>
+	<string name="miyorare_settings_icon_custom_summary">Custom icon packs</string>
+	<string name="miyorare_settings_icon_soon">Coming soon</string>
 	<string name="miyorare_design_classic">Material 3</string>
 	<string name="miyorare_design_modern">Miyorare UI</string>
 	<string name="miyorare_display_mode">Display mode</string>
