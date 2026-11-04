@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -225,6 +226,20 @@ fun SwitchSettingsItem(
 	)
 }
 
+/**
+ * A manually selected Modern icon style must draw its inset surface even while the
+ * surrounding Settings theme is Material 3. The normal Classic palette deliberately
+ * has isModern=false and a transparent border highlight.
+ */
+internal fun MiyorareVisualPalette.forSettingsIconSurface(colors: ColorScheme): MiyorareVisualPalette =
+	if (isModern) this else copy(
+		isModern = true,
+		iconGradientStart = colors.primaryContainer,
+		selectedSurface = colors.surfaceContainerHigh,
+		iconGradientEnd = colors.secondaryContainer,
+		borderHighlight = colors.outlineVariant,
+	)
+
 @Composable
 internal fun SettingsIconModern(
 	@DrawableRes iconRes: Int,
@@ -236,10 +251,11 @@ internal fun SettingsIconModern(
 ) {
 	val alpha = if (enabled) 1f else 0.5f
 	val shape = RoundedCornerShape(13.dp)
+	val iconSurfacePalette = palette.forSettingsIconSurface(MaterialTheme.colorScheme)
 	Box(
 		modifier = Modifier
 			.size(40.dp)
-			.miyorareIconSurface(palette = palette, shape = shape, alpha = alpha),
+			.miyorareIconSurface(palette = iconSurfacePalette, shape = shape, alpha = alpha),
 		contentAlignment = Alignment.Center,
 	) {
 		androidx.compose.foundation.Image(
@@ -247,7 +263,7 @@ internal fun SettingsIconModern(
 			contentDescription = null,
 			modifier = Modifier.size(21.dp),
 			colorFilter = if (tintIcon) {
-				ColorFilter.tint((tintOverride ?: lerp(palette.primary, palette.secondary, 0.18f)).copy(alpha = alpha))
+				ColorFilter.tint((tintOverride ?: if (palette.isModern) lerp(palette.primary, palette.secondary, 0.18f) else MaterialTheme.colorScheme.onPrimaryContainer).copy(alpha = alpha))
 			} else null,
 			alpha = if (applyImageAlpha) alpha else 1f,
 		)
