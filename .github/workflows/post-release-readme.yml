@@ -68,10 +68,16 @@ jobs:
           }
 
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" > release/source-run.json
-          RUN_NAME="$(jq -r '.name' release/source-run.json)"
+          RUN_PATH="$(jq -r '.path' release/source-run.json)"
           RUN_SHA="$(jq -r '.head_sha' release/source-run.json)"
-          [[ "$RUN_NAME" == "Miyorare Main Build" ]] || {
-            echo "::error::Recorded source run is not Miyorare Main Build."
+          RUN_EVENT="$(jq -r '.event' release/source-run.json)"
+          RUN_CONCLUSION="$(jq -r '.conclusion' release/source-run.json)"
+          [[ "$RUN_PATH" == ".github/workflows/main-build.yml" ]] || {
+            echo "::error::Recorded source run is not the official Main Build workflow."
+            exit 1
+          }
+          [[ "$RUN_EVENT" == "workflow_dispatch" && "$RUN_CONCLUSION" == "success" ]] || {
+            echo "::error::Recorded Main Build run was not a successful manual build."
             exit 1
           }
           [[ "$RUN_SHA" == "$RELEASE_COMMIT" ]] || {
