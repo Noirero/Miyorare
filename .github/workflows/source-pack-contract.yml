@@ -195,4 +195,14 @@ jobs:
           assert '$GITHUB_RUN_ATTEMPT' in sync
           assert 'automation/farm-pack-sync-${FARM_SHA:0:12}-$GITHUB_RUN_ID-a$GITHUB_RUN_ATTEMPT' in sync
           assert 'raw.githubusercontent.com/$FARM_REPOSITORY/$sha/compatibility/source-registry.json' in sync
+          # Default-branch beta Farm automation is retired. Neither scheduled
+          # nor manually dispatched runs may write or merge into held beta.
+          assert '  schedule:' not in sync
+          assert ('    if: ' + chr(36) + '{{ false }}') in sync
+          assert '  actions: read' in sync
+          assert '  contents: read' in sync
+          assert '  pull-requests: read' in sync
+          assert '  actions: write' not in sync
+          assert '  contents: write' not in sync
+          assert '  pull-requests: write' not in sync
           PY
