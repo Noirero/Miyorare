@@ -183,7 +183,6 @@ internal fun HeroTexts(
 	actions: DetailsExpressiveActions,
 	showAuthors: Boolean = true,
 	compactExpanded: Boolean = false,
-	titleModifier: Modifier = Modifier,
 	onTitleLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
 	val align = if (centered) TextAlign.Center else TextAlign.Start
@@ -197,7 +196,7 @@ internal fun HeroTexts(
 		maxLines = if (!centered && compactExpanded) Int.MAX_VALUE else if (!centered) 2 else 4,
 		overflow = TextOverflow.Ellipsis,
 		onTextLayout = { onTitleLayout?.invoke(it) },
-		modifier = titleModifier.clickable { actions.onTitleClick(manga.title) },
+		modifier = Modifier.clickable { actions.onTitleClick(manga.title) },
 	)
 	val altTitle = manga.altTitles.firstOrNull()?.takeIf { it.isNotBlank() }
 	if (centered && altTitle != null) {

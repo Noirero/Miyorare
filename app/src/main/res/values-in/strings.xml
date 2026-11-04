@@ -771,8 +771,6 @@
     <string name="details_source">Sumber</string>
     <string name="details_show_source">Tampilkan sumber</string>
     <string name="details_hide_source">Sembunyikan sumber</string>
-    <string name="details_expand_source_details">Tampilkan detail sumber</string>
-    <string name="details_collapse_source_details">Sembunyikan detail sumber</string>
     <string name="details_release_active">Rilis aktif</string>
     <string name="details_read_more">Baca selengkapnya</string>
     <string name="details_show_all">Lihat semua</string>

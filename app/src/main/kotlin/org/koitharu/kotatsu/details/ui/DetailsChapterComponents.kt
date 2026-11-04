@@ -12,15 +12,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,14 +35,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -92,8 +89,6 @@ import org.koitharu.kotatsu.parsers.model.ContentRating
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 
-private val COMPACT_HERO_META_HEIGHT = 74.dp
-
 @Composable
 internal fun ModernDetailsHero(
 	centered: Boolean,
@@ -109,7 +104,6 @@ internal fun ModernDetailsHero(
 	onCreatorOverflowChanged: (Boolean) -> Unit = {},
 ) {
 	val palette = LocalMiyorareVisualPalette.current
-	val heroSourceVisibilityState = remember(manga.id, manga.source) { mutableStateOf(false) }
 	val nsfwLabel = when (manga.contentRating) {
 		ContentRating.SUGGESTIVE -> "16+"
 		ContentRating.ADULT -> "18+"
@@ -150,7 +144,6 @@ internal fun ModernDetailsHero(
 					accent = accent,
 					centered = true,
 					onSourceClick = { actions.onSourceClick(manga) },
-					sourceVisibilityState = heroSourceVisibilityState,
 				)
 			}
 		}
@@ -172,67 +165,45 @@ internal fun ModernDetailsHero(
 				imageLoader = imageLoader,
 				modifier = Modifier
 					.width(coverWidth)
-					.height(coverHeight)
-					.testTag("details-hero-cover"),
+					.height(coverHeight),
 				corner = if (palette.isModern) MiyorareVisualTokens.RADIUS_CARD_DP.dp else 20.dp,
 				nsfwLabel = nsfwLabel,
 				forceRefresh = details?.isLoaded == true,
 				actions = actions,
 			)
-			val hasSourceStatus = !manga.isLocal || manga.state != null
-			Box(modifier = Modifier.weight(1f).heightIn(min = coverHeight)) {
-				if (compactExpanded) {
-					// "Memperluas" restores the existing natural flow, independent of Source visibility.
-					Column(modifier = Modifier.fillMaxWidth()) {
-						HeroTexts(
-							centered = false, manga = manga, accent = accent, actions = actions,
-							showAuthors = false, compactExpanded = true,
-						)
-						CreatorMetaText(
-							centered = false, manga = manga, details = details, accent = accent,
-							actions = actions, compactExpanded = true,
-						)
-						if (hasSourceStatus) {
-							Spacer(Modifier.height(if (palette.isModern) 8.dp else 14.dp))
-							HeroSourceStatusRow(
-								manga = manga, sourceTitle = sourceTitle, imageLoader = imageLoader,
-								status = manga.state?.let { stringResource(it.titleResId) },
-								showActiveRelease = manga.state?.titleResId == R.string.state_ongoing,
-								accent = accent, centered = false, compactExpanded = true,
-								onSourceClick = { actions.onSourceClick(manga) },
-								sourceVisibilityState = heroSourceVisibilityState,
-							)
-						}
-					}
-				} else {
-					// The collapsed hero alone reserves cover-bottom space for Source/Status.
-					Column(modifier = if (hasSourceStatus) {
-						Modifier.fillMaxWidth().height(coverHeight - COMPACT_HERO_META_HEIGHT - 4.dp)
-					} else Modifier.fillMaxWidth()) {
-						HeroTexts(
-							centered = false, manga = manga, accent = accent, actions = actions,
-							showAuthors = false, compactExpanded = false,
-							titleModifier = if (hasSourceStatus) Modifier.weight(1f, fill = false) else Modifier,
-							onTitleLayout = { onTitleOverflowChanged(it.hasVisualOverflow) },
-						)
-						CreatorMetaText(
-							centered = false, manga = manga, details = details, accent = accent,
-							actions = actions, compactExpanded = false,
-							onOverflowChanged = onCreatorOverflowChanged,
-						)
-					}
-					if (hasSourceStatus) {
-						HeroSourceStatusRow(
-							manga = manga, sourceTitle = sourceTitle, imageLoader = imageLoader,
-							status = manga.state?.let { stringResource(it.titleResId) },
-							showActiveRelease = manga.state?.titleResId == R.string.state_ongoing,
-							accent = accent, centered = false, compactExpanded = false,
-							onSourceClick = { actions.onSourceClick(manga) },
-							sourceVisibilityState = heroSourceVisibilityState,
-							modifier = Modifier.align(Alignment.TopStart)
-								.offset(y = coverHeight - COMPACT_HERO_META_HEIGHT),
-						)
-					}
+			Column(modifier = Modifier.weight(1f)) {
+				HeroTexts(
+					centered = false,
+					manga = manga,
+					accent = accent,
+					actions = actions,
+					showAuthors = false,
+					compactExpanded = compactExpanded,
+					onTitleLayout = { if (!compactExpanded) onTitleOverflowChanged(it.hasVisualOverflow) },
+				)
+				CreatorMetaText(
+					centered = false,
+					manga = manga,
+					details = details,
+					accent = accent,
+					actions = actions,
+					compactExpanded = compactExpanded,
+					onOverflowChanged = onCreatorOverflowChanged,
+				)
+				if (!manga.isLocal || manga.state != null) {
+					Spacer(Modifier.height(if (compactExpanded) if (palette.isModern) 8.dp else 14.dp else 4.dp))
+
+					HeroSourceStatusRow(
+						manga = manga,
+						sourceTitle = sourceTitle,
+						imageLoader = imageLoader,
+						status = manga.state?.let { stringResource(it.titleResId) },
+						showActiveRelease = manga.state?.titleResId == R.string.state_ongoing,
+						accent = accent,
+						centered = false,
+						compactExpanded = compactExpanded,
+						onSourceClick = { actions.onSourceClick(manga) },
+					)
 				}
 			}
 			}
@@ -240,7 +211,10 @@ internal fun ModernDetailsHero(
 	}
 }
 
-/** Source visibility redistributes width without changing row height. */
+/**
+ * Owns the transient presentation state for both sibling cards, shared by centered and
+ * compact hero paths. No ViewModel state or source routing changes.
+ */
 @Composable
 internal fun HeroSourceStatusRow(
 	manga: Manga,
@@ -252,41 +226,46 @@ internal fun HeroSourceStatusRow(
 	centered: Boolean,
 	compactExpanded: Boolean = false,
 	onSourceClick: () -> Unit,
-	modifier: Modifier = Modifier,
-	sourceVisibilityState: MutableState<Boolean>? = null,
 ) {
-	val localVisibilityState = remember(manga.id, manga.source) { mutableStateOf(false) }
-	val visibilityState = sourceVisibilityState ?: localVisibilityState
-	val sourceVisible = visibilityState.value
+	var sourceVisible by remember(manga.id, manga.source) { mutableStateOf(false) }
+	val palette = LocalMiyorareVisualPalette.current
 	val hasSource = !manga.isLocal
-	val fullSourceName = sourceTitle?.takeUnless { it.isBlank() } ?: manga.source.getTitle(LocalContext.current)
-	val cardHeight = if (centered) 82.dp else COMPACT_HERO_META_HEIGHT
-	val gap = if (centered) 10.dp else 8.dp
-	BoxWithConstraints(
-		modifier = modifier.fillMaxWidth().height(cardHeight).testTag("hero-source-status-row"),
+	val minimumHeight = if (centered) 82.dp else if (compactExpanded) 78.dp else 60.dp
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.heightIn(min = minimumHeight)
+			.height(IntrinsicSize.Min),
+		horizontalArrangement = Arrangement.spacedBy(if (centered) 10.dp else 8.dp),
 	) {
-		val availableWidth = maxWidth - if (hasSource && status != null) gap else 0.dp
-		val collapsedSourceWidth = if (status == null) maxWidth else availableWidth * 0.42f
-		val collapsedStatusWidth = if (hasSource) availableWidth - collapsedSourceWidth else maxWidth
-		val statusWidth = if (hasSource && sourceVisible && status != null) {
-			(availableWidth * 0.22f).coerceIn(40.dp, 54.dp)
-		} else collapsedStatusWidth
-		val sourceWidth = if (status == null) maxWidth else availableWidth - statusWidth
-		// The Status card always retains a visible right-hand remainder.
-		if (status != null) {
-			HeroStatusCard(
-				status = status, showActiveRelease = showActiveRelease, accent = accent,
-				modifier = Modifier.align(Alignment.TopEnd).width(statusWidth)
-					.fillMaxHeight().testTag("hero-status-card"),
-			)
-		}
 		if (hasSource) {
 			HeroSourceCard(
-				manga = manga, sourceTitle = fullSourceName, imageLoader = imageLoader,
-				onSourceClick = onSourceClick, visible = sourceVisible,
-				onToggleVisibility = { visibilityState.value = !visibilityState.value },
-				modifier = Modifier.align(Alignment.TopStart)
-					.width(sourceWidth).fillMaxHeight(),
+				manga = manga,
+				sourceTitle = sourceTitle,
+				imageLoader = imageLoader,
+				onSourceClick = onSourceClick,
+				visible = sourceVisible,
+				onToggleVisibility = { sourceVisible = !sourceVisible },
+				modifier = Modifier
+					.weight(if (status == null || sourceVisible) 1f else 0.38f)
+					.fillMaxHeight(),
+			)
+		}
+		if (status != null) {
+			val iconOnly = hasSource && sourceVisible
+			val statusModifier = if (iconOnly) {
+				// Main hero is 40dp; retain the existing horizontal card padding.
+				val horizontalPadding = if (palette.isModern) 11.dp else 10.dp
+				Modifier.width(40.dp + horizontalPadding + horizontalPadding)
+			} else {
+				Modifier.weight(if (hasSource) 0.62f else 1f)
+			}
+			HeroStatusCard(
+				status = status,
+				showActiveRelease = showActiveRelease,
+				accent = accent,
+				iconOnly = iconOnly,
+				modifier = statusModifier.fillMaxHeight().testTag("hero-status-card"),
 			)
 		}
 	}
@@ -314,19 +293,15 @@ private fun HeroSourceCard(
 	}
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
 	val cardContent: @Composable () -> Unit = {
-		// Preserve beta typography, padding, spacing and favicon size. The owner-specific
-		// collapsed "..." needs the chevron outside the Row's width allocation.
-		val horizontalPadding = if (palette.isModern) 11.dp else 9.dp
-		val eyeTarget = 32.dp
-		val eyeShape = RoundedCornerShape(50)
-		Box(modifier = Modifier.fillMaxSize()) {
+		Box(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
 			Column(
 				modifier = Modifier
-					.fillMaxSize()
+					.fillMaxWidth()
+					.fillMaxHeight()
 					.testTag("hero-source-content")
 					.clickable(onClick = onSourceClick)
 					.padding(
-						horizontal = horizontalPadding,
+						horizontal = if (palette.isModern) 11.dp else 9.dp,
 						vertical = if (palette.isModern) 10.dp else 9.dp,
 					),
 				verticalArrangement = Arrangement.Center,
@@ -335,11 +310,9 @@ private fun HeroSourceCard(
 					text = stringResource(R.string.details_source),
 					style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (palette.isModern) 0.90f else 1f),
-					modifier = Modifier.testTag("hero-source-label"),
 				)
 				Spacer(Modifier.height(if (palette.isModern) 6.dp else 5.dp))
 				Row(
-					modifier = Modifier.fillMaxWidth().padding(end = eyeTarget - horizontalPadding),
 					verticalAlignment = Alignment.CenterVertically,
 					horizontalArrangement = Arrangement.spacedBy(if (palette.isModern) 6.dp else 5.dp),
 				) {
@@ -349,8 +322,7 @@ private fun HeroSourceCard(
 						contentDescription = null,
 						error = painterResource(R.drawable.ic_manga_source),
 						fallback = painterResource(R.drawable.ic_manga_source),
-						modifier = Modifier.size(if (palette.isModern) 18.dp else 17.dp)
-							.testTag("hero-source-favicon"),
+						modifier = Modifier.size(if (palette.isModern) 18.dp else 17.dp).testTag("hero-source-favicon"),
 					)
 					Text(
 						text = if (visible) srcText else "...",
@@ -358,34 +330,32 @@ private fun HeroSourceCard(
 						fontWeight = FontWeight.SemiBold,
 						color = MaterialTheme.colorScheme.onSurface,
 						maxLines = if (visible) Int.MAX_VALUE else 1,
-						overflow = TextOverflow.Clip,
-						modifier = Modifier.weight(1f)
-							.semantics { contentDescription = srcText }
+						overflow = if (visible) TextOverflow.Clip else TextOverflow.Ellipsis,
+						modifier = Modifier
+							.weight(1f)
+							.padding(end = 24.dp)
 							.testTag("hero-source-title"),
 					)
 				}
 			}
 			IconButton(
 				onClick = onToggleVisibility,
-				modifier = Modifier.align(Alignment.BottomEnd)
-					.size(eyeTarget).clip(eyeShape)
-					.background(palette.secondary.copy(alpha = 0.11f))
-					.border(BorderStroke(0.75.dp, palette.secondary.copy(alpha = 0.30f)), eyeShape)
-					.testTag("hero-source-visibility-toggle"),
+				modifier = Modifier
+					.align(Alignment.CenterEnd)
+					.size(32.dp)
+					.testTag("hero-source-toggle"),
 			) {
 				Icon(
 					painter = painterResource(if (visible) R.drawable.ic_visibility else R.drawable.ic_visibility_off),
-					contentDescription = stringResource(
-						if (visible) R.string.details_hide_source
-						else R.string.details_show_source,
-					),
+					contentDescription = stringResource(if (visible) R.string.details_hide_source else R.string.details_show_source),
 					tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
 					modifier = Modifier.size(if (palette.isModern) 18.dp else 17.dp)
-						.testTag(if (visible) "hero-source-eye-open" else "hero-source-eye-closed"),
+						.testTag(if (visible) "hero-source-eye-open" else "hero-source-eye-off"),
 				)
 			}
 		}
 	}
+
 	if (!palette.isModern) {
 		Surface(
 			shape = shape,
@@ -470,7 +440,6 @@ private fun HeroSourceCard(
 				spotColor = palette.secondary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.42f else 0.18f),
 			)
 			.clip(shape)
-			.background(MaterialTheme.colorScheme.surfaceContainerHigh)
 			.background(baseBrush)
 			.background(innerSheen)
 			.border(
@@ -487,6 +456,7 @@ private fun HeroStatusCard(
 	status: String,
 	showActiveRelease: Boolean,
 	accent: Color,
+	iconOnly: Boolean = false,
 	modifier: Modifier = Modifier,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
@@ -495,6 +465,12 @@ private fun HeroStatusCard(
 	} else {
 		accent
 	}
+	val statusLabel = stringResource(R.string.status)
+	val releaseLabel = if (showActiveRelease) stringResource(R.string.details_release_active) else null
+	val accessibleSummary = "$statusLabel: $status" + (releaseLabel?.let { ", $it" } ?: "")
+	val cardModifier = if (iconOnly) modifier.semantics(mergeDescendants = true) {
+		contentDescription = accessibleSummary
+	} else modifier
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
 	val statusContent: @Composable () -> Unit = {
 		Row(
@@ -536,7 +512,7 @@ private fun HeroStatusCard(
 						painter = painterResource(if (showActiveRelease) R.drawable.ic_infinity else R.drawable.ic_timelapse),
 						contentDescription = null,
 						tint = statusColor,
-						modifier = Modifier.size(22.dp).testTag("hero-status-glyph"),
+						modifier = Modifier.size(22.dp),
 					)
 				}
 			} else {
@@ -551,26 +527,23 @@ private fun HeroStatusCard(
 							painter = painterResource(if (showActiveRelease) R.drawable.ic_infinity else R.drawable.ic_timelapse),
 							contentDescription = null,
 							tint = statusColor,
-							modifier = Modifier.size(22.dp).testTag("hero-status-glyph"),
+							modifier = Modifier.size(22.dp),
 						)
 					}
 				}
 			}
-			Column(modifier = Modifier.weight(1f)) {
+			if (!iconOnly) Column(modifier = Modifier.weight(1f)) {
 				Text(
 					text = stringResource(R.string.status),
 					style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (palette.isModern) 0.90f else 1f),
-					modifier = Modifier.testTag("hero-status-label"),
 				)
 				Text(
 					text = status,
 					style = MaterialTheme.typography.titleSmall,
 					fontWeight = FontWeight.SemiBold,
 					color = MaterialTheme.colorScheme.onSurface,
-					maxLines = 2,
-					overflow = TextOverflow.Ellipsis,
-					modifier = Modifier.fillMaxWidth().testTag("hero-status-value"),
+					modifier = Modifier.fillMaxWidth(),
 				)
 				if (showActiveRelease) {
 					Spacer(Modifier.height(2.dp))
@@ -578,8 +551,7 @@ private fun HeroStatusCard(
 						text = stringResource(R.string.details_release_active),
 						style = MaterialTheme.typography.labelSmall,
 						color = statusColor,
-						maxLines = 1,
-						modifier = Modifier.testTag("hero-status-release"),
+						modifier = Modifier.fillMaxWidth(),
 					)
 				}
 			}
@@ -593,7 +565,7 @@ private fun HeroStatusCard(
 			border = BorderStroke(0.9.dp, accent.copy(alpha = 0.34f)),
 			tonalElevation = 0.dp,
 			shadowElevation = 0.dp,
-			modifier = modifier,
+			modifier = cardModifier,
 		) {
 			statusContent()
 		}
@@ -669,7 +641,7 @@ private fun HeroStatusCard(
 	)
 
 	Box(
-		modifier = modifier
+		modifier = cardModifier
 			.shadow(
 				elevation = glowElevation,
 				shape = shape,
