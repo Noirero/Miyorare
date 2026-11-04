@@ -4,9 +4,27 @@ import java.io.File
 import org.junit.Assert.*
 import org.junit.Test
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareFavouritesCardBorderStyle
 import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 
 class ModernCoverBoundaryRegressionTest {
+	@Test fun favouritesBorderStyleHasStableDefaultAndNoGlowAlternatives() {
+		assertEquals(listOf("DEFAULT", "THIN", "NONE"), MiyorareFavouritesCardBorderStyle.entries.map { it.name })
+		assertTrue(MiyorareFavouritesCardBorderStyle.DEFAULT.hasStroke)
+		assertTrue(MiyorareFavouritesCardBorderStyle.DEFAULT.hasGlow)
+		assertTrue(MiyorareFavouritesCardBorderStyle.THIN.hasStroke)
+		assertFalse(MiyorareFavouritesCardBorderStyle.THIN.hasGlow)
+		assertFalse(MiyorareFavouritesCardBorderStyle.NONE.hasStroke)
+		assertFalse(MiyorareFavouritesCardBorderStyle.NONE.hasGlow)
+		val grid = source("list/ui/adapter/MangaGridItemAD.kt")
+		val favourites = source("favourites/ui/list/FavouritesListFragment.kt")
+		assertTrue(grid.contains("isNormalModernFavourites && normalFavouritesCardBorder && !normalBorderStyle.hasStroke -> 0f"))
+		assertTrue(source("list/ui/adapter/MangaListAdapter.kt").contains("normalFavouritesCardBorder: Boolean = false"))
+		assertTrue(favourites.contains("normalFavouritesCardBorder = viewModel.favouriteSpace == FavouriteSpace.NORMAL"))
+		assertFalse(source("favourites/ui/list/LocalFavouritesListFragment.kt").contains("normalFavouritesCardBorder ="))
+		assertTrue(favourites.contains("shouldDrawGlow = borderStyle.hasGlow"))
+	}
+
 	@Test fun overlayAndBorderHaveIndependentHostPolicies() {
 		for (style in MiyorareDesignStyle.entries) for (host in ModernCoverContext.entries) {
 			assertEquals(style == MiyorareDesignStyle.MODERN && host != ModernCoverContext.LEGACY, host.usesOverlay(style))

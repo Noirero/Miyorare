@@ -12,6 +12,7 @@ import org.koitharu.kotatsu.core.network.DoHManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ColorScheme
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareFavouritesCardBorderStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.download.ui.worker.DownloadPerformanceSettings
@@ -120,6 +121,7 @@ class SettingsSearchHelper @Inject constructor(
                 addItem(AppSettings.KEY_THEME, R.string.miyorare_display_mode, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.themes))
                 addItem(AppSettings.KEY_THEME_AMOLED, R.string.black_dark_theme, R.string.black_dark_theme_summary, crumbs, AppearanceSettingsFragment::class.java)
                 addItem(VisualEffectPreferences.KEY_LEVEL, R.string.visual_effects, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
+                addItem(MiyorareAppearance.KEY_FAVOURITES_CARD_BORDER_STYLE, R.string.miyorare_favourites_border_style, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java, keywordText = MiyorareFavouritesCardBorderStyle.entries.map { ctx.getString(it.titleResId) })
                 addItem(AppSettings.KEY_APP_LOCALE, R.string.language, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
                 addItem(AppSettings.KEY_UI_SCALE, R.string.ui_scale, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java, keywordRes = intArrayOf(R.string.ui_scale_smallest, R.string.ui_scale_smaller, R.string.ui_scale_default, R.string.ui_scale_larger, R.string.ui_scale_largest))
                 addItem(AppSettings.KEY_HAPTIC_FEEDBACK, R.string.haptic_feedback, R.string.haptic_feedback_summary, crumbs, AppearanceSettingsFragment::class.java)
