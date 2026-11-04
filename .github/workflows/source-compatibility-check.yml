@@ -20,7 +20,6 @@ on:
       - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/index/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/output/**'
       - 'compatibility/miyorare-source-pack-contract.v1.json'
-      - 'docs/source-compatibility.md'
       - '.github/workflows/source-compatibility-check.yml'
   workflow_dispatch:
 
