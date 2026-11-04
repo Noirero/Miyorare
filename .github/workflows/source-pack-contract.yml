@@ -145,6 +145,8 @@ jobs:
           # Release provenance + APK checksum are still verified, with
           # strictly read-only permissions and no duplicate README writer.
           assert 'sha256sum "release/$asset_name"' in post_release
+          assert '.github/workflows/main-build.yml' in post_release
+          assert 'RUN_CONCLUSION' in post_release
           assert 'actual_digest' in post_release
           assert 'asset_digest' in post_release
           assert 'contents: read' in post_release
@@ -161,6 +163,8 @@ jobs:
           assert 'update-readme' in release_sync
           assert 'git rev-list -n 1 "$TAG"' in release_sync
           assert 'gh api "repos/$REPOSITORY/actions/runs/$RUN_ID"' in release_sync
+          assert '.github/workflows/main-build.yml' in release_sync
+          assert '.conclusion' in release_sync
           assert 'gh pr create' in release_sync
           assert 'gh pr merge' not in release_sync
 
