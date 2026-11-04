@@ -183,16 +183,18 @@ class MigrationLandingScreenTest {
         // A detached AppBarLayout has no real first-layout lifecycle. Attach both
         // views to the composition so the assertion observes the actual layout.
         compose.setContent {
-            AndroidView(factory = { context ->
-                FrameLayout(context).apply {
-                    appBar = AppBarLayout(context).apply {
-                        addView(View(context), AppBarLayout.LayoutParams(
+            AndroidView(factory = { _ ->
+                // Compose's test activity uses a bare theme; Material AppBarLayout
+                // must use the same AppCompat-derived theme as the real settings UI.
+                FrameLayout(themedContext).apply {
+                    appBar = AppBarLayout(themedContext).apply {
+                        addView(View(themedContext), AppBarLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT, 240,
                         ).apply {
                             scrollFlags = AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL
                         })
                     }
-                    composeHost = View(context)
+                    composeHost = View(themedContext)
                     addView(appBar, FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT,
