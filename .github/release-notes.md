@@ -1,40 +1,42 @@
-## Miyorare v1.4.18
+## Miyorare v1.4.19
 
-This release refines the On-device Files experience with a dedicated light appearance, more efficient Chapter Gallery thumbnail handling, and improved local PDF cache management. Additional fixes improve scrolling behavior and text readability across light and dark themes.
+This update gives you a few more ways to make Miyorare your own, while polishing some of the screens you use every day. Settings icons and Favourites card borders are now customizable, the first-run appearance setup feels more consistent, and On-device Files and manga Details have received several small improvements.
 
 ### ✨ What's New
 
-- **On-device Files Light Appearance** — Living Archive now supports a warm ivory light palette while preserving its original cinematic appearance in dark mode.
+- **Settings Icon Style** — Choose **Follow theme**, **Miyorare UI / Modern**, or **Material 3 / Classic** icons independently of your overall theme. Custom icons remain a coming-soon option.
+- **Favourites Card Borders** — Choose **Default**, **Thin**, or **No border** for manga cards in Normal Favourites. Other grids retain their existing appearance.
+- **A Better Appearance Setup** — Onboarding now uses the same theme and palette choices as Appearance Settings, with a preview that updates as you make changes.
 
 ### 🚀 Improvements
 
-- **Chapter Gallery Performance** — Improved thumbnail memory reuse to reduce unnecessary image decoding when browsing and revisiting chapters.
+- **On-device Files** — Compact layouts use more consistent cream-and-gold controls, with smaller Continue Reading cards and tidier reading-progress information.
+- **Manga Details** — A Source visibility control lets you reveal or hide the provider name. The Status card remains accessible in a compact form when Source is visible, and long labels fit more naturally.
 
-- **Local PDF Cache Management** — Improved rendered-page cache limits and cleanup to reduce unnecessary storage usage while keeping active pages available.
+### 🐞 Fixes & Maintenance
 
-### 🐞 Fixes
-
-- Fixed pull-to-refresh interfering with Chapter Gallery scrolling.
-- Fixed text, icon, and label contrast issues across On-device Files and Chapter Gallery.
+- **Source Migration** — Lossless transfer conflicts now provide clearer reasons in the results screen, without changing the existing data-protection and rollback rules.
+- Updated internal checks and source-pack maintenance to help keep builds and release verification reliable.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Rilis ini menyempurnakan pengalaman On-device Files dengan tampilan light mode khusus, pengelolaan thumbnail Chapter Gallery yang lebih efisien, serta peningkatan sistem cache PDF lokal. Perbaikan tambahan meningkatkan interaksi scrolling dan keterbacaan teks pada light maupun dark mode.
+Pembaruan ini memberi lebih banyak pilihan untuk menyesuaikan tampilan Miyorare, sekaligus merapikan beberapa layar yang sering digunakan. Ikon Settings dan border kartu Favourites kini bisa diatur, proses memilih tampilan saat pertama kali membuka aplikasi lebih konsisten, dan On-device Files serta manga Details mendapat sejumlah penyempurnaan.
 
 ### ✨ Yang Baru
 
-- **Tampilan Light Mode On-device Files** — Living Archive sekarang mendukung palet warna terang bernuansa ivory yang hangat, sekaligus mempertahankan tampilan sinematik aslinya pada dark mode.
+- **Gaya Ikon Settings** — Pilih **Ikuti tema**, **Miyorare UI / Modern**, atau **Material 3 / Classic** secara terpisah dari tema utama. Opsi ikon kustom masih dalam tahap *segera hadir*.
+- **Border Kartu Favourites** — Pilih **Default**, **Tipis**, atau **Tanpa border** untuk kartu manga di Normal Favourites. Tampilan daftar lainnya tetap seperti sebelumnya.
+- **Pengaturan Tampilan Awal** — Onboarding sekarang menggunakan pilihan tema dan palet warna yang sama dengan Appearance Settings, disertai pratinjau yang mengikuti perubahan pilihan.
 
 ### 🚀 Peningkatan
 
-- **Performa Chapter Gallery** — Meningkatkan penggunaan ulang thumbnail dalam memory untuk mengurangi decoding gambar yang tidak diperlukan saat menjelajahi dan membuka kembali chapter.
+- **On-device Files** — Kontrol pada tampilan compact kini lebih konsisten dengan palet cream-and-gold, sementara kartu Continue Reading dibuat lebih ringkas dengan informasi progres yang lebih rapi.
+- **Manga Details** — Kontrol visibilitas Source memungkinkan nama penyedia ditampilkan atau disembunyikan. Status tetap tersedia dalam bentuk ringkas ketika Source terlihat, dan teks panjang ditangani dengan lebih baik.
 
-- **Pengelolaan Cache PDF Lokal** — Meningkatkan batas penggunaan dan pembersihan cache halaman PDF untuk mengurangi penggunaan penyimpanan yang tidak diperlukan sambil mempertahankan halaman aktif.
+### 🐞 Perbaikan & Pemeliharaan
 
-### 🐞 Perbaikan
-
-- Memperbaiki konflik pull-to-refresh dengan scrolling Chapter Gallery.
-- Memperbaiki masalah kontras teks, ikon, dan label pada On-device Files serta Chapter Gallery.
+- **Source Migration** — Konflik saat pemindahan data *lossless* kini menampilkan alasan yang lebih jelas pada hasil migrasi, tanpa mengubah aturan perlindungan data dan rollback.
+- Pembaruan pemeriksaan internal dan pemeliharaan Source Pack untuk membantu menjaga keandalan build dan verifikasi rilis.
 
 </details>
