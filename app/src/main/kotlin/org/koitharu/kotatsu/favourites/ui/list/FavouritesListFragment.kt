@@ -40,6 +40,7 @@ import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareFavouritesCardBorderStyle
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
@@ -280,7 +281,7 @@ class FavouritesListFragment : MangaListFragment() {
 		applyNormalFavouritesGridPadding(binding)
 		binding.recyclerView.clipToPadding = false
 		binding.recyclerView.setBackgroundColor(Color.TRANSPARENT)
-		modernSurfaceDecoration?.updateNormal(level, palette)
+		modernSurfaceDecoration?.updateNormal(level, palette, settings.miyorareFavouritesCardBorderStyle)
 		binding.recyclerView.invalidateItemDecorations()
 	}
 
@@ -384,6 +385,7 @@ class FavouritesListFragment : MangaListFragment() {
 			titleTapToRead = settings.isTitleTapToReadEnabled,
 			onTipClose = { viewModel.dismissScalingTip() },
 			gridVisualScaleProvider = { viewModel.gridScale.value },
+			normalFavouritesCardBorder = viewModel.favouriteSpace == FavouriteSpace.NORMAL,
 		).apply {
 			addDelegate(
 				ListItemType.LIBRARY_GROUP,
@@ -1306,7 +1308,11 @@ class FavouritesListFragment : MangaListFragment() {
 			radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
 		}
 
-		fun updateNormal(level: VisualEffectLevel, palette: org.koitharu.kotatsu.core.ui.MiyorareViewPalette) {
+		fun updateNormal(
+			level: VisualEffectLevel,
+			palette: org.koitharu.kotatsu.core.ui.MiyorareViewPalette,
+			borderStyle: MiyorareFavouritesCardBorderStyle,
+		) {
 			val glass = palette.neonGlass()
 			glowPaint.color = glass.cardGlow
 			glowPaint.strokeWidth = density * when (level) {
@@ -1327,7 +1333,7 @@ class FavouritesListFragment : MangaListFragment() {
 			// only the soft halo, avoiding a second fill + stroke pass over every visible card.
 			shouldDrawFill = false
 			shouldDrawStroke = false
-			shouldDrawGlow = true
+			shouldDrawGlow = borderStyle.hasGlow
 			radius = MiyorareFavouritesVisualSpec.MANGA_CARD_RADIUS_DP * density
 		}
 

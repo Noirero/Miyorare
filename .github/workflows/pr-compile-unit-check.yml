@@ -8,10 +8,12 @@ on:
 
 concurrency:
   group: pr-compile-unit-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # Keep an in-flight run for label-only updates; new source heads still supersede it.
+  cancel-in-progress: ${{ github.event.action != 'labeled' && github.event.action != 'unlabeled' }}
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   runtime-risk:
@@ -31,6 +33,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LABEL_OWNER: ${{ contains(github.event.pull_request.labels.*.name, 'ci:owner-request') }}
           LABEL_RUNTIME: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') }}
           LABEL_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') }}
           LABEL_USER_ISSUE: ${{ contains(github.event.pull_request.labels.*.name, 'ci:user-issue') }}
@@ -47,7 +50,7 @@ jobs:
           if bash .github/scripts/select-pr-runtime-tests.sh < "$RUNNER_TEMP/runtime-changed-files.txt" >/dev/null 2>&1; then
             targeted_available=true
           fi
-          plan="$(printf '%s\n' "$plan" | DRAFT="$DRAFT" LABEL_RUNTIME="$LABEL_RUNTIME" LABEL_FULL="$LABEL_FULL" LABEL_USER_ISSUE="$LABEL_USER_ISSUE" LABEL_THEME="$LABEL_THEME" TARGETED_AVAILABLE="$targeted_available" bash .github/scripts/select-pr-runtime-tests.sh --policy)"
+          plan="$(printf '%s\n' "$plan" | DRAFT="$DRAFT" LABEL_OWNER="$LABEL_OWNER" LABEL_RUNTIME="$LABEL_RUNTIME" LABEL_FULL="$LABEL_FULL" LABEL_USER_ISSUE="$LABEL_USER_ISSUE" LABEL_THEME="$LABEL_THEME" TARGETED_AVAILABLE="$targeted_available" bash .github/scripts/select-pr-runtime-tests.sh --policy)"
           printf '%s\n' "$plan" | tee -a "$GITHUB_OUTPUT"
           # Explain the existing classifier's decision; never change its outputs or gates.
           run_runtime="$(sed -n 's/^run_runtime=//p' <<< "$plan" | tail -1)"
@@ -56,8 +59,10 @@ jobs:
             echo '## Android runtime selection'
             echo "- Exact PR HEAD: \`$HEAD_SHA\`"
             echo "- Runtime requested: **$run_runtime**, full suite: **$full_runtime**"
-            echo "- Owner/user/theme/override flags: $LABEL_RUNTIME / $LABEL_USER_ISSUE / $LABEL_THEME / $LABEL_FULL"
-            if [[ "$run_runtime" == false ]]; then
+            echo "- Owner/user/theme/override flags: $LABEL_OWNER / $LABEL_USER_ISSUE / $LABEL_THEME / $LABEL_RUNTIME / $LABEL_FULL"
+            if [[ "$LABEL_OWNER" == true && "$LABEL_RUNTIME" == false && "$LABEL_FULL" == false && "$LABEL_USER_ISSUE" == false && "$LABEL_THEME" == false ]]; then
+              echo '- Reason: owner-request runs the regular compile/resources/unit checks, while Android 15 is intentionally not selected unless a heavy label is added. Compile success alone does not prove Android runtime or release readiness.'
+            elif [[ "$run_runtime" == false ]]; then
               echo '- Reason: this PR has no runtime-relevant changed paths and no mandatory override.'
             elif [[ "$full_runtime" == true ]]; then
               echo '- Reason: shared/unmapped runtime risk or an explicit full-runtime override.'
@@ -85,54 +90,88 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
 
+      - name: Validate CI evidence and Miyori status contracts
+        run: |
+          python3 -m unittest discover -s .github/scripts -p 'test_ci_exact_head_reuse.py'
+          python3 -m unittest discover -s .github/scripts -p 'test_miyori_status.py'
+
+      - name: Find reusable exact-head compile/JVM evidence
+        id: compile-proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: python3 .github/scripts/ci_exact_head_reuse.py
+
       - name: Set up JDK 17
+        if: steps.compile-proof.outputs.reuse != 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Node 22
+        if: steps.compile-proof.outputs.reuse != 'true'
         uses: actions/setup-node@v6
         with:
           node-version: '22'
 
       - name: Set up Gradle
+        if: steps.compile-proof.outputs.reuse != 'true'
         uses: gradle/actions/setup-gradle@v6
 
       - name: Grant execute permission
+        if: steps.compile-proof.outputs.reuse != 'true'
         run: chmod +x gradlew
 
       - name: Validate runtime selector and wrapper
+        if: steps.compile-proof.outputs.reuse != 'true'
         run: |
           bash .github/scripts/select-pr-runtime-tests.sh --self-test
           bash -n .github/scripts/run-selected-android-runtime.sh
           python3 .github/scripts/targeted-ci-diagnostics.py --self-test
 
       - name: Install browser auth helper tooling
+        if: steps.compile-proof.outputs.reuse != 'true'
         run: npm install --prefix browser-auth-helper --ignore-scripts
 
       - name: Validate temporary browser auth helper
+        if: steps.compile-proof.outputs.reuse != 'true'
         run: npm test --prefix browser-auth-helper
 
       - name: Validate Cloudflare Worker bundle
+        if: steps.compile-proof.outputs.reuse != 'true'
         run: npm run check:cloudflare --prefix browser-auth-helper
 
       # Run build checks in one Gradle invocation to avoid repeated daemonless startup
       # while preserving every compile, resource, manifest and runtime-pack task.
       - name: Compile, validate resources and build Kotatsu Runtime Pack
+        if: steps.compile-proof.outputs.reuse != 'true'
         run: ./gradlew compileDebugSources processPreviewMainManifest processReleaseMainManifest :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
 
       - name: Run JVM unit tests
+        if: steps.compile-proof.outputs.reuse != 'true'
         run: ./gradlew testDebugUnitTest --max-workers=4 --no-daemon --stacktrace
 
       - name: Upload JVM evidence
-        if: always()
+        if: always() && steps.compile-proof.outputs.reuse != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: pr-jvm-evidence
           path: app/build/reports/tests/
           if-no-files-found: warn
           retention-days: 3
+
+      - name: Explain reused compile evidence
+        if: steps.compile-proof.outputs.reuse == 'true'
+        env:
+          SOURCE_RUN_ID: ${{ steps.compile-proof.outputs.source_run_id }}
+        run: |
+          echo "Compile, resources & JVM tests reused from successful exact-head run $SOURCE_RUN_ID." >> "$GITHUB_STEP_SUMMARY"
+          echo "Head, base, PR and workflow identity were verified. Android validation is evaluated independently." >> "$GITHUB_STEP_SUMMARY"
 
   android-runtime:
     name: Android runtime validation — Android 15

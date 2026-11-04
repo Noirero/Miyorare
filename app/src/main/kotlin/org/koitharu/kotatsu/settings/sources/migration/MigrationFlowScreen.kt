@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.MigrationFailureStage
+import org.koitharu.kotatsu.alternatives.domain.MigrationConflictReason
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchDiscoveryMode
 import org.koitharu.kotatsu.alternatives.domain.MigrationBatchPolicy
@@ -508,6 +509,7 @@ private fun MigrationReviewStep(
 					outcome?.destinationTitle, outcome?.destinationSource,
 					onClick = { onMangaClick(manga) },
 					failureStage = outcome?.failureStage,
+					conflictReason = outcome?.conflictReason,
 					targetManga = state.readyTarget(manga.id) ?: state.completedTarget(manga.id),
 					onOpenTarget = onOpenTarget,
 					onMigrate = if (!busy && manga.id in readyIds) ({ onMigrateOne(manga.id) }) else null,
@@ -613,6 +615,7 @@ private fun MigrationMangaReviewItem(
 	onCopy: (() -> Unit)? = null,
 	onSkip: (() -> Unit)? = null,
 	failureStage: MigrationFailureStage? = null,
+	conflictReason: MigrationConflictReason? = null,
 ) {
 	val context = LocalContext.current
 	var menuExpanded by remember { mutableStateOf(false) }
@@ -680,8 +683,24 @@ private fun MigrationMangaReviewItem(
 							"Gagal membaca detail source tujuan; periksa jaringan/source, lalu coba lagi."
 						MigrationFailureStage.DESTINATION_STORAGE ->
 							"Gagal menyimpan detail kandidat; periksa penyimpanan sebelum mengulang."
-						MigrationFailureStage.DATA_CONFLICT ->
-							"Ada konflik data/riwayat dengan kandidat; periksa library atau pilih kandidat lain."
+						MigrationFailureStage.DATA_CONFLICT -> when (conflictReason) {
+                            MigrationConflictReason.CHAPTER_MAPPING ->
+                                "Chapter dengan data baca tidak dapat dipetakan secara aman; coba kandidat lain."
+                            MigrationConflictReason.DESTINATION_HISTORY ->
+                                "Riwayat baca asal dan tujuan berbeda; periksa kedua manga."
+                            MigrationConflictReason.LIBRARY_STATE ->
+                                "Kategori atau posisi Library asal dan tujuan bertabrakan; periksa kedua entri."
+                            MigrationConflictReason.READER_SETTINGS ->
+                                "Catatan atau pengaturan baca asal dan tujuan bertabrakan; periksa kedua manga."
+                            MigrationConflictReason.BOOKMARKS ->
+                                "Bookmark asal dan tujuan bertabrakan; periksa kedua manga."
+                            MigrationConflictReason.TRACKING_STATE ->
+                                "Data statistik atau tracker bertabrakan; periksa kedua manga."
+                            MigrationConflictReason.CHAPTER_NOTES ->
+                                "Catatan atau rating chapter bertabrakan; periksa kedua manga."
+                            MigrationConflictReason.OTHER_DATA, null ->
+                                "Ada konflik data/riwayat dengan kandidat; periksa library atau pilih kandidat lain."
+                        }
 						MigrationFailureStage.DATA_TRANSFER ->
 							"Transfer data tidak selesai; periksa library dan riwayat sebelum mengulang."
 						MigrationFailureStage.UNKNOWN, null ->

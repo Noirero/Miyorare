@@ -127,6 +127,15 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val miyorareDesignStyle: MiyorareDesignStyle
 		get() = prefs.getEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.MODERN)
 
+	val miyorareSettingsIconStyle: MiyorareSettingsIconStyle
+		get() = prefs.getEnumValue(MiyorareAppearance.KEY_SETTINGS_ICON_STYLE, MiyorareSettingsIconStyle.FOLLOW_THEME)
+
+	val miyorareFavouritesCardBorderStyle: MiyorareFavouritesCardBorderStyle
+		get() = prefs.getEnumValue(
+			MiyorareAppearance.KEY_FAVOURITES_CARD_BORDER_STYLE,
+			MiyorareFavouritesCardBorderStyle.DEFAULT,
+		)
+
 	fun setMiyorareDesignStyle(value: MiyorareDesignStyle) = prefs.edit {
 		putEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, value)
 	}
@@ -136,6 +145,15 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	fun setMiyorareThemePreset(value: MiyorareThemePreset) = prefs.edit {
 		putEnumValue(MiyorareAppearance.KEY_THEME_PRESET, value)
+	}
+
+	val miyorareModernPaletteSource: MiyorareModernPaletteSource
+		get() = MiyorareModernPaletteSource.fromStoredValue(
+			prefs.getString(MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE, null),
+		)
+
+	fun setMiyorareModernPaletteSource(value: MiyorareModernPaletteSource) = prefs.edit {
+		putString(MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE, value.name)
 	}
 
 	val miyorareCustomAccent: String
@@ -178,6 +196,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	/** Reset theme-only choices while preserving list, reader, navigation and content preferences. */
 	fun resetMiyorareAppearance() = prefs.edit {
 		putEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.MODERN)
+		putEnumValue(MiyorareAppearance.KEY_SETTINGS_ICON_STYLE, MiyorareSettingsIconStyle.FOLLOW_THEME)
+		putEnumValue(MiyorareAppearance.KEY_FAVOURITES_CARD_BORDER_STYLE, MiyorareFavouritesCardBorderStyle.DEFAULT)
 		putEnumValue(MiyorareAppearance.KEY_THEME_PRESET, MiyorareThemePreset.MIYORARE)
 		putString(MiyorareAppearance.KEY_CUSTOM_ACCENT, MiyorareAppearance.DEFAULT_CUSTOM_ACCENT)
 		putBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, true)

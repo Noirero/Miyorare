@@ -116,6 +116,11 @@ add_backup_suite() {
   MAPPED=true
 }
 
+add_onboarding_suite() {
+  add_class org.koitharu.kotatsu.main.ui.welcome.OnboardingAppearanceIntegrationTest
+  MAPPED=true
+}
+
 add_category_sets_data_suite() {
   add_class org.koitharu.kotatsu.core.db.CategorySetsMigrationTest
   add_class org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest
@@ -168,6 +173,10 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest
   add_class org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest
 
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/welcome/OnboardingAppearanceIntegrationTest.kt ]]; then
+    add_onboarding_suite
+  fi
+
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/data/PrivateHistoryIsolationRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   fi
@@ -180,6 +189,9 @@ add_full_suite() {
 plan_path() {
   local path="$1"
   case "$path" in
+    app/src/main/kotlin/org/koitharu/kotatsu/main/ui/welcome/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/welcome/*)
+      add_onboarding_suite ;;
+
     app/src/main/kotlin/org/koitharu/kotatsu/local/library/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/local/library/*|app/src/main/kotlin/org/koitharu/kotatsu/local/data/input/LocalPdfCache.kt)
       add_local_download_suite
       add_local_reader_suite ;;
@@ -321,9 +333,9 @@ classify_paths() {
 # changed-label payload. Therefore labeled/unlabeled/synchronize/reopened
 # resolve identically for the same PR state.
 resolve_policy() {
-  local run="$1" full="$2" draft="$3" required="$4" force_full="$5" mapped="$6" user_issue="$7" theme="$8"
+  local run="$1" full="$2" draft="$3" required="$4" force_full="$5" mapped="$6" user_issue="$7" theme="$8" owner="${9:-false}"
   local v
-  for v in "$run" "$full" "$draft" "$required" "$force_full" "$mapped" "$user_issue" "$theme"; do
+  for v in "$run" "$full" "$draft" "$required" "$force_full" "$mapped" "$user_issue" "$theme" "$owner"; do
     [[ "$v" == true || "$v" == false ]] || return 2
   done
   if [[ "$user_issue" == true || "$theme" == true ]]; then
@@ -334,6 +346,10 @@ resolve_policy() {
   elif [[ "$required" == true ]]; then
     run=true
     [[ "$mapped" == true ]] || full=true
+  elif [[ "$owner" == true ]]; then
+    # Owner-only PRs use quick feedback even if paths would require full runtime.
+    # Mandatory user/theme/explicit runtime labels above always take precedence.
+    run=false; full=false
   elif [[ "$draft" == true ]]; then
     run=false; full=false
   fi
@@ -348,7 +364,7 @@ resolve_policy() {
 policy_self_test() {
   local got expected
   policy_check() {
-    got="$(resolve_policy "$1" "$2" "$3" "$4" "$5" "$6" "${9:-false}" "${10:-false}")"
+    got="$(resolve_policy "$1" "$2" "$3" "$4" "$5" "$6" "${9:-false}" "${10:-false}" "${11:-false}")"
     expected="$(printf 'run_runtime=%s\nfull=%s' "$7" "$8")"
     [[ "$got" == "$expected" ]] || { echo "Policy mismatch: $got != $expected" >&2; return 1; }
   }
@@ -363,6 +379,23 @@ policy_self_test() {
   policy_check false false false false true false true true
   policy_check true false false true true true true true
   policy_check false false false false false false false false
+  # Owner-only PRs always remain fast for both draft and ready PRs.
+  policy_check true true false false false false false false false false true
+  policy_check true false true false false true false false false false true
+  policy_check false false false false false false false false false false true
+  # Explicit heavy labels override owner fast mode, even on draft PRs.
+  policy_check true false false true false true true false false false true
+  policy_check false false true false true false true true false false true
+  policy_check true true false false false false true true true false true
+  policy_check false false true false false false true true false true true
+  # Explicit label precedence on draft and ready PRs, including reversions.
+  # Args: path_run path_full draft required full_override mapped expected_run expected_full user theme owner
+  policy_check false false true false false true true false false true true
+  policy_check false false true false false false true true true false true
+  policy_check false false true true false true true false false false true
+  policy_check false false true false true true true true false false true
+  policy_check true true false false false false false false false false true
+  policy_check true false false false false true true false false false false
   # Documentation-only PRs must run Android Runtime for either mandatory label.
   policy_check false false false false false false true true true false
   policy_check false false false false false false true true false true
@@ -412,6 +445,12 @@ self_test() {
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt')"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
 
+  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/main/ui/welcome/OnboardingScreen.kt')"
+  grep -q '^mode=targeted$' <<<"$out"
+  grep -q 'OnboardingAppearanceIntegrationTest' <<<"$out"
+  out="$(plan_from_paths false 'app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/welcome/OnboardingAppearanceIntegrationTest.kt')"
+  grep -q 'OnboardingAppearanceIntegrationTest' <<<"$out"
+
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
   grep -q 'DiscoveryCatalogUiTest' <<<"$out"
   grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
@@ -454,11 +493,11 @@ if [[ "$SELF_TEST" == true ]]; then
 fi
 
 if [[ "$POLICY" == true ]]; then
-  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}"
+  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}" "${LABEL_OWNER:?}"
   input="$(cat)"
   run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
   full="$(sed -n 's/^full=//p' <<< "$input")"
-  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME"
+  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME" "$LABEL_OWNER"
   exit 0
 fi
 mapfile -t PATHS

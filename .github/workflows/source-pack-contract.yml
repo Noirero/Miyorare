@@ -142,11 +142,31 @@ jobs:
           assert 'git rev-list -n 1 "$TAG"' in post_release
           assert 'MIYORARE_RELEASE_RUN_ID:' in post_release
           assert 'MIYORARE_RELEASE_SOURCE_SHA:' in post_release
-          assert 'hashlib.sha256' in post_release
-          assert 'automation/release-readme-v${VERSION_NAME}-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}' in post_release
-          assert 'gh workflow run identity-guard.yml' in post_release
-          assert 'gh pr merge "$pr_number"' in post_release
+          # Release provenance + APK checksum are still verified, with
+          # strictly read-only permissions and no duplicate README writer.
+          assert 'sha256sum "release/$asset_name"' in post_release
+          assert '.github/workflows/main-build.yml' in post_release
+          assert 'RUN_CONCLUSION' in post_release
+          assert 'actual_digest' in post_release
+          assert 'asset_digest' in post_release
+          assert 'contents: read' in post_release
+          assert 'contents: write' not in post_release
+          assert 'pull-requests: write' not in post_release
+          assert 'gh pr merge' not in post_release
+          assert 'gh pr create' not in post_release
           assert 'git push origin HEAD:main' not in post_release
+
+          # Only Release README Sync may open the metadata PR.
+          release_sync = Path('.github/workflows/release-readme-sync.yml').read_text(encoding='utf-8')
+          assert 'types: [published]' in release_sync
+          assert 'normalize-release-body' in release_sync
+          assert 'update-readme' in release_sync
+          assert 'git rev-list -n 1 "$TAG"' in release_sync
+          assert 'gh api "repos/$REPOSITORY/actions/runs/$RUN_ID"' in release_sync
+          assert '.github/workflows/main-build.yml' in release_sync
+          assert '.conclusion' in release_sync
+          assert 'gh pr create' in release_sync
+          assert 'gh pr merge' not in release_sync
 
           profile = Path('.github/workflows/release-build-profile.yml').read_text(encoding='utf-8')
           assert '  workflow_dispatch:' in profile
@@ -187,16 +207,16 @@ jobs:
           assert 'miyorare_source_pack_snapshot_details' in detail
 
           sync = Path('.github/workflows/miyorare-farm-pack-membership-sync.yml').read_text(encoding='utf-8')
+          # The stable default branch must not execute the retired beta Farm
+          # scheduler or acquire write/merge privileges. Integration remains
+          # on Amain2 and is not modified by this release candidate.
           assert 'farm_sha:' in sync
           assert 'REQUESTED_FARM_SHA' in sync
           assert 'mode="event"' in sync
           assert 'mode="recovery"' in sync
           assert 'cancel-in-progress: true' in sync
           assert '$GITHUB_RUN_ATTEMPT' in sync
-          assert 'automation/farm-pack-sync-${FARM_SHA:0:12}-$GITHUB_RUN_ID-a$GITHUB_RUN_ATTEMPT' in sync
           assert 'raw.githubusercontent.com/$FARM_REPOSITORY/$sha/compatibility/source-registry.json' in sync
-          # Default-branch beta Farm automation is retired. Neither scheduled
-          # nor manually dispatched runs may write or merge into held beta.
           assert '  schedule:' not in sync
           assert ('    if: ' + chr(36) + '{{ false }}') in sync
           assert '  actions: read' in sync

@@ -7,6 +7,7 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
@@ -26,6 +27,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareSettingsIconStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
@@ -41,6 +43,9 @@ import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.main.ui.nav.composeColorSchemeFromTheme
+
+/** One preference observer per settings theme composition, not per icon row. */
+val LocalSettingsIconStyle = compositionLocalOf { MiyorareSettingsIconStyle.FOLLOW_THEME }
 
 private const val ROND_ROUNDED = 100f
 
@@ -173,6 +178,10 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		MiyorareAppearance.KEY_DESIGN_STYLE,
 		MiyorareDesignStyle.CLASSIC.name,
 	)
+	val iconStyleValue by rememberStringPref(
+		MiyorareAppearance.KEY_SETTINGS_ICON_STYLE,
+		MiyorareSettingsIconStyle.FOLLOW_THEME.name,
+	)
 	val themePresetValue by rememberStringPref(
 		MiyorareAppearance.KEY_THEME_PRESET,
 		MiyorareThemePreset.MIYORARE.name,
@@ -209,6 +218,8 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 
 	val designStyle = MiyorareDesignStyle.entries.firstOrNull { it.name == designStyleValue }
 		?: MiyorareDesignStyle.CLASSIC
+	val settingsIconStyle = MiyorareSettingsIconStyle.entries.firstOrNull { it.name == iconStyleValue }
+		?: MiyorareSettingsIconStyle.FOLLOW_THEME
 	val themePreset = MiyorareThemePreset.entries.firstOrNull { it.name == themePresetValue }
 		?: MiyorareThemePreset.MIYORARE
 	val normalPaletteSource = MiyorareModernPaletteSource.fromStoredValue(paletteSourceValue)
@@ -278,7 +289,10 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		classicMiyorareVisualPalette(scheme, effectLevel)
 	}
 	val shapes = if (designStyle == MiyorareDesignStyle.MODERN) miyorareShapes else classicShapes
-	CompositionLocalProvider(LocalMiyorareVisualPalette provides visualPalette) {
+	CompositionLocalProvider(
+		LocalMiyorareVisualPalette provides visualPalette,
+		LocalSettingsIconStyle provides settingsIconStyle,
+	) {
 		MaterialTheme(
 			colorScheme = scheme,
 			shapes = shapes,

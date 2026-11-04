@@ -21,6 +21,7 @@ open class MangaListAdapter(
 	gridVisualScaleProvider: (() -> Float)? = null,
 	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
 	localCinematic: Boolean = false,
+	normalFavouritesCardBorder: Boolean = false,
 ) : BaseListAdapter<ListModel>() {
 
 	init {
@@ -37,7 +38,7 @@ open class MangaListAdapter(
 			else mangaListDetailedItemAD(listener, titleClickListener, coverContext))
 		addDelegate(
 			ListItemType.MANGA_GRID,
-			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider, coverContext, localCinematic),
+			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider, coverContext, localCinematic, normalFavouritesCardBorder),
 		)
 		addDelegate(ListItemType.FOOTER_LOADING, loadingFooterAD())
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())

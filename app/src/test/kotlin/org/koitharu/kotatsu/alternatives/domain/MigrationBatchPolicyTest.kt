@@ -153,6 +153,24 @@ class MigrationBatchPolicyTest {
 		} catch (_: CancellationException) { }
 	}
 
+    @Test fun typedConflictReasonSurvivesWorkerOutputWithoutExceptionText() = runTest {
+        val request = MigrationBatchRequest(1L, "OLD", MigrationBatchAction.MIGRATE, MigrationSelection.of(replacement))
+        val outcome = MigrationBatchPolicy.process(request, { true }, { error("Unused") }, {
+            throw MigrationExecutionStageException(
+                MigrationFailureStage.DATA_CONFLICT,
+                LosslessMigrationConflictException(
+                    "sensitive private manga URL", MigrationConflictReason.CHAPTER_MAPPING,
+                ),
+            )
+        })
+        assertEquals(MigrationBatchStatus.ERROR, outcome.status)
+        assertEquals(MigrationFailureStage.DATA_CONFLICT, outcome.failureStage)
+        assertEquals(MigrationConflictReason.CHAPTER_MAPPING, outcome.conflictReason)
+        val saved = MigrationBatchWork.output(outcome)
+        assertEquals("CHAPTER_MAPPING", saved.getString("result_conflict_reason"))
+        assertFalse(saved.toString().contains("sensitive private manga URL"))
+    }
+
     @Test fun errorPhaseSurvivesDurableWorkOutputAndDoesNotPersistRawThrowable() = runTest {
         val selection = MigrationSelection.of(replacement)
         val request = MigrationBatchRequest(1L, "OLD", MigrationBatchAction.MIGRATE, selection)

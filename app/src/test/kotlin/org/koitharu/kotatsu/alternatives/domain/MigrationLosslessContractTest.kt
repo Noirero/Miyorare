@@ -50,7 +50,9 @@ class MigrationLosslessContractTest {
 		val transfer = source("org/koitharu/kotatsu/alternatives/domain/LosslessMigrationTransfer.kt")
 
 		assertTrue(transfer.contains("targetCounts[it.id]==1"))
-		assertTrue(transfer.contains("throwLosslessMigrationConflictException(message)"))
+		assertTrue(transfer.contains("throwLosslessMigrationConflictException(message,reason)"))
+		assertTrue(transfer.contains("MigrationConflictReason.CHAPTER_MAPPING"))
+		assertTrue(transfer.contains("MigrationConflictReason.DESTINATION_HISTORY"))
 		assertTrue(transfer.contains("Destinationmangaalreadyhasdifferentreadinghistory"))
 		assertTrue(transfer.contains("Per-chapternotesconflict"))
 		assertTrue(transfer.contains("if(target!=null&&!samePath(target.path,source.path)){"))

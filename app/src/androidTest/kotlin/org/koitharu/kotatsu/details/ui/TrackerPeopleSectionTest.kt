@@ -1,6 +1,21 @@
 package org.koitharu.kotatsu.details.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.miyorareThemeColors
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
@@ -168,6 +183,126 @@ class TrackerPeopleSectionTest {
         compose.runOnIdle { revision.longValue = 2L }
         compose.waitUntil(15_000) { (decodes[firstId]?.get() ?: 0) == 2 }
         assertEquals("New thumbnail identity must fetch fresh bytes", 2, fetches[firstId]!!.get())
+    }
+
+
+    @Test fun compactHeroEyeShowsSourceAndCompressesStatus() =
+        verifySourceStatusInteraction(centered = false, compactExpanded = false, width = 220)
+
+    @Test fun centeredHeroEyeShowsSourceAndCompressesStatus() =
+        verifySourceStatusInteraction(centered = true, compactExpanded = false, width = 320)
+
+    @Test fun expandedCompactHeroEyeShowsSourceAndCompressesStatus() =
+        verifySourceStatusInteraction(centered = false, compactExpanded = true, width = 220)
+
+    private fun verifySourceStatusInteraction(centered: Boolean, compactExpanded: Boolean, width: Int) {
+        val sourceName = "Komik manga indonesia"
+        val renderedStatus = "Masih lanjut"
+        val manga = SampleData.mangaDetails.copy(
+            source = MangaSource("MIHON_424242"),
+            url = "https://example.invalid/manga/hero-source-status",
+            publicUrl = "https://example.invalid/manga/hero-source-status",
+        )
+        val colors = miyorareThemeColors(
+            preset = MiyorareThemePreset.MIYORARE,
+            customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
+            darkTheme = true,
+            amoled = false,
+            effectLevel = VisualEffectLevel.LIGHT,
+        )
+        val mangaState = mutableStateOf(manga)
+        var sourceNavigations = 0
+        compose.setContent {
+            MaterialTheme(colorScheme = colors.colorScheme) {
+                CompositionLocalProvider(LocalMiyorareVisualPalette provides colors.visualPalette) {
+                    Box(androidx.compose.ui.Modifier.width(width.dp)) {
+                        HeroSourceStatusRow(
+                            manga = mangaState.value,
+                            sourceTitle = sourceName,
+                            imageLoader = loader,
+                            status = renderedStatus,
+                            showActiveRelease = true,
+                            accent = colors.colorScheme.primary,
+                            centered = centered,
+                            compactExpanded = compactExpanded,
+                            onSourceClick = { sourceNavigations++ },
+                        )
+                    }
+                }
+            }
+        }
+
+        val sourceText = compose.onNodeWithTag("hero-source-title", useUnmergedTree = true)
+        val sourceContent = compose.onNodeWithTag("hero-source-content")
+        val statusCard = compose.onNodeWithTag("hero-status-card")
+        val toggle = compose.onNodeWithTag("hero-source-toggle")
+        val showLabel = context.getString(R.string.details_show_source)
+        val hideLabel = context.getString(R.string.details_hide_source)
+        val releaseText = context.getString(R.string.details_release_active)
+
+        fun assertHiddenWithNormalStatus() {
+            compose.onNodeWithContentDescription(showLabel).assertIsDisplayed()
+            compose.onNodeWithTag("hero-source-eye-off", useUnmergedTree = true).assertExists()
+            compose.onNodeWithTag("hero-source-eye-open", useUnmergedTree = true).assertDoesNotExist()
+            compose.onNodeWithText(context.getString(R.string.details_source), useUnmergedTree = true).assertIsDisplayed()
+            sourceText.assertTextEquals("...")
+            compose.onNodeWithTag("hero-source-favicon", useUnmergedTree = true).assertDoesNotExist()
+            compose.onNodeWithText(sourceName, useUnmergedTree = true).assertDoesNotExist()
+            statusCard.assertIsDisplayed()
+            compose.onNodeWithText(context.getString(R.string.status), useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithText(renderedStatus, useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithText(releaseText, useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag("hero-status-icon", useUnmergedTree = true).assertIsDisplayed()
+        }
+
+        assertHiddenWithNormalStatus()
+        val normalSourceWidth = sourceContent.fetchSemanticsNode().boundsInRoot.width
+        val normalStatusWidth = statusCard.fetchSemanticsNode().boundsInRoot.width
+
+        toggle.performClick()
+        compose.onNodeWithContentDescription(hideLabel).assertIsDisplayed()
+        compose.onNodeWithTag("hero-source-eye-open", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("hero-source-eye-off", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("hero-source-favicon", useUnmergedTree = true).assertIsDisplayed()
+        sourceText.assertTextEquals(sourceName)
+        assertTextOverflow(sourceText, expected = false)
+        statusCard.assertIsDisplayed()
+        compose.onNodeWithTag("hero-status-icon", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.status), useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText(renderedStatus, useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText(releaseText, useUnmergedTree = true).assertDoesNotExist()
+        assertTrue("Opened Source must get more width",
+            sourceContent.fetchSemanticsNode().boundsInRoot.width > normalSourceWidth)
+        assertTrue("Status must be narrower, not removed",
+            statusCard.fetchSemanticsNode().boundsInRoot.width < normalStatusWidth)
+        val statusAccessibility = statusCard.fetchSemanticsNode()
+            .config[SemanticsProperties.ContentDescription].joinToString(" ")
+        assertTrue("Icon-only Status must announce its value", statusAccessibility.contains(renderedStatus))
+        compose.runOnIdle { assertEquals("Eye click must not navigate", 0, sourceNavigations) }
+
+        sourceContent.performClick()
+        compose.runOnIdle { assertEquals("Source content navigates once", 1, sourceNavigations) }
+
+        toggle.performClick()
+        assertHiddenWithNormalStatus()
+        assertEquals("Closing eye restores main Source sizing", normalSourceWidth,
+            sourceContent.fetchSemanticsNode().boundsInRoot.width, 1f)
+        assertEquals("Closing eye restores full Status sizing", normalStatusWidth,
+            statusCard.fetchSemanticsNode().boundsInRoot.width, 1f)
+        compose.runOnIdle { assertEquals(1, sourceNavigations) }
+
+        toggle.performClick()
+        compose.runOnIdle { mangaState.value = manga.copy(source = MangaSource("MIHON_424243")) }
+        assertHiddenWithNormalStatus()
+        toggle.performClick()
+        compose.runOnIdle { mangaState.value = mangaState.value.copy(id = manga.id + 1) }
+        assertHiddenWithNormalStatus()
+    }
+
+    private fun assertTextOverflow(node: SemanticsNodeInteraction, expected: Boolean) {
+        val results = mutableListOf<TextLayoutResult>()
+        node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+        assertEquals("Unexpected hero text clipping/overflow", expected, results.single().hasVisualOverflow)
     }
 
 	@Test fun characterPortraitNameAndRoleAndStaffAreRenderedWithProviderAttribution() {
