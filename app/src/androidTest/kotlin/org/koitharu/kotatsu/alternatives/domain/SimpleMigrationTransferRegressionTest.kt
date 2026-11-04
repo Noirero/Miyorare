@@ -10,6 +10,7 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.bookmarks.data.BookmarkEntity
 import org.koitharu.kotatsu.alternatives.work.completedSimpleMigration
+import org.koitharu.kotatsu.alternatives.work.reconcileInterruptedSimpleMigration
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.core.db.entity.toEntity
@@ -218,6 +219,47 @@ class SimpleMigrationTransferRegressionTest {
                     completedSimpleMigration(reopened, partialRequest)?.status)
                 assertNull(completedSimpleMigration(reopened,
                     partialRequest.copy(selection = MigrationSelection.of(fullNew))))
+                // A terminal/cancelled WorkInfo may be written after a successful Room commit.
+                // UI reconciliation must recover ONLY the exact durable destination checkpoint.
+                val committed = MigrationBatchSnapshot(
+                    mangaId = partialOld.id, source = partialOld.source.name,
+                    generation = 3L, batchName = "migration-test",
+                    outcome = MigrationBatchOutcome(
+                        MigrationBatchStatus.INTERRUPTED,
+                        destinationId = partialNew.id,
+                        destinationSource = partialNew.source.name,
+                    ),
+                    discoveryMode = MigrationBatchDiscoveryMode.YOKAI,
+                )
+                val recovered = reconcileInterruptedSimpleMigration(reopened, committed)
+                assertEquals(MigrationBatchStatus.MIGRATED_PRESERVED, recovered.outcome.status)
+                assertEquals(partialNew.id, recovered.outcome.destinationId)
+                assertEquals(MigrationBatchStatus.MIGRATED,
+                    reconcileInterruptedSimpleMigration(reopened, committed.copy(
+                        mangaId = fullOld.id, outcome = committed.outcome.copy(
+                            destinationId = fullNew.id,
+                        ),
+                    )).outcome.status)
+                assertEquals(MigrationBatchStatus.INTERRUPTED,
+                    reconcileInterruptedSimpleMigration(reopened, committed.copy(
+                        outcome = committed.outcome.copy(destinationId = fullNew.id),
+                    )).outcome.status)
+                assertEquals(MigrationBatchStatus.INTERRUPTED,
+                    reconcileInterruptedSimpleMigration(reopened, committed.copy(
+                        outcome = committed.outcome.copy(destinationSource = "WRONG_SOURCE"),
+                    )).outcome.status)
+                assertEquals(MigrationBatchStatus.INTERRUPTED,
+                    reconcileInterruptedSimpleMigration(reopened, committed.copy(
+                        mangaId = 987654321L,
+                    )).outcome.status)
+                assertEquals(MigrationBatchStatus.INTERRUPTED,
+                    reconcileInterruptedSimpleMigration(reopened, committed.copy(running = true)).outcome.status)
+                assertEquals(MigrationBatchStatus.INTERRUPTED,
+                    reconcileInterruptedSimpleMigration(reopened, committed.copy(
+                        discoveryMode = MigrationBatchDiscoveryMode.CHECK_CURRENT,
+                    )).outcome.status)
+                assertEquals(1, reopened.getFavouritesDao().findAllRaw(partialNew.id).size)
+                assertTrue(reopened.getFavouritesDao().findAllRaw(partialOld.id).isEmpty())
                 // Repeated recovery is read-only; ownership and optional source progress survive.
                 assertEquals(MigrationBatchStatus.MIGRATED_PRESERVED,
                     completedSimpleMigration(reopened, partialRequest)?.status)

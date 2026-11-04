@@ -20,6 +20,7 @@ import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.alternatives.domain.*
 import org.koitharu.kotatsu.alternatives.work.MigrationBatchScheduler
 import org.koitharu.kotatsu.alternatives.work.MigrationBatchWork
+import org.koitharu.kotatsu.alternatives.work.reconcileInterruptedSimpleMigration
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.toMangaList
@@ -288,7 +289,9 @@ class SourceMangaListViewModel @Inject constructor(
 							else if (item.mangaId in visible) item.copy(outcome = MigrationBatchOutcome(MigrationBatchStatus.NEEDS_REVIEW))
 							else null
 						}
-					val latest = MigrationBatchPolicy.latest(snapshots)
+					val latest = MigrationBatchPolicy.latest(snapshots).mapValues { (_, snapshot) ->
+                        reconcileInterruptedSimpleMigration(database, snapshot)
+                    }
 					// Resolve READY candidates and completed destinations from Room, never from
 					// WorkManager display hints. Preserve the Normal/Private and source-ID boundaries.
 					val destinationIds = latest.values.mapNotNull { snapshot ->

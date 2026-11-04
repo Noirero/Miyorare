@@ -161,6 +161,39 @@ internal suspend fun completedSimpleMigration(
     )
 }
 
+
+/**
+ * A stopped WorkManager job cannot publish its success output after Room has committed.
+ * Reconcile ONLY its exact persisted source -> destination checkpoint, without rerunning
+ * migration or changing any user data. Uncommitted/ambiguous/private results stay interrupted.
+ */
+internal suspend fun reconcileInterruptedSimpleMigration(
+    database: MangaDatabase,
+    snapshot: org.koitharu.kotatsu.alternatives.domain.MigrationBatchSnapshot,
+): org.koitharu.kotatsu.alternatives.domain.MigrationBatchSnapshot {
+    if (snapshot.running || snapshot.outcome.status != MigrationBatchStatus.INTERRUPTED ||
+        snapshot.discoveryMode != MigrationBatchDiscoveryMode.YOKAI
+    ) return snapshot
+    val targetId = snapshot.outcome.destinationId ?: return snapshot
+    val destination = database.getMangaDao().find(targetId)?.manga ?: return snapshot
+    if (snapshot.outcome.destinationSource != null &&
+        snapshot.outcome.destinationSource != destination.source
+    ) return snapshot
+    val checkpoint = completedSimpleMigration(
+        database,
+        org.koitharu.kotatsu.alternatives.domain.MigrationBatchRequest(
+            mangaId = snapshot.mangaId,
+            source = snapshot.source,
+            action = MigrationBatchAction.MIGRATE,
+            selection = org.koitharu.kotatsu.alternatives.domain.MigrationSelection(
+                destination.source, targetId, "reconcile-checkpoint",
+            ),
+            discoveryMode = snapshot.discoveryMode,
+        ),
+    ) ?: return snapshot
+    return snapshot.copy(outcome = checkpoint.copy(destinationTitle = destination.title))
+}
+
 class MigrationBatchCancellationMarkerWorker(
 	context: Context,
 	parameters: WorkerParameters,
