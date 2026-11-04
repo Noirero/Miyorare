@@ -65,8 +65,13 @@ jobs:
           }
           RUN_JSON="$(mktemp)"
           gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" > "$RUN_JSON"
-          [[ "$(jq -r '.name' "$RUN_JSON")" == "Miyorare Main Build" ]] || {
-            echo "::error::Recorded source run is not Miyorare Main Build."
+          [[ "$(jq -r '.path' "$RUN_JSON")" == ".github/workflows/main-build.yml" ]] || {
+            echo "::error::Recorded source run is not the official Main Build workflow."
+            exit 1
+          }
+          [[ "$(jq -r '.event' "$RUN_JSON")" == "workflow_dispatch" && \
+             "$(jq -r '.conclusion' "$RUN_JSON")" == "success" ]] || {
+            echo "::error::Recorded Main Build run was not a successful manual build."
             exit 1
           }
           [[ "$(jq -r '.head_sha' "$RUN_JSON")" == "$SOURCE_SHA" ]] || {
