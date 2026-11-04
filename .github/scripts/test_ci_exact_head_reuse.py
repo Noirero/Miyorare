@@ -2,7 +2,7 @@
 """Pure regression tests for exact-head compile evidence reuse."""
 import unittest
 
-from ci_exact_head_reuse import COMPILE_JOB, find_proof
+from ci_exact_head_reuse import COMPILE_JOB, ACTUAL_BUILD_STEPS, find_proof
 
 HEAD = "a" * 40
 BASE = "b" * 40
@@ -43,17 +43,25 @@ def lookup(jobs):
     return lambda _run_id: jobs
 
 
+def successful_real_job():
+    return {
+        "name": COMPILE_JOB, "status": "completed", "conclusion": "success",
+        "steps": [
+            {"name": name, "status": "completed", "conclusion": "success"}
+            for name in sorted(ACTUAL_BUILD_STEPS)
+        ],
+    }
+
+
 class ReuseTests(unittest.TestCase):
     def test_successful_compile_from_failed_android_run_is_reusable(self):
         self.assertEqual(
-            find_proof([valid_run()], lookup([{
-                "name": COMPILE_JOB, "status": "completed", "conclusion": "success",
-            }]), **KW),
+            find_proof([valid_run()], lookup([successful_real_job()]), **KW),
             42,
         )
 
     def test_rejects_changed_source_base_or_identity(self):
-        proof = [{"name": COMPILE_JOB, "status": "completed", "conclusion": "success"}]
+        proof = [successful_real_job()]
         variants = [
             {"head_sha": "c" * 40},
             {"workflow_id": 778},
@@ -79,24 +87,43 @@ class ReuseTests(unittest.TestCase):
     def test_skipped_failed_or_incomplete_compile_never_reused(self):
         for conclusion in ("failed", "cancelled", "skipped", "neutral", None):
             with self.subTest(conclusion=conclusion):
-                jobs = [{"name": COMPILE_JOB, "status": "completed", "conclusion": conclusion}]
+                jobs = [dict(successful_real_job(), conclusion=conclusion)]
                 self.assertIsNone(find_proof([valid_run()], lookup(jobs), **KW))
 
     def test_older_valid_job_selected_after_newer_invalid(self):
         newer = valid_run(id=70)
         older = valid_run(id=42)
         def jobs(run_id):
-            return [{
-                "name": COMPILE_JOB, "status": "completed",
-                "conclusion": "failed" if run_id == 70 else "success",
-            }]
+            return [dict(successful_real_job(),
+                         conclusion="failed" if run_id == 70 else "success")]
         self.assertEqual(find_proof([older, newer], jobs, **KW), 42)
+
+    def test_successful_reused_job_is_not_a_reuse_proof(self):
+        # A success check whose expensive steps were skipped cannot extend
+        # an evidence chain if the original build later becomes unavailable.
+        self.assertIsNone(find_proof(
+            [valid_run()],
+            lookup([{"name": COMPILE_JOB, "status": "completed",
+                     "conclusion": "success", "steps": [
+                         {"name": "Explain reused compile evidence",
+                          "status": "completed", "conclusion": "success"},
+                     ]}]),
+            **KW,
+        ))
+
+    def test_partial_compile_is_never_accepted(self):
+        for missing_step in ACTUAL_BUILD_STEPS:
+            with self.subTest(missing_step=missing_step):
+                job = successful_real_job()
+                job["steps"] = [
+                    step for step in job["steps"]
+                    if step["name"] != missing_step
+                ]
+                self.assertIsNone(find_proof([valid_run()], lookup([job]), **KW))
 
     def test_current_run_is_never_self_proof(self):
         self.assertIsNone(
-            find_proof([valid_run(id=CURRENT)], lookup([{
-                "name": COMPILE_JOB, "status": "completed", "conclusion": "success",
-            }]), **KW)
+            find_proof([valid_run(id=CURRENT)], lookup([successful_real_job()]), **KW)
         )
 
 
