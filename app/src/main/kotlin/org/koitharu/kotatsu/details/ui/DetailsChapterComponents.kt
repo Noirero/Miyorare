@@ -367,8 +367,7 @@ private fun HeroSourceCard(
 			}
 			IconButton(
 				onClick = onToggleVisibility,
-				modifier = Modifier.align(Alignment.TopEnd)
-					.offset(y = 5.dp)
+				modifier = Modifier.align(Alignment.BottomEnd)
 					.size(eyeTarget).clip(eyeShape)
 					.background(palette.secondary.copy(alpha = 0.11f))
 					.border(BorderStroke(0.75.dp, palette.secondary.copy(alpha = 0.30f)), eyeShape)
