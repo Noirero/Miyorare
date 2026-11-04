@@ -142,11 +142,27 @@ jobs:
           assert 'git rev-list -n 1 "$TAG"' in post_release
           assert 'MIYORARE_RELEASE_RUN_ID:' in post_release
           assert 'MIYORARE_RELEASE_SOURCE_SHA:' in post_release
-          assert 'hashlib.sha256' in post_release
-          assert 'automation/release-readme-v${VERSION_NAME}-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}' in post_release
-          assert 'gh workflow run identity-guard.yml' in post_release
-          assert 'gh pr merge "$pr_number"' in post_release
+          # Release provenance + APK checksum are still verified, with
+          # strictly read-only permissions and no duplicate README writer.
+          assert 'sha256sum "release/$asset_name"' in post_release
+          assert 'actual_digest' in post_release
+          assert 'asset_digest' in post_release
+          assert 'contents: read' in post_release
+          assert 'contents: write' not in post_release
+          assert 'pull-requests: write' not in post_release
+          assert 'gh pr merge' not in post_release
+          assert 'gh pr create' not in post_release
           assert 'git push origin HEAD:main' not in post_release
+
+          # Only Release README Sync may open the metadata PR.
+          release_sync = Path('.github/workflows/release-readme-sync.yml').read_text(encoding='utf-8')
+          assert 'types: [published]' in release_sync
+          assert 'normalize-release-body' in release_sync
+          assert 'update-readme' in release_sync
+          assert 'git rev-list -n 1 "$TAG"' in release_sync
+          assert 'gh api "repos/$REPOSITORY/actions/runs/$RUN_ID"' in release_sync
+          assert 'gh pr create' in release_sync
+          assert 'gh pr merge' not in release_sync
 
           profile = Path('.github/workflows/release-build-profile.yml').read_text(encoding='utf-8')
           assert '  workflow_dispatch:' in profile
@@ -195,4 +211,9 @@ jobs:
           assert '$GITHUB_RUN_ATTEMPT' in sync
           assert 'automation/farm-pack-sync-${FARM_SHA:0:12}-$GITHUB_RUN_ID-a$GITHUB_RUN_ATTEMPT' in sync
           assert 'raw.githubusercontent.com/$FARM_REPOSITORY/$sha/compatibility/source-registry.json' in sync
+          assert 'Reuse identical pending beta sync PR' in sync
+          assert 'desired_blob=' in sync
+          assert 'actual_blob=' in sync
+          assert 'Hold validated beta sync for protected branch review' in sync
+          assert 'gh pr merge' not in sync
           PY
