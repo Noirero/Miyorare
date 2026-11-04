@@ -388,6 +388,14 @@ policy_self_test() {
   policy_check false false true false true false true true false false true
   policy_check true true false false false false true true true false true
   policy_check false false true false false false true true false true true
+  # Explicit label precedence on draft and ready PRs, including reversions.
+  # Args: path_run path_full draft required full_override mapped expected_run expected_full user theme owner
+  policy_check false false true false false true true false false true true
+  policy_check false false true false false false true true true false true
+  policy_check false false true true false true true false false false true
+  policy_check false false true false true true true true false false true
+  policy_check true true false false false false false false false false true
+  policy_check true false false false false true true false false false false
   # Documentation-only PRs must run Android Runtime for either mandatory label.
   policy_check false false false false false false true true true false
   policy_check false false false false false false true true false true
