@@ -4,6 +4,10 @@
 	<string name="visual_effects_light">Light</string>
 	<string name="visual_effects_balanced">Balanced</string>
 	<string name="visual_effects_full">Full</string>
+	<string name="miyorare_favourites_border_style">Favourites card border</string>
+	<string name="miyorare_favourites_border_default">Default (glow)</string>
+	<string name="miyorare_favourites_border_thin">Thin</string>
+	<string name="miyorare_favourites_border_none">No border</string>
 	<string name="miyorare_appearance_group">Appearance theme</string>
 	<string name="miyorare_design_style">Design style</string>
 	<string name="miyorare_design_classic">Material 3</string>

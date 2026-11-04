@@ -4,6 +4,10 @@
 	<string name="visual_effects_light">Ringan</string>
 	<string name="visual_effects_balanced">Seimbang</string>
 	<string name="visual_effects_full">Penuh</string>
+	<string name="miyorare_favourites_border_style">Border kartu Disukai</string>
+	<string name="miyorare_favourites_border_default">Default (glow)</string>
+	<string name="miyorare_favourites_border_thin">Tipis</string>
+	<string name="miyorare_favourites_border_none">Tanpa border</string>
 	<string name="miyorare_appearance_group">Tema tampilan</string>
 	<string name="miyorare_design_style">Gaya desain</string>
 	<string name="miyorare_design_classic">Material 3</string>

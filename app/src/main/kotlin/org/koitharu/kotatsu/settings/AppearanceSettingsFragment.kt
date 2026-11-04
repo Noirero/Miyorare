@@ -45,6 +45,7 @@ import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareFavouritesCardBorderStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareModernPaletteSource
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.SearchSuggestionType
@@ -118,6 +119,7 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
             AppSettings.KEY_THEME_AMOLED,
             AppSettings.KEY_UI_SCALE,
             MiyorareAppearance.KEY_DESIGN_STYLE,
+            MiyorareAppearance.KEY_FAVOURITES_CARD_BORDER_STYLE,
             MiyorareAppearance.KEY_THEME_PRESET,
             MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
             MiyorareAppearance.KEY_CUSTOM_ACCENT,
@@ -241,6 +243,7 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
             AppSettings.KEY_COLOR_THEME,
             AppSettings.KEY_THEME_AMOLED,
             MiyorareAppearance.KEY_DESIGN_STYLE,
+            MiyorareAppearance.KEY_FAVOURITES_CARD_BORDER_STYLE,
             MiyorareAppearance.KEY_THEME_PRESET,
             MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
             MiyorareAppearance.KEY_CUSTOM_ACCENT,
@@ -268,6 +271,8 @@ private fun AppearanceScreen(
     val themeValues = remember { ctx.resources.getStringArray(R.array.values_theme).toList() }
     val visualEffectEntries = remember { VisualEffectLevel.entries.map { ctx.getString(it.titleResId) } }
     val visualEffectValues = remember { VisualEffectLevel.entries.map { it.name } }
+    val borderStyleEntries = remember { MiyorareFavouritesCardBorderStyle.entries.map { ctx.getString(it.titleResId) } }
+    val borderStyleValues = remember { MiyorareFavouritesCardBorderStyle.entries.map { it.name } }
     val designStyleEntries = remember { MiyorareDesignStyle.entries.map { ctx.getString(it.titleResId) } }
     val designStyleValues = remember { MiyorareDesignStyle.entries.map { it.name } }
     val customBackgroundIntensityEntries = remember {
@@ -300,6 +305,10 @@ private fun AppearanceScreen(
     var theme by rememberStringPref(AppSettings.KEY_THEME, "-1")
     var amoled by rememberBooleanPref(AppSettings.KEY_THEME_AMOLED, false)
     var visualEffects by rememberStringPref(VisualEffectPreferences.KEY_LEVEL, VisualEffectLevel.BALANCED.name)
+    var favouritesBorderStyle by rememberStringPref(
+        MiyorareAppearance.KEY_FAVOURITES_CARD_BORDER_STYLE,
+        MiyorareFavouritesCardBorderStyle.DEFAULT.name,
+    )
     var designStyle by rememberStringPref(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC.name)
     var modernTheme by rememberStringPref(MiyorareAppearance.KEY_THEME_PRESET, MiyorareThemePreset.MIYORARE.name)
     var modernPaletteSource by rememberStringPref(
@@ -526,6 +535,17 @@ private fun AppearanceScreen(
                             selectedValue = visualEffects,
                             onValueChange = { visualEffects = it },
                             icon = R.drawable.ic_appearance,
+                            shape = pos.shape,
+                        )
+                    }
+                    item { pos ->
+                        MiyorareChoiceSettingsItem(
+                            title = stringResource(R.string.miyorare_favourites_border_style),
+                            entries = borderStyleEntries,
+                            entryValues = borderStyleValues,
+                            selectedValue = favouritesBorderStyle,
+                            onValueChange = { favouritesBorderStyle = it },
+                            icon = R.drawable.ic_grid,
                             shape = pos.shape,
                         )
                     }
