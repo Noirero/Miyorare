@@ -86,7 +86,7 @@ class SingleMangaImporter @Inject constructor(
 			if (book.spine.isEmpty()) {
 				throw UnsupportedFileException("EPUB has no readable sections: $name")
 			}
-			val existingManga = File(getOutputDir(), name)
+			val existingManga = importTarget(getOutputDir(), name)
 				.takeIf { it.isFile }
 				?.let { existing ->
 					runCatching { LocalMangaParser(existing).getManga(withDetails = false).manga }.getOrNull()
@@ -297,7 +297,7 @@ class SingleMangaImporter @Inject constructor(
 			dest.mkdir()
 			for (pdfFile in pdfFiles) {
 				val chapterName = pdfFile.name!!.substringBeforeLast('.')
-				val cbzFile = File(dest, "$chapterName.cbz")
+				val cbzFile = importTarget(dest, "$chapterName.cbz")
 				contentResolver.openFileDescriptor(pdfFile.uri, "r")?.use { pfd ->
 					renderPdfToCbzAtomically(pfd, cbzFile)
 				} ?: throw IOException("Cannot open PDF: ${pdfFile.name}")
