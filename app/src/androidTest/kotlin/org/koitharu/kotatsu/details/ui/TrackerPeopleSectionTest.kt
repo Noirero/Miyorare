@@ -275,8 +275,8 @@ class TrackerPeopleSectionTest {
             sourceContent.fetchSemanticsNode().boundsInRoot.width > normalSourceWidth)
         assertTrue("Status must be narrower, not removed",
             statusCard.fetchSemanticsNode().boundsInRoot.width < normalStatusWidth)
-        val statusAccessibility = statusCard.fetchSemanticsNode().config
-            .getOrNull(SemanticsProperties.ContentDescription)?.joinToString(" ") ?: ""
+        val statusAccessibility = statusCard.fetchSemanticsNode()
+            .config[SemanticsProperties.ContentDescription].joinToString(" ")
         assertTrue("Icon-only Status must announce its value", statusAccessibility.contains(renderedStatus))
         compose.runOnIdle { assertEquals("Eye click must not navigate", 0, sourceNavigations) }
 
