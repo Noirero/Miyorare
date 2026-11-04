@@ -266,7 +266,7 @@ internal fun HeroSourceStatusRow(
 		modifier = modifier.fillMaxWidth().height(cardHeight).testTag("hero-source-status-row"),
 	) {
 		val availableWidth = maxWidth - if (hasSource && status != null) gap else 0.dp
-		val collapsedSourceWidth = if (status == null) maxWidth else availableWidth * 0.44f
+		val collapsedSourceWidth = if (status == null) maxWidth else availableWidth * 0.42f
 		val collapsedStatusWidth = if (hasSource) availableWidth - collapsedSourceWidth else maxWidth
 		val statusWidth = if (hasSource && sourceVisible && status != null) {
 			(availableWidth * 0.22f).coerceIn(40.dp, 54.dp)
@@ -339,7 +339,7 @@ private fun HeroSourceCard(
 				)
 				Spacer(Modifier.height(if (palette.isModern) 6.dp else 5.dp))
 				Row(
-					modifier = Modifier.fillMaxWidth(),
+					modifier = Modifier.fillMaxWidth().padding(end = eyeTarget - horizontalPadding),
 					verticalAlignment = Alignment.CenterVertically,
 					horizontalArrangement = Arrangement.spacedBy(if (palette.isModern) 6.dp else 5.dp),
 				) {

@@ -263,6 +263,8 @@ class TrackerPeopleSectionTest {
             )
             assertBetaSourceInternalGeometry(visible = false)
             assertBetaStatusInternalGeometry()
+            assertEquals("Hidden Source must provide a single-line Status header",
+                1, textLayout(compose.onNodeWithTag("hero-status-label", useUnmergedTree = true)).lineCount)
             assertReadableStatusText(compose.onNodeWithText(renderedStatus, useUnmergedTree = true), maxLines = 2, renderedStatus = renderedStatus)
             assertReadableStatusText(compose.onNodeWithText(releaseText, useUnmergedTree = true), maxLines = 1, renderedStatus = renderedStatus)
         }
@@ -511,6 +513,10 @@ class TrackerPeopleSectionTest {
         status.assertIsDisplayed()
         assertBetaSourceInternalGeometry(visible = false)
         assertBetaStatusInternalGeometry()
+        if (!compactExpanded) {
+            assertEquals("Normal Status header must stay on one line",
+                1, textLayout(compose.onNodeWithTag("hero-status-label", useUnmergedTree = true)).lineCount)
+        }
         val hiddenBudget = compactStatusBudgetEvidence(renderedStatus)
         android.util.Log.i("MiyorareStatusBudget", "sourceVisible=false; $hiddenBudget")
         compose.onNodeWithTag("hero-source-visibility-toggle").performClick()
