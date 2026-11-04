@@ -346,10 +346,6 @@ class SingleMangaImporter @Inject constructor(
 		return storageManager.getDefaultWriteableDir() ?: throw IOException("External files dir unavailable")
 	}
 
-	private suspend fun DocumentFile.source() = runInterruptible(Dispatchers.IO) {
-		contentResolver.openSource(uri)
-	}
-
 	private fun DocumentFile.requireName(): String {
 		return name ?: throw IOException("Cannot fetch name from uri: $uri")
 	}
