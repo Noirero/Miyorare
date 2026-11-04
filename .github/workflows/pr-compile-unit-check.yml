@@ -59,7 +59,7 @@ jobs:
             echo "- Runtime requested: **$run_runtime**, full suite: **$full_runtime**"
             echo "- Owner/user/theme/override flags: $LABEL_OWNER / $LABEL_USER_ISSUE / $LABEL_THEME / $LABEL_RUNTIME / $LABEL_FULL"
             if [[ "$LABEL_OWNER" == true && "$LABEL_RUNTIME" == false && "$LABEL_FULL" == false && "$LABEL_USER_ISSUE" == false && "$LABEL_THEME" == false ]]; then
-              echo '- Reason: owner-request fast feedback; Android 15 is deliberately not selected. This is not runtime or merge-readiness evidence.'
+              echo '- Reason: owner-request runs the regular compile/resources/unit checks, while Android 15 is intentionally not selected unless a heavy label is added. Compile success alone does not prove Android runtime or release readiness.'
             elif [[ "$run_runtime" == false ]]; then
               echo '- Reason: this PR has no runtime-relevant changed paths and no mandatory override.'
             elif [[ "$full_runtime" == true ]]; then
@@ -76,14 +76,10 @@ jobs:
 
   compile-unit:
     name: Compile, resources & unit tests
-    # Owner-request uses fast checks in draft and ready PRs; explicit heavy labels opt into deep checks.
+    # Owner-request drafts run compile/unit checks without implicitly requesting Android runtime.
     if: github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:owner-request') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') || contains(github.event.pull_request.labels.*.name, 'ci:user-issue') || contains(github.event.pull_request.labels.*.name, 'ci:theme')
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Owner-request alone is a fast feedback mode even on ready PRs.
-    # Explicit runtime/user/theme labels always restore deep validation.
-    env:
-      OWNER_FAST_ONLY: ${{ contains(github.event.pull_request.labels.*.name, 'ci:owner-request') && !contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') && !contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') && !contains(github.event.pull_request.labels.*.name, 'ci:user-issue') && !contains(github.event.pull_request.labels.*.name, 'ci:theme') }}
 
     steps:
       - name: Checkout exact PR head
@@ -92,38 +88,21 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
 
-      - name: Owner-request quick sanity
-        if: env.OWNER_FAST_ONLY == 'true'
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          git diff --check "$BASE_SHA" "$HEAD_SHA"
-          echo '## Owner-request fast feedback' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Diff sanity and CI helper checks only; Gradle, JVM tests and Android 15 were not run. This is not merge/release validation.' >> "$GITHUB_STEP_SUMMARY"
-
       - name: Set up JDK 17
-        if: env.OWNER_FAST_ONLY != 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Node 22
-        if: env.OWNER_FAST_ONLY != 'true'
         uses: actions/setup-node@v6
         with:
           node-version: '22'
 
       - name: Set up Gradle
-        if: env.OWNER_FAST_ONLY != 'true'
         uses: gradle/actions/setup-gradle@v6
 
       - name: Grant execute permission
-        if: env.OWNER_FAST_ONLY != 'true'
         run: chmod +x gradlew
 
       - name: Validate runtime selector and wrapper
@@ -133,29 +112,24 @@ jobs:
           python3 .github/scripts/targeted-ci-diagnostics.py --self-test
 
       - name: Install browser auth helper tooling
-        if: env.OWNER_FAST_ONLY != 'true'
         run: npm install --prefix browser-auth-helper --ignore-scripts
 
       - name: Validate temporary browser auth helper
-        if: env.OWNER_FAST_ONLY != 'true'
         run: npm test --prefix browser-auth-helper
 
       - name: Validate Cloudflare Worker bundle
-        if: env.OWNER_FAST_ONLY != 'true'
         run: npm run check:cloudflare --prefix browser-auth-helper
 
       # Run build checks in one Gradle invocation to avoid repeated daemonless startup
       # while preserving every compile, resource, manifest and runtime-pack task.
       - name: Compile, validate resources and build Kotatsu Runtime Pack
-        if: env.OWNER_FAST_ONLY != 'true'
         run: ./gradlew compileDebugSources processPreviewMainManifest processReleaseMainManifest :kotatsu-runtime:assembleDebug --max-workers=4 --no-daemon --stacktrace
 
       - name: Run JVM unit tests
-        if: env.OWNER_FAST_ONLY != 'true'
         run: ./gradlew testDebugUnitTest --max-workers=4 --no-daemon --stacktrace
 
       - name: Upload JVM evidence
-        if: always() && env.OWNER_FAST_ONLY != 'true'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pr-jvm-evidence
