@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.local.data.isSupportedArchive
 import org.koitharu.kotatsu.local.data.input.EpubParser
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
+import org.koitharu.kotatsu.local.data.output.commitRootReplacement
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
@@ -114,14 +115,31 @@ class SingleMangaImporter @Inject constructor(
 		val dest = when {
 			hasPdfExtension(name) -> importPdfAsCbz(uri, name)
 			hasEpubExtension(name) -> importEpubAtomically(uri, name)
-			else -> File(getOutputDir(), name).also { outputFile ->
-				if (outputFile.isDirectory && outputFile.listFiles()?.isEmpty() == true && !outputFile.delete()) {
-					throw IOException("Cannot remove empty import directory: $outputFile")
-				}
-				copyUriToFile(uri, outputFile)
-			}
+			else -> importArchiveAtomically(uri, name)
 		}
 		LocalMangaParser(dest).getManga(withDetails = false)
+	}
+
+	/**
+	 * Stage and parse an imported ZIP/CBZ before replacing any existing file. A short read,
+	 * malformed archive, or cancelled copy must not overwrite the previous import.
+	 */
+	private suspend fun importArchiveAtomically(uri: Uri, sourceName: String): File {
+		val outputDir = getOutputDir()
+		val outputFile = importTarget(outputDir, sourceName)
+		if (outputFile.isDirectory && outputFile.listFiles()?.isEmpty() == true && !outputFile.delete()) {
+			throw IOException("Cannot remove empty import directory: $outputFile")
+		}
+		if (outputFile.isDirectory) throw IOException("Import destination is a directory: $outputFile")
+		val tempFile = File.createTempFile(".${outputFile.name}.", ".${outputFile.extension}", outputDir)
+		try {
+			copyUriToFile(uri, tempFile)
+			LocalMangaParser(tempFile).getManga(withDetails = false)
+			commitRootReplacement(outputFile, tempFile)
+			return outputFile
+		} finally {
+			tempFile.delete()
+		}
 	}
 
 	/**
@@ -131,7 +149,7 @@ class SingleMangaImporter @Inject constructor(
 	 */
 	private suspend fun importEpubAtomically(uri: Uri, sourceName: String): File {
 		val outputDir = getOutputDir()
-		val outputFile = File(outputDir, sourceName)
+		val outputFile = importTarget(outputDir, sourceName)
 		if (outputFile.isDirectory && outputFile.listFiles()?.isEmpty() == true && !outputFile.delete()) {
 			throw IOException("Cannot remove empty import directory: $outputFile")
 		}
@@ -214,15 +232,22 @@ class SingleMangaImporter @Inject constructor(
 
 	private suspend fun importPdfAsCbz(uri: Uri, sourceName: String): File {
 		val outputName = sourceName.substringBeforeLast('.', sourceName) + ".cbz"
-		val outputFile = File(getOutputDir(), outputName)
+		val outputFile = importTarget(getOutputDir(), outputName)
+		contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+			renderPdfToCbzAtomically(pfd, outputFile)
+		} ?: throw IOException("Cannot open descriptor for uri: $uri")
+		return outputFile
+	}
+
+	/** Finalize a complete PDF conversion using the same rollback-safe path as downloaded CBZs. */
+	private fun renderPdfToCbzAtomically(pfd: ParcelFileDescriptor, outputFile: File) {
+		if (outputFile.isDirectory) throw IOException("Import destination is a directory: $outputFile")
+		val tempFile = File.createTempFile(".${outputFile.name}.", ".cbz", outputFile.parentFile)
 		try {
-			contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-				renderPdfToCbz(pfd, outputFile)
-			} ?: throw IOException("Cannot open descriptor for uri: $uri")
-			return outputFile
-		} catch (e: Exception) {
-			outputFile.delete()
-			throw e
+			renderPdfToCbz(pfd, tempFile)
+			commitRootReplacement(outputFile, tempFile)
+		} finally {
+			tempFile.delete()
 		}
 	}
 
@@ -244,9 +269,14 @@ class SingleMangaImporter @Inject constructor(
 						page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
 						val entryName = String.format(Locale.US, "%04d.png", index + 1)
 						zip.putNextEntry(ZipEntry(entryName))
-						bitmap.compress(Bitmap.CompressFormat.PNG, 100, zip)
-						zip.closeEntry()
-						bitmap.recycle()
+						try {
+							if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, zip)) {
+								throw IOException("Cannot encode PDF page ${index + 1}")
+							}
+							zip.closeEntry()
+						} finally {
+							bitmap.recycle()
+						}
 					}
 				}
 			}
@@ -263,24 +293,19 @@ class SingleMangaImporter @Inject constructor(
 			.sortedBy { it.name }
 
 		if (pdfFiles.isNotEmpty()) {
-			val dest = File(getOutputDir(), root.requireName())
+			val dest = importTarget(getOutputDir(), root.requireName())
 			dest.mkdir()
 			for (pdfFile in pdfFiles) {
 				val chapterName = pdfFile.name!!.substringBeforeLast('.')
 				val cbzFile = File(dest, "$chapterName.cbz")
-				try {
-					contentResolver.openFileDescriptor(pdfFile.uri, "r")?.use { pfd ->
-						renderPdfToCbz(pfd, cbzFile)
-					} ?: throw IOException("Cannot open PDF: ${pdfFile.name}")
-				} catch (e: Exception) {
-					cbzFile.delete()
-					throw e
-				}
+				contentResolver.openFileDescriptor(pdfFile.uri, "r")?.use { pfd ->
+					renderPdfToCbzAtomically(pfd, cbzFile)
+				} ?: throw IOException("Cannot open PDF: ${pdfFile.name}")
 			}
 			return@withContext LocalMangaParser(dest).getManga(withDetails = false)
 		}
 
-		val dest = File(getOutputDir(), root.requireName())
+		val dest = importTarget(getOutputDir(), root.requireName())
 		dest.mkdir()
 		for (docFile in allFiles) {
 			docFile.copyTo(dest)
@@ -290,18 +315,31 @@ class SingleMangaImporter @Inject constructor(
 
 	private suspend fun DocumentFile.copyTo(destDir: File) {
 		if (isDirectory) {
-			val subDir = File(destDir, requireName())
-			subDir.mkdir()
+			val subDir = importTarget(destDir, requireName())
+			check(subDir.isDirectory || subDir.mkdir()) { "Cannot create import directory: $subDir" }
 			for (docFile in listFiles()) {
 				docFile.copyTo(subDir)
 			}
 		} else {
-			source().use { input ->
-				File(destDir, requireName()).sink().buffer().use { output ->
-					output.writeAllCancellable(input)
-				}
+			val outputFile = importTarget(destDir, requireName())
+			if (outputFile.isDirectory) throw IOException("Import destination is a directory: $outputFile")
+			val tempFile = File.createTempFile(".${outputFile.name}.", ".importing", destDir)
+			try {
+				copyUriToFile(uri, tempFile)
+				commitRootReplacement(outputFile, tempFile)
+			} finally {
+				tempFile.delete()
 			}
 		}
+	}
+
+	/** Provider-supplied display names are not trusted as filesystem paths. */
+	private fun importTarget(dir: File, name: String): File {
+		val target = File(dir, name)
+		if (name == "." || name == ".." || target.canonicalFile.parentFile != dir.canonicalFile) {
+			throw IOException("Invalid import filename: $name")
+		}
+		return target
 	}
 
 	private suspend fun getOutputDir(): File {
