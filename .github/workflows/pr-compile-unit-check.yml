@@ -282,7 +282,7 @@ jobs:
 
       - name: Run selected Android 15 runtime validation
         if: steps.android-proof.outputs.reuse != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         env:
           RUNTIME_CLASSES: ${{ steps.runtime-plan.outputs.classes }}
           RUN_RUNTIME_ISOLATION: ${{ steps.runtime-plan.outputs.run_runtime_isolation }}
@@ -314,8 +314,8 @@ jobs:
           FINGERPRINT: ${{ steps.android-proof.outputs.fingerprint }}
         run: |
           echo "## Android 15 evidence REUSED" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Original real Android execution run: `$SOURCE_RUN_ID`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Exact scope fingerprint (SHA-256): `$FINGERPRINT`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Original real Android execution run: $SOURCE_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Exact scope fingerprint (SHA-256): $FINGERPRINT" >> "$GITHUB_STEP_SUMMARY"
           echo "- Real Android APK-build, KVM, emulator steps skipped; owner APK, if required, restored from the verified source run." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Android evidence
