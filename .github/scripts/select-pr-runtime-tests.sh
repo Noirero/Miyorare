@@ -215,7 +215,6 @@ plan_path() {
 
     app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/ReaderColorFilter.kt|app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/ReaderCustomTint.kt|app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/colorfilter/*|app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/pager/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/reader/domain/ReaderCustomTintRuntimeTest.kt)
       add_reader_custom_tint_suite ;;
-      add_local_reader_suite ;;
 
     app/src/main/kotlin/org/koitharu/kotatsu/history/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/history/*)
       add_history_suite ;;
