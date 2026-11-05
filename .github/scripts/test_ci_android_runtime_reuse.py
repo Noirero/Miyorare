@@ -6,13 +6,14 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+import urllib.request
 import zipfile
 
 from ci_android_runtime_reuse import (
     ANDROID_JOB, REAL_STEP, PROOF_ARTIFACT, APK_ARTIFACT,
     PROOF_FILE, SCHEMA, MACHINERY, artifact_id, build_scope, canonical,
     digest, eligible_run, extract_apk, find_proof, matching_proof,
-    read_proof_zip, real_android_job, machinery_changed, main,
+    read_proof_zip, real_android_job, machinery_changed, SafeArtifactRedirect, main,
 )
 
 HEAD, BASE = "a" * 40, "b" * 40
@@ -183,7 +184,7 @@ class AndroidReuseTests(unittest.TestCase):
             vars = {**env(), "GH_TOKEN": "test-token", "GITHUB_RUN_ID": "100",
                     "GITHUB_OUTPUT": str(output), "RUNNER_TEMP": folder}
             with patch.dict("os.environ", vars, clear=True), \
-                 patch("urllib.request.urlopen", side_effect=OSError("API unavailable")):
+                 patch("urllib.request.OpenerDirector.open", side_effect=OSError("API unavailable")):
                 self.assertEqual(main(), 0)
             self.assertIn("reuse=false", output.read_text())
             self.assertIn("source_run_id=", output.read_text())
@@ -222,6 +223,16 @@ class AndroidReuseTests(unittest.TestCase):
             self.assertRaises(ValueError, extract_apk,
                               artifact_zip("../unsafe.apk", b"PK" + b"a" * 1048576),
                               Path(folder))
+
+    def test_artifact_redirect_never_leaks_token(self):
+        redirect = SafeArtifactRedirect()
+        req = urllib.request.Request("https://api.github.com/repos/test/artifacts/3/zip",
+                                     headers={"Authorization": "Bearer secret"})
+        changed = redirect.redirect_request(req, None, 302, "Found", {},
+                                            "https://pipelines.actions.githubusercontent.com/storage/proof")
+        self.assertNotIn("Authorization", changed.headers)
+        self.assertRaises(ValueError, redirect.redirect_request, req, None,
+                          302, "Found", {}, "http://insecure.example/proof")
 
     def test_canonical_fingerprint_is_deterministic(self):
         a = scope()
