@@ -174,10 +174,12 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            cd candidate && python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py \
-              --platform "$TARGET_PLATFORM" --targets "$TEST_TARGETS" \
-              --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA" --pr-number "$PR_NUMBER"
+          script: >-
+            cd candidate &&
+            python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py
+            --platform "$TARGET_PLATFORM" --targets "$TEST_TARGETS"
+            --mode "$TEST_MODE" --repeats "$TEST_REPEATS"
+            --expected-sha "$EXPECTED_SHA" --pr-number "$PR_NUMBER"
 
       - name: Upload targeted diagnostic evidence
         if: always()
