@@ -60,6 +60,7 @@ class DoublePageHolder(
 				height / sHeight.toFloat(),
 			)
 			binding.ssiv.colorFilter = settings.colorFilter?.toColorFilter()
+			org.koitharu.kotatsu.reader.domain.ReaderCustomTint.applyTo(binding.ssiv, settings.colorFilter?.custom)
 			minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
 			setScaleAndCenter(
 				minScale,

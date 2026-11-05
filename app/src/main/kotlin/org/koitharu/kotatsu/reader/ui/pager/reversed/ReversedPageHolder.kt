@@ -41,6 +41,7 @@ class ReversedPageHolder(
 				height / sHeight.toFloat(),
 			)
 			binding.ssiv.colorFilter = settings.colorFilter?.toColorFilter()
+			org.koitharu.kotatsu.reader.domain.ReaderCustomTint.applyTo(binding.ssiv, settings.colorFilter?.custom)
 			when (settings.zoomMode) {
 				ZoomMode.FIT_CENTER -> {
 					if (shouldFillLandscapeWidth()) {

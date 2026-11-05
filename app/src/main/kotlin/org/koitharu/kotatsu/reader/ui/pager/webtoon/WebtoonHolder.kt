@@ -36,6 +36,7 @@ class WebtoonHolder(
 
 	override fun onReady() {
 		binding.ssiv.colorFilter = settings.colorFilter?.toColorFilter()
+			org.koitharu.kotatsu.reader.domain.ReaderCustomTint.applyTo(binding.ssiv, settings.colorFilter?.custom)
 		with(binding.ssiv) {
 			scrollTo(
 				when {
