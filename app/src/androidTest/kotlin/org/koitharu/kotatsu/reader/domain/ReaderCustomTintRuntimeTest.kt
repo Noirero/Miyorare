@@ -49,17 +49,17 @@ class ReaderCustomTintRuntimeTest {
         }
         assertNotNull(image.colorFilter)
         // Tint alone is applied only to bitmap pixels, with no extra full-view layer.
-        if (Build.VERSION.SDK_INT >= 31) assertNull(image.renderEffect)
-        else assertEquals(View.LAYER_TYPE_NONE, image.layerType)
+        // Android View has setRenderEffect(), but no public getter.
+        // Retain pre-31 layer assertions and verify render-filter pixel output above.
+        if (Build.VERSION.SDK_INT < 31) assertEquals(View.LAYER_TYPE_NONE, image.layerType)
         ReaderCustomTint.applyToImage(image, ReaderColorFilter.EMPTY.copy(brightness = 0.2f, custom = tint)) {
             image.colorFilter = it
         }
-        if (Build.VERSION.SDK_INT >= 31) assertNotNull(image.renderEffect)
-        else assertEquals(View.LAYER_TYPE_HARDWARE, image.layerType)
+        assertNotNull(image.colorFilter)
+        if (Build.VERSION.SDK_INT < 31) assertEquals(View.LAYER_TYPE_HARDWARE, image.layerType)
         ReaderCustomTint.applyToImage(image, null) { image.colorFilter = it }
         assertNull(image.colorFilter)
-        if (Build.VERSION.SDK_INT >= 31) assertNull(image.renderEffect)
-        else assertEquals(View.LAYER_TYPE_NONE, image.layerType)
+        if (Build.VERSION.SDK_INT < 31) assertEquals(View.LAYER_TYPE_NONE, image.layerType)
         filtered.recycle()
         original.recycle()
     }
