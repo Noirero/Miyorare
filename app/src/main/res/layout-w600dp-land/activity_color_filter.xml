@@ -213,6 +213,15 @@
 				app:layout_constraintStart_toEndOf="@id/guideline_vertical"
 				app:layout_constraintTop_toBottomOf="@id/switch_book" />
 
+            <include
+                android:id="@+id/custom_filter_controls"
+                layout="@layout/reader_custom_filter_controls"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                app:layout_constraintStart_toEndOf="@id/guideline_vertical"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/switch_manga_profile" />
+
 		</androidx.constraintlayout.widget.ConstraintLayout>
 
 	</ScrollView>
