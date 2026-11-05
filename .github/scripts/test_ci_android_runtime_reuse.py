@@ -39,11 +39,19 @@ def env():
     return value
 
 
+RUNNER_ACTION = b"    uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d\n"
+
+
+def fixture_file(path):
+    if path == ".github/workflows/pr-compile-unit-check.yml":
+        return RUNNER_ACTION
+    return ("file:" + path).encode()
+
 def scope(changes=None):
     e = env()
     if changes:
         e.update(changes)
-    return build_scope(e, lambda path: ("file:" + path).encode())
+    return build_scope(e, fixture_file)
 
 
 def valid_run(**change):
@@ -185,9 +193,10 @@ class AndroidReuseTests(unittest.TestCase):
             self.assertTrue(machinery_changed({changed, "README.md"}))
         self.assertTrue(machinery_changed(set()))
         self.assertFalse(machinery_changed({"app/src/main/kotlin/org/example/Foo.kt"}))
-        self.assertNotEqual(digest(scope()), digest(build_scope(env(), lambda path: b"changed")))
-        self.assertRaises(ValueError, build_scope, {**env(), "RUNTIME_MODE": "targeted"}, lambda _: b"a")
-        self.assertRaises(ValueError, build_scope, {**env(), "RUNTIME_CLASSES": "a,a"}, lambda _: b"a")
+        self.assertRaises(ValueError, build_scope, env(), lambda _: b"uses: reactivecircus/android-emulator-runner@v2")
+        self.assertNotEqual(digest(scope()), digest(build_scope(env(), lambda path: RUNNER_ACTION if path.endswith(".yml") else b"changed")))
+        self.assertRaises(ValueError, build_scope, {**env(), "RUNTIME_MODE": "targeted"}, fixture_file)
+        self.assertRaises(ValueError, build_scope, {**env(), "RUNTIME_CLASSES": "a,a"}, fixture_file)
 
     def test_wrong_pr_ref_workflow_event_or_rerun(self):
         for changes in (dict(workflow_id=999), dict(event="workflow_dispatch"),
