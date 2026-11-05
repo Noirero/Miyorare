@@ -43,8 +43,6 @@ permissions:
 
 jobs:
   contract:
-    if: >-
-      github.event_name != 'pull_request' || (!startsWith(github.head_ref, 'fix/') && !startsWith(github.head_ref, 'bugfix/') && !startsWith(github.head_ref, 'hotfix/'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Miyorare
