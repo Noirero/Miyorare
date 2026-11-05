@@ -207,12 +207,20 @@ class MigrationLandingScreenTest {
                 }
             })
         }
-        compose.waitForIdle()
+        // An AppBarLayout scroll range can be non-zero after measure, before its
+        // layout callback has fired. Await real View layout rather than only Compose idleness.
+        compose.waitUntil(timeoutMillis = 5_000) {
+            appBar.isLaidOut && composeHost.isLaidOut
+        }
         compose.runOnIdle {
-            assertTrue("Fixture requires a collapsible app bar", appBar.totalScrollRange > 0)
+            val scrollRange = appBar.totalScrollRange
+            val footerPadding = composeHost.paddingBottom
+            assertTrue("Fixture requires a collapsible app bar", scrollRange > 0)
             assertTrue(
-                "Footer must reserve the expanded toolbar overlap",
-                composeHost.paddingBottom >= appBar.totalScrollRange,
+                "Footer must reserve expanded toolbar overlap: " +
+                    "padding=$footerPadding, range=$scrollRange, " +
+                    "appBarLaidOut=${appBar.isLaidOut}, hostLaidOut=${composeHost.isLaidOut}",
+                footerPadding >= scrollRange,
             )
         }
     }
