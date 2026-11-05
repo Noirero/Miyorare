@@ -243,6 +243,18 @@ def find_proof(runs: list[dict[str, Any]], jobs_for_run: Callable[[int], list[di
     return None
 
 
+class SafeArtifactRedirect(urllib.request.HTTPRedirectHandler):
+    """Never forward the GitHub API bearer token to redirected artifact storage."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urllib.parse.urlsplit(newurl).scheme != "https":
+            raise ValueError("refusing non-HTTPS artifact redirect")
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is not None and urllib.parse.urlsplit(newurl).netloc != urllib.parse.urlsplit(req.full_url).netloc:
+            redirected.remove_header("Authorization")
+        return redirected
+
+
 def main() -> int:
     output = Path(os.environ["GITHUB_OUTPUT"])
     reuse = False
@@ -255,11 +267,13 @@ def main() -> int:
         current_id = int(env["GITHUB_RUN_ID"])
         api_url = env.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
 
+        opener = urllib.request.build_opener(SafeArtifactRedirect())
+
         def request(path: str) -> bytes:
             req = urllib.request.Request(api_url + path, headers={
                 "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28"})
-            with urllib.request.urlopen(req, timeout=20) as response:
+            with opener.open(req, timeout=20) as response:
                 return response.read()
 
         def get(path: str) -> dict[str, Any]:
