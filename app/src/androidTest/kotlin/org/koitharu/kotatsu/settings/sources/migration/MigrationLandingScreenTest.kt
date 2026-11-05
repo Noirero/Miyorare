@@ -180,7 +180,6 @@ class MigrationLandingScreenTest {
     fun contentInsetRecomputesAfterAppBarFirstLayout() {
         lateinit var appBar: AppBarLayout
         lateinit var composeHost: View
-        val events = mutableListOf<String>()
         // A detached AppBarLayout has no real first-layout lifecycle. Attach both
         // views to the composition so the assertion observes the actual layout.
         compose.setContent {
@@ -204,18 +203,7 @@ class MigrationLandingScreenTest {
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     ))
-                    appBar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                        events += "observer.appBar.layout range=${appBar.totalScrollRange} padding=${composeHost.paddingBottom}"
-                    }
-                    composeHost.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-                        override fun onViewAttachedToWindow(v: View) {
-                            events += "observer.host.attach"
-                        }
-                        override fun onViewDetachedFromWindow(v: View) {
-                            events += "observer.host.detach"
-                        }
-                    })
-                    bindMigrationContentInsets(composeHost, appBar) { events += it }
+                    bindMigrationContentInsets(composeHost, appBar)
                 }
             })
         }
@@ -231,8 +219,7 @@ class MigrationLandingScreenTest {
             assertTrue(
                 "Footer must reserve expanded toolbar overlap: " +
                     "padding=$footerPadding, range=$scrollRange, " +
-                    "appBarLaidOut=${appBar.isLaidOut}, hostLaidOut=${composeHost.isLaidOut}; " +
-                        "eventTrace=${events.joinToString(" | ")}",
+                    "appBarLaidOut=${appBar.isLaidOut}, hostLaidOut=${composeHost.isLaidOut}",
                 footerPadding >= scrollRange,
             )
         }
