@@ -11,6 +11,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import sys
@@ -83,6 +84,14 @@ def build_scope(env: dict[str, str], file_bytes: Callable[[str], bytes]) -> dict
     if any(len(s) != 40 or any(ch not in "0123456789abcdef" for ch in s)
            for s in (base_sha, head_sha)):
         raise ValueError("invalid commit SHA")
+    workflow_bytes = file_bytes(".github/workflows/pr-compile-unit-check.yml")
+    runner_shas = re.findall(
+        rb"(?m)^\s+uses:\s+reactivecircus/android-emulator-runner@([0-9a-f]{40})\s*$",
+        workflow_bytes,
+    )
+    if len(runner_shas) != 1:
+        raise ValueError("Android emulator action must be pinned to one immutable SHA")
+    runner_action = "reactivecircus/android-emulator-runner@" + runner_shas[0].decode("ascii")
     inputs = {path: hashlib.sha256(file_bytes(path)).hexdigest() for path in EXECUTION_INPUTS}
     return {
         "schema_version": SCHEMA,
@@ -98,7 +107,7 @@ def build_scope(env: dict[str, str], file_bytes: Callable[[str], bytes]) -> dict
         "policy": {"draft": boolean(env["DRAFT"]), "labels": labels},
         "execution": {"runner": "ubuntu-latest", "android_api": 35,
                       "target": "google_apis", "arch": "x86_64", "profile": "pixel_2",
-                      "emulator_action": "reactivecircus/android-emulator-runner@v2",
+                      "emulator_action": runner_action,
                       "input_sha256": inputs},
     }
 
