@@ -1,12 +1,17 @@
 package org.koitharu.kotatsu.settings.sources.migration
 
 import android.view.ContextThemeWrapper
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import com.google.android.material.appbar.AppBarLayout
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -17,10 +22,12 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
@@ -142,5 +149,80 @@ class MigrationLandingScreenTest {
 		assertEquals(1L, openedDetails)
 		assertEquals(0, migrated)
 	}
+ 
+    @Test
+    fun sourceBackAndToolbarUpUseSameNavigationAndFooterRemainsVisible() {
+        var up: (() -> Unit)? = null
+        compose.setContent {
+            CompositionLocalProvider(LocalContext provides themedContext) {
+                MaterialTheme {
+                    BrokenSourcesMigrationScreen(
+                        state = state(), imageLoader = loader, onRetry = {},
+                        onOpenManga = { _, _ -> },
+                        onSourceBackChanged = { up = it },
+                    )
+                }
+            }
+        }
+        compose.onNodeWithText("E-Hentai (EN)").performClick()
+        compose.onNodeWithTag("migration-landing-footer").assertIsDisplayed()
+        compose.onNodeWithText("Story 1").performTouchInput { longClick() }
+        compose.onNodeWithText("1 terpilih").assertExists()
+        compose.runOnIdle { checkNotNull(up).invoke() }
+        compose.onNodeWithText("Pilih source").assertExists()
+        compose.onNodeWithText("1 terpilih").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(null, up) }
+        compose.onNodeWithText("E-Hentai (EN)").performClick()
+        compose.onNodeWithText("‹ Source").performClick()
+        compose.onNodeWithText("Pilih source").assertExists()
+    }
+    @Test
+    fun contentInsetRecomputesAfterAppBarFirstLayout() {
+        lateinit var appBar: AppBarLayout
+        lateinit var composeHost: View
+        // A detached AppBarLayout has no real first-layout lifecycle. Attach both
+        // views to the composition so the assertion observes the actual layout.
+        compose.setContent {
+            AndroidView(factory = { _ ->
+                // Compose's test activity uses a bare theme; Material AppBarLayout
+                // must use the same AppCompat-derived theme as the real settings UI.
+                FrameLayout(themedContext).apply {
+                    appBar = AppBarLayout(themedContext).apply {
+                        addView(View(themedContext), AppBarLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, 240,
+                        ).apply {
+                            scrollFlags = AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL
+                        })
+                    }
+                    composeHost = View(themedContext)
+                    addView(appBar, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ))
+                    addView(composeHost, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    ))
+                    bindMigrationContentInsets(composeHost, appBar)
+                }
+            })
+        }
+        // An AppBarLayout scroll range can be non-zero after measure, before its
+        // layout callback has fired. Await real View layout rather than only Compose idleness.
+        compose.waitUntil(timeoutMillis = 5_000) {
+            appBar.isLaidOut && composeHost.isLaidOut
+        }
+        compose.runOnIdle {
+            val scrollRange = appBar.totalScrollRange
+            val footerPadding = composeHost.paddingBottom
+            assertTrue("Fixture requires a collapsible app bar", scrollRange > 0)
+            assertTrue(
+                "Footer must reserve expanded toolbar overlap: " +
+                    "padding=$footerPadding, range=$scrollRange, " +
+                    "appBarLaidOut=${appBar.isLaidOut}, hostLaidOut=${composeHost.isLaidOut}",
+                footerPadding >= scrollRange,
+            )
+        }
+    }
 
 }

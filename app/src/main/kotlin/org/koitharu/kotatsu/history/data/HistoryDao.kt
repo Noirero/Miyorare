@@ -357,7 +357,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 
 	suspend fun recover(mangaId: Long) = setDeletedAt(mangaId, 0L)
 
-	@Query("DELETE FROM history WHERE deleted_at != 0 AND deleted_at < :maxDeletionTime")
+	@Query(
+        "DELETE FROM history WHERE deleted_at != 0 AND deleted_at < :maxDeletionTime " +
+            "AND manga_id NOT IN (SELECT manga_id FROM manga WHERE preserved_to_manga_id IS NOT NULL)"
+    )
 	abstract suspend fun gc(maxDeletionTime: Long)
 
 	suspend fun deleteAfter(minDate: Long) = setDeletedAtAfter(minDate, System.currentTimeMillis())

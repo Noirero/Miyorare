@@ -55,6 +55,7 @@ import org.koitharu.kotatsu.settings.search.SettingsSearchFragment
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
 import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
 import org.koitharu.kotatsu.settings.sources.SourceSettingsFragment
+import org.koitharu.kotatsu.settings.sources.migration.BrokenSourcesMigrationFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
 import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
 import javax.inject.Inject
@@ -197,6 +198,12 @@ class SettingsActivity :
 			textAndVisible = title
 		} ?: setTitle(title ?: getString(R.string.settings))
 	}
+
+    override fun onSupportNavigateUp(): Boolean {
+        val current = supportFragmentManager.findFragmentById(R.id.container)
+        if ((current as? BrokenSourcesMigrationFragment)?.navigateBackWithinSource() == true) return true
+        return super.onSupportNavigateUp()
+    }
 
 	fun openFragment(fragmentClass: Class<out Fragment>, args: Bundle?, isFromRoot: Boolean) {
 		viewModel.discardSearch()

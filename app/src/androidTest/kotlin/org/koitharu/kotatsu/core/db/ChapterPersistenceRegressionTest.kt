@@ -275,6 +275,10 @@ class ChapterPersistenceRegressionTest {
 			android.database.sqlite.SQLiteDatabase.OPEN_READWRITE,
 		).use { old ->
 			old.execSQL("DROP TABLE chapter_personal")
+            // This fixture starts at the current schema; remove v52-only state before
+            // declaring it a v48 database, so real 51->52 migration runs exactly once.
+            old.execSQL("ALTER TABLE manga DROP COLUMN simple_migration_preserved")
+            old.execSQL("ALTER TABLE manga DROP COLUMN preserved_to_manga_id")
 			old.execSQL("DROP TABLE room_master_table")
 			old.version = 48
 		}
@@ -283,6 +287,7 @@ class ChapterPersistenceRegressionTest {
 		try {
 			assertEquals(compatibilityHistory(), migrated.getHistoryDao().find(901L))
 			assertNotNull(migrated.getMangaDao().find(901L))
+            assertNull(migrated.getMangaDao().preservedDestination(901L))
 			assertEquals(fields(association), fields(checkNotNull(migrated.getScrobblingDao().find(association.scrobbler, 901L))))
 			assertTrue(migrated.getChapterPersonalDao().findAll(listOf(901L)).isEmpty())
 			val repository = org.koitharu.kotatsu.details.data.ChapterPersonalRepository(migrated)
@@ -294,6 +299,7 @@ class ChapterPersistenceRegressionTest {
 		val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
 		try {
 			assertEquals(DATABASE_VERSION, reopened.openHelper.writableDatabase.version)
+            assertNull(reopened.getMangaDao().preservedDestination(901L))
 			assertEquals("Peak chapter", reopened.getChapterPersonalDao().findAll(listOf(901L)).single().note)
 			assertEquals(fields(association), fields(checkNotNull(reopened.getScrobblingDao().find(association.scrobbler, 901L))))
 		} finally { reopened.close() }
