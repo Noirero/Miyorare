@@ -59,6 +59,11 @@ add_mangaupdates_suite() {
   MAPPED=true
 }
 
+add_reader_custom_tint_suite() {
+  add_class org.koitharu.kotatsu.reader.domain.ReaderCustomTintRuntimeTest
+  MAPPED=true
+}
+
 add_migration_suite() {
   add_class org.koitharu.kotatsu.alternatives.domain.LosslessMigrationTransferRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.SimpleMigrationTransferRegressionTest
@@ -174,6 +179,9 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.core.db.CategorySetsMigrationTest
   add_class org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest
   add_class org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/reader/domain/ReaderCustomTintRuntimeTest.kt ]]; then
+    add_reader_custom_tint_suite
+  fi
 
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/welcome/OnboardingAppearanceIntegrationTest.kt ]]; then
     add_onboarding_suite
@@ -203,6 +211,10 @@ plan_path() {
       add_local_reader_suite ;;
 
     app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt|app/src/main/kotlin/org/koitharu/kotatsu/picker/ui/page/PagePickerViewModel.kt)
+      add_local_reader_suite ;;
+
+    app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/ReaderColorFilter.kt|app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/ReaderCustomTint.kt|app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/colorfilter/*|app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/pager/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/reader/domain/ReaderCustomTintRuntimeTest.kt)
+      add_reader_custom_tint_suite ;;
       add_local_reader_suite ;;
 
     app/src/main/kotlin/org/koitharu/kotatsu/history/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/history/*)
@@ -465,6 +477,8 @@ self_test() {
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/Foo.kt')"
   grep -q '^run_migration_persistence=true$' <<<"$out"
   grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
+  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/ReaderCustomTint.kt')"
+  grep -q 'ReaderCustomTintRuntimeTest' <<<"$out"
 
   out="$(plan_from_paths false 'kotatsu-runtime/src/main/kotlin/example/Foo.kt')"
   grep -q '^run_runtime_isolation=true$' <<<"$out"
