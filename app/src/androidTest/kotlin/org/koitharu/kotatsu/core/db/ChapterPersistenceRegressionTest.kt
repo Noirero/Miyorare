@@ -279,6 +279,12 @@ class ChapterPersistenceRegressionTest {
             // declaring it a v48 database, so real 51->52 migration runs exactly once.
             old.execSQL("ALTER TABLE manga DROP COLUMN simple_migration_preserved")
             old.execSQL("ALTER TABLE manga DROP COLUMN preserved_to_manga_id")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_enabled")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_red")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_green")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_blue")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_alpha")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_mode")
 			old.execSQL("DROP TABLE room_master_table")
 			old.version = 48
 		}

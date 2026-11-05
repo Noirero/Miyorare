@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="@dimen/margin_normal"
+    style="?materialCardViewFilledStyle"
+    app:cardBackgroundColor="?colorSurfaceContainerHigh"
+    app:cardElevation="0dp"
+    app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Kotatsu.Card.Expressive">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="@dimen/margin_normal">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/reader_custom_color_filter"
+            android:textAppearance="?textAppearanceTitleMedium" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switch_custom_tint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="?android:listPreferredItemHeightSmall"
+            android:text="@string/reader_custom_tint_enable"
+            android:textAppearance="?textAppearanceBodyMedium" />
+        
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@+id/label_tint_red"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/reader_tint_red"
+                android:textAppearance="?textAppearanceBodyMedium" />
+            <TextView
+                android:id="@+id/value_tint_red"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="70"
+                android:textAppearance="?textAppearanceLabelLarge" />
+        </LinearLayout>
+        <com.google.android.material.slider.Slider
+            android:id="@+id/slider_tint_red"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:labelFor="@id/label_tint_red"
+            android:value="70"
+            android:valueFrom="0.0"
+            android:valueTo="255.0"
+            android:stepSize="1.0" />
+        
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@+id/label_tint_green"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/reader_tint_green"
+                android:textAppearance="?textAppearanceBodyMedium" />
+            <TextView
+                android:id="@+id/value_tint_green"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textAppearance="?textAppearanceLabelLarge" />
+        </LinearLayout>
+        <com.google.android.material.slider.Slider
+            android:id="@+id/slider_tint_green"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:labelFor="@id/label_tint_green"
+            android:value="0"
+            android:valueFrom="0.0"
+            android:valueTo="255.0"
+            android:stepSize="1.0" />
+        
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@+id/label_tint_blue"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/reader_tint_blue"
+                android:textAppearance="?textAppearanceBodyMedium" />
+            <TextView
+                android:id="@+id/value_tint_blue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="171"
+                android:textAppearance="?textAppearanceLabelLarge" />
+        </LinearLayout>
+        <com.google.android.material.slider.Slider
+            android:id="@+id/slider_tint_blue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:labelFor="@id/label_tint_blue"
+            android:value="171"
+            android:valueFrom="0.0"
+            android:valueTo="255.0"
+            android:stepSize="1.0" />
+        
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@+id/label_tint_alpha"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/reader_tint_alpha"
+                android:textAppearance="?textAppearanceBodyMedium" />
+            <TextView
+                android:id="@+id/value_tint_alpha"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="115"
+                android:textAppearance="?textAppearanceLabelLarge" />
+        </LinearLayout>
+        <com.google.android.material.slider.Slider
+            android:id="@+id/slider_tint_alpha"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:labelFor="@id/label_tint_alpha"
+            android:value="115"
+            android:valueFrom="0.0"
+            android:valueTo="255.0"
+            android:stepSize="1.0" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
+            android:text="@string/reader_tint_blend_mode"
+            android:textAppearance="?textAppearanceTitleSmall" />
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/group_blend_modes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:singleSelection="true"
+            app:selectionRequired="true"
+            app:checkedChip="@id/chip_blend_overlay">
+            <com.google.android.material.chip.Chip
+            android:id="@+id/chip_blend_default"
+            style="@style/Widget.Kotatsu.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checkable="true"
+            android:text="@string/reader_tint_mode_default" />
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip_blend_multiply"
+            style="@style/Widget.Kotatsu.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checkable="true"
+            android:text="@string/reader_tint_mode_multiply" />
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip_blend_screen"
+            style="@style/Widget.Kotatsu.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checkable="true"
+            android:text="@string/reader_tint_mode_screen" />
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip_blend_overlay"
+            style="@style/Widget.Kotatsu.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checkable="true"
+            android:text="@string/reader_tint_mode_overlay" />
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip_blend_dodge"
+            style="@style/Widget.Kotatsu.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checkable="true"
+            android:text="@string/reader_tint_mode_dodge" />
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip_blend_burn"
+            style="@style/Widget.Kotatsu.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checkable="true"
+            android:text="@string/reader_tint_mode_burn" />
+        </com.google.android.material.chip.ChipGroup>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>
