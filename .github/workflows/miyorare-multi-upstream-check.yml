@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - beta
+      - Amain2
     paths:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/sources/compat/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/**'
