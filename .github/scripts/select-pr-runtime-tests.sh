@@ -313,6 +313,11 @@ classify_paths() {
     [[ -z "$path" ]] && continue
     ((count+=1))
     case "$path" in
+      extensions/miyorare-sources/*|.github/workflows/miyorare-source-pack-check.yml|.github/workflows/miyorare-global-source-pack-check.yml|.github/workflows/miyorare-multi-upstream-check.yml)
+        # These inputs build/verify standalone Source Pack shards, not the Android app.
+        # Dedicated PR checks remain authoritative. Mixed app/CI changes and
+        # explicit runtime labels still follow the conservative policy below.
+        ;;
       README.md|README.*.md|CHANGELOG.md|CONTRIBUTING.md|LICENSE|LICENSE.*|NOTICE|.editorconfig|.gitignore|docs/*.md|docs/*.txt|docs/*.rst|*.md)
         # Markdown outside the root or docs/ can be build/runtime input.
         if [[ "$path" == */* && "$path" != docs/* ]]; then
@@ -429,6 +434,49 @@ classify_self_test() {
   local result
   result="$(classify_paths README.md docs/guide.md)"
   [[ "$result" == "$(printf 'run_runtime=false\nfull=false')" ]]
+  # A: Source Pack manifest/tooling/overlays stay non-Android.
+  local path
+  for path in extensions/miyorare-sources/multi-upstream.json \
+              extensions/miyorare-sources/packs.json \
+              extensions/miyorare-sources/tools/verify_multi_upstream.py \
+              extensions/miyorare-sources/overlays/gekkoushi/all/Foo.kt; do
+    result="$(classify_paths "$path")"
+    [[ "$result" == "$(printf 'run_runtime=false\nfull=false')" ]]
+  done
+  result="$(classify_paths extensions/miyorare-sources/packs.json extensions/miyorare-sources/tools/prepare_pack.py)"
+  [[ "$result" == "$(printf 'run_runtime=false\nfull=false')" ]]
+  # B: Only standalone Source Pack workflow definitions are exempt.
+  for path in .github/workflows/miyorare-source-pack-check.yml \
+              .github/workflows/miyorare-global-source-pack-check.yml \
+              .github/workflows/miyorare-multi-upstream-check.yml; do
+    result="$(classify_paths "$path")"
+    [[ "$result" == "$(printf 'run_runtime=false\nfull=false')" ]]
+  done
+  result="$(classify_paths .github/workflows/source-pack-contract.yml)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  # C: Mixed app/runtime changes win regardless of order.
+  result="$(classify_paths extensions/miyorare-sources/multi-upstream.json app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=false')" ]]
+  result="$(classify_paths app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt .github/workflows/miyorare-multi-upstream-check.yml)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=false')" ]]
+  result="$(classify_paths extensions/miyorare-sources/packs.json app/src/main/assets/important.txt)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  # D: Heavy labels override no-runtime Source Pack classification.
+  result="$(resolve_policy false false false true false false false false false)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  result="$(resolve_policy false false false false true false false false true)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  result="$(resolve_policy false false false false false false true false false)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  result="$(resolve_policy false false false false false false false true false)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  # E: Central runtime decision machinery stays fail-conservative.
+  result="$(classify_paths extensions/miyorare-sources/multi-upstream.json .github/scripts/select-pr-runtime-tests.sh)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  result="$(classify_paths .github/workflows/pr-compile-unit-check.yml extensions/miyorare-sources/packs.json)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
+  result="$(classify_paths extensions/miyorare-sources-unknown/packs.json)"
+  [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
   result="$(classify_paths app/src/main/assets/important.txt)"
   [[ "$result" == "$(printf 'run_runtime=true\nfull=true')" ]]
   result="$(classify_paths .github/ISSUE_TEMPLATE/config.md)"
