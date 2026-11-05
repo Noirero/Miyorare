@@ -316,6 +316,41 @@ abstract class MangaDao {
 	)
 	abstract suspend fun isMigrationEntryVisible(mangaId: Long): Boolean
 
+    /**
+     * Normal migration eligibility is active Normal Disukai ownership, not reading history.
+     * Source parser installation is irrelevant; Private-only stays out of the Normal flow.
+     */
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM manga m
+            JOIN favourites f ON f.manga_id = m.manga_id AND f.deleted_at = 0
+            WHERE m.manga_id = :mangaId AND m.source NOT IN ('LOCAL', 'UNKNOWN')
+        )
+    """)
+    abstract suspend fun isNormalMigrationFavourite(mangaId: Long): Boolean
+
+    @Transaction
+    @Query("""
+        SELECT * FROM manga
+        WHERE source IN (:sources) AND source NOT IN ('LOCAL', 'UNKNOWN')
+            AND EXISTS(SELECT 1 FROM favourites f
+                WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+        ORDER BY title COLLATE NOCASE
+    """)
+    abstract fun observeNormalMigrationFavouritesBySources(sources: Collection<String>): Flow<List<MangaWithTags>>
+
+    @Query("""
+        SELECT source, MAX(source_title) AS sourceTitle, COUNT(*) AS mangaCount
+        FROM manga
+        WHERE source NOT IN ('LOCAL', 'UNKNOWN')
+            AND EXISTS(SELECT 1 FROM favourites f
+                WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+        GROUP BY source
+        ORDER BY sourceTitle COLLATE NOCASE, source COLLATE NOCASE
+    """)
+    abstract fun observeNormalMigrationSourceUsage(): Flow<List<LibrarySourceUsage>>
+
+
 	/** Internal ownership evidence for prepared/obsolete lossless download aliases, including Private. */
 	@Query("""
 		SELECT manga_id FROM (
@@ -443,10 +478,24 @@ abstract class MangaDao {
 			AND NOT EXISTS(SELECT * FROM suggestions WHERE suggestions.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM scrobblings WHERE scrobblings.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM local_index WHERE local_index.manga_id == manga.manga_id)
+            AND manga.preserved_to_manga_id IS NULL
 			AND manga.manga_id NOT IN (:idsToKeep)
 		""",
 	)
 	abstract suspend fun cleanup(idsToKeep: Set<Long>)
+
+    @Query("SELECT preserved_to_manga_id FROM manga WHERE manga_id = :id")
+    abstract suspend fun preservedDestination(id: Long): Long?
+
+    @Query("SELECT simple_migration_preserved FROM manga WHERE manga_id = :id")
+    abstract suspend fun isSimpleMigrationPreserved(id: Long): Boolean
+
+    @Query("UPDATE manga SET preserved_to_manga_id = :destinationId, simple_migration_preserved = :preserved WHERE manga_id = :sourceId")
+    abstract suspend fun markPreservedSource(sourceId: Long, destinationId: Long, preserved: Boolean)
+
+    @Transaction
+    @Query("SELECT * FROM manga WHERE preserved_to_manga_id IS NOT NULL AND simple_migration_preserved = 1")
+    abstract suspend fun findAllPreservedSources(): List<MangaWithTags>
 
 	@Transaction
 	open suspend fun upsert(manga: MangaEntity, tags: Iterable<TagEntity>? = null) {
@@ -460,13 +509,18 @@ abstract class MangaDao {
 	 */
 	@Transaction
 	open suspend fun upsertWithCacheState(manga: MangaEntity, tags: Iterable<TagEntity>? = null) {
-		upsertRaw(manga)
+		upsertRaw(manga.copy(
+            preservedToMangaId = preservedDestination(manga.id) ?: manga.preservedToMangaId,
+            simpleMigrationPreserved = isSimpleMigrationPreserved(manga.id) || manga.simpleMigrationPreserved,
+        ))
 		upsertTags(manga.id, tags)
 	}
 
 	private suspend fun MangaEntity.preserveCacheState(): MangaEntity {
 		val previousUpdatedAt = getDetailsUpdatedAt(id) ?: return this
 		return copy(
+            preservedToMangaId = preservedDestination(id) ?: preservedToMangaId,
+            simpleMigrationPreserved = isSimpleMigrationPreserved(id) || simpleMigrationPreserved,
 			detailsUpdatedAt = previousUpdatedAt,
 			chaptersInitialized = isChaptersInitialized(id) == true,
 		)

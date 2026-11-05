@@ -148,7 +148,8 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 							}
 						},
 						onMangaLongClick = { viewModel.toggleSelection(it.id) },
-						onOpenTarget = { manga -> router.openDetails(manga) },
+                        onOpenTarget = { manga -> router.openDetails(manga) },
+                        onOpenSource = { manga -> router.openDetails(manga) },
 					)
 				}
 			}

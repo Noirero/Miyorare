@@ -75,6 +75,7 @@ internal fun MigrationFlowScreen(
 	onCopyOne: (Long) -> Unit = {},
 	onSkipOne: (Long) -> Unit = {},
 	onOpenTarget: (Manga) -> Unit = {},
+    onOpenSource: (Manga) -> Unit = {},
 ) {
 	var step by rememberSaveable { mutableIntStateOf(0) }
 	var pendingAction by remember { mutableStateOf<MigrationBatchAction?>(null) }
@@ -87,7 +88,17 @@ internal fun MigrationFlowScreen(
 		Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 		return
 	}
-	if (state.failed && state.manga.isEmpty()) {
+	if (state.explicitUnavailable && state.manga.isEmpty() &&
+        state.completedResults.isEmpty() && !state.isLoading
+    ) {
+        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+            Text(if (state.explicitNotFavourite)
+                "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
+                else "Manga tidak tersedia untuk migrasi melalui Disukai Normal.")
+        }
+        return
+    }
+    if (state.failed && state.manga.isEmpty()) {
 		Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center,
 			horizontalAlignment = Alignment.CenterHorizontally) {
 			Text("Sesi migrasi tidak dapat dimuat")
@@ -118,6 +129,7 @@ internal fun MigrationFlowScreen(
 			state = state,
 			imageLoader = imageLoader,
 			onMangaClick = onMangaClick,
+            onOpenSource = onOpenSource,
 			onOpenTarget = onOpenTarget,
 			onRetry = { step = 0 },
 			onContinue = { pendingAction = MigrationBatchAction.MIGRATE },
@@ -466,6 +478,7 @@ private fun MigrationReviewStep(
 	state: SourceMangaListState,
 	imageLoader: ImageLoader,
 	onMangaClick: (Manga) -> Unit,
+    onOpenSource: (Manga) -> Unit,
 	onOpenTarget: (Manga) -> Unit,
 	onRetry: () -> Unit,
 	onContinue: () -> Unit,
@@ -508,6 +521,7 @@ private fun MigrationReviewStep(
 				MigrationMangaReviewItem(manga, imageLoader, status,
 					outcome?.destinationTitle, outcome?.destinationSource,
 					onClick = { onMangaClick(manga) },
+                    onOpenSource = onOpenSource,
 					failureStage = outcome?.failureStage,
 					conflictReason = outcome?.conflictReason,
 					targetManga = state.readyTarget(manga.id) ?: state.completedTarget(manga.id),
@@ -516,7 +530,14 @@ private fun MigrationReviewStep(
 					onCopy = if (!busy && manga.id in readyIds) ({ onCopyOne(manga.id) }) else null,
 					onSkip = if (!busy) ({ onSkipOne(manga.id) }) else null)
 			}
-			if (state.manga.isEmpty()) item { Text("Tidak ada manga dalam sesi ini.") }
+			if (state.manga.isEmpty()) item {
+                Text(when {
+                    state.explicitNotFavourite ->
+                        "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
+                    state.explicitUnavailable -> "Manga tidak tersedia untuk migrasi melalui Disukai Normal."
+                    else -> "Tidak ada manga dalam sesi ini."
+                })
+            }
 			if (state.completedResults.isNotEmpty()) {
 				item { Text("Hasil sebelumnya", style = MaterialTheme.typography.titleSmall) }
 				items(state.completedResults, key = { "done:" + it.mangaId + ":" + it.generation }) { snapshot ->
@@ -611,6 +632,7 @@ private fun MigrationMangaReviewItem(
 	targetTitle: String?, targetSource: String?, onClick: () -> Unit,
 	targetManga: Manga? = null,
 	onOpenTarget: (Manga) -> Unit = {},
+    onOpenSource: (Manga) -> Unit = {},
 	onMigrate: (() -> Unit)? = null,
 	onCopy: (() -> Unit)? = null,
 	onSkip: (() -> Unit)? = null,
@@ -629,8 +651,12 @@ private fun MigrationMangaReviewItem(
 						ImageRequest.Builder(context).data(it).mangaSourceExtra(manga.source).build()
 					}
 				}
-				if (request != null) AsyncImage(model = request, imageLoader = imageLoader,
-					contentDescription = null, modifier = Modifier.width(58.dp).height(76.dp))
+                Box(Modifier.width(58.dp).height(76.dp)
+                    .testTag("migration-source-cover-" + manga.id)
+                    .clickable { onOpenSource(manga) }) {
+                    if (request != null) AsyncImage(model = request, imageLoader = imageLoader,
+                        contentDescription = manga.title, modifier = Modifier.fillMaxSize())
+                }
 				Text(manga.title, style = MaterialTheme.typography.bodySmall,
 					maxLines = 2, overflow = TextOverflow.Ellipsis)
 				Text(manga.source.getTitle(context).toString(), style = MaterialTheme.typography.labelSmall,
@@ -677,6 +703,10 @@ private fun MigrationMangaReviewItem(
 					style = MaterialTheme.typography.labelSmall, maxLines = 1)
 				Text(stringResource(status.labelRes()), style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.primary)
+                if (status == MigrationBatchStatus.MIGRATED_PRESERVED) {
+                    Text("Sebagian data masih disimpan pada source asal.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
 				if (status == MigrationBatchStatus.ERROR) {
 					val explanation = when (failureStage) {
 						MigrationFailureStage.DESTINATION_DETAILS ->
@@ -742,7 +772,7 @@ private fun MigrationResultsStep(
 ) {
 	val inProgress = state.ownedBatchName != null && state.batchBusy
 	val completed = state.manga.filter { state.status(it.id) in setOf(
-		MigrationBatchStatus.MIGRATED, MigrationBatchStatus.COPIED) }
+		MigrationBatchStatus.MIGRATED, MigrationBatchStatus.MIGRATED_PRESERVED, MigrationBatchStatus.COPIED) }
 	val failures = state.manga.filter { state.status(it.id) == MigrationBatchStatus.ERROR }
 	val unresolved = state.manga.filter { state.status(it.id) in setOf(
 		MigrationBatchStatus.INTERRUPTED, MigrationBatchStatus.NEEDS_REVIEW,
@@ -789,9 +819,28 @@ private fun MigrationResultsStep(
 					Text(result.outcome.destinationTitle ?: "Manga selesai",
 						style = MaterialTheme.typography.bodyMedium)
 					Text(stringResource(result.outcome.status.labelRes()),
-						style = MaterialTheme.typography.bodySmall)
+                        style = MaterialTheme.typography.bodySmall)
+                    if (result.outcome.status == MigrationBatchStatus.MIGRATED_PRESERVED) {
+                        state.preservedSourceManga[result.mangaId]?.let { source ->
+                            TextButton(onClick = { onReview(source) }) {
+                                Text("Buka manga asal untuk memulihkan data tersimpan")
+                            }
+                        }
+                    }
 				}
 			}
+            val preserved = state.preservedSourceManga.values.toList()
+            if (preserved.isNotEmpty()) item {
+                Text("Data manga lama tersimpan", style = MaterialTheme.typography.titleMedium)
+            }
+            items(preserved, key = { "preserved:" + it.id }) { source ->
+                Column {
+                    Text(source.title, style = MaterialTheme.typography.bodyMedium)
+                    Text("Data yang belum dipindahkan tetap tersedia di manga asal.",
+                        style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { onReview(source) }) { Text("Buka manga asal") }
+                }
+            }
 			if (failures.isNotEmpty()) item { Text("Gagal", style = MaterialTheme.typography.titleMedium) }
 			items(failures, key = Manga::id) { manga ->
 				MigrationMangaReviewItem(manga, imageLoader, state.status(manga.id),

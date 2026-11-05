@@ -30,6 +30,18 @@ class MigrationBatchPolicyTest {
 		searchScope = searchScope,
 	)
 
+
+    @Test fun oldInterruptedHistoryOnlyDoesNotReappearWithoutOwnershipCheckpoint() {
+        assertFalse(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.INTERRUPTED, false))
+        assertFalse(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.ERROR, false))
+        assertFalse(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.READY, true))
+        assertTrue(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.INTERRUPTED, true))
+        assertTrue(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.ERROR, true))
+        assertTrue(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.MIGRATED, false))
+        assertTrue(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.MIGRATED_PRESERVED, false))
+        assertTrue(MigrationBatchPolicy.shouldShowInactiveResult(MigrationBatchStatus.COPIED, false))
+    }
+
 	@Test fun onlyReadyVisibleCurrentSourceResultsBecomeBatchRequests() {
 		val states = listOf(MigrationBatchStatus.READY, MigrationBatchStatus.NEEDS_REVIEW, MigrationBatchStatus.NO_REPLACEMENT,
 			MigrationBatchStatus.INCOMPLETE, MigrationBatchStatus.ERROR, MigrationBatchStatus.SKIPPED, MigrationBatchStatus.INTERRUPTED)
@@ -99,6 +111,36 @@ class MigrationBatchPolicyTest {
         assertEquals(MigrationBatchStatus.ERROR, failed.status)
         assertEquals(MigrationFailureStage.DESTINATION_DETAILS, failed.failureStage)
         assertNotEquals(MigrationBatchStatus.MIGRATED, failed.status)
+    }
+
+    @Test fun simpleMigrationPreservesSourceDataAsDistinctCompletedStatus() = runTest {
+        val request = MigrationBatchRequest(
+            1L, "OLD", MigrationBatchAction.MIGRATE, MigrationSelection.of(replacement),
+        )
+        val result = MigrationBatchPolicy.process(
+            request = request,
+            canAccess = { true },
+            discover = { error("No discovery") },
+            migrate = { error("Legacy strict migration must not run") },
+            migrateDetailed = { MigrationTransferResult(replacement, preserved = true) },
+        )
+        assertEquals(MigrationBatchStatus.MIGRATED_PRESERVED, result.status)
+        assertEquals(replacement.id, result.destinationId)
+        val saved = MigrationBatchWork.output(result)
+        assertEquals("MIGRATED_PRESERVED", saved.getString("result_status"))
+    }
+
+    @Test fun simpleMigrationWithAllRequiredAndOptionalDataReportsComplete() = runTest {
+        val request = MigrationBatchRequest(
+            1L, "OLD", MigrationBatchAction.MIGRATE, MigrationSelection.of(replacement),
+        )
+        val outcome = MigrationBatchPolicy.process(
+            request = request, canAccess = { true },
+            discover = { error("No discovery") },
+            migrate = { error("Legacy strict migration must not run") },
+            migrateDetailed = { MigrationTransferResult(replacement, preserved = false) },
+        )
+        assertEquals(MigrationBatchStatus.MIGRATED, outcome.status)
     }
 
 	@Test fun copyActionUsesCopyExecutorAndReportsCopied() = runTest {

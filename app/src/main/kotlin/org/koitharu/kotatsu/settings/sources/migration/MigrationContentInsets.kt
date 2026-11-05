@@ -3,8 +3,6 @@ package org.koitharu.kotatsu.settings.sources.migration
 import android.view.View
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.doOnAttach
-import androidx.core.view.doOnDetach
 import androidx.core.view.updatePadding
 import com.google.android.material.appbar.AppBarLayout
 
@@ -14,27 +12,51 @@ import com.google.android.material.appbar.AppBarLayout
  * inner migration action panels must not apply navigationBarsPadding a second time.
  */
 internal fun bindMigrationContentInsets(view: View, appBar: AppBarLayout) {
-    var appBarOverlap = appBar.totalScrollRange
+    var appBarOffset = 0
     var navigationBarBottom = 0
 
     fun update() {
-        view.updatePadding(bottom = appBarOverlap + navigationBarBottom)
+        val appBarOverlap = (appBar.totalScrollRange + appBarOffset).coerceAtLeast(0)
+        val bottomInset = appBarOverlap + navigationBarBottom
+        if (view.paddingBottom != bottomInset) view.updatePadding(bottom = bottomInset)
     }
 
-    val offsetListener = AppBarLayout.OnOffsetChangedListener { bar, offset ->
-        appBarOverlap = (bar.totalScrollRange + offset).coerceAtLeast(0)
+    val offsetListener = AppBarLayout.OnOffsetChangedListener { _, offset ->
+        appBarOffset = offset
         update()
     }
-    appBar.addOnOffsetChangedListener(offsetListener)
-    ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
-        navigationBarBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+    // totalScrollRange can still be zero at onViewCreated, before the expanded
+    // toolbar is measured. Without a second measurement the sticky footer can
+    // land beneath the system navigation bar on first entry to a source.
+    val layoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> update() }
+    // Register after attach; doOnDetach on a not-yet-attached view runs immediately
+    // and would remove both AppBar listeners before their first layout callback.
+    // Keep the binding valid across a temporary detach/reattach of the host view.
+    var observing = false
+    fun startObserving() {
+        if (observing) return
+        observing = true
+        appBar.addOnOffsetChangedListener(offsetListener)
+        appBar.addOnLayoutChangeListener(layoutListener)
+        ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
+            navigationBarBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            update()
+            insets
+        }
         update()
-        insets
+        ViewCompat.requestApplyInsets(view)
     }
-    view.doOnAttach { ViewCompat.requestApplyInsets(it) }
-    view.doOnDetach {
+    fun stopObserving() {
+        if (!observing) return
+        observing = false
         appBar.removeOnOffsetChangedListener(offsetListener)
+        appBar.removeOnLayoutChangeListener(layoutListener)
         ViewCompat.setOnApplyWindowInsetsListener(view, null)
+        navigationBarBottom = 0
     }
-    update()
+    view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(v: View) = startObserving()
+        override fun onViewDetachedFromWindow(v: View) = stopObserving()
+    })
+    if (view.isAttachedToWindow) startObserving()
 }

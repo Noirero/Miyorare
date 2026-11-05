@@ -38,6 +38,7 @@ internal fun MigrationBatchStatus.labelRes(): Int = when (this) {
 	MigrationBatchStatus.INCOMPLETE -> R.string.migration_batch_incomplete
 	MigrationBatchStatus.HEALTHY -> R.string.migration_batch_healthy
 	MigrationBatchStatus.MIGRATED -> R.string.migration_completed
+	MigrationBatchStatus.MIGRATED_PRESERVED -> R.string.migration_batch_migrated_preserved
 	MigrationBatchStatus.COPIED -> R.string.migration_batch_copied
 	MigrationBatchStatus.SKIPPED -> R.string.migration_batch_skipped
 	MigrationBatchStatus.INTERRUPTED -> R.string.migration_batch_interrupted

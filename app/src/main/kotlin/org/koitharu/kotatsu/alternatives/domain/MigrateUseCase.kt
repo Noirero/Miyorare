@@ -413,8 +413,8 @@ class MigrateUseCase @Inject constructor(
 	)
 	class SourceChangedException : IllegalStateException("Migration library or privacy state changed")
 
-	private companion object {
-		val transferMutex = Mutex()
+	companion object {
+		internal val transferMutex = Mutex()
 	}
 
 }
