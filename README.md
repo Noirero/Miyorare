@@ -28,7 +28,8 @@
 
 ---
 
-> 🌸 **Hey, welcome to Miyorare!**  
+> 🌸 **Hey, welcome to Miyorare!**
+>
 > It's an Android reader for manga and novels. Open one chapter, and somehow it's already three in the morning. 📖☕
 
 ## ✨ What can you do with Miyorare?
