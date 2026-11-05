@@ -34,4 +34,10 @@ data class MangaPrefsEntity(
 	@ColumnInfo(name = "artist_override") val artistOverride: String? = null,
 	@ColumnInfo(name = "description_override") val descriptionOverride: String? = null,
 	@ColumnInfo(name = "merge_scanlators", defaultValue = "0") val mergeScanlators: Boolean = false,
+    @ColumnInfo(name = "cf_custom_enabled", defaultValue = "0") val cfCustomEnabled: Boolean = false,
+    @ColumnInfo(name = "cf_custom_red", defaultValue = "70") val cfCustomRed: Int = 70,
+    @ColumnInfo(name = "cf_custom_green", defaultValue = "0") val cfCustomGreen: Int = 0,
+    @ColumnInfo(name = "cf_custom_blue", defaultValue = "171") val cfCustomBlue: Int = 171,
+    @ColumnInfo(name = "cf_custom_alpha", defaultValue = "115") val cfCustomAlpha: Int = 115,
+    @ColumnInfo(name = "cf_custom_mode", defaultValue = "'OVERLAY'") val cfCustomMode: String = "OVERLAY",
 )

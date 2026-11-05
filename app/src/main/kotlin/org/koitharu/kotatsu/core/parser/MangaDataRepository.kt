@@ -34,6 +34,8 @@ import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.reader.domain.ReaderColorFilter
+import org.koitharu.kotatsu.reader.domain.ReaderCustomTint
+import org.koitharu.kotatsu.reader.domain.ReaderTintBlendMode
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -62,6 +64,13 @@ class MangaDataRepository @Inject constructor(
 					cfContrast = colorFilter?.contrast ?: 0f,
 					cfInvert = colorFilter?.isInverted == true,
 					cfGrayscale = colorFilter?.isGrayscale == true,
+                    cfBookEffect = colorFilter?.isBookBackground == true,
+                    cfCustomEnabled = colorFilter?.custom?.enabled == true,
+                    cfCustomRed = colorFilter?.custom?.red ?: ReaderCustomTint.DEFAULT.red,
+                    cfCustomGreen = colorFilter?.custom?.green ?: ReaderCustomTint.DEFAULT.green,
+                    cfCustomBlue = colorFilter?.custom?.blue ?: ReaderCustomTint.DEFAULT.blue,
+                    cfCustomAlpha = colorFilter?.custom?.alpha ?: ReaderCustomTint.DEFAULT.alpha,
+                    cfCustomMode = colorFilter?.custom?.mode?.name ?: ReaderCustomTint.DEFAULT.mode.name,
 				),
 			)
 		}
@@ -318,15 +327,16 @@ class MangaDataRepository @Inject constructor(
 	}
 
 	private fun MangaPrefsEntity.getColorFilterOrNull(): ReaderColorFilter? {
-		return if (cfBrightness != 0f || cfContrast != 0f || cfInvert || cfGrayscale || cfBookEffect) {
-			ReaderColorFilter(
-				brightness = cfBrightness,
-				contrast = cfContrast,
-				isInverted = cfInvert,
-				isGrayscale = cfGrayscale,
-				isBookBackground = cfBookEffect,
-			)
-		} else null
+        val custom = ReaderCustomTint(
+            enabled = cfCustomEnabled, red = cfCustomRed, green = cfCustomGreen,
+            blue = cfCustomBlue, alpha = cfCustomAlpha,
+            mode = ReaderTintBlendMode.fromStored(cfCustomMode),
+        )
+        return ReaderColorFilter(
+            brightness = cfBrightness, contrast = cfContrast,
+            isInverted = cfInvert, isGrayscale = cfGrayscale,
+            isBookBackground = cfBookEffect, custom = custom,
+        ).takeUnless { it.isEmpty }
 	}
 
 	private fun MangaPrefsEntity.getOverrideOrNull(): MangaOverride? {
