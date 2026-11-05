@@ -49,20 +49,28 @@ data class ReaderCustomTint(
          * RenderEffect avoids forcing an explicit hardware layer on Android 12+.
          * Only call this on owned manga image/preview views.
          */
-        fun applyTo(view: View, tint: ReaderCustomTint?) {
-            if (tint?.isActive != true) {
+        fun applyToImage(
+            view: View,
+            settings: ReaderColorFilter?,
+            setImageColorFilter: (ColorFilter?) -> Unit,
+        ) {
+            val tint = settings?.custom?.takeIf(ReaderCustomTint::isActive)
+            val matrix = settings?.takeIf(ReaderColorFilter::hasMatrixEffects)?.toColorFilter()
+            // The tint MUST run on bitmap pixels rather than the entire View layer:
+            // SRC_OVER on transparent letterboxing otherwise paints colored rectangles.
+            setImageColorFilter(tint?.toPlatformColorFilter() ?: matrix)
+            if (tint != null && matrix != null) {
+                // An additional matrix is needed only when custom tint and standard
+                // effects are both on. This avoids GPU layers for tint-only reading.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    view.setRenderEffect(null)
-                } else if (view.layerType == View.LAYER_TYPE_HARDWARE) {
-                    view.setLayerType(View.LAYER_TYPE_NONE, null)
+                    view.setRenderEffect(RenderEffect.createColorFilterEffect(matrix))
+                } else {
+                    view.setLayerType(View.LAYER_TYPE_HARDWARE, Paint().apply { colorFilter = matrix })
                 }
-                return
-            }
-            val effect = tint.toPlatformColorFilter()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                view.setRenderEffect(RenderEffect.createColorFilterEffect(effect))
-            } else {
-                view.setLayerType(View.LAYER_TYPE_HARDWARE, Paint().apply { colorFilter = effect })
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                view.setRenderEffect(null)
+            } else if (view.layerType == View.LAYER_TYPE_HARDWARE) {
+                view.setLayerType(View.LAYER_TYPE_NONE, null)
             }
         }
     }

@@ -173,8 +173,9 @@ class ColorFilterConfigActivity :
             custom.valueTintBlue.text = tint.blue.toString()
             custom.valueTintAlpha.text = tint.alpha.toString()
             blendIds.entries.firstOrNull { it.value == tint.mode }?.key?.let(custom.groupBlendModes::check)
-            viewBinding.imageViewAfter.colorFilter = readerColorFilter?.toColorFilter()
-            ReaderCustomTint.applyTo(viewBinding.imageViewAfter, tint)
+            ReaderCustomTint.applyToImage(viewBinding.imageViewAfter, readerColorFilter) {
+                viewBinding.imageViewAfter.colorFilter = it
+            }
         } finally {
             updatingUi = false
         }

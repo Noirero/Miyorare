@@ -14,8 +14,11 @@ data class ReaderColorFilter(
 	val custom: ReaderCustomTint = ReaderCustomTint.DEFAULT,
 ) {
 
-	val isEmpty: Boolean
-		get() = !isGrayscale && !isInverted && !isBookBackground && brightness == 0f && contrast == 0f && custom == ReaderCustomTint.DEFAULT
+	val hasMatrixEffects: Boolean
+        get() = isGrayscale || isInverted || isBookBackground || brightness != 0f || contrast != 0f
+
+    val isEmpty: Boolean
+        get() = !hasMatrixEffects && custom == ReaderCustomTint.DEFAULT
 
 	fun toColorFilter(): ColorMatrixColorFilter {
 		val cm = ColorMatrix()

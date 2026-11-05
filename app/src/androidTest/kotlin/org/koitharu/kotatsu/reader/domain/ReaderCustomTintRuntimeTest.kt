@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.os.Build
 import android.view.View
+import android.widget.ImageView
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -42,11 +43,21 @@ class ReaderCustomTintRuntimeTest {
         assertEquals(Color.BLACK, original.getPixel(0, 0))
         assertEquals(Color.GRAY, original.getPixel(1, 0))
         assertNotEquals(original.getPixel(1, 0), filtered.getPixel(1, 0))
-        val image = View(context)
-        ReaderCustomTint.applyTo(image, tint)
+        val image = ImageView(context)
+        ReaderCustomTint.applyToImage(image, ReaderColorFilter.EMPTY.copy(custom = tint)) {
+            image.colorFilter = it
+        }
+        assertNotNull(image.colorFilter)
+        // Tint alone is applied only to bitmap pixels, with no extra full-view layer.
+        if (Build.VERSION.SDK_INT >= 31) assertNull(image.renderEffect)
+        else assertEquals(View.LAYER_TYPE_NONE, image.layerType)
+        ReaderCustomTint.applyToImage(image, ReaderColorFilter.EMPTY.copy(brightness = 0.2f, custom = tint)) {
+            image.colorFilter = it
+        }
         if (Build.VERSION.SDK_INT >= 31) assertNotNull(image.renderEffect)
         else assertEquals(View.LAYER_TYPE_HARDWARE, image.layerType)
-        ReaderCustomTint.applyTo(image, null)
+        ReaderCustomTint.applyToImage(image, null) { image.colorFilter = it }
+        assertNull(image.colorFilter)
         if (Build.VERSION.SDK_INT >= 31) assertNull(image.renderEffect)
         else assertEquals(View.LAYER_TYPE_NONE, image.layerType)
         filtered.recycle()
