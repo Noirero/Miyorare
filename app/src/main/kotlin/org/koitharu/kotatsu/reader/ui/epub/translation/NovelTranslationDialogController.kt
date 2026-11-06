@@ -68,47 +68,93 @@ class NovelTranslationDialogController(
 		val selectionInvocation = isActiveTextSelectionInvocation()
 		val projectionActionsEnabled = state.hasCachedTranslation && !selectionInvocation
 		val autoMangaId = mangaId?.takeIf { it > 0L && !selectionInvocation }
+		val visuals = NovelTranslationSheetVisuals(context)
 		val root = LinearLayout(context).apply {
 			orientation = LinearLayout.VERTICAL
-			setPadding(dp(20), dp(12), dp(20), dp(20))
+			background = visuals.panelBackground()
+			setPadding(dp(18), dp(22), dp(18), dp(22))
 		}
 		val scroll = ScrollView(context).apply {
-			isFillViewport = true
+			isFillViewport = false
 			addView(root, matchWidth())
 		}
-		root.addView(TextView(context).apply {
-			setText(R.string.novel_translation_title)
-			setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleLarge)
-			setPadding(0, 0, 0, dp(12))
-		}, matchWidth())
+		visuals.applyInsetPadding(scroll)
 
+		val header = LinearLayout(context).apply {
+			orientation = LinearLayout.HORIZONTAL
+			gravity = android.view.Gravity.CENTER_VERTICAL
+		}
+		header.addView(visuals.icon(R.drawable.ic_translate_noirero))
+		val heading = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+		heading.addView(visuals.label(context.getString(R.string.novel_translation_title), 24f), matchWidth())
+		heading.addView(visuals.label(context.getString(R.string.novel_translation_sheet_subtitle), 12f, subdued = true), matchWidth())
+		header.addView(heading, weighted())
+		root.addView(header, matchWidth().apply { bottomMargin = dp(20) })
+
+		val viewCard = LinearLayout(context).apply {
+			orientation = LinearLayout.VERTICAL
+			background = visuals.cardBackground()
+			setPadding(dp(12), dp(12), dp(12), dp(12))
+		}
+		viewCard.addView(visuals.label(context.getString(R.string.novel_translation_current_view_label), 14f))
+		val segmented = LinearLayout(context).apply {
+			orientation = LinearLayout.HORIZONTAL
+			background = visuals.segmentBackground()
+			setPadding(dp(3), dp(3), dp(3), dp(3))
+		}
+		val modeButtons = linkedMapOf<NovelTranslationDisplayMode, MaterialButton>()
+		val options = listOf(
+			NovelTranslationDisplayMode.ORIGINAL to R.string.novel_translation_state_original,
+			NovelTranslationDisplayMode.TRANSLATED_ONLY to R.string.novel_translation_state_translated_only,
+			NovelTranslationDisplayMode.BILINGUAL to R.string.novel_translation_state_bilingual,
+		)
+		options.forEach { (mode, labelRes) ->
+			val button = MaterialButton(context).apply { setText(labelRes); isAllCaps = false }
+			segmented.addView(button, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+				marginStart = dp(2)
+				marginEnd = dp(2)
+			})
+			modeButtons[mode] = button
+		}
+		viewCard.addView(segmented, matchWidth().apply { topMargin = dp(10) })
 		var currentMode = state.displayMode
-		val currentState = TextView(context)
+		var selectedMode = currentMode
+		val currentState = visuals.label("", 12f, subdued = true)
 		fun updateCurrentState() {
 			val label = when (currentMode) {
 				NovelTranslationDisplayMode.ORIGINAL -> R.string.novel_translation_state_original
 				NovelTranslationDisplayMode.BILINGUAL -> R.string.novel_translation_state_bilingual
 				NovelTranslationDisplayMode.TRANSLATED_ONLY -> R.string.novel_translation_state_translated_only
 			}
-			currentState.text = context.getString(R.string.novel_translation_current_state, context.getString(label))
+			currentState.text = if (currentMode == selectedMode) {
+				context.getString(R.string.novel_translation_current_state, context.getString(label))
+			} else context.getString(R.string.novel_translation_view_pending)
+			modeButtons.forEach { (mode, button) ->
+				visuals.styleButton(button, if (selectedMode == mode) {
+					NovelTranslationSheetVisuals.ButtonKind.SEGMENT_SELECTED
+				} else NovelTranslationSheetVisuals.ButtonKind.SEGMENT_IDLE)
+				button.isSelected = selectedMode == mode
+			}
 		}
+		viewCard.addView(currentState, matchWidth().apply { topMargin = dp(8) })
+		root.addView(viewCard, matchWidth().apply { bottomMargin = dp(18) })
 		updateCurrentState()
-		root.addView(currentState, matchWidth())
 
+		root.addView(visuals.label(context.getString(R.string.novel_translation_language_pair), 14f),
+			matchWidth().apply { bottomMargin = dp(8) })
 		val languageRow = LinearLayout(context).apply {
 			orientation = LinearLayout.HORIZONTAL
 			gravity = android.view.Gravity.CENTER_VERTICAL
 		}
 		val sourceButton = MaterialButton(context).apply { isAllCaps = false }
 		val targetButton = MaterialButton(context).apply { isAllCaps = false }
-		val arrow = TextView(context).apply {
-			text = "→"
-			gravity = android.view.Gravity.CENTER
-		}
+		visuals.styleButton(sourceButton, NovelTranslationSheetVisuals.ButtonKind.SELECTOR)
+		visuals.styleButton(targetButton, NovelTranslationSheetVisuals.ButtonKind.SELECTOR)
+		val arrow = visuals.label("→", 19f).apply { gravity = android.view.Gravity.CENTER }
 		languageRow.addView(sourceButton, weighted())
-		languageRow.addView(arrow, LinearLayout.LayoutParams(dp(40), ViewGroup.LayoutParams.WRAP_CONTENT))
+		languageRow.addView(arrow, LinearLayout.LayoutParams(dp(28), ViewGroup.LayoutParams.WRAP_CONTENT))
 		languageRow.addView(targetButton, weighted())
-		root.addLabeledView(R.string.novel_translation_source, languageRow)
+		root.addView(languageRow, matchWidth().apply { bottomMargin = dp(18) })
 
 		fun refreshLanguageButtons() {
 			sourceButton.text = languageLabel(settings.sourceLanguage, source = true)
