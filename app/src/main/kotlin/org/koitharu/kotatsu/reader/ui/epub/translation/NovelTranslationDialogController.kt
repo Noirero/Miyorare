@@ -227,14 +227,17 @@ class NovelTranslationDialogController(
 		))
 		root.addView(visuals.optionsGrid(cards), matchWidth().apply { bottomMargin = dp(10) })
 
-		val advancedButton = MaterialButton(context).apply {
-			setText(R.string.novel_translation_advanced_settings)
-			setIconResource(R.drawable.ic_settings)
+		val advancedButton = visuals.card(
+			context.getString(R.string.novel_translation_advanced_settings),
+			context.getString(R.string.novel_translation_advanced_summary),
+			R.drawable.ic_settings,
+			control = visuals.icon(R.drawable.ic_chevron_right),
+		).apply {
+			isClickable = true
+			isFocusable = true
+			minimumHeight = dp(76)
 		}
-		visuals.styleButton(advancedButton, NovelTranslationSheetVisuals.ButtonKind.SELECTOR)
-		root.addView(advancedButton, matchWidth())
-		root.addView(visuals.label(context.getString(R.string.novel_translation_advanced_summary), 12f, subdued = true),
-			matchWidth().apply { topMargin = dp(4); bottomMargin = dp(8) })
+		root.addView(advancedButton, matchWidth().apply { bottomMargin = dp(10) })
 		val privacyNote = visuals.label(context.getString(R.string.novel_translation_privacy_note), 12f, subdued = true)
 		root.addView(privacyNote, matchWidth().apply { bottomMargin = dp(12) })
 
@@ -275,6 +278,7 @@ class NovelTranslationDialogController(
 			val remoteAi = selectedService() == NovelTranslationService.AI
 			serviceSummary.text = context.getString(if (remoteAi) R.string.novel_translation_ai_summary else R.string.novel_translation_online_summary)
 			advancedButton.isEnabled = remoteAi
+			advancedButton.alpha = if (remoteAi) 1f else 0.6f
 			privacyNote.visibility = if (remoteAi) View.VISIBLE else View.GONE
 			updateAutoUi()
 		}
