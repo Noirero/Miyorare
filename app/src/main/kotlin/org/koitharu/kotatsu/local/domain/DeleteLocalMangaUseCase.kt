@@ -60,7 +60,11 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	 */
 	suspend fun deleteOwnedDownloadAtRoot(remoteManga: Manga, selectedRoot: File, space: FavouriteSpace) {
 		require(!remoteManga.isLocal) { "Only remote download tasks may delete their downloaded container" }
-		mangaLock.withLock(remoteManga) {
+		// The downloader locks a chapter-hydrated Manga from the repository. Use the same
+		// representation here rather than a metadata-only Downloads row.
+		val lockedManga = mangaDataRepository.findMangaById(remoteManga.id, withChapters = true)
+			?: throw IOException("Cannot verify the selected manga in the library. Files were kept.")
+		mangaLock.withLock(lockedManga) {
 			val entry = database.getFavouriteDownloadIndexDao()
 				.findEntry(space.dbValue, remoteManga.id)
 				?: throw IOException("Cannot verify this download's file ownership. Files were kept.")
@@ -68,7 +72,7 @@ class DeleteLocalMangaUseCase @Inject constructor(
 			if (!isInsideDownloadRoot(selectedRoot, file) || !file.exists()) {
 				throw IOException("The selected download's original file is unavailable. Files were kept.")
 			}
-			val output = LocalMangaOutput.get(selectedRoot, remoteManga)
+			val output = LocalMangaOutput.get(selectedRoot, lockedManga)
 				?: throw IOException("Cannot match the selected download to its saved file. Files were kept.")
 			val resolvedPath = try {
 				output.rootFile.canonicalFile
