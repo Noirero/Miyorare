@@ -121,6 +121,8 @@ class DetailsExpressiveActions(
 	val onChapterNotesQueryChange: (String) -> Unit = {},
 	val onChapterNotesSearchExit: () -> Unit = {},
 	val onChapterRangeToggle: (ChapterRange) -> Unit = {},
+	val onChapterMarkRead: (ChapterListItem) -> Unit = {},
+	val onChapterMarkUnread: (ChapterListItem) -> Unit = {},
 	val onReleasePredictionClick: () -> Unit = {},
 )
 
@@ -429,7 +431,12 @@ fun DetailsExpressiveScreen(
 									key = { it.detailsLazyListKey() },
 									contentType = { "chapter" },
 								) { chapter ->
-									InlineChapterCard(
+									ChapterReadSwipeCard(
+										item = chapter,
+										onMarkRead = { actions.onChapterMarkRead(chapter) },
+										onMarkUnread = { actions.onChapterMarkUnread(chapter) },
+									) {
+										InlineChapterCard(
 										item = chapter,
 										visualEffectLevel = visualEffectLevel,
 										accent = accentColor,
@@ -438,7 +445,8 @@ fun DetailsExpressiveScreen(
 										onManageClick = actions.onChaptersClick,
 										onPersonalClick = { actions.onChapterPersonalClick(chapter) },
 										onNoteClick = { noteChapter = chapter },
-									)
+										)
+									}
 								}
 								}
 						} else if (chaptersExpanded) items(
@@ -446,7 +454,12 @@ fun DetailsExpressiveScreen(
 							key = { it.detailsLazyListKey() },
 							contentType = { "chapter" },
 						) { chapter ->
-							InlineChapterCard(
+							ChapterReadSwipeCard(
+								item = chapter,
+								onMarkRead = { actions.onChapterMarkRead(chapter) },
+								onMarkUnread = { actions.onChapterMarkUnread(chapter) },
+							) {
+								InlineChapterCard(
 								item = chapter,
 								visualEffectLevel = visualEffectLevel,
 								accent = accentColor,
@@ -455,7 +468,8 @@ fun DetailsExpressiveScreen(
 								onManageClick = actions.onChaptersClick,
 								onPersonalClick = { actions.onChapterPersonalClick(chapter) },
 								onNoteClick = { noteChapter = chapter },
-							)
+								)
+							}
 						}
 						if (chaptersExpanded && !chapterNotesQuery.isNullOrBlank() && chapters.isEmpty()) {
 							item(contentType = "chapter-notes-empty") {
