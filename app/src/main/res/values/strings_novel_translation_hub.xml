@@ -2,6 +2,7 @@
 <resources>
     <string name="novel_translation_engine">Translation engine</string>
     <string name="novel_translation_sheet_subtitle">Translate the page or chapter, your way.</string>
+    <string name="novel_translation_segment_translated">Translated</string>
     <string name="novel_translation_current_view_label">Current view</string>
     <string name="novel_translation_view_pending">Selected view will apply after translation.</string>
     <string name="novel_translation_language_pair">Translate from → to</string>
