@@ -67,6 +67,7 @@ import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
+import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
@@ -82,6 +83,7 @@ class DownloadedLocalStateTest {
 	@Inject lateinit var data: MangaDataRepository
 	@Inject lateinit var index: LocalMangaIndex
 	@Inject lateinit var local: LocalMangaRepository
+	@Inject lateinit var deleteLocal: DeleteLocalMangaUseCase
 	@Inject lateinit var ownership: FavouriteDownloadOwnershipIndex
 	@Inject lateinit var destinations: DownloadDestinationStore
 	@Inject lateinit var classifier: DownloadedContentClassifier
@@ -148,6 +150,70 @@ class DownloadedLocalStateTest {
 		context.getSharedPreferences("legacy_favourite_download_reconcile", Context.MODE_PRIVATE).restore(savedRepairPrefs)
 		root.deleteRecursively()
 		Unit
+	}
+
+	/**
+	 * Real filesystem + Room ownership regression for the destructive Downloads action.
+	 * An identical remote manga in the other favourites space must retain its own file.
+	 */
+	@Test fun deletingNormalDownloadPreservesPrivateCopy() = runBlocking {
+		val manga = remote(810_041L)
+		favourite(manga, FavouriteSpace.NORMAL)
+		favourite(manga, FavouriteSpace.PRIVATE)
+		val normal = download(root, manga)
+		val private = download(privateRoot, manga)
+		assertNotEquals(normal.file.canonicalPath, private.file.canonicalPath)
+		db.getFavouriteDownloadIndexDao().upsert(
+			listOf(
+				FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, normal.file.canonicalPath),
+				FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.PRIVATE.dbValue, private.file.canonicalPath),
+			),
+		)
+		deleteLocal.deleteOwnedDownloadAtRoot(manga, root, FavouriteSpace.NORMAL)
+		assertFalse("Selected Normal download should be deleted", normal.file.exists())
+		assertTrue("Private copy must survive", private.file.exists())
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertEquals(
+			private.file.canonicalPath,
+			db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.PRIVATE.dbValue, manga.id)?.path,
+		)
+	}
+
+	@Test fun mismatchedSelectedDestinationCannotDeleteAnOwnedFile() = runBlocking {
+		val manga = remote(810_042L)
+		data.storeManga(manga, replaceExisting = true)
+		val normal = download(root, manga)
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, normal.file.canonicalPath),
+		)
+		val rejected = runCatching {
+			deleteLocal.deleteOwnedDownloadAtRoot(manga, privateRoot, FavouriteSpace.NORMAL)
+		}.exceptionOrNull()
+		assertTrue("An unrelated task destination must be rejected: $rejected", rejected is java.io.IOException)
+		assertTrue("A rejected deletion must not touch the real file", normal.file.exists())
+		assertEquals(
+			normal.file.canonicalPath,
+			db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id)?.path,
+		)
+	}
+
+	@Test fun sharedPhysicalNormalPrivateOwnershipPreventsDeletion() = runBlocking {
+		val manga = remote(810_043L)
+		data.storeManga(manga, replaceExisting = true)
+		val normal = download(root, manga)
+		val path = normal.file.canonicalPath
+		db.getFavouriteDownloadIndexDao().upsert(
+			listOf(
+				FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, path),
+				FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.PRIVATE.dbValue, path),
+			),
+		)
+		val rejected = runCatching {
+			deleteLocal.deleteOwnedDownloadAtRoot(manga, root, FavouriteSpace.NORMAL)
+		}.exceptionOrNull()
+		assertTrue("Shared physical ownership must block deletion: $rejected", rejected is java.io.IOException)
+		assertTrue("A shared file must remain available", normal.file.exists())
+		assertEquals(2, db.getFavouriteDownloadIndexDao().findEntriesByPath(path).size)
 	}
 
 	@Test fun completionUpdatesBadgeAndBothNativeFiltersWithoutDetails() = runBlocking {
