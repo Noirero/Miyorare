@@ -48,6 +48,15 @@
     <string name="novel_translation_key_cleared">API key deleted</string>
     <string name="novel_translation_ai_setup">AI translation settings</string>
     <string name="novel_translation_ai_setup_required">Configure an API key and model before using AI translation.</string>
+    <string name="novel_translation_scope">Manual translation scope</string>
+    <string name="novel_translation_scope_page">This page only</string>
+    <string name="novel_translation_scope_visible">Visible text only</string>
+    <string name="novel_translation_scope_chapter">Entire current chapter</string>
+    <string name="novel_translation_scope_auto_hint">Auto translate, when enabled, still processes each chapter you open.</string>
+    <string name="novel_translation_translate_page">Translate visible text</string>
+    <string name="novel_translation_translate_chapter">Translate chapter</string>
+    <string name="novel_translation_page_not_ready">Page text is not ready. Try again after the page loads.</string>
+    <string name="novel_translation_quick_action">Open novel translation controls</string>
     <string name="novel_translation_translate">Translate</string>
     <string name="novel_translation_configure">Configure AI</string>
     <string name="novel_translation_cancelled">Translation cancelled</string>
