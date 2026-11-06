@@ -699,8 +699,9 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			if (!visibleOnly) completedChapterTranslations += chapter.id
 			else if (!sameIdentity) completedChapterTranslations.remove(chapter.id)
 			if (automatic) autoTranslatedChapterIds += chapter.id
-			applyTranslationProjection(chapter, selection.displayMode)
+			// Read the source locator using the old projection before the new text changes pagination.
 			val current = currentLocator().clamped()
+			applyTranslationProjection(chapter, selection.displayMode)
 			if ((!visibleOnly && !automatic) || current.chapter == locator.chapter) {
 				refreshReader(if (visibleOnly || automatic) current else locator)
 			}
