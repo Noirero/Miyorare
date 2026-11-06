@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="novel_translation_engine">Translation engine</string>
+    <string name="novel_translation_sheet_subtitle">Translate the page or chapter, your way.</string>
+    <string name="novel_translation_current_view_label">Current view</string>
+    <string name="novel_translation_view_pending">Selected view will apply after translation.</string>
+    <string name="novel_translation_language_pair">Translate from → to</string>
+    <string name="novel_translation_auto_summary">Translate each chapter as you open it.</string>
+    <string name="novel_translation_view_info_title">Reading view</string>
+    <string name="novel_translation_view_info_summary">Select Original, Translated, or Bilingual above.</string>
+    <string name="novel_translation_advanced_summary">Fine-tune provider, context, and translation behavior.</string>
     <string name="novel_translation_title">Translation</string>
     <string name="novel_translation_online">Miyorare Online</string>
     <string name="novel_translation_online_summary">Online • No API key required</string>
