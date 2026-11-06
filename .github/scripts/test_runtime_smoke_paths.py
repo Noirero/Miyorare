@@ -49,7 +49,7 @@ class RuntimeSmokePathsTest(unittest.TestCase):
     def test_workflow_change_defaults_to_run(self) -> None:
         self.assertTrue(
             module.requires_runtime_smoke(
-                [".github/workflows/beta-to-main-release-gate.yml"]
+                [".github/workflows/promotion-to-main-gate.yml"]
             )
         )
 

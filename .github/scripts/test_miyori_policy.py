@@ -28,7 +28,6 @@ FORBIDDEN_PATTERNS = {
 REQUIRED_STATUS_GATES = {
     "PR Compile & Unit Check",
     "Miyorare Identity Guard",
-    "Beta to Main Release Gate",
     "Promotion to Main Gate",
 }
 
@@ -88,6 +87,8 @@ def main() -> int:
     )
     if missing_gates:
         fail(f"Status workflow is missing tracked gates: {missing_gates}")
+    if "Beta to Main Release Gate" in status:
+        fail("Retired legacy gate must not be tracked by Miyori status.")
 
     missing_labels = sorted(
         REQUIRED_STATUS_LABELS
