@@ -16,6 +16,7 @@ import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.button.MaterialButton
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
+import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
 
 /** Sheet-only visual layer; Modern reads the active Miyorare palette, Classic reads theme attrs. */
@@ -28,7 +29,7 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
     private val surfaceHigh = modern?.surfaceContainerHigh ?: context.getThemeColor(materialR.attr.colorSurfaceContainerHigh, surface)
     val onSurface = modern?.onSurface ?: context.getThemeColor(materialR.attr.colorOnSurface)
     val muted = modern?.onSurfaceVariant ?: context.getThemeColor(materialR.attr.colorOnSurfaceVariant, onSurface)
-    private val accent = modern?.primary ?: context.getThemeColor(materialR.attr.colorPrimary)
+    private val accent = modern?.primary ?: context.getThemeColor(appcompatR.attr.colorPrimary)
     private val outline = modern?.outlineVariant ?: context.getThemeColor(materialR.attr.colorOutlineVariant, muted)
     private val buttonColor = modern?.button ?: accent
     private val onButton = modern?.onButton ?: context.getThemeColor(materialR.attr.colorOnPrimary)
