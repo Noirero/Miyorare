@@ -508,7 +508,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				enabled = settings.isAutoTranslateActive(mangaId),
 				readerActive = readerActive,
 				chapterReady = chapter.content != null,
-				hasTranslation = completedChapterTranslations.contains(chapter.id),
+				hasTranslation = completedChapterTranslations.contains(chapter.id) &&
+				chapterTranslationIdentities[chapter.id] == translationIdentity(settings.currentSelection()),
 				translationInFlight = translationJob?.isActive == true,
 				chapterId = chapter.id,
 				lastAttemptedChapterId = autoTranslationLastChapterId,
