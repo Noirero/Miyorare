@@ -1860,9 +1860,19 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		installHighlightTapHandler(this)
 	}
 
-	private fun styledChapterText(chapterIndex: Int): Spanned {
+	private fun styledChapterText(chapterIndex: Int): Spanned =
+		styledTextRange(chapterIndex, 0, chapters[chapterIndex].text.length)
+
+	/**
+	 * Paginated pages must style only their own display slice on the UI thread.
+	 * Pagination itself styles the full chapter off-main on Dispatchers.Default.
+	 */
+	private fun styledTextRange(chapterIndex: Int, requestedStart: Int, requestedEnd: Int): Spanned {
 		val chapter = chapters[chapterIndex]
-		val text = SpannableString(chapter.text)
+		val source = chapter.text
+		val from = requestedStart.coerceIn(0, source.length)
+		val to = requestedEnd.coerceIn(from, source.length)
+		val text = SpannableString(source.subSequence(from, to))
 		text.getSpans(0, text.length, ForegroundColorSpan::class.java).forEach(text::removeSpan)
 		text.getSpans(0, text.length, BackgroundColorSpan::class.java).forEach(text::removeSpan)
 		if (!activePublisherStyle) {
@@ -1871,8 +1881,12 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			text.getSpans(0, text.length, RelativeSizeSpan::class.java).forEach(text::removeSpan)
 			text.getSpans(0, text.length, TypefaceSpan::class.java).forEach(text::removeSpan)
 		}
-		applyParagraphSpacing(text)
-		if (activeBionicReading) applyBionicReading(text)
+		applyParagraphSpacing(text, source, from)
+		if (activeBionicReading) {
+			EpubBionicText.prefixRanges(source, from, to).forEach { range ->
+				text.setSpan(StyleSpan(Typeface.BOLD), range.first, range.last + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			}
+		}
 		highlights.forEach { bookmark ->
 			if (bookmark.chapterId != chapter.id) return@forEach
 			val highlight = bookmark.epubHighlight ?: return@forEach
@@ -1880,8 +1894,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val sourceStart = highlight.start.coerceIn(0, sourceLength)
 			val sourceEnd = highlight.end.coerceIn(sourceStart, sourceLength)
 			sourceRangeToDisplaySegments(chapter.id, sourceStart, sourceEnd).forEach { (mappedStart, mappedEnd) ->
-				val start = mappedStart.coerceIn(0, text.length)
-				val end = mappedEnd.coerceIn(start, text.length)
+				val start = (mappedStart - from).coerceIn(0, text.length)
+				val end = (mappedEnd - from).coerceIn(start, text.length)
 				if (start != end) {
 					text.setSpan(HighlightColorSpan(highlightColor), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
 					text.setSpan(HighlightMarker(bookmark.pageId), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -1891,26 +1905,21 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		return text
 	}
 
-	private fun applyBionicReading(text: Spannable) {
-		BIONIC_WORD.findAll(text).forEach { match ->
-			val word = match.value
-			if (BIONIC_UNSPACED_SCRIPT.containsMatchIn(word)) return@forEach
-			val prefix = bionicPrefixLength(word.length)
-			if (prefix == 0) return@forEach
-			val start = match.range.first
-			text.setSpan(StyleSpan(Typeface.BOLD), start, start + prefix, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-		}
-	}
-
-	private fun applyParagraphSpacing(text: Spannable) {
+	private fun applyParagraphSpacing(text: Spannable, source: CharSequence, displayStart: Int) {
 		val extra = (effectiveParagraphSpacing * resources.displayMetrics.density).toInt()
 		if (extra == 0) return
-		var index = text.indexOf('\n')
-		while (index >= 0) {
+		val displayEnd = displayStart + text.length
+		var index = source.indexOf('\n', (displayStart - 1).coerceAtLeast(0))
+		while (index >= 0 && index < displayEnd) {
 			var end = index + 1
-			while (end < text.length && text[end] == '\n') end++
-			if (end - index > 1) text.setSpan(ParagraphSpacingSpan(extra), end - 1, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-			index = text.indexOf('\n', end)
+			while (end < source.length && source[end] == '\n') end++
+			if (end - index > 1 && end - 1 in displayStart until displayEnd) {
+				text.setSpan(
+					ParagraphSpacingSpan(extra),
+					end - 1 - displayStart, end - displayStart, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+				)
+			}
+			index = source.indexOf('\n', end)
 		}
 	}
 
@@ -2528,12 +2537,12 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				loadPagedChapter(page.chapter)
 				return
 			}
-			val chapterText = styledChapterText(page.chapter)
+			val chapterText = chapters[page.chapter].text
 			val safeStart = page.start.coerceIn(0, chapterText.length)
 			val safeEnd = page.end.coerceIn(safeStart, chapterText.length)
 			val visibleStart = (safeStart until safeEnd).firstOrNull { !chapterText[it].isWhitespace() } ?: safeStart
 			holder.text.tag = TextLocation(page.chapter, visibleStart)
-			holder.text.text = chapterText.subSequence(visibleStart, safeEnd)
+			holder.text.text = styledTextRange(page.chapter, visibleStart, safeEnd)
 		}
 	}
 
@@ -2785,8 +2794,6 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		private const val MAX_MEANINGS = 4
 		private const val MAX_DEFINITIONS_PER_MEANING = 3
 		private const val MAX_SYNONYMS = 8
-		private val BIONIC_WORD = Regex("[\\p{L}\\p{Nd}]*\\p{L}[\\p{L}\\p{Nd}]*")
-		private val BIONIC_UNSPACED_SCRIPT = Regex("[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}\\p{IsHangul}\\p{IsThai}\\p{IsLao}\\p{IsKhmer}]")
 		private val WORD_PATTERN = Regex("[\\p{L}\\p{M}]+(?:['’\\-][\\p{L}\\p{M}]+)*")
 		private val EMPTY_CHAPTER_TEXT = SpannedString("\u2014")
 	}
