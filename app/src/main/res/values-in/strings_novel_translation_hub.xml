@@ -2,6 +2,7 @@
 <resources>
     <string name="novel_translation_engine">Mesin terjemahan</string>
     <string name="novel_translation_sheet_subtitle">Terjemahkan halaman atau bab sesuai kebutuhan.</string>
+    <string name="novel_translation_segment_translated">Terjemahan</string>
     <string name="novel_translation_current_view_label">Tampilan bacaan</string>
     <string name="novel_translation_view_pending">Tampilan pilihan akan diterapkan setelah diterjemahkan.</string>
     <string name="novel_translation_language_pair">Terjemahkan dari → ke</string>
