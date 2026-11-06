@@ -543,6 +543,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			}
 			NovelTranslationPageScope.expandToWordBoundaries(original, visible)
 		} else null
+		// Drop any in-flight progressive projection before deciding what is still missing.
+		cancelActiveTranslation(incrementGeneration = false)
 		val baseItemsBeforeStart = inlineTranslations[chapter.id].orEmpty()
 		val requestRanges = if (visibleOnly) {
 			val range = sourceRange ?: return
@@ -555,7 +557,6 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			showCachedTranslation(selection.displayMode)
 			return
 		}
-		cancelActiveTranslation(incrementGeneration = false)
 		translationOriginals.putIfAbsent(chapter.id, original)
 		val baseItems = inlineTranslations[chapter.id]?.toList()
 		val baseMode = translationDisplayModes[chapter.id]
@@ -617,29 +618,29 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 								}
 							},
 							onProgress = { progress ->
-							if (!automatic) {
-								withContext(Dispatchers.Main) {
-									if (generation == translationGeneration && isAdded) {
-										when (progress) {
-											is NovelTranslationProgress.Translating -> updateTranslationStatus(
-												getString(
-													R.string.epub_translate_translating_progress,
-													progress.completedSegments,
-													progress.totalSegments,
-												),
-											)
-											is NovelTranslationProgress.WaitingToRetry -> updateTranslationStatus(
-												getString(
-													R.string.epub_translate_translating_progress,
-													progress.completedSegments,
-													progress.totalSegments,
-												),
-											)
+								if (!automatic) {
+									withContext(Dispatchers.Main) {
+										if (generation == translationGeneration && isAdded) {
+											when (progress) {
+												is NovelTranslationProgress.Translating -> updateTranslationStatus(
+													getString(
+														R.string.epub_translate_translating_progress,
+														progress.completedSegments,
+														progress.totalSegments,
+													),
+												)
+												is NovelTranslationProgress.WaitingToRetry -> updateTranslationStatus(
+													getString(
+														R.string.epub_translate_translating_progress,
+														progress.completedSegments,
+														progress.totalSegments,
+													),
+												)
+											}
 										}
 									}
 								}
-							}
-						},
+							},
 						)
 						results += operation.segments
 							.filter { it.translatedText.isNotBlank() }
