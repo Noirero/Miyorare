@@ -176,73 +176,67 @@ class NovelTranslationDialogController(
 
 		val autoTranslateSwitch = autoMangaId?.let { id ->
 			MaterialSwitch(context).apply {
-				setText(R.string.novel_translation_auto_translate_this_novel)
+				contentDescription = context.getString(R.string.novel_translation_auto_translate_this_novel)
 				isChecked = settings.isAutoTranslateActive(id)
 			}
 		}
-		autoTranslateSwitch?.let { root.addView(it, matchWidth()) }
 		val autoTranslateAiNote = autoMangaId?.let {
-			TextView(context).apply {
-				setPadding(0, 0, 0, dp(8))
-				visibility = View.GONE
-			}
+			visuals.label("", 12f, subdued = true).apply { visibility = View.GONE }
 		}
-		autoTranslateAiNote?.let { root.addView(it, matchWidth()) }
-
 		val manualScopeSelector = if (!selectionInvocation) Spinner(context).apply {
 			adapter = ArrayAdapter(
-				context,
-				android.R.layout.simple_spinner_dropdown_item,
+				context, android.R.layout.simple_spinner_dropdown_item,
 				listOf(
 					context.getString(if (pagedReader) R.string.novel_translation_scope_page else R.string.novel_translation_scope_visible),
 					context.getString(R.string.novel_translation_scope_chapter),
 				),
 			)
 			setSelection(if (settings.manualScope == NovelTranslationScope.PAGE) 0 else 1)
+			minimumHeight = dp(48)
 		} else null
-		manualScopeSelector?.let { root.addLabeledView(R.string.novel_translation_scope, it) }
-		manualScopeSelector?.let {
-			root.addView(TextView(context).apply {
-				setText(R.string.novel_translation_scope_auto_hint)
-				setPadding(0, 0, 0, dp(8))
-			}, matchWidth())
-		}
-
-		val bilingualSwitch = MaterialSwitch(context).apply {
-			setText(R.string.novel_translation_bilingual_view)
-			isChecked = when (currentMode) {
-				NovelTranslationDisplayMode.BILINGUAL -> true
-				NovelTranslationDisplayMode.TRANSLATED_ONLY -> false
-				NovelTranslationDisplayMode.ORIGINAL -> settings.bilingual
-			}
-		}
-		root.addView(bilingualSwitch, matchWidth())
 
 		val services = NovelTranslationService.entries
 		val serviceSpinner = Spinner(context).apply {
 			adapter = ArrayAdapter(
-				context,
-				android.R.layout.simple_spinner_dropdown_item,
-				listOf(
-					"${context.getString(R.string.novel_translation_online)}\n${context.getString(R.string.novel_translation_online_summary)}",
-					"${context.getString(R.string.novel_translation_ai)}\n${context.getString(R.string.novel_translation_ai_summary)}",
-				),
+				context, android.R.layout.simple_spinner_dropdown_item,
+				listOf(context.getString(R.string.novel_translation_online), context.getString(R.string.novel_translation_ai)),
 			)
 			setSelection(services.indexOf(currentService()).coerceAtLeast(0))
+			minimumHeight = dp(48)
 		}
-		root.addLabeledView(R.string.novel_translation_service, serviceSpinner)
+		val serviceSummary = visuals.label("", 12f, subdued = true)
+		val modeSummary = visuals.label(context.getString(R.string.novel_translation_view_info_summary), 12f, subdued = true)
+		val cards = ArrayList<View>(4)
+		if (autoTranslateSwitch != null) cards.add(visuals.card(
+			context.getString(R.string.novel_translation_auto_translate_this_novel),
+			context.getString(R.string.novel_translation_auto_summary),
+			R.drawable.ic_auto_fix, control = autoTranslateSwitch, footer = autoTranslateAiNote,
+		))
+		if (manualScopeSelector != null) cards.add(visuals.card(
+			context.getString(R.string.novel_translation_scope),
+			context.getString(R.string.novel_translation_scope_auto_hint),
+			R.drawable.ic_book_page, footer = manualScopeSelector,
+		))
+		cards.add(visuals.card(
+			context.getString(R.string.novel_translation_view_info_title), null,
+			R.drawable.ic_eye, footer = modeSummary,
+		))
+		cards.add(visuals.card(
+			context.getString(R.string.novel_translation_service), serviceSummary,
+			R.drawable.ic_language, footer = serviceSpinner,
+		))
+		root.addView(visuals.optionsGrid(cards), matchWidth().apply { bottomMargin = dp(10) })
 
 		val advancedButton = MaterialButton(context).apply {
 			setText(R.string.novel_translation_advanced_settings)
-			isAllCaps = false
+			setIconResource(R.drawable.ic_settings)
 		}
+		visuals.styleButton(advancedButton, NovelTranslationSheetVisuals.ButtonKind.SELECTOR)
 		root.addView(advancedButton, matchWidth())
-
-		val privacyNote = TextView(context).apply {
-			setText(R.string.novel_translation_privacy_note)
-			setPadding(0, dp(4), 0, dp(8))
-		}
-		root.addView(privacyNote, matchWidth())
+		root.addView(visuals.label(context.getString(R.string.novel_translation_advanced_summary), 12f, subdued = true),
+			matchWidth().apply { topMargin = dp(4); bottomMargin = dp(8) })
+		val privacyNote = visuals.label(context.getString(R.string.novel_translation_privacy_note), 12f, subdued = true)
+		root.addView(privacyNote, matchWidth().apply { bottomMargin = dp(12) })
 
 		fun selectedService(): NovelTranslationService =
 			selectedServiceFromPosition(serviceSpinner.selectedItemPosition)
@@ -279,6 +273,7 @@ class NovelTranslationDialogController(
 		fun updateServiceUi() {
 			applySelectedService()
 			val remoteAi = selectedService() == NovelTranslationService.AI
+			serviceSummary.text = context.getString(if (remoteAi) R.string.novel_translation_ai_summary else R.string.novel_translation_online_summary)
 			advancedButton.isEnabled = remoteAi
 			privacyNote.visibility = if (remoteAi) View.VISIBLE else View.GONE
 			updateAutoUi()
