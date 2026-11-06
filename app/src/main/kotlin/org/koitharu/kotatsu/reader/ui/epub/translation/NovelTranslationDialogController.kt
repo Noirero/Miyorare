@@ -105,7 +105,7 @@ class NovelTranslationDialogController(
 		val modeButtons = linkedMapOf<NovelTranslationDisplayMode, MaterialButton>()
 		val options = listOf(
 			NovelTranslationDisplayMode.ORIGINAL to R.string.novel_translation_state_original,
-			NovelTranslationDisplayMode.TRANSLATED_ONLY to R.string.novel_translation_state_translated_only,
+			NovelTranslationDisplayMode.TRANSLATED_ONLY to R.string.novel_translation_segment_translated,
 			NovelTranslationDisplayMode.BILINGUAL to R.string.novel_translation_state_bilingual,
 		)
 		options.forEach { (mode, labelRes) ->
