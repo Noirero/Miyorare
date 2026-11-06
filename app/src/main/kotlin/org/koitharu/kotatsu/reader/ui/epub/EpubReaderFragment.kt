@@ -884,6 +884,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				.plus(InlineTranslation(start, end, translated))
 				.sortedBy { it.start }
 			inlineTranslations[chapter.id] = items
+			// Replacing an overlapping chapter segment can invalidate complete-chapter coverage.
+			completedChapterTranslations.remove(chapter.id)
 			applyTranslationProjection(chapter, translationSelection.displayMode)
 			refreshReader(Locator(selection.chapter, start))
 			Toast.makeText(requireContext(), R.string.epub_translate_inline_done, Toast.LENGTH_SHORT).show()
