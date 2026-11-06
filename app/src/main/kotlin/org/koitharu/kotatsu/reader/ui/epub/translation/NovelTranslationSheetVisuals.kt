@@ -77,6 +77,7 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
             insetTop = 0
             insetBottom = 0
             setTextColor(foreground)
+            iconTint = ColorStateList.valueOf(foreground)
             textSize = if (active || kind == ButtonKind.SEGMENT_IDLE) 12f else 14f
             maxLines = 2
             backgroundTintList = ColorStateList.valueOf(fill)
