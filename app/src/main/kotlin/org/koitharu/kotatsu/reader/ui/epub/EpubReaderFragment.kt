@@ -554,6 +554,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val selectionIdentity = translationIdentity(selection)
 		val sameIdentity = chapterTranslationIdentities[chapter.id] == selectionIdentity
 		val visibleOnly = !automatic && selection.scope == NovelTranslationScope.PAGE
+		val requestedPageIndex = if (visibleOnly) pagerView?.currentItem else null
 		val sourceRange = if (visibleOnly) {
 			val visible = pagedTranslationVisibleRange(locator) ?: scrollTranslationVisibleRange(locator)
 			if (visible == null) {
@@ -576,6 +577,14 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			showCachedTranslation(selection.displayMode)
 			return
 		}
+		// A page may start inside the translated tail of the preceding paragraph.
+		// Anchor the newly requested text, not that older page-start projection.
+		val translatedTextAnchor = if (visibleOnly) {
+			Locator(
+				locator.chapter,
+				NovelTranslationPageScope.readingAnchor(original, requestRanges, sourceRange?.first ?: locator.offset),
+			)
+		} else locator
 		translationOriginals.putIfAbsent(chapter.id, original)
 		val baseItems = inlineTranslations[chapter.id]?.toList()
 		val baseMode = translationDisplayModes[chapter.id]
@@ -622,7 +631,9 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 								priorityController = priorityController,
 							),
 							onSegmentTranslated = { segment, _, _ ->
-								if (segment.translatedText.isNotBlank()) {
+								// For page scope, publish once at completion: progressive reflows would
+								// move the page while the reader is still awaiting the same request.
+								if (!visibleOnly && segment.translatedText.isNotBlank()) {
 									val source = segment.source.copy(
 										start = segment.source.start + requestStart,
 										end = segment.source.end + requestStart,
@@ -700,11 +711,19 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			if (!visibleOnly) completedChapterTranslations += chapter.id
 			else if (!sameIdentity) completedChapterTranslations.remove(chapter.id)
 			if (automatic) autoTranslatedChapterIds += chapter.id
-			// Read the source locator using the old projection before the new text changes pagination.
+			// Capture the user's *current* page before the translated text changes pagination.
 			val current = currentLocator().clamped()
+			val stillOnRequestedPage = if (requestedPageIndex != null) {
+				pagerView?.currentItem == requestedPageIndex
+			} else {
+				sourceRange?.contains(current.offset) == true
+			}
+			val restoreAt = if (visibleOnly && stillOnRequestedPage && current.chapter == locator.chapter) {
+				translatedTextAnchor
+			} else current
 			applyTranslationProjection(chapter, selection.displayMode)
 			if ((!visibleOnly && !automatic) || current.chapter == locator.chapter) {
-				refreshReader(if (visibleOnly || automatic) current else locator)
+				refreshReader(if (visibleOnly || automatic) restoreAt else locator)
 			}
 			if (automatic) continueAutoTranslationFromCurrent(locator.chapter)
 			else Toast.makeText(requireContext(), R.string.epub_translate_inline_done, Toast.LENGTH_SHORT).show()
