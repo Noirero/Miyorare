@@ -23,7 +23,6 @@ LEGACY_MARKER = "<!-- miyori-status:identity-guard -->"
 GATES = (
     "PR Compile & Unit Check",
     "Miyorare Identity Guard",
-    "Beta to Main Release Gate",
     "Promotion to Main Gate",
 )
 
@@ -219,6 +218,7 @@ def gate_applicable(gate: str, base_ref: str) -> bool:
 def is_promotion_candidate(base_ref: str, head_ref: str) -> bool:
     return base_ref == "main" and (
         head_ref in PROMOTION_HEADS or head_ref.startswith("release/main-")
+        or head_ref.startswith("release/promote-main-")
     )
 
 
@@ -434,7 +434,7 @@ def artifact_count_for_states(
         for state in states:
             if not state.applicable or not state.run:
                 continue
-            if state.name not in {"Beta to Main Release Gate", "Promotion to Main Gate"}:
+            if state.name != "Promotion to Main Gate":
                 continue
             observed = True
             total += len(client.artifacts_for_run(int(state.run["id"])))
