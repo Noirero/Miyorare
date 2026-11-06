@@ -179,3 +179,17 @@ internal object NovelTranslationSheetLayoutPolicy {
     fun useTwoColumns(availableWidthDp: Float, fontScale: Float): Boolean =
         availableWidthDp >= 516f * fontScale.coerceAtLeast(1f)
 }
+
+
+/** A selected Original view never becomes a translation output mode. Use the remembered preference. */
+internal object NovelTranslationSheetModePolicy {
+    fun translatedMode(
+        selected: NovelTranslationDisplayMode,
+        rememberedBilingual: Boolean,
+    ): NovelTranslationDisplayMode = when (selected) {
+        NovelTranslationDisplayMode.ORIGINAL -> if (rememberedBilingual) {
+            NovelTranslationDisplayMode.BILINGUAL
+        } else NovelTranslationDisplayMode.TRANSLATED_ONLY
+        else -> selected
+    }
+}
