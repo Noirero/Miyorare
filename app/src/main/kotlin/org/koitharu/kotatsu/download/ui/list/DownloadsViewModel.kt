@@ -333,8 +333,10 @@ class DownloadsViewModel @Inject constructor(
 				// This also sees jobs in the other favourite space.
 				for (work in workScheduler.observeWorks().first()) {
 					if (work.state.isFinished) continue
-					val task = workScheduler.getTask(work.id)
-					check(task?.mangaId !in selectedMangaIds) {
+					val task = checkNotNull(workScheduler.getTask(work.id)) {
+						"Cannot inspect an active download task. Files were kept."
+					}
+					check(task.mangaId !in selectedMangaIds) {
 						"A selected manga has a new active download. Files were kept."
 					}
 				}
