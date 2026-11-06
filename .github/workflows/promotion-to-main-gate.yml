@@ -2,7 +2,7 @@ name: Promotion to Main Gate
 
 # Promotion policy:
 # - Accepted frozen candidates include release/main-* (legacy) and release/promote-main-*.
-# - Direct beta -> main retains legacy validation; new releases should freeze first.
+# - Both active Amain2 and legacy beta direct candidates require promotion validation; new releases should freeze first.
 # - A stable policy-check job is provided for manual GitHub main ruleset migration.
 # - The source integration branch may be Amain2; validation is against the current main base.
 # - This gate is intentionally independent from the legacy beta -> main gate.
@@ -27,7 +27,7 @@ concurrency:
 jobs:
   verify:
     name: Verify promotion candidate
-    if: github.event_name != 'pull_request' || github.head_ref == 'beta' || startsWith(github.head_ref, 'release/main-') || startsWith(github.head_ref, 'release/promote-main-')
+    if: github.event_name != 'pull_request' || github.head_ref == 'beta' || github.head_ref == 'Amain2' || startsWith(github.head_ref, 'release/main-') || startsWith(github.head_ref, 'release/promote-main-')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -62,7 +62,7 @@ jobs:
 
   classify-runtime-smoke:
     name: Classify promotion runtime smoke
-    if: github.event_name == 'pull_request' && (github.head_ref == 'beta' || startsWith(github.head_ref, 'release/main-') || startsWith(github.head_ref, 'release/promote-main-'))
+    if: github.event_name == 'pull_request' && (github.head_ref == 'beta' || github.head_ref == 'Amain2' || startsWith(github.head_ref, 'release/main-') || startsWith(github.head_ref, 'release/promote-main-'))
     runs-on: ubuntu-latest
     outputs:
       run_smoke: ${{ steps.classify.outputs.run_smoke }}
@@ -233,7 +233,7 @@ jobs:
           RUN_SMOKE: ${{ needs.classify-runtime-smoke.outputs.run_smoke }}
         run: |
           set -euo pipefail
-          if [[ "$HEAD_REF" == "beta" || "$HEAD_REF" == release/main-* || "$HEAD_REF" == release/promote-main-* ]]; then
+          if [[ "$HEAD_REF" == "beta" || "$HEAD_REF" == "Amain2" || "$HEAD_REF" == release/main-* || "$HEAD_REF" == release/promote-main-* ]]; then
             if [[ "$VERIFY_RESULT" != "success" || "$CLASSIFY_RESULT" != "success" ]]; then
               echo "::error::Promotion JVM or classification did not succeed ($VERIFY_RESULT / $CLASSIFY_RESULT)."
               exit 1
