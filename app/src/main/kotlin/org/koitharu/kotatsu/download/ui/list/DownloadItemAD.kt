@@ -5,6 +5,8 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.TextView
 import android.util.TypedValue
 import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.core.graphics.ColorUtils
@@ -22,6 +24,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.ui.image.FaviconView
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
@@ -91,6 +94,10 @@ fun downloadItemAD(
 	var lastModernVisualState: WorkInfo.State? = null
 	var lastModernVisualPaused = false
 	var lastModernVisualHasError = false
+	val primaryMarquee = if (isModernDownloads) DownloadMetadataMarquee(binding.textViewMetaPrimary, lifecycleOwner) else null
+	val secondaryMarquee = if (isModernDownloads) DownloadMetadataMarquee(binding.textViewMetaSecondary, lifecycleOwner) else null
+	var primarySourceName: String? = null
+	var secondarySourceName: String? = null
 
 	if (isModernDownloads) {
 		binding.root.radius = modernCardRadius
@@ -239,12 +246,37 @@ fun downloadItemAD(
 		binding.downloadMetadataRow.isVisible = false
 		binding.textViewMetaPrimary.isVisible = false
 		binding.textViewMetaSecondary.isVisible = false
+		(binding.textViewMetaPrimary.parent as View).isVisible = false
+		(binding.textViewMetaSecondary.parent as View).isVisible = false
 		binding.textViewMetaTertiary.isVisible = false
 		binding.downloadMetadataSeparator1.isVisible = false
 		binding.downloadMetadataSeparator2.isVisible = false
 		binding.textViewProgressPercent.isVisible = false
 		binding.downloadDivider.isVisible = false
 		binding.textViewDetails.isVisible = false
+	}
+
+	fun bindSourceIcon(label: TextView, previousName: String?, isSource: Boolean): String? {
+		val holder = label.parent as FrameLayout
+		val icon = holder.getChildAt(1) as FaviconView
+		icon.isVisible = isSource
+		val margin = if (isSource) (20f * density).roundToInt() else 0
+		val params = label.layoutParams as FrameLayout.LayoutParams
+		if (params.marginStart != margin) {
+			params.marginStart = margin
+			label.layoutParams = params
+		}
+		if (!isSource) {
+			if (previousName != null) icon.disposeImage()
+			return null
+		}
+		val source = item.manga?.source ?: return null
+		if (previousName != source.name) {
+			icon.disposeImage()
+			icon.setImageResource(R.drawable.ic_manga_source)
+			icon.setImageAsync(source)
+		}
+		return source.name
 	}
 
 	fun showModernMetadata(
@@ -254,14 +286,24 @@ fun downloadItemAD(
 		tertiaryIcon: Int = R.drawable.ic_timer,
 		primaryIcon: Int = R.drawable.ic_book_page,
 		secondaryIcon: Int = R.drawable.ic_chapter_stack,
+		primaryIsSource: Boolean = false,
+		secondaryIsSource: Boolean = false,
 	) {
 		if (!isModernDownloads) return
 		binding.textViewMetaPrimary.textAndVisible = primary
 		binding.textViewMetaSecondary.textAndVisible = secondary
 		binding.textViewMetaTertiary.textAndVisible = tertiary
-		binding.textViewMetaPrimary.setCompoundDrawablesRelativeWithIntrinsicBounds(primaryIcon, 0, 0, 0)
-		binding.textViewMetaSecondary.setCompoundDrawablesRelativeWithIntrinsicBounds(secondaryIcon, 0, 0, 0)
+		val showPrimarySource = primaryIsSource && primary != null && item.manga != null
+		val showSecondarySource = secondaryIsSource && secondary != null && item.manga != null
+		(binding.textViewMetaPrimary.parent as View).isVisible = primary != null
+		(binding.textViewMetaSecondary.parent as View).isVisible = secondary != null
+		binding.textViewMetaPrimary.setCompoundDrawablesRelativeWithIntrinsicBounds(if (showPrimarySource) 0 else primaryIcon, 0, 0, 0)
+		binding.textViewMetaSecondary.setCompoundDrawablesRelativeWithIntrinsicBounds(if (showSecondarySource) 0 else secondaryIcon, 0, 0, 0)
 		binding.textViewMetaTertiary.setCompoundDrawablesRelativeWithIntrinsicBounds(tertiaryIcon, 0, 0, 0)
+		primarySourceName = bindSourceIcon(binding.textViewMetaPrimary, primarySourceName, showPrimarySource)
+		secondarySourceName = bindSourceIcon(binding.textViewMetaSecondary, secondarySourceName, showSecondarySource)
+		primaryMarquee?.bind(showPrimarySource)
+		secondaryMarquee?.bind(showSecondarySource)
 		binding.downloadMetadataSeparator1.isVisible = primary != null && secondary != null
 		binding.downloadMetadataSeparator2.isVisible = secondary != null && tertiary != null
 		binding.downloadMetadataRow.isVisible = primary != null || secondary != null || tertiary != null
@@ -324,6 +366,14 @@ fun downloadItemAD(
 		lastExpanded = null
 		lastModernVisualId = null
 		lastModernVisualState = null
+		primaryMarquee?.reset()
+		secondaryMarquee?.reset()
+		if (isModernDownloads) {
+			((binding.textViewMetaPrimary.parent as FrameLayout).getChildAt(1) as FaviconView).disposeImage()
+			((binding.textViewMetaSecondary.parent as FrameLayout).getChildAt(1) as FaviconView).disposeImage()
+		}
+		primarySourceName = null
+		secondarySourceName = null
 		chaptersJob?.cancel()
 		chaptersJob = null
 	}
@@ -554,6 +604,7 @@ fun downloadItemAD(
 							tertiary = tertiary,
 							tertiaryIcon = if (sizeText != null) R.drawable.ic_storage else R.drawable.ic_timer,
 							secondaryIcon = R.drawable.ic_manga_source,
+							secondaryIsSource = true,
 						)
 					} else {
 						val sizeText = item.downloadSizeBytes.takeIf { it > 0L }?.let {
@@ -565,6 +616,7 @@ fun downloadItemAD(
 							tertiary = sizeText ?: item.getEtaString(),
 							tertiaryIcon = if (sizeText != null) R.drawable.ic_storage else R.drawable.ic_timer,
 							primaryIcon = R.drawable.ic_manga_source,
+							primaryIsSource = true,
 						)
 					}
 					binding.textViewDetails.textAndVisible = if (item.error != null) {
@@ -594,6 +646,7 @@ fun downloadItemAD(
 						tertiaryIcon = R.drawable.ic_storage,
 						primaryIcon = R.drawable.ic_chapter_stack,
 						secondaryIcon = R.drawable.ic_manga_source,
+						secondaryIsSource = true,
 					)
 					binding.textViewDetails.isVisible = false
 				}
@@ -604,6 +657,7 @@ fun downloadItemAD(
 						secondary = sourceTitle,
 						tertiary = null,
 						secondaryIcon = R.drawable.ic_manga_source,
+						secondaryIsSource = true,
 					)
 					binding.textViewDetails.isVisible = false
 				}
@@ -617,6 +671,7 @@ fun downloadItemAD(
 						secondary = sourceTitle,
 						tertiary = null,
 						secondaryIcon = R.drawable.ic_manga_source,
+						secondaryIsSource = true,
 					)
 					binding.textViewDetails.textAndVisible = item.getErrorMessage(context)
 				}
@@ -628,6 +683,7 @@ fun downloadItemAD(
 						secondary = null,
 						tertiary = null,
 						primaryIcon = R.drawable.ic_manga_source,
+						primaryIsSource = true,
 					)
 					binding.textViewDetails.isVisible = false
 				}

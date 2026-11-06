@@ -1475,4 +1475,13 @@
     <string name="chapter_search_notes">Search notes</string>
     <string name="chapter_search_notes_exit">Exit note search</string>
     <string name="chapter_search_notes_empty">No chapters have a personal note matching this search.</string>
+    <!-- Downloads: two-action removal menu (history-only versus physical deletion). -->
+    <string name="downloads_remove_dialog_title">Remove downloads</string>
+    <string name="downloads_remove_dialog_prompt">Choose how to remove the selected manga.</string>
+    <string name="downloads_remove_list_only">Remove from Downloads</string>
+    <string name="downloads_remove_list_only_description">Hide the selected manga from Downloads. Files stored on this device will be kept.</string>
+    <string name="downloads_remove_with_files">Remove list and files</string>
+    <string name="downloads_remove_with_files_description">Also delete the selected manga’s downloaded files from this device.</string>
+    <string name="downloads_remove_files_confirm_title">Delete downloaded files?</string>
+    <string name="downloads_remove_files_confirm_message">The selected manga’s downloaded files will be deleted from this device. This cannot be undone.</string>
 </resources>

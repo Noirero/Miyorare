@@ -17,7 +17,9 @@ import androidx.core.view.updatePadding
 import androidx.work.WorkInfo
 import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -81,6 +83,7 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(), DownloadItem
 			viewModel.items.observe(this) { renderModernDownloadsHeader(it) }
 		}
 		viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.recyclerView))
+		viewModel.onError.observeEvent(this, SnackbarErrorObserver(viewBinding.recyclerView, null))
 		val menuInvalidator = MenuInvalidator(this)
 		viewModel.hasActiveWorks.observe(this, menuInvalidator)
 		viewModel.hasPausedWorks.observe(this, menuInvalidator)
@@ -201,9 +204,37 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(), DownloadItem
 		R.id.action_resume -> { viewModel.resume(controller.snapshot()); mode?.finish(); true }
 		R.id.action_pause -> { viewModel.pause(controller.snapshot()); mode?.finish(); true }
 		R.id.action_cancel -> { viewModel.cancel(controller.snapshot()); mode?.finish(); true }
-		R.id.action_remove -> { viewModel.remove(controller.snapshot()); mode?.finish(); true }
+		R.id.action_remove -> { showRemovalChoices(controller.snapshot(), mode); true }
 		R.id.action_select_all -> { controller.addAll(viewModel.allIds()); true }
 		else -> false
+	}
+
+	private fun showRemovalChoices(selectedIds: Set<Long>, mode: ActionMode?) {
+		if (selectedIds.isEmpty()) return
+		val content = layoutInflater.inflate(R.layout.dialog_download_remove, null)
+		val dialog = MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.downloads_remove_dialog_title)
+			.setView(content)
+			.setNegativeButton(android.R.string.cancel, null)
+			.create()
+		content.findViewById<View>(R.id.downloads_remove_list_only).setOnClickListener {
+			dialog.dismiss()
+			viewModel.remove(selectedIds)
+			mode?.finish()
+		}
+		content.findViewById<View>(R.id.downloads_remove_with_files).setOnClickListener {
+			dialog.dismiss()
+			MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.downloads_remove_files_confirm_title)
+				.setMessage(R.string.downloads_remove_files_confirm_message)
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(R.string.delete) { _, _ ->
+					viewModel.remove(selectedIds, deleteFiles = true)
+					mode?.finish()
+				}
+				.show()
+		}
+		dialog.show()
 	}
 
 	override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode?, menu: Menu): Boolean {

@@ -1,17 +1,23 @@
 package org.koitharu.kotatsu.local.domain
 
 import androidx.core.net.toFile
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import androidx.core.net.toUri
 import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.data.input.LocalMangaParser
+import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import java.io.File
 import java.io.IOException
 import javax.inject.Inject
 
@@ -22,6 +28,10 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	private val downloadedMangaResolver: DownloadedMangaResolver,
 	private val historyRepository: HistoryRepository,
 	private val favouriteDownloadOwnershipIndex: FavouriteDownloadOwnershipIndex,
+	private val database: MangaDatabase,
+	private val downloadDestinationStore: DownloadDestinationStore,
+	private val favouritesRepository: FavouritesRepository,
+	private val mangaLock: MangaLock,
 ) {
 
 	suspend operator fun invoke(manga: Manga) {
@@ -39,6 +49,68 @@ class DeleteLocalMangaUseCase @Inject constructor(
 			it.printStackTraceDebug()
 		}
 	}
+
+
+	/**
+	 * The Downloads removal menu must delete the exact container written for the selected
+	 * WorkManager destination, never a global-index match for the same manga id.
+	 *
+	 * This intentionally fails closed for legacy/unindexed or ambiguous shared-space files.
+	 * Users can still remove their WorkManager history without touching any physical files.
+	 */
+	suspend fun deleteOwnedDownloadAtRoot(remoteManga: Manga, selectedRoot: File, space: FavouriteSpace) {
+		require(!remoteManga.isLocal) { "Only remote download tasks may delete their downloaded container" }
+		// The downloader locks a chapter-hydrated Manga from the repository. Use the same
+		// representation here rather than a metadata-only Downloads row.
+		val lockedManga = mangaDataRepository.findMangaById(remoteManga.id, withChapters = true)
+			?: throw IOException("Cannot verify the selected manga in the library. Files were kept.")
+		mangaLock.withLock(lockedManga) {
+			val entry = database.getFavouriteDownloadIndexDao()
+				.findEntry(space.dbValue, remoteManga.id)
+				?: throw IOException("Cannot verify this download's file ownership. Files were kept.")
+			val file = File(entry.path).canonicalFile
+			if (!isInsideDownloadRoot(selectedRoot, file) || !file.exists()) {
+				throw IOException("The selected download's original file is unavailable. Files were kept.")
+			}
+			val output = LocalMangaOutput.get(selectedRoot, lockedManga)
+				?: throw IOException("Cannot match the selected download to its saved file. Files were kept.")
+			val resolvedPath = try {
+				output.rootFile.canonicalFile
+			} finally {
+				output.close()
+			}
+			if (resolvedPath != file) {
+				throw IOException("Download storage has changed since this task. Files were kept.")
+			}
+			val owners = database.getFavouriteDownloadIndexDao().findEntriesByPath(entry.path)
+			if (owners.any { it.mangaId != remoteManga.id || it.space != space.dbValue }) {
+				throw IOException("This file is shared with another library space. Files were kept.")
+			}
+			// A missing older ownership row must not make a shared Normal/Private root safe.
+			val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+			val otherOwnsManga = favouritesRepository.isFavorite(remoteManga.id, otherSpace)
+			val otherCanSeeFile = downloadDestinationStore.readableRoots(otherSpace).any {
+				isInsideDownloadRoot(it, file)
+			}
+			val otherEntry = database.getFavouriteDownloadIndexDao()
+				.findEntry(otherSpace.dbValue, remoteManga.id)
+			// Even if an older index stored a non-canonical spelling of the same path,
+			// do not delete a file explicitly owned by the other library space.
+			if (otherEntry != null && File(otherEntry.path).canonicalFile == file) {
+				throw IOException("This file is owned by another library space. Files were kept.")
+			}
+			if (otherOwnsManga && otherCanSeeFile && otherEntry == null) {
+				throw IOException("This file could belong to both Normal and Private. Files were kept.")
+			}
+			val local = LocalMangaParser.getOrNull(file)?.getManga(withDetails = false)
+				?: throw IOException("Cannot verify the selected downloaded file. Files were kept.")
+			if (!local.manga.isLocal || local.file.canonicalFile != file) {
+				throw IOException("The selected download does not resolve to a local file. Files were kept.")
+			}
+			invoke(local.manga)
+		}
+	}
+
 
 	/**
 	 * Deletes only local/downloaded copies whose ids are requested. Missing downloads are ignored:
@@ -82,4 +154,11 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		}
 		return removed
 	}
+}
+
+/** Permit only files located strictly below the selected task's downloads directory. */
+internal fun isInsideDownloadRoot(root: File, target: File): Boolean {
+	val downloads = File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME).canonicalFile.path.trimEnd(File.separatorChar)
+	val path = target.canonicalFile.path
+	return path.startsWith(downloads + File.separator)
 }
