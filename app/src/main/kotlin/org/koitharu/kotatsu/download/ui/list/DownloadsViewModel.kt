@@ -53,6 +53,7 @@ import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
+import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.mapToSet
@@ -74,6 +75,7 @@ class DownloadsViewModel @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	@LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
 	private val localMangaRepository: LocalMangaRepository,
+	private val deleteLocalManga: DeleteLocalMangaUseCase,
 	private val favouritesRepository: FavouritesRepository,
 ) : BaseViewModel() {
 
@@ -313,11 +315,19 @@ class DownloadsViewModel @Inject constructor(
 		onActionDone.call(ReversibleAction(R.string.downloads_resumed, null))
 	}
 
-	fun remove(ids: Set<Long>) {
-		val uuids = selectedWorkIds(ids)
-		if (uuids.isEmpty()) return
-		launchJob(Dispatchers.Default) {
-			workScheduler.delete(uuids)
+	fun remove(ids: Set<Long>, deleteFiles: Boolean = false) {
+		// Snapshot finished jobs before the asynchronous confirmation result can race a new job.
+		val selected = works.value.orEmpty().filter {
+			it.selectionId in ids && it.workState.isFinished && it.uiAction == null
+		}
+		val workIds = selected.flatMapTo(LinkedHashSet()) { it.workIds }
+		if (workIds.isEmpty()) return
+		val mangaIds = selected.mapNotNullTo(LinkedHashSet()) { it.manga?.id }
+		launchJob(Dispatchers.IO) {
+			// Do not remove history if deleting physical files fails. The existing domain use case
+			// resolves Normal/Private ownership and updates the local index and history consistently.
+			if (deleteFiles && mangaIds.isNotEmpty()) deleteLocalManga(mangaIds, favouriteSpace)
+			workScheduler.delete(workIds)
 			onActionDone.call(ReversibleAction(R.string.downloads_removed, null))
 		}
 	}
