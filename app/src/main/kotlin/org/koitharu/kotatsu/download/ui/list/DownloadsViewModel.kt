@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
@@ -328,6 +329,15 @@ class DownloadsViewModel @Inject constructor(
 				check(rawWorks.value.orEmpty().none {
 					it.manga?.id in selectedMangaIds && !it.workState.isFinished
 				}) { "A selected manga is currently downloading. Files were kept." }
+				// Recheck WorkManager itself, not just the UI's potentially delayed StateFlow.
+				// This also sees jobs in the other favourite space.
+				for (work in workScheduler.observeWorks().first()) {
+					if (work.state.isFinished) continue
+					val task = workScheduler.getTask(work.id)
+					check(task?.mangaId !in selectedMangaIds) {
+						"A selected manga has a new active download. Files were kept."
+					}
+				}
 				// Resolve every selection before deleting anything: a group can contain multiple
 				// chapter jobs, but physical deletion must not guess between different roots.
 				val targets = selected.map { row ->
