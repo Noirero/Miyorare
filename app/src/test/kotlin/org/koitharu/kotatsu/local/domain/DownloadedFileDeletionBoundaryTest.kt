@@ -42,6 +42,9 @@ class DownloadedFileDeletionBoundaryTest {
 			val outside = File(workspace, "private/Manga.cbz")
 			assertTrue(downloadsDir.mkdirs())
 			assertTrue(outside.parentFile.mkdirs())
+			// A dangling link may not be resolved by File.canonicalFile on the JVM.
+			// Materialize the outside target so this exercises a real path escape.
+			assertTrue(outside.createNewFile())
 			val link = File(downloadsDir, "Manga.cbz")
 			Files.createSymbolicLink(link.toPath(), outside.toPath())
 			assertFalse(isInsideDownloadRoot(selected, link))
