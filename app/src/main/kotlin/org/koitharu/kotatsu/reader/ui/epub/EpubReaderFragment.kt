@@ -554,7 +554,6 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val selectionIdentity = translationIdentity(selection)
 		val sameIdentity = chapterTranslationIdentities[chapter.id] == selectionIdentity
 		val visibleOnly = !automatic && selection.scope == NovelTranslationScope.PAGE
-		val requestedPageIndex = if (visibleOnly) pagerView?.currentItem else null
 		val sourceRange = if (visibleOnly) {
 			val visible = pagedTranslationVisibleRange(locator) ?: scrollTranslationVisibleRange(locator)
 			if (visible == null) {
@@ -713,12 +712,11 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			if (automatic) autoTranslatedChapterIds += chapter.id
 			// Capture the user's *current* page before the translated text changes pagination.
 			val current = currentLocator().clamped()
-			val stillOnRequestedPage = if (requestedPageIndex != null) {
-				pagerView?.currentItem == requestedPageIndex
-			} else {
-				sourceRange?.contains(current.offset) == true
-			}
-			val restoreAt = if (visibleOnly && stillOnRequestedPage && current.chapter == locator.chapter) {
+			val stillOnRequestedPage = visibleOnly && sourceRange != null &&
+				NovelTranslationPageScope.isSameReadingViewport(
+					locator.chapter, current.chapter, sourceRange.first, current.offset,
+				)
+			val restoreAt = if (stillOnRequestedPage) {
 				translatedTextAnchor
 			} else current
 			applyTranslationProjection(chapter, selection.displayMode)
