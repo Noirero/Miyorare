@@ -8,7 +8,6 @@ on:
     workflows:
       - PR Compile & Unit Check
       - Miyorare Identity Guard
-      - Beta to Main Release Gate
       - Promotion to Main Gate
     types:
       - completed
@@ -168,7 +167,7 @@ jobs:
             echo "- Target PR: #${PR_NUMBER}"
             echo "- Current head: \`${{ steps.target.outputs.head_sha }}\`"
             echo "- PR state: \`${{ steps.target.outputs.state }}\`"
-            echo "- Tracked gates: PR Compile & Unit Check, Identity Guard, Beta to Main Release Gate, Promotion to Main Gate"
+            echo "- Tracked gates: PR Compile & Unit Check, Identity Guard, Promotion to Main Gate"
             echo "- Tracked CI labels: ci:owner-request, ci:user-issue, ci:theme, ci:runtime-required, ci:runtime-full, non-theme, skip-device-test"
             echo "- Authority: status/comment only"
           } >> "$GITHUB_STEP_SUMMARY"
