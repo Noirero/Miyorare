@@ -58,6 +58,22 @@ class NovelTranslationPageScopeTest {
     }
 
     @Test
+    fun translatedResultDoesNotPullReaderBackAfterUserTurnsPage() {
+        assertEquals(
+            true,
+            NovelTranslationPageScope.isSameReadingViewport(1, 1, 100, 100),
+        )
+        assertEquals(
+            false,
+            NovelTranslationPageScope.isSameReadingViewport(1, 1, 100, 540),
+        )
+        assertEquals(
+            false,
+            NovelTranslationPageScope.isSameReadingViewport(1, 2, 100, 100),
+        )
+    }
+
+    @Test
     fun readingAnchorHandlesEmptyRangeWithoutMoving() {
         assertEquals(4, NovelTranslationPageScope.readingAnchor("Hello world", emptyList(), fallback = 4))
         assertEquals(0, NovelTranslationPageScope.readingAnchor("", emptyList(), fallback = 400))
