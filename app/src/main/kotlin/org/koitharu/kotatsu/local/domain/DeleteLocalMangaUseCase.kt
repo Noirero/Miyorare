@@ -92,9 +92,14 @@ class DeleteLocalMangaUseCase @Inject constructor(
 			val otherCanSeeFile = downloadDestinationStore.readableRoots(otherSpace).any {
 				isInsideDownloadRoot(it, file)
 			}
-			if (otherOwnsManga && otherCanSeeFile &&
-				database.getFavouriteDownloadIndexDao().findEntry(otherSpace.dbValue, remoteManga.id) == null
-			) {
+			val otherEntry = database.getFavouriteDownloadIndexDao()
+				.findEntry(otherSpace.dbValue, remoteManga.id)
+			// Even if an older index stored a non-canonical spelling of the same path,
+			// do not delete a file explicitly owned by the other library space.
+			if (otherEntry != null && File(otherEntry.path).canonicalFile == file) {
+				throw IOException("This file is owned by another library space. Files were kept.")
+			}
+			if (otherOwnsManga && otherCanSeeFile && otherEntry == null) {
 				throw IOException("This file could belong to both Normal and Private. Files were kept.")
 			}
 			val local = LocalMangaParser.getOrNull(file)?.getManga(withDetails = false)

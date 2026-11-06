@@ -360,14 +360,18 @@ class DownloadsViewModel @Inject constructor(
 					check(roots.size == 1) {
 						"This manga has downloads in multiple folders. Files were kept."
 					}
-					manga to roots.single()
+					Triple(row.workIds, manga, roots.single())
 				}
-				for ((manga, root) in targets) {
+				for ((groupWorkIds, manga, root) in targets) {
 					deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace)
+					// Keep each completed group's history consistent even if a later
+					// selected manga fails its own filesystem deletion.
+					workScheduler.delete(groupWorkIds)
 				}
+			} else {
+				// List-only removal never touches downloaded physical containers.
+				workScheduler.delete(workIds)
 			}
-			// The WorkManager entry is removed only after all requested file deletions complete.
-			workScheduler.delete(workIds)
 			onActionDone.call(ReversibleAction(R.string.downloads_removed, null))
 		}
 	}
