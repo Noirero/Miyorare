@@ -62,6 +62,7 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
     fun styleButton(button: MaterialButton, kind: ButtonKind) {
         val active = kind == ButtonKind.SEGMENT_SELECTED
         val main = kind == ButtonKind.PRIMARY
+        val outlined = kind == ButtonKind.SECONDARY
         val fill = when { main -> buttonColor; active -> accent; else -> surfaceHigh }
         val foreground = when {
             main -> onButton
@@ -80,7 +81,7 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
             backgroundTintList = ColorStateList.valueOf(fill)
             strokeWidth = dp(1)
             strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(
-                if (main || active) accent else outline, if (main || active) 180 else 110,
+                if (main || active || outlined) accent else outline, if (main || active) 180 else if (outlined) 145 else 110,
             ))
             elevation = dp(if (main || active) 3 else 0).toFloat()
             setPadding(dp(7), dp(7), dp(7), dp(7))
