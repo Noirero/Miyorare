@@ -48,6 +48,15 @@
     <string name="novel_translation_key_cleared">API key dihapus</string>
     <string name="novel_translation_ai_setup">Pengaturan Terjemahan AI</string>
     <string name="novel_translation_ai_setup_required">Atur API key dan model sebelum menggunakan Terjemahan AI.</string>
+    <string name="novel_translation_scope">Cakupan terjemahan manual</string>
+    <string name="novel_translation_scope_page">Halaman ini saja</string>
+    <string name="novel_translation_scope_visible">Teks yang terlihat saja</string>
+    <string name="novel_translation_scope_chapter">Seluruh bab aktif</string>
+    <string name="novel_translation_scope_auto_hint">Terjemahan otomatis, jika diaktifkan, tetap memproses seluruh bab yang dibuka.</string>
+    <string name="novel_translation_translate_page">Terjemahkan bagian ini</string>
+    <string name="novel_translation_translate_chapter">Terjemahkan bab</string>
+    <string name="novel_translation_page_not_ready">Teks halaman belum siap. Coba lagi setelah halaman dimuat.</string>
+    <string name="novel_translation_quick_action">Buka pengaturan terjemahan novel</string>
     <string name="novel_translation_translate">Terjemahkan</string>
     <string name="novel_translation_configure">Atur AI</string>
     <string name="novel_translation_cancelled">Terjemahan dibatalkan</string>
