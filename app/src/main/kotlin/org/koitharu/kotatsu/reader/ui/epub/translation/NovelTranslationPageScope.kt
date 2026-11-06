@@ -29,6 +29,14 @@ internal object NovelTranslationPageScope {
         return start..end
     }
 
+    /** Compare canonical source coordinates rather than page indices (which can shift during prefetch). */
+    fun isSameReadingViewport(
+        requestedChapter: Int,
+        currentChapter: Int,
+        requestedStart: Int,
+        currentStart: Int,
+    ): Boolean = requestedChapter == currentChapter && requestedStart == currentStart
+
     /** Keep the first newly translated readable content in view after pagination changes. */
     fun readingAnchor(source: CharSequence, uncovered: List<IntRange>, fallback: Int): Int {
         if (source.isEmpty()) return 0
