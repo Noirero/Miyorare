@@ -273,12 +273,12 @@ class NovelTranslationDialogController(
 		}
 
 		val primary = MaterialButton(context).apply { isAllCaps = false }
-		val translateAgain = MaterialButton(context).apply {
+		val toggleOriginal = MaterialButton(context).apply {
 			isAllCaps = false
 			visibility = if (projectionActionsEnabled) View.VISIBLE else View.GONE
 		}
 		root.addView(primary, matchWidth())
-		root.addView(translateAgain, matchWidth())
+		root.addView(toggleOriginal, matchWidth())
 
 		val dialog = BottomSheetDialog(context)
 		fun desiredMode(): NovelTranslationDisplayMode = if (bilingualSwitch.isChecked) {
@@ -295,16 +295,14 @@ class NovelTranslationDialogController(
 				when {
 					selectionInvocation -> R.string.novel_translation_translate
 					visibleOnly -> R.string.novel_translation_translate_page
-					projectionActionsEnabled && currentMode != NovelTranslationDisplayMode.ORIGINAL -> R.string.novel_translation_show_original
-					projectionActionsEnabled -> R.string.novel_translation_show_translation
 					else -> R.string.novel_translation_translate_chapter
 				},
 			)
-			translateAgain.setText(
-				when {
-					!visibleOnly -> R.string.novel_translation_translate_again
-					currentMode != NovelTranslationDisplayMode.ORIGINAL -> R.string.novel_translation_show_original
-					else -> R.string.novel_translation_show_translation
+			toggleOriginal.setText(
+				if (currentMode == NovelTranslationDisplayMode.ORIGINAL) {
+					R.string.novel_translation_show_translation
+				} else {
+					R.string.novel_translation_show_original
 				},
 			)
 		}
@@ -340,26 +338,13 @@ class NovelTranslationDialogController(
 			dialog.dismiss()
 		}
 
-		primary.setOnClickListener {
-			when {
-				!selectionInvocation && desiredScope() == NovelTranslationScope.PAGE -> translateNow()
-				projectionActionsEnabled && currentMode != NovelTranslationDisplayMode.ORIGINAL -> {
-					onRestoreOriginal()
-					dialog.dismiss()
-				}
-				projectionActionsEnabled -> {
-					onShowTranslation(desiredMode())
-					dialog.dismiss()
-				}
-				else -> translateNow()
-			}
-		}
-		translateAgain.setOnClickListener {
-			if (!selectionInvocation && desiredScope() == NovelTranslationScope.PAGE && projectionActionsEnabled) {
+		primary.setOnClickListener { translateNow() }
+		toggleOriginal.setOnClickListener {
+			if (projectionActionsEnabled) {
 				if (currentMode == NovelTranslationDisplayMode.ORIGINAL) onShowTranslation(desiredMode())
 				else onRestoreOriginal()
 				dialog.dismiss()
-			} else translateNow()
+			}
 		}
 
 		dialog.setContentView(scroll)
