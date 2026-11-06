@@ -99,6 +99,20 @@ class MiyoriStatusTests(unittest.TestCase):
         self.assertFalse(ms.gate_applicable("Promotion to Main Gate", "beta"))
         self.assertTrue(ms.gate_applicable("Promotion to Main Gate", "main"))
 
+    def test_retired_legacy_gate_and_promotion_routes(self):
+        self.assertNotIn("Beta to Main Release Gate", ms.GATES)
+        self.assertEqual(ms.GATES.count("Promotion to Main Gate"), 1)
+        for head in ("Amain2", "beta", "release/main-20261106",
+                     "release/promote-main-20261106"):
+            with self.subTest(head=head):
+                self.assertTrue(ms.is_promotion_candidate("main", head))
+        for head in ("hotfix/fix", "main", "release/other"):
+            with self.subTest(head=head):
+                self.assertFalse(ms.is_promotion_candidate("main", head))
+        self.assertFalse(
+            ms.is_promotion_candidate("Amain2", "release/promote-main-20261106")
+        )
+
     def test_issue_traceability_extracts_closing_and_issue_url(self):
         body = "Fixes #531\nRelated: https://github.com/Noirero/Miyorare/issues/700"
         self.assertEqual(ms.extract_issue_refs(body), [531, 700])

@@ -22,7 +22,6 @@ class MiyoriReportTests(unittest.TestCase):
         states = [
             ms.GateState("PR Compile & Unit Check", base == "Amain2", run if base == "Amain2" else None),
             ms.GateState("Miyorare Identity Guard", base in {"main", "beta"}, run if base in {"main", "beta"} else None),
-            ms.GateState("Beta to Main Release Gate", base == "main", run if base == "main" else None),
             ms.GateState("Promotion to Main Gate", base == "main", run if base == "main" else None),
         ]
         return {
