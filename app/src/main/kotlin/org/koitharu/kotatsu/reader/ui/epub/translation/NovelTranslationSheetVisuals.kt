@@ -131,7 +131,6 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
     }
 
     fun optionsGrid(cards: List<View>): LinearLayout {
-        require(cards.size == 4)
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         var lastColumns = -1
         fun rebuild(columns: Int) {
