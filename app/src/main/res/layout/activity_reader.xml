@@ -17,7 +17,7 @@
 		style="?materialIconButtonOutlinedStyle"
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
-		android:layout_gravity="bottom|end"
+		android:layout_gravity="bottom|start"
 		android:layout_margin="16dp"
 		android:layout_marginBottom="88dp"
 		android:contentDescription="@string/novel_translation_quick_action"
