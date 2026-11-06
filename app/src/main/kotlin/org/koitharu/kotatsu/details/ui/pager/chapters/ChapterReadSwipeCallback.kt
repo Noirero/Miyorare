@@ -2,7 +2,6 @@ package org.koitharu.kotatsu.details.ui.pager.chapters
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -29,6 +28,8 @@ internal class ChapterReadSwipeCallback(
     private val unreadIcon = ContextCompat.getDrawable(context, R.drawable.ic_eye_off)?.mutate()
     private val readColor = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
     private val unreadColor = context.getThemeColor(materialR.attr.colorSecondary)
+    private val readIconTint = context.getThemeColor(materialR.attr.colorOnPrimary)
+    private val unreadIconTint = context.getThemeColor(materialR.attr.colorOnSecondary)
 
     override fun getSwipeDirs(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder): Int {
         if (isSelectionActive()) return 0
@@ -76,7 +77,7 @@ internal class ChapterReadSwipeCallback(
                 canvas.drawRoundRect(left, top, right, bottom, radius, radius, fill)
                 val icon = if (toRead) readIcon else unreadIcon
                 if (icon != null && right - left > icon.intrinsicWidth.toFloat()) {
-                    icon.setTint(Color.WHITE)
+                    icon.setTint(if (toRead) readIconTint else unreadIconTint)
                     val cx = ((left + right) / 2).toInt()
                     val cy = ((top + bottom) / 2).toInt()
                     icon.setBounds(
