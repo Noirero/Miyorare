@@ -31,6 +31,7 @@ data class NovelTranslationSelection(
 	val style: NovelTranslationStyle,
 	val contextAware: Boolean,
 	val displayMode: NovelTranslationDisplayMode = NovelTranslationDisplayMode.TRANSLATED_ONLY,
+	val scope: NovelTranslationScope = NovelTranslationScope.CHAPTER,
 )
 
 data class NovelTranslationSheetState(
@@ -52,6 +53,7 @@ class NovelTranslationDialogController(
 	private val httpClient: OkHttpClient,
 	private val state: NovelTranslationSheetState = NovelTranslationSheetState(),
 	private val mangaId: Long? = null,
+	private val pagedReader: Boolean = false,
 	private val onRestoreOriginal: () -> Unit,
 	private val onShowTranslation: (NovelTranslationDisplayMode) -> Unit = {},
 	private val onAutoTranslateChanged: (Boolean) -> Unit = {},
@@ -141,6 +143,25 @@ class NovelTranslationDialogController(
 		}
 		autoTranslateAiNote?.let { root.addView(it, matchWidth()) }
 
+		val manualScopeSelector = if (!selectionInvocation) Spinner(context).apply {
+			adapter = ArrayAdapter(
+				context,
+				android.R.layout.simple_spinner_dropdown_item,
+				listOf(
+					context.getString(if (pagedReader) R.string.novel_translation_scope_page else R.string.novel_translation_scope_visible),
+					context.getString(R.string.novel_translation_scope_chapter),
+				),
+			)
+			setSelection(if (settings.manualScope == NovelTranslationScope.PAGE) 0 else 1)
+		} else null
+		manualScopeSelector?.let { root.addLabeledView(R.string.novel_translation_scope, it) }
+		manualScopeSelector?.let {
+			root.addView(TextView(context).apply {
+				setText(R.string.novel_translation_scope_auto_hint)
+				setPadding(0, 0, 0, dp(8))
+			}, matchWidth())
+		}
+
 		val bilingualSwitch = MaterialSwitch(context).apply {
 			setText(R.string.novel_translation_bilingual_view)
 			isChecked = when (currentMode) {
@@ -190,16 +211,6 @@ class NovelTranslationDialogController(
 		}
 
 		var updatingAutoSwitch = false
-		var primaryAction: MaterialButton? = null
-		var translateAgainAction: MaterialButton? = null
-
-		fun refreshTranslationActionLabels() {
-			if (!projectionActionsEnabled) {
-				primaryAction?.setText(R.string.novel_translation_translate)
-			}
-			translateAgainAction?.setText(R.string.novel_translation_translate_again)
-		}
-
 		fun updateAutoUi() {
 			val id = autoMangaId ?: return
 			if (settings.isAutoTranslateEnabled(id) && !settings.isAutoTranslateActive(id)) {
@@ -224,7 +235,6 @@ class NovelTranslationDialogController(
 			val remoteAi = selectedService() == NovelTranslationService.AI
 			advancedButton.isEnabled = remoteAi
 			privacyNote.visibility = if (remoteAi) View.VISIBLE else View.GONE
-			refreshTranslationActionLabels()
 			updateAutoUi()
 		}
 		serviceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -263,14 +273,12 @@ class NovelTranslationDialogController(
 		}
 
 		val primary = MaterialButton(context).apply { isAllCaps = false }
-		primaryAction = primary
-		val translateAgain = MaterialButton(context).apply {
+		val toggleOriginal = MaterialButton(context).apply {
 			isAllCaps = false
 			visibility = if (projectionActionsEnabled) View.VISIBLE else View.GONE
 		}
-		translateAgainAction = translateAgain
 		root.addView(primary, matchWidth())
-		root.addView(translateAgain, matchWidth())
+		root.addView(toggleOriginal, matchWidth())
 
 		val dialog = BottomSheetDialog(context)
 		fun desiredMode(): NovelTranslationDisplayMode = if (bilingualSwitch.isChecked) {
@@ -278,15 +286,32 @@ class NovelTranslationDialogController(
 		} else {
 			NovelTranslationDisplayMode.TRANSLATED_ONLY
 		}
+		fun desiredScope(): NovelTranslationScope =
+			if (manualScopeSelector?.selectedItemPosition == 0) NovelTranslationScope.PAGE else NovelTranslationScope.CHAPTER
+
 		fun refreshPrimaryAction() {
+			val visibleOnly = desiredScope() == NovelTranslationScope.PAGE
 			primary.setText(
 				when {
-					projectionActionsEnabled && currentMode != NovelTranslationDisplayMode.ORIGINAL -> R.string.novel_translation_show_original
-					projectionActionsEnabled -> R.string.novel_translation_show_translation
-					else -> R.string.novel_translation_translate
+					selectionInvocation -> R.string.novel_translation_translate
+					visibleOnly -> R.string.novel_translation_translate_page
+					else -> R.string.novel_translation_translate_chapter
 				},
 			)
-			refreshTranslationActionLabels()
+			toggleOriginal.setText(
+				if (currentMode == NovelTranslationDisplayMode.ORIGINAL) {
+					R.string.novel_translation_show_translation
+				} else {
+					R.string.novel_translation_show_original
+				},
+			)
+		}
+		manualScopeSelector?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+			override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+				settings.manualScope = desiredScope()
+				refreshPrimaryAction()
+			}
+			override fun onNothingSelected(parent: AdapterView<*>?) = Unit
 		}
 		refreshPrimaryAction()
 
@@ -301,6 +326,7 @@ class NovelTranslationDialogController(
 		}
 
 		fun translateNow() {
+			if (!selectionInvocation) settings.manualScope = desiredScope()
 			applySelectedService()
 			val engine = selectedEngine()
 			val displayMode = desiredMode()
@@ -312,20 +338,14 @@ class NovelTranslationDialogController(
 			dialog.dismiss()
 		}
 
-		primary.setOnClickListener {
-			when {
-				projectionActionsEnabled && currentMode != NovelTranslationDisplayMode.ORIGINAL -> {
-					onRestoreOriginal()
-					dialog.dismiss()
-				}
-				projectionActionsEnabled -> {
-					onShowTranslation(desiredMode())
-					dialog.dismiss()
-				}
-				else -> translateNow()
+		primary.setOnClickListener { translateNow() }
+		toggleOriginal.setOnClickListener {
+			if (projectionActionsEnabled) {
+				if (currentMode == NovelTranslationDisplayMode.ORIGINAL) onShowTranslation(desiredMode())
+				else onRestoreOriginal()
+				dialog.dismiss()
 			}
 		}
-		translateAgain.setOnClickListener { translateNow() }
 
 		dialog.setContentView(scroll)
 		dialog.setOnShowListener { dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED }
@@ -368,6 +388,7 @@ class NovelTranslationDialogController(
 				style = settings.style,
 				contextAware = engine == NovelTranslationEngineKind.AI && settings.contextAware,
 				displayMode = displayMode,
+				scope = if (isActiveTextSelectionInvocation()) NovelTranslationScope.CHAPTER else settings.manualScope,
 			),
 		)
 	}
