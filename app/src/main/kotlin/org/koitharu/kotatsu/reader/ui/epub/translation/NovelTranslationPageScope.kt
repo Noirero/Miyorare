@@ -29,6 +29,30 @@ internal object NovelTranslationPageScope {
         return start..end
     }
 
+    /** Compare canonical source coordinates rather than page indices (which can shift during prefetch). */
+    fun isSameReadingViewport(
+        requestedChapter: Int,
+        currentChapter: Int,
+        requestedStart: Int,
+        currentStart: Int,
+    ): Boolean = requestedChapter == currentChapter && requestedStart == currentStart
+
+    /** Keep the first newly translated readable content in view after pagination changes. */
+    fun readingAnchor(source: CharSequence, uncovered: List<IntRange>, fallback: Int): Int {
+        if (source.isEmpty()) return 0
+        var firstNonWhitespace: Int? = null
+        for (range in uncovered) {
+            val start = range.first.coerceIn(0, source.lastIndex)
+            val end = range.last.coerceIn(start, source.lastIndex)
+            for (offset in start..end) {
+                val char = source[offset]
+                if (char.isLetterOrDigit()) return offset
+                if (firstNonWhitespace == null && !char.isWhitespace()) firstNonWhitespace = offset
+            }
+        }
+        return firstNonWhitespace ?: fallback.coerceIn(0, source.lastIndex)
+    }
+
     /** Return the exact source spans not already translated, without evicting older page results. */
     fun uncovered(requested: IntRange, translated: List<IntRange>): List<IntRange> {
         if (requested.isEmpty()) return emptyList()

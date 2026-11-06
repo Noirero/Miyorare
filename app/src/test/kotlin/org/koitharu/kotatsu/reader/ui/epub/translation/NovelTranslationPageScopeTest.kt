@@ -36,6 +36,50 @@ class NovelTranslationPageScopeTest {
     }
 
     @Test
+    fun readingAnchorMovesToFirstNewlyTranslatedParagraphNotOldTranslatedPrefix() {
+        val source = "Previously translated paragraph.\n\nOn top of that, Prisca had said..."
+        val firstNew = source.indexOf("On top of that")
+        assertEquals(
+            firstNew,
+            NovelTranslationPageScope.readingAnchor(
+                source, listOf((firstNew - 2)..source.lastIndex), fallback = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun readingAnchorPreservesContentWhenPageBeginsWithWhitespaceOrNonLatinScript() {
+        val source = "Earlier.\n\nさらに、彼女は言った。"
+        val index = source.indexOf("さ")
+        assertEquals(
+            index,
+            NovelTranslationPageScope.readingAnchor(source, listOf(8..source.lastIndex), fallback = 1),
+        )
+    }
+
+    @Test
+    fun translatedResultDoesNotPullReaderBackAfterUserTurnsPage() {
+        assertEquals(
+            true,
+            NovelTranslationPageScope.isSameReadingViewport(1, 1, 100, 100),
+        )
+        assertEquals(
+            false,
+            NovelTranslationPageScope.isSameReadingViewport(1, 1, 100, 540),
+        )
+        assertEquals(
+            false,
+            NovelTranslationPageScope.isSameReadingViewport(1, 2, 100, 100),
+        )
+    }
+
+    @Test
+    fun readingAnchorHandlesEmptyRangeWithoutMoving() {
+        assertEquals(4, NovelTranslationPageScope.readingAnchor("Hello world", emptyList(), fallback = 4))
+        assertEquals(0, NovelTranslationPageScope.readingAnchor("", emptyList(), fallback = 400))
+    }
+
+    @Test
     fun translatedRangesOutsidePageAreIgnored() {
         assertEquals(
             listOf(5..10),
