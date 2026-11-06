@@ -1,7 +1,9 @@
 name: Promotion to Main Gate
 
 # Promotion policy:
-# - release/promote-main-* is a frozen, selectively constructed release candidate.
+# - Accepted frozen candidates include release/main-* (legacy) and release/promote-main-*.
+# - Direct beta -> main retains legacy validation; new releases should freeze first.
+# - A stable policy-check job is provided for manual GitHub main ruleset migration.
 # - The source integration branch may be Amain2; validation is against the current main base.
 # - This gate is intentionally independent from the legacy beta -> main gate.
 # - `skip-device-test` suppresses only the owner-facing exact-head debug APK artifact.
@@ -25,7 +27,7 @@ concurrency:
 jobs:
   verify:
     name: Verify promotion candidate
-    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release/promote-main-')
+    if: github.event_name != 'pull_request' || github.head_ref == 'beta' || startsWith(github.head_ref, 'release/main-') || startsWith(github.head_ref, 'release/promote-main-')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -60,7 +62,7 @@ jobs:
 
   classify-runtime-smoke:
     name: Classify promotion runtime smoke
-    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/promote-main-')
+    if: github.event_name == 'pull_request' && (github.head_ref == 'beta' || startsWith(github.head_ref, 'release/main-') || startsWith(github.head_ref, 'release/promote-main-'))
     runs-on: ubuntu-latest
     outputs:
       run_smoke: ${{ steps.classify.outputs.run_smoke }}
@@ -212,3 +214,53 @@ jobs:
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
           retention-days: 7
+  # Exists for every main PR; do not remove the legacy required job until
+  # GitHub main branch ruleset is updated by an administrator.
+  required-promotion-policy:
+    name: Verify main promotion policy
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [verify, classify-runtime-smoke, runtime-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enforce promotion validation results
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          CLASSIFY_RESULT: ${{ needs.classify-runtime-smoke.result }}
+          SMOKE_RESULT: ${{ needs.runtime-smoke.result }}
+          RUN_SMOKE: ${{ needs.classify-runtime-smoke.outputs.run_smoke }}
+        run: |
+          set -euo pipefail
+          if [[ "$HEAD_REF" == "beta" || "$HEAD_REF" == release/main-* || "$HEAD_REF" == release/promote-main-* ]]; then
+            if [[ "$VERIFY_RESULT" != "success" || "$CLASSIFY_RESULT" != "success" ]]; then
+              echo "::error::Promotion JVM or classification did not succeed ($VERIFY_RESULT / $CLASSIFY_RESULT)."
+              exit 1
+            fi
+            case "$RUN_SMOKE" in
+              true)
+                if [[ "$SMOKE_RESULT" != "success" ]]; then
+                  echo "::error::Required promotion Android 15 acceptance did not succeed ($SMOKE_RESULT)."
+                  exit 1
+                fi
+                ;;
+              false)
+                if [[ "$SMOKE_RESULT" != "skipped" ]]; then
+                  echo "::error::Classifier waived runtime smoke, but the runtime job was not skipped ($SMOKE_RESULT)."
+                  exit 1
+                fi
+                ;;
+              *)
+                echo "::error::Missing or invalid runtime classification ($RUN_SMOKE)."
+                exit 1
+                ;;
+            esac
+            echo "Promotion JVM and conditional Android 15 acceptance verified."
+          else
+            if [[ "$VERIFY_RESULT" != "skipped" || "$CLASSIFY_RESULT" != "skipped" || "$SMOKE_RESULT" != "skipped" ]]; then
+              echo "::error::Non-promotion unexpectedly executed promotion checks."
+              exit 1
+            fi
+            echo "Non-promotion PR: release-candidate validation not applicable."
+          fi
