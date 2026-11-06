@@ -94,6 +94,7 @@ jobs:
         run: |
           python3 -m unittest discover -s .github/scripts -p 'test_ci_exact_head_reuse.py'
           python3 -m unittest discover -s .github/scripts -p 'test_ci_android_runtime_reuse.py'
+          python3 -m unittest discover -s .github/scripts -p 'test_prewarm_jitpack_parsers.py'
           python3 -m unittest discover -s .github/scripts -p 'test_miyori_status.py'
 
       - name: Find reusable exact-head compile/JVM evidence
