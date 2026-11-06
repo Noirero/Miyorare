@@ -322,11 +322,39 @@ class DownloadsViewModel @Inject constructor(
 		}
 		val workIds = selected.flatMapTo(LinkedHashSet()) { it.workIds }
 		if (workIds.isEmpty()) return
-		val mangaIds = selected.mapNotNullTo(LinkedHashSet()) { it.manga?.id }
 		launchJob(Dispatchers.IO) {
-			// Do not remove history if deleting physical files fails. The existing domain use case
-			// resolves Normal/Private ownership and updates the local index and history consistently.
-			if (deleteFiles && mangaIds.isNotEmpty()) deleteLocalManga(mangaIds, favouriteSpace)
+			if (deleteFiles) {
+				val selectedMangaIds = selected.mapNotNullTo(HashSet()) { it.manga?.id }
+				check(rawWorks.value.orEmpty().none {
+					it.manga?.id in selectedMangaIds && !it.workState.isFinished
+				}) { "A selected manga is currently downloading. Files were kept." }
+				// Resolve every selection before deleting anything: a group can contain multiple
+				// chapter jobs, but physical deletion must not guess between different roots.
+				val targets = selected.map { row ->
+					val manga = checkNotNull(row.manga) { "Cannot verify selected manga. Files were kept." }
+					val tasks = row.workIds.map { workId ->
+						checkNotNull(workScheduler.getTask(workId)) {
+							"Cannot verify the original download task. Files were kept."
+						}
+					}
+					check(tasks.all { it.mangaId == manga.id && it.favouriteSpace == favouriteSpace }) {
+						"Selected jobs do not match this manga and library space. Files were kept."
+					}
+					val roots = tasks.map { task ->
+						checkNotNull(task.destination) {
+							"Original download destination is unknown. Files were kept."
+						}.canonicalFile
+					}.distinctBy { it.path }
+					check(roots.size == 1) {
+						"This manga has downloads in multiple folders. Files were kept."
+					}
+					manga to roots.single()
+				}
+				for ((manga, root) in targets) {
+					deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace)
+				}
+			}
+			// The WorkManager entry is removed only after all requested file deletions complete.
 			workScheduler.delete(workIds)
 			onActionDone.call(ReversibleAction(R.string.downloads_removed, null))
 		}
