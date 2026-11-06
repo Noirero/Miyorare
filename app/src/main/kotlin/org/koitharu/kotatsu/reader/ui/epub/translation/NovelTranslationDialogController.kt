@@ -293,6 +293,7 @@ class NovelTranslationDialogController(
 			val visibleOnly = desiredScope() == NovelTranslationScope.PAGE
 			primary.setText(
 				when {
+					selectionInvocation -> R.string.novel_translation_translate
 					visibleOnly -> R.string.novel_translation_translate_page
 					projectionActionsEnabled && currentMode != NovelTranslationDisplayMode.ORIGINAL -> R.string.novel_translation_show_original
 					projectionActionsEnabled -> R.string.novel_translation_show_translation
