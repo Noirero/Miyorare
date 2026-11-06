@@ -8,6 +8,7 @@ on:
     branches:
       - main
       - beta
+      - Amain2
   workflow_dispatch:
 
 permissions:
@@ -16,10 +17,6 @@ permissions:
 
 jobs:
   verify-identity:
-    # fix/*, bugfix/* and hotfix/* are intentionally allowed to bypass automatic verification.
-    # Full validation remains available through workflow_dispatch and the beta -> main release gate.
-    if: >-
-      github.event_name != 'pull_request' || (!startsWith(github.head_ref, 'fix/') && !startsWith(github.head_ref, 'bugfix/') && !startsWith(github.head_ref, 'hotfix/'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
