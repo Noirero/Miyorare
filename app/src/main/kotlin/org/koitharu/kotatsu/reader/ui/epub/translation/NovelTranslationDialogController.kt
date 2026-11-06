@@ -313,20 +313,21 @@ class NovelTranslationDialogController(
 			showAiSettings(continueToTranslate = false)
 		}
 
-		val primary = MaterialButton(context).apply { isAllCaps = false }
+		val primary = MaterialButton(context).apply {
+			setIconResource(R.drawable.ic_auto_fix)
+		}
 		val toggleOriginal = MaterialButton(context).apply {
-			isAllCaps = false
+			setIconResource(R.drawable.ic_eye)
 			visibility = if (projectionActionsEnabled) View.VISIBLE else View.GONE
 		}
-		root.addView(primary, matchWidth())
-		root.addView(toggleOriginal, matchWidth())
+		visuals.styleButton(primary, NovelTranslationSheetVisuals.ButtonKind.PRIMARY)
+		visuals.styleButton(toggleOriginal, NovelTranslationSheetVisuals.ButtonKind.SECONDARY)
+		root.addView(primary, matchWidth().apply { topMargin = dp(8) })
+		root.addView(toggleOriginal, matchWidth().apply { topMargin = dp(8) })
 
 		val dialog = BottomSheetDialog(context)
-		fun desiredMode(): NovelTranslationDisplayMode = if (bilingualSwitch.isChecked) {
-			NovelTranslationDisplayMode.BILINGUAL
-		} else {
-			NovelTranslationDisplayMode.TRANSLATED_ONLY
-		}
+		fun desiredMode(): NovelTranslationDisplayMode =
+			NovelTranslationSheetModePolicy.translatedMode(selectedMode, settings.bilingual)
 		fun desiredScope(): NovelTranslationScope =
 			if (manualScopeSelector?.selectedItemPosition == 0) NovelTranslationScope.PAGE else NovelTranslationScope.CHAPTER
 
@@ -356,11 +357,17 @@ class NovelTranslationDialogController(
 		}
 		refreshPrimaryAction()
 
-		bilingualSwitch.setOnCheckedChangeListener { _, checked ->
-			settings.bilingual = checked
-			if (projectionActionsEnabled && currentMode != NovelTranslationDisplayMode.ORIGINAL) {
-				currentMode = if (checked) NovelTranslationDisplayMode.BILINGUAL else NovelTranslationDisplayMode.TRANSLATED_ONLY
-				onShowTranslation(currentMode)
+		modeButtons.forEach { (mode, button) ->
+			button.setOnClickListener {
+				selectedMode = mode
+				if (mode != NovelTranslationDisplayMode.ORIGINAL) {
+					settings.bilingual = mode == NovelTranslationDisplayMode.BILINGUAL
+				}
+				if (projectionActionsEnabled) {
+					if (mode == NovelTranslationDisplayMode.ORIGINAL) onRestoreOriginal()
+					else onShowTranslation(mode)
+					currentMode = mode
+				}
 				updateCurrentState()
 				refreshPrimaryAction()
 			}
