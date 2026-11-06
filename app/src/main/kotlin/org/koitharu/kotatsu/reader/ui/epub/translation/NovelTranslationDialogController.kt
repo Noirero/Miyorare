@@ -221,9 +221,14 @@ class NovelTranslationDialogController(
 			context.getString(R.string.novel_translation_view_info_title), null,
 			R.drawable.ic_eye, footer = modeSummary,
 		))
+		val serviceFooter = LinearLayout(context).apply {
+			orientation = LinearLayout.VERTICAL
+			addView(serviceSummary, matchWidth())
+			addView(serviceSpinner, matchWidth())
+		}
 		cards.add(visuals.card(
-			context.getString(R.string.novel_translation_service), serviceSummary,
-			R.drawable.ic_language, footer = serviceSpinner,
+			context.getString(R.string.novel_translation_service), null,
+			R.drawable.ic_language, footer = serviceFooter,
 		))
 		root.addView(visuals.optionsGrid(cards), matchWidth().apply { bottomMargin = dp(10) })
 
