@@ -31,6 +31,14 @@ class IndependentChapterReadCountTest {
         val novel = FavouriteUnreadCounter.Snapshot(histories, unread, authority, read, totals, legacyNovelIds = setOf(37L))
         assertEquals(1f / 19f, manga.getProgress(37L, CHAPTERS_READ)!!.percent, 0.0001f)
         assertEquals(18f / 19f, novel.getProgress(37L, CHAPTERS_READ)!!.percent, 0.0001f)
+
+        // Novel History can outlive its replaceable chapter cache: the legacy
+        // story-position badge must not disappear when totalCounts is unavailable.
+        val noCachedChapters = FavouriteUnreadCounter.Snapshot(
+            histories = histories, unreadCounts = emptyMap(),
+            legacyNovelIds = setOf(37L),
+        )
+        assertEquals(18f / 19f, noCachedChapters.getProgress(37L, CHAPTERS_READ)!!.percent, 0.0001f)
     }
 
     @Test fun latestHistoryDoesNotImplicitlyReadEarlierChapters() {

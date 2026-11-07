@@ -81,7 +81,7 @@ class FavouriteUnreadCounter @Inject constructor(
         val histories = ids.chunked(DB_QUERY_BATCH_SIZE)
             .flatMap { database.getHistoryDao().findByIds(it) }
             .associateBy { it.mangaId }
-        if (!includeUnread) return Snapshot(histories, emptyMap())
+        if (!includeUnread) return Snapshot(histories, emptyMap(), legacyNovelIds = legacyNovelIds)
 
         val chapters = ids.chunked(DB_QUERY_BATCH_SIZE)
             .flatMap { database.getChaptersDao().findAll(it) }
@@ -125,7 +125,7 @@ class FavouriteUnreadCounter @Inject constructor(
             read[id] = n
             unread[id] = chosen.size - n
         }
-        return Snapshot(histories, unread, authority, read, total, legacyNovelIds.intersect(authority))
+        return Snapshot(histories, unread, authority, read, total, legacyNovelIds.intersect(ids.toSet()))
     }
 
     suspend fun getUnreadCount(mangaId: Long): Int =
