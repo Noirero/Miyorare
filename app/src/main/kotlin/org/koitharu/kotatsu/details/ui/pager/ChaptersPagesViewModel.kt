@@ -438,7 +438,9 @@ abstract class ChaptersPagesViewModel(
 				.flatMapLatest { mangaId ->
 					// Other screens can acknowledge a manual-unread chapter while this Details VM
 					// stays alive. Observe that preference instead of capturing a one-time snapshot.
-					settings.observe("chapter_read_overrides_$mangaId").map {
+					settings.observe("chapter_read_overrides_$mangaId")
+                        .onStart { emit(null) } // Restore stored overrides before observing later changes.
+                        .map {
 						mangaId to settings.getChapterReadOverrides(mangaId)
 					}
 				}

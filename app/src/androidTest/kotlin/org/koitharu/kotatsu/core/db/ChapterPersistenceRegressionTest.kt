@@ -293,6 +293,18 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+    fun savedManualReadOverrideIsVisibleWhenDetailsViewModelIsRecreated() = withChapterSortOptions {
+        // The chapter has no visit record; the read state must come from persisted preferences,
+        // not the default mapper or a new SharedPreferences change callback.
+        val chapterId = requireNotNull(SampleData.mangaDetails.chapters).first().id
+        settings.setChapterReadOverride(906L, chapterId, true)
+        val vm = create()
+        withTimeout(5_000L) {
+            vm.chapters.first { rows -> rows.any { it.chapter.id == chapterId && !it.isUnread } }
+        }
+    }
+
+	@Test
 	fun activeChapterSortModePersistsBothDirections() = withChapterSortOptions {
 		val vm = create()
 		for (mode in ChapterSortMode.entries) {
