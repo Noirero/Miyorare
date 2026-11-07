@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="novel_translation_engine">Translation engine</string>
+    <string name="novel_translation_auto_compact">Auto translate</string>
+    <string name="novel_translation_auto_compact_summary">Opened chapters</string>
+    <string name="novel_translation_context_compact_summary">Nearby text</string>
     <string name="novel_translation_sheet_subtitle">Translate the page or chapter, your way.</string>
     <string name="novel_translation_segment_translated">Translated</string>
     <string name="novel_translation_current_view_label">Current view</string>
