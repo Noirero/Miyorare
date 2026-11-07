@@ -182,7 +182,6 @@ class ReaderViewModel @Inject constructor(
                         state = write.state,
                         totalPages = write.totalPages,
                     )
-                    acknowledgeChapterVisit(write.manga.id, write.state.chapterId)
                 } catch (error: Exception) {
                     error.printStackTraceDebug()
                 }
@@ -200,7 +199,17 @@ class ReaderViewModel @Inject constructor(
         if (pages <= 0) return
         val sourceChapters = mangaDetails.value?.sourceManga?.chapters.orEmpty()
         val key = resolveChapterPersonalKey(chapter, sourceChapters)
+        // Respect user ordering: an unread swipe made after this visit must not be undone
+        // when an older queued database write eventually completes.
+        acknowledgeChapterVisit(manga.id, state.chapterId)
         chapterProgressWrites.trySend(ChapterProgressWrite(manga, key, state, pages))
+    }
+
+    private fun clampChapterPosition(requested: ReaderState): ReaderState {
+        if (getMangaOrNull()?.isNovelContent == true) return requested
+        val count = chaptersLoader.getPagesCount(requested.chapterId)
+        return if (count > 0 && requested.page >= count) requested.copy(page = count - 1, scroll = 0)
+        else requested
     }
 
     private suspend fun chapterResumeState(chapterId: Long): ReaderState {
@@ -418,7 +427,8 @@ class ReaderViewModel @Inject constructor(
             if (!chaptersLoader.loadSingleChapter(id)) {
                 return@launchLoadingJob
             }
-            val newState = if (resume) chapterResumeState(id) else ReaderState(id, page, scroll)
+            val requested = if (resume) chapterResumeState(id) else ReaderState(id, page, scroll)
+            val newState = clampChapterPosition(requested)
             content.value = ReaderContent(chaptersLoader.snapshot(), newState)
             saveCurrentState(newState)
         }
@@ -443,7 +453,7 @@ class ReaderViewModel @Inject constructor(
             if (!chaptersLoader.loadSingleChapter(newChapterId)) {
                 return@launchLoadingJob
             }
-            val newState = if (delta == 0) prevState else chapterResumeState(newChapterId)
+            val newState = clampChapterPosition(if (delta == 0) prevState else chapterResumeState(newChapterId))
             content.value = ReaderContent(chaptersLoader.snapshot(), newState)
             saveCurrentState(newState)
         }
@@ -636,6 +646,7 @@ class ReaderViewModel @Inject constructor(
                                     readingState.value = null
                                     return@collect
                                 }
+                                readingState.value = clampChapterPosition(newState)
                             } catch (e: Exception) {
                                 readingState.value = null // try next time
                                 exception = e.mergeWith(exception)
