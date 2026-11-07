@@ -10,7 +10,7 @@ class NovelTranslationLanguagePickerModelTest {
     fun searchesByNameAndLanguageCodeWithoutChangingOrdering() {
         val languages = NovelTranslationLanguages.sourceChoices()
         assertEquals(listOf("id"), NovelTranslationLanguagePickerModel.filter(languages, "indonesian").map { it.code })
-        assertEquals(listOf("ja"), NovelTranslationLanguagePickerModel.filter(languages, " JA ").map { it.code })
+        assertEquals(listOf("zh-TW"), NovelTranslationLanguagePickerModel.filter(languages, " ZH-TW ").map { it.code })
         assertTrue(NovelTranslationLanguagePickerModel.filter(languages, "english").any { it.code == "en" })
         assertTrue(NovelTranslationLanguagePickerModel.filter(languages, "auto").any { it.code == "auto" })
         assertEquals(languages, NovelTranslationLanguagePickerModel.filter(languages, "  "))
