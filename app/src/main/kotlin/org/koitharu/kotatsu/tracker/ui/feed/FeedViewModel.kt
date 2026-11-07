@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.groupByDateBucket
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -215,7 +216,7 @@ class FeedViewModel @Inject constructor(
 			if (advancedHistory != null) {
 				db.withTransaction {
 					val historyDao = db.getHistoryDao()
-					if (historyDao.findIncludingDeleted(item.manga.id) == advancedHistory.applied) {
+					if (shouldRestoreFeedHistory(advancedHistory.applied, historyDao.findIncludingDeleted(item.manga.id))) {
 						if (advancedHistory.previous != null) historyDao.upsert(advancedHistory.previous)
 						else historyDao.delete(item.manga.id)
 					}
@@ -295,3 +296,7 @@ class FeedViewModel @Inject constructor(
 		)
 	}
 }
+
+/** Only a byte-for-byte matching history row may be reverted; any Reader write wins. */
+internal fun shouldRestoreFeedHistory(applied: HistoryEntity, current: HistoryEntity?): Boolean =
+	applied == current
