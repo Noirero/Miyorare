@@ -52,6 +52,7 @@ import org.koitharu.kotatsu.core.util.ext.isHttpUrl
 import org.koitharu.kotatsu.core.util.ext.requireValue
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
+import org.koitharu.kotatsu.details.data.ChapterProgressRepository
 import org.koitharu.kotatsu.details.domain.DetailsInteractor
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
@@ -118,6 +119,7 @@ class ReaderViewModel @Inject constructor(
     readerSettingsProducerFactory: ReaderSettings.Producer.Factory,
     mangaRepositoryFactory: MangaRepository.Factory,
     chapterPersonalRepository: ChapterPersonalRepository,
+    chapterProgressRepository: ChapterProgressRepository,
 ) : ChaptersPagesViewModel(
     settings = settings,
     interactor = interactor,
@@ -133,6 +135,7 @@ class ReaderViewModel @Inject constructor(
     mangaDataRepository = dataRepository,
     mangaRepositoryFactory = mangaRepositoryFactory,
     chapterPersonalRepository = chapterPersonalRepository,
+    chapterProgressRepository = chapterProgressRepository,
 ) {
     override fun onCleared() {
         // The ViewModel scope is cancelled during teardown; use an independent IO job to release

@@ -73,6 +73,7 @@ import java.io.File
 import tachiyomi.core.common.util.lang.compareToWithCollator
 import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
+import org.koitharu.kotatsu.details.data.ChapterProgressRepository
 
 abstract class ChaptersPagesViewModel(
 	@JvmField protected val settings: AppSettings,
@@ -87,6 +88,7 @@ abstract class ChaptersPagesViewModel(
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val chapterPersonalRepository: ChapterPersonalRepository,
+	protected val chapterProgressRepository: ChapterProgressRepository,
 	private val chapterListOptionsStore: ChapterListOptionsStore? = null,
 ) : BaseViewModel() {
 
@@ -329,19 +331,27 @@ abstract class ChaptersPagesViewModel(
 			else flowOf(emptyMap())
 		}.withErrorHandling()
 
+	private val chapterSavedProgress = mangaDetails.map { it?.id }.distinctUntilChanged()
+		.flatMapLatest { id ->
+			if (id != null) chapterProgressRepository.observe(id, favouriteSpace)
+			else flowOf(emptyMap())
+		}.withErrorHandling()
+
 	internal val chapterPresentation = combine(
 		combine(
-			chapterMappingDetails.combine(chapterReadOverrides) { manga, overrides -> manga to overrides },
-			readingState.map { it?.chapterId }.distinctUntilChanged(),
+			combine(chapterMappingDetails, chapterReadOverrides, chapterSavedProgress) { manga, overrides, progress ->
+				Triple(manga, overrides, progress)
+			},
+			readingState,
 			selectedBranch.combine(selectedScanlator) { branch, scanlator -> branch to scanlator },
 			newChaptersCount,
 			bookmarks,
 			chapterListOptions,
-		) { mangaWithOverrides, currentChapterId, branchAndScanlator, news, bookmarks, options ->
-			val (manga, overrides) = mangaWithOverrides
+		) { mangaWithOverrides, currentState, branchAndScanlator, news, bookmarks, options ->
+			val (manga, overrides, progress) = mangaWithOverrides
 			val (branch, scanlator) = branchAndScanlator
 			manga?.mapChapters(
-				currentChapterId = currentChapterId ?: 0L,
+				currentChapterId = currentState?.chapterId ?: 0L,
 				newCount = news,
 				branch = branch,
 				bookmarks = bookmarks,
@@ -349,9 +359,11 @@ abstract class ChaptersPagesViewModel(
 				// Always map the complete Room/local snapshot. Status filters below are in-memory only.
 				isDownloadedOnly = false,
 				readOverrides = overrides,
+				progressByKey = progress,
+				currentPage = currentState?.page,
 			).orEmpty()
 				.filter { item -> scanlator == null || item.chapter.scanlator?.trim() == scanlator }
-				.map { item -> item.withTitleMode(options.titleMode) } to (currentChapterId != null)
+				.map { item -> item.withTitleMode(options.titleMode) } to (currentState != null)
 		},
 		chapterListOptions,
 		chaptersQuery.combine(chapterNotesQuery) { chapterQuery, notesQuery -> chapterQuery to notesQuery },
@@ -539,7 +551,31 @@ abstract class ChaptersPagesViewModel(
 
 	fun getSourceMangaOrNull(): Manga? = mangaDetails.value?.sourceManga
 
+
 	fun requireManga() = mangaDetails.requireValue().toManga()
+
+	/** Chapter taps reuse their own saved position; the legacy global cursor remains authoritative. */
+	suspend fun getChapterResumeState(item: ChapterListItem): ReaderState {
+		val current = readingState.value
+		if (item.isCurrent && current?.chapterId == item.chapter.id) return current
+		val mangaId = mangaDetails.value?.id
+		val position = if (mangaId != null && getMangaOrNull()?.isNovelContent != true) {
+			chapterProgressRepository.get(mangaId, favouriteSpace, item.personalKey)
+		} else null
+		return if (position != null) {
+			ReaderState(item.chapter.id, position.page, position.scroll)
+		} else ReaderState(item.chapter.id, 0, 0)
+	}
+
+	/** A new normal-reader visit supersedes a previous manual-unread action on that chapter only. */
+	protected fun acknowledgeChapterVisit(mangaId: Long, chapterId: Long) {
+		if (settings.getChapterReadOverrides(mangaId)[chapterId] != false) return
+		settings.setChapterReadOverride(mangaId, chapterId, true)
+		if (mangaDetails.value?.id == mangaId) {
+			chapterReadOverrides.update { it + (chapterId to true) }
+		}
+	}
+
 
 	open suspend fun getChapterOpenMode(chapterId: Long): ChapterOpenMode {
 		if (!settings.isChapterJumpDialogEnabled) {
