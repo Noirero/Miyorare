@@ -151,6 +151,20 @@ class ChapterPersistenceRegressionTest {
 		assertTrue(!persisted.isUnread)
 		assertEquals(11, persisted.lastReadPage)
 		assertEquals(38, persisted.lastReadTotalPages)
+
+		// A manual unread must hide the saved label even before the async DAO reset commits,
+		// including on the current History chapter that still has a live page number.
+		val unread = details.mapChapters(
+			currentChapterId = 218L, newCount = 0, branch = null,
+			bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+			readOverrides = mapOf(217L to false, 218L to false),
+			progressByKey = mapOf(older.personalKey to saved),
+			currentPage = 70,
+		)
+		assertTrue(unread.first { it.chapter.id == 217L }.isUnread)
+		assertNull(unread.first { it.chapter.id == 217L }.lastReadPage)
+		assertNull(unread.first { it.chapter.id == 217L }.lastReadTotalPages)
+		assertNull(unread.first { it.chapter.id == 218L }.lastReadPage)
 	}
 
 	@Test
