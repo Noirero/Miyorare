@@ -170,6 +170,7 @@ class ReaderViewModel @Inject constructor(
 
     // One consumer preserves the order of active-page updates, including backwards navigation.
     private val chapterProgressWrites = Channel<ChapterProgressWrite>(Channel.UNLIMITED)
+    private val visitAcknowledgement = ChapterVisitAcknowledgement()
 
     init {
         processLifecycleScope.launch(Dispatchers.IO, CoroutineStart.ATOMIC) {
@@ -201,7 +202,9 @@ class ReaderViewModel @Inject constructor(
         val key = resolveChapterPersonalKey(chapter, sourceChapters)
         // Respect user ordering: an unread swipe made after this visit must not be undone
         // when an older queued database write eventually completes.
-        acknowledgeChapterVisit(manga.id, state.chapterId)
+        if (visitAcknowledgement.shouldAcknowledge(state.chapterId)) {
+            acknowledgeChapterVisit(manga.id, state.chapterId)
+        }
         chapterProgressWrites.trySend(ChapterProgressWrite(manga, key, state, pages))
     }
 
@@ -429,6 +432,8 @@ class ReaderViewModel @Inject constructor(
             }
             val requested = if (resume) chapterResumeState(id) else ReaderState(id, page, scroll)
             val newState = clampChapterPosition(requested)
+            // Opening a chapter explicitly starts a new visit, including reopening this chapter.
+            visitAcknowledgement.reset()
             content.value = ReaderContent(chaptersLoader.snapshot(), newState)
             saveCurrentState(newState)
         }
@@ -454,6 +459,7 @@ class ReaderViewModel @Inject constructor(
                 return@launchLoadingJob
             }
             val newState = clampChapterPosition(if (delta == 0) prevState else chapterResumeState(newChapterId))
+            if (delta != 0) visitAcknowledgement.reset()
             content.value = ReaderContent(chaptersLoader.snapshot(), newState)
             saveCurrentState(newState)
         }
@@ -550,6 +556,7 @@ class ReaderViewModel @Inject constructor(
             return
         }
         isPeekMode.value = value
+        if (!value) visitAcknowledgement.reset()
         savedStateHandle[ReaderIntent.EXTRA_PEEK] = value
         if (value) {
             discardCurrentSessionTracking()
@@ -559,6 +566,7 @@ class ReaderViewModel @Inject constructor(
 
     fun setIncognitoMode(value: Boolean, dontAskAgain: Boolean) {
         isIncognitoMode.value = value
+        if (!value) visitAcknowledgement.reset()
         if (value) {
             discardCurrentSessionTracking()
         }
