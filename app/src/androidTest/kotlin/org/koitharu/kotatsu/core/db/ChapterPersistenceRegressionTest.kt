@@ -174,6 +174,15 @@ class ChapterPersistenceRegressionTest {
 		assertEquals(11, rows.count { !it.isUnread }) // original novel order semantics
 		assertTrue(rows.first { it.chapter.id == 211L }.isUnread)
 		assertNull(rows.first { it.chapter.id == 210L }.lastReadPage) // never use EPUB offsets as manga pages
+
+		// Novel 'new chapter' flag still follows existing history-position semantics,
+		// not the new manga visited-state/manual-override projection.
+		val withManualRead = novel.mapChapters(
+			currentChapterId = 210L, newCount = 4, branch = null,
+			bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+			readOverrides = mapOf(218L to true),
+		)
+		assertTrue(withManualRead.first { it.chapter.id == 218L }.isNew)
 	}
 
 	@Test

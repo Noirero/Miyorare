@@ -71,7 +71,7 @@ fun MangaDetails.mapChapters(
 			result += presentedChapter.toListItem(
 				isCurrent = isCurrent,
 				isUnread = !isRead,
-				isNew = !isCurrent && !isRead && result.size >= newFrom,
+				isNew = !isCurrent && (if (isNovel) legacyUnread else !isRead) && result.size >= newFrom,
 				isDownloaded = local != null,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
