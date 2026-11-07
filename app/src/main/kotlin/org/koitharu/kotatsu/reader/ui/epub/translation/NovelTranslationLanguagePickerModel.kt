@@ -18,6 +18,8 @@ internal object NovelTranslationLanguagePickerModel {
         "am" to "🇪🇹",
         "hy" to "🇦🇲",
         "az" to "🇦🇿",
+        "be" to "🇧🇾",
+        "bn" to "🇧🇩",
         "bs" to "🇧🇦",
         "bg" to "🇧🇬",
         "ga" to "🇮🇪",

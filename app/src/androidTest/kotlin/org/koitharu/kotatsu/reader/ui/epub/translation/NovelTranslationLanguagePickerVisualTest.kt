@@ -10,6 +10,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ActivityScenario
@@ -35,7 +37,9 @@ class NovelTranslationLanguagePickerVisualTest {
     @Before fun setUp() = hilt.inject()
 
     @Test fun captureSourceAndTargetPickerGeometry() {
-        ActivityScenario.launch(MangaUpdatesAuthActivity::class.java).use { scenario ->
+        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("id-ID"))
+        try {
+            ActivityScenario.launch(MangaUpdatesAuthActivity::class.java).use { scenario ->
             for ((name, source, selected) in listOf(
                 Triple("source", true, "auto"),
                 Triple("target", false, "id"),
@@ -84,6 +88,9 @@ class NovelTranslationLanguagePickerVisualTest {
                     scenario.onActivity { dialog.dismiss() }
                 }
             }
+            }
+        } finally {
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
         }
     }
 

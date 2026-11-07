@@ -36,6 +36,8 @@ class NovelTranslationLanguagePickerModelTest {
         assertEquals(NovelLanguageSymbol.Flag("🇪🇹"), NovelTranslationLanguagePickerModel.symbol("am"))
         assertEquals(NovelLanguageSymbol.Flag("🇦🇲"), NovelTranslationLanguagePickerModel.symbol("hy"))
         assertEquals(NovelLanguageSymbol.Flag("🇦🇿"), NovelTranslationLanguagePickerModel.symbol("az"))
+        assertEquals(NovelLanguageSymbol.Flag("🇧🇾"), NovelTranslationLanguagePickerModel.symbol("be"))
+        assertEquals(NovelLanguageSymbol.Flag("🇧🇩"), NovelTranslationLanguagePickerModel.symbol("bn"))
         assertEquals(NovelLanguageSymbol.Flag("🇧🇦"), NovelTranslationLanguagePickerModel.symbol("bs"))
         assertEquals(NovelLanguageSymbol.Flag("🇧🇬"), NovelTranslationLanguagePickerModel.symbol("bg"))
         assertEquals(NovelLanguageSymbol.Flag("🇮🇪"), NovelTranslationLanguagePickerModel.symbol("ga"))

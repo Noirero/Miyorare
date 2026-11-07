@@ -40,6 +40,7 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
     val languagePickerOutline: Int get() = outline
     fun languagePickerBadgeFill(): Int = ColorUtils.blendARGB(surfaceHigh, accent, 0.18f)
     val languagePickerDivider: Int get() = ColorUtils.setAlphaComponent(outline, 75)
+    val languagePickerIdleRadio: Int get() = ColorUtils.blendARGB(outline, onSurface, 0.50f)
 
     fun languagePickerDialogBackground(): GradientDrawable = gradient(
         dp(28),

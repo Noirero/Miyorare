@@ -304,7 +304,7 @@ internal class NovelTranslationLanguagePicker(
                 gravity = Gravity.CENTER_VERTICAL
                 buttonTintList = ColorStateList(
                     arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                    intArrayOf(visuals.languagePickerAccent, visuals.languagePickerOutline),
+                    intArrayOf(visuals.languagePickerAccent, visuals.languagePickerIdleRadio),
                 )
                 contentDescription = null
             }
