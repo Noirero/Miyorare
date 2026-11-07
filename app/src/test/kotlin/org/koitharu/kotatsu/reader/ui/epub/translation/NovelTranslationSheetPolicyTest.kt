@@ -28,10 +28,11 @@ class NovelTranslationSheetPolicyTest {
 
     @Test
     fun adaptiveCardsStackOnNarrowScreensAndLargerFonts() {
-        assertFalse(NovelTranslationSheetLayoutPolicy.useTwoColumns(320f, 1f))
-        assertFalse(NovelTranslationSheetLayoutPolicy.useTwoColumns(410f, 1f))
-        assertTrue(NovelTranslationSheetLayoutPolicy.useTwoColumns(600f, 1f))
-        assertFalse(NovelTranslationSheetLayoutPolicy.useTwoColumns(600f, 1.3f))
+        // 720 px at 320 dpi is 360dp: 332dp remains after the sheet's 14dp sides.
+        assertTrue(NovelTranslationSheetLayoutPolicy.useTwoColumns(332f, 1f))
+        assertFalse(NovelTranslationSheetLayoutPolicy.useTwoColumns(292f, 1f))
+        assertFalse(NovelTranslationSheetLayoutPolicy.useTwoColumns(332f, 1.3f))
+        assertTrue(NovelTranslationSheetLayoutPolicy.useTwoColumns(600f, 1.3f))
         assertTrue(NovelTranslationSheetLayoutPolicy.useTwoColumns(800f, 1.3f))
     }
 }
