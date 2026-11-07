@@ -14,6 +14,7 @@ import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 import org.koitharu.kotatsu.details.data.ChapterProgressEntity
+import org.koitharu.kotatsu.core.model.isNovelContent
 
 fun MangaDetails.mapChapters(
 	currentChapterId: Long,
@@ -44,6 +45,10 @@ fun MangaDetails.mapChapters(
 		localChapters.mapTo(this) { it.id }
 	}
 	val result = ArrayList<ChapterListItem>(ids.size)
+	// Novel/EPUB chapter status retains its pre-feature order semantics; this feature
+	// records actual image-chapter visits only. Do not display manga page labels for EPUB.
+	val isNovel = toManga().isNovelContent
+	var legacyUnread = currentChapterId !in ids
 	val localMap = if (localChapters.isNotEmpty()) {
 		localChapters.associateByTo(LinkedHashMap(localChapters.size)) { it.id }
 	} else {
@@ -62,7 +67,7 @@ fun MangaDetails.mapChapters(
 			val key = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById)
 			val saved = progressByKey[key]
 			val readOverride = readOverrides[local?.id] ?: readOverrides[chapter.id]
-			val isRead = readOverride ?: (saved != null || isCurrent)
+			val isRead = readOverride ?: if (isNovel) (!legacyUnread || isCurrent) else (saved != null || isCurrent)
 			result += presentedChapter.toListItem(
 				isCurrent = isCurrent,
 				isUnread = !isRead,
@@ -72,9 +77,10 @@ fun MangaDetails.mapChapters(
 				isGrid = isGrid,
 			).copy(
 				personalKey = key,
-				lastReadPage = saved?.page ?: currentPage?.takeIf { isCurrent },
-				lastReadTotalPages = saved?.totalPages,
+				lastReadPage = if (isNovel) null else saved?.page ?: currentPage?.takeIf { isCurrent },
+				lastReadTotalPages = if (isNovel) null else saved?.totalPages,
 			)
+			if (isCurrent) legacyUnread = true
 		}
 	}
 	if (!localMap.isNullOrEmpty()) {
@@ -82,7 +88,7 @@ fun MangaDetails.mapChapters(
 			val isCurrent = chapter.id == currentChapterId
 			val key = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById)
 			val saved = progressByKey[key]
-			val isRead = readOverrides[chapter.id] ?: (saved != null || isCurrent)
+			val isRead = readOverrides[chapter.id] ?: if (isNovel) (!legacyUnread || isCurrent) else (saved != null || isCurrent)
 			result += chapter.toListItem(
 				isCurrent = isCurrent,
 				isUnread = !isRead,
@@ -92,9 +98,10 @@ fun MangaDetails.mapChapters(
 				isGrid = isGrid,
 			).copy(
 				personalKey = key,
-				lastReadPage = saved?.page ?: currentPage?.takeIf { isCurrent },
-				lastReadTotalPages = saved?.totalPages,
+				lastReadPage = if (isNovel) null else saved?.page ?: currentPage?.takeIf { isCurrent },
+				lastReadTotalPages = if (isNovel) null else saved?.totalPages,
 			)
+			if (isCurrent) legacyUnread = true
 		}
 	}
 	return result
