@@ -7,6 +7,8 @@ import androidx.annotation.WorkerThread
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -50,9 +52,13 @@ import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.firstNotNull
 import org.koitharu.kotatsu.core.util.ext.isHttpUrl
 import org.koitharu.kotatsu.core.util.ext.requireValue
+import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
 import org.koitharu.kotatsu.details.data.ChapterProgressRepository
+import org.koitharu.kotatsu.details.data.ChapterPersonalKey
+import org.koitharu.kotatsu.details.ui.resolveChapterPersonalKey
 import org.koitharu.kotatsu.details.domain.DetailsInteractor
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
@@ -138,6 +144,8 @@ class ReaderViewModel @Inject constructor(
     chapterProgressRepository = chapterProgressRepository,
 ) {
     override fun onCleared() {
+        // Let the process-scoped consumer drain the last position during reader teardown.
+        chapterProgressWrites.close()
         // The ViewModel scope is cancelled during teardown; use an independent IO job to release
         // Reader-owned backing without blocking the main thread.
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { chaptersLoader.close() }
@@ -152,6 +160,61 @@ class ReaderViewModel @Inject constructor(
     private var bookmarkJob: Job? = null
     private var stateChangeJob: Job? = null
     private var deferredHistorySaveJob: Job? = null
+
+    private data class ChapterProgressWrite(
+        val manga: Manga,
+        val key: ChapterPersonalKey,
+        val state: ReaderState,
+        val totalPages: Int,
+    )
+
+    // One consumer preserves the order of active-page updates, including backwards navigation.
+    private val chapterProgressWrites = Channel<ChapterProgressWrite>(Channel.UNLIMITED)
+
+    init {
+        processLifecycleScope.launch(Dispatchers.IO, CoroutineStart.ATOMIC) {
+            for (write in chapterProgressWrites) {
+                try {
+                    chapterProgressRepository.record(
+                        manga = write.manga,
+                        space = favouriteSpace,
+                        key = write.key,
+                        state = write.state,
+                        totalPages = write.totalPages,
+                    )
+                    acknowledgeChapterVisit(write.manga.id, write.state.chapterId)
+                } catch (error: Exception) {
+                    error.printStackTraceDebug()
+                }
+            }
+        }
+    }
+
+    private fun enqueueChapterProgress(state: ReaderState) {
+        if (isPeekMode.value || isIncognitoMode.value != false) return
+        val manga = getMangaOrNull()?.takeUnless { it.isNovelContent } ?: return
+        val chapter = chaptersLoader.peekChapter(state.chapterId) ?: return
+        // Only the displayed chapter may create a visited record: a preloaded chapter alone
+        // never invokes this function and pages must actually be loaded.
+        val pages = chaptersLoader.getPagesCount(state.chapterId)
+        if (pages <= 0) return
+        val sourceChapters = mangaDetails.value?.sourceManga?.chapters.orEmpty()
+        val key = resolveChapterPersonalKey(chapter, sourceChapters)
+        chapterProgressWrites.trySend(ChapterProgressWrite(manga, key, state, pages))
+    }
+
+    private suspend fun chapterResumeState(chapterId: Long): ReaderState {
+        val manga = getMangaOrNull() ?: return ReaderState(chapterId, 0, 0)
+        if (manga.isNovelContent) return ReaderState(chapterId, 0, 0)
+        val chapter = chaptersLoader.peekChapter(chapterId) ?: return ReaderState(chapterId, 0, 0)
+        val sourceChapters = mangaDetails.value?.sourceManga?.chapters.orEmpty()
+        val key = resolveChapterPersonalKey(chapter, sourceChapters)
+        val saved = chapterProgressRepository.get(manga.id, favouriteSpace, key)
+        if (saved != null) return ReaderState(chapterId, saved.page, saved.scroll)
+        // Only the current legacy History cursor is known; never infer visits to older chapters.
+        val history = historyRepository.getOne(manga)
+        return if (history?.chapterId == chapterId) ReaderState(history) else ReaderState(chapterId, 0, 0)
+    }
 
     init {
         mangaDetails.value = intent.manga?.let { MangaDetails(it) }
@@ -312,6 +375,7 @@ class ReaderViewModel @Inject constructor(
             percent = computePercent(readerState),
             space = favouriteSpace,
         )
+        enqueueChapterProgress(readerState)
     }
 
     fun getCurrentState() = readingState.value
@@ -347,14 +411,14 @@ class ReaderViewModel @Inject constructor(
         }?.toMangaPage()
     }
 
-    fun switchChapter(id: Long, page: Int, scroll: Int = 0) {
+    fun switchChapter(id: Long, page: Int, scroll: Int = 0, resume: Boolean = false) {
         val prevJob = loadingJob
         loadingJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
             if (!chaptersLoader.loadSingleChapter(id)) {
                 return@launchLoadingJob
             }
-            val newState = ReaderState(id, page, scroll)
+            val newState = if (resume) chapterResumeState(id) else ReaderState(id, page, scroll)
             content.value = ReaderContent(chaptersLoader.snapshot(), newState)
             saveCurrentState(newState)
         }
@@ -379,11 +443,7 @@ class ReaderViewModel @Inject constructor(
             if (!chaptersLoader.loadSingleChapter(newChapterId)) {
                 return@launchLoadingJob
             }
-            val newState = ReaderState(
-                chapterId = newChapterId,
-                page = if (delta == 0) prevState.page else 0,
-                scroll = if (delta == 0) prevState.scroll else 0,
-            )
+            val newState = if (delta == 0) prevState else chapterResumeState(newChapterId)
             content.value = ReaderContent(chaptersLoader.snapshot(), newState)
             saveCurrentState(newState)
         }
@@ -396,7 +456,7 @@ class ReaderViewModel @Inject constructor(
         stateChangeJob = launchJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
             loadingJob?.join()
-            if (pages.size != content.value.pages.size) {
+            if (pages !== content.value.pages) {
                 return@launchJob // TODO
             }
             val centerPos = (lowerPos + upperPos) / 2
@@ -406,6 +466,7 @@ class ReaderViewModel @Inject constructor(
                 }
             }
             notifyStateChanged()
+            readingState.value?.let(::enqueueChapterProgress)
             if (pages.isEmpty() || loadingJob?.isActive == true) {
                 return@launchJob
             }
@@ -633,7 +694,10 @@ class ReaderViewModel @Inject constructor(
         if (isPeekMode.value) return
         val state = readingState.value ?: return
         when (isIncognitoMode.value) {
-            false -> historyUpdateUseCase.invokeAsync(manga, state, computePercent(state), favouriteSpace)
+            false -> {
+                historyUpdateUseCase.invokeAsync(manga, state, computePercent(state), favouriteSpace)
+                enqueueChapterProgress(state)
+            }
             true -> Unit
             null -> {
                 deferredHistorySaveJob?.cancel()
@@ -646,6 +710,7 @@ class ReaderViewModel @Inject constructor(
                             percent = computePercent(latestState),
                             space = favouriteSpace,
                         )
+                        enqueueChapterProgress(latestState)
                     }
                 }
             }
