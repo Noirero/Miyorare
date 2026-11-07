@@ -985,7 +985,15 @@ class ReaderViewModel @Inject constructor(
         val requestedState: ReaderState? = savedStateHandle[ReaderIntent.EXTRA_STATE]
         if (requestedState != null) {
             when {
-                manga.findChapterById(requestedState.chapterId) != null -> return requestedState
+                manga.findChapterById(requestedState.chapterId) != null -> {
+                    // Widget-provided History is not a deliberate bookmark/page jump.
+                    // Do not bypass manual unread by treating it as an explicit page.
+                    val isHistoryResume = savedStateHandle.get<Boolean>(ReaderIntent.EXTRA_HISTORY_RESUME) == true
+                    return if (isHistoryResume && !manga.isNovelContent &&
+                        (settings.getChapterReadOverrides(manga.id)[requestedState.chapterId] == false ||
+                            settings.getChapterPageResetStamp(manga.id, requestedState.chapterId) < 0)
+                    ) ReaderState(requestedState.chapterId, 0, 0) else requestedState
+                }
                 !isLoaded -> return null
             }
         }

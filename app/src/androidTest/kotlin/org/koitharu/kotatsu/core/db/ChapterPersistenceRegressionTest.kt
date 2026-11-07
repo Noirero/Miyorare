@@ -101,6 +101,32 @@ class ChapterPersistenceRegressionTest {
 
 	/** Default PR Android 15 DB suite must exercise newly added per-chapter regressions. */
 	@Test
+    fun widgetHistoryResumeIsNotAnExplicitBookmarkPage() {
+        val manga = remoteDetails()
+        val chapterId = requireNotNull(manga.chapters).first().id
+        val explicit = org.koitharu.kotatsu.core.nav.ReaderIntent.Builder(context)
+            .manga(manga).state(org.koitharu.kotatsu.reader.ui.ReaderState(chapterId, 70, 0))
+            .build().intent
+        assertEquals(false, explicit.getBooleanExtra(
+            org.koitharu.kotatsu.core.nav.ReaderIntent.EXTRA_HISTORY_RESUME, false,
+        ))
+
+        val history = org.koitharu.kotatsu.core.model.MangaHistory(
+            createdAt = java.time.Instant.EPOCH,
+            updatedAt = java.time.Instant.EPOCH,
+            chapterId = chapterId,
+            page = 70,
+            scroll = 0,
+            percent = 0.1f,
+            chaptersCount = requireNotNull(manga.chapters).size,
+        )
+        val widget = org.koitharu.kotatsu.widget.common.WidgetIntents.readerIntent(context, manga, history)
+        assertEquals(true, widget.getBooleanExtra(
+            org.koitharu.kotatsu.core.nav.ReaderIntent.EXTRA_HISTORY_RESUME, false,
+        ))
+    }
+
+	@Test
 	fun chapterProgressDurabilityAcrossDatabaseReopen() {
 		org.koitharu.kotatsu.details.data.ChapterProgressRuntimeTest()
 			.lastPageForEachChapterSurvivesReopenAndCanMoveBackwards()
