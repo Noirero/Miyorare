@@ -95,7 +95,8 @@ class FeedSwipeCallback(
 		super.onSelectedChanged(viewHolder, actionState)
 		if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE && viewHolder != null) {
 			currentItem = viewHolder.getItem(FeedItem::class.java)
-			isCurrentItemRead = currentItem?.isNew == false
+			// A read chapter may still have an unread feed notification. Use the log state.
+			isCurrentItemRead = currentItem?.isUnread == false
 		} else if (actionState == ItemTouchHelper.ACTION_STATE_IDLE) {
 			// finger lifted: fire mark-as-read if the drag was past the threshold at release
 			if (pendingMarkRead) {
