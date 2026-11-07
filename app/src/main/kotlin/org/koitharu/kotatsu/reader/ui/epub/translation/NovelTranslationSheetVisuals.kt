@@ -73,7 +73,7 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
         button.apply {
             isAllCaps = false
             cornerRadius = dp(if (main || kind == ButtonKind.SECONDARY) 29 else 20)
-            minHeight = dp(if (main) 58 else if (active || kind == ButtonKind.SEGMENT_IDLE) 52 else 50)
+            minHeight = dp(if (main) 54 else if (active || kind == ButtonKind.SEGMENT_IDLE) 44 else if (outlined) 48 else 44)
             insetTop = 0
             insetBottom = 0
             setTextColor(foreground)
@@ -86,7 +86,7 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
                 if (main || active || outlined) accent else outline, if (main || active) 180 else if (outlined) 145 else 110,
             ))
             elevation = dp(if (main || active) 3 else 0).toFloat()
-            setPadding(dp(7), dp(7), dp(7), dp(7))
+            setPadding(dp(5), dp(4), dp(5), dp(4))
         }
     }
 
@@ -115,8 +115,8 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
             background = cardBackground()
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            minimumHeight = dp(90)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            minimumHeight = dp(60)
         }
         val heading = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -131,6 +131,53 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
         wrapper.addView(heading, fullWidth())
         if (footer != null) wrapper.addView(footer, fullWidth().apply { topMargin = dp(10) })
         return wrapper
+    }
+
+    /** Compact toggle card: switch sits on its own trailing line to avoid crushing the title at 360dp. */
+    fun toggleCard(
+        name: CharSequence,
+        summary: CharSequence,
+        iconRes: Int,
+        toggle: View,
+    ): LinearLayout {
+        val wrapper = compactCard(name, iconRes)
+        val footer = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        footer.addView(label(summary, 11f, subdued = true).apply {
+            maxLines = 3
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        footer.addView(toggle, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dp(48),
+        ))
+        wrapper.addView(footer, fullWidth().apply { topMargin = dp(3) })
+        return wrapper
+    }
+
+    /** A real settings selector using the same persisted source as the existing advanced sheet. */
+    fun selectorCard(
+        name: CharSequence,
+        iconRes: Int,
+        selector: View,
+    ): LinearLayout = compactCard(name, iconRes).apply {
+        addView(selector, fullWidth().apply { topMargin = dp(3) })
+    }
+
+    private fun compactCard(name: CharSequence, iconRes: Int) = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        background = cardBackground()
+        minimumHeight = dp(94)
+        setPadding(dp(9), dp(8), dp(9), dp(8))
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(icon(iconRes).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(17), dp(17)).apply { marginEnd = dp(6) }
+            })
+            addView(label(name, 12f).apply { maxLines = 3 },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }, fullWidth())
     }
 
     fun optionsGrid(cards: List<View>): LinearLayout {
@@ -155,13 +202,17 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
                 }
             }
         }
-        rebuild(1)
+        // On a normal phone begin in the correct layout, without flashing a one-column sheet.
+        val initialWidth = context.resources.displayMetrics.widthPixels / density - 28f
+        rebuild(if (NovelTranslationSheetLayoutPolicy.useTwoColumns(
+            initialWidth, context.resources.configuration.fontScale,
+        )) 2 else 1)
         grid.addOnLayoutChangeListener { _, left, _, right, _, _, _, _, _ ->
             val widthDp = (right - left) / density
             val columns = if (NovelTranslationSheetLayoutPolicy.useTwoColumns(
                 widthDp, context.resources.configuration.fontScale,
             )) 2 else 1
-            if (columns != lastColumns) grid.post { rebuild(columns) }
+            if (columns != lastColumns) grid.post { if (columns != lastColumns) rebuild(columns) }
         }
         return grid
     }
@@ -180,7 +231,7 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
 
 internal object NovelTranslationSheetLayoutPolicy {
     fun useTwoColumns(availableWidthDp: Float, fontScale: Float): Boolean =
-        availableWidthDp >= 516f * fontScale.coerceAtLeast(1f)
+        availableWidthDp >= 310f * fontScale.coerceAtLeast(1f)
 }
 
 
