@@ -14,18 +14,12 @@ import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.tracker.ui.feed.model.FeedItem
 import kotlin.math.abs
-import kotlin.math.tanh
 
 /**
- * Swipe right → delete a single feed entry, swipe left → mark it as read.
- * The reveal fills the row's full height and width with a rounded (stadium) pill + centered icon and
- * fires a haptic tick when the action threshold is crossed. An already-read entry can't be marked
- * read: its swipe rubber-bands to a shallow point and greys out, and the action never fires.
- *
- * Mark-as-read never "commits" the swipe in ItemTouchHelper's sense (a commit means the row is
- * going away, and re-inserting it fights the recover animation, leaving the row stuck mid-flight).
- * Instead the left swipe is undismissable and the action fires on release once the drag has passed
- * the threshold, so the row always settles back with the standard smooth animation.
+ * Swipe right deletes the feed entry; swipe left toggles its notification Read/Unread state.
+ * Left gestures never dismiss rows in ItemTouchHelper, because re-inserting a changed row during
+ * recover animation can leave it offset. The action fires on release at the threshold instead.
+ * The swipe-start state is retained while the row animates back, even if the feed observer rebinds.
  */
 class FeedSwipeCallback(
 	context: Context,
@@ -36,21 +30,18 @@ class FeedSwipeCallback(
 
 	private val deleteIcon = ContextCompat.getDrawable(context, R.drawable.ic_delete)?.mutate()
 	private val readIcon = ContextCompat.getDrawable(context, R.drawable.ic_eye_check)?.mutate()
+	private val unreadIcon = ContextCompat.getDrawable(context, R.drawable.ic_eye_off)?.mutate()
 
 	// fixed colors on purpose: the reveal should look identical in every theme, light or dark
 	private val deleteBg = 0xFFD32F2F.toInt()
 	private val readBg = 0xFF1976D2.toInt()
-	private val deleteIconTint = Color.WHITE
-	private val readIconTint = Color.WHITE
-	private val disabledBg = 0xFF757575.toInt()
-	private val disabledIconTint = 0xFFE0E0E0.toInt()
+	private val unreadBg = 0xFF995C00.toInt()
 
 	private var hapticFired = false
-	private var rejectHapticFired = false
 	private var lastDx = 0f
 	private var isCurrentItemRead = false
 	private var currentItem: FeedItem? = null
-	private var pendingMarkRead = false
+	private var pendingToggleRead = false
 
 	override fun getMovementFlags(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder): Int {
 		// only feed rows are swipeable, not the date headers
@@ -67,13 +58,13 @@ class FeedSwipeCallback(
 	): Boolean = false
 
 	override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float {
-		// A leftward swipe (mark read) never commits — the action fires on release instead,
+		// A leftward read/unread toggle never commits — the action fires on release instead,
 		// letting the row settle back with the standard recover animation.
 		return if (lastDx < 0f) 3f else 0.4f
 	}
 
 	// a fling can commit a swipe via escape velocity even below the distance threshold,
-	// so block it for leftward (mark read) swipes too
+	// so block it for leftward read/unread swipes too
 	override fun getSwipeEscapeVelocity(defaultValue: Float): Float =
 		if (lastDx < 0f) Float.MAX_VALUE else super.getSwipeEscapeVelocity(defaultValue)
 
@@ -98,16 +89,16 @@ class FeedSwipeCallback(
 			// A read chapter may still have an unread feed notification. Use the log state.
 			isCurrentItemRead = currentItem?.isUnread == false
 		} else if (actionState == ItemTouchHelper.ACTION_STATE_IDLE) {
-			// finger lifted: fire mark-as-read if the drag was past the threshold at release
-			if (pendingMarkRead) {
+			// Fire the read/unread toggle on release, not on a destructive swipe commit.
+			if (pendingToggleRead) {
 				currentItem?.let { onAction(it, true) }
 			}
-			pendingMarkRead = false
+			pendingToggleRead = false
 		}
 	}
 
 	override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-		// only delete can commit; mark-as-read is handled on release in onSelectedChanged
+		// Only delete commits. Read/unread toggles fire on release in onSelectedChanged.
 		if (direction != ItemTouchHelper.LEFT) {
 			viewHolder.getItem(FeedItem::class.java)?.let { onAction(it, false) }
 		}
@@ -123,65 +114,33 @@ class FeedSwipeCallback(
 		isCurrentlyActive: Boolean,
 	) {
 		val view = viewHolder.itemView
-		var effectiveDx = dX
 		if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE && dX != 0f) {
 			lastDx = dX
-			val isRead = dX < 0f
-			// snapshot, not the live item: after a committed mark-read the row rebinds with
-			// isNew=false while this holder is still animating, and re-querying would flip the
-			// visual into the grey "rejected" state mid-flight
-			val isAlreadyRead = isRead && isCurrentItemRead
-			if (isAlreadyRead) {
-				// smooth rubber-band toward a shallow limit (tanh is monotonic with f(0)=0).
-				// Applied both while dragging AND during the settle animation: ItemTouchHelper's
-				// recover animation interpolates from its internal *raw* dX (not the clamped
-				// translation), so leaving the settle path unclamped makes the row jump out to the
-				// raw offset on release and then vanish. Clamping unconditionally keeps the visual
-				// position continuous from drag through settle.
-				val limit = view.width * 0.22f
-				effectiveDx = -(limit * tanh(abs(dX) / limit))
-				if (isCurrentlyActive) {
-					// error buzz once the user pushes clearly past the rubber-band limit
-					if (abs(dX) > limit * 2f && !rejectHapticFired) {
-						view.hapticFeedback(HapticEffect.REJECT)
-						rejectHapticFired = true
-					}
-				}
-			}
+			val swipeLeft = dX < 0f
+			// Snapshot the swipe-start state. Rebinding during the settle animation must not
+			// flip the revealed icon from Mark read to Mark unread (or vice versa).
+			val markUnread = swipeLeft && isCurrentItemRead
 			bgPaint.color = when {
-				isAlreadyRead -> disabledBg
-				isRead -> readBg
+				markUnread -> unreadBg
+				swipeLeft -> readBg
 				else -> deleteBg
 			}
 			val top = view.top.toFloat()
 			val bottom = view.bottom.toFloat()
-			val left: Float
-			val right: Float
-			if (isRead) {
-				// swipe left reveals the right side
-				left = view.right + effectiveDx
-				right = view.right.toFloat()
-			} else {
-				// swipe right reveals the left side
-				left = view.left.toFloat()
-				right = view.left + effectiveDx
-			}
-			if (right - left > 0f) {
-				// full-height stadium pill filling the revealed region
+			val left = if (swipeLeft) view.right + dX else view.left.toFloat()
+			val right = if (swipeLeft) view.right.toFloat() else view.left + dX
+			if (right > left) {
 				val radius = (bottom - top) / 2f
 				c.drawRoundRect(left, top, right, bottom, radius, radius, bgPaint)
-
-				val icon = if (isRead) readIcon else deleteIcon
+				val icon = when {
+					markUnread -> unreadIcon
+					swipeLeft -> readIcon
+					else -> deleteIcon
+				}
 				if (icon != null && right - left >= icon.intrinsicWidth) {
-					val progress = (abs(effectiveDx) / view.width).coerceIn(0f, 1f)
+					val progress = (abs(dX) / view.width).coerceIn(0f, 1f)
 					icon.alpha = ((progress * 3f).coerceAtMost(1f) * 255).toInt()
-					icon.setTint(
-						when {
-							isAlreadyRead -> disabledIconTint
-							isRead -> readIconTint
-							else -> deleteIconTint
-						},
-					)
+					icon.setTint(Color.WHITE)
 					val cx = ((left + right) / 2f).toInt()
 					val cy = ((top + bottom) / 2f).toInt()
 					icon.setBounds(
@@ -193,32 +152,26 @@ class FeedSwipeCallback(
 					icon.draw(c)
 				}
 			}
-
-			if (!isAlreadyRead) {
-				val passedThreshold = abs(dX) >= 0.4f * view.width
-				if (isCurrentlyActive) {
-					if (isRead) {
-						pendingMarkRead = passedThreshold
-					}
-					if (passedThreshold && !hapticFired) {
-						view.hapticFeedback(HapticEffect.CONFIRM)
-						hapticFired = true
-					} else if (!passedThreshold) {
-						hapticFired = false
-					}
+			val passedThreshold = abs(dX) >= 0.4f * view.width
+			if (isCurrentlyActive) {
+				if (swipeLeft) pendingToggleRead = passedThreshold
+				if (passedThreshold && !hapticFired) {
+					view.hapticFeedback(HapticEffect.CONFIRM)
+					hapticFired = true
+				} else if (!passedThreshold) {
+					hapticFired = false
 				}
 			}
 		}
-		super.onChildDraw(c, recyclerView, viewHolder, effectiveDx, dY, actionState, isCurrentlyActive)
+		super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
 	}
 
 	override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
 		super.clearView(recyclerView, viewHolder)
 		hapticFired = false
-		rejectHapticFired = false
 		lastDx = 0f
 		isCurrentItemRead = false
-		// currentItem/pendingMarkRead are reset in onSelectedChanged(IDLE) at release; resetting
+		// currentItem/pendingToggleRead are reset in onSelectedChanged(IDLE) at release; resetting
 		// them here too would clobber a new gesture that starts while this row is still settling
 	}
 
