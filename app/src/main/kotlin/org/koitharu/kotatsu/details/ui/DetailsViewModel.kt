@@ -102,6 +102,7 @@ import org.koitharu.kotatsu.stats.data.StatsRepository
 import javax.inject.Inject
 import java.time.ZoneId
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
+import org.koitharu.kotatsu.details.data.ChapterProgressRepository
 import org.koitharu.kotatsu.details.ui.model.ChapterRange
 
 data class DetailsRelatedUiState(
@@ -140,6 +141,7 @@ class DetailsViewModel @Inject constructor(
 	mangaRepositoryFactory: MangaRepository.Factory,
 	chapterListOptionsStore: ChapterListOptionsStore,
 	chapterPersonalRepository: ChapterPersonalRepository,
+	chapterProgressRepository: ChapterProgressRepository,
 ) : ChaptersPagesViewModel(
 	settings = settings,
 	interactor = interactor,
@@ -156,6 +158,7 @@ class DetailsViewModel @Inject constructor(
 	mangaRepositoryFactory = mangaRepositoryFactory,
 	chapterListOptionsStore = chapterListOptionsStore,
 	chapterPersonalRepository = chapterPersonalRepository,
+	chapterProgressRepository = chapterProgressRepository,
 ) {
 
 	private val rangeExpansion = savedStateHandle.getStateFlow<HashMap<String, Boolean>>("chapter_range_expansion", hashMapOf())

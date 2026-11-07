@@ -287,9 +287,9 @@ class ChaptersFragment :
 		}
 		val listener = findParentCallback(ReaderNavigationCallback::class.java)
 		if (listener != null && listener.onChapterSelected(item.chapter)) dismissParentDialog() else {
-			val state = if (item.isCurrent && viewModel.readingState.value?.chapterId == item.chapter.id) viewModel.readingState.value!! else ReaderState(item.chapter.id, 0, 0)
 			val manga = viewModel.getMangaOrNull() ?: return; val context = view.context
 			viewLifecycleOwner.lifecycleScope.launch {
+				val state = viewModel.getChapterResumeState(item)
 				val openReader = { peek: Boolean -> router.openReader(ReaderIntent.Builder(context).manga(manga).favouriteSpace(viewModel.favouriteSpace.dbValue).state(state).apply { if (peek) peek() }.build()) }
 				when (viewModel.getChapterOpenMode(item.chapter.id)) {
 					ChaptersPagesViewModel.ChapterOpenMode.NORMAL -> openReader(false)

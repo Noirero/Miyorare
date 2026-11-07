@@ -378,6 +378,7 @@ class FavouritesListViewModel @Inject constructor(
 			val enrichmentKey = CardEnrichmentKey(
 				revision = cardEnrichmentRevision.get(),
 				ids = scanned.map { it.id },
+                legacyNovelIds = scanned.asSequence().filter { it.isNovelContent }.map { it.id }.toSet(),
 				includeUnread = display.options.showUnread,
 				includeDownloaded = usesSpaceScopedDownloadStatus && display.options.showDownloaded,
 			)
@@ -467,6 +468,7 @@ class FavouritesListViewModel @Inject constructor(
 		val enrichmentKey = CardEnrichmentKey(
 			revision = cardEnrichmentRevision.get(),
 			ids = visible.map { it.id },
+            legacyNovelIds = visible.asSequence().filter { it.isNovelContent }.map { it.id }.toSet(),
 			includeUnread = display.options.showUnread,
 			includeDownloaded = usesSpaceScopedDownloadStatus &&
 				display.options.showDownloaded &&
@@ -506,6 +508,13 @@ class FavouritesListViewModel @Inject constructor(
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
 	fun setWorkActive(active: Boolean) = listWorkScope.setActive(active)
+
+	/** Revalidate badges after returning from Reader/Details; the list VM survives navigation. */
+	fun refreshReadingStatusOnResume() {
+		invalidateCardEnrichment()
+		// Force one presentation emission without invalidating library paging/search state.
+		cardEnrichment.value = null
+	}
 
 	override fun onRefresh() {
 		invalidateCardEnrichment()
@@ -879,7 +888,9 @@ class FavouritesListViewModel @Inject constructor(
 			try {
 				val deltaSnapshot = PerformanceDiagnostics.measure("repository", "favourites_history_unread") { unreadCounter.getSnapshot(
 					mangaIds = deltaIds,
-					includeUnread = key.includeUnread,
+					includeUnread = key.includeUnread || settings.progressIndicatorMode == org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.CHAPTERS_READ,
+					space = favouriteSpace,
+                    legacyNovelIds = key.legacyNovelIds.intersect(deltaIds.toSet()),
 				) }
 				val snapshot = previous?.snapshot?.merge(deltaSnapshot) ?: deltaSnapshot
 				val deltaDownloadedIds = if (key.includeDownloaded) {
@@ -1287,6 +1298,7 @@ class FavouritesListViewModel @Inject constructor(
 	private data class CardEnrichmentKey(
 		val revision: Long,
 		val ids: List<Long>,
+		val legacyNovelIds: Set<Long>,
 		val includeUnread: Boolean,
 		val includeDownloaded: Boolean,
 	)

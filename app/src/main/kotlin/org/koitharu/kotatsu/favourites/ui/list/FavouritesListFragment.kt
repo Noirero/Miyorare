@@ -218,6 +218,7 @@ class FavouritesListFragment : MangaListFragment() {
 		super.onResume()
 		listWorkOwner.onResume()
 		updateWorkActivity()
+		viewModel.refreshReadingStatusOnResume()
 		scheduleCoverPrefetch(viewModel.content.value)
 	}
 

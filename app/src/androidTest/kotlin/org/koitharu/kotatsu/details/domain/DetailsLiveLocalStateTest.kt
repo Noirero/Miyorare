@@ -34,6 +34,7 @@ import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
+import org.koitharu.kotatsu.details.data.ChapterProgressRepository
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
@@ -72,6 +73,7 @@ class DetailsLiveLocalStateTest {
 	@Inject lateinit var mangaDataRepository: MangaDataRepository
 	@Inject lateinit var repositories: MangaRepository.Factory
 	@Inject lateinit var chapterPersonalRepository: ChapterPersonalRepository
+	@Inject lateinit var chapterProgressRepository: ChapterProgressRepository
 
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 	private val events = MutableSharedFlow<LocalManga?>()
@@ -448,6 +450,7 @@ class DetailsLiveLocalStateTest {
 	private inner class TestViewModel(space: FavouriteSpace) : ChaptersPagesViewModel(
 		settings, interactor, bookmarksRepository, historyRepository, scheduler, destinations, space,
 		deleteLocal, events, mangaDataRepository, repositories, chapterPersonalRepository,
+		chapterProgressRepository,
 	) {
 		val reloads = AtomicInteger()
 		override fun reload() { reloads.incrementAndGet() }

@@ -52,6 +52,12 @@ value class ReaderIntent private constructor(
 			intent.putExtra(EXTRA_STATE, state)
 		}
 
+		/** Distinguish History resume from explicit bookmark/page intents. */
+		fun historyState(state: ReaderState?) = apply {
+			state(state)
+			intent.putExtra(EXTRA_HISTORY_RESUME, true)
+		}
+
 		/**
 		 * Carries Advanced Library Group context without changing the manga/chapter identity.
 		 * [space] is the FavouriteSpace database value when known; keeping it as an Int avoids a
@@ -79,6 +85,7 @@ value class ReaderIntent private constructor(
 	companion object {
 		const val ACTION_MANGA_READ = "${BuildConfig.APPLICATION_ID}.action.READ_MANGA"
 		const val EXTRA_STATE = "state"
+		const val EXTRA_HISTORY_RESUME = "history_resume"
 		const val EXTRA_BRANCH = "branch"
 		const val EXTRA_INCOGNITO = "incognito"
 		const val EXTRA_PEEK = "peek"

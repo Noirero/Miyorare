@@ -475,6 +475,7 @@ abstract class MangaDao {
 			AND NOT EXISTS(SELECT * FROM private_favourites WHERE private_favourites.manga_id == manga.manga_id AND private_favourites.deleted_at = 0)
 			AND NOT EXISTS(SELECT * FROM bookmarks WHERE bookmarks.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM chapter_personal WHERE chapter_personal.manga_id == manga.manga_id)
+            AND NOT EXISTS(SELECT * FROM chapter_progress WHERE chapter_progress.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM suggestions WHERE suggestions.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM scrobblings WHERE scrobblings.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM local_index WHERE local_index.manga_id == manga.manga_id)

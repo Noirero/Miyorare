@@ -21,6 +21,7 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.MangaPrefsEntity
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.migrations.Migration52To53
+import org.koitharu.kotatsu.core.db.migrations.Migration53To54
 import kotlinx.coroutines.test.runTest
 
 @RunWith(AndroidJUnit4::class)
@@ -87,11 +88,12 @@ class ReaderCustomTintRuntimeTest {
             for (column in listOf("mode", "alpha", "blue", "green", "red", "enabled")) {
                 sql.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_$column")
             }
+            sql.execSQL("DROP TABLE chapter_progress")
             sql.execSQL("DROP TABLE room_master_table")
             sql.version = 52
         }
         val migrated = Room.databaseBuilder(context, MangaDatabase::class.java, name)
-            .addMigrations(Migration52To53()).build()
+            .addMigrations(Migration52To53(), Migration53To54()).build()
         try {
             val pref = checkNotNull(migrated.getPreferencesDao().find(manga.id))
             assertEquals(0.2f, pref.cfBrightness, 0f)

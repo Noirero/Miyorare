@@ -57,6 +57,7 @@ import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.prefs.ReaderJourneyCelebrationMode
 import org.koitharu.kotatsu.core.prefs.ReaderMode
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
@@ -329,6 +330,10 @@ class ReaderActivity :
     }
 
     override fun onPause() {
+        // Keep EPUB's pre-existing exact-offset lifecycle untouched.
+        if (viewModel.getMangaOrNull()?.isNovelContent != true) {
+            viewModel.saveCurrentState(readerManager.currentReader?.getCurrentState())
+        }
         super.onPause()
         viewModel.onPause()
     }
@@ -570,7 +575,7 @@ class ReaderActivity :
     }
 
     override fun onChapterSelected(chapter: MangaChapter): Boolean {
-        jumpToChapter(chapter.id, page = 0, scroll = 0, isPeekPreferred = false)
+        jumpToChapter(chapter.id, page = 0, scroll = 0, isPeekPreferred = false, resume = true)
         return true
     }
 
@@ -611,27 +616,27 @@ class ReaderActivity :
      * as usual, jumps away from the saved progress either peek (keeping history untouched) or
      * ask the user. [isPeekPreferred] (bookmarks) resolves ambiguous jumps to a silent peek.
      */
-    private fun jumpToChapter(chapterId: Long, page: Int, scroll: Int, isPeekPreferred: Boolean) {
+    private fun jumpToChapter(chapterId: Long, page: Int, scroll: Int, isPeekPreferred: Boolean, resume: Boolean = false) {
         lifecycleScope.launch {
             when (viewModel.getChapterOpenMode(chapterId)) {
                 ChaptersPagesViewModel.ChapterOpenMode.NORMAL -> {
                     viewModel.setPeekMode(false)
-                    viewModel.switchChapter(chapterId, page, scroll)
+                    viewModel.switchChapter(chapterId, page, scroll, resume = resume)
                 }
 
                 ChaptersPagesViewModel.ChapterOpenMode.ASK -> if (isPeekPreferred) {
                     viewModel.setPeekMode(true)
-                    viewModel.switchChapter(chapterId, page, scroll)
+                    viewModel.switchChapter(chapterId, page, scroll, resume = resume)
                 } else {
                     showChapterJumpDialog(
                         activity = this@ReaderActivity,
                         onPeek = {
                             viewModel.setPeekMode(true)
-                            viewModel.switchChapter(chapterId, page, scroll)
+                            viewModel.switchChapter(chapterId, page, scroll, resume = resume)
                         },
                         onMoveProgress = {
                             viewModel.setPeekMode(false)
-                            viewModel.switchChapter(chapterId, page, scroll)
+                            viewModel.switchChapter(chapterId, page, scroll, resume = resume)
                         },
                         onDisable = { viewModel.disableChapterJumpDialog() },
                     )
