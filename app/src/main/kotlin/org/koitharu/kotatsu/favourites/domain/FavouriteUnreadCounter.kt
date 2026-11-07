@@ -94,7 +94,7 @@ class FavouriteUnreadCounter @Inject constructor(
         // Novel/EPUB reader positions are not stored in chapter_progress. Preserve the
         // old History-index indicator for those titles, including its exact SQL count.
         val legacyHistories = histories.values.filter { it.mangaId in legacyNovelIds }
-        val legacyUnread = legacyHistories.chunked(DB_QUERY_BATCH_SIZE)
+        val legacyUnread = legacyHistories.chunked(DB_HISTORY_QUERY_BATCH_SIZE)
             .flatMap { chunk -> database.getChaptersDao().findUnreadAfterCurrent(
                 mangaIds = chunk.map { it.mangaId }, chapterIds = chunk.map { it.chapterId },
             ) }
@@ -141,6 +141,8 @@ class FavouriteUnreadCounter @Inject constructor(
 
     private companion object {
         const val DB_QUERY_BATCH_SIZE = 500
+        // Two IN-list parameters per History entry: <= 400 + 400 on older SQLite.
+        const val DB_HISTORY_QUERY_BATCH_SIZE = 400
     }
 }
 
