@@ -38,7 +38,30 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
     // Shared palette for the source/target language pickers; no parallel color mapping.
     val languagePickerAccent: Int get() = accent
     val languagePickerOutline: Int get() = outline
-    fun languagePickerBadgeFill(): Int = ColorUtils.blendARGB(surfaceHigh, accent, 0.20f)
+    fun languagePickerBadgeFill(): Int = ColorUtils.blendARGB(surfaceHigh, accent, 0.18f)
+    val languagePickerDivider: Int get() = ColorUtils.setAlphaComponent(outline, 75)
+
+    fun languagePickerDialogBackground(): GradientDrawable = gradient(
+        dp(28),
+        modern?.surfaceGradientStart ?: ColorUtils.blendARGB(surfaceHigh, accent, 0.045f),
+        modern?.surfaceGradientEnd ?: surface,
+        borderAccent, 0.43f,
+    )
+
+    fun languagePickerSearchBackground(focused: Boolean): GradientDrawable = gradient(
+        dp(26),
+        ColorUtils.blendARGB(surfaceHigh, accent, if (focused) 0.12f else 0.045f),
+        ColorUtils.blendARGB(surfaceLow, accent, 0.035f),
+        if (focused) accent else outline,
+        if (focused) 0.75f else 0.50f,
+    )
+
+    fun languagePickerSelectedBackground(): GradientDrawable = gradient(
+        dp(18),
+        ColorUtils.blendARGB(surfaceHigh, accent, 0.17f),
+        ColorUtils.blendARGB(surfaceLow, accent, 0.07f),
+        borderAccent, 0.72f,
+    )
 
     fun dp(value: Int) = (value * density + .5f).toInt()
 

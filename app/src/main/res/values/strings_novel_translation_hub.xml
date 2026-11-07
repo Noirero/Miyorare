@@ -28,6 +28,7 @@
     <string name="novel_translation_no_matching_languages">No matching languages</string>
     <string name="novel_translation_language_selected">Selected</string>
     <string name="novel_translation_search_language">Search languages</string>
+    <string name="novel_translation_clear_search">Clear language search</string>
     <string name="novel_translation_choose_source">Choose source language</string>
     <string name="novel_translation_choose_target">Choose target language</string>
     <string name="novel_translation_custom_language">Other language code…</string>

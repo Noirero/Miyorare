@@ -13,6 +13,20 @@ internal object NovelTranslationLanguagePickerModel {
     // Use flags only for narrowly-associated languages or explicit locale regions.
     // English, Arabic, Spanish, etc. intentionally retain a language-code badge.
     private val regionalFlags = mapOf(
+        "af" to "🇿🇦",
+        "sq" to "🇦🇱",
+        "am" to "🇪🇹",
+        "hy" to "🇦🇲",
+        "az" to "🇦🇿",
+        "bs" to "🇧🇦",
+        "bg" to "🇧🇬",
+        "ga" to "🇮🇪",
+        "it" to "🇮🇹",
+        "kn" to "🇮🇳",
+        "kk" to "🇰🇿",
+        "km" to "🇰🇭",
+        "ky" to "🇰🇬",
+        "lo" to "🇱🇦",
         "id" to "🇮🇩",
         "ja" to "🇯🇵",
         "ko" to "🇰🇷",

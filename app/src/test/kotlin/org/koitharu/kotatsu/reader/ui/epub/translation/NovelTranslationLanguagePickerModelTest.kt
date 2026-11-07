@@ -26,10 +26,25 @@ class NovelTranslationLanguagePickerModelTest {
         assertEquals(NovelLanguageSymbol.CodeBadge("JV"), NovelTranslationLanguagePickerModel.symbol("jv"))
         assertEquals(NovelLanguageSymbol.CodeBadge("KU"), NovelTranslationLanguagePickerModel.symbol("ku"))
         assertEquals(NovelLanguageSymbol.CodeBadge("EU"), NovelTranslationLanguagePickerModel.symbol("eu"))
+        assertEquals(NovelLanguageSymbol.CodeBadge("LA"), NovelTranslationLanguagePickerModel.symbol("la"))
     }
 
     @Test
     fun onlyConservativeLanguagesAndExplicitRegionsReceiveFlags() {
+        assertEquals(NovelLanguageSymbol.Flag("🇿🇦"), NovelTranslationLanguagePickerModel.symbol("af"))
+        assertEquals(NovelLanguageSymbol.Flag("🇦🇱"), NovelTranslationLanguagePickerModel.symbol("sq"))
+        assertEquals(NovelLanguageSymbol.Flag("🇪🇹"), NovelTranslationLanguagePickerModel.symbol("am"))
+        assertEquals(NovelLanguageSymbol.Flag("🇦🇲"), NovelTranslationLanguagePickerModel.symbol("hy"))
+        assertEquals(NovelLanguageSymbol.Flag("🇦🇿"), NovelTranslationLanguagePickerModel.symbol("az"))
+        assertEquals(NovelLanguageSymbol.Flag("🇧🇦"), NovelTranslationLanguagePickerModel.symbol("bs"))
+        assertEquals(NovelLanguageSymbol.Flag("🇧🇬"), NovelTranslationLanguagePickerModel.symbol("bg"))
+        assertEquals(NovelLanguageSymbol.Flag("🇮🇪"), NovelTranslationLanguagePickerModel.symbol("ga"))
+        assertEquals(NovelLanguageSymbol.Flag("🇮🇹"), NovelTranslationLanguagePickerModel.symbol("it"))
+        assertEquals(NovelLanguageSymbol.Flag("🇮🇳"), NovelTranslationLanguagePickerModel.symbol("kn"))
+        assertEquals(NovelLanguageSymbol.Flag("🇰🇿"), NovelTranslationLanguagePickerModel.symbol("kk"))
+        assertEquals(NovelLanguageSymbol.Flag("🇰🇭"), NovelTranslationLanguagePickerModel.symbol("km"))
+        assertEquals(NovelLanguageSymbol.Flag("🇰🇬"), NovelTranslationLanguagePickerModel.symbol("ky"))
+        assertEquals(NovelLanguageSymbol.Flag("🇱🇦"), NovelTranslationLanguagePickerModel.symbol("lo"))
         assertEquals(NovelLanguageSymbol.Flag("🇮🇩"), NovelTranslationLanguagePickerModel.symbol("id"))
         assertEquals(NovelLanguageSymbol.Flag("🇯🇵"), NovelTranslationLanguagePickerModel.symbol("JA"))
         assertEquals(NovelLanguageSymbol.Flag("🇰🇷"), NovelTranslationLanguagePickerModel.symbol("ko"))
