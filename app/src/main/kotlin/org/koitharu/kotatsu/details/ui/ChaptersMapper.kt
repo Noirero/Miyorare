@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
+import org.koitharu.kotatsu.details.data.ChapterProgressEntity
 
 fun MangaDetails.mapChapters(
 	currentChapterId: Long,
@@ -22,6 +23,8 @@ fun MangaDetails.mapChapters(
 	isGrid: Boolean,
 	isDownloadedOnly: Boolean,
 	readOverrides: Map<Long, Boolean> = emptyMap(),
+	progressByKey: Map<ChapterPersonalKey, ChapterProgressEntity> = emptyMap(),
+	currentPage: Int? = null,
 ): List<ChapterListItem> {
 	// Some third-party sources occasionally return the exact same chapter more than once.
 	// Remove only exact chapter identities here: different chapters that merely collide on `id`
@@ -46,55 +49,52 @@ fun MangaDetails.mapChapters(
 	} else {
 		null
 	}
-	var isUnread = currentChapterId !in ids
+
 	if (!isDownloadedOnly || local?.manga?.chapters == null) {
 		for (chapter in remoteChapters) {
-			// CBZ-only downloads intentionally have no index.json. Their locally parsed chapter IDs are
-			// therefore not guaranteed to equal the remote source IDs. Match by ID first, then by the
-			// chapter's visible/download-file identity so an existing CBZ is recognised as downloaded.
-			// Keep local IDs that still have a direct remote counterpart reserved for that counterpart;
-			// otherwise an earlier fuzzy match can consume the local chapter and later produce the exact
-			// same ChapterListItem twice, which violates Compose LazyColumn's unique-key requirement.
+			// Keep source identity stable while displaying a downloaded artifact.
 			val local = localMap?.remove(chapter.id)
 				?: localMap?.findAndRemoveEquivalent(chapter, reservedIds = remoteIds)
 			val isCurrent = chapter.id == currentChapterId
-			// Keep the source chapter id/title/number stable while ownership flips between remote and
-			// downloaded. Only the physical locator/source comes from the local artifact. This prevents
-			// download/delete reconciliation from replacing the row identity (and its personal metadata)
-			// with a transient local-only chapter id while still letting Reader open the local file.
 			val presentedChapter = if (local != null) {
 				chapter.copy(url = local.url, source = local.source)
-			} else {
-				chapter
-			}
+			} else chapter
+			val key = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById)
+			val saved = progressByKey[key]
 			val readOverride = readOverrides[local?.id] ?: readOverrides[chapter.id]
+			val isRead = readOverride ?: (saved != null || isCurrent)
 			result += presentedChapter.toListItem(
 				isCurrent = isCurrent,
-				isUnread = readOverride?.not() ?: (isUnread && !isCurrent),
-				isNew = !isCurrent && isUnread && result.size >= newFrom,
+				isUnread = !isRead,
+				isNew = !isCurrent && !isRead && result.size >= newFrom,
 				isDownloaded = local != null,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
-			).copy(personalKey = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById))
-			if (isCurrent) {
-				isUnread = true
-			}
+			).copy(
+				personalKey = key,
+				lastReadPage = saved?.page ?: currentPage?.takeIf { isCurrent },
+				lastReadTotalPages = saved?.totalPages,
+			)
 		}
 	}
 	if (!localMap.isNullOrEmpty()) {
 		for (chapter in localMap.values) {
 			val isCurrent = chapter.id == currentChapterId
+			val key = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById)
+			val saved = progressByKey[key]
+			val isRead = readOverrides[chapter.id] ?: (saved != null || isCurrent)
 			result += chapter.toListItem(
 				isCurrent = isCurrent,
-				isUnread = readOverrides[chapter.id]?.not() ?: (isUnread && !isCurrent),
+				isUnread = !isRead,
 				isNew = false,
 				isDownloaded = !isLocal,
 				isBookmarked = chapter.id in bookmarked,
 				isGrid = isGrid,
-			).copy(personalKey = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById))
-			if (isCurrent) {
-				isUnread = true
-			}
+			).copy(
+				personalKey = key,
+				lastReadPage = saved?.page ?: currentPage?.takeIf { isCurrent },
+				lastReadTotalPages = saved?.totalPages,
+			)
 		}
 	}
 	return result

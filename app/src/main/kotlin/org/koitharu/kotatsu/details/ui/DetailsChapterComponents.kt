@@ -1428,7 +1428,7 @@ internal fun InlineChapterCard(
 						)
 					}
 				}
-				item.description?.takeIf { it.isNotBlank() }?.let { description ->
+				item.getDescription(context.resources).takeIf { it.isNotBlank() }?.let { description ->
 					Spacer(Modifier.height(if (palette.isModern) 2.dp else 3.dp))
 					Text(
 						text = description,

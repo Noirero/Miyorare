@@ -61,7 +61,7 @@ fun chapterListItemAD(
 	bind {
 		binding.textViewTitle.text = item.getTitle(context.resources)
 		binding.textViewTitle.isSelected = true
-		binding.textViewDescription.textAndVisible = item.description
+		binding.textViewDescription.textAndVisible = item.getDescription(context.resources)
 		if (item.isUnread) {
 			binding.textViewTitle.setTextColor(context.getThemeColorStateList(android.R.attr.textColorPrimary))
 			binding.textViewDescription.setTextColor(context.getThemeColorStateList(materialR.attr.colorOutline))
