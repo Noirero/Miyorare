@@ -101,6 +101,10 @@ class ChapterProgressRepository @Inject constructor(
                 renewedVisits[pageKey] == (stamp to visitToken)
             if (stamp != eventStamp && !continuesNewVisit) return@withLock
             if (stamp < 0 && !isNewVisit) return@withLock
+            val activeVisit = renewedVisits[pageKey]
+            if (activeVisit != null && !isNewVisit && activeVisit != (stamp to visitToken) &&
+                !continuesNewVisit
+            ) return@withLock
             if (settings.getChapterReadOverrides(manga.id)[state.chapterId] == false) return@withLock
             database.withTransaction {
                 if (!database.getMangaDao().contains(manga.id)) {
@@ -118,11 +122,14 @@ class ChapterProgressRepository @Inject constructor(
                     totalPages = pages,
                 ))
             }
-            if (eventStamp < 0 && isNewVisit) {
-                // Both the new record and its generation are now committed in-order.
-                settings.completeChapterPageReset(manga.id, state.chapterId, eventStamp)
-                renewedVisits[pageKey] = (-eventStamp) to visitToken
-                resetVersion.update { it + 1L }
+            if (isNewVisit && (eventStamp < 0 || renewedVisits.containsKey(pageKey))) {
+                // Every subsequent explicit Reader opening supersedes the previous visit token.
+                // Otherwise a late page event from an old Reader could overwrite this position.
+                renewedVisits[pageKey] = (if (eventStamp < 0) -eventStamp else stamp) to visitToken
+                if (eventStamp < 0) {
+                    settings.completeChapterPageReset(manga.id, state.chapterId, eventStamp)
+                    resetVersion.update { it + 1L }
+                }
             }
         }
     }

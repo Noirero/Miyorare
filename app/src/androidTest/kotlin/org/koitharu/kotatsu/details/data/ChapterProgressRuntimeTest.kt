@@ -120,6 +120,23 @@ class ChapterProgressRuntimeTest {
                 eventStamp = resetStamp, visitToken = 2L, isNewVisit = false,
             )
             assertEquals(3, repository.get(manga.id, FavouriteSpace.NORMAL, chapterA, 218L)?.page)
+
+            // A second genuine opening supersedes the first; delayed writes from the older
+            // Reader session (whether captured before or after reset completion) are rejected.
+            val committedStamp = settings.getChapterPageResetStamp(manga.id, 218L)
+            repository.record(
+                manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 4, 0), 71,
+                eventStamp = committedStamp, visitToken = 3L, isNewVisit = true,
+            )
+            repository.record(
+                manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 70, 0), 71,
+                eventStamp = resetStamp, visitToken = 2L, isNewVisit = false,
+            )
+            repository.record(
+                manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 70, 0), 71,
+                eventStamp = committedStamp, visitToken = 2L, isNewVisit = false,
+            )
+            assertEquals(4, repository.get(manga.id, FavouriteSpace.NORMAL, chapterA, 218L)?.page)
             assertEquals(11, repository.get(manga.id, FavouriteSpace.NORMAL, chapterB)?.page)
         } finally {
             settings.setChapterReadOverrides(manga.id, emptyMap())
