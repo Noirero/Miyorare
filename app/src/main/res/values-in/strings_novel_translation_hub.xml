@@ -25,6 +25,7 @@
     <string name="novel_translation_source">Dari</string>
     <string name="novel_translation_target">Ke</string>
     <string name="novel_translation_auto_detect">Deteksi otomatis</string>
+    <string name="novel_translation_search_language">Cari bahasa</string>
     <string name="novel_translation_choose_source">Pilih bahasa sumber</string>
     <string name="novel_translation_choose_target">Pilih bahasa tujuan</string>
     <string name="novel_translation_custom_language">Kode bahasa lain…</string>
