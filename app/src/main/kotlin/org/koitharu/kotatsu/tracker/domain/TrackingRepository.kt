@@ -146,6 +146,21 @@ class TrackingRepository @Inject constructor(
 		}
 	}
 
+	/**
+	 * Re-open selected feed notifications without rewinding actual manga reading history.
+	 * The feed's acknowledgement state and reader's chapter progress are separate concerns.
+	 */
+	suspend fun markLogsUnread(ids: Set<Long>): ReversibleHandle? {
+		if (ids.isEmpty()) return null
+		val logsDao = db.getTrackLogsDao()
+		val toChange = ids.filterTo(LinkedHashSet()) { logsDao.findById(it)?.isUnread == false }
+		if (toChange.isEmpty()) return null
+		db.withTransaction { logsDao.markUnread(toChange) }
+		return ReversibleHandle {
+			db.withTransaction { toChange.forEach { logsDao.markLogAsRead(it) } }
+		}
+	}
+
 	suspend fun clearCounters() = db.getTracksDao().clearCounters()
 
 	suspend fun gc() = db.withTransaction {
