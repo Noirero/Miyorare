@@ -186,9 +186,8 @@ class FeedViewModel @Inject constructor(
 	}
 
 	private suspend fun markAsReadImpl(item: FeedItem): ReversibleHandle {
-		// Snapshot notification and history before the acknowledgement. The history update below
-		// uses HistoryRepository's atomic monotonic tracking policy, never an unchecked jump.
-		val priorHistory = db.getHistoryDao().find(item.manga.id)
+		// Acknowledge Feed logs; HistoryRepository captures the exact pre/post history rows
+		// inside its own write transaction, including when Reader is updating concurrently.
 		val logsHandle = repository.markLogsRead(item.manga.id)
 
 		val allChapters = db.getChaptersDao().findAll(item.manga.id)
@@ -201,16 +200,11 @@ class FeedViewModel @Inject constructor(
 			val targetIndex = allChapters.indexOfFirst {
 				it.chapterId == latestFeedChapterEntity.chapterId
 			}
-			if (historyRepository.advanceFromTracking(
-					manga = item.manga.copy(chapters = mangaChapters),
-					chapters = mangaChapters,
-					targetIndex = targetIndex,
-				)
-			) {
-				db.getHistoryDao().find(item.manga.id)
-			} else {
-				null
-			}
+			historyRepository.advanceFromTrackingWithSnapshot(
+				manga = item.manga.copy(chapters = mangaChapters),
+				chapters = mangaChapters,
+				targetIndex = targetIndex,
+			)
 		} else {
 			null
 		}
@@ -221,8 +215,8 @@ class FeedViewModel @Inject constructor(
 			if (advancedHistory != null) {
 				db.withTransaction {
 					val historyDao = db.getHistoryDao()
-					if (historyDao.find(item.manga.id) == advancedHistory) {
-						if (priorHistory != null) historyDao.upsert(priorHistory)
+					if (historyDao.findIncludingDeleted(item.manga.id) == advancedHistory.applied) {
+						if (advancedHistory.previous != null) historyDao.upsert(advancedHistory.previous)
 						else historyDao.delete(item.manga.id)
 					}
 				}
