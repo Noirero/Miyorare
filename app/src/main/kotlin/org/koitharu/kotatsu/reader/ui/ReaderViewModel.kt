@@ -983,18 +983,19 @@ class ReaderViewModel @Inject constructor(
         val history = historyRepository.getOne(manga)
         if (history != null) {
             val chapter = manga.findChapterById(history.chapterId)
+            val resume = if (!manga.isNovelContent &&
+                settings.getChapterReadOverrides(manga.id)[history.chapterId] == false
+            ) ReaderState(history.chapterId, 0, 0) else ReaderState(history)
             when {
                 chapter == null -> if (!isLoaded) return null
-                // specified branch is requested
+                // A manual unread resets the chapter even when continuing with an explicit branch.
                 ReaderIntent.EXTRA_BRANCH in savedStateHandle -> return if (chapter.branch == requestedBranch) {
-                    ReaderState(history)
+                    resume
                 } else {
                     ReaderState(manga, requestedBranch)
                 }
 
-                else -> return if (!manga.isNovelContent &&
-                    settings.getChapterReadOverrides(manga.id)[history.chapterId] == false
-                ) ReaderState(history.chapterId, 0, 0) else ReaderState(history)
+                else -> return resume
             }
         }
 
