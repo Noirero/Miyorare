@@ -73,7 +73,7 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
         button.apply {
             isAllCaps = false
             cornerRadius = dp(if (main || kind == ButtonKind.SECONDARY) 29 else 20)
-            minHeight = dp(if (main) 54 else if (active || kind == ButtonKind.SEGMENT_IDLE) 44 else if (outlined) 48 else 44)
+            minHeight = dp(if (main) 54 else 48)
             insetTop = 0
             insetBottom = 0
             setTextColor(foreground)
@@ -167,7 +167,7 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
     private fun compactCard(name: CharSequence, iconRes: Int) = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         background = cardBackground()
-        minimumHeight = dp(94)
+        minimumHeight = dp(108)
         setPadding(dp(9), dp(8), dp(9), dp(8))
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
