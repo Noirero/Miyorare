@@ -299,6 +299,9 @@ class ChapterPersistenceRegressionTest {
         val chapterId = requireNotNull(SampleData.mangaDetails.chapters).first().id
         settings.setChapterReadOverride(906L, chapterId, true)
         val vm = create()
+        // This fixture defaults to unreadOnly=true; a read chapter is deliberately
+        // excluded by that filter, so disable it before asserting restored read state.
+        onMain { vm.chapterListOptions.value = vm.chapterListOptions.value.copy(unreadOnly = false) }
         withTimeout(5_000L) {
             vm.chapters.first { rows -> rows.any { it.chapter.id == chapterId && !it.isUnread } }
         }
