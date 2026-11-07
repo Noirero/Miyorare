@@ -77,8 +77,8 @@ fun MangaDetails.mapChapters(
 				isGrid = isGrid,
 			).copy(
 				personalKey = key,
-				lastReadPage = if (isNovel) null else (saved?.page ?: currentPage?.takeIf { isCurrent }),
-				lastReadTotalPages = if (isNovel) null else saved?.totalPages,
+				lastReadPage = if (isNovel || readOverride == false) null else (saved?.page ?: currentPage?.takeIf { isCurrent }),
+				lastReadTotalPages = if (isNovel || readOverride == false) null else saved?.totalPages,
 			)
 			if (isCurrent) legacyUnread = true
 		}
@@ -88,7 +88,8 @@ fun MangaDetails.mapChapters(
 			val isCurrent = chapter.id == currentChapterId
 			val key = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById)
 			val saved = progressByKey[key]
-			val isRead = readOverrides[chapter.id] ?: if (isNovel) (!legacyUnread || isCurrent) else (saved != null || isCurrent)
+			val readOverride = readOverrides[chapter.id]
+			val isRead = readOverride ?: if (isNovel) (!legacyUnread || isCurrent) else (saved != null || isCurrent)
 			result += chapter.toListItem(
 				isCurrent = isCurrent,
 				isUnread = !isRead,
@@ -98,8 +99,8 @@ fun MangaDetails.mapChapters(
 				isGrid = isGrid,
 			).copy(
 				personalKey = key,
-				lastReadPage = if (isNovel) null else (saved?.page ?: currentPage?.takeIf { isCurrent }),
-				lastReadTotalPages = if (isNovel) null else saved?.totalPages,
+				lastReadPage = if (isNovel || readOverride == false) null else (saved?.page ?: currentPage?.takeIf { isCurrent }),
+				lastReadTotalPages = if (isNovel || readOverride == false) null else saved?.totalPages,
 			)
 			if (isCurrent) legacyUnread = true
 		}

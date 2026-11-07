@@ -564,9 +564,12 @@ abstract class ChaptersPagesViewModel(
 
 	/** Chapter taps reuse their own saved position; the legacy global cursor remains authoritative. */
 	suspend fun getChapterResumeState(item: ChapterListItem): ReaderState {
+		val mangaId = mangaDetails.value?.id
+		if (mangaId != null && getMangaOrNull()?.isNovelContent != true &&
+			settings.getChapterReadOverrides(mangaId)[item.chapter.id] == false
+		) return ReaderState(item.chapter.id, 0, 0)
 		val current = readingState.value
 		if (item.isCurrent && current?.chapterId == item.chapter.id) return current
-		val mangaId = mangaDetails.value?.id
 		val position = if (mangaId != null && getMangaOrNull()?.isNovelContent != true) {
 			chapterProgressRepository.get(mangaId, favouriteSpace, item.personalKey)
 		} else null
@@ -622,6 +625,11 @@ abstract class ChaptersPagesViewModel(
 		if (item.isUnread == !isRead) return
 		settings.setChapterReadOverride(mangaId, chapterId, isRead)
 		chapterReadOverrides.update { current -> current + (chapterId to isRead) }
+		if (!isRead && getMangaOrNull()?.isNovelContent != true) {
+			launchJob(Dispatchers.IO) {
+				chapterProgressRepository.resetOnManualUnread(mangaId, favouriteSpace, item.personalKey, chapterId)
+			}
+		}
 	}
 
 	fun toggleChapterReadState(chapterId: Long) {

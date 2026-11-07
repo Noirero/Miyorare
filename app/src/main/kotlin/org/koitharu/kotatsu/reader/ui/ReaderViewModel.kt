@@ -217,6 +217,9 @@ class ReaderViewModel @Inject constructor(
 
     private suspend fun chapterResumeState(chapterId: Long): ReaderState {
         val manga = getMangaOrNull() ?: return ReaderState(chapterId, 0, 0)
+        if (!manga.isNovelContent && settings.getChapterReadOverrides(manga.id)[chapterId] == false) {
+            return ReaderState(chapterId, 0, 0)
+        }
         if (manga.isNovelContent) return ReaderState(chapterId, 0, 0)
         val chapter = chaptersLoader.peekChapter(chapterId) ?: return ReaderState(chapterId, 0, 0)
         val sourceChapters = mangaDetails.value?.sourceManga?.chapters.orEmpty()
@@ -989,7 +992,9 @@ class ReaderViewModel @Inject constructor(
                     ReaderState(manga, requestedBranch)
                 }
 
-                else -> return ReaderState(history)
+                else -> return if (!manga.isNovelContent &&
+                    settings.getChapterReadOverrides(manga.id)[history.chapterId] == false
+                ) ReaderState(history.chapterId, 0, 0) else ReaderState(history)
             }
         }
 
