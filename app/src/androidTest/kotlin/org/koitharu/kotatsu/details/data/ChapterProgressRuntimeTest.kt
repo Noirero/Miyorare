@@ -139,6 +139,12 @@ class ChapterProgressRuntimeTest {
                 manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 70, 0), 71,
                 eventStamp = committedStamp, visitToken = 2L, isNewVisit = false,
             )
+            // Out-of-order old initial events must not replace the latest visit token,
+            // even if that old event was itself an explicit chapter opening.
+            repository.record(
+                manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 70, 0), 71,
+                eventStamp = committedStamp, visitToken = 2L, isNewVisit = true,
+            )
             assertEquals(4, repository.get(manga.id, FavouriteSpace.NORMAL, chapterA, 218L)?.page)
             assertEquals(11, repository.get(manga.id, FavouriteSpace.NORMAL, chapterB)?.page)
             // The normal-library reset must not delete private-library last-page data.

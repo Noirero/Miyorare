@@ -102,9 +102,12 @@ class ChapterProgressRepository @Inject constructor(
             if (stamp != eventStamp && !continuesNewVisit) return@withLock
             if (stamp < 0 && !isNewVisit) return@withLock
             val activeVisit = renewedVisits[pageKey]
-            if (activeVisit != null && !isNewVisit && activeVisit != (stamp to visitToken) &&
-                !continuesNewVisit
-            ) return@withLock
+            if (activeVisit != null && (
+                // Token IDs increase for each explicit Reader opening in this process.
+                // A queued "new visit" from an older Reader must not supersede a later one.
+                (isNewVisit && visitToken <= activeVisit.second) ||
+                (!isNewVisit && activeVisit != (stamp to visitToken) && !continuesNewVisit)
+            )) return@withLock
             if (settings.getChapterReadOverrides(manga.id)[state.chapterId] == false) return@withLock
             database.withTransaction {
                 if (!database.getMangaDao().contains(manga.id)) {
