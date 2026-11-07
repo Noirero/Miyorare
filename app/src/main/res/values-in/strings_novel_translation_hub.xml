@@ -1,6 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="novel_translation_engine">Mesin terjemahan</string>
+    <string name="novel_translation_auto_compact">Terjemah otomatis</string>
+    <string name="novel_translation_auto_compact_summary">Saat bab dibuka</string>
+    <string name="novel_translation_context_compact_summary">Teks sekitar</string>
+    <string name="novel_translation_sheet_subtitle">Terjemahkan halaman atau bab sesuai kebutuhan.</string>
+    <string name="novel_translation_segment_translated">Terjemahan</string>
+    <string name="novel_translation_current_view_label">Tampilan bacaan</string>
+    <string name="novel_translation_view_pending">Tampilan pilihan akan diterapkan setelah diterjemahkan.</string>
+    <string name="novel_translation_language_pair">Terjemahkan dari → ke</string>
+    <string name="novel_translation_auto_summary">Terjemahkan setiap bab saat dibuka.</string>
+    <string name="novel_translation_view_info_title">Mode baca</string>
+    <string name="novel_translation_view_info_summary">Pilih Asli, Hanya terjemahan, atau Dwibahasa di atas.</string>
+    <string name="novel_translation_advanced_summary">Atur penyedia, konteks, dan perilaku terjemahan.</string>
     <string name="novel_translation_title">Terjemahan</string>
     <string name="novel_translation_online">Miyorare Online</string>
     <string name="novel_translation_online_summary">Online • Tidak perlu API key</string>
@@ -13,6 +25,10 @@
     <string name="novel_translation_source">Dari</string>
     <string name="novel_translation_target">Ke</string>
     <string name="novel_translation_auto_detect">Deteksi otomatis</string>
+    <string name="novel_translation_no_matching_languages">Bahasa tidak ditemukan</string>
+    <string name="novel_translation_language_selected">Dipilih</string>
+    <string name="novel_translation_search_language">Cari bahasa</string>
+    <string name="novel_translation_clear_search">Hapus pencarian bahasa</string>
     <string name="novel_translation_choose_source">Pilih bahasa sumber</string>
     <string name="novel_translation_choose_target">Pilih bahasa tujuan</string>
     <string name="novel_translation_custom_language">Kode bahasa lain…</string>
