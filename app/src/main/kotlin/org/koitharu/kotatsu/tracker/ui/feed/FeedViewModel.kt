@@ -227,7 +227,7 @@ class FeedViewModel @Inject constructor(
 			if (didAdvanceHistory) {
 				val current = db.getHistoryDao().find(item.manga.id)
 				if (current?.chapterId == latestFeedChapterEntity?.chapterId &&
-					current.page == 0 && current.scroll == 0
+					current.page == 0 && current.scroll == 0f
 				) {
 					if (priorHistory != null) db.getHistoryDao().upsert(priorHistory)
 					else db.getHistoryDao().delete(item.manga.id)
