@@ -39,6 +39,12 @@ import kotlin.math.ceil
 import javax.inject.Inject
 import javax.inject.Provider
 
+/** Exact row snapshots captured within the same Room transaction as the tracking write. */
+internal data class TrackingAdvanceSnapshot(
+	val previous: HistoryEntity?,
+	val applied: HistoryEntity,
+)
+
 @Reusable
 class HistoryRepository @Inject constructor(
 	private val db: MangaDatabase,
@@ -149,11 +155,23 @@ class HistoryRepository @Inject constructor(
 		manga: Manga,
 		chapters: List<MangaChapter>,
 		targetIndex: Int,
-	): Boolean {
-		if (shouldSkip(manga) || targetIndex !in chapters.indices) return false
+	): Boolean = advanceFromTrackingWithSnapshot(manga, chapters, targetIndex) != null
+
+	/**
+	 * Captures the exact before/after history rows while the tracking write is locked.
+	 * Feed Undo can use the applied snapshot for a conditional restore without accidentally
+	 * treating a Reader update during the post-transaction source check as its own write.
+	 */
+	internal suspend fun advanceFromTrackingWithSnapshot(
+		manga: Manga,
+		chapters: List<MangaChapter>,
+		targetIndex: Int,
+	): TrackingAdvanceSnapshot? {
+		if (shouldSkip(manga) || targetIndex !in chapters.indices) return null
 		val advanced = db.withTransaction {
-			val history = db.getHistoryDao().findIncludingDeleted(manga.id)
-			if (!canAdvanceFromTracking(history, chapters, targetIndex)) return@withTransaction false
+			val dao = db.getHistoryDao()
+			val history = dao.findIncludingDeleted(manga.id)
+			if (!canAdvanceFromTracking(history, chapters, targetIndex)) return@withTransaction null
 			val target = chapters[targetIndex]
 			addOrUpdateLocalLocked(
 				manga = manga,
@@ -163,9 +181,9 @@ class HistoryRepository @Inject constructor(
 				percent = (targetIndex + 1) / chapters.size.toFloat(),
 				space = history?.let { FavouriteSpace.fromDb(it.space) } ?: FavouriteSpace.NORMAL,
 			)
-			true
+			TrackingAdvanceSnapshot(history, checkNotNull(dao.findIncludingDeleted(manga.id)))
 		}
-		if (advanced) {
+		if (advanced != null) {
 			newChaptersUseCaseProvider.get()(manga, chapters[targetIndex].id)
 		}
 		return advanced
