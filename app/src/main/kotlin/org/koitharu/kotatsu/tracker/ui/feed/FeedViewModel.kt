@@ -164,6 +164,16 @@ class FeedViewModel @Inject constructor(
 		}
 	}
 
+	/** Restores the Feed notification, not the reader's actual chapter progress. */
+	fun markAsUnread(item: FeedItem) = markAsUnread(setOf(item.id))
+
+	fun markAsUnread(ids: Set<Long>) {
+		launchJob(Dispatchers.Default) {
+			val handle = repository.markLogsUnread(ids) ?: return@launchJob
+			onActionDone.call(ReversibleAction(R.string.marked_as_unread, handle))
+		}
+	}
+
 	fun remove(ids: Set<Long>) {
 		launchJob(Dispatchers.Default) {
 			val handles = ids.mapNotNull { repository.removeLog(it) }
