@@ -14,6 +14,20 @@ class ChapterVisitAcknowledgementTest {
         assertTrue(gate.shouldAcknowledge(218))
     }
 
+    @Test fun visitTokenIsStableAcrossPagesAndChangesOnReopen() {
+        val gate = ChapterVisitAcknowledgement()
+        val (first, tokenA) = gate.capture(218L)
+        val (second, tokenB) = gate.capture(218L)
+        assertTrue(first)
+        assertFalse(second)
+        assertTrue(tokenA != 0L)
+        assertTrue(tokenA == tokenB)
+        gate.reset()
+        val (reopened, tokenC) = gate.capture(218L)
+        assertTrue(reopened)
+        assertTrue(tokenC != tokenA)
+    }
+
     @Test fun explicitReopenCreatesNewVisitForSameChapter() {
         val gate = ChapterVisitAcknowledgement()
         assertTrue(gate.shouldAcknowledge(218))

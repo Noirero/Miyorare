@@ -107,6 +107,12 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+    fun chapterManualUnreadResetIsDurableAcrossQuickToggleAndCallerCancellation() {
+        org.koitharu.kotatsu.details.data.ChapterProgressRuntimeTest()
+            .manualUnreadClearsOnlyItsChapterAndRejectsDelayedReaderWrites()
+    }
+
+	@Test
 	fun chapterProgressSchemaUpgradePreservesLegacyHistory() {
 		ChapterProgressMigrationTest()
 			.migrationAddsEmptyProgressTableWithoutTouchingExistingHistory()

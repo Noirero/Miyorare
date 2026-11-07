@@ -3,6 +3,10 @@ package org.koitharu.kotatsu.details.data
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -59,26 +63,63 @@ class ChapterProgressRuntimeTest {
         try {
             val repository = ChapterProgressRepository(db, settings)
             settings.setChapterReadOverrides(manga.id, emptyMap())
+            val pendingAtStart = settings.getChapterPageResetStamp(manga.id, 218L)
+            if (pendingAtStart < 0) settings.completeChapterPageReset(manga.id, 218L, pendingAtStart)
             repository.record(manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 70, 0), 71)
             repository.record(manga, FavouriteSpace.NORMAL, chapterB, ReaderState(217L, 11, 0), 30)
             assertEquals(70, repository.get(manga.id, FavouriteSpace.NORMAL, chapterA)?.page)
 
+            val previousStamp = settings.getChapterPageResetStamp(manga.id, 218L)
             settings.setChapterReadOverride(manga.id, 218L, false)
-            repository.resetOnManualUnread(manga.id, FavouriteSpace.NORMAL, chapterA, 218L)
+            // Reset is scheduled from a short-lived caller (like a Details ViewModel).
+            val caller = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val resetJob = repository.requestManualUnreadReset(
+                manga.id, FavouriteSpace.NORMAL, chapterA, 218L,
+            )
+            val resetStamp = settings.getChapterPageResetStamp(manga.id, 218L)
+            assertEquals(true, resetStamp < 0)
+            assertEquals(true, kotlin.math.abs(resetStamp) > kotlin.math.abs(previousStamp))
+            // The next gesture arrives before the async reset completes.
+            settings.setChapterReadOverride(manga.id, 218L, true)
+            caller.cancel() // cancelling the caller must not cancel the DB cleanup
+            assertNull(repository.get(manga.id, FavouriteSpace.NORMAL, chapterA, 218L))
+            resetJob.join()
             assertNull(repository.get(manga.id, FavouriteSpace.NORMAL, chapterA))
             assertEquals(11, repository.get(manga.id, FavouriteSpace.NORMAL, chapterB)?.page)
 
-            // Reader page events queued before the swipe cannot recreate the deleted position.
-            repository.record(manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 70, 0), 71)
+            // Writes captured before Mark as unread are invalid even after Mark as read.
+            repository.record(
+                manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 70, 0), 71,
+                eventStamp = previousStamp, visitToken = 1L, isNewVisit = true,
+            )
             assertNull(repository.get(manga.id, FavouriteSpace.NORMAL, chapterA))
 
-            // A new explicit visit re-enables progress, beginning from page zero.
-            settings.setChapterReadOverride(manga.id, 218L, true)
-            repository.record(manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 0, 0), 71)
-            assertEquals(0, repository.get(manga.id, FavouriteSpace.NORMAL, chapterA)?.page)
+            // Page events from the OLD open reader cannot recreate page 71.
+            repository.record(
+                manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 70, 0), 71,
+                eventStamp = resetStamp, visitToken = 1L, isNewVisit = false,
+            )
+            assertNull(repository.get(manga.id, FavouriteSpace.NORMAL, chapterA))
+
+            // A genuinely new normal Reader visit begins from page one (zero-based page 0).
+            repository.record(
+                manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 0, 0), 71,
+                eventStamp = resetStamp, visitToken = 2L, isNewVisit = true,
+            )
+            assertEquals(0, repository.get(manga.id, FavouriteSpace.NORMAL, chapterA, 218L)?.page)
+            assertEquals(true, settings.getChapterPageResetStamp(manga.id, 218L) > 0)
+            // Subsequent rapid page changes from that same visit must not be dropped.
+            repository.record(
+                manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 3, 0), 71,
+                eventStamp = resetStamp, visitToken = 2L, isNewVisit = false,
+            )
+            assertEquals(3, repository.get(manga.id, FavouriteSpace.NORMAL, chapterA, 218L)?.page)
             assertEquals(11, repository.get(manga.id, FavouriteSpace.NORMAL, chapterB)?.page)
         } finally {
             settings.setChapterReadOverrides(manga.id, emptyMap())
+            // A positive generation is harmless outside this isolated test manga.
+            val pending = settings.getChapterPageResetStamp(manga.id, 218L)
+            if (pending < 0) settings.completeChapterPageReset(manga.id, 218L, pending)
             db.close()
             context.deleteDatabase(dbName)
         }
