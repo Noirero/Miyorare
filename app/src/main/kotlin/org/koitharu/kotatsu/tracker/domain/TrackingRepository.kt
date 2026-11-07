@@ -153,9 +153,13 @@ class TrackingRepository @Inject constructor(
 	suspend fun markLogsUnread(ids: Set<Long>): ReversibleHandle? {
 		if (ids.isEmpty()) return null
 		val logsDao = db.getTrackLogsDao()
-		val toChange = ids.filterTo(LinkedHashSet()) { logsDao.findById(it)?.isUnread == false }
+		// Snapshot and update together so an in-flight tracker refresh cannot race the inverse.
+		val toChange = db.withTransaction {
+			ids.filterTo(LinkedHashSet()) { logsDao.findById(it)?.isUnread == false }.also { changed ->
+				if (changed.isNotEmpty()) logsDao.markUnread(changed)
+			}
+		}
 		if (toChange.isEmpty()) return null
-		db.withTransaction { logsDao.markUnread(toChange) }
 		return ReversibleHandle {
 			db.withTransaction { toChange.forEach { logsDao.markLogAsRead(it) } }
 		}
