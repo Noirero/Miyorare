@@ -132,11 +132,14 @@ class TrackingRepository @Inject constructor(
 	suspend fun markLogsRead(mangaId: Long): ReversibleHandle {
 		val logsDao = db.getTrackLogsDao()
 		val tracksDao = db.getTracksDao()
-		val priorCounter = tracksDao.findNewChapters(mangaId)
-		val priorUnread = logsDao.findUnreadIds(mangaId).toList()
-		db.withTransaction {
+		// Read the snapshot and apply the acknowledgement in the same Room transaction.
+		// A concurrent tracking refresh must not slip between the snapshot and update.
+		val (priorCounter, priorUnread) = db.withTransaction {
+			val counter = tracksDao.findNewChapters(mangaId)
+			val unreadIds = logsDao.findUnreadIds(mangaId).toList()
 			tracksDao.clearCounter(mangaId)
 			logsDao.markAsRead(mangaId)
+			counter to unreadIds
 		}
 		return ReversibleHandle {
 			db.withTransaction {

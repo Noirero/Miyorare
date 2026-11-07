@@ -161,7 +161,7 @@ class FeedViewModel @Inject constructor(
 			if (items.isEmpty()) return@launchJob
 			val handles = items.map { markAsReadImpl(it) }
 			onActionDone.call(
-				ReversibleAction(R.string.marked_as_read, ReversibleHandle { handles.forEach { it.reverse() } }),
+				ReversibleAction(R.string.marked_as_read, ReversibleHandle { handles.asReversed().forEach { it.reverse() } }),
 			)
 		}
 	}
