@@ -14,6 +14,8 @@ data class FeedItem(
 	val manga: Manga,
 	val chapters: List<TrackingLogItem.Chapter>,
 	val isNew: Boolean,
+	// Notification acknowledgement comes from track_logs.unread, independent of reader history.
+	val isUnread: Boolean = isNew,
 	val groupPosition: GroupPosition = GroupPosition.SINGLE,
 	val isExpanded: Boolean = false,
 ) : ListModel {
@@ -39,6 +41,7 @@ data class FeedItem(
 
 	override fun getChangePayload(previousState: ListModel): Any? = when {
 		previousState !is FeedItem -> null
+		isUnread != previousState.isUnread -> ListModelDiffCallback.PAYLOAD_ANYTHING_CHANGED
 		isNew != previousState.isNew -> ListModelDiffCallback.PAYLOAD_ANYTHING_CHANGED
 		isExpanded != previousState.isExpanded -> ListModelDiffCallback.PAYLOAD_ANYTHING_CHANGED
 		else -> super.getChangePayload(previousState)
