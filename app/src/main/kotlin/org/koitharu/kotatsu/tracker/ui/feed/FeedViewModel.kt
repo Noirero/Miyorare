@@ -195,7 +195,15 @@ class FeedViewModel @Inject constructor(
 			.mapNotNull { ch -> allChapters.find { it.chapterId == ch.id } }
 			.maxByOrNull { it.index }
 
-		if (latestFeedChapterEntity != null) {
+		// An unread notification can refer to chapters already passed in Reader.
+		// Acknowledging the Feed must not rewind the user's actual reading position.
+		var didAdvanceHistory = false
+		val currentChapterIndex = priorHistory?.let { history ->
+			allChapters.firstOrNull { it.chapterId == history.chapterId }?.index
+		}
+		if (latestFeedChapterEntity != null &&
+			shouldAdvanceFeedHistory(currentChapterIndex, latestFeedChapterEntity.index)
+		) {
 			val chapterIndex = allChapters.indexOfFirst { it.chapterId == latestFeedChapterEntity.chapterId }
 			val percent = (chapterIndex + 1) / allChapters.size.toFloat()
 
@@ -210,15 +218,20 @@ class FeedViewModel @Inject constructor(
 				percent = percent,
 				force = true,
 			)
+			didAdvanceHistory = true
 		}
 
 		return ReversibleHandle {
-			// Restore the reading position first: the feed dot derives per-chapter "new" state
-			// from history, so restoring the unread flags alone leaves the row looking read.
-			if (priorHistory != null) {
-				db.getHistoryDao().upsert(priorHistory)
-			} else {
-				db.getHistoryDao().delete(item.manga.id)
+			// Restore progress only if this action actually advanced it and Reader hasn't
+			// moved since. An Undo of notification acknowledgement must not clobber later reading.
+			if (didAdvanceHistory) {
+				val current = db.getHistoryDao().find(item.manga.id)
+				if (current?.chapterId == latestFeedChapterEntity?.chapterId &&
+					current.page == 0 && current.scroll == 0
+				) {
+					if (priorHistory != null) db.getHistoryDao().upsert(priorHistory)
+					else db.getHistoryDao().delete(item.manga.id)
+				}
 			}
 			logsHandle.reverse()
 		}
@@ -294,3 +307,7 @@ class FeedViewModel @Inject constructor(
 		)
 	}
 }
+
+/** Feed acknowledgement may advance the reader, but never reset a current or later chapter. */
+internal fun shouldAdvanceFeedHistory(currentIndex: Int?, feedIndex: Int): Boolean =
+	currentIndex == null || feedIndex > currentIndex
