@@ -14,6 +14,7 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
+import org.koitharu.kotatsu.details.data.ChapterProgressRepository
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.domain.DetailsInteractor
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
@@ -36,6 +37,7 @@ class ChapterSortDirectionTestFixture @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val repositories: MangaRepository.Factory,
 	private val personalRepository: ChapterPersonalRepository,
+	private val progressRepository: ChapterProgressRepository,
 ) {
 	suspend fun withIsolatedPreferences(block: suspend Session.() -> Unit) {
 		val target = InstrumentationRegistry.getInstrumentation().targetContext
@@ -95,6 +97,7 @@ class ChapterSortDirectionTestFixture @Inject constructor(
 					mangaRepositoryFactory = repositories,
 					chapterListOptionsStore = restoredStore,
 					chapterPersonalRepository = personalRepository,
+					chapterProgressRepository = progressRepository,
 				) {
 					override fun reload() = Unit
 				}
