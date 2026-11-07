@@ -57,6 +57,7 @@ import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.prefs.ReaderJourneyCelebrationMode
 import org.koitharu.kotatsu.core.prefs.ReaderMode
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
@@ -329,7 +330,10 @@ class ReaderActivity :
     }
 
     override fun onPause() {
-        viewModel.saveCurrentState(readerManager.currentReader?.getCurrentState())
+        // Keep EPUB's pre-existing exact-offset lifecycle untouched.
+        if (viewModel.getMangaOrNull()?.isNovelContent != true) {
+            viewModel.saveCurrentState(readerManager.currentReader?.getCurrentState())
+        }
         super.onPause()
         viewModel.onPause()
     }

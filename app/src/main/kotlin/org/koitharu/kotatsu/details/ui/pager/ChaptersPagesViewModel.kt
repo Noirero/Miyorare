@@ -430,9 +430,17 @@ abstract class ChaptersPagesViewModel(
 			}
 		}
 		launchJob(Dispatchers.Default) {
-			mangaDetails.map { it?.id }.distinctUntilChanged().filterNotNull().collect { mangaId ->
-				chapterReadOverrides.value = settings.getChapterReadOverrides(mangaId)
-			}
+			mangaDetails.map { it?.id }.distinctUntilChanged().filterNotNull()
+				.flatMapLatest { mangaId ->
+					// Other screens can acknowledge a manual-unread chapter while this Details VM
+					// stays alive. Observe that preference instead of capturing a one-time snapshot.
+					settings.observe("chapter_read_overrides_$mangaId").map {
+						mangaId to settings.getChapterReadOverrides(mangaId)
+					}
+				}
+				.collect { (id, overrides) ->
+					if (mangaDetails.value?.id == id) chapterReadOverrides.value = overrides
+				}
 		}
 		launchJob(Dispatchers.Default) {
 			localStorageChanges
