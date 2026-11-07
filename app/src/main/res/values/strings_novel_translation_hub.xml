@@ -25,6 +25,7 @@
     <string name="novel_translation_source">From</string>
     <string name="novel_translation_target">To</string>
     <string name="novel_translation_auto_detect">Auto-detect</string>
+    <string name="novel_translation_search_language">Search languages</string>
     <string name="novel_translation_choose_source">Choose source language</string>
     <string name="novel_translation_choose_target">Choose target language</string>
     <string name="novel_translation_custom_language">Other language code…</string>
