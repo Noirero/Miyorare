@@ -363,7 +363,7 @@ abstract class ChaptersPagesViewModel(
 				progressByKey = progress,
 				currentPage = currentState?.page,
                 pageResetPending = { chapterId ->
-                    settings.getChapterPageResetStamp(manga.id, chapterId) < 0
+                    settings.getChapterPageResetStamp(manga.id, chapterId, favouriteSpace.dbValue) < 0
                 },
 			).orEmpty()
 				.filter { item -> scanlator == null || item.chapter.scanlator?.trim() == scanlator }
@@ -571,7 +571,7 @@ abstract class ChaptersPagesViewModel(
 		val mangaId = mangaDetails.value?.id
 		if (mangaId != null && getMangaOrNull()?.isNovelContent != true &&
 			(settings.getChapterReadOverrides(mangaId)[item.chapter.id] == false ||
-                settings.getChapterPageResetStamp(mangaId, item.chapter.id) < 0)
+                settings.getChapterPageResetStamp(mangaId, item.chapter.id, favouriteSpace.dbValue) < 0)
 		) return ReaderState(item.chapter.id, 0, 0)
 		val current = readingState.value
 		if (item.isCurrent && current?.chapterId == item.chapter.id) return current

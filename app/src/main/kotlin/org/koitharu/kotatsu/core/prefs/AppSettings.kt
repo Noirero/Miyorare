@@ -315,22 +315,30 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
      * real Reader visit has committed a fresh page. Absolute value is the generation.
      * This also protects against process death between the gesture and DB cleanup.
      */
-    fun getChapterPageResetStamp(mangaId: Long, chapterId: Long): Long =
-        prefs.getLong("chapter_page_reset_stamp_${mangaId}_${chapterId}", 0L)
+    private fun chapterPageResetKey(mangaId: Long, chapterId: Long, space: Int): String =
+        "chapter_page_reset_stamp_${mangaId}_${chapterId}_${space}"
 
-    fun markChapterPageResetPending(mangaId: Long, chapterId: Long): Long = synchronized(prefs) {
-        val key = "chapter_page_reset_stamp_${mangaId}_${chapterId}"
-        val old = getChapterPageResetStamp(mangaId, chapterId)
+    fun getChapterPageResetStamp(mangaId: Long, chapterId: Long, space: Int = 0): Long {
+        // Normal-space fallback preserves pending reset markers from pre-release builds.
+        val legacy = if (space == 0) prefs.getLong(
+            "chapter_page_reset_stamp_${mangaId}_${chapterId}", 0L,
+        ) else 0L
+        return prefs.getLong(chapterPageResetKey(mangaId, chapterId, space), legacy)
+    }
+
+    fun markChapterPageResetPending(mangaId: Long, chapterId: Long, space: Int = 0): Long = synchronized(prefs) {
+        val key = chapterPageResetKey(mangaId, chapterId, space)
+        val old = getChapterPageResetStamp(mangaId, chapterId, space)
         val next = -(kotlin.math.abs(old) + 1L)
         prefs.edit { putLong(key, next) }
         next
     }
 
-    fun completeChapterPageReset(mangaId: Long, chapterId: Long, expected: Long) {
+    fun completeChapterPageReset(mangaId: Long, chapterId: Long, expected: Long, space: Int = 0) {
         if (expected >= 0) return
         synchronized(prefs) {
-            if (getChapterPageResetStamp(mangaId, chapterId) == expected) {
-                prefs.edit { putLong("chapter_page_reset_stamp_${mangaId}_${chapterId}", -expected) }
+            if (getChapterPageResetStamp(mangaId, chapterId, space) == expected) {
+                prefs.edit { putLong(chapterPageResetKey(mangaId, chapterId, space), -expected) }
             }
         }
     }

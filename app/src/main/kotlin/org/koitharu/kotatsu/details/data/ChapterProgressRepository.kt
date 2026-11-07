@@ -48,7 +48,7 @@ class ChapterProgressRepository @Inject constructor(
     suspend fun get(
         mangaId: Long, space: FavouriteSpace, key: ChapterPersonalKey, chapterId: Long? = null,
     ): ChapterProgressEntity? {
-        if (chapterId != null && settings.getChapterPageResetStamp(mangaId, chapterId) < 0) return null
+        if (chapterId != null && settings.getChapterPageResetStamp(mangaId, chapterId, space.dbValue) < 0) return null
         return database.getChapterProgressDao().find(mangaId, key.source, key.url, space.dbValue)
     }
 
@@ -61,13 +61,13 @@ class ChapterProgressRepository @Inject constructor(
     fun requestManualUnreadReset(
         mangaId: Long, space: FavouriteSpace, key: ChapterPersonalKey, chapterId: Long,
     ): Job {
-        val stamp = settings.markChapterPageResetPending(mangaId, chapterId)
+        val stamp = settings.markChapterPageResetPending(mangaId, chapterId, space.dbValue)
         resetVersion.update { it + 1L }
         val pageKey = PageKey(mangaId, space.dbValue, key)
         return processLifecycleScope.launch(Dispatchers.IO) {
             mutationMutex.withLock {
                 database.withTransaction {
-                    if (settings.getChapterPageResetStamp(mangaId, chapterId) == stamp) {
+                    if (settings.getChapterPageResetStamp(mangaId, chapterId, space.dbValue) == stamp) {
                         renewedVisits.remove(pageKey)
                         database.getChapterProgressDao().delete(mangaId, key.source, key.url, space.dbValue)
                     }
@@ -87,7 +87,7 @@ class ChapterProgressRepository @Inject constructor(
         key: ChapterPersonalKey,
         state: ReaderState,
         totalPages: Int?,
-        eventStamp: Long = settings.getChapterPageResetStamp(manga.id, state.chapterId),
+        eventStamp: Long = settings.getChapterPageResetStamp(manga.id, state.chapterId, space.dbValue),
         visitToken: Long = 0L,
         isNewVisit: Boolean = false,
     ) {
@@ -96,7 +96,7 @@ class ChapterProgressRepository @Inject constructor(
         val position = if (pages == null) state.page else state.page.coerceAtMost(pages - 1)
         val pageKey = PageKey(manga.id, space.dbValue, key)
         mutationMutex.withLock {
-            val stamp = settings.getChapterPageResetStamp(manga.id, state.chapterId)
+            val stamp = settings.getChapterPageResetStamp(manga.id, state.chapterId, space.dbValue)
             val continuesNewVisit = eventStamp < 0 && stamp == -eventStamp &&
                 renewedVisits[pageKey] == (stamp to visitToken)
             if (stamp != eventStamp && !continuesNewVisit) return@withLock
@@ -127,7 +127,7 @@ class ChapterProgressRepository @Inject constructor(
                 // Otherwise a late page event from an old Reader could overwrite this position.
                 renewedVisits[pageKey] = (if (eventStamp < 0) -eventStamp else stamp) to visitToken
                 if (eventStamp < 0) {
-                    settings.completeChapterPageReset(manga.id, state.chapterId, eventStamp)
+                    settings.completeChapterPageReset(manga.id, state.chapterId, eventStamp, space.dbValue)
                     resetVersion.update { it + 1L }
                 }
             }

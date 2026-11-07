@@ -209,7 +209,7 @@ class ReaderViewModel @Inject constructor(
         // Respect user ordering: an unread swipe made after this visit must not be undone
         // when an older queued database write eventually completes.
         val (isNewVisit, token) = visitAcknowledgement.capture(state.chapterId)
-        val stamp = settings.getChapterPageResetStamp(manga.id, state.chapterId)
+        val stamp = settings.getChapterPageResetStamp(manga.id, state.chapterId, favouriteSpace.dbValue)
         if (isNewVisit) acknowledgeChapterVisit(manga.id, state.chapterId)
         chapterProgressWrites.trySend(ChapterProgressWrite(
             manga = manga, key = key, state = state, totalPages = pages,
@@ -228,7 +228,7 @@ class ReaderViewModel @Inject constructor(
         val manga = getMangaOrNull() ?: return ReaderState(chapterId, 0, 0)
         if (!manga.isNovelContent &&
             (settings.getChapterReadOverrides(manga.id)[chapterId] == false ||
-                settings.getChapterPageResetStamp(manga.id, chapterId) < 0)
+                settings.getChapterPageResetStamp(manga.id, chapterId, favouriteSpace.dbValue) < 0)
         ) {
             return ReaderState(chapterId, 0, 0)
         }
@@ -991,7 +991,7 @@ class ReaderViewModel @Inject constructor(
                     val isHistoryResume = savedStateHandle.get<Boolean>(ReaderIntent.EXTRA_HISTORY_RESUME) == true
                     return if (isHistoryResume && !manga.isNovelContent &&
                         (settings.getChapterReadOverrides(manga.id)[requestedState.chapterId] == false ||
-                            settings.getChapterPageResetStamp(manga.id, requestedState.chapterId) < 0)
+                            settings.getChapterPageResetStamp(manga.id, requestedState.chapterId, favouriteSpace.dbValue) < 0)
                     ) ReaderState(requestedState.chapterId, 0, 0) else requestedState
                 }
                 !isLoaded -> return null
@@ -1005,7 +1005,7 @@ class ReaderViewModel @Inject constructor(
             val chapter = manga.findChapterById(history.chapterId)
             val resume = if (!manga.isNovelContent &&
                 (settings.getChapterReadOverrides(manga.id)[history.chapterId] == false ||
-                    settings.getChapterPageResetStamp(manga.id, history.chapterId) < 0)
+                    settings.getChapterPageResetStamp(manga.id, history.chapterId, favouriteSpace.dbValue) < 0)
             ) ReaderState(history.chapterId, 0, 0) else ReaderState(history)
             when {
                 chapter == null -> if (!isLoaded) return null

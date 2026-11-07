@@ -69,6 +69,7 @@ class ChapterProgressRuntimeTest {
             if (pendingAtStart < 0) settings.completeChapterPageReset(manga.id, 218L, pendingAtStart)
             repository.record(manga, FavouriteSpace.NORMAL, chapterA, ReaderState(218L, 70, 0), 71)
             repository.record(manga, FavouriteSpace.NORMAL, chapterB, ReaderState(217L, 11, 0), 30)
+            repository.record(manga, FavouriteSpace.PRIVATE, chapterA, ReaderState(218L, 6, 0), 71)
             assertEquals(70, repository.get(manga.id, FavouriteSpace.NORMAL, chapterA)?.page)
 
             val previousStamp = settings.getChapterPageResetStamp(manga.id, 218L)
@@ -92,6 +93,8 @@ class ChapterProgressRuntimeTest {
             resetJob.join()
             assertNull(repository.get(manga.id, FavouriteSpace.NORMAL, chapterA))
             assertEquals(11, repository.get(manga.id, FavouriteSpace.NORMAL, chapterB)?.page)
+            assertEquals(6, repository.get(manga.id, FavouriteSpace.PRIVATE, chapterA, 218L)?.page)
+            assertEquals(0L, settings.getChapterPageResetStamp(manga.id, 218L, FavouriteSpace.PRIVATE.dbValue))
 
             // Writes captured before Mark as unread are invalid even after Mark as read.
             repository.record(
@@ -138,6 +141,8 @@ class ChapterProgressRuntimeTest {
             )
             assertEquals(4, repository.get(manga.id, FavouriteSpace.NORMAL, chapterA, 218L)?.page)
             assertEquals(11, repository.get(manga.id, FavouriteSpace.NORMAL, chapterB)?.page)
+            // The normal-library reset must not delete private-library last-page data.
+            assertEquals(6, repository.get(manga.id, FavouriteSpace.PRIVATE, chapterA, 218L)?.page)
         } finally {
             settings.setChapterReadOverrides(manga.id, emptyMap())
             // A positive generation is harmless outside this isolated test manga.
