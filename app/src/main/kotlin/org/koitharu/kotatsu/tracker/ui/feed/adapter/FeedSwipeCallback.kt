@@ -154,7 +154,8 @@ class FeedSwipeCallback(
 			}
 			val passedThreshold = abs(dX) >= 0.4f * view.width
 			if (isCurrentlyActive) {
-				if (swipeLeft) pendingToggleRead = passedThreshold
+				// Reset when a finger changes direction, so delete never also toggles read status.
+				pendingToggleRead = swipeLeft && passedThreshold
 				if (passedThreshold && !hapticFired) {
 					view.hapticFeedback(HapticEffect.CONFIRM)
 					hapticFired = true
