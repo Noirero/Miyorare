@@ -10,6 +10,12 @@
 		app:showAsAction="ifRoom|withText" />
 
 	<item
+		android:id="@+id/action_mark_unread"
+		android:icon="@drawable/ic_eye_off"
+		android:title="@string/mark_as_unread"
+		app:showAsAction="never" />
+
+	<item
 		android:id="@+id/action_remove"
 		android:icon="@drawable/ic_delete"
 		android:title="@string/delete"
