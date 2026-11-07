@@ -163,7 +163,9 @@ class LocalFavouritesListViewModel @Inject constructor(
 			prefetchDetailsSnapshots(visible)
 			val cardSnapshot = unreadCounter.getSnapshot(
 				mangaIds = visible.map { it.id },
-				includeUnread = display.showUnread,
+				includeUnread = display.showUnread || settings.progressIndicatorMode == org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.CHAPTERS_READ,
+				space = favouriteSpace,
+                legacyNovelIds = visible.asSequence().filter { it.isNovelContent }.map { it.id }.toSet(),
 			)
 			ArrayList<ListModel>(visible.size).also { result ->
 				mangaListMapper.toListModelList(

@@ -7,6 +7,8 @@ import androidx.annotation.WorkerThread
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -50,8 +52,13 @@ import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.firstNotNull
 import org.koitharu.kotatsu.core.util.ext.isHttpUrl
 import org.koitharu.kotatsu.core.util.ext.requireValue
+import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
+import org.koitharu.kotatsu.details.data.ChapterProgressRepository
+import org.koitharu.kotatsu.details.data.ChapterPersonalKey
+import org.koitharu.kotatsu.details.ui.resolveChapterPersonalKey
 import org.koitharu.kotatsu.details.domain.DetailsInteractor
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
@@ -118,6 +125,7 @@ class ReaderViewModel @Inject constructor(
     readerSettingsProducerFactory: ReaderSettings.Producer.Factory,
     mangaRepositoryFactory: MangaRepository.Factory,
     chapterPersonalRepository: ChapterPersonalRepository,
+    chapterProgressRepository: ChapterProgressRepository,
 ) : ChaptersPagesViewModel(
     settings = settings,
     interactor = interactor,
@@ -133,8 +141,11 @@ class ReaderViewModel @Inject constructor(
     mangaDataRepository = dataRepository,
     mangaRepositoryFactory = mangaRepositoryFactory,
     chapterPersonalRepository = chapterPersonalRepository,
+    chapterProgressRepository = chapterProgressRepository,
 ) {
     override fun onCleared() {
+        // Let the process-scoped consumer drain the last position during reader teardown.
+        chapterProgressWrites.close()
         // The ViewModel scope is cancelled during teardown; use an independent IO job to release
         // Reader-owned backing without blocking the main thread.
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { chaptersLoader.close() }
@@ -149,6 +160,88 @@ class ReaderViewModel @Inject constructor(
     private var bookmarkJob: Job? = null
     private var stateChangeJob: Job? = null
     private var deferredHistorySaveJob: Job? = null
+
+    private data class ChapterProgressWrite(
+        val manga: Manga,
+        val key: ChapterPersonalKey,
+        val state: ReaderState,
+        val totalPages: Int,
+        val resetStamp: Long,
+        val visitToken: Long,
+        val newVisit: Boolean,
+    )
+
+    // One consumer preserves the order of active-page updates, including backwards navigation.
+    private val chapterProgressWrites = Channel<ChapterProgressWrite>(Channel.UNLIMITED)
+    private val visitAcknowledgement = ChapterVisitAcknowledgement()
+
+    init {
+        processLifecycleScope.launch(Dispatchers.IO, CoroutineStart.ATOMIC) {
+            for (write in chapterProgressWrites) {
+                try {
+                    chapterProgressRepository.record(
+                        manga = write.manga,
+                        space = favouriteSpace,
+                        key = write.key,
+                        state = write.state,
+                        totalPages = write.totalPages,
+                        eventStamp = write.resetStamp,
+                        visitToken = write.visitToken,
+                        isNewVisit = write.newVisit,
+                    )
+                } catch (error: Exception) {
+                    error.printStackTraceDebug()
+                }
+            }
+        }
+    }
+
+    private fun enqueueChapterProgress(state: ReaderState) {
+        if (isPeekMode.value || isIncognitoMode.value != false) return
+        val manga = getMangaOrNull()?.takeUnless { it.isNovelContent } ?: return
+        val chapter = chaptersLoader.peekChapter(state.chapterId) ?: return
+        // Only the displayed chapter may create a visited record: a preloaded chapter alone
+        // never invokes this function and pages must actually be loaded.
+        val pages = chaptersLoader.getPagesCount(state.chapterId)
+        if (pages <= 0) return
+        val sourceChapters = mangaDetails.value?.sourceManga?.chapters.orEmpty()
+        val key = resolveChapterPersonalKey(chapter, sourceChapters)
+        // Respect user ordering: an unread swipe made after this visit must not be undone
+        // when an older queued database write eventually completes.
+        val (isNewVisit, token) = visitAcknowledgement.capture(state.chapterId)
+        val stamp = settings.getChapterPageResetStamp(manga.id, state.chapterId, favouriteSpace.dbValue)
+        if (isNewVisit) acknowledgeChapterVisit(manga.id, state.chapterId)
+        chapterProgressWrites.trySend(ChapterProgressWrite(
+            manga = manga, key = key, state = state, totalPages = pages,
+            resetStamp = stamp, visitToken = token, newVisit = isNewVisit,
+        ))
+    }
+
+    private fun clampChapterPosition(requested: ReaderState): ReaderState {
+        if (getMangaOrNull()?.isNovelContent == true) return requested
+        val count = chaptersLoader.getPagesCount(requested.chapterId)
+        return if (count > 0 && requested.page >= count) requested.copy(page = count - 1, scroll = 0)
+        else requested
+    }
+
+    private suspend fun chapterResumeState(chapterId: Long): ReaderState {
+        val manga = getMangaOrNull() ?: return ReaderState(chapterId, 0, 0)
+        if (!manga.isNovelContent &&
+            (settings.getChapterReadOverrides(manga.id)[chapterId] == false ||
+                settings.getChapterPageResetStamp(manga.id, chapterId, favouriteSpace.dbValue) < 0)
+        ) {
+            return ReaderState(chapterId, 0, 0)
+        }
+        if (manga.isNovelContent) return ReaderState(chapterId, 0, 0)
+        val chapter = chaptersLoader.peekChapter(chapterId) ?: return ReaderState(chapterId, 0, 0)
+        val sourceChapters = mangaDetails.value?.sourceManga?.chapters.orEmpty()
+        val key = resolveChapterPersonalKey(chapter, sourceChapters)
+        val saved = chapterProgressRepository.get(manga.id, favouriteSpace, key, chapterId)
+        if (saved != null) return ReaderState(chapterId, saved.page, saved.scroll)
+        // Only the current legacy History cursor is known; never infer visits to older chapters.
+        val history = historyRepository.getOne(manga)
+        return if (history?.chapterId == chapterId) ReaderState(history) else ReaderState(chapterId, 0, 0)
+    }
 
     init {
         mangaDetails.value = intent.manga?.let { MangaDetails(it) }
@@ -309,6 +402,7 @@ class ReaderViewModel @Inject constructor(
             percent = computePercent(readerState),
             space = favouriteSpace,
         )
+        enqueueChapterProgress(readerState)
     }
 
     fun getCurrentState() = readingState.value
@@ -344,14 +438,17 @@ class ReaderViewModel @Inject constructor(
         }?.toMangaPage()
     }
 
-    fun switchChapter(id: Long, page: Int, scroll: Int = 0) {
+    fun switchChapter(id: Long, page: Int, scroll: Int = 0, resume: Boolean = false) {
         val prevJob = loadingJob
         loadingJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
             if (!chaptersLoader.loadSingleChapter(id)) {
                 return@launchLoadingJob
             }
-            val newState = ReaderState(id, page, scroll)
+            val requested = if (resume) chapterResumeState(id) else ReaderState(id, page, scroll)
+            val newState = clampChapterPosition(requested)
+            // Opening a chapter explicitly starts a new visit, including reopening this chapter.
+            visitAcknowledgement.reset()
             content.value = ReaderContent(chaptersLoader.snapshot(), newState)
             saveCurrentState(newState)
         }
@@ -376,11 +473,8 @@ class ReaderViewModel @Inject constructor(
             if (!chaptersLoader.loadSingleChapter(newChapterId)) {
                 return@launchLoadingJob
             }
-            val newState = ReaderState(
-                chapterId = newChapterId,
-                page = if (delta == 0) prevState.page else 0,
-                scroll = if (delta == 0) prevState.scroll else 0,
-            )
+            val newState = clampChapterPosition(if (delta == 0) prevState else chapterResumeState(newChapterId))
+            if (delta != 0) visitAcknowledgement.reset()
             content.value = ReaderContent(chaptersLoader.snapshot(), newState)
             saveCurrentState(newState)
         }
@@ -393,7 +487,7 @@ class ReaderViewModel @Inject constructor(
         stateChangeJob = launchJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
             loadingJob?.join()
-            if (pages.size != content.value.pages.size) {
+            if (pages !== content.value.pages) {
                 return@launchJob // TODO
             }
             val centerPos = (lowerPos + upperPos) / 2
@@ -403,6 +497,7 @@ class ReaderViewModel @Inject constructor(
                 }
             }
             notifyStateChanged()
+            readingState.value?.let(::enqueueChapterProgress)
             if (pages.isEmpty() || loadingJob?.isActive == true) {
                 return@launchJob
             }
@@ -476,6 +571,7 @@ class ReaderViewModel @Inject constructor(
             return
         }
         isPeekMode.value = value
+        if (!value) visitAcknowledgement.reset()
         savedStateHandle[ReaderIntent.EXTRA_PEEK] = value
         if (value) {
             discardCurrentSessionTracking()
@@ -485,6 +581,7 @@ class ReaderViewModel @Inject constructor(
 
     fun setIncognitoMode(value: Boolean, dontAskAgain: Boolean) {
         isIncognitoMode.value = value
+        if (!value) visitAcknowledgement.reset()
         if (value) {
             discardCurrentSessionTracking()
         }
@@ -572,6 +669,7 @@ class ReaderViewModel @Inject constructor(
                                     readingState.value = null
                                     return@collect
                                 }
+                                readingState.value = clampChapterPosition(newState)
                             } catch (e: Exception) {
                                 readingState.value = null // try next time
                                 exception = e.mergeWith(exception)
@@ -630,7 +728,10 @@ class ReaderViewModel @Inject constructor(
         if (isPeekMode.value) return
         val state = readingState.value ?: return
         when (isIncognitoMode.value) {
-            false -> historyUpdateUseCase.invokeAsync(manga, state, computePercent(state), favouriteSpace)
+            false -> {
+                historyUpdateUseCase.invokeAsync(manga, state, computePercent(state), favouriteSpace)
+                enqueueChapterProgress(state)
+            }
             true -> Unit
             null -> {
                 deferredHistorySaveJob?.cancel()
@@ -643,6 +744,7 @@ class ReaderViewModel @Inject constructor(
                             percent = computePercent(latestState),
                             space = favouriteSpace,
                         )
+                        enqueueChapterProgress(latestState)
                     }
                 }
             }
@@ -883,7 +985,15 @@ class ReaderViewModel @Inject constructor(
         val requestedState: ReaderState? = savedStateHandle[ReaderIntent.EXTRA_STATE]
         if (requestedState != null) {
             when {
-                manga.findChapterById(requestedState.chapterId) != null -> return requestedState
+                manga.findChapterById(requestedState.chapterId) != null -> {
+                    // Widget-provided History is not a deliberate bookmark/page jump.
+                    // Do not bypass manual unread by treating it as an explicit page.
+                    val isHistoryResume = savedStateHandle.get<Boolean>(ReaderIntent.EXTRA_HISTORY_RESUME) == true
+                    return if (isHistoryResume && !manga.isNovelContent &&
+                        (settings.getChapterReadOverrides(manga.id)[requestedState.chapterId] == false ||
+                            settings.getChapterPageResetStamp(manga.id, requestedState.chapterId, favouriteSpace.dbValue) < 0)
+                    ) ReaderState(requestedState.chapterId, 0, 0) else requestedState
+                }
                 !isLoaded -> return null
             }
         }
@@ -893,16 +1003,20 @@ class ReaderViewModel @Inject constructor(
         val history = historyRepository.getOne(manga)
         if (history != null) {
             val chapter = manga.findChapterById(history.chapterId)
+            val resume = if (!manga.isNovelContent &&
+                (settings.getChapterReadOverrides(manga.id)[history.chapterId] == false ||
+                    settings.getChapterPageResetStamp(manga.id, history.chapterId, favouriteSpace.dbValue) < 0)
+            ) ReaderState(history.chapterId, 0, 0) else ReaderState(history)
             when {
                 chapter == null -> if (!isLoaded) return null
-                // specified branch is requested
+                // A manual unread resets the chapter even when continuing with an explicit branch.
                 ReaderIntent.EXTRA_BRANCH in savedStateHandle -> return if (chapter.branch == requestedBranch) {
-                    ReaderState(history)
+                    resume
                 } else {
                     ReaderState(manga, requestedBranch)
                 }
 
-                else -> return ReaderState(history)
+                else -> return resume
             }
         }
 
