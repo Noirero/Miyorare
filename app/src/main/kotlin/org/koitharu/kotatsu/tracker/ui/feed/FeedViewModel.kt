@@ -185,54 +185,41 @@ class FeedViewModel @Inject constructor(
 	}
 
 	private suspend fun markAsReadImpl(item: FeedItem): ReversibleHandle {
-		// Snapshot undo state before anything mutates: the history jump below re-computes the
-		// new-chapters counter to zero, so markLogsRead must capture it first.
+		// Snapshot notification and history before the acknowledgement. The history update below
+		// uses HistoryRepository's atomic monotonic tracking policy, never an unchecked jump.
 		val priorHistory = db.getHistoryDao().find(item.manga.id)
 		val logsHandle = repository.markLogsRead(item.manga.id)
 
 		val allChapters = db.getChaptersDao().findAll(item.manga.id)
 		val latestFeedChapterEntity = item.chapters
-			.mapNotNull { ch -> allChapters.find { it.chapterId == ch.id } }
+			.mapNotNull { chapter -> allChapters.find { it.chapterId == chapter.id } }
 			.maxByOrNull { it.index }
 
-		// An unread notification can refer to chapters already passed in Reader.
-		// Acknowledging the Feed must not rewind the user's actual reading position.
-		var didAdvanceHistory = false
-		val currentChapterIndex = priorHistory?.let { history ->
-			allChapters.firstOrNull { it.chapterId == history.chapterId }?.index
-		}
-		if (latestFeedChapterEntity != null &&
-			shouldAdvanceFeedHistory(currentChapterIndex, latestFeedChapterEntity.index)
-		) {
-			val chapterIndex = allChapters.indexOfFirst { it.chapterId == latestFeedChapterEntity.chapterId }
-			val percent = (chapterIndex + 1) / allChapters.size.toFloat()
-
+		val advancedHistory = if (latestFeedChapterEntity != null) {
 			val mangaChapters = allChapters.toMangaChapters()
-			val mangaWithChapters = item.manga.copy(chapters = mangaChapters)
-
-			historyRepository.addOrUpdate(
-				manga = mangaWithChapters,
-				chapterId = latestFeedChapterEntity.chapterId,
-				page = 0,
-				scroll = 0,
-				percent = percent,
-				force = true,
-			)
-			didAdvanceHistory = true
+			val targetIndex = allChapters.indexOfFirst {
+				it.chapterId == latestFeedChapterEntity.chapterId
+			}
+			if (historyRepository.advanceFromTracking(
+					manga = item.manga.copy(chapters = mangaChapters),
+					chapters = mangaChapters,
+					targetIndex = targetIndex,
+				)
+			) {
+				db.getHistoryDao().find(item.manga.id)
+			} else {
+				null
+			}
+		} else {
+			null
 		}
 
 		return ReversibleHandle {
-			// Restore progress only if this action actually advanced it and Reader hasn't
-			// moved since. An Undo of notification acknowledgement must not clobber later reading.
-			if (didAdvanceHistory) {
-				val current = db.getHistoryDao().find(item.manga.id)
-				if (current?.let { history ->
-					history.chapterId == latestFeedChapterEntity?.chapterId &&
-						history.page == 0 && history.scroll == 0f
-				} == true) {
-					if (priorHistory != null) db.getHistoryDao().upsert(priorHistory)
-					else db.getHistoryDao().delete(item.manga.id)
-				}
+			// Restore progress only if it still matches the exact row written by this action.
+			// A newer Reader update must never be clobbered by Undo on a Feed notification.
+			if (advancedHistory != null && db.getHistoryDao().find(item.manga.id) == advancedHistory) {
+				if (priorHistory != null) db.getHistoryDao().upsert(priorHistory)
+				else db.getHistoryDao().delete(item.manga.id)
 			}
 			logsHandle.reverse()
 		}
@@ -308,7 +295,3 @@ class FeedViewModel @Inject constructor(
 		)
 	}
 }
-
-/** Feed acknowledgement may advance the reader, but never reset a current or later chapter. */
-internal fun shouldAdvanceFeedHistory(currentIndex: Int?, feedIndex: Int): Boolean =
-	currentIndex == null || feedIndex > currentIndex
