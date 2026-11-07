@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.koitharu.kotatsu.core.db.entity.ChapterEntity
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
+import org.koitharu.kotatsu.history.data.HistoryEntity
+import org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.CHAPTERS_READ
 
 class IndependentChapterReadCountTest {
     private val chapters = (200..218).mapIndexed { index, number ->
@@ -12,6 +14,23 @@ class IndependentChapterReadCountTest {
             number = number.toFloat(), volume = 0, url = "/$number",
             scanlator = null, uploadDate = 0L, branch = null, source = "TEST", index = index,
         )
+    }
+
+    @Test fun novelChapterCountKeepsHistoricalProgressWhileMangaUsesIndependentVisits() {
+        val legacy = HistoryEntity(
+            mangaId = 37L, createdAt = 0L, updatedAt = 0L,
+            chapterId = 218L, page = 0, scroll = 0f,
+            percent = 18f / 19f, deletedAt = 0L, chaptersCount = 19,
+        )
+        val histories = mapOf(37L to legacy)
+        val unread = mapOf(37L to 18)
+        val authority = setOf(37L)
+        val read = mapOf(37L to 1)
+        val totals = mapOf(37L to 19)
+        val manga = FavouriteUnreadCounter.Snapshot(histories, unread, authority, read, totals)
+        val novel = FavouriteUnreadCounter.Snapshot(histories, unread, authority, read, totals, legacyNovelIds = setOf(37L))
+        assertEquals(1f / 19f, manga.getProgress(37L, CHAPTERS_READ)!!.percent, 0.0001f)
+        assertEquals(18f / 19f, novel.getProgress(37L, CHAPTERS_READ)!!.percent, 0.0001f)
     }
 
     @Test fun latestHistoryDoesNotImplicitlyReadEarlierChapters() {

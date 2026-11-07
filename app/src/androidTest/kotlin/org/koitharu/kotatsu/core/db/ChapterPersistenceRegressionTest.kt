@@ -154,6 +154,29 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun novelChapterStatusAndPageLabelsRetainLegacyBehaviour() {
+		val novelSource = org.koitharu.kotatsu.core.model.MissingMangaSource("LN_REGRESSION")
+		val novelChapters = (200..218).map { number ->
+			SampleData.chapter.copy(
+				id = number.toLong(), number = number.toFloat(),
+				source = novelSource, url = "/novel/$number", branch = null,
+			)
+		}
+		val novel = org.koitharu.kotatsu.details.data.MangaDetails(
+			remoteDetails().copy(source = novelSource, chapters = novelChapters),
+		)
+		val rows = novel.mapChapters(
+			currentChapterId = 210L, newCount = 0, branch = null,
+			bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+			currentPage = 256,
+		)
+		assertEquals(19, rows.size)
+		assertEquals(11, rows.count { !it.isUnread }) // original novel order semantics
+		assertTrue(rows.first { it.chapter.id == 211L }.isUnread)
+		assertNull(rows.first { it.chapter.id == 210L }.lastReadPage) // never use EPUB offsets as manga pages
+	}
+
+	@Test
 	fun favouriteCoverStatusesCompactAndRecycle() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
 			org.koitharu.kotatsu.list.ui.FavouriteCoverOverlayRuntimeChecks.compactStatusesAndRecycle(context)
