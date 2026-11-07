@@ -9,7 +9,6 @@ import android.provider.MediaStore
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.FrameLayout
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.recyclerview.widget.RecyclerView
@@ -45,9 +44,10 @@ class NovelTranslationLanguagePickerVisualTest {
                 scenario.onActivity { activity ->
                     // Screenshot-protected login Activity is used only as a test host.
                     activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                    activity.setContentView(FrameLayout(activity).apply {
+                    activity.findViewById<ViewGroup>(android.R.id.content).apply {
+                        removeAllViews()
                         setBackgroundColor(Color.rgb(11, 11, 17))
-                    })
+                    }
                     dialog = NovelTranslationLanguagePicker(
                         context = activity,
                         source = source,
