@@ -182,7 +182,7 @@ class NovelTranslationDialogController(
 				),
 			)
 			setSelection(if (settings.manualScope == NovelTranslationScope.PAGE) 0 else 1)
-			minimumHeight = dp(44)
+			minimumHeight = dp(48)
 		} else null
 
 		val services = NovelTranslationService.entries
@@ -192,7 +192,7 @@ class NovelTranslationDialogController(
 				listOf(context.getString(R.string.novel_translation_online), context.getString(R.string.novel_translation_ai)),
 			)
 			setSelection(services.indexOf(currentService()).coerceAtLeast(0))
-			minimumHeight = dp(44)
+			minimumHeight = dp(48)
 		}
 		val contextSwitch = MaterialSwitch(context).apply {
 			contentDescription = context.getString(R.string.novel_translation_context_aware)
@@ -253,7 +253,6 @@ class NovelTranslationDialogController(
 			updatingAutoSwitch = true
 			autoTranslateSwitch?.isChecked = settings.isAutoTranslateActive(id)
 			updatingAutoSwitch = false
-			// Provider billing information is contextual, not a permanent multi-line card.
 		}
 
 		fun updateServiceUi() {
@@ -304,7 +303,11 @@ class NovelTranslationDialogController(
 				if (wasEnabled) onAutoTranslateChanged(false)
 				updateAutoUi()
 			}
-			showAiSettings(continueToTranslate = false)
+			showAiSettings(continueToTranslate = false, onDismiss = {
+				// Advanced settings writes the same preference used by the compact toggle.
+				contextSwitch.isChecked = settings.contextAware
+				updateServiceUi()
+			})
 		}
 
 		val primary = MaterialButton(context).apply {
@@ -490,6 +493,7 @@ class NovelTranslationDialogController(
 
 	private fun showAiSettings(
 		continueToTranslate: Boolean,
+		onDismiss: () -> Unit = {},
 		pendingDisplayMode: NovelTranslationDisplayMode = if (settings.bilingual) {
 			NovelTranslationDisplayMode.BILINGUAL
 		} else {
@@ -658,6 +662,7 @@ class NovelTranslationDialogController(
 			.setNeutralButton(R.string.novel_translation_clear_key, null)
 			.setPositiveButton(R.string.novel_translation_save, null)
 			.create()
+		dialog.setOnDismissListener { onDismiss() }
 		dialog.setOnShowListener {
 			dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
 				val provider = selectedProvider()
