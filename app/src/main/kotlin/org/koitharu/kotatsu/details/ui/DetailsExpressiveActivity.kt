@@ -383,6 +383,8 @@ class DetailsExpressiveActivity :
 			},
 			onChapterOptionsResetClick = viewModel::resetChapterOptions,
 			onChapterClick = ::openChapter,
+			onChapterMarkRead = { item -> viewModel.setChapterReadState(item.chapter.id, true) },
+			onChapterMarkUnread = { item -> viewModel.setChapterReadState(item.chapter.id, false) },
 			onChapterPersonalClick = viewModel::editChapterPersonal,
 			onChapterNotesSearchClick = { viewModel.performChapterNoteSearch("") },
 			onChapterNotesQueryChange = viewModel::performChapterNoteSearch,

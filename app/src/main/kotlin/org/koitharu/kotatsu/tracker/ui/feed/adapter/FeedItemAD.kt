@@ -93,7 +93,7 @@ fun feedItemAD(
 		// still unread; the persisted notification flag is the authority for this label.
 		binding.textViewSummary.isVisible = true
 		val statusColor = context.getThemeColor(
-			if (item.isUnread) materialR.attr.colorTertiary else materialR.attr.colorPrimary,
+			if (item.isUnread) materialR.attr.colorTertiary else androidx.appcompat.R.attr.colorPrimary,
 		)
 		binding.textViewSummary.setTextColor(statusColor)
 		val statusIcon = when {

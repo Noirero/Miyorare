@@ -226,9 +226,10 @@ class FeedViewModel @Inject constructor(
 			// moved since. An Undo of notification acknowledgement must not clobber later reading.
 			if (didAdvanceHistory) {
 				val current = db.getHistoryDao().find(item.manga.id)
-				if (current?.chapterId == latestFeedChapterEntity?.chapterId &&
-					current.page == 0 && current.scroll == 0f
-				) {
+				if (current?.let { history ->
+					history.chapterId == latestFeedChapterEntity?.chapterId &&
+						history.page == 0 && history.scroll == 0f
+				} == true) {
 					if (priorHistory != null) db.getHistoryDao().upsert(priorHistory)
 					else db.getHistoryDao().delete(item.manga.id)
 				}

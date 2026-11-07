@@ -1395,6 +1395,14 @@ internal fun InlineChapterCard(
 				Spacer(Modifier.width(if (palette.isModern) 8.dp else 10.dp))
 			}
 
+			Icon(
+				painter = painterResource(if (item.isUnread) R.drawable.ic_eye_off else R.drawable.ic_eye_check),
+				contentDescription = stringResource(if (item.isUnread) R.string.unread else R.string.read),
+				tint = if (item.isUnread) accent else secondaryColor,
+				modifier = Modifier.size(if (palette.isModern) 16.dp else 18.dp),
+			)
+			Spacer(Modifier.width(8.dp))
+
 			Column(modifier = Modifier.weight(1f)) {
 				Row(verticalAlignment = Alignment.CenterVertically) {
 					Text(
@@ -1410,7 +1418,7 @@ internal fun InlineChapterCard(
 						overflow = TextOverflow.Ellipsis,
 						modifier = Modifier.weight(1f, fill = false),
 					)
-					if (item.isNew) {
+					if (item.isNew && item.isUnread) {
 						Spacer(Modifier.width(6.dp))
 						Icon(
 							painter = painterResource(R.drawable.ic_new),
