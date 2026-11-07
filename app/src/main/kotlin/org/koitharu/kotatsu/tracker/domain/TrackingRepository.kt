@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.onStart
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.core.db.entity.toManga
 import org.koitharu.kotatsu.core.db.entity.toMangaTags
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -129,44 +130,11 @@ class TrackingRepository @Inject constructor(
 		return ReversibleHandle { dao.insert(entity) }
 	}
 
-	suspend fun markLogsRead(mangaId: Long): ReversibleHandle {
-		val logsDao = db.getTrackLogsDao()
-		val tracksDao = db.getTracksDao()
-		// Read the snapshot and apply the acknowledgement in the same Room transaction.
-		// A concurrent tracking refresh must not slip between the snapshot and update.
-		val (priorCounter, priorUnread) = db.withTransaction {
-			val counter = tracksDao.findNewChapters(mangaId)
-			val unreadIds = logsDao.findUnreadIds(mangaId).toList()
-			tracksDao.clearCounter(mangaId)
-			logsDao.markAsRead(mangaId)
-			counter to unreadIds
-		}
-		return ReversibleHandle {
-			db.withTransaction {
-				tracksDao.setCounter(mangaId, priorCounter)
-				if (priorUnread.isNotEmpty()) logsDao.markUnread(priorUnread)
-			}
-		}
-	}
+	/** Explicit Feed acknowledgement: only selected notification IDs, never reading history. */
+	suspend fun markLogsRead(ids: Set<Long>): ReversibleHandle? = db.updateFeedReadState(ids, read = true)
 
-	/**
-	 * Re-open selected feed notifications without rewinding actual manga reading history.
-	 * The feed's acknowledgement state and reader's chapter progress are separate concerns.
-	 */
-	suspend fun markLogsUnread(ids: Set<Long>): ReversibleHandle? {
-		if (ids.isEmpty()) return null
-		val logsDao = db.getTrackLogsDao()
-		// Snapshot and update together so an in-flight tracker refresh cannot race the inverse.
-		val toChange = db.withTransaction {
-			ids.filterTo(LinkedHashSet()) { logsDao.findById(it)?.isUnread == false }.also { changed ->
-				if (changed.isNotEmpty()) logsDao.markUnread(changed)
-			}
-		}
-		if (toChange.isEmpty()) return null
-		return ReversibleHandle {
-			db.withTransaction { toChange.forEach { logsDao.markLogAsRead(it) } }
-		}
-	}
+	/** Re-open selected Feed notifications without touching reading history or chapter progress. */
+	suspend fun markLogsUnread(ids: Set<Long>): ReversibleHandle? = db.updateFeedReadState(ids, read = false)
 
 	suspend fun clearCounters() = db.getTracksDao().clearCounters()
 
@@ -292,5 +260,110 @@ class TrackingRepository @Inject constructor(
 
 	private suspend fun gcIfNotCalled() {
 		if (isGcCalled.compareAndSet(false, true)) gc()
+	}
+}
+
+
+/** The tracker row has no structural equals; compare all fields except the acknowledged counter. */
+private fun TrackEntity.matchesTrackerSnapshot(before: TrackEntity): Boolean =
+	mangaId == before.mangaId &&
+	lastChapterId == before.lastChapterId &&
+	lastCheckTime == before.lastCheckTime &&
+	lastChapterDate == before.lastChapterDate &&
+	lastResult == before.lastResult &&
+	lastError == before.lastError
+
+/** Never restore a replacement log reusing the same primary key. */
+private fun TrackLogEntity.matchesFeedLog(before: TrackLogEntity): Boolean =
+	id == before.id && mangaId == before.mangaId &&
+	createdAt == before.createdAt && chapters == before.chapters && chapterIds == before.chapterIds
+
+private data class FeedCounterReset(
+	val priorTrack: TrackEntity,
+	val history: HistoryEntity?,
+	val allLogIds: Set<Long>,
+	val changedLogIds: Set<Long>,
+)
+
+private data class FeedStatusChange(
+	val originalLogs: List<TrackLogEntity>,
+	val historyByManga: Map<Long, HistoryEntity?>,
+	val counterResets: List<FeedCounterReset>,
+)
+
+/**
+ * Transactional Feed-only status mutation. Manual acknowledgements and reader progress have
+ * distinct ownership. Acknowledging the final unread notification preserves the legacy
+ * "clear update counter" behavior; Undo restores that counter only if no newer tracking,
+ * history or log-set change has occurred.
+ */
+internal suspend fun MangaDatabase.updateFeedReadState(ids: Set<Long>, read: Boolean): ReversibleHandle? {
+	if (ids.isEmpty()) return null
+	val logsDao = getTrackLogsDao()
+	val tracksDao = getTracksDao()
+	val historyDao = getHistoryDao()
+	val change = withTransaction {
+		val originalLogs = ids.mapNotNull { id ->
+			logsDao.findById(id)?.takeIf { it.isUnread == read }
+		}
+		if (originalLogs.isEmpty()) return@withTransaction null
+
+		val historyByManga = HashMap<Long, HistoryEntity?>()
+		val touchedIds = HashMap<Long, MutableSet<Long>>()
+		for (log in originalLogs) {
+			if (!historyByManga.containsKey(log.mangaId)) {
+				historyByManga[log.mangaId] = historyDao.findIncludingDeleted(log.mangaId)
+			}
+			touchedIds.getOrPut(log.mangaId) { LinkedHashSet() }.add(log.id)
+		}
+		if (read) {
+			for (log in originalLogs) logsDao.markLogAsRead(log.id)
+		} else {
+			logsDao.markUnread(originalLogs.map { it.id })
+		}
+
+		val counterResets = ArrayList<FeedCounterReset>()
+		if (read) {
+			for ((mangaId, changedIds) in touchedIds) {
+				if (logsDao.findUnreadIds(mangaId).isNotEmpty()) continue
+				val track = tracksDao.find(mangaId) ?: continue
+				if (track.newChapters == 0) continue
+				val logIds = logsDao.findAllForManga(mangaId).mapTo(LinkedHashSet()) { it.id }
+				tracksDao.clearCounter(mangaId)
+				counterResets += FeedCounterReset(track, historyByManga[mangaId], logIds, changedIds)
+			}
+		}
+		FeedStatusChange(originalLogs, historyByManga, counterResets)
+	} ?: return null
+
+	return ReversibleHandle {
+		withTransaction {
+			// A real Reader write after the Feed action takes precedence over a stale Undo.
+			val historyUnchanged = change.historyByManga.mapValues { (mangaId, snapshot) ->
+				historyDao.findIncludingDeleted(mangaId) == snapshot
+			}
+			val restoring = change.originalLogs.filter { original ->
+				if (historyUnchanged[original.mangaId] != true) return@filter false
+				val current = logsDao.findById(original.id)
+				current != null && current.isUnread != read && current.matchesFeedLog(original)
+			}
+			if (restoring.isNotEmpty()) {
+				if (read) logsDao.markUnread(restoring.map { it.id })
+				else for (log in restoring) logsDao.markLogAsRead(log.id)
+			}
+			if (read) {
+				val restoredIds = restoring.mapTo(HashSet()) { it.id }
+				for (counter in change.counterResets) {
+					val previous = counter.priorTrack
+					if (!counter.changedLogIds.all { it in restoredIds }) continue
+					if (historyUnchanged[previous.mangaId] != true) continue
+					val current = tracksDao.find(previous.mangaId) ?: continue
+					if (current.newChapters != 0 || !current.matchesTrackerSnapshot(previous)) continue
+					val currentLogIds = logsDao.findAllForManga(previous.mangaId).mapTo(HashSet()) { it.id }
+					if (currentLogIds != counter.allLogIds) continue
+					tracksDao.setCounter(previous.mangaId, previous.newChapters)
+				}
+			}
+		}
 	}
 }

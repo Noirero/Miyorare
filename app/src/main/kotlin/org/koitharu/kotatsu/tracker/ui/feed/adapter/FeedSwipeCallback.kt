@@ -21,6 +21,17 @@ import kotlin.math.abs
  * recover animation can leave it offset. The action fires on release at the threshold instead.
  * The swipe-start state is retained while the row animates back, even if the feed observer rebinds.
  */
+internal enum class FeedSwipeDecision { MARK_READ, MARK_UNREAD, DELETE }
+
+internal fun resolveFeedSwipeDecision(isToggle: Boolean, isUnread: Boolean): FeedSwipeDecision = when {
+	!isToggle -> FeedSwipeDecision.DELETE
+	isUnread -> FeedSwipeDecision.MARK_READ
+	else -> FeedSwipeDecision.MARK_UNREAD
+}
+
+internal fun shouldToggleFeedSwipe(dx: Float, width: Int): Boolean =
+	width > 0 && dx < 0f && -dx >= width * 0.4f
+
 class FeedSwipeCallback(
 	context: Context,
 	private val onAction: (item: FeedItem, isRead: Boolean) -> Unit,
@@ -117,7 +128,7 @@ class FeedSwipeCallback(
 		// Eligibility is recomputed even at exactly zero displacement. Returning to the
 		// starting position cancels a previously crossed threshold on the same gesture.
 		if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE && isCurrentlyActive) {
-			pendingToggleRead = dX < 0f && abs(dX) >= 0.4f * view.width
+			pendingToggleRead = shouldToggleFeedSwipe(dX, view.width)
 		}
 		if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE && dX != 0f) {
 			lastDx = dX

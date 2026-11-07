@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.tracker.ui.feed
 
-import androidx.room.withTransaction
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,8 +15,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.db.MangaDatabase
-import org.koitharu.kotatsu.core.db.entity.toMangaChapters
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
@@ -26,7 +23,6 @@ import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.groupByDateBucket
 import org.koitharu.kotatsu.core.util.ext.call
-import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -57,7 +53,6 @@ class FeedViewModel @Inject constructor(
 	private val mangaListMapper: MangaListMapper,
 	private val quickFilter: UpdatesListQuickFilter,
 	private val historyRepository: HistoryRepository,
-	private val db: MangaDatabase,
 	savedStateHandle: SavedStateHandle,
 ) : BaseViewModel(), QuickFilterListener by quickFilter {
 
@@ -148,25 +143,15 @@ class FeedViewModel @Inject constructor(
 		launchJob(Dispatchers.Default) { scheduler.stopNow() }
 	}
 
-	fun markAsRead(item: FeedItem) {
+	fun markAsRead(item: FeedItem) = markAsRead(setOf(item.id))
+
+	fun markAsRead(ids: Set<Long>) {
 		launchJob(Dispatchers.Default) {
-			val handle = markAsReadImpl(item)
+			val handle = repository.markLogsRead(ids) ?: return@launchJob
 			onActionDone.call(ReversibleAction(R.string.marked_as_read, handle))
 		}
 	}
 
-	fun markAsRead(ids: Set<Long>) {
-		launchJob(Dispatchers.Default) {
-			val items = content.value.filterIsInstance<FeedItem>().filter { it.id in ids }
-			if (items.isEmpty()) return@launchJob
-			val handles = items.map { markAsReadImpl(it) }
-			onActionDone.call(
-				ReversibleAction(R.string.marked_as_read, ReversibleHandle { handles.asReversed().forEach { it.reverse() } }),
-			)
-		}
-	}
-
-	/** Restores the Feed notification, not the reader's actual chapter progress. */
 	fun markAsUnread(item: FeedItem) = markAsUnread(setOf(item.id))
 
 	fun markAsUnread(ids: Set<Long>) {
@@ -186,45 +171,6 @@ class FeedViewModel @Inject constructor(
 		}
 	}
 
-	private suspend fun markAsReadImpl(item: FeedItem): ReversibleHandle {
-		// Acknowledge Feed logs; HistoryRepository captures the exact pre/post history rows
-		// inside its own write transaction, including when Reader is updating concurrently.
-		val logsHandle = repository.markLogsRead(item.manga.id)
-
-		val allChapters = db.getChaptersDao().findAll(item.manga.id)
-		val latestFeedChapterEntity = item.chapters
-			.mapNotNull { chapter -> allChapters.find { it.chapterId == chapter.id } }
-			.maxByOrNull { it.index }
-
-		val advancedHistory = if (latestFeedChapterEntity != null) {
-			val mangaChapters = allChapters.toMangaChapters()
-			val targetIndex = allChapters.indexOfFirst {
-				it.chapterId == latestFeedChapterEntity.chapterId
-			}
-			historyRepository.advanceFromTrackingWithSnapshot(
-				manga = item.manga.copy(chapters = mangaChapters),
-				chapters = mangaChapters,
-				targetIndex = targetIndex,
-			)
-		} else {
-			null
-		}
-
-		return ReversibleHandle {
-			// Restore progress only if it still matches the exact row written by this action.
-			// A newer Reader update must never be clobbered by Undo on a Feed notification.
-			if (advancedHistory != null) {
-				db.withTransaction {
-					val historyDao = db.getHistoryDao()
-					if (shouldRestoreFeedHistory(advancedHistory.applied, historyDao.findIncludingDeleted(item.manga.id))) {
-						if (advancedHistory.previous != null) historyDao.upsert(advancedHistory.previous)
-						else historyDao.delete(item.manga.id)
-					}
-				}
-			}
-			logsHandle.reverse()
-		}
-	}
 
 	fun remove(item: FeedItem) {
 		launchJob(Dispatchers.Default) {
@@ -296,7 +242,3 @@ class FeedViewModel @Inject constructor(
 		)
 	}
 }
-
-/** Only a byte-for-byte matching history row may be reverted; any Reader write wins. */
-internal fun shouldRestoreFeedHistory(applied: HistoryEntity, current: HistoryEntity?): Boolean =
-	applied == current
