@@ -122,6 +122,7 @@ class MangaListMapper @Inject constructor(
 			chapters = chapters,
 			manga = logItem.manga,
 			isNew = isNew,
+			isUnread = logItem.isNew,
 		)
 	}
 

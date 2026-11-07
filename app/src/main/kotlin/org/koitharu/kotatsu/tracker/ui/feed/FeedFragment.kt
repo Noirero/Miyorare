@@ -43,6 +43,8 @@ import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.tracker.ui.feed.adapter.FeedAdapter
+import org.koitharu.kotatsu.tracker.ui.feed.adapter.FeedSwipeDecision
+import org.koitharu.kotatsu.tracker.ui.feed.adapter.resolveFeedSwipeDecision
 import org.koitharu.kotatsu.tracker.ui.feed.adapter.FeedSwipeCallback
 import org.koitharu.kotatsu.tracker.ui.feed.model.FeedItem
 import javax.inject.Inject
@@ -104,12 +106,14 @@ class FeedFragment :
 			},
 		)
 		val touchHelper = ItemTouchHelper(
-			FeedSwipeCallback(binding.recyclerView.context) { item, isRead ->
-				if (isRead) {
-					viewModel.markAsRead(item)
-				} else {
-					feedAdapter.setItems(feedAdapter.items.filterNot { it is FeedItem && it.id == item.id })
-					viewModel.remove(item)
+			FeedSwipeCallback(binding.recyclerView.context) { item, isToggle ->
+				when (resolveFeedSwipeDecision(isToggle, item.isUnread)) {
+					FeedSwipeDecision.MARK_READ -> viewModel.markAsRead(item)
+					FeedSwipeDecision.MARK_UNREAD -> viewModel.markAsUnread(item)
+					FeedSwipeDecision.DELETE -> {
+						feedAdapter.setItems(feedAdapter.items.filterNot { it is FeedItem && it.id == item.id })
+						viewModel.remove(item)
+					}
 				}
 			},
 		)
@@ -172,6 +176,11 @@ class FeedFragment :
 	): Boolean = when (item.itemId) {
 		R.id.action_mark_read -> {
 			viewModel.markAsRead(controller.snapshot())
+			mode?.finish()
+			true
+		}
+		R.id.action_mark_unread -> {
+			viewModel.markAsUnread(controller.snapshot())
 			mode?.finish()
 			true
 		}
