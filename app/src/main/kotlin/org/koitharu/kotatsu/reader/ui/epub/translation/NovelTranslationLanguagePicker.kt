@@ -80,7 +80,7 @@ internal class NovelTranslationLanguagePicker(
             setTextColor(visuals.onSurface)
             minimumHeight = dp(48)
         }
-        search.addView(input, ViewGroup.LayoutParams(
+        search.addView(input, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
         root.addView(search, LinearLayout.LayoutParams(
