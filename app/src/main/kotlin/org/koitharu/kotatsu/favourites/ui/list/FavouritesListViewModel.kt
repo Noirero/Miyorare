@@ -509,6 +509,13 @@ class FavouritesListViewModel @Inject constructor(
 
 	fun setWorkActive(active: Boolean) = listWorkScope.setActive(active)
 
+	/** Revalidate badges after returning from Reader/Details; the list VM survives navigation. */
+	fun refreshReadingStatusOnResume() {
+		invalidateCardEnrichment()
+		// Force one presentation emission without invalidating library paging/search state.
+		cardEnrichment.value = null
+	}
+
 	override fun onRefresh() {
 		invalidateCardEnrichment()
 		refreshTrigger.value = Any()
