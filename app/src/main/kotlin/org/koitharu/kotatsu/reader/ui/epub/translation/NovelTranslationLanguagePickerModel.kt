@@ -25,7 +25,7 @@ internal object NovelTranslationLanguagePickerModel {
             return NovelLanguageSymbol.Globe
         }
         val normalized = code.lowercase(Locale.ROOT)
-        return regionalFlags[normalized]?.let(NovelLanguageSymbol::Flag)
+        return regionalFlags[normalized]?.let { NovelLanguageSymbol.Flag(it) }
             ?: NovelLanguageSymbol.CodeBadge(code.uppercase(Locale.ROOT).take(5))
     }
 
