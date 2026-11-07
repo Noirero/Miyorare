@@ -114,14 +114,18 @@ class ChapterPersistenceRegressionTest {
 
 	@Test
 	fun openingNewestChapterDoesNotMarkOlderChaptersRead() {
+		// Use a remote-source fixture: the LOCAL seed points to a relative path and is
+		// intentionally rejected by the on-device LocalManga URL parser.
+		val remote = remoteDetails()
 		val chapters = (200..218).map { number ->
 			SampleData.chapter.copy(
+				source = remote.source,
 				id = number.toLong(), number = number.toFloat(),
 				url = "/chapter/$number", branch = null,
 			)
 		}
 		val details = org.koitharu.kotatsu.details.data.MangaDetails(
-			SampleData.mangaDetails.copy(chapters = chapters),
+			remote.copy(chapters = chapters),
 		)
 		val mapped = details.mapChapters(
 			currentChapterId = 218L, newCount = 0, branch = null,
