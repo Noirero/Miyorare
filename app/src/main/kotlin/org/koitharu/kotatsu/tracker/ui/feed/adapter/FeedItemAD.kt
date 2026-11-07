@@ -88,18 +88,36 @@ fun feedItemAD(
 		// a single chapter always shows its name; multiple collapse into a "N new chapters" summary
 		// that expands to the full list on click, and re-collapses when the feed screen is left
 		val isCollapsedSummary = chapters.size > 1 && !item.isExpanded
-		binding.textViewSummary.isVisible = chapters.isEmpty() || isCollapsedSummary
-		val indicatorRes = if (item.isNew) R.drawable.ic_new else 0
-		binding.textViewSummary.setCompoundDrawablesRelativeWithIntrinsicBounds(
-			if (binding.textViewSummary.isVisible) indicatorRes else 0, 0, 0, 0,
+		// Always show the Feed notification state, including single-chapter and expanded rows.
+		// Reader progress may have consumed the chapter's "new" dot while the feed log is
+		// still unread; the persisted notification flag is the authority for this label.
+		binding.textViewSummary.isVisible = true
+		val statusColor = context.getThemeColor(
+			if (item.isUnread) materialR.attr.colorOnSurfaceVariant else materialR.attr.colorPrimary,
 		)
-		if (binding.textViewSummary.isVisible) {
-			binding.textViewSummary.text = context.resources.getQuantityStringSafe(
-				R.plurals.new_chapters,
-				item.count,
-				item.count,
-			)
+		binding.textViewSummary.setTextColor(statusColor)
+		val statusIcon = when {
+			item.isUnread && item.isNew -> R.drawable.ic_new
+			item.isUnread -> R.drawable.ic_eye_off
+			else -> R.drawable.ic_eye_check
 		}
+		val indicator = ContextCompat.getDrawable(context, statusIcon)?.mutate()?.apply {
+			if (statusIcon != R.drawable.ic_new) setTint(statusColor)
+		}
+		binding.textViewSummary.setCompoundDrawablesRelativeWithIntrinsicBounds(indicator, null, null, null)
+		binding.textViewSummary.text = when {
+			isCollapsedSummary && item.isUnread -> context.resources.getQuantityStringSafe(
+				R.plurals.new_chapters, item.count, item.count,
+			)
+			isCollapsedSummary -> context.getString(R.string.feed_read_chapters,
+				context.resources.getQuantityStringSafe(R.plurals.chapters, item.count, item.count),
+			)
+			item.isUnread -> context.getString(R.string.unread)
+			else -> context.getString(R.string.read)
+		}
+		binding.textViewTitle.setTextColor(context.getThemeColor(
+			if (item.isUnread) materialR.attr.colorOnSurface else materialR.attr.colorOnSurfaceVariant,
+		))
 		if (isCollapsedSummary) {
 			binding.textViewSummary.setOnClickListener { onExpandClick(item) }
 		} else {
