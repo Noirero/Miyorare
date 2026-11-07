@@ -3,10 +3,12 @@ package org.koitharu.kotatsu.details.data
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -73,9 +75,13 @@ class ChapterProgressRuntimeTest {
             settings.setChapterReadOverride(manga.id, 218L, false)
             // Reset is scheduled from a short-lived caller (like a Details ViewModel).
             val caller = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-            val resetJob = repository.requestManualUnreadReset(
-                manga.id, FavouriteSpace.NORMAL, chapterA, 218L,
-            )
+            val requestedResetJob = CompletableDeferred<kotlinx.coroutines.Job>()
+            caller.launch {
+                requestedResetJob.complete(repository.requestManualUnreadReset(
+                    manga.id, FavouriteSpace.NORMAL, chapterA, 218L,
+                ))
+            }
+            val resetJob = requestedResetJob.await()
             val resetStamp = settings.getChapterPageResetStamp(manga.id, 218L)
             assertEquals(true, resetStamp < 0)
             assertEquals(true, kotlin.math.abs(resetStamp) > kotlin.math.abs(previousStamp))

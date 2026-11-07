@@ -171,6 +171,18 @@ class ChapterPersistenceRegressionTest {
 		assertNull(unread.first { it.chapter.id == 217L }.lastReadPage)
 		assertNull(unread.first { it.chapter.id == 217L }.lastReadTotalPages)
 		assertNull(unread.first { it.chapter.id == 218L }.lastReadPage)
+
+        // Quick-toggle unread -> read before cleanup must not reveal the old page.
+        val quickRead = details.mapChapters(
+            currentChapterId = 218L, newCount = 0, branch = null,
+            bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+            readOverrides = mapOf(218L to true),
+            progressByKey = mapOf(older.personalKey to saved),
+            currentPage = 70,
+            pageResetPending = { id -> id == 218L },
+        )
+        assertTrue(!quickRead.first { it.chapter.id == 218L }.isUnread)
+        assertNull(quickRead.first { it.chapter.id == 218L }.lastReadPage)
 	}
 
 	@Test
