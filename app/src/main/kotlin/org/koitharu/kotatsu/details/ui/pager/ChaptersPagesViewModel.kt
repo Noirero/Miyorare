@@ -571,12 +571,18 @@ abstract class ChaptersPagesViewModel(
 		settings.isChapterJumpDialogEnabled = false
 	}
 
-	fun toggleChapterReadState(chapterId: Long) {
+	fun setChapterReadState(chapterId: Long, isRead: Boolean) {
 		val item = chapters.value.firstOrNull { it.chapter.id == chapterId } ?: return
 		val mangaId = mangaDetails.value?.id ?: return
-		val markRead = item.isUnread
-		settings.setChapterReadOverride(mangaId, chapterId, markRead)
-		chapterReadOverrides.update { current -> current + (chapterId to markRead) }
+		// Directional swipes are idempotent: a repeated gesture must never invert the status.
+		if (item.isUnread == !isRead) return
+		settings.setChapterReadOverride(mangaId, chapterId, isRead)
+		chapterReadOverrides.update { current -> current + (chapterId to isRead) }
+	}
+
+	fun toggleChapterReadState(chapterId: Long) {
+		val item = chapters.value.firstOrNull { it.chapter.id == chapterId } ?: return
+		setChapterReadState(chapterId, item.isUnread)
 	}
 
 	fun markChapterAsCurrent(chapterId: Long) {
