@@ -335,7 +335,8 @@ abstract class ChaptersPagesViewModel(
 		.flatMapLatest { id ->
 			if (id != null) chapterProgressRepository.observe(id, favouriteSpace)
 			else flowOf(emptyMap())
-		}.withErrorHandling()
+		}.combine(chapterProgressRepository.resetRevisions) { progress, _ -> progress }
+		.withErrorHandling()
 
 	internal val chapterPresentation = combine(
 		combine(

@@ -5,7 +5,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -28,6 +31,9 @@ class ChapterProgressRepository @Inject constructor(
     private val settings: AppSettings,
 ) {
     private val mutationMutex = Mutex()
+    // Recompute visible page labels after an unread reset or its completion.
+    private val resetVersion = MutableStateFlow(0L)
+    val resetRevisions = resetVersion.asStateFlow()
     private data class PageKey(val mangaId: Long, val space: Int, val key: ChapterPersonalKey)
 
     // Only for events captured while a reset marker was still negative.
@@ -56,6 +62,7 @@ class ChapterProgressRepository @Inject constructor(
         mangaId: Long, space: FavouriteSpace, key: ChapterPersonalKey, chapterId: Long,
     ): Job {
         val stamp = settings.markChapterPageResetPending(mangaId, chapterId)
+        resetVersion.update { it + 1L }
         val pageKey = PageKey(mangaId, space.dbValue, key)
         return processLifecycleScope.launch(Dispatchers.IO) {
             mutationMutex.withLock {
@@ -115,6 +122,7 @@ class ChapterProgressRepository @Inject constructor(
                 // Both the new record and its generation are now committed in-order.
                 settings.completeChapterPageReset(manga.id, state.chapterId, eventStamp)
                 renewedVisits[pageKey] = (-eventStamp) to visitToken
+                resetVersion.update { it + 1L }
             }
         }
     }
