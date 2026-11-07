@@ -165,6 +165,7 @@ class LocalFavouritesListViewModel @Inject constructor(
 				mangaIds = visible.map { it.id },
 				includeUnread = display.showUnread || settings.progressIndicatorMode == org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.CHAPTERS_READ,
 				space = favouriteSpace,
+                legacyNovelIds = visible.asSequence().filter { it.isNovelContent }.map { it.id }.toSet(),
 			)
 			ArrayList<ListModel>(visible.size).also { result ->
 				mangaListMapper.toListModelList(

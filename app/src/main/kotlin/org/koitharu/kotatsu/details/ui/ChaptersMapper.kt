@@ -77,7 +77,7 @@ fun MangaDetails.mapChapters(
 				isGrid = isGrid,
 			).copy(
 				personalKey = key,
-				lastReadPage = if (isNovel) null else saved?.page ?: currentPage?.takeIf { isCurrent },
+				lastReadPage = if (isNovel) null else (saved?.page ?: currentPage?.takeIf { isCurrent }),
 				lastReadTotalPages = if (isNovel) null else saved?.totalPages,
 			)
 			if (isCurrent) legacyUnread = true
@@ -98,7 +98,7 @@ fun MangaDetails.mapChapters(
 				isGrid = isGrid,
 			).copy(
 				personalKey = key,
-				lastReadPage = if (isNovel) null else saved?.page ?: currentPage?.takeIf { isCurrent },
+				lastReadPage = if (isNovel) null else (saved?.page ?: currentPage?.takeIf { isCurrent }),
 				lastReadTotalPages = if (isNovel) null else saved?.totalPages,
 			)
 			if (isCurrent) legacyUnread = true

@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.favourites.domain
 
 import dagger.Reusable
 import javax.inject.Inject
+import kotlin.math.ceil
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.ChapterEntity
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -29,6 +30,7 @@ class FavouriteUnreadCounter @Inject constructor(
         private val unreadAuthority: Set<Long> = emptySet(),
         private val readCounts: Map<Long, Int> = emptyMap(),
         private val totalCounts: Map<Long, Int> = emptyMap(),
+        private val legacyNovelIds: Set<Long> = emptySet(),
     ) {
         fun hasHistory(mangaId: Long): Boolean = mangaId in histories
 
@@ -43,10 +45,11 @@ class FavouriteUnreadCounter @Inject constructor(
             unreadAuthority = unreadAuthority + other.unreadAuthority,
             readCounts = readCounts + other.readCounts,
             totalCounts = totalCounts + other.totalCounts,
+            legacyNovelIds = legacyNovelIds + other.legacyNovelIds,
         )
 
         fun getProgress(mangaId: Long, mode: ProgressIndicatorMode): ReadingProgress? {
-            if (mode == CHAPTERS_READ) {
+            if (mode == CHAPTERS_READ && mangaId !in legacyNovelIds) {
                 val total = totalCounts[mangaId]?.takeIf { it > 0 } ?: return null
                 if (mangaId !in unreadAuthority) return null
                 return ReadingProgress(
@@ -71,6 +74,7 @@ class FavouriteUnreadCounter @Inject constructor(
         mangaIds: Collection<Long>,
         includeUnread: Boolean,
         space: FavouriteSpace = FavouriteSpace.NORMAL,
+        legacyNovelIds: Set<Long> = emptySet(),
     ): Snapshot {
         if (mangaIds.isEmpty()) return Snapshot(emptyMap(), emptyMap())
         val ids = mangaIds.distinct()
@@ -87,6 +91,15 @@ class FavouriteUnreadCounter @Inject constructor(
             .groupBy { it.mangaId }
             .mapValues { (_, records) -> records.mapTo(HashSet()) { it.key() } }
 
+        // Novel/EPUB reader positions are not stored in chapter_progress. Preserve the
+        // old History-index indicator for those titles, including its exact SQL count.
+        val legacyHistories = histories.values.filter { it.mangaId in legacyNovelIds }
+        val legacyUnread = legacyHistories.chunked(DB_QUERY_BATCH_SIZE)
+            .flatMap { chunk -> database.getChaptersDao().findUnreadAfterCurrent(
+                mangaIds = chunk.map { it.mangaId }, chapterIds = chunk.map { it.chapterId },
+            ) }
+            .associateBy { it.mangaId to it.chapterId }
+
         val unread = HashMap<Long, Int>(ids.size)
         val read = HashMap<Long, Int>(ids.size)
         val total = HashMap<Long, Int>(ids.size)
@@ -95,20 +108,36 @@ class FavouriteUnreadCounter @Inject constructor(
             val branches = chapters[id].orEmpty().groupBy { it.branch }
             val chosen = branches.values.maxByOrNull { it.size }.orEmpty()
             if (chosen.isEmpty()) continue // unknown chapter count is not authoritative
-            val n = countReadChapters(
-                chosen, visited[id].orEmpty(), settings.getChapterReadOverrides(id),
-                histories[id]?.chapterId,
-            )
+            val n = if (id in legacyNovelIds) {
+                val oldUnread = histories[id]?.let { history ->
+                    legacyUnread[id to history.chapterId]?.unreadCount
+                        ?: legacyFallbackUnread(chosen.size, history)
+                } ?: chosen.size
+                (chosen.size - oldUnread).coerceIn(0, chosen.size)
+            } else {
+                countReadChapters(
+                    chosen, visited[id].orEmpty(), settings.getChapterReadOverrides(id),
+                    histories[id]?.chapterId,
+                )
+            }
             authority.add(id)
             total[id] = chosen.size
             read[id] = n
             unread[id] = chosen.size - n
         }
-        return Snapshot(histories, unread, authority, read, total)
+        return Snapshot(histories, unread, authority, read, total, legacyNovelIds.intersect(authority))
     }
 
     suspend fun getUnreadCount(mangaId: Long): Int =
         getSnapshot(listOf(mangaId), includeUnread = true).unreadCounts[mangaId] ?: 0
+
+    private fun legacyFallbackUnread(count: Int, history: HistoryEntity): Int {
+        val total = history.chaptersCount.takeIf { it > 0 } ?: count
+        if (total <= 0) return 0
+        val read = ceil(history.percent.coerceIn(0f, 1f).toDouble() * total.toDouble())
+            .toInt().coerceIn(0, total)
+        return (total - read).coerceAtLeast(0)
+    }
 
     private companion object {
         const val DB_QUERY_BATCH_SIZE = 500

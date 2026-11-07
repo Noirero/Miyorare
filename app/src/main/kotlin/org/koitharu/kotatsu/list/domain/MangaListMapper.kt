@@ -12,6 +12,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.CHAPTERS_READ
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -222,13 +223,15 @@ class MangaListMapper @Inject constructor(
 	): FavouriteUnreadCounter.Snapshot? {
 		if (flags and NO_MODERN_READING_STATE != 0 || !options.isBadgeEnabled(PROGRESS)) return null
 		if (settings.progressIndicatorMode == CHAPTERS_READ) {
-			return favouriteUnreadCounter.getSnapshot(manga.map { it.id }, includeUnread = true)
+			return favouriteUnreadCounter.getSnapshot(manga.map { it.id }, includeUnread = true,
+                legacyNovelIds = manga.asSequence().filter { it.isNovelContent }.map { it.id }.toSet())
 		}
 		if (settings.miyorareDesignStyle != MiyorareDesignStyle.MODERN) {
 			return null
 		}
 		if (mode != ListMode.GRID && mode != ListMode.COVER_ONLY) return null
-		return favouriteUnreadCounter.getSnapshot(manga.map { it.id }, includeUnread = true)
+		return favouriteUnreadCounter.getSnapshot(manga.map { it.id }, includeUnread = true,
+                legacyNovelIds = manga.asSequence().filter { it.isNovelContent }.map { it.id }.toSet())
 	}
 
 	private suspend fun isFavorite(mangaId: Long, @Options options: Int): Boolean {
