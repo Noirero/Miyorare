@@ -361,6 +361,9 @@ abstract class ChaptersPagesViewModel(
 				readOverrides = overrides,
 				progressByKey = progress,
 				currentPage = currentState?.page,
+                pageResetPending = { chapterId ->
+                    settings.getChapterPageResetStamp(manga.id, chapterId) < 0
+                },
 			).orEmpty()
 				.filter { item -> scanlator == null || item.chapter.scanlator?.trim() == scanlator }
 				.map { item -> item.withTitleMode(options.titleMode) } to (currentState != null)
@@ -566,12 +569,13 @@ abstract class ChaptersPagesViewModel(
 	suspend fun getChapterResumeState(item: ChapterListItem): ReaderState {
 		val mangaId = mangaDetails.value?.id
 		if (mangaId != null && getMangaOrNull()?.isNovelContent != true &&
-			settings.getChapterReadOverrides(mangaId)[item.chapter.id] == false
+			(settings.getChapterReadOverrides(mangaId)[item.chapter.id] == false ||
+                settings.getChapterPageResetStamp(mangaId, item.chapter.id) < 0)
 		) return ReaderState(item.chapter.id, 0, 0)
 		val current = readingState.value
 		if (item.isCurrent && current?.chapterId == item.chapter.id) return current
 		val position = if (mangaId != null && getMangaOrNull()?.isNovelContent != true) {
-			chapterProgressRepository.get(mangaId, favouriteSpace, item.personalKey)
+			chapterProgressRepository.get(mangaId, favouriteSpace, item.personalKey, item.chapter.id)
 		} else null
 		return if (position != null) {
 			ReaderState(item.chapter.id, position.page, position.scroll)
@@ -626,10 +630,9 @@ abstract class ChaptersPagesViewModel(
 		settings.setChapterReadOverride(mangaId, chapterId, isRead)
 		chapterReadOverrides.update { current -> current + (chapterId to isRead) }
 		if (!isRead && getMangaOrNull()?.isNovelContent != true) {
-			launchJob(Dispatchers.IO) {
-				chapterProgressRepository.resetOnManualUnread(mangaId, favouriteSpace, item.personalKey, chapterId)
-			}
-		}
+            // Invalidate synchronously; process-owned DB cleanup survives Details teardown.
+            chapterProgressRepository.requestManualUnreadReset(mangaId, favouriteSpace, item.personalKey, chapterId)
+        }
 	}
 
 	fun toggleChapterReadState(chapterId: Long) {

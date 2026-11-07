@@ -25,7 +25,8 @@ fun MangaDetails.mapChapters(
 	isDownloadedOnly: Boolean,
 	readOverrides: Map<Long, Boolean> = emptyMap(),
 	progressByKey: Map<ChapterPersonalKey, ChapterProgressEntity> = emptyMap(),
-	currentPage: Int? = null,
+    currentPage: Int? = null,
+    pageResetPending: (Long) -> Boolean = { false },
 ): List<ChapterListItem> {
 	// Some third-party sources occasionally return the exact same chapter more than once.
 	// Remove only exact chapter identities here: different chapters that merely collide on `id`
@@ -77,8 +78,10 @@ fun MangaDetails.mapChapters(
 				isGrid = isGrid,
 			).copy(
 				personalKey = key,
-				lastReadPage = if (isNovel || readOverride == false) null else (saved?.page ?: currentPage?.takeIf { isCurrent }),
-				lastReadTotalPages = if (isNovel || readOverride == false) null else saved?.totalPages,
+				lastReadPage = if (isNovel || readOverride == false || pageResetPending(chapter.id)) null
+                    else (saved?.page ?: currentPage?.takeIf { isCurrent }),
+				lastReadTotalPages = if (isNovel || readOverride == false || pageResetPending(chapter.id)) null
+                    else saved?.totalPages,
 			)
 			if (isCurrent) legacyUnread = true
 		}
@@ -99,8 +102,10 @@ fun MangaDetails.mapChapters(
 				isGrid = isGrid,
 			).copy(
 				personalKey = key,
-				lastReadPage = if (isNovel || readOverride == false) null else (saved?.page ?: currentPage?.takeIf { isCurrent }),
-				lastReadTotalPages = if (isNovel || readOverride == false) null else saved?.totalPages,
+				lastReadPage = if (isNovel || readOverride == false || pageResetPending(chapter.id)) null
+                    else (saved?.page ?: currentPage?.takeIf { isCurrent }),
+				lastReadTotalPages = if (isNovel || readOverride == false || pageResetPending(chapter.id)) null
+                    else saved?.totalPages,
 			)
 			if (isCurrent) legacyUnread = true
 		}

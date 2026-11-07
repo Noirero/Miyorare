@@ -59,9 +59,9 @@ class ChapterProgressRepository @Inject constructor(
         val pageKey = PageKey(mangaId, space.dbValue, key)
         return processLifecycleScope.launch(Dispatchers.IO) {
             mutationMutex.withLock {
-                renewedVisits.remove(pageKey)
                 database.withTransaction {
                     if (settings.getChapterPageResetStamp(mangaId, chapterId) == stamp) {
+                        renewedVisits.remove(pageKey)
                         database.getChapterProgressDao().delete(mangaId, key.source, key.url, space.dbValue)
                     }
                 }

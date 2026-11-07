@@ -166,6 +166,9 @@ class ReaderViewModel @Inject constructor(
         val key: ChapterPersonalKey,
         val state: ReaderState,
         val totalPages: Int,
+        val resetStamp: Long,
+        val visitToken: Long,
+        val newVisit: Boolean,
     )
 
     // One consumer preserves the order of active-page updates, including backwards navigation.
@@ -182,6 +185,9 @@ class ReaderViewModel @Inject constructor(
                         key = write.key,
                         state = write.state,
                         totalPages = write.totalPages,
+                        eventStamp = write.resetStamp,
+                        visitToken = write.visitToken,
+                        isNewVisit = write.newVisit,
                     )
                 } catch (error: Exception) {
                     error.printStackTraceDebug()
@@ -202,10 +208,13 @@ class ReaderViewModel @Inject constructor(
         val key = resolveChapterPersonalKey(chapter, sourceChapters)
         // Respect user ordering: an unread swipe made after this visit must not be undone
         // when an older queued database write eventually completes.
-        if (visitAcknowledgement.shouldAcknowledge(state.chapterId)) {
-            acknowledgeChapterVisit(manga.id, state.chapterId)
-        }
-        chapterProgressWrites.trySend(ChapterProgressWrite(manga, key, state, pages))
+        val (isNewVisit, token) = visitAcknowledgement.capture(state.chapterId)
+        val stamp = settings.getChapterPageResetStamp(manga.id, state.chapterId)
+        if (isNewVisit) acknowledgeChapterVisit(manga.id, state.chapterId)
+        chapterProgressWrites.trySend(ChapterProgressWrite(
+            manga = manga, key = key, state = state, totalPages = pages,
+            resetStamp = stamp, visitToken = token, newVisit = isNewVisit,
+        ))
     }
 
     private fun clampChapterPosition(requested: ReaderState): ReaderState {
@@ -217,14 +226,17 @@ class ReaderViewModel @Inject constructor(
 
     private suspend fun chapterResumeState(chapterId: Long): ReaderState {
         val manga = getMangaOrNull() ?: return ReaderState(chapterId, 0, 0)
-        if (!manga.isNovelContent && settings.getChapterReadOverrides(manga.id)[chapterId] == false) {
+        if (!manga.isNovelContent &&
+            (settings.getChapterReadOverrides(manga.id)[chapterId] == false ||
+                settings.getChapterPageResetStamp(manga.id, chapterId) < 0)
+        ) {
             return ReaderState(chapterId, 0, 0)
         }
         if (manga.isNovelContent) return ReaderState(chapterId, 0, 0)
         val chapter = chaptersLoader.peekChapter(chapterId) ?: return ReaderState(chapterId, 0, 0)
         val sourceChapters = mangaDetails.value?.sourceManga?.chapters.orEmpty()
         val key = resolveChapterPersonalKey(chapter, sourceChapters)
-        val saved = chapterProgressRepository.get(manga.id, favouriteSpace, key)
+        val saved = chapterProgressRepository.get(manga.id, favouriteSpace, key, chapterId)
         if (saved != null) return ReaderState(chapterId, saved.page, saved.scroll)
         // Only the current legacy History cursor is known; never infer visits to older chapters.
         val history = historyRepository.getOne(manga)
@@ -984,7 +996,8 @@ class ReaderViewModel @Inject constructor(
         if (history != null) {
             val chapter = manga.findChapterById(history.chapterId)
             val resume = if (!manga.isNovelContent &&
-                settings.getChapterReadOverrides(manga.id)[history.chapterId] == false
+                (settings.getChapterReadOverrides(manga.id)[history.chapterId] == false ||
+                    settings.getChapterPageResetStamp(manga.id, history.chapterId) < 0)
             ) ReaderState(history.chapterId, 0, 0) else ReaderState(history)
             when {
                 chapter == null -> if (!isLoaded) return null
