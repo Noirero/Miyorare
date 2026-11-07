@@ -101,6 +101,18 @@ class FeedNotificationReadStateRuntimeTest {
 		h.reverse()
 		assertEquals(7, counter())
 		assertTrue(unread(103L))
+		assertFalse(unread(101L)); assertFalse(unread(102L))
+	}
+
+
+	@Test fun undoCannotReverseANewerTrackerAcknowledgement() = runBlocking {
+		val h = checkNotNull(db.updateFeedReadState(setOf(101L, 102L), read = true))
+		// External tracker updates metadata and affirms the acknowledged state.
+		db.getTracksDao().upsert(track(0, lastCheck = 99L))
+		db.getTrackLogsDao().markAsRead(10L)
+		h.reverse()
+		assertFalse(unread(101L)); assertFalse(unread(102L))
+		assertEquals(0, counter())
 	}
 
 	@Test fun undoDoesNotReopenLogOrCounterAfterReaderProgressChanges() = runBlocking {

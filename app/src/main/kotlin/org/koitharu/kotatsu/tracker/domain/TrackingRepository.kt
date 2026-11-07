@@ -288,6 +288,7 @@ private data class FeedCounterReset(
 private data class FeedStatusChange(
 	val originalLogs: List<TrackLogEntity>,
 	val historyByManga: Map<Long, HistoryEntity?>,
+	val trackerByManga: Map<Long, TrackEntity?>,
 	val counterResets: List<FeedCounterReset>,
 )
 
@@ -309,10 +310,12 @@ internal suspend fun MangaDatabase.updateFeedReadState(ids: Set<Long>, read: Boo
 		if (originalLogs.isEmpty()) return@withTransaction null
 
 		val historyByManga = HashMap<Long, HistoryEntity?>()
+		val trackerByManga = HashMap<Long, TrackEntity?>()
 		val touchedIds = HashMap<Long, MutableSet<Long>>()
 		for (log in originalLogs) {
 			if (!historyByManga.containsKey(log.mangaId)) {
 				historyByManga[log.mangaId] = historyDao.findIncludingDeleted(log.mangaId)
+				trackerByManga[log.mangaId] = tracksDao.find(log.mangaId)
 			}
 			touchedIds.getOrPut(log.mangaId) { LinkedHashSet() }.add(log.id)
 		}
@@ -333,7 +336,7 @@ internal suspend fun MangaDatabase.updateFeedReadState(ids: Set<Long>, read: Boo
 				counterResets += FeedCounterReset(track, historyByManga[mangaId], logIds, changedIds)
 			}
 		}
-		FeedStatusChange(originalLogs, historyByManga, counterResets)
+		FeedStatusChange(originalLogs, historyByManga, trackerByManga, counterResets)
 	} ?: return null
 
 	return ReversibleHandle {
@@ -342,8 +345,17 @@ internal suspend fun MangaDatabase.updateFeedReadState(ids: Set<Long>, read: Boo
 			val historyUnchanged = change.historyByManga.mapValues { (mangaId, snapshot) ->
 				historyDao.findIncludingDeleted(mangaId) == snapshot
 			}
+			val counterResetMangaIds = change.counterResets.mapTo(HashSet()) { it.priorTrack.mangaId }
+			val trackerUnchanged = change.trackerByManga.mapValues { (mangaId, snapshot) ->
+				val current = tracksDao.find(mangaId)
+				if (snapshot == null) current == null
+				else current != null && current.matchesTrackerSnapshot(snapshot) &&
+					current.newChapters == (if (mangaId in counterResetMangaIds) 0 else snapshot.newChapters)
+			}
 			val restoring = change.originalLogs.filter { original ->
-				if (historyUnchanged[original.mangaId] != true) return@filter false
+				if (historyUnchanged[original.mangaId] != true ||
+					trackerUnchanged[original.mangaId] != true
+				) return@filter false
 				val current = logsDao.findById(original.id)
 				current != null && current.isUnread != read && current.matchesFeedLog(original)
 			}
@@ -356,7 +368,7 @@ internal suspend fun MangaDatabase.updateFeedReadState(ids: Set<Long>, read: Boo
 				for (counter in change.counterResets) {
 					val previous = counter.priorTrack
 					if (!counter.changedLogIds.all { it in restoredIds }) continue
-					if (historyUnchanged[previous.mangaId] != true) continue
+					if (historyUnchanged[previous.mangaId] != true || trackerUnchanged[previous.mangaId] != true) continue
 					val current = tracksDao.find(previous.mangaId) ?: continue
 					if (current.newChapters != 0 || !current.matchesTrackerSnapshot(previous)) continue
 					val currentLogIds = logsDao.findAllForManga(previous.mangaId).mapTo(HashSet()) { it.id }
