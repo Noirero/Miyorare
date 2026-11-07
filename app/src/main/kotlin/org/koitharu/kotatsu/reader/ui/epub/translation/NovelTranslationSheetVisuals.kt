@@ -146,7 +146,6 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
             gravity = Gravity.CENTER_VERTICAL
         }
         footer.addView(label(summary, 11f, subdued = true).apply {
-            maxLines = 3
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         footer.addView(toggle, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, dp(48),
@@ -175,7 +174,7 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
             addView(icon(iconRes).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(17), dp(17)).apply { marginEnd = dp(6) }
             })
-            addView(label(name, 12f).apply { maxLines = 3 },
+            addView(label(name, 12f),
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }, fullWidth())
     }
