@@ -40,7 +40,7 @@ internal class NovelTranslationLanguagePicker(
     private val density get() = context.resources.displayMetrics.density
     private fun dp(value: Int) = (value * density + .5f).toInt()
 
-    fun show() {
+    fun show(): AlertDialog {
         val choices = (if (source) NovelTranslationLanguages.sourceChoices()
             else NovelTranslationLanguages.targetChoices()).map { language ->
             if (language.code.equals(NovelTranslationSettings.LANGUAGE_AUTO, ignoreCase = true)) {
@@ -247,6 +247,7 @@ internal class NovelTranslationLanguagePicker(
             }
         }
         dialog.show()
+        return dialog
     }
 
     private inner class LanguageAdapter(

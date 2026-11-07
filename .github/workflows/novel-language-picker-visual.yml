@@ -1,0 +1,68 @@
+name: Novel Language Picker Visual Evidence
+
+on:
+  pull_request:
+    types: [synchronize]
+    branches: [Amain2]
+    paths:
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationLanguagePicker.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/reader/ui/epub/translation/NovelTranslationLanguagePickerVisualTest.kt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Android 15 source/target language picker screenshots
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 903
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - run: chmod +x gradlew
+      - name: Pre-warm parser dependency
+        run: bash .github/scripts/prewarm-jitpack-parsers.sh acceptance
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm || true
+      - name: Capture actual picker UI
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb shell wm size 720x1606
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.0
+            adb shell cmd uimode night yes
+            adb shell rm -rf /sdcard/Download/miyorare-novel-language-picker
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationLanguagePickerVisualTest
+            mkdir -p novel-picker-evidence
+            adb pull /sdcard/Download/miyorare-novel-language-picker/source.png novel-picker-evidence/source.png
+            adb pull /sdcard/Download/miyorare-novel-language-picker/target.png novel-picker-evidence/target.png
+            test -s novel-picker-evidence/source.png
+            test -s novel-picker-evidence/target.png
+      - name: Upload actual screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: novel-picker-visual-evidence
+          path: |
+            novel-picker-evidence/
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 7
