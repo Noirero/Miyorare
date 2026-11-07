@@ -35,6 +35,11 @@ internal class NovelTranslationSheetVisuals(private val context: Context) {
     private val onButton = modern?.onButton ?: context.getThemeColor(materialR.attr.colorOnPrimary)
     private val borderAccent = modern?.borderHighlight ?: accent
 
+    // Shared palette for the source/target language pickers; no parallel color mapping.
+    val languagePickerAccent: Int get() = accent
+    val languagePickerOutline: Int get() = outline
+    fun languagePickerBadgeFill(): Int = ColorUtils.blendARGB(surfaceHigh, accent, 0.20f)
+
     fun dp(value: Int) = (value * density + .5f).toInt()
 
     fun panelBackground(): GradientDrawable = gradient(
