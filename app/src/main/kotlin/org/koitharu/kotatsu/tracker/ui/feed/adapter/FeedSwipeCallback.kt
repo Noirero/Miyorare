@@ -114,6 +114,11 @@ class FeedSwipeCallback(
 		isCurrentlyActive: Boolean,
 	) {
 		val view = viewHolder.itemView
+		// Eligibility is recomputed even at exactly zero displacement. Returning to the
+		// starting position cancels a previously crossed threshold on the same gesture.
+		if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE && isCurrentlyActive) {
+			pendingToggleRead = dX < 0f && abs(dX) >= 0.4f * view.width
+		}
 		if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE && dX != 0f) {
 			lastDx = dX
 			val swipeLeft = dX < 0f
@@ -154,8 +159,6 @@ class FeedSwipeCallback(
 			}
 			val passedThreshold = abs(dX) >= 0.4f * view.width
 			if (isCurrentlyActive) {
-				// Reset when a finger changes direction, so delete never also toggles read status.
-				pendingToggleRead = swipeLeft && passedThreshold
 				if (passedThreshold && !hapticFired) {
 					view.hapticFeedback(HapticEffect.CONFIRM)
 					hapticFired = true
