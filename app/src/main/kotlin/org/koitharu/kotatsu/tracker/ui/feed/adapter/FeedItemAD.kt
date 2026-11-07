@@ -93,7 +93,7 @@ fun feedItemAD(
 		// still unread; the persisted notification flag is the authority for this label.
 		binding.textViewSummary.isVisible = true
 		val statusColor = context.getThemeColor(
-			if (item.isUnread) materialR.attr.colorOnSurfaceVariant else materialR.attr.colorPrimary,
+			if (item.isUnread) materialR.attr.colorTertiary else materialR.attr.colorPrimary,
 		)
 		binding.textViewSummary.setTextColor(statusColor)
 		val statusIcon = when {
@@ -106,8 +106,11 @@ fun feedItemAD(
 		}
 		binding.textViewSummary.setCompoundDrawablesRelativeWithIntrinsicBounds(indicator, null, null, null)
 		binding.textViewSummary.text = when {
-			isCollapsedSummary && item.isUnread -> context.resources.getQuantityStringSafe(
+			isCollapsedSummary && item.isUnread && item.isNew -> context.resources.getQuantityStringSafe(
 				R.plurals.new_chapters, item.count, item.count,
+			)
+			isCollapsedSummary && item.isUnread -> context.getString(R.string.feed_unread_chapters,
+				context.resources.getQuantityStringSafe(R.plurals.chapters, item.count, item.count),
 			)
 			isCollapsedSummary -> context.getString(R.string.feed_read_chapters,
 				context.resources.getQuantityStringSafe(R.plurals.chapters, item.count, item.count),
