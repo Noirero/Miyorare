@@ -449,20 +449,14 @@ class NovelTranslationDialogController(
 	}
 
 	private fun chooseLanguage(source: Boolean, onSelected: (String) -> Unit) {
-		val choices = if (source) NovelTranslationLanguages.sourceChoices() else NovelTranslationLanguages.targetChoices()
-		val labels = choices.map { "${it.name} (${it.code})" }.toMutableList().apply {
-			add(context.getString(R.string.novel_translation_custom_language))
-		}.toTypedArray()
 		val saved = if (source) settings.sourceLanguage else settings.targetLanguage
-		val checked = choices.indexOfFirst { it.code.equals(saved, true) }.coerceAtLeast(0)
-		MaterialAlertDialogBuilder(context)
-			.setTitle(if (source) R.string.novel_translation_choose_source else R.string.novel_translation_choose_target)
-			.setSingleChoiceItems(labels, checked) { dialog, which ->
-				dialog.dismiss()
-				if (which == choices.size) showCustomLanguage(source, onSelected) else onSelected(choices[which].code)
-			}
-			.setNegativeButton(android.R.string.cancel, null)
-			.show()
+		NovelTranslationLanguagePicker(
+			context = context,
+			source = source,
+			selectedCode = saved,
+			onSelected = onSelected,
+			onCustomLanguage = { showCustomLanguage(source, onSelected) },
+		).show()
 	}
 
 	private fun showCustomLanguage(source: Boolean, onSelected: (String) -> Unit) {
