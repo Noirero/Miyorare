@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -64,6 +65,8 @@ internal class NovelTranslationLanguagePicker(
             setBoxCornerRadii(dp(16).toFloat(), dp(16).toFloat(), dp(16).toFloat(), dp(16).toFloat())
             setStartIconDrawable(R.drawable.ic_search)
             setStartIconTintList(ColorStateList.valueOf(visuals.muted))
+            endIconMode = TextInputLayout.END_ICON_CLEAR_TEXT
+            setEndIconTintList(ColorStateList.valueOf(visuals.languagePickerAccent))
         }
         val input = TextInputEditText(context).apply {
             setSingleLine(true)
@@ -80,6 +83,7 @@ internal class NovelTranslationLanguagePicker(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { bottomMargin = dp(8) })
 
+        val listContainer = FrameLayout(context)
         val list = RecyclerView(context).apply {
             layoutManager = LinearLayoutManager(context)
             this.adapter = adapter
@@ -89,13 +93,27 @@ internal class NovelTranslationLanguagePicker(
             setPadding(0, dp(2), 0, dp(2))
         }
         val initialHeight = minOf(dp(378), (context.resources.displayMetrics.heightPixels * 0.49f).toInt())
-        root.addView(list, LinearLayout.LayoutParams(
+        listContainer.addView(list, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        val emptyHint = TextView(context).apply {
+            setText(R.string.novel_translation_no_matching_languages)
+            gravity = Gravity.CENTER
+            textSize = 13f
+            setTextColor(visuals.muted)
+            visibility = View.GONE
+        }
+        listContainer.addView(emptyHint, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        root.addView(listContainer, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, initialHeight,
         ))
         input.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 adapter.filter(s?.toString().orEmpty())
+                emptyHint.visibility = if (adapter.itemCount == 0) View.VISIBLE else View.GONE
                 list.scrollToPosition(0)
             }
             override fun afterTextChanged(s: Editable?) = Unit
@@ -103,10 +121,10 @@ internal class NovelTranslationLanguagePicker(
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             val height = if (ime > 0) minOf(dp(245), initialHeight) else initialHeight
-            val params = list.layoutParams
+            val params = listContainer.layoutParams
             if (params.height != height) {
                 params.height = height
-                list.layoutParams = params
+                listContainer.layoutParams = params
             }
             insets
         }
@@ -197,7 +215,9 @@ internal class NovelTranslationLanguagePicker(
             holder.itemView.apply {
                 background = if (chosen) visuals.cardBackground(selected = true) else null
                 isSelected = chosen
-                contentDescription = item.name + if (custom) "" else ", " + item.code
+                contentDescription = item.name +
+                    (if (custom) "" else ", " + item.code) +
+                    (if (chosen) ", " + context.getString(R.string.novel_translation_language_selected) else "")
                 setOnClickListener { onTap(item.code) }
             }
             holder.title.text = if (item.code == NovelTranslationSettings.LANGUAGE_AUTO) {
