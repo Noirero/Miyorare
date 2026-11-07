@@ -174,23 +174,20 @@ class NovelTranslationDialogController(
 		}
 
 		val manualScopeSelector = if (!selectionInvocation) Spinner(context).apply {
-			adapter = ArrayAdapter(
-				context, android.R.layout.simple_spinner_dropdown_item,
-				listOf(
-					context.getString(if (pagedReader) R.string.novel_translation_scope_page else R.string.novel_translation_scope_visible),
-					context.getString(R.string.novel_translation_scope_chapter),
-				),
-			)
+			adapter = compactSpinnerAdapter(listOf(
+				context.getString(if (pagedReader) R.string.novel_translation_scope_page else R.string.novel_translation_scope_visible),
+				context.getString(R.string.novel_translation_scope_chapter),
+			), visuals.onSurface)
 			setSelection(if (settings.manualScope == NovelTranslationScope.PAGE) 0 else 1)
 			minimumHeight = dp(48)
 		} else null
 
 		val services = NovelTranslationService.entries
 		val serviceSpinner = Spinner(context).apply {
-			adapter = ArrayAdapter(
-				context, android.R.layout.simple_spinner_dropdown_item,
-				listOf(context.getString(R.string.novel_translation_online), context.getString(R.string.novel_translation_ai)),
-			)
+			adapter = compactSpinnerAdapter(listOf(
+				context.getString(R.string.novel_translation_online),
+				context.getString(R.string.novel_translation_ai),
+			), visuals.onSurface)
 			setSelection(services.indexOf(currentService()).coerceAtLeast(0))
 			minimumHeight = dp(48)
 		}
@@ -696,6 +693,20 @@ class NovelTranslationDialogController(
 		addView(TextView(context).apply { setText(labelRes); setPadding(0, dp(8), 0, dp(4)) }, matchWidth())
 		addView(view, matchWidth())
 	}
+
+	private fun compactSpinnerAdapter(labels: List<String>, foreground: Int): ArrayAdapter<String> =
+		object : ArrayAdapter<String>(context, android.R.layout.simple_spinner_item, labels) {
+			override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
+				super.getView(position, convertView, parent).also { view ->
+					(view as? TextView)?.apply {
+						setSingleLine(false)
+						maxLines = 3
+						ellipsize = null
+						textSize = 12f
+						setTextColor(foreground)
+					}
+				}
+		}.apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
 
 	private fun matchWidth() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 	private fun weighted() = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
