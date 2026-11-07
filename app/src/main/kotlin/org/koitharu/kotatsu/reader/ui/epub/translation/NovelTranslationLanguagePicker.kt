@@ -40,7 +40,11 @@ internal class NovelTranslationLanguagePicker(
 
     fun show() {
         val choices = (if (source) NovelTranslationLanguages.sourceChoices()
-            else NovelTranslationLanguages.targetChoices()).toMutableList()
+            else NovelTranslationLanguages.targetChoices()).map { language ->
+            if (language.code.equals(NovelTranslationSettings.LANGUAGE_AUTO, ignoreCase = true)) {
+                language.copy(name = context.getString(R.string.novel_translation_auto_detect))
+            } else language
+        }.toMutableList()
         if (choices.none { it.code.equals(selectedCode, ignoreCase = true) } && selectedCode.isNotBlank()) {
             choices.add(0, NovelTranslationLanguage(selectedCode, selectedCode))
         }
@@ -220,9 +224,7 @@ internal class NovelTranslationLanguagePicker(
                     (if (chosen) ", " + context.getString(R.string.novel_translation_language_selected) else "")
                 setOnClickListener { onTap(item.code) }
             }
-            holder.title.text = if (item.code == NovelTranslationSettings.LANGUAGE_AUTO) {
-                context.getString(R.string.novel_translation_auto_detect)
-            } else item.name
+            holder.title.text = item.name
             holder.title.setTypeface(null, if (chosen) Typeface.BOLD else Typeface.NORMAL)
             holder.code.text = if (custom) "" else item.code
             holder.radio.visibility = if (custom) View.INVISIBLE else View.VISIBLE
