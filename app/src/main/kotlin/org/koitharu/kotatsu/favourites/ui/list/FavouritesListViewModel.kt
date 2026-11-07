@@ -879,7 +879,8 @@ class FavouritesListViewModel @Inject constructor(
 			try {
 				val deltaSnapshot = PerformanceDiagnostics.measure("repository", "favourites_history_unread") { unreadCounter.getSnapshot(
 					mangaIds = deltaIds,
-					includeUnread = key.includeUnread,
+					includeUnread = key.includeUnread || settings.progressIndicatorMode == org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.CHAPTERS_READ,
+					space = favouriteSpace,
 				) }
 				val snapshot = previous?.snapshot?.merge(deltaSnapshot) ?: deltaSnapshot
 				val deltaDownloadedIds = if (key.includeDownloaded) {
