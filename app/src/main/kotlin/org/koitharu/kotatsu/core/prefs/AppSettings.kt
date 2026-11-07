@@ -309,6 +309,32 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		prefs.edit { putStringSet(key, values) }
 	}
 
+    /**
+     * Persistent page-reset generation, independent of the manual read flag.
+     * Negative: a manual unread invalidated the previous page; positive: the next
+     * real Reader visit has committed a fresh page. Absolute value is the generation.
+     * This also protects against process death between the gesture and DB cleanup.
+     */
+    fun getChapterPageResetStamp(mangaId: Long, chapterId: Long): Long =
+        prefs.getLong("chapter_page_reset_stamp_${mangaId}_${chapterId}", 0L)
+
+    fun markChapterPageResetPending(mangaId: Long, chapterId: Long): Long = synchronized(prefs) {
+        val key = "chapter_page_reset_stamp_${mangaId}_${chapterId}"
+        val old = getChapterPageResetStamp(mangaId, chapterId)
+        val next = -(kotlin.math.abs(old) + 1L)
+        prefs.edit { putLong(key, next) }
+        next
+    }
+
+    fun completeChapterPageReset(mangaId: Long, chapterId: Long, expected: Long) {
+        if (expected >= 0) return
+        synchronized(prefs) {
+            if (getChapterPageResetStamp(mangaId, chapterId) == expected) {
+                prefs.edit { putLong("chapter_page_reset_stamp_${mangaId}_${chapterId}", -expected) }
+            }
+        }
+    }
+
 	fun setChapterReadOverrides(mangaId: Long, overrides: Map<Long, Boolean>) {
 		val key = "chapter_read_overrides_$mangaId"
 		prefs.edit {
