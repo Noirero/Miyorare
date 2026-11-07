@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.tracker.ui.feed
 
+import androidx.room.withTransaction
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -217,9 +218,14 @@ class FeedViewModel @Inject constructor(
 		return ReversibleHandle {
 			// Restore progress only if it still matches the exact row written by this action.
 			// A newer Reader update must never be clobbered by Undo on a Feed notification.
-			if (advancedHistory != null && db.getHistoryDao().find(item.manga.id) == advancedHistory) {
-				if (priorHistory != null) db.getHistoryDao().upsert(priorHistory)
-				else db.getHistoryDao().delete(item.manga.id)
+			if (advancedHistory != null) {
+				db.withTransaction {
+					val historyDao = db.getHistoryDao()
+					if (historyDao.find(item.manga.id) == advancedHistory) {
+						if (priorHistory != null) historyDao.upsert(priorHistory)
+						else historyDao.delete(item.manga.id)
+					}
+				}
 			}
 			logsHandle.reverse()
 		}
