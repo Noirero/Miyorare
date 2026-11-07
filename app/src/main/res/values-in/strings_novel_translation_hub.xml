@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="novel_translation_engine">Mesin terjemahan</string>
+    <string name="novel_translation_auto_compact">Terjemah otomatis</string>
+    <string name="novel_translation_auto_compact_summary">Saat bab dibuka</string>
+    <string name="novel_translation_context_compact_summary">Teks sekitar</string>
     <string name="novel_translation_sheet_subtitle">Terjemahkan halaman atau bab sesuai kebutuhan.</string>
     <string name="novel_translation_segment_translated">Terjemahan</string>
     <string name="novel_translation_current_view_label">Tampilan bacaan</string>
