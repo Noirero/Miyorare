@@ -146,6 +146,7 @@
     <string name="stop_update">Stop update</string>
     <string name="merge_scanlators">Merge scanlators</string>
     <string name="marked_as_read">Marked as read</string>
+    <string name="feed_read_chapters">Read • %1$s</string>
     <string name="mark_as_read">Mark as read</string>
     <string name="feed_entry_removed">Removed</string>
     <string name="feed_gestures_tip_title">Swipe gestures</string>
