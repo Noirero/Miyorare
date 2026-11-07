@@ -99,6 +99,56 @@ class ChapterPersistenceRegressionTest {
 
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
+	/** Default PR Android 15 DB suite must exercise newly added per-chapter regressions. */
+	@Test
+	fun chapterProgressDurabilityAcrossDatabaseReopen() {
+		org.koitharu.kotatsu.details.data.ChapterProgressRuntimeTest()
+			.lastPageForEachChapterSurvivesReopenAndCanMoveBackwards()
+	}
+
+	@Test
+	fun chapterProgressSchemaUpgradePreservesLegacyHistory() {
+		ChapterProgressMigrationTest()
+			.migrationAddsEmptyProgressTableWithoutTouchingExistingHistory()
+	}
+
+	@Test
+	fun openingNewestChapterDoesNotMarkOlderChaptersRead() {
+		val chapters = (200..218).map { number ->
+			SampleData.chapter.copy(
+				id = number.toLong(), number = number.toFloat(),
+				url = "/chapter/$number", branch = null,
+			)
+		}
+		val details = org.koitharu.kotatsu.details.data.MangaDetails(
+			SampleData.mangaDetails.copy(chapters = chapters),
+		)
+		val mapped = details.mapChapters(
+			currentChapterId = 218L, newCount = 0, branch = null,
+			bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+		)
+		assertEquals(19, mapped.size)
+		assertEquals(1, mapped.count { !it.isUnread })
+		assertTrue(mapped.all { it.chapter.id == 218L || it.isUnread })
+		val older = mapped.first { it.chapter.id == 217L }
+		val saved = org.koitharu.kotatsu.details.data.ChapterProgressEntity(
+			mangaId = 123L, source = older.personalKey.source, url = older.personalKey.url,
+			space = 0, page = 11, scroll = 0, totalPages = 38,
+		)
+		val updated = details.mapChapters(
+			currentChapterId = 218L, newCount = 0, branch = null,
+			bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+			readOverrides = mapOf(218L to false),
+			progressByKey = mapOf(older.personalKey to saved),
+		)
+		assertTrue(updated.first { it.chapter.id == 218L }.isUnread)
+		assertTrue(updated.first { it.chapter.id == 200L }.isUnread)
+		val persisted = updated.first { it.chapter.id == 217L }
+		assertTrue(!persisted.isUnread)
+		assertEquals(11, persisted.lastReadPage)
+		assertEquals(38, persisted.lastReadTotalPages)
+	}
+
 	@Test
 	fun favouriteCoverStatusesCompactAndRecycle() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
