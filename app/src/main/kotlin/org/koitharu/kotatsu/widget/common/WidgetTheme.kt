@@ -12,8 +12,13 @@ import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.content.ContextCompat
+import androidx.preference.PreferenceManager
 import com.google.android.material.color.MaterialColors
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import com.google.android.material.R as materialR
 
 /**
@@ -44,9 +49,8 @@ object WidgetTheme {
 	private val AMOLED_CONTAINER_HIGH = Color.rgb(18, 18, 18)
 	private val AMOLED_CONTAINER_HIGHEST = Color.rgb(30, 30, 30)
 
-	// Building a themed context allocates a whole Resources object, and widgets rebuild on every
-	// history/stats write. The result only depends on these three settings, so resolve once and
-	// reuse until one of them changes.
+	// Building a themed context allocates Resources. Cache by every persisted input used by
+	// the active color resolver, never just Classic colorScheme/night/AMOLED.
 	@Volatile
 	private var cache: Pair<String, WidgetColors>? = null
 
@@ -60,14 +64,14 @@ object WidgetTheme {
 		val settings = context.widgetEntryPoint().settings
 		val isNight = isNight(context, settings.theme)
 		val isAmoled = isNight && settings.isAmoledTheme
-		val key = "${settings.colorScheme.name}/$isNight/$isAmoled"
+		val key = buildCacheKey(context, settings, isNight, isAmoled)
 		cache?.let { (cachedKey, cached) ->
 			if (cachedKey == key) {
 				return cached
 			}
 		}
 		val colors = runCatching {
-			resolve(context, isNight, isAmoled)
+			resolve(context, isNight, isAmoled, settings.miyorareDesignStyle)
 		}.onFailure {
 			Log.e(TAG, "unable to resolve widget colors", it)
 		}.getOrNull() ?: return null
@@ -80,8 +84,23 @@ object WidgetTheme {
 		cache = null
 	}
 
-	private fun resolve(context: Context, isNight: Boolean, isAmoled: Boolean): WidgetColors {
+	private fun resolve(context: Context, isNight: Boolean, isAmoled: Boolean, designStyle: MiyorareDesignStyle): WidgetColors {
 		val themed = themedContext(context, isNight, isAmoled)
+		if (designStyle == MiyorareDesignStyle.MODERN) {
+			themed.miyorareViewPaletteFromPreferences()?.let { palette ->
+				return WidgetColors(
+					surfaceContainer = palette.surfaceContainer,
+					surfaceContainerHigh = palette.surfaceContainerHigh,
+					surfaceContainerHighest = palette.surfaceContainerHighest,
+					primary = palette.primary,
+					primaryContainer = palette.primaryContainer,
+					onPrimary = palette.onPrimary,
+					onPrimaryContainer = palette.onPrimaryContainer,
+					onSurface = palette.onSurface,
+					onSurfaceVariant = palette.onSurfaceVariant,
+				)
+			}
+		}
 		fun color(attr: Int, @ColorRes fallback: Int) =
 			MaterialColors.getColor(themed, attr, ContextCompat.getColor(themed, fallback))
 		// The app's AMOLED overlay only blackens `colorSurface`/`colorBackground`, which widgets
@@ -170,6 +189,26 @@ object WidgetTheme {
 	fun apply(context: Context, views: RemoteViews) {
 		val colors = colors(context) ?: return
 		apply(views, colors)
+	}
+
+	/** Key includes all Modern palette inputs, including custom-background revisions and effects. */
+	private fun buildCacheKey(context: Context, settings: org.koitharu.kotatsu.core.prefs.AppSettings, isNight: Boolean, isAmoled: Boolean): String {
+		val base = listOf(settings.miyorareDesignStyle.name, settings.colorScheme.name, isNight, isAmoled)
+		if (settings.miyorareDesignStyle != MiyorareDesignStyle.MODERN) return base.joinToString("|")
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
+		val modern = listOf(
+			settings.miyorareThemePreset.name,
+			settings.miyorareModernPaletteSource.name,
+			settings.miyorareCustomAccent,
+			settings.miyorareCustomBackgroundRevision,
+			prefs.getBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, true),
+			prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY, null),
+			prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, null),
+			prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_SECONDARY, null),
+			prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY, null),
+			prefs.getString(VisualEffectPreferences.KEY_LEVEL, null),
+		)
+		return (base + modern).joinToString("|")
 	}
 
 	private fun isNight(context: Context, themeMode: Int): Boolean = when (themeMode) {
