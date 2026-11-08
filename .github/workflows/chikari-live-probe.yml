@@ -1,0 +1,33 @@
+name: Chikari Novel Live API Probe
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/lnreader/chikari.js'
+      - 'extensions/lnreader/tests/chikari.live.test.cjs'
+      - '.github/workflows/chikari-live-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  live-chikari:
+    name: Live Chikari novel API (non-release)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Run isolated Chikari parser regression tests
+        run: node --test extensions/lnreader/tests/chikari.test.cjs
+
+      - name: Probe upstream Chikari API read-only contracts
+        run: node extensions/lnreader/tests/chikari.live.test.cjs
