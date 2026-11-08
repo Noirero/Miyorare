@@ -220,8 +220,9 @@ class FavouritesListViewModel @Inject constructor(
 				LocalMangaIndex.rebuildEvents,
 			).collect {
 				// Concrete events can update an existing artifact without changing an index row.
-				// Verified download state may change before the next card snapshot arrives.
-				invalidateCardEnrichment(discardDownloadedStatus = true)
+				// Preserve last-known verified statuses during revalidation, including unrelated downloads.
+				// The new revision refreshes the entire visible batch before publishing updated ownership.
+				invalidateCardEnrichment()
 				refreshTrigger.value = Any()
 			}
 		}
@@ -938,16 +939,13 @@ class FavouritesListViewModel @Inject constructor(
 		}
 	}
 
-	private fun invalidateCardEnrichment(discardDownloadedStatus: Boolean = false) {
+	private fun invalidateCardEnrichment() {
 		synchronized(cardEnrichmentGate) {
 			val nextRevision = cardEnrichmentRevision.incrementAndGet()
 			cardEnrichmentJob?.cancel()
 			cardEnrichmentJob = null
 			pendingCardEnrichmentKey = null
-			if (discardDownloadedStatus) {
-				cardEnrichment.value = cardEnrichment.value?.copy(downloadedIds = null)
-			}
-			// Re-evaluate the published list without wiping presentation metadata.
+			// Re-evaluate the published list without wiping last-known valid metadata.
 			cardEnrichmentEpoch.value = nextRevision
 		}
 	}
