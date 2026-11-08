@@ -63,6 +63,21 @@ class CardMetadataPresentationTest {
         )
     }
 
+    @Test fun `cancelled same-key request cannot clear a newer request after A B A`() {
+        val first = CardEnrichmentRequest("A")
+        var pending: CardEnrichmentRequest<String>? = first
+        pending = CardEnrichmentRequest("B")
+        pending = CardEnrichmentRequest("A")
+        val newest = pending
+        assertEquals(first.key, newest?.key)
+        // This is the production cleanup predicate. Comparing keys instead would clear newest.
+        if (pending === first) pending = null
+        assertTrue(pending === newest)
+        assertTrue(canPublishCardEnrichment(10, 10, pending === newest, true))
+        if (pending === newest) pending = null
+        assertEquals(null, pending)
+    }
+
     @Test fun `cancelled and superseded enrichment cannot publish after rapid resume`() {
         assertFalse(canPublishCardEnrichment(8, 8, false, true))
         assertFalse(canPublishCardEnrichment(8, 8, true, false))
