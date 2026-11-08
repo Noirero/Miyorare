@@ -191,11 +191,15 @@ class FavouritesListViewModel @Inject constructor(
 	private val emptyCardSnapshot = FavouriteUnreadCounter.Snapshot(emptyMap(), emptyMap())
 	private val cardEnrichment = MutableStateFlow<CardEnrichment?>(null)
 	private val cardEnrichmentRevision = AtomicLong()
+	private val cardEnrichmentEpoch = MutableStateFlow(0L)
+	private val cardEnrichmentGate = Any()
 	private var pendingCardEnrichmentKey: CardEnrichmentKey? = null
 	private var cardEnrichmentJob: Job? = null
 	private val listWorkScope = FavouritesListWorkScope {
-		cardEnrichmentJob = null
-		pendingCardEnrichmentKey = null
+		synchronized(cardEnrichmentGate) {
+			cardEnrichmentJob = null
+			pendingCardEnrichmentKey = null
+		}
 	}
 
 	private val libraryGroups = libraryGroupsRepository.observeGroups(favouriteSpace).stateIn(
@@ -215,8 +219,8 @@ class FavouritesListViewModel @Inject constructor(
 				LocalMangaIndex.rebuildEvents,
 			).collect {
 				// Concrete events can update an existing artifact without changing an index row.
-				// Requery card state as well as the filter, retaining the previous badge until it settles.
-				invalidateCardEnrichment()
+				// Verified download state may change before the next card snapshot arrives.
+				invalidateCardEnrichment(discardDownloadedStatus = true)
 				refreshTrigger.value = Any()
 			}
 		}
@@ -252,7 +256,7 @@ class FavouritesListViewModel @Inject constructor(
 		DisplayState(query, type, pageLimit, preferences.getValue(type), bottom)
 	}
 
-	private val displayAndEnrichment = combine(displayState, cardEnrichment) { display, enrichment ->
+	private val displayAndEnrichment = combine(displayState, cardEnrichment, cardEnrichmentEpoch) { display, enrichment, _ ->
 		display to enrichment
 	}
 
@@ -375,12 +379,11 @@ class FavouritesListViewModel @Inject constructor(
 			} else {
 				searchMatcher.filter(scanState.mangas, display.query)
 			}
-			val enrichmentKey = CardEnrichmentKey(
-				revision = cardEnrichmentRevision.get(),
-				ids = scanned.map { it.id },
-                legacyNovelIds = scanned.asSequence().filter { it.isNovelContent }.map { it.id }.toSet(),
-				includeUnread = display.options.showUnread,
+			val enrichmentKey = cardEnrichmentKey(
+				display = display,
+				manga = scanned,
 				includeDownloaded = usesSpaceScopedDownloadStatus && display.options.showDownloaded,
+				similarTitleScan = true,
 			)
 			scheduleCardEnrichment(enrichmentKey)
 			val matchingEnrichment = currentCardEnrichment?.takeIf { cached ->
@@ -465,14 +468,12 @@ class FavouritesListViewModel @Inject constructor(
 			targetCount = display.limit,
 		)
 		val visible = searched.take(display.limit)
-		val enrichmentKey = CardEnrichmentKey(
-			revision = cardEnrichmentRevision.get(),
-			ids = visible.map { it.id },
-            legacyNovelIds = visible.asSequence().filter { it.isNovelContent }.map { it.id }.toSet(),
-			includeUnread = display.options.showUnread,
+		val enrichmentKey = cardEnrichmentKey(
+			display = display,
+			manga = visible,
 			includeDownloaded = usesSpaceScopedDownloadStatus &&
-				display.options.showDownloaded &&
-				filterDownloadedIds == null,
+				display.options.showDownloaded && filterDownloadedIds == null,
+			similarTitleScan = false,
 		)
 		scheduleCardEnrichment(enrichmentKey)
 		val matchingEnrichment = currentCardEnrichment?.takeIf { cached ->
