@@ -211,7 +211,7 @@ def gate_applicable(gate: str, base_ref: str) -> bool:
     if gate == "PR Compile & Unit Check":
         return base_ref == "Amain2"
     if gate == "Miyorare Identity Guard":
-        return base_ref in {"main", "beta"}
+        return base_ref in {"main", "beta", "Amain2"}
     return base_ref == "main"
 
 
@@ -383,6 +383,8 @@ def technical_readiness(
                         "required Android 15 job concluded "
                         f"{android_job.get('conclusion') or 'unknown'}"
                     )
+        elif state.name == "Miyorare Identity Guard" and conclusion != "success":
+            return "blocked", f"{state.name} concluded {conclusion or 'unknown'}"
         elif conclusion not in PASSING_CONCLUSIONS:
             return "blocked", f"{state.name} concluded {conclusion or 'unknown'}"
 

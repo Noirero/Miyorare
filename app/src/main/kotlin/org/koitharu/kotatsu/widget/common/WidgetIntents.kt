@@ -28,7 +28,7 @@ object WidgetIntents {
 	): Intent {
 		val builder = ReaderIntent.Builder(context).manga(manga)
 		if (history != null) {
-			builder.state(
+			builder.historyState(
 				ReaderState(
 					chapterId = history.chapterId,
 					page = history.page,

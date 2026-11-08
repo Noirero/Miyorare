@@ -81,7 +81,9 @@ open class PageHolder(
 			binding.ssiv.width / binding.ssiv.sWidth.toFloat(),
 			binding.ssiv.height / binding.ssiv.sHeight.toFloat(),
 		)
-		binding.ssiv.colorFilter = settings.colorFilter?.toColorFilter()
+		org.koitharu.kotatsu.reader.domain.ReaderCustomTint.applyToImage(binding.ssiv, settings.colorFilter) {
+			binding.ssiv.colorFilter = it
+		}
 		when (settings.zoomMode) {
 			ZoomMode.FIT_CENTER -> {
 				if (shouldFillLandscapeWidth()) {

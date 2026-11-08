@@ -18,6 +18,8 @@ data class ChapterListItem(
 	val titleMode: ChapterTitleMode = ChapterTitleMode.SOURCE,
 	val personalKey: ChapterPersonalKey = ChapterPersonalKey.of(chapter),
 	val personalMetadata: ChapterPersonalMetadata = ChapterPersonalMetadata(),
+	val lastReadPage: Int? = null,
+	val lastReadTotalPages: Int? = null,
 ) : ListModel {
 
 	private var cachedTitle: String? = null
@@ -106,6 +108,18 @@ data class ChapterListItem(
 		return if (updatedFlags == flags) this else copy(flags = updatedFlags)
 	}
 
+
+	fun getDescription(resources: Resources): String {
+		val page = lastReadPage?.takeIf { it >= 0 } ?: return description.orEmpty()
+		val total = lastReadTotalPages?.takeIf { it > 0 }
+		val label = if (total != null) {
+			resources.getString(org.koitharu.kotatsu.R.string.chapter_last_read_page_total, page + 1, total)
+		} else {
+			resources.getString(org.koitharu.kotatsu.R.string.chapter_last_read_page, page + 1)
+		}
+		return listOfNotNull(description?.takeIf { it.isNotBlank() }, label).joinToString(" • ")
+	}
+
 	private fun buildDescription(): String {
 		val joiner = StringJoiner(" • ")
 		if (titleMode == ChapterTitleMode.SOURCE) {
@@ -136,7 +150,7 @@ data class ChapterListItem(
 		if (previousState !is ChapterListItem) {
 			return super.getChangePayload(previousState)
 		}
-		return if (chapter == previousState.chapter && personalMetadata == previousState.personalMetadata && flags != previousState.flags) {
+		return if (chapter == previousState.chapter && personalMetadata == previousState.personalMetadata && lastReadPage == previousState.lastReadPage && lastReadTotalPages == previousState.lastReadTotalPages && flags != previousState.flags) {
 			flags
 		} else {
 			super.getChangePayload(previousState)

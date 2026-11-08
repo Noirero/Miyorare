@@ -117,6 +117,12 @@ data class ReaderSettings(
 			AppSettings.KEY_CF_INVERTED,
 			AppSettings.KEY_CF_GRAYSCALE,
 			AppSettings.KEY_CF_BOOK,
+            AppSettings.KEY_CF_CUSTOM_ENABLED,
+            AppSettings.KEY_CF_CUSTOM_RED,
+            AppSettings.KEY_CF_CUSTOM_GREEN,
+            AppSettings.KEY_CF_CUSTOM_BLUE,
+            AppSettings.KEY_CF_CUSTOM_ALPHA,
+            AppSettings.KEY_CF_CUSTOM_MODE,
 			AppSettings.KEY_READER_CROP,
 		)
 		private var job: Job? = null

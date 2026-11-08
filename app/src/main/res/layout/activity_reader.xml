@@ -13,6 +13,20 @@
 		tools:background="@color/grey" />
 
 	<com.google.android.material.button.MaterialButton
+		android:id="@+id/button_translate"
+		style="?materialIconButtonOutlinedStyle"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_gravity="bottom|start"
+		android:layout_margin="16dp"
+		android:layout_marginBottom="88dp"
+		android:contentDescription="@string/novel_translation_quick_action"
+		android:visibility="gone"
+		app:icon="@drawable/ic_translate_noirero"
+		app:layout_insetEdge="bottom"
+		tools:visibility="visible" />
+
+	<com.google.android.material.button.MaterialButton
 		android:id="@+id/button_timer"
 		style="?materialIconButtonOutlinedStyle"
 		android:layout_width="wrap_content"

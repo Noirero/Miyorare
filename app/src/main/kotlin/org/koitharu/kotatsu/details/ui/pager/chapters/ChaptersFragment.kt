@@ -137,20 +137,15 @@ class ChaptersFragment :
 			PagerNestedScrollHelper(this).bind(viewLifecycleOwner)
 			adapter = chaptersAdapter
 			ChapterGridSpanHelper.attach(this)
-			ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.RIGHT) {
-				override fun getSwipeDirs(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder): Int {
-					val item = chaptersAdapter?.items?.getOrNull(viewHolder.bindingAdapterPosition) as? ChapterListItem
-					return if (item != null && !item.isGrid) ItemTouchHelper.RIGHT else 0
-				}
-				override fun onMove(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder) = false
-				override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-					val position = viewHolder.bindingAdapterPosition
-					val adapter = chaptersAdapter ?: return
-					val item = adapter.items.getOrNull(position) as? ChapterListItem
-					if (item != null) viewModel.toggleChapterReadState(item.chapter.id)
-					if (position != RecyclerView.NO_POSITION) adapter.notifyItemChanged(position)
-				}
-			}).attachToRecyclerView(this)
+			ItemTouchHelper(ChapterReadSwipeCallback(
+				context = context,
+				findChapter = { holder ->
+					chaptersAdapter?.items?.getOrNull(holder.bindingAdapterPosition) as? ChapterListItem
+				},
+				isSelectionActive = { (selectionController?.count ?: 0) > 0 },
+				onAction = { item, markRead -> viewModel.setChapterReadState(item.chapter.id, markRead) },
+				onRebind = { position -> chaptersAdapter?.notifyItemChanged(position) },
+			)).attachToRecyclerView(this)
 			attachVolumeHeaderGestures(this)
 		}
 		binding.chipsFilter.onChipClickListener = this
@@ -292,9 +287,9 @@ class ChaptersFragment :
 		}
 		val listener = findParentCallback(ReaderNavigationCallback::class.java)
 		if (listener != null && listener.onChapterSelected(item.chapter)) dismissParentDialog() else {
-			val state = if (item.isCurrent && viewModel.readingState.value?.chapterId == item.chapter.id) viewModel.readingState.value!! else ReaderState(item.chapter.id, 0, 0)
 			val manga = viewModel.getMangaOrNull() ?: return; val context = view.context
 			viewLifecycleOwner.lifecycleScope.launch {
+				val state = viewModel.getChapterResumeState(item)
 				val openReader = { peek: Boolean -> router.openReader(ReaderIntent.Builder(context).manga(manga).favouriteSpace(viewModel.favouriteSpace.dbValue).state(state).apply { if (peek) peek() }.build()) }
 				when (viewModel.getChapterOpenMode(item.chapter.id)) {
 					ChaptersPagesViewModel.ChapterOpenMode.NORMAL -> openReader(false)

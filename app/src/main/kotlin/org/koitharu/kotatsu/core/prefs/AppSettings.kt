@@ -47,6 +47,8 @@ import org.koitharu.kotatsu.parsers.util.mapNotNullToSet
 import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.reader.domain.ReaderColorFilter
+import org.koitharu.kotatsu.reader.domain.ReaderCustomTint
+import org.koitharu.kotatsu.reader.domain.ReaderTintBlendMode
 import java.io.File
 import java.net.Proxy
 import java.util.UUID
@@ -306,6 +308,40 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		values.add(prefix + if (isRead) "1" else "0")
 		prefs.edit { putStringSet(key, values) }
 	}
+
+    /**
+     * Persistent page-reset generation, independent of the manual read flag.
+     * Negative: a manual unread invalidated the previous page; positive: the next
+     * real Reader visit has committed a fresh page. Absolute value is the generation.
+     * This also protects against process death between the gesture and DB cleanup.
+     */
+    private fun chapterPageResetKey(mangaId: Long, chapterId: Long, space: Int): String =
+        "chapter_page_reset_stamp_${mangaId}_${chapterId}_${space}"
+
+    fun getChapterPageResetStamp(mangaId: Long, chapterId: Long, space: Int = 0): Long {
+        // Normal-space fallback preserves pending reset markers from pre-release builds.
+        val legacy = if (space == 0) prefs.getLong(
+            "chapter_page_reset_stamp_${mangaId}_${chapterId}", 0L,
+        ) else 0L
+        return prefs.getLong(chapterPageResetKey(mangaId, chapterId, space), legacy)
+    }
+
+    fun markChapterPageResetPending(mangaId: Long, chapterId: Long, space: Int = 0): Long = synchronized(prefs) {
+        val key = chapterPageResetKey(mangaId, chapterId, space)
+        val old = getChapterPageResetStamp(mangaId, chapterId, space)
+        val next = -(kotlin.math.abs(old) + 1L)
+        prefs.edit { putLong(key, next) }
+        next
+    }
+
+    fun completeChapterPageReset(mangaId: Long, chapterId: Long, expected: Long, space: Int = 0) {
+        if (expected >= 0) return
+        synchronized(prefs) {
+            if (getChapterPageResetStamp(mangaId, chapterId, space) == expected) {
+                prefs.edit { putLong(chapterPageResetKey(mangaId, chapterId, space), -expected) }
+            }
+        }
+    }
 
 	fun setChapterReadOverrides(mangaId: Long, overrides: Map<Long, Boolean>) {
 		val key = "chapter_read_overrides_$mangaId"
@@ -989,6 +1025,14 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 				isInverted = prefs.getBoolean(KEY_CF_INVERTED, ReaderColorFilter.EMPTY.isInverted),
 				isGrayscale = prefs.getBoolean(KEY_CF_GRAYSCALE, ReaderColorFilter.EMPTY.isGrayscale),
 				isBookBackground = prefs.getBoolean(KEY_CF_BOOK, ReaderColorFilter.EMPTY.isBookBackground),
+                custom = ReaderCustomTint(
+                    enabled = prefs.getBoolean(KEY_CF_CUSTOM_ENABLED, false),
+                    red = prefs.getInt(KEY_CF_CUSTOM_RED, ReaderCustomTint.DEFAULT.red),
+                    green = prefs.getInt(KEY_CF_CUSTOM_GREEN, ReaderCustomTint.DEFAULT.green),
+                    blue = prefs.getInt(KEY_CF_CUSTOM_BLUE, ReaderCustomTint.DEFAULT.blue),
+                    alpha = prefs.getInt(KEY_CF_CUSTOM_ALPHA, ReaderCustomTint.DEFAULT.alpha),
+                    mode = ReaderTintBlendMode.fromStored(prefs.getString(KEY_CF_CUSTOM_MODE, null)),
+                ),
 			).takeUnless { it.isEmpty }
 		}.getOrNull()
 		set(value) {
@@ -999,12 +1043,24 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 					putBoolean(KEY_CF_INVERTED, value.isInverted)
 					putBoolean(KEY_CF_GRAYSCALE, value.isGrayscale)
 					putBoolean(KEY_CF_BOOK, value.isBookBackground)
+                    putBoolean(KEY_CF_CUSTOM_ENABLED, value.custom.enabled)
+                    putInt(KEY_CF_CUSTOM_RED, value.custom.red)
+                    putInt(KEY_CF_CUSTOM_GREEN, value.custom.green)
+                    putInt(KEY_CF_CUSTOM_BLUE, value.custom.blue)
+                    putInt(KEY_CF_CUSTOM_ALPHA, value.custom.alpha)
+                    putString(KEY_CF_CUSTOM_MODE, value.custom.mode.name)
 				} else {
 					remove(KEY_CF_BRIGHTNESS)
 					remove(KEY_CF_CONTRAST)
 					remove(KEY_CF_INVERTED)
 					remove(KEY_CF_GRAYSCALE)
 					remove(KEY_CF_BOOK)
+                    remove(KEY_CF_CUSTOM_ENABLED)
+                    remove(KEY_CF_CUSTOM_RED)
+                    remove(KEY_CF_CUSTOM_GREEN)
+                    remove(KEY_CF_CUSTOM_BLUE)
+                    remove(KEY_CF_CUSTOM_ALPHA)
+                    remove(KEY_CF_CUSTOM_MODE)
 				}
 			}
 		}
@@ -1495,6 +1551,12 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_CF_INVERTED = "cf_inverted"
 		const val KEY_CF_GRAYSCALE = "cf_grayscale"
 		const val KEY_CF_BOOK = "cf_book"
+        const val KEY_CF_CUSTOM_ENABLED = "cf_custom_enabled"
+        const val KEY_CF_CUSTOM_RED = "cf_custom_red"
+        const val KEY_CF_CUSTOM_GREEN = "cf_custom_green"
+        const val KEY_CF_CUSTOM_BLUE = "cf_custom_blue"
+        const val KEY_CF_CUSTOM_ALPHA = "cf_custom_alpha"
+        const val KEY_CF_CUSTOM_MODE = "cf_custom_mode"
 		const val KEY_PAGES_TAB = "pages_tab"
 		const val KEY_DETAILS_TAB = "details_tab"
 		const val KEY_DETAILS_LAST_TAB = "details_last_tab"

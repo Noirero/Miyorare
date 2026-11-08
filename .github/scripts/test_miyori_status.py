@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import unittest
+from pathlib import Path
 
 import miyori_status as ms
 
@@ -94,6 +95,7 @@ class MiyoriStatusTests(unittest.TestCase):
     def test_gate_applicability_is_branch_aware(self):
         self.assertTrue(ms.gate_applicable("PR Compile & Unit Check", "Amain2"))
         self.assertFalse(ms.gate_applicable("PR Compile & Unit Check", "beta"))
+        self.assertTrue(ms.gate_applicable("Miyorare Identity Guard", "Amain2"))
         self.assertTrue(ms.gate_applicable("Miyorare Identity Guard", "beta"))
         self.assertTrue(ms.gate_applicable("Miyorare Identity Guard", "main"))
         self.assertFalse(ms.gate_applicable("Promotion to Main Gate", "beta"))
@@ -112,6 +114,80 @@ class MiyoriStatusTests(unittest.TestCase):
         self.assertFalse(
             ms.is_promotion_candidate("Amain2", "release/promote-main-20261106")
         )
+
+    def test_amain2_readiness_requires_identity_guard(self):
+        pr = make_pr(labels=["ci:owner-request"])
+        compile_only = FakeClient(pr=pr, runs=[run("PR Compile & Unit Check")])
+        analysis = ms.analyze_pr(client=compile_only, pr_number=123)
+        self.assertEqual(analysis["technical"][0], "waiting")
+        self.assertIn("Miyorare Identity Guard", analysis["technical"][1])
+
+        verified = FakeClient(
+            pr=pr,
+            runs=[run("PR Compile & Unit Check"), run("Miyorare Identity Guard")],
+        )
+        self.assertEqual(
+            ms.analyze_pr(client=verified, pr_number=123)["technical"][0],
+            "ready",
+        )
+
+    def test_identity_guard_skip_is_not_passing_evidence(self):
+        pr = make_pr(labels=["ci:owner-request"])
+        for conclusion in ("skipped", "neutral", "failure"):
+            with self.subTest(conclusion=conclusion):
+                states = [
+                    ms.GateState("PR Compile & Unit Check", True,
+                                 run("PR Compile & Unit Check")),
+                    ms.GateState("Miyorare Identity Guard", True,
+                                 run("Miyorare Identity Guard", conclusion=conclusion)),
+                ]
+                self.assertEqual(
+                    ms.technical_readiness(pr=pr, states=states, label_errors=[])[0],
+                    "blocked",
+                )
+
+    def test_phase1_workflow_routing_and_branch_prefix_safety(self):
+        workflows = Path(__file__).resolve().parents[1] / "workflows"
+        identity = (workflows / "identity-guard.yml").read_text(encoding="utf-8")
+        identity_pr = identity.split("  pull_request:\n", 1)[1].split(
+            "  workflow_dispatch:", 1
+        )[0]
+        for base in ("main", "beta", "Amain2"):
+            self.assertIn(f"      - {base}\n", identity_pr)
+        self.assertNotIn("github.head_ref", identity)
+        identity_job = identity.split("  verify-identity:\n", 1)[1].split(
+            "    steps:\n", 1
+        )[0]
+        self.assertNotIn("    if:", identity_job)
+
+        upstream = (workflows / "miyorare-multi-upstream-check.yml").read_text(
+            encoding="utf-8"
+        )
+        upstream_pr = upstream.split("  pull_request:\n", 1)[1].split(
+            "  workflow_dispatch:", 1
+        )[0]
+        for base in ("beta", "Amain2"):
+            self.assertIn(f"      - {base}\n", upstream_pr)
+        self.assertIn("    paths:\n", upstream_pr)
+        self.assertIn("extensions/miyorare-sources/tools/verify_multi_upstream.py",
+                      upstream_pr)
+
+        contract = (workflows / "source-pack-contract.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("  pull_request:\n    paths:\n", contract)
+        contract_job = contract.split("  contract:\n", 1)[1].split(
+            "    steps:\n", 1
+        )[0]
+        self.assertIn("    runs-on: ubuntu-latest", contract_job)
+        if "github.head_ref" in contract_job:
+            # The stable main contract may skip fix/hotfix PRs; preserve
+            # that targeted policy rather than suppressing the entire check.
+            self.assertIn("github.event_name != 'pull_request'", contract_job)
+            for prefix in ("fix/", "bugfix/", "hotfix/"):
+                self.assertIn(
+                    f"!startsWith(github.head_ref, '{prefix}')", contract_job
+                )
 
     def test_issue_traceability_extracts_closing_and_issue_url(self):
         body = "Fixes #531\nRelated: https://github.com/Noirero/Miyorare/issues/700"
@@ -206,7 +282,7 @@ class MiyoriStatusTests(unittest.TestCase):
         )
         client = FakeClient(
             pr=pr,
-            runs=[run("PR Compile & Unit Check")],
+            runs=[run("PR Compile & Unit Check"), run("Miyorare Identity Guard")],
             jobs=[{
                 "name": "Android runtime validation — Android 15",
                 "status": "completed", "conclusion": "success",
@@ -225,7 +301,7 @@ class MiyoriStatusTests(unittest.TestCase):
         )
         client = FakeClient(
             pr=pr,
-            runs=[run("PR Compile & Unit Check")],
+            runs=[run("PR Compile & Unit Check"), run("Miyorare Identity Guard")],
             workflows=set(ms.GATES),
         )
         analysis = ms.analyze_pr(client=client, pr_number=123)
@@ -237,7 +313,8 @@ class MiyoriStatusTests(unittest.TestCase):
         )
         self.assertIn(ms.CARD_MARKER, card)
         self.assertIn("PR Compile & Unit Check", card)
-        self.assertNotIn("Miyorare Identity Guard |", card)
+        self.assertIn("Miyorare Identity Guard |", card)
+        self.assertEqual(analysis["technical"][0], "ready")
         self.assertIn("Technical readiness", card)
         self.assertIn("`ci:owner-request`", card)
         self.assertIn("does not approve, push, merge", card)
@@ -315,7 +392,7 @@ class MiyoriStatusTests(unittest.TestCase):
         fresh = run("PR Compile & Unit Check")
         fresh["created_at"] = "2026-10-29T00:00:00Z"
         client = FakeClient(
-            pr=pr, runs=[fresh],
+            pr=pr, runs=[fresh, run("Miyorare Identity Guard")],
             jobs=[{"name": "Android runtime validation — Android 15",
                    "status": "completed", "conclusion": "success"}],
             last_label_change="2026-10-28T02:00:00Z",

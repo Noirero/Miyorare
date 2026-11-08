@@ -29,6 +29,8 @@ import org.koitharu.kotatsu.databinding.ActivityColorFilterBinding
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.util.format
 import org.koitharu.kotatsu.reader.domain.ReaderColorFilter
+import org.koitharu.kotatsu.reader.domain.ReaderCustomTint
+import org.koitharu.kotatsu.reader.domain.ReaderTintBlendMode
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -41,6 +43,18 @@ class ColorFilterConfigActivity :
 	lateinit var coil: ImageLoader
 
 	private val viewModel: ColorFilterConfigViewModel by viewModels()
+    private var updatingUi = false
+    private var uiLoading = true
+    private var customEnabled = false
+
+    private val blendIds = mapOf(
+        R.id.chip_blend_default to ReaderTintBlendMode.DEFAULT,
+        R.id.chip_blend_multiply to ReaderTintBlendMode.MULTIPLY,
+        R.id.chip_blend_screen to ReaderTintBlendMode.SCREEN,
+        R.id.chip_blend_overlay to ReaderTintBlendMode.OVERLAY,
+        R.id.chip_blend_dodge to ReaderTintBlendMode.DODGE_LIGHTEN,
+        R.id.chip_blend_burn to ReaderTintBlendMode.BURN_DARKEN,
+    )
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -48,6 +62,17 @@ class ColorFilterConfigActivity :
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = true)
 		viewBinding.sliderBrightness.addOnChangeListener(this)
 		viewBinding.sliderContrast.addOnChangeListener(this)
+        val custom = viewBinding.customFilterControls
+        custom.sliderTintRed.addOnChangeListener(this)
+        custom.sliderTintGreen.addOnChangeListener(this)
+        custom.sliderTintBlue.addOnChangeListener(this)
+        custom.sliderTintAlpha.addOnChangeListener(this)
+        custom.switchCustomTint.setOnCheckedChangeListener(this)
+        custom.groupBlendModes.setOnCheckedStateChangeListener { _, checkedIds ->
+            if (!updatingUi) {
+                checkedIds.firstOrNull()?.let(blendIds::get)?.let(viewModel::setCustomMode)
+            }
+        }
 		val formatter = PercentLabelFormatter(resources)
 		viewBinding.sliderContrast.setLabelFormatter(formatter)
 		viewBinding.sliderBrightness.setLabelFormatter(formatter)
@@ -90,6 +115,10 @@ class ColorFilterConfigActivity :
 			when (slider.id) {
 				R.id.slider_brightness -> viewModel.setBrightness(value)
 				R.id.slider_contrast -> viewModel.setContrast(value)
+                R.id.slider_tint_red -> viewModel.setCustomRed(value.toInt())
+                R.id.slider_tint_green -> viewModel.setCustomGreen(value.toInt())
+                R.id.slider_tint_blue -> viewModel.setCustomBlue(value.toInt())
+                R.id.slider_tint_alpha -> viewModel.setCustomAlpha(value.toInt())
 			}
 		}
 	}
@@ -99,6 +128,7 @@ class ColorFilterConfigActivity :
 			R.id.switch_invert -> viewModel.setInversion(isChecked)
 			R.id.switch_grayscale -> viewModel.setGrayscale(isChecked)
 			R.id.switch_book -> viewModel.setBookEffect(isChecked)
+            R.id.switch_custom_tint -> if (!updatingUi) viewModel.setCustomEnabled(isChecked)
 			R.id.switch_manga_profile -> viewModel.setMangaProfileEnabled(isChecked)
 		}
 	}
@@ -123,12 +153,33 @@ class ColorFilterConfigActivity :
 	}
 
 	private fun onColorFilterChanged(readerColorFilter: ReaderColorFilter?) {
-		viewBinding.sliderBrightness.setValueRounded(readerColorFilter?.brightness ?: 0f)
-		viewBinding.sliderContrast.setValueRounded(readerColorFilter?.contrast ?: 0f)
-		viewBinding.switchInvert.setChecked(readerColorFilter?.isInverted == true, false)
-		viewBinding.switchGrayscale.setChecked(readerColorFilter?.isGrayscale == true, false)
-		viewBinding.switchBook.setChecked(readerColorFilter?.isBookBackground == true, false)
-		viewBinding.imageViewAfter.colorFilter = readerColorFilter?.toColorFilter()
+        updatingUi = true
+        try {
+            viewBinding.sliderBrightness.setValueRounded(readerColorFilter?.brightness ?: 0f)
+            viewBinding.sliderContrast.setValueRounded(readerColorFilter?.contrast ?: 0f)
+            viewBinding.switchInvert.setChecked(readerColorFilter?.isInverted == true, false)
+            viewBinding.switchGrayscale.setChecked(readerColorFilter?.isGrayscale == true, false)
+            viewBinding.switchBook.setChecked(readerColorFilter?.isBookBackground == true, false)
+            val custom = viewBinding.customFilterControls
+            val tint = readerColorFilter?.custom ?: ReaderCustomTint.DEFAULT
+            customEnabled = tint.enabled
+            custom.switchCustomTint.setChecked(tint.enabled, false)
+            custom.sliderTintRed.setValueRounded(tint.red.toFloat().coerceIn(0f, 255f))
+            custom.sliderTintGreen.setValueRounded(tint.green.toFloat().coerceIn(0f, 255f))
+            custom.sliderTintBlue.setValueRounded(tint.blue.toFloat().coerceIn(0f, 255f))
+            custom.sliderTintAlpha.setValueRounded(tint.alpha.toFloat().coerceIn(0f, 255f))
+            custom.valueTintRed.text = tint.red.toString()
+            custom.valueTintGreen.text = tint.green.toString()
+            custom.valueTintBlue.text = tint.blue.toString()
+            custom.valueTintAlpha.text = tint.alpha.toString()
+            blendIds.entries.firstOrNull { it.value == tint.mode }?.key?.let(custom.groupBlendModes::check)
+            ReaderCustomTint.applyToImage(viewBinding.imageViewAfter, readerColorFilter) {
+                viewBinding.imageViewAfter.colorFilter = it
+            }
+        } finally {
+            updatingUi = false
+        }
+        updateCustomControlsEnabled()
 	}
 
 	private fun loadPreview(page: MangaPage) = with(viewBinding.imageViewBefore) {
@@ -145,13 +196,29 @@ class ColorFilterConfigActivity :
 	}
 
 	private fun onLoadingChanged(isLoading: Boolean) {
+        uiLoading = isLoading
 		viewBinding.sliderContrast.isEnabled = !isLoading
 		viewBinding.sliderBrightness.isEnabled = !isLoading
 		viewBinding.switchInvert.isEnabled = !isLoading
 		viewBinding.switchGrayscale.isEnabled = !isLoading
+        viewBinding.switchBook.isEnabled = !isLoading
 		viewBinding.switchMangaProfile.isEnabled = !isLoading
 		viewBinding.buttonDone.isEnabled = !isLoading
+        viewBinding.customFilterControls.switchCustomTint.isEnabled = !isLoading
+        updateCustomControlsEnabled()
 	}
+
+    private fun updateCustomControlsEnabled() {
+        val custom = viewBinding.customFilterControls
+        val enabled = customEnabled && !uiLoading
+        custom.sliderTintRed.isEnabled = enabled
+        custom.sliderTintGreen.isEnabled = enabled
+        custom.sliderTintBlue.isEnabled = enabled
+        custom.sliderTintAlpha.isEnabled = enabled
+        blendIds.keys.forEach { id ->
+            custom.groupBlendModes.findViewById<View>(id)?.isEnabled = enabled
+        }
+    }
 
 	private class PercentLabelFormatter(resources: Resources) : LabelFormatter {
 

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_custom_color_filter">Filter warna kustom</string>
+    <string name="reader_custom_tint_enable">Aktifkan filter warna</string>
+    <string name="reader_tint_red">Merah (R)</string>
+    <string name="reader_tint_green">Hijau (G)</string>
+    <string name="reader_tint_blue">Biru (B)</string>
+    <string name="reader_tint_alpha">Alpha (A)</string>
+    <string name="reader_tint_blend_mode">Mode pencampuran</string>
+    <string name="reader_tint_mode_default">Default</string>
+    <string name="reader_tint_mode_multiply">Multiply</string>
+    <string name="reader_tint_mode_screen">Screen</string>
+    <string name="reader_tint_mode_overlay">Overlay</string>
+    <string name="reader_tint_mode_dodge">Dodge / Lighten</string>
+    <string name="reader_tint_mode_burn">Burn / Darken</string>
+</resources>

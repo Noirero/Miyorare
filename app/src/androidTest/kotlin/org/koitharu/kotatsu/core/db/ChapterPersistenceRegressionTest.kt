@@ -99,6 +99,150 @@ class ChapterPersistenceRegressionTest {
 
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
+	/** Default PR Android 15 DB suite must exercise newly added per-chapter regressions. */
+	@Test
+    fun widgetHistoryResumeIsNotAnExplicitBookmarkPage() {
+        val manga = remoteDetails()
+        val chapterId = requireNotNull(manga.chapters).first().id
+        val explicit = org.koitharu.kotatsu.core.nav.ReaderIntent.Builder(context)
+            .manga(manga).state(org.koitharu.kotatsu.reader.ui.ReaderState(chapterId, 70, 0))
+            .build().intent
+        assertEquals(false, explicit.getBooleanExtra(
+            org.koitharu.kotatsu.core.nav.ReaderIntent.EXTRA_HISTORY_RESUME, false,
+        ))
+
+        val history = org.koitharu.kotatsu.core.model.MangaHistory(
+            createdAt = java.time.Instant.EPOCH,
+            updatedAt = java.time.Instant.EPOCH,
+            chapterId = chapterId,
+            page = 70,
+            scroll = 0,
+            percent = 0.1f,
+            chaptersCount = requireNotNull(manga.chapters).size,
+        )
+        val widget = org.koitharu.kotatsu.widget.common.WidgetIntents.readerIntent(context, manga, history)
+        assertEquals(true, widget.getBooleanExtra(
+            org.koitharu.kotatsu.core.nav.ReaderIntent.EXTRA_HISTORY_RESUME, false,
+        ))
+    }
+
+	@Test
+	fun chapterProgressDurabilityAcrossDatabaseReopen() {
+		org.koitharu.kotatsu.details.data.ChapterProgressRuntimeTest()
+			.lastPageForEachChapterSurvivesReopenAndCanMoveBackwards()
+	}
+
+	@Test
+    fun chapterManualUnreadResetIsDurableAcrossQuickToggleAndCallerCancellation() {
+        org.koitharu.kotatsu.details.data.ChapterProgressRuntimeTest()
+            .manualUnreadClearsOnlyItsChapterAndRejectsDelayedReaderWrites()
+    }
+
+	@Test
+	fun chapterProgressSchemaUpgradePreservesLegacyHistory() {
+		ChapterProgressMigrationTest()
+			.migrationAddsEmptyProgressTableWithoutTouchingExistingHistory()
+	}
+
+	@Test
+	fun openingNewestChapterDoesNotMarkOlderChaptersRead() {
+		// Use a remote-source fixture: the LOCAL seed points to a relative path and is
+		// intentionally rejected by the on-device LocalManga URL parser.
+		val remote = remoteDetails()
+		val chapters = (200..218).map { number ->
+			SampleData.chapter.copy(
+				source = remote.source,
+				id = number.toLong(), number = number.toFloat(),
+				url = "/chapter/$number", branch = null,
+			)
+		}
+		val details = org.koitharu.kotatsu.details.data.MangaDetails(
+			remote.copy(chapters = chapters),
+		)
+		val mapped = details.mapChapters(
+			currentChapterId = 218L, newCount = 0, branch = null,
+			bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+		)
+		assertEquals(19, mapped.size)
+		assertEquals(1, mapped.count { !it.isUnread })
+		assertTrue(mapped.all { it.chapter.id == 218L || it.isUnread })
+		val older = mapped.first { it.chapter.id == 217L }
+		val saved = org.koitharu.kotatsu.details.data.ChapterProgressEntity(
+			mangaId = 123L, source = older.personalKey.source, url = older.personalKey.url,
+			space = 0, page = 11, scroll = 0, totalPages = 38,
+		)
+		val updated = details.mapChapters(
+			currentChapterId = 218L, newCount = 0, branch = null,
+			bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+			readOverrides = mapOf(218L to false),
+			progressByKey = mapOf(older.personalKey to saved),
+		)
+		assertTrue(updated.first { it.chapter.id == 218L }.isUnread)
+		assertTrue(updated.first { it.chapter.id == 200L }.isUnread)
+		val persisted = updated.first { it.chapter.id == 217L }
+		assertTrue(!persisted.isUnread)
+		assertEquals(11, persisted.lastReadPage)
+		assertEquals(38, persisted.lastReadTotalPages)
+
+		// A manual unread must hide the saved label even before the async DAO reset commits,
+		// including on the current History chapter that still has a live page number.
+		val unread = details.mapChapters(
+			currentChapterId = 218L, newCount = 0, branch = null,
+			bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+			readOverrides = mapOf(217L to false, 218L to false),
+			progressByKey = mapOf(older.personalKey to saved),
+			currentPage = 70,
+		)
+		assertTrue(unread.first { it.chapter.id == 217L }.isUnread)
+		assertNull(unread.first { it.chapter.id == 217L }.lastReadPage)
+		assertNull(unread.first { it.chapter.id == 217L }.lastReadTotalPages)
+		assertNull(unread.first { it.chapter.id == 218L }.lastReadPage)
+
+        // Quick-toggle unread -> read before cleanup must not reveal the old page.
+        val quickRead = details.mapChapters(
+            currentChapterId = 218L, newCount = 0, branch = null,
+            bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+            readOverrides = mapOf(218L to true),
+            progressByKey = mapOf(older.personalKey to saved),
+            currentPage = 70,
+            pageResetPending = { id -> id == 218L },
+        )
+        assertTrue(!quickRead.first { it.chapter.id == 218L }.isUnread)
+        assertNull(quickRead.first { it.chapter.id == 218L }.lastReadPage)
+	}
+
+	@Test
+	fun novelChapterStatusAndPageLabelsRetainLegacyBehaviour() {
+		val novelSource = org.koitharu.kotatsu.core.model.MissingMangaSource("LN_REGRESSION")
+		val novelChapters = (200..218).map { number ->
+			SampleData.chapter.copy(
+				id = number.toLong(), number = number.toFloat(),
+				source = novelSource, url = "/novel/$number", branch = null,
+			)
+		}
+		val novel = org.koitharu.kotatsu.details.data.MangaDetails(
+			remoteDetails().copy(source = novelSource, chapters = novelChapters),
+		)
+		val rows = novel.mapChapters(
+			currentChapterId = 210L, newCount = 0, branch = null,
+			bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+			currentPage = 256,
+		)
+		assertEquals(19, rows.size)
+		assertEquals(11, rows.count { !it.isUnread }) // original novel order semantics
+		assertTrue(rows.first { it.chapter.id == 211L }.isUnread)
+		assertNull(rows.first { it.chapter.id == 210L }.lastReadPage) // never use EPUB offsets as manga pages
+
+		// Novel 'new chapter' flag still follows existing history-position semantics,
+		// not the new manga visited-state/manual-override projection.
+		val withManualRead = novel.mapChapters(
+			currentChapterId = 210L, newCount = 4, branch = null,
+			bookmarks = emptyList(), isGrid = false, isDownloadedOnly = false,
+			readOverrides = mapOf(218L to true),
+		)
+		assertTrue(withManualRead.first { it.chapter.id == 218L }.isNew)
+	}
+
 	@Test
 	fun favouriteCoverStatusesCompactAndRecycle() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -147,6 +291,21 @@ class ChapterPersistenceRegressionTest {
 		context.deleteDatabase(DB_NAME)
 		context.deleteDatabase(MIGRATION_DB_NAME)
 	}
+
+	@Test
+    fun savedManualReadOverrideIsVisibleWhenDetailsViewModelIsRecreated() = withChapterSortOptions {
+        // The chapter has no visit record; the read state must come from persisted preferences,
+        // not the default mapper or a new SharedPreferences change callback.
+        val chapterId = requireNotNull(SampleData.mangaDetails.chapters).first().id
+        settings.setChapterReadOverride(906L, chapterId, true)
+        val vm = create()
+        // This fixture defaults to unreadOnly=true; a read chapter is deliberately
+        // excluded by that filter, so disable it before asserting restored read state.
+        onMain { vm.chapterListOptions.value = vm.chapterListOptions.value.copy(unreadOnly = false) }
+        withTimeout(5_000L) {
+            vm.chapters.first { rows -> rows.any { it.chapter.id == chapterId && !it.isUnread } }
+        }
+    }
 
 	@Test
 	fun activeChapterSortModePersistsBothDirections() = withChapterSortOptions {
@@ -279,6 +438,12 @@ class ChapterPersistenceRegressionTest {
             // declaring it a v48 database, so real 51->52 migration runs exactly once.
             old.execSQL("ALTER TABLE manga DROP COLUMN simple_migration_preserved")
             old.execSQL("ALTER TABLE manga DROP COLUMN preserved_to_manga_id")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_enabled")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_red")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_green")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_blue")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_alpha")
+            old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_mode")
 			old.execSQL("DROP TABLE room_master_table")
 			old.version = 48
 		}

@@ -93,6 +93,8 @@ jobs:
       - name: Validate CI evidence and Miyori status contracts
         run: |
           python3 -m unittest discover -s .github/scripts -p 'test_ci_exact_head_reuse.py'
+          python3 -m unittest discover -s .github/scripts -p 'test_ci_android_runtime_reuse.py'
+          python3 -m unittest discover -s .github/scripts -p 'test_prewarm_jitpack_parsers.py'
           python3 -m unittest discover -s .github/scripts -p 'test_miyori_status.py'
 
       - name: Find reusable exact-head compile/JVM evidence
@@ -230,7 +232,32 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Find reusable original exact-scope Android evidence
+        id: android-proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          RUNTIME_MODE: ${{ steps.runtime-plan.outputs.mode }}
+          RUNTIME_CLASSES: ${{ steps.runtime-plan.outputs.classes }}
+          RUN_RUNTIME_ISOLATION: ${{ steps.runtime-plan.outputs.run_runtime_isolation }}
+          RUN_MIGRATION_PERSISTENCE: ${{ steps.runtime-plan.outputs.run_migration_persistence }}
+          RUNTIME_FULL: ${{ needs.runtime-risk.outputs.full }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          LABEL_CI_OWNER_REQUEST: ${{ contains(github.event.pull_request.labels.*.name, 'ci:owner-request') }}
+          LABEL_CI_RUNTIME_REQUIRED: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') }}
+          LABEL_CI_RUNTIME_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') }}
+          LABEL_CI_USER_ISSUE: ${{ contains(github.event.pull_request.labels.*.name, 'ci:user-issue') }}
+          LABEL_CI_THEME: ${{ contains(github.event.pull_request.labels.*.name, 'ci:theme') }}
+          LABEL_SKIP_DEVICE_TEST: ${{ contains(github.event.pull_request.labels.*.name, 'skip-device-test') }}
+          CHANGED_PATHS_FILE: ${{ runner.temp }}/runtime-changed-files.txt
+        run: python3 .github/scripts/ci_android_runtime_reuse.py
+
       - name: Build runtime APKs before booting the emulator
+        if: steps.android-proof.outputs.reuse != 'true'
         env:
           RUN_RUNTIME_ISOLATION: ${{ steps.runtime-plan.outputs.run_runtime_isolation }}
         run: |
@@ -241,9 +268,11 @@ jobs:
           ./gradlew "${tasks[@]}" --max-workers=2 --no-daemon --stacktrace
 
       - name: Enable KVM
+        if: steps.android-proof.outputs.reuse != 'true'
         run: sudo chmod 666 /dev/kvm
 
       - name: Prepare collector compatibility for the exact head
+        if: steps.android-proof.outputs.reuse != 'true'
         run: |
           # Amain2's collector remains authoritative whenever it exists in the checked-out head.
           # Older heads still run their existing cover tests through the same command wrapper.
@@ -253,7 +282,8 @@ jobs:
           fi
 
       - name: Run selected Android 15 runtime validation
-        uses: reactivecircus/android-emulator-runner@v2
+        if: steps.android-proof.outputs.reuse != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         env:
           RUNTIME_CLASSES: ${{ steps.runtime-plan.outputs.classes }}
           RUN_RUNTIME_ISOLATION: ${{ steps.runtime-plan.outputs.run_runtime_isolation }}
@@ -267,8 +297,30 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: bash .github/scripts/run-selected-android-runtime.sh
 
+      # A proof is published only after actual Android execution succeeds.
+      # Never publish a reusable proof from an already reused run.
+      - name: Upload original Android scope proof
+        if: success() && steps.android-proof.outputs.reuse != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-runtime-scope-proof
+          path: ${{ runner.temp }}/android-runtime-scope-proof.json
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Explain reused Android proof
+        if: steps.android-proof.outputs.reuse == 'true'
+        env:
+          SOURCE_RUN_ID: ${{ steps.android-proof.outputs.source_run_id }}
+          FINGERPRINT: ${{ steps.android-proof.outputs.fingerprint }}
+        run: |
+          echo "## Android 15 evidence REUSED" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Original real Android execution run: $SOURCE_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Exact scope fingerprint (SHA-256): $FINGERPRINT" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Real Android APK-build, KVM, emulator steps skipped; owner APK, if required, restored from the verified source run." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Android evidence
-        if: always()
+        if: always() && steps.android-proof.outputs.reuse != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: android-runtime-evidence

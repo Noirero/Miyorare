@@ -15,8 +15,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.db.MangaDatabase
-import org.koitharu.kotatsu.core.db.entity.toMangaChapters
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
@@ -55,7 +53,6 @@ class FeedViewModel @Inject constructor(
 	private val mangaListMapper: MangaListMapper,
 	private val quickFilter: UpdatesListQuickFilter,
 	private val historyRepository: HistoryRepository,
-	private val db: MangaDatabase,
 	savedStateHandle: SavedStateHandle,
 ) : BaseViewModel(), QuickFilterListener by quickFilter {
 
@@ -146,21 +143,21 @@ class FeedViewModel @Inject constructor(
 		launchJob(Dispatchers.Default) { scheduler.stopNow() }
 	}
 
-	fun markAsRead(item: FeedItem) {
+	fun markAsRead(item: FeedItem) = markAsRead(setOf(item.id))
+
+	fun markAsRead(ids: Set<Long>) {
 		launchJob(Dispatchers.Default) {
-			val handle = markAsReadImpl(item)
+			val handle = repository.markLogsRead(ids) ?: return@launchJob
 			onActionDone.call(ReversibleAction(R.string.marked_as_read, handle))
 		}
 	}
 
-	fun markAsRead(ids: Set<Long>) {
+	fun markAsUnread(item: FeedItem) = markAsUnread(setOf(item.id))
+
+	fun markAsUnread(ids: Set<Long>) {
 		launchJob(Dispatchers.Default) {
-			val items = content.value.filterIsInstance<FeedItem>().filter { it.id in ids }
-			if (items.isEmpty()) return@launchJob
-			val handles = items.map { markAsReadImpl(it) }
-			onActionDone.call(
-				ReversibleAction(R.string.marked_as_read, ReversibleHandle { handles.forEach { it.reverse() } }),
-			)
+			val handle = repository.markLogsUnread(ids) ?: return@launchJob
+			onActionDone.call(ReversibleAction(R.string.marked_as_unread, handle))
 		}
 	}
 
@@ -174,45 +171,6 @@ class FeedViewModel @Inject constructor(
 		}
 	}
 
-	private suspend fun markAsReadImpl(item: FeedItem): ReversibleHandle {
-		// Snapshot undo state before anything mutates: the history jump below re-computes the
-		// new-chapters counter to zero, so markLogsRead must capture it first.
-		val priorHistory = db.getHistoryDao().find(item.manga.id)
-		val logsHandle = repository.markLogsRead(item.manga.id)
-
-		val allChapters = db.getChaptersDao().findAll(item.manga.id)
-		val latestFeedChapterEntity = item.chapters
-			.mapNotNull { ch -> allChapters.find { it.chapterId == ch.id } }
-			.maxByOrNull { it.index }
-
-		if (latestFeedChapterEntity != null) {
-			val chapterIndex = allChapters.indexOfFirst { it.chapterId == latestFeedChapterEntity.chapterId }
-			val percent = (chapterIndex + 1) / allChapters.size.toFloat()
-
-			val mangaChapters = allChapters.toMangaChapters()
-			val mangaWithChapters = item.manga.copy(chapters = mangaChapters)
-
-			historyRepository.addOrUpdate(
-				manga = mangaWithChapters,
-				chapterId = latestFeedChapterEntity.chapterId,
-				page = 0,
-				scroll = 0,
-				percent = percent,
-				force = true,
-			)
-		}
-
-		return ReversibleHandle {
-			// Restore the reading position first: the feed dot derives per-chapter "new" state
-			// from history, so restoring the unread flags alone leaves the row looking read.
-			if (priorHistory != null) {
-				db.getHistoryDao().upsert(priorHistory)
-			} else {
-				db.getHistoryDao().delete(item.manga.id)
-			}
-			logsHandle.reverse()
-		}
-	}
 
 	fun remove(item: FeedItem) {
 		launchJob(Dispatchers.Default) {

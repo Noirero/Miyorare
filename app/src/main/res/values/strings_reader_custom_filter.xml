@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_custom_color_filter">Custom color filter</string>
+    <string name="reader_custom_tint_enable">Enable color tint</string>
+    <string name="reader_tint_red">Red (R)</string>
+    <string name="reader_tint_green">Green (G)</string>
+    <string name="reader_tint_blue">Blue (B)</string>
+    <string name="reader_tint_alpha">Alpha (A)</string>
+    <string name="reader_tint_blend_mode">Blend mode</string>
+    <string name="reader_tint_mode_default">Default</string>
+    <string name="reader_tint_mode_multiply">Multiply</string>
+    <string name="reader_tint_mode_screen">Screen</string>
+    <string name="reader_tint_mode_overlay">Overlay</string>
+    <string name="reader_tint_mode_dodge">Dodge / Lighten</string>
+    <string name="reader_tint_mode_burn">Burn / Darken</string>
+</resources>

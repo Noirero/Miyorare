@@ -218,7 +218,12 @@
 
 			</com.google.android.material.card.MaterialCardView>
 
-			<!-- Per-manga reader profile -->
+			<!-- Non-destructive on-screen custom tint -->
+            <include
+                android:id="@+id/custom_filter_controls"
+                layout="@layout/reader_custom_filter_controls" />
+
+            <!-- Per-manga reader profile -->
 			<com.google.android.material.card.MaterialCardView
 				style="?materialCardViewFilledStyle"
 				android:layout_width="match_parent"

@@ -57,6 +57,7 @@ import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.prefs.ReaderJourneyCelebrationMode
 import org.koitharu.kotatsu.core.prefs.ReaderMode
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
@@ -201,6 +202,7 @@ class ReaderActivity :
         viewBinding.zoomControl.listener = this
         viewBinding.actionsView.listener = this
         viewBinding.buttonTimer?.setOnClickListener(this)
+        viewBinding.buttonTranslate.setOnClickListener(this)
         idlingDetector.bindToLifecycle(this)
         screenOrientationHelper.applySettings()
         viewModel.isBookmarkAdded.observe(this) { viewBinding.actionsView.isBookmarkAdded = it }
@@ -328,6 +330,10 @@ class ReaderActivity :
     }
 
     override fun onPause() {
+        // Keep EPUB's pre-existing exact-offset lifecycle untouched.
+        if (viewModel.getMangaOrNull()?.isNovelContent != true) {
+            viewModel.saveCurrentState(readerManager.currentReader?.getCurrentState())
+        }
         super.onPause()
         viewModel.onPause()
     }
@@ -380,6 +386,7 @@ class ReaderActivity :
 
     override fun onClick(v: View) {
         when (v.id) {
+            R.id.button_translate -> onTranslateClick()
             // One floating button for both: whichever of the two is running owns it.
             R.id.button_timer -> if (tts.isPlaying.value) {
                 viewBinding.ttsControl.showOrHide()
@@ -568,7 +575,7 @@ class ReaderActivity :
     }
 
     override fun onChapterSelected(chapter: MangaChapter): Boolean {
-        jumpToChapter(chapter.id, page = 0, scroll = 0, isPeekPreferred = false)
+        jumpToChapter(chapter.id, page = 0, scroll = 0, isPeekPreferred = false, resume = true)
         return true
     }
 
@@ -609,27 +616,27 @@ class ReaderActivity :
      * as usual, jumps away from the saved progress either peek (keeping history untouched) or
      * ask the user. [isPeekPreferred] (bookmarks) resolves ambiguous jumps to a silent peek.
      */
-    private fun jumpToChapter(chapterId: Long, page: Int, scroll: Int, isPeekPreferred: Boolean) {
+    private fun jumpToChapter(chapterId: Long, page: Int, scroll: Int, isPeekPreferred: Boolean, resume: Boolean = false) {
         lifecycleScope.launch {
             when (viewModel.getChapterOpenMode(chapterId)) {
                 ChaptersPagesViewModel.ChapterOpenMode.NORMAL -> {
                     viewModel.setPeekMode(false)
-                    viewModel.switchChapter(chapterId, page, scroll)
+                    viewModel.switchChapter(chapterId, page, scroll, resume = resume)
                 }
 
                 ChaptersPagesViewModel.ChapterOpenMode.ASK -> if (isPeekPreferred) {
                     viewModel.setPeekMode(true)
-                    viewModel.switchChapter(chapterId, page, scroll)
+                    viewModel.switchChapter(chapterId, page, scroll, resume = resume)
                 } else {
                     showChapterJumpDialog(
                         activity = this@ReaderActivity,
                         onPeek = {
                             viewModel.setPeekMode(true)
-                            viewModel.switchChapter(chapterId, page, scroll)
+                            viewModel.switchChapter(chapterId, page, scroll, resume = resume)
                         },
                         onMoveProgress = {
                             viewModel.setPeekMode(false)
-                            viewModel.switchChapter(chapterId, page, scroll)
+                            viewModel.switchChapter(chapterId, page, scroll, resume = resume)
                         },
                         onDisable = { viewModel.disableChapterJumpDialog() },
                     )
@@ -930,7 +937,7 @@ class ReaderActivity :
         // Tablet layouts anchor the panel to the top app bar, so there is nothing to dodge.
         if (viewBinding.toolbarDocked == null) return
         // The floating button rides along: with the dock up it would otherwise sit behind it.
-        val panels = listOfNotNull<View>(viewBinding.timerControl, viewBinding.ttsControl, viewBinding.buttonTimer)
+        val panels = listOfNotNull<View>(viewBinding.timerControl, viewBinding.ttsControl, viewBinding.buttonTimer, viewBinding.buttonTranslate)
         // Hiding the system bars makes insets settle over several frames, and every one of those
         // callbacks lands here. Without this guard they snap translationY straight to the target
         // mid-flight, so the panel appears to jump while the toolbar is still sliding.
@@ -959,6 +966,8 @@ class ReaderActivity :
     }
 
     private fun updateScrollTimerButton() {
+        viewBinding.buttonTranslate.isVisible = readerManager.isEpub &&
+            !viewBinding.timerControl.isVisible && !viewBinding.ttsControl.isVisible
         val button = viewBinding.buttonTimer ?: return
         // The TTS face of the FAB is sticky: once speech has been started it stays offered on every
         // novel until it is explicitly stopped, so resuming it doesn't mean digging through the menu.

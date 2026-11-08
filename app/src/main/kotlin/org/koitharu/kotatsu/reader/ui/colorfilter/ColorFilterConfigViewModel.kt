@@ -14,6 +14,7 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.require
 import org.koitharu.kotatsu.reader.domain.ReaderColorFilter
+import org.koitharu.kotatsu.reader.domain.ReaderTintBlendMode
 import org.koitharu.kotatsu.reader.ui.config.MangaReaderProfileStore
 import javax.inject.Inject
 
@@ -62,6 +63,30 @@ class ColorFilterConfigViewModel @Inject constructor(
 	fun setBookEffect(book: Boolean) {
 		updateColorFilter { it.copy(isBookBackground = book) }
 	}
+
+    fun setCustomEnabled(enabled: Boolean) {
+        updateColorFilter { it.copy(custom = it.custom.copy(enabled = enabled)) }
+    }
+
+    fun setCustomRed(value: Int) {
+        updateColorFilter { it.copy(custom = it.custom.copy(red = value.coerceIn(0, 255))) }
+    }
+
+    fun setCustomGreen(value: Int) {
+        updateColorFilter { it.copy(custom = it.custom.copy(green = value.coerceIn(0, 255))) }
+    }
+
+    fun setCustomBlue(value: Int) {
+        updateColorFilter { it.copy(custom = it.custom.copy(blue = value.coerceIn(0, 255))) }
+    }
+
+    fun setCustomAlpha(value: Int) {
+        updateColorFilter { it.copy(custom = it.custom.copy(alpha = value.coerceIn(0, 255))) }
+    }
+
+    fun setCustomMode(mode: ReaderTintBlendMode) {
+        updateColorFilter { it.copy(custom = it.custom.copy(mode = mode)) }
+    }
 
 	fun setMangaProfileEnabled(enabled: Boolean) {
 		if (isMangaProfileEnabled.value == enabled) return

@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
@@ -53,6 +54,7 @@ import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
+import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.mapToSet
@@ -74,6 +76,7 @@ class DownloadsViewModel @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	@LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
 	private val localMangaRepository: LocalMangaRepository,
+	private val deleteLocalManga: DeleteLocalMangaUseCase,
 	private val favouritesRepository: FavouritesRepository,
 ) : BaseViewModel() {
 
@@ -313,11 +316,62 @@ class DownloadsViewModel @Inject constructor(
 		onActionDone.call(ReversibleAction(R.string.downloads_resumed, null))
 	}
 
-	fun remove(ids: Set<Long>) {
-		val uuids = selectedWorkIds(ids)
-		if (uuids.isEmpty()) return
-		launchJob(Dispatchers.Default) {
-			workScheduler.delete(uuids)
+	fun remove(ids: Set<Long>, deleteFiles: Boolean = false) {
+		// Snapshot finished jobs before the asynchronous confirmation result can race a new job.
+		val selected = works.value.orEmpty().filter {
+			it.selectionId in ids && it.workState.isFinished && it.uiAction == null
+		}
+		val workIds = selected.flatMapTo(LinkedHashSet()) { it.workIds }
+		if (workIds.isEmpty()) return
+		launchJob(Dispatchers.IO) {
+			if (deleteFiles) {
+				val selectedMangaIds = selected.mapNotNullTo(HashSet()) { it.manga?.id }
+				check(rawWorks.value.orEmpty().none {
+					it.manga?.id in selectedMangaIds && !it.workState.isFinished
+				}) { "A selected manga is currently downloading. Files were kept." }
+				// Recheck WorkManager itself, not just the UI's potentially delayed StateFlow.
+				// This also sees jobs in the other favourite space.
+				for (work in workScheduler.observeWorks().first()) {
+					if (work.state.isFinished) continue
+					val task = checkNotNull(workScheduler.getTask(work.id)) {
+						"Cannot inspect an active download task. Files were kept."
+					}
+					check(task.mangaId !in selectedMangaIds) {
+						"A selected manga has a new active download. Files were kept."
+					}
+				}
+				// Resolve every selection before deleting anything: a group can contain multiple
+				// chapter jobs, but physical deletion must not guess between different roots.
+				val targets = selected.map { row ->
+					val manga = checkNotNull(row.manga) { "Cannot verify selected manga. Files were kept." }
+					val tasks = row.workIds.map { workId ->
+						checkNotNull(workScheduler.getTask(workId)) {
+							"Cannot verify the original download task. Files were kept."
+						}
+					}
+					check(tasks.all { it.mangaId == manga.id && it.favouriteSpace == favouriteSpace }) {
+						"Selected jobs do not match this manga and library space. Files were kept."
+					}
+					val roots = tasks.map { task ->
+						checkNotNull(task.destination) {
+							"Original download destination is unknown. Files were kept."
+						}.canonicalFile
+					}.distinctBy { it.path }
+					check(roots.size == 1) {
+						"This manga has downloads in multiple folders. Files were kept."
+					}
+					Triple(row.workIds, manga, roots.single())
+				}
+				for ((groupWorkIds, manga, root) in targets) {
+					deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace)
+					// Keep each completed group's history consistent even if a later
+					// selected manga fails its own filesystem deletion.
+					workScheduler.delete(groupWorkIds)
+				}
+			} else {
+				// List-only removal never touches downloaded physical containers.
+				workScheduler.delete(workIds)
+			}
 			onActionDone.call(ReversibleAction(R.string.downloads_removed, null))
 		}
 	}

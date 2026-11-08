@@ -72,6 +72,11 @@ class NovelTranslationSettings(context: Context) {
 		migratePresentationPolicyIfNeeded()
 	}
 
+	/** Manual translation defaults to visible text; automatic translation remains chapter-scoped. */
+	var manualScope: NovelTranslationScope
+		get() = NovelTranslationScope.fromId(prefs.getString(KEY_MANUAL_SCOPE, null))
+		set(value) = prefs.edit().putString(KEY_MANUAL_SCOPE, value.id).apply()
+
 	var engine: NovelTranslationEngineKind
 		get() = NovelTranslationEngineKind.fromId(prefs.getString(KEY_ENGINE, null))
 		set(value) = prefs.edit().putString(KEY_ENGINE, value.id).apply()
@@ -218,6 +223,7 @@ class NovelTranslationSettings(context: Context) {
 		private const val PREFS_NAME = "novel_translation"
 		private const val LEGACY_OFFLINE_MODELS_PREFS_NAME = "novel_translation_offline_models"
 		private const val KEY_ENGINE = "engine"
+		private const val KEY_MANUAL_SCOPE = "manual_scope"
 		private const val KEY_PROVIDER = "provider"
 		private const val LEGACY_KEY_LAST_REMOTE_AI_PROVIDER = "last_remote_ai_provider"
 		private const val KEY_BUILT_IN_REMOVAL_MIGRATED = "built_in_removal_migrated"
@@ -232,6 +238,15 @@ class NovelTranslationSettings(context: Context) {
 		private const val KEY_STYLE = "style"
 		private const val KEY_CONTEXT_AWARE = "context_aware"
 		private const val KEY_DEEPL_FREE = "deepl_free_api"
+	}
+}
+
+enum class NovelTranslationScope(val id: String) {
+	PAGE("page"),
+	CHAPTER("chapter");
+
+	companion object {
+		fun fromId(value: String?): NovelTranslationScope = entries.firstOrNull { it.id == value } ?: PAGE
 	}
 }
 

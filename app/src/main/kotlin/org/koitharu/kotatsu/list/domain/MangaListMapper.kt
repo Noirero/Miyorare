@@ -12,7 +12,9 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.prefs.ListMode
+import org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.CHAPTERS_READ
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
@@ -75,6 +77,7 @@ class MangaListMapper @Inject constructor(
 				options = options,
 				override = overrides[it.id],
 				unreadCount = unreadSnapshot?.getUnreadCountOrNull(it.id),
+				chapterReadingProgress = unreadSnapshot?.getProgress(it.id, settings.progressIndicatorMode),
 			)
 		}
 	}
@@ -92,6 +95,7 @@ class MangaListMapper @Inject constructor(
 			options = options,
 			override = dataRepository.getOverride(manga.id),
 			unreadCount = unreadSnapshot?.getUnreadCountOrNull(manga.id),
+			chapterReadingProgress = unreadSnapshot?.getProgress(manga.id, settings.progressIndicatorMode),
 		)
 	}
 
@@ -122,6 +126,7 @@ class MangaListMapper @Inject constructor(
 			chapters = chapters,
 			manga = logItem.manga,
 			isNew = isNew,
+			isUnread = logItem.isNew,
 		)
 	}
 
@@ -149,12 +154,13 @@ class MangaListMapper @Inject constructor(
 		manga: Manga,
 		@Options options: Int,
 		override: MangaOverride?,
+		chapterReadingProgress: ReadingProgress?,
 	) = MangaDetailedListModel(
 		subtitle = manga.altTitles.firstOrNull(),
 		manga = manga,
 		override = override,
 		counter = getCounter(manga.id, options),
-		progress = getProgress(manga.id, options),
+		progress = getProgress(manga.id, options, chapterReadingProgress),
 		isFavorite = isFavorite(manga.id, options),
 		isSaved = isSaved(manga.id, options),
 		tags = mapTags(manga.tags),
@@ -166,11 +172,12 @@ class MangaListMapper @Inject constructor(
 		override: MangaOverride?,
 		isTitleHidden: Boolean,
 		unreadCount: Int?,
+		chapterReadingProgress: ReadingProgress?,
 	) = MangaGridModel(
 		manga = manga,
 		override = override,
 		counter = getCounter(manga.id, options),
-		progress = getProgress(manga.id, options),
+		progress = getProgress(manga.id, options, chapterReadingProgress),
 		isFavorite = isFavorite(manga.id, options),
 		isSaved = isSaved(manga.id, options),
 		isTitleHidden = isTitleHidden,
@@ -185,11 +192,12 @@ class MangaListMapper @Inject constructor(
 		@Options options: Int,
 		override: MangaOverride?,
 		unreadCount: Int?,
+		chapterReadingProgress: ReadingProgress?,
 	): MangaListModel = when (mode) {
 		ListMode.LIST -> toCompactListModel(manga, options, override)
-		ListMode.DETAILED_LIST -> toDetailedListModel(manga, options, override)
-		ListMode.GRID -> toGridModel(manga, options, override, false, unreadCount)
-		ListMode.COVER_ONLY -> toGridModel(manga, options, override, true, unreadCount)
+		ListMode.DETAILED_LIST -> toDetailedListModel(manga, options, override, chapterReadingProgress)
+		ListMode.GRID -> toGridModel(manga, options, override, false, unreadCount, chapterReadingProgress)
+		ListMode.COVER_ONLY -> toGridModel(manga, options, override, true, unreadCount, chapterReadingProgress)
 	}
 
 	private suspend fun getCounter(mangaId: Long, @Options options: Int): Int {
@@ -200,12 +208,11 @@ class MangaListMapper @Inject constructor(
 		}
 	}
 
-	private suspend fun getProgress(mangaId: Long, @Options options: Int): ReadingProgress? {
-		return if (options.isBadgeEnabled(PROGRESS)) {
-			historyRepository.getProgress(mangaId, settings.progressIndicatorMode)
-		} else {
-			null
-		}
+	private suspend fun getProgress(mangaId: Long, @Options options: Int, chapterReadingProgress: ReadingProgress?): ReadingProgress? {
+		if (!options.isBadgeEnabled(PROGRESS)) return null
+		// CHAPTERS_READ must never reinterpret global story-position History.percent as visit count.
+		if (settings.progressIndicatorMode == CHAPTERS_READ) return chapterReadingProgress
+		return historyRepository.getProgress(mangaId, settings.progressIndicatorMode)
 	}
 
 	private suspend fun getUnreadSnapshot(
@@ -214,12 +221,17 @@ class MangaListMapper @Inject constructor(
 		@Options options: Int,
 		@Flags flags: Int,
 	): FavouriteUnreadCounter.Snapshot? {
-		if (flags and NO_MODERN_READING_STATE != 0) return null
-		if (settings.miyorareDesignStyle != MiyorareDesignStyle.MODERN || !options.isBadgeEnabled(PROGRESS)) {
+		if (flags and NO_MODERN_READING_STATE != 0 || !options.isBadgeEnabled(PROGRESS)) return null
+		if (settings.progressIndicatorMode == CHAPTERS_READ) {
+			return favouriteUnreadCounter.getSnapshot(manga.map { it.id }, includeUnread = true,
+                legacyNovelIds = manga.asSequence().filter { it.isNovelContent }.map { it.id }.toSet())
+		}
+		if (settings.miyorareDesignStyle != MiyorareDesignStyle.MODERN) {
 			return null
 		}
 		if (mode != ListMode.GRID && mode != ListMode.COVER_ONLY) return null
-		return favouriteUnreadCounter.getSnapshot(manga.map { it.id }, includeUnread = true)
+		return favouriteUnreadCounter.getSnapshot(manga.map { it.id }, includeUnread = true,
+                legacyNovelIds = manga.asSequence().filter { it.isNovelContent }.map { it.id }.toSet())
 	}
 
 	private suspend fun isFavorite(mangaId: Long, @Options options: Int): Boolean {

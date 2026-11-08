@@ -61,15 +61,23 @@ fun chapterListItemAD(
 	bind {
 		binding.textViewTitle.text = item.getTitle(context.resources)
 		binding.textViewTitle.isSelected = true
-		binding.textViewDescription.textAndVisible = item.description
+		binding.textViewDescription.textAndVisible = item.getDescription(context.resources)
 		if (item.isUnread) {
 			binding.textViewTitle.setTextColor(context.getThemeColorStateList(android.R.attr.textColorPrimary))
 			binding.textViewDescription.setTextColor(context.getThemeColorStateList(materialR.attr.colorOutline))
-			binding.textViewTitle.drawableStart = if (item.isNew) ContextCompat.getDrawable(context, R.drawable.ic_new) else null
+			binding.textViewTitle.drawableStart = if (item.isNew) {
+				ContextCompat.getDrawable(context, R.drawable.ic_new)
+			} else {
+				ContextCompat.getDrawable(context, R.drawable.ic_eye_off)?.mutate()?.apply {
+					setTint(context.getThemeColor(androidx.appcompat.R.attr.colorPrimary))
+				}
+			}
 		} else {
 			binding.textViewTitle.setTextColor(context.getThemeColorStateList(android.R.attr.textColorHint))
 			binding.textViewDescription.setTextColor(context.getThemeColorStateList(android.R.attr.textColorHint))
-			binding.textViewTitle.drawableStart = null
+			binding.textViewTitle.drawableStart = ContextCompat.getDrawable(context, R.drawable.ic_eye_check)?.mutate()?.apply {
+				setTint(context.getThemeColor(materialR.attr.colorOutline))
+			}
 		}
 		if (item.isCurrent) {
 			val accent = accentColorProvider() ?: context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
@@ -86,7 +94,7 @@ fun chapterListItemAD(
 		} else {
 			binding.viewCurrentIndicator.background = null
 			binding.viewCurrentIndicator.isVisible = false
-			binding.textViewTitle.typeface = Typeface.DEFAULT
+			binding.textViewTitle.typeface = if (item.isUnread) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
 			binding.textViewDescription.typeface = Typeface.DEFAULT
 			binding.textViewTitle.textSize = 16f
 		}

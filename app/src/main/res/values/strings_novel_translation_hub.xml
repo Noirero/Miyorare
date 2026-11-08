@@ -1,6 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="novel_translation_engine">Translation engine</string>
+    <string name="novel_translation_auto_compact">Auto translate</string>
+    <string name="novel_translation_auto_compact_summary">Opened chapters</string>
+    <string name="novel_translation_context_compact_summary">Nearby text</string>
+    <string name="novel_translation_sheet_subtitle">Translate the page or chapter, your way.</string>
+    <string name="novel_translation_segment_translated">Translated</string>
+    <string name="novel_translation_current_view_label">Current view</string>
+    <string name="novel_translation_view_pending">Selected view will apply after translation.</string>
+    <string name="novel_translation_language_pair">Translate from → to</string>
+    <string name="novel_translation_auto_summary">Translate each chapter as you open it.</string>
+    <string name="novel_translation_view_info_title">Reading view</string>
+    <string name="novel_translation_view_info_summary">Select Original, Translated, or Bilingual above.</string>
+    <string name="novel_translation_advanced_summary">Fine-tune provider, context, and translation behavior.</string>
     <string name="novel_translation_title">Translation</string>
     <string name="novel_translation_online">Miyorare Online</string>
     <string name="novel_translation_online_summary">Online • No API key required</string>
@@ -13,6 +25,10 @@
     <string name="novel_translation_source">From</string>
     <string name="novel_translation_target">To</string>
     <string name="novel_translation_auto_detect">Auto-detect</string>
+    <string name="novel_translation_no_matching_languages">No matching languages</string>
+    <string name="novel_translation_language_selected">Selected</string>
+    <string name="novel_translation_search_language">Search languages</string>
+    <string name="novel_translation_clear_search">Clear language search</string>
     <string name="novel_translation_choose_source">Choose source language</string>
     <string name="novel_translation_choose_target">Choose target language</string>
     <string name="novel_translation_custom_language">Other language code…</string>
@@ -48,6 +64,15 @@
     <string name="novel_translation_key_cleared">API key deleted</string>
     <string name="novel_translation_ai_setup">AI translation settings</string>
     <string name="novel_translation_ai_setup_required">Configure an API key and model before using AI translation.</string>
+    <string name="novel_translation_scope">Manual translation scope</string>
+    <string name="novel_translation_scope_page">This page only</string>
+    <string name="novel_translation_scope_visible">Visible text only</string>
+    <string name="novel_translation_scope_chapter">Entire current chapter</string>
+    <string name="novel_translation_scope_auto_hint">Auto translate, when enabled, still processes each chapter you open.</string>
+    <string name="novel_translation_translate_page">Translate visible text</string>
+    <string name="novel_translation_translate_chapter">Translate chapter</string>
+    <string name="novel_translation_page_not_ready">Page text is not ready. Try again after the page loads.</string>
+    <string name="novel_translation_quick_action">Open novel translation controls</string>
     <string name="novel_translation_translate">Translate</string>
     <string name="novel_translation_configure">Configure AI</string>
     <string name="novel_translation_cancelled">Translation cancelled</string>
