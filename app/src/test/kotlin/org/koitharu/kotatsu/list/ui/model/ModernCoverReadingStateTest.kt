@@ -40,6 +40,18 @@ class ModernCoverReadingStateTest {
 	}
 
 	@Test
+	fun `pending reading metadata is distinct from confirmed no activity`() {
+		assertEquals(ModernCoverReadingState.PENDING, resolveModernCoverReadingState(null, null, pending = true))
+		assertEquals(ModernCoverReadingState.NONE, resolveModernCoverReadingState(null, null))
+	}
+
+	@Test
+	fun `completed refresh replaces pending with authoritative unread and progress`() {
+		assertEquals(ModernCoverReadingState.PENDING, resolveModernCoverReadingState(null, progress(1f), pending = true))
+		assertEquals(ModernCoverReadingState.CAUGHT_UP, resolveModernCoverReadingState(0, progress(1f)))
+	}
+
+	@Test
 	fun `missing unread projection never becomes caught up`() {
 		assertEquals(
 			ModernCoverReadingState.NONE,
