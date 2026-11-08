@@ -1,6 +1,6 @@
 /*
  * Chikari LNReader plugin compatibility override for Miyorare.
- * Based on the public Chikari plugin from LNReader/lnreader-plugins v1.0.1.
+ * Adapted from LNReader/lnreader-plugins Chikari v1.0.2; retains Miyorare chapter paging.
  *
  * Miyorare-specific change: chapter metadata is paged through parsePage() so opening
  * Details does not wait for every chapter of very long novels to download first.
@@ -35,7 +35,7 @@ var FilterTypes = require('@libs/filterInputs').FilterTypes;
 var defaultCover = require('@libs/defaultCover').defaultCover;
 var NovelStatus = require('@libs/novelStatus').NovelStatus;
 
-var CHAPTER_PAGE_SIZE = 500;
+var CHAPTER_PAGE_SIZE = 200; // bounded to Chikari's documented series API page limit
 
 function encode(value) {
   return encodeURIComponent(String(value));
@@ -85,9 +85,8 @@ var Chikari = {
   icon: 'src/en/chikari/icon.png',
   site: 'https://chikari.moe',
   lang: 'English',
-  // Compatibility revision so existing upstream 1.0.1 installs receive this optimization once.
-  // Upstream 1.0.2+ still compares newer and automatically takes precedence.
-  version: '1.0.1.1',
+  // Compatibility revision of LNReader 1.0.2. Keep id/path unchanged for data continuity.
+  version: '1.0.2.1',
   imageRequestInit: undefined,
 
   filters: {
@@ -167,7 +166,7 @@ var Chikari = {
       (genreValues.exclude || []).forEach(function (genre) { params.push('genre_exclude=' + encode(genre)); });
     }
 
-    var json = await getJson(this.site + '/api/novels?' + params.join('&'));
+    var json = await getJson(this.site + '/api/series?type=novel&' + params.join('&'));
     return (json.items || []).map(function (item) {
       return { name: item.title, path: item.slug, cover: item.cover_url || defaultCover };
     });
@@ -177,7 +176,7 @@ var Chikari = {
     var limit = 36;
     var offset = (Math.max(1, Number(pageNo) || 1) - 1) * limit;
     var json = await getJson(
-      this.site + '/api/novels?sort=popular&q=' + encode(searchTerm) + '&limit=' + limit + '&offset=' + offset,
+      this.site + '/api/series?type=novel&sort=popular&q=' + encode(searchTerm) + '&limit=' + limit + '&offset=' + offset,
     );
     return (json.items || []).map(function (item) {
       return { name: item.title, path: item.slug, cover: item.cover_url || defaultCover };
