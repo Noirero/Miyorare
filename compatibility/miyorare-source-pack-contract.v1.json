@@ -37,7 +37,11 @@
       "uma",
       "gekkoushi"
     ],
-    "maxArtifactBytes": 67108864
+    "maxArtifactBytes": 67108864,
+    "maxNovelPluginBytes": 2097152,
+    "optionalCompanionRuntimes": [
+      "LNREADER"
+    ]
   },
   "runtime": {
     "pluginProvider": "MIYORARE",

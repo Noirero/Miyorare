@@ -13,6 +13,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.network.BaseHttpClient
+import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
@@ -37,6 +38,7 @@ import javax.inject.Singleton
 class TsukiPluginInstaller @Inject constructor(
 	@ApplicationContext private val context: Context,
 	private val pluginManager: TsukiPluginManager,
+	private val lnPluginManager: LnPluginManager,
 	@BaseHttpClient private val httpClient: OkHttpClient,
 ) {
 
@@ -49,10 +51,19 @@ class TsukiPluginInstaller @Inject constructor(
 		val sha256: String?,
 	)
 
+	private data class MiyorareNovelCompanion(
+		val pluginId: String,
+		val version: String,
+		val downloadUrl: String,
+		val size: Long,
+		val sha256: String,
+	)
+
 	private data class MiyorarePackRelease(
 		val tag: String,
 		val repository: String,
 		val releases: List<RemoteRelease>,
+		val novels: List<MiyorareNovelCompanion> = emptyList(),
 		val compatibilitySnapshotId: String? = null,
 		val compatibilityFarmCommit: String? = null,
 	)
@@ -221,7 +232,7 @@ class TsukiPluginInstaller @Inject constructor(
 	}
 
 	@WorkerThread
-	private fun installMiyorarePack(
+	private suspend fun installMiyorarePack(
 		pack: MiyorareOfficialSourcePack,
 		release: MiyorarePackRelease,
 	): List<TsukiPluginDescriptor> {
@@ -232,11 +243,18 @@ class TsukiPluginInstaller @Inject constructor(
 		}
 		val snapshots = LinkedHashMap<String, PreviousPlugin?>()
 		val installedNow = ArrayList<String>(configs.size)
+		val novelStaged = release.novels.map { File.createTempFile("lnreader-${it.pluginId}-stage-", ".js", context.cacheDir) }
+		val novelSnapshots = LinkedHashMap<String, LnPluginManager.InstalledPluginSnapshot?>()
+		val novelAttempted = ArrayList<String>()
 		try {
 			// Fail before touching installed state if either network asset, checksum, or plugin container is bad.
 			for (index in staged.indices) {
 				downloadRelease(release.releases[index], staged[index])
 			}
+			for (index in novelStaged.indices) {
+				downloadNovelCompanion(release.novels[index], novelStaged[index])
+			}
+			lnPluginManager.initialize()
 
 			for (config in configs) {
 				val previous = pluginManager.findPlugin(TsukiPluginProvider.MIYORARE, config.pluginId)
@@ -262,8 +280,32 @@ class TsukiPluginInstaller @Inject constructor(
 				installedNow += configs[index].pluginId
 				result += installed
 			}
+			// The novel is a separate LNReader source, installed only after all JARs are committed.
+			// Do not downgrade or claim ownership of a newer plugin installed from an external store.
+			for (index in release.novels.indices) {
+				val novel = release.novels[index]
+				val current = lnPluginManager.getById(novel.pluginId)?.plugin
+				if (current != null && !novelVersionIsNewer(novel.version, current.version)) continue
+				val prior = lnPluginManager.snapshot(novel.pluginId)
+				novelSnapshots[novel.pluginId] = prior
+				novelAttempted += novel.pluginId
+				lnPluginManager.install(
+					pluginId = novel.pluginId,
+					rawCode = novelStaged[index].readText(Charsets.UTF_8),
+					iconUrl = prior?.metadata?.iconUrl.orEmpty().ifEmpty { CHIKARI_ICON_URL },
+					lang = prior?.metadata?.lang.orEmpty().ifEmpty { "English" },
+					storeId = prior?.metadata?.storeId ?: pack.pluginId,
+				)
+			}
 			return result
 		} catch (error: Throwable) {
+			for (pluginId in novelAttempted.asReversed()) {
+				try {
+					lnPluginManager.restore(pluginId, novelSnapshots[pluginId])
+				} catch (rollback: Throwable) {
+					error.addSuppressed(rollback)
+				}
+			}
 			for (pluginId in installedNow.asReversed()) {
 				val snapshot = snapshots[pluginId]
 				if (snapshot == null) {
@@ -303,6 +345,7 @@ class TsukiPluginInstaller @Inject constructor(
 			throw error
 		} finally {
 			staged.forEach(File::delete)
+			novelStaged.forEach(File::delete)
 			snapshots.values.filterNotNull().forEach { it.jar.delete() }
 		}
 	}
@@ -312,10 +355,16 @@ class TsukiPluginInstaller @Inject constructor(
 		release: MiyorarePackRelease,
 	): Boolean {
 		val installed = pluginManager.getPlugins().filter { it.provider == TsukiPluginProvider.MIYORARE }
-		return pack.shards.indices.all { index ->
+		val jarsCurrent = pack.shards.indices.all { index ->
 			val shard = pack.shards[index]
 			val current = installed.firstOrNull { it.pluginId == shard.pluginId } ?: return@all false
 			releaseMatches(current, release.releases[index])
+		}
+		if (!jarsCurrent) return false
+		lnPluginManager.initialize()
+		return release.novels.all { novel ->
+			val current = lnPluginManager.getById(novel.pluginId)?.plugin ?: return@all false
+			!novelVersionIsNewer(novel.version, current.version)
 		}
 	}
 
@@ -471,11 +520,29 @@ class TsukiPluginInstaller @Inject constructor(
 			}
 			remote
 		}
+		val novels = manifestPack.novelPlugins.map { novel ->
+			val asset = requireNotNull(assets[novel.assetName]) {
+				"Release $tag is missing LNReader asset ${novel.assetName}"
+			}
+			val size = asset.optLong("size", -1L)
+			val digest = requireNotNull(
+				MiyorareOfficialSourcePacks.normalizeSha256Digest(asset.optString("digest")),
+			) { "LNReader asset is missing GitHub SHA-256" }
+			val url = asset.getString("browser_download_url")
+			require(url == "https://github.com/$repository/releases/download/$tag/${novel.assetName}") {
+				"Unexpected LNReader asset download origin"
+			}
+			require(size == novel.size && digest == novel.sha256) {
+				"LNReader asset does not match signed release manifest"
+			}
+			MiyorareNovelCompanion(novel.pluginId, novel.version, url, size, digest)
+		}
 		val snapshot = manifest.compatibilitySnapshot
 		return MiyorarePackRelease(
 			tag = tag,
 			repository = repository,
 			releases = releases,
+			novels = novels,
 			compatibilitySnapshotId = snapshot?.id,
 			compatibilityFarmCommit = snapshot?.farmCommit,
 		)
@@ -608,6 +675,38 @@ class TsukiPluginInstaller @Inject constructor(
 				?.lowercase(Locale.ROOT)
 		}
 		return RemoteRelease(config.provider, tag, name, url, size, digest)
+	}
+
+	/** Verified JS companions are staged separately; the Tsuki JAR validator must never see JS. */
+	@WorkerThread
+	private fun downloadNovelCompanion(novel: MiyorareNovelCompanion, target: File) {
+		val request = Request.Builder().url(novel.downloadUrl).build()
+		httpClient.newCall(request).execute().use { response ->
+			require(response.isSuccessful) { "Novel plugin download returned HTTP ${response.code}" }
+			val contentLength = response.body.contentLength()
+			if (contentLength >= 0) require(contentLength == novel.size) { "Novel plugin download size changed" }
+			response.body.byteStream().use {
+				copyBounded(it, target, MiyorareSourcePackReleasePolicy.MAX_NOVEL_PLUGIN_BYTES)
+			}
+		}
+		require(target.length() == novel.size) { "Novel plugin download was truncated" }
+		val bytes = target.readBytes()
+		require(MiyorareSourcePackReleasePolicy.sha256Hex(bytes) == novel.sha256) {
+			"LNReader plugin SHA-256 does not match signed release"
+		}
+		require(bytes.contentEquals(bytes.toString(Charsets.UTF_8).toByteArray(Charsets.UTF_8))) {
+			"Novel plugin is not valid UTF-8"
+		}
+	}
+
+	private fun novelVersionIsNewer(remote: String, local: String): Boolean {
+		val a = remote.split('.').map { it.toIntOrNull() ?: return false }
+		val b = local.split('.').map { it.toIntOrNull() ?: return false }
+		for (i in 0 until maxOf(a.size, b.size)) {
+			val difference = (a.getOrElse(i) { 0 }).compareTo(b.getOrElse(i) { 0 })
+			if (difference != 0) return difference > 0
+		}
+		return false
 	}
 
 	@WorkerThread
@@ -794,6 +893,8 @@ class TsukiPluginInstaller @Inject constructor(
 	}
 
 	private companion object {
+		const val CHIKARI_ICON_URL =
+			"https://raw.githubusercontent.com/LNReader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/chikari/icon.png"
 		const val MAX_PLUGIN_BYTES = 32L * 1024L * 1024L
 		const val MAX_RELEASE_METADATA_BYTES = 2L * 1024L * 1024L
 	}

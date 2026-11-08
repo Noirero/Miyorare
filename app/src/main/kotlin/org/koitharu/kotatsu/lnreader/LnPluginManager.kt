@@ -109,6 +109,7 @@ class LnPluginManager @Inject constructor(
 		storeId: String? = null,
 	): LnPlugin {
 		val reported = LnPlugin.fromJson(jsHost.install(pluginId, rawCode))
+		require(reported.id == pluginId) { "LNReader plugin identity mismatch for $pluginId" }
 		val metadata = reported.copy(
 			iconUrl = reported.iconUrl.ifEmpty { iconUrl },
 			lang = reported.lang.ifEmpty { lang },
@@ -130,6 +131,30 @@ class LnPluginManager @Inject constructor(
 		}
 		scan()
 		return metadata
+	}
+
+	/** Snapshot the old plugin bytes and metadata before a cross-runtime pack transaction. */
+	data class InstalledPluginSnapshot(val metadata: LnPlugin, val code: String)
+
+	fun snapshot(pluginId: String): InstalledPluginSnapshot? {
+		val code = codeFile(pluginId).takeIf { it.isFile } ?: return null
+		val metadata = readPlugin(code.parentFile) ?: return null
+		return InstalledPluginSnapshot(metadata, code.readText())
+	}
+
+	/** Restore the exact prior LNReader identity if a later Source Pack stage fails. */
+	suspend fun restore(pluginId: String, snapshot: InstalledPluginSnapshot?) {
+		if (snapshot == null) {
+			if (isInstalled(pluginId)) uninstall(pluginId)
+		} else {
+			install(
+				pluginId = pluginId,
+				rawCode = snapshot.code,
+				iconUrl = snapshot.metadata.iconUrl,
+				lang = snapshot.metadata.lang,
+				storeId = snapshot.metadata.storeId,
+			)
+		}
 	}
 
 	suspend fun uninstall(pluginId: String) {

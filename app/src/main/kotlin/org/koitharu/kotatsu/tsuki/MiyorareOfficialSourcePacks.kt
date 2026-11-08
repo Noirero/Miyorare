@@ -28,6 +28,9 @@ object MiyorareOfficialSourcePacks {
 	const val RELEASE_TAG_PREFIX = "miyorare-sources-v"
 	const val ID_PLUGIN_ID = "miyorare-id"
 	const val EN_PLUGIN_ID = "miyorare-en"
+	const val CHIKARI_PLUGIN_ID = "chikari"
+	const val CHIKARI_PLUGIN_VERSION = "1.0.2.1"
+	const val CHIKARI_ASSET_NAME = "miyorare-en-chikari.js"
 	const val GLOBAL_PLUGIN_ID = "miyorare-global"
 
 	val packs: List<MiyorareOfficialSourcePack> = listOf(

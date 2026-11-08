@@ -27,6 +27,7 @@ object MiyorareSourcePackReleasePolicy {
 	const val COMPATIBILITY_EPOCH = 1
 	const val TSUKI_API = "1.0.5"
 	const val STABLE_CHANNEL = "stable"
+	const val MAX_NOVEL_PLUGIN_BYTES = 2L * 1024 * 1024
 
 	private const val RELEASE_LOCK_SCHEMA = 1
 	private const val RELEASE_LOCK_KIND = "MIYORARE_SOURCE_PACK_RELEASE_LOCK"
@@ -54,11 +55,21 @@ object MiyorareSourcePackReleasePolicy {
 		val sourceCount: Int,
 	)
 
+	data class NovelPluginManifest(
+		val provider: String,
+		val pluginId: String,
+		val version: String,
+		val assetName: String,
+		val size: Long,
+		val sha256: String,
+	)
+
 	data class PackManifest(
 		val pluginId: String,
 		val language: String,
 		val sourceCount: Int,
 		val shards: List<ShardManifest>,
+		val novelPlugins: List<NovelPluginManifest> = emptyList(),
 	)
 
 	data class CompatibilitySnapshot(
@@ -194,7 +205,30 @@ object MiyorareSourcePackReleasePolicy {
 					"Unexpected shard provider: ${shard.provider}"
 				}
 			}
-			parsedPacks[pluginId] = PackManifest(pluginId, language, sourceCount, shards)
+			// Absent field means a historical schema-3 JAR-only release, not an error.
+			val novels = item["novelPlugins"]?.jsonArray?.map { entry ->
+				val novel = entry.jsonObject
+				NovelPluginManifest(
+					provider = novel.requiredString("provider"),
+					pluginId = novel.requiredString("pluginId"),
+					version = novel.requiredString("version"),
+					assetName = novel.requiredString("assetName"),
+					size = novel.requiredLong("size").also { require(it in 1..MAX_NOVEL_PLUGIN_BYTES) },
+					sha256 = novel.requiredHex64("sha256"),
+				)
+			}.orEmpty()
+			require(novels.isEmpty() || (pluginId == MiyorareOfficialSourcePacks.EN_PLUGIN_ID && novels.size == 1)) {
+				"Novel companion is only supported in Miyorare-EN"
+			}
+			for (novel in novels) {
+				require(
+					novel.provider == "LNREADER" &&
+						novel.pluginId == MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_ID &&
+						novel.version == MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_VERSION &&
+						novel.assetName == MiyorareOfficialSourcePacks.CHIKARI_ASSET_NAME
+				) { "Unknown or incompatible LNReader novel companion" }
+			}
+			parsedPacks[pluginId] = PackManifest(pluginId, language, sourceCount, shards, novels)
 		}
 		require(parsedPacks.keys == expectedPacks.keys) { "Source Pack release is missing required logical packs" }
 

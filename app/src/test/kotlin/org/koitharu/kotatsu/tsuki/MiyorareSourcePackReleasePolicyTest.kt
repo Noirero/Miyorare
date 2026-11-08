@@ -27,6 +27,30 @@ class MiyorareSourcePackReleasePolicyTest {
 	}
 
 	@Test
+	fun `Chikari novel companion preserves old schema and rejects foreign plugin`() {
+		val old = MiyorareSourcePackReleasePolicy.parseManifest(
+			manifest().encodeToByteArray(), "miyorare-sources-v1.2.3",
+		)
+		assertTrue(old.packs.getValue("miyorare-en").novelPlugins.isEmpty())
+		val chikari = "\\"novelPlugins\\":[{\\"provider\\":\\"LNREADER\\",\\"pluginId\\":\\"chikari\\",\\"version\\":\\"1.0.2.1\\",\\"assetName\\":\\"miyorare-en-chikari.js\\",\\"size\\":123,\\"sha256\\":\\"${"a".repeat(64)}\\"}],"
+		val oldHeader = "\\"pluginId\\":\\"miyorare-en\\",\\"language\\":\\"en\\",\\"sourceCount\\":2,"
+		val extended = manifest().replace(oldHeader, oldHeader + chikari)
+		val parsed = MiyorareSourcePackReleasePolicy.parseManifest(
+			extended.encodeToByteArray(), "miyorare-sources-v1.2.3",
+		)
+		assertEquals("chikari", parsed.packs.getValue("miyorare-en").novelPlugins.single().pluginId)
+		for (bad in listOf(
+			extended.replace("\\"LNREADER\\"", "\\"UMA\\""),
+			extended.replace("miyorare-en-chikari.js", "../chikari.js"),
+			extended.replace("\\"size\\":123", "\\"size\\":0"),
+		)) {
+			assertThrows(IllegalArgumentException::class.java) {
+				MiyorareSourcePackReleasePolicy.parseManifest(bad.encodeToByteArray(), "miyorare-sources-v1.2.3")
+			}
+		}
+	}
+
+	@Test
 	fun `schema 2 is not silently reinterpreted`() {
 		assertThrows(IllegalArgumentException::class.java) {
 			MiyorareSourcePackReleasePolicy.parseManifest(
