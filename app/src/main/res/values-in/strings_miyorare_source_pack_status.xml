@@ -17,4 +17,8 @@
     <string name="miyorare_source_adapted">ADAPTED</string>
     <string name="miyorare_source_adaptation_verified">VERIFIED</string>
     <string name="miyorare_source_adaptation_degraded">DEGRADED</string>
+    <string name="miyorare_novel_candidates_title">Kandidat novel · EN / ID</string>
+    <string name="miyorare_novel_candidates_read_only">Inventaris resmi LNReader · kandidat tidak dipasang otomatis</string>
+    <string name="miyorare_novel_candidates_refresh">Segarkan inventaris kandidat</string>
+    <string name="miyorare_novel_candidates_unavailable">Registry kandidat resmi belum tersedia</string>
 </resources>
