@@ -100,6 +100,7 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ReaderMode
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.sheet.AdaptiveSheetBehavior
 import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
 import org.koitharu.kotatsu.core.util.ext.findParentCallback
@@ -172,6 +173,13 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
 			window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
 		} else {
 			super.onStart()
+		}
+		// The Compose controls already read MiyorareTheme; only native sheet chrome
+		// (surface, header title/actions) needs a scoped semantic palette bridge.
+		requireContext().miyorareViewPaletteFromPreferences()?.let { palette ->
+			val sheet = dialog?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)
+				?: dialog?.findViewById<View>(com.google.android.material.R.id.m3_side_sheet)
+			viewBinding?.let { applyModernReaderSheetChrome(it, sheet, palette) }
 		}
 	}
 

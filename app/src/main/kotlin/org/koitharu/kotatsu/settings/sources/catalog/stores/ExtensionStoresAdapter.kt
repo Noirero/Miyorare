@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.databinding.ItemExtensionStoreBinding
 import org.koitharu.kotatsu.databinding.ItemExtensionStoreNoteBinding
 import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreContentType
@@ -75,6 +76,12 @@ class ExtensionStoresAdapter(
 
 		@SuppressLint("ClickableViewAccessibility")
 		fun bind(item: ExtensionStoreState, position: Int) {
+			// Only card and kind-pill tones: health/status tint below remains source-owned.
+			binding.root.context.miyorareViewPaletteFromPreferences()?.let { palette ->
+				binding.tileRoot.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainer)
+				binding.textKind.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainerHighest)
+				binding.textKind.setTextColor(palette.onSurfaceVariant)
+			}
 			val name = labels[item.store.id] ?: item.store.displayName
 			// Empty while the store is still being checked or is unreachable — no "(0)" in that case.
 			binding.textTitle.text = if (item.catalog.isEmpty()) name else "$name (${item.catalog.size})"

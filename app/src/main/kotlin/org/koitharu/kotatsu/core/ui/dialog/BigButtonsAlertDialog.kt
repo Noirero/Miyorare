@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.core.ui.dialog
 
 import android.content.Context
 import android.content.DialogInterface
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
@@ -9,6 +10,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.shape.MaterialShapeDrawable
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.databinding.DialogTwoButtonsBinding
 
 class BigButtonsAlertDialog private constructor(
@@ -23,6 +26,24 @@ class BigButtonsAlertDialog private constructor(
 
 		private val delegate = MaterialAlertDialogBuilder(context)
 			.setView(binding.root)
+
+		init {
+			// MaterialButton and XML drawable inflation bypass the semantic View colour bridge.
+			// Rebind only the positive/tonal actions and icon: the outlined negative button
+			// deliberately retains its existing appearance.
+			context.miyorareViewPaletteFromPreferences()?.let { palette ->
+				binding.icon.imageTintList = ColorStateList.valueOf(palette.primary)
+				binding.icon.backgroundTintList = ColorStateList.valueOf(palette.primaryContainer)
+				binding.title.setTextColor(palette.onSurface)
+				binding.button1.backgroundTintList = ColorStateList.valueOf(palette.primary)
+				binding.button1.setTextColor(palette.onPrimary)
+				binding.button2.backgroundTintList = ColorStateList.valueOf(palette.primaryContainer)
+				binding.button2.setTextColor(palette.onPrimaryContainer)
+				// Preserve Material's existing dialog shape, elevation and window insets.
+				(delegate.background as? MaterialShapeDrawable)
+					?.setFillColor(ColorStateList.valueOf(palette.surface))
+			}
+		}
 
 		fun setTitle(@StringRes titleResId: Int): Builder {
 			binding.title.setText(titleResId)

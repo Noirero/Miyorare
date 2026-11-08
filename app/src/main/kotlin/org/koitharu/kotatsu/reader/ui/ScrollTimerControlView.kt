@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.reader.ui
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.View
@@ -61,6 +62,20 @@ class ScrollTimerControlView @JvmOverloads constructor(
 		binding.sliderTimer.setLabelFormatter(this)
 		binding.buttonClose.setOnClickListener(this)
 		binding.buttonFab.isGone = resources.getBoolean(R.bool.is_tablet)
+		bindModernReaderPanel(
+			icon = binding.iconTimer,
+			section = binding.containerSections,
+			closeButton = binding.buttonClose,
+			sliders = listOf(binding.sliderTimer),
+		)?.let { palette ->
+			binding.textViewValue.setTextColor(palette.primary)
+			val checked = intArrayOf(android.R.attr.state_checked)
+			val states = arrayOf(checked, intArrayOf())
+			for (toggle in listOf(binding.switchScrollTimer, binding.buttonFab)) {
+				toggle.trackTintList = ColorStateList(states, intArrayOf(palette.primary, palette.surfaceContainerHigh))
+				toggle.thumbTintList = ColorStateList(states, intArrayOf(palette.onPrimary, palette.onSurfaceVariant))
+			}
+		}
 	}
 
 	fun attach(timer: ScrollTimer, lifecycleOwner: LifecycleOwner) {

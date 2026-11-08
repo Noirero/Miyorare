@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.explore.ui
 
 import android.content.DialogInterface
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -33,6 +34,7 @@ import com.google.android.material.badge.BadgeDrawable
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.tabs.TabLayoutMediator
 import com.google.android.material.textfield.TextInputEditText
@@ -49,6 +51,8 @@ import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseFragment
+import org.koitharu.kotatsu.core.ui.MiyorareViewPalette
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.dialog.BigButtonsAlertDialog
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
@@ -117,6 +121,7 @@ class ExploreFragment :
 	private class SourceFilterAdapter(
 		private val sourceStates: MutableMap<Long, Boolean>,
 		private val rowPadding: Int,
+		private val palette: MiyorareViewPalette?,
 		private val onStateChanged: () -> Unit,
 	) : RecyclerView.Adapter<SourceFilterAdapter.Holder>() {
 
@@ -133,6 +138,7 @@ class ExploreFragment :
 
 		override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
 			val toggle = SwitchMaterial(parent.context).apply {
+				applySourceFilterModernColors(palette)
 				layoutParams = RecyclerView.LayoutParams(
 					ViewGroup.LayoutParams.MATCH_PARENT,
 					ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -466,6 +472,7 @@ class ExploreFragment :
 		}
 		sourceFilterDialogOpenPending = false
 		val context = requireContext()
+		val palette = context.miyorareViewPaletteFromPreferences()
 		val padding = (20 * resources.displayMetrics.density).toInt()
 		val rowPadding = (12 * resources.displayMetrics.density).toInt()
 		val content = LinearLayout(context).apply {
@@ -473,11 +480,13 @@ class ExploreFragment :
 			setPadding(padding, rowPadding, padding, rowPadding)
 		}
 		content.addView(TextView(context).apply {
+			palette?.let { setTextColor(it.onSurfaceVariant) }
 			setText(R.string.source_filter_summary)
 			setPadding(0, 0, 0, rowPadding)
 		})
 		val stateProvider = if (entries.isEmpty()) {
 			content.addView(TextView(context).apply {
+				palette?.let { setTextColor(it.onSurfaceVariant) }
 				setText(R.string.no_external_source_installed)
 			})
 			null
@@ -485,7 +494,7 @@ class ExploreFragment :
 			addSourceFilterControls(content, entries)
 		}
 		val scroll = ScrollView(context).apply { addView(content) }
-		MaterialAlertDialogBuilder(context)
+		val builder = MaterialAlertDialogBuilder(context)
 			.setTitle(R.string.source_filter)
 			.setView(scroll)
 			.setPositiveButton(android.R.string.ok) { _, _ ->
@@ -503,7 +512,15 @@ class ExploreFragment :
 					}
 				}
 			}
-			.show()
+		// Preserve Material's shape/insets, only replace the outdated XML surface tone.
+		palette?.let { (builder.background as? MaterialShapeDrawable)?.setFillColor(ColorStateList.valueOf(it.surface)) }
+		val dialog = builder.create()
+		palette?.let { active ->
+			dialog.setOnShowListener {
+				dialog.getButton(DialogInterface.BUTTON_POSITIVE)?.setTextColor(active.primary)
+			}
+		}
+		dialog.show()
 	}
 
 	private fun addSourceFilterControls(
@@ -511,6 +528,7 @@ class ExploreFragment :
 		entries: List<MihonSourceFilterEntry>,
 	): () -> SourceFilterState {
 		val context = container.context
+		val palette = context.miyorareViewPaletteFromPreferences()
 		val density = resources.displayMetrics.density
 		val rowPadding = (12 * density).toInt()
 		fun header(text: CharSequence) {
@@ -518,6 +536,7 @@ class ExploreFragment :
 				this.text = text
 				setPadding(0, rowPadding, 0, rowPadding / 2)
 				setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleMedium)
+				palette?.let { setTextColor(it.onSurface) }
 			})
 		}
 		fun allLabel(section: String): String {
@@ -565,6 +584,7 @@ class ExploreFragment :
 
 		header(getString(R.string.source_filter_languages))
 		languageAllSwitch = SwitchMaterial(context).apply {
+			applySourceFilterModernColors(palette)
 			text = allLabel(getString(R.string.source_filter_languages))
 			isChecked = languageStates.isNotEmpty() && languageStates.values.all { it }
 			setPadding(0, rowPadding / 2, 0, rowPadding / 2)
@@ -580,6 +600,7 @@ class ExploreFragment :
 			.sortedBy { getExternalExtensionLanguageDisplayName(it.key) }
 			.forEach { (language, languageEntries) ->
 				val toggle = SwitchMaterial(context).apply {
+					applySourceFilterModernColors(palette)
 					text = getExternalExtensionLanguageDisplayName(language)
 					isChecked = languageEntries.firstOrNull()?.isLanguageEnabled != false
 					setPadding(0, rowPadding / 2, 0, rowPadding / 2)
@@ -607,6 +628,7 @@ class ExploreFragment :
 
 		lateinit var sourceAdapter: SourceFilterAdapter
 		sourceAllSwitch = SwitchMaterial(context).apply {
+			applySourceFilterModernColors(palette)
 			text = allLabel(getString(R.string.source_filter_individual))
 			isChecked = sourceStates.isNotEmpty() && sourceStates.values.all { it }
 			setPadding(0, rowPadding / 2, 0, rowPadding / 2)
@@ -619,6 +641,7 @@ class ExploreFragment :
 		container.addView(sourceAllSwitch)
 
 		val searchInput = TextInputEditText(context).apply {
+			palette?.let { setTextColor(it.onSurface) }
 			isSingleLine = true
 			setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
 		}
@@ -628,6 +651,13 @@ class ExploreFragment :
 				setStartIconDrawable(R.drawable.ic_search)
 				endIconMode = TextInputLayout.END_ICON_CLEAR_TEXT
 				isHintEnabled = true
+				palette?.let {
+					boxStrokeColor = it.primary
+					setHintTextColor(ColorStateList.valueOf(it.primary))
+					setDefaultHintTextColor(ColorStateList.valueOf(it.onSurfaceVariant))
+					setStartIconTintList(ColorStateList.valueOf(it.onSurfaceVariant))
+					setEndIconTintList(ColorStateList.valueOf(it.onSurfaceVariant))
+				}
 				addView(
 					searchInput,
 					LinearLayout.LayoutParams(
@@ -659,13 +689,14 @@ class ExploreFragment :
 		)
 
 		val noMatches = TextView(context).apply {
+			palette?.let { setTextColor(it.onSurfaceVariant) }
 			setText(R.string.no_matching_extensions)
 			setPadding(0, rowPadding, 0, rowPadding)
 			isVisible = false
 		}
 		container.addView(noMatches)
 
-		sourceAdapter = SourceFilterAdapter(sourceStates, rowPadding, ::updateSourceAllSwitch)
+		sourceAdapter = SourceFilterAdapter(sourceStates, rowPadding, palette, ::updateSourceAllSwitch)
 		val sourceListHeight = (sourceRows.size.coerceIn(1, 6) * 56f * density).toInt()
 		val sourceList = RecyclerView(context).apply {
 			layoutManager = LinearLayoutManager(context)
@@ -698,6 +729,12 @@ class ExploreFragment :
 
 		fun addInitialChip(label: String, initial: Char?, enabled: Boolean = true): Chip {
 			return Chip(context).apply {
+				palette?.let { active ->
+					val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+					chipBackgroundColor = ColorStateList(states, intArrayOf(active.primaryContainer, active.surfaceContainerHigh))
+					setTextColor(ColorStateList(states, intArrayOf(active.onPrimaryContainer, active.onSurface)))
+					chipStrokeColor = ColorStateList.valueOf(active.outlineVariant)
+				}
 				id = View.generateViewId()
 				text = label
 				isCheckable = true
@@ -863,4 +900,13 @@ class ExploreFragment :
 			.create()
 			.show()
 	}
+}
+
+/** Source-filter switches are created programmatically and never run through the View theme bridge. */
+private fun SwitchMaterial.applySourceFilterModernColors(palette: MiyorareViewPalette?) {
+	if (palette == null) return
+	val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+	trackTintList = ColorStateList(states, intArrayOf(palette.primary, palette.surfaceContainerHigh))
+	thumbTintList = ColorStateList(states, intArrayOf(palette.onPrimary, palette.onSurfaceVariant))
+	setTextColor(palette.onSurface)
 }
