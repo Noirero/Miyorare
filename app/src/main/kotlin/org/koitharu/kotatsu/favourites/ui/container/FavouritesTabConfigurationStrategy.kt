@@ -248,7 +248,7 @@ class FavouritesTabConfigurationStrategy(
 		}
 		val selectedOverlay = MaterialShapeDrawable(
 			ShapeAppearanceModel.builder()
-				.setAllCornerSizes(MiyorareVisualTokens.RADIUS_CONTROL_DP * 0.86f * density)
+				.setAllCornerSizes(MiyorareVisualTokens.RADIUS_SMALL_DP * density)
 				.build(),
 		).apply {
 			fillColor = ColorStateList(
@@ -263,10 +263,10 @@ class FavouritesTabConfigurationStrategy(
 			),
 			InsetDrawable(
 				selectedOverlay,
+				0,
 				(1f * density).roundToInt(),
-				(3f * density).roundToInt(),
+				0,
 				(1f * density).roundToInt(),
-				(3f * density).roundToInt(),
 			),
 			null,
 		)
