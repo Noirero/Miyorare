@@ -309,7 +309,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			ModernCoverReadingState.UNREAD,
 			ModernCoverReadingState.IN_PROGRESS,
 			-> "${context.getString(R.string.unread)}: ${value.unreadCount ?: 0}"
-			ModernCoverReadingState.PENDING -> context.getString(R.string.loading)
+			ModernCoverReadingState.PENDING -> context.getString(R.string.loading_)
 			ModernCoverReadingState.NONE -> null
 		}
 		unread.contentDescription = readingText
