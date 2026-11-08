@@ -136,6 +136,9 @@ jobs:
           bash -n .github/scripts/run-selected-android-runtime.sh
           python3 .github/scripts/targeted-ci-diagnostics.py --self-test
 
+      - name: Validate Chikari Novel incremental parser contract
+        run: node --test extensions/lnreader/tests/chikari.test.cjs
+
       - name: Install browser auth helper tooling
         if: steps.compile-proof.outputs.reuse != 'true'
         run: npm install --prefix browser-auth-helper --ignore-scripts
