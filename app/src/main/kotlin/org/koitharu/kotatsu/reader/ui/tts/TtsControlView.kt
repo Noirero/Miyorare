@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.reader.ui.tts
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.View
@@ -19,6 +20,7 @@ import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.parentView
 import org.koitharu.kotatsu.databinding.ViewTtsControlBinding
 import org.koitharu.kotatsu.reader.ui.ScrollTimerControlView
+import org.koitharu.kotatsu.reader.ui.bindModernReaderPanel
 
 /**
  * Transport + settings panel for [ReaderTts], built to match the automatic scroll panel: same card,
@@ -42,6 +44,24 @@ class TtsControlView @JvmOverloads constructor(
 		binding.buttonPrevious.setOnClickListener(this)
 		binding.sliderSpeed.addOnChangeListener(this)
 		binding.sliderPitch.addOnChangeListener(this)
+		bindModernReaderPanel(
+			icon = binding.iconTts,
+			section = binding.containerSections,
+			closeButton = binding.buttonClose,
+			sliders = listOf(binding.sliderSpeed, binding.sliderPitch),
+		)?.let { palette ->
+			for (button in listOf(binding.buttonPrevious, binding.buttonNext)) {
+				button.backgroundTintList = ColorStateList.valueOf(palette.primaryContainer)
+				button.iconTint = ColorStateList.valueOf(palette.onPrimaryContainer)
+			}
+			binding.buttonPlay.backgroundTintList = ColorStateList.valueOf(palette.primary)
+			binding.buttonPlay.iconTint = ColorStateList.valueOf(palette.onPrimary)
+			val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+			for (button in listOf(binding.buttonVoice0, binding.buttonVoice1)) {
+				button.backgroundTintList = ColorStateList(states, intArrayOf(palette.primaryContainer, palette.surfaceContainerHigh))
+				button.setTextColor(ColorStateList(states, intArrayOf(palette.onPrimaryContainer, palette.onSurface)))
+			}
+		}
 	}
 
 	fun attach(controller: ReaderTts, lifecycleOwner: LifecycleOwner) {
