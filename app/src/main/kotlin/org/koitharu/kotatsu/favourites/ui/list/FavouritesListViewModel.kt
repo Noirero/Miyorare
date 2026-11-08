@@ -9,6 +9,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -866,71 +867,89 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	private fun scheduleCardEnrichment(key: CardEnrichmentKey) {
-		if (key.ids.isEmpty()) {
+		synchronized(cardEnrichmentGate) {
+			if (key.ids.isEmpty()) {
+				cardEnrichmentJob?.cancel()
+				cardEnrichmentJob = null
+				pendingCardEnrichmentKey = null
+				// Empty / loading categories must not evict a previously valid snapshot.
+				return
+			}
+			if (cardEnrichment.value?.key == key || pendingCardEnrichmentKey == key) return
+
+			val previous = cardEnrichment.value?.takeIf { cached ->
+				cached.key.context == key.context &&
+					cached.key.revision == key.revision &&
+					key.ids.size >= cached.key.ids.size &&
+					key.ids.subList(0, cached.key.ids.size) == cached.key.ids
+			}
+			val reusedCount = previous?.key?.ids?.size ?: 0
+			val deltaIds = key.ids.drop(reusedCount)
+
 			cardEnrichmentJob?.cancel()
-			cardEnrichmentJob = null
-			pendingCardEnrichmentKey = null
-			cardEnrichment.value = null
-			return
-		}
-		if (cardEnrichment.value?.key == key || pendingCardEnrichmentKey == key) return
-
-		val previous = cardEnrichment.value?.takeIf { cached ->
-			cached.key.revision == key.revision &&
-				cached.key.includeUnread == key.includeUnread &&
-				cached.key.includeDownloaded == key.includeDownloaded &&
-				key.ids.size >= cached.key.ids.size &&
-				key.ids.subList(0, cached.key.ids.size) == cached.key.ids
-		}
-		val reusedCount = previous?.key?.ids?.size ?: 0
-		val deltaIds = key.ids.drop(reusedCount)
-
-		cardEnrichmentJob?.cancel()
-		pendingCardEnrichmentKey = key
-		cardEnrichmentJob = listWorkScope.launch(Dispatchers.IO) {
-			val work = PerformanceDiagnostics.begin("work", "favourites_card_enrichment")
-			var outcome = "complete"
-			try {
-				val deltaSnapshot = PerformanceDiagnostics.measure("repository", "favourites_history_unread") { unreadCounter.getSnapshot(
-					mangaIds = deltaIds,
-					includeUnread = key.includeUnread || settings.progressIndicatorMode == org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.CHAPTERS_READ,
-					space = favouriteSpace,
-                    legacyNovelIds = key.legacyNovelIds.intersect(deltaIds.toSet()),
-				) }
-				val snapshot = previous?.snapshot?.merge(deltaSnapshot) ?: deltaSnapshot
-				val deltaDownloadedIds = if (key.includeDownloaded) {
-					PerformanceDiagnostics.measure("repository", "favourites_download_state") { downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, deltaIds) }
-				} else {
-					null
+			pendingCardEnrichmentKey = key
+			cardEnrichmentJob = listWorkScope.launch(Dispatchers.IO) {
+				val work = PerformanceDiagnostics.begin("work", "favourites_card_enrichment")
+				var outcome = "complete"
+				try {
+					val deltaSnapshot = PerformanceDiagnostics.measure("repository", "favourites_history_unread") {
+						unreadCounter.getSnapshot(
+							mangaIds = deltaIds,
+							includeUnread = key.includeUnread ||
+								key.context.progressMode == org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.CHAPTERS_READ,
+							space = favouriteSpace,
+							legacyNovelIds = key.legacyNovelIds.intersect(deltaIds.toSet()),
+						)
+					}
+					val snapshot = previous?.snapshot?.merge(deltaSnapshot) ?: deltaSnapshot
+					val deltaDownloadedIds = if (key.includeDownloaded) {
+						PerformanceDiagnostics.measure("repository", "favourites_download_state") {
+							downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, deltaIds)
+						}
+					} else null
+					val downloadedIds = when {
+						!key.includeDownloaded -> null
+						previous == null -> deltaDownloadedIds.orEmpty()
+						else -> previous.downloadedIds.orEmpty() + deltaDownloadedIds.orEmpty()
+					}
+					// The history handoff is also generation-owned: never publish from cancelled work.
+					coroutineContext.ensureActive()
+					synchronized(cardEnrichmentGate) {
+						if (canPublishCardEnrichment(
+								key.revision, cardEnrichmentRevision.get(),
+								pendingCardEnrichmentKey == key, coroutineContext.isActive,
+						)) {
+							detailsNavigationCache.updateHistory(key.ids.takeLast(16), snapshot::getHistory)
+							cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
+						} else {
+							outcome = "stale_generation_discard"
+						}
+					}
+				} catch (error: Throwable) {
+					outcome = if (error is kotlinx.coroutines.CancellationException) "cancel" else "failure"
+					throw error
+				} finally {
+					PerformanceDiagnostics.end(work, outcome)
+					synchronized(cardEnrichmentGate) {
+						if (pendingCardEnrichmentKey == key) pendingCardEnrichmentKey = null
+					}
 				}
-				val downloadedIds = when {
-					!key.includeDownloaded -> null
-					previous == null -> deltaDownloadedIds.orEmpty()
-					else -> previous.downloadedIds.orEmpty() + deltaDownloadedIds.orEmpty()
-				}
-				// Details only needs the tiny history handoff. Reuse old metadata and query only the page delta.
-				coroutineContext.ensureActive()
-				detailsNavigationCache.updateHistory(key.ids.takeLast(16), snapshot::getHistory)
-				if (key.revision == cardEnrichmentRevision.get()) {
-					cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
-				} else {
-					outcome = "stale_generation_discard"
-				}
-			} catch (error: Throwable) {
-				outcome = if (error is kotlinx.coroutines.CancellationException) "cancel" else "failure"
-				throw error
-			} finally {
-				PerformanceDiagnostics.end(work, outcome)
-				if (pendingCardEnrichmentKey == key) pendingCardEnrichmentKey = null
 			}
 		}
 	}
 
-	private fun invalidateCardEnrichment() {
-		cardEnrichmentRevision.incrementAndGet()
-		cardEnrichmentJob?.cancel()
-		cardEnrichmentJob = null
-		pendingCardEnrichmentKey = null
+	private fun invalidateCardEnrichment(discardDownloadedStatus: Boolean = false) {
+		synchronized(cardEnrichmentGate) {
+			val nextRevision = cardEnrichmentRevision.incrementAndGet()
+			cardEnrichmentJob?.cancel()
+			cardEnrichmentJob = null
+			pendingCardEnrichmentKey = null
+			if (discardDownloadedStatus) {
+				cardEnrichment.value = cardEnrichment.value?.copy(downloadedIds = null)
+			}
+			// Re-evaluate the published list without wiping presentation metadata.
+			cardEnrichmentEpoch.value = nextRevision
+		}
 	}
 
 	private suspend fun List<Manga>.mapList(
