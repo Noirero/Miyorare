@@ -238,9 +238,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	/** B22: the update bubble is native XML; its Material tokens predate the selected Modern preset. */
 	private fun bindModernUpdatePromptColors() {
 		val palette = miyorareViewPaletteFromPreferences() ?: return
-		viewBinding.cardUpdatePrompt.setCardBackgroundColor(palette.primaryContainer)
-		viewBinding.imageUpdatePromptTail.imageTintList = ColorStateList.valueOf(palette.primaryContainer)
-		viewBinding.textUpdatePrompt.setTextColor(palette.onPrimaryContainer)
+		viewBinding.cardUpdatePrompt?.setCardBackgroundColor(palette.primaryContainer)
+		viewBinding.imageUpdatePromptTail?.imageTintList = ColorStateList.valueOf(palette.primaryContainer)
+		viewBinding.textUpdatePrompt?.setTextColor(palette.onPrimaryContainer)
 		viewBinding.buttonUpdate.backgroundTintList = ColorStateList.valueOf(palette.primary)
 		viewBinding.buttonUpdate.setTextColor(palette.onPrimary)
 		viewBinding.buttonUpdateDismiss.iconTint = ColorStateList.valueOf(palette.onPrimaryContainer)
