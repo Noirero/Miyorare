@@ -7,9 +7,13 @@ import androidx.appcompat.view.ContextThemeWrapper
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.R
@@ -22,7 +26,17 @@ import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 
 /** B24: compare real widget projection to the same canonical View palette used by Modern UI. */
 @RunWith(AndroidJUnit4::class)
+@HiltAndroidTest
 class ModernWidgetThemeRuntimeTest {
+    @get:Rule val hilt = HiltAndroidRule(this)
+
+    @Before fun createHiltComponent() {
+        // WidgetTheme.colors() resolves AppSettings via the production Application entry point.
+        // The Android instrumentation process uses HiltTestApplication, whose per-test graph
+        // must be initialized before the widget theme can be queried.
+        hilt.inject()
+    }
+
     @Test fun presetNightAmoledAndCacheChangesUseCanonicalWidgetColors() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
