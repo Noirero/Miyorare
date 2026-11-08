@@ -9,6 +9,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -191,11 +192,15 @@ class FavouritesListViewModel @Inject constructor(
 	private val emptyCardSnapshot = FavouriteUnreadCounter.Snapshot(emptyMap(), emptyMap())
 	private val cardEnrichment = MutableStateFlow<CardEnrichment?>(null)
 	private val cardEnrichmentRevision = AtomicLong()
-	private var pendingCardEnrichmentKey: CardEnrichmentKey? = null
+	private val cardEnrichmentEpoch = MutableStateFlow(0L)
+	private val cardEnrichmentGate = Any()
+	private var pendingCardEnrichmentRequest: CardEnrichmentRequest<CardEnrichmentKey>? = null
 	private var cardEnrichmentJob: Job? = null
 	private val listWorkScope = FavouritesListWorkScope {
-		cardEnrichmentJob = null
-		pendingCardEnrichmentKey = null
+		synchronized(cardEnrichmentGate) {
+			cardEnrichmentJob = null
+			pendingCardEnrichmentRequest = null
+		}
 	}
 
 	private val libraryGroups = libraryGroupsRepository.observeGroups(favouriteSpace).stateIn(
@@ -215,7 +220,8 @@ class FavouritesListViewModel @Inject constructor(
 				LocalMangaIndex.rebuildEvents,
 			).collect {
 				// Concrete events can update an existing artifact without changing an index row.
-				// Requery card state as well as the filter, retaining the previous badge until it settles.
+				// Preserve last-known verified statuses during revalidation, including unrelated downloads.
+				// The new revision refreshes the entire visible batch before publishing updated ownership.
 				invalidateCardEnrichment()
 				refreshTrigger.value = Any()
 			}
@@ -252,7 +258,7 @@ class FavouritesListViewModel @Inject constructor(
 		DisplayState(query, type, pageLimit, preferences.getValue(type), bottom)
 	}
 
-	private val displayAndEnrichment = combine(displayState, cardEnrichment) { display, enrichment ->
+	private val displayAndEnrichment = combine(displayState, cardEnrichment, cardEnrichmentEpoch) { display, enrichment, _ ->
 		display to enrichment
 	}
 
@@ -375,20 +381,18 @@ class FavouritesListViewModel @Inject constructor(
 			} else {
 				searchMatcher.filter(scanState.mangas, display.query)
 			}
-			val enrichmentKey = CardEnrichmentKey(
-				revision = cardEnrichmentRevision.get(),
-				ids = scanned.map { it.id },
-                legacyNovelIds = scanned.asSequence().filter { it.isNovelContent }.map { it.id }.toSet(),
-				includeUnread = display.options.showUnread,
+			val enrichmentKey = cardEnrichmentKey(
+				display = display,
+				manga = scanned,
 				includeDownloaded = usesSpaceScopedDownloadStatus && display.options.showDownloaded,
+				similarTitleScan = true,
 			)
 			scheduleCardEnrichment(enrichmentKey)
-			val matchingEnrichment = currentCardEnrichment?.takeIf { cached ->
-				cached.key.includeUnread == enrichmentKey.includeUnread &&
-					cached.key.includeDownloaded == enrichmentKey.includeDownloaded &&
-				enrichmentKey.ids.size >= cached.key.ids.size &&
-				enrichmentKey.ids.subList(0, cached.key.ids.size) == cached.key.ids
-			}
+			val knownCardIds = reusableCardMetadataIds(
+                currentCardEnrichment?.key?.context, enrichmentKey.context,
+                currentCardEnrichment?.key?.ids.orEmpty(), enrichmentKey.ids,
+                currentCardEnrichment?.key?.legacyNovelIds.orEmpty(), enrichmentKey.legacyNovelIds,
+            )
 			val header = ListHeader(
 				textRes = R.string.library_scan_results_title,
 				buttonTextRes = R.string.library_scan_back_to_favourites,
@@ -416,8 +420,10 @@ class FavouritesListViewModel @Inject constructor(
 				display.options,
 				emptyList(),
 				emptyList(),
-				matchingEnrichment?.snapshot ?: emptyCardSnapshot,
-				if (display.options.showDownloaded) matchingEnrichment?.downloadedIds else null,
+				currentCardEnrichment?.snapshot ?: emptyCardSnapshot,
+				if (display.options.showDownloaded) currentCardEnrichment?.downloadedIds else null,
+				knownCardIds,
+				if (currentCardEnrichment?.downloadedIds != null) knownCardIds else emptySet(),
 			)
 			return@contentTransform listOf(header) + mapped
 		}
@@ -465,29 +471,30 @@ class FavouritesListViewModel @Inject constructor(
 			targetCount = display.limit,
 		)
 		val visible = searched.take(display.limit)
-		val enrichmentKey = CardEnrichmentKey(
-			revision = cardEnrichmentRevision.get(),
-			ids = visible.map { it.id },
-            legacyNovelIds = visible.asSequence().filter { it.isNovelContent }.map { it.id }.toSet(),
-			includeUnread = display.options.showUnread,
+		val enrichmentKey = cardEnrichmentKey(
+			display = display,
+			manga = visible,
 			includeDownloaded = usesSpaceScopedDownloadStatus &&
-				display.options.showDownloaded &&
-				filterDownloadedIds == null,
+				display.options.showDownloaded && filterDownloadedIds == null,
+			similarTitleScan = false,
 		)
 		scheduleCardEnrichment(enrichmentKey)
-		val matchingEnrichment = currentCardEnrichment?.takeIf { cached ->
-			cached.key.revision == enrichmentKey.revision &&
-			cached.key.includeUnread == enrichmentKey.includeUnread &&
-				cached.key.includeDownloaded == enrichmentKey.includeDownloaded &&
-				enrichmentKey.ids.size >= cached.key.ids.size &&
-				enrichmentKey.ids.subList(0, cached.key.ids.size) == cached.key.ids
-		}
-		val cardSnapshot = matchingEnrichment?.snapshot ?: emptyCardSnapshot
-		val downloadedIds = when {
-			!usesSpaceScopedDownloadStatus || !display.options.showDownloaded -> null
-			filterDownloadedIds != null -> filterDownloadedIds
-			else -> matchingEnrichment?.downloadedIds
-		}
+		val knownCardIds = reusableCardMetadataIds(
+            currentCardEnrichment?.key?.context, enrichmentKey.context,
+            currentCardEnrichment?.key?.ids.orEmpty(), enrichmentKey.ids,
+            currentCardEnrichment?.key?.legacyNovelIds.orEmpty(), enrichmentKey.legacyNovelIds,
+        )
+        val cardSnapshot = currentCardEnrichment?.snapshot ?: emptyCardSnapshot
+        val downloadedIds = when {
+            !usesSpaceScopedDownloadStatus || !display.options.showDownloaded -> null
+            filterDownloadedIds != null -> filterDownloadedIds
+            else -> currentCardEnrichment?.downloadedIds
+        }
+        val knownDownloadedIds = when {
+            filterDownloadedIds != null -> enrichmentKey.ids.toSet()
+            downloadedIds != null -> knownCardIds
+            else -> emptySet()
+        }
 		visible.mapList(
 			display.options.listMode,
 			filters,
@@ -499,6 +506,8 @@ class FavouritesListViewModel @Inject constructor(
 			groupPins,
 			cardSnapshot,
 			downloadedIds,
+			knownCardIds,
+			knownDownloadedIds,
 		)
 	}.distinctUntilChanged().onEach {
 		isPaginationReady.set(true)
@@ -509,11 +518,9 @@ class FavouritesListViewModel @Inject constructor(
 
 	fun setWorkActive(active: Boolean) = listWorkScope.setActive(active)
 
-	/** Revalidate badges after returning from Reader/Details; the list VM survives navigation. */
+	/** Revalidate after returning from Reader/Details without discarding the last valid projection. */
 	fun refreshReadingStatusOnResume() {
 		invalidateCardEnrichment()
-		// Force one presentation emission without invalidating library paging/search state.
-		cardEnrichment.value = null
 	}
 
 	override fun onRefresh() {
@@ -861,71 +868,89 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	private fun scheduleCardEnrichment(key: CardEnrichmentKey) {
-		if (key.ids.isEmpty()) {
+		synchronized(cardEnrichmentGate) {
+			if (key.ids.isEmpty()) {
+				cardEnrichmentJob?.cancel()
+				cardEnrichmentJob = null
+				pendingCardEnrichmentRequest = null
+				// No visible IDs remain: the previous key cannot be treated as fresh if they return.
+				// Clearing here is safe; warm resume with visible IDs retains its last snapshot.
+				cardEnrichment.value = null
+				return
+			}
+			if (cardEnrichment.value?.key == key || pendingCardEnrichmentRequest?.key == key) return
+
+			val previous = cardEnrichment.value?.takeIf { cached ->
+				cached.key.context == key.context &&
+					cached.key.revision == key.revision &&
+					key.ids.size >= cached.key.ids.size &&
+					key.ids.subList(0, cached.key.ids.size) == cached.key.ids
+			}
+			val reusedCount = previous?.key?.ids?.size ?: 0
+			val deltaIds = key.ids.drop(reusedCount)
+
 			cardEnrichmentJob?.cancel()
-			cardEnrichmentJob = null
-			pendingCardEnrichmentKey = null
-			cardEnrichment.value = null
-			return
-		}
-		if (cardEnrichment.value?.key == key || pendingCardEnrichmentKey == key) return
-
-		val previous = cardEnrichment.value?.takeIf { cached ->
-			cached.key.revision == key.revision &&
-				cached.key.includeUnread == key.includeUnread &&
-				cached.key.includeDownloaded == key.includeDownloaded &&
-				key.ids.size >= cached.key.ids.size &&
-				key.ids.subList(0, cached.key.ids.size) == cached.key.ids
-		}
-		val reusedCount = previous?.key?.ids?.size ?: 0
-		val deltaIds = key.ids.drop(reusedCount)
-
-		cardEnrichmentJob?.cancel()
-		pendingCardEnrichmentKey = key
-		cardEnrichmentJob = listWorkScope.launch(Dispatchers.IO) {
-			val work = PerformanceDiagnostics.begin("work", "favourites_card_enrichment")
-			var outcome = "complete"
-			try {
-				val deltaSnapshot = PerformanceDiagnostics.measure("repository", "favourites_history_unread") { unreadCounter.getSnapshot(
-					mangaIds = deltaIds,
-					includeUnread = key.includeUnread || settings.progressIndicatorMode == org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.CHAPTERS_READ,
-					space = favouriteSpace,
-                    legacyNovelIds = key.legacyNovelIds.intersect(deltaIds.toSet()),
-				) }
-				val snapshot = previous?.snapshot?.merge(deltaSnapshot) ?: deltaSnapshot
-				val deltaDownloadedIds = if (key.includeDownloaded) {
-					PerformanceDiagnostics.measure("repository", "favourites_download_state") { downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, deltaIds) }
-				} else {
-					null
+			val request = CardEnrichmentRequest(key)
+			pendingCardEnrichmentRequest = request
+			cardEnrichmentJob = listWorkScope.launch(Dispatchers.IO) {
+				val work = PerformanceDiagnostics.begin("work", "favourites_card_enrichment")
+				var outcome = "complete"
+				try {
+					val deltaSnapshot = PerformanceDiagnostics.measure("repository", "favourites_history_unread") {
+						unreadCounter.getSnapshot(
+							mangaIds = deltaIds,
+							includeUnread = key.includeUnread ||
+								key.context.progressMode == org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode.CHAPTERS_READ,
+							space = favouriteSpace,
+							legacyNovelIds = key.legacyNovelIds.intersect(deltaIds.toSet()),
+						)
+					}
+					val snapshot = previous?.snapshot?.merge(deltaSnapshot) ?: deltaSnapshot
+					val deltaDownloadedIds = if (key.includeDownloaded) {
+						PerformanceDiagnostics.measure("repository", "favourites_download_state") {
+							downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, deltaIds)
+						}
+					} else null
+					val downloadedIds = when {
+						!key.includeDownloaded -> null
+						previous == null -> deltaDownloadedIds.orEmpty()
+						else -> previous.downloadedIds.orEmpty() + deltaDownloadedIds.orEmpty()
+					}
+					// The history handoff is also generation-owned: never publish from cancelled work.
+					coroutineContext.ensureActive()
+					synchronized(cardEnrichmentGate) {
+						if (canPublishCardEnrichment(
+								key.revision, cardEnrichmentRevision.get(),
+								pendingCardEnrichmentRequest === request, coroutineContext.isActive,
+						)) {
+							detailsNavigationCache.updateHistory(key.ids.takeLast(16), snapshot::getHistory)
+							cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
+						} else {
+							outcome = "stale_generation_discard"
+						}
+					}
+				} catch (error: Throwable) {
+					outcome = if (error is kotlinx.coroutines.CancellationException) "cancel" else "failure"
+					throw error
+				} finally {
+					PerformanceDiagnostics.end(work, outcome)
+					synchronized(cardEnrichmentGate) {
+						if (pendingCardEnrichmentRequest === request) pendingCardEnrichmentRequest = null
+					}
 				}
-				val downloadedIds = when {
-					!key.includeDownloaded -> null
-					previous == null -> deltaDownloadedIds.orEmpty()
-					else -> previous.downloadedIds.orEmpty() + deltaDownloadedIds.orEmpty()
-				}
-				// Details only needs the tiny history handoff. Reuse old metadata and query only the page delta.
-				coroutineContext.ensureActive()
-				detailsNavigationCache.updateHistory(key.ids.takeLast(16), snapshot::getHistory)
-				if (key.revision == cardEnrichmentRevision.get()) {
-					cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
-				} else {
-					outcome = "stale_generation_discard"
-				}
-			} catch (error: Throwable) {
-				outcome = if (error is kotlinx.coroutines.CancellationException) "cancel" else "failure"
-				throw error
-			} finally {
-				PerformanceDiagnostics.end(work, outcome)
-				if (pendingCardEnrichmentKey == key) pendingCardEnrichmentKey = null
 			}
 		}
 	}
 
 	private fun invalidateCardEnrichment() {
-		cardEnrichmentRevision.incrementAndGet()
-		cardEnrichmentJob?.cancel()
-		cardEnrichmentJob = null
-		pendingCardEnrichmentKey = null
+		synchronized(cardEnrichmentGate) {
+			val nextRevision = cardEnrichmentRevision.incrementAndGet()
+			cardEnrichmentJob?.cancel()
+			cardEnrichmentJob = null
+			pendingCardEnrichmentRequest = null
+			// Re-evaluate the published list without wiping last-known valid metadata.
+			cardEnrichmentEpoch.value = nextRevision
+		}
 	}
 
 	private suspend fun List<Manga>.mapList(
@@ -939,6 +964,8 @@ class FavouritesListViewModel @Inject constructor(
 		pinnedGroups: List<Long>,
 		cardSnapshot: FavouriteUnreadCounter.Snapshot,
 		downloadedIds: Set<Long>?,
+		knownCardIds: Set<Long>,
+		knownDownloadedIds: Set<Long>,
 	): List<ListModel> {
 		val explicitGroups = explicitGroupsForRender(groups, filters, isSearchActive)
 		val pinnedGroupSet = pinnedGroups.toSet()
@@ -993,27 +1020,30 @@ class FavouritesListViewModel @Inject constructor(
 			val mangaId = model.manga.id
 			val isPinned = mangaId in pinnedSet
 			val source = model.manga.source
+			val downloadKnown = mangaId in knownDownloadedIds
 			val downloadVerification = if (usesSpaceScopedDownloadStatus && display.showDownloaded) {
 				when {
-					downloadedIds == null -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.UNRESOLVED
-					mangaId in downloadedIds -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.VERIFIED_DOWNLOADED
+					!downloadKnown -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.UNRESOLVED
+					mangaId in downloadedIds.orEmpty() -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.VERIFIED_DOWNLOADED
 					else -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.VERIFIED_NOT_DOWNLOADED
 				}
 			} else null
-			val isSaved = display.showDownloaded && if (downloadedIds != null) {
-				mangaId in downloadedIds
-			} else {
-				mangaId in localMangaIndex
+			val isSaved = when {
+				!display.showDownloaded -> false
+				usesSpaceScopedDownloadStatus -> downloadKnown && mangaId in downloadedIds.orEmpty()
+				else -> mangaId in localMangaIndex
 			}
 			val isLocalSource = display.showLocalSource && source.isLocal
 			val languageLabel = if (display.showLanguage) source.getLanguageCode() else null
-			val unreadCount = if (display.showUnread) cardSnapshot.unreadCounts[mangaId] ?: 0 else 0
-			val hasReadingHistory = display.showContinueReading && cardSnapshot.hasHistory(mangaId)
-			val progress = cardSnapshot.getProgress(mangaId, settings.progressIndicatorMode)
+			val hasCardMetadata = mangaId in knownCardIds
+			val unreadCount = if (display.showUnread && hasCardMetadata) cardSnapshot.getUnreadCountOrNull(mangaId) else null
+			val hasReadingHistory = display.showContinueReading && hasCardMetadata && cardSnapshot.hasHistory(mangaId)
+			val progress = if (hasCardMetadata) cardSnapshot.getProgress(mangaId, settings.progressIndicatorMode) else null
 			result[i] = when (model) {
 				is MangaGridModel -> model.copy(
 					unreadCount = unreadCount,
-					counter = unreadCount,
+					counter = unreadCount ?: 0,
+					readingMetadataPending = display.showUnread && !hasCardMetadata,
 					progress = progress,
 					isFavorite = if (usePermanentStatus) mangaId in libraryIds else model.isFavorite,
 					isSaved = isSaved,
@@ -1026,7 +1056,7 @@ class FavouritesListViewModel @Inject constructor(
 					showContinueReading = hasReadingHistory,
 				)
 				is MangaDetailedListModel -> model.copy(
-					counter = unreadCount,
+					counter = unreadCount ?: 0,
 					progress = progress,
 					isSaved = isSaved,
 					isPinned = isPinned,
@@ -1035,7 +1065,7 @@ class FavouritesListViewModel @Inject constructor(
 					showContinueReading = hasReadingHistory,
 				)
 				is MangaCompactListModel -> model.copy(
-					counter = unreadCount,
+					counter = unreadCount ?: 0,
 					isPinned = isPinned,
 					isSaved = isSaved,
 					isLocalSource = isLocalSource,
@@ -1295,13 +1325,36 @@ class FavouritesListViewModel @Inject constructor(
 		val fromBottom: Boolean,
 	)
 
+	private fun cardEnrichmentKey(
+		display: DisplayState,
+		manga: List<Manga>,
+		includeDownloaded: Boolean,
+		similarTitleScan: Boolean,
+	) = CardEnrichmentKey(
+		revision = cardEnrichmentRevision.get(),
+		context = CardMetadataContext(
+			space = favouriteSpace,
+			categoryId = categoryId,
+			selectedCategoryIds = if (categoryId == NO_ID) activeSetCategoryIds.value else null,
+			contentType = display.type,
+			progressMode = settings.progressIndicatorMode,
+			includeUnread = display.options.showUnread,
+			includeDownloaded = includeDownloaded,
+			similarTitleScan = similarTitleScan,
+		),
+		ids = manga.map { it.id },
+		legacyNovelIds = manga.asSequence().filter { it.isNovelContent }.mapTo(HashSet()) { it.id },
+	)
+
 	private data class CardEnrichmentKey(
 		val revision: Long,
+		val context: CardMetadataContext,
 		val ids: List<Long>,
 		val legacyNovelIds: Set<Long>,
-		val includeUnread: Boolean,
-		val includeDownloaded: Boolean,
-	)
+	) {
+		val includeUnread: Boolean get() = context.includeUnread
+		val includeDownloaded: Boolean get() = context.includeDownloaded
+	}
 
 	private data class CardEnrichment(
 		val key: CardEnrichmentKey,

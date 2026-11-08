@@ -26,6 +26,8 @@ data class MangaGridModel(
 	val showContinueReading: Boolean = false,
 	/** Cached chapter/history authority only; null means unread was not projected by this host. */
 	val unreadCount: Int? = null,
+	/** Unknown only until Favourites has resolved this card's reading metadata. */
+	val readingMetadataPending: Boolean = false,
 ) : MangaListModel() {
 
 	override fun getChangePayload(previousState: ListModel): Any? = when {
@@ -33,6 +35,7 @@ data class MangaGridModel(
 
 		previousState.progress != progress -> PAYLOAD_PROGRESS_CHANGED
 		previousState.unreadCount != unreadCount -> PAYLOAD_ANYTHING_CHANGED
+		previousState.readingMetadataPending != readingMetadataPending -> PAYLOAD_ANYTHING_CHANGED
 		previousState.isFavorite != isFavorite ||
 			previousState.isSaved != isSaved ||
 			previousState.downloadVerification != downloadVerification ||
