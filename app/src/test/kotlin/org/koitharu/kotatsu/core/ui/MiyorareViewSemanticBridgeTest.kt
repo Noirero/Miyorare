@@ -15,13 +15,19 @@ class MiyorareViewSemanticBridgeTest {
 
 	@Test
 	fun `Android View attrs map to the same resolved semantic roles as Compose`() {
-		for (dark in listOf(false, true)) {
+		for (preset in listOf(
+			MiyorareThemePreset.MIYORARE,
+			MiyorareThemePreset.CYAN,
+			MiyorareThemePreset.SAKURA,
+			MiyorareThemePreset.VIOLET,
+			MiyorareThemePreset.CUSTOM,
+		)) for (dark in listOf(false, true)) for (amoled in if (dark) listOf(false, true) else listOf(false)) {
 			val scheme = resolveMiyorareThemeColors(
 				paletteSource = MiyorareModernPaletteSource.MATCH_THEME,
-				preset = MiyorareThemePreset.SAKURA,
+				preset = preset,
 				customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
 				darkTheme = dark,
-				amoled = false,
+				amoled = amoled,
 				effectLevel = VisualEffectLevel.BALANCED,
 			).colorScheme
 
@@ -64,7 +70,7 @@ class MiyorareViewSemanticBridgeTest {
 			)
 
 			for ((attr, color) in expected) {
-				assertEquals("attr=$attr dark=$dark", color, scheme.miyorareColorForViewAttr(attr))
+				assertEquals("attr=$attr preset=$preset dark=$dark amoled=$amoled", color, scheme.miyorareColorForViewAttr(attr))
 			}
 			assertNull(scheme.miyorareColorForViewAttr(android.R.attr.textColor))
 		}

@@ -1,10 +1,12 @@
 package org.koitharu.kotatsu.settings.nav.adapter
 
 import android.annotation.SuppressLint
+import android.content.res.ColorStateList
 import android.view.MotionEvent
 import android.view.View
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.util.ext.setTextAndVisible
@@ -32,6 +34,10 @@ fun navConfigAD(
 	binding.imageViewReorder.setOnTouchListener(eventListener)
 
 	bind {
+		// Do not recolor bg_settings_tile globally: it is shared with protected cards.
+		binding.root.context.miyorareViewPaletteFromPreferences()?.let { palette ->
+			binding.root.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainer)
+		}
 		with(binding.textViewTitle) {
 			isEnabled = item.disabledHintResId == 0
 			setText(item.item.title)

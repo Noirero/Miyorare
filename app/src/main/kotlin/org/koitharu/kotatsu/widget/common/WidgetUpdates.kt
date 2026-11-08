@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.widget.continuereading.ContinueReadingWidget
 import org.koitharu.kotatsu.widget.favorites.FavoritesWidget
 import org.koitharu.kotatsu.widget.history.HistoryWidget
@@ -47,9 +49,28 @@ fun nudgeAllWidgets(context: Context) {
 class WidgetThemeWatcher(private val context: Context) : SharedPreferences.OnSharedPreferenceChangeListener {
 
 	override fun onSharedPreferenceChanged(preferences: SharedPreferences?, key: String?) {
-		if (key == AppSettings.KEY_THEME || key == AppSettings.KEY_COLOR_THEME || key == AppSettings.KEY_THEME_AMOLED) {
+		if (key in PALETTE_KEYS) {
 			WidgetTheme.invalidate()
 			nudgeAllWidgets(context)
 		}
+	}
+
+	private companion object {
+		val PALETTE_KEYS = setOf(
+			AppSettings.KEY_THEME,
+			AppSettings.KEY_COLOR_THEME,
+			AppSettings.KEY_THEME_AMOLED,
+			MiyorareAppearance.KEY_DESIGN_STYLE,
+			MiyorareAppearance.KEY_THEME_PRESET,
+			MiyorareAppearance.KEY_MODERN_PALETTE_SOURCE,
+			MiyorareAppearance.KEY_CUSTOM_ACCENT,
+			MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC,
+			MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
+			MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY,
+			MiyorareAppearance.KEY_CUSTOM_BACKGROUND_SECONDARY,
+			MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY,
+			MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION,
+			VisualEffectPreferences.KEY_LEVEL,
+		)
 	}
 }
