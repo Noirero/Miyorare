@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.list.ui.model.ButtonFooter
 import org.koitharu.kotatsu.lnreader.LnPluginManager
+import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacks
 import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageLabel
 import org.koitharu.kotatsu.lnreader.model.langCode
 import org.koitharu.kotatsu.lnreader.model.languageLabel
@@ -516,7 +517,9 @@ class SourcesCatalogViewModel @Inject constructor(
 			// Novel plugins are shown only when their owning Novel repository is part of
 			// the currently selected media family.
 			val pluginOwnerId = source.plugin.storeId
-			if (pluginOwnerId != null && pluginOwnerId !in statesById) continue
+			val officialChikari = pluginOwnerId == MiyorareOfficialSourcePacks.EN_PLUGIN_ID &&
+				source.pluginId == MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_ID
+			if (pluginOwnerId != null && pluginOwnerId !in statesById && !officialChikari) continue
 			val plugin = source.plugin
 			if (filter.locale != null && !extensionLanguageMatches(plugin.langCode, filter.locale)) continue
 			if (!matchesExtensionQuery(q, plugin.name, plugin.id)) continue
