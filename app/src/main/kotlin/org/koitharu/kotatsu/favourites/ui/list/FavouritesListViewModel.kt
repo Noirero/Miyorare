@@ -1305,13 +1305,36 @@ class FavouritesListViewModel @Inject constructor(
 		val fromBottom: Boolean,
 	)
 
+	private fun cardEnrichmentKey(
+		display: DisplayState,
+		manga: List<Manga>,
+		includeDownloaded: Boolean,
+		similarTitleScan: Boolean,
+	) = CardEnrichmentKey(
+		revision = cardEnrichmentRevision.get(),
+		context = CardMetadataContext(
+			space = favouriteSpace,
+			categoryId = categoryId,
+			selectedCategoryIds = if (categoryId == NO_ID) activeSetCategoryIds.value else null,
+			contentType = display.type,
+			progressMode = settings.progressIndicatorMode,
+			includeUnread = display.options.showUnread,
+			includeDownloaded = includeDownloaded,
+			similarTitleScan = similarTitleScan,
+		),
+		ids = manga.map { it.id },
+		legacyNovelIds = manga.asSequence().filter { it.isNovelContent }.mapTo(HashSet()) { it.id },
+	)
+
 	private data class CardEnrichmentKey(
 		val revision: Long,
+		val context: CardMetadataContext,
 		val ids: List<Long>,
 		val legacyNovelIds: Set<Long>,
-		val includeUnread: Boolean,
-		val includeDownloaded: Boolean,
-	)
+	) {
+		val includeUnread: Boolean get() = context.includeUnread
+		val includeDownloaded: Boolean get() = context.includeDownloaded
+	}
 
 	private data class CardEnrichment(
 		val key: CardEnrichmentKey,
