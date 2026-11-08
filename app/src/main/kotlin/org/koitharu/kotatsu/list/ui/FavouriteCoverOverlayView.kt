@@ -72,6 +72,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		contentDescription = null
 		readClick = onReadClick.takeIf { value.showContinueReading }
 		number.number = value.unreadCount ?: 0
+		if (value.readingState == ModernCoverReadingState.PENDING) number.text = "…"
 		counterNumber.number = value.legacyCounter
 		titleView.text = value.title
 		language.text = value.languageLabel
@@ -92,15 +93,15 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 	}
 
 	private fun resetVisibility(value: ModernCoverState) {
-		listOf(value.isFavorite, value.isSaved || value.downloadVerification == org.koitharu.kotatsu.list.ui.model.DownloadVerification.UNRESOLVED, value.isPinned).forEachIndexed { index, active ->
+		listOf(value.isFavorite, value.isSaved, value.isPinned).forEachIndexed { index, active ->
 			statusItems[index].isVisible = active
-			if (index == 1) statusItems[index].alpha = if (value.downloadVerification == org.koitharu.kotatsu.list.ui.model.DownloadVerification.UNRESOLVED) 0.35f else 1f
 		}
 		statuses.isVisible = statusItems.any { it.isVisible }
 		val hasReadingState = value.readingState != ModernCoverReadingState.NONE
 		unread.isVisible = hasReadingState
 		number.isVisible = value.readingState == ModernCoverReadingState.UNREAD ||
-			value.readingState == ModernCoverReadingState.IN_PROGRESS
+			value.readingState == ModernCoverReadingState.IN_PROGRESS ||
+			value.readingState == ModernCoverReadingState.PENDING
 		caughtUp.isVisible = value.readingState == ModernCoverReadingState.CAUGHT_UP
 		chapterCounter.isVisible = value.legacyCounter > 0
 		local.isVisible = value.isLocalSource
@@ -308,6 +309,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			ModernCoverReadingState.UNREAD,
 			ModernCoverReadingState.IN_PROGRESS,
 			-> "${context.getString(R.string.unread)}: ${value.unreadCount ?: 0}"
+			ModernCoverReadingState.PENDING -> context.getString(R.string.loading_)
 			ModernCoverReadingState.NONE -> null
 		}
 		unread.contentDescription = readingText
