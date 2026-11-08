@@ -6,8 +6,6 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.InsetDrawable
-import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.StateListDrawable
 import android.util.AttributeSet
@@ -336,7 +334,6 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 						background = createNormalContentToggleBackground(
 							glass = glass!!,
 							radius = controlRadius.toFloat(),
-							density = density,
 						)
 						iconTint = text
 						this.strokeWidth = 0
@@ -391,17 +388,20 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			))
 			compoundDrawableTintList = textColors
 			background = RippleDrawable(
-				ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 28)),
+				ColorStateList.valueOf(
+					if (privateFavourites) ColorUtils.setAlphaComponent(palette.primary, 28) else glass!!.glow,
+				),
 				GradientDrawable().apply {
 					cornerRadius = controlRadius.toFloat()
-					setColor(ColorUtils.setAlphaComponent(content, 12))
+					// Set selection is an action within the shared rail, not a second capsule.
+					setColor(if (privateFavourites) ColorUtils.setAlphaComponent(content, 12) else Color.TRANSPARENT)
 				},
 				null,
 			)
 		}
 		findViewById<MaterialButton>(R.id.button_category_picker)?.apply {
 			backgroundTintList = ColorStateList.valueOf(
-				if (privateFavourites) palette.primaryContainer else glass!!.selectedSurface,
+				if (privateFavourites) palette.primaryContainer else Color.TRANSPARENT,
 			)
 			setTextColor(if (privateFavourites) palette.onPrimaryContainer else glass!!.content)
 			iconTint = ColorStateList.valueOf(if (privateFavourites) palette.primary else glass!!.selectedBorder)
@@ -498,77 +498,48 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		glass: MiyorareNeonGlassColors,
 		radius: Float,
 		density: Float,
-	): Drawable {
-		val outerGlowStroke = (12f * density).roundToInt().coerceAtLeast(1)
-		val midGlowStroke = (6.5f * density).roundToInt().coerceAtLeast(1)
-		val nearGlowStroke = (2f * density).roundToInt().coerceAtLeast(1)
-		val edgeStroke = density.roundToInt().coerceAtLeast(1)
-		val inset = density.roundToInt().coerceAtLeast(1)
-		val outerGlowLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = radius
-			setStroke(
-				outerGlowStroke,
-				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.15f).roundToInt()),
-			)
-		}
-		val midGlowLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = radius
-			setStroke(
-				midGlowStroke,
-				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.28f).roundToInt()),
-			)
-		}
-		val nearGlowLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = radius
-			setStroke(
-				nearGlowStroke,
-				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.44f).roundToInt()),
-			)
-		}
-		val edgeLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = (radius - density).coerceAtLeast(0f)
-			setStroke(edgeStroke, glass.borderStrong)
-		}
-		return LayerDrawable(
-			arrayOf(
-				outerGlowLayer,
-				midGlowLayer,
-				nearGlowLayer,
-				InsetDrawable(edgeLayer, inset),
-			),
-		)
+	): Drawable = GradientDrawable().apply {
+		setColor(Color.TRANSPARENT)
+		cornerRadius = radius
+		setStroke(density.roundToInt().coerceAtLeast(1), glass.border)
 	}
 
 	private fun createNormalContentToggleBackground(
 		glass: MiyorareNeonGlassColors,
 		radius: Float,
-		density: Float,
 	): Drawable {
-		val idle = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
+		// The selected half is only a tonal fill. The parent owns the sole border.
+		val selectedFill = GradientDrawable(
+			GradientDrawable.Orientation.LEFT_RIGHT,
+			intArrayOf(
+				glass.selectedSurface,
+				ColorUtils.blendARGB(glass.selectedSurface, glass.innerHighlight, 0.30f),
+				glass.selectedSurface,
+			),
+		).apply {
 			cornerRadius = radius
 		}
 		val states = StateListDrawable().apply {
 			addState(
 				intArrayOf(android.R.attr.state_checked, android.R.attr.state_enabled),
-				createNormalGlassSurface(
-					glass = glass,
-					radius = radius,
-					density = density,
-					selected = true,
-				),
+				selectedFill,
 			)
-			addState(intArrayOf(), idle)
+			addState(intArrayOf(), GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = radius
+			})
 		}
 		val mask = GradientDrawable().apply {
 			setColor(Color.WHITE)
 			cornerRadius = radius
 		}
-		return RippleDrawable(ColorStateList.valueOf(glass.glow), states, mask)
+		return RippleDrawable(
+			ColorStateList.valueOf(
+				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.46f).roundToInt()),
+			),
+			states,
+			mask,
+		)
 	}
 
 	private fun createNormalGlassSurface(
@@ -577,66 +548,24 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		density: Float,
 		selected: Boolean,
 	): Drawable {
-		val activeGlow = if (selected) glass.selectedGlow else glass.glow
-		val outerGlowStroke = ((if (selected) 12f else 11f) * density).roundToInt().coerceAtLeast(1)
-		val midGlowStroke = ((if (selected) 7f else 6.5f) * density).roundToInt().coerceAtLeast(1)
-		val nearGlowStroke = ((if (selected) 2.2f else 2f) * density).roundToInt().coerceAtLeast(1)
-		val edgeStroke = density.roundToInt().coerceAtLeast(1)
-		val inset = density.roundToInt().coerceAtLeast(1)
-		val outerFactor = if (selected) 0.18f else 0.14f
-		val midFactor = if (selected) 0.32f else 0.26f
-		val nearFactor = if (selected) 0.56f else 0.44f
-		val outerGlowLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = radius
-			setStroke(
-				outerGlowStroke,
-				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * outerFactor).roundToInt()),
-			)
-		}
-		val midGlowLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = radius
-			setStroke(
-				midGlowStroke,
-				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * midFactor).roundToInt()),
-			)
-		}
-		val nearGlowLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = radius
-			setStroke(
-				nearGlowStroke,
-				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * nearFactor).roundToInt()),
-			)
-		}
-		val fillLayer = GradientDrawable(
+		val surface = if (selected) glass.selectedSurface else glass.railSurface
+		val highlight = if (selected) glass.innerHighlight else glass.surfaceStrong
+		val edge = if (selected) glass.selectedBorder else glass.border
+		return GradientDrawable(
 			GradientDrawable.Orientation.LEFT_RIGHT,
-			if (selected) {
-				intArrayOf(
-					glass.selectedSurface,
-					ColorUtils.blendARGB(glass.selectedSurface, glass.innerHighlight, 0.66f),
-					glass.selectedSurface,
-				)
-			} else {
-				intArrayOf(
-					glass.railSurface,
-					ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.26f),
-					glass.railSurface,
-				)
-			},
-		).apply {
-			cornerRadius = (radius - density).coerceAtLeast(0f)
-			setStroke(edgeStroke, if (selected) glass.selectedBorder else glass.borderStrong)
-		}
-		return LayerDrawable(
-			arrayOf(
-				outerGlowLayer,
-				midGlowLayer,
-				nearGlowLayer,
-				InsetDrawable(fillLayer, inset),
+			intArrayOf(
+				surface,
+				ColorUtils.blendARGB(surface, highlight, if (selected) 0.18f else 0.24f),
+				surface,
 			),
-		)
+		).apply {
+			cornerRadius = radius
+			// One tinted plane and one outline rather than concentric halo strokes.
+			setStroke(
+				density.roundToInt().coerceAtLeast(1),
+				ColorUtils.setAlphaComponent(edge, (Color.alpha(edge) * 0.74f).roundToInt()),
+			)
+		}
 	}
 
 	private fun createFavouritesHeaderDrawable(
@@ -804,13 +733,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				backgroundTintList = ColorStateList.valueOf(headerGlassFill)
 				iconTint = ColorStateList.valueOf(glass.content)
 				cornerRadius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP)
-				strokeWidth = 0
-				strokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
-				foreground = createNormalGlassOutline(
-					glass = glass,
-					radius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP).toFloat(),
-					density = density,
-				)
+				strokeWidth = dp(1f).coerceAtLeast(1)
+				strokeColor = ColorStateList.valueOf(glass.border)
+				foreground = null
 				elevation = 0f
 			}
 		}

@@ -261,7 +261,18 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(header.contains("foreground=null"))
 		assertTrue(header.contains("stateListAnimator=null"))
 		assertTrue(actions.contains("chip.chipStrokeWidth=0f"))
-		assertTrue(actions.contains("chip.foreground=createMiyorareFavouritesActionChrome("))
+		assertTrue(
+			"Only Normal Favourites should use the flattened quick-filter border",
+			actions.contains("flatFavouritesChrome=isFavouritesQuickFilter&&!isPrivate"),
+		)
+		assertTrue(
+			"Normal Favourites must use a single foreground border rather than stacked action chrome",
+			actions.contains("chip.foreground=if(flatFavouritesChrome){"),
+		)
+		assertTrue(
+			"Other Modern screens must retain the existing neon-glass action chrome",
+			actions.contains("createMiyorareFavouritesActionChrome("),
+		)
 		assertTrue(actions.contains("returnLayerDrawable("))
 		assertFalse(actions.contains("chip.chipStrokeWidth=density*if(normalNeon)"))
 		assertFalse(legacyNav.contains("BOTTOM_NAV_INNER_HIGHLIGHT_ALPHA"))
