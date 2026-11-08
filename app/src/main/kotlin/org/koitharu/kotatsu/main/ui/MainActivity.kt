@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.main.ui
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -147,6 +148,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		setContentView(ActivityMainBinding.inflate(layoutInflater))
 		setSupportActionBar(viewBinding.searchBar)
 		viewBinding.root.applyMiyorareSharedMainChrome()
+		bindModernUpdatePromptColors()
 		// Place the search icon inline, right before the hint, and centre the whole group.
 		viewBinding.searchBar.textView.apply {
 			gravity = android.view.Gravity.CENTER
@@ -231,6 +233,17 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		viewBinding.searchView.addTransitionListener(exitCallback)
 		observeFoldHinge()
 		initSearch()
+	}
+
+	/** B22: the update bubble is native XML; its Material tokens predate the selected Modern preset. */
+	private fun bindModernUpdatePromptColors() {
+		val palette = miyorareViewPaletteFromPreferences() ?: return
+		viewBinding.cardUpdatePrompt.setCardBackgroundColor(palette.primaryContainer)
+		viewBinding.imageUpdatePromptTail.imageTintList = ColorStateList.valueOf(palette.primaryContainer)
+		viewBinding.textUpdatePrompt.setTextColor(palette.onPrimaryContainer)
+		viewBinding.buttonUpdate.backgroundTintList = ColorStateList.valueOf(palette.primary)
+		viewBinding.buttonUpdate.setTextColor(palette.onPrimary)
+		viewBinding.buttonUpdateDismiss.iconTint = ColorStateList.valueOf(palette.onPrimaryContainer)
 	}
 
 	override fun onNewIntent(intent: Intent) {
