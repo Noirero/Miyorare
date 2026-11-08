@@ -26,6 +26,11 @@ async function request(path, required = true) {
   assert(series.items.length > 0, 'novel list unexpectedly empty');
   assert(series.items.every(item => item.slug && item.title), 'novel catalog entry missing slug/title');
 
+  const search = await request('/api/series?type=novel&sort=popular&q=shadow&limit=10&offset=0');
+  assert(Array.isArray(search.items), 'search must return an items array');
+  assert(search.items.some(item => String(item.slug).toLowerCase().includes('shadow')),
+    'known public novel should be searchable');
+
   const legacy = await request('/api/novels?sort=popular&limit=2&offset=0', false);
   console.log('legacy /api/novels catalog:', legacy ? 'JSON received' : 'unavailable');
 
@@ -36,11 +41,16 @@ async function request(path, required = true) {
   const chapters = await request('/api/novels/' + slug + '/chapters?order=asc&limit=2&offset=0');
   assert(Array.isArray(chapters.items), 'chapter list must provide items array');
   assert(chapters.items.length > 0, 'selected public novel has no chapters');
+  const secondBatch = await request('/api/novels/' + slug + '/chapters?order=asc&limit=2&offset=2');
+  assert(Array.isArray(secondBatch.items), 'offset chapter pagination must return items array');
+  if (Number(chapters.total) > 2) {
+    assert(secondBatch.items.length > 0, 'nonempty second chapter batch expected');
+  }
   const first = chapters.items[0];
   const token = first.number === null || first.number === undefined ? 'oneshot' : String(first.number);
   const read = await request('/api/novels/' + slug + '/chapters/' + encodeURIComponent(token) + '/read');
   assert(read && (typeof read.body === 'string' || read.locked === true), 'chapter read body/lock contract missing');
-  console.log('LIVE API CONTRACT PASS: series, detail, chapter pagination, chapter read');
+  console.log('LIVE API CONTRACT PASS: series, search, detail, chapter pagination, chapter read');
 })().catch(error => {
   console.error('LIVE API CONTRACT BLOCKED:', error.message);
   process.exitCode = 1;
