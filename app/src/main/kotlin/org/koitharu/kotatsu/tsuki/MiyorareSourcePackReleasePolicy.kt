@@ -213,7 +213,7 @@ object MiyorareSourcePackReleasePolicy {
 					pluginId = novel.requiredString("pluginId"),
 					version = novel.requiredString("version"),
 					assetName = novel.requiredString("assetName"),
-					size = novel.requiredLong("size").also { require(it in 1..MAX_NOVEL_PLUGIN_BYTES) },
+					size = novel.requiredLong("size").also { require(it in 1L..MAX_NOVEL_PLUGIN_BYTES) },
 					sha256 = novel.requiredHex64("sha256"),
 				)
 			}.orEmpty()
