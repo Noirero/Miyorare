@@ -32,6 +32,12 @@ internal fun reusableCardMetadataIds(
     }
 }
 
+/**
+ * Distinct instances identify distinct requests even when visible IDs/context return to the
+ * same metadata key (A -> B -> A). Do not use data-class equality for async ownership.
+ */
+internal class CardEnrichmentRequest<K>(val key: K)
+
 /** A cancelled or superseded asynchronous query cannot publish, even if it returned data. */
 internal fun canPublishCardEnrichment(
     requestedRevision: Long,
