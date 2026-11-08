@@ -17,4 +17,8 @@
     <string name="miyorare_source_adapted">ADAPTED</string>
     <string name="miyorare_source_adaptation_verified">VERIFIED</string>
     <string name="miyorare_source_adaptation_degraded">DEGRADED</string>
+    <string name="miyorare_novel_candidates_title">Novel candidates · EN / ID</string>
+    <string name="miyorare_novel_candidates_read_only">Official LNReader inventory · candidates are not installed automatically</string>
+    <string name="miyorare_novel_candidates_refresh">Refresh candidate inventory</string>
+    <string name="miyorare_novel_candidates_unavailable">Official candidate registry unavailable</string>
 </resources>
