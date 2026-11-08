@@ -873,7 +873,9 @@ class FavouritesListViewModel @Inject constructor(
 				cardEnrichmentJob?.cancel()
 				cardEnrichmentJob = null
 				pendingCardEnrichmentKey = null
-				// Empty / loading categories must not evict a previously valid snapshot.
+				// No visible IDs remain: the previous key cannot be treated as fresh if they return.
+				// Clearing here is safe; warm resume with visible IDs retains its last snapshot.
+				cardEnrichment.value = null
 				return
 			}
 			if (cardEnrichment.value?.key == key || pendingCardEnrichmentKey == key) return
