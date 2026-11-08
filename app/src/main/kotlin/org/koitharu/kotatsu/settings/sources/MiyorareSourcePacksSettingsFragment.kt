@@ -97,6 +97,7 @@ class MiyorareSourcePacksSettingsFragment : BaseComposeSettingsFragment(R.string
 					remoteTags = remoteTags,
 					checkingPackIds = checkingPackIds,
 					onOpenPack = ::openPack,
+					onOpenCandidates = ::openCandidates,
 					onOpenEhentaiSession = ::openEhentaiSession,
 				)
 			}
@@ -139,6 +140,14 @@ class MiyorareSourcePacksSettingsFragment : BaseComposeSettingsFragment(R.string
 		)
 	}
 
+	private fun openCandidates() {
+		(requireActivity() as SettingsActivity).openFragment(
+			LnCandidateRegistrySettingsFragment::class.java,
+			args = null,
+			isFromRoot = false,
+		)
+	}
+
 	private fun openEhentaiSession() {
 		(requireActivity() as SettingsActivity).openFragment(
 			EhentaiSessionSettingsFragment::class.java,
@@ -165,6 +174,7 @@ private fun MiyorareSourcePacksOverview(
 	remoteTags: Map<String, String>,
 	checkingPackIds: Set<String>,
 	onOpenPack: (MiyorareOfficialSourcePack) -> Unit,
+	onOpenCandidates: () -> Unit,
 	onOpenEhentaiSession: () -> Unit,
 ) {
 	val models = remember(plugins, remoteTags, checkingPackIds) {
@@ -224,6 +234,16 @@ private fun MiyorareSourcePacksOverview(
 					onClick = { onOpenPack(model.pack) },
 				)
 			}
+		}
+
+		item(key = "novel-candidates") {
+			SettingsItem(
+				title = stringResource(R.string.miyorare_novel_candidates_title),
+				subtitle = stringResource(R.string.miyorare_novel_candidates_read_only),
+				icon = R.drawable.ic_info_outline,
+				onClick = onOpenCandidates,
+				trailing = { SettingsNavigationIndicator() },
+			)
 		}
 
 		item(key = "access-section") {
