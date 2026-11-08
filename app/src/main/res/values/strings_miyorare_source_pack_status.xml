@@ -17,4 +17,7 @@
     <string name="miyorare_source_adapted">ADAPTED</string>
     <string name="miyorare_source_adaptation_verified">VERIFIED</string>
     <string name="miyorare_source_adaptation_degraded">DEGRADED</string>
+    <string name="miyorare_chikari_novel_title">Chikari · Novel (LNReader)</string>
+    <string name="miyorare_chikari_novel_installed">Installed v%1$s · separate from manga JAR sources</string>
+    <string name="miyorare_chikari_novel_missing">Novel companion not installed · use Install/Update</string>
 </resources>
