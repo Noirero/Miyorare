@@ -386,12 +386,11 @@ class FavouritesListViewModel @Inject constructor(
 				similarTitleScan = true,
 			)
 			scheduleCardEnrichment(enrichmentKey)
-			val matchingEnrichment = currentCardEnrichment?.takeIf { cached ->
-				cached.key.includeUnread == enrichmentKey.includeUnread &&
-					cached.key.includeDownloaded == enrichmentKey.includeDownloaded &&
-				enrichmentKey.ids.size >= cached.key.ids.size &&
-				enrichmentKey.ids.subList(0, cached.key.ids.size) == cached.key.ids
-			}
+			val knownCardIds = reusableCardMetadataIds(
+                currentCardEnrichment?.key?.context, enrichmentKey.context,
+                currentCardEnrichment?.key?.ids.orEmpty(), enrichmentKey.ids,
+                currentCardEnrichment?.key?.legacyNovelIds.orEmpty(), enrichmentKey.legacyNovelIds,
+            )
 			val header = ListHeader(
 				textRes = R.string.library_scan_results_title,
 				buttonTextRes = R.string.library_scan_back_to_favourites,
@@ -419,8 +418,10 @@ class FavouritesListViewModel @Inject constructor(
 				display.options,
 				emptyList(),
 				emptyList(),
-				matchingEnrichment?.snapshot ?: emptyCardSnapshot,
-				if (display.options.showDownloaded) matchingEnrichment?.downloadedIds else null,
+				currentCardEnrichment?.snapshot ?: emptyCardSnapshot,
+				if (display.options.showDownloaded) currentCardEnrichment?.downloadedIds else null,
+				knownCardIds,
+				if (currentCardEnrichment?.downloadedIds != null) knownCardIds else emptySet(),
 			)
 			return@contentTransform listOf(header) + mapped
 		}
@@ -476,19 +477,22 @@ class FavouritesListViewModel @Inject constructor(
 			similarTitleScan = false,
 		)
 		scheduleCardEnrichment(enrichmentKey)
-		val matchingEnrichment = currentCardEnrichment?.takeIf { cached ->
-			cached.key.revision == enrichmentKey.revision &&
-			cached.key.includeUnread == enrichmentKey.includeUnread &&
-				cached.key.includeDownloaded == enrichmentKey.includeDownloaded &&
-				enrichmentKey.ids.size >= cached.key.ids.size &&
-				enrichmentKey.ids.subList(0, cached.key.ids.size) == cached.key.ids
-		}
-		val cardSnapshot = matchingEnrichment?.snapshot ?: emptyCardSnapshot
-		val downloadedIds = when {
-			!usesSpaceScopedDownloadStatus || !display.options.showDownloaded -> null
-			filterDownloadedIds != null -> filterDownloadedIds
-			else -> matchingEnrichment?.downloadedIds
-		}
+		val knownCardIds = reusableCardMetadataIds(
+            currentCardEnrichment?.key?.context, enrichmentKey.context,
+            currentCardEnrichment?.key?.ids.orEmpty(), enrichmentKey.ids,
+            currentCardEnrichment?.key?.legacyNovelIds.orEmpty(), enrichmentKey.legacyNovelIds,
+        )
+        val cardSnapshot = currentCardEnrichment?.snapshot ?: emptyCardSnapshot
+        val downloadedIds = when {
+            !usesSpaceScopedDownloadStatus || !display.options.showDownloaded -> null
+            filterDownloadedIds != null -> filterDownloadedIds
+            else -> currentCardEnrichment?.downloadedIds
+        }
+        val knownDownloadedIds = when {
+            filterDownloadedIds != null -> enrichmentKey.ids.toSet()
+            downloadedIds != null -> knownCardIds
+            else -> emptySet()
+        }
 		visible.mapList(
 			display.options.listMode,
 			filters,
@@ -500,6 +504,8 @@ class FavouritesListViewModel @Inject constructor(
 			groupPins,
 			cardSnapshot,
 			downloadedIds,
+			knownCardIds,
+			knownDownloadedIds,
 		)
 	}.distinctUntilChanged().onEach {
 		isPaginationReady.set(true)
