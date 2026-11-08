@@ -516,11 +516,9 @@ class FavouritesListViewModel @Inject constructor(
 
 	fun setWorkActive(active: Boolean) = listWorkScope.setActive(active)
 
-	/** Revalidate badges after returning from Reader/Details; the list VM survives navigation. */
+	/** Revalidate after returning from Reader/Details without discarding the last valid projection. */
 	fun refreshReadingStatusOnResume() {
 		invalidateCardEnrichment()
-		// Force one presentation emission without invalidating library paging/search state.
-		cardEnrichment.value = null
 	}
 
 	override fun onRefresh() {
@@ -946,6 +944,8 @@ class FavouritesListViewModel @Inject constructor(
 		pinnedGroups: List<Long>,
 		cardSnapshot: FavouriteUnreadCounter.Snapshot,
 		downloadedIds: Set<Long>?,
+		knownCardIds: Set<Long>,
+		knownDownloadedIds: Set<Long>,
 	): List<ListModel> {
 		val explicitGroups = explicitGroupsForRender(groups, filters, isSearchActive)
 		val pinnedGroupSet = pinnedGroups.toSet()
@@ -1000,27 +1000,30 @@ class FavouritesListViewModel @Inject constructor(
 			val mangaId = model.manga.id
 			val isPinned = mangaId in pinnedSet
 			val source = model.manga.source
+			val downloadKnown = mangaId in knownDownloadedIds
 			val downloadVerification = if (usesSpaceScopedDownloadStatus && display.showDownloaded) {
 				when {
-					downloadedIds == null -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.UNRESOLVED
-					mangaId in downloadedIds -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.VERIFIED_DOWNLOADED
+					!downloadKnown -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.UNRESOLVED
+					mangaId in downloadedIds.orEmpty() -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.VERIFIED_DOWNLOADED
 					else -> org.koitharu.kotatsu.list.ui.model.DownloadVerification.VERIFIED_NOT_DOWNLOADED
 				}
 			} else null
-			val isSaved = display.showDownloaded && if (downloadedIds != null) {
-				mangaId in downloadedIds
-			} else {
-				mangaId in localMangaIndex
+			val isSaved = when {
+				!display.showDownloaded -> false
+				usesSpaceScopedDownloadStatus -> downloadKnown && mangaId in downloadedIds.orEmpty()
+				else -> mangaId in localMangaIndex
 			}
 			val isLocalSource = display.showLocalSource && source.isLocal
 			val languageLabel = if (display.showLanguage) source.getLanguageCode() else null
-			val unreadCount = if (display.showUnread) cardSnapshot.unreadCounts[mangaId] ?: 0 else 0
-			val hasReadingHistory = display.showContinueReading && cardSnapshot.hasHistory(mangaId)
-			val progress = cardSnapshot.getProgress(mangaId, settings.progressIndicatorMode)
+			val hasCardMetadata = mangaId in knownCardIds
+			val unreadCount = if (display.showUnread && hasCardMetadata) cardSnapshot.getUnreadCountOrNull(mangaId) else null
+			val hasReadingHistory = display.showContinueReading && hasCardMetadata && cardSnapshot.hasHistory(mangaId)
+			val progress = if (hasCardMetadata) cardSnapshot.getProgress(mangaId, settings.progressIndicatorMode) else null
 			result[i] = when (model) {
 				is MangaGridModel -> model.copy(
 					unreadCount = unreadCount,
-					counter = unreadCount,
+					counter = unreadCount ?: 0,
+					readingMetadataPending = display.showUnread && !hasCardMetadata,
 					progress = progress,
 					isFavorite = if (usePermanentStatus) mangaId in libraryIds else model.isFavorite,
 					isSaved = isSaved,
@@ -1033,7 +1036,7 @@ class FavouritesListViewModel @Inject constructor(
 					showContinueReading = hasReadingHistory,
 				)
 				is MangaDetailedListModel -> model.copy(
-					counter = unreadCount,
+					counter = unreadCount ?: 0,
 					progress = progress,
 					isSaved = isSaved,
 					isPinned = isPinned,
@@ -1042,7 +1045,7 @@ class FavouritesListViewModel @Inject constructor(
 					showContinueReading = hasReadingHistory,
 				)
 				is MangaCompactListModel -> model.copy(
-					counter = unreadCount,
+					counter = unreadCount ?: 0,
 					isPinned = isPinned,
 					isSaved = isSaved,
 					isLocalSource = isLocalSource,
