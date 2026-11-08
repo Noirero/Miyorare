@@ -143,6 +143,7 @@
 			app:layout_scrollFlags="scroll|enterAlways|snap">
 
 			<ImageView
+				android:id="@+id/image_update_prompt_tail"
 				android:layout_width="16dp"
 				android:layout_height="8dp"
 				android:layout_marginStart="20dp"
@@ -150,6 +151,7 @@
 				android:importantForAccessibility="no" />
 
 			<com.google.android.material.card.MaterialCardView
+				android:id="@+id/card_update_prompt"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
 				app:cardBackgroundColor="?attr/colorPrimaryContainer"
@@ -167,6 +169,7 @@
 					android:paddingEnd="4dp">
 
 					<TextView
+						android:id="@+id/text_update_prompt"
 						android:layout_width="0dp"
 						android:layout_height="wrap_content"
 						android:layout_weight="1"
