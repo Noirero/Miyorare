@@ -106,12 +106,14 @@ private fun ItemQuickFilterBinding.applyMiyorareModernQuickFilterStyle(item: Qui
 	chipsTags.applyMiyorareFavouritesQuickFilterStyle(
 		normalNeon = !isPrivate,
 		subtleGlassFill = !isPrivate,
+		flatFavouritesChrome = isFavouritesQuickFilter && !isPrivate,
 	)
 }
 
 private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 	normalNeon: Boolean,
 	subtleGlassFill: Boolean,
+	flatFavouritesChrome: Boolean,
 ) {
 	val density = resources.displayMetrics.density
 	val primary = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary, Color.WHITE)
@@ -209,13 +211,27 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 			// for Favourites, Updates, History and Feed quick filters.
 			chip.chipStrokeWidth = 0f
 			chip.chipStrokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
-			chip.foreground = createMiyorareFavouritesActionChrome(
-				glass = glass,
-				radius = controlRadius,
-				density = density,
-				selected = selected,
-				darkTheme = darkTheme,
-			)
+			chip.foreground = if (flatFavouritesChrome) {
+				// Favourites actions are independent capsules: use a single border, no stacked halo.
+				GradientDrawable().apply {
+					setColor(Color.TRANSPARENT)
+					cornerRadius = controlRadius
+					val edge = if (selected) glass.selectedBorder else glass.border
+					val strength = if (selected) 0.74f else 0.78f
+					setStroke(
+						density.roundToInt().coerceAtLeast(1),
+						ColorUtils.setAlphaComponent(edge, (Color.alpha(edge) * strength).roundToInt()),
+					)
+				}
+			} else {
+				createMiyorareFavouritesActionChrome(
+					glass = glass,
+					radius = controlRadius,
+					density = density,
+					selected = selected,
+					darkTheme = darkTheme,
+				)
+			}
 		} else {
 			chip.chipStrokeWidth = density * if (selected) 0.75f else 0.6f
 			chip.chipStrokeColor = ColorStateList.valueOf(stroke)
