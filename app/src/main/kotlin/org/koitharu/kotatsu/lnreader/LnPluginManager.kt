@@ -145,7 +145,9 @@ class LnPluginManager @Inject constructor(
 	/** Restore the exact prior LNReader identity if a later Source Pack stage fails. */
 	suspend fun restore(pluginId: String, snapshot: InstalledPluginSnapshot?) {
 		if (snapshot == null) {
-			if (isInstalled(pluginId)) uninstall(pluginId)
+			// A failed JSHost install may have mutated the in-memory realm before the
+			// on-disk stage completed. Uninstall even without persisted code.
+			uninstall(pluginId)
 		} else {
 			install(
 				pluginId = pluginId,
