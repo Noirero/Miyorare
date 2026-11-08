@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.lnreader.model.LnPlugin
 import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePack
@@ -85,6 +86,9 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	lateinit var lnPluginManager: LnPluginManager
 
 	@Inject
+	lateinit var appSettings: AppSettings
+
+	@Inject
 	lateinit var pluginInstaller: TsukiPluginInstaller
 
 	@Inject
@@ -94,6 +98,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	private var latestTag by mutableStateOf<String?>(null)
 	private var checkingUpdate by mutableStateOf(false)
 	private var adaptedSourceNames by mutableStateOf<Set<String>>(emptySet())
+	private var chikariVisible by mutableStateOf(true)
 
 	private val pack: MiyorareOfficialSourcePack by lazy {
 		val pluginId = arguments?.getString(ARG_PACK_ID).orEmpty()
@@ -111,6 +116,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 		activity?.title = pack.displayName
 		refreshRemoteVersion()
 		refreshAdaptedSourceNames()
+		chikariVisible = MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_ID !in appSettings.lnHiddenPlugins
 	}
 
 	override fun onCreateView(
@@ -127,6 +133,8 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 					pack = pack,
 					plugins = plugins,
 					novelPlugin = novels.firstOrNull { it.pluginId == MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_ID }?.plugin,
+					chikariVisible = chikariVisible,
+					onNovelVisible = ::setChikariVisible,
 					imageLoader = imageLoader,
 					busy = busy,
 					latestTag = latestTag,
@@ -140,6 +148,15 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 				)
 			}
 		}
+	}
+
+	/** Visibility is independent from deleting the plugin or its library/history records. */
+	private fun setChikariVisible(visible: Boolean) {
+		if (busy) return
+		val id = MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_ID
+		val current = appSettings.lnHiddenPlugins
+		appSettings.lnHiddenPlugins = if (visible) current - id else current + id
+		chikariVisible = visible
 	}
 
 	private fun refreshRemoteVersion() {
@@ -351,6 +368,8 @@ private fun MiyorareSourcePackDetailScreen(
 	pack: MiyorareOfficialSourcePack,
 	plugins: List<TsukiPluginDescriptor>,
 	novelPlugin: LnPlugin?,
+	chikariVisible: Boolean,
+	onNovelVisible: (Boolean) -> Unit,
 	imageLoader: ImageLoader,
 	busy: Boolean,
 	latestTag: String?,
@@ -596,6 +615,17 @@ private fun MiyorareSourcePackDetailScreen(
 			}
 
 			if (pack.pluginId == MiyorareOfficialSourcePacks.EN_PLUGIN_ID) {
+				if (novelPlugin != null) {
+					item(key = "novel:chikari:visibility") {
+						SwitchSettingsItem(
+							title = stringResource(R.string.miyorare_chikari_novel_visibility),
+							subtitle = stringResource(R.string.miyorare_chikari_novel_visibility_summary),
+							checked = chikariVisible,
+							onCheckedChange = onNovelVisible,
+							enabled = !busy,
+						)
+					}
+				}
 				item(key = "novel:chikari") {
 					InfoSettingsItem(
 						title = stringResource(R.string.miyorare_chikari_novel_title),
