@@ -194,12 +194,12 @@ class FavouritesListViewModel @Inject constructor(
 	private val cardEnrichmentRevision = AtomicLong()
 	private val cardEnrichmentEpoch = MutableStateFlow(0L)
 	private val cardEnrichmentGate = Any()
-	private var pendingCardEnrichmentKey: CardEnrichmentKey? = null
+	private var pendingCardEnrichmentRequest: CardEnrichmentRequest<CardEnrichmentKey>? = null
 	private var cardEnrichmentJob: Job? = null
 	private val listWorkScope = FavouritesListWorkScope {
 		synchronized(cardEnrichmentGate) {
 			cardEnrichmentJob = null
-			pendingCardEnrichmentKey = null
+			pendingCardEnrichmentRequest = null
 		}
 	}
 
@@ -872,13 +872,13 @@ class FavouritesListViewModel @Inject constructor(
 			if (key.ids.isEmpty()) {
 				cardEnrichmentJob?.cancel()
 				cardEnrichmentJob = null
-				pendingCardEnrichmentKey = null
+				pendingCardEnrichmentRequest = null
 				// No visible IDs remain: the previous key cannot be treated as fresh if they return.
 				// Clearing here is safe; warm resume with visible IDs retains its last snapshot.
 				cardEnrichment.value = null
 				return
 			}
-			if (cardEnrichment.value?.key == key || pendingCardEnrichmentKey == key) return
+			if (cardEnrichment.value?.key == key || pendingCardEnrichmentRequest?.key == key) return
 
 			val previous = cardEnrichment.value?.takeIf { cached ->
 				cached.key.context == key.context &&
@@ -890,7 +890,8 @@ class FavouritesListViewModel @Inject constructor(
 			val deltaIds = key.ids.drop(reusedCount)
 
 			cardEnrichmentJob?.cancel()
-			pendingCardEnrichmentKey = key
+			val request = CardEnrichmentRequest(key)
+			pendingCardEnrichmentRequest = request
 			cardEnrichmentJob = listWorkScope.launch(Dispatchers.IO) {
 				val work = PerformanceDiagnostics.begin("work", "favourites_card_enrichment")
 				var outcome = "complete"
@@ -920,7 +921,7 @@ class FavouritesListViewModel @Inject constructor(
 					synchronized(cardEnrichmentGate) {
 						if (canPublishCardEnrichment(
 								key.revision, cardEnrichmentRevision.get(),
-								pendingCardEnrichmentKey == key, coroutineContext.isActive,
+								pendingCardEnrichmentRequest === request, coroutineContext.isActive,
 						)) {
 							detailsNavigationCache.updateHistory(key.ids.takeLast(16), snapshot::getHistory)
 							cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
@@ -934,7 +935,7 @@ class FavouritesListViewModel @Inject constructor(
 				} finally {
 					PerformanceDiagnostics.end(work, outcome)
 					synchronized(cardEnrichmentGate) {
-						if (pendingCardEnrichmentKey == key) pendingCardEnrichmentKey = null
+						if (pendingCardEnrichmentRequest === request) pendingCardEnrichmentRequest = null
 					}
 				}
 			}
@@ -946,7 +947,7 @@ class FavouritesListViewModel @Inject constructor(
 			val nextRevision = cardEnrichmentRevision.incrementAndGet()
 			cardEnrichmentJob?.cancel()
 			cardEnrichmentJob = null
-			pendingCardEnrichmentKey = null
+			pendingCardEnrichmentRequest = null
 			// Re-evaluate the published list without wiping last-known valid metadata.
 			cardEnrichmentEpoch.value = nextRevision
 		}
