@@ -60,6 +60,8 @@ import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
+import org.koitharu.kotatsu.lnreader.LnPluginManager
+import org.koitharu.kotatsu.lnreader.model.LnPlugin
 import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePack
 import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacks
 import org.koitharu.kotatsu.tsuki.TsukiPluginInstaller
@@ -80,6 +82,9 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	lateinit var pluginManager: TsukiPluginManager
 
 	@Inject
+	lateinit var lnPluginManager: LnPluginManager
+
+	@Inject
 	lateinit var pluginInstaller: TsukiPluginInstaller
 
 	@Inject
@@ -98,6 +103,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		pluginManager.initialize()
+		lnPluginManager.initialize()
 	}
 
 	override fun onResume() {
@@ -116,9 +122,11 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 		setContent {
 			MiyorareTheme {
 				val plugins by pluginManager.plugins.collectAsState()
+				val novels by lnPluginManager.sources.collectAsState()
 				MiyorareSourcePackDetailScreen(
 					pack = pack,
 					plugins = plugins,
+					novelPlugin = novels.firstOrNull { it.pluginId == MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_ID }?.plugin,
 					imageLoader = imageLoader,
 					busy = busy,
 					latestTag = latestTag,
@@ -230,10 +238,26 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 				if (busy) return@setPositiveButton
 				runLongOperation {
 					withContext(Dispatchers.IO) {
-						pluginManager.removeAll(
-							provider = TsukiPluginProvider.MIYORARE,
-							pluginIds = model.plugins.map { it.pluginId },
-						)
+						val pluginId = MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_ID
+						val ownsNovel = model.pack.pluginId == MiyorareOfficialSourcePacks.EN_PLUGIN_ID &&
+							lnPluginManager.getById(pluginId)?.plugin?.storeId == model.pack.pluginId
+						val prior = if (ownsNovel) lnPluginManager.snapshot(pluginId) else null
+						if (ownsNovel) lnPluginManager.uninstall(pluginId)
+						try {
+							pluginManager.removeAll(
+								provider = TsukiPluginProvider.MIYORARE,
+								pluginIds = model.plugins.map { it.pluginId },
+							)
+						} catch (error: Throwable) {
+							if (ownsNovel) {
+								try {
+									lnPluginManager.restore(pluginId, prior)
+								} catch (rollback: Throwable) {
+									error.addSuppressed(rollback)
+								}
+							}
+							throw error
+						}
 					}
 					getString(R.string.tsuki_plugin_removed, model.pack.displayName)
 				}
@@ -326,6 +350,7 @@ private fun buildMiyorarePackDetailModel(
 private fun MiyorareSourcePackDetailScreen(
 	pack: MiyorareOfficialSourcePack,
 	plugins: List<TsukiPluginDescriptor>,
+	novelPlugin: LnPlugin?,
 	imageLoader: ImageLoader,
 	busy: Boolean,
 	latestTag: String?,
@@ -566,6 +591,20 @@ private fun MiyorareSourcePackDetailScreen(
 						enabled = !busy,
 						accentColor = MaterialTheme.colorScheme.error,
 						onClick = { onRemove(model) },
+					)
+				}
+			}
+
+			if (pack.pluginId == MiyorareOfficialSourcePacks.EN_PLUGIN_ID) {
+				item(key = "novel:chikari") {
+					InfoSettingsItem(
+						title = stringResource(R.string.miyorare_chikari_novel_title),
+						subtitle = if (novelPlugin == null) {
+							stringResource(R.string.miyorare_chikari_novel_missing)
+						} else {
+							stringResource(R.string.miyorare_chikari_novel_installed, novelPlugin.version)
+						},
+						icon = R.drawable.ic_info_outline,
 					)
 				}
 			}
