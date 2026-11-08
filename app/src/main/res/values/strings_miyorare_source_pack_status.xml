@@ -20,4 +20,6 @@
     <string name="miyorare_chikari_novel_title">Chikari · Novel (LNReader)</string>
     <string name="miyorare_chikari_novel_installed">Installed v%1$s · separate from manga JAR sources</string>
     <string name="miyorare_chikari_novel_missing">Novel companion not installed · use Install/Update</string>
+    <string name="miyorare_chikari_novel_visibility">Show Chikari Novel in Explore</string>
+    <string name="miyorare_chikari_novel_visibility_summary">Hiding the source preserves Favorites, History, progress, and downloads</string>
 </resources>
