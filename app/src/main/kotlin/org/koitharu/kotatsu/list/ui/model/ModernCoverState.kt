@@ -15,6 +15,7 @@ enum class ModernCoverContext {
 
 enum class ModernCoverReadingState {
 	NONE,
+	PENDING,
 	UNREAD,
 	IN_PROGRESS,
 	CAUGHT_UP,
@@ -23,7 +24,9 @@ enum class ModernCoverReadingState {
 internal fun resolveModernCoverReadingState(
 	unreadCount: Int?,
 	progress: ReadingProgress?,
+	pending: Boolean = false,
 ): ModernCoverReadingState = when {
+	pending -> ModernCoverReadingState.PENDING
 	unreadCount == 0 && progress?.isCompleted() == true && progress.hasUnreadAuthority -> ModernCoverReadingState.CAUGHT_UP
 	(unreadCount ?: 0) > 0 && progress != null -> ModernCoverReadingState.IN_PROGRESS
 	(unreadCount ?: 0) > 0 -> ModernCoverReadingState.UNREAD
@@ -62,7 +65,7 @@ data class ModernCoverState(
 				isLocalSource = if (collection) model.isLocalSource else model.source.isLocal,
 				languageLabel = if (collection) model.languageLabel else model.source.getLanguageCode(),
 				unreadCount = model.unreadCount,
-				readingState = resolveModernCoverReadingState(model.unreadCount, model.progress),
+				readingState = resolveModernCoverReadingState(model.unreadCount, model.progress, model.readingMetadataPending),
 				showContinueReading = collection && model.showContinueReading,
 				legacyCounter = if (collection) 0 else model.counter,
 			)
