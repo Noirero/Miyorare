@@ -191,6 +191,14 @@ add_full_suite() {
     add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   fi
 
+  # Execute scoped View-palette regressions in full Android 15 runs when present.
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/core/ui/dialog/ModernConfirmationDialogColorsTest.kt ]]; then
+    add_class org.koitharu.kotatsu.core.ui.dialog.ModernConfirmationDialogColorsTest
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/reader/ui/config/ModernReaderSheetChromeProbeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.reader.ui.config.ModernReaderSheetChromeProbeTest
+  fi
+
   RUN_RUNTIME_ISOLATION=true
   RUN_MIGRATION_PERSISTENCE=true
   MAPPED=true
