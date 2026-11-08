@@ -136,7 +136,9 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(viewModel.contains("privateconstvalDATABASE_WINDOW_INITIAL=PAGE_SIZE"))
 		assertTrue(viewModel.contains("settings.allFavoritesSortOrder"))
 		assertTrue(viewModel.contains("scheduleCardEnrichment(enrichmentKey)"))
-		assertTrue(viewModel.contains("matchingEnrichment?.snapshot?:emptyCardSnapshot"))
+		// Reading metadata remains a non-blocking projection even when a previous snapshot is reused.
+		assertTrue(viewModel.contains("valcardSnapshot=currentCardEnrichment?.snapshot?:emptyCardSnapshot"))
+		assertTrue(viewModel.contains("valknownCardIds=reusableCardMetadataIds("))
 		val mapList = viewModel.substringAfter("privatesuspendfunList<Manga>.mapList(")
 			.substringBefore("privatefunsearchWithLibraryGroups")
 		assertFalse(
