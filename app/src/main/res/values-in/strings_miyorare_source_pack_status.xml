@@ -20,4 +20,6 @@
     <string name="miyorare_chikari_novel_title">Chikari · Novel (LNReader)</string>
     <string name="miyorare_chikari_novel_installed">Terpasang v%1$s · terpisah dari source manga JAR</string>
     <string name="miyorare_chikari_novel_missing">Companion novel belum terpasang · gunakan Pasang/Perbarui</string>
+    <string name="miyorare_chikari_novel_visibility">Tampilkan Chikari Novel di Explore</string>
+    <string name="miyorare_chikari_novel_visibility_summary">Menyembunyikan source tetap menjaga Favorit, Riwayat, progres, dan unduhan</string>
 </resources>
