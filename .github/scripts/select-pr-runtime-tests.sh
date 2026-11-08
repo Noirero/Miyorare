@@ -191,6 +191,11 @@ add_full_suite() {
     add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   fi
 
+  # Enforce launcher widget palette compatibility on Android 15 when the test exists.
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/widget/common/ModernWidgetThemeRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.widget.common.ModernWidgetThemeRuntimeTest
+  fi
+
   RUN_RUNTIME_ISOLATION=true
   RUN_MIGRATION_PERSISTENCE=true
   MAPPED=true
