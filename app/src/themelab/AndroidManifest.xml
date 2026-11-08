@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application
+        android:label="@string/app_name_themelab"
+        tools:replace="android:label">
+        <activity
+            android:name="org.koitharu.kotatsu.main.ui.MainActivity"
+            android:theme="@style/Theme.Miyorare.Splash" />
+        <activity
+            android:name="org.koitharu.kotatsu.sync.ui.BrowserDriveAuthCallbackActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:theme="@style/Theme.Kotatsu.Transparent">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="miyorare" android:host="google-drive-auth" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

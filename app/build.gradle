@@ -69,6 +69,19 @@ android {
 				signingConfig signingConfigs.release
 			}
 		}
+		// Isolated, installable theme preview. Does not affect Main, Amain2 or Beta.
+		themelab {
+			initWith(buildTypes.preview)
+			applicationIdSuffix = '.themelab'
+			versionNameSuffix = '-theme-lab'
+			matchingFallbacks = ['preview', 'release', 'debug']
+			// Local builds are installable with the debug key; CI uses the existing
+			// permanent signing key so successive Theme Lab APKs update in place.
+			signingConfig signingConfigs.debug
+			if (signingConfigs.findByName('release')) {
+				signingConfig signingConfigs.release
+			}
+		}
 		release {
 			buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'true'
 			minifyEnabled = true
@@ -101,6 +114,10 @@ android {
 	sourceSets {
 		preview.kotlin.srcDirs += 'src/release/kotlin'
 		preview.res.srcDirs += 'src/release/res'
+		// Mirror Preview code and resources, including its theme/UI overrides.
+		themelab.kotlin.srcDirs += 'src/release/kotlin'
+		themelab.res.srcDirs += 'src/release/res'
+		themelab.res.srcDirs += 'src/preview/res'
 	}
 	compileOptions {
 		coreLibraryDesugaringEnabled = true

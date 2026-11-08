@@ -155,6 +155,7 @@ class RestoreViewModel @Inject constructor(
 		val MIYORARE_APPLICATION_IDS = setOf(
 			"org.noirero.miyorare",
 			"org.noirero.miyorare.beta",
+			"org.noirero.miyorare.themelab",
 			"org.noirero.miyorare.debug",
 			"org.noirero.miyorare.experimental",
 		)

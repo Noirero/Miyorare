@@ -1,0 +1,129 @@
+name: Theme Lab APK
+run-name: Theme Lab · ${{ github.ref_name }}
+
+# Isolated owner-only visual experiment: never a release/promotion gate.
+# Pushes to this single branch build an installable APK without Android emulator.
+on:
+  push:
+    branches:
+      - experiment/theme-lab
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: theme-lab-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.ref_name == 'experiment/theme-lab'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout experiment source
+        uses: actions/checkout@v5
+
+      - name: Require experiment identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle
+          grep -Fq "variant.applicationId.set('org.noirero.miyorare.beta')" app/build.gradle
+          grep -Fq "applicationIdSuffix = '.themelab'" app/build.gradle
+          grep -Fq 'Miyorare Theme Lab' app/src/themelab/res/values/strings.xml
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
+      - name: Require existing permanent signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing signing secret: $name"
+              exit 1
+            fi
+          done
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+      - name: Pre-warm Preview dependencies
+        shell: bash
+        run: bash .github/scripts/prewarm-jitpack-parsers.sh preview
+
+      - name: Assemble Theme Lab (no Android 15 emulator)
+        shell: bash
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleThemelab --max-workers=4 --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE=../release.keystore \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+
+      - name: Verify built package identity and signed APK
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          metadata = json.loads(Path('app/build/outputs/apk/themelab/output-metadata.json').read_text())
+          expected = 'org.noirero.miyorare.themelab'
+          assert metadata.get('applicationId') == expected, (metadata.get('applicationId'), expected)
+          paths = list(Path('app/build/outputs/apk/themelab').glob('*.apk'))
+          assert len(paths) == 1, paths
+          print('Verified unique Theme Lab APK ID:', expected)
+          PY
+          apk="$(find app/build/outputs/apk/themelab -maxdepth 1 -name '*.apk' -print -quit)"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+          test -n "$apksigner"
+          "$apksigner" verify "$apk"
+          short_sha="$(git rev-parse --short HEAD)"
+          filename="Miyorare-Theme-Lab-${short_sha}.apk"
+          cp "$apk" "$filename"
+          echo "filename=$filename" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Miyorare Theme Lab"
+            echo "- Branch: `$GITHUB_REF_NAME`"
+            echo "- Commit: `$GITHUB_SHA`"
+            echo "- Application ID: `org.noirero.miyorare.themelab`"
+            echo "- App name: `Miyorare Theme Lab`"
+            echo "- Android 15/emulator: NOT RUN (visual test only)"
+            echo "- Signed using the existing release keystore for in-place lab updates"
+            echo "- APK SHA-256: `$(sha256sum "$filename" | cut -d' ' -f1)`"
+            echo "- APK: `$filename`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload installable Theme Lab APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.filename }}
+          path: ${{ steps.artifact.outputs.filename }}
+          if-no-files-found: error
+          retention-days: 7
