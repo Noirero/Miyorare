@@ -3,11 +3,14 @@ package org.koitharu.kotatsu.reader.ui.config
 import android.content.res.Configuration
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.View
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.material.color.MaterialColors
+import com.google.android.material.shape.MaterialShapeDrawable
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
@@ -61,6 +64,17 @@ class ModernReaderSheetChromeProbeTest {
                 Log.i("ReaderColorProbe", "B10 native XML primary=$hostPrimary surface=$hostSurface semantic primary=${semantic.primary} surface=${semantic.surface}")
                 assertNotEquals("B10 XML primary should expose the original static-host mismatch", semantic.primary, hostPrimary)
                 assertNotEquals("B10 XML surface should expose the original static-host mismatch", semantic.surface, hostSurface)
+                for (preset in MiyorareThemePreset.entries) {
+                    prefs.edit().putString(MiyorareAppearance.KEY_THEME_PRESET, preset.name).commit()
+                    val active = requireNotNull(themed.miyorareViewPaletteFromPreferences())
+                    val binding = SheetReaderConfigBinding.inflate(LayoutInflater.from(themed))
+                    val sheet = View(themed).apply { background = MaterialShapeDrawable() }
+                    applyModernReaderSheetChrome(binding, sheet, active)
+                    val fill = (sheet.background as MaterialShapeDrawable).fillColor?.defaultColor
+                    assertEquals("B10 native sheet surface $preset", active.surface, fill)
+                    val title = binding.headerBar.findViewById<android.widget.TextView>(R.id.sh_textView_title)
+                    assertEquals("B10 native header title $preset", active.onSurface, title.currentTextColor)
+                }
             }
         } finally {
             val editor = prefs.edit()
