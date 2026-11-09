@@ -80,7 +80,8 @@ class NovelOnlineCjkQualityABBenchmarkTest {
                         spans = spans,
                         results = translatedSegments,
                         sourceLanguage = language,
-                        candidateOnly = variant == "candidate",
+                        // Identical splitter boundaries are controls: do not change their reconstruction.
+                        candidateOnly = variant == "candidate" && candidate != original,
                     )
                     val millis = (System.nanoTime() - startTime) / 1_000_000
                     elapsedTotal += millis
