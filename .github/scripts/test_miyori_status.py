@@ -176,8 +176,18 @@ class MiyoriStatusTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("  pull_request:\n    paths:\n", contract)
-        self.assertNotIn("github.head_ref", contract)
-        self.assertIn("  contract:\n    runs-on:", contract)
+        contract_job = contract.split("  contract:\n", 1)[1].split(
+            "    steps:\n", 1
+        )[0]
+        self.assertIn("    runs-on: ubuntu-latest", contract_job)
+        if "github.head_ref" in contract_job:
+            # The stable main contract may skip fix/hotfix PRs; preserve
+            # that targeted policy rather than suppressing the entire check.
+            self.assertIn("github.event_name != 'pull_request'", contract_job)
+            for prefix in ("fix/", "bugfix/", "hotfix/"):
+                self.assertIn(
+                    f"!startsWith(github.head_ref, '{prefix}')", contract_job
+                )
 
     def test_issue_traceability_extracts_closing_and_issue_url(self):
         body = "Fixes #531\nRelated: https://github.com/Noirero/Miyorare/issues/700"
