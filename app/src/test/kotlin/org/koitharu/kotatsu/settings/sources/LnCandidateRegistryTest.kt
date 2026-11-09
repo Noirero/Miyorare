@@ -24,7 +24,7 @@ class LnCandidateRegistryTest {
         "distribution":{"artifact":"UNPUBLISHED","verifiedSha256":null}}
     """.trimIndent()
 
-    private fun registry(item: String = candidate) = """
+    private fun registry(item: String = candidate, pilotState: String = "TESTING") = """
         {"schemaVersion":1,"kind":"MIYORARE_LNREADER_NOVEL_CANDIDATES",
         "scope":{"languages":["en","id"],"installPolicy":"EXPLICIT_USER_ACTION",
         "unverifiedInstallAllowed":false},
@@ -32,7 +32,7 @@ class LnCandidateRegistryTest {
         "indexPath":".dist/plugins.min.json",
         "indexUrl":"https://raw.githubusercontent.com/LNReader/lnreader-plugins/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/.dist/plugins.min.json",
         "commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-        "pilot":{"pluginId":"chikari","state":"TESTING"},
+        "pilot":{"pluginId":"chikari","state":"$pilotState"},
         "candidates":[$item]}
     """.trimIndent()
 
@@ -98,7 +98,7 @@ class LnCandidateRegistryTest {
             registry().replace("\"iconUrl\":", "\"unusedIconUrl\":"),
             registry().replace("\"indexPath\":\".dist/plugins.min.json\"",
                 "\"indexPath\":\".dist/not-the-catalog.json\""),
-            registry().replace("\"state\":\"TESTING\"", "\"state\":\"READY\"", 1)
+            registry().replace("\"state\":\"TESTING\"", "\"state\":\"READY\"")
                 .replace("\"artifact\":\"UNPUBLISHED\"", "\"artifact\":\"SEALED\""),
             registry().replace("\"pluginId\":\"chikari\"", "\"pluginId\":\"other\""),
             registry().replace("\"state\":\"TESTING\"},", "\"state\":\"READY\"},"),
@@ -113,7 +113,7 @@ class LnCandidateRegistryTest {
     }
 
     @Test
-    fun unpublishedAndInvalidHttpRegistryHaveExplicitFailures() = runBlocking {
+    fun unpublishedAndInvalidHttpRegistryHaveExplicitFailures() {
         val http404 = registryForHttp(404, "Not Found")
         val error = org.junit.Assert.assertThrows(LnCandidateRegistryHttpException::class.java) {
             runBlocking { http404.fetch() }
@@ -128,7 +128,7 @@ class LnCandidateRegistryTest {
             runBlocking { oversized.fetch() }
         }
         val loaded = registryForHttp(200, registry())
-        assertEquals("chikari", loaded.fetch().candidates.single().id)
+        assertEquals("chikari", runBlocking { loaded.fetch() }.candidates.single().id)
     }
 
     private fun registryForHttp(status: Int, payload: String): LnCandidateRegistry {
@@ -155,7 +155,7 @@ class LnCandidateRegistryTest {
             .replace("\"android\":\"UNKNOWN\"", "\"android\":\"PASS\"")
             .replace("\"artifact\":\"UNPUBLISHED\",\"verifiedSha256\":null",
                 "\"artifact\":\"SEALED\",\"verifiedSha256\":\"$digest\"")
-        val parsed = LnCandidateRegistry.parse(registry(ready))
+        val parsed = LnCandidateRegistry.parse(registry(ready, pilotState = "READY"))
         assertEquals("READY", parsed.candidates.single().state)
         for (invalid in listOf(
             ready.replace(digest, "bad-digest"),
@@ -163,7 +163,7 @@ class LnCandidateRegistryTest {
             ready.replace("\"android\":\"PASS\"", "\"android\":\"FAIL\""),
         )) {
             assertThrows(IllegalArgumentException::class.java) {
-                LnCandidateRegistry.parse(registry(invalid))
+                LnCandidateRegistry.parse(registry(invalid, pilotState = "READY"))
             }
         }
     }
