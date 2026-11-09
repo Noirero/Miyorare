@@ -1,6 +1,14 @@
 package org.koitharu.kotatsu.settings.sources
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import javax.inject.Provider
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -24,6 +32,7 @@ class LnCandidateRegistryTest {
         "indexPath":".dist/plugins.min.json",
         "indexUrl":"https://raw.githubusercontent.com/LNReader/lnreader-plugins/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/.dist/plugins.min.json",
         "commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        "pilot":{"pluginId":"chikari","state":"TESTING"},
         "candidates":[$item]}
     """.trimIndent()
 
@@ -54,6 +63,87 @@ class LnCandidateRegistryTest {
                 LnCandidateRegistry.parse(registry(bad))
             }
         }
+    }
+
+
+    @Test
+    fun pinnedSourcePacks202ManifestParsesAll198WithUniqueEnIdIdentities() {
+        // Pinned test fixture copied byte-for-byte from Source Packs #202
+        // @ ee7ccdf958fa7d001b8f08654549a7bf1e5769b5.
+        val stream = checkNotNull(javaClass.getResourceAsStream(
+            "/lnreader/en-id-candidates-source-packs-202-20261109.json"
+        ))
+        val source = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val snapshot = LnCandidateRegistry.parse(source)
+        assertEquals("45daf1d08b46dca6efdf6d38f250da95771967d2", snapshot.upstreamCommit)
+        assertEquals(198, snapshot.candidates.size)
+        assertEquals(198, snapshot.candidates.map { it.id }.toSet().size)
+        assertEquals(187, snapshot.candidates.count { it.language == "en" })
+        assertEquals(11, snapshot.candidates.count { it.language == "id" })
+        assertTrue(snapshot.candidates.all { it.language == "en" || it.language == "id" })
+        assertTrue(snapshot.candidates.none { it.state == "READY" })
+        assertEquals("TESTING", snapshot.candidates.single { it.id == "chikari" }.state)
+        assertEquals(listOf("IDWN.id"), filterLnCandidates(snapshot.candidates, "  idwN.iD  ").map { it.id })
+        assertEquals(listOf("bacalightnovel"), filterLnCandidates(snapshot.candidates, "baca light novel").map { it.id })
+        assertEquals(listOf("chikari"), filterLnCandidates(snapshot.candidates, "chikari.moe").map { it.id })
+        assertTrue(filterLnCandidates(snapshot.candidates, "not_a_real_novel_source_99999").isEmpty())
+        assertEquals(snapshot.candidates, filterLnCandidates(snapshot.candidates, " "))
+        assertFalse(snapshot.candidates.any { it.language !in setOf("en", "id") })
+    }
+
+    @Test
+    fun incompleteOrForgedProducerMetadataIsNotRendered() {
+        val malformed = listOf(
+            registry().replace("\"codeUrl\":", "\"unusedCodeUrl\":"),
+            registry().replace("\"iconUrl\":", "\"unusedIconUrl\":"),
+            registry().replace("\"indexPath\":\".dist/plugins.min.json\"",
+                "\"indexPath\":\".dist/not-the-catalog.json\""),
+            registry().replace("\"state\":\"TESTING\"", "\"state\":\"READY\"", 1)
+                .replace("\"artifact\":\"UNPUBLISHED\"", "\"artifact\":\"SEALED\""),
+            registry().replace("\"pluginId\":\"chikari\"", "\"pluginId\":\"other\""),
+            registry().replace("\"state\":\"TESTING\"},", "\"state\":\"READY\"},"),
+            registry().replace("\"language\":\"en\"", "\"language\":\"ja\""),
+            registry().replace("\"verifiedSha256\":null", "\"verifiedSha256\":\"bad\""),
+        )
+        malformed.forEach { payload ->
+            org.junit.Assert.assertThrows(Exception::class.java) {
+                LnCandidateRegistry.parse(payload)
+            }
+        }
+    }
+
+    @Test
+    fun unpublishedAndInvalidHttpRegistryHaveExplicitFailures() = runBlocking {
+        val http404 = registryForHttp(404, "Not Found")
+        val error = org.junit.Assert.assertThrows(LnCandidateRegistryHttpException::class.java) {
+            runBlocking { http404.fetch() }
+        }
+        assertEquals(404, error.statusCode)
+        val invalidMetadata = registryForHttp(200, "{\"schemaVersion\":1}")
+        org.junit.Assert.assertThrows(Exception::class.java) {
+            runBlocking { invalidMetadata.fetch() }
+        }
+        val oversized = registryForHttp(200, "x".repeat(1024 * 1024 + 1))
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { oversized.fetch() }
+        }
+        val loaded = registryForHttp(200, registry())
+        assertEquals("chikari", loaded.fetch().candidates.single().id)
+    }
+
+    private fun registryForHttp(status: Int, payload: String): LnCandidateRegistry {
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(status)
+                .message("Mock")
+                .body(payload.toResponseBody())
+                .build()
+        }.build()
+        return LnCandidateRegistry(object : Provider<OkHttpClient> {
+            override fun get(): OkHttpClient = client
+        })
     }
 
     @Test
