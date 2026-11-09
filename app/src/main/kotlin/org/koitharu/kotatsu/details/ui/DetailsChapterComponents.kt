@@ -1279,12 +1279,16 @@ private fun ChapterToolbarDivider() {
 	)
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun InlineChapterCard(
 	item: ChapterListItem,
 	visualEffectLevel: VisualEffectLevel,
 	accent: Color,
 	onClick: () -> Unit,
+	onLongClick: () -> Unit = {},
+	isSelectionMode: Boolean = false,
+	isSelected: Boolean = false,
 	onDownloadClick: () -> Unit,
 	onManageClick: () -> Unit,
 	onPersonalClick: () -> Unit,
@@ -1306,7 +1310,9 @@ internal fun InlineChapterCard(
 			VisualEffectLevel.FULL -> MaterialTheme.colorScheme.surfaceContainerHigh
 		}
 	}
-	val rowColor = if (item.isCurrent) {
+	val rowColor = if (isSelected) {
+		accent.copy(alpha = 0.20f)
+	} else if (item.isCurrent) {
 		if (palette.isModern) {
 			palette.selectedSurface.copy(
 				alpha = when (visualEffectLevel) {
@@ -1323,7 +1329,9 @@ internal fun InlineChapterCard(
 	}
 	val mainColor = if (item.isUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
 	val secondaryColor = if (item.isUnread) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline
-	val border = if (palette.isModern) {
+	val border = if (isSelected) {
+		BorderStroke(2.dp, accent)
+	} else if (palette.isModern) {
 		BorderStroke(
 			if (item.isCurrent) 1.dp else if (visualEffectLevel == VisualEffectLevel.FULL) 0.75.dp else 0.5.dp,
 			palette.borderHighlight.copy(
@@ -1365,7 +1373,8 @@ internal fun InlineChapterCard(
 		modifier = Modifier
 			.fillMaxWidth()
 			.padding(horizontal = SCREEN_PADDING, vertical = if (palette.isModern) 2.dp else 4.dp)
-			.clickable(onClick = onClick),
+			.semantics { selected = isSelected }
+			.combinedClickable(onClick = onClick, onLongClick = onLongClick),
 	) {
 		Row(
 			modifier = Modifier.padding(
@@ -1440,6 +1449,14 @@ internal fun InlineChapterCard(
 				}
 			}
 
+			if (isSelectionMode) {
+				Icon(
+					painter = painterResource(if (isSelected) R.drawable.ic_check else R.drawable.ic_select_group),
+					contentDescription = null,
+					tint = if (isSelected) accent else secondaryColor,
+					modifier = Modifier.padding(horizontal = 12.dp).size(22.dp),
+				)
+			} else {
 			val personal = item.personalMetadata.presentation(context.resources.configuration.locales[0])
 			if (personal.hasNote) {
 				IconButton(onClick = onNoteClick) {
@@ -1536,6 +1553,7 @@ internal fun InlineChapterCard(
 						modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
 					)
 				}
+			}
 			}
 		}
 	}
