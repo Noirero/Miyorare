@@ -47,6 +47,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun ChapterReadSwipeCard(
     item: ChapterListItem,
+    selectionActive: Boolean = false,
     onMarkRead: () -> Unit,
     onMarkUnread: () -> Unit,
     content: @Composable () -> Unit,
@@ -81,7 +82,7 @@ internal fun ChapterReadSwipeCard(
         modifier = Modifier
             .fillMaxWidth()
             .semantics {
-                customActions = listOf(
+                customActions = if (selectionActive) emptyList() else listOf(
                     CustomAccessibilityAction(markReadLabel) {
                         if (item.isUnread) { onMarkRead(); true } else false
                     },
@@ -90,8 +91,8 @@ internal fun ChapterReadSwipeCard(
                     },
                 )
             }
-            .pointerInput(item.chapter.id, item.isUnread) {
-                detectHorizontalDragGestures(
+            .pointerInput(item.chapter.id, item.isUnread, selectionActive) {
+                if (!selectionActive) detectHorizontalDragGestures(
                     onDragStart = { dragX = 0f; dragging = true },
                     onDragCancel = { dragging = false; dragX = 0f },
                     onDragEnd = {
