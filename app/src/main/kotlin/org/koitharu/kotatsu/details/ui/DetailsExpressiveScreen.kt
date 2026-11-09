@@ -123,6 +123,8 @@ class DetailsExpressiveActions(
 	val onChapterRangeToggle: (ChapterRange) -> Unit = {},
 	val onChapterMarkRead: (ChapterListItem) -> Unit = {},
 	val onChapterMarkUnread: (ChapterListItem) -> Unit = {},
+	val onChaptersMarkRead: (Set<Long>) -> Unit = {},
+	val onChaptersMarkUnread: (Set<Long>) -> Unit = {},
 	val onReleasePredictionClick: () -> Unit = {},
 )
 
@@ -180,7 +182,18 @@ fun DetailsExpressiveScreen(
 	var titleOverflow by remember(manga?.id) { mutableStateOf(false) }
 	var creatorOverflow by remember(manga?.id) { mutableStateOf(false) }
 	var noteChapter by remember(manga?.id) { mutableStateOf<ChapterListItem?>(null) }
-	BackHandler(enabled = chapterNotesQuery != null, onBack = actions.onChapterNotesSearchExit)
+	var selectedChapterIds by remember(manga?.id) { mutableStateOf(emptySet<Long>()) }
+	val selectableChapterIds = remember(chapters) { chapters.mapTo(LinkedHashSet()) { it.chapter.id } }
+	LaunchedEffect(selectableChapterIds) {
+		selectedChapterIds = selectedChapterIds.intersect(selectableChapterIds)
+	}
+	BackHandler(enabled = chapterNotesQuery != null && selectedChapterIds.isEmpty(), onBack = actions.onChapterNotesSearchExit)
+	BackHandler(enabled = selectedChapterIds.isNotEmpty()) { selectedChapterIds = emptySet() }
+	val onChapterTap: (ChapterListItem) -> Unit = { chapter ->
+		val id = chapter.chapter.id
+		if (selectedChapterIds.isEmpty()) actions.onChapterClick(chapter)
+		else selectedChapterIds = if (id in selectedChapterIds) selectedChapterIds - id else selectedChapterIds + id
+	}
 	var showRelatedSuggestions by rememberBooleanPref(
 		AppSettings.KEY_RELATED_MANGA,
 		relatedDiscoveryEnabled,
@@ -435,12 +448,16 @@ fun DetailsExpressiveScreen(
 										item = chapter,
 										onMarkRead = { actions.onChapterMarkRead(chapter) },
 										onMarkUnread = { actions.onChapterMarkUnread(chapter) },
+									selectionActive = selectedChapterIds.isNotEmpty(),
 									) {
 										InlineChapterCard(
 										item = chapter,
 										visualEffectLevel = visualEffectLevel,
 										accent = accentColor,
-										onClick = { actions.onChapterClick(chapter) },
+										onClick = { onChapterTap(chapter) },
+									onLongClick = { selectedChapterIds = selectedChapterIds + chapter.chapter.id },
+									isSelectionMode = selectedChapterIds.isNotEmpty(),
+									isSelected = chapter.chapter.id in selectedChapterIds,
 										onDownloadClick = { actions.onChapterDownloadClick(chapter) },
 										onManageClick = actions.onChaptersClick,
 										onPersonalClick = { actions.onChapterPersonalClick(chapter) },
@@ -458,12 +475,16 @@ fun DetailsExpressiveScreen(
 								item = chapter,
 								onMarkRead = { actions.onChapterMarkRead(chapter) },
 								onMarkUnread = { actions.onChapterMarkUnread(chapter) },
+									selectionActive = selectedChapterIds.isNotEmpty(),
 							) {
 								InlineChapterCard(
 								item = chapter,
 								visualEffectLevel = visualEffectLevel,
 								accent = accentColor,
-								onClick = { actions.onChapterClick(chapter) },
+								onClick = { onChapterTap(chapter) },
+									onLongClick = { selectedChapterIds = selectedChapterIds + chapter.chapter.id },
+									isSelectionMode = selectedChapterIds.isNotEmpty(),
+									isSelected = chapter.chapter.id in selectedChapterIds,
 								onDownloadClick = { actions.onChapterDownloadClick(chapter) },
 								onManageClick = actions.onChaptersClick,
 								onPersonalClick = { actions.onChapterPersonalClick(chapter) },
@@ -583,11 +604,47 @@ fun DetailsExpressiveScreen(
 				}
 
 				item(contentType = "bottom-spacer") {
-					Spacer(Modifier.height(bottomContentPadding + 28.dp))
+					Spacer(Modifier.height(bottomContentPadding + if (selectedChapterIds.isNotEmpty()) 128.dp else 28.dp))
 				}
 			}
 
-			if (galleryAvailable) {
+			if (selectedChapterIds.isNotEmpty() && !gallerySelected) {
+				val canMarkRead = chapters.any { it.chapter.id in selectedChapterIds && it.isUnread }
+				val canMarkUnread = chapters.any { it.chapter.id in selectedChapterIds && !it.isUnread }
+				Surface(
+					modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+						.padding(horizontal = 12.dp, vertical = 8.dp)
+						.padding(bottom = bottomContentPadding),
+					shape = RoundedCornerShape(20.dp),
+					color = scheme.surfaceContainerHigh,
+					shadowElevation = 8.dp,
+				) {
+					Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+						Row(verticalAlignment = Alignment.CenterVertically) {
+							TextButton(onClick = { selectedChapterIds = emptySet() }) { Text("✕") }
+							Text(selectedChapterIds.size.toString(), style = MaterialTheme.typography.titleMedium)
+							Spacer(Modifier.weight(1f))
+							TextButton(onClick = { selectedChapterIds = selectableChapterIds }) {
+								Text(stringResource(android.R.string.selectAll))
+							}
+						}
+						Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+							TextButton(
+								onClick = { actions.onChaptersMarkRead(selectedChapterIds); selectedChapterIds = emptySet() },
+								enabled = canMarkRead,
+								modifier = Modifier.weight(1f),
+							) { Text(stringResource(R.string.mark_as_read), maxLines = 2) }
+							TextButton(
+								onClick = { actions.onChaptersMarkUnread(selectedChapterIds); selectedChapterIds = emptySet() },
+								enabled = canMarkUnread,
+								modifier = Modifier.weight(1f),
+							) { Text(stringResource(R.string.mark_as_unread), maxLines = 2) }
+						}
+					}
+				}
+			}
+
+			if (galleryAvailable && selectedChapterIds.isEmpty()) {
 				Surface(
 					modifier = Modifier
 						.align(Alignment.BottomCenter)
