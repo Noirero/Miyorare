@@ -13,6 +13,14 @@ internal data class NovelTranslationDisplaySegment(
 	val translatedText: String,
 )
 
+/** Half-open display ranges for paired source and derived translation text. */
+internal data class NovelBilingualPairRange(
+	val originalStart: Int,
+	val originalEnd: Int,
+	val translationStart: Int,
+	val translationEnd: Int,
+)
+
 /**
  * Pure source/display projection helpers shared by Reader rendering, navigation and selection.
  * Translation text is derived presentation; every mapping is anchored in source offsets.
@@ -27,6 +35,30 @@ internal object NovelTranslationProjection {
 		NovelTranslationDisplayMode.ORIGINAL -> original.toString()
 		NovelTranslationDisplayMode.BILINGUAL -> buildBilingual(original, normalized(original.length, segments))
 		NovelTranslationDisplayMode.TRANSLATED_ONLY -> buildTranslatedOnly(original, normalized(original.length, segments))
+	}
+
+	/**
+	 * Styling-only geometry. The surrounding newlines and source-offset projection are untouched,
+	 * including when one source segment crosses a page boundary.
+	 */
+	fun bilingualPairRanges(
+		sourceLength: Int,
+		segments: List<NovelTranslationDisplaySegment>,
+	): List<NovelBilingualPairRange> {
+		var insertionDelta = 0
+		return normalized(sourceLength, segments).map { item ->
+			val inserted = bilingualBlock(item)
+			val originalStart = item.start + insertionDelta
+			val originalEnd = item.end + insertionDelta
+			val range = NovelBilingualPairRange(
+				originalStart = originalStart,
+				originalEnd = originalEnd,
+				translationStart = originalEnd + 1,
+				translationEnd = originalEnd + inserted.length - 1,
+			)
+			insertionDelta += inserted.length
+			range
+		}
 	}
 
 	fun sourceToDisplayOffset(

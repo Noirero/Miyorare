@@ -34,6 +34,21 @@ class NovelTranslationProjectionTest {
 		)
 	}
 
+
+	@Test
+	fun `bilingual pairs expose exact half-open source and translation ranges without new text`() {
+		val mode = NovelTranslationDisplayMode.BILINGUAL
+		val text = NovelTranslationProjection.displayText(original, segments, mode)
+		val pairs = NovelTranslationProjection.bilingualPairRanges(original.length, segments)
+		assertEquals(2, pairs.size)
+		assertEquals("Hello", text.substring(pairs[0].originalStart, pairs[0].originalEnd))
+		assertEquals("Halo", text.substring(pairs[0].translationStart, pairs[0].translationEnd))
+		assertEquals("world", text.substring(pairs[1].originalStart, pairs[1].originalEnd))
+		assertEquals("dunia", text.substring(pairs[1].translationStart, pairs[1].translationEnd))
+		assertEquals(5, NovelTranslationProjection.displayToSourceOffset(original.length, segments, mode, pairs[0].translationStart))
+		assertEquals(11, NovelTranslationProjection.sourceToDisplayOffset(original.length, segments, mode, 5, afterBoundary = true))
+	}
+
 	@Test
 	fun `translated only projection replaces source ranges and maps variable lengths`() {
 		val mode = NovelTranslationDisplayMode.TRANSLATED_ONLY

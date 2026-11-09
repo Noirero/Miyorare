@@ -3,6 +3,10 @@
     <string name="novel_translation_engine">Mesin terjemahan</string>
     <string name="novel_translation_auto_compact">Terjemah otomatis</string>
     <string name="novel_translation_auto_compact_summary">Saat bab dibuka</string>
+    <string name="novel_translation_auto_off">Nonaktif</string>
+    <string name="novel_translation_auto_chapter">Saat bab dibuka</string>
+    <string name="novel_translation_auto_page">Saat halaman dibuka</string>
+    <string name="novel_translation_auto_page_requires_paged">Terjemah otomatis per halaman tersedia dalam mode halaman LTR/RTL.</string>
     <string name="novel_translation_context_compact_summary">Teks sekitar</string>
     <string name="novel_translation_sheet_subtitle">Terjemahkan halaman atau bab sesuai kebutuhan.</string>
     <string name="novel_translation_segment_translated">Terjemahan</string>
@@ -79,7 +83,7 @@
     <string name="novel_translation_invalid_pair">Bahasa sumber dan tujuan harus berbeda</string>
     <string name="novel_translation_privacy_note">Saat Terjemahan AI digunakan, teks terpilih dan konteks opsional dikirim ke penyedia yang dipilih. Miyorare tidak mengirimkannya saat Terjemahan AI dimatikan.</string>
     <string name="novel_translation_auto_translate_this_novel">Terjemahkan novel ini secara otomatis</string>
-    <string name="novel_translation_auto_ai_note">Terjemahan otomatis mengirim setiap bab yang kamu buka ke %1$s dan dapat memakai kuota atau penagihan penyedia.</string>
+    <string name="novel_translation_auto_ai_note">Terjemahan otomatis mengirim teks bab/halaman yang dibuka ke %1$s dan dapat memakai kuota atau penagihan penyedia.</string>
     <string name="novel_translation_auto_requires_ai_setup">Konfigurasikan penyedia AI yang dipilih sebelum mengaktifkan terjemahan otomatis.</string>
     <string name="novel_translation_auto_disabled_config">Terjemahan otomatis dimatikan karena penyedia AI yang dipilih tidak lagi terkonfigurasi.</string>
     <string name="novel_translation_auto_failed">Terjemahan otomatis gagal; teks asli tetap ditampilkan.</string>
