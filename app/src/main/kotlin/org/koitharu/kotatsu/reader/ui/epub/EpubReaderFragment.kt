@@ -1982,12 +1982,6 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val subdued = ColorUtils.blendARGB(foregroundColor, backgroundColor, 0.22f)
 		val accent = requireContext().getThemeColor(androidx.appcompat.R.attr.colorPrimary, foregroundColor)
 		val density = resources.displayMetrics.density
-		val accentSpan = BilingualAccentLineSpan(
-			color = accent,
-			widthPx = 2f * density,
-			insetPx = 8f * density,
-			rightAligned = isRtlPagedMode || effectiveTextAlign == "right" || effectiveTextAlign == "end",
-		)
 		pairs.forEach { pair ->
 			val originalStart = (pair.originalStart - displayStart).coerceIn(0, text.length)
 			val originalEnd = (pair.originalEnd - displayStart).coerceIn(0, text.length)
@@ -1999,7 +1993,16 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val translationEnd = (pair.translationEnd - displayStart).coerceIn(0, text.length)
 			if (translationStart < translationEnd) {
 				text.setSpan(ForegroundColorSpan(foregroundColor), translationStart, translationEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-				text.setSpan(accentSpan, translationStart, translationEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+				// Each decorated range needs its own span instance: setSpan moves an existing one.
+				text.setSpan(
+					BilingualAccentLineSpan(
+						color = accent,
+						widthPx = 2f * density,
+						insetPx = 8f * density,
+						rightAligned = isRtlPagedMode || effectiveTextAlign == "right" || effectiveTextAlign == "end",
+					),
+					translationStart, translationEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+				)
 			}
 		}
 	}
