@@ -6,6 +6,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -70,7 +71,7 @@ class NovelOnlineCjkQualityABBenchmarkTest {
                             style = NovelTranslationStyle.NATURAL,
                             contextAware = false,
                         ))
-                        translated.append(result)
+                        translated.append(preserveBoundaryWhitespace(span.text, result))
                         requests++
                         // A conservative spacing rule for both arms (not burst requests).
                         delay(750L)
@@ -82,7 +83,7 @@ class NovelOnlineCjkQualityABBenchmarkTest {
                         put("elapsedMs", millis)
                         put("requestCount", spans.size)
                         put("segmentEndOffsets", buildJsonArray {
-                            spans.forEach { add(it.end) }
+                            spans.forEach { add(JsonPrimitive(it.end)) }
                         })
                         put("cjkSentenceBoundaryCount", spans.dropLast(1).count { span ->
                             span.text.last() in charArrayOf('。', '！', '？', '」', '』', '”', '.')
@@ -139,6 +140,18 @@ class NovelOnlineCjkQualityABBenchmarkTest {
         }
         if (error != null) throw AssertionError("Live translation A/B is not comparable: " + error)
         assertEquals(24, blind.size)
+    }
+
+    /** The coordinator applies identical source-edge whitespace preservation to every provider result. */
+    private fun preserveBoundaryWhitespace(source: String, translated: String): String {
+        val first = source.indexOfFirst { !it.isWhitespace() }
+        if (first < 0) return source
+        val last = source.indexOfLast { !it.isWhitespace() }
+        return buildString {
+            append(source, 0, first)
+            append(translated.trim())
+            append(source, last + 1, source.length)
+        }
     }
 
     private companion object {
