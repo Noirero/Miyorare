@@ -117,12 +117,12 @@ class LnCandidateRegistry @Inject constructor(
         /** Public for targeted JVM tests; untrusted metadata never authorizes plugin execution. */
         fun parse(payload: String): LnCandidateSnapshot {
             val root = Json.parseToJsonElement(payload).jsonObject
-            require(root.int("schemaVersion") == 1)
+            require(root.getValue("schemaVersion").toString() == "1") { "Unexpected candidate schema version" }
             require(root.text("kind") == "MIYORARE_LNREADER_NOVEL_CANDIDATES")
             val scope = root.getValue("scope").jsonObject
             require(scope.getValue("languages").jsonArray.map { it.jsonPrimitive.content } == listOf("en", "id"))
             require(scope.text("installPolicy") == "EXPLICIT_USER_ACTION")
-            require(scope.getValue("unverifiedInstallAllowed").jsonPrimitive.content == "false")
+            require(scope.getValue("unverifiedInstallAllowed").toString() == "false") { "Unverified installs must be forbidden" }
             val upstream = root.getValue("upstream").jsonObject
             require(upstream.text("repository") == "LNReader/lnreader-plugins")
             require(upstream.text("branch") == "plugins/v3.0.0")
@@ -135,8 +135,11 @@ class LnCandidateRegistry @Inject constructor(
             ) { "Candidate registry index provenance mismatch" }
             val pilot = root.getValue("pilot").jsonObject
             require(pilot.text("pluginId") == "chikari")
-            val pilotState = pilot.text("state")
-            require(pilotState in STATES)
+            require(pilot.text("state") == "TESTING") { "Chikari pilot cannot claim production readiness" }
+            val pilotEvidence = pilot.getValue("evidence").jsonObject
+            require(pilotEvidence.text("api") == "PASS" && pilotEvidence.text("android") == "UNKNOWN") {
+                "Pilot evidence must not claim Android validation"
+            }
             val items = root.getValue("candidates").jsonArray
             require(items.isNotEmpty() && items.size <= 1000)
             val ids = HashSet<String>(items.size)
@@ -202,9 +205,9 @@ class LnCandidateRegistry @Inject constructor(
                     androidCheck = android,
                 )
             }
-            require(candidates.count { it.id == "chikari" && it.state == pilotState } == 1) {
-                "Candidate registry pilot identity/state mismatch"
-            }
+            require(candidates.count {
+                it.id == "chikari" && it.state == "TESTING" && it.apiCheck == "PASS"
+            } == 1) { "Chikari pilot identity, state or API evidence mismatch" }
             // No raw JS URL or candidate metadata is used as an installation authority.
             return LnCandidateSnapshot(commit, candidates.sortedWith(compareBy({ it.language }, { it.name.lowercase() })))
         }
@@ -213,6 +216,5 @@ class LnCandidateRegistry @Inject constructor(
             require(it.isNotBlank()) { "Missing candidate metadata: $key" }
         }
 
-        private fun JsonObject.int(key: String) = text(key).toInt()
     }
 }
