@@ -1,19 +1,28 @@
 package org.koitharu.kotatsu.settings.sources
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.koitharu.kotatsu.core.network.BaseHttpClient
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /** Read-only Source Pack candidate inventory. Never an executable plugin installer. */
 data class LnCandidate(
@@ -33,6 +42,20 @@ data class LnCandidateSnapshot(
     val candidates: List<LnCandidate>,
 )
 
+/** Pure, cheap read-only filtering; the LazyColumn owns viewport virtualization. */
+internal fun filterLnCandidates(candidates: List<LnCandidate>, query: String): List<LnCandidate> {
+    val normalized = query.trim().lowercase()
+    if (normalized.isEmpty()) return candidates
+    return candidates.filter {
+        it.name.lowercase().contains(normalized) ||
+            it.id.lowercase().contains(normalized) ||
+            it.site.lowercase().contains(normalized)
+    }
+}
+
+internal class LnCandidateRegistryHttpException(val statusCode: Int) :
+    IOException("Official candidate registry returned HTTP $statusCode")
+
 @Singleton
 class LnCandidateRegistry @Inject constructor(
     @BaseHttpClient private val clientProvider: Provider<OkHttpClient>,
@@ -42,8 +65,8 @@ class LnCandidateRegistry @Inject constructor(
         val request = Request.Builder().url(CANDIDATE_URL).build()
         // The first Source Packs visit may occur before the network singleton has been built.
         // Construct it on the IO dispatcher, never during Fragment field injection.
-        val bytes = clientProvider.get().newCall(request).execute().use { response ->
-            require(response.isSuccessful) { "Candidate registry HTTP " + response.code }
+        val bytes = clientProvider.get().newCall(request).awaitResponse().use { response ->
+            if (!response.isSuccessful) throw LnCandidateRegistryHttpException(response.code)
             val declaredSize = response.body.contentLength()
             require(declaredSize < 0 || declaredSize in 1..MAX_REGISTRY_BYTES) {
                 "Candidate registry exceeds safety limit"
@@ -52,6 +75,7 @@ class LnCandidateRegistry @Inject constructor(
             response.body.byteStream().use { input ->
                 val chunk = ByteArray(DEFAULT_BUFFER_SIZE)
                 while (true) {
+                    currentCoroutineContext().ensureActive()
                     val n = input.read(chunk)
                     if (n < 0) break
                     if (n == 0) continue
@@ -65,6 +89,18 @@ class LnCandidateRegistry @Inject constructor(
             output.toByteArray()
         }
         parse(bytes.toString(Charsets.UTF_8))
+    }
+
+    private suspend fun Call.awaitResponse(): Response = suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { cancel() }
+        enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (continuation.isActive) continuation.resumeWithException(e)
+            }
+            override fun onResponse(call: Call, response: Response) {
+                if (continuation.isActive) continuation.resume(response) else response.close()
+            }
+        })
     }
 
     companion object {
@@ -97,6 +133,10 @@ class LnCandidateRegistry @Inject constructor(
                 "https://raw.githubusercontent.com/LNReader/lnreader-plugins/" +
                     commit + "/.dist/plugins.min.json"
             ) { "Candidate registry index provenance mismatch" }
+            val pilot = root.getValue("pilot").jsonObject
+            require(pilot.text("pluginId") == "chikari")
+            val pilotState = pilot.text("state")
+            require(pilotState in STATES)
             val items = root.getValue("candidates").jsonArray
             require(items.isNotEmpty() && items.size <= 1000)
             val ids = HashSet<String>(items.size)
@@ -161,6 +201,9 @@ class LnCandidateRegistry @Inject constructor(
                     runtimeCheck = runtime,
                     androidCheck = android,
                 )
+            }
+            require(candidates.count { it.id == "chikari" && it.state == pilotState } == 1) {
+                "Candidate registry pilot identity/state mismatch"
             }
             // No raw JS URL or candidate metadata is used as an installation authority.
             return LnCandidateSnapshot(commit, candidates.sortedWith(compareBy({ it.language }, { it.name.lowercase() })))
