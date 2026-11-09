@@ -139,7 +139,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 					plugins = plugins,
 					novelPlugin = chikariNovel,
 					chikariVisible = chikariVisible,
-					onNovelVisible = ::setChikariVisible,
+					onNovelVisible = ::updateChikariVisibility,
 					imageLoader = imageLoader,
 					busy = busy,
 					latestTag = latestTag,
@@ -156,7 +156,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	}
 
 	/** Visibility is independent from deleting the plugin or its library/history records. */
-	private fun setChikariVisible(visible: Boolean) {
+	private fun updateChikariVisibility(visible: Boolean) {
 		if (busy) return
 		val id = MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_ID
 		val current = appSettings.lnHiddenPlugins
