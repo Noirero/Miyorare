@@ -12,6 +12,7 @@ import okhttp3.Request
 import org.koitharu.kotatsu.core.network.BaseHttpClient
 import java.io.ByteArrayOutputStream
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 /** Read-only Source Pack candidate inventory. Never an executable plugin installer. */
@@ -34,12 +35,14 @@ data class LnCandidateSnapshot(
 
 @Singleton
 class LnCandidateRegistry @Inject constructor(
-    @BaseHttpClient private val client: OkHttpClient,
+    @BaseHttpClient private val clientProvider: Provider<OkHttpClient>,
 ) {
     /** Fetch only when the user enters/refreshes the Source Packs candidate screen. */
     suspend fun fetch(): LnCandidateSnapshot = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(CANDIDATE_URL).build()
-        val bytes = client.newCall(request).execute().use { response ->
+        // The first Source Packs visit may occur before the network singleton has been built.
+        // Construct it on the IO dispatcher, never during Fragment field injection.
+        val bytes = clientProvider.get().newCall(request).execute().use { response ->
             require(response.isSuccessful) { "Candidate registry HTTP " + response.code }
             val declaredSize = response.body.contentLength()
             require(declaredSize < 0 || declaredSize in 1..MAX_REGISTRY_BYTES) {
