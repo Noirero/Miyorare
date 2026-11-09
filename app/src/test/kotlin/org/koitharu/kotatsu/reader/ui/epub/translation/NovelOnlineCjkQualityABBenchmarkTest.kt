@@ -61,7 +61,7 @@ class NovelOnlineCjkQualityABBenchmarkTest {
                 for (variant in order) {
                     val spans = if (variant == "legacy") original else candidate
                     val startTime = System.nanoTime()
-                    val translated = StringBuilder()
+                    val translatedSegments = ArrayList<String>(spans.size)
                     for (span in spans) {
                         assertTrue(span.text.length <= MAX_CHARS)
                         val result = engine.translate(NovelTranslationRequest(
@@ -71,11 +71,17 @@ class NovelOnlineCjkQualityABBenchmarkTest {
                             style = NovelTranslationStyle.NATURAL,
                             contextAware = false,
                         ))
-                        translated.append(preserveBoundaryWhitespace(span.text, result))
+                        translatedSegments += preserveBoundaryWhitespace(span.text, result)
                         requests++
                         // A conservative spacing rule for both arms (not burst requests).
                         delay(750L)
                     }
+                    val translated = reconstructSegmentResults(
+                        spans = spans,
+                        results = translatedSegments,
+                        sourceLanguage = language,
+                        candidateOnly = variant == "candidate",
+                    )
                     val millis = (System.nanoTime() - startTime) / 1_000_000
                     elapsedTotal += millis
                     outcomes[variant] = buildJsonObject {
@@ -152,6 +158,97 @@ class NovelOnlineCjkQualityABBenchmarkTest {
             append(translated.trim())
             append(source, last + 1, source.length)
         }
+    }
+
+
+    /**
+     * Experiment-only reconstruction; the production Coordinator is NOT changed.
+     * The baseline keeps its historical no-separator behavior. For CJK candidate
+     * splits ending at an explicit sentence mark, add an Indonesian sentence space
+     * only if the provider outputs themselves have no boundary whitespace.
+     */
+    private fun reconstructSegmentResults(
+        spans: List<NovelTranslationSegment>,
+        results: List<String>,
+        sourceLanguage: String,
+        candidateOnly: Boolean,
+    ): String {
+        require(spans.size == results.size)
+        return buildString {
+            for (index in spans.indices) {
+                if (candidateOnly && index > 0 && shouldBridgeIndonesianSentence(
+                    previousSource = spans[index - 1].text,
+                    nextSource = spans[index].text,
+                    previousTranslated = results[index - 1],
+                    nextTranslated = results[index],
+                    sourceLanguage = sourceLanguage,
+                )) {
+                    append(' ')
+                }
+                append(results[index])
+            }
+        }
+    }
+
+    private fun shouldBridgeIndonesianSentence(
+        previousSource: String,
+        nextSource: String,
+        previousTranslated: String,
+        nextTranslated: String,
+        sourceLanguage: String,
+    ): Boolean {
+        if (sourceLanguage !in setOf("ja", "zh-CN", "ko")) return false
+        if (previousSource.isEmpty() || nextSource.isEmpty() ||
+            previousTranslated.isEmpty() || nextTranslated.isEmpty()) return false
+        if (previousSource.last().isWhitespace() || nextSource.first().isWhitespace()) return false
+        if (previousTranslated.last().isWhitespace() || nextTranslated.first().isWhitespace()) return false
+
+        // Skip close-quotation marks only to inspect whether the source split
+        // was *actually* at the end of a sentence, not in the middle of a word.
+        val sourceTerminal = previousSource.trimEnd('」', '』', '”', '’', '】', '）', '〉', '》')
+            .lastOrNull() ?: return false
+        if (sourceTerminal !in "。！？.!?") return false
+        if (previousTranslated.last() !in ".!?\"”") return false
+        val next = nextTranslated.first()
+        return next in 'A'..'Z' || next in 'a'..'z' || next in "\"“‘"
+    }
+
+    @Test
+    fun candidateOnlyReconstructionBridgesConfirmedCjkSentences() {
+        for ((source, left, right) in listOf(
+            Triple("ja", "彼は帰った。", "そして眠った。"),
+            Triple("zh-CN", "她离开了。", "然后走了。"),
+            Triple("ko", "그는 떠났다.", "그리고 돌아왔다."),
+        )) {
+            val spans = listOf(
+                NovelTranslationSegment(0, left.length, left),
+                NovelTranslationSegment(left.length, left.length + right.length, right),
+            )
+            val outputs = listOf("Dia pulang.", "Kemudian tidur.")
+            assertEquals("Dia pulang.Kemudian tidur.",
+                reconstructSegmentResults(spans, outputs, source, candidateOnly = false))
+            assertEquals("Dia pulang. Kemudian tidur.",
+                reconstructSegmentResults(spans, outputs, source, candidateOnly = true))
+        }
+    }
+
+    @Test
+    fun candidateOnlyReconstructionDoesNotNormalizeParagraphsWordsOrOtherLanguages() {
+        fun join(left: String, right: String, outputLeft: String, outputRight: String, lang: String) =
+            reconstructSegmentResults(listOf(
+                NovelTranslationSegment(0, left.length, left),
+                NovelTranslationSegment(left.length, left.length + right.length, right),
+            ), listOf(outputLeft, outputRight), lang, candidateOnly = true)
+
+        assertEquals("Paragraf satu.\n\nParagraf dua.",
+            join("最初の段落。\n\n", "次の段落。", "Paragraf satu.\n\n", "Paragraf dua.", "ja"))
+        assertEquals("Diarumah", join("途中", "の言葉", "Dia", "rumah", "ja"))
+        assertEquals("Dia berkata.;", join("彼は言った。", "次", "Dia berkata.", ";", "ja"))
+        assertEquals("One.Two.", join("One.", "Two.", "One.", "Two.", "en"))
+        assertEquals("Dia pulang. Kemudian tidur.",
+            join("彼は帰った。", "そして眠った。", "Dia pulang. ", "Kemudian tidur.", "ja"))
+        assertEquals("Dia pulang.\nKemudian tidur.",
+            join("彼は帰った。\n", "そして眠った。", "Dia pulang.\n", "Kemudian tidur.", "ja"))
     }
 
     private companion object {
