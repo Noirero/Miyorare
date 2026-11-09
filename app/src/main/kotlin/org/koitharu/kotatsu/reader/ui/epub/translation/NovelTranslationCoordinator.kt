@@ -245,10 +245,20 @@ object NovelTranslationSegmenter {
 			var end = hardEnd
 			if (end < plain.length) {
 				val legacy = preferredBreak(plain, start, hardEnd, maxChars)
+				val paragraphFloor = start + maxChars / 2
+				val crlfParagraph = plain.lastIndexOf("\r\n\r\n", hardEnd - 4)
+					.takeIf { it >= paragraphFloor }?.plus(4)
+				val unicodeParagraph = plain.lastIndexOf('\u2029', hardEnd - 1)
+					.takeIf { it >= paragraphFloor }?.plus(1)
 				val cjk = cjkSentenceBreak(plain, start, hardEnd, maxChars)
 				// Existing paragraph and line priority is retained. A complete CJK
 				// sentence may outrank a space-only fallback, never a newline.
-				end = if (cjk != null && (legacy == hardEnd || plain[legacy - 1] !in "\r\n")) cjk else legacy
+				end = when {
+					crlfParagraph != null -> crlfParagraph
+					unicodeParagraph != null -> unicodeParagraph
+					cjk != null && (legacy == hardEnd || plain[legacy - 1] !in "\r\n") -> cjk
+					else -> legacy
+				}
 				end = avoidComplexUnicodeSplit(plain, start, end)
 			}
 			if (end <= start) {
@@ -272,7 +282,7 @@ object NovelTranslationSegmenter {
 			// Ending a segment before a closing quotation mark makes dialog worse.
 			while (after < hardEnd && text[after] in CJK_CLOSING_QUOTES) after++
 			if (after <= hardEnd && after > start && after < text.length &&
-				(text[after] !in CJK_CLOSING_QUOTES || after == hardEnd)
+				text[after] !in CJK_CLOSING_QUOTES
 			) return after
 		}
 		return null
