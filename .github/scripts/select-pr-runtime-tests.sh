@@ -122,14 +122,13 @@ add_backup_suite() {
   MAPPED=true
 }
 
-add_onboarding_suite() {
-  add_class org.koitharu.kotatsu.main.ui.welcome.OnboardingAppearanceIntegrationTest
+add_ln_candidate_ui_suite() {
+  add_class org.koitharu.kotatsu.settings.sources.LnCandidateRegistryScreenTest
   MAPPED=true
 }
 
-add_ln_candidate_ui_suite() {
-  # The read-only 198-row candidate browser has an isolated Android Compose test.
-  add_class org.koitharu.kotatsu.settings.sources.LnCandidateRegistryScreenTest
+add_onboarding_suite() {
+  add_class org.koitharu.kotatsu.main.ui.welcome.OnboardingAppearanceIntegrationTest
   MAPPED=true
 }
 
@@ -197,7 +196,7 @@ add_full_suite() {
     add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   fi
 
-  # The candidate screen is optional until its app-side PR reaches Amain2.
+  # Optional until the LNReader candidate screen reaches the integration branch.
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/sources/LnCandidateRegistryScreenTest.kt ]]; then
     add_ln_candidate_ui_suite
   fi
@@ -225,6 +224,7 @@ plan_path() {
   case "$path" in
     app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/LnCandidateRegistry*.kt|app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/sources/LnCandidateRegistryScreenTest.kt)
       add_ln_candidate_ui_suite ;;
+
     app/src/main/kotlin/org/koitharu/kotatsu/main/ui/welcome/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/welcome/*)
       add_onboarding_suite ;;
 
@@ -539,7 +539,14 @@ self_test() {
   grep -q 'OnboardingAppearanceIntegrationTest' <<<"$out"
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/LnCandidateRegistrySettingsFragment.kt')"
-  grep -q '^mode=targeted  grep -q 'DiscoveryCatalogUiTest' <<<"$out"
+  grep -q '^mode=targeted$' <<<"$out"
+  grep -q 'LnCandidateRegistryScreenTest' <<<"$out"
+  ! grep -q 'CategorySetsUiTest' <<<"$out"
+  out="$(plan_from_paths false 'app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/sources/LnCandidateRegistryScreenTest.kt')"
+  grep -q 'LnCandidateRegistryScreenTest' <<<"$out"
+
+  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
+  grep -q 'DiscoveryCatalogUiTest' <<<"$out"
   grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
   ! grep -q 'CategorySetsUiTest' <<<"$out"
 
@@ -573,163 +580,6 @@ self_test() {
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/sources/LnCandidateRegistryScreenTest.kt ]]; then
     grep -q 'LnCandidateRegistryScreenTest' <<<"$out"
   fi
-  grep -q '^run_runtime_isolation=true
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  classify_self_test
-  policy_self_test
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-if [[ "$POLICY" == true ]]; then
-  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}" "${LABEL_OWNER:?}"
-  input="$(cat)"
-  run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
-  full="$(sed -n 's/^full=//p' <<< "$input")"
-  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME" "$LABEL_OWNER"
-  exit 0
-fi
-mapfile -t PATHS
-if [[ "$CLASSIFY" == true ]]; then
-  classify_paths "${PATHS[@]}"
-  exit 0
-fi
-plan_from_paths "$FULL" "${PATHS[@]}"
- <<<"$out"
-  grep -q 'LnCandidateRegistryScreenTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/sources/LnCandidateRegistryScreenTest.kt')"
-  grep -q 'LnCandidateRegistryScreenTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
-  grep -q 'DiscoveryCatalogUiTest' <<<"$out"
-  grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"
-  grep -q 'LocalBackupIdentityTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/Foo.kt')"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-  grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/ReaderCustomTint.kt')"
-  grep -q 'ReaderCustomTintRuntimeTest' <<<"$out"
-
-  out="$(plan_from_paths false 'kotatsu-runtime/src/main/kotlin/example/Foo.kt')"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-
-  if plan_from_paths false 'gradle/libs.versions.toml' >/dev/null 2>&1; then
-    echo 'Expected shared build infrastructure to require full runtime.' >&2
-    return 1
-  fi
-  if plan_from_paths false 'README.md' >/dev/null 2>&1; then
-    echo 'Expected an unmapped runtime request to fail closed.' >&2
-    return 1
-  fi
-
-  out="$(plan_from_paths true 'README.md')"
-  grep -q '^mode=full$' <<<"$out"
-  grep -q 'CategorySetsUiTest' <<<"$out"
-  grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  classify_self_test
-  policy_self_test
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-if [[ "$POLICY" == true ]]; then
-  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}" "${LABEL_OWNER:?}"
-  input="$(cat)"
-  run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
-  full="$(sed -n 's/^full=//p' <<< "$input")"
-  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME" "$LABEL_OWNER"
-  exit 0
-fi
-mapfile -t PATHS
-if [[ "$CLASSIFY" == true ]]; then
-  classify_paths "${PATHS[@]}"
-  exit 0
-fi
-plan_from_paths "$FULL" "${PATHS[@]}"
- <<<"$out"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-
-  classify_self_test
-  policy_self_test
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-if [[ "$POLICY" == true ]]; then
-  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}" "${LABEL_OWNER:?}"
-  input="$(cat)"
-  run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
-  full="$(sed -n 's/^full=//p' <<< "$input")"
-  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME" "$LABEL_OWNER"
-  exit 0
-fi
-mapfile -t PATHS
-if [[ "$CLASSIFY" == true ]]; then
-  classify_paths "${PATHS[@]}"
-  exit 0
-fi
-plan_from_paths "$FULL" "${PATHS[@]}"
- <<<"$out"
-  grep -q 'LnCandidateRegistryScreenTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/sources/LnCandidateRegistryScreenTest.kt')"
-  grep -q 'LnCandidateRegistryScreenTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
-  grep -q 'DiscoveryCatalogUiTest' <<<"$out"
-  grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"
-  grep -q 'LocalBackupIdentityTest' <<<"$out"
-  ! grep -q 'CategorySetsUiTest' <<<"$out"
-
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/Foo.kt')"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-  grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
-  out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/ReaderCustomTint.kt')"
-  grep -q 'ReaderCustomTintRuntimeTest' <<<"$out"
-
-  out="$(plan_from_paths false 'kotatsu-runtime/src/main/kotlin/example/Foo.kt')"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-
-  if plan_from_paths false 'gradle/libs.versions.toml' >/dev/null 2>&1; then
-    echo 'Expected shared build infrastructure to require full runtime.' >&2
-    return 1
-  fi
-  if plan_from_paths false 'README.md' >/dev/null 2>&1; then
-    echo 'Expected an unmapped runtime request to fail closed.' >&2
-    return 1
-  fi
-
-  out="$(plan_from_paths true 'README.md')"
-  grep -q '^mode=full$' <<<"$out"
-  grep -q 'CategorySetsUiTest' <<<"$out"
-  grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
   grep -q '^run_runtime_isolation=true$' <<<"$out"
   grep -q '^run_migration_persistence=true$' <<<"$out"
 
