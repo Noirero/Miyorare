@@ -7,7 +7,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -69,9 +69,13 @@ class LnCandidateRegistryScreenTest {
         compose.onNodeWithTag("ln-candidates-list").assertExists()
         compose.onNodeWithTag("ln-candidates-section:en").assertExists()
         compose.onNodeWithTag("ln-candidates-list")
+            .performScrollToNode(hasTestTag("ln-candidates-section:id"))
+        compose.onNodeWithTag("ln-candidates-section:id").assertIsDisplayed()
+        compose.onNodeWithTag("ln-candidates-list")
             .performScrollToNode(hasTestTag("ln-candidate:id11"))
         compose.onNodeWithTag("ln-candidate:id11").assertIsDisplayed()
-        compose.onNodeWithTag("ln-candidates-section:id").assertExists()
+        compose.onNodeWithTag("ln-candidates-list")
+            .performScrollToNode(hasTestTag("ln-candidates-search"))
         compose.onNodeWithTag("ln-candidates-search").performTextInput("  indonesia novel 11 ")
         compose.onNodeWithTag("ln-candidate:id11").assertIsDisplayed()
         compose.onNodeWithTag("ln-candidate:en1").assertDoesNotExist()
@@ -86,7 +90,7 @@ class LnCandidateRegistryScreenTest {
     fun loadingAndUnpublishedRegistryDoNotPretendToHaveCandidates() {
         show(snapshot = null, loading = true)
         compose.onNodeWithTag("ln-candidates-loading").assertIsDisplayed()
-        compose.onNodeWithTag("ln-candidates-refresh").assertIsNotEnabled()
+        compose.onNodeWithTag("ln-candidates-refresh").assertHasNoClickAction()
         compose.onNodeWithTag("ln-candidates-search").assertDoesNotExist()
     }
 
