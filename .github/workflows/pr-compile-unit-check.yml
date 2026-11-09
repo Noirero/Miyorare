@@ -343,28 +343,3 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 3
-
-  # TEMPORARY / non-production: one bounded EN→ID HTTP diagnostic on the dedicated Draft PR.
-  en-id-http-diagnostic:
-    name: EN-ID raw HTTP and controlled context diagnostic (14 requests maximum)
-    if: github.event.pull_request.head.ref == 'experiment/novel-en-id-targeted-diagnostics-20261109'
-    runs-on: ubuntu-latest
-    timeout-minutes: 7
-    steps:
-      - name: Checkout exact diagnostic PR HEAD
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 1
-      - name: Run bounded source-controlled Google Translate diagnostics
-        env:
-          MIYORARE_EN_ID_HTTP_DIAGNOSTIC_LIVE: '1'
-        run: python3 .github/scripts/translation_en_http_targeted_diagnostic.py
-      - name: Upload EN-ID diagnostic responses (synthetic source only)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: en-id-http-targeted-diagnostic
-          path: app/build/translation-en-targeted-diagnostics/
-          if-no-files-found: warn
-          retention-days: 7
