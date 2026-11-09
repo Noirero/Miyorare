@@ -1,0 +1,76 @@
+{
+  "decision": "APPROVED PROSPECTIVE ONLY; historical PR919 AI-assisted outcomes unchanged",
+  "sourceRepo": "Noirero/Miyorare",
+  "pr": 919,
+  "pinnedHead": "6aab1f30334339f532174a20cfa1e4970ba17a5c",
+  "base": "Amain2",
+  "provider": "MiyorareOnlineTranslationEngine / Google Translate gtx",
+  "sourceLanguages": [
+    "ja",
+    "zh-CN",
+    "ko"
+  ],
+  "targetLanguage": "id",
+  "maxUtf16Chars": 1600,
+  "segmenters": [
+    "NovelTranslationSegmenter.split",
+    "NovelTranslationSegmenter.splitCjkAware"
+  ],
+  "reconstruction": "PR919 experimental candidate-only reconstruction; baseline unchanged",
+  "plannedSamplesPerLanguage": 6,
+  "plannedAffectedPerLanguage": 4,
+  "plannedControlPerLanguage": 2,
+  "eligibility": "affected when Python independently-validated port of HEAD Kotlin split() and splitCjkAware() produce different UTF-16 end offsets; fixed before output",
+  "scoring": {
+    "scale": "0..5 in 0.5 increments (one blinded rubric scorer; source-visible; no strategy mapping)",
+    "dimensions": [
+      "semanticFidelity",
+      "fluency",
+      "readability",
+      "namesTerminology",
+      "dialogueSpeaker",
+      "narrativeCompleteness"
+    ],
+    "weightedQualityWeights": {
+      "semanticFidelity": 0.35,
+      "namesTerminology": 0.2,
+      "dialogueSpeaker": 0.15,
+      "fluency": 0.2,
+      "narrativeCompleteness": 0.1
+    },
+    "materialRegression": "new wrong negation, lost/added material information, speaker/POV/person reference error, characterization distortion, critical names/terminology or incomplete narrative; score difference alone does not substitute for a quoted error",
+    "criticalRegression": "material error that reverses central plot, negation, speaker, or identity; automatic FAIL",
+    "disagreement": "two independent masked AI scoring passes if first-pass confidence<0.75 or paired fluency/readability abs delta>=1, and all high-severity flags; keep both and adjudicate using source quotes before unblind; if irresolvable HOLD",
+    "blindness": "review packets carry only source, X/Y translations and short sample ID; no mapping, offsets, timing, request metadata",
+    "scoreLock": "write final blind scores, sha256 before opening mapping file; no retrospection after unblind"
+  },
+  "thresholds": {
+    "affectedMeanPairedFluencyMin": 0.25,
+    "affectedMeanPairedReadabilityMin": 0.25,
+    "affectedBreadthMinFraction": 0.5,
+    "breadthRule": "delta fluency>=+0.5 OR readability>=+0.5 AND other reading metric>=0 AND fidelity>=0",
+    "semanticSafety": "no material or critical candidate regressions on all frozen samples",
+    "perLanguageMeanFidelityMin": 0.0,
+    "perLanguageAffectedMeanFluencyMin": 0.0,
+    "perLanguageAffectedMeanReadabilityMin": 0.0,
+    "perLanguageAffectedMeanWeightedQualityMin": 0.0,
+    "perLanguageWeightedRegressionFloor": -0.25,
+    "medianPairedRequestOverheadMax": 0.15,
+    "medianPairedElapsedOverheadMax": 0.15,
+    "newRateLimitFailuresAllowed": 0,
+    "unknownTreatedAs": "HOLD, never PASS"
+  },
+  "estimators": {
+    "pairedDelta": "candidate minus baseline for a given frozen sample ID",
+    "affectedMean": "sum deltas over all predeclared affected samples / count of affected, no output-based sample selection",
+    "perLanguage": "evaluate on frozen full (fidelity,weighted) and frozen affected (fluency,readability,weighted)",
+    "breadth": "numerator predeclared affected samples meeting rule / denominator all predeclared affected samples",
+    "requestOverhead": "median over all 18 frozen paired per-sample request counts candidate vs baseline; (median_candidate/median_baseline)-1",
+    "elapsedOverhead": "median over all 18 frozen paired per-sample elapsed times candidate vs baseline; (median_candidate/median_baseline)-1",
+    "order": "cryptographically randomized per sample after freeze; half baseline first / half candidate first per language (3+3)",
+    "repeats": "one paired run per sample; repeat only failed/incomplete samples or targeted diagnostic justified by evidence, never choose best outputs",
+    "pacing": "750ms delay between requests each arm, same as prior live baseline; record actual raw provider output per segment, reconstructed output, error type, response timing",
+    "unitOfAnalysis": "passage (not provider request or sentence)"
+  },
+  "limitations": "Original synthetic narrative fragments; generic recurring narrative beats reduce independent literary diversity. This gate is directional and not a substitute for real-EPUB and physical-device validation before rollout."
+}

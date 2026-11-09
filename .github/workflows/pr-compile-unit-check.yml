@@ -161,10 +161,17 @@ jobs:
       # Opt-in experiment only. Standard JVM/Android gates never depend on Google uptime.
       # This step is intentionally not required for non-translation PRs.
       - name: Live Novel Online CJK translation A/B (owner-request only)
-        if: contains(github.event.pull_request.labels.*.name, 'ci:owner-request') && steps.compile-proof.outputs.reuse != 'true'
+        if: github.event.pull_request.number != 919 && contains(github.event.pull_request.labels.*.name, 'ci:owner-request') && steps.compile-proof.outputs.reuse != 'true'
         env:
           MIYORARE_ONLINE_TRANSLATION_AB_LIVE: '1'
         run: ./gradlew :app:testDebugUnitTest --tests 'org.koitharu.kotatsu.reader.ui.epub.translation.NovelOnlineCjkQualityABBenchmarkTest' --max-workers=2 --no-daemon --stacktrace
+
+      # Exact PR #919 only: frozen prospective non-production evaluation. Historical A/B stays intact.
+      - name: Live prospective CJK quality A/B and English baseline (PR 919)
+        if: github.event.pull_request.number == 919 && contains(github.event.pull_request.labels.*.name, 'ci:owner-request') && steps.compile-proof.outputs.reuse != 'true'
+        env:
+          MIYORARE_ONLINE_TRANSLATION_PROSPECTIVE_LIVE: '1'
+        run: ./gradlew :app:testDebugUnitTest --tests 'org.koitharu.kotatsu.reader.ui.epub.translation.NovelOnlineCjkQualityABBenchmarkTest.liveProspectiveCjkAndEnglishEvaluation' --max-workers=2 --no-daemon --stacktrace
 
       - name: Upload blinded translation quality A/B evidence
         if: always() && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')

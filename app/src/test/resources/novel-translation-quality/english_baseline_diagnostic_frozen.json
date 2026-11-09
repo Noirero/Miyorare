@@ -1,0 +1,52 @@
+{
+  "version": "pr919-english-baseline-targeted-20261109-v1",
+  "independentWorkstream": "EN→ID product quality discovery; NOT CJK gate denominator",
+  "samples": [
+    {
+      "id": "en-p01",
+      "sourceLanguage": "en",
+      "targetLanguage": "id",
+      "category": "dialogue-idiom-negation",
+      "text": "It was nearly midnight when Mara reached the ferry office, and the clerk behind the counter was still pretending to read the same page. The last crossing had been canceled, or at least that was what the notice on the door said. “I didn't say your brother took the money,” the clerk told her. “I said he was the last person to open the safe.” Mara kept her gloves on. That distinction mattered, especially because her brother had been dead for three weeks. She remembered the way the superintendent had looked at her at the funeral: not with pity, but as if she had already confessed to something.\n\nThe clerk put down his book. “You're barking up the wrong tree,” he said, though the expression seemed borrowed from a language he didn't quite speak. Mara wondered whether he had chosen it to sound casual or to warn her off. She asked about the woman in the yellow coat instead. He said he couldn't remember her face. Then, almost under his breath, he admitted that the woman had called Mara by her childhood name. Outside, the tide was moving against the wind, a small contradiction the old fishermen had always treated as a warning.\n\nMara did not turn around when footsteps stopped behind her. She had promised her sister she would not confront the superintendent alone, and a promise was not a thing to spend casually. “I came for the ledger, not for a fight,” she said. The man in the doorway laughed, but she noticed he was holding the door open with the wrong hand. His right hand, the one that should have carried the bandage, was bare. If he was not the superintendent, then somebody had gone to a great deal of trouble to make her believe that he was.\n\nThe clerk pushed a folded receipt across the counter. It listed two payments made on the same morning: one in the name of her brother, the other in the name of a stranger. Mara read it twice and felt the familiar anger rise, but she did not mistake anger for evidence. The second signature had been written by someone left-handed, while her brother had never learned to hold a pen that way. She thought of her sister waiting at home with a candle burning in the kitchen and knew that whatever happened next, she could not simply turn the page and pretend this night had never happened.",
+      "maxUtf16Chars": 1600,
+      "segmentEndOffsets": [
+        1135,
+        2246
+      ]
+    },
+    {
+      "id": "en-p02",
+      "sourceLanguage": "en",
+      "targetLanguage": "id",
+      "category": "pov-speaker-reference",
+      "text": "Daniel watched the woman at the far end of the station platform and tried not to call her by the name he remembered. In his account of the accident, she had been the witness; in hers, he was the one who had run away. Both accounts could not be true in the same way. “I never asked you to stay,” she said when he approached. He wanted to explain that he had not stayed for her. He had stayed for the little boy who was no longer there. The rain came down in fine threads, making the departure board look as though it were written on moving water.\n\nHe carried the blue notebook in his coat, the one she had sworn was lost. Three pages had been torn out, not by him. He knew their absence mattered more than any sentence that remained, but he could not prove it. A train passed without slowing. The woman stepped back from the edge and looked at his hands instead of his face. “You told them I was driving,” she said. “No,” Daniel replied, “I told them you had the keys.” They stood in silence, each aware that a single word had rearranged the story.\n\nWhen the station lights dimmed, he remembered what the boy had said before the accident: don't take the short road just because everybody else does. He had mistaken that advice for an ordinary complaint. Now he wondered if the boy had known something about the broken bridge. The woman reached for the notebook but did not touch it. “If you give me that, I can tell them what happened,” she whispered. Daniel was not sure whether she meant the police, her family, or the people who had already decided whom to blame. He could not afford to misunderstand her again.\n\nThe next departure was delayed, and nobody explained why. Daniel looked through the waiting-room window and saw a child in a red scarf walk past the vending machines. For a moment he thought it was the same boy, although that was impossible. The woman followed his gaze, then shook her head. “Don't,” she said. It was not an order, exactly. It sounded more like a plea from someone who had already seen how easily grief could turn a stranger into a ghost.",
+      "maxUtf16Chars": 1600,
+      "segmentEndOffsets": [
+        1049,
+        2070
+      ]
+    },
+    {
+      "id": "en-p03",
+      "sourceLanguage": "en",
+      "targetLanguage": "id",
+      "category": "control-idiom",
+      "text": "By dawn the little bookshop had sold exactly one book. Nora called it a victory, although the rent was due on Friday and the ceiling had started leaking again. “Don't count your chickens,” her father said. She smiled at the idiom but did not promise to be cautious. The customer had left a note inside the book: Please tell the girl with the red scarf that I never meant to leave without saying goodbye.",
+      "maxUtf16Chars": 1600,
+      "segmentEndOffsets": [
+        403
+      ]
+    },
+    {
+      "id": "en-p04",
+      "sourceLanguage": "en",
+      "targetLanguage": "id",
+      "category": "control-names-dialogue",
+      "text": "“It wasn't Lina who opened the gate,” Samuel said. “It was Lena. They are two different people.” Ava wrote both names in her notebook, careful not to change the spelling. She could not tell whether Samuel was frightened of the person who had come through the gate or of the person who had stayed outside. The garden was quiet, and the kettle in the kitchen had begun to whistle.",
+      "maxUtf16Chars": 1600,
+      "segmentEndOffsets": [
+        378
+      ]
+    }
+  ]
+}

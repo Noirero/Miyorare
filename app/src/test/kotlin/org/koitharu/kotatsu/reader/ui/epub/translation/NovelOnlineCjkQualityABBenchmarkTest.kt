@@ -286,6 +286,198 @@ class NovelOnlineCjkQualityABBenchmarkTest {
         assertEquals(11, controls)
     }
 
+
+    /**
+     * Frozen independent prospective experiment, kept isolated from production.
+     * Source, strata, estimator and acceptance rules are owner-pre-registered by SHA256.
+     * Translation provider calls are opt-in and do not touch app caches or BYOK.
+     */
+    @Test
+    fun liveProspectiveCjkAndEnglishEvaluation() = runBlocking {
+        assumeTrue(
+            "Prospective translation calls require explicit opt-in",
+            System.getenv("MIYORARE_ONLINE_TRANSLATION_PROSPECTIVE_LIVE") == "1",
+        )
+        val prefix = "/novel-translation-quality/"
+        fun verifiedResource(name: String, expectedSha256: String): JsonObject {
+            val bytes = checkNotNull(javaClass.getResourceAsStream(prefix + name)).use { it.readBytes() }
+            val actual = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(bytes).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            assertEquals(name + " must match the preregistered freeze", expectedSha256, actual)
+            return Json.parseToJsonElement(bytes.toString(Charsets.UTF_8)).jsonObject
+        }
+        val corpus = verifiedResource(
+            "prospective_cjk_corpus_frozen.json",
+            "01dc0c3fcf8310c5ee1b850025c271e9658216a3d07ab5ed072f9c3873a14de6",
+        )
+        verifiedResource(
+            "prospective_quality_gate_frozen.json",
+            "4e530532f2b78b46ea8c9eeb3ce82986e58cff",
+        )
+        val english = verifiedResource(
+            "english_baseline_diagnostic_frozen.json",
+            "92d470b3c88ca243829ce3ab1cd0a9dda1ee4c72c7326b77fecc08d68b04d339",
+        )
+        val samples = corpus.getValue("samples").jsonArray.map { it.jsonObject }
+        assertEquals(18, samples.size)
+        assertEquals(4, english.getValue("samples").jsonArray.size)
+        val rng = java.security.SecureRandom()
+        val legacyFirstById = HashMap<String, Boolean>()
+        for (language in listOf("ja", "zh-CN", "ko")) {
+            val group = samples.filter { it.getValue("sourceLanguage").jsonPrimitive.content == language }
+            assertEquals(6, group.size)
+            assertEquals(4, group.count { it.getValue("predeclaredStratum").jsonPrimitive.content == "affected" })
+            assertEquals(2, group.count { it.getValue("predeclaredStratum").jsonPrimitive.content == "control" })
+            val ids = group.map { it.getValue("id").jsonPrimitive.content }.toMutableList()
+            java.util.Collections.shuffle(ids, rng)
+            ids.forEachIndexed { index, id -> legacyFirstById[id] = index < 3 }
+        }
+        val engine = MiyorareOnlineTranslationEngine(OkHttpClient())
+        val blind = ArrayList<JsonObject>(samples.size)
+        val privateMap = ArrayList<JsonObject>(samples.size)
+        val englishOutcomes = ArrayList<JsonObject>(4)
+        var requests = 0
+        var failure: String? = null
+        try {
+            for (sample in samples) {
+                val id = sample.getValue("id").jsonPrimitive.content
+                val lang = sample.getValue("sourceLanguage").jsonPrimitive.content
+                val source = sample.getValue("text").jsonPrimitive.content
+                val old = NovelTranslationSegmenter.split(source, 1600)
+                val next = NovelTranslationSegmenter.splitCjkAware(source, 1600)
+                val legacyEnds = sample.getValue("legacyEndOffsets").jsonArray.map { it.jsonPrimitive.content.toInt() }
+                val candidateEnds = sample.getValue("candidateEndOffsets").jsonArray.map { it.jsonPrimitive.content.toInt() }
+                assertEquals(id + " legacy freeze offsets", legacyEnds, old.map { it.end })
+                assertEquals(id + " candidate freeze offsets", candidateEnds, next.map { it.end })
+                assertEquals(source, old.joinToString("") { it.text })
+                assertEquals(source, next.joinToString("") { it.text })
+                val affected = sample.getValue("predeclaredStratum").jsonPrimitive.content == "affected"
+                assertEquals(id + " affected stratum", affected, legacyEnds != candidateEnds)
+                val order = if (legacyFirstById[id] == true) listOf("legacy", "candidate")
+                    else listOf("candidate", "legacy")
+                val results = LinkedHashMap<String, JsonObject>()
+                for (variant in order) {
+                    val spans = if (variant == "legacy") old else next
+                    val raw = ArrayList<String>(spans.size)
+                    val preserved = ArrayList<String>(spans.size)
+                    val started = System.nanoTime()
+                    for (span in spans) {
+                        assertTrue(span.text.length <= 1600)
+                        val output = engine.translate(NovelTranslationRequest(
+                            text = span.text,
+                            sourceLanguage = lang,
+                            targetLanguage = "id",
+                            style = NovelTranslationStyle.NATURAL,
+                            contextAware = false,
+                        ))
+                        raw += output
+                        preserved += preserveBoundaryWhitespace(span.text, output)
+                        requests++
+                        delay(750L)
+                    }
+                    val elapsed = (System.nanoTime() - started) / 1_000_000L
+                    val stitched = reconstructSegmentResults(
+                        spans = spans,
+                        results = preserved,
+                        sourceLanguage = lang,
+                        candidateOnly = variant == "candidate" && affected,
+                    )
+                    results[variant] = buildJsonObject {
+                        put("translation", stitched)
+                        put("requestCount", spans.size)
+                        put("elapsedMs", elapsed)
+                        put("rawProviderSegments", buildJsonArray { raw.forEach { add(JsonPrimitive(it)) } })
+                        put("sourceEndOffsets", buildJsonArray { spans.forEach { add(JsonPrimitive(it.end)) } })
+                    }
+                }
+                val x = if (rng.nextBoolean()) "legacy" else "candidate"
+                val y = if (x == "legacy") "candidate" else "legacy"
+                blind += buildJsonObject {
+                    put("id", id)
+                    put("language", lang)
+                    put("category", sample.getValue("category").jsonPrimitive.content)
+                    put("characterNames", sample.getValue("characterNames"))
+                    put("source", source)
+                    put("X", checkNotNull(results[x]).getValue("translation"))
+                    put("Y", checkNotNull(results[y]).getValue("translation"))
+                }
+                privateMap += buildJsonObject {
+                    put("id", id)
+                    put("stratum", sample.getValue("predeclaredStratum").jsonPrimitive.content)
+                    put("X", x)
+                    put("Y", y)
+                    put("executionOrder", buildJsonArray { order.forEach { add(JsonPrimitive(it)) } })
+                    put("legacy", checkNotNull(results["legacy"]))
+                    put("candidate", checkNotNull(results["candidate"]))
+                }
+            }
+            for (sampleElement in english.getValue("samples").jsonArray) {
+                val sample = sampleElement.jsonObject
+                val id = sample.getValue("id").jsonPrimitive.content
+                val source = sample.getValue("text").jsonPrimitive.content
+                val spans = NovelTranslationSegmenter.split(source, 1600)
+                assertEquals(
+                    sample.getValue("segmentEndOffsets").jsonArray.map { it.jsonPrimitive.content.toInt() },
+                    spans.map { it.end },
+                )
+                val outputs = ArrayList<String>()
+                val raw = ArrayList<String>()
+                val started = System.nanoTime()
+                for (span in spans) {
+                    val result = engine.translate(NovelTranslationRequest(
+                        text = span.text,
+                        sourceLanguage = "en",
+                        targetLanguage = "id",
+                        style = NovelTranslationStyle.NATURAL,
+                        contextAware = false,
+                    ))
+                    raw += result
+                    outputs += preserveBoundaryWhitespace(span.text, result)
+                    requests++
+                    delay(750L)
+                }
+                englishOutcomes += buildJsonObject {
+                    put("id", id)
+                    put("source", source)
+                    put("category", sample.getValue("category").jsonPrimitive.content)
+                    put("translation", outputs.joinToString(""))
+                    put("rawProviderSegments", buildJsonArray { raw.forEach { add(JsonPrimitive(it)) } })
+                    put("requestCount", spans.size)
+                    put("elapsedMs", (System.nanoTime() - started) / 1_000_000L)
+                    put("segmentEndOffsets", buildJsonArray { spans.forEach { add(JsonPrimitive(it.end)) } })
+                }
+            }
+            assertEquals(18, blind.size)
+            assertEquals(4, englishOutcomes.size)
+            assertEquals(66, requests)
+        } catch (e: Exception) {
+            failure = e.javaClass.simpleName + ": " + e.message.orEmpty().take(240)
+        } finally {
+            val dir = File("build/translation-quality-ab/prospective")
+            dir.mkdirs()
+            val complete = failure == null && blind.size == 18 && englishOutcomes.size == 4
+            File(dir, "blind-cjk-pairs.json").writeText(buildJsonObject {
+                put("status", if (complete) "COMPLETE_NEEDS_BLIND_SCORING" else "INCOMPLETE_NOT_COMPARABLE")
+                put("corpusSha256", "01dc0c3fcf8310c5ee1b850025c271e9658216a3d07ab5ed072f9c3873a14de6")
+                put("policySha256", "4e530532f2b78b46ea8c9eeb3ce82986e58cff")
+                put("pairs", JsonArray(blind))
+                if (failure != null) put("failure", checkNotNull(failure))
+            }.toString(), Charsets.UTF_8)
+            File(dir, "private-mapping-and-operational-evidence.json").writeText(buildJsonObject {
+                put("status", if (complete) "COMPLETE" else "INCOMPLETE")
+                put("requests", requests)
+                put("paired", JsonArray(privateMap))
+                if (failure != null) put("failure", checkNotNull(failure))
+            }.toString(), Charsets.UTF_8)
+            File(dir, "english-baseline-targeted.json").writeText(buildJsonObject {
+                put("status", if (englishOutcomes.size == 4) "COMPLETE" else "INCOMPLETE")
+                put("englishSha256", "92d470b3c88ca243829ce3ab1cd0a9dda1ee4c72c7326b77fecc08d68b04d339")
+                put("samples", JsonArray(englishOutcomes))
+            }.toString(), Charsets.UTF_8)
+        }
+        if (failure != null) throw AssertionError("Prospective A/B incomplete: " + failure)
+    }
+
     private companion object {
         private const val MAX_CHARS = 1600
     }
