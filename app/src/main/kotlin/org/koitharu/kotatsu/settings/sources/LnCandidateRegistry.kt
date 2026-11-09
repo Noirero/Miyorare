@@ -73,6 +73,8 @@ class LnCandidateRegistry @Inject constructor(
             "https://raw.githubusercontent.com/Noirero/Miyorare-Source-Packs/main/registry/lnreader/en-id-candidates.v1.json"
         private val SOURCE_ID = Regex("^[a-zA-Z0-9_.-]+$")
         private val GIT_SHA = Regex("^[0-9a-f]{40}$")
+        private val SHA256 = Regex("^[0-9a-f]{64}$")
+        private val VERSION = Regex("^\\d+\\.\\d+\\.\\d+(?:\\.\\d+)?$")
         private val STATES = setOf("INVENTORIED", "TESTING", "READY", "PROBLEM")
         private val CHECKS = setOf("UNKNOWN", "PASS", "FAIL")
 
@@ -87,8 +89,14 @@ class LnCandidateRegistry @Inject constructor(
             require(scope.getValue("unverifiedInstallAllowed").jsonPrimitive.content == "false")
             val upstream = root.getValue("upstream").jsonObject
             require(upstream.text("repository") == "LNReader/lnreader-plugins")
+            require(upstream.text("branch") == "plugins/v3.0.0")
+            require(upstream.text("indexPath") == ".dist/plugins.min.json")
             val commit = upstream.text("commit")
             require(GIT_SHA.matches(commit)) { "Candidate registry upstream commit is not pinned" }
+            require(upstream.text("indexUrl") ==
+                "https://raw.githubusercontent.com/LNReader/lnreader-plugins/" +
+                    commit + "/.dist/plugins.min.json"
+            ) { "Candidate registry index provenance mismatch" }
             val items = root.getValue("candidates").jsonArray
             require(items.isNotEmpty() && items.size <= 1000)
             val ids = HashSet<String>(items.size)
@@ -102,18 +110,41 @@ class LnCandidateRegistry @Inject constructor(
                     (language == "en" && declared == "English") ||
                         (language == "id" && declared == "Bahasa Indonesia")
                 ) { "Unsupported LNReader candidate language" }
+                val sourcePrefix =
+                    "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/"
+                val folder = if (language == "en") "english/" else "indonesian/"
+                require(VERSION.matches(entry.text("version"))) { "Invalid candidate version" }
+                require(entry.text("site").startsWith("https://")) { "Candidate site must use HTTPS" }
+                require(entry.text("codeUrl").startsWith(sourcePrefix + folder) &&
+                    entry.text("codeUrl").endsWith(".js")
+                ) { "Unexpected candidate code provenance" }
+                require(entry.text("iconUrl").startsWith(
+                    "https://raw.githubusercontent.com/lnreader/lnreader-plugins/"
+                )) { "Unexpected candidate icon provenance" }
                 val state = entry.text("state")
                 require(state in STATES) { "Unknown candidate state" }
                 val checks = entry.getValue("checks").jsonObject
                 val api = checks.text("api")
                 val runtime = checks.text("runtime")
                 val android = checks.text("android")
-                require(listOf(api, runtime, android, checks.text("catalog")).all { it in CHECKS })
+                require(checks.keys == setOf("catalog", "api", "runtime", "android"))
+                require(listOf(api, runtime, android).all { it in CHECKS } &&
+                    checks.text("catalog") == "PASS"
+                ) { "Incomplete candidate validation metadata" }
+                if (state == "INVENTORIED") require(
+                    listOf(api, runtime, android).all { it == "UNKNOWN" }
+                ) { "Inventoried candidate must not claim runtime validation" }
                 val distribution = entry.getValue("distribution").jsonObject
                 val artifact = distribution.text("artifact")
-                require(artifact in setOf("UNPUBLISHED", "SEALED"))
-                if (artifact == "UNPUBLISHED") require(state != "READY") {
-                    "Unpublished candidate cannot be READY"
+                val digest = distribution.getValue("verifiedSha256")
+                when (artifact) {
+                    "UNPUBLISHED" -> require(digest.toString() == "null" && state != "READY") {
+                        "Unpublished candidate cannot claim verified executable readiness"
+                    }
+                    "SEALED" -> require(
+                        SHA256.matches(digest.jsonPrimitive.content)
+                    ) { "Sealed companion is missing a SHA-256 digest" }
+                    else -> error("Unsupported candidate distribution status")
                 }
                 if (state == "READY") require(
                     artifact == "SEALED" &&
