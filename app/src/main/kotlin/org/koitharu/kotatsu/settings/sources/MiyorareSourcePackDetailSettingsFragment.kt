@@ -75,6 +75,7 @@ import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
 import org.koitharu.kotatsu.tsuki.readMiyorareAdaptedSourceNames
 import java.util.Locale
 import javax.inject.Inject
+import javax.inject.Provider
 
 @AndroidEntryPoint
 class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.string.miyorare_source_pack_detail_title) {
@@ -83,7 +84,11 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	lateinit var pluginManager: TsukiPluginManager
 
 	@Inject
-	lateinit var lnPluginManager: LnPluginManager
+	lateinit var lnPluginManagerProvider: Provider<LnPluginManager>
+
+	/** Never resolve JsHost from Fragment injection/onCreate on the main thread. */
+	private val lnPluginManager: LnPluginManager
+		get() = lnPluginManagerProvider.get()
 
 	@Inject
 	lateinit var appSettings: AppSettings
@@ -99,6 +104,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	private var checkingUpdate by mutableStateOf(false)
 	private var adaptedSourceNames by mutableStateOf<Set<String>>(emptySet())
 	private var chikariVisible by mutableStateOf(true)
+	private var chikariNovel by mutableStateOf<LnPlugin?>(null)
 
 	private val pack: MiyorareOfficialSourcePack by lazy {
 		val pluginId = arguments?.getString(ARG_PACK_ID).orEmpty()
@@ -108,7 +114,6 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		pluginManager.initialize()
-		lnPluginManager.initialize()
 	}
 
 	override fun onResume() {
@@ -116,6 +121,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 		activity?.title = pack.displayName
 		refreshRemoteVersion()
 		refreshAdaptedSourceNames()
+		refreshNovelPlugin()
 		chikariVisible = MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_ID !in appSettings.lnHiddenPlugins
 	}
 
@@ -128,11 +134,10 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 		setContent {
 			MiyorareTheme {
 				val plugins by pluginManager.plugins.collectAsState()
-				val novels by lnPluginManager.sources.collectAsState()
 				MiyorareSourcePackDetailScreen(
 					pack = pack,
 					plugins = plugins,
-					novelPlugin = novels.firstOrNull { it.pluginId == MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_ID }?.plugin,
+					novelPlugin = chikariNovel,
 					chikariVisible = chikariVisible,
 					onNovelVisible = ::setChikariVisible,
 					imageLoader = imageLoader,
@@ -157,6 +162,14 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 		val current = appSettings.lnHiddenPlugins
 		appSettings.lnHiddenPlugins = if (visible) current - id else current + id
 		chikariVisible = visible
+	}
+
+	private fun refreshNovelPlugin() {
+		lifecycleScope.launch(Dispatchers.IO) {
+			lnPluginManager.initialize()
+			val current = lnPluginManager.getById(MiyorareOfficialSourcePacks.CHIKARI_PLUGIN_ID)?.plugin
+			withContext(Dispatchers.Main) { chikariNovel = current }
+		}
 	}
 
 	private fun refreshRemoteVersion() {
@@ -296,6 +309,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 				busy = false
 				refreshRemoteVersion()
 				refreshAdaptedSourceNames()
+				refreshNovelPlugin()
 			}
 		}
 	}
