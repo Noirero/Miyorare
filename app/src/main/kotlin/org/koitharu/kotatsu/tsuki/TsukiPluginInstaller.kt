@@ -23,6 +23,7 @@ import java.io.File
 import java.io.InputStream
 import java.util.Locale
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 /**
@@ -38,9 +39,13 @@ import javax.inject.Singleton
 class TsukiPluginInstaller @Inject constructor(
 	@ApplicationContext private val context: Context,
 	private val pluginManager: TsukiPluginManager,
-	private val lnPluginManager: LnPluginManager,
+	private val lnPluginManagerProvider: Provider<LnPluginManager>,
 	@BaseHttpClient private val httpClient: OkHttpClient,
 ) {
+
+	/** Resolve the JS/network runtime only from the existing IO install/check path. */
+	private val lnPluginManager: LnPluginManager
+		get() = lnPluginManagerProvider.get()
 
 	data class RemoteRelease(
 		val provider: TsukiPluginProvider,
