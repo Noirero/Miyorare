@@ -183,7 +183,7 @@ fun DetailsExpressiveScreen(
 	var creatorOverflow by remember(manga?.id) { mutableStateOf(false) }
 	var noteChapter by remember(manga?.id) { mutableStateOf<ChapterListItem?>(null) }
 	var selectedChapterIds by remember(manga?.id) { mutableStateOf(emptySet<Long>()) }
-	val selectableChapterIds = remember(chapters) { chapters.mapTo(LinkedHashSet()) { it.chapter.id } }
+	val selectableChapterIds = remember(chapters) { chapters.mapTo(LinkedHashSet<Long>()) { it.chapter.id } }
 	LaunchedEffect(selectableChapterIds) {
 		selectedChapterIds = selectedChapterIds.intersect(selectableChapterIds)
 	}
@@ -435,39 +435,12 @@ fun DetailsExpressiveScreen(
 							}
 						}
 						if (chaptersExpanded && chapterRanges.isNotEmpty()) {
-							for (range in chapterRanges) {
-								item(key = "chapter-range:${range.key}", contentType = "chapter-range") {
-									InlineChapterRangeHeader(range, accentColor) { actions.onChapterRangeToggle(range) }
-								}
-								if (range.expanded) items(
-									items = range.chapters,
-									key = { it.detailsLazyListKey() },
-									contentType = { "chapter" },
-								) { chapter ->
-									ChapterReadSwipeCard(
-										item = chapter,
-										onMarkRead = { actions.onChapterMarkRead(chapter) },
-										onMarkUnread = { actions.onChapterMarkUnread(chapter) },
-									selectionActive = selectedChapterIds.isNotEmpty(),
-									) {
-										InlineChapterCard(
-										item = chapter,
-										visualEffectLevel = visualEffectLevel,
-										accent = accentColor,
-										onClick = { onChapterTap(chapter) },
-									onLongClick = { selectedChapterIds = selectedChapterIds + chapter.chapter.id },
-									isSelectionMode = selectedChapterIds.isNotEmpty(),
-									isSelected = chapter.chapter.id in selectedChapterIds,
-										onDownloadClick = { actions.onChapterDownloadClick(chapter) },
-										onManageClick = actions.onChaptersClick,
-										onPersonalClick = { actions.onChapterPersonalClick(chapter) },
-										onNoteClick = { noteChapter = chapter },
-										)
-									}
-								}
-								}
-						} else if (chaptersExpanded) items(
-							items = chapters,
+					for (range in chapterRanges) {
+						item(key = "chapter-range:${range.key}", contentType = "chapter-range") {
+							InlineChapterRangeHeader(range, accentColor) { actions.onChapterRangeToggle(range) }
+						}
+						if (range.expanded) items(
+							items = range.chapters,
 							key = { it.detailsLazyListKey() },
 							contentType = { "chapter" },
 						) { chapter ->
@@ -475,23 +448,50 @@ fun DetailsExpressiveScreen(
 								item = chapter,
 								onMarkRead = { actions.onChapterMarkRead(chapter) },
 								onMarkUnread = { actions.onChapterMarkUnread(chapter) },
-									selectionActive = selectedChapterIds.isNotEmpty(),
+								selectionActive = selectedChapterIds.isNotEmpty(),
 							) {
 								InlineChapterCard(
-								item = chapter,
-								visualEffectLevel = visualEffectLevel,
-								accent = accentColor,
-								onClick = { onChapterTap(chapter) },
+									item = chapter,
+									visualEffectLevel = visualEffectLevel,
+									accent = accentColor,
+									onClick = { onChapterTap(chapter) },
 									onLongClick = { selectedChapterIds = selectedChapterIds + chapter.chapter.id },
 									isSelectionMode = selectedChapterIds.isNotEmpty(),
 									isSelected = chapter.chapter.id in selectedChapterIds,
-								onDownloadClick = { actions.onChapterDownloadClick(chapter) },
-								onManageClick = actions.onChaptersClick,
-								onPersonalClick = { actions.onChapterPersonalClick(chapter) },
-								onNoteClick = { noteChapter = chapter },
+									onDownloadClick = { actions.onChapterDownloadClick(chapter) },
+									onManageClick = actions.onChaptersClick,
+									onPersonalClick = { actions.onChapterPersonalClick(chapter) },
+									onNoteClick = { noteChapter = chapter },
 								)
 							}
 						}
+					}
+				} else if (chaptersExpanded) items(
+					items = chapters,
+					key = { it.detailsLazyListKey() },
+					contentType = { "chapter" },
+				) { chapter ->
+					ChapterReadSwipeCard(
+						item = chapter,
+						onMarkRead = { actions.onChapterMarkRead(chapter) },
+						onMarkUnread = { actions.onChapterMarkUnread(chapter) },
+						selectionActive = selectedChapterIds.isNotEmpty(),
+					) {
+						InlineChapterCard(
+							item = chapter,
+							visualEffectLevel = visualEffectLevel,
+							accent = accentColor,
+							onClick = { onChapterTap(chapter) },
+							onLongClick = { selectedChapterIds = selectedChapterIds + chapter.chapter.id },
+							isSelectionMode = selectedChapterIds.isNotEmpty(),
+							isSelected = chapter.chapter.id in selectedChapterIds,
+							onDownloadClick = { actions.onChapterDownloadClick(chapter) },
+							onManageClick = actions.onChaptersClick,
+							onPersonalClick = { actions.onChapterPersonalClick(chapter) },
+							onNoteClick = { noteChapter = chapter },
+						)
+					}
+				}
 						if (chaptersExpanded && !chapterNotesQuery.isNullOrBlank() && chapters.isEmpty()) {
 							item(contentType = "chapter-notes-empty") {
 								Text(
@@ -621,7 +621,12 @@ fun DetailsExpressiveScreen(
 				) {
 					Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
 						Row(verticalAlignment = Alignment.CenterVertically) {
-							TextButton(onClick = { selectedChapterIds = emptySet() }) { Text("✕") }
+							androidx.compose.material3.IconButton(onClick = { selectedChapterIds = emptySet() }) {
+								androidx.compose.material3.Icon(
+									painter = androidx.compose.ui.res.painterResource(R.drawable.ic_close),
+									contentDescription = stringResource(android.R.string.cancel),
+								)
+							}
 							Text(selectedChapterIds.size.toString(), style = MaterialTheme.typography.titleMedium)
 							Spacer(Modifier.weight(1f))
 							TextButton(onClick = { selectedChapterIds = selectableChapterIds }) {
