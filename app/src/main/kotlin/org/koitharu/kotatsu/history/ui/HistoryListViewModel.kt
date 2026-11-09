@@ -19,6 +19,7 @@ import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaHistory
+import org.koitharu.kotatsu.core.model.MangaNovelSection
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
@@ -70,7 +71,7 @@ class HistoryListViewModel @Inject constructor(
 	private val markAsReadUseCase: MarkAsReadUseCase,
 	private val quickFilter: HistoryListQuickFilter,
 	private val database: MangaDatabase,
-	savedStateHandle: SavedStateHandle,
+	private val savedStateHandle: SavedStateHandle,
 	mangaDataRepository: MangaDataRepository,
 	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), QuickFilterListener by quickFilter {
@@ -128,6 +129,17 @@ class HistoryListViewModel @Inject constructor(
 	)
 
 	private val limit = MutableStateFlow(PAGE_SIZE)
+	private val selectedSectionState = MutableStateFlow(
+		MangaNovelSection.fromSaved(savedStateHandle[KEY_HISTORY_SECTION]),
+	)
+	val selectedSection: StateFlow<MangaNovelSection> = selectedSectionState
+
+	fun selectSection(section: MangaNovelSection) {
+		if (selectedSectionState.value == section) return
+		limit.value = PAGE_SIZE
+		savedStateHandle[KEY_HISTORY_SECTION] = section.name
+		selectedSectionState.value = section
+	}
 	private val isPaginationReady = AtomicBoolean(false)
 
 	val isStatsEnabled = settings.observeAsStateFlow(
@@ -208,15 +220,17 @@ class HistoryListViewModel @Inject constructor(
 
 	private fun observeHistory() = combine(
 		sortOrder,
-		quickFilter.appliedOptions.combineWithSettings(),
+		combine(quickFilter.appliedOptions.combineWithSettings(), selectedSectionState) { filters, section ->
+			filters to section
+		},
 		limit,
 		currentDate,
 		localIndexChanges,
-	) { order, filters, limit, _, _ ->
+	) { order, (filters, section), limit, _, _ ->
 		isPaginationReady.set(false)
 		// HISTORY_MAX_DAYS limits only the human-readable date labels below. Never use it to prune
 		// the database query: pagination must remain able to reach the user's complete history.
-		repository.observeAllWithHistory(order, filters, limit, space = favouriteSpace)
+		repository.observeAllWithHistory(order, filters, limit, space = favouriteSpace, section = section)
 	}.flattenLatest()
 
 	private suspend fun mapList(
@@ -318,3 +332,5 @@ class HistoryListViewModel @Inject constructor(
 		)
 	}
 }
+
+private const val KEY_HISTORY_SECTION = "history_manga_novel_section"

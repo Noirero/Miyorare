@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import org.koitharu.kotatsu.core.db.MangaQueryBuilder
 import org.koitharu.kotatsu.core.db.TABLE_HISTORY
+import org.koitharu.kotatsu.core.db.entity.MangaEntity
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.TagEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
@@ -174,11 +175,13 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	)
 	abstract fun observeAll(limit: Int): Flow<List<HistoryWithManga>>
 
+	/** Content predicate is applied before LIMIT, so per-tab pagination cannot skip matching titles. */
 	fun observeAll(
 		order: ListSortOrder,
 		filterOptions: Set<ListFilterOption>,
 		limit: Int,
 		minUpdatedAt: Long = 0L,
+		contentPredicate: String? = null,
 	): Flow<List<HistoryWithManga>> = observeAllImpl(
 		MangaQueryBuilder(TABLE_HISTORY, this)
 			.join("LEFT JOIN manga ON history.manga_id = manga.manga_id")
@@ -189,6 +192,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 					"WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)))",
 			)
 			.where("history.updated_at >= $minUpdatedAt")
+			.apply { if (contentPredicate != null) where(contentPredicate) }
 			.filters(filterOptions)
 			.orderBy(
 				orderBy = order.toOrderBy(
@@ -207,6 +211,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		filterOptions: Set<ListFilterOption>,
 		limit: Int,
 		minUpdatedAt: Long = 0L,
+		contentPredicate: String? = null,
 	): Flow<List<HistoryWithManga>> = observeAllImpl(
 		MangaQueryBuilder(TABLE_HISTORY, this)
 			.join("LEFT JOIN manga ON history.manga_id = manga.manga_id")
@@ -216,6 +221,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 					"WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0))",
 			)
 			.where("history.updated_at >= $minUpdatedAt")
+			.apply { if (contentPredicate != null) where(contentPredicate) }
 			.filters(filterOptions)
 			.orderBy(
 				orderBy = order.toOrderBy(
@@ -410,10 +416,15 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	)
 	protected abstract suspend fun setDeletedAtNotFavorite(deletedAt: Long)
 
+	/** Re-query the known source namespace whenever the manga metadata table changes. */
+	@Query("SELECT DISTINCT source FROM manga")
+	abstract fun observeSourceNames(): Flow<List<String>>
+
 	@Transaction
 	@RawQuery(
 		observedEntities = [
 			HistoryEntity::class,
+			MangaEntity::class,
 			FavouriteEntity::class,
 			PrivateFavouriteEntity::class,
 			FavouriteCategoryEntity::class,

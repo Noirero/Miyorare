@@ -3,6 +3,9 @@ package org.koitharu.kotatsu.history.data
 import androidx.room.withTransaction
 import dagger.Reusable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import org.koitharu.kotatsu.core.util.ext.flattenLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.core.db.MangaDatabase
@@ -12,6 +15,9 @@ import org.koitharu.kotatsu.core.db.entity.toMangaList
 import org.koitharu.kotatsu.core.db.entity.toMangaTags
 import org.koitharu.kotatsu.core.db.entity.toMangaTagsList
 import org.koitharu.kotatsu.core.model.MangaHistory
+import org.koitharu.kotatsu.core.model.MangaNovelSection
+import org.koitharu.kotatsu.core.model.MangaSource as resolveMangaSource
+import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.model.toMangaSources
@@ -97,21 +103,29 @@ class HistoryRepository @Inject constructor(
 		limit: Int,
 		minUpdatedAt: Long = 0L,
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
+		section: MangaNovelSection? = null,
 	): Flow<List<MangaWithHistory>> {
-		if (space == FavouriteSpace.NORMAL && ListFilterOption.Downloaded in filterOptions) {
-			return localObserver.observeAll(order, filterOptions, limit, minUpdatedAt)
-		}
-		val flow = if (space == FavouriteSpace.PRIVATE) {
-			db.getHistoryDao().observeAllPrivate(order, filterOptions, limit, minUpdatedAt)
-		} else {
-			db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt)
-		}
-		return flow.mapItems {
-			MangaWithHistory(
-				it.toManga(),
-				it.history.toMangaHistory(),
-			)
-		}.distinctUntilChanged()
+		val predicates = if (section == null) flowOf(null) else db.getHistoryDao()
+			.observeSourceNames()
+			.map { names ->
+				val novelNames = names.filter { resolveMangaSource(it).isNovelSource }
+				historyContentSectionPredicate(section, novelNames)
+			}
+			.distinctUntilChanged()
+		return predicates.map { predicate ->
+			if (space == FavouriteSpace.NORMAL && ListFilterOption.Downloaded in filterOptions) {
+				localObserver.observeAll(order, filterOptions, limit, minUpdatedAt, predicate)
+			} else {
+				val flow = if (space == FavouriteSpace.PRIVATE) {
+					db.getHistoryDao().observeAllPrivate(order, filterOptions, limit, minUpdatedAt, predicate)
+				} else {
+					db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt, predicate)
+				}
+				flow.mapItems {
+					MangaWithHistory(it.toManga(), it.history.toMangaHistory())
+				}.distinctUntilChanged()
+			}
+		}.flattenLatest()
 	}
 
 	fun observeOne(id: Long): Flow<MangaHistory?> {
@@ -312,4 +326,24 @@ internal fun canAdvanceFromTracking(
 	}
 	val currentIndex = history?.let { item -> chapters.indexOfFirst { it.id == item.chapterId } } ?: -1
 	return history == null || currentIndex >= 0 && targetIndex > currentIndex
+}
+
+/**
+ * Query-only predicate, never a schema migration. The source namespace matches isNovelSource;
+ * LOCAL also uses the canonical .epub / 00.Novel path rules. Always quote stored source names.
+ */
+internal fun historyContentSectionPredicate(
+	section: MangaNovelSection,
+	novelSourceNames: Collection<String>,
+): String {
+	val sources = novelSourceNames.distinct().sorted()
+	val novelSource = if (sources.isEmpty()) "0" else
+		"manga.source IN (" + sources.joinToString(",") { "'" + it.replace("'", "''") + "'" } + ")"
+	val path = "lower(replace(manga.url, char(92), '/'))"
+	val localNovel = "(manga.source = 'LOCAL' AND (" +
+		"$path LIKE '%/00.novel/%' OR $path LIKE '00.novel/%' OR " +
+		"$path LIKE '%/00.novel' OR $path LIKE '%.epub' OR " +
+		"$path LIKE '%.epub?%' OR $path LIKE '%.epub#%'))"
+	val novel = "($novelSource OR $localNovel)"
+	return if (section == MangaNovelSection.NOVEL) novel else "NOT $novel"
 }
