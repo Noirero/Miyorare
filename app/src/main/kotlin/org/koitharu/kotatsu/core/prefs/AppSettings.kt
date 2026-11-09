@@ -473,7 +473,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		set(value) = prefs.edit { putString(KEY_EPUB_TEXT_ALIGN, value) }
 
 	var epubReadingMode: String
-		get() = prefs.getString(KEY_EPUB_READING_MODE, "scroll") ?: "scroll"
+		get() = prefs.getString(KEY_EPUB_READING_MODE, "paged_ltr") ?: "paged_ltr"
 		set(value) = prefs.edit { putString(KEY_EPUB_READING_MODE, value) }
 
 	/** Speech rate for the novel text-to-speech, 0.25f..3f where 1f is the engine default. */
