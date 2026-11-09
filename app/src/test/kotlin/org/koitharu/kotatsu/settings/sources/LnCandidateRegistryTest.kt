@@ -104,6 +104,7 @@ class LnCandidateRegistryTest {
             registry().replace("\"state\":\"TESTING\"},", "\"state\":\"READY\"},"),
             registry().replace("\"language\":\"en\"", "\"language\":\"ja\""),
             registry().replace("\"verifiedSha256\":null", "\"verifiedSha256\":\"bad\""),
+            registry().replace("\"name\":\"Chikari\"", "\"name\":123"),
             registry().replace("\"schemaVersion\":1", "\"schemaVersion\":\"1\""),
             registry().replace("\"unverifiedInstallAllowed\":false",
                 "\"unverifiedInstallAllowed\":\"false\""),
