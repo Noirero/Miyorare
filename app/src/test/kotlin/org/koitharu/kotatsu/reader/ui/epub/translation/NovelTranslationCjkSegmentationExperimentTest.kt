@@ -5,6 +5,10 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** Structural experiment only; translation-quality uplift is not yet proven. */
 class NovelTranslationCjkSegmentationExperimentTest {
@@ -83,6 +87,34 @@ class NovelTranslationCjkSegmentationExperimentTest {
             assertEquals(NovelTranslationSegmenter.split(short, 1600),
                 NovelTranslationSegmenter.splitCjkAware(short, 1600))
         }
+    }
+
+    @Test
+    fun pinned24SampleCorpusIsLosslessAndChangesSomeCjkBoundaries() {
+        val stream = checkNotNull(javaClass.getResourceAsStream(
+            "/novel-translation-quality/ja-zh-ko-v1.json"
+        ))
+        val input = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val samples = Json.parseToJsonElement(input).jsonObject.getValue("samples").jsonArray
+        assertEquals(24, samples.size)
+        val counts = mutableMapOf<String, Int>()
+        var different = 0
+        for (item in samples) {
+            val data = item.jsonObject
+            val sourceLanguage = data.getValue("sourceLanguage").jsonPrimitive.content
+            val text = data.getValue("text").jsonPrimitive.content
+            val original = NovelTranslationSegmenter.split(text, 1600)
+            val candidate = NovelTranslationSegmenter.splitCjkAware(text, 1600)
+            assertLossless(text, 1600)
+            assertEquals(text, original.joinToString("") { it.text })
+            assertTrue(original.all { it.text.length <= 1600 })
+            if (original.map { it.end } != candidate.map { it.end }) different++
+            counts[sourceLanguage] = counts.getOrDefault(sourceLanguage, 0) + 1
+        }
+        assertEquals(8, counts["ja"])
+        assertEquals(8, counts["zh-CN"])
+        assertEquals(8, counts["ko"])
+        assertTrue("A/B corpus must actually exercise different segmentation", different >= 8)
     }
 
     @Test
