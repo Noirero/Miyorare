@@ -312,7 +312,7 @@ class NovelOnlineCjkQualityABBenchmarkTest {
         )
         verifiedResource(
             "prospective_quality_gate_frozen.json",
-            "4e530532f2b78b46ea8c9eeb3ce82986e58cff",
+            "4e530532f2b78b46ea8c9eeb3a244ee62b458af3411bdd6f2e3ce82986e58cff",
         )
         val english = verifiedResource(
             "english_baseline_diagnostic_frozen.json",
@@ -459,7 +459,7 @@ class NovelOnlineCjkQualityABBenchmarkTest {
             File(dir, "blind-cjk-pairs.json").writeText(buildJsonObject {
                 put("status", if (complete) "COMPLETE_NEEDS_BLIND_SCORING" else "INCOMPLETE_NOT_COMPARABLE")
                 put("corpusSha256", "01dc0c3fcf8310c5ee1b850025c271e9658216a3d07ab5ed072f9c3873a14de6")
-                put("policySha256", "4e530532f2b78b46ea8c9eeb3ce82986e58cff")
+                put("policySha256", "4e530532f2b78b46ea8c9eeb3a244ee62b458af3411bdd6f2e3ce82986e58cff")
                 put("pairs", JsonArray(blind))
                 if (failure != null) put("failure", checkNotNull(failure))
             }.toString(), Charsets.UTF_8)
