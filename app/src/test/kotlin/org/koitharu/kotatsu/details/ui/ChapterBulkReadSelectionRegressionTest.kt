@@ -36,6 +36,16 @@ class ChapterBulkReadSelectionRegressionTest {
     }
 
     @Test
+    fun `inactive multi-select cannot shadow the rating editor selected semantics`() {
+        val row = source("details/ui/DetailsChapterComponents.kt")
+            .substringAfter("internal fun InlineChapterCard(")
+        assertTrue(row.contains(".then(if (isSelectionMode) Modifier.semantics { selected = isSelected } else Modifier)"))
+        assertTrue(row.contains("modifier = Modifier.semantics {"))
+        assertTrue(row.contains("selected = personal.isRated"))
+        assertTrue(row.contains("onClick = onPersonalClick"))
+    }
+
+    @Test
     fun `both details and manager selection use the same bulk status operation`() {
         val screen = source("details/ui/DetailsExpressiveScreen.kt")
         val activity = source("details/ui/DetailsExpressiveActivity.kt")
