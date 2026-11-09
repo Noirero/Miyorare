@@ -228,6 +228,87 @@ object NovelTranslationSegmenter {
 		return result
 	}
 
+
+	/**
+	 * Experimental CJK-aware candidate used by offline/live quality A/B only.
+	 * PRODUCTION STILL CALLS [split], retaining the existing Online and AI behavior.
+	 * UTF-16 offsets and source text are preserved exactly; it never inserts punctuation.
+	 */
+	internal fun splitCjkAware(text: CharSequence, maxChars: Int): List<NovelTranslationSegment> {
+		require(maxChars >= 2) { "At least two UTF-16 code units are needed to preserve surrogate pairs" }
+		if (text.isEmpty()) return emptyList()
+		val plain = text.toString()
+		val result = ArrayList<NovelTranslationSegment>((plain.length / maxChars) + 1)
+		var start = 0
+		while (start < plain.length) {
+			val hardEnd = min(start + maxChars, plain.length)
+			var end = hardEnd
+			if (end < plain.length) {
+				val legacy = preferredBreak(plain, start, hardEnd, maxChars)
+				val cjk = cjkSentenceBreak(plain, start, hardEnd, maxChars)
+				// Existing paragraph and line priority is retained. A complete CJK
+				// sentence may outrank a space-only fallback, never a newline.
+				end = if (cjk != null && (legacy == hardEnd || plain[legacy - 1] !in "\r\n")) cjk else legacy
+				end = avoidComplexUnicodeSplit(plain, start, end)
+			}
+			if (end <= start) {
+				end = avoidComplexUnicodeSplit(plain, start, hardEnd)
+				if (end <= start) end = avoidSurrogateSplit(plain, start, hardEnd)
+			}
+			require(end in (start + 1)..hardEnd) { "CJK segment exceeds request limit" }
+			result += NovelTranslationSegment(start, end, plain.substring(start, end))
+			start = end
+		}
+		return result
+	}
+
+	private fun cjkSentenceBreak(text: String, start: Int, hardEnd: Int, limit: Int): Int? {
+		val floor = (start + limit * 2 / 3).coerceAtMost(hardEnd)
+		for (index in hardEnd - 1 downTo floor) {
+			val ch = text[index]
+			if (ch !in CJK_SENTENCE_ENDINGS && ch !in ASCII_SENTENCE_ENDINGS) continue
+			if (ch in ASCII_SENTENCE_ENDINGS && !isHangulNear(text, index)) continue
+			var after = index + 1
+			// Ending a segment before a closing quotation mark makes dialog worse.
+			while (after < hardEnd && text[after] in CJK_CLOSING_QUOTES) after++
+			if (after <= hardEnd && after > start && after < text.length &&
+				(text[after] !in CJK_CLOSING_QUOTES || after == hardEnd)
+			) return after
+		}
+		return null
+	}
+
+	private fun isHangulNear(text: String, punctuation: Int): Boolean {
+		val left = (punctuation - 12).coerceAtLeast(0)
+		for (i in punctuation - 1 downTo left) {
+			val ch = text[i]
+			if (ch in '\uAC00'..'\uD7A3' || ch in '\u1100'..'\u11FF') return true
+			if (ch.isDigit() || ch == '.') return false
+		}
+		return false
+	}
+
+	private fun avoidComplexUnicodeSplit(text: String, start: Int, proposedEnd: Int): Int {
+		var end = avoidSurrogateSplit(text, start, proposedEnd)
+		while (end > start + 1 && end < text.length) {
+			val next = text[end]
+			val previous = text[end - 1]
+			val markType = Character.getType(next)
+			val combining = markType == Character.NON_SPACING_MARK.toInt() ||
+				markType == Character.COMBINING_SPACING_MARK.toInt() ||
+				markType == Character.ENCLOSING_MARK.toInt()
+			if (!combining && next != '\u200D' && previous != '\u200D' &&
+				!(previous == '\r' && next == '\n')
+			) break
+			end = avoidSurrogateSplit(text, start, end - 1)
+		}
+		return end
+	}
+
+	private val CJK_SENTENCE_ENDINGS = charArrayOf('。', '！', '？')
+	private val ASCII_SENTENCE_ENDINGS = charArrayOf('.', '!', '?')
+	private val CJK_CLOSING_QUOTES = charArrayOf('」', '』', '”', '’', '】', '）', '〉', '》')
+
 	private fun preferredBreak(text: String, start: Int, hardEnd: Int, limit: Int): Int {
 		val paragraphFloor = (start + limit / 2).coerceAtMost(hardEnd)
 		val fallbackFloor = (start + limit * 2 / 3).coerceAtMost(hardEnd)
