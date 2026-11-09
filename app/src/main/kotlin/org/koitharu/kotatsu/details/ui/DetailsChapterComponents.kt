@@ -1373,7 +1373,7 @@ internal fun InlineChapterCard(
 		modifier = Modifier
 			.fillMaxWidth()
 			.padding(horizontal = SCREEN_PADDING, vertical = if (palette.isModern) 2.dp else 4.dp)
-			.semantics { selected = isSelected }
+			.then(if (isSelectionMode) Modifier.semantics { selected = isSelected } else Modifier)
 			.combinedClickable(onClick = onClick, onLongClick = onLongClick),
 	) {
 		Row(
