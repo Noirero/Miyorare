@@ -101,7 +101,8 @@ class LnCandidateRegistryTest {
             registry().replace("\"state\":\"TESTING\"", "\"state\":\"READY\"")
                 .replace("\"artifact\":\"UNPUBLISHED\"", "\"artifact\":\"SEALED\""),
             registry().replace("\"pluginId\":\"chikari\"", "\"pluginId\":\"other\""),
-            registry().replace("\"state\":\"TESTING\"},", "\"state\":\"READY\"},"),
+            registry().replace("\"state\":\"TESTING\",\"evidence\":",
+                "\"state\":\"READY\",\"evidence\":"),
             registry().replace("\"language\":\"en\"", "\"language\":\"ja\""),
             registry().replace("\"verifiedSha256\":null", "\"verifiedSha256\":\"bad\""),
             registry().replace("\"name\":\"Chikari\"", "\"name\":123"),
