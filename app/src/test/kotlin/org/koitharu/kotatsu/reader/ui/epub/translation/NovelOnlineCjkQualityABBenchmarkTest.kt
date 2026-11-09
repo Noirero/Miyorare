@@ -252,6 +252,40 @@ class NovelOnlineCjkQualityABBenchmarkTest {
             join("彼は帰った。\n", "そして眠った。", "Dia pulang.\n", "Kemudian tidur.", "ja"))
     }
 
+
+    @Test
+    fun all24CorpusCasesKeepLosslessBoundariesAndIdenticalControls() {
+        val input = checkNotNull(javaClass.getResourceAsStream(
+            "/novel-translation-quality/ja-zh-ko-v1.json"
+        )).bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val samples = Json.parseToJsonElement(input).jsonObject.getValue("samples").jsonArray
+        assertEquals(24, samples.size)
+        var affected = 0
+        var controls = 0
+        for (sample in samples) {
+            val source = sample.jsonObject.getValue("text").jsonPrimitive.content
+            val language = sample.jsonObject.getValue("sourceLanguage").jsonPrimitive.content
+            val old = NovelTranslationSegmenter.split(source, MAX_CHARS)
+            val candidate = NovelTranslationSegmenter.splitCjkAware(source, MAX_CHARS)
+            assertEquals(source, old.joinToString("") { it.text })
+            assertEquals(source, candidate.joinToString("") { it.text })
+            assertTrue(old.all { it.text.length <= MAX_CHARS })
+            assertTrue(candidate.all { it.text.length <= MAX_CHARS })
+            if (candidate == old) {
+                controls++
+                val mockTranslations = old.map { "Kalimat berakhir." }
+                assertEquals(
+                    reconstructSegmentResults(old, mockTranslations, language, candidateOnly = false),
+                    reconstructSegmentResults(candidate, mockTranslations, language, candidateOnly = candidate != old),
+                )
+            } else {
+                affected++
+            }
+        }
+        assertEquals(13, affected)
+        assertEquals(11, controls)
+    }
+
     private companion object {
         private const val MAX_CHARS = 1600
     }
