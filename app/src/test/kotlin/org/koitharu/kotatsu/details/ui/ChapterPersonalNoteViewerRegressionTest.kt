@@ -13,7 +13,7 @@ class ChapterPersonalNoteViewerRegressionTest {
 		assertTrue(noteButton.contains("R.string.chapter_personal_view_note"))
 		assertFalse(noteButton.contains("onPersonalClick"))
 		assertFalse(noteButton.contains("onClick = onClick"))
-		assertTrue(row.contains(".clickable(onClick = onClick)"))
+		assertTrue(row.contains(".combinedClickable(onClick = onClick, onLongClick = onLongClick)"))
 		assertTrue(row.contains("onClick = onPersonalClick"))
 		assertTrue(source("DetailsExpressiveActivity.kt").contains("onChapterPersonalClick = viewModel::editChapterPersonal"))
 	}
@@ -22,7 +22,8 @@ class ChapterPersonalNoteViewerRegressionTest {
 		val screen = source("DetailsExpressiveScreen.kt")
 		assertEquals(2, screen.split("onNoteClick = { noteChapter = chapter }").size - 1)
 		assertEquals(2, screen.split("onPersonalClick = { actions.onChapterPersonalClick(chapter) }").size - 1)
-		assertEquals(2, screen.split("onClick = { actions.onChapterClick(chapter) }").size - 1)
+		assertEquals(2, screen.split("onClick = { onChapterTap(chapter) }").size - 1)
+		assertTrue(screen.contains("if (selectedChapterIds.isEmpty()) actions.onChapterClick(chapter)"))
 		assertTrue(screen.contains("remember(manga?.id) { mutableStateOf<ChapterListItem?>(null) }"))
 		assertTrue(screen.contains("key(chapter.personalKey)"))
 		assertTrue(screen.contains("ChapterPersonalNoteViewer(item = chapter, onDismiss = { noteChapter = null })"))

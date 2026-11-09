@@ -626,16 +626,25 @@ abstract class ChaptersPagesViewModel(
 	}
 
 	fun setChapterReadState(chapterId: Long, isRead: Boolean) {
-		val item = chapters.value.firstOrNull { it.chapter.id == chapterId } ?: return
+		setChaptersReadState(setOf(chapterId), isRead)
+	}
+
+	/** Apply only effective changes; one preference write covers the entire selection. */
+	fun setChaptersReadState(chapterIds: Set<Long>, isRead: Boolean) {
+		if (chapterIds.isEmpty()) return
 		val mangaId = mangaDetails.value?.id ?: return
-		// Directional swipes are idempotent: a repeated gesture must never invert the status.
-		if (item.isUnread == !isRead) return
-		settings.setChapterReadOverride(mangaId, chapterId, isRead)
-		chapterReadOverrides.update { current -> current + (chapterId to isRead) }
+		// The current presentation is the authority for which chapters are selectable and
+		// whether an operation is a no-op (including the novel's legacy read-order logic).
+		val changed = chapters.value.filter { it.chapter.id in chapterIds && it.isUnread == isRead }
+		if (changed.isEmpty()) return
+		val updates = changed.associate { it.chapter.id to isRead }
+		settings.setChapterReadOverrides(mangaId, settings.getChapterReadOverrides(mangaId) + updates)
+		chapterReadOverrides.update { it + updates }
 		if (!isRead && getMangaOrNull()?.isNovelContent != true) {
-            // Invalidate synchronously; process-owned DB cleanup survives Details teardown.
-            chapterProgressRepository.requestManualUnreadReset(mangaId, favouriteSpace, item.personalKey, chapterId)
-        }
+			chapterProgressRepository.requestManualUnreadResets(
+				mangaId, favouriteSpace, changed.map { it.chapter.id to it.personalKey },
+			)
+		}
 	}
 
 	fun toggleChapterReadState(chapterId: Long) {
