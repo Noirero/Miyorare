@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.details.ui
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,6 +44,24 @@ class ChapterBulkReadSelectionRegressionTest {
         assertTrue(row.contains("modifier = Modifier.semantics {"))
         assertTrue(row.contains("selected = personal.isRated"))
         assertTrue(row.contains("onClick = onPersonalClick"))
+    }
+
+    @Test
+    fun `invert selection complements all selectable chapters and respects filters`() {
+        val all = (1L..220L).toSet()
+        val inverted = invertChapterSelection(all, setOf(5L))
+        assertEquals(219, inverted.size)
+        assertFalse(5L in inverted)
+        assertTrue(1L in inverted && 220L in inverted)
+        assertEquals(setOf(5L), invertChapterSelection(all, inverted))
+        assertTrue(invertChapterSelection(all, all).isEmpty())
+        assertEquals(setOf(2L, 10L), invertChapterSelection(setOf(2L, 5L, 10L), setOf(5L, 99L)))
+
+        val screen = source("details/ui/DetailsExpressiveScreen.kt")
+        assertTrue(screen.contains("selectedChapterIds = invertChapterSelection(selectableChapterIds, selectedChapterIds)"))
+        assertTrue(screen.contains("Text(stringResource(R.string.invert_chapter_selection), maxLines = 1)"))
+        assertTrue(resource("values/strings.xml").contains("name=\"invert_chapter_selection\""))
+        assertTrue(resource("values-in/strings.xml").contains(">Balik Pilihan</string>"))
     }
 
     @Test

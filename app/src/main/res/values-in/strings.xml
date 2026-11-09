@@ -277,6 +277,7 @@
     <string name="history_shortcuts">Tampilkan pintasan manga baru-baru ini</string>
     <string name="history_shortcuts_summary">Buat manga terbaru tersedia dengan menekan lama ikon aplikasi</string>
     <string name="select_range">Pilih rentang</string>
+    <string name="invert_chapter_selection">Balik Pilihan</string>
     <string name="disable_all">Matikan semua</string>
     <string name="dns_over_https">DNS melalui HTTPS</string>
     <string name="status_dropped">Didrop</string>

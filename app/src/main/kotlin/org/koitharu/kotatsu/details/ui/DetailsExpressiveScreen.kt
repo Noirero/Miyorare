@@ -128,6 +128,10 @@ class DetailsExpressiveActions(
 	val onReleasePredictionClick: () -> Unit = {},
 )
 
+/** Complements the current selection within the same chapter scope as Select All. */
+internal fun invertChapterSelection(selectableChapterIds: Set<Long>, selectedChapterIds: Set<Long>): Set<Long> =
+	selectableChapterIds - selectedChapterIds
+
 /**
  * The on-device chapter gallery does not own the Details pull-to-refresh gesture.
  * Re-evaluate on tab changes, including restore after returning from Reader.
@@ -629,6 +633,9 @@ fun DetailsExpressiveScreen(
 							}
 							Text(selectedChapterIds.size.toString(), style = MaterialTheme.typography.titleMedium)
 							Spacer(Modifier.weight(1f))
+							TextButton(onClick = { selectedChapterIds = invertChapterSelection(selectableChapterIds, selectedChapterIds) }) {
+								Text(stringResource(R.string.invert_chapter_selection), maxLines = 1)
+							}
 							TextButton(onClick = { selectedChapterIds = selectableChapterIds }) {
 								Text(stringResource(android.R.string.selectAll))
 							}
