@@ -33,6 +33,28 @@ class NovelTranslationCoordinatorTest {
 		assertEquals(text, segments.joinToString("") { it.text })
 	}
 
+
+	@Test
+	fun `bilingual paragraph segmentation keeps exact offsets and blank separators`() {
+		val text = "First paragraph.\n\nSecond paragraph.\r\n\r\nThird."
+		val pieces = NovelTranslationSegmenter.splitByParagraph(text, 256)
+		assertEquals(text, pieces.joinToString("") { it.text })
+		assertEquals(
+			listOf("First paragraph.", "\n\n", "Second paragraph.", "\r\n\r\n", "Third."),
+			pieces.map { it.text },
+		)
+		assertEquals(listOf(0, 16, 18, 35, 39), pieces.map { it.start })
+	}
+
+	@Test
+	fun `bilingual oversized paragraph still respects split boundaries and surrogate pairs`() {
+		val text = "a".repeat(265) + "😀" + "b".repeat(260) + "\n\n" + "tail"
+		val pieces = NovelTranslationSegmenter.splitByParagraph(text, 256)
+		assertEquals(text, pieces.joinToString("") { it.text })
+		pieces.dropLast(1).forEach { assertTrue(!it.text.last().isHighSurrogate()) }
+		assertTrue(pieces.any { it.text == "\n\n" })
+	}
+
 	@Test
 	fun `segmenter never splits surrogate pair`() {
 		val text = "a".repeat(255) + "😀" + "b".repeat(260)

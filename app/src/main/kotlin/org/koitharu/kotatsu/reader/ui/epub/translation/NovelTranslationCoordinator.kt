@@ -206,6 +206,32 @@ sealed interface NovelTranslationProgress {
 /** Deterministic, source-offset-preserving segmentation for reader translation. */
 object NovelTranslationSegmenter {
 
+
+	/**
+	 * Pair bilingual prose by paragraph. Whitespace separators remain source-only (free blank
+	 * work items), preserving exact source offsets and preventing the translation from being
+	 * attached to a group of unrelated paragraphs. Oversized paragraphs still use split().
+	 */
+	fun splitByParagraph(text: CharSequence, maxChars: Int): List<NovelTranslationSegment> {
+		if (text.isEmpty()) return emptyList()
+		val plain = text.toString()
+		val result = ArrayList<NovelTranslationSegment>()
+		fun append(start: Int, end: Int) {
+			if (start >= end) return
+			split(plain.substring(start, end), maxChars).forEach { segment ->
+				result += segment.copy(start = start + segment.start, end = start + segment.end)
+			}
+		}
+		var cursor = 0
+		for (separator in Regex("""(?:\r?\n){2,}""").findAll(plain)) {
+			append(cursor, separator.range.first)
+			result += NovelTranslationSegment(separator.range.first, separator.range.last + 1, separator.value)
+			cursor = separator.range.last + 1
+		}
+		append(cursor, plain.length)
+		return result
+	}
+
 	fun split(text: CharSequence, maxChars: Int): List<NovelTranslationSegment> {
 		if (text.isEmpty()) return emptyList()
 		val plain = text.toString()
@@ -424,7 +450,11 @@ class NovelTranslationCoordinator(
 		val provider = providerResolver.resolve(request.selection)
 		val progressiveCallbacks = provider.capabilities.supportsProgressiveResultPublishing
 		val priorityController = request.priorityController.takeIf { progressiveCallbacks }
-		val segments = NovelTranslationSegmenter.split(request.text, provider.capabilities.maxSingleRequestChars)
+		val segments = if (request.selection.displayMode == NovelTranslationDisplayMode.BILINGUAL) {
+			NovelTranslationSegmenter.splitByParagraph(request.text, provider.capabilities.maxSingleRequestChars)
+		} else {
+			NovelTranslationSegmenter.split(request.text, provider.capabilities.maxSingleRequestChars)
+		}
 		if (segments.isEmpty()) return NovelTranslationOperationResult(emptyList())
 		val operationStarted = System.nanoTime()
 		val operationKey = NovelTranslationSemanticKey(

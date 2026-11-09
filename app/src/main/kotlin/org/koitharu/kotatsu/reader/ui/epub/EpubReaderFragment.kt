@@ -1094,8 +1094,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val block = inlineTranslationBlock(item)
 			output.insert(insertAt, block)
 			val end = insertAt + block.length
-			output.setSpan(RelativeSizeSpan(0.94f), insertAt, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-			output.setSpan(StyleSpan(Typeface.ITALIC), insertAt, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			// Bilingual styling is applied at render-time, using the active Reader palette.
 		}
 		return SpannedString(output)
 	}
@@ -1944,6 +1943,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			text.getSpans(0, text.length, RelativeSizeSpan::class.java).forEach(text::removeSpan)
 			text.getSpans(0, text.length, TypefaceSpan::class.java).forEach(text::removeSpan)
 		}
+		applyBilingualReaderStyling(text, chapter, from)
 		applyParagraphSpacing(text, source, from)
 		if (activeBionicReading) {
 			EpubBionicText.prefixRanges(source, from, to).forEach { range ->
@@ -1966,6 +1966,64 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			}
 		}
 		return text
+	}
+
+
+	/**
+	 * Keep canonical source/display offsets exactly as before: all distinctions are visual spans.
+	 * Apply colors after EPUB foreground resets so custom Reader themes remain respected.
+	 */
+	private fun applyBilingualReaderStyling(text: SpannableString, chapter: NativeChapter, displayStart: Int) {
+		if (translationDisplayMode(chapter.id) != NovelTranslationDisplayMode.BILINGUAL) return
+		val pairs = NovelTranslationProjection.bilingualPairRanges(
+			sourceTextLength(chapter), translationDisplaySegments(chapter.id),
+		)
+		if (pairs.isEmpty()) return
+		val subdued = ColorUtils.blendARGB(foregroundColor, backgroundColor, 0.22f)
+		val accent = requireContext().getThemeColor(androidx.appcompat.R.attr.colorPrimary, foregroundColor)
+		val density = resources.displayMetrics.density
+		val accentSpan = BilingualAccentLineSpan(
+			color = accent,
+			widthPx = 2f * density,
+			insetPx = 8f * density,
+			rightAligned = isRtlPagedMode || effectiveTextAlign == "right" || effectiveTextAlign == "end",
+		)
+		pairs.forEach { pair ->
+			val originalStart = (pair.originalStart - displayStart).coerceIn(0, text.length)
+			val originalEnd = (pair.originalEnd - displayStart).coerceIn(0, text.length)
+			if (originalStart < originalEnd) {
+				text.setSpan(ForegroundColorSpan(subdued), originalStart, originalEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+				text.setSpan(RelativeSizeSpan(0.95f), originalStart, originalEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			}
+			val translationStart = (pair.translationStart - displayStart).coerceIn(0, text.length)
+			val translationEnd = (pair.translationEnd - displayStart).coerceIn(0, text.length)
+			if (translationStart < translationEnd) {
+				text.setSpan(ForegroundColorSpan(foregroundColor), translationStart, translationEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+				text.setSpan(accentSpan, translationStart, translationEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			}
+		}
+	}
+
+	/** Purely decorative gutter stroke; does not change text layout or offset mapping. */
+	private class BilingualAccentLineSpan(
+		private val color: Int,
+		private val widthPx: Float,
+		private val insetPx: Float,
+		private val rightAligned: Boolean,
+	) : LineBackgroundSpan {
+		override fun drawBackground(
+			c: Canvas, p: Paint, left: Int, right: Int, top: Int, baseline: Int, bottom: Int,
+			text: CharSequence, start: Int, end: Int, lineNumber: Int,
+		) {
+			val oldColor = p.color
+			val oldStyle = p.style
+			p.color = color
+			p.style = Paint.Style.FILL
+			val x = if (rightAligned) right + insetPx else left - insetPx - widthPx
+			c.drawRoundRect(x, top.toFloat(), x + widthPx, bottom.toFloat(), widthPx / 2f, widthPx / 2f, p)
+			p.color = oldColor
+			p.style = oldStyle
+		}
 	}
 
 	private fun applyParagraphSpacing(text: Spannable, source: CharSequence, displayStart: Int) {
