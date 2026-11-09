@@ -19,6 +19,17 @@ internal object NovelAutoTranslationPolicy {
 		chapterId > 0L &&
 		chapterId != lastAttemptedChapterId
 
+
+	/** Page auto mode only reacts to an opened paged viewport, never pagination reflow or prefetch. */
+	fun shouldStartPage(
+		enabled: Boolean,
+		readerActive: Boolean,
+		chapterReady: Boolean,
+		pagedReader: Boolean,
+		pageOpened: Boolean,
+		translationInFlight: Boolean,
+	): Boolean = enabled && readerActive && chapterReady && pagedReader && pageOpened && !translationInFlight
+
 	fun shouldRetainProjection(chapterIndex: Int, currentIndex: Int, radius: Int): Boolean =
 		kotlin.math.abs(chapterIndex - currentIndex) <= radius.coerceAtLeast(0)
 

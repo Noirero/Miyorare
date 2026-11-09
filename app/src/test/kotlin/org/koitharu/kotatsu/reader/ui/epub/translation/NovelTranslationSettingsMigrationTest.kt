@@ -22,6 +22,15 @@ class NovelTranslationSettingsMigrationTest {
 		assertEquals(NovelAiProvider.GEMINI, migration?.provider)
 	}
 
+
+	@Test
+	fun `legacy auto translation remains chapter scoped and ignores an invalid persisted mode`() {
+		assertEquals(NovelAutoTranslationMode.CHAPTER, NovelAutoTranslationMode.fromStored(null))
+		assertEquals(NovelAutoTranslationMode.CHAPTER, NovelAutoTranslationMode.fromStored("bogus"))
+		assertEquals(NovelAutoTranslationMode.CHAPTER, NovelAutoTranslationMode.fromStored("off"))
+		assertEquals(NovelAutoTranslationMode.PAGE, NovelAutoTranslationMode.fromStored("page"))
+	}
+
 	@Test
 	fun `remote ai provider selection does not migrate`() {
 		assertNull(legacyBuiltInProviderMigration("gemini", "openai"))

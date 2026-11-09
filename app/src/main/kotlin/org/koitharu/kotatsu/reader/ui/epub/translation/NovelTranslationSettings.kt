@@ -72,7 +72,7 @@ class NovelTranslationSettings(context: Context) {
 		migratePresentationPolicyIfNeeded()
 	}
 
-	/** Manual translation defaults to visible text; automatic translation remains chapter-scoped. */
+	/** Manual translation defaults to visible text; automatic scope is configured separately per novel. */
 	var manualScope: NovelTranslationScope
 		get() = NovelTranslationScope.fromId(prefs.getString(KEY_MANUAL_SCOPE, null))
 		set(value) = prefs.edit().putString(KEY_MANUAL_SCOPE, value.id).apply()
@@ -112,14 +112,28 @@ class NovelTranslationSettings(context: Context) {
 		isAutoTranslateEnabled(mangaId) &&
 			prefs.getString(autoTranslateBindingKey(mangaId), null) == currentAutoProviderBinding()
 
-	fun setAutoTranslateEnabled(mangaId: Long, enabled: Boolean) {
+	/** Legacy opt-ins without a stored mode remain chapter-scoped. */
+	fun autoTranslateMode(mangaId: Long): NovelAutoTranslationMode =
+		if (!isAutoTranslateActive(mangaId)) NovelAutoTranslationMode.OFF
+		else NovelAutoTranslationMode.fromStored(prefs.getString(autoTranslateModeKey(mangaId), null))
+
+	fun setAutoTranslateMode(mangaId: Long, mode: NovelAutoTranslationMode) {
 		if (mangaId <= 0L) return
 		prefs.edit().apply {
+			val enabled = mode != NovelAutoTranslationMode.OFF
 			putBoolean(autoTranslateKey(mangaId), enabled)
-			if (enabled) putString(autoTranslateBindingKey(mangaId), currentAutoProviderBinding())
-			else remove(autoTranslateBindingKey(mangaId))
+			if (enabled) {
+				putString(autoTranslateModeKey(mangaId), mode.id)
+				putString(autoTranslateBindingKey(mangaId), currentAutoProviderBinding())
+			} else {
+				remove(autoTranslateBindingKey(mangaId))
+			}
 		}.apply()
 	}
+
+	/** Existing callers only disable automatic translation or enable the historical chapter mode. */
+	fun setAutoTranslateEnabled(mangaId: Long, enabled: Boolean) =
+		setAutoTranslateMode(mangaId, if (enabled) NovelAutoTranslationMode.CHAPTER else NovelAutoTranslationMode.OFF)
 
 	fun currentSelection(): NovelTranslationSelection {
 		val selectedEngine = engine
@@ -214,6 +228,7 @@ class NovelTranslationSettings(context: Context) {
 	private fun providerKey(prefix: String, provider: NovelAiProvider) = "$prefix${provider.id}"
 	private fun autoTranslateKey(mangaId: Long) = "$KEY_AUTO_TRANSLATE_PREFIX$mangaId"
 	private fun autoTranslateBindingKey(mangaId: Long) = "$KEY_AUTO_TRANSLATE_BINDING_PREFIX$mangaId"
+	private fun autoTranslateModeKey(mangaId: Long) = "$KEY_AUTO_TRANSLATE_MODE_PREFIX$mangaId"
 	private fun currentAutoProviderBinding() = NovelAutoTranslationPolicy.providerBinding(engine, provider)
 
 	companion object {
@@ -233,11 +248,24 @@ class NovelTranslationSettings(context: Context) {
 		private const val KEY_PRESENTATION_POLICY_VERSION = "presentation_policy_version"
 		private const val KEY_AUTO_TRANSLATE_PREFIX = "auto_translate_"
 		private const val KEY_AUTO_TRANSLATE_BINDING_PREFIX = "auto_translate_binding_"
+		private const val KEY_AUTO_TRANSLATE_MODE_PREFIX = "auto_translate_mode_"
 		private const val KEY_MODEL_PREFIX = "model_"
 		private const val KEY_BASE_URL_PREFIX = "base_url_"
 		private const val KEY_STYLE = "style"
 		private const val KEY_CONTEXT_AWARE = "context_aware"
 		private const val KEY_DEEPL_FREE = "deepl_free_api"
+	}
+}
+
+/** OFF is per-novel disabled. A previously enabled novel without a saved mode uses CHAPTER. */
+enum class NovelAutoTranslationMode(val id: String) {
+	OFF("off"),
+	CHAPTER("chapter"),
+	PAGE("page");
+
+	companion object {
+		fun fromStored(value: String?): NovelAutoTranslationMode =
+			entries.firstOrNull { it.id == value && it != OFF } ?: CHAPTER
 	}
 }
 
