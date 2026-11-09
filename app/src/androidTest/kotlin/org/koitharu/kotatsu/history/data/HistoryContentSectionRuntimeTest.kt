@@ -46,7 +46,10 @@ class HistoryContentSectionRuntimeTest {
 		val privateNovel = SampleData.manga.copy(
 			id = 88004L, source = MangaSource("LN_regression"), url = "/books/private",
 		)
-		for (item in listOf(comic, novel, localNovel, privateNovel)) {
+		val localMangaQuery = SampleData.manga.copy(
+			id = 88005L, source = LocalMangaSource, url = "/books/comic?download=volume.epub",
+		)
+		for (item in listOf(comic, novel, localNovel, privateNovel, localMangaQuery)) {
 			db.getMangaDao().upsert(item.toEntity())
 		}
 		val dao = db.getHistoryDao()
@@ -55,6 +58,7 @@ class HistoryContentSectionRuntimeTest {
 			Triple(novel, 300L, FavouriteSpace.NORMAL),
 			Triple(localNovel, 200L, FavouriteSpace.NORMAL),
 			Triple(privateNovel, 500L, FavouriteSpace.PRIVATE),
+			Triple(localMangaQuery, 100L, FavouriteSpace.NORMAL),
 		)) {
 			dao.insert(HistoryEntity(
 				mangaId = item.id,
@@ -86,6 +90,11 @@ class HistoryContentSectionRuntimeTest {
 		assertEquals(
 			listOf(novel.id, localNovel.id),
 			dao.observeAll(ListSortOrder.NEWEST, emptySet(), 10, contentPredicate = novelPredicate)
+				.first().map { it.history.mangaId },
+		)
+		assertEquals(
+			listOf(comic.id, localMangaQuery.id),
+			dao.observeAll(ListSortOrder.NEWEST, emptySet(), 10, contentPredicate = mangaPredicate)
 				.first().map { it.history.mangaId },
 		)
 		// Private source must never appear in Normal; it must remain available in Private's Novel tab.

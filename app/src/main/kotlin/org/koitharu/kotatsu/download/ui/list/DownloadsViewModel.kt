@@ -98,6 +98,9 @@ class DownloadsViewModel @Inject constructor(
 	private fun DownloadItemModel.isInActiveSection(): Boolean =
 		manga?.matchesMangaNovelSection(selectedSectionState.value) == true
 
+	private fun currentSectionRows(): List<DownloadItemModel> =
+		visibleWorks.value.orEmpty().filter { it.isInActiveSection() }
+
 	private val mangaCache = LongSparseArray<Manga>()
 	private val cacheMutex = Mutex()
 	private val expanded = MutableStateFlow(emptySet<Long>())
@@ -337,7 +340,7 @@ class DownloadsViewModel @Inject constructor(
 
 	fun remove(ids: Set<Long>, deleteFiles: Boolean = false) {
 		// Snapshot finished jobs before the asynchronous confirmation result can race a new job.
-		val selected = visibleWorks.value.orEmpty().filter {
+		val selected = currentSectionRows().filter {
 			it.selectionId in ids && it.workState.isFinished && it.uiAction == null
 		}
 		val workIds = selected.flatMapTo(LinkedHashSet()) { it.workIds }
@@ -407,12 +410,12 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun snapshot(ids: LongSet): Collection<DownloadItemModel> {
-		return visibleWorks.value?.filterTo(ArrayList(ids.size)) { x -> x.selectionId in ids }.orEmpty()
+		return currentSectionRows().filterTo(ArrayList(ids.size)) { x -> x.selectionId in ids }
 	}
 
-	fun allIds(): Set<Long> = visibleWorks.value?.mapToSet {
+	fun allIds(): Set<Long> = currentSectionRows().mapToSet {
 		it.selectionId
-	} ?: emptySet()
+	}
 
 	fun expandCollapse(item: DownloadItemModel) {
 		expanded.update {
@@ -424,7 +427,7 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}
 
-	private fun selectedWorkIds(selectionIds: Set<Long>): Set<UUID> = visibleWorks.value.orEmpty()
+	private fun selectedWorkIds(selectionIds: Set<Long>): Set<UUID> = currentSectionRows()
 		.filter { it.selectionId in selectionIds }
 		.flatMapTo(LinkedHashSet()) { it.workIds }
 

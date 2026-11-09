@@ -17,7 +17,8 @@ class DownloadsContentSectionTest {
 		assertTrue(vm.contains("it.isInActiveSection() && it.canCancel"))
 		assertTrue(vm.contains("it.isInActiveSection() && it.workState.isFinished"))
 		assertTrue(vm.contains("val items = visibleWorks.transformLatest"))
-		assertTrue(vm.contains("fun allIds(): Set<Long> = visibleWorks.value"))
+		assertTrue(vm.contains("fun allIds(): Set<Long> = currentSectionRows()"))
+		assertTrue(vm.contains("private fun currentSectionRows(): List<DownloadItemModel>"))
 		assertTrue(activity.contains("selectionController.clear()"))
 		assertTrue(layout.contains("view_manga_novel_toggle"))
 	}

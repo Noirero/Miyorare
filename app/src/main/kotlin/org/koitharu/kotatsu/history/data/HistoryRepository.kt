@@ -339,10 +339,12 @@ internal fun historyContentSectionPredicate(
 	val novelSource = if (sources.isEmpty()) "0" else
 		"manga.source IN (" + sources.joinToString(",") { "'" + it.replace("'", "''") + "'" } + ")"
 	val path = "lower(replace(manga.url, char(92), '/'))"
+	// Match isNovelContentPath: only the URL path, not query/fragment text, has an EPUB suffix.
+	val noFragment = "substr($path, 1, instr($path || '#', '#') - 1)"
+	val clean = "substr($noFragment, 1, instr($noFragment || '?', '?') - 1)"
 	val localNovel = "(manga.source = 'LOCAL' AND (" +
 		"$path LIKE '%/00.novel/%' OR $path LIKE '00.novel/%' OR " +
-		"$path LIKE '%/00.novel' OR $path LIKE '%.epub' OR " +
-		"$path LIKE '%.epub?%' OR $path LIKE '%.epub#%'))"
+		"$clean LIKE '%/00.novel' OR $clean LIKE '%.epub'))"
 	val novel = "($novelSource OR $localNovel)"
 	return if (section == MangaNovelSection.NOVEL) novel else "NOT $novel"
 }

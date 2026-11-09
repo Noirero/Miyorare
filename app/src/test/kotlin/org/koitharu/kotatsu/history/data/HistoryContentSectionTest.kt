@@ -23,6 +23,9 @@ class HistoryContentSectionTest {
 		assertTrue(sql.contains("manga.source IN ('LN_sample','LN_some''quote')"))
 		assertTrue(sql.contains("manga.source = 'LOCAL'"))
 		assertTrue(sql.contains("LIKE '%.epub'"))
+		assertTrue(sql.contains("substr("))
+		assertTrue(sql.contains("instr("))
+		assertFalse(sql.contains("LIKE '%.epub?%'"))
 		assertTrue(sql.contains("LIKE '%/00.novel/%'"))
 	}
 
