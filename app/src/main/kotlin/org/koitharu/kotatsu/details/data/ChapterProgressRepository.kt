@@ -60,15 +60,27 @@ class ChapterProgressRepository @Inject constructor(
      */
     fun requestManualUnreadReset(
         mangaId: Long, space: FavouriteSpace, key: ChapterPersonalKey, chapterId: Long,
+    ): Job = requestManualUnreadResets(mangaId, space, listOf(chapterId to key))
+
+    /**
+     * Bulk manual-unread uses one process-owned worker and one database transaction.
+     * Each chapter gets its own synchronous generation stamp, so a stale Reader write
+     * cannot resurrect a cleared page even if the Details screen is destroyed.
+     */
+    fun requestManualUnreadResets(
+        mangaId: Long, space: FavouriteSpace, chapters: Collection<Pair<Long, ChapterPersonalKey>>,
     ): Job {
-        val stamp = settings.markChapterPageResetPending(mangaId, chapterId, space.dbValue)
-        resetVersion.update { it + 1L }
-        val pageKey = PageKey(mangaId, space.dbValue, key)
+        val resets = chapters.distinctBy { it.first }.map { (chapterId, key) ->
+            Triple(chapterId, key, settings.markChapterPageResetPending(mangaId, chapterId, space.dbValue))
+        }
+        if (resets.isNotEmpty()) resetVersion.update { it + 1L }
         return processLifecycleScope.launch(Dispatchers.IO) {
+            if (resets.isEmpty()) return@launch
             mutationMutex.withLock {
                 database.withTransaction {
-                    if (settings.getChapterPageResetStamp(mangaId, chapterId, space.dbValue) == stamp) {
-                        renewedVisits.remove(pageKey)
+                    for ((chapterId, key, stamp) in resets) {
+                        if (settings.getChapterPageResetStamp(mangaId, chapterId, space.dbValue) != stamp) continue
+                        renewedVisits.remove(PageKey(mangaId, space.dbValue, key))
                         database.getChapterProgressDao().delete(mangaId, key.source, key.url, space.dbValue)
                     }
                 }

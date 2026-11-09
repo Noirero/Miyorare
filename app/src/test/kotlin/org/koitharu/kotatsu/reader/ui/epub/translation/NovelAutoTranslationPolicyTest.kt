@@ -34,6 +34,40 @@ class NovelAutoTranslationPolicyTest {
 		assertFalse(NovelAutoTranslationPolicy.shouldStart(true, true, true, false, true, 42L, 0L))
 	}
 
+
+	@Test
+	fun `page mode requires an actual opened paged viewport and an idle translator`() {
+		assertTrue(NovelAutoTranslationPolicy.shouldStartPage(true, true, true, true, true, false))
+		assertFalse(NovelAutoTranslationPolicy.shouldStartPage(false, true, true, true, true, false))
+		assertFalse(NovelAutoTranslationPolicy.shouldStartPage(true, false, true, true, true, false))
+		assertFalse(NovelAutoTranslationPolicy.shouldStartPage(true, true, false, true, true, false))
+		assertFalse(NovelAutoTranslationPolicy.shouldStartPage(true, true, true, false, true, false))
+		assertFalse(NovelAutoTranslationPolicy.shouldStartPage(true, true, true, true, false, false))
+		assertFalse(NovelAutoTranslationPolicy.shouldStartPage(true, true, true, true, true, true))
+	}
+
+	@Test
+	fun `page auto mode is triggered by navigation but not reflow and only requests visible source`() {
+		val fragment = source("EpubReaderFragment.kt")
+		assertTrue(fragment.contains("autoPageOpenedPending = true"))
+		assertTrue(fragment.contains("if (observedPagePosition >= 0 && position != observedPagePosition) autoPageOpenedPending = true"))
+		assertTrue(fragment.contains("observedPagePosition = pager.currentItem"))
+		assertTrue(fragment.contains("if (isPagedMode) autoPageOpenedPending = true"))
+		assertTrue(fragment.contains("if (isPagedMode && currentLocator().clamped() != locator.clamped()) autoPageOpenedPending = true"))
+		assertTrue(fragment.contains("override fun onResume()"))
+		assertTrue(fragment.contains("if (openedChapter != null && openedChapter != autoPageLastChapterId) autoPageOpenedPending = true"))
+		assertTrue(fragment.contains("autoPageOpenedPending = false"))
+		assertTrue(fragment.contains("val visibleOnly = selection.scope == NovelTranslationScope.PAGE"))
+		assertTrue(fragment.contains("NovelTranslationPageScope.uncovered("))
+		assertTrue(fragment.contains("if (!automatic) showCachedTranslation(selection.displayMode)"))
+		assertTrue(fragment.contains("scope = if (mode == NovelAutoTranslationMode.PAGE) NovelTranslationScope.PAGE"))
+	}
+
+	private fun source(file: String): String = sequenceOf(
+		java.io.File("src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub", file),
+		java.io.File("app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub", file),
+	).first(java.io.File::isFile).readText()
+
 	@Test
 	fun `auto projection retention stays bounded around current chapter`() {
 		assertTrue(NovelAutoTranslationPolicy.shouldRetainProjection(10, 12, 2))

@@ -47,6 +47,8 @@ class ChaptersSelectionCallback(
 		menu.findItem(R.id.action_save).isVisible = canSave
 		menu.findItem(R.id.action_delete).isVisible = canDelete
 		menu.findItem(R.id.action_select_all).isVisible = items.size < allItems.size
+		menu.findItem(R.id.action_mark_read).isVisible = items.any { it.value.isUnread }
+		menu.findItem(R.id.action_mark_unread).isVisible = items.any { !it.value.isUnread }
 		menu.findItem(R.id.action_mark_current).isVisible = items.size == 1
 		menu.findItem(R.id.action_chapter_personal).isVisible = viewModel is DetailsViewModel && items.size == 1
 		menu.findItem(R.id.action_browser).isVisible = items.size == 1 &&
@@ -157,6 +159,14 @@ class ChaptersSelectionCallback(
 				if (selected == null || detailsViewModel == null) return false
 				mode?.finish()
 				detailsViewModel.editChapterPersonal(selected)
+				true
+			}
+
+			R.id.action_mark_read, R.id.action_mark_unread -> {
+				val ids = controller.peekCheckedIds().toSet()
+				if (ids.isEmpty()) return false
+				viewModel.setChaptersReadState(ids, item.itemId == R.id.action_mark_read)
+				mode?.finish()
 				true
 			}
 

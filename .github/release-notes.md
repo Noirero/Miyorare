@@ -1,38 +1,48 @@
-## Miyorare v1.4.21
+## Miyorare v1.4.22
 
-This maintenance update improves the stability of reading and download indicators on Favourites cards. Previously verified information can remain visible while Miyorare refreshes card metadata after returning from Details, switching tabs, or resuming the library.
+This update improves chapter management and EPUB novel reading. Select and update multiple chapters at once, open new text readers in left-to-right page mode by default, and choose when automatic translation should run. Bilingual reading also gains clearer paragraph-by-paragraph presentation.
+
+### ✨ What's New
+
+- **Bulk Chapter Read/Unread** — Long-press chapters in the modern Details screen to enter multi-select, then mark selected chapters as read or unread. The existing Manage Chapters selection menu now supports the same batch actions.
+- **Invert Chapter Selection** — Quickly select the chapters not currently selected, within the visible/selectable chapter scope. Select All and an explicit exit action remain available.
+- **Automatic Translation on Page Open** — Choose **Off**, **On chapter open**, or **On page open** for each novel. In paged EPUB reading, page-open mode translates only the original text within the opened page rather than automatically requesting unvisited pages.
 
 ### 🚀 Improvements
 
-- **More Stable Favourites Cards** — Retain last-known, verified reading status, unread information, and download badges during background revalidation instead of briefly replacing them with unknown or empty values.
-- **Smarter Metadata Refresh** — Reuse verified information only for matching Favourites context, including Normal/Private space, category, Manga/Novel type, visible items, and relevant display options. Newly encountered cards still wait for their own results.
-- **Clearer Loading State** — On a genuine cold start, unresolved reading information is shown as pending rather than incorrectly appearing unread or untouched. An unverified download is not presented as a confirmed downloaded file.
+- **Left-to-Right Novel Default** — New text readers default to paged left-to-right navigation when no reading-mode preference has been saved. Existing per-book or global Scroll/RTL preferences are retained, and these modes remain selectable.
+- **Clearer Bilingual Paragraphs** — Original and translated paragraphs appear together. The translation uses the normal Reader text style and a subtle accent-coloured side marker, while the original is visually subdued.
+- **More Predictable Chapter Actions** — Bulk updates use the existing persisted chapter read-state pipeline. Marking manga chapters unread also clears their corresponding saved page-resume position without fabricating a Reader visit.
 
 ### 🐞 Fixes
 
-- **Rapid Navigation and Refresh** — Prevent outdated or cancelled metadata requests from replacing newer results, including rapid A → B → A navigation.
-- **Download Badge Flicker** — Preserve verified download indicators while background checks run, including when other downloads or local files change.
-- **Stale Metadata After Empty Views** — Revalidate cards correctly when an empty visible list later contains items again.
+- **Page Translation and Reflow** — Prevent pagination recalculation from being mistaken for a newly opened page, reducing unnecessary automatic translation requests.
+- **Rapid Page Navigation** — Allow subsequent page-open requests to proceed correctly after an earlier translation request is in flight.
 
-This update focuses on Favourites card status presentation and its asynchronous refresh. It does not change cover artwork, on-device files, saved manga data, or persistent caching.
+**Note:** Automatic page translation applies to paged EPUB modes, not Scroll mode. Translation may still consume provider requests, and previously cached coarse translations may not form complete bilingual paragraph pairs without retranslation.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Pembaruan pemeliharaan ini meningkatkan kestabilan indikator status membaca dan download pada kartu Favourites. Informasi yang sebelumnya sudah terverifikasi dapat tetap ditampilkan ketika Miyorare memperbarui metadata setelah kembali dari Details, berpindah tab, atau membuka kembali library.
+Pembaruan ini meningkatkan pengelolaan chapter dan pengalaman membaca novel EPUB. Kamu dapat memilih dan memperbarui banyak chapter sekaligus, menggunakan navigasi halaman kiri-ke-kanan sebagai bawaan pembaca teks baru, serta menentukan kapan penerjemahan otomatis dijalankan. Tampilan bilingual juga menjadi lebih jelas per paragraf.
+
+### ✨ Yang Baru
+
+- **Read/Unread Banyak Chapter Sekaligus** — Tekan lama chapter pada halaman Details modern untuk masuk ke mode multi-select, lalu tandai chapter terpilih sebagai sudah dibaca atau belum dibaca. Menu pemilihan **Manage Chapters** juga mendukung aksi massal yang sama.
+- **Balik Pilihan Chapter (Invert Selection)** — Pilih chapter yang sebelumnya belum terpilih dalam cakupan chapter yang bisa dipilih, tanpa mengubah status membacanya. Select All dan tombol keluar tetap tersedia.
+- **Terjemahan Otomatis Saat Halaman Dibuka** — Pilih **Off**, **On chapter open**, atau **On page open** untuk tiap novel. Pada EPUB dengan mode halaman, terjemahan otomatis hanya memproses teks asli di halaman yang dibuka, bukan meminta terjemahan halaman yang belum dikunjungi.
 
 ### 🚀 Peningkatan
 
-- **Kartu Favourites Lebih Stabil** — Mempertahankan status membaca, informasi chapter belum dibaca, dan badge download yang telah terverifikasi selama proses pembaruan di background, tanpa sementara menggantinya dengan nilai kosong atau belum diketahui.
-- **Pembaruan Metadata Lebih Tepat** — Menggunakan kembali informasi yang valid hanya untuk konteks Favourites yang sesuai, termasuk ruang Normal/Private, kategori, jenis Manga/Novel, item yang ditampilkan, dan opsi tampilan. Kartu yang baru muncul tetap menunggu hasil pemeriksaannya sendiri.
-- **Status Loading Lebih Jelas** — Saat aplikasi benar-benar dibuka dari kondisi awal, informasi membaca yang belum tersedia ditampilkan sebagai pending, bukan disalahartikan sebagai belum pernah dibaca. File yang belum terverifikasi juga tidak ditampilkan sebagai download yang sudah pasti tersedia.
+- **Default Novel Kiri-ke-Kanan (LTR)** — Pembaca teks baru menggunakan mode halaman LTR apabila belum ada preferensi mode baca yang tersimpan. Preferensi Scroll/RTL global atau per buku yang sudah ada tetap dihormati dan tetap dapat dipilih.
+- **Paragraf Bilingual Lebih Jelas** — Paragraf asli dan terjemahan ditampilkan berpasangan. Terjemahan memakai gaya teks Reader normal dengan penanda aksen tipis di samping, sementara teks asli dibuat lebih lembut.
+- **Aksi Chapter Lebih Konsisten** — Perubahan status banyak chapter menggunakan sistem Read/Unread tersimpan yang sama. Menandai chapter manga belum dibaca juga menghapus posisi resume halaman terkait, tanpa membuat kunjungan Reader palsu.
 
 ### 🐞 Perbaikan
 
-- **Navigasi dan Refresh Cepat** — Mencegah permintaan metadata lama atau yang sudah dibatalkan menimpa hasil yang lebih baru, termasuk perpindahan cepat A → B → A.
-- **Badge Download Berkedip** — Mempertahankan indikator download yang sudah terverifikasi selama pemeriksaan ulang di background, termasuk ketika download atau file lokal lain berubah.
-- **Metadata Stale Setelah Daftar Kosong** — Memastikan kartu diperiksa ulang ketika daftar yang sebelumnya kosong kembali menampilkan item.
+- **Terjemahan Halaman dan Reflow** — Mencegah perhitungan ulang tata letak halaman dianggap sebagai halaman baru yang dibuka sehingga mengurangi permintaan terjemahan otomatis yang tidak perlu.
+- **Navigasi Halaman Cepat** — Memastikan permintaan terjemahan untuk halaman berikutnya tetap bisa diproses setelah permintaan sebelumnya sedang berjalan.
 
-Pembaruan ini berfokus pada tampilan status kartu Favourites dan proses refresh asynchronous. Tidak ada perubahan pada artwork cover, file on-device, data manga tersimpan, maupun mekanisme persistent cache.
+**Catatan:** Terjemahan otomatis per halaman berlaku pada mode EPUB berpaginasi, bukan Scroll. Penerjemahan dapat menggunakan request provider, dan hasil terjemahan lama yang tersimpan sebagai segmen besar mungkin memerlukan penerjemahan ulang agar terbentuk pasangan paragraf bilingual yang lengkap.
 
 </details>

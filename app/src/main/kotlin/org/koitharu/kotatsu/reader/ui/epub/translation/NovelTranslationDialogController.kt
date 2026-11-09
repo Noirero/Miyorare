@@ -166,10 +166,17 @@ class NovelTranslationDialogController(
 			}
 		}
 
-		val autoTranslateSwitch = autoMangaId?.let { id ->
-			MaterialSwitch(context).apply {
+		val autoModes = NovelAutoTranslationMode.entries
+		val autoTranslateSelector = autoMangaId?.let { id ->
+			Spinner(context).apply {
+				adapter = compactSpinnerAdapter(listOf(
+					context.getString(R.string.novel_translation_auto_off),
+					context.getString(R.string.novel_translation_auto_chapter),
+					context.getString(R.string.novel_translation_auto_page),
+				), visuals.onSurface)
+				setSelection(autoModes.indexOf(settings.autoTranslateMode(id)))
+				minimumHeight = dp(48)
 				contentDescription = context.getString(R.string.novel_translation_auto_translate_this_novel)
-				isChecked = settings.isAutoTranslateActive(id)
 			}
 		}
 
@@ -196,10 +203,9 @@ class NovelTranslationDialogController(
 			isChecked = settings.contextAware
 		}
 		val cards = ArrayList<View>(4)
-		if (autoTranslateSwitch != null) cards.add(visuals.toggleCard(
+		if (autoTranslateSelector != null) cards.add(visuals.selectorCard(
 			context.getString(R.string.novel_translation_auto_compact),
-			context.getString(R.string.novel_translation_auto_compact_summary),
-			R.drawable.ic_auto_fix, autoTranslateSwitch,
+			R.drawable.ic_auto_fix, autoTranslateSelector,
 		))
 		if (manualScopeSelector != null) cards.add(visuals.selectorCard(
 			context.getString(R.string.novel_translation_scope),
@@ -214,7 +220,12 @@ class NovelTranslationDialogController(
 			context.getString(R.string.novel_translation_service),
 			R.drawable.ic_language, serviceSpinner,
 		))
+
 		root.addView(visuals.optionsGrid(cards), matchWidth().apply { bottomMargin = dp(4) })
+		if (autoTranslateSelector != null && !pagedReader) {
+			root.addView(visuals.label(context.getString(R.string.novel_translation_auto_page_requires_paged),
+				11f, subdued = true), matchWidth().apply { bottomMargin = dp(5) })
+		}
 
 		val advancedButton = visuals.card(
 			context.getString(R.string.novel_translation_advanced_settings),
@@ -240,16 +251,16 @@ class NovelTranslationDialogController(
 			settings.engine = selectedEngine()
 		}
 
-		var updatingAutoSwitch = false
+		var updatingAutoSelector = false
 		fun updateAutoUi() {
 			val id = autoMangaId ?: return
 			if (settings.isAutoTranslateEnabled(id) && !settings.isAutoTranslateActive(id)) {
 				settings.setAutoTranslateEnabled(id, false)
 				onAutoTranslateChanged(false)
 			}
-			updatingAutoSwitch = true
-			autoTranslateSwitch?.isChecked = settings.isAutoTranslateActive(id)
-			updatingAutoSwitch = false
+			updatingAutoSelector = true
+			autoTranslateSelector?.setSelection(autoModes.indexOf(settings.autoTranslateMode(id)))
+			updatingAutoSelector = false
 		}
 
 		fun updateServiceUi() {
@@ -269,26 +280,33 @@ class NovelTranslationDialogController(
 		}
 		updateServiceUi()
 
-		autoTranslateSwitch?.setOnCheckedChangeListener { button, checked ->
-			if (updatingAutoSwitch) return@setOnCheckedChangeListener
-			val id = autoMangaId ?: return@setOnCheckedChangeListener
-			applySelectedService()
-			if (checked && selectedService() == NovelTranslationService.AI && !isAiConfigured()) {
-				settings.setAutoTranslateEnabled(id, false)
-				updatingAutoSwitch = true
-				button.isChecked = false
-				updatingAutoSwitch = false
-				Toast.makeText(context, R.string.novel_translation_auto_requires_ai_setup, Toast.LENGTH_LONG).show()
-				showAiSettings(continueToTranslate = false)
-				return@setOnCheckedChangeListener
+		autoTranslateSelector?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+			override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+				if (updatingAutoSelector) return
+				val novelId = autoMangaId ?: return
+				val mode = autoModes[position.coerceIn(autoModes.indices)]
+				if (mode == settings.autoTranslateMode(novelId)) return
+				if (mode == NovelAutoTranslationMode.PAGE && !pagedReader) {
+					updateAutoUi()
+					Toast.makeText(context, R.string.novel_translation_auto_page_requires_paged, Toast.LENGTH_LONG).show()
+					return
+				}
+				applySelectedService()
+				if (mode != NovelAutoTranslationMode.OFF && selectedService() == NovelTranslationService.AI && !isAiConfigured()) {
+					updateAutoUi()
+					Toast.makeText(context, R.string.novel_translation_auto_requires_ai_setup, Toast.LENGTH_LONG).show()
+					showAiSettings(continueToTranslate = false)
+					return
+				}
+				settings.setAutoTranslateMode(novelId, mode)
+				if (mode != NovelAutoTranslationMode.OFF && selectedService() == NovelTranslationService.AI) {
+					Toast.makeText(context, context.getString(
+						R.string.novel_translation_auto_ai_note, settings.provider.displayName,
+					), Toast.LENGTH_LONG).show()
+				}
+				onAutoTranslateChanged(mode != NovelAutoTranslationMode.OFF)
 			}
-			settings.setAutoTranslateEnabled(id, checked)
-			if (checked && selectedService() == NovelTranslationService.AI) {
-				Toast.makeText(context, context.getString(
-					R.string.novel_translation_auto_ai_note, settings.provider.displayName,
-				), Toast.LENGTH_LONG).show()
-			}
-			onAutoTranslateChanged(checked)
+			override fun onNothingSelected(parent: AdapterView<*>?) = Unit
 		}
 
 		contextSwitch.setOnCheckedChangeListener { _, checked -> settings.contextAware = checked }
