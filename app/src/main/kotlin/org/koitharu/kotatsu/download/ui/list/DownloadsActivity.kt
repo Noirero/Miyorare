@@ -19,6 +19,8 @@ import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.koitharu.kotatsu.R
+import com.google.android.material.button.MaterialButtonToggleGroup
+import org.koitharu.kotatsu.core.model.MangaNovelSection
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -65,6 +67,20 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(), DownloadItem
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
 		isModernDownloads = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN
 		setupModernDownloadsHeader()
+		val typeToggle = viewBinding.root.findViewById<MaterialButtonToggleGroup>(R.id.manga_novel_toggle)
+		typeToggle.check(if (viewModel.selectedSection.value == MangaNovelSection.NOVEL) {
+			R.id.button_section_novel
+		} else R.id.button_section_manga)
+		typeToggle.addOnButtonCheckedListener { _, checkedId, checked ->
+			if (!checked) return@addOnButtonCheckedListener
+			val section = if (checkedId == R.id.button_section_novel) MangaNovelSection.NOVEL
+				else MangaNovelSection.MANGA
+			if (section != viewModel.selectedSection.value) {
+				selectionController.clear()
+				viewModel.selectSection(section)
+				viewBinding.recyclerView.scrollToPosition(0)
+			}
+		}
 		val downloadsAdapter = DownloadsAdapter(this, this, isModernDownloads)
 		val decoration = TypedListSpacingDecoration(this, false)
 		selectionController = ListSelectionController(delegate, DownloadsSelectionDecoration(this), this, this)

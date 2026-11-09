@@ -142,6 +142,8 @@
 				</LinearLayout>
 			</androidx.constraintlayout.widget.ConstraintLayout>
 		</com.google.android.material.card.MaterialCardView>
+		<!-- Shared Manga/Novel selector; work state and download files are not duplicated. -->
+		<include layout="@layout/view_manga_novel_toggle" />
 	</com.google.android.material.appbar.AppBarLayout>
 
 	<org.koitharu.kotatsu.core.ui.list.fastscroll.FastScrollRecyclerView
