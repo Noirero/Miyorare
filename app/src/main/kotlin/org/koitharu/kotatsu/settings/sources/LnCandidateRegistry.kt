@@ -212,8 +212,12 @@ class LnCandidateRegistry @Inject constructor(
             return LnCandidateSnapshot(commit, candidates.sortedWith(compareBy({ it.language }, { it.name.lowercase() })))
         }
 
-        private fun JsonObject.text(key: String) = getValue(key).jsonPrimitive.content.also {
-            require(it.isNotBlank()) { "Missing candidate metadata: $key" }
+        private fun JsonObject.text(key: String): String {
+            val primitive = getValue(key).jsonPrimitive
+            require(primitive.isString) { "Candidate metadata $key must be a string" }
+            return primitive.content.also {
+                require(it.isNotBlank()) { "Missing candidate metadata: $key" }
+            }
         }
 
     }
