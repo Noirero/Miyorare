@@ -23,7 +23,7 @@
     <string name="miyorare_novel_candidates_unavailable">Registry kandidat resmi belum tersedia</string>
     <string name="miyorare_novel_candidates_count">%1$d kandidat</string>
     <string name="miyorare_novel_candidates_no_results">Tidak ada kandidat novel English atau Indonesia yang cocok</string>
-    <string name="miyorare_novel_candidates_not_published">Registry kandidat resmi belum dipublikasikan. Tidak ada plugin novel yang dipasang.</string>
+    <string name="miyorare_novel_candidates_not_published">Registry kandidat resmi belum dipublikasikan. Browser ini tidak memasang plugin.</string>
     <string name="miyorare_novel_candidates_network_error">Tidak dapat terhubung ke registry kandidat resmi. Periksa koneksi lalu coba lagi.</string>
     <string name="miyorare_novel_candidates_invalid">Metadata registry kandidat resmi tidak lengkap atau tidak valid. Tidak ada kandidat yang dimuat.</string>
 </resources>
