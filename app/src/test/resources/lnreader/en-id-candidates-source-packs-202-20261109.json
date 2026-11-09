@@ -1,0 +1,4191 @@
+{
+  "schemaVersion": 1,
+  "kind": "MIYORARE_LNREADER_NOVEL_CANDIDATES",
+  "scope": {
+    "languages": [
+      "en",
+      "id"
+    ],
+    "installPolicy": "EXPLICIT_USER_ACTION",
+    "unverifiedInstallAllowed": false
+  },
+  "upstream": {
+    "repository": "LNReader/lnreader-plugins",
+    "branch": "plugins/v3.0.0",
+    "commit": "45daf1d08b46dca6efdf6d38f250da95771967d2",
+    "indexPath": ".dist/plugins.min.json",
+    "indexUrl": "https://raw.githubusercontent.com/LNReader/lnreader-plugins/45daf1d08b46dca6efdf6d38f250da95771967d2/.dist/plugins.min.json",
+    "totalCatalogPlugins": 327
+  },
+  "pilot": {
+    "pluginId": "chikari",
+    "state": "TESTING",
+    "evidence": {
+      "apiProbe": "https://github.com/Noirero/Miyorare/actions/runs/42534945356",
+      "appCommit": "50781027f6bfeddd2c2e8008978dff6f1af6f341",
+      "api": "PASS",
+      "android": "UNKNOWN",
+      "epub": "UNKNOWN"
+    }
+  },
+  "candidates": [
+    {
+      "id": "1stkissnovel",
+      "name": "FirstKissNovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://1stkissnovel.org/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/FirstKissNovel[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/1stkissnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "allnovel",
+      "name": "AllNovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.3.6",
+      "site": "https://novelfull.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/AllNovel[readnovelfull].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readnovelfull/allnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "anf.net",
+      "name": "AllNovelFull",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.3.5",
+      "site": "https://novgo.net/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/AllNovelFull[readnovelfull].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readnovelfull/anf.net/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "animeanyway",
+      "name": "Anime Anyway",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://animeanyway.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/animeAnyway.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/animeanyway/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "arcane",
+      "name": "Arcane Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://arcanetranslations.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/ArcaneTranslations[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/arcane/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "archiveofourown",
+      "name": "Archive Of Our Own",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.5",
+      "site": "https://archiveofourown.org/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/ao3.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/ao3/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "asianfanfics",
+      "name": "Asianfanfics",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://www.asianfanfics.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/asianfanfics.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/asianfanfics/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "asuralightnovel",
+      "name": "Srank Manga",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://srankmanga.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/SrankManga[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/asuralightnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "asurascans",
+      "name": "Asura Scans",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://asurascans.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/asurascans.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/asurascans/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "atsumaru",
+      "name": "Atsumaru",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.1",
+      "site": "https://atsu.moe",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/atsumaru.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/atsumaru/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "bailiantales",
+      "name": "BaiLianTales",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://bailiantales.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/BaiLianTales[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/bailiantales/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "bakatsuki",
+      "name": "Baka-Tsuki",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.0",
+      "site": "https://www.baka-tsuki.org/project/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/bakaTsuki.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/bakatsuki/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "beastnovels",
+      "name": "Beast Novels",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.0",
+      "site": "https://beastnovels.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/beastnovels.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/beastnovels/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "bellereservoir",
+      "name": "Belle Repository",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://bellerepository.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/BelleRepository[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/bellereservoir/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "blumeverse",
+      "name": "BlumeVerse",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://blume-verse.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/BlumeVerse[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/blumeverse/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "boonnovel",
+      "name": "BoonNovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://reader.boondollars.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/boonnovel.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/boonnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "borntobenovel",
+      "name": "BornToBeNovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://borntobenovel.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/borntobenovel.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/borntobenovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "boxnovel",
+      "name": "BoxNovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://novelnice.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/BoxNovel[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/boxnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "bronstl",
+      "name": "BronsTL",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://bronstl.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/bronstl.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/bronstl/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "cherrymistcafe",
+      "name": "Cherry Mist Cafe",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.2.1",
+      "site": "https://cherrymist.cafe/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/CherryMistCafe[fictioneer].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/fictioneer/cherrymistcafe/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "chikari",
+      "name": "Chikari",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.2",
+      "site": "https://chikari.moe",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/chikari.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/chikari/icon.png",
+      "state": "TESTING",
+      "checks": {
+        "catalog": "PASS",
+        "api": "PASS",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "chrysanthemumgarden",
+      "name": "Chrysanthemum Garden",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.3",
+      "site": "https://chrysanthemumgarden.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/chrysanthemumgarden.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/chrysanthemumgarden/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "citrusaurora",
+      "name": "Citrus Aurora",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://citrusaurora.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/CitrusAurora[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/citrusaurora/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "coralboutique",
+      "name": "Coral Boutique",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://coralboutique.xyz/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/CoralBoutique[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/coralboutique/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "cotereader",
+      "name": "COTE Reader",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.7",
+      "site": "https://cote-reader.me",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/cotereader.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/cotereader/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "cpunovel",
+      "name": "CPUnovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://cpunovel.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/CPUnovel[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/cpunovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "crimsonscrolls",
+      "name": "Crimson Scrolls",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.0",
+      "site": "https://crimsonscrolls.net",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/crimsonscrolls.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/crimsonscrolls/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "daoistquest",
+      "name": "Daoist Quest",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.2.1",
+      "site": "https://daoist.quest",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/DaoistQuest[fictioneer].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/fictioneer/daoistquest/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "daonovel",
+      "name": "DaoNovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://daonovel.co/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/DaoNovel[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/daonovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "daotekno",
+      "name": "DaoTekno",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.3",
+      "site": "https://daotekno.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/daotekno.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/daotekno/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "daotranslate",
+      "name": "DaoTranslate",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://daotranslate.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/DaoTranslate[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/daotranslate/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "DDL.com",
+      "name": "Divine Dao Library",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.1",
+      "site": "https://www.divinedaolibrary.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/divinedaolibrary.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/divinedaolibrary/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "dearestrosalie",
+      "name": "Dearest Rosalie",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.2.0",
+      "site": "https://dearestrosalie.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/DearestRosalie[fictioneer].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/fictioneer/dearestrosalie/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "dobynovels",
+      "name": "DobyNovels",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://dobynovels.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/DobyNovels[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/dobynovels/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "dragonholic",
+      "name": "Dragonholic",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "3.0.0",
+      "site": "https://dragonholictranslations.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/dragonholic.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/dragonholic/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "dragontea",
+      "name": "Dragon Tea",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://dragontea.ink/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/DragonTea[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/dragontea/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "dreambigtl",
+      "name": "Dream Big Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://www.dreambigtl.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/dreambigtl.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/dreambigtl/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "dreamyTranslations",
+      "name": "Dreamy Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.1",
+      "site": "https://dreamy-translations.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/dreamyTranslations.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/dreamyTranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "duskblossoms",
+      "name": "Dusk Blossoms",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://duskblossoms.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/DuskBlossoms[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/duskblossoms/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "ellotl",
+      "name": "ElloTL",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://ellotl.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/ElloTL[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/ellotl/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "empirenovel",
+      "name": "Empire Novel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://www.empirenovel.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/empirenovel.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/empirenovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "eternalune",
+      "name": "Eternalune",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://eternalune.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Eternalune[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/eternalune/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "etudetranslations",
+      "name": "Etude Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://etudetranslations.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/EtudeTranslations[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/etudetranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "fannovel",
+      "name": "FanNovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.5",
+      "site": "https://www.fanmtl.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/FanNovel[readwn].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readwn/fannovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "fanstranslations",
+      "name": "Fans Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://fanstranslations.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/FansTranslations[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/fanstranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "fenrir",
+      "name": "Fenrir Realm",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.5",
+      "site": "https://fenrirealm.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/fenrirrealm.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/fenrirrealm/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "fictionzone",
+      "name": "Fiction Zone",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.0",
+      "site": "https://fictionzone.net",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/fictionzone.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/fictionzone/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "firebirdsnest",
+      "name": "Firebird's Nest",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://firebirdsnest.org",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/firebirdsnest.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/firebirdsnest/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "foxaholic",
+      "name": "Foxaholic",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://www.foxaholic.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Foxaholic[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/foxaholic/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "foxteller",
+      "name": "Foxteller",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.3",
+      "site": "https://www.foxteller.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/foxteller.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/foxteller/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "FuckNovelpia",
+      "name": "FuckNovelpia",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.4",
+      "site": "https://fucknovelpia.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/fucknovelpia.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/fucknovelpia/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "FWK.US",
+      "name": "Faq Wiki",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "4.0.0",
+      "site": "https://faqwiki.xyz",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/faqwikius.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/faqwikius/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "FWN.com",
+      "name": "Free Web Novel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.3.10",
+      "site": "https://freewebnovel.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/FreeWebNovel[readnovelfull].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readnovelfull/fwn.com/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "galaxytranslations",
+      "name": "Galaxy Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://darkstartranslations.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/GalaxyTranslations[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/galaxytranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "genesistudio",
+      "name": "Genesis",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.0.3",
+      "site": "https://genesistudio.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/genesis.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/genesis/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "guavaread",
+      "name": "Guavaread",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://guavaread.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Guavaread[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/guavaread/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "hangulplanet",
+      "name": "HangulPlanet",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.3.0",
+      "site": "https://hangulplanet.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/HangulPlanet.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/hangulplanet/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "hennoveltranslations",
+      "name": "Hen Novel Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.1",
+      "site": "https://hennoveltranslations.org",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/hennoveltranslations.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/hennoveltranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "hiraethtranslation",
+      "name": "Hiraeth Translation",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://hiraethtranslation.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/HiraethTranslation[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/hiraethtranslation/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "hotnovelpub",
+      "name": "HotNovelPub",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.1",
+      "site": "https://hotnovelpub.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/HotNovelPub[hotnovelpub].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/hotnovelpub/hotnovelpub/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "hyacinthbloom",
+      "name": "Hyacinth in Bloom",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://hyacinthbloom.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/HyacinthinBloom[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/hyacinthbloom/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "indratranslations",
+      "name": "Indra Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.3.0",
+      "site": "https://indratranslations.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/indraTranslations.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/indratranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "inkitt",
+      "name": "Inkitt",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.1",
+      "site": "https://www.inkitt.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/inkitt.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/inkitt/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "inoveltranslation",
+      "name": "iNovelTranslation",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.2",
+      "site": "https://inoveltranslation.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/inoveltranslation.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/inoveltranslation/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "ippotranslations",
+      "name": "Ippotranslations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://ippotranslations.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Ippotranslations[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/ippotranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "kdtnovels",
+      "name": "KDT Novels",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.0.0",
+      "site": "https://kdtnovels.net/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/kdtnovels.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/kdtnovels/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "keopi",
+      "name": "Keopi Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://keopitranslations.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/KeopiTranslations[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/keopi/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "knoxt",
+      "name": "KnoxT",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://knoxt.space/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/KnoxT[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/knoxt/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "konkon",
+      "name": "Konkon",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://konkon.ink",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/konkon.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/konkon/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lazygirltranslations",
+      "name": "Lazy Girl Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://lazygirltranslations.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/LazyGirlTranslations[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/lazygirltranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "LeafStudio",
+      "name": "LeafStudio",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://leafstudio.site/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/leafstudio.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/leafstudio/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "libread",
+      "name": "Lib Read",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.3.7",
+      "site": "https://libread.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/LibRead[readnovelfull].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readnovelfull/libread/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lightnovelcave",
+      "name": "LightNovelCave",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.2",
+      "site": "https://www.lightnovelcave.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/LightNovelCave[webnovelworld].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/webnovelworld/lightnovelcave/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lightnovelplus",
+      "name": "LightNovelPlus",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.3.4",
+      "site": "https://lightnovelplus.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/LightNovelPlus[readnovelfull].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readnovelfull/lightnovelplus/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lightnovelpubvip",
+      "name": "LightNovelPub Vip",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.2",
+      "site": "https://lightnovelpub.vip/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/LightNovelPubVip[webnovelworld].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/webnovelworld/lightnovelpubvip/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lightnovelto",
+      "name": "LightNovel.to",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://lightnovel.to",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/lightnovelto.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/lightnovelto/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lightnoveltranslations",
+      "name": "Light Novel Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.2",
+      "site": "https://lightnovelstranslations.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/lightnoveltranslation.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/lightnoveltranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "LightNovelUpdates",
+      "name": "Light Novel Updates",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://www.lightnovelupdates.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/LightNovelUpdates[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/lightnovelupdates/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lightnovelworld",
+      "name": "LightNovelWorld",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.2",
+      "site": "https://lightnovelworld.org/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/lightnovelworld.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/lightnovelworld/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lilyonthevalley",
+      "name": "Lily on the Valley",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.2.1",
+      "site": "https://lilyonthevalley.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/LilyontheValley[fictioneer].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/fictioneer/lilyonthevalley/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lncrawler",
+      "name": "LNCrawler",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.1",
+      "site": "https://lncrawler.monster",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/lncrawler.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/lncrawler/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lnheaven",
+      "name": "LightNovelHeaven",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://lightnovelheaven.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/LightNovelHeaven[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/lnheaven/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lnmtl",
+      "name": "LnMTL",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.1.1",
+      "site": "https://lnmtl.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/lnmtl.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/lnmtl/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lnori",
+      "name": "LNORI",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.1",
+      "site": "https://lnori.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/lnori.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/lnori/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lovelyblossoms",
+      "name": "Lovelyblossoms",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://lovelyblossoms.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Lovelyblossoms[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/lovelyblossoms/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "ltnovel",
+      "name": "Ltnovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.4",
+      "site": "https://www.ltnovels.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Ltnovel[readwn].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readwn/ltnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lullobox",
+      "name": "LulloBox",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://lullobox.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/LulloBox[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/lullobox/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "luminaretranslations",
+      "name": "Luminare Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://luminaretranslations.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/luminaretranslations.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/luminaretranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "lunarletters",
+      "name": "LunarLetters",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://lunarletters.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/LunarLetters[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/lunarletters/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "maehwasup",
+      "name": "Maehwasup",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.1",
+      "site": "https://maehwasup.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/maehwasup.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/maehwasup/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "meownovel",
+      "name": "Meownovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://meownovel.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Meownovel[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/meownovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "mizupanshoko",
+      "name": "Mizupan's Archives",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://mizupanshoko.wordpress.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/mizupanshoko.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/mizupanshoko/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "moonlightnovel",
+      "name": "Moonlight Novels",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.13",
+      "site": "https://moonlightnovel.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/MoonlightNovels[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/moonlightnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "mostnovel",
+      "name": "MostNovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://mostnovel.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/MostNovel[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/mostnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "mtl-novel",
+      "name": "MTL-Novel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://mtl-novel.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/MTLNovel[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/mtl-novel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "mtlnovel",
+      "name": "MTL Novel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.3",
+      "site": "https://www.mtlnovels.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/MTLNovel[mtlnovel].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/mtlnovel/mtlnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "mvlempyr.com",
+      "name": "MVLEMPYR",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.15",
+      "site": "https://www.mvlempyr.io/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/mvlempyr.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/mvlempyr/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "mylasted",
+      "name": "Machine Editing (MyLasted)",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.1",
+      "site": "https://mylasted.blogspot.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/mylasted.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/mylasted/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "mynovels",
+      "name": "Mynovels",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://mynovels.su/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/mynovels.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/mynovels/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "mysticalmerries",
+      "name": "MysticalSeries",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://mysticalmerries.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/MysticalSeries[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/mysticalmerries/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "neosekaiTLS",
+      "name": "NeoSekai Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://www.neosekaitranslations.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NeoSekaiTranslations[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/neosekaitls/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "nightjarreads",
+      "name": "Nightjar Reads",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://nightjarreads.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/nightjarreads.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/nightjarreads/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "nitromanga",
+      "name": "Nitro Manga",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://nitromanga.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NitroManga[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/nitromanga/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "NO.net",
+      "name": "novelsOnline",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.2",
+      "site": "https://novelsonline.org",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelOnline.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novelsonline/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "noblemtl",
+      "name": "NobleMTL",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://noblemtl.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NobleMTL[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/noblemtl/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "noicetranslations",
+      "name": "Noice Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://noicetranslations.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NoiceTranslations[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/noicetranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novel7s",
+      "name": "Novel7s",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.1",
+      "site": "https://novel7s.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/novel7s.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novel7s/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelarchive",
+      "name": "Novel Archive",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://novelarchive.cc",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/novelarchive.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novelarchive/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelarrow",
+      "name": "Novel Arrow",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.1",
+      "site": "https://novelarrow.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/novelarrow.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novelarrow/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelbin",
+      "name": "Novel Bin",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "3.0.0",
+      "site": "https://novelbin.xyz/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/novelbin.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novelbin/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelbuddy",
+      "name": "NovelBuddy",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.1.4",
+      "site": "https://novelbuddy.me/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/novelbuddy.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novelbuddy/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelcool",
+      "name": "NovelCool",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://www.novelcool.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelCool[novelcool].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/novelcool/novelcool/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "noveldex",
+      "name": "NovelDex",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://noveldex.io",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/noveldex.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/noveldex/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelfire",
+      "name": "Novel Fire",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.4.5",
+      "site": "https://novelfire.net/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelFire[novelfire].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/novelfire/novelfire/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelfull",
+      "name": "NovelFull",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.3.4",
+      "site": "https://novelfull.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelFull[readnovelfull].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readnovelfull/novelfull/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelhall",
+      "name": "Novel Hall",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.3",
+      "site": "https://novelhall.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/novelhall.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novelhall/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelhi",
+      "name": "NovelHi",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.2",
+      "site": "https://novelhi.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/novelhi.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novelhi/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelib",
+      "name": "NovelLib",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.2.0",
+      "site": "https://novelib.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelLib[fictioneer].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/fictioneer/novelib/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelight",
+      "name": "Novelight",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.5",
+      "site": "https://novelight.net/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/novelight.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novelight/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelito",
+      "name": "Novelito",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://noveli.to",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/novelito.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novelito/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelmultiverse",
+      "name": "NovelMultiverse",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://www.novelmultiverse.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelMultiverse[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/novelmultiverse/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelnice",
+      "name": "Novel Nice",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://novelnice.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelNice[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/novelnice/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelninja",
+      "name": "Novel Ninja",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://novelninja.xyz/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelNinja[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/novelninja/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelphoenix",
+      "name": "Novel Phoenix",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.2",
+      "site": "https://novelphoenix.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelPhoenix[novelfire].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/novelfire/novelphoenix/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelping",
+      "name": "Novel Ping",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.3.4",
+      "site": "https://novelping.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelPing[readnovelfull].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readnovelfull/novelping/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelrest",
+      "name": "NovelRest",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://novelrest.vercel.app",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/novelrest.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novelrest/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelshort",
+      "name": "Novel Short",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://novel-short.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelShort[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/novelshort/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelsknight",
+      "name": "NovelsKnight",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.14",
+      "site": "https://novelsknight.punchmanga.online/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelsKnight[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/novelsknight/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelTL",
+      "name": "NovelTranslate",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://noveltranslate.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/NovelTranslate[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/noveltl/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelupdates",
+      "name": "Novel Updates",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "0.9.9",
+      "site": "https://www.novelupdates.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/novelupdates.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/novelupdates/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "onlinereadfreenovel",
+      "name": "Online Read Free Novel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://onlinereadfreenovel.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/onlinereadfreenovel.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/onlinereadfreenovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "ossantl",
+      "name": "OssanTL",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://ossantl.my.id/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/OssanTL[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/ossantl/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "pandamtl",
+      "name": "Panda Machine Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://pandamtl.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/PandaMachineTranslations[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/pandamtl/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "pasteltales",
+      "name": "Pastel Tales",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://pasteltales.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/PastelTales[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/pasteltales/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "pawread",
+      "name": "PawRead",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.1.1",
+      "site": "https://m.pawread.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/pawread.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/pawread/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "peachpuff",
+      "name": "Peach Puff Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://peachpuff.in/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/peachpuff.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/english/peachpuff/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "penguinsquad",
+      "name": "Penguin Squad",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.2.0",
+      "site": "https://penguin-squad.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/PenguinSquad[fictioneer].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/fictioneer/penguinsquad/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "prizmatranslation",
+      "name": "Prizma",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.2.0",
+      "site": "https://prizmatranslation.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Prizma[fictioneer].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/fictioneer/prizmatranslation/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "puffinfolio",
+      "name": "Puffin Folio",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://www.puffinfolio.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/puffinFolio.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/puffinfolio/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "rainofsnow",
+      "name": "Rainofsnow",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.2",
+      "site": "https://rainofsnow.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/rainofsnow.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/rainofsnow/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "ranobes",
+      "name": "Ranobes",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.0.3",
+      "site": "https://ranobes.net",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Ranobes[ranobes].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/ranobes/ranobes/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "ranovel",
+      "name": "Ranovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://ranovel.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Ranovel[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/ranovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "readfanfic",
+      "name": "Read Fanfic",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://readfanfic.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/ReadFanfic[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/readfanfic/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "readfrom",
+      "name": "Read From Net",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.0",
+      "site": "https://readfrom.net/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/readfrom.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/readfrom/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "readnovelfull",
+      "name": "ReadNovelFull",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.3.4",
+      "site": "https://readnovelfull.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/ReadNovelFull[readnovelfull].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readnovelfull/readnovelfull/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "rechapters",
+      "name": "ReChapters",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://www.rechapters.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/rechapters.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/rechapters/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "ReLib",
+      "name": "Re:Library",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.4",
+      "site": "https://re-library.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/relibrary.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/relibrary/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "requiemtls",
+      "name": "Requiem Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.16",
+      "site": "https://requiemtls.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/RequiemTranslations[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/requiemtls/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "royalroad",
+      "name": "Royal Road",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.3.4",
+      "site": "https://www.royalroad.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/royalroad.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/royalroad/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "salmonlatte",
+      "name": "Salmon Latte",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://salmonlatte.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/SalmonLatte[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/salmonlatte/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "scribblehub",
+      "name": "Scribble Hub",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.2",
+      "site": "https://www.scribblehub.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/scribblehub.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/scribblehub/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "seireitranslations",
+      "name": "Seirei Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://seireitranslations.blogspot.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/seireitranslations.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/seireitranslations/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "skythewoodtranslations",
+      "name": "Skythewood Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://skythewood.blogspot.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/skythewood.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/skythewood/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "sleeptTLS",
+      "name": "SleepyTranslations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://sleepytranslations.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/SleepyTranslations[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/sleepttls/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "sonicmtl",
+      "name": "SonicMTL",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://www.sonicmtl.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/SonicMTL[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/sonicmtl/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "storyseedling",
+      "name": "StorySeedling",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.6",
+      "site": "https://storyseedling.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/StorySeedling.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/storyseedling/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "sweetescape",
+      "name": "Sweet Escape",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://sweetescapetranslations.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/SweetEscape[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/sweetescape/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "sylthorian",
+      "name": "The Sylthorian",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://thesylthorian.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/sylthorian.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/sylthorian/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "systemtranslation",
+      "name": "System Translation",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://systemtranslation.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/SystemTranslation[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/systemtranslation/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "tangerinearchive",
+      "name": "Tangerine Archive",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://tangerinearchive.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/TangerineArchive[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/tangerinearchive/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "tensurafan",
+      "name": "Tensurafan",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://tensurafan.github.io",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/tensurafan.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/tensurafan/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "tinytranslation",
+      "name": "TinyTranslation",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://www.tinytranslation.xyz",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/tinytranslation.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/tinytranslation/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "toasteful",
+      "name": "Toasteful",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.2",
+      "site": "https://www.toasteful.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/toasteful.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/toasteful/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "translatinotaku",
+      "name": "TranslatinOtaku",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://translatinotaku.net/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/TranslatinOtaku[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/translatinotaku/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "transweaver",
+      "name": "Translation Weaver",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://transweaver.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/TranslationWeaver[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/transweaver/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "universalnovel",
+      "name": "Universal Novel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://universalnovel.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/UniversalNovel[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/universalnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "vandytranslate",
+      "name": "Vandy Translate",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://vandytranslate.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/VandyTranslate[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/vandytranslate/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "violetlily",
+      "name": "Violet Lily",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://violetlilytranslation.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/VioletLily[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/violetlily/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "vynovel",
+      "name": "VyNovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.1",
+      "site": "https://vynovel.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/vynovel.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/vynovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "webnovel",
+      "name": "Webnovel",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.0",
+      "site": "https://www.webnovel.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/webnovel.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/webnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "webnovelover",
+      "name": "WebNovelLover",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://www.webnovelover.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/WebNovelLover[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/webnovelover/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "WebNovelTraslation",
+      "name": "Web Novel Translation",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.3.0",
+      "site": "https://wntl.net/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/wntl.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/webnoveltraslation/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "webnovelworld",
+      "name": "Web Novel Pub",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.2",
+      "site": "https://www.webnovelworld.org/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/WebNovelPub[webnovelworld].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/webnovelworld/webnovelworld/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "wetriedtls",
+      "name": "We Tried TLS",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.6",
+      "site": "https://wetriedtls.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/wetriedtls.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/wetriedtls/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "whitemoonlightnovels",
+      "name": "White Moonlight Novels",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.1.12",
+      "site": "https://whitemoonlightnovels.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/WhiteMoonlightNovels[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/whitemoonlightnovels/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "witchculttranslations",
+      "name": "Witch Cult Translations",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.0",
+      "site": "https://witchculttranslation.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/wct.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/wct/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "wooksteahouse",
+      "name": "Wook's Teahouse",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://wooksteahouse.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/WooksTeahouse[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/wooksteahouse/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "wordexcerpt",
+      "name": "WordExcerpt",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://wordexcerpt.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/WordExcerpt[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/wordexcerpt/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "WTRLAB",
+      "name": "WTR-LAB",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.2.6",
+      "site": "https://wtr-lab.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/wtrlab.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/wtrlab/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "wuxiacity",
+      "name": "Wuxiafox",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.3",
+      "site": "https://www.wuxiafox.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Wuxiafox[readwn].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readwn/wuxiacity/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "wuxiamtl",
+      "name": "Fans MTL",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.5",
+      "site": "https://www.fanmtl.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/FansMTL[readwn].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readwn/wuxiamtl/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "wuxiap",
+      "name": "Wuxiabox",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.3",
+      "site": "https://www.wuxiabox.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/Wuxiabox[readwn].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readwn/wuxiap/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "wuxiaspace",
+      "name": "Wuxia Space",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.4",
+      "site": "https://www.wuxiaspot.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/WuxiaSpace[readwn].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readwn/wuxiaspace/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "wuxiav",
+      "name": "WuxiaV",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "1.0.3",
+      "site": "https://www.wuxiav.com",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/WuxiaV[readwn].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/readwn/wuxiav/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "wuxiaworld",
+      "name": "Wuxia World",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "0.5.1",
+      "site": "https://www.wuxiaworld.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/wuxiaworld.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/en/wuxiaworld/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "wuxiaworld.site",
+      "name": "WuxiaWorld.Site",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://wuxiaworld.site/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/WuxiaWorldSite[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/wuxiaworld.site/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "zetroTL",
+      "name": "Zetro Translation",
+      "language": "en",
+      "upstreamLanguage": "English",
+      "version": "2.4.0",
+      "site": "https://zetrotranslation.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/english/ZetroTranslation[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/zetrotl/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "bacalightnovel",
+      "name": "Baca Light Novel",
+      "language": "id",
+      "upstreamLanguage": "Bahasa Indonesia",
+      "version": "1.1.12",
+      "site": "https://bacalightnovel.co/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/indonesian/BacaLightNovel[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/bacalightnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "grensia",
+      "name": "Grensia",
+      "language": "id",
+      "upstreamLanguage": "Bahasa Indonesia",
+      "version": "1.0.0",
+      "site": "https://grensia.blogspot.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/indonesian/grensia.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/id/grensia/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "IDWN.id",
+      "name": "IndoWebNovel",
+      "language": "id",
+      "upstreamLanguage": "Bahasa Indonesia",
+      "version": "1.3.2",
+      "site": "https://indowebnovel.id/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/indonesian/indowebnovel.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/id/indowebnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "meionovel",
+      "name": "MeioNovel",
+      "language": "id",
+      "upstreamLanguage": "Bahasa Indonesia",
+      "version": "2.4.1",
+      "site": "https://meionovels.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/indonesian/MeioNovel[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/meionovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "morenovel",
+      "name": "Vanovel",
+      "language": "id",
+      "upstreamLanguage": "Bahasa Indonesia",
+      "version": "2.4.0",
+      "site": "https://vanovel.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/indonesian/Vanovel[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/morenovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "mtlnovel-id",
+      "name": "MTL Novel (ID)",
+      "language": "id",
+      "upstreamLanguage": "Bahasa Indonesia",
+      "version": "1.1.3",
+      "site": "https://id.mtlnovels.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/indonesian/MTLNovel(ID)[mtlnovel].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/mtlnovel/mtlnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelbookid",
+      "name": "NovelBookID",
+      "language": "id",
+      "upstreamLanguage": "Bahasa Indonesia",
+      "version": "2.4.0",
+      "site": "https://www.novelbook.id/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/indonesian/NovelBookID[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/novelbookid/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "novelringan.com",
+      "name": "NovelRingan",
+      "language": "id",
+      "upstreamLanguage": "Bahasa Indonesia",
+      "version": "1.1.0",
+      "site": "https://novelringan.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/indonesian/novelringan.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/id/novelringan/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "sakura.id",
+      "name": "SakuraNovel",
+      "language": "id",
+      "upstreamLanguage": "Bahasa Indonesia",
+      "version": "1.0.2",
+      "site": "https://sakuranovel.id/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/indonesian/sakuranovel.js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/src/id/sakuranovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "sektenovel",
+      "name": "Sekte Novel",
+      "language": "id",
+      "upstreamLanguage": "Bahasa Indonesia",
+      "version": "1.1.12",
+      "site": "https://sektenovel.web.id/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/indonesian/SekteNovel[lightnovelwp].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/lightnovelwp/sektenovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    },
+    {
+      "id": "wbnovel",
+      "name": "WBNovel",
+      "language": "id",
+      "upstreamLanguage": "Bahasa Indonesia",
+      "version": "2.4.0",
+      "site": "https://wbnovel.com/",
+      "codeUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/.js/src/plugins/indonesian/WBNovel[madara].js",
+      "iconUrl": "https://raw.githubusercontent.com/lnreader/lnreader-plugins/plugins/v3.0.0/public/static/multisrc/madara/wbnovel/icon.png",
+      "state": "INVENTORIED",
+      "checks": {
+        "catalog": "PASS",
+        "api": "UNKNOWN",
+        "runtime": "UNKNOWN",
+        "android": "UNKNOWN"
+      },
+      "distribution": {
+        "artifact": "UNPUBLISHED",
+        "verifiedSha256": null
+      }
+    }
+  ]
+}
