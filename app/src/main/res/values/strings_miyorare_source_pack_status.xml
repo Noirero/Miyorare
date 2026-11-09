@@ -23,7 +23,7 @@
     <string name="miyorare_novel_candidates_unavailable">Official candidate registry unavailable</string>
     <string name="miyorare_novel_candidates_count">%1$d candidates</string>
     <string name="miyorare_novel_candidates_no_results">No matching English or Indonesian novel candidates</string>
-    <string name="miyorare_novel_candidates_not_published">The official candidate registry has not been published yet. No novel plugins were installed.</string>
+    <string name="miyorare_novel_candidates_not_published">The official candidate registry has not been published yet. This browser never installs plugins.</string>
     <string name="miyorare_novel_candidates_network_error">Could not reach the official candidate registry. Check your connection and retry.</string>
     <string name="miyorare_novel_candidates_invalid">The official candidate registry contains incomplete or invalid metadata. No candidates were loaded.</string>
 </resources>
