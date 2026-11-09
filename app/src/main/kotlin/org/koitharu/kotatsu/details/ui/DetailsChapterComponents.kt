@@ -1457,103 +1457,103 @@ internal fun InlineChapterCard(
 					modifier = Modifier.padding(horizontal = 12.dp).size(22.dp),
 				)
 			} else {
-			val personal = item.personalMetadata.presentation(context.resources.configuration.locales[0])
-			if (personal.hasNote) {
-				IconButton(onClick = onNoteClick) {
-					Icon(
-						painter = painterResource(R.drawable.ic_export_notes),
-						contentDescription = stringResource(R.string.chapter_personal_view_note),
-						tint = accent,
-						modifier = Modifier.size(16.dp),
-					)
-				}
-			}
-			val ratingDescription = item.personalMetadata.rating?.let {
-				stringResource(R.string.chapter_personal_rating_value, it)
-			} ?: stringResource(R.string.chapter_personal_unrated)
-			IconButton(
-				onClick = onPersonalClick,
-				modifier = Modifier.semantics {
-					selected = personal.isRated
-					stateDescription = ratingDescription
-				},
-			) {
-				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-					personal.ratingText?.let { rating ->
-						Text(rating, style = MaterialTheme.typography.bodySmall, color = accent, maxLines = 1)
+				val personal = item.personalMetadata.presentation(context.resources.configuration.locales[0])
+				if (personal.hasNote) {
+					IconButton(onClick = onNoteClick) {
+						Icon(
+							painter = painterResource(R.drawable.ic_export_notes),
+							contentDescription = stringResource(R.string.chapter_personal_view_note),
+							tint = accent,
+							modifier = Modifier.size(16.dp),
+						)
 					}
-					Icon(
-						painter = painterResource(R.drawable.ic_star_rate),
-						contentDescription = stringResource(R.string.chapter_personal_edit),
-						tint = if (personal.isRated) accent else secondaryColor,
-						modifier = Modifier.size(20.dp),
-					)
 				}
-			}
-			if (item.isBookmarked) {
-				Icon(
-					painter = painterResource(R.drawable.ic_bookmark),
-					contentDescription = null,
-					tint = if (palette.isModern) palette.primary else accent,
-					modifier = Modifier
-						.padding(horizontal = 4.dp)
-						.size(if (palette.isModern) 18.dp else 19.dp),
-				)
-			}
-
-			when {
-				item.isDownloaded -> IconButton(onClick = onManageClick) {
+				val ratingDescription = item.personalMetadata.rating?.let {
+					stringResource(R.string.chapter_personal_rating_value, it)
+				} ?: stringResource(R.string.chapter_personal_unrated)
+				IconButton(
+					onClick = onPersonalClick,
+					modifier = Modifier.semantics {
+						selected = personal.isRated
+						stateDescription = ratingDescription
+					},
+				) {
+					Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+						personal.ratingText?.let { rating ->
+							Text(rating, style = MaterialTheme.typography.bodySmall, color = accent, maxLines = 1)
+						}
+						Icon(
+							painter = painterResource(R.drawable.ic_star_rate),
+							contentDescription = stringResource(R.string.chapter_personal_edit),
+							tint = if (personal.isRated) accent else secondaryColor,
+							modifier = Modifier.size(20.dp),
+						)
+					}
+				}
+				if (item.isBookmarked) {
 					Icon(
-						painter = painterResource(R.drawable.ic_eye_check),
+						painter = painterResource(R.drawable.ic_bookmark),
 						contentDescription = null,
 						tint = if (palette.isModern) palette.primary else accent,
-						modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
-					)
-				}
-				!item.canDownload -> Unit
-				item.isDownloading -> Box {
-					Box(
 						modifier = Modifier
-							.size(48.dp)
-							.clickable { showDownloadMenu = true },
-						contentAlignment = Alignment.Center,
-					) {
-						CircularProgressIndicator(
-							modifier = Modifier.size(if (palette.isModern) 18.dp else 20.dp),
-							strokeWidth = 2.dp,
-							color = if (palette.isModern) palette.primary else accent,
-						)
-					}
-					DropdownMenu(
-						expanded = showDownloadMenu,
-						onDismissRequest = { showDownloadMenu = false },
-					) {
-						DropdownMenuItem(
-							text = { Text(stringResource(R.string.chapter_download_start_now)) },
-							onClick = {
-								showDownloadMenu = false
-								onDownloadClick()
-							},
-						)
-						DropdownMenuItem(
-							text = { Text(stringResource(android.R.string.cancel)) },
-							onClick = { showDownloadMenu = false },
-						)
-					}
-				}
-				else -> IconButton(onClick = onDownloadClick) {
-					Icon(
-						painter = painterResource(R.drawable.ic_save),
-						contentDescription = stringResource(R.string.download),
-						tint = if (palette.isModern) {
-							MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f)
-						} else {
-							MaterialTheme.colorScheme.onSurfaceVariant
-						},
-						modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
+							.padding(horizontal = 4.dp)
+							.size(if (palette.isModern) 18.dp else 19.dp),
 					)
 				}
-			}
+
+				when {
+					item.isDownloaded -> IconButton(onClick = onManageClick) {
+						Icon(
+							painter = painterResource(R.drawable.ic_eye_check),
+							contentDescription = null,
+							tint = if (palette.isModern) palette.primary else accent,
+							modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
+						)
+					}
+					!item.canDownload -> Unit
+					item.isDownloading -> Box {
+						Box(
+							modifier = Modifier
+								.size(48.dp)
+								.clickable { showDownloadMenu = true },
+							contentAlignment = Alignment.Center,
+						) {
+							CircularProgressIndicator(
+								modifier = Modifier.size(if (palette.isModern) 18.dp else 20.dp),
+								strokeWidth = 2.dp,
+								color = if (palette.isModern) palette.primary else accent,
+							)
+						}
+						DropdownMenu(
+							expanded = showDownloadMenu,
+							onDismissRequest = { showDownloadMenu = false },
+						) {
+							DropdownMenuItem(
+								text = { Text(stringResource(R.string.chapter_download_start_now)) },
+								onClick = {
+									showDownloadMenu = false
+									onDownloadClick()
+								},
+							)
+							DropdownMenuItem(
+								text = { Text(stringResource(android.R.string.cancel)) },
+								onClick = { showDownloadMenu = false },
+							)
+						}
+					}
+					else -> IconButton(onClick = onDownloadClick) {
+						Icon(
+							painter = painterResource(R.drawable.ic_save),
+							contentDescription = stringResource(R.string.download),
+							tint = if (palette.isModern) {
+								MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f)
+							} else {
+								MaterialTheme.colorScheme.onSurfaceVariant
+							},
+							modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
+						)
+					}
+				}
 			}
 		}
 	}
