@@ -32,7 +32,7 @@ class LnCandidateRegistryTest {
         "indexPath":".dist/plugins.min.json",
         "indexUrl":"https://raw.githubusercontent.com/LNReader/lnreader-plugins/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/.dist/plugins.min.json",
         "commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-        "pilot":{"pluginId":"chikari","state":"$pilotState"},
+        "pilot":{"pluginId":"chikari","state":"$pilotState","evidence":{"api":"PASS","android":"UNKNOWN"}},
         "candidates":[$item]}
     """.trimIndent()
 
@@ -104,6 +104,11 @@ class LnCandidateRegistryTest {
             registry().replace("\"state\":\"TESTING\"},", "\"state\":\"READY\"},"),
             registry().replace("\"language\":\"en\"", "\"language\":\"ja\""),
             registry().replace("\"verifiedSha256\":null", "\"verifiedSha256\":\"bad\""),
+            registry().replace("\"schemaVersion\":1", "\"schemaVersion\":\"1\""),
+            registry().replace("\"unverifiedInstallAllowed\":false",
+                "\"unverifiedInstallAllowed\":\"false\""),
+            registry().replace("\"api\":\"PASS\",\"android\":\"UNKNOWN\"",
+                "\"api\":\"PASS\",\"android\":\"PASS\""),
         )
         malformed.forEach { payload ->
             org.junit.Assert.assertThrows(Exception::class.java) {
@@ -147,23 +152,24 @@ class LnCandidateRegistryTest {
     }
 
     @Test
-    fun publishedReadyNeedsSealedShaAndAllValidationGates() {
+    fun readyNonPilotCandidateNeedsSealedShaAndAllValidationGates() {
         val digest = "a".repeat(64)
         val ready = candidate
+            .replace("\"id\":\"chikari\"", "\"id\":\"other-source\"")
             .replace("\"state\":\"TESTING\"", "\"state\":\"READY\"")
             .replace("\"runtime\":\"UNKNOWN\"", "\"runtime\":\"PASS\"")
             .replace("\"android\":\"UNKNOWN\"", "\"android\":\"PASS\"")
             .replace("\"artifact\":\"UNPUBLISHED\",\"verifiedSha256\":null",
                 "\"artifact\":\"SEALED\",\"verifiedSha256\":\"$digest\"")
-        val parsed = LnCandidateRegistry.parse(registry(ready, pilotState = "READY"))
-        assertEquals("READY", parsed.candidates.single().state)
+        val parsed = LnCandidateRegistry.parse(registry(candidate + "," + ready))
+        assertEquals("READY", parsed.candidates.single { it.id == "other-source" }.state)
         for (invalid in listOf(
             ready.replace(digest, "bad-digest"),
             ready.replace("\"runtime\":\"PASS\"", "\"runtime\":\"UNKNOWN\""),
             ready.replace("\"android\":\"PASS\"", "\"android\":\"FAIL\""),
         )) {
             assertThrows(IllegalArgumentException::class.java) {
-                LnCandidateRegistry.parse(registry(invalid, pilotState = "READY"))
+                LnCandidateRegistry.parse(registry(candidate + "," + invalid))
             }
         }
     }
