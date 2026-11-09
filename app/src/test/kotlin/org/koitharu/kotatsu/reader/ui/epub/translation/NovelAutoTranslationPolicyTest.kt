@@ -50,6 +50,11 @@ class NovelAutoTranslationPolicyTest {
 	fun `page auto mode is triggered by navigation but not reflow and only requests visible source`() {
 		val fragment = source("EpubReaderFragment.kt")
 		assertTrue(fragment.contains("autoPageOpenedPending = true"))
+		assertTrue(fragment.contains("if (observedPagePosition >= 0 && position != observedPagePosition) autoPageOpenedPending = true"))
+		assertTrue(fragment.contains("observedPagePosition = pager.currentItem"))
+		assertTrue(fragment.contains("if (isPagedMode) autoPageOpenedPending = true"))
+		assertTrue(fragment.contains("if (isPagedMode && currentLocator().clamped() != locator.clamped()) autoPageOpenedPending = true"))
+		assertTrue(fragment.contains("override fun onResume()"))
 		assertTrue(fragment.contains("if (openedChapter != null && openedChapter != autoPageLastChapterId) autoPageOpenedPending = true"))
 		assertTrue(fragment.contains("autoPageOpenedPending = false"))
 		assertTrue(fragment.contains("val visibleOnly = selection.scope == NovelTranslationScope.PAGE"))

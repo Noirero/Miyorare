@@ -1167,6 +1167,14 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		)
 	}
 
+	override fun onResume() {
+		super.onResume()
+		// The initial page may have rendered while STARTED, before auto-translation was eligible.
+		viewBinding?.root?.post {
+			if (isAdded && chapters.isNotEmpty()) maybeAutoTranslateCurrentChapter(currentLocator().clamped().chapter)
+		}
+	}
+
 	override fun onDestroyView() {
 		activity?.window?.let { window ->
 			val attributes = window.attributes
@@ -1660,6 +1668,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private fun switchReadingMode() {
 		if (chapters.isEmpty()) return
 		val locator = currentLocator()
+		// Switching from Scroll to LTR/RTL presents a new actual page.
+		if (isPagedMode) autoPageOpenedPending = true
 		viewBinding?.root?.removeCallbacks(rebuildRunnable)
 		reflowLocator = null
 		paginationKey = null
@@ -1766,6 +1776,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		container.removeAllViews()
 		verticalView = null
 		pagerView = null
+		var observedPagePosition = -1
 		val pager = ViewPager2(requireContext()).apply {
 			layoutParams = FrameLayout.LayoutParams(-1, -1)
 			orientation = ViewPager2.ORIENTATION_HORIZONTAL
@@ -1777,10 +1788,12 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
 				override fun onPageSelected(position: Int) {
 					if (!restoring) {
-						autoPageOpenedPending = true
+						// Ignore a delayed initial callback or the same page after a reflow.
+						if (observedPagePosition >= 0 && position != observedPagePosition) autoPageOpenedPending = true
 						notifyProgress()
 						extendPageWindow(position)
 					}
+					observedPagePosition = position
 				}
 			})
 		}
@@ -1808,6 +1821,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 
 		pager.post {
 			restoring = false
+			observedPagePosition = pager.currentItem
 			// Rendering/reflow must not count as a new page visit in the same chapter.
 			val openedChapter = pages.getOrNull(pager.currentItem)?.chapter?.let(chapters::getOrNull)?.id
 			if (openedChapter != null && openedChapter != autoPageLastChapterId) autoPageOpenedPending = true
@@ -2363,6 +2377,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	}
 
 	private fun goTo(locator: Locator, smooth: Boolean = false) {
+		if (isPagedMode && currentLocator().clamped() != locator.clamped()) autoPageOpenedPending = true
 		lastLocator = locator.clamped()
 		if (pagerView != null) {
 			val chapter = chapters.getOrNull(lastLocator.chapter)
