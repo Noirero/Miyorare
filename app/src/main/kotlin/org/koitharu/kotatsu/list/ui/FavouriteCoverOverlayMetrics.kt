@@ -6,17 +6,19 @@ package org.koitharu.kotatsu.list.ui
  */
 internal data class FavouriteCoverOverlayMetrics(val scale: Float) {
 	private val compact: Boolean get() = scale < 0.8f
+	// Blend to the exact legacy minima at 0.8; do not introduce visible jumps as size slides.
+	private val compactProgress: Float get() = ((scale - 0.64f) / 0.16f).coerceIn(0f, 1f)
 	val inset = (4f * scale).coerceIn(if (compact) 2f else 3f, 8f)
 	val gap = (3f * scale).coerceIn(if (compact) 1.5f else 2f, 5f)
-	val padding = (2f * scale).coerceIn(if (compact) 1.5f else 2f, 4f)
+	val padding = if (compact) 1.5f + 0.5f * compactProgress else (2f * scale).coerceIn(2f, 4f)
 	val radius = (7f * scale).coerceIn(if (compact) 4f else 5f, 10f)
-	val statusSize = (22f * scale).coerceIn(if (compact) 14f else 18f, 30f)
-	val unreadSize = (24f * scale).coerceIn(if (compact) 18f else 22f, 34f)
-	val titleSp = (10.5f * scale).coerceIn(if (compact) 9f else 10f, 15f)
-	val badgeSp = (10f * scale).coerceIn(if (compact) 9f else 10f, 14f)
-	val metadataSp = (9f * scale).coerceIn(if (compact) 8f else 9f, 12f)
+	val statusSize = if (compact) 14f + 4f * compactProgress else (22f * scale).coerceIn(18f, 30f)
+	val unreadSize = if (compact) 18f + 4f * compactProgress else (24f * scale).coerceIn(22f, 34f)
+	val titleSp = if (compact) 9f + compactProgress else (10.5f * scale).coerceIn(10f, 15f)
+	val badgeSp = if (compact) 9f + compactProgress else (10f * scale).coerceIn(10f, 14f)
+	val metadataSp = if (compact) 8f + compactProgress else (9f * scale).coerceIn(9f, 12f)
 	// The visual circle can shrink; the interactive 48dp target never does.
-	val actionSize = (34f * scale).coerceIn(if (compact) 24f else 32f, 48f)
+	val actionSize = if (compact) 24f + 8f * compactProgress else (34f * scale).coerceIn(32f, 48f)
 
 	/**
 	 * Only tightly packed compact covers may reduce status glyph tiles below the ordinary
