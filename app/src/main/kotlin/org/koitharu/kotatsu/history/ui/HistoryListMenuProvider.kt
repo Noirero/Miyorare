@@ -21,13 +21,13 @@ class HistoryListMenuProvider(
 	private val router: AppRouter,
 	private val viewModel: HistoryListViewModel,
 	private val onToggleHistoryOverlayProbe: (() -> Boolean)? = null,
+	private val isHistoryOverlayBypassed: (() -> Boolean)? = null,
 ) : MenuProvider {
-	private var isVariantB = false
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
 		menuInflater.inflate(R.menu.opt_history, menu)
 		if (BuildConfig.DEBUG && onToggleHistoryOverlayProbe != null) {
-			menu.add(Menu.NONE, HISTORY_AB_MENU_ID, Menu.NONE, "Cover A/B: A (normal)")
+			menu.add(Menu.NONE, HISTORY_AB_MENU_ID, Menu.NONE, probeLabel())
 				.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
 		}
 	}
@@ -35,15 +35,15 @@ class HistoryListMenuProvider(
 	override fun onPrepareMenu(menu: Menu) {
 		super.onPrepareMenu(menu)
 		menu.findItem(R.id.action_stats)?.isVisible = viewModel.isStatsEnabled.value
-		menu.findItem(HISTORY_AB_MENU_ID)?.title = if (isVariantB) "Cover A/B: B (overlay off)" else "Cover A/B: A (normal)"
+		menu.findItem(HISTORY_AB_MENU_ID)?.title = probeLabel()
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
 		return when (menuItem.itemId) {
 			HISTORY_AB_MENU_ID -> {
 				if (!BuildConfig.DEBUG) return false
-				isVariantB = onToggleHistoryOverlayProbe?.invoke() ?: return false
-				menuItem.title = if (isVariantB) "Cover A/B: B (overlay off)" else "Cover A/B: A (normal)"
+				onToggleHistoryOverlayProbe?.invoke() ?: return false
+				menuItem.title = probeLabel()
 				true
 			}
 			R.id.action_clear_history -> {
@@ -58,6 +58,12 @@ class HistoryListMenuProvider(
 
 			else -> false
 		}
+	}
+
+	private fun probeLabel() = if (isHistoryOverlayBypassed?.invoke() == true) {
+		"Cover A/B: B (overlay off)"
+	} else {
+		"Cover A/B: A (normal)"
 	}
 
 	private fun showClearHistoryDialog() {
