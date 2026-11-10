@@ -13,6 +13,7 @@ class MangaNovelTogglePaletteContractTest {
 		val theme = source("core/ui/MangaNovelTogglePalette.kt")
 		assertTrue(downloads.contains("miyorareViewPaletteFromPreferences()?.let(typeToggle::applyMangaNovelTogglePalette)"))
 		assertTrue(downloads.contains(".applyMangaNovelTogglePalette(palette)"))
+		assertTrue(downloads.contains("viewBinding.modernDownloadsIcon.imageTintList = ColorStateList.valueOf(palette.primary)"))
 		assertTrue(history.contains("toggle.applyMangaNovelTogglePalette(initialPalette)"))
 		assertTrue(history.contains("visualEffectPreferences.level.observe(viewLifecycleOwner)"))
 		assertTrue(theme.contains("palette.primaryContainer"))

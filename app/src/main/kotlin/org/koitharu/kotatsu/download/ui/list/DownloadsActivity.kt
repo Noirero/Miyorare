@@ -146,6 +146,8 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(), DownloadItem
 			radius = cardRadius; cardElevation = 0f; strokeWidth = density.roundToInt().coerceAtLeast(1); strokeColor = palette.borderHighlight
 		}
 		viewBinding.modernDownloadsStatus.setTextColor(palette.onSurface)
+		viewBinding.modernDownloadsIcon.imageTintList = ColorStateList.valueOf(palette.primary)
+		viewBinding.modernDownloadsIconContainer.setCardBackgroundColor(palette.surfaceContainerHighest)
 		viewBinding.modernDownloadsProgress.apply { setIndicatorColor(palette.primary); trackColor = ColorUtils.setAlphaComponent(palette.outline, 36) }
 		for (button in arrayOf(viewBinding.buttonPauseAll, viewBinding.buttonResumeAll)) {
 			button.backgroundTintList = ColorStateList.valueOf(palette.selectedSurface)
