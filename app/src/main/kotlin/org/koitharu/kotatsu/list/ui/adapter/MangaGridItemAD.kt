@@ -351,8 +351,12 @@ fun mangaGridItemAD(
 		// Debug A/B: isolate Modern overlay cost without changing pagination, image requests or data.
 		// Only History supplies a probe callback; default and all release builds remain unchanged.
 		val historyProbe = BuildConfig.DEBUG && debugHistoryOverlayBypass != null
-		val effectiveCoverOverlay = usesCoverOverlay &&
-			!(historyProbe && usesModernCover && debugHistoryOverlayBypass?.invoke() == true)
+		val effectiveCoverOverlay = resolveHistoryCoverOverlay(
+			configured = usesCoverOverlay,
+			modern = usesModernCover,
+			probeEnabled = historyProbe,
+			bypassRequested = historyProbe && debugHistoryOverlayBypass?.invoke() == true,
+		)
 		binding.favouriteCoverOverlays.debugTraceHistoryMeasure = historyProbe
 		binding.favouriteCoverOverlays.isVisible = effectiveCoverOverlay
 		if (effectiveCoverOverlay) {
@@ -361,7 +365,8 @@ fun mangaGridItemAD(
 				translationY = 0f
 				alpha = 1f
 			}
-			if (historyProbe) android.os.Trace.beginSection("HistoryModernOverlayBind")
+			val tracingOverlayBind = historyProbe && android.os.Trace.isEnabled()
+			if (tracingOverlayBind) android.os.Trace.beginSection("HistoryModernOverlayBind")
 			try {
 			binding.favouriteCoverOverlays.bind(
 				ModernCoverState.from(item, if (localCinematic) ModernCoverContext.COLLECTION else coverContext)
@@ -370,7 +375,7 @@ fun mangaGridItemAD(
 				clickListener.onReadClick(item.toMangaWithOverride(), view)
 			}
 			} finally {
-				if (historyProbe) android.os.Trace.endSection()
+				if (tracingOverlayBind) android.os.Trace.endSection()
 			}
 		}
 		binding.textViewTitleOverlay.text = item.title
