@@ -13,8 +13,9 @@ class HistoryListAdapter(
 	sizeResolver: ItemSizeResolver,
 	titleTapToRead: Boolean = false,
 	onTipClose: ((TipModel) -> Unit)? = null,
+	debugHistoryOverlayBypass: (() -> Boolean)? = null,
 ) : MangaListAdapter(listener, sizeResolver, titleTapToRead, onTipClose, coverContext = ModernCoverContext.BROWSING,
-	headerRowClickable = true), FastScroller.SectionIndexer {
+	headerRowClickable = true, debugHistoryOverlayBypass = debugHistoryOverlayBypass), FastScroller.SectionIndexer {
 
 	override fun getSectionText(context: Context, position: Int): CharSequence? {
 		return findHeader(position)?.getText(context)
