@@ -175,7 +175,13 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			// For 3-digit unread counts the natural measured badge width, not the nominal
 			// circle diameter, is the constraint. Do not reduce the clickable action target.
 			val activeStatuses = statusItems.filter { it.isVisible }
-			val leadingWidth = if (value.readingState == ModernCoverReadingState.NONE) 0f else diameter / density
+			val compact = metrics.scale < 0.8f
+			val statusGap = if (compact) px(minOf(metrics.gap, 1f)) else gap
+			val horizontalStatusPadding = if (compact) px(minOf(metrics.padding, 1f)) else padding
+			// Outer unread width includes frame padding; otherwise rounded icon tiles can
+			// overflow by a pixel and force a second row on 5-column compact covers.
+			val leadingWidth = if (value.readingState == ModernCoverReadingState.NONE) 0f
+				else (diameter + padding * 2) / density
 			val statusSize = px(metrics.fittedStatusSize(innerWidth / density, leadingWidth, activeStatuses.size))
 			val counterIconSize = (statusSize * 0.7f).roundToInt()
 			counterIcon.layoutParams = LinearLayout.LayoutParams(counterIconSize, counterIconSize).apply { marginEnd = gap }
@@ -186,8 +192,9 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			counterNumber.includeFontPadding = false
 			counterNumber.setPadding(0, 0, 0, 0)
 			statuses.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_outline, radius)
-			statuses.setPadding(padding, padding, padding, padding)
-			statuses.orientation = if (activeStatuses.size * statusSize + max(0, activeStatuses.size - 1) * gap + padding * 2 <= innerWidth) {
+			statuses.setPadding(horizontalStatusPadding, padding, horizontalStatusPadding, padding)
+			statuses.orientation = if (activeStatuses.size * statusSize +
+				max(0, activeStatuses.size - 1) * statusGap + horizontalStatusPadding * 2 <= innerWidth) {
 				LinearLayout.HORIZONTAL
 			} else LinearLayout.VERTICAL
 			statusItems.forEachIndexed { index, icon ->
@@ -197,7 +204,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 				icon.setPadding(iconPadding, iconPadding, iconPadding, iconPadding)
 				icon.layoutParams = LinearLayout.LayoutParams(statusSize, statusSize).apply {
 					if (icon.isVisible && icon !== activeStatuses.firstOrNull()) {
-						if (statuses.orientation == LinearLayout.HORIZONTAL) leftMargin = gap else topMargin = gap
+						if (statuses.orientation == LinearLayout.HORIZONTAL) leftMargin = statusGap else topMargin = gap
 					}
 				}
 			}
@@ -237,19 +244,27 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		// silently dropping unread/bookmark/download indicators just to keep two title lines.
 		// The full title remains available via the existing tooltip/accessibility description.
 		measureNatural(unread, w)
-		if (metrics.scale < 0.8f && showTitle && statuses.measuredWidth <= innerWidth &&
-			unread.measuredWidth <= innerWidth && value.readingState != ModernCoverReadingState.NONE) {
+		if (metrics.scale < 0.8f && showTitle) {
 			val statusesPresent = statusItems.any { it.isVisible }
-			val bothOnTop = !statusesPresent || unread.measuredWidth + statuses.measuredWidth + gap <= innerWidth
+			val hasUnread = value.readingState != ModernCoverReadingState.NONE
+			val bothOnTop = !statusesPresent || !hasUnread ||
+				unread.measuredWidth + statuses.measuredWidth + gap <= innerWidth
 			val requiredTopHeight = when {
+				!statusesPresent && !hasUnread -> 0
 				!statusesPresent -> unread.measuredHeight
+				!hasUnread -> statuses.measuredHeight
 				bothOnTop -> maxOf(unread.measuredHeight, statuses.measuredHeight)
 				else -> statuses.measuredHeight + gap + unread.measuredHeight
 			}
-			if (top + requiredTopHeight + gap > titleTop && top + requiredTopHeight <= bottom - gap) {
+			// In compact covers the title yields to status information even if it is
+			// physically impossible to show *every* indicator. Previous logic kept the
+			// title precisely when the badges needed its space, hiding all indicators.
+			if (top + requiredTopHeight + gap > titleTop) {
 				showTitle = false
 				titleTop = bottom
-				topLimit = bottom - gap
+				// Reserved 18dp progress zone begins here. No second padding is needed
+				// between an omitted title and the progress boundary.
+				topLimit = h - px(FavouriteCoverOverlayMetrics.PROGRESS_RESERVED_DP)
 			}
 		}
 		if (statuses.measuredHeight + top > topLimit || statuses.measuredWidth > innerWidth) showStatuses = false

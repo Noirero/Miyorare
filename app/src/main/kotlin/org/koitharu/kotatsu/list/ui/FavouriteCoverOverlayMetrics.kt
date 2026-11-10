@@ -28,8 +28,12 @@ internal data class FavouriteCoverOverlayMetrics(val scale: Float) {
 	 */
 	fun fittedStatusSize(availableWidthDp: Float, leadingBadgeWidthDp: Float, statusCount: Int): Float {
 		if (!compact || statusCount <= 1 || leadingBadgeWidthDp <= 0f) return statusSize
-		val remaining = availableWidthDp - leadingBadgeWidthDp - gap -
-			padding * 2 - gap * (statusCount - 1)
+		// Compact status tiles use 1dp gaps and at most 1dp horizontal group padding.
+		// The leading width is the *measured outer unread frame*, including its padding.
+		val compactGap = minOf(gap, 1f)
+		val groupHorizontalPadding = minOf(padding, 1f)
+		val remaining = availableWidthDp - leadingBadgeWidthDp - compactGap -
+			groupHorizontalPadding * 2 - compactGap * (statusCount - 1)
 		return minOf(statusSize, (remaining / statusCount).coerceAtLeast(12f))
 	}
 

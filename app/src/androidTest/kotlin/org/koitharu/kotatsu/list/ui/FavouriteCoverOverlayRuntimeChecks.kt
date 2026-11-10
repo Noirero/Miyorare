@@ -167,6 +167,15 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 						isTitleOverCover = true, unreadCount = unreadCount)
 					cover.bind(current) {}
 					layout(cover, widthDp, heightDp)
+					val permanent = cover.findViewById<View>(R.id.cover_permanent_status)
+					val reading = cover.findViewById<View>(R.id.cover_unread)
+					// This compact configuration has enough total width for the unread
+					// badge and 3-status row; the title must not mask either group.
+					if (columns == 5 && gridSize in listOf(50, 55, 60, 69, 70, 100) &&
+						densityDpi == 420 && fontScale == 1f) {
+						assertTrue("Compact permanent statuses hidden at grid=$gridSize unread=$unreadCount", permanent.isVisible)
+						assertTrue("Compact unread hidden at grid=$gridSize unread=$unreadCount", reading.isVisible)
+					}
 					val children = cover.children.filter { it.isVisible }.toList()
 					val limit = cover.height - (18 * density).roundToInt()
 					for (child in children) {
