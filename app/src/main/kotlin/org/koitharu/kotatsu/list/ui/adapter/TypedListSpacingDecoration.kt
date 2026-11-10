@@ -41,6 +41,7 @@ class TypedListSpacingDecoration(
 				-> outRect.set(0)
 
 			ListItemType.HEADER,
+			ListItemType.HISTORY_ACCORDION,
 			ListItemType.SMART_LOCAL_COLLECTION_HEADER,
 			ListItemType.SMART_LOCAL_GROUP_ROW,
 			ListItemType.FEED,
