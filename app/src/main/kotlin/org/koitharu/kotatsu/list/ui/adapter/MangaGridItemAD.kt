@@ -365,7 +365,7 @@ fun mangaGridItemAD(
 				translationY = 0f
 				alpha = 1f
 			}
-			val tracingOverlayBind = historyProbe && android.os.Trace.isEnabled()
+			val tracingOverlayBind = historyProbe && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q && android.os.Trace.isEnabled()
 			if (tracingOverlayBind) android.os.Trace.beginSection("HistoryModernOverlayBind")
 			try {
 			binding.favouriteCoverOverlays.bind(
