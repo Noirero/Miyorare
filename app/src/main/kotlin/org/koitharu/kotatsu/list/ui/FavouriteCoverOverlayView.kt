@@ -231,7 +231,27 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		measureNatural(titleView, innerWidth)
 		if (titleView.measuredHeight > bottom) showTitle = false
 		var titleTop = bottom - if (showTitle) titleView.measuredHeight else 0
-		val topLimit = titleTop - gap
+		var topLimit = titleTop - gap
+		// Compact cards can be shorter than a title + reading badge + permanent statuses.
+		// Preserve the status information before the optional over-cover title, rather than
+		// silently dropping unread/bookmark/download indicators just to keep two title lines.
+		// The full title remains available via the existing tooltip/accessibility description.
+		measureNatural(unread, w)
+		if (metrics.scale < 0.8f && showTitle && statuses.measuredWidth <= innerWidth &&
+			unread.measuredWidth <= innerWidth && value.readingState != ModernCoverReadingState.NONE) {
+			val statusesPresent = statusItems.any { it.isVisible }
+			val bothOnTop = !statusesPresent || unread.measuredWidth + statuses.measuredWidth + gap <= innerWidth
+			val requiredTopHeight = when {
+				!statusesPresent -> unread.measuredHeight
+				bothOnTop -> maxOf(unread.measuredHeight, statuses.measuredHeight)
+				else -> statuses.measuredHeight + gap + unread.measuredHeight
+			}
+			if (top + requiredTopHeight + gap > titleTop && top + requiredTopHeight <= bottom - gap) {
+				showTitle = false
+				titleTop = bottom
+				topLimit = bottom - gap
+			}
+		}
 		if (statuses.measuredHeight + top > topLimit || statuses.measuredWidth > innerWidth) showStatuses = false
 		place(statuses, w - inset - statuses.measuredWidth, top)
 		var usedTop = if (showStatuses) top + statuses.measuredHeight else if (isSelected) top else inset
