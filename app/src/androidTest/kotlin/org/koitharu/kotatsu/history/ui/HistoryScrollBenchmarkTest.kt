@@ -16,7 +16,6 @@ import android.view.View
 import android.view.Window
 import android.view.animation.LinearInterpolator
 import android.widget.TextView
-import androidx.core.view.isVisible
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -117,7 +116,6 @@ class HistoryScrollBenchmarkTest {
 						lateinit var recycler: RecyclerView
 						lateinit var adapter: ListDelegationAdapter<ListModel>
 						scenario.onActivity { activity ->
-							val density = activity.resources.displayMetrics.density
 							val resolver = object : ItemSizeResolver {
 								override val cellWidth = (activity.resources.displayMetrics.widthPixels / columns)
 								override fun attachToView(view: View, textView: TextView?, progressView: ReadingProgressView?) = Unit
@@ -273,7 +271,7 @@ class HistoryScrollBenchmarkTest {
 		}
 
 		fun recordAttachment() { active.get()?.attachments?.incrementAndGet() }
-		fun begin() { check(active.compareAndSet(null, Phase())) }
+		fun begin() { check(active.compareAndSet(null, Phase(frameBudget))) }
 		fun finish() = requireNotNull(active.getAndSet(null)).report()
 		fun close() {
 			closed = true
@@ -283,7 +281,7 @@ class HistoryScrollBenchmarkTest {
 			thread.quitSafely()
 		}
 
-		private class Phase {
+		private class Phase(private val defaultBudget: Long) {
 			private val frames = Collections.synchronizedList(mutableListOf<Long>())
 			private val layout = Collections.synchronizedList(mutableListOf<Long>())
 			private val draw = Collections.synchronizedList(mutableListOf<Long>())
@@ -298,12 +296,12 @@ class HistoryScrollBenchmarkTest {
 				frames.add(total)
 				layout.add(layoutNs.coerceAtLeast(0L))
 				draw.add(drawNs.coerceAtLeast(0L))
-				if (total > (if (deadlineNs > 0L) deadlineNs else 16_666_667L)) janky.incrementAndGet()
+				if (total > (if (deadlineNs > 0L) deadlineNs else defaultBudget)) janky.incrementAndGet()
 				dropped.addAndGet(droppedCount.coerceAtLeast(0))
 			}
 			fun addHeartbeat(delayMs: Long) {
 				if (delayMs >= 250) stalls.incrementAndGet()
-				maxHeartbeat.accumulateAndGet(delayMs, ::maxOf)
+				maxHeartbeat.accumulateAndGet(delayMs) { prior, next -> maxOf(prior, next) }
 			}
 			private fun percentile(values: List<Long>, p: Double): Long {
 				if (values.isEmpty()) return 0L
