@@ -36,6 +36,7 @@ import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -156,7 +157,12 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		binding.buttonCategorySet.setOnClickListener { anchor ->
 			org.koitharu.kotatsu.favourites.ui.sets.showCategorySetMenu(anchor, childFragmentManager, viewModel.sets.value, viewModel.activeSet.value?.setId, viewModel.favouriteSpace) { set ->
 				rememberCurrentCategory()
-				viewModel.selectSet(set)
+				if (viewModel.activeSet.value?.setId != set.setId) {
+					// Existing repository/list/render spans can now be correlated to one Set switch.
+					// No Set name, content, or ID is included in diagnostic labels.
+					PerformanceDiagnostics.navigation("favourites", "favourites_set_switch", this)
+					viewModel.selectSet(set)
+				}
 			}
 		}
 		viewModel.activeSet.observe(viewLifecycleOwner) { set ->
@@ -408,6 +414,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			binding.pager.setCurrentItem(0, false)
 		}
 		applyCategoryNavigation(displayPreferences.current(contentTypeStore.selectedType.value))
+		PerformanceDiagnostics.milestone(this, "favourites_set_tabs_committed")
 	}
 
 	private fun isCategoryListForType(
