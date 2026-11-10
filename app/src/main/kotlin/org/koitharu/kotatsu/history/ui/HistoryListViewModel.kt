@@ -352,42 +352,54 @@ class HistoryListViewModel @Inject constructor(
 		}
 		if (snapshot.overview.days.isNotEmpty()) {
 			val open = "bucket:middle" in snapshot.expanded
-			result += ListHeader(R.string.history_days_8_30,
-				buttonTextRes = if (open) R.string.collapse else R.string.expand,
-				payload = HistoryHeaderAction("bucket:middle"))
+			result += HistoryAccordionItem(
+				key = "bucket:middle",
+				kind = HistoryAccordionItem.Kind.DAYS_BUCKET,
+				expanded = open,
+				titleCount = snapshot.overview.days.values.sum(),
+				groupCount = snapshot.overview.days.size,
+			)
 			if (open) for ((day, count) in snapshot.overview.days.toSortedMap(reverseOrder())) {
 				val key = "day:$day"
 				val childOpen = key in snapshot.expanded
 				val age = ChronoUnit.DAYS.between(day, snapshot.today).toInt()
-				result += ListHeader(DateTimeAgo.DaysAgo(age),
-					buttonTextRes = if (childOpen) R.string.collapse else R.string.expand,
-					payload = HistoryHeaderAction(key))
+				result += HistoryAccordionItem(
+					key = key, kind = HistoryAccordionItem.Kind.DAY, expanded = childOpen,
+					date = day, daysAgo = age, titleCount = count,
+				)
 				if (childOpen) {
 					val rows = snapshot.groups[key].orEmpty()
 					for ((manga, _) in rows) result += mangaListMapper.toListModel(manga, mode)
-					if (rows.size < count) result += ListHeader(R.string.more,
-						buttonTextRes = R.string.more, payload = HistoryHeaderAction(key, loadMore = true),
-						badge = (count - rows.size).toString(), itemKey = "history-more:$key")
+					if (rows.size < count) result += HistoryAccordionItem(
+						key = key, kind = HistoryAccordionItem.Kind.MORE,
+						moreCount = nextHistoryAccordionMoreCount(count - rows.size),
+					)
 				}
 			}
 		}
 		if (snapshot.overview.months.isNotEmpty()) {
 			val open = "bucket:older" in snapshot.expanded
-			result += ListHeader(R.string.history_older_than_30,
-				buttonTextRes = if (open) R.string.collapse else R.string.expand,
-				payload = HistoryHeaderAction("bucket:older"))
+			result += HistoryAccordionItem(
+				key = "bucket:older",
+				kind = HistoryAccordionItem.Kind.OLDER_BUCKET,
+				expanded = open,
+				titleCount = snapshot.overview.months.values.sum(),
+				groupCount = snapshot.overview.months.size,
+			)
 			if (open) for ((month, count) in snapshot.overview.months.toSortedMap(reverseOrder())) {
 				val key = "month:$month"
 				val childOpen = key in snapshot.expanded
-				result += ListHeader(month.format(DateTimeFormatter.ofPattern("LLLL yyyy", Locale.getDefault())),
-					buttonTextRes = if (childOpen) R.string.collapse else R.string.expand,
-					payload = HistoryHeaderAction(key))
+				result += HistoryAccordionItem(
+					key = key, kind = HistoryAccordionItem.Kind.MONTH, expanded = childOpen,
+					month = month, titleCount = count,
+				)
 				if (childOpen) {
 					val rows = snapshot.groups[key].orEmpty()
 					for ((manga, _) in rows) result += mangaListMapper.toListModel(manga, mode)
-					if (rows.size < count) result += ListHeader(R.string.more,
-						buttonTextRes = R.string.more, payload = HistoryHeaderAction(key, loadMore = true),
-						badge = (count - rows.size).toString(), itemKey = "history-more:$key")
+					if (rows.size < count) result += HistoryAccordionItem(
+						key = key, kind = HistoryAccordionItem.Kind.MORE,
+						moreCount = nextHistoryAccordionMoreCount(count - rows.size),
+					)
 				}
 			}
 		}
