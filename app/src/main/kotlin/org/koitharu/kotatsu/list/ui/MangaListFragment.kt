@@ -95,6 +95,11 @@ abstract class MangaListFragment :
 	protected val selectedItems: Set<Manga>
 		get() = collectSelectedItems()
 
+	/** The content identity changes when a Manga/Novel tab is switched; checked rows must not leak. */
+	protected fun clearListSelection() {
+		selectionController?.clear()
+	}
+
 	override val recyclerView: RecyclerView?
 		get() = viewBinding?.recyclerView
 

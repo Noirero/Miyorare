@@ -1,6 +1,16 @@
 package org.koitharu.kotatsu.history.ui
 
 import android.os.Bundle
+import android.widget.FrameLayout
+import android.view.LayoutInflater
+import androidx.core.view.updateLayoutParams
+import com.google.android.material.button.MaterialButtonToggleGroup
+import org.koitharu.kotatsu.core.model.MangaNovelSection
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.miyorareViewPalette
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.ui.applyMangaNovelTogglePalette
+import javax.inject.Inject
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
@@ -24,13 +34,43 @@ import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 @AndroidEntryPoint
 class HistoryListFragment : MangaListFragment() {
 
+	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
+
 	override val viewModel by viewModels<HistoryListViewModel>()
 	override val isSwipeRefreshEnabled = false
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		RecyclerScrollKeeper(binding.recyclerView).attach()
+		val toggle = layoutInflater.inflate(R.layout.view_manga_novel_toggle, binding.root, false)
+			as MaterialButtonToggleGroup
+		binding.root.addView(toggle)
+		binding.swipeRefreshLayout.updateLayoutParams<FrameLayout.LayoutParams> {
+			topMargin = (76 * resources.displayMetrics.density).toInt()
+		}
+		toggle.check(if (viewModel.selectedSection.value == MangaNovelSection.NOVEL) {
+			R.id.button_section_novel
+		} else R.id.button_section_manga)
+		toggle.addOnButtonCheckedListener { _, checkedId, checked ->
+			if (!checked) return@addOnButtonCheckedListener
+			val section = if (checkedId == R.id.button_section_novel) MangaNovelSection.NOVEL
+				else MangaNovelSection.MANGA
+			if (viewModel.selectedSection.value != section) {
+				clearListSelection()
+				viewModel.selectSection(section)
+				binding.recyclerView.scrollToPosition(0)
+			}
+		}
 		val space = FavouriteSpace.fromArgument(arguments?.getInt(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue)
+		val initialPalette = requireContext().miyorareViewPaletteFromPreferences(
+			privateFavourites = space == FavouriteSpace.PRIVATE,
+		)
+		if (initialPalette != null) {
+			toggle.applyMangaNovelTogglePalette(initialPalette)
+			visualEffectPreferences.level.observe(viewLifecycleOwner) { level ->
+				toggle.applyMangaNovelTogglePalette(requireContext().miyorareViewPalette(settings, level))
+			}
+		}
 		if (space == FavouriteSpace.NORMAL) {
 			addMenuProvider(HistoryListMenuProvider(binding.root.context, router, viewModel))
 			viewModel.isStatsEnabled.observe(viewLifecycleOwner, MenuInvalidator(requireActivity()))

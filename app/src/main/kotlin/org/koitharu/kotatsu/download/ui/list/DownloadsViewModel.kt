@@ -31,6 +31,8 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.MangaNovelSection
+import org.koitharu.kotatsu.core.model.matchesMangaNovelSection
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.ui.BaseViewModel
@@ -70,7 +72,7 @@ private const val ACTIVE_WORK_HYDRATION_RETRY_DELAY_MS = 20L
 
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
-	savedStateHandle: SavedStateHandle,
+	private val savedStateHandle: SavedStateHandle,
 	private val workScheduler: DownloadWorker.Scheduler,
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
@@ -83,6 +85,22 @@ class DownloadsViewModel @Inject constructor(
 	private val favouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
+	private val selectedSectionState = MutableStateFlow(
+		MangaNovelSection.fromSaved(savedStateHandle[KEY_DOWNLOADS_SECTION]),
+	)
+	val selectedSection: StateFlow<MangaNovelSection> = selectedSectionState
+
+	fun selectSection(section: MangaNovelSection) {
+		if (selectedSectionState.value == section) return
+		savedStateHandle[KEY_DOWNLOADS_SECTION] = section.name
+		selectedSectionState.value = section
+	}
+	private fun DownloadItemModel.isInActiveSection(): Boolean =
+		manga?.matchesMangaNovelSection(selectedSectionState.value) == true
+
+	private fun currentSectionRows(): List<DownloadItemModel> =
+		visibleWorks.value.orEmpty().filter { it.isInActiveSection() }
+
 	private val mangaCache = LongSparseArray<Manga>()
 	private val cacheMutex = Mutex()
 	private val expanded = MutableStateFlow(emptySet<Long>())
@@ -162,6 +180,10 @@ class DownloadsViewModel @Inject constructor(
 		list?.groupForDisplay(expandedIds)
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
+	private val visibleWorks = combine(works, selectedSectionState) { rows, section ->
+		rows?.filter { row -> row.manga?.matchesMangaNovelSection(section) == true }
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 
 	init {
@@ -177,7 +199,7 @@ class DownloadsViewModel @Inject constructor(
 	 * Keep only a tiny grace period for the enqueue-to-WorkManager publication race. The old 300 ms
 	 * delay made an empty/new queue feel visibly sluggish every time Downloads was opened.
 	 */
-	val items = works.transformLatest { current ->
+	val items = visibleWorks.transformLatest { current ->
 		when {
 			current == null -> emit(listOf(LoadingState))
 			current.isEmpty() -> {
@@ -189,16 +211,16 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
-	val hasPausedWorks = rawWorks.map {
-		it?.any { x -> x.canResume } == true
+	val hasPausedWorks = combine(rawWorks, selectedSectionState) { rows, section ->
+		rows?.any { it.manga?.matchesMangaNovelSection(section) == true && it.canResume } == true
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), false)
 
-	val hasActiveWorks = rawWorks.map {
-		it?.any { x -> x.canPause } == true
+	val hasActiveWorks = combine(rawWorks, selectedSectionState) { rows, section ->
+		rows?.any { it.manga?.matchesMangaNovelSection(section) == true && it.canPause } == true
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), false)
 
-	val hasCancellableWorks = rawWorks.map {
-		it?.any { x -> x.canCancel } == true
+	val hasCancellableWorks = combine(rawWorks, selectedSectionState) { rows, section ->
+		rows?.any { it.manga?.matchesMangaNovelSection(section) == true && it.canCancel } == true
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), false)
 
 	fun cancel(id: UUID) {
@@ -237,7 +259,7 @@ class DownloadsViewModel @Inject constructor(
 
 	fun cancelAll() {
 		val targets = rawWorks.value.orEmpty()
-			.filter { it.canCancel }
+			.filter { it.isInActiveSection() && it.canCancel }
 			.map { it.id }
 		if (targets.isEmpty()) return
 		markUiAction(targets, DownloadUiAction.CANCELLING)
@@ -275,7 +297,7 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun pauseAll() {
-		val targets = rawWorks.value.orEmpty().filter { it.canPause }.map { it.id }
+		val targets = rawWorks.value.orEmpty().filter { it.isInActiveSection() && it.canPause }.map { it.id }
 		if (targets.isEmpty()) return
 		markUiAction(targets, DownloadUiAction.PAUSING)
 		targets.forEach(workScheduler::pause)
@@ -298,7 +320,7 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun resumeAll() {
-		val targets = rawWorks.value.orEmpty().filter { it.canResume }.map { it.id }
+		val targets = rawWorks.value.orEmpty().filter { it.isInActiveSection() && it.canResume }.map { it.id }
 		if (targets.isEmpty()) return
 		markUiAction(targets, DownloadUiAction.RESUMING)
 		targets.forEach(workScheduler::resume)
@@ -318,7 +340,7 @@ class DownloadsViewModel @Inject constructor(
 
 	fun remove(ids: Set<Long>, deleteFiles: Boolean = false) {
 		// Snapshot finished jobs before the asynchronous confirmation result can race a new job.
-		val selected = works.value.orEmpty().filter {
+		val selected = currentSectionRows().filter {
 			it.selectionId in ids && it.workState.isFinished && it.uiAction == null
 		}
 		val workIds = selected.flatMapTo(LinkedHashSet()) { it.workIds }
@@ -378,7 +400,7 @@ class DownloadsViewModel @Inject constructor(
 
 	fun removeCompleted() {
 		val targets = rawWorks.value.orEmpty()
-			.filterTo(LinkedHashSet()) { it.workState.isFinished && it.uiAction == null }
+			.filterTo(LinkedHashSet()) { it.isInActiveSection() && it.workState.isFinished && it.uiAction == null }
 			.mapTo(LinkedHashSet()) { it.id }
 		if (targets.isEmpty()) return
 		launchJob(Dispatchers.Default) {
@@ -388,12 +410,12 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun snapshot(ids: LongSet): Collection<DownloadItemModel> {
-		return works.value?.filterTo(ArrayList(ids.size)) { x -> x.selectionId in ids }.orEmpty()
+		return currentSectionRows().filterTo(ArrayList(ids.size)) { x -> x.selectionId in ids }
 	}
 
-	fun allIds(): Set<Long> = works.value?.mapToSet {
+	fun allIds(): Set<Long> = currentSectionRows().mapToSet {
 		it.selectionId
-	} ?: emptySet()
+	}
 
 	fun expandCollapse(item: DownloadItemModel) {
 		expanded.update {
@@ -405,7 +427,7 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}
 
-	private fun selectedWorkIds(selectionIds: Set<Long>): Set<UUID> = works.value.orEmpty()
+	private fun selectedWorkIds(selectionIds: Set<Long>): Set<UUID> = currentSectionRows()
 		.filter { it.selectionId in selectionIds }
 		.flatMapTo(LinkedHashSet()) { it.workIds }
 
@@ -760,3 +782,5 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}
 }
+
+private const val KEY_DOWNLOADS_SECTION = "downloads_manga_novel_section"
