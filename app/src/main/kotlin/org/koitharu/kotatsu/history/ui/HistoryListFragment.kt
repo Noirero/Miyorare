@@ -6,6 +6,11 @@ import android.view.LayoutInflater
 import androidx.core.view.updateLayoutParams
 import com.google.android.material.button.MaterialButtonToggleGroup
 import org.koitharu.kotatsu.core.model.MangaNovelSection
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.miyorareViewPalette
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.ui.applyMangaNovelTogglePalette
+import javax.inject.Inject
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
@@ -28,6 +33,8 @@ import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 
 @AndroidEntryPoint
 class HistoryListFragment : MangaListFragment() {
+
+	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
 
 	override val viewModel by viewModels<HistoryListViewModel>()
 	override val isSwipeRefreshEnabled = false
@@ -55,6 +62,15 @@ class HistoryListFragment : MangaListFragment() {
 			}
 		}
 		val space = FavouriteSpace.fromArgument(arguments?.getInt(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue)
+		val initialPalette = requireContext().miyorareViewPaletteFromPreferences(
+			privateFavourites = space == FavouriteSpace.PRIVATE,
+		)
+		if (initialPalette != null) {
+			toggle.applyMangaNovelTogglePalette(initialPalette)
+			visualEffectPreferences.level.observe(viewLifecycleOwner) { level ->
+				toggle.applyMangaNovelTogglePalette(requireContext().miyorareViewPalette(settings, level))
+			}
+		}
 		if (space == FavouriteSpace.NORMAL) {
 			addMenuProvider(HistoryListMenuProvider(binding.root.context, router, viewModel))
 			viewModel.isStatsEnabled.observe(viewLifecycleOwner, MenuInvalidator(requireActivity()))

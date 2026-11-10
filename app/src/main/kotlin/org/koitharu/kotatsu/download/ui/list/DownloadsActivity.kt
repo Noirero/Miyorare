@@ -33,6 +33,8 @@ import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.RecyclerScrollKeeper
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.ui.applyMangaNovelTogglePalette
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
 import org.koitharu.kotatsu.core.util.ext.observe
@@ -68,6 +70,9 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(), DownloadItem
 		isModernDownloads = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN
 		setupModernDownloadsHeader()
 		val typeToggle = viewBinding.root.findViewById<MaterialButtonToggleGroup>(R.id.manga_novel_toggle)
+		if (isModernDownloads) {
+			miyorareViewPaletteFromPreferences()?.let(typeToggle::applyMangaNovelTogglePalette)
+		}
 		typeToggle.check(if (viewModel.selectedSection.value == MangaNovelSection.NOVEL) {
 			R.id.button_section_novel
 		} else R.id.button_section_manga)
@@ -115,6 +120,8 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(), DownloadItem
 
 	private fun applyModernDownloadsVisuals(level: VisualEffectLevel) {
 		val palette = miyorareViewPalette(settings, level)
+		viewBinding.root.findViewById<MaterialButtonToggleGroup>(R.id.manga_novel_toggle)
+			.applyMangaNovelTogglePalette(palette)
 		val density = resources.displayMetrics.density
 		val cardRadius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
 		val controlRadius = (MiyorareVisualTokens.RADIUS_CONTROL_DP * density).roundToInt()
