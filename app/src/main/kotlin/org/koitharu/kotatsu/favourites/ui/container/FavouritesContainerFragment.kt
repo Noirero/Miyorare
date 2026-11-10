@@ -872,6 +872,10 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 				),
 			)
 		}
+		// The Modern landscape heading lives in MainActivity, unlike the inline title.
+		// Keep its existing Private Favourites entry point while this fragment owns the app bar.
+		appBar.findViewById<View>(R.id.text_landscape_favourites_title)
+			?.setOnClickListener { switchFavouritesSpace() }
 		applyHeaderScrollMode(appBar, header)
 	}
 
@@ -911,6 +915,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	fun detachTabsFromAppBar() {
 		val binding = viewBinding ?: return
+		(activity as? AppBarOwner)?.appBar?.findViewById<View>(R.id.text_landscape_favourites_title)
+			?.setOnClickListener(null)
 		restoreHostAppBarScrollMode()
 		val header = binding.layoutCategoryHeader
 		if (header.parent === binding.layoutContent) return
