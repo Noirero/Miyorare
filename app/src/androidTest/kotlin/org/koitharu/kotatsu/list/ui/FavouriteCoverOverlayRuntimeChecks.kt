@@ -184,7 +184,7 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 					val visibleArea = children.sumOf { it.width.toLong() * it.height }
 					val measuredCoverage = visibleArea.toDouble() * 100 / (cover.width.toLong() * cover.height)
 					val readable = cover.titleView.contentDescription?.toString().orEmpty() +
-						cover.contentDescription.orEmpty()
+						cover.contentDescription?.toString().orEmpty()
 					if (!cover.findViewById<View>(R.id.cover_permanent_status).isVisible) {
 						assertTrue("Omitted status must remain accessible", readable.contains(themed.getString(R.string.in_library)))
 					}
