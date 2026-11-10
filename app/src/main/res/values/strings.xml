@@ -5,6 +5,7 @@
     <string name="favourites">Favorites</string>
     <string name="history">History</string>
     <string name="history_days_8_30">8–30 days ago</string>
+    <string name="history_accordion_summary">%1$s · %2$s</string>
     <string name="history_older_than_30">Older than 30 days</string>
     <string name="error_occurred">An error occurred</string>
     <string name="network_error">Network error</string>
