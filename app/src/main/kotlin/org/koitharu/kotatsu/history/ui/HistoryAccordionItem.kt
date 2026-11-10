@@ -62,7 +62,7 @@ internal data class HistoryAccordionItem(
 	}
 }
 
-internal fun nextHistoryAccordionMoreCount(remaining: Int): Int = remaining.coerceIn(0, 16)
+internal fun nextHistoryAccordionMoreCount(remaining: Int): Int = remaining.coerceIn(0, HISTORY_GROUP_PAGE_SIZE)
 
 private fun Context.historyLocale(): Locale =
 	ConfigurationCompat.getLocales(resources.configuration)[0] ?: Locale.getDefault()
