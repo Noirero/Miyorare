@@ -182,7 +182,15 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			// overflow by a pixel and force a second row on 5-column compact covers.
 			val leadingWidth = if (value.readingState == ModernCoverReadingState.NONE) 0f
 				else (diameter + padding * 2) / density
-			val statusSize = px(metrics.fittedStatusSize(innerWidth / density, leadingWidth, activeStatuses.size))
+			val fittedStatusSize = px(metrics.fittedStatusSize(innerWidth / density, leadingWidth, activeStatuses.size))
+			// dp-fit can round each of three tiles up independently. Reserve real pixel
+			// widths for the unread frame, between-group gap and all status spacing.
+			val statusSize = if (compact && value.readingState != ModernCoverReadingState.NONE &&
+				activeStatuses.size > 1) {
+				val remainingPx = innerWidth - (diameter + padding * 2) - gap -
+					horizontalStatusPadding * 2 - statusGap * (activeStatuses.size - 1)
+				minOf(fittedStatusSize, (remainingPx / activeStatuses.size).coerceAtLeast(px(12f)))
+			} else fittedStatusSize
 			val counterIconSize = (statusSize * 0.7f).roundToInt()
 			counterIcon.layoutParams = LinearLayout.LayoutParams(counterIconSize, counterIconSize).apply { marginEnd = gap }
 			counterNumber.backgroundTintList = null
