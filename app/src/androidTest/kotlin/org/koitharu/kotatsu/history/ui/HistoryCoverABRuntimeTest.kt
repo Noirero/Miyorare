@@ -58,7 +58,7 @@ class HistoryCoverABRuntimeTest {
 		assertTrue("Instrumentation must target a debug build for the diagnostic probe", BuildConfig.DEBUG)
 		// HiltTestApplication does not run the production image-loader initialization.
 		imageLoaderProvider.get()
-		val context = instrumentation.targetContext
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 		val old = prefs.getString(MiyorareAppearance.KEY_DESIGN_STYLE, null)
 		try {
