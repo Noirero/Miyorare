@@ -47,7 +47,7 @@ class DownloadedLocalPipelineRegressionTest {
 		// Card adapters delegate to the manga-specific badge owner. The grid caller also passes
 		// the explicit Modern cover authority; the nested binding still commits.
 		assertTrue(source("list/ui/adapter/MangaGridItemAD.kt").contains(
-			"binding.iconsView.bindGrid(item.isSaved,item.isLocalSource,item.isFavorite,item.counter,useModernCoverOverlay=usesCoverOverlay,)",
+			"binding.iconsView.bindGrid(item.isSaved,item.isLocalSource,item.isFavorite,item.counter,useModernCoverOverlay=effectiveCoverOverlay,)",
 		))
 		assertTrue(source("list/ui/adapter/MangaListDetailedItemAD.kt").contains(
 			"binding.iconsView.bind(item.isSaved,item.isLocalSource,item.isFavorite)",
