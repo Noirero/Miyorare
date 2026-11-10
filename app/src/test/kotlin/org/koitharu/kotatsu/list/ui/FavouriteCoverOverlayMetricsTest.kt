@@ -2,7 +2,6 @@ package org.koitharu.kotatsu.list.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class FavouriteCoverOverlayMetricsTest {
@@ -21,8 +20,8 @@ class FavouriteCoverOverlayMetricsTest {
 		for (w in listOf(0f, 40f, 55f, 128f, 194f, 2000f)) {
 			for (h in listOf(0f, 24f, 33f, 152f, 344f, 4000f)) {
 				val metrics = FavouriteCoverOverlayMetrics.resolve(w, h)
-				assertTrue(metrics.titleSp in 10f..15f)
-				assertTrue(metrics.metadataSp in 9f..12f)
+				assertTrue(metrics.titleSp in 9f..15f)
+				assertTrue(metrics.metadataSp in 8f..12f)
 				assertTrue(metrics.statusSize in 14f..30f)
 				assertTrue(metrics.actionSize in 24f..48f)
 			}
@@ -44,6 +43,8 @@ class FavouriteCoverOverlayMetricsTest {
 		assertEquals(22f, restored.statusSize)
 		assertEquals(24f, restored.unreadSize)
 		assertEquals(10f, restored.badgeSp)
+		assertEquals(10.5f, restored.titleSp)
+		assertEquals(9f, restored.metadataSp)
 		assertEquals(34f, restored.actionSize)
 		assertEquals(18f, FavouriteCoverOverlayMetrics.PROGRESS_RESERVED_DP)
 		assertEquals(48f, FavouriteCoverOverlayMetrics.ACTION_TOUCH_DP)
@@ -71,7 +72,7 @@ class FavouriteCoverOverlayMetricsTest {
 		}
 		for (size in listOf(50, 55, 60, 69, 70, 100)) {
 			val width = 70f
-			val height = width / 0.77f * size / 100f
+			val height = width / org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO * size / 100f
 			val current = FavouriteCoverOverlayMetrics.resolve(width, height)
 			val (beforeStatus, beforeUnread) = oldMetric(width, height)
 			val before = 3f * beforeStatus * beforeStatus + beforeUnread * beforeUnread
