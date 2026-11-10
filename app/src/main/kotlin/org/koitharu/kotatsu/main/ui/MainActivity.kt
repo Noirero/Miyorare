@@ -149,9 +149,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			return
 		}
 		setContentView(ActivityMainBinding.inflate(layoutInflater))
-		defaultLandscapeSearchBottomPadding = viewBinding.layoutSearch.paddingBottom
 		setSupportActionBar(viewBinding.searchBar)
 		viewBinding.root.applyMiyorareSharedMainChrome()
+		// Preserve the effective shared-chrome spacing when restoring non-Explore tabs.
+		defaultLandscapeSearchBottomPadding = viewBinding.layoutSearch.paddingBottom
 		bindModernUpdatePromptColors()
 		// Place the search icon inline, right before the hint, and centre the whole group.
 		viewBinding.searchBar.textView.apply {
