@@ -41,9 +41,10 @@ class HistoryContentSectionTest {
 		val local = source("history/data/HistoryLocalObserver.kt")
 		assertTrue(dao.contains(".apply { if (contentPredicate != null) where(contentPredicate) }"))
 		assertTrue(dao.contains(".limit(limit)"))
-		assertTrue(repository.contains("localObserver.observeAll(order, filterOptions, limit, minUpdatedAt, predicate)"))
-		assertTrue(repository.contains("observeAllPrivate(order, filterOptions, limit, minUpdatedAt, predicate)"))
-		assertTrue(local.contains("observeAll(order, filterOptions, limit, minUpdatedAt, contentPredicate)"))
+		assertTrue(dao.contains("maxUpdatedAtExclusive != null"))
+		assertTrue(repository.contains("localObserver.observeAll(order, filterOptions, limit, minUpdatedAt, predicate, maxUpdatedAtExclusive)"))
+		assertTrue(repository.contains("observeAllPrivate(order, filterOptions, limit, minUpdatedAt, predicate, maxUpdatedAtExclusive)"))
+		assertTrue(local.contains("observeAll(order, filterOptions, limit, minUpdatedAt, contentPredicate, maxUpdatedAtExclusive)"))
 	}
 	private fun source(file: String): String =
 		sequenceOf(

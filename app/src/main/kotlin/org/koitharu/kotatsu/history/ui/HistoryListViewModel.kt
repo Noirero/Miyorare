@@ -367,7 +367,7 @@ class HistoryListViewModel @Inject constructor(
 					for ((manga, _) in rows) result += mangaListMapper.toListModel(manga, mode)
 					if (rows.size < count) result += ListHeader(R.string.more,
 						buttonTextRes = R.string.more, payload = HistoryHeaderAction(key, loadMore = true),
-						badge = (count - rows.size).toString())
+						badge = (count - rows.size).toString(), itemKey = "history-more:$key")
 				}
 			}
 		}
@@ -387,7 +387,7 @@ class HistoryListViewModel @Inject constructor(
 					for ((manga, _) in rows) result += mangaListMapper.toListModel(manga, mode)
 					if (rows.size < count) result += ListHeader(R.string.more,
 						buttonTextRes = R.string.more, payload = HistoryHeaderAction(key, loadMore = true),
-						badge = (count - rows.size).toString())
+						badge = (count - rows.size).toString(), itemKey = "history-more:$key")
 				}
 			}
 		}

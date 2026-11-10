@@ -58,4 +58,13 @@ class HistoryDateGroupingTest {
 		val window = checkNotNull(historyGroupWindow("day:$date", date.plusDays(8), dstZone))
 		assertEquals(23L * 60 * 60 * 1000, window.endExclusive - window.start)
 	}
+
+	@Test
+	fun moreHeadersFromDifferentDaysHaveDistinctRecyclerViewIdentity() {
+		val first = org.koitharu.kotatsu.list.ui.model.ListHeader("More", itemKey = "history-more:day:2026-11-02")
+		val second = org.koitharu.kotatsu.list.ui.model.ListHeader("More", itemKey = "history-more:day:2026-11-01")
+		val same = org.koitharu.kotatsu.list.ui.model.ListHeader("More", itemKey = "history-more:day:2026-11-02")
+		assertFalse(first.areItemsTheSame(second))
+		assertTrue(first.areItemsTheSame(same))
+	}
 }

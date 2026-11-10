@@ -13,6 +13,8 @@ data class ListHeader private constructor(
 	val payload: Any?,
 	val badge: String?,
 	val buttonStyle: ButtonStyle,
+	/** Optional stable identity for repeated labels (e.g. History's per-group More controls). */
+	val itemKey: String? = null,
 ) : ListModel {
 
 	enum class ButtonStyle {
@@ -27,7 +29,8 @@ data class ListHeader private constructor(
 		payload: Any? = null,
 		badge: String? = null,
 		buttonStyle: ButtonStyle = ButtonStyle.TEXT,
-	) : this(textRaw = text, buttonTextRes, payload, badge, buttonStyle)
+		itemKey: String? = null,
+	) : this(textRaw = text, buttonTextRes, payload, badge, buttonStyle, itemKey)
 
 	constructor(
 		@StringRes textRes: Int,
@@ -35,7 +38,8 @@ data class ListHeader private constructor(
 		payload: Any? = null,
 		badge: String? = null,
 		buttonStyle: ButtonStyle = ButtonStyle.TEXT,
-	) : this(textRaw = textRes, buttonTextRes, payload, badge, buttonStyle)
+		itemKey: String? = null,
+	) : this(textRaw = textRes, buttonTextRes, payload, badge, buttonStyle, itemKey)
 
 	constructor(
 		chapter: MangaChapter,
@@ -43,7 +47,8 @@ data class ListHeader private constructor(
 		payload: Any? = null,
 		badge: String? = null,
 		buttonStyle: ButtonStyle = ButtonStyle.TEXT,
-	) : this(textRaw = chapter, buttonTextRes, payload, badge, buttonStyle)
+		itemKey: String? = null,
+	) : this(textRaw = chapter, buttonTextRes, payload, badge, buttonStyle, itemKey)
 
 	constructor(
 		dateTimeAgo: DateTimeAgo,
@@ -51,7 +56,8 @@ data class ListHeader private constructor(
 		payload: Any? = null,
 		badge: String? = null,
 		buttonStyle: ButtonStyle = ButtonStyle.TEXT,
-	) : this(textRaw = dateTimeAgo, buttonTextRes, payload, badge, buttonStyle)
+		itemKey: String? = null,
+	) : this(textRaw = dateTimeAgo, buttonTextRes, payload, badge, buttonStyle, itemKey)
 
 	fun getText(context: Context): CharSequence? = when (textRaw) {
 		is CharSequence -> textRaw
@@ -62,6 +68,6 @@ data class ListHeader private constructor(
 	}
 
 	override fun areItemsTheSame(other: ListModel): Boolean {
-		return other is ListHeader && textRaw == other.textRaw
+		return other is ListHeader && textRaw == other.textRaw && itemKey == other.itemKey
 	}
 }
