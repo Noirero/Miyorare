@@ -252,6 +252,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isNavBarPinned: Boolean
 		get() = prefs.getBoolean(KEY_NAV_PINNED, false)
 
+	/** Existing installs keep the right-hand Continue Reading button. */
+	val isContinueButtonOnLeft: Boolean
+		get() = prefs.getString(KEY_NAV_CONTINUE_POSITION, "RIGHT") == "LEFT"
+
 	val isLegacyNavigationBar: Boolean
 		get() = prefs.getBoolean(KEY_NAV_LEGACY, false)
 
@@ -1532,6 +1536,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_NAV_MAIN = "nav_main"
 		const val KEY_NAV_LABELS = "nav_labels"
 		const val KEY_NAV_PINNED = "nav_pinned"
+		const val KEY_NAV_CONTINUE_POSITION = "nav_continue_position"
 		const val KEY_NAV_LEGACY = "nav_legacy"
 		const val KEY_MAIN_FAB = "main_fab"
 		const val KEY_UPDATE_PROMPT_DISMISSED = "update_prompt_dismissed"

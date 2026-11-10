@@ -163,6 +163,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		viewBinding.navRail?.headerView?.findViewById<View>(R.id.railFab)?.setOnClickListener(this)
 		viewBinding.bottomNav?.setOnContinueClickListener { viewModel.openLastReader() }
 		viewBinding.bottomNav?.setOnContinueLongClickListener { viewModel.openLastDetails() }
+		viewBinding.bottomNav?.setContinueButtonOnLeft(settings.isContinueButtonOnLeft)
 		viewBinding.buttonOverflow.setOnClickListener(this::showMainOverflowMenu)
 		restoreMainUtilityButton()
 		viewBinding.buttonUpdate.setOnClickListener { router.openAppUpdate(autoDownload = true) }
@@ -215,6 +216,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		viewModel.isLoading.observe(this, this::onLoadingStateChanged)
 		viewModel.isResumeEnabled.observe(this, this::onResumeEnabledChanged)
 		settings.observe(AppSettings.KEY_NAV_LEGACY).observe(this) { adjustFabVisibility() }
+		settings.observe(AppSettings.KEY_NAV_CONTINUE_POSITION).observe(this) {
+			viewBinding.bottomNav?.setContinueButtonOnLeft(settings.isContinueButtonOnLeft)
+		}
 		viewModel.feedCounter.observe(this, ::onFeedCounterChanged)
 		viewModel.hasExtensionUpdates.observe(this) { hasUpdates ->
 			navigationDelegate.setCounter(NavItem.EXPLORE, if (hasUpdates) -1 else 0)
@@ -395,12 +399,8 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	fun restoreMainUtilityButton() {
 		viewBinding.buttonSettings.apply {
 			setIconResource(R.drawable.ic_settings)
-			contentDescription = getString(R.string.main_utilities)
-			setOnClickListener {
-				if (supportFragmentManager.findFragmentByTag("main_utilities") == null) {
-					org.koitharu.kotatsu.main.ui.nav.MainUtilitiesSheet().show(supportFragmentManager, "main_utilities")
-				}
-			}
+			contentDescription = getString(R.string.settings)
+			setOnClickListener { router.openSettings() }
 		}
 	}
 

@@ -395,6 +395,7 @@ private fun AppearanceScreen(
     var detailsTab by rememberStringPref(AppSettings.KEY_DETAILS_TAB, "-1")
     var searchSuggestions by rememberStringSetPref(AppSettings.KEY_SEARCH_SUGGESTION_TYPES, emptySet())
     var mainFab by rememberBooleanPref(AppSettings.KEY_MAIN_FAB, true)
+    var continuePosition by rememberStringPref(AppSettings.KEY_NAV_CONTINUE_POSITION, "RIGHT")
     var navLabels by rememberBooleanPref(AppSettings.KEY_NAV_LABELS, true)
 
     SettingsScaffold {
@@ -807,6 +808,20 @@ private fun AppearanceScreen(
                         subtitle = stringResource(R.string.main_screen_fab_summary),
                         checked = mainFab,
                         onCheckedChange = { mainFab = it },
+                        icon = R.drawable.ic_read,
+                        shape = pos.shape,
+                    )
+                }
+                item { pos ->
+                    ListSettingsItem(
+                        title = stringResource(R.string.main_continue_button_position),
+                        entries = listOf(
+                            stringResource(R.string.main_continue_button_right),
+                            stringResource(R.string.main_continue_button_left),
+                        ),
+                        entryValues = listOf("RIGHT", "LEFT"),
+                        selectedValue = continuePosition,
+                        onValueChange = { continuePosition = it },
                         icon = R.drawable.ic_read,
                         shape = pos.shape,
                     )

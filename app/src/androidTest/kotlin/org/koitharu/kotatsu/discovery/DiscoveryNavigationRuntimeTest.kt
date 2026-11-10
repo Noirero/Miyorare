@@ -20,7 +20,7 @@ import org.koitharu.kotatsu.discovery.data.*
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.discovery.ui.DiscoveryHubFragment
 import org.koitharu.kotatsu.main.ui.MainActivity
-import org.koitharu.kotatsu.main.ui.nav.MainUtilitiesSheet
+import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService as Service
 import javax.inject.Inject
@@ -86,7 +86,7 @@ class DiscoveryNavigationRuntimeTest {
 		scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_discovery_hub }
 		compose.waitUntil(10000) { compose.onAllNodesWithTag("catalog_spotlight").fetchSemanticsNodes().isNotEmpty() }
 	}
-	@Test fun modernRootKeepsHubViewAndScrollAcrossTabSwitchAndGearDismissal() {
+	@Test fun modernRootKeepsHubViewAndScrollAcrossTabSwitchAndSettingsRoundTrip() {
 		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
 		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, false).commit()
 		launch().use { scenario ->
@@ -102,13 +102,22 @@ class DiscoveryNavigationRuntimeTest {
 				activity.bottomNav!!.selectedItemId = R.id.nav_history
 			}
 			compose.waitForIdle(); scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_discovery_hub }; compose.waitForIdle()
-			scenario.onActivity { assertSame(fragment, it.supportFragmentManager.findFragmentByTag(DiscoveryHubFragment::class.java.name)); it.viewBinding.buttonSettings.performClick() }
-			compose.waitUntil(5000) { compose.onAllNodesWithTag("main_utilities_sheet").fetchSemanticsNodes().isNotEmpty() }
-			compose.onNodeWithTag("main_utilities_sheet").assertExists()
-			scenario.onActivity { activity ->
-				(activity.supportFragmentManager.findFragmentByTag("main_utilities") as MainUtilitiesSheet).dismiss()
-				assertEquals(R.id.nav_discovery_hub, activity.bottomNav!!.selectedItemId)
-			}
+			val instrumentation = InstrumentationRegistry.getInstrumentation()
+			val monitor = instrumentation.addMonitor(SettingsActivity::class.java.name, null, false)
+			try {
+				scenario.onActivity { activity ->
+					assertSame(fragment, activity.supportFragmentManager.findFragmentByTag(DiscoveryHubFragment::class.java.name))
+					activity.viewBinding.buttonSettings.performClick()
+				}
+				val opened = instrumentation.waitForMonitorWithTimeout(monitor, 5000)
+				assertNotNull("Gear must open Settings directly", opened)
+				instrumentation.runOnMainSync { opened.finish() }
+				compose.waitForIdle()
+				scenario.onActivity { activity ->
+					assertNull(activity.supportFragmentManager.findFragmentByTag("main_utilities"))
+					assertEquals(R.id.nav_discovery_hub, activity.bottomNav!!.selectedItemId)
+				}
+			} finally { instrumentation.removeMonitor(monitor) }
 			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed(); assertEquals(1, calls.get())
 		}
 	}
@@ -133,7 +142,7 @@ class DiscoveryNavigationRuntimeTest {
 			compose.waitForIdle(); compose.onNodeWithTag("catalog_provider_selector").assertIsDisplayed(); assertEquals(1, calls.get())
 		}
 	}
-	@Test fun utilityActionsOpenExistingJourneyAndSettingsWithoutChangingHubRoot() {
+	@Test fun gearOpensSettingsOnlyAndPreservesFavouritesSearchBack() {
 		val instrumentation = InstrumentationRegistry.getInstrumentation()
 		launch().use { scenario ->
 			scenario.onActivity { activity ->
@@ -151,23 +160,24 @@ class DiscoveryNavigationRuntimeTest {
 				activity.viewBinding.searchBar.performClick()
 				assertEquals(activity.getString(R.string.close), activity.viewBinding.buttonSettings.contentDescription)
 				activity.viewBinding.buttonSettings.performClick()
-				assertEquals(activity.getString(R.string.main_utilities), activity.viewBinding.buttonSettings.contentDescription)
+				assertEquals(activity.getString(R.string.settings), activity.viewBinding.buttonSettings.contentDescription)
 			}
 			showHub(scenario)
-			for ((tag, target) in listOf("utility_journey" to org.koitharu.kotatsu.stats.ui.StatsActivity::class.java, "utility_settings" to org.koitharu.kotatsu.settings.SettingsActivity::class.java)) {
-				val monitor = instrumentation.addMonitor(target.name, null, false)
-				try {
-					scenario.onActivity { it.viewBinding.buttonSettings.performClick() }
-					compose.waitUntil(5000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
-					compose.onNodeWithTag(tag).assertIsDisplayed()
-					compose.onNodeWithTag(tag).performClick()
-					val opened = instrumentation.waitForMonitorWithTimeout(monitor, 5000)
-					assertNotNull("Utility must open existing ${target.simpleName}", opened)
-					instrumentation.runOnMainSync { opened.finish() }
-					compose.waitForIdle()
-					scenario.onActivity { assertEquals(R.id.nav_discovery_hub, it.bottomNav!!.selectedItemId) }
-				} finally { instrumentation.removeMonitor(monitor) }
-			}
+			val monitor = instrumentation.addMonitor(SettingsActivity::class.java.name, null, false)
+			try {
+				scenario.onActivity { activity ->
+					assertEquals(activity.getString(R.string.settings), activity.viewBinding.buttonSettings.contentDescription)
+					activity.viewBinding.buttonSettings.performClick()
+				}
+				val opened = instrumentation.waitForMonitorWithTimeout(monitor, 5000)
+				assertNotNull("Gear must launch Settings without auxiliary menu", opened)
+				instrumentation.runOnMainSync { opened.finish() }
+				compose.waitForIdle()
+				scenario.onActivity { activity ->
+					assertNull(activity.supportFragmentManager.findFragmentByTag("main_utilities"))
+					assertEquals(R.id.nav_discovery_hub, activity.bottomNav!!.selectedItemId)
+				}
+			} finally { instrumentation.removeMonitor(monitor) }
 			assertEquals(1, calls.get())
 		}
 	}

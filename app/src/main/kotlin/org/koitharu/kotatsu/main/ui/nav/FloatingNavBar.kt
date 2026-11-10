@@ -116,6 +116,7 @@ fun FloatingNavBar(
 	modifier: Modifier = Modifier,
 	onItemLongClick: (Int) -> Unit = {},
 	showContinue: Boolean = false,
+	continueOnLeft: Boolean = false,
 	emphasizeFavourites: Boolean = false,
 	onContinueClick: () -> Unit = {},
 	onContinueLongClick: () -> Unit = {},
@@ -292,12 +293,35 @@ fun FloatingNavBar(
 		null
 	}
 	val haptic = rememberHapticEffect()
+	val continueAction: @Composable () -> Unit = {
+		AnimatedVisibility(
+			visible = showContinue,
+			enter = fadeIn(animationSpec = FloatSpec_Float) +
+				expandHorizontally(animationSpec = FloatSpec_Size, expandFrom = Alignment.Start),
+			exit = fadeOut(animationSpec = FloatSpec_Float) +
+				shrinkHorizontally(animationSpec = FloatSpec_Size, shrinkTowards = Alignment.Start),
+		) {
+			FloatingContinueButton(
+				colors = effectiveColors,
+				isMiyorareModern = isMiyorareModern,
+				onClick = {
+					haptic(HapticEffect.CONFIRM)
+					onContinueClick()
+				},
+				onLongClick = {
+					haptic(HapticEffect.LONG_PRESS)
+					onContinueLongClick()
+				},
+			)
+		}
+	}
 
 	Row(
 		modifier = modifier.wrapContentWidth(),
 		horizontalArrangement = Arrangement.spacedBy(if (isMiyorareModern) 6.dp else 8.dp),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
+		if (continueOnLeft) continueAction()
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
 			// Two low-alpha static halos create bloom without making the perimeter a thick solid line.
 			val glowAccent = Color(
@@ -380,26 +404,7 @@ fun FloatingNavBar(
 				}
 			}
 		}
-		AnimatedVisibility(
-			visible = showContinue,
-			enter = fadeIn(animationSpec = FloatSpec_Float) +
-				expandHorizontally(animationSpec = FloatSpec_Size, expandFrom = Alignment.Start),
-			exit = fadeOut(animationSpec = FloatSpec_Float) +
-				shrinkHorizontally(animationSpec = FloatSpec_Size, shrinkTowards = Alignment.Start),
-		) {
-			FloatingContinueButton(
-				colors = effectiveColors,
-				isMiyorareModern = isMiyorareModern,
-				onClick = {
-					haptic(HapticEffect.CONFIRM)
-					onContinueClick()
-				},
-				onLongClick = {
-					haptic(HapticEffect.LONG_PRESS)
-					onContinueLongClick()
-				},
-			)
-		}
+		if (!continueOnLeft) continueAction()
 	}
 }
 
