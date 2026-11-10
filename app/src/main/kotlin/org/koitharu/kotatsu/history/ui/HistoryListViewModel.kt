@@ -238,7 +238,7 @@ class HistoryListViewModel @Inject constructor(
 	fun requestMoreHistoryGroup(key: String) {
 		val scoped = "${selectedSectionState.value.name}:$key"
 		groupPageLimits.value = groupPageLimits.value + (
-			scoped to ((groupPageLimits.value[scoped] ?: HISTORY_GROUP_PAGE_SIZE) + HISTORY_GROUP_PAGE_SIZE)
+			scoped to nextHistoryAccordionPageLimit(groupPageLimits.value[scoped])
 		)
 	}
 
