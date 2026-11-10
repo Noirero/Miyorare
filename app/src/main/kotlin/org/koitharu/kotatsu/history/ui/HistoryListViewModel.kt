@@ -64,7 +64,8 @@ import java.time.temporal.ChronoUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
-private const val PAGE_SIZE = 16
+private const val PAGE_SIZE = 16 // Recent History and ungrouped list remain unchanged.
+internal const val HISTORY_GROUP_PAGE_SIZE = 50 // Independent day/month accordion windows.
 private const val HISTORY_MAX_DAYS = 30
 
 internal data class HistoryHeaderAction(val key: String, val loadMore: Boolean = false)
@@ -237,7 +238,7 @@ class HistoryListViewModel @Inject constructor(
 	fun requestMoreHistoryGroup(key: String) {
 		val scoped = "${selectedSectionState.value.name}:$key"
 		groupPageLimits.value = groupPageLimits.value + (
-			scoped to ((groupPageLimits.value[scoped] ?: PAGE_SIZE) + PAGE_SIZE)
+			scoped to ((groupPageLimits.value[scoped] ?: HISTORY_GROUP_PAGE_SIZE) + HISTORY_GROUP_PAGE_SIZE)
 		)
 	}
 
@@ -309,7 +310,7 @@ class HistoryListViewModel @Inject constructor(
 				) + openKeys.map { key ->
 					val window = checkNotNull(historyGroupWindow(key, request.today, zone))
 					repository.observeAllWithHistory(request.order, request.filters,
-						request.pageLimits[prefix + key] ?: PAGE_SIZE,
+						request.pageLimits[prefix + key] ?: HISTORY_GROUP_PAGE_SIZE,
 						minUpdatedAt = window.start, space = favouriteSpace,
 						section = request.section, maxUpdatedAtExclusive = window.endExclusive)
 				}
