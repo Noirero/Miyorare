@@ -258,6 +258,13 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun adaptiveCoverOverlayRespectsCompactGridCoverageAndCollision() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			org.koitharu.kotatsu.list.ui.FavouriteCoverOverlayRuntimeChecks.compactGridCoverageAndCollision(context)
+		}
+	}
+
+	@Test
 	fun modernCoverProjectsOnlyHostAuthorizedState() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
 			org.koitharu.kotatsu.list.ui.ModernCoverRuntimeChecks.projectionAndRecycling(context)
