@@ -21,4 +21,16 @@
     <plurals name="minutes">
         <item quantity="other">%1$d menit</item>
     </plurals>
+	<plurals name="history_accordion_titles">
+		<item quantity="other">%1$s judul</item>
+	</plurals>
+	<plurals name="history_accordion_active_days">
+		<item quantity="other">%1$s hari aktif</item>
+	</plurals>
+	<plurals name="history_accordion_active_months">
+		<item quantity="other">%1$s bulan aktif</item>
+	</plurals>
+	<plurals name="history_accordion_show_more">
+		<item quantity="other">Tampilkan %1$s lagi</item>
+	</plurals>
 </resources>
