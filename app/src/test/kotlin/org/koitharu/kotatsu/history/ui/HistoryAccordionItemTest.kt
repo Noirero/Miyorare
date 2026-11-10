@@ -17,7 +17,7 @@ class HistoryAccordionItemTest {
 		val dayB = dayA.copy(key = "day:2026-11-01", date = LocalDate.of(2026, 11, 1))
 		val expandedA = dayA.copy(expanded = true)
 		val moreA = HistoryAccordionItem(
-			key = dayA.key, kind = HistoryAccordionItem.Kind.MORE, moreCount = 16,
+			key = dayA.key, kind = HistoryAccordionItem.Kind.MORE, moreCount = 50,
 		)
 
 		assertTrue(dayA.areItemsTheSame(expandedA))
@@ -27,13 +27,16 @@ class HistoryAccordionItemTest {
 	}
 
 	@Test
-	fun moreShowsAtMostTheExistingSixteenItemPageSize() {
+	fun moreShowsAtMostFiftyItemsPerExpandedDateGroup() {
 		assertEquals(0, nextHistoryAccordionMoreCount(0))
 		assertEquals(1, nextHistoryAccordionMoreCount(1))
-		assertEquals(15, nextHistoryAccordionMoreCount(15))
 		assertEquals(16, nextHistoryAccordionMoreCount(16))
-		assertEquals(16, nextHistoryAccordionMoreCount(17))
-		assertEquals(16, nextHistoryAccordionMoreCount(99))
+		assertEquals(49, nextHistoryAccordionMoreCount(49))
+		assertEquals(50, nextHistoryAccordionMoreCount(50))
+		assertEquals(50, nextHistoryAccordionMoreCount(51))
+		assertEquals(50, nextHistoryAccordionMoreCount(99))
+		assertEquals(50, nextHistoryAccordionMoreCount(120))
+		assertEquals(50, HISTORY_GROUP_PAGE_SIZE)
 		assertEquals(0, nextHistoryAccordionMoreCount(-3))
 	}
 
