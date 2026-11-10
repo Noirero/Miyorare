@@ -130,6 +130,102 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 		}
 	}
 
+
+	/**
+	 * Real Android View measurement (not a mock or Compose preview).
+	 * Each row records the actual visible overlay coverage, plus an apples-to-apples
+	 * analytical before/after indicator-tile comparison using the prior metric curve.
+	 * Tiny covers can never fit every label and the 48dp action; any omission must
+	 * retain its spoken accessibility description.
+	 */
+	fun compactGridCoverageAndCollision(context: Context) {
+		for (densityDpi in listOf(240, 420)) for (fontScale in listOf(1f, 1.5f)) {
+			val config = Configuration(context.resources.configuration).apply {
+				this.densityDpi = densityDpi
+				this.fontScale = fontScale
+			}
+			val themed = ContextThemeWrapper(context.createConfigurationContext(config), R.style.Theme_Kotatsu)
+			val density = themed.resources.displayMetrics.density
+			for (columns in 3..5) for (gridSize in listOf(50, 55, 60, 69, 70, 100)) {
+				// Same proportional card sizing as Modern Favourites, using a 396dp viewport.
+				val widthDp = (396f / columns - 6f).roundToInt()
+				val heightDp = (widthDp / org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO *
+					gridSize / 100f).roundToInt().coerceAtLeast(1)
+				val metrics = FavouriteCoverOverlayMetrics.resolve(widthDp.toFloat(), heightDp.toFloat())
+				val oldScale = minOf(widthDp / 128f, heightDp / 152f).coerceIn(0.8f, 1.4f)
+				val oldStatus = (22f * oldScale).coerceIn(18f, 30f)
+				val oldUnread = (24f * oldScale).coerceIn(22f, 34f)
+				val modeledBefore = (3 * oldStatus * oldStatus + oldUnread * oldUnread) / (widthDp * heightDp) * 100f
+				val modeledAfter = (3 * metrics.statusSize * metrics.statusSize +
+					metrics.unreadSize * metrics.unreadSize) / (widthDp * heightDp) * 100f
+				assertTrue("Indicator-area budget must not grow at grid=$gridSize, columns=$columns",
+					modeledAfter <= modeledBefore + 0.01f)
+				for (unreadCount in listOf(7, 31, 311)) {
+					val cover = FavouriteCoverOverlayView(themed)
+					val current = model().copy(isFavorite = true, isSaved = true, isPinned = true,
+						isLocalSource = true, languageLabel = "EN", showContinueReading = true,
+						isTitleOverCover = true, unreadCount = unreadCount)
+					cover.bind(current) {}
+					layout(cover, widthDp, heightDp)
+					val children = cover.children.filter { it.isVisible }.toList()
+					val limit = cover.height - (18 * density).roundToInt()
+					for (child in children) {
+						assertTrue("outside grid=$gridSize columns=$columns font=$fontScale: ${child.id}",
+							child.left >= 0 && child.top >= 0 && child.right <= cover.width &&
+								child.bottom <= limit)
+					}
+					for (i in children.indices) for (j in i + 1 until children.size) {
+						val first = children[i]
+						val next = children[j]
+						assertFalse("collision grid=$gridSize columns=$columns unread=$unreadCount: ${first.id} / ${next.id}",
+							Rect.intersects(Rect(first.left, first.top, first.right, first.bottom),
+								Rect(next.left, next.top, next.right, next.bottom)))
+					}
+					val visibleArea = children.sumOf { it.width.toLong() * it.height }
+					val measuredCoverage = visibleArea.toDouble() * 100 / (cover.width.toLong() * cover.height)
+					val readable = cover.titleView.contentDescription?.toString().orEmpty() +
+						cover.contentDescription.orEmpty()
+					if (!cover.findViewById<View>(R.id.cover_permanent_status).isVisible) {
+						assertTrue("Omitted status must remain accessible", readable.contains(themed.getString(R.string.in_library)))
+					}
+					if (!cover.findViewById<View>(R.id.cover_unread).isVisible) {
+						assertTrue("Omitted unread must remain accessible", readable.contains(themed.getString(R.string.unread)))
+					}
+					android.util.Log.i("MiyorareCoverAudit",
+						"grid=$gridSize cols=$columns unread=$unreadCount density=$densityDpi font=$fontScale " +
+							"cover=${widthDp}x${heightDp}dp modeledBefore=${"%.1f".format(java.util.Locale.US, modeledBefore)}% " +
+							"modeledAfter=${"%.1f".format(java.util.Locale.US, modeledAfter)}% " +
+							"measuredAfter=${"%.1f".format(java.util.Locale.US, measuredCoverage)}%")
+					if (columns == 5 && unreadCount == 31 && fontScale == 1f &&
+						densityDpi == 420 && gridSize in listOf(50, 69, 100)) {
+						captureOverlayScreenshot(cover, gridSize)
+					}
+				}
+			}
+		}
+	}
+
+	private fun captureOverlayScreenshot(cover: FavouriteCoverOverlayView, gridSize: Int) {
+		val bitmap = android.graphics.Bitmap.createBitmap(cover.width, cover.height,
+			android.graphics.Bitmap.Config.ARGB_8888)
+		val canvas = android.graphics.Canvas(bitmap)
+		canvas.drawColor(android.graphics.Color.rgb(32, 49, 62))
+		cover.draw(canvas) // actual Android-rendered overlay on a neutral fixture background
+		val targetWidth = 112
+		val thumb = android.graphics.Bitmap.createScaledBitmap(bitmap, targetWidth,
+			(cover.height * targetWidth.toFloat() / cover.width).roundToInt().coerceAtLeast(1), true)
+		val data = java.io.ByteArrayOutputStream()
+		thumb.compress(android.graphics.Bitmap.CompressFormat.JPEG, 55, data)
+		val encoded = android.util.Base64.encodeToString(data.toByteArray(), android.util.Base64.NO_WRAP)
+		val chunks = encoded.chunked(850)
+		for ((part, chunk) in chunks.withIndex()) {
+			// JUnit system-out is retained in the Android test evidence artifact; no uploads to web services.
+			System.out.println("MIYORARE_COVER_SNAPSHOT|after|grid=$gridSize|part=${part + 1}|total=${chunks.size}|$chunk")
+		}
+		thumb.recycle()
+		bitmap.recycle()
+	}
+
 	private fun progressBoundsStayLocked(context: Context) {
 		val density = context.resources.displayMetrics.density
 		val root = FrameLayout(context)
