@@ -103,6 +103,7 @@ class HistoryRepository @Inject constructor(
 		minUpdatedAt: Long = 0L,
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 		section: MangaNovelSection? = null,
+		maxUpdatedAtExclusive: Long? = null,
 	): Flow<List<MangaWithHistory>> {
 		val predicates = if (section == null) flowOf(null) else db.getHistoryDao()
 			.observeSourceNames()
@@ -113,12 +114,12 @@ class HistoryRepository @Inject constructor(
 			.distinctUntilChanged()
 		return predicates.map { predicate ->
 			if (space == FavouriteSpace.NORMAL && ListFilterOption.Downloaded in filterOptions) {
-				localObserver.observeAll(order, filterOptions, limit, minUpdatedAt, predicate)
+				localObserver.observeAll(order, filterOptions, limit, minUpdatedAt, predicate, maxUpdatedAtExclusive)
 			} else {
 				val flow = if (space == FavouriteSpace.PRIVATE) {
-					db.getHistoryDao().observeAllPrivate(order, filterOptions, limit, minUpdatedAt, predicate)
+					db.getHistoryDao().observeAllPrivate(order, filterOptions, limit, minUpdatedAt, predicate, maxUpdatedAtExclusive)
 				} else {
-					db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt, predicate)
+					db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt, predicate, maxUpdatedAtExclusive)
 				}
 				flow.mapItems {
 					MangaWithHistory(it.toManga(), it.history.toMangaHistory())
@@ -126,6 +127,20 @@ class HistoryRepository @Inject constructor(
 			}
 		}.flattenLatest()
 	}
+
+	/** Uses the exact same Manga/Novel source predicate and Normal/Private scope as the paged feed. */
+	fun observeHistoryTimestamps(
+		filterOptions: Set<ListFilterOption>,
+		space: FavouriteSpace,
+		section: MangaNovelSection,
+	): Flow<List<Long>> = db.getHistoryDao().observeSourceNames()
+		.map { names ->
+			val novelNames = names.filter { resolveMangaSource(it).isNovelSource }
+			historyContentSectionPredicate(section, novelNames)
+		}
+		.distinctUntilChanged()
+		.map { predicate -> db.getHistoryDao().observeHistoryTimestamps(filterOptions, space, predicate) }
+		.flattenLatest()
 
 	fun observeOne(id: Long): Flow<MangaHistory?> {
 		return db.getHistoryDao().observe(id).map {
