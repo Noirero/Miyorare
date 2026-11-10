@@ -42,7 +42,6 @@ fun listHeaderAD(
 		val currentItem = item
 		binding.root.isClickable = rowClickable && currentItem.payload != null
 		binding.root.isFocusable = binding.root.isClickable
-		if (rowClickable) androidx.core.view.ViewCompat.setAccessibilityHeading(binding.textViewTitle, true)
 		val notice = currentItem.buttonStyle == ListHeader.ButtonStyle.NOTICE
 		itemView.background = if (notice) androidx.core.content.ContextCompat.getDrawable(context, R.drawable.bg_smart_local_notice) else defaultHeaderBackground
 		binding.textViewTitle.setCompoundDrawablesRelativeWithIntrinsicBounds(if (notice) R.drawable.ic_sparkles else 0, 0, 0, 0)
@@ -52,7 +51,7 @@ fun listHeaderAD(
 		binding.textViewTitle.setSingleLine(!isChapterToggle && !notice)
 		binding.textViewTitle.maxLines = if (isChapterToggle || notice) 2 else 1
 		binding.textViewTitle.ellipsize = if (isChapterToggle || notice) android.text.TextUtils.TruncateAt.END else defaultHeaderEllipsize
-		androidx.core.view.ViewCompat.setAccessibilityHeading(binding.textViewTitle, isChapterToggle)
+		androidx.core.view.ViewCompat.setAccessibilityHeading(binding.textViewTitle, rowClickable || isChapterToggle)
 		itemView.isSelected = isChapterToggle && currentItem.badge != null
 		binding.textViewTitle.text = currentItem.getText(context)
 		val noticeForeground = if (notice) MaterialColors.getColor(
