@@ -10,6 +10,9 @@
     <string name="local_storage">Penyimpanan lokal</string>
     <string name="favourites">Disukai</string>
     <string name="history">Riwayat</string>
+    <string name="history_days_8_30">8–30 hari yang lalu</string>
+    <string name="history_older_than_30">Lebih dari 30 hari yang lalu</string>
+    <string name="history_accordion_summary">%1$s · %2$s</string>
     <string name="error_occurred">Terjadi kesalahan</string>
     <string name="network_error">Kesalahan jaringan</string>
     <string name="details">Detail</string>
