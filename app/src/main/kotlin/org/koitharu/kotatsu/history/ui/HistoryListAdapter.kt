@@ -16,11 +16,12 @@ class HistoryListAdapter(
 	titleTapToRead: Boolean = false,
 	onTipClose: ((TipModel) -> Unit)? = null,
 	onAccordionClick: (String, Boolean) -> Unit,
+	privateFavourites: Boolean = false,
 ) : MangaListAdapter(listener, sizeResolver, titleTapToRead, onTipClose, coverContext = ModernCoverContext.BROWSING,
 	headerRowClickable = true), FastScroller.SectionIndexer {
 
 	init {
-		addDelegate(ListItemType.HISTORY_ACCORDION, historyAccordionItemAD { action -> onAccordionClick(action.key, action.loadMore) })
+		addDelegate(ListItemType.HISTORY_ACCORDION, historyAccordionItemAD({ action -> onAccordionClick(action.key, action.loadMore) }, privateFavourites))
 	}
 
 	override fun getSectionText(context: Context, position: Int): CharSequence? {
