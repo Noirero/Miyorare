@@ -129,7 +129,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		setMeasuredDimension(w, h)
 		if (w <= 0 || h <= 0) return
 		val value = model ?: return
-		val tracing = BuildConfig.DEBUG && debugTraceHistoryMeasure && android.os.Trace.isEnabled()
+		val tracing = BuildConfig.DEBUG && debugTraceHistoryMeasure && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q && android.os.Trace.isEnabled()
 		if (tracing) android.os.Trace.beginSection("HistoryModernOverlayMeasure")
 		try {
 		val metrics = FavouriteCoverOverlayMetrics.resolve(w / density, h / density)
