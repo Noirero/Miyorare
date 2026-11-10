@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.history.ui
 
-import android.content.Context
 import android.view.ContextThemeWrapper
 import android.view.View
 import android.view.ViewGroup
@@ -9,13 +8,18 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.preference.PreferenceManager
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hannesdorfmann.adapterdelegates4.ListDelegationAdapter
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.BuildConfig
@@ -37,21 +41,34 @@ import org.koitharu.kotatsu.list.ui.size.ItemSizeResolver
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import kotlin.math.roundToInt
+import javax.inject.Inject
+import javax.inject.Provider
 
 /** Debug-only synthetic card test, no network or owner's physical device required. */
 @RunWith(AndroidJUnit4::class)
+@HiltAndroidTest
 class HistoryCoverABRuntimeTest {
+
+	@get:Rule val hiltRule = HiltAndroidRule(this)
+	@Inject lateinit var imageLoaderProvider: Provider<coil3.ImageLoader>
+
+	@Before fun setUp() { hiltRule.inject() }
 
 	@Test fun historyGridAndCoverRebindA_B_AWithoutStaleIndicators() {
 		assertTrue("Instrumentation must target a debug build for the diagnostic probe", BuildConfig.DEBUG)
-		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		// HiltTestApplication does not run the production image-loader initialization.
+		imageLoaderProvider.get()
 		val context = instrumentation.targetContext
 		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 		val old = prefs.getString(MiyorareAppearance.KEY_DESIGN_STYLE, null)
 		try {
 			prefs.edit().putString(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.MODERN.name).commit()
-			instrumentation.runOnMainSync {
-				val themed = ContextThemeWrapper(context, R.style.Theme_Kotatsu)
+			// CoverImageView uses Hilt view injection and requires an @AndroidEntryPoint host.
+			ActivityScenario.launch(
+				org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivity::class.java,
+			).use { scenario ->
+				scenario.onActivity { activity ->
+				val themed = ContextThemeWrapper(activity, R.style.Theme_Kotatsu)
 				val density = themed.resources.displayMetrics.density
 				val resolver = object : ItemSizeResolver {
 					override val cellWidth = (194 * density).roundToInt()
@@ -97,6 +114,7 @@ class HistoryCoverABRuntimeTest {
 							assertSame("Progress reparented to Modern cover in A", coverParent, progress.parent)
 						}
 					}
+				}
 				}
 			}
 		} finally {
