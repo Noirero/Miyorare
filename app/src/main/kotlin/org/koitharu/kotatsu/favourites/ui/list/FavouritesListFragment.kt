@@ -323,8 +323,16 @@ class FavouritesListFragment : MangaListFragment() {
 
 	private fun prefetchCovers(items: List<ListModel>) {
 		if (!isResumed) return
-		val columns = viewModel.gridColumns.value ?: 2
-		val width = (resources.displayMetrics.widthPixels / columns.coerceAtLeast(1)).coerceAtLeast(120)
+		val recyclerView = viewBinding?.recyclerView ?: return
+		val columns = (recyclerView.layoutManager as? GridLayoutManager)?.spanCount
+			?: viewModel.gridColumns.value ?: 2
+		// Include only the list viewport, not the navigation rail / full display width.
+		val availableWidth = (recyclerView.width - recyclerView.paddingStart - recyclerView.paddingEnd)
+			.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+		val width = (availableWidth / columns.coerceAtLeast(1)).coerceAtLeast(120)
+		val firstVisible = (recyclerView.layoutManager as? LinearLayoutManager)
+			?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
+		val start = preferredCoverPrefetchStart(firstVisible, recyclerView.adapter?.itemCount ?: 0, items.size)
 		val referenceCardSizing =
 			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
 				viewModel.favouriteSpace == FavouriteSpace.NORMAL
@@ -336,15 +344,15 @@ class FavouritesListFragment : MangaListFragment() {
 				width * 18 / 13
 			},
 		)
-		val candidates = items.filterIsInstance<MangaListModel>()
-			.takeLast(COVER_PREFETCH_BATCH)
+		val candidates = items.drop(start).filterIsInstance<MangaListModel>()
+			.take(COVER_PREFETCH_BATCH)
 			.mapNotNull { item ->
 				val coverUrl = item.coverUrl ?: return@mapNotNull null
 				CoverPrefetchCandidate(item, coverUrl, "${item.id}:$coverUrl")
 			}
 
-		// Only the newest page needs to stay queued. A semaphore alone limits active requests but leaves
-		// every older pagination batch suspended behind it, which can accumulate hundreds of stale jobs
+		// Keep only the viewport-local batch queued. A semaphore alone limits active requests but leaves
+		// older off-screen pagination batches suspended behind it, which can accumulate stale jobs
 		// during a fast scroll through a large library.
 		coverPrefetchJob?.cancel()
 		coverPrefetchJob = viewLifecycleScope.launch {
@@ -1416,3 +1424,7 @@ class FavouritesListFragment : MangaListFragment() {
 		}
 	}
 }
+
+/** Do not carry a scroll offset from an obsolete adapter snapshot into a newly selected Set. */
+internal fun preferredCoverPrefetchStart(firstVisible: Int, adapterCount: Int, incomingCount: Int): Int =
+	if (adapterCount == incomingCount && firstVisible in 0 until incomingCount) firstVisible else 0
