@@ -107,8 +107,16 @@ add_database_suite() {
   MAPPED=true
 }
 
+add_history_visual_suite() {
+  # Include History's real View/theme/locale assertions whenever this test exists.
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryAccordionVisualRuntimeTest
+  fi
+}
+
 add_history_suite() {
   add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
+  add_history_visual_suite
   MAPPED=true
 }
 
@@ -190,6 +198,7 @@ add_full_suite() {
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/data/PrivateHistoryIsolationRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   fi
+  add_history_visual_suite
 
   # Execute scoped View-palette regressions in full Android 15 runs when present.
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/core/ui/dialog/ModernConfirmationDialogColorsTest.kt ]]; then
@@ -510,6 +519,9 @@ self_test() {
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
   grep -q '^mode=targeted$' <<<"$out"
   grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
+    grep -q 'HistoryAccordionVisualRuntimeTest' <<<"$out"
+  fi
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/library/LocalContentReader.kt')"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
@@ -557,7 +569,37 @@ self_test() {
   grep -q 'CategorySetsUiTest' <<<"$out"
   grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
+    grep -q 'HistoryAccordionVisualRuntimeTest' <<<"$out"
+  fi
+  grep -q '^run_runtime_isolation=true
+  grep -q '^run_migration_persistence=true$' <<<"$out"
+
+  classify_self_test
+  policy_self_test
+  echo 'Runtime selector self-test: PASS'
+}
+
+if [[ "$SELF_TEST" == true ]]; then
+  self_test
+  exit 0
+fi
+
+if [[ "$POLICY" == true ]]; then
+  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}" "${LABEL_OWNER:?}"
+  input="$(cat)"
+  run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
+  full="$(sed -n 's/^full=//p' <<< "$input")"
+  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME" "$LABEL_OWNER"
+  exit 0
+fi
+mapfile -t PATHS
+if [[ "$CLASSIFY" == true ]]; then
+  classify_paths "${PATHS[@]}"
+  exit 0
+fi
+plan_from_paths "$FULL" "${PATHS[@]}"
+ <<<"$out"
   grep -q '^run_migration_persistence=true$' <<<"$out"
 
   classify_self_test
