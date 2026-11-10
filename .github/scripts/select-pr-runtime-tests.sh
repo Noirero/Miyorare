@@ -193,6 +193,9 @@ add_full_suite() {
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/data/PrivateHistoryIsolationRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryCoverABRuntimeTest
+  fi
 
   # Execute scoped View-palette regressions in full Android 15 runs when present.
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/core/ui/dialog/ModernConfirmationDialogColorsTest.kt ]]; then
