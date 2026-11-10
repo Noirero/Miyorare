@@ -18,6 +18,7 @@ import androidx.appcompat.R as appcompatR
 fun listHeaderAD(
 	listener: ListHeaderClickListener?,
 	localCinematic: Boolean = false,
+	rowClickable: Boolean = false,
 ) = adapterDelegateViewBinding<ListHeader, ListModel, ItemHeaderBinding>(
 	{ inflater, parent -> ItemHeaderBinding.inflate(inflater, parent, false) },
 ) {
@@ -31,13 +32,17 @@ fun listHeaderAD(
 	val defaultButtonMarginEnd = (binding.buttonMore.layoutParams as? ViewGroup.MarginLayoutParams)?.marginEnd ?: 0
 
 	if (listener != null) {
-		binding.buttonMore.setOnClickListener {
-			listener.onListHeaderClick(item, it)
+		binding.buttonMore.setOnClickListener { listener.onListHeaderClick(item, it) }
+		if (rowClickable) binding.root.setOnClickListener {
+			if (item.payload != null) listener.onListHeaderClick(item, it)
 		}
 	}
 
 	bind {
 		val currentItem = item
+		binding.root.isClickable = rowClickable && currentItem.payload != null
+		binding.root.isFocusable = binding.root.isClickable
+		if (rowClickable) androidx.core.view.ViewCompat.setAccessibilityHeading(binding.textViewTitle, true)
 		val notice = currentItem.buttonStyle == ListHeader.ButtonStyle.NOTICE
 		itemView.background = if (notice) androidx.core.content.ContextCompat.getDrawable(context, R.drawable.bg_smart_local_notice) else defaultHeaderBackground
 		binding.textViewTitle.setCompoundDrawablesRelativeWithIntrinsicBounds(if (notice) R.drawable.ic_sparkles else 0, 0, 0, 0)
@@ -81,6 +86,9 @@ fun listHeaderAD(
 				},
 			)
 			binding.buttonMore.icon = null
+			if (rowClickable && currentItem.payload != null && (currentItem.buttonTextRes == R.string.expand || currentItem.buttonTextRes == R.string.collapse)) {
+				binding.buttonMore.setIconResource(if (currentItem.buttonTextRes == R.string.collapse) R.drawable.ic_expand_more else R.drawable.ic_chevron_right)
+			}
 			if (isChapterToggle) binding.buttonMore.setIconResource(
 				if (currentItem.buttonTextRes == R.string.smart_local_collapse_chapter) R.drawable.ic_expand_more else R.drawable.ic_chevron_right,
 			)
