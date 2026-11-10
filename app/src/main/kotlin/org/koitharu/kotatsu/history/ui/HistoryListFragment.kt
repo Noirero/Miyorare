@@ -128,5 +128,8 @@ class HistoryListFragment : MangaListFragment() {
 		DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false),
 		titleTapToRead = settings.isTitleTapToReadEnabled,
 		onTipClose = { viewModel.dismissScalingTip() },
+		onAccordionClick = { key, loadMore ->
+			if (loadMore) viewModel.requestMoreHistoryGroup(key) else viewModel.toggleHistoryGroup(key)
+		},
 	)
 }
