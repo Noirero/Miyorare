@@ -490,6 +490,19 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(chrome.contains("MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP"))
 		assertTrue(chrome.contains("createSharedMainGlassOutline("))
 		assertTrue(
+			"Settings frame must be located by ID; landscape toolbar starts with a page title",
+			chrome.contains("findViewById<MaterialButton>(R.id.button_settings)?.parent"),
+		)
+		assertTrue(
+			"Overflow frame must likewise be located by ID",
+			chrome.contains("findViewById<MaterialButton>(R.id.button_overflow)?.parent"),
+		)
+		assertFalse(
+			"Shared chrome must not shrink the first (title) child to the side-button size",
+			chrome.contains("getChildAt(0)"),
+		)
+
+		assertTrue(
 			"Shared main chrome must tune the outline for light/dark mode",
 			chrome.contains("darkTheme=darkTheme"),
 		)
