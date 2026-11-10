@@ -272,7 +272,14 @@ class HistoryScrollBenchmarkTest {
 
 		fun recordAttachment() { active.get()?.attachments?.incrementAndGet() }
 		fun begin() { check(active.compareAndSet(null, Phase(frameBudget))) }
-		fun finish() = requireNotNull(active.getAndSet(null)).report()
+		fun finish(): String {
+			val phase = requireNotNull(active.getAndSet(null))
+			val result = phase.report()
+			check(phase.sampleCount() >= 20 && phase.attachments.get() >= 10) {
+				"Invalid scroll measurement: $result"
+			}
+			return result
+		}
 		fun close() {
 			closed = true
 			active.set(null)
@@ -308,6 +315,7 @@ class HistoryScrollBenchmarkTest {
 				val sorted = values.sorted()
 				return sorted[((sorted.size - 1) * p).toInt()]
 			}
+			fun sampleCount() = frames.size
 			fun report(): String {
 				val a = synchronized(frames) { frames.toList() }
 				val b = synchronized(layout) { layout.toList() }
