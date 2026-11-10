@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
@@ -55,6 +56,9 @@ import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -62,6 +66,8 @@ import javax.inject.Inject
 
 private const val PAGE_SIZE = 16
 private const val HISTORY_MAX_DAYS = 30
+
+internal data class HistoryHeaderAction(val key: String, val loadMore: Boolean = false)
 
 @HiltViewModel
 class HistoryListViewModel @Inject constructor(
@@ -129,6 +135,13 @@ class HistoryListViewModel @Inject constructor(
 	)
 
 	private val limit = MutableStateFlow(PAGE_SIZE)
+
+	/** Expand/collapse is isolated per Manga/Novel tab and survives navigation/config restoration. */
+	private val expandedGroups = MutableStateFlow(
+		savedStateHandle.get<ArrayList<String>>(KEY_HISTORY_EXPANDED)?.toSet().orEmpty(),
+	)
+	private val groupPageLimits = MutableStateFlow<Map<String, Int>>(emptyMap())
+	@Volatile private var availableRecentCount: Int? = null
 	private val selectedSectionState = MutableStateFlow(
 		MangaNovelSection.fromSaved(savedStateHandle[KEY_HISTORY_SECTION]),
 	)
@@ -212,12 +225,54 @@ class HistoryListViewModel @Inject constructor(
 		}
 	}
 
+
+	fun toggleHistoryGroup(key: String) {
+		val scoped = "${selectedSectionState.value.name}:$key"
+		val next = if (scoped in expandedGroups.value) expandedGroups.value - scoped
+		else expandedGroups.value + scoped
+		expandedGroups.value = next
+		savedStateHandle[KEY_HISTORY_EXPANDED] = ArrayList(next)
+	}
+
+	fun requestMoreHistoryGroup(key: String) {
+		val scoped = "${selectedSectionState.value.name}:$key"
+		groupPageLimits.value = groupPageLimits.value + (
+			scoped to ((groupPageLimits.value[scoped] ?: PAGE_SIZE) + PAGE_SIZE)
+		)
+	}
+
 	fun requestMoreItems() {
+		if (availableRecentCount?.let { limit.value >= it } == true) return
 		if (isPaginationReady.compareAndSet(true, false)) {
 			limit.value += PAGE_SIZE
 		}
 	}
 
+	private data class HistoryRequest(
+		val order: ListSortOrder,
+		val filters: Set<ListFilterOption>,
+		val section: MangaNovelSection,
+		val limit: Int,
+		val today: LocalDate,
+		val grouped: Boolean,
+		val expanded: Set<String>,
+		val pageLimits: Map<String, Int>,
+	)
+
+	private sealed interface HistorySnapshot {
+		data class Plain(val items: List<MangaWithHistory>) : HistorySnapshot
+		data class Grouped(
+			val recent: List<MangaWithHistory>,
+			val overview: HistoryDateOverview,
+			val groups: Map<String, List<MangaWithHistory>>,
+			val expanded: Set<String>,
+			val pageLimits: Map<String, Int>,
+			val section: MangaNovelSection,
+			val today: LocalDate,
+		) : HistorySnapshot
+	}
+
+	/** Parent buckets come from lightweight timestamps; only expanded children fetch actual cards. */
 	private fun observeHistory() = combine(
 		sortOrder,
 		combine(quickFilter.appliedOptions.combineWithSettings(), selectedSectionState) { filters, section ->
@@ -225,22 +280,132 @@ class HistoryListViewModel @Inject constructor(
 		},
 		limit,
 		currentDate,
-		localIndexChanges,
-	) { order, (filters, section), limit, _, _ ->
+		combine(localIndexChanges, isGroupingEnabled, expandedGroups, groupPageLimits) { _, grouped, expanded, pages ->
+			Triple(grouped, expanded, pages)
+		},
+	) { order, (filters, section), itemLimit, today, (grouped, expanded, pages) ->
 		isPaginationReady.set(false)
-		// HISTORY_MAX_DAYS limits only the human-readable date labels below. Never use it to prune
-		// the database query: pagination must remain able to reach the user's complete history.
-		repository.observeAllWithHistory(order, filters, limit, space = favouriteSpace, section = section)
-	}.flattenLatest()
+		HistoryRequest(order, filters, section, itemLimit, today, grouped, expanded, pages)
+	}.map { request ->
+		if (!request.grouped || request.order != ListSortOrder.LAST_READ) {
+			repository.observeAllWithHistory(request.order, request.filters, request.limit,
+				space = favouriteSpace, section = request.section).map { HistorySnapshot.Plain(it) }
+		} else {
+			val zone = ZoneId.systemDefault()
+			val recentStart = request.today.minusDays(7).atStartOfDay(zone).toInstant().toEpochMilli()
+			repository.observeHistoryTimestamps(request.filters, favouriteSpace, request.section).map { timestamps ->
+				val overview = historyDateOverview(timestamps, request.today, zone)
+				val prefix = "${request.section.name}:"
+				val expanded = request.expanded.asSequence().filter { it.startsWith(prefix) }
+					.map { it.removePrefix(prefix) }.toSet()
+				val dayKeys = if ("bucket:middle" in expanded) overview.days.keys
+					.sortedDescending().map { "day:$it" } else emptyList()
+				val monthKeys = if ("bucket:older" in expanded) overview.months.keys
+					.sortedDescending().map { "month:$it" } else emptyList()
+				val openKeys = (dayKeys + monthKeys).filter { it in expanded }
+				val pages = listOf(
+					repository.observeAllWithHistory(request.order, request.filters, request.limit,
+						minUpdatedAt = recentStart, space = favouriteSpace, section = request.section),
+				) + openKeys.map { key ->
+					val window = checkNotNull(historyGroupWindow(key, request.today, zone))
+					repository.observeAllWithHistory(request.order, request.filters,
+						request.pageLimits[prefix + key] ?: PAGE_SIZE,
+						minUpdatedAt = window.start, space = favouriteSpace,
+						section = request.section, maxUpdatedAtExclusive = window.endExclusive)
+				}
+				combine(pages) { results ->
+					HistorySnapshot.Grouped(results[0], overview, openKeys.zip(results.drop(1)).toMap(),
+						expanded, request.pageLimits, request.section, request.today)
+				}
+			}.flattenLatest()
+		}
+	}.flattenLatest().onEach { snapshot ->
+		availableRecentCount = if (snapshot is HistorySnapshot.Grouped) snapshot.overview.recentCount else null
+	}
+
+	private suspend fun mapGroupedHistory(
+		snapshot: HistorySnapshot.Grouped,
+		mode: ListMode,
+		filters: Set<ListFilterOption>,
+		isIncognito: Boolean,
+		isScalingTipVisible: Boolean,
+	): List<ListModel> {
+		if (snapshot.overview.isEmpty) {
+			return listOfNotNull(quickFilter.filterItem(filters),
+				getEmptyState(hasFilters = filters.isNotEmpty()))
+		}
+		val result = ArrayList<ListModel>()
+		if (isScalingTipVisible) result += uiScalingTip
+		quickFilter.filterItem(filters)?.let(result::add)
+		if (isIncognito) result += InfoModel(
+			key = AppSettings.KEY_INCOGNITO_MODE,
+			title = R.string.incognito_mode,
+			text = R.string.incognito_mode_hint,
+			icon = R.drawable.ic_incognito,
+		)
+		var previous: ListHeader? = null
+		for ((manga, history) in snapshot.recent) {
+			val header = readDateHeader(history.updatedAt, snapshot.today) ?: ListHeader(R.string.unknown)
+			if (header != previous) result += header
+			previous = header
+			result += mangaListMapper.toListModel(manga, mode)
+		}
+		if (snapshot.overview.days.isNotEmpty()) {
+			val open = "bucket:middle" in snapshot.expanded
+			result += ListHeader(R.string.history_days_8_30,
+				buttonTextRes = if (open) R.string.collapse else R.string.expand,
+				payload = HistoryHeaderAction("bucket:middle"))
+			if (open) for ((day, count) in snapshot.overview.days.toSortedMap(reverseOrder())) {
+				val key = "day:$day"
+				val childOpen = key in snapshot.expanded
+				val age = ChronoUnit.DAYS.between(day, snapshot.today).toInt()
+				result += ListHeader(DateTimeAgo.DaysAgo(age),
+					buttonTextRes = if (childOpen) R.string.collapse else R.string.expand,
+					payload = HistoryHeaderAction(key))
+				if (childOpen) {
+					val rows = snapshot.groups[key].orEmpty()
+					for ((manga, _) in rows) result += mangaListMapper.toListModel(manga, mode)
+					if (rows.size < count) result += ListHeader(R.string.more,
+						buttonTextRes = R.string.more, payload = HistoryHeaderAction(key, loadMore = true),
+						badge = (count - rows.size).toString(), itemKey = "history-more:$key")
+				}
+			}
+		}
+		if (snapshot.overview.months.isNotEmpty()) {
+			val open = "bucket:older" in snapshot.expanded
+			result += ListHeader(R.string.history_older_than_30,
+				buttonTextRes = if (open) R.string.collapse else R.string.expand,
+				payload = HistoryHeaderAction("bucket:older"))
+			if (open) for ((month, count) in snapshot.overview.months.toSortedMap(reverseOrder())) {
+				val key = "month:$month"
+				val childOpen = key in snapshot.expanded
+				result += ListHeader(month.format(DateTimeFormatter.ofPattern("LLLL yyyy", Locale.getDefault())),
+					buttonTextRes = if (childOpen) R.string.collapse else R.string.expand,
+					payload = HistoryHeaderAction(key))
+				if (childOpen) {
+					val rows = snapshot.groups[key].orEmpty()
+					for ((manga, _) in rows) result += mangaListMapper.toListModel(manga, mode)
+					if (rows.size < count) result += ListHeader(R.string.more,
+						buttonTextRes = R.string.more, payload = HistoryHeaderAction(key, loadMore = true),
+						badge = (count - rows.size).toString(), itemKey = "history-more:$key")
+				}
+			}
+		}
+		return result
+	}
 
 	private suspend fun mapList(
-		list: List<MangaWithHistory>,
+		snapshot: HistorySnapshot,
 		grouped: Boolean,
 		mode: ListMode,
 		filters: Set<ListFilterOption>,
 		isIncognito: Boolean,
 		isScalingTipVisible: Boolean,
 	): List<ListModel> {
+		if (snapshot is HistorySnapshot.Grouped) {
+			return mapGroupedHistory(snapshot, mode, filters, isIncognito, isScalingTipVisible)
+		}
+		val list = (snapshot as HistorySnapshot.Plain).items
 		if (list.isEmpty()) {
 			return if (filters.isEmpty()) {
 				listOf(getEmptyState(hasFilters = false))
@@ -334,3 +499,4 @@ class HistoryListViewModel @Inject constructor(
 }
 
 private const val KEY_HISTORY_SECTION = "history_manga_novel_section"
+private const val KEY_HISTORY_EXPANDED = "history_expanded_groups"

@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RawQuery
+import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.room.Transaction
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.currentCoroutineContext
@@ -182,6 +183,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		limit: Int,
 		minUpdatedAt: Long = 0L,
 		contentPredicate: String? = null,
+		maxUpdatedAtExclusive: Long? = null,
 	): Flow<List<HistoryWithManga>> = observeAllImpl(
 		MangaQueryBuilder(TABLE_HISTORY, this)
 			.join("LEFT JOIN manga ON history.manga_id = manga.manga_id")
@@ -192,6 +194,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 					"WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)))",
 			)
 			.where("history.updated_at >= $minUpdatedAt")
+			.apply { if (maxUpdatedAtExclusive != null) where("history.updated_at < $maxUpdatedAtExclusive") }
 			.apply { if (contentPredicate != null) where(contentPredicate) }
 			.filters(filterOptions)
 			.orderBy(
@@ -212,6 +215,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		limit: Int,
 		minUpdatedAt: Long = 0L,
 		contentPredicate: String? = null,
+		maxUpdatedAtExclusive: Long? = null,
 	): Flow<List<HistoryWithManga>> = observeAllImpl(
 		MangaQueryBuilder(TABLE_HISTORY, this)
 			.join("LEFT JOIN manga ON history.manga_id = manga.manga_id")
@@ -221,6 +225,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 					"WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0))",
 			)
 			.where("history.updated_at >= $minUpdatedAt")
+			.apply { if (maxUpdatedAtExclusive != null) where("history.updated_at < $maxUpdatedAtExclusive") }
 			.apply { if (contentPredicate != null) where(contentPredicate) }
 			.filters(filterOptions)
 			.orderBy(
@@ -234,6 +239,40 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 			.limit(limit)
 			.build(),
 	)
+
+	/** Lightweight date index. Uses the same filter, section predicate and privacy scope as History rows. */
+	fun observeHistoryTimestamps(
+		filterOptions: Set<ListFilterOption>,
+		space: org.koitharu.kotatsu.favourites.data.FavouriteSpace,
+		contentPredicate: String?,
+	): Flow<List<Long>> {
+		val query = MangaQueryBuilder(TABLE_HISTORY, this)
+			.join("LEFT JOIN manga ON history.manga_id = manga.manga_id")
+			.where("history.deleted_at = 0")
+			.where(if (space == org.koitharu.kotatsu.favourites.data.FavouriteSpace.PRIVATE) {
+				"(history.space = 1 OR EXISTS(SELECT 1 FROM private_favourites pf " +
+					"WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0))"
+			} else {
+				"(" + PrivateFavouritesIsolation.DISABLED_MARKER_EXISTS_SQL +
+					" OR (history.space != 1 AND NOT EXISTS(SELECT 1 FROM private_favourites pf " +
+					"WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)))"
+			})
+			.apply { if (contentPredicate != null) where(contentPredicate) }
+			.filters(filterOptions)
+			.groupBy("history.manga_id")
+			.build()
+		return observeHistoryTimestampsImpl(
+			SimpleSQLiteQuery(query.sql.replaceFirst("SELECT * FROM ", "SELECT history.updated_at FROM ")),
+		)
+	}
+
+	@RawQuery(
+		observedEntities = [
+			HistoryEntity::class, MangaEntity::class, FavouriteEntity::class,
+			PrivateFavouriteEntity::class, FavouriteCategoryEntity::class,
+		],
+	)
+	protected abstract fun observeHistoryTimestampsImpl(query: SupportSQLiteQuery): Flow<List<Long>>
 
 	@Query(
 		"""

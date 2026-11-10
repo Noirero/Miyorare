@@ -79,6 +79,12 @@ class HistoryListFragment : MangaListFragment() {
 
 	override fun onScrolledToEnd() = viewModel.requestMoreItems()
 
+	override fun onListHeaderClick(item: org.koitharu.kotatsu.list.ui.model.ListHeader, view: android.view.View) {
+		val action = item.payload as? HistoryHeaderAction ?: return
+		if (action.loadMore) viewModel.requestMoreHistoryGroup(action.key)
+		else viewModel.toggleHistoryGroup(action.key)
+	}
+
 	override fun onEmptyActionClick() = viewModel.clearFilter()
 
 	override fun onCreateActionMode(
