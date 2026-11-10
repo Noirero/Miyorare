@@ -12,11 +12,15 @@ import com.google.android.material.shape.ShapeAppearanceModel
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.databinding.ItemHistoryAccordionBinding
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import com.google.android.material.R as materialR
 
 /** History-only delegate: no changes to the shared ListHeaderAD used by other screens. */
-internal fun historyAccordionItemAD(onClick: (HistoryHeaderAction) -> Unit) =
+internal fun historyAccordionItemAD(
+	onClick: (HistoryHeaderAction) -> Unit,
+	privateFavourites: Boolean,
+) =
 	adapterDelegateViewBinding<HistoryAccordionItem, ListModel, ItemHistoryAccordionBinding>(
 		{ inflater, parent -> ItemHistoryAccordionBinding.inflate(inflater, parent, false) },
 	) {
@@ -41,16 +45,27 @@ internal fun historyAccordionItemAD(onClick: (HistoryHeaderAction) -> Unit) =
 			}
 			binding.root.minimumHeight = dp(if (isMore) 48 else 56)
 
-			// Semantic Material/Miyorare theme attributes; never use mockup colors.
-			val surface = MaterialColors.getColor(binding.root, materialR.attr.colorSurface)
-			val surfaceContainer = MaterialColors.getColor(binding.root, materialR.attr.colorSurfaceContainer)
-			val surfaceContainerHigh = MaterialColors.getColor(binding.root, materialR.attr.colorSurfaceContainerHigh)
-			val primaryContainer = MaterialColors.getColor(binding.root, materialR.attr.colorPrimaryContainer)
-			val onPrimaryContainer = MaterialColors.getColor(binding.root, materialR.attr.colorOnPrimaryContainer)
-			val onSurface = MaterialColors.getColor(binding.root, materialR.attr.colorOnSurface)
-			val onSurfaceVariant = MaterialColors.getColor(binding.root, materialR.attr.colorOnSurfaceVariant)
-			val accent = MaterialColors.getColor(binding.root, materialR.attr.colorPrimary)
-			val outline = MaterialColors.getColor(binding.root, materialR.attr.colorOutlineVariant)
+			// Modern may use a user-selected semantic palette that differs from the host XML
+			// theme. Match it (including Private History); Classic follows Material theme attrs.
+			val palette = context.miyorareViewPaletteFromPreferences(privateFavourites)
+			val surface = palette?.surface
+				?: MaterialColors.getColor(binding.root, materialR.attr.colorSurface)
+			val surfaceContainer = palette?.surfaceContainer
+				?: MaterialColors.getColor(binding.root, materialR.attr.colorSurfaceContainer)
+			val surfaceContainerHigh = palette?.surfaceContainerHigh
+				?: MaterialColors.getColor(binding.root, materialR.attr.colorSurfaceContainerHigh)
+			val primaryContainer = palette?.primaryContainer
+				?: MaterialColors.getColor(binding.root, materialR.attr.colorPrimaryContainer)
+			val onPrimaryContainer = palette?.onPrimaryContainer
+				?: MaterialColors.getColor(binding.root, materialR.attr.colorOnPrimaryContainer)
+			val onSurface = palette?.onSurface
+				?: MaterialColors.getColor(binding.root, materialR.attr.colorOnSurface)
+			val onSurfaceVariant = palette?.onSurfaceVariant
+				?: MaterialColors.getColor(binding.root, materialR.attr.colorOnSurfaceVariant)
+			val accent = palette?.primary
+				?: MaterialColors.getColor(binding.root, materialR.attr.colorPrimary)
+			val outline = palette?.outlineVariant
+				?: MaterialColors.getColor(binding.root, materialR.attr.colorOutlineVariant)
 
 			val rowSurface = when {
 				isParent && row.expanded -> primaryContainer
