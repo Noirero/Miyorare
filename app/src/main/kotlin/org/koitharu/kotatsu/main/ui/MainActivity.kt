@@ -313,7 +313,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			// shared glass chrome after that lifecycle hand-off so every normal tab keeps one shape.
 			viewBinding.root.post {
 				viewBinding.root.applyMiyorareSharedMainChrome()
-				updateLandscapeHeaderTitle(fragment)
+				updateLandscapeHeaderTitle(navigationDelegate.primaryFragment)
 			}
 		}
 		if (fromUser) {
