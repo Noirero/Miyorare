@@ -702,13 +702,13 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				params.width = sideControlSize
 				params.height = sideControlSize
 				params.marginEnd = dp(MiyorareFavouritesVisualSpec.SEARCH_CONTROL_GAP_DP)
-				startFrame.layoutParams = params
+				startFrame?.layoutParams = params
 			}
 			val endFrame = findViewById<MaterialButton>(R.id.button_overflow)?.parent as? View
 			(endFrame?.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
 				params.width = sideControlSize
 				params.height = sideControlSize
-				endFrame.layoutParams = params
+				endFrame?.layoutParams = params
 			}
 		}
 		searchBar?.apply {
@@ -790,13 +790,13 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 						params.width = geometry.startFrameWidth
 						params.height = geometry.startFrameHeight
 						params.marginEnd = geometry.startFrameMarginEnd
-						startFrame.layoutParams = params
+						startFrame?.layoutParams = params
 					}
 					val endFrame = row.findViewById<MaterialButton>(R.id.button_overflow)?.parent as? View
 					(endFrame?.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
 						params.width = geometry.endFrameWidth
 						params.height = geometry.endFrameHeight
-						endFrame.layoutParams = params
+						endFrame?.layoutParams = params
 					}
 				}
 			}
