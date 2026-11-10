@@ -281,7 +281,10 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		measureNatural(metadata, w)
 		val showMetadata = (value.isLocalSource || !value.languageLabel.isNullOrBlank()) &&
 			metadata.measuredWidth <= innerWidth && (usedTop + gap <= titleTop - gap - metadata.measuredHeight ||
-				(value.isLocalSource && !showTitle && metadata.measuredHeight + inset <= titleTop))
+				// Legacy LOCAL fallback ignores usedTop; on compact cards it could overlap
+				// unread/status chrome after the title yields its slot to those indicators.
+				(metrics.scale >= 0.8f && value.isLocalSource && !showTitle &&
+					metadata.measuredHeight + inset <= titleTop))
 		val target = px(FavouriteCoverOverlayMetrics.ACTION_TOUCH_DP)
 		if (styledActionSize != px(metrics.actionSize)) {
 			val circleInset = ((target - px(metrics.actionSize)) / 2).coerceAtLeast(0)
