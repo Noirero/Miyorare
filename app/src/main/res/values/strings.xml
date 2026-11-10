@@ -18,6 +18,9 @@
     <string name="title_tap_to_read_summary">In favorites and history, tapping a manga\'s name opens the reader directly</string>
     <string name="increase_cover_spacing">Increase cover spacing</string>
     <string name="settings">Settings</string>
+    <string name="main_continue_button_position">Continue Reading button position</string>
+    <string name="main_continue_button_right">Right of navigation bar</string>
+    <string name="main_continue_button_left">Left of navigation bar</string>
     <string name="remote_sources">Manga extensions</string>
     <string name="extensions">Extensions</string>
     <string name="loading_">Loading...</string>

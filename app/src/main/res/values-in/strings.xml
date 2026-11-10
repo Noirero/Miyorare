@@ -16,6 +16,9 @@
     <string name="grid">Kisi</string>
     <string name="list_mode">Mode daftar</string>
     <string name="settings">Pengaturan</string>
+    <string name="main_continue_button_position">Posisi tombol Lanjut Membaca</string>
+    <string name="main_continue_button_right">Kanan navbar</string>
+    <string name="main_continue_button_left">Kiri navbar</string>
     <string name="remote_sources">Sumber manga</string>
     <string name="loading_">Memuat…</string>
     <string name="computing_">Menghitung…</string>
