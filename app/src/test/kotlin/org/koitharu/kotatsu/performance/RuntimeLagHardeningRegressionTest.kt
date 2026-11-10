@@ -479,7 +479,13 @@ class RuntimeLagHardeningRegressionTest {
 		val exploreLayout = source("res/layout/layout_explore_header.xml")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(main.contains("viewBinding.root.post{viewBinding.root.applyMiyorareSharedMainChrome()}"))
+		assertTrue(
+			"Navigation must reapply shared chrome and then restore the active landscape heading",
+			main.contains(
+				"viewBinding.root.post{viewBinding.root.applyMiyorareSharedMainChrome()" +
+					"updateLandscapeHeaderTitle(navigationDelegate.primaryFragment)}",
+			),
+		)
 		assertTrue(chrome.contains("MiyorareFavouritesVisualSpec.SEARCH_VISUAL_HEIGHT_DP"))
 		assertTrue(chrome.contains("MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP"))
 		assertTrue(chrome.contains("createSharedMainGlassOutline("))
