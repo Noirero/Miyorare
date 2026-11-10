@@ -157,10 +157,15 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		scheduleModernPresentation()
 	}
 
+	private fun usesLandscapeToolbarHeading(): Boolean = !isPrivateFavouritesHost() &&
+		resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+		rootView.findViewById<View>(R.id.landscape_favourites_heading) != null
+
 	private fun updateModernOnlyCopyVisibility() {
 		val modern = context.miyorareViewPaletteFromPreferences(isPrivateFavouritesHost()) != null
-		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.isVisible = modern
-		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.isVisible = modern
+		val showInlineHeading = modern && !usesLandscapeToolbarHeading()
+		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.isVisible = showInlineHeading
+		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.isVisible = showInlineHeading
 	}
 
 	private fun applyModernPresentation() {
@@ -198,8 +203,11 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 
 		applyGlobalAppBarChrome(palette, privateFavourites, sharedNormalBackdrop)
 
-		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.apply {
-			isVisible = true
+		val showToolbarHeading = usesLandscapeToolbarHeading()
+		val inlineTitle = findViewById<android.widget.TextView>(R.id.text_favourites_title)
+		val toolbarTitle = rootView.findViewById<android.widget.TextView>(R.id.text_landscape_favourites_title)
+		for (titleView in listOfNotNull(inlineTitle, toolbarTitle)) titleView.apply {
+			isVisible = titleView !== inlineTitle || !showToolbarHeading
 			if (privateFavourites) setText(R.string.private_favourites)
 			setTextColor(heroTitleColor)
 			if (!privateFavourites) {
@@ -229,8 +237,10 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				compoundDrawablePadding = dp(MiyorareFavouritesVisualSpec.TITLE_HEART_GAP_DP)
 			}
 		}
-		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.apply {
-			isVisible = true
+		val inlineSubtitle = findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)
+		val toolbarSubtitle = rootView.findViewById<android.widget.TextView>(R.id.text_landscape_favourites_subtitle)
+		for (subtitleView in listOfNotNull(inlineSubtitle, toolbarSubtitle)) subtitleView.apply {
+			isVisible = subtitleView !== inlineSubtitle || !showToolbarHeading
 			setTextColor(heroSubtitleColor)
 			if (useLightHeroForeground) {
 				setShadowLayer(1.8f * density, 0f, 1f * density, ColorUtils.setAlphaComponent(Color.BLACK, 136))
@@ -619,8 +629,11 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				)
 			}
 			originalSearchRowGeometry = searchRow?.takeIf { it.childCount >= 3 }?.let { row ->
-				val startFrame = row.getChildAt(0)
-				val endFrame = row.getChildAt(row.childCount - 1)
+				// The landscape row starts with a title, not with the Settings control.
+				val startFrame = row.findViewById<MaterialButton>(R.id.button_settings)?.parent as? View
+					?: return@let null
+				val endFrame = row.findViewById<MaterialButton>(R.id.button_overflow)?.parent as? View
+					?: return@let null
 				SearchRowGeometry(
 					paddingStart = row.paddingStart,
 					paddingTop = row.paddingTop,
@@ -684,16 +697,18 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				dp(MiyorareFavouritesVisualSpec.SEARCH_ROW_HORIZONTAL_MARGIN_DP),
 				dp(MiyorareFavouritesVisualSpec.SEARCH_ROW_BOTTOM_PADDING_DP),
 			)
-			(getChildAt(0).layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+			val startFrame = findViewById<MaterialButton>(R.id.button_settings)?.parent as? View
+			(startFrame?.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
 				params.width = sideControlSize
 				params.height = sideControlSize
 				params.marginEnd = dp(MiyorareFavouritesVisualSpec.SEARCH_CONTROL_GAP_DP)
-				getChildAt(0).layoutParams = params
+				startFrame.layoutParams = params
 			}
-			(getChildAt(childCount - 1).layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+			val endFrame = findViewById<MaterialButton>(R.id.button_overflow)?.parent as? View
+			(endFrame?.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
 				params.width = sideControlSize
 				params.height = sideControlSize
-				getChildAt(childCount - 1).layoutParams = params
+				endFrame.layoutParams = params
 			}
 		}
 		searchBar?.apply {
@@ -770,16 +785,18 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					geometry.paddingBottom,
 				)
 				if (row.childCount >= 3) {
-					(row.getChildAt(0).layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+					val startFrame = row.findViewById<MaterialButton>(R.id.button_settings)?.parent as? View
+					(startFrame?.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
 						params.width = geometry.startFrameWidth
 						params.height = geometry.startFrameHeight
 						params.marginEnd = geometry.startFrameMarginEnd
-						row.getChildAt(0).layoutParams = params
+						startFrame.layoutParams = params
 					}
-					(row.getChildAt(row.childCount - 1).layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+					val endFrame = row.findViewById<MaterialButton>(R.id.button_overflow)?.parent as? View
+					(endFrame?.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
 						params.width = geometry.endFrameWidth
 						params.height = geometry.endFrameHeight
-						row.getChildAt(row.childCount - 1).layoutParams = params
+						endFrame.layoutParams = params
 					}
 				}
 			}
