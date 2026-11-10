@@ -83,6 +83,7 @@ class HistoryListFragment : MangaListFragment() {
 					binding.recyclerView.adapter?.notifyDataSetChanged()
 					debugHistoryOverlayBypassed
 				}} else null,
+				isHistoryOverlayBypassed = if (BuildConfig.DEBUG) ({ debugHistoryOverlayBypassed }) else null,
 			))
 			viewModel.isStatsEnabled.observe(viewLifecycleOwner, MenuInvalidator(requireActivity()))
 		}
