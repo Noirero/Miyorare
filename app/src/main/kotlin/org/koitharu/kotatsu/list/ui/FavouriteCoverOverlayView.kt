@@ -171,7 +171,13 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			chapterCounter.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_outline, radius)
 			chapterCounter.setPadding(padding * 2, padding, padding * 2, padding)
 			counterIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
-			val counterIconSize = px(metrics.statusSize * 0.7f)
+			// Fit the real badge + visible status count before choosing horizontal/vertical packing.
+			// For 3-digit unread counts the natural measured badge width, not the nominal
+			// circle diameter, is the constraint. Do not reduce the clickable action target.
+			val activeStatuses = statusItems.filter { it.isVisible }
+			val leadingWidth = if (value.readingState == ModernCoverReadingState.NONE) 0f else diameter / density
+			val statusSize = px(metrics.fittedStatusSize(innerWidth / density, leadingWidth, activeStatuses.size))
+			val counterIconSize = (statusSize * 0.7f).roundToInt()
 			counterIcon.layoutParams = LinearLayout.LayoutParams(counterIconSize, counterIconSize).apply { marginEnd = gap }
 			counterNumber.backgroundTintList = null
 			counterNumber.background = null
@@ -181,15 +187,13 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			counterNumber.setPadding(0, 0, 0, 0)
 			statuses.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_outline, radius)
 			statuses.setPadding(padding, padding, padding, padding)
-			val activeStatuses = statusItems.filter { it.isVisible }
-			val statusSize = px(metrics.statusSize)
 			statuses.orientation = if (activeStatuses.size * statusSize + max(0, activeStatuses.size - 1) * gap + padding * 2 <= innerWidth) {
 				LinearLayout.HORIZONTAL
 			} else LinearLayout.VERTICAL
 			statusItems.forEachIndexed { index, icon ->
 				icon.imageTintList = ColorStateList.valueOf(if (index == 2) color(R.color.favourite_cover_pin) else Color.WHITE)
 				icon.background = shape(R.color.favourite_cover_item, R.color.favourite_cover_outline, radius * 0.7f)
-				val iconPadding = px(3f * metrics.scale)
+				val iconPadding = px(if (metrics.scale < 0.8f) 2f * metrics.scale else 3f * metrics.scale)
 				icon.setPadding(iconPadding, iconPadding, iconPadding, iconPadding)
 				icon.layoutParams = LinearLayout.LayoutParams(statusSize, statusSize).apply {
 					if (icon.isVisible && icon !== activeStatuses.firstOrNull()) {
