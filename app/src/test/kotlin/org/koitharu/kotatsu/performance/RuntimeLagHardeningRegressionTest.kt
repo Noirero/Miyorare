@@ -486,6 +486,15 @@ class RuntimeLagHardeningRegressionTest {
 					"updateLandscapeHeaderTitle(navigationDelegate.primaryFragment)}",
 			),
 		)
+		val sharedChromeSetup = main.substringAfter("setContentView(ActivityMainBinding.inflate(layoutInflater))")
+			.substringBefore("bindModernUpdatePromptColors()")
+		assertTrue(
+			"Save effective Modern chrome padding after styling, not the XML fallback used before styling",
+			sharedChromeSetup.indexOf("viewBinding.root.applyMiyorareSharedMainChrome()") >= 0 &&
+				sharedChromeSetup.indexOf("viewBinding.root.applyMiyorareSharedMainChrome()") <
+				sharedChromeSetup.indexOf("defaultLandscapeSearchBottomPadding=viewBinding.layoutSearch.paddingBottom"),
+		)
+		assertTrue(chrome.contains("MiyorareFavouritesVisualSpec.SEARCH_ROW_BOTTOM_PADDING_DP"))
 		assertTrue(chrome.contains("MiyorareFavouritesVisualSpec.SEARCH_VISUAL_HEIGHT_DP"))
 		assertTrue(chrome.contains("MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP"))
 		assertTrue(chrome.contains("createSharedMainGlassOutline("))
