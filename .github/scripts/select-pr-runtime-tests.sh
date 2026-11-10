@@ -109,6 +109,9 @@ add_database_suite() {
 
 add_history_suite() {
   add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryCoverABRuntimeTest
+  fi
   MAPPED=true
 }
 
