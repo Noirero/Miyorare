@@ -63,6 +63,17 @@ class FavouriteCoverOverlayMetricsTest {
 	}
 
 	@Test
+	fun compactCurveMeetsUnchangedNormalMetricsWithoutAVisibleSizeJump() {
+		val justBelow = FavouriteCoverOverlayMetrics(0.799f)
+		val normal = FavouriteCoverOverlayMetrics(0.8f)
+		assertTrue(kotlin.math.abs(justBelow.unreadSize - normal.unreadSize) < 0.1f)
+		assertTrue(kotlin.math.abs(justBelow.statusSize - normal.statusSize) < 0.1f)
+		assertTrue(kotlin.math.abs(justBelow.actionSize - normal.actionSize) < 0.1f)
+		assertTrue(kotlin.math.abs(justBelow.badgeSp - normal.badgeSp) < 0.1f)
+		assertTrue(kotlin.math.abs(justBelow.padding - normal.padding) < 0.1f)
+	}
+
+	@Test
 	fun modeledBadgeAndStatusAreaFallsAtCompactWidthsForFiveColumnGrid() {
 		// Identical theoretical rectangles, independent of runtime visibility/overlap.
 		// Android instrumentation separately measures actually visible overlay rectangles.
