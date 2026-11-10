@@ -85,11 +85,11 @@ class HistoryAccordionVisualRuntimeTest {
 					val clicked = mutableListOf<HistoryHeaderAction>()
 					val rows: List<ListModel> = listOf(
 						HistoryAccordionItem(key = "bucket:middle", kind = HistoryAccordionItem.Kind.DAYS_BUCKET,
-							expanded = true, titleCount = 23, groupCount = 6),
+							expanded = true, titleCount = 120, groupCount = 6),
 						HistoryAccordionItem(key = "day:2026-11-02", kind = HistoryAccordionItem.Kind.DAY,
-							expanded = true, titleCount = 18, date = LocalDate.of(2026, 11, 2), daysAgo = 8),
+							expanded = true, titleCount = 120, date = LocalDate.of(2026, 11, 2), daysAgo = 8),
 						HistoryAccordionItem(key = "day:2026-11-02", kind = HistoryAccordionItem.Kind.MORE,
-							moreCount = 16),
+							moreCount = 50),
 					)
 					val adapter = ListDelegationAdapter(historyAccordionItemAD({ clicked += it }, false))
 					adapter.items = rows
