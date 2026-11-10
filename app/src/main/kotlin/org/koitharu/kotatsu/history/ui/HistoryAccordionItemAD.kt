@@ -63,7 +63,7 @@ internal fun historyAccordionItemAD(
 			val onSurfaceVariant = palette?.onSurfaceVariant
 				?: MaterialColors.getColor(binding.root, materialR.attr.colorOnSurfaceVariant)
 			val accent = palette?.primary
-				?: MaterialColors.getColor(binding.root, materialR.attr.colorPrimary)
+				?: MaterialColors.getColor(binding.root, androidx.appcompat.R.attr.colorPrimary)
 			val outline = palette?.outlineVariant
 				?: MaterialColors.getColor(binding.root, materialR.attr.colorOutlineVariant)
 
