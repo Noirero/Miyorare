@@ -41,6 +41,15 @@ class HistoryAccordionItemTest {
 	}
 
 	@Test
+	fun groupMoreAdvancesInFiftyTitleStepsWithoutAffectingRecentPageSize() {
+		assertEquals(50, HISTORY_GROUP_PAGE_SIZE)
+		assertEquals(100, nextHistoryAccordionPageLimit(null))
+		assertEquals(100, nextHistoryAccordionPageLimit(50))
+		assertEquals(150, nextHistoryAccordionPageLimit(100))
+		assertEquals(16, nextHistoryAccordionMoreCount(16))
+	}
+
+	@Test
 	fun parentSummaryCountsOnlyDatesWithMatchingHistory() {
 		val zone = java.time.ZoneId.of("Asia/Jakarta")
 		val today = LocalDate.of(2026, 11, 10)
