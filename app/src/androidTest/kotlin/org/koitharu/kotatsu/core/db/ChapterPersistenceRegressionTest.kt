@@ -153,6 +153,10 @@ class ChapterPersistenceRegressionTest {
             .samePageReaderBookmarkCannotBeHijacked()
         org.koitharu.kotatsu.bookmarks.domain.ChapterSwipeBookmarkRuntimeTest()
             .annotatingSwipeBookmarkPromotesItToReaderOwnership()
+        org.koitharu.kotatsu.bookmarks.domain.ChapterSwipeBookmarkRuntimeTest()
+            .backupRoundTripKeepsGestureOriginAndLegacyDefaultsToReader()
+        org.koitharu.kotatsu.bookmarks.domain.ChapterSwipeBookmarkRuntimeTest()
+            .simultaneousAddsCannotCreateTwoGestureBookmarks()
     }
 
 	@Test
