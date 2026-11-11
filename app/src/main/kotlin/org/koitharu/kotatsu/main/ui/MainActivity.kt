@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.main.ui
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
@@ -90,6 +91,7 @@ import org.koitharu.kotatsu.core.util.ext.start
 import org.koitharu.kotatsu.databinding.ActivityMainBinding
 import org.koitharu.kotatsu.details.service.MangaPrefetchService
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
+import org.koitharu.kotatsu.explore.ui.ExploreFragment
 import org.koitharu.kotatsu.history.ui.HistoryListFragment
 import org.koitharu.kotatsu.local.ui.LocalStorageCleanupWorker
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
@@ -128,6 +130,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	private var exploreWarmupStarted = false
 	private var backgroundWarmupStarted = false
 	private var appBackgroundKey: String? = null
+	private var defaultLandscapeSearchBottomPadding = 0
 	private val exploreWarmupRunnable = Runnable { runExploreWarmupIfIdle() }
 	private val backgroundWarmupRunnable = Runnable { runBackgroundWarmupIfIdle() }
 
@@ -148,6 +151,8 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		setContentView(ActivityMainBinding.inflate(layoutInflater))
 		setSupportActionBar(viewBinding.searchBar)
 		viewBinding.root.applyMiyorareSharedMainChrome()
+		// Preserve the effective shared-chrome spacing when restoring non-Explore tabs.
+		defaultLandscapeSearchBottomPadding = viewBinding.layoutSearch.paddingBottom
 		bindModernUpdatePromptColors()
 		// Place the search icon inline, right before the hint, and centre the whole group.
 		viewBinding.searchBar.textView.apply {
@@ -193,6 +198,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		viewBinding.textViewTitle?.let { tv ->
 			navigationDelegate.observeTitle().observe(this) { tv.text = it }
 		}
+		updateLandscapeHeaderTitle(navigationDelegate.primaryFragment)
 
 		addMainOverflowMenuProvider(MainMenuProvider(viewModel))
 
@@ -301,11 +307,15 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	override fun onFragmentChanged(fragment: Fragment, fromUser: Boolean) {
 		adjustFabVisibility(topFragment = fragment)
 		adjustAppbar(topFragment = fragment)
+		updateLandscapeHeaderTitle(fragment)
 		updateAppBackground(fragment)
 		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
 			// Favourites may restore its original toolbar state while detaching. Re-apply the approved
 			// shared glass chrome after that lifecycle hand-off so every normal tab keeps one shape.
-			viewBinding.root.post { viewBinding.root.applyMiyorareSharedMainChrome() }
+			viewBinding.root.post {
+				viewBinding.root.applyMiyorareSharedMainChrome()
+				updateLandscapeHeaderTitle(navigationDelegate.primaryFragment)
+			}
 		}
 		if (fromUser) {
 			actionModeDelegate.finishActionMode()
@@ -638,6 +648,27 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	// The appbar keeps fitsSystemWindows=false on every tab: the WindowInsetHolder child provides the
 	// status bar clearance. Toggling fitsSystemWindows per-tab (as Favourites used to) left AppBarLayout
 	// with a stale pinned-inset region and scroll range after switching, randomly locking it expanded.
+	/** Only modern landscape uses a condensed toolbar/title arrangement. */
+	private fun updateLandscapeHeaderTitle(fragment: Fragment?) {
+		val isModernLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+			viewBinding.navRail != null && settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN
+		val isFavourites = isModernLandscape && fragment is FavouritesContainerFragment
+		val isExplore = isModernLandscape && fragment is ExploreFragment
+		viewBinding.textViewTitle?.isVisible = !isFavourites && !isExplore
+		viewBinding.root.findViewById<View>(R.id.landscape_favourites_heading)?.isVisible = isFavourites
+		// Explore has no leading hero title, so reclaim the toolbar's bottom gap for its tab rail.
+		if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+			viewBinding.navRail != null && !isFavourites
+		) {
+			viewBinding.layoutSearch.apply {
+				val bottomPadding = if (isExplore) 0 else defaultLandscapeSearchBottomPadding
+				if (paddingBottom != bottomPadding) {
+					setPaddingRelative(paddingStart, paddingTop, paddingEnd, bottomPadding)
+				}
+			}
+		}
+	}
+
 	private fun adjustAppbar(topFragment: Fragment) {
 		if (topFragment is FavouritesContainerFragment) {
 			fadingAppbarMediator.bind()
