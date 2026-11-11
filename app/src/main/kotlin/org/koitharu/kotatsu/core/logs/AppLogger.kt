@@ -67,11 +67,16 @@ class AppLogger @Inject constructor(
 	fun setEnabled(enabled: Boolean, resetExistingLogs: Boolean = false) {
 		synchronized(stateLock) {
 			if (enabled == isEnabled) return
+			if (enabled && resetExistingLogs) {
+				// Reset before the reader job is scheduled: even an immediate OFF must export no old entries.
+				logsDir.mkdirs()
+				openSessionLogWriter(sessionFile, oldSessionFile, resetExistingLogs = true).close()
+			}
 			isEnabled = enabled
 			generation++
 			if (enabled) {
 				buffer.clear()
-				startReadingLocked(generation, resetExistingLogs)
+				startReadingLocked(generation)
 				diagnosticsSummary = ""
 				PerformanceDiagnostics.start(context)
 			} else {
@@ -101,7 +106,7 @@ class AppLogger @Inject constructor(
 		return lines.joinToString("\n")
 	}
 
-	private fun startReadingLocked(readerGeneration: Int, resetExistingLogs: Boolean) {
+	private fun startReadingLocked(readerGeneration: Int) {
 		// Anchor the logcat stream to activation time, not its existing device buffer.
 		val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
 		val job = scope.launch(start = CoroutineStart.LAZY) {
@@ -124,7 +129,7 @@ class AppLogger @Inject constructor(
 					// Cleanup deprecated previous_session.log if existing from older builds
 					File(logsDir, "previous_session.log").delete()
 
-					val bw = openSessionLogWriter(sessionFile, oldSessionFile, resetExistingLogs)
+					val bw = openSessionLogWriter(sessionFile, oldSessionFile, resetExistingLogs = false)
 					bytesWritten = sessionFile.length()
 					bw.write("\n================================================================================\n")
 					bw.write("=== SESSION STARTED: $timestamp (PID: $pid) ===\n")
@@ -210,7 +215,6 @@ class AppLogger @Inject constructor(
 		return job
 	}
 }
-
 
 /** Only an explicit new recording discards the old in-app log files. Resuming after process
  * restart keeps crash diagnostics until the user stops and exports the recording. */
