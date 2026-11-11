@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.favourites.ui.container
 
 import android.content.Context
+import android.content.res.Configuration
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -102,6 +103,23 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var pendingCategoryRestore: FavouriteContentType? = null
 	private val listWorkOwner = FavouritesListWorkOwner()
 	private var diagnosticPageSelections = 0
+	private var diagnosticPagerLayouts = 0
+	private val diagnosticPagerLayoutListener = View.OnLayoutChangeListener {
+		view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+		if (PerformanceDiagnostics.enabled && diagnosticPagerLayouts < 20 &&
+			(right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop)
+		) {
+			diagnosticPagerLayouts++
+			val pager = view as ViewPager2
+			val orientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
+			logPagerDiagnostic(
+				"pager_layout",
+				"orientation=$orientation pager_width=${pager.width} pager_height=${pager.height} " +
+					"page=${pager.currentItem} tabs=${categories.size} " +
+					"created=${pagerAdapter?.diagnosticCreationCount ?: 0}",
+			)
+		}
+	}
 
 	private fun logPagerDiagnostic(event: String, details: String) {
 		if (!PerformanceDiagnostics.enabled) return
@@ -173,6 +191,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			itemAnimator = null
 		}
 		binding.pager.registerOnPageChangeCallback(pageChangeCallback)
+		binding.pager.addOnLayoutChangeListener(diagnosticPagerLayoutListener)
 		TabLayoutMediator(
 			binding.tabs,
 			binding.pager,
@@ -304,6 +323,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		updateListWorkActivity()
 		rememberCurrentCategory()
 		viewBinding?.pager?.unregisterOnPageChangeCallback(pageChangeCallback)
+		viewBinding?.pager?.removeOnLayoutChangeListener(diagnosticPagerLayoutListener)
 		exitInlineSearch(clearQuery = false, endSession = false)
 		restoreGlobalSearchHandler()
 		inlineSearchEdit?.let { edit -> (edit.parent as? ViewGroup)?.removeView(edit) }

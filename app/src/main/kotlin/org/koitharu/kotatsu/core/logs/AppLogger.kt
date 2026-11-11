@@ -107,7 +107,10 @@ class AppLogger @Inject constructor(
 			var bytesWritten = sessionFile.length()
 			try {
 				val pid = android.os.Process.myPid().toString()
-				val startedProcess = Runtime.getRuntime().exec(arrayOf("logcat", "-v", "threadtime"))
+				// Stream from the newest logcat entry; replaying the historical buffer can bury
+				// the current diagnostic session behind thousands of unrelated messages.
+				// -T does not clear logd and (unlike -t) keeps following future entries.
+				val startedProcess = Runtime.getRuntime().exec(liveLogcatCommand())
 				process = startedProcess
 				synchronized(stateLock) {
 					if (!isEnabled || generation != readerGeneration) {
@@ -208,3 +211,6 @@ class AppLogger @Inject constructor(
 	}
 }
 
+
+/** Start at the live tail without clearing the device's system log buffers. */
+internal fun liveLogcatCommand(): Array<String> = arrayOf("logcat", "-v", "threadtime", "-T", "1")

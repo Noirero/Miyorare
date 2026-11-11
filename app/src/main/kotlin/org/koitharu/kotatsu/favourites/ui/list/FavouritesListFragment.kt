@@ -1,12 +1,14 @@
 package org.koitharu.kotatsu.favourites.ui.list
 
 import android.content.DialogInterface
+import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.util.Log
 import android.text.InputType
 import android.view.Menu
 import android.view.MenuInflater
@@ -18,12 +20,14 @@ import android.widget.Toast
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
+import androidx.core.view.ancestors
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import coil3.request.ImageRequest
 import coil3.size.Size
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -36,6 +40,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
@@ -116,8 +121,42 @@ class FavouritesListFragment : MangaListFragment() {
 			recyclerView.removeCallbacks(coverPrefetchRunnable)
 			if (newState == RecyclerView.SCROLL_STATE_IDLE) {
 				recyclerView.postDelayed(coverPrefetchRunnable, COVER_PREFETCH_IDLE_DELAY_MS)
+				if (PerformanceDiagnostics.enabled && diagnosticScrollSettles < 5) {
+					diagnosticScrollSettles++
+					logListGeometry("scroll_idle", recyclerView)
+				}
 			}
 		}
+	}
+	private var diagnosticLayoutSamples = 0
+	private var diagnosticScrollSettles = 0
+	private var diagnosticContentEmissions = 0
+	private val diagnosticLayoutListener = View.OnLayoutChangeListener {
+		view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+		if (PerformanceDiagnostics.enabled && diagnosticLayoutSamples < 24 &&
+			(right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop)
+		) {
+			diagnosticLayoutSamples++
+			logListGeometry("viewport_layout", view as RecyclerView)
+		}
+	}
+
+	private fun logListGeometry(event: String, recyclerView: RecyclerView) {
+		if (!PerformanceDiagnostics.enabled) return
+		val pagerWidth = recyclerView.ancestors.filterIsInstance<ViewPager2>()
+			.firstOrNull()?.measuredWidth ?: -1
+		val layout = recyclerView.layoutManager as? LinearLayoutManager
+		val orientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
+		Log.i(
+			"FavouritesLayout",
+			"trace=${PerformanceDiagnostics.ownerTrace(this)?.id ?: "none"} " +
+				"fragment=${System.identityHashCode(this)} event=$event orientation=$orientation " +
+				"viewport_width=${recyclerView.width} viewport_height=${recyclerView.height} " +
+				"pager_width=$pagerWidth span=${(layout as? GridLayoutManager)?.spanCount ?: -1} " +
+				"first_visible=${layout?.findFirstVisibleItemPosition() ?: -1} " +
+				"scroll_y=${recyclerView.computeVerticalScrollOffset()} " +
+				"adapter_count=${recyclerView.adapter?.itemCount ?: -1}",
+		)
 	}
 	private var pendingScrollPosition: PendingScroll? = null
 	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null
@@ -135,6 +174,8 @@ class FavouritesListFragment : MangaListFragment() {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		binding.recyclerView.isVP2BugWorkaroundEnabled = true
 		binding.recyclerView.addOnScrollListener(coverPrefetchScrollListener)
+		binding.recyclerView.addOnLayoutChangeListener(diagnosticLayoutListener)
+		logListGeometry("view_created", binding.recyclerView)
 		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
 			modernSurfaceDecoration = ModernLibrarySurfaceDecoration().also { decoration ->
 				binding.recyclerView.addItemDecoration(decoration, 0)
@@ -158,6 +199,12 @@ class FavouritesListFragment : MangaListFragment() {
 			}
 		}
 		viewModel.content.observe(viewLifecycleOwner) { items ->
+			if (PerformanceDiagnostics.enabled) {
+				diagnosticContentEmissions++
+				if (diagnosticContentEmissions <= 3 || diagnosticContentEmissions % 20 == 0) {
+					logListGeometry("content_emit_$diagnosticContentEmissions", binding.recyclerView)
+				}
+			}
 			scheduleCoverPrefetch(items)
 			pendingScrollPosition?.let { target ->
 				pendingScrollPosition = null
@@ -177,8 +224,10 @@ class FavouritesListFragment : MangaListFragment() {
 		listWorkOwner.onDestroyView()
 		updateWorkActivity()
 		viewBinding?.recyclerView?.let { recyclerView ->
+			logListGeometry("view_destroyed", recyclerView)
 			recyclerView.removeCallbacks(coverPrefetchRunnable)
 			recyclerView.removeOnScrollListener(coverPrefetchScrollListener)
+			recyclerView.removeOnLayoutChangeListener(diagnosticLayoutListener)
 			modernChildAttachListener?.let(recyclerView::removeOnChildAttachStateChangeListener)
 			modernSurfaceDecoration?.let(recyclerView::removeItemDecoration)
 		}
