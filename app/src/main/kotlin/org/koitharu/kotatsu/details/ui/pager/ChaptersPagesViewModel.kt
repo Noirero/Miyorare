@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -68,6 +70,8 @@ import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.LocalRoutingMangaRepository
 import org.koitharu.kotatsu.local.data.isEpub
 import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
+import org.koitharu.kotatsu.local.library.LocalContentReader
+import org.koitharu.kotatsu.local.library.ReaderBackingLeaseContext
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -96,6 +100,7 @@ abstract class ChaptersPagesViewModel(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val chapterPersonalRepository: ChapterPersonalRepository,
 	protected val chapterProgressRepository: ChapterProgressRepository,
+    private val localContentReader: LocalContentReader,
 	private val chapterListOptionsStore: ChapterListOptionsStore? = null,
 ) : BaseViewModel() {
 
@@ -674,21 +679,26 @@ abstract class ChaptersPagesViewModel(
             if (!swipeBookmarkRequests.add(scope)) return
         }
         launchJob(Dispatchers.IO) {
+            val leaseToken = Any()
             try {
                 if (bookmarksRepository.removeSwipeBookmark(manga.id, item.chapter.id)) {
                     onSwipeBookmarkMessage.call(R.string.bookmark_removed)
                     return@launchJob
                 }
                 val chapter = item.chapter
-                val primaryPages = runCatchingCancellable {
-                    mangaRepositoryFactory.create(chapter.source).getPages(chapter)
-                }.getOrNull()
-                val pages = primaryPages?.takeIf { it.isNotEmpty() } ?: run {
-                    val sourceChapter = details.sourceManga.chapters.orEmpty()
-                        .singleOrNull { it.id == chapter.id && it.source != chapter.source }
-                    if (sourceChapter != null) {
-                        mangaRepositoryFactory.create(sourceChapter.source).getPages(sourceChapter)
-                    } else primaryPages.orEmpty()
+                // Smart Local may materialize an archive while enumerating pages. The Reader's
+                // backing-lease protocol must also cover this Details-only enumeration.
+                val pages = withContext(ReaderBackingLeaseContext(leaseToken)) {
+                    val primaryPages = runCatchingCancellable {
+                        mangaRepositoryFactory.create(chapter.source).getPages(chapter)
+                    }.getOrNull()
+                    primaryPages?.takeIf { it.isNotEmpty() } ?: run {
+                        val sourceChapter = details.sourceManga.chapters.orEmpty()
+                            .singleOrNull { it.id == chapter.id && it.source != chapter.source }
+                        if (sourceChapter != null) {
+                            mangaRepositoryFactory.create(sourceChapter.source).getPages(sourceChapter)
+                        } else primaryPages.orEmpty()
+                    }
                 }
                 if (pages.isEmpty()) throw NoDataReceivedException(chapter.url)
                 // Read the latest position after metadata loading; a concurrent manual-unread may reset it.
@@ -719,7 +729,11 @@ abstract class ChaptersPagesViewModel(
                         onSwipeBookmarkMessage.call(R.string.chapter_swipe_page_already_bookmarked)
                 }
             } finally {
-                synchronized(swipeBookmarkRequests) { swipeBookmarkRequests.remove(scope) }
+                try {
+                    withContext(NonCancellable) { localContentReader.releaseReaderLease(leaseToken) }
+                } finally {
+                    synchronized(swipeBookmarkRequests) { swipeBookmarkRequests.remove(scope) }
+                }
             }
         }
     }
