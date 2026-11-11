@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.local.data.isEpub
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.nav.dismissParentDialog
 import org.koitharu.kotatsu.core.nav.router
@@ -143,7 +145,9 @@ class ChaptersFragment :
 					chaptersAdapter?.items?.getOrNull(holder.bindingAdapterPosition) as? ChapterListItem
 				},
 				isSelectionActive = { (selectionController?.count ?: 0) > 0 },
-				onAction = { item, markRead -> viewModel.setChapterReadState(item.chapter.id, markRead) },
+                isBookmarkEnabled = { viewModel.getMangaOrNull()?.let { !it.isNovelContent && !it.isEpub } == true },
+                onReadToggle = { item -> viewModel.toggleChapterReadState(item.chapter.id) },
+                onBookmarkToggle = viewModel::toggleChapterSwipeBookmark,
 				onRebind = { position -> chaptersAdapter?.notifyItemChanged(position) },
 			)).attachToRecyclerView(this)
 			attachVolumeHeaderGestures(this)
@@ -166,6 +170,9 @@ class ChaptersFragment :
 		combine(viewModel.emptyReason, viewModel.chapterNotesQuery, viewModel.chapters) { reason, notesQuery, chapters ->
 			if (!notesQuery.isNullOrBlank() && chapters.isEmpty()) R.string.chapter_search_notes_empty else reason?.msgResId ?: 0
 		}.observe(viewLifecycleOwner) { binding.textViewHolder.setTextAndVisible(it) }
+		viewModel.onSwipeBookmarkMessage.observeEvent(viewLifecycleOwner) { message ->
+            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+        }
 		viewModel.onOpenChapterInBrowser.observeEvent(viewLifecycleOwner) { url ->
 			val manga = viewModel.getMangaOrNull()
 			router.openBrowser(url = url, source = manga?.source, title = manga?.title)
