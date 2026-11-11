@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.core.diagnostics
 
+import java.util.ArrayDeque
+
 /** Pure, bounded session accounting. All times are monotonic; labels come from code, never content. */
 internal class DiagnosticsSession(
 	val id: String,
