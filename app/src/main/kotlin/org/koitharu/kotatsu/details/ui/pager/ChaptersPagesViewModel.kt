@@ -64,7 +64,6 @@ import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.ListFilterOption
-import org.koitharu.kotatsu.local.data.isEpub
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.LocalRoutingMangaRepository
 import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
@@ -668,7 +667,7 @@ abstract class ChaptersPagesViewModel(
     fun toggleChapterSwipeBookmark(item: ChapterListItem) {
         val details = mangaDetails.value ?: return
         val manga = details.toManga()
-        if (manga.isNovelContent || manga.isEpub) return
+        if (manga.isNovelContent) return
         val scope = manga.id to item.chapter.id
         synchronized(swipeBookmarkRequests) {
             if (!swipeBookmarkRequests.add(scope)) return
