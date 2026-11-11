@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.details.ui
 import android.content.Context
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
+import org.koitharu.kotatsu.bookmarks.domain.BOOKMARK_ORIGIN_DETAILS_SWIPE
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.toListItem
@@ -39,6 +40,7 @@ fun MangaDetails.mapChapters(
 	val sourceChapters = sourceManga.chapters.orEmpty()
 	val sourceChaptersById = sourceChapters.groupBy { it.id }
 	val bookmarked = bookmarks.mapToSet { it.chapterId }
+	val swipeBookmarked = bookmarks.filter { it.origin == BOOKMARK_ORIGIN_DETAILS_SWIPE }.mapToSet { it.chapterId }
 	val newFrom = if (newCount == 0 || remoteChapters.isEmpty()) Int.MAX_VALUE else remoteChapters.size - newCount
 	val remoteIds = remoteChapters.mapTo(HashSet(remoteChapters.size)) { it.id }
 	val ids = buildSet(maxOf(remoteChapters.size, localChapters.size)) {
@@ -78,6 +80,7 @@ fun MangaDetails.mapChapters(
 				isGrid = isGrid,
 			).copy(
 				personalKey = key,
+				isSwipeBookmarked = chapter.id in swipeBookmarked,
 				lastReadPage = if (isNovel || readOverride == false || pageResetPending(chapter.id)) null
                     else (saved?.page ?: currentPage?.takeIf { isCurrent }),
 				lastReadTotalPages = if (isNovel || readOverride == false || pageResetPending(chapter.id)) null
@@ -102,6 +105,7 @@ fun MangaDetails.mapChapters(
 				isGrid = isGrid,
 			).copy(
 				personalKey = key,
+				isSwipeBookmarked = chapter.id in swipeBookmarked,
 				lastReadPage = if (isNovel || readOverride == false || pageResetPending(chapter.id)) null
                     else (saved?.page ?: currentPage?.takeIf { isCurrent }),
 				lastReadTotalPages = if (isNovel || readOverride == false || pageResetPending(chapter.id)) null
