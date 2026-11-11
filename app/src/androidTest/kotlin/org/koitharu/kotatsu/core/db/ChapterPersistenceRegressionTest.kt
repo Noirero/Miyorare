@@ -144,6 +144,17 @@ class ChapterPersistenceRegressionTest {
 			.migrationAddsEmptyProgressTableWithoutTouchingExistingHistory()
 	}
 
+    @Test
+    fun chapterSwipeBookmarkOwnershipAndOriginMigration() {
+        BookmarkOriginMigrationTest().migrationPreservesLegacyRowsAsReaderOwned()
+        org.koitharu.kotatsu.bookmarks.domain.ChapterSwipeBookmarkRuntimeTest()
+            .swipeRemovalPreservesReaderBookmarksInSameChapter()
+        org.koitharu.kotatsu.bookmarks.domain.ChapterSwipeBookmarkRuntimeTest()
+            .samePageReaderBookmarkCannotBeHijacked()
+        org.koitharu.kotatsu.bookmarks.domain.ChapterSwipeBookmarkRuntimeTest()
+            .annotatingSwipeBookmarkPromotesItToReaderOwnership()
+    }
+
 	@Test
 	fun openingNewestChapterDoesNotMarkOlderChaptersRead() {
 		// Use a remote-source fixture: the LOCAL seed points to a relative path and is
