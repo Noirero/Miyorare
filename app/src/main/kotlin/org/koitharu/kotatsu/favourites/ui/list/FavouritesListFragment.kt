@@ -147,16 +147,15 @@ class FavouritesListFragment : MangaListFragment() {
 			.firstOrNull()?.measuredWidth ?: -1
 		val layout = recyclerView.layoutManager as? LinearLayoutManager
 		val orientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
-		Log.i(
-			"FavouritesLayout",
-			"trace=${PerformanceDiagnostics.ownerTrace(this)?.id ?: "none"} " +
-				"fragment=${System.identityHashCode(this)} event=$event orientation=$orientation " +
+		val dimensions =
+			"fragment=${System.identityHashCode(this)} orientation=$orientation " +
 				"viewport_width=${recyclerView.width} viewport_height=${recyclerView.height} " +
 				"pager_width=$pagerWidth span=${(layout as? GridLayoutManager)?.spanCount ?: -1} " +
 				"first_visible=${layout?.findFirstVisibleItemPosition() ?: -1} " +
 				"scroll_y=${recyclerView.computeVerticalScrollOffset()} " +
-				"adapter_count=${recyclerView.adapter?.itemCount ?: -1}",
-		)
+				"adapter_count=${recyclerView.adapter?.itemCount ?: -1}"
+		Log.i("FavouritesLayout", "trace=${PerformanceDiagnostics.ownerTrace(this)?.id ?: "none"} event=$event $dimensions")
+		PerformanceDiagnostics.captureDiagnostic("FavouritesLayout", event, this, dimensions)
 	}
 	private var pendingScrollPosition: PendingScroll? = null
 	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null

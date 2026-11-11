@@ -39,6 +39,12 @@ internal class DiagnosticsSession(
 	private var jankyCount = 0L
 	private var worstFrameNs = 0L
 	private val sampleWindows = HashMap<String, Pair<Long, Int>>()
+	// Export a small Favourites-specific timeline even if logcat cannot be read on a device.
+	// Retain the beginning and the recent tail; the full stream is deliberately not buffered.
+	private var diagnosticSequence = 0L
+	private val diagnosticFirst = ArrayList<String>(32)
+	private val diagnosticRecent = ArrayDeque<Pair<Long, String>>()
+	private val diagnosticCounts = LinkedHashMap<String, Long>()
 
 	@Synchronized fun navigation(from: String, to: String): Trace {
 		val trace = Trace("$id-t${++sequence}", to, clock())
@@ -91,6 +97,19 @@ internal class DiagnosticsSession(
 		emitted++
 		// Diagnostics must never throw into the measured production operation.
 		runCatching { sink("PERF session=$id t_ms=${elapsed(started)} trace=${trace?.id ?: "none"} $kind $detail") }
+	}
+
+	/** Bounded, opt-in diagnostic event timeline; never depends on the external logcat reader. */
+	@Synchronized fun captureDiagnostic(tag: String, event: String, trace: Trace?, detail: String) {
+		if (!active) return
+		val sequence = ++diagnosticSequence
+		val key = "$tag.$event"
+		diagnosticCounts[key] = (diagnosticCounts[key] ?: 0L) + 1
+		val line = "snapshot seq=$sequence t_ms=${elapsed(started)} " +
+			"trace=${trace?.takeIf(::owns)?.id ?: "none"} tag=$tag event=$event ${detail.take(240)}"
+		if (diagnosticFirst.size < 32) diagnosticFirst.add(line)
+		if (diagnosticRecent.size >= 256) diagnosticRecent.removeFirst()
+		diagnosticRecent.addLast(sequence to line)
 	}
 
 	@Synchronized fun frame(trace: Trace?, durationNs: Long, budgetNs: Long, dropped: Int) {
@@ -171,6 +190,12 @@ internal class DiagnosticsSession(
 			}
 			worst.forEach { v ->
 				appendLine("worst kind=${v.kind} name=${v.name} trace=${v.trace ?: "none"} duration_ms=${v.ms} outcome=${v.outcome}")
+			}
+			appendLine("diagnostic_snapshot_total=$diagnosticSequence retained_first=${diagnosticFirst.size} retained_recent=${diagnosticRecent.size}")
+			diagnosticCounts.forEach { (key, count) -> appendLine("diagnostic_count=$key count=$count") }
+			diagnosticFirst.forEach(::appendLine)
+			diagnosticRecent.forEach { (sequence, line) ->
+				if (sequence > diagnosticFirst.size) appendLine(line)
 			}
 		}.also { stoppedSummary = it }
 	}
