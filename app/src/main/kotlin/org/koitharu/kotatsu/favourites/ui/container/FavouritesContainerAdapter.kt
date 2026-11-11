@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.favourites.ui.container
 
 import android.content.SharedPreferences
+import android.os.SystemClock
+import android.util.Log
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -17,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.flow.FlowCollector
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.util.ContinuationResumeRunnable
 import org.koitharu.kotatsu.core.util.ext.withArgs
@@ -43,6 +46,17 @@ class FavouritesContainerAdapter(
 			.setBackgroundThreadExecutor(Dispatchers.Default.limitedParallelism(2).asExecutor())
 			.build(),
 	)
+	// Counters are written only while the opt-in performance session is enabled.
+	private var diagnosticFragmentsCreated = 0
+	private val diagnosticCreatedPositions = HashSet<Int>()
+
+	internal val diagnosticCreationCount: Int get() = diagnosticFragmentsCreated
+
+	private fun logPagerDiagnostic(event: String, details: String) {
+		if (!PerformanceDiagnostics.enabled) return
+		Log.i("FavouritesPager", "trace=${PerformanceDiagnostics.ownerTrace(fragment)?.id ?: "none"} event=$event $details")
+	}
+
 	private val preferences = PreferenceManager.getDefaultSharedPreferences(fragment.requireContext())
 	private val categoryCountPreferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
 		if (key?.endsWith(CATEGORY_COUNT_PREFERENCE_SUFFIX) == true) {
@@ -71,6 +85,18 @@ class FavouritesContainerAdapter(
 
 	override fun createFragment(position: Int): Fragment {
 		val item = differ.currentList[position]
+		if (PerformanceDiagnostics.enabled) {
+			diagnosticFragmentsCreated++
+			diagnosticCreatedPositions.add(position)
+			// Sample the sweep; unbounded per-fragment logging would itself distort the trace.
+			if (diagnosticFragmentsCreated <= 3 || diagnosticFragmentsCreated % 10 == 0) {
+				logPagerDiagnostic(
+					"fragment_create",
+					"position=$position created=$diagnosticFragmentsCreated " +
+						"unique_positions=${diagnosticCreatedPositions.size} category_count=$itemCount",
+				)
+			}
+		}
 		return if (item.id == LOCAL_FAVOURITES_CATEGORY_ID) {
 			LocalFavouritesListFragment().withArgs(1) {
 				putInt(EXTRA_FAVOURITE_SPACE, favouriteSpace.dbValue)
@@ -90,7 +116,17 @@ class FavouritesContainerAdapter(
 		val previousId = previousItems.getOrNull(previousIndex)?.id
 		val activeCategoryRemoved = previousId != null && value.none { it.id == previousId }
 		val pagerStructureChanged = !hasSamePagerStructure(previousItems, value)
+		val startedNs = if (PerformanceDiagnostics.enabled) SystemClock.elapsedRealtimeNanos() else 0L
+		if (PerformanceDiagnostics.enabled) {
+			logPagerDiagnostic(
+				"categories_submit",
+				"old_count=${previousItems.size} new_count=${value.size} " +
+					"structure_changed=$pagerStructureChanged active_removed=$activeCategoryRemoved " +
+					"pager_index=$previousIndex created=$diagnosticFragmentsCreated",
+			)
+		}
 		differ.submitList(value) {
+			val notifiedNs = if (PerformanceDiagnostics.enabled) SystemClock.elapsedRealtimeNanos() else 0L
 			// DiffUtil may emit many insert/remove/change callbacks for one logical category refresh.
 			// TabLayoutMediator reacts to each callback by removeAllTabs() + full repopulation, which can
 			// monopolize the main thread and cause input-dispatch ANRs. Suppress those granular adapter
@@ -107,6 +143,16 @@ class FavouritesContainerAdapter(
 			// its reserved space directly, avoiding any TabLayoutMediator rebuild for live count updates.
 			updateTabBadgeNumbers(value)
 			onListCommitted(differ.currentList)
+			if (startedNs != 0L && PerformanceDiagnostics.enabled) {
+				logPagerDiagnostic(
+					"categories_commit",
+					"commit_ms=${(SystemClock.elapsedRealtimeNanos() - startedNs) / 1_000_000} " +
+					"callback_ms=${(SystemClock.elapsedRealtimeNanos() - notifiedNs) / 1_000_000} " +
+					"structure_changed=$pagerStructureChanged pager_index=${pager?.currentItem ?: -1} " +
+					"tabs=${fragment.view?.findViewById<TabLayout>(R.id.tabs)?.tabCount ?: -1} " +
+					"created=$diagnosticFragmentsCreated unique_positions=${diagnosticCreatedPositions.size}",
+				)
+			}
 			ContinuationResumeRunnable(cont).run()
 		}
 	}

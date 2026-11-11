@@ -6,6 +6,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
@@ -100,17 +101,46 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var displayedContentType: FavouriteContentType? = null
 	private var pendingCategoryRestore: FavouriteContentType? = null
 	private val listWorkOwner = FavouritesListWorkOwner()
+	private var diagnosticPageSelections = 0
+
+	private fun logPagerDiagnostic(event: String, details: String) {
+		if (!PerformanceDiagnostics.enabled) return
+		Log.i("FavouritesPager", "trace=${PerformanceDiagnostics.ownerTrace(this)?.id ?: "none"} event=$event $details")
+	}
 
 	internal val isListWorkActive: Boolean
 		get() = listWorkOwner.isActive(hasView = view != null, hidden = isHidden)
 
 	private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
 		override fun onPageSelected(position: Int) {
+			if (PerformanceDiagnostics.enabled) {
+				diagnosticPageSelections++
+				if (diagnosticPageSelections <= 3 || diagnosticPageSelections % 10 == 0) {
+					logPagerDiagnostic(
+						"page_selected",
+						"position=$position selected_events=$diagnosticPageSelections " +
+							"scroll_state=${viewBinding?.pager?.scrollState ?: -1} " +
+							"created=${pagerAdapter?.diagnosticCreationCount ?: 0}",
+					)
+				}
+			}
 			if (pendingCategoryRestore == null) {
 				rememberCurrentCategory()
 			}
 			updateCategoryPickerLabel()
 			activity?.invalidateOptionsMenu()
+		}
+
+		override fun onPageScrollStateChanged(state: Int) {
+			if (PerformanceDiagnostics.enabled) {
+				logPagerDiagnostic(
+					"page_scroll_state",
+					"state=$state page=${viewBinding?.pager?.currentItem ?: -1} " +
+						"selected_events=$diagnosticPageSelections " +
+						"created=${pagerAdapter?.diagnosticCreationCount ?: 0} " +
+						"child_fragments=${childFragmentManager.fragments.size}",
+				)
+			}
 		}
 	}
 
@@ -161,6 +191,14 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 					// Existing repository/list/render spans can now be correlated to one Set switch.
 					// No Set name, content, or ID is included in diagnostic labels.
 					PerformanceDiagnostics.navigation("favourites", "favourites_set_switch", this)
+					if (PerformanceDiagnostics.enabled) {
+						diagnosticPageSelections = 0
+						logPagerDiagnostic(
+							"set_switch_requested",
+							"pager_index=${binding.pager.currentItem} tabs=${binding.tabs.tabCount} " +
+								"created=${pagerAdapter?.diagnosticCreationCount ?: 0}",
+						)
+					}
 					viewModel.selectSet(set)
 				}
 			}
@@ -415,6 +453,15 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		}
 		applyCategoryNavigation(displayPreferences.current(contentTypeStore.selectedType.value))
 		PerformanceDiagnostics.milestone(this, "favourites_set_tabs_committed")
+		if (PerformanceDiagnostics.enabled) {
+			logPagerDiagnostic(
+				"categories_applied",
+				"category_count=${value.size} pager_index=${binding.pager.currentItem} " +
+					"tabs=${binding.tabs.tabCount} restored_type=${restoreType != null} " +
+					"created=${pagerAdapter?.diagnosticCreationCount ?: 0} " +
+					"child_fragments=${childFragmentManager.fragments.size}",
+			)
+		}
 	}
 
 	private fun isCategoryListForType(
