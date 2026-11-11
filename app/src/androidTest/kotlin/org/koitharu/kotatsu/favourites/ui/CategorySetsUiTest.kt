@@ -587,8 +587,9 @@ class CategorySetsUiTest {
 					val container = descendants(activity.supportFragmentManager.fragments)
 						.filterIsInstance<FavouritesContainerFragment>().firstOrNull()
 					val pager = container?.view?.findViewById<ViewPager2>(R.id.pager)
-					val list = pager?.let { container.childFragmentManager.findCurrentPagerFragment(it) }
-						as? FavouritesListFragment
+					val list = if (container != null && pager != null) {
+						container.childFragmentManager.findCurrentPagerFragment(pager) as? FavouritesListFragment
+					} else null
 					val grid = list?.recyclerView as? FastScrollRecyclerView
 					if (activity.resources.configuration.orientation == orientation && pager != null &&
 						grid != null && pager.width > 0 && grid.width > 0) {
