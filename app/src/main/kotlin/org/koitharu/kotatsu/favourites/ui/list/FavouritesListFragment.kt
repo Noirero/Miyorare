@@ -332,7 +332,8 @@ class FavouritesListFragment : MangaListFragment() {
 		val width = (availableWidth / columns.coerceAtLeast(1)).coerceAtLeast(120)
 		val firstVisible = (recyclerView.layoutManager as? LinearLayoutManager)
 			?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
-		val start = preferredCoverPrefetchStart(firstVisible, recyclerView.adapter?.itemCount ?: 0, items.size)
+		val adapterSnapshot = (recyclerView.adapter as? MangaListAdapter)?.items
+		val start = preferredCoverPrefetchStart(firstVisible, adapterSnapshot, items)
 		val referenceCardSizing =
 			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
 				viewModel.favouriteSpace == FavouriteSpace.NORMAL
@@ -1425,6 +1426,13 @@ class FavouritesListFragment : MangaListFragment() {
 	}
 }
 
-/** Do not carry a scroll offset from an obsolete adapter snapshot into a newly selected Set. */
-internal fun preferredCoverPrefetchStart(firstVisible: Int, adapterCount: Int, incomingCount: Int): Int =
-	if (adapterCount == incomingCount && firstVisible in 0 until incomingCount) firstVisible else 0
+/** Equal list lengths do not prove the visible adapter item belongs to the incoming Set. */
+internal fun preferredCoverPrefetchStart(
+	firstVisible: Int,
+	adapterItems: List<ListModel>?,
+	incomingItems: List<ListModel>,
+): Int {
+	val current = adapterItems ?: return 0
+	if (current.size != incomingItems.size || firstVisible !in incomingItems.indices) return 0
+	return if (current[firstVisible].areItemsTheSame(incomingItems[firstVisible])) firstVisible else 0
+}
