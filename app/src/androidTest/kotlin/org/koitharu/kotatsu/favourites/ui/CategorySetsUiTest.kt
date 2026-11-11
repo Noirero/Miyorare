@@ -2,7 +2,7 @@ package org.koitharu.kotatsu.favourites.ui
 
 import android.content.Intent
 import android.content.pm.ActivityInfo
-import android.content.res.Configuration
+import android.content.res.Configuration as AndroidConfiguration
 import androidx.viewpager2.widget.ViewPager2
 import org.koitharu.kotatsu.core.util.ext.findCurrentPagerFragment
 import org.koitharu.kotatsu.core.ui.list.fastscroll.FastScrollRecyclerView
@@ -604,16 +604,16 @@ class CategorySetsUiTest {
 				return ready
 			}
 			scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
-			await { inspect(Configuration.ORIENTATION_PORTRAIT, expectWorkaround = true) }
+			await { inspect(AndroidConfiguration.ORIENTATION_PORTRAIT, expectWorkaround = true) }
 			scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
-			await { inspect(Configuration.ORIENTATION_LANDSCAPE, expectWorkaround = false) }
+			await { inspect(AndroidConfiguration.ORIENTATION_LANDSCAPE, expectWorkaround = false) }
 			repeat(5) {
 				instrumentation.waitForIdleSync()
 				assertTrue("Landscape grid lost its full-width page during relayout",
-					inspect(Configuration.ORIENTATION_LANDSCAPE, expectWorkaround = false))
+					inspect(AndroidConfiguration.ORIENTATION_LANDSCAPE, expectWorkaround = false))
 			}
 			scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
-			await { inspect(Configuration.ORIENTATION_PORTRAIT, expectWorkaround = true) }
+			await { inspect(AndroidConfiguration.ORIENTATION_PORTRAIT, expectWorkaround = true) }
 		}
 	}
 
