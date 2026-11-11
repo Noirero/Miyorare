@@ -20,6 +20,9 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.parsers.model.Manga
 import javax.inject.Inject
 
+/** Addition never takes ownership of a Reader bookmark at the same page. */
+enum class SwipeBookmarkWriteResult { ADDED, ALREADY_SWIPED, PAGE_ALREADY_BOOKMARKED }
+
 @Reusable
 class BookmarksRepository @Inject constructor(
 	private val db: MangaDatabase,
@@ -62,17 +65,46 @@ class BookmarksRepository @Inject constructor(
 	}
 
 	suspend fun updateBookmark(bookmark: Bookmark, imageUrl: String) {
-		val entity = bookmark.toEntity().copy(
-			imageUrl = imageUrl,
-		)
-		db.getBookmarksDao().upsert(listOf(entity))
+        db.withTransaction {
+            val dao = db.getBookmarksDao()
+            val current = dao.findForMangaPage(bookmark.manga.id, bookmark.pageId) ?: return@withTransaction
+            dao.upsert(listOf(current.copy(imageUrl = imageUrl)))
+        }
 	}
 
 	suspend fun updateBookmarkNote(bookmark: Bookmark, note: String?) {
-		db.getBookmarksDao().upsert(
-			listOf(bookmark.toEntity().copy(note = note?.trim()?.takeIf(String::isNotEmpty))),
-		)
+        db.withTransaction {
+            val dao = db.getBookmarksDao()
+            val current = dao.findForMangaPage(bookmark.manga.id, bookmark.pageId) ?: return@withTransaction
+            val updatedNote = note?.trim()?.takeIf(String::isNotEmpty)
+            // A manually annotated swipe bookmark becomes Reader-owned permanently.
+            dao.upsert(listOf(current.copy(
+                note = updatedNote,
+                origin = if (updatedNote != null) BOOKMARK_ORIGIN_READER else current.origin,
+            )))
+        }
 	}
+
+    /** Removes only bookmarks owned by Details swipe, never Reader bookmarks. */
+    suspend fun removeSwipeBookmark(mangaId: Long, chapterId: Long): Boolean = db.withTransaction {
+        db.getBookmarksDao().deleteChapterOrigin(mangaId, chapterId, BOOKMARK_ORIGIN_DETAILS_SWIPE) > 0
+    }
+
+    /** Caller resolves a real MangaPage first; check collisions inside the same DB transaction. */
+    suspend fun addSwipeBookmark(bookmark: Bookmark): SwipeBookmarkWriteResult = db.withTransaction {
+        val dao = db.getBookmarksDao()
+        if (dao.findByChapterOrigin(bookmark.manga.id, bookmark.chapterId, BOOKMARK_ORIGIN_DETAILS_SWIPE) != null) {
+            return@withTransaction SwipeBookmarkWriteResult.ALREADY_SWIPED
+        }
+        if (dao.findForMangaPage(bookmark.manga.id, bookmark.pageId) != null) {
+            return@withTransaction SwipeBookmarkWriteResult.PAGE_ALREADY_BOOKMARKED
+        }
+        val tags = bookmark.manga.tags.toEntities()
+        db.getTagsDao().upsert(tags)
+        db.getMangaDao().upsert(bookmark.manga.toEntity(), tags)
+        dao.insert(bookmark.copy(origin = BOOKMARK_ORIGIN_DETAILS_SWIPE).toEntity())
+        SwipeBookmarkWriteResult.ADDED
+    }
 
 	suspend fun removeBookmark(mangaId: Long, chapterId: Long, page: Int) {
 		check(db.getBookmarksDao().delete(mangaId, chapterId, page) != 0) {
