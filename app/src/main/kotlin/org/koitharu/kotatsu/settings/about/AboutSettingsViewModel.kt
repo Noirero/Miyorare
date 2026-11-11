@@ -65,7 +65,14 @@ class AboutSettingsViewModel @Inject constructor(
 			previousTransition?.join()
 			if (enabled) {
 				if (_isVerboseLogging.value) {
-					appLogger.setEnabled(true, resetExistingLogs = true)
+					try {
+						appLogger.setEnabled(true, resetExistingLogs = true)
+					} catch (e: Exception) {
+						// Keep the switch and persisted setting truthful if fresh-session initialization fails.
+						settings.isVerboseLoggingEnabled = false
+						_isVerboseLogging.value = false
+						throw e
+					}
 				}
 			} else {
 				val content = appLogger.stopAndDrainToString()
