@@ -143,14 +143,22 @@ class FavouritesListFragment : MangaListFragment() {
 
 	private fun logListGeometry(event: String, recyclerView: RecyclerView) {
 		if (!PerformanceDiagnostics.enabled) return
-		val pagerWidth = recyclerView.ancestors.filterIsInstance<ViewPager2>()
-			.firstOrNull()?.measuredWidth ?: -1
+		val pager = recyclerView.ancestors.filterIsInstance<ViewPager2>().firstOrNull()
+		// ViewPager2 itself can remain full width while its internal RecyclerView or
+		// FragmentStateAdapter page holder is measured narrowly. Record each layer to
+		// locate the first bad measurement before changing the production layout.
+		val pagerRecyclerView = pager?.getChildAt(0) as? RecyclerView
+		val pageHolder = pagerRecyclerView?.findContainingItemView(recyclerView)
 		val layout = recyclerView.layoutManager as? LinearLayoutManager
 		val orientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
 		val dimensions =
 			"fragment=${System.identityHashCode(this)} orientation=$orientation " +
 				"viewport_width=${recyclerView.width} viewport_height=${recyclerView.height} " +
-				"pager_width=$pagerWidth span=${(layout as? GridLayoutManager)?.spanCount ?: -1} " +
+				"pager_width=${pager?.measuredWidth ?: -1} pager_w=${pager?.width ?: -1} " +
+				"inner_w=${pagerRecyclerView?.width ?: -1} " +
+				"inner_m=${pagerRecyclerView?.measuredWidth ?: -1} " +
+				"page_w=${pageHolder?.width ?: -1} page_m=${pageHolder?.measuredWidth ?: -1} " +
+				"span=${(layout as? GridLayoutManager)?.spanCount ?: -1} " +
 				"first_visible=${layout?.findFirstVisibleItemPosition() ?: -1} " +
 				"scroll_y=${recyclerView.computeVerticalScrollOffset()} " +
 				"adapter_count=${recyclerView.adapter?.itemCount ?: -1}"
