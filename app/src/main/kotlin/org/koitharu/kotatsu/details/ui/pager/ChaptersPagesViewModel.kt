@@ -28,6 +28,12 @@ import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.plus
 import okio.FileNotFoundException
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
+import org.koitharu.kotatsu.bookmarks.domain.Bookmark
+import org.koitharu.kotatsu.bookmarks.domain.SwipeBookmarkWriteResult
+import org.koitharu.kotatsu.list.domain.ReadingProgress
+import org.koitharu.kotatsu.parsers.util.ifNullOrEmpty
+import org.koitharu.kotatsu.core.exceptions.NoDataReceivedException
+import java.time.Instant
 import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.toChipModel
@@ -198,6 +204,8 @@ abstract class ChaptersPagesViewModel(
 		),
 	)
 	private val chapterReadOverrides = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
+    private val swipeBookmarkRequests = HashSet<Pair<Long, Long>>()
+    val onSwipeBookmarkMessage = MutableEventFlow<Int>()
 
 	// Rich descriptions, cover enrichment and other presentation-only MangaDetails emissions should
 	// not remap a list with hundreds/thousands of chapters. Referential chapter-list identity is enough
@@ -651,6 +659,69 @@ abstract class ChaptersPagesViewModel(
 		val item = chapters.value.firstOrNull { it.chapter.id == chapterId } ?: return
 		setChapterReadState(chapterId, item.isUnread)
 	}
+
+    /**
+     * Chapter-level gesture bookmarks point to a real Reader page, never a synthetic chapter flag.
+     * Per-chapter in-flight gating stops repeated gestures from racing a slow source fetch.
+     */
+    fun toggleChapterSwipeBookmark(item: ChapterListItem) {
+        val details = mangaDetails.value ?: return
+        val manga = details.toManga()
+        if (manga.isNovelContent || manga.isEpub) return
+        val scope = manga.id to item.chapter.id
+        synchronized(swipeBookmarkRequests) {
+            if (!swipeBookmarkRequests.add(scope)) return
+        }
+        launchJob(Dispatchers.IO) {
+            try {
+                if (bookmarksRepository.removeSwipeBookmark(manga.id, item.chapter.id)) {
+                    onSwipeBookmarkMessage.call(R.string.bookmark_removed)
+                    return@launchJob
+                }
+                // Same position/reset policy as opening this chapter in Reader.
+                val state = getChapterResumeState(item)
+                val chapter = item.chapter
+                val primaryPages = runCatchingCancellable {
+                    mangaRepositoryFactory.create(chapter.source).getPages(chapter)
+                }.getOrNull()
+                val pages = primaryPages?.takeIf { it.isNotEmpty() } ?: run {
+                    val sourceChapter = details.sourceManga.chapters.orEmpty()
+                        .singleOrNull { it.id == chapter.id && it.source != chapter.source }
+                    if (sourceChapter != null) {
+                        mangaRepositoryFactory.create(sourceChapter.source).getPages(sourceChapter)
+                    } else primaryPages.orEmpty()
+                }
+                if (pages.isEmpty()) throw NoDataReceivedException(chapter.url)
+                val pageIndex = state.page.coerceIn(0, pages.lastIndex)
+                val page = pages[pageIndex]
+                val chapterList = details.chapters[chapter.branch].orEmpty()
+                val chapterIndex = chapterList.indexOfFirst { it.id == chapter.id }
+                val percent = ReadingProgress.calculatePercent(
+                    chapterIndex, chapterList.size,
+                    if (chapterList.size == 1) pageIndex else 0,
+                    if (chapterList.size == 1) pages.size else 0,
+                )
+                val bookmark = Bookmark(
+                    manga = manga,
+                    pageId = page.id,
+                    chapterId = chapter.id,
+                    page = pageIndex,
+                    scroll = if (pageIndex == state.page) state.scroll else 0,
+                    imageUrl = page.preview.ifNullOrEmpty { page.url },
+                    createdAt = Instant.now(),
+                    percent = percent,
+                )
+                when (bookmarksRepository.addSwipeBookmark(bookmark)) {
+                    SwipeBookmarkWriteResult.ADDED,
+                    SwipeBookmarkWriteResult.ALREADY_SWIPED -> onSwipeBookmarkMessage.call(R.string.bookmark_added)
+                    SwipeBookmarkWriteResult.PAGE_ALREADY_BOOKMARKED ->
+                        onSwipeBookmarkMessage.call(R.string.chapter_swipe_page_already_bookmarked)
+                }
+            } finally {
+                synchronized(swipeBookmarkRequests) { swipeBookmarkRequests.remove(scope) }
+            }
+        }
+    }
 
 	fun markChapterAsCurrent(chapterId: Long) {
 		launchJob(Dispatchers.Default) {
