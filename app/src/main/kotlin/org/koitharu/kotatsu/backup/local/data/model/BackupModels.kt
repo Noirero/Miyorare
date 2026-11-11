@@ -302,6 +302,7 @@ class BookmarkBackup(
 		@SerialName("created_at") val createdAt: Long,
 		@SerialName("percent") val percent: Float,
 		@SerialName("note") val note: String? = null,
+		@SerialName("origin") val origin: String = "READER",
 	) {
 
 		constructor(entity: BookmarkEntity) : this(
@@ -314,6 +315,7 @@ class BookmarkBackup(
 			createdAt = entity.createdAt,
 			percent = entity.percent,
 			note = entity.note,
+			origin = entity.origin,
 		)
 
 		fun toEntity() = BookmarkEntity(
@@ -326,6 +328,7 @@ class BookmarkBackup(
 			createdAt = createdAt,
 			percent = percent,
 			note = note,
+			origin = origin,
 		)
 	}
 

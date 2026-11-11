@@ -144,6 +144,21 @@ class ChapterPersistenceRegressionTest {
 			.migrationAddsEmptyProgressTableWithoutTouchingExistingHistory()
 	}
 
+    @Test
+    fun chapterSwipeBookmarkOwnershipAndOriginMigration() {
+        BookmarkOriginMigrationTest().migrationPreservesLegacyRowsAsReaderOwned()
+        org.koitharu.kotatsu.bookmarks.domain.ChapterSwipeBookmarkRuntimeTest()
+            .swipeRemovalPreservesReaderBookmarksInSameChapter()
+        org.koitharu.kotatsu.bookmarks.domain.ChapterSwipeBookmarkRuntimeTest()
+            .samePageReaderBookmarkCannotBeHijacked()
+        org.koitharu.kotatsu.bookmarks.domain.ChapterSwipeBookmarkRuntimeTest()
+            .annotatingSwipeBookmarkPromotesItToReaderOwnership()
+        org.koitharu.kotatsu.bookmarks.domain.ChapterSwipeBookmarkRuntimeTest()
+            .backupRoundTripKeepsGestureOriginAndLegacyDefaultsToReader()
+        org.koitharu.kotatsu.bookmarks.domain.ChapterSwipeBookmarkRuntimeTest()
+            .simultaneousAddsCannotCreateTwoGestureBookmarks()
+    }
+
 	@Test
 	fun openingNewestChapterDoesNotMarkOlderChaptersRead() {
 		// Use a remote-source fixture: the LOCAL seed points to a relative path and is
@@ -451,6 +466,8 @@ class ChapterPersistenceRegressionTest {
             old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_blue")
             old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_alpha")
             old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_mode")
+            // This downgraded fixture predates v55, when bookmark ownership was introduced.
+            old.execSQL("ALTER TABLE bookmarks DROP COLUMN origin")
 			old.execSQL("DROP TABLE room_master_table")
 			old.version = 48
 		}

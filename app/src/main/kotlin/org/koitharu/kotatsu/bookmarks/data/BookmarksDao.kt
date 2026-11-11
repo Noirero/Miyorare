@@ -74,6 +74,15 @@ abstract class BookmarksDao {
 	@Query("SELECT * FROM bookmarks WHERE manga_id = :mangaId AND chapter_id = :chapterId AND page = :page ORDER BY percent")
 	abstract fun observe(mangaId: Long, chapterId: Long, page: Int): Flow<BookmarkEntity?>
 
+    @Query("SELECT * FROM bookmarks WHERE manga_id = :mangaId AND page_id = :pageId LIMIT 1")
+    abstract suspend fun findForMangaPage(mangaId: Long, pageId: Long): BookmarkEntity?
+
+    @Query("SELECT * FROM bookmarks WHERE manga_id = :mangaId AND chapter_id = :chapterId AND origin = :origin LIMIT 1")
+    abstract suspend fun findByChapterOrigin(mangaId: Long, chapterId: Long, origin: String): BookmarkEntity?
+
+    @Query("DELETE FROM bookmarks WHERE manga_id = :mangaId AND chapter_id = :chapterId AND origin = :origin")
+    abstract suspend fun deleteChapterOrigin(mangaId: Long, chapterId: Long, origin: String): Int
+
 	@Query("SELECT * FROM bookmarks WHERE manga_id = :mangaId")
 	abstract suspend fun findAll(mangaId: Long): List<BookmarkEntity>
 
