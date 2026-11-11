@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.settings.about
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +34,7 @@ class AboutSettingsViewModel @Inject constructor(
 	private val _pendingLogExport = MutableStateFlow<String?>(null)
 	val pendingLogExport: StateFlow<String?> = _pendingLogExport
 	private var isLogExportPickerOpen = false
+	private var loggingTransitionJob: Job? = null
 
 	private val _isVerboseLogging = MutableStateFlow(settings.isVerboseLoggingEnabled)
 	val isVerboseLogging: StateFlow<Boolean> = _isVerboseLogging
@@ -52,12 +54,20 @@ class AboutSettingsViewModel @Inject constructor(
 	}
 
 	fun setVerboseLogging(enabled: Boolean) {
+		if (_isVerboseLogging.value == enabled) return
 		settings.isVerboseLoggingEnabled = enabled
 		_isVerboseLogging.value = enabled
-		if (enabled) {
-			appLogger.setEnabled(true)
-		} else {
-			launchJob(Dispatchers.Default) {
+
+		// Export must finish reading the previous session before a new session clears its files.
+		// This also serializes rapid OFF -> ON -> OFF toggles.
+		val previousTransition = loggingTransitionJob
+		loggingTransitionJob = launchJob(Dispatchers.Default) {
+			previousTransition?.join()
+			if (enabled) {
+				if (_isVerboseLogging.value) {
+					appLogger.setEnabled(true, resetExistingLogs = true)
+				}
+			} else {
 				val content = appLogger.stopAndDrainToString()
 				if (content.isNotBlank()) {
 					// StateFlow retains the drained log while the About view is stopped/recreated.
