@@ -38,6 +38,7 @@ import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.model.getPreferredBranch
 import org.koitharu.kotatsu.local.data.isEpubFile
 import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
+import org.koitharu.kotatsu.local.library.LocalContentReader
 import java.io.File
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.db.MangaDatabase
@@ -142,6 +143,7 @@ class DetailsViewModel @Inject constructor(
 	chapterListOptionsStore: ChapterListOptionsStore,
 	chapterPersonalRepository: ChapterPersonalRepository,
 	chapterProgressRepository: ChapterProgressRepository,
+    localContentReader: LocalContentReader,
 ) : ChaptersPagesViewModel(
 	settings = settings,
 	interactor = interactor,
@@ -159,6 +161,7 @@ class DetailsViewModel @Inject constructor(
 	chapterListOptionsStore = chapterListOptionsStore,
 	chapterPersonalRepository = chapterPersonalRepository,
 	chapterProgressRepository = chapterProgressRepository,
+    localContentReader = localContentReader,
 ) {
 
 	private val rangeExpansion = savedStateHandle.getStateFlow<HashMap<String, Boolean>>("chapter_range_expansion", hashMapOf())
