@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.plus
 import okio.FileNotFoundException
+import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
 import org.koitharu.kotatsu.bookmarks.domain.SwipeBookmarkWriteResult
@@ -678,8 +679,6 @@ abstract class ChaptersPagesViewModel(
                     onSwipeBookmarkMessage.call(R.string.bookmark_removed)
                     return@launchJob
                 }
-                // Same position/reset policy as opening this chapter in Reader.
-                val state = getChapterResumeState(item)
                 val chapter = item.chapter
                 val primaryPages = runCatchingCancellable {
                     mangaRepositoryFactory.create(chapter.source).getPages(chapter)
@@ -692,6 +691,8 @@ abstract class ChaptersPagesViewModel(
                     } else primaryPages.orEmpty()
                 }
                 if (pages.isEmpty()) throw NoDataReceivedException(chapter.url)
+                // Read the latest position after metadata loading; a concurrent manual-unread may reset it.
+                val state = getChapterResumeState(item)
                 val pageIndex = state.page.coerceIn(0, pages.lastIndex)
                 val page = pages[pageIndex]
                 val chapterList = details.chapters[chapter.branch].orEmpty()
