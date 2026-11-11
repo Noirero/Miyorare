@@ -466,6 +466,8 @@ class ChapterPersistenceRegressionTest {
             old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_blue")
             old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_alpha")
             old.execSQL("ALTER TABLE preferences DROP COLUMN cf_custom_mode")
+            // This downgraded fixture predates v55, when bookmark ownership was introduced.
+            old.execSQL("ALTER TABLE bookmarks DROP COLUMN origin")
 			old.execSQL("DROP TABLE room_master_table")
 			old.version = 48
 		}
