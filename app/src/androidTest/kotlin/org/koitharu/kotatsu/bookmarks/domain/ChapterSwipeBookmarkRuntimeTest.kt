@@ -1,6 +1,11 @@
 package org.koitharu.kotatsu.bookmarks.domain
 
 import androidx.room.Room
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.serialization.json.Json
+import org.koitharu.kotatsu.backup.local.data.model.BookmarkBackup
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
@@ -81,6 +86,47 @@ class ChapterSwipeBookmarkRuntimeTest {
             val kept = repo.observeBookmarks(manga).first().single()
             assertEquals(BOOKMARK_ORIGIN_READER, kept.origin)
             assertEquals("Saved in Reader", kept.note)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun backupRoundTripKeepsGestureOriginAndLegacyDefaultsToReader() {
+        val data = BookmarkBackup.Item(
+            mangaId = manga.id,
+            pageId = 801L,
+            chapterId = chapterId,
+            page = 5,
+            scroll = 0,
+            imageUrl = "page.png",
+            createdAt = 10L,
+            percent = 0.2f,
+            origin = BOOKMARK_ORIGIN_DETAILS_SWIPE,
+        )
+        val json = Json.encodeToString(BookmarkBackup.Item.serializer(), data)
+        val restored = Json.decodeFromString(BookmarkBackup.Item.serializer(), json)
+        assertEquals(BOOKMARK_ORIGIN_DETAILS_SWIPE, restored.toEntity().origin)
+        val oldJson = """{"manga_id":1,"page_id":801,"chapter_id":5,"page":0,"scroll":0,"image_url":"page.png","created_at":10,"percent":0.2}"""
+        val legacy = Json.decodeFromString(BookmarkBackup.Item.serializer(), oldJson)
+        assertEquals(BOOKMARK_ORIGIN_READER, legacy.toEntity().origin)
+    }
+
+    @Test
+    fun simultaneousAddsCannotCreateTwoGestureBookmarks() = runTest {
+        val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+        try {
+            val repo = BookmarksRepository(database)
+            val swipe = bookmark(901L, 6)
+            val results = listOf(
+                async(Dispatchers.Default) { repo.addSwipeBookmark(swipe) },
+                async(Dispatchers.Default) { repo.addSwipeBookmark(swipe) },
+            ).awaitAll()
+            assertEquals(
+                setOf(SwipeBookmarkWriteResult.ADDED, SwipeBookmarkWriteResult.ALREADY_SWIPED),
+                results.toSet(),
+            )
+            assertEquals(1, repo.observeBookmarks(manga).first().size)
         } finally {
             database.close()
         }
