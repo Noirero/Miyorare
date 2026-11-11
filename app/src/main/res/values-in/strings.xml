@@ -191,6 +191,7 @@
     <string name="bookmarks">Markah</string>
     <string name="bookmark_removed">Markah dihapus</string>
     <string name="bookmark_added">Markah ditambahkan</string>
+    <string name="chapter_swipe_page_already_bookmarked">Halaman ini sudah ditandai di Reader</string>
     <string name="undo">Urung</string>
     <string name="removed_from_history">Dihapus dari riwayat</string>
     <string name="default_mode">Mode bawaan</string>
