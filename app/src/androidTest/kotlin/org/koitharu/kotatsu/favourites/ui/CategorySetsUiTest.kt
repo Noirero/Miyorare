@@ -1,6 +1,11 @@
 package org.koitharu.kotatsu.favourites.ui
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import androidx.viewpager2.widget.ViewPager2
+import org.koitharu.kotatsu.core.util.ext.findCurrentPagerFragment
+import org.koitharu.kotatsu.core.ui.list.fastscroll.FastScrollRecyclerView
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.EditText
@@ -566,6 +571,48 @@ class CategorySetsUiTest {
 			open()
 			swipeCategorySetsSheetDown(scenario)
 			closed()
+		}
+	}
+
+	@Test fun landscapeFavouritesRetainsFullWidthGridAcrossRelayoutsAndPortraitWorkaround() {
+		val category = categoryIds.getValue(FavouriteSpace.NORMAL)[0][0]
+		val items = (0 until 65).map { index ->
+			manga.copy(id = 9_930_000L + index, title = "LANDSCAPE_GRID_$index")
+		}
+		runBlocking { repository.updateCategoryMemberships(items, mapOf(category to true)) }
+		ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
+			fun inspect(orientation: Int, expectWorkaround: Boolean): Boolean {
+				var ready = false
+				scenario.onActivity { activity ->
+					val container = descendants(activity.supportFragmentManager.fragments)
+						.filterIsInstance<FavouritesContainerFragment>().firstOrNull()
+					val pager = container?.view?.findViewById<ViewPager2>(R.id.pager)
+					val list = pager?.let { container.childFragmentManager.findCurrentPagerFragment(it) }
+						as? FavouritesListFragment
+					val grid = list?.recyclerView as? FastScrollRecyclerView
+					if (activity.resources.configuration.orientation == orientation && pager != null &&
+						grid != null && pager.width > 0 && grid.width > 0) {
+						assertEquals("Portrait flag must remain unchanged; landscape uses normal layout semantics",
+							expectWorkaround, grid.isVP2BugWorkaroundEnabled)
+						assertEquals("Favourites page must use the whole ViewPager2 width", pager.width, grid.width)
+						grid.scrollBy(0, 120)
+						grid.requestLayout()
+						ready = true
+					}
+				}
+				return ready
+			}
+			scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+			await { inspect(Configuration.ORIENTATION_PORTRAIT, expectWorkaround = true) }
+			scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+			await { inspect(Configuration.ORIENTATION_LANDSCAPE, expectWorkaround = false) }
+			repeat(5) {
+				instrumentation.waitForIdleSync()
+				assertTrue("Landscape grid lost its full-width page during relayout",
+					inspect(Configuration.ORIENTATION_LANDSCAPE, expectWorkaround = false))
+			}
+			scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+			await { inspect(Configuration.ORIENTATION_PORTRAIT, expectWorkaround = true) }
 		}
 	}
 
