@@ -67,4 +67,14 @@ class HistoryDateGroupingTest {
 		assertFalse(first.areItemsTheSame(second))
 		assertTrue(first.areItemsTheSame(same))
 	}
+
+	@Test fun lastReadDirectionsDisplayAgeBucketsCorrectly() {
+		assertEquals(listOf(HistoryDateSection.RECENT, HistoryDateSection.DAYS_8_30, HistoryDateSection.OLDER),
+			historySectionOrder(false))
+		assertEquals(listOf(HistoryDateSection.OLDER, HistoryDateSection.DAYS_8_30, HistoryDateSection.RECENT),
+			historySectionOrder(true))
+		assertEquals(org.koitharu.kotatsu.list.domain.ListSortOrder.Type.LAST_READ,
+			org.koitharu.kotatsu.list.domain.ListSortOrder.LONG_AGO_READ.type)
+		assertTrue(org.koitharu.kotatsu.list.domain.ListSortOrder.LONG_AGO_READ.isAscending)
+	}
 }

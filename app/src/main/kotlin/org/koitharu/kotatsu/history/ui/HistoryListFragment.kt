@@ -54,7 +54,7 @@ class HistoryListFragment : MangaListFragment() {
 
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
 
-	// Diagnostic state is screen-local and does not alter persisted user settings.
+	/** Debug-only transient A/B state; never stored as a user setting. */
 	private var debugHistoryOverlayBypassed = false
 
 	override val viewModel by viewModels<HistoryListViewModel>()
@@ -288,5 +288,10 @@ class HistoryListFragment : MangaListFragment() {
 		titleTapToRead = settings.isTitleTapToReadEnabled,
 		onTipClose = { viewModel.dismissScalingTip() },
 		debugHistoryOverlayBypass = if (BuildConfig.DEBUG) ({ debugHistoryOverlayBypassed }) else null,
+		privateFavourites = FavouriteSpace.fromArgument(arguments?.getInt(EXTRA_FAVOURITE_SPACE)
+			?: FavouriteSpace.NORMAL.dbValue) == FavouriteSpace.PRIVATE,
+		onAccordionClick = { key, loadMore ->
+			if (loadMore) viewModel.requestMoreHistoryGroup(key) else viewModel.toggleHistoryGroup(key)
+		},
 	)
 }

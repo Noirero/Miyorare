@@ -64,7 +64,8 @@ import java.time.temporal.ChronoUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
-private const val PAGE_SIZE = 16
+private const val PAGE_SIZE = 16 // Recent and ungrouped History pagination.
+internal const val HISTORY_GROUP_PAGE_SIZE = 50 // Expandable day/month groups.
 private const val HISTORY_MAX_DAYS = 30
 
 internal data class HistoryHeaderAction(val key: String, val loadMore: Boolean = false)
@@ -247,7 +248,7 @@ class HistoryListViewModel @Inject constructor(
 	fun requestMoreHistoryGroup(key: String) {
 		val scoped = "${selectedSectionState.value.name}:$key"
 		groupPageLimits.value = groupPageLimits.value + (
-			scoped to ((groupPageLimits.value[scoped] ?: PAGE_SIZE) + PAGE_SIZE)
+			scoped to nextHistoryAccordionPageLimit(groupPageLimits.value[scoped])
 		)
 	}
 
@@ -275,6 +276,7 @@ class HistoryListViewModel @Inject constructor(
 		data class Grouped(
 			val recent: List<MangaWithHistory>,
 			val isSearching: Boolean,
+			val ascending: Boolean,
 			val overview: HistoryDateOverview,
 			val groups: Map<String, List<MangaWithHistory>>,
 			val expanded: Set<String>,
@@ -299,7 +301,7 @@ class HistoryListViewModel @Inject constructor(
 		isPaginationReady.set(false)
 		HistoryRequest(order, filters, section, query, itemLimit, today, grouped, expanded, pages)
 	}.map { request ->
-		if (!request.grouped || request.query.isNotBlank() || request.order != ListSortOrder.LAST_READ) {
+		if (!request.grouped || request.query.isNotBlank() || request.order.type != ListSortOrder.Type.LAST_READ) {
 			repository.observeAllWithHistory(request.order, request.filters, request.limit,
 				space = favouriteSpace, section = request.section, searchQuery = request.query)
 				.map { HistorySnapshot.Plain(it, request.query.isNotEmpty()) }
@@ -323,13 +325,13 @@ class HistoryListViewModel @Inject constructor(
 				) + openKeys.map { key ->
 					val window = checkNotNull(historyGroupWindow(key, request.today, zone))
 					repository.observeAllWithHistory(request.order, request.filters,
-						request.pageLimits[prefix + key] ?: PAGE_SIZE,
+						request.pageLimits[prefix + key] ?: HISTORY_GROUP_PAGE_SIZE,
 						minUpdatedAt = window.start, space = favouriteSpace,
 						section = request.section, maxUpdatedAtExclusive = window.endExclusive,
 						searchQuery = request.query)
 				}
 				combine(pages) { results ->
-					HistorySnapshot.Grouped(results[0], request.query.isNotEmpty(), overview, openKeys.zip(results.drop(1)).toMap(),
+					HistorySnapshot.Grouped(results[0], request.query.isNotEmpty(), request.order.isAscending, overview, openKeys.zip(results.drop(1)).toMap(),
 						expanded, request.pageLimits, request.section, request.today)
 				}
 			}.flattenLatest()
@@ -358,52 +360,74 @@ class HistoryListViewModel @Inject constructor(
 			text = R.string.incognito_mode_hint,
 			icon = R.drawable.ic_incognito,
 		)
+		val recentRows = ArrayList<ListModel>()
+		val middleRows = ArrayList<ListModel>()
+		val olderRows = ArrayList<ListModel>()
 		var previous: ListHeader? = null
 		for ((manga, history) in snapshot.recent) {
 			val header = readDateHeader(history.updatedAt, snapshot.today) ?: ListHeader(R.string.unknown)
-			if (header != previous) result += header
+			if (header != previous) recentRows += header
 			previous = header
-			result += mangaListMapper.toListModel(manga, mode)
+			recentRows += mangaListMapper.toListModel(manga, mode)
 		}
 		if (snapshot.overview.days.isNotEmpty()) {
 			val open = "bucket:middle" in snapshot.expanded
-			result += ListHeader(R.string.history_days_8_30,
-				buttonTextRes = if (open) R.string.collapse else R.string.expand,
-				payload = HistoryHeaderAction("bucket:middle"))
-			if (open) for ((day, count) in snapshot.overview.days.toSortedMap(reverseOrder())) {
+			middleRows += HistoryAccordionItem(
+				key = "bucket:middle",
+				kind = HistoryAccordionItem.Kind.DAYS_BUCKET,
+				expanded = open,
+				titleCount = snapshot.overview.days.values.sum(),
+				groupCount = snapshot.overview.days.size,
+			)
+			if (open) for ((day, count) in snapshot.overview.days.toSortedMap(if (snapshot.ascending) naturalOrder<LocalDate>() else reverseOrder<LocalDate>())) {
 				val key = "day:$day"
 				val childOpen = key in snapshot.expanded
 				val age = ChronoUnit.DAYS.between(day, snapshot.today).toInt()
-				result += ListHeader(DateTimeAgo.DaysAgo(age),
-					buttonTextRes = if (childOpen) R.string.collapse else R.string.expand,
-					payload = HistoryHeaderAction(key))
+				middleRows += HistoryAccordionItem(
+					key = key, kind = HistoryAccordionItem.Kind.DAY, expanded = childOpen,
+					date = day, daysAgo = age, titleCount = count,
+				)
 				if (childOpen) {
 					val rows = snapshot.groups[key].orEmpty()
-					for ((manga, _) in rows) result += mangaListMapper.toListModel(manga, mode)
-					if (rows.size < count) result += ListHeader(R.string.more,
-						buttonTextRes = R.string.more, payload = HistoryHeaderAction(key, loadMore = true),
-						badge = (count - rows.size).toString(), itemKey = "history-more:$key")
+					for ((manga, _) in rows) middleRows += mangaListMapper.toListModel(manga, mode)
+					if (rows.size < count) middleRows += HistoryAccordionItem(
+						key = key, kind = HistoryAccordionItem.Kind.MORE,
+						moreCount = nextHistoryAccordionMoreCount(count - rows.size),
+					)
 				}
 			}
 		}
 		if (snapshot.overview.months.isNotEmpty()) {
 			val open = "bucket:older" in snapshot.expanded
-			result += ListHeader(R.string.history_older_than_30,
-				buttonTextRes = if (open) R.string.collapse else R.string.expand,
-				payload = HistoryHeaderAction("bucket:older"))
-			if (open) for ((month, count) in snapshot.overview.months.toSortedMap(reverseOrder())) {
+			olderRows += HistoryAccordionItem(
+				key = "bucket:older",
+				kind = HistoryAccordionItem.Kind.OLDER_BUCKET,
+				expanded = open,
+				titleCount = snapshot.overview.months.values.sum(),
+				groupCount = snapshot.overview.months.size,
+			)
+			if (open) for ((month, count) in snapshot.overview.months.toSortedMap(if (snapshot.ascending) naturalOrder<java.time.YearMonth>() else reverseOrder<java.time.YearMonth>())) {
 				val key = "month:$month"
 				val childOpen = key in snapshot.expanded
-				result += ListHeader(month.format(DateTimeFormatter.ofPattern("LLLL yyyy", Locale.getDefault())),
-					buttonTextRes = if (childOpen) R.string.collapse else R.string.expand,
-					payload = HistoryHeaderAction(key))
+				olderRows += HistoryAccordionItem(
+					key = key, kind = HistoryAccordionItem.Kind.MONTH, expanded = childOpen,
+					month = month, titleCount = count,
+				)
 				if (childOpen) {
 					val rows = snapshot.groups[key].orEmpty()
-					for ((manga, _) in rows) result += mangaListMapper.toListModel(manga, mode)
-					if (rows.size < count) result += ListHeader(R.string.more,
-						buttonTextRes = R.string.more, payload = HistoryHeaderAction(key, loadMore = true),
-						badge = (count - rows.size).toString(), itemKey = "history-more:$key")
+					for ((manga, _) in rows) olderRows += mangaListMapper.toListModel(manga, mode)
+					if (rows.size < count) olderRows += HistoryAccordionItem(
+						key = key, kind = HistoryAccordionItem.Kind.MORE,
+						moreCount = nextHistoryAccordionMoreCount(count - rows.size),
+					)
 				}
+			}
+		}
+		for (section in historySectionOrder(snapshot.ascending)) {
+			when (section) {
+				HistoryDateSection.RECENT -> result.addAll(recentRows)
+				HistoryDateSection.DAYS_8_30 -> result.addAll(middleRows)
+				HistoryDateSection.OLDER -> result.addAll(olderRows)
 			}
 		}
 		return result

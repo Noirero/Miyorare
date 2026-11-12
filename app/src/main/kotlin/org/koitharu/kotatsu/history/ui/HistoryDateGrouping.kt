@@ -58,3 +58,10 @@ internal fun historyGroupWindow(key: String, today: LocalDate, zone: ZoneId): Hi
 		else -> null
 	}
 }
+
+/** Keep bucket order consistent with Last Read direction. */
+internal enum class HistoryDateSection { RECENT, DAYS_8_30, OLDER }
+
+internal fun historySectionOrder(ascending: Boolean): List<HistoryDateSection> =
+	if (ascending) listOf(HistoryDateSection.OLDER, HistoryDateSection.DAYS_8_30, HistoryDateSection.RECENT)
+	else listOf(HistoryDateSection.RECENT, HistoryDateSection.DAYS_8_30, HistoryDateSection.OLDER)
