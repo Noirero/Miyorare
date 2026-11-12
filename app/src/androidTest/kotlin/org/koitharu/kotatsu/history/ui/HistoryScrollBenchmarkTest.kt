@@ -166,14 +166,18 @@ class HistoryScrollBenchmarkTest {
 							instrumentation.waitForIdleSync()
 							Thread.sleep(250) // Exclude immediate layout/rebind after variant toggle.
 							scenario.onActivity {
+								// One stage marker per A/B pass; useful when an emulator disconnects before phase summary.
+								Log.i(TAG, "mode=$mode variant=$label phase=start")
 								probe.begin()
 								recycler.smoothScrollBy(0, 8500, LinearInterpolator(), 1700)
 							}
 							Thread.sleep(1950)
 							scenario.onActivity { recycler.smoothScrollBy(0, -8500, LinearInterpolator(), 1700) }
 							Thread.sleep(1950)
-							instrumentation.waitForIdleSync()
+							// Stop the probe's 100ms main-thread heartbeat before waiting for the UI idle.
+							// Otherwise the test itself keeps submitting main-looper work while idle is awaited.
 							scenario.onActivity { Log.i(TAG, "mode=$mode variant=$label " + probe.finish()) }
+							instrumentation.waitForIdleSync()
 						}
 					}
 				} finally {
