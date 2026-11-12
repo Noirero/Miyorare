@@ -52,14 +52,14 @@ class LibraryGroupReadingSelectionTest {
         assertFalse(isGroupHistoryEligible(privateHistory.copy(deletedAt = 1L), FavouriteSpace.PRIVATE))
     }
 
-    @Test fun resumeUsesNewestHistoryNotFurthestTrackedChapter() {
+    @Test fun resumeUsesNewestVisitedChapterNotFurthestTrackedChapter() {
         val base = HistoryEntity(
             mangaId = 1L, createdAt = 0L, updatedAt = 100L, chapterId = 12L,
             page = 0, scroll = 0f, percent = 0f, deletedAt = 0L,
             chaptersCount = 3, space = FavouriteSpace.NORMAL.dbValue,
         )
         val recentlyRead = base.copy(mangaId = 2L, chapterId = 21L, updatedAt = 300L)
-        assertEquals(2, groupContinuePositionFromHistories(timeline, listOf(base, recentlyRead), FavouriteSpace.NORMAL))
+        assertEquals(1, groupContinuePositionFromHistories(timeline, listOf(base, recentlyRead), FavouriteSpace.NORMAL))
         assertEquals(0, groupContinuePositionFromHistories(timeline, listOf(base.copy(space = 1)), FavouriteSpace.NORMAL))
         assertEquals(0, groupContinuePositionFromHistories(emptyList(), listOf(base), FavouriteSpace.NORMAL))
     }

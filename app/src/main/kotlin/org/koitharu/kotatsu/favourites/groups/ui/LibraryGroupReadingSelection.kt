@@ -28,7 +28,7 @@ internal fun unresolvedGroupTimelineCount(
 internal fun isGroupHistoryEligible(history: HistoryEntity, space: FavouriteSpace): Boolean =
     history.space == space.dbValue && history.deletedAt == 0L
 
-/** Resume uses the newest matching space-owned History row, not furthest tracking progress. */
+/** Resume the latest visited chapter and its page, not the next chapter or furthest tracking position. */
 internal fun groupContinuePositionFromHistories(
     timeline: List<LibraryGroupTimelineItem>,
     histories: List<HistoryEntity>,
@@ -43,5 +43,5 @@ internal fun groupContinuePositionFromHistories(
             indices[history.mangaId to history.chapterId]?.let { history.updatedAt to it }
         }
         .maxWithOrNull(compareBy<Pair<Long, Int>> { it.first }.thenBy { it.second })
-        ?.second?.plus(1) ?: 0
+        ?.second ?: 0
 }
