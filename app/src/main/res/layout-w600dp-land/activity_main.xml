@@ -284,7 +284,7 @@
 			android:layout_gravity="end"
 			android:hint="@string/search_hint"
 			android:theme="@style/ThemeOverlay.Kotatsu.SearchText"
-			app:layout_anchor="@id/search_bar">
+			>
 
 			<org.koitharu.kotatsu.core.ui.list.fastscroll.FastScrollRecyclerView
 				android:id="@+id/recyclerView_search"
