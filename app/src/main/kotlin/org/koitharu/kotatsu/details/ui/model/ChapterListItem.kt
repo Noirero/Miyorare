@@ -20,6 +20,7 @@ data class ChapterListItem(
 	val personalMetadata: ChapterPersonalMetadata = ChapterPersonalMetadata(),
 	val lastReadPage: Int? = null,
 	val lastReadTotalPages: Int? = null,
+	val isSwipeBookmarked: Boolean = false,
 ) : ListModel {
 
 	private var cachedTitle: String? = null
@@ -150,7 +151,7 @@ data class ChapterListItem(
 		if (previousState !is ChapterListItem) {
 			return super.getChangePayload(previousState)
 		}
-		return if (chapter == previousState.chapter && personalMetadata == previousState.personalMetadata && lastReadPage == previousState.lastReadPage && lastReadTotalPages == previousState.lastReadTotalPages && flags != previousState.flags) {
+		return if (chapter == previousState.chapter && personalMetadata == previousState.personalMetadata && lastReadPage == previousState.lastReadPage && lastReadTotalPages == previousState.lastReadTotalPages && isSwipeBookmarked == previousState.isSwipeBookmarked && flags != previousState.flags) {
 			flags
 		} else {
 			super.getChangePayload(previousState)

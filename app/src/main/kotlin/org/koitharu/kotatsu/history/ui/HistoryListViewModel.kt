@@ -64,8 +64,8 @@ import java.time.temporal.ChronoUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
-private const val PAGE_SIZE = 16 // Recent History and ungrouped list remain unchanged.
-internal const val HISTORY_GROUP_PAGE_SIZE = 50 // Independent day/month accordion windows.
+private const val PAGE_SIZE = 16 // Recent and ungrouped History pagination.
+internal const val HISTORY_GROUP_PAGE_SIZE = 50 // Expandable day/month groups.
 private const val HISTORY_MAX_DAYS = 30
 
 internal data class HistoryHeaderAction(val key: String, val loadMore: Boolean = false)
@@ -136,6 +136,16 @@ class HistoryListViewModel @Inject constructor(
 	)
 
 	private val limit = MutableStateFlow(PAGE_SIZE)
+	private val searchQueryState = MutableStateFlow(savedStateHandle.get<String>(KEY_HISTORY_SEARCH_QUERY).orEmpty())
+	val searchQuery: StateFlow<String> = searchQueryState
+
+	fun setSearchQuery(query: String) {
+		if (searchQueryState.value == query) return
+		limit.value = PAGE_SIZE
+		groupPageLimits.value = emptyMap()
+		savedStateHandle[KEY_HISTORY_SEARCH_QUERY] = query
+		searchQueryState.value = query
+	}
 
 	/** Expand/collapse is isolated per Manga/Novel tab and survives navigation/config restoration. */
 	private val expandedGroups = MutableStateFlow(
@@ -253,6 +263,7 @@ class HistoryListViewModel @Inject constructor(
 		val order: ListSortOrder,
 		val filters: Set<ListFilterOption>,
 		val section: MangaNovelSection,
+		val query: String,
 		val limit: Int,
 		val today: LocalDate,
 		val grouped: Boolean,
@@ -261,9 +272,11 @@ class HistoryListViewModel @Inject constructor(
 	)
 
 	private sealed interface HistorySnapshot {
-		data class Plain(val items: List<MangaWithHistory>) : HistorySnapshot
+		data class Plain(val items: List<MangaWithHistory>, val isSearching: Boolean) : HistorySnapshot
 		data class Grouped(
 			val recent: List<MangaWithHistory>,
+			val isSearching: Boolean,
+			val ascending: Boolean,
 			val overview: HistoryDateOverview,
 			val groups: Map<String, List<MangaWithHistory>>,
 			val expanded: Set<String>,
@@ -276,25 +289,26 @@ class HistoryListViewModel @Inject constructor(
 	/** Parent buckets come from lightweight timestamps; only expanded children fetch actual cards. */
 	private fun observeHistory() = combine(
 		sortOrder,
-		combine(quickFilter.appliedOptions.combineWithSettings(), selectedSectionState) { filters, section ->
-			filters to section
+		combine(quickFilter.appliedOptions.combineWithSettings(), selectedSectionState, searchQueryState) { filters, section, query ->
+			Triple(filters, section, query.trim())
 		},
 		limit,
 		currentDate,
 		combine(localIndexChanges, isGroupingEnabled, expandedGroups, groupPageLimits) { _, grouped, expanded, pages ->
 			Triple(grouped, expanded, pages)
 		},
-	) { order, (filters, section), itemLimit, today, (grouped, expanded, pages) ->
+	) { order, (filters, section, query), itemLimit, today, (grouped, expanded, pages) ->
 		isPaginationReady.set(false)
-		HistoryRequest(order, filters, section, itemLimit, today, grouped, expanded, pages)
+		HistoryRequest(order, filters, section, query, itemLimit, today, grouped, expanded, pages)
 	}.map { request ->
-		if (!request.grouped || request.order != ListSortOrder.LAST_READ) {
+		if (!request.grouped || request.query.isNotBlank() || request.order.type != ListSortOrder.Type.LAST_READ) {
 			repository.observeAllWithHistory(request.order, request.filters, request.limit,
-				space = favouriteSpace, section = request.section).map { HistorySnapshot.Plain(it) }
+				space = favouriteSpace, section = request.section, searchQuery = request.query)
+				.map { HistorySnapshot.Plain(it, request.query.isNotEmpty()) }
 		} else {
 			val zone = ZoneId.systemDefault()
 			val recentStart = request.today.minusDays(7).atStartOfDay(zone).toInstant().toEpochMilli()
-			repository.observeHistoryTimestamps(request.filters, favouriteSpace, request.section).map { timestamps ->
+			repository.observeHistoryTimestamps(request.filters, favouriteSpace, request.section, request.query).map { timestamps ->
 				val overview = historyDateOverview(timestamps, request.today, zone)
 				val prefix = "${request.section.name}:"
 				val expanded = request.expanded.asSequence().filter { it.startsWith(prefix) }
@@ -306,16 +320,18 @@ class HistoryListViewModel @Inject constructor(
 				val openKeys = (dayKeys + monthKeys).filter { it in expanded }
 				val pages = listOf(
 					repository.observeAllWithHistory(request.order, request.filters, request.limit,
-						minUpdatedAt = recentStart, space = favouriteSpace, section = request.section),
+						minUpdatedAt = recentStart, space = favouriteSpace, section = request.section,
+						searchQuery = request.query),
 				) + openKeys.map { key ->
 					val window = checkNotNull(historyGroupWindow(key, request.today, zone))
 					repository.observeAllWithHistory(request.order, request.filters,
 						request.pageLimits[prefix + key] ?: HISTORY_GROUP_PAGE_SIZE,
 						minUpdatedAt = window.start, space = favouriteSpace,
-						section = request.section, maxUpdatedAtExclusive = window.endExclusive)
+						section = request.section, maxUpdatedAtExclusive = window.endExclusive,
+						searchQuery = request.query)
 				}
 				combine(pages) { results ->
-					HistorySnapshot.Grouped(results[0], overview, openKeys.zip(results.drop(1)).toMap(),
+					HistorySnapshot.Grouped(results[0], request.query.isNotEmpty(), request.order.isAscending, overview, openKeys.zip(results.drop(1)).toMap(),
 						expanded, request.pageLimits, request.section, request.today)
 				}
 			}.flattenLatest()
@@ -333,7 +349,7 @@ class HistoryListViewModel @Inject constructor(
 	): List<ListModel> {
 		if (snapshot.overview.isEmpty) {
 			return listOfNotNull(quickFilter.filterItem(filters),
-				getEmptyState(hasFilters = filters.isNotEmpty()))
+				getEmptyState(hasFilters = filters.isNotEmpty() || snapshot.isSearching))
 		}
 		val result = ArrayList<ListModel>()
 		if (isScalingTipVisible) result += uiScalingTip
@@ -344,34 +360,37 @@ class HistoryListViewModel @Inject constructor(
 			text = R.string.incognito_mode_hint,
 			icon = R.drawable.ic_incognito,
 		)
+		val recentRows = ArrayList<ListModel>()
+		val middleRows = ArrayList<ListModel>()
+		val olderRows = ArrayList<ListModel>()
 		var previous: ListHeader? = null
 		for ((manga, history) in snapshot.recent) {
 			val header = readDateHeader(history.updatedAt, snapshot.today) ?: ListHeader(R.string.unknown)
-			if (header != previous) result += header
+			if (header != previous) recentRows += header
 			previous = header
-			result += mangaListMapper.toListModel(manga, mode)
+			recentRows += mangaListMapper.toListModel(manga, mode)
 		}
 		if (snapshot.overview.days.isNotEmpty()) {
 			val open = "bucket:middle" in snapshot.expanded
-			result += HistoryAccordionItem(
+			middleRows += HistoryAccordionItem(
 				key = "bucket:middle",
 				kind = HistoryAccordionItem.Kind.DAYS_BUCKET,
 				expanded = open,
 				titleCount = snapshot.overview.days.values.sum(),
 				groupCount = snapshot.overview.days.size,
 			)
-			if (open) for ((day, count) in snapshot.overview.days.toSortedMap(reverseOrder())) {
+			if (open) for ((day, count) in snapshot.overview.days.toSortedMap(if (snapshot.ascending) naturalOrder<LocalDate>() else reverseOrder<LocalDate>())) {
 				val key = "day:$day"
 				val childOpen = key in snapshot.expanded
 				val age = ChronoUnit.DAYS.between(day, snapshot.today).toInt()
-				result += HistoryAccordionItem(
+				middleRows += HistoryAccordionItem(
 					key = key, kind = HistoryAccordionItem.Kind.DAY, expanded = childOpen,
 					date = day, daysAgo = age, titleCount = count,
 				)
 				if (childOpen) {
 					val rows = snapshot.groups[key].orEmpty()
-					for ((manga, _) in rows) result += mangaListMapper.toListModel(manga, mode)
-					if (rows.size < count) result += HistoryAccordionItem(
+					for ((manga, _) in rows) middleRows += mangaListMapper.toListModel(manga, mode)
+					if (rows.size < count) middleRows += HistoryAccordionItem(
 						key = key, kind = HistoryAccordionItem.Kind.MORE,
 						moreCount = nextHistoryAccordionMoreCount(count - rows.size),
 					)
@@ -380,28 +399,35 @@ class HistoryListViewModel @Inject constructor(
 		}
 		if (snapshot.overview.months.isNotEmpty()) {
 			val open = "bucket:older" in snapshot.expanded
-			result += HistoryAccordionItem(
+			olderRows += HistoryAccordionItem(
 				key = "bucket:older",
 				kind = HistoryAccordionItem.Kind.OLDER_BUCKET,
 				expanded = open,
 				titleCount = snapshot.overview.months.values.sum(),
 				groupCount = snapshot.overview.months.size,
 			)
-			if (open) for ((month, count) in snapshot.overview.months.toSortedMap(reverseOrder())) {
+			if (open) for ((month, count) in snapshot.overview.months.toSortedMap(if (snapshot.ascending) naturalOrder<java.time.YearMonth>() else reverseOrder<java.time.YearMonth>())) {
 				val key = "month:$month"
 				val childOpen = key in snapshot.expanded
-				result += HistoryAccordionItem(
+				olderRows += HistoryAccordionItem(
 					key = key, kind = HistoryAccordionItem.Kind.MONTH, expanded = childOpen,
 					month = month, titleCount = count,
 				)
 				if (childOpen) {
 					val rows = snapshot.groups[key].orEmpty()
-					for ((manga, _) in rows) result += mangaListMapper.toListModel(manga, mode)
-					if (rows.size < count) result += HistoryAccordionItem(
+					for ((manga, _) in rows) olderRows += mangaListMapper.toListModel(manga, mode)
+					if (rows.size < count) olderRows += HistoryAccordionItem(
 						key = key, kind = HistoryAccordionItem.Kind.MORE,
 						moreCount = nextHistoryAccordionMoreCount(count - rows.size),
 					)
 				}
+			}
+		}
+		for (section in historySectionOrder(snapshot.ascending)) {
+			when (section) {
+				HistoryDateSection.RECENT -> result.addAll(recentRows)
+				HistoryDateSection.DAYS_8_30 -> result.addAll(middleRows)
+				HistoryDateSection.OLDER -> result.addAll(olderRows)
 			}
 		}
 		return result
@@ -420,7 +446,7 @@ class HistoryListViewModel @Inject constructor(
 		}
 		val list = (snapshot as HistorySnapshot.Plain).items
 		if (list.isEmpty()) {
-			return if (filters.isEmpty()) {
+			return if (filters.isEmpty() && !snapshot.isSearching) {
 				listOf(getEmptyState(hasFilters = false))
 			} else {
 				listOfNotNull(quickFilter.filterItem(filters), getEmptyState(hasFilters = true))
@@ -512,4 +538,5 @@ class HistoryListViewModel @Inject constructor(
 }
 
 private const val KEY_HISTORY_SECTION = "history_manga_novel_section"
+private const val KEY_HISTORY_SEARCH_QUERY = "history_inline_search_query"
 private const val KEY_HISTORY_EXPANDED = "history_expanded_groups"

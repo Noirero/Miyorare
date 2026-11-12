@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.discovery
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
+import android.os.Looper
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -12,6 +13,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import okhttp3.OkHttpClient
 import dagger.hilt.android.testing.BindValue
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -27,6 +29,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.AlternativeSearchEvent
+import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.discovery.data.CatalogSnapshotStore
@@ -48,6 +51,9 @@ class DiscoverySearchBarOwnershipRuntimeTest {
 	@get:Rule(order = 1) val compose = createEmptyComposeRule()
 
 	@Inject lateinit var settings: AppSettings
+	// Resolve the singleton on the instrumentation thread before MainActivity's
+	// ViewModel accesses it on the UI thread. Production forbids constructing it there.
+	@Inject @BaseHttpClient lateinit var prewarmedBaseHttpClient: OkHttpClient
 
 	private val providers = listOf(ScrobblerService.ANILIST, ScrobblerService.MAL, ScrobblerService.KITSU).map { service ->
 		object : TrackerCatalogProvider {
@@ -82,7 +88,11 @@ class DiscoverySearchBarOwnershipRuntimeTest {
 	private var previous: Map<String, *> = emptyMap<String, Any>()
 
 	@Before fun setup() {
+		check(Looper.myLooper() != Looper.getMainLooper()) {
+			"HTTP client test setup must run off the UI thread"
+		}
 		hilt.inject()
+		check(::prewarmedBaseHttpClient.isInitialized)
 		previous = PreferenceManager.getDefaultSharedPreferences(app).all
 		runCatching { WorkManager.getInstance(app) }.getOrElse { WorkManager.initialize(app, Configuration.Builder().build()) }
 		settings.isOnboardingCompleted = true
@@ -131,15 +141,32 @@ class DiscoverySearchBarOwnershipRuntimeTest {
 			scenario.onActivity { activity ->
 				assertEquals(activity.getString(R.string.search_manga), activity.viewBinding.searchBar.hint.toString())
 				activity.viewBinding.searchBar.performClick()
-				assertTrue(activity.viewBinding.searchView.isShowing)
-				activity.viewBinding.searchView.hide()
+				assertFalse(activity.viewBinding.searchView.isShowing)
+				assertEquals(activity.getString(R.string.close), activity.viewBinding.buttonSettings.contentDescription)
+				activity.viewBinding.buttonSettings.performClick()
 			}
 
 			scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_favorites }
 			instrumentation.waitForIdleSync()
 			scenario.onActivity { activity ->
 				activity.viewBinding.searchBar.performClick()
+				assertFalse(activity.viewBinding.searchView.isShowing)
 				assertEquals(activity.getString(R.string.close), activity.viewBinding.buttonSettings.contentDescription)
+			}
+
+			scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_history }
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				activity.viewBinding.searchBar.performClick()
+				assertFalse(activity.viewBinding.searchView.isShowing)
+				activity.viewBinding.buttonSettings.performClick()
+			}
+			scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_explore }
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				activity.viewBinding.searchBar.performClick()
+				assertTrue(activity.viewBinding.searchView.isShowing)
+				activity.viewBinding.searchView.hide()
 			}
 
 			scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_discovery_hub }
@@ -147,6 +174,59 @@ class DiscoverySearchBarOwnershipRuntimeTest {
 			scenario.onActivity { activity ->
 				assertTrue(activity.viewBinding.searchBar.hint.toString().contains("Kitsu"))
 				assertFalse(activity.viewBinding.searchView.isShowing)
+			}
+		}
+	}
+
+	@Test fun coldStartFavouritesSearchUsesInlineOnFirstTap() {
+		assertFirstSearchTap(NavItem.FAVORITES, expectInline = true)
+	}
+
+	@Test fun firstVisitHistorySearchUsesInlineOnFirstTap() {
+		assertFirstSearchTap(NavItem.HISTORY, expectInline = true)
+	}
+
+	@Test fun firstVisitExploreSearchStillUsesGlobalSearch() {
+		assertFirstSearchTap(NavItem.EXPLORE, expectInline = false)
+	}
+
+	private fun assertFirstSearchTap(targetTab: NavItem, expectInline: Boolean) {
+		// Favourites is a fixed first navigation item, regardless of configurable
+		// tab order (MainNavigationPreferences.primary). History/Explore must be
+		// selected explicitly after cold launch; no search is tapped beforehand.
+		settings.mainNavItems = listOf(targetTab, NavItem.HISTORY, NavItem.EXPLORE, NavItem.LOCAL).distinct()
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		ActivityScenario.launch<MainActivity>(Intent(app, MainActivity::class.java)).use { scenario ->
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				assertEquals(NavItem.FAVORITES.id, activity.bottomNav!!.selectedItemId)
+				if (targetTab != NavItem.FAVORITES) activity.bottomNav!!.selectedItemId = targetTab.id
+			}
+			// Wait for the destination's fragment transaction and initial layout.
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				assertEquals(targetTab.id, activity.bottomNav!!.selectedItemId)
+				val destination = activity.supportFragmentManager.fragments.lastOrNull {
+					it.isAdded && !it.isHidden
+				}
+				when (targetTab) {
+					NavItem.FAVORITES -> assertTrue(destination is org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment)
+					NavItem.HISTORY -> assertTrue(destination is org.koitharu.kotatsu.history.ui.HistoryListFragment)
+					NavItem.EXPLORE -> assertTrue(destination is org.koitharu.kotatsu.explore.ui.ExploreFragment)
+					else -> error("Unexpected search test destination: $targetTab")
+				}
+				assertTrue(activity.viewBinding.searchView.isSetupWithSearchBar)
+				activity.viewBinding.searchBar.performClick()
+			}
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				assertEquals(!expectInline, activity.viewBinding.searchView.isShowing)
+				if (expectInline) {
+					assertEquals(activity.getString(R.string.close), activity.viewBinding.buttonSettings.contentDescription)
+					activity.viewBinding.buttonSettings.performClick()
+				} else {
+					activity.viewBinding.searchView.hide()
+				}
 			}
 		}
 	}

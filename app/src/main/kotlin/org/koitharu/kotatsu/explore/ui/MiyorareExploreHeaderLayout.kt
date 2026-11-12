@@ -1,11 +1,13 @@
 package org.koitharu.kotatsu.explore.ui
 
 import android.content.Context
+import android.content.res.Configuration
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.core.graphics.ColorUtils
 import com.google.android.material.button.MaterialButton
@@ -74,12 +76,32 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 			strokeWidth = strokeWidth,
 		)
 
+		val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+		findViewById<LinearLayout>(R.id.kind_rail)?.apply {
+			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+				val topMargin = if (isLandscape) 0 else (4f * density).roundToInt()
+				if (params.topMargin != topMargin) {
+					params.topMargin = topMargin
+					layoutParams = params
+				}
+			}
+		}
 		findViewById<LinearLayout>(R.id.kind_rail)?.background = GradientDrawable().apply {
 			setColor(ColorUtils.blendARGB(glass.railSurface, glass.innerHighlight, 0.10f))
 			cornerRadius = radius
 			setStroke(strokeWidth, glass.borderStrong)
 		}
 		findViewById<TabLayout>(R.id.tabs_kind)?.apply {
+			// Expand the two reading tabs horizontally in landscape; Extensions remains independently clickable.
+			(parent as? FrameLayout)?.let { container ->
+				(container.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+					val tabWeight = if (isLandscape) 3f else 2f
+					if (params.weight != tabWeight) {
+						params.weight = tabWeight
+						container.layoutParams = params
+					}
+				}
+			}
 			setSelectedTabIndicatorColor(glass.selectedBorder)
 			setTabTextColors(glass.contentMuted, glass.content)
 			setTabRippleColor(ColorStateList.valueOf(glass.glow))

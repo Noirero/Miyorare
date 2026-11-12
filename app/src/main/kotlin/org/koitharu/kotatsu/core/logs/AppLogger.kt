@@ -15,6 +15,7 @@ import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
+import java.io.IOException
 import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -63,9 +64,14 @@ class AppLogger @Inject constructor(
 		sb.toString()
 	}.getOrDefault("")
 
-	fun setEnabled(enabled: Boolean) {
+	fun setEnabled(enabled: Boolean, resetExistingLogs: Boolean = false) {
 		synchronized(stateLock) {
 			if (enabled == isEnabled) return
+			if (enabled && resetExistingLogs) {
+				// Reset before the reader job is scheduled: even an immediate OFF must export no old entries.
+				logsDir.mkdirs()
+				openSessionLogWriter(sessionFile, oldSessionFile, resetExistingLogs = true).close()
+			}
 			isEnabled = enabled
 			generation++
 			if (enabled) {
@@ -101,13 +107,15 @@ class AppLogger @Inject constructor(
 	}
 
 	private fun startReadingLocked(readerGeneration: Int) {
+		// Anchor the logcat stream to activation time, not its existing device buffer.
+		val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
 		val job = scope.launch(start = CoroutineStart.LAZY) {
 			var process: Process? = null
 			var writer: BufferedWriter? = null
-			var bytesWritten = sessionFile.length()
+			var bytesWritten = 0L
 			try {
 				val pid = android.os.Process.myPid().toString()
-				val startedProcess = Runtime.getRuntime().exec(arrayOf("logcat", "-v", "threadtime"))
+				val startedProcess = Runtime.getRuntime().exec(arrayOf("logcat", "-v", "threadtime", "-T", timestamp))
 				process = startedProcess
 				synchronized(stateLock) {
 					if (!isEnabled || generation != readerGeneration) {
@@ -121,15 +129,15 @@ class AppLogger @Inject constructor(
 					// Cleanup deprecated previous_session.log if existing from older builds
 					File(logsDir, "previous_session.log").delete()
 
-					val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
-					val bw = FileWriter(sessionFile, true).buffered()
+					val bw = openSessionLogWriter(sessionFile, oldSessionFile, resetExistingLogs = false)
+					bytesWritten = sessionFile.length()
 					bw.write("\n================================================================================\n")
 					bw.write("=== SESSION STARTED: $timestamp (PID: $pid) ===\n")
 					bw.write("================================================================================\n")
 					bw.flush()
 					bytesWritten += 180L
 					bw
-				}.getOrNull()
+				}.onFailure { Log.e("AppLogger", "Failed to open session log", it) }.getOrNull()
 				BufferedReader(InputStreamReader(startedProcess.inputStream)).use { reader ->
 					while (isActive) {
 						val line = reader.readLine() ?: break
@@ -208,3 +216,15 @@ class AppLogger @Inject constructor(
 	}
 }
 
+/** Only an explicit new recording discards the old in-app log files. Resuming after process
+ * restart keeps crash diagnostics until the user stops and exports the recording. */
+internal fun openSessionLogWriter(
+	current: File,
+	rolled: File,
+	resetExistingLogs: Boolean,
+): BufferedWriter {
+	if (resetExistingLogs && rolled.exists() && !rolled.delete()) {
+		throw IOException("Cannot clear rolled verbose log")
+	}
+	return FileWriter(current, !resetExistingLogs).buffered()
+}

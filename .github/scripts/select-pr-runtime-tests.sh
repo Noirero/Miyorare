@@ -99,6 +99,7 @@ add_discovery_suite() {
   add_class org.koitharu.kotatsu.discovery.DiscoveryCatalogUiTest
   add_class org.koitharu.kotatsu.discovery.CatalogReadingBridgeTest
   add_class org.koitharu.kotatsu.discovery.DiscoveryNavigationRuntimeTest
+  add_class org.koitharu.kotatsu.discovery.DiscoverySearchBarOwnershipRuntimeTest
   MAPPED=true
 }
 
@@ -108,7 +109,7 @@ add_database_suite() {
 }
 
 add_history_visual_suite() {
-  # Run the History-only real View/locale/theme probe when included in this head.
+  # History-specific real View/locale/theme runtime acceptance.
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.history.ui.HistoryAccordionVisualRuntimeTest
   fi
@@ -184,6 +185,7 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.discovery.DiscoveryCatalogUiTest
   add_class org.koitharu.kotatsu.discovery.CatalogReadingBridgeTest
   add_class org.koitharu.kotatsu.discovery.DiscoveryNavigationRuntimeTest
+  add_class org.koitharu.kotatsu.discovery.DiscoverySearchBarOwnershipRuntimeTest
   add_class org.koitharu.kotatsu.core.db.CategorySetsMigrationTest
   add_class org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest
   add_class org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest
@@ -198,6 +200,7 @@ add_full_suite() {
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/data/PrivateHistoryIsolationRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   fi
+
   add_history_visual_suite
 
   # Execute scoped View-palette regressions in full Android 15 runs when present.
@@ -540,6 +543,7 @@ self_test() {
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
   grep -q 'DiscoveryCatalogUiTest' <<<"$out"
   grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
+  grep -q 'DiscoverySearchBarOwnershipRuntimeTest' <<<"$out"
   ! grep -q 'CategorySetsUiTest' <<<"$out"
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"

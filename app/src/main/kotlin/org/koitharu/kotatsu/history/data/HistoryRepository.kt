@@ -104,6 +104,7 @@ class HistoryRepository @Inject constructor(
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 		section: MangaNovelSection? = null,
 		maxUpdatedAtExclusive: Long? = null,
+		searchQuery: String = "",
 	): Flow<List<MangaWithHistory>> {
 		val predicates = if (section == null) flowOf(null) else db.getHistoryDao()
 			.observeSourceNames()
@@ -113,13 +114,15 @@ class HistoryRepository @Inject constructor(
 			}
 			.distinctUntilChanged()
 		return predicates.map { predicate ->
+			val scopedPredicate = listOfNotNull(predicate, historyTitleSearchPredicate(searchQuery))
+				.joinToString(" AND ") { "($it)" }.ifEmpty { null }
 			if (space == FavouriteSpace.NORMAL && ListFilterOption.Downloaded in filterOptions) {
-				localObserver.observeAll(order, filterOptions, limit, minUpdatedAt, predicate, maxUpdatedAtExclusive)
+				localObserver.observeAll(order, filterOptions, limit, minUpdatedAt, scopedPredicate, maxUpdatedAtExclusive)
 			} else {
 				val flow = if (space == FavouriteSpace.PRIVATE) {
-					db.getHistoryDao().observeAllPrivate(order, filterOptions, limit, minUpdatedAt, predicate, maxUpdatedAtExclusive)
+					db.getHistoryDao().observeAllPrivate(order, filterOptions, limit, minUpdatedAt, scopedPredicate, maxUpdatedAtExclusive)
 				} else {
-					db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt, predicate, maxUpdatedAtExclusive)
+					db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt, scopedPredicate, maxUpdatedAtExclusive)
 				}
 				flow.mapItems {
 					MangaWithHistory(it.toManga(), it.history.toMangaHistory())
@@ -133,13 +136,18 @@ class HistoryRepository @Inject constructor(
 		filterOptions: Set<ListFilterOption>,
 		space: FavouriteSpace,
 		section: MangaNovelSection,
+		searchQuery: String = "",
 	): Flow<List<Long>> = db.getHistoryDao().observeSourceNames()
 		.map { names ->
 			val novelNames = names.filter { resolveMangaSource(it).isNovelSource }
 			historyContentSectionPredicate(section, novelNames)
 		}
 		.distinctUntilChanged()
-		.map { predicate -> db.getHistoryDao().observeHistoryTimestamps(filterOptions, space, predicate) }
+		.map { predicate ->
+			val scopedPredicate = listOfNotNull(predicate, historyTitleSearchPredicate(searchQuery))
+				.joinToString(" AND ") { "($it)" }
+			db.getHistoryDao().observeHistoryTimestamps(filterOptions, space, scopedPredicate)
+		}
 		.flattenLatest()
 
 	fun observeOne(id: Long): Flow<MangaHistory?> {
@@ -362,4 +370,15 @@ internal fun historyContentSectionPredicate(
 		"$clean LIKE '%/00.novel' OR $clean LIKE '%.epub'))"
 	val novel = "($novelSource OR $localNovel)"
 	return if (section == MangaNovelSection.NOVEL) novel else "NOT $novel"
+}
+
+/**
+ * Apply title matching in SQL before pagination/date aggregation. Escape LIKE metacharacters and
+ * SQL apostrophes so user-entered %, _ and backslashes are treated as literal title characters.
+ */
+internal fun historyTitleSearchPredicate(rawQuery: String): String? {
+	val query = rawQuery.trim().takeIf { it.isNotEmpty() } ?: return null
+	val escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+	val pattern = "'%" + escaped.replace("'", "''") + "%'"
+	return "(manga.title LIKE $pattern ESCAPE char(92) OR manga.alt_title LIKE $pattern ESCAPE char(92))"
 }
