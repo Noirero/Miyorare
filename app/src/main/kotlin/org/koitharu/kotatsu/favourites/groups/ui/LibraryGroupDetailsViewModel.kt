@@ -105,6 +105,26 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 			.launchIn(viewModelScope)
 	}
 
+	/** Refresh only saved progress when returning from Reader; do not reload all member chapters. */
+	fun refreshReadingProgress() {
+		val snapshot = _state.value
+		if (snapshot.group == null) return
+		viewModelScope.launch(Dispatchers.Default) {
+			try {
+				val tracking = calculateTrackingProgress(snapshot.timeline)
+				val reading = calculateContinuePosition(snapshot.timeline)
+				_state.update { current ->
+					if (current.group?.id != snapshot.group.id || current.timeline != snapshot.timeline) current
+					else current.copy(trackingProgress = tracking, continuePosition = reading)
+				}
+			} catch (cancelled: CancellationException) {
+				throw cancelled
+			} catch (_: Exception) {
+				// Retain last known progress; the normal reload path still owns error UI.
+			}
+		}
+	}
+
 	fun reload() {
 		viewModelScope.launch(Dispatchers.Default) {
 			_state.update { it.copy(isLoading = true, error = null) }

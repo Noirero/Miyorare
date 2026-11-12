@@ -107,7 +107,7 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 
 	override fun onResume() {
 		super.onResume()
-		if (viewModel.state.value.group != null) viewModel.reload()
+		viewModel.refreshReadingProgress()
 		if (!resumeTrackingSetupAfterSettings) return
 		resumeTrackingSetupAfterSettings = false
 		if (viewModel.availableTrackingServices().isNotEmpty()) {
