@@ -299,7 +299,7 @@ class HistoryListViewModel @Inject constructor(
 		isPaginationReady.set(false)
 		HistoryRequest(order, filters, section, query, itemLimit, today, grouped, expanded, pages)
 	}.map { request ->
-		if (!request.grouped || request.order != ListSortOrder.LAST_READ) {
+		if (!request.grouped || request.query.isNotBlank() || request.order != ListSortOrder.LAST_READ) {
 			repository.observeAllWithHistory(request.order, request.filters, request.limit,
 				space = favouriteSpace, section = request.section, searchQuery = request.query)
 				.map { HistorySnapshot.Plain(it, request.query.isNotEmpty()) }
