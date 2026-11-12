@@ -168,6 +168,43 @@ class DiscoverySearchBarOwnershipRuntimeTest {
 		}
 	}
 
+	@Test fun coldStartFavouritesSearchUsesInlineOnFirstTap() {
+		assertColdStartSearch(NavItem.FAVORITES, expectInline = true)
+	}
+
+	@Test fun coldStartHistorySearchUsesInlineOnFirstTap() {
+		assertColdStartSearch(NavItem.HISTORY, expectInline = true)
+	}
+
+	@Test fun coldStartExploreSearchStillUsesGlobalSearch() {
+		assertColdStartSearch(NavItem.EXPLORE, expectInline = false)
+	}
+
+	private fun assertColdStartSearch(initialTab: NavItem, expectInline: Boolean) {
+		settings.mainNavItems = listOf(initialTab, NavItem.FAVORITES, NavItem.HISTORY, NavItem.EXPLORE, NavItem.LOCAL).distinct()
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		ActivityScenario.launch<MainActivity>(Intent(app, MainActivity::class.java)).use { scenario ->
+			// Wait for CoordinatorLayout's initial layout: previously that layout could
+			// overwrite the fragment's inline click handler with the global one.
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				assertEquals(initialTab.id, activity.bottomNav!!.selectedItemId)
+				assertTrue(activity.viewBinding.searchView.isSetupWithSearchBar)
+				activity.viewBinding.searchBar.performClick()
+			}
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				assertEquals(!expectInline, activity.viewBinding.searchView.isShowing)
+				if (expectInline) {
+					assertEquals(activity.getString(R.string.close), activity.viewBinding.buttonSettings.contentDescription)
+					activity.viewBinding.buttonSettings.performClick()
+				} else {
+					activity.viewBinding.searchView.hide()
+				}
+			}
+		}
+	}
+
 	private fun assertTrackerSearchIntent(
 		instrumentation: Instrumentation,
 		scenario: ActivityScenario<MainActivity>,
