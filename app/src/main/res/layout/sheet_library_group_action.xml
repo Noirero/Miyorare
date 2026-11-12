@@ -76,6 +76,14 @@
                 android:layout_height="wrap_content"
                 android:inputType="text" />
         </com.google.android.material.textfield.TextInputLayout>
+        <TextView
+            android:id="@+id/group_action_no_results"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:padding="12dp"
+            android:text="@string/library_group_search_empty"
+            android:visibility="gone" />
         <LinearLayout
             android:id="@+id/group_action_list"
             android:layout_width="match_parent"

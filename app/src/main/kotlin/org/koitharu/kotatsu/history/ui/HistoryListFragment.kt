@@ -275,5 +275,10 @@ class HistoryListFragment : MangaListFragment() {
 		DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false),
 		titleTapToRead = settings.isTitleTapToReadEnabled,
 		onTipClose = { viewModel.dismissScalingTip() },
+		privateFavourites = FavouriteSpace.fromArgument(arguments?.getInt(EXTRA_FAVOURITE_SPACE)
+			?: FavouriteSpace.NORMAL.dbValue) == FavouriteSpace.PRIVATE,
+		onAccordionClick = { key, loadMore ->
+			if (loadMore) viewModel.requestMoreHistoryGroup(key) else viewModel.toggleHistoryGroup(key)
+		},
 	)
 }

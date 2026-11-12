@@ -27,6 +27,9 @@ import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
+import org.koitharu.kotatsu.details.ui.resolveChapterPersonalKey
+import org.koitharu.kotatsu.details.data.ChapterProgressRepository
+import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupAddResult
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupMember
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
@@ -36,6 +39,7 @@ import org.koitharu.kotatsu.favourites.groups.tracking.LibraryGroupTrackingRepos
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
+import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaInfo
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
@@ -49,6 +53,8 @@ data class LibraryGroupDetailsMemberUi(
 	val isLoading: Boolean = false,
 	val error: String? = null,
 )
+
+data class LibraryGroupMemberCandidate(val manga: Manga, val currentGroupName: String?)
 
 data class LibraryGroupDetailsState(
 	val group: LibraryGroup? = null,
@@ -78,6 +84,7 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 	private val customCoverCodec: CustomCoverCodec,
 	private val database: MangaDatabase,
 	private val trackingRepository: LibraryGroupTrackingRepository,
+	private val chapterProgressRepository: ChapterProgressRepository,
 ) : ViewModel() {
 
 	val groupId: Long = savedStateHandle[FavouritesActivity.EXTRA_LIBRARY_GROUP_ID] ?: 0L
@@ -156,6 +163,37 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 		if (!dissolved) reload()
 		dissolved
 	}
+
+	/** Source of truth: the active library space, never the current UI list filter. */
+	suspend fun loadAddCandidates(): List<LibraryGroupMemberCandidate> = withContext(Dispatchers.Default) {
+		val group = requireNotNull(groupsRepository.getGroup(groupId, favouriteSpace))
+		val groups = groupsRepository.observeGroups(favouriteSpace).first()
+		buildLibraryGroupCandidates(favouritesRepository.getAllManga(favouriteSpace), group, groups)
+	}
+
+	suspend fun findMoveConflicts(mangaIds: Collection<Long>): List<LibraryGroup> =
+		withContext(Dispatchers.Default) {
+			val wanted = mangaIds.toSet()
+			groupsRepository.observeGroups(favouriteSpace).first().filter { other ->
+				other.id != groupId && other.memberIds.any { it in wanted }
+			}
+		}
+
+	suspend fun addMembers(mangaIds: Collection<Long>, moveExisting: Boolean): LibraryGroupAddResult =
+		withContext(Dispatchers.Default) {
+			val result = groupsRepository.addMembers(groupId, mangaIds, moveExisting, favouriteSpace)
+			reload()
+			result
+		}
+
+	/** Reuse the chapter's existing space-scoped personal reading position. */
+	suspend fun getReaderResumeState(member: LibraryGroupDetailsMemberUi, chapter: MangaChapter): ReaderState =
+		withContext(Dispatchers.Default) {
+			val saved = chapterProgressRepository.get(
+				member.manga.id, favouriteSpace, resolveChapterPersonalKey(chapter, member.chapters), chapter.id,
+			)
+			ReaderState(chapterId = chapter.id, page = saved?.page ?: 0, scroll = saved?.scroll ?: 0)
+		}
 
 	fun toggleMember(mangaId: Long) {
 		val target = _state.value.members.firstOrNull { it.member.mangaId == mangaId } ?: return
@@ -326,6 +364,7 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 		var best = 0
 		for (mangaId in timeline.mapTo(LinkedHashSet()) { it.mangaId }) {
 			val history = database.getHistoryDao().find(mangaId) ?: continue
+			if (history.space != favouriteSpace.dbValue || history.deletedAt != 0L) continue
 			val index = timeline.indexOfLast { item ->
 				item.mangaId == mangaId && item.chapterId == history.chapterId
 			}

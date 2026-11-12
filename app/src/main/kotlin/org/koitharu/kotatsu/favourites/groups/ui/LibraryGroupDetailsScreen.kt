@@ -79,6 +79,8 @@ fun LibraryGroupDetailsScreen(
 	onChapterClick: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
 	onEditGroup: () -> Unit,
 	onManageMembers: () -> Unit,
+	onAddMembers: () -> Unit,
+	onContinueChapter: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
 	onManageTimeline: () -> Unit,
 	onManagePlacement: () -> Unit,
 	onManageTracking: () -> Unit,
@@ -96,6 +98,8 @@ fun LibraryGroupDetailsScreen(
 			onChapterClick = onChapterClick,
 			onEditGroup = onEditGroup,
 			onManageMembers = onManageMembers,
+			onAddMembers = onAddMembers,
+			onContinueChapter = onContinueChapter,
 			onManageTimeline = onManageTimeline,
 			onManagePlacement = onManagePlacement,
 			onManageTracking = onManageTracking,
@@ -137,6 +141,8 @@ private fun GroupContent(
 	onChapterClick: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
 	onEditGroup: () -> Unit,
 	onManageMembers: () -> Unit,
+	onAddMembers: () -> Unit,
+	onContinueChapter: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
 	onManageTimeline: () -> Unit,
 	onManagePlacement: () -> Unit,
 	onManageTracking: () -> Unit,
@@ -147,6 +153,15 @@ private fun GroupContent(
 	var showSources by remember { mutableStateOf(false) }
 	var showTimeline by rememberSaveable(group.id) { mutableStateOf(false) }
 	val membersById = state.members.associateBy { it.member.mangaId }
+	val availableChapterIds = state.members.flatMapTo(HashSet()) { member ->
+		member.chapters.map { member.member.mangaId to it.id }
+	}
+	val missingTimelineCount = unresolvedGroupTimelineCount(state.timeline, availableChapterIds)
+	val continueEntry = selectGroupContinueEntry(state.timeline, state.trackingProgress, availableChapterIds)
+	val continueMember = continueEntry?.let { membersById[it.mangaId] }
+	val continueChapter = continueEntry?.let { target ->
+		continueMember?.chapters?.firstOrNull { it.id == target.chapterId }
+	}
 	val timelineRows = state.timeline.mapNotNull { item ->
 		val member = membersById[item.mangaId] ?: return@mapNotNull null
 		val chapter = member.chapters.firstOrNull { it.id == item.chapterId } ?: return@mapNotNull null
@@ -164,10 +179,15 @@ private fun GroupContent(
 				members = state.members,
 				onEditGroup = onEditGroup,
 				onManageMembers = onManageMembers,
+			onAddMembers = onAddMembers,
+			onContinueChapter = onContinueChapter,
 				onManageTimeline = onManageTimeline,
 				onManagePlacement = onManagePlacement,
 				onManageTracking = onManageTracking,
 				onManageSources = { showSources = true },
+				onContinueReading = continueMember?.let { member ->
+					continueChapter?.let { chapter -> { onContinueChapter(member, chapter) } }
+				},
 				onDeleteGroup = onDeleteGroup,
 			)
 		}
@@ -179,6 +199,7 @@ private fun GroupContent(
 					fontWeight = FontWeight.SemiBold,
 					modifier = Modifier.weight(1f),
 				)
+				TextButton(onClick = onAddMembers) { Text(stringResource(R.string.library_group_add_members)) }
 				TextButton(onClick = onManageMembers) { Text(stringResource(R.string.library_group_manage_order)) }
 			}
 		}
@@ -208,6 +229,23 @@ private fun GroupContent(
 						style = MaterialTheme.typography.bodyMedium,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 					)
+					if (state.timeline.isNotEmpty() && missingTimelineCount > 0) {
+						Text(
+							text = stringResource(R.string.library_group_timeline_unresolved, missingTimelineCount),
+							style = MaterialTheme.typography.bodySmall,
+							color = MaterialTheme.colorScheme.onSurfaceVariant,
+						)
+						TextButton(onClick = { showSources = true }) {
+							Text(stringResource(R.string.library_group_source_entries))
+						}
+					}
+					if (state.timeline.isNotEmpty() && (continueMember == null || continueChapter == null)) {
+						Text(
+							text = stringResource(R.string.library_group_reading_unavailable),
+							style = MaterialTheme.typography.bodySmall,
+							color = MaterialTheme.colorScheme.onSurfaceVariant,
+						)
+					}
 					if (state.timeline.isNotEmpty()) {
 						TextButton(onClick = { showTimeline = !showTimeline }) {
 							Text(stringResource(if (showTimeline) R.string.library_group_hide_chapters else R.string.library_group_show_chapters))
@@ -252,10 +290,13 @@ private fun GroupHeader(
 	members: List<LibraryGroupDetailsMemberUi>,
 	onEditGroup: () -> Unit,
 	onManageMembers: () -> Unit,
+	onAddMembers: () -> Unit,
+	onContinueChapter: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
 	onManageTimeline: () -> Unit,
 	onManagePlacement: () -> Unit,
 	onManageTracking: () -> Unit,
 	onManageSources: () -> Unit,
+	onContinueReading: (() -> Unit)?,
 	onDeleteGroup: () -> Unit,
 ) {
 	val context = LocalContext.current
@@ -312,6 +353,13 @@ private fun GroupHeader(
 					color = MaterialTheme.colorScheme.primary,
 				)
 			}
+		}
+		if (onContinueReading != null) {
+			Button(
+				onClick = onContinueReading,
+				modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+			) { Text(stringResource(R.string.library_group_continue_reading)) }
+			Spacer(Modifier.height(12.dp))
 		}
 		group.description?.takeIf { it.isNotBlank() }?.let { description ->
 			HorizontalDivider()

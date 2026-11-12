@@ -1009,7 +1009,9 @@ class FavouritesListFragment : MangaListFragment() {
 
 		val content = layoutInflater.inflate(R.layout.sheet_library_group_action, null, false)
 		val sheet = BottomSheetDialog(requireContext())
-		val palette = requireContext().miyorareViewPaletteFromPreferences()
+		val palette = requireContext().miyorareViewPaletteFromPreferences(
+			privateFavourites = viewModel.favouriteSpace == FavouriteSpace.PRIVATE,
+		)
 		val summary = content.findViewById<android.widget.TextView>(R.id.group_action_summary)
 		val create = content.findViewById<MaterialButton>(R.id.group_action_create)
 		val createForm = content.findViewById<View>(R.id.group_action_create_form)
@@ -1019,10 +1021,12 @@ class FavouritesListFragment : MangaListFragment() {
 		val searchBox = content.findViewById<View>(R.id.group_action_search)
 		val search = content.findViewById<TextInputEditText>(R.id.group_action_search_input)
 		val groupList = content.findViewById<LinearLayout>(R.id.group_action_list)
+		val noResults = content.findViewById<android.widget.TextView>(R.id.group_action_no_results)
 		palette?.let { colors ->
 			content.setBackgroundColor(colors.surface)
 			content.findViewById<android.widget.TextView>(R.id.group_action_title).setTextColor(colors.onSurface)
 			summary.setTextColor(colors.onSurfaceVariant)
+			noResults.setTextColor(colors.onSurfaceVariant)
 			content.findViewById<android.widget.TextView>(R.id.group_action_available_title).setTextColor(colors.onSurface)
 			titleInput.setTextColor(colors.onSurface)
 			search.setTextColor(colors.onSurface)
@@ -1061,9 +1065,13 @@ class FavouritesListFragment : MangaListFragment() {
 		availableTitle.isVisible = groups.isNotEmpty()
 		search.doAfterTextChanged { value ->
 			val query = value?.toString()?.trim().orEmpty()
+			var matches = 0
 			groups.forEachIndexed { index, group ->
-				groupRows[index].isVisible = query.isEmpty() || group.title.contains(query, ignoreCase = true)
+				val visible = query.isEmpty() || group.title.contains(query, ignoreCase = true)
+				groupRows[index].isVisible = visible
+				if (visible) matches++
 			}
+			noResults.isVisible = matches == 0 && groups.isNotEmpty()
 		}
 		create.isVisible = canCreate
 		create.setOnClickListener {
@@ -1072,6 +1080,7 @@ class FavouritesListFragment : MangaListFragment() {
 			availableTitle.isVisible = false
 			searchBox.isVisible = false
 			groupList.isVisible = false
+			noResults.isVisible = false
 			titleInput.requestFocus()
 			titleInput.selectAll()
 		}
