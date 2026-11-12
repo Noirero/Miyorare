@@ -71,6 +71,7 @@ import org.koitharu.kotatsu.image.ui.CoverImageView
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
 import org.koitharu.kotatsu.favourites.groups.tracking.LibraryGroupTracking
 import org.koitharu.kotatsu.parsers.model.MangaChapter
+import org.koitharu.kotatsu.parsers.model.MangaSource as ParserMangaSource
 
 private data class ReadingTimelineRowUi(
 	val position: Int,
@@ -422,7 +423,7 @@ private fun GroupCover(group: LibraryGroup, modifier: Modifier = Modifier) {
  * AndroidView creates its child before attachment. Wait until the View has a lifecycle owner
  * before issuing the same CoverImageView request as the library grid; dispose when detached.
  */
-private fun CoverImageView.loadGroupCoverWhenAttached(url: String?, source: MangaSource?) {
+private fun CoverImageView.loadGroupCoverWhenAttached(url: String?, source: ParserMangaSource?) {
 	addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
 		override fun onViewAttachedToWindow(view: View) {
 			if (source == null) setImageAsync(url, manga = null)
