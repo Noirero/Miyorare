@@ -179,26 +179,42 @@ class DiscoverySearchBarOwnershipRuntimeTest {
 	}
 
 	@Test fun coldStartFavouritesSearchUsesInlineOnFirstTap() {
-		assertColdStartSearch(NavItem.FAVORITES, expectInline = true)
+		assertFirstSearchTap(NavItem.FAVORITES, expectInline = true)
 	}
 
-	@Test fun coldStartHistorySearchUsesInlineOnFirstTap() {
-		assertColdStartSearch(NavItem.HISTORY, expectInline = true)
+	@Test fun firstVisitHistorySearchUsesInlineOnFirstTap() {
+		assertFirstSearchTap(NavItem.HISTORY, expectInline = true)
 	}
 
-	@Test fun coldStartExploreSearchStillUsesGlobalSearch() {
-		assertColdStartSearch(NavItem.EXPLORE, expectInline = false)
+	@Test fun firstVisitExploreSearchStillUsesGlobalSearch() {
+		assertFirstSearchTap(NavItem.EXPLORE, expectInline = false)
 	}
 
-	private fun assertColdStartSearch(initialTab: NavItem, expectInline: Boolean) {
-		settings.mainNavItems = listOf(initialTab, NavItem.FAVORITES, NavItem.HISTORY, NavItem.EXPLORE, NavItem.LOCAL).distinct()
+	private fun assertFirstSearchTap(targetTab: NavItem, expectInline: Boolean) {
+		// Favourites is a fixed first navigation item, regardless of configurable
+		// tab order (MainNavigationPreferences.primary). History/Explore must be
+		// selected explicitly after cold launch; no search is tapped beforehand.
+		settings.mainNavItems = listOf(targetTab, NavItem.HISTORY, NavItem.EXPLORE, NavItem.LOCAL).distinct()
 		val instrumentation = InstrumentationRegistry.getInstrumentation()
 		ActivityScenario.launch<MainActivity>(Intent(app, MainActivity::class.java)).use { scenario ->
-			// Wait for CoordinatorLayout's initial layout: previously that layout could
-			// overwrite the fragment's inline click handler with the global one.
 			instrumentation.waitForIdleSync()
 			scenario.onActivity { activity ->
-				assertEquals(initialTab.id, activity.bottomNav!!.selectedItemId)
+				assertEquals(NavItem.FAVORITES.id, activity.bottomNav!!.selectedItemId)
+				if (targetTab != NavItem.FAVORITES) activity.bottomNav!!.selectedItemId = targetTab.id
+			}
+			// Wait for the destination's fragment transaction and initial layout.
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				assertEquals(targetTab.id, activity.bottomNav!!.selectedItemId)
+				val destination = activity.supportFragmentManager.fragments.lastOrNull {
+					it.isAdded && !it.isHidden
+				}
+				when (targetTab) {
+					NavItem.FAVORITES -> assertTrue(destination is org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment)
+					NavItem.HISTORY -> assertTrue(destination is org.koitharu.kotatsu.history.ui.HistoryListFragment)
+					NavItem.EXPLORE -> assertTrue(destination is org.koitharu.kotatsu.explore.ui.ExploreFragment)
+					else -> error("Unexpected search test destination: $targetTab")
+				}
 				assertTrue(activity.viewBinding.searchView.isSetupWithSearchBar)
 				activity.viewBinding.searchBar.performClick()
 			}
