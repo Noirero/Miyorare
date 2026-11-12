@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +78,7 @@ fun LibraryGroupDetailsScreen(
 	onOpenMember: (LibraryGroupDetailsMemberUi) -> Unit,
 	onChapterClick: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
 	onEditGroup: () -> Unit,
+	onManageMembers: () -> Unit,
 	onManageTimeline: () -> Unit,
 	onManagePlacement: () -> Unit,
 	onManageTracking: () -> Unit,
@@ -93,6 +95,7 @@ fun LibraryGroupDetailsScreen(
 			onOpenMember = onOpenMember,
 			onChapterClick = onChapterClick,
 			onEditGroup = onEditGroup,
+			onManageMembers = onManageMembers,
 			onManageTimeline = onManageTimeline,
 			onManagePlacement = onManagePlacement,
 			onManageTracking = onManageTracking,
@@ -133,6 +136,7 @@ private fun GroupContent(
 	onOpenMember: (LibraryGroupDetailsMemberUi) -> Unit,
 	onChapterClick: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
 	onEditGroup: () -> Unit,
+	onManageMembers: () -> Unit,
 	onManageTimeline: () -> Unit,
 	onManagePlacement: () -> Unit,
 	onManageTracking: () -> Unit,
@@ -141,6 +145,7 @@ private fun GroupContent(
 ) {
 	val group = requireNotNull(state.group)
 	var showSources by remember { mutableStateOf(false) }
+	var showTimeline by rememberSaveable(group.id) { mutableStateOf(false) }
 	val membersById = state.members.associateBy { it.member.mangaId }
 	val timelineRows = state.timeline.mapNotNull { item ->
 		val member = membersById[item.mangaId] ?: return@mapNotNull null
@@ -158,31 +163,74 @@ private fun GroupContent(
 				group = group,
 				members = state.members,
 				onEditGroup = onEditGroup,
+				onManageMembers = onManageMembers,
 				onManageTimeline = onManageTimeline,
 				onManagePlacement = onManagePlacement,
+				onManageTracking = onManageTracking,
 				onManageSources = { showSources = true },
 				onDeleteGroup = onDeleteGroup,
 			)
 		}
-		item(key = "tracking") {
-			TrackingSection(
-				tracking = state.tracking,
-				groupProgress = state.trackingProgress,
-				onManage = onManageTracking,
-				onSync = onSyncTracking,
-			)
-		}
-		if (timelineRows.isNotEmpty()) {
-			item(key = "reading_timeline_header") {
-				SectionHeader(
-					title = stringResource(R.string.library_group_reading_timeline),
-					summary = stringResource(R.string.library_group_reading_timeline_summary),
+		item(key = "members_heading") {
+			Row(verticalAlignment = Alignment.CenterVertically) {
+				Text(
+					text = stringResource(R.string.library_group_members_section),
+					style = MaterialTheme.typography.titleMedium,
+					fontWeight = FontWeight.SemiBold,
+					modifier = Modifier.weight(1f),
 				)
+				TextButton(onClick = onManageMembers) { Text(stringResource(R.string.library_group_manage_order)) }
 			}
+		}
+		items(state.members, key = { "member_${it.member.mangaId}" }) { member ->
+			GroupMemberRow(member = member, onOpen = { onOpenMember(member) })
+		}
+		item(key = "source_entries") {
+			TextButton(onClick = { showSources = true }) {
+				Text(stringResource(R.string.library_group_source_entries))
+			}
+		}
+		item(key = "reading_order") {
+			GroupGlassSurface(modifier = Modifier.fillMaxWidth(), radius = 24.dp) {
+				Column(Modifier.padding(16.dp)) {
+					Row(verticalAlignment = Alignment.CenterVertically) {
+						Text(
+							text = stringResource(R.string.library_group_reading_timeline),
+							style = MaterialTheme.typography.titleMedium,
+							fontWeight = FontWeight.SemiBold,
+							modifier = Modifier.weight(1f),
+						)
+						TextButton(onClick = onManageTimeline) { Text(stringResource(R.string.library_group_timeline)) }
+					}
+					Text(
+						text = if (state.timeline.isEmpty()) stringResource(R.string.library_group_reading_unset)
+						else stringResource(R.string.library_group_reading_saved, state.timeline.size),
+						style = MaterialTheme.typography.bodyMedium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+					if (state.timeline.isNotEmpty()) {
+						TextButton(onClick = { showTimeline = !showTimeline }) {
+							Text(stringResource(if (showTimeline) R.string.library_group_hide_chapters else R.string.library_group_show_chapters))
+						}
+					}
+				}
+			}
+		}
+		if (showTimeline) {
 			items(
 				items = timelineRows,
 				key = { row -> "timeline_${row.member.member.mangaId}_${row.chapter.id}" },
 			) { row -> ReadingTimelineRow(row) { onChapterClick(row.member, row.chapter) } }
+		}
+		if (state.tracking.isNotEmpty()) {
+			item(key = "tracking") {
+				TrackingSection(
+					tracking = state.tracking,
+					groupProgress = state.trackingProgress,
+					onManage = onManageTracking,
+					onSync = onSyncTracking,
+				)
+			}
 		}
 	}
 
@@ -203,8 +251,10 @@ private fun GroupHeader(
 	group: LibraryGroup,
 	members: List<LibraryGroupDetailsMemberUi>,
 	onEditGroup: () -> Unit,
+	onManageMembers: () -> Unit,
 	onManageTimeline: () -> Unit,
 	onManagePlacement: () -> Unit,
+	onManageTracking: () -> Unit,
 	onManageSources: () -> Unit,
 	onDeleteGroup: () -> Unit,
 ) {
@@ -240,6 +290,8 @@ private fun GroupHeader(
 						}
 						DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
 							DropdownMenuItem(text = { Text(stringResource(R.string.library_group_edit)) }, onClick = { menuExpanded = false; onEditGroup() })
+							DropdownMenuItem(text = { Text(stringResource(R.string.library_group_manage_order)) }, onClick = { menuExpanded = false; onManageMembers() })
+							DropdownMenuItem(text = { Text(stringResource(R.string.library_group_tracking)) }, onClick = { menuExpanded = false; onManageTracking() })
 							DropdownMenuItem(text = { Text(stringResource(R.string.library_group_timeline)) }, onClick = { menuExpanded = false; onManageTimeline() })
 							DropdownMenuItem(text = { Text(stringResource(R.string.library_group_placement)) }, onClick = { menuExpanded = false; onManagePlacement() })
 							DropdownMenuItem(text = { Text(stringResource(R.string.library_group_source_entries)) }, onClick = { menuExpanded = false; onManageSources() })
@@ -268,6 +320,50 @@ private fun GroupHeader(
 				style = MaterialTheme.typography.bodyMedium,
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 				modifier = Modifier.padding(16.dp),
+			)
+		}
+	}
+}
+
+@Composable
+private fun GroupMemberRow(
+	member: LibraryGroupDetailsMemberUi,
+	onOpen: () -> Unit,
+) {
+	val context = LocalContext.current
+	val cover = member.manga.coverUrl?.takeIf { it.isNotBlank() } ?: member.member.displayCoverUrl
+	GroupGlassSurface(modifier = Modifier.fillMaxWidth(), radius = 20.dp, onClick = onOpen) {
+		Row(
+			modifier = Modifier.padding(12.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			AsyncImage(
+				model = ImageRequest.Builder(context).data(cover).mangaExtra(member.manga).build(),
+				contentDescription = member.manga.title,
+				modifier = Modifier.size(width = 56.dp, height = 76.dp),
+				contentScale = ContentScale.Crop,
+			)
+			Spacer(Modifier.width(12.dp))
+			Column(Modifier.weight(1f)) {
+				Text(
+					text = member.member.displayTitle,
+					style = MaterialTheme.typography.titleMedium,
+					fontWeight = FontWeight.SemiBold,
+					maxLines = 2,
+					overflow = TextOverflow.Ellipsis,
+				)
+				Text(
+					text = member.manga.source.getTitle(context),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
+				)
+			}
+			Icon(
+				painter = painterResource(R.drawable.ic_arrow_forward),
+				contentDescription = null,
+				tint = MaterialTheme.colorScheme.onSurfaceVariant,
 			)
 		}
 	}

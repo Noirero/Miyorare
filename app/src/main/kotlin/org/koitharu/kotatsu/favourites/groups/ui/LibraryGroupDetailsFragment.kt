@@ -88,6 +88,7 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 						onOpenMember = { member -> router.openDetails(member.manga) },
 						onChapterClick = ::openChapter,
 						onEditGroup = ::openEditGroup,
+						onManageMembers = ::openMemberManager,
 						onManageTimeline = ::openTimelineEditor,
 						onManagePlacement = ::openCategoryPlacement,
 						onManageTracking = ::openTrackingManager,
@@ -396,6 +397,86 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 				}
 				.show()
 		}
+	}
+
+	/** Compact reordering surface; member data and reading state remain owned by the library. */
+	private fun openMemberManager() {
+		val group = viewModel.state.value.group ?: return
+		val members = viewModel.state.value.members.map { LibraryGroupManageItem(it.member, it.manga) }
+		if (members.size < 2) return
+		var manager: androidx.appcompat.app.AlertDialog? = null
+		val adapter = LibraryGroupManageAdapter(members) { item ->
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(item.member.displayTitle)
+				.setItems(
+					arrayOf(getString(R.string.library_group_open_member), getString(R.string.library_group_remove_member)),
+				) { _, which ->
+					when (which) {
+						0 -> router.openDetails(item.manga)
+						1 -> {
+							manager?.dismiss()
+							confirmRemoveGroupMember(group, item)
+						}
+					}
+				}.show()
+		}
+		val maxHeight = (resources.displayMetrics.heightPixels * 0.55f).toInt()
+		val list = object : RecyclerView(requireContext()) {
+			override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+				super.onMeasure(widthMeasureSpec, View.MeasureSpec.makeMeasureSpec(maxHeight, View.MeasureSpec.AT_MOST))
+			}
+		}.apply {
+			layoutManager = LinearLayoutManager(requireContext())
+			this.adapter = adapter
+		}
+		ItemTouchHelper(
+			object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {
+				override fun onMove(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean =
+					adapter.move(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
+				override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) = Unit
+			},
+		).attachToRecyclerView(list)
+		val dialog = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.library_group_manage_order)
+			.setMessage(R.string.library_group_member_manage_hint)
+			.setView(list)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setNeutralButton(R.string.library_group_natural_sort, null)
+			.setPositiveButton(R.string.library_group_save_order, null)
+			.create()
+		manager = dialog
+		dialog.setOnShowListener {
+			dialog.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener { adapter.naturalSort() }
+			dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+				val save = dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+				save.isEnabled = false
+				viewLifecycleOwner.lifecycleScope.launch {
+					runCatching { viewModel.reorderMembers(adapter.snapshotIds()) }
+						.onSuccess { dialog.dismiss(); showMessage(R.string.library_group_updated) }
+						.onFailure { save.isEnabled = true; showMessage(R.string.library_group_error) }
+				}
+			}
+		}
+		dialog.show()
+	}
+
+	private fun confirmRemoveGroupMember(group: org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup, item: LibraryGroupManageItem) {
+		val dissolves = group.members.size <= 2
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.library_group_remove_member)
+			.setMessage(if (dissolves) R.string.library_group_remove_member_dissolve_confirm else R.string.library_group_remove_member_confirm)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.remove) { _, _ ->
+				viewLifecycleOwner.lifecycleScope.launch {
+					runCatching { viewModel.removeGroupMember(item.member.mangaId) }
+						.onSuccess { wasDissolved ->
+							if (wasDissolved) requireActivity().finish()
+							else showMessage(R.string.library_group_removed)
+						}
+						.onFailure { showMessage(R.string.library_group_error) }
+				}
+			}
+			.show()
 	}
 
 	private fun openTimelineEditor() {

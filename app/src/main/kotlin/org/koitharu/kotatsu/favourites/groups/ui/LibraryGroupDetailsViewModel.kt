@@ -143,6 +143,20 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 		}
 	}
 
+	/** Keep group membership/order changes in the existing transactional repository. */
+	suspend fun reorderMembers(orderedIds: List<Long>) = withContext(Dispatchers.Default) {
+		groupsRepository.reorder(groupId, orderedIds, favouriteSpace)
+		reload()
+	}
+
+	/** True when removing the last valid pair dissolves the Group (never the source manga). */
+	suspend fun removeGroupMember(mangaId: Long): Boolean = withContext(Dispatchers.Default) {
+		groupsRepository.removeMember(groupId, mangaId, favouriteSpace)
+		val dissolved = groupsRepository.getGroup(groupId, favouriteSpace) == null
+		if (!dissolved) reload()
+		dissolved
+	}
+
 	fun toggleMember(mangaId: Long) {
 		val target = _state.value.members.firstOrNull { it.member.mangaId == mangaId } ?: return
 		val expand = !target.isExpanded

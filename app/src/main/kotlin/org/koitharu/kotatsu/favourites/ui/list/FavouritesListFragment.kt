@@ -19,6 +19,8 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
 import androidx.core.view.ViewCompat
 import androidx.core.view.ancestors
 import androidx.core.view.WindowInsetsCompat
@@ -30,7 +32,10 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import coil3.request.ImageRequest
 import coil3.size.Size
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputEditText
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -988,53 +993,80 @@ class FavouritesListFragment : MangaListFragment() {
 		).show()
 	}
 
+	/** One theme-aware selection surface instead of nested create/add action dialogs. */
 	private fun showLibraryGroupActionDialog(mangaIds: List<Long>, mode: ActionMode?) {
 		if (mangaIds.isEmpty()) return
-		val canCreate = mangaIds.size >= 2
-		val canAddExisting = viewModel.hasLibraryGroups
-		when {
-			canCreate && canAddExisting -> {
-				val actions = arrayOf(
-					getString(R.string.library_group_create_new),
-					getString(R.string.library_group_add_existing),
-				)
-				MaterialAlertDialogBuilder(requireContext())
-					.setTitle(R.string.library_group_action)
-					.setItems(actions) { _, which ->
-						when (which) {
-							0 -> showCreateLibraryGroupDialog(mangaIds, mode)
-							1 -> showAddToExistingLibraryGroupDialog(mangaIds, mode)
-						}
-					}
-					.setNegativeButton(android.R.string.cancel, null)
-					.show()
-			}
-			canCreate -> showCreateLibraryGroupDialog(mangaIds, mode)
-			canAddExisting -> showAddToExistingLibraryGroupDialog(mangaIds, mode)
-		}
-	}
-
-	private fun showAddToExistingLibraryGroupDialog(mangaIds: List<Long>, mode: ActionMode?) {
 		val groups = viewModel.getLibraryGroupsForAdd()
-		if (groups.isEmpty()) {
-			Toast.makeText(requireContext(), R.string.library_group_no_available, Toast.LENGTH_SHORT).show()
-			return
+		val canCreate = mangaIds.size >= 2
+		if (!canCreate && groups.isEmpty()) return
+
+		val content = layoutInflater.inflate(R.layout.sheet_library_group_action, null, false)
+		val sheet = BottomSheetDialog(requireContext())
+		val summary = content.findViewById<android.widget.TextView>(R.id.group_action_summary)
+		val create = content.findViewById<MaterialButton>(R.id.group_action_create)
+		val createForm = content.findViewById<View>(R.id.group_action_create_form)
+		val titleInput = content.findViewById<TextInputEditText>(R.id.group_action_title_input)
+		val save = content.findViewById<MaterialButton>(R.id.group_action_create_save)
+		val availableTitle = content.findViewById<View>(R.id.group_action_available_title)
+		val searchBox = content.findViewById<View>(R.id.group_action_search)
+		val search = content.findViewById<TextInputEditText>(R.id.group_action_search_input)
+		val groupList = content.findViewById<LinearLayout>(R.id.group_action_list)
+		val count = mangaIds.size
+		summary.text = resources.getQuantityString(R.plurals.library_group_selected_manga, count, count)
+
+		val groupRows = groups.map { group ->
+			MaterialButton(requireContext()).apply {
+				isAllCaps = false
+				text = "${group.title} · " + resources.getQuantityString(
+					R.plurals.library_group_members, group.members.size, group.members.size,
+				)
+				setOnClickListener {
+					sheet.dismiss()
+					handleLibraryGroupTarget(group, mangaIds, mode)
+				}
+			}.also { groupList.addView(it) }
 		}
-		val labels = groups.map { group ->
-			val count = resources.getQuantityString(
-				R.plurals.library_group_members,
-				group.members.size,
-				group.members.size,
-			)
-			"${group.title} · $count"
-		}.toTypedArray()
-		MaterialAlertDialogBuilder(requireContext())
-			.setTitle(R.string.library_group_add_to)
-			.setItems(labels) { _, which ->
-				groups.getOrNull(which)?.let { target -> handleLibraryGroupTarget(target, mangaIds, mode) }
+		searchBox.isVisible = groups.size > 4
+		availableTitle.isVisible = groups.isNotEmpty()
+		search.doAfterTextChanged { value ->
+			val query = value?.toString()?.trim().orEmpty()
+			groups.forEachIndexed { index, group ->
+				groupRows[index].isVisible = query.isEmpty() || group.title.contains(query, ignoreCase = true)
 			}
-			.setNegativeButton(android.R.string.cancel, null)
-			.show()
+		}
+		create.isVisible = canCreate
+		create.setOnClickListener {
+			create.isVisible = false
+			createForm.isVisible = true
+			availableTitle.isVisible = false
+			searchBox.isVisible = false
+			groupList.isVisible = false
+			titleInput.requestFocus()
+			titleInput.selectAll()
+		}
+		save.setOnClickListener {
+			val title = titleInput.text?.toString()?.trim().orEmpty()
+			if (title.isEmpty()) {
+				titleInput.error = getString(R.string.library_group_title_hint)
+				return@setOnClickListener
+			}
+			save.isEnabled = false
+			viewLifecycleScope.launch {
+				runCatching { viewModel.createLibraryGroup(title, mangaIds) }
+					.onSuccess {
+						Toast.makeText(requireContext(), R.string.library_group_created, Toast.LENGTH_SHORT).show()
+						sheet.dismiss()
+						mode?.finish()
+					}
+					.onFailure {
+						save.isEnabled = true
+						showLibraryGroupError(it)
+					}
+			}
+		}
+		if (groups.isEmpty()) create.performClick()
+		sheet.setContentView(content)
+		sheet.show()
 	}
 
 	private fun handleLibraryGroupTarget(target: LibraryGroup, mangaIds: List<Long>, mode: ActionMode?) {
@@ -1078,31 +1110,6 @@ class FavouritesListFragment : MangaListFragment() {
 				mode?.finish()
 			}.onFailure(::showLibraryGroupError)
 		}
-	}
-
-	private fun showCreateLibraryGroupDialog(mangaIds: List<Long>, mode: ActionMode?) {
-		if (mangaIds.size < 2) return
-		val input = EditText(requireContext()).apply {
-			hint = getString(R.string.library_group_title_hint)
-			setText(R.string.library_group_default_title)
-			selectAll()
-			inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-		}
-		MaterialAlertDialogBuilder(requireContext())
-			.setTitle(R.string.library_group_create)
-			.setView(input)
-			.setNegativeButton(android.R.string.cancel, null)
-			.setPositiveButton(R.string.library_group_create) { _, _ ->
-				val title = input.text?.toString().orEmpty()
-				viewLifecycleScope.launch {
-					runCatching { viewModel.createLibraryGroup(title, mangaIds) }
-						.onSuccess {
-							Toast.makeText(requireContext(), R.string.library_group_created, Toast.LENGTH_SHORT).show()
-							mode?.finish()
-						}
-						.onFailure(::showLibraryGroupError)
-				}
-			}.show()
 	}
 
 	private fun showLibraryGroupActions(group: LibraryGroup) {
