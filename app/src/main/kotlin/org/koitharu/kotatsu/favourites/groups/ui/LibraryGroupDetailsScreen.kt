@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.favourites.groups.ui
 
 import android.widget.ImageView
+import android.view.View
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -385,7 +386,7 @@ private fun GroupCover(group: LibraryGroup, modifier: Modifier = Modifier) {
 				factory = { context -> CoverImageView(context).apply {
 					scaleType = ImageView.ScaleType.CENTER_CROP
 					contentDescription = group.title
-					setImageAsync(customCover, manga = null)
+					loadGroupCoverWhenAttached(customCover, source = null)
 				} },
 				modifier = modifier.clip(shape),
 			)
@@ -406,7 +407,7 @@ private fun GroupCover(group: LibraryGroup, modifier: Modifier = Modifier) {
 						AndroidView(
 							factory = { context -> CoverImageView(context).apply {
 								scaleType = ImageView.ScaleType.CENTER_CROP
-								setImageAsync(member.displayCoverUrl, MangaSource(member.source))
+								loadGroupCoverWhenAttached(member.displayCoverUrl, MangaSource(member.source))
 							} },
 							modifier = Modifier.weight(1f).fillMaxHeight(),
 						)
@@ -414,6 +415,26 @@ private fun GroupCover(group: LibraryGroup, modifier: Modifier = Modifier) {
 				}
 			}
 		}
+	}
+}
+
+/**
+ * AndroidView creates its child before attachment. Wait until the View has a lifecycle owner
+ * before issuing the same CoverImageView request as the library grid; dispose when detached.
+ */
+private fun CoverImageView.loadGroupCoverWhenAttached(url: String?, source: MangaSource?) {
+	addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+		override fun onViewAttachedToWindow(view: View) {
+			if (source == null) setImageAsync(url, manga = null)
+			else setImageAsync(url, source)
+		}
+		override fun onViewDetachedFromWindow(view: View) {
+			disposeImage()
+		}
+	})
+	if (isAttachedToWindow) {
+		if (source == null) setImageAsync(url, manga = null)
+		else setImageAsync(url, source)
 	}
 }
 
