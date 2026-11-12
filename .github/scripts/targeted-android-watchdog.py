@@ -29,6 +29,13 @@ def command_output(command: list[str], timeout: float = 3.0) -> str:
         return f"unavailable: {type(exc).__name__}: {exc}"
 
 
+def java_sigquit_command(pid: str) -> list[str]:
+    """Signal the debuggable app as its own UID; adb shell UID may be denied."""
+    if not pid.isdecimal():
+        raise ValueError("Expected numeric Android process ID")
+    return ["adb", "shell", "run-as", APP_ID, "/system/bin/kill", "-3", pid]
+
+
 class PhaseState:
     def __init__(self) -> None:
         self.wait_at: float | None = None
@@ -103,7 +110,7 @@ class HostWatchdog:
             # SIGQUIT asks ART to write Java stacks (often under /data/anr).
             # Native debuggerd output is saved separately while ADB is alive.
             log.write(f"java_dump_request pid={pid} "
-                      f"{command_output(['adb', 'shell', 'kill', '-3', pid], timeout=4)}\n")
+                      f"{command_output(java_sigquit_command(pid), timeout=4)}\n")
             try:
                 native = subprocess.run(["adb", "shell", "debuggerd", "-b", pid],
                                         capture_output=True, text=True, errors="replace",
@@ -205,6 +212,14 @@ def self_test() -> None:
     assert not state.needs_dump(120.0)
     state.accept("I/HistoryScrollBench: mode=cover phase=wait_for_idle\n", 121.0)
     assert state.needs_dump(126.0)
+    assert java_sigquit_command("4242") == [
+        "adb", "shell", "run-as", APP_ID, "/system/bin/kill", "-3", "4242"
+    ]
+    try:
+        java_sigquit_command("4242; echo unsafe")
+        raise AssertionError("Invalid PID accepted")
+    except ValueError:
+        pass
     # The wrapper must propagate the diagnostic runner's failure unchanged.
     assert subprocess.run([sys.executable, "-c", "raise SystemExit(7)"], check=False).returncode == 7
     print("Host watchdog phase/exit-code contract: PASS")
