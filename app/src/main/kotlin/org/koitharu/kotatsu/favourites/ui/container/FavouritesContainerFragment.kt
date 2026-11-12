@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.favourites.ui.container
 
 import android.content.Context
 import android.content.res.Configuration
+import android.os.Build
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -104,6 +105,36 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private val listWorkOwner = FavouritesListWorkOwner()
 	private var diagnosticPageSelections = 0
 	private var diagnosticPagerLayouts = 0
+	// Android 16 landscape can transiently report a zero measured width for ViewPager2's
+	// internal RecyclerView even while the pager remains full width. FragmentStateAdapter
+	// then measures page holders at 150–212px and churns unrelated category fragments.
+	// Make the *pager's internal viewport* exact-width after the first real layout, rather
+	// than trying to resize the manga grid or page holders downstream. Keep the normal
+	// MATCH_PARENT contract on portrait / older Android versions.
+	private val pagerViewportWidthListener = View.OnLayoutChangeListener { view, left, _, right, _, _, _, _, _ ->
+		val pager = view as ViewPager2
+		val internal = pager.recyclerView ?: return@OnLayoutChangeListener
+		val availableWidth = right - left - pager.paddingLeft - pager.paddingRight
+		if (availableWidth <= 0) return@OnLayoutChangeListener
+		val exactLandscape = Build.VERSION.SDK_INT >= 36 &&
+			resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+		val desiredWidth = if (exactLandscape) availableWidth else ViewGroup.LayoutParams.MATCH_PARENT
+		val params = internal.layoutParams
+		if (params.width != desiredWidth) {
+			val previous = params.width
+			// Idempotent: request another measure only when the actual pager width changes.
+			params.width = desiredWidth
+			internal.layoutParams = params
+			if (PerformanceDiagnostics.enabled) {
+				logPagerDiagnostic(
+					"inner_width_constraint",
+					"pager_w=$availableWidth inner_w=${internal.width} inner_m=${internal.measuredWidth} " +
+						"old_lp=$previous new_lp=$desiredWidth android=${Build.VERSION.SDK_INT}",
+				)
+			}
+		}
+	}
+
 	private val diagnosticPagerLayoutListener = View.OnLayoutChangeListener {
 		view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
 		if (PerformanceDiagnostics.enabled && diagnosticPagerLayouts < 20 &&
@@ -192,6 +223,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			itemAnimator = null
 		}
 		binding.pager.registerOnPageChangeCallback(pageChangeCallback)
+		binding.pager.addOnLayoutChangeListener(pagerViewportWidthListener)
 		binding.pager.addOnLayoutChangeListener(diagnosticPagerLayoutListener)
 		TabLayoutMediator(
 			binding.tabs,
@@ -324,6 +356,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		updateListWorkActivity()
 		rememberCurrentCategory()
 		viewBinding?.pager?.unregisterOnPageChangeCallback(pageChangeCallback)
+		viewBinding?.pager?.removeOnLayoutChangeListener(pagerViewportWidthListener)
 		viewBinding?.pager?.removeOnLayoutChangeListener(diagnosticPagerLayoutListener)
 		exitInlineSearch(clearQuery = false, endSession = false)
 		restoreGlobalSearchHandler()

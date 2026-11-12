@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.favourites.ui
 
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.os.Build
+import android.view.ViewGroup
 import android.content.res.Configuration as AndroidConfiguration
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
@@ -597,6 +599,11 @@ class CategorySetsUiTest {
 						val inner = pager.getChildAt(0) as RecyclerView
 						assertTrue("Keep the original nested-list workaround in both orientations",
 							grid.isVP2BugWorkaroundEnabled)
+						val expectedInnerLayoutWidth = if (
+							Build.VERSION.SDK_INT >= 36 && orientation == AndroidConfiguration.ORIENTATION_LANDSCAPE
+						) pager.width - pager.paddingLeft - pager.paddingRight else ViewGroup.LayoutParams.MATCH_PARENT
+						assertEquals("Only Android 16 landscape uses exact internal pager width",
+							expectedInnerLayoutWidth, inner.layoutParams.width)
 						assertEquals("Pager's RecyclerView must fill the pager", pager.width, inner.width)
 						assertEquals("Pager's measured viewport must match its laid-out viewport",
 							pager.width, inner.measuredWidth)
