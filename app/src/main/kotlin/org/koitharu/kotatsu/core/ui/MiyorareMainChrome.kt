@@ -51,16 +51,20 @@ fun View.applyMiyorareSharedMainChrome() {
             dp(MiyorareFavouritesVisualSpec.SEARCH_ROW_HORIZONTAL_MARGIN_DP),
             dp(MiyorareFavouritesVisualSpec.SEARCH_ROW_BOTTOM_PADDING_DP),
         )
-        (getChildAt(0).layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+        // Layout-w600dp-land starts with a page title. The action frames must be selected
+        // by their contained buttons, not by the first/last position in the search row.
+        val settingsFrame = findViewById<MaterialButton>(R.id.button_settings)?.parent as? View
+        (settingsFrame?.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
             params.width = sideControlSize
             params.height = sideControlSize
             params.marginEnd = dp(MiyorareFavouritesVisualSpec.SEARCH_CONTROL_GAP_DP)
-            getChildAt(0).layoutParams = params
+            settingsFrame?.layoutParams = params
         }
-        (getChildAt(childCount - 1).layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+        val overflowFrame = findViewById<MaterialButton>(R.id.button_overflow)?.parent as? View
+        (overflowFrame?.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
             params.width = sideControlSize
             params.height = sideControlSize
-            getChildAt(childCount - 1).layoutParams = params
+            overflowFrame?.layoutParams = params
         }
     }
 

@@ -114,7 +114,7 @@ class HistoryScrollBenchmarkTest {
 						val rows = makeRows(coverFiles, hideTitle)
 						var bypass = false
 						lateinit var recycler: RecyclerView
-						lateinit var adapter: ListDelegationAdapter<ListModel>
+						lateinit var adapter: ListDelegationAdapter<List<ListModel>>
 						scenario.onActivity { activity ->
 							val resolver = object : ItemSizeResolver {
 								override val cellWidth = (activity.resources.displayMetrics.widthPixels / columns)
@@ -125,7 +125,7 @@ class HistoryScrollBenchmarkTest {
 								override fun onTagClick(manga: Manga, tag: MangaTag, view: View) = Unit
 								override fun onItemClick(item: MangaListModel, view: View) = Unit
 							}
-							adapter = ListDelegationAdapter(
+							adapter = ListDelegationAdapter<List<ListModel>>(
 								mangaGridItemAD(resolver, click, coverContext = ModernCoverContext.BROWSING,
 									debugHistoryOverlayBypass = { bypass }),
 								listHeaderAD(null, rowClickable = true),
@@ -150,7 +150,10 @@ class HistoryScrollBenchmarkTest {
 									override fun onChildViewDetachedFromWindow(view: View) = Unit
 								})
 							}
-							activity.setContentView(recycler)
+							activity.findViewById<android.view.ViewGroup>(android.R.id.content).apply {
+								removeAllViews()
+								addView(recycler)
+							}
 						}
 						instrumentation.waitForIdleSync()
 						// Counterbalance cache/order effects: A1 -> B1 -> B2 -> A2, both item sizes.

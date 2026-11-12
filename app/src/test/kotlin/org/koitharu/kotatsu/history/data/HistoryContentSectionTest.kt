@@ -42,8 +42,8 @@ class HistoryContentSectionTest {
 		assertTrue(dao.contains(".apply { if (contentPredicate != null) where(contentPredicate) }"))
 		assertTrue(dao.contains(".limit(limit)"))
 		assertTrue(dao.contains("maxUpdatedAtExclusive != null"))
-		assertTrue(repository.contains("localObserver.observeAll(order, filterOptions, limit, minUpdatedAt, predicate, maxUpdatedAtExclusive)"))
-		assertTrue(repository.contains("observeAllPrivate(order, filterOptions, limit, minUpdatedAt, predicate, maxUpdatedAtExclusive)"))
+		assertTrue(repository.contains("localObserver.observeAll(order, filterOptions, limit, minUpdatedAt, scopedPredicate, maxUpdatedAtExclusive)"))
+		assertTrue(repository.contains("observeAllPrivate(order, filterOptions, limit, minUpdatedAt, scopedPredicate, maxUpdatedAtExclusive)"))
 		assertTrue(local.contains("observeAll(order, filterOptions, limit, minUpdatedAt, contentPredicate, maxUpdatedAtExclusive)"))
 	}
 	private fun source(file: String): String =

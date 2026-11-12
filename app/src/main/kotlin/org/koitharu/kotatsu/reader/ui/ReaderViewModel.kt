@@ -73,6 +73,7 @@ import org.koitharu.kotatsu.list.domain.ReadingProgress
 import org.koitharu.kotatsu.list.domain.ReadingProgress.Companion.PROGRESS_NONE
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.isEpub
+import org.koitharu.kotatsu.local.library.LocalContentReader
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.ContentRating
@@ -126,6 +127,7 @@ class ReaderViewModel @Inject constructor(
     mangaRepositoryFactory: MangaRepository.Factory,
     chapterPersonalRepository: ChapterPersonalRepository,
     chapterProgressRepository: ChapterProgressRepository,
+    localContentReader: LocalContentReader,
 ) : ChaptersPagesViewModel(
     settings = settings,
     interactor = interactor,
@@ -142,6 +144,7 @@ class ReaderViewModel @Inject constructor(
     mangaRepositoryFactory = mangaRepositoryFactory,
     chapterPersonalRepository = chapterPersonalRepository,
     chapterProgressRepository = chapterProgressRepository,
+    localContentReader = localContentReader,
 ) {
     override fun onCleared() {
         // Let the process-scoped consumer drain the last position during reader teardown.

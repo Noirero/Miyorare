@@ -8,6 +8,10 @@ import org.koitharu.kotatsu.parsers.model.MangaPage
 import java.time.Instant
 import java.util.Base64
 
+/** Bookmark ownership is persisted so a Details swipe cannot delete a Reader bookmark. */
+const val BOOKMARK_ORIGIN_READER = "READER"
+const val BOOKMARK_ORIGIN_DETAILS_SWIPE = "DETAILS_SWIPE"
+
 data class Bookmark(
 	val manga: Manga,
 	val pageId: Long,
@@ -18,6 +22,7 @@ data class Bookmark(
 	val createdAt: Instant,
 	val percent: Float,
 	val note: String? = null,
+	val origin: String = BOOKMARK_ORIGIN_READER,
 ) : ListModel {
 
 	override fun areItemsTheSame(other: ListModel): Boolean {

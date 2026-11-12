@@ -81,6 +81,35 @@
 					tools:ignore="RtlSymmetry"
 					tools:text="@string/history" />
 
+				<!-- Modern Favourites landscape heading replaces the redundant global title. -->
+				<LinearLayout
+					android:id="@+id/landscape_favourites_heading"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:orientation="vertical"
+					android:visibility="gone">
+
+					<TextView
+						android:id="@+id/text_landscape_favourites_title"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:paddingStart="@dimen/screen_padding"
+						android:text="@string/favourites"
+						android:textAppearance="?attr/textAppearanceHeadlineSmall"
+						android:textStyle="bold"
+						android:includeFontPadding="false" />
+
+					<TextView
+						android:id="@+id/text_landscape_favourites_subtitle"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:paddingStart="@dimen/screen_padding"
+						android:text="@string/favourites_modern_subtitle"
+						android:textAppearance="?attr/textAppearanceBodyMedium"
+						android:includeFontPadding="false" />
+
+				</LinearLayout>
+
 				<View
 					android:layout_width="0dp"
 					android:layout_height="0dp"
