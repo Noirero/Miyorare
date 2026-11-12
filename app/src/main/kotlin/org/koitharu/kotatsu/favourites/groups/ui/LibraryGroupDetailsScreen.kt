@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.favourites.groups.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,6 +57,7 @@ import coil3.request.ImageRequest
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getLocalizedTitle
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
@@ -300,22 +304,11 @@ private fun GroupHeader(
 	onDeleteGroup: () -> Unit,
 ) {
 	val context = LocalContext.current
-	val first = members.firstOrNull()
-	val coverUrl = group.coverUrl ?: first?.manga?.coverUrl
-	val request = ImageRequest.Builder(context)
-		.data(coverUrl)
-		.apply { if (group.coverUrl == null && first != null) mangaSourceExtra(first.manga.source) }
-		.build()
 	var menuExpanded by remember { mutableStateOf(false) }
 
 	GroupGlassSurface(modifier = Modifier.fillMaxWidth(), radius = 26.dp) {
 		Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-			AsyncImage(
-				model = request,
-				contentDescription = group.title,
-				modifier = Modifier.size(width = 120.dp, height = 168.dp),
-				contentScale = ContentScale.Crop,
-			)
+			GroupCover(group = group, modifier = Modifier.size(width = 120.dp, height = 168.dp))
 			Spacer(Modifier.width(16.dp))
 			Column(Modifier.weight(1f)) {
 				Row(verticalAlignment = Alignment.Top) {
@@ -369,6 +362,53 @@ private fun GroupHeader(
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 				modifier = Modifier.padding(16.dp),
 			)
+		}
+	}
+}
+
+/**
+ * Same four-slot collage as the Library Group grid card. A custom Group cover still wins.
+ * Source-aware image requests match CoverImageView's existing group grid loading path.
+ */
+@Composable
+private fun GroupCover(group: LibraryGroup, modifier: Modifier = Modifier) {
+	val context = LocalContext.current
+	val customCover = group.coverUrl?.takeIf(String::isNotBlank)
+	val shape = RoundedCornerShape(14.dp)
+	if (customCover != null) {
+		AsyncImage(
+			model = ImageRequest.Builder(context).data(customCover).build(),
+			contentDescription = group.title,
+			modifier = modifier.clip(shape),
+			contentScale = ContentScale.Crop,
+		)
+		return
+	}
+	val slots = collageCoverSlots(group.members)
+	if (slots.isEmpty()) {
+		Box(modifier = modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant))
+		return
+	}
+	Column(modifier = modifier.clip(shape)) {
+		repeat(2) { row ->
+			Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+				repeat(2) { col ->
+					val member = slots[row * 2 + col]
+					val source = MangaSource(member.source)
+					val request = remember(context, member.displayCoverUrl, member.source) {
+						ImageRequest.Builder(context)
+							.data(member.displayCoverUrl)
+							.mangaSourceExtra(source)
+							.build()
+					}
+					AsyncImage(
+						model = request,
+						contentDescription = null,
+						modifier = Modifier.weight(1f).fillMaxHeight(),
+						contentScale = ContentScale.Crop,
+					)
+				}
+			}
 		}
 	}
 }

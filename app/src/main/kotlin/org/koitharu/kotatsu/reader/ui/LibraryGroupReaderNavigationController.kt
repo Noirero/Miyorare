@@ -68,9 +68,9 @@ internal class LibraryGroupReaderNavigationController private constructor(
 		val uiState = current.uiState ?: return true
 		val step = if (delta > 0) 1 else -1
 
-		val timelineIndex = current.timeline.indexOfFirst { item ->
-			item.mangaId == current.currentMangaId && item.chapterId == uiState.chapter.id
-		}
+		val timelineIndex = groupTimelineChapterIndex(
+			current.timeline, current.currentMangaId, uiState.chapter.id,
+		)
 		if (timelineIndex >= 0) {
 			val targetItem = current.timeline.getOrNull(timelineIndex + step) ?: return true
 			if (targetItem.mangaId == current.currentMangaId) {
@@ -85,28 +85,22 @@ internal class LibraryGroupReaderNavigationController private constructor(
 			return true
 		}
 
-		val hasChapterInsideMember = if (delta > 0) uiState.hasNextChapter() else uiState.hasPreviousChapter()
-		if (hasChapterInsideMember) return false
-		val targetMangaId = (if (delta > 0) current.nextMangaId else current.previousMangaId) ?: return false
-		beginTargetSwitch { resolveBoundaryTarget(targetMangaId, delta) }
-		return true
+		// Without an explicit timeline, Group behaves as a collection: Reader stays
+		// within the current manga and its native chapter navigation owns the action.
+		return false
 	}
 
 	fun canSwitchChapterBy(delta: Int): Boolean {
 		if (groupId == null || delta == 0) return false
 		val current = snapshot
 		val uiState = current.uiState ?: return false
-		val timelineIndex = current.timeline.indexOfFirst { item ->
-			item.mangaId == current.currentMangaId && item.chapterId == uiState.chapter.id
-		}
+		val timelineIndex = groupTimelineChapterIndex(
+			current.timeline, current.currentMangaId, uiState.chapter.id,
+		)
 		if (timelineIndex >= 0) {
 			return current.timeline.getOrNull(timelineIndex + if (delta > 0) 1 else -1) != null
 		}
-		return if (delta > 0) {
-			uiState.hasNextChapter() || current.nextMangaId != null
-		} else {
-			uiState.hasPreviousChapter() || current.previousMangaId != null
-		}
+		return if (delta > 0) uiState.hasNextChapter() else uiState.hasPreviousChapter()
 	}
 
 	fun switchChapterAtPageBoundary(delta: Int): Boolean {
@@ -151,14 +145,9 @@ internal class LibraryGroupReaderNavigationController private constructor(
 				) { groups, timeline, uiState ->
 					val currentMangaId = viewModel.getMangaOrNull()?.id
 					val group = groups.firstOrNull { it.id == targetGroupId }
-					val index = if (group != null && currentMangaId != null) {
-						group.members.indexOfFirst { it.mangaId == currentMangaId }
-					} else -1
 					NavigationSnapshot(
 						uiState = uiState,
-						currentMangaId = currentMangaId,
-						previousMangaId = if (index > 0) group?.members?.getOrNull(index - 1)?.mangaId else null,
-						nextMangaId = if (index >= 0) group?.members?.getOrNull(index + 1)?.mangaId else null,
+						currentMangaId = currentMangaId?.takeIf { id -> group?.memberIds?.contains(id) == true },
 						timeline = timeline,
 					)
 				}.collect { state ->
@@ -187,13 +176,6 @@ internal class LibraryGroupReaderNavigationController private constructor(
 		return ResolvedTarget(details.toManga(), chapter)
 	}
 
-	private suspend fun resolveBoundaryTarget(mangaId: Long, delta: Int): ResolvedTarget {
-		val details = loadDetails(mangaId)
-		val chapter = (if (delta > 0) details.allChapters.firstOrNull() else details.allChapters.lastOrNull())
-			?: error("Adjacent group manga has no chapters")
-		return ResolvedTarget(details.toManga(), chapter)
-	}
-
 	private suspend fun loadDetails(mangaId: Long) = entryPoint.detailsLoadUseCase(
 		MangaIntent(SavedStateHandle(mapOf(AppRouter.KEY_ID to mangaId))),
 		force = false,
@@ -216,8 +198,6 @@ internal class LibraryGroupReaderNavigationController private constructor(
 	private data class NavigationSnapshot(
 		val uiState: ReaderUiState? = null,
 		val currentMangaId: Long? = null,
-		val previousMangaId: Long? = null,
-		val nextMangaId: Long? = null,
 		val timeline: List<LibraryGroupTimelineItem> = emptyList(),
 	)
 
@@ -237,6 +217,13 @@ internal class LibraryGroupReaderNavigationController private constructor(
 		}
 	}
 }
+
+/** Only an explicitly scheduled chapter can activate cross-manga reading navigation. */
+internal fun groupTimelineChapterIndex(
+	timeline: List<LibraryGroupTimelineItem>,
+	mangaId: Long?,
+	chapterId: Long,
+): Int = timeline.indexOfFirst { it.mangaId == mangaId && it.chapterId == chapterId }
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)

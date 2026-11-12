@@ -118,6 +118,12 @@ add_history_visual_suite() {
 add_history_suite() {
   add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   add_history_visual_suite
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryCoverABRuntimeTest
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryScrollBenchmarkTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest
+  fi
   MAPPED=true
 }
 
@@ -203,9 +209,16 @@ add_full_suite() {
 
   add_history_visual_suite
 
-  # Unified Group's searchable member picker has its own Android UI regression.
+  # Include the searchable Group picker in full Android 15 regression coverage.
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/favourites/groups/ui/LibraryGroupAddMembersRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupAddMembersRuntimeTest
+  fi
+
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryCoverABRuntimeTest
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryScrollBenchmarkTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest
   fi
 
   # Execute scoped View-palette regressions in full Android 15 runs when present.

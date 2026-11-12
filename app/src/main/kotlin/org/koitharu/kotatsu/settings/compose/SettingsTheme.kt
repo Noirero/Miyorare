@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.settings.compose
 
 import android.content.res.Configuration
+import androidx.core.graphics.ColorUtils
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -12,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
@@ -34,6 +36,7 @@ import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
+import org.koitharu.kotatsu.core.ui.PrivateFavouritesVisualResolver
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.classicMiyorareVisualPalette
@@ -237,11 +240,11 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	) == FavouriteSpace.PRIVATE.dbValue ||
 		hostActivity?.intent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
 		hostActivity?.intent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
-	val paletteSource = if (privateHost && privateTheme != PrivateFavouritesThemePreset.FOLLOW_NORMAL) {
-		MiyorareModernPaletteSource.MATCH_THEME
-	} else {
-		normalPaletteSource
-	}
+	// FOLLOW_NORMAL is intentionally unchanged; explicit Private themes own their preset and dark foundation.
+	val privateSpec = if (privateHost) PrivateFavouritesVisualResolver.resolve(privateTheme) else null
+	val effectivePreset = if (privateHost) privateTheme.resolve(themePreset) else themePreset
+	val effectiveDark = isDark || privateSpec != null
+	val paletteSource = if (privateSpec != null) MiyorareModernPaletteSource.MATCH_THEME else normalPaletteSource
 	val customBackgroundAvailable = remember(customBackgroundRevision, themePreset, privateHost) {
 		!privateHost &&
 			themePreset == MiyorareThemePreset.CUSTOM &&
@@ -267,27 +270,71 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	}
 
 	val modernColors = if (designStyle == MiyorareDesignStyle.MODERN) {
-		remember(ctx, paletteSource, themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel) {
+		remember(ctx, paletteSource, effectivePreset, customAccent, adaptivePalette, effectiveDark, amoled, effectLevel) {
 			val classicDerivedScheme = ctx.resolveMiyorareClassicDerivedColorScheme(
 				paletteSource = paletteSource,
-				darkTheme = isDark,
+				darkTheme = effectiveDark,
 			)
 			resolveMiyorareThemeColors(
 				paletteSource = paletteSource,
-				preset = themePreset,
+				preset = effectivePreset,
 				customAccent = customAccent,
 				adaptivePalette = adaptivePalette,
-				darkTheme = isDark,
+				darkTheme = effectiveDark,
 				amoled = amoled,
 				effectLevel = effectLevel,
 				classicDerivedColorScheme = classicDerivedScheme,
 			)
 		}
 	} else null
-	val scheme = modernColors?.colorScheme ?: remember(ctx, isDark) { composeColorSchemeFromTheme(ctx, isDark) }
-	val visualPalette = modernColors?.visualPalette ?: remember(scheme, effectLevel) {
+	val fallbackScheme = modernColors?.colorScheme ?: remember(ctx, isDark) { composeColorSchemeFromTheme(ctx, isDark) }
+	// Match the authored Private palette used by the existing View chrome, not just its hue.
+	val scheme = if (privateSpec != null && modernColors != null) {
+		val spec = privateSpec
+		fallbackScheme.copy(
+			background = Color(spec.background),
+			surface = Color(spec.surface),
+			surfaceContainer = Color(ColorUtils.blendARGB(spec.surface, spec.background, 0.18f)),
+			surfaceContainerHigh = Color(ColorUtils.blendARGB(spec.surfaceHigh, spec.primary, 0.06f)),
+			primary = Color(spec.primary),
+			onPrimary = Color(spec.onPrimary),
+			primaryContainer = Color(ColorUtils.blendARGB(spec.surfaceHigh, spec.primary, 0.34f)),
+			onPrimaryContainer = Color(spec.onSurface),
+			secondary = Color(spec.secondary),
+			tertiary = Color(spec.accent),
+			onSurface = Color(spec.onSurface),
+			onSurfaceVariant = Color(spec.onSurfaceVariant),
+			outline = Color(spec.outline),
+			outlineVariant = Color(ColorUtils.blendARGB(spec.outline, spec.background, 0.34f)),
+		)
+	} else fallbackScheme
+	val basePalette = modernColors?.visualPalette ?: remember(scheme, effectLevel) {
 		classicMiyorareVisualPalette(scheme, effectLevel)
 	}
+	val visualPalette = if (privateSpec != null && modernColors != null) {
+		val spec = privateSpec
+		val high = ColorUtils.blendARGB(spec.surfaceHigh, spec.primary, 0.06f)
+		val activeStart = ColorUtils.blendARGB(spec.surfaceHigh, spec.primary, 0.34f)
+		basePalette.copy(
+			primary = Color(spec.primary),
+			secondary = Color(spec.secondary),
+			accent = Color(spec.accent),
+			border = Color(spec.outline),
+			selectedSurface = Color(ColorUtils.blendARGB(high, spec.primary, 0.18f)),
+			borderHighlight = Color(ColorUtils.setAlphaComponent(spec.primary, 0xB8)),
+			glow = Color(ColorUtils.setAlphaComponent(spec.primary, 0x78)),
+			button = Color(ColorUtils.blendARGB(spec.primary, spec.surfaceHigh, 0.16f)),
+			onButton = Color(spec.onPrimary),
+			backgroundGradientStart = Color(spec.background),
+			backgroundGradientMiddle = Color(ColorUtils.blendARGB(spec.background, spec.secondary, 0.08f)),
+			backgroundGradientEnd = Color(ColorUtils.blendARGB(spec.background, spec.surface, 0.46f)),
+			surfaceGradientStart = Color(spec.surfaceHigh),
+			surfaceGradientMiddle = Color(spec.surface),
+			surfaceGradientEnd = Color(spec.background),
+			activeGradientStart = Color(activeStart),
+			activeGradientEnd = Color(ColorUtils.blendARGB(activeStart, spec.accent, 0.22f)),
+		)
+	} else basePalette
 	val shapes = if (designStyle == MiyorareDesignStyle.MODERN) miyorareShapes else classicShapes
 	CompositionLocalProvider(
 		LocalMiyorareVisualPalette provides visualPalette,

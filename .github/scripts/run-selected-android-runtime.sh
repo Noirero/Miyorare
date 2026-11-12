@@ -66,10 +66,19 @@ elif [[ -z "$focus_lines" ]]; then
 fi
 
 if [[ -n "${RUNTIME_CLASSES:-}" ]]; then
+  runtime_exit=0
   bash .github/scripts/collect-android-runtime-diagnostics.sh \
     ./gradlew connectedDebugAndroidTest \
     --max-workers=4 \
     --no-daemon \
     --stacktrace \
-    "-Pandroid.testInstrumentationRunnerArguments.class=${RUNTIME_CLASSES}"
+    "-Pandroid.testInstrumentationRunnerArguments.class=${RUNTIME_CLASSES}" || runtime_exit=$?
+
+  # Diagnostic only; one aggregate line per A/B phase, not per-frame logging.
+  # Capture even on test failure, without masking the original Gradle exit code.
+  if [[ "$RUNTIME_CLASSES" == *"org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest"* ]]; then
+    adb logcat -d -v brief -s HistoryScrollBench:I \
+      | tee "$preflight_dir/history-scroll-benchmark.txt" || true
+  fi
+  exit "$runtime_exit"
 fi

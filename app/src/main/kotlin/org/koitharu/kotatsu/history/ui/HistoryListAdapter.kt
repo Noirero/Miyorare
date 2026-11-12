@@ -17,8 +17,9 @@ class HistoryListAdapter(
 	onTipClose: ((TipModel) -> Unit)? = null,
 	onAccordionClick: (String, Boolean) -> Unit,
 	privateFavourites: Boolean = false,
+	debugHistoryOverlayBypass: (() -> Boolean)? = null,
 ) : MangaListAdapter(listener, sizeResolver, titleTapToRead, onTipClose, coverContext = ModernCoverContext.BROWSING,
-	headerRowClickable = true), FastScroller.SectionIndexer {
+	headerRowClickable = true, debugHistoryOverlayBypass = debugHistoryOverlayBypass), FastScroller.SectionIndexer {
 
 	init {
 		addDelegate(ListItemType.HISTORY_ACCORDION, historyAccordionItemAD({ action -> onAccordionClick(action.key, action.loadMore) }, privateFavourites))

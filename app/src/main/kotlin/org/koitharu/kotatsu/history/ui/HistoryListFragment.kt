@@ -34,6 +34,7 @@ import android.view.MenuItem
 import androidx.appcompat.view.ActionMode
 import androidx.fragment.app.viewModels
 import dagger.hilt.android.AndroidEntryPoint
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
@@ -52,6 +53,9 @@ import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 class HistoryListFragment : MangaListFragment() {
 
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
+
+	/** Debug-only transient A/B state; never stored as a user setting. */
+	private var debugHistoryOverlayBypassed = false
 
 	override val viewModel by viewModels<HistoryListViewModel>()
 	override val isSwipeRefreshEnabled = false
@@ -99,7 +103,15 @@ class HistoryListFragment : MangaListFragment() {
 			}
 		}
 		if (space == FavouriteSpace.NORMAL) {
-			addMenuProvider(HistoryListMenuProvider(binding.root.context, router, viewModel))
+			addMenuProvider(HistoryListMenuProvider(binding.root.context, router, viewModel,
+				onToggleHistoryOverlayProbe = if (BuildConfig.DEBUG) {{
+					debugHistoryOverlayBypassed = !debugHistoryOverlayBypassed
+					android.util.Log.i("HistoryCoverAB", if (debugHistoryOverlayBypassed) "variant=B overlay_off" else "variant=A normal")
+					binding.recyclerView.adapter?.notifyDataSetChanged()
+					debugHistoryOverlayBypassed
+				}} else null,
+				isHistoryOverlayBypassed = if (BuildConfig.DEBUG) ({ debugHistoryOverlayBypassed }) else null,
+			))
 			viewModel.isStatsEnabled.observe(viewLifecycleOwner, MenuInvalidator(requireActivity()))
 		}
 	}
@@ -275,6 +287,7 @@ class HistoryListFragment : MangaListFragment() {
 		DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false),
 		titleTapToRead = settings.isTitleTapToReadEnabled,
 		onTipClose = { viewModel.dismissScalingTip() },
+		debugHistoryOverlayBypass = if (BuildConfig.DEBUG) ({ debugHistoryOverlayBypassed }) else null,
 		privateFavourites = FavouriteSpace.fromArgument(arguments?.getInt(EXTRA_FAVOURITE_SPACE)
 			?: FavouriteSpace.NORMAL.dbValue) == FavouriteSpace.PRIVATE,
 		onAccordionClick = { key, loadMore ->
