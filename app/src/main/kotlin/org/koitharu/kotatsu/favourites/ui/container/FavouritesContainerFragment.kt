@@ -1,11 +1,14 @@
 package org.koitharu.kotatsu.favourites.ui.container
 
 import android.content.Context
+import android.content.res.Configuration
+import android.os.Build
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
@@ -36,6 +39,7 @@ import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -103,17 +107,94 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var displayedContentType: FavouriteContentType? = null
 	private var pendingCategoryRestore: FavouriteContentType? = null
 	private val listWorkOwner = FavouritesListWorkOwner()
+	private var diagnosticPageSelections = 0
+	private var diagnosticPagerLayouts = 0
+	// Android 16 landscape can transiently report a zero measured width for ViewPager2's
+	// internal RecyclerView even while the pager remains full width. FragmentStateAdapter
+	// then measures page holders at 150–212px and churns unrelated category fragments.
+	// Make the *pager's internal viewport* exact-width after the first real layout, rather
+	// than trying to resize the manga grid or page holders downstream. Keep the normal
+	// MATCH_PARENT contract on portrait / older Android versions.
+	private val pagerViewportWidthListener = View.OnLayoutChangeListener { view, left, _, right, _, _, _, _, _ ->
+		val pager = view as ViewPager2
+		val internal = pager.recyclerView ?: return@OnLayoutChangeListener
+		val availableWidth = right - left - pager.paddingLeft - pager.paddingRight
+		if (availableWidth <= 0) return@OnLayoutChangeListener
+		val exactLandscape = Build.VERSION.SDK_INT >= 36 &&
+			resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+		val desiredWidth = if (exactLandscape) availableWidth else ViewGroup.LayoutParams.MATCH_PARENT
+		val params = internal.layoutParams
+		if (params.width != desiredWidth) {
+			val previous = params.width
+			// Idempotent: request another measure only when the actual pager width changes.
+			params.width = desiredWidth
+			internal.layoutParams = params
+			if (PerformanceDiagnostics.enabled) {
+				logPagerDiagnostic(
+					"inner_width_constraint",
+					"pager_w=$availableWidth inner_w=${internal.width} inner_m=${internal.measuredWidth} " +
+						"old_lp=$previous new_lp=$desiredWidth android=${Build.VERSION.SDK_INT}",
+				)
+			}
+		}
+	}
+
+	private val diagnosticPagerLayoutListener = View.OnLayoutChangeListener {
+		view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+		if (PerformanceDiagnostics.enabled && diagnosticPagerLayouts < 20 &&
+			(right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop)
+		) {
+			diagnosticPagerLayouts++
+			val pager = view as ViewPager2
+			val orientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
+			logPagerDiagnostic(
+				"pager_layout",
+				"orientation=$orientation pager_width=${pager.width} pager_height=${pager.height} " +
+					"page=${pager.currentItem} tabs=${categories.size} " +
+					"created=${pagerAdapter?.diagnosticCreationCount ?: 0}",
+			)
+		}
+	}
+
+	private fun logPagerDiagnostic(event: String, details: String) {
+		if (!PerformanceDiagnostics.enabled) return
+		Log.i("FavouritesPager", "trace=${PerformanceDiagnostics.ownerTrace(this)?.id ?: "none"} event=$event $details")
+		PerformanceDiagnostics.captureDiagnostic("FavouritesPager", event, this, details)
+	}
 
 	internal val isListWorkActive: Boolean
 		get() = listWorkOwner.isActive(hasView = view != null, hidden = isHidden)
 
 	private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
 		override fun onPageSelected(position: Int) {
+			if (PerformanceDiagnostics.enabled) {
+				diagnosticPageSelections++
+				if (diagnosticPageSelections <= 3 || diagnosticPageSelections % 10 == 0) {
+					logPagerDiagnostic(
+						"page_selected",
+						"position=$position selected_events=$diagnosticPageSelections " +
+							"scroll_state=${viewBinding?.pager?.scrollState ?: -1} " +
+							"created=${pagerAdapter?.diagnosticCreationCount ?: 0}",
+					)
+				}
+			}
 			if (pendingCategoryRestore == null) {
 				rememberCurrentCategory()
 			}
 			updateCategoryPickerLabel()
 			activity?.invalidateOptionsMenu()
+		}
+
+		override fun onPageScrollStateChanged(state: Int) {
+			if (PerformanceDiagnostics.enabled) {
+				logPagerDiagnostic(
+					"page_scroll_state",
+					"state=$state page=${viewBinding?.pager?.currentItem ?: -1} " +
+						"selected_events=$diagnosticPageSelections " +
+						"created=${pagerAdapter?.diagnosticCreationCount ?: 0} " +
+						"child_fragments=${childFragmentManager.fragments.size}",
+				)
+			}
 		}
 	}
 
@@ -146,6 +227,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			itemAnimator = null
 		}
 		binding.pager.registerOnPageChangeCallback(pageChangeCallback)
+		binding.pager.addOnLayoutChangeListener(pagerViewportWidthListener)
+		binding.pager.addOnLayoutChangeListener(diagnosticPagerLayoutListener)
 		TabLayoutMediator(
 			binding.tabs,
 			binding.pager,
@@ -160,7 +243,20 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		binding.buttonCategorySet.setOnClickListener { anchor ->
 			org.koitharu.kotatsu.favourites.ui.sets.showCategorySetMenu(anchor, childFragmentManager, viewModel.sets.value, viewModel.activeSet.value?.setId, viewModel.favouriteSpace) { set ->
 				rememberCurrentCategory()
-				viewModel.selectSet(set)
+				if (viewModel.activeSet.value?.setId != set.setId) {
+					// Existing repository/list/render spans can now be correlated to one Set switch.
+					// No Set name, content, or ID is included in diagnostic labels.
+					PerformanceDiagnostics.navigation("favourites", "favourites_set_switch", this)
+					if (PerformanceDiagnostics.enabled) {
+						diagnosticPageSelections = 0
+						logPagerDiagnostic(
+							"set_switch_requested",
+							"pager_index=${binding.pager.currentItem} tabs=${binding.tabs.tabCount} " +
+								"created=${pagerAdapter?.diagnosticCreationCount ?: 0}",
+						)
+					}
+					viewModel.selectSet(set)
+				}
 			}
 		}
 		viewModel.activeSet.observe(viewLifecycleOwner) { set ->
@@ -264,6 +360,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		updateListWorkActivity()
 		rememberCurrentCategory()
 		viewBinding?.pager?.unregisterOnPageChangeCallback(pageChangeCallback)
+		viewBinding?.pager?.removeOnLayoutChangeListener(pagerViewportWidthListener)
+		viewBinding?.pager?.removeOnLayoutChangeListener(diagnosticPagerLayoutListener)
 		exitInlineSearch(clearQuery = false, endSession = false)
 		restoreGlobalSearchHandler()
 		inlineSearchEdit?.let { edit -> (edit.parent as? ViewGroup)?.removeView(edit) }
@@ -413,6 +511,16 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			binding.pager.setCurrentItem(0, false)
 		}
 		applyCategoryNavigation(displayPreferences.current(contentTypeStore.selectedType.value))
+		PerformanceDiagnostics.milestone(this, "favourites_set_tabs_committed")
+		if (PerformanceDiagnostics.enabled) {
+			logPagerDiagnostic(
+				"categories_applied",
+				"category_count=${value.size} pager_index=${binding.pager.currentItem} " +
+					"tabs=${binding.tabs.tabCount} restored_type=${restoreType != null} " +
+					"created=${pagerAdapter?.diagnosticCreationCount ?: 0} " +
+					"child_fragments=${childFragmentManager.fragments.size}",
+			)
+		}
 	}
 
 	private fun isCategoryListForType(

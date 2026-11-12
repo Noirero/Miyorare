@@ -81,6 +81,12 @@ internal object PerformanceDiagnostics {
 		} else null
 	}
 
+	/** Copies only caller-supplied, code-defined diagnostic dimensions into the bounded summary. */
+	fun captureDiagnostic(tag: String, event: String, owner: Any, detail: String) {
+		val value = session ?: return
+		value.captureDiagnostic(tag, event, ownerTrace(owner), detail)
+	}
+
 	fun lifecycle(owner: Any, stage: String) {
 		val value = session ?: return
 		value.event("lifecycle", ownerTrace(owner), "screen=${owner.javaClass.simpleName} stage=$stage")

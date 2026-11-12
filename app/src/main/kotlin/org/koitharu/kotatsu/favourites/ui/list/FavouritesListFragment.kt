@@ -1,12 +1,14 @@
 package org.koitharu.kotatsu.favourites.ui.list
 
 import android.content.DialogInterface
+import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.util.Log
 import android.text.InputType
 import android.view.Menu
 import android.view.MenuInflater
@@ -18,12 +20,14 @@ import android.widget.Toast
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
+import androidx.core.view.ancestors
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import coil3.request.ImageRequest
 import coil3.size.Size
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -36,6 +40,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
@@ -116,8 +121,49 @@ class FavouritesListFragment : MangaListFragment() {
 			recyclerView.removeCallbacks(coverPrefetchRunnable)
 			if (newState == RecyclerView.SCROLL_STATE_IDLE) {
 				recyclerView.postDelayed(coverPrefetchRunnable, COVER_PREFETCH_IDLE_DELAY_MS)
+				if (PerformanceDiagnostics.enabled && diagnosticScrollSettles < 5) {
+					diagnosticScrollSettles++
+					logListGeometry("scroll_idle", recyclerView)
+				}
 			}
 		}
+	}
+	private var diagnosticLayoutSamples = 0
+	private var diagnosticScrollSettles = 0
+	private var diagnosticContentEmissions = 0
+	private val diagnosticLayoutListener = View.OnLayoutChangeListener {
+		view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+		if (PerformanceDiagnostics.enabled && diagnosticLayoutSamples < 24 &&
+			(right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop)
+		) {
+			diagnosticLayoutSamples++
+			logListGeometry("viewport_layout", view as RecyclerView)
+		}
+	}
+
+	private fun logListGeometry(event: String, recyclerView: RecyclerView) {
+		if (!PerformanceDiagnostics.enabled) return
+		val pager = recyclerView.ancestors.filterIsInstance<ViewPager2>().firstOrNull()
+		// ViewPager2 itself can remain full width while its internal RecyclerView or
+		// FragmentStateAdapter page holder is measured narrowly. Record each layer to
+		// locate the first bad measurement before changing the production layout.
+		val pagerRecyclerView = pager?.getChildAt(0) as? RecyclerView
+		val pageHolder = pagerRecyclerView?.findContainingItemView(recyclerView)
+		val layout = recyclerView.layoutManager as? LinearLayoutManager
+		val orientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
+		val dimensions =
+			"fragment=${System.identityHashCode(this)} orientation=$orientation " +
+				"viewport_width=${recyclerView.width} viewport_height=${recyclerView.height} " +
+				"pager_width=${pager?.measuredWidth ?: -1} pager_w=${pager?.width ?: -1} " +
+				"inner_w=${pagerRecyclerView?.width ?: -1} " +
+				"inner_m=${pagerRecyclerView?.measuredWidth ?: -1} " +
+				"page_w=${pageHolder?.width ?: -1} page_m=${pageHolder?.measuredWidth ?: -1} " +
+				"span=${(layout as? GridLayoutManager)?.spanCount ?: -1} " +
+				"first_visible=${layout?.findFirstVisibleItemPosition() ?: -1} " +
+				"scroll_y=${recyclerView.computeVerticalScrollOffset()} " +
+				"adapter_count=${recyclerView.adapter?.itemCount ?: -1}"
+		Log.i("FavouritesLayout", "trace=${PerformanceDiagnostics.ownerTrace(this)?.id ?: "none"} event=$event $dimensions")
+		PerformanceDiagnostics.captureDiagnostic("FavouritesLayout", event, this, dimensions)
 	}
 	private var pendingScrollPosition: PendingScroll? = null
 	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null
@@ -135,6 +181,8 @@ class FavouritesListFragment : MangaListFragment() {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		binding.recyclerView.isVP2BugWorkaroundEnabled = true
 		binding.recyclerView.addOnScrollListener(coverPrefetchScrollListener)
+		binding.recyclerView.addOnLayoutChangeListener(diagnosticLayoutListener)
+		logListGeometry("view_created", binding.recyclerView)
 		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
 			modernSurfaceDecoration = ModernLibrarySurfaceDecoration().also { decoration ->
 				binding.recyclerView.addItemDecoration(decoration, 0)
@@ -158,6 +206,12 @@ class FavouritesListFragment : MangaListFragment() {
 			}
 		}
 		viewModel.content.observe(viewLifecycleOwner) { items ->
+			if (PerformanceDiagnostics.enabled) {
+				diagnosticContentEmissions++
+				if (diagnosticContentEmissions <= 3 || diagnosticContentEmissions % 20 == 0) {
+					logListGeometry("content_emit_$diagnosticContentEmissions", binding.recyclerView)
+				}
+			}
 			scheduleCoverPrefetch(items)
 			pendingScrollPosition?.let { target ->
 				pendingScrollPosition = null
@@ -177,8 +231,10 @@ class FavouritesListFragment : MangaListFragment() {
 		listWorkOwner.onDestroyView()
 		updateWorkActivity()
 		viewBinding?.recyclerView?.let { recyclerView ->
+			logListGeometry("view_destroyed", recyclerView)
 			recyclerView.removeCallbacks(coverPrefetchRunnable)
 			recyclerView.removeOnScrollListener(coverPrefetchScrollListener)
+			recyclerView.removeOnLayoutChangeListener(diagnosticLayoutListener)
 			modernChildAttachListener?.let(recyclerView::removeOnChildAttachStateChangeListener)
 			modernSurfaceDecoration?.let(recyclerView::removeItemDecoration)
 		}
@@ -323,8 +379,17 @@ class FavouritesListFragment : MangaListFragment() {
 
 	private fun prefetchCovers(items: List<ListModel>) {
 		if (!isResumed) return
-		val columns = viewModel.gridColumns.value ?: 2
-		val width = (resources.displayMetrics.widthPixels / columns.coerceAtLeast(1)).coerceAtLeast(120)
+		val recyclerView = viewBinding?.recyclerView ?: return
+		val columns = (recyclerView.layoutManager as? GridLayoutManager)?.spanCount
+			?: viewModel.gridColumns.value ?: 2
+		// Include only the list viewport, not the navigation rail / full display width.
+		val availableWidth = (recyclerView.width - recyclerView.paddingStart - recyclerView.paddingEnd)
+			.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+		val width = (availableWidth / columns.coerceAtLeast(1)).coerceAtLeast(120)
+		val firstVisible = (recyclerView.layoutManager as? LinearLayoutManager)
+			?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
+		val adapterSnapshot = (recyclerView.adapter as? MangaListAdapter)?.items
+		val start = preferredCoverPrefetchStart(firstVisible, adapterSnapshot, items)
 		val referenceCardSizing =
 			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
 				viewModel.favouriteSpace == FavouriteSpace.NORMAL
@@ -336,15 +401,15 @@ class FavouritesListFragment : MangaListFragment() {
 				width * 18 / 13
 			},
 		)
-		val candidates = items.filterIsInstance<MangaListModel>()
-			.takeLast(COVER_PREFETCH_BATCH)
+		val candidates = items.drop(start).filterIsInstance<MangaListModel>()
+			.take(COVER_PREFETCH_BATCH)
 			.mapNotNull { item ->
 				val coverUrl = item.coverUrl ?: return@mapNotNull null
 				CoverPrefetchCandidate(item, coverUrl, "${item.id}:$coverUrl")
 			}
 
-		// Only the newest page needs to stay queued. A semaphore alone limits active requests but leaves
-		// every older pagination batch suspended behind it, which can accumulate hundreds of stale jobs
+		// Keep only the viewport-local batch queued. A semaphore alone limits active requests but leaves
+		// older off-screen pagination batches suspended behind it, which can accumulate stale jobs
 		// during a fast scroll through a large library.
 		coverPrefetchJob?.cancel()
 		coverPrefetchJob = viewLifecycleScope.launch {
@@ -1415,4 +1480,15 @@ class FavouritesListFragment : MangaListFragment() {
 			putLong(AppRouter.KEY_ID, categoryId)
 		}
 	}
+}
+
+/** Equal list lengths do not prove the visible adapter item belongs to the incoming Set. */
+internal fun preferredCoverPrefetchStart(
+	firstVisible: Int,
+	adapterItems: List<ListModel>?,
+	incomingItems: List<ListModel>,
+): Int {
+	val current = adapterItems ?: return 0
+	if (current.size != incomingItems.size || firstVisible !in incomingItems.indices) return 0
+	return if (current[firstVisible].areItemsTheSame(incomingItems[firstVisible])) firstVisible else 0
 }

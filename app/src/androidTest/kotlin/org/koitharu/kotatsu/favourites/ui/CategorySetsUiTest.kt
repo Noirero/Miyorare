@@ -1,6 +1,14 @@
 package org.koitharu.kotatsu.favourites.ui
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.os.Build
+import android.view.ViewGroup
+import android.content.res.Configuration as AndroidConfiguration
+import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
+import org.koitharu.kotatsu.core.util.ext.findCurrentPagerFragment
+import org.koitharu.kotatsu.core.ui.list.fastscroll.FastScrollRecyclerView
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.EditText
@@ -566,6 +574,79 @@ class CategorySetsUiTest {
 			open()
 			swipeCategorySetsSheetDown(scenario)
 			closed()
+		}
+	}
+
+	@Test fun landscapeFavouritesPagerPagesStayFullWidthWhileScrollingTopTwoRowsAndRotating() {
+		val category = categoryIds.getValue(FavouriteSpace.NORMAL)[0][0]
+		val items = (0 until 65).map { index ->
+			manga.copy(id = 9_930_000L + index, title = "LANDSCAPE_GRID_$index")
+		}
+		runBlocking { repository.updateCategoryMemberships(items, mapOf(category to true)) }
+		ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
+			fun inspect(orientation: Int): Boolean {
+				var ready = false
+				scenario.onActivity { activity ->
+					val container = descendants(activity.supportFragmentManager.fragments)
+						.filterIsInstance<FavouritesContainerFragment>().firstOrNull()
+					val pager = container?.view?.findViewById<ViewPager2>(R.id.pager)
+					val list = if (container != null && pager != null) {
+						container.childFragmentManager.findCurrentPagerFragment(pager) as? FavouritesListFragment
+					} else null
+					val grid = list?.recyclerView as? FastScrollRecyclerView
+					if (activity.resources.configuration.orientation == orientation && pager != null &&
+						grid != null && pager.width > 0 && grid.width > 0) {
+						val inner = pager.getChildAt(0) as RecyclerView
+						assertTrue("Keep the original nested-list workaround in both orientations",
+							grid.isVP2BugWorkaroundEnabled)
+						val expectedInnerLayoutWidth = if (
+							Build.VERSION.SDK_INT >= 36 && orientation == AndroidConfiguration.ORIENTATION_LANDSCAPE
+						) pager.width - pager.paddingLeft - pager.paddingRight else ViewGroup.LayoutParams.MATCH_PARENT
+						assertEquals("Only Android 16 landscape uses exact internal pager width",
+							expectedInnerLayoutWidth, inner.layoutParams.width)
+						assertEquals("Pager's RecyclerView must fill the pager", pager.width, inner.width)
+						assertEquals("Pager's measured viewport must match its laid-out viewport",
+							pager.width, inner.measuredWidth)
+						assertEquals("Favourites grid must fill its page", pager.width, grid.width)
+						assertTrue("Unexpected extra horizontal category pages: ${inner.childCount}",
+							inner.childCount in 1..5)
+						for (index in 0 until inner.childCount) {
+							assertEquals("Page holder $index must fill its pager, not shrink to cover width",
+								pager.width, inner.getChildAt(index).width)
+						}
+						grid.scrollBy(0, 120)
+						grid.requestLayout()
+						ready = true
+					}
+				}
+				return ready
+			}
+			scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+			await { inspect(AndroidConfiguration.ORIENTATION_PORTRAIT) }
+			scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+			await { inspect(AndroidConfiguration.ORIENTATION_LANDSCAPE) }
+			// Repeatedly cross the first two three-cover rows; then return and cross again.
+			repeat(12) {
+				instrumentation.waitForIdleSync()
+				assertTrue("Favourites lost its full-width page on the initial top-row scroll",
+					inspect(AndroidConfiguration.ORIENTATION_LANDSCAPE))
+			}
+			scenario.onActivity { activity ->
+				val container = descendants(activity.supportFragmentManager.fragments)
+					.filterIsInstance<FavouritesContainerFragment>().firstOrNull()
+				val pager = container?.view?.findViewById<ViewPager2>(R.id.pager)
+				if (container != null && pager != null) {
+					(container.childFragmentManager.findCurrentPagerFragment(pager) as? FavouritesListFragment)
+						?.recyclerView?.scrollToPosition(0)
+				}
+			}
+			repeat(12) {
+				instrumentation.waitForIdleSync()
+				assertTrue("Favourites lost its full-width page when returning to the top",
+					inspect(AndroidConfiguration.ORIENTATION_LANDSCAPE))
+			}
+			scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+			await { inspect(AndroidConfiguration.ORIENTATION_PORTRAIT) }
 		}
 	}
 
