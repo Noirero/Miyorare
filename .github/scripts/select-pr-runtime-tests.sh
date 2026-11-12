@@ -99,6 +99,7 @@ add_discovery_suite() {
   add_class org.koitharu.kotatsu.discovery.DiscoveryCatalogUiTest
   add_class org.koitharu.kotatsu.discovery.CatalogReadingBridgeTest
   add_class org.koitharu.kotatsu.discovery.DiscoveryNavigationRuntimeTest
+  add_class org.koitharu.kotatsu.discovery.DiscoverySearchBarOwnershipRuntimeTest
   MAPPED=true
 }
 
@@ -176,6 +177,7 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.discovery.DiscoveryCatalogUiTest
   add_class org.koitharu.kotatsu.discovery.CatalogReadingBridgeTest
   add_class org.koitharu.kotatsu.discovery.DiscoveryNavigationRuntimeTest
+  add_class org.koitharu.kotatsu.discovery.DiscoverySearchBarOwnershipRuntimeTest
   add_class org.koitharu.kotatsu.core.db.CategorySetsMigrationTest
   add_class org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest
   add_class org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest
@@ -528,6 +530,7 @@ self_test() {
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
   grep -q 'DiscoveryCatalogUiTest' <<<"$out"
   grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
+  grep -q 'DiscoverySearchBarOwnershipRuntimeTest' <<<"$out"
   ! grep -q 'CategorySetsUiTest' <<<"$out"
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"

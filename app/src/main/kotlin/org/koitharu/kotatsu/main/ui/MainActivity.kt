@@ -149,6 +149,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			return
 		}
 		setContentView(ActivityMainBinding.inflate(layoutInflater))
+		// Wire global search before destination fragments install inline handlers.
+		// SearchView.Behavior binds the anchored bar during layout only when it is
+		// not yet set up; early setup prevents it from replacing an inline owner.
+		viewBinding.searchView.setupWithSearchBar(viewBinding.searchBar)
 		setSupportActionBar(viewBinding.searchBar)
 		viewBinding.root.applyMiyorareSharedMainChrome()
 		// Preserve the effective shared-chrome spacing when restoring non-Explore tabs.
