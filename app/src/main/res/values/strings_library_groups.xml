@@ -118,6 +118,7 @@
 	<string name="library_group_selected_count">%1$d selected</string>
 	<string name="library_group_continue_reading">Continue reading</string>
 	<string name="library_group_reading_unavailable">The next saved chapter is unavailable. Check the source entries before continuing.</string>
+	<string name="library_group_timeline_unavailable_edit">Some saved chapters are unavailable. Refresh the source entries before editing the reading order; your saved order is unchanged.</string>
 	<string name="library_group_timeline_unresolved">%1$d saved chapter(s) are not currently available. Refresh their source entries.</string>
 	<string name="library_group_find_chapter">Find chapter to jump to</string>
 </resources>

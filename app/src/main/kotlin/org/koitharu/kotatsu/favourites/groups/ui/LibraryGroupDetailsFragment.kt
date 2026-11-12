@@ -565,7 +565,13 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 	private fun openTimelineEditor() {
 		viewLifecycleOwner.lifecycleScope.launch {
 			val items = runCatching { viewModel.prepareTimelineEditor() }
-				.getOrElse { showMessage(R.string.library_group_timeline_error); return@launch }
+				.getOrElse { error ->
+					showMessage(
+						if (error is LibraryGroupTimelineUnavailableException) R.string.library_group_timeline_unavailable_edit
+						else R.string.library_group_timeline_error,
+					)
+					return@launch
+				}
 			if (items.isEmpty()) {
 				showMessage(R.string.library_group_timeline_empty)
 				return@launch
@@ -631,7 +637,13 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 				viewLifecycleOwner.lifecycleScope.launch {
 					runCatching { viewModel.saveTimeline(adapter.snapshot()) }
 						.onSuccess { dialog.dismiss(); showMessage(R.string.library_group_timeline_saved) }
-						.onFailure { saveButton.isEnabled = true; showMessage(R.string.library_group_timeline_error) }
+						.onFailure { error ->
+							saveButton.isEnabled = true
+							showMessage(
+								if (error is LibraryGroupTimelineUnavailableException) R.string.library_group_timeline_unavailable_edit
+								else R.string.library_group_timeline_error,
+							)
+						}
 				}
 			}
 		}

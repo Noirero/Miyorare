@@ -45,3 +45,15 @@ internal fun groupContinuePositionFromHistories(
         .maxWithOrNull(compareBy<Pair<Long, Int>> { it.first }.thenBy { it.second })
         ?.second ?: 0
 }
+
+/** A reorder editor must never silently discard persisted entries not currently resolvable. */
+internal class LibraryGroupTimelineUnavailableException : IllegalStateException()
+
+internal fun requireGroupTimelineCoverage(
+    saved: List<LibraryGroupTimelineItem>,
+    available: Set<Pair<Long, Long>>,
+) {
+    if (saved.any { it.mangaId to it.chapterId !in available }) {
+        throw LibraryGroupTimelineUnavailableException()
+    }
+}

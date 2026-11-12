@@ -360,6 +360,9 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 		val saved = groupsRepository.getTimeline(groupId, favouriteSpace)
 		if (saved.isEmpty()) return@withContext available
 		val availableByKey = available.associateBy { it.key }
+		requireGroupTimelineCoverage(
+			saved, availableByKey.keys.mapTo(HashSet()) { it.mangaId to it.chapterId },
+		)
 		val scheduled = saved.mapNotNull { item ->
 			availableByKey[LibraryGroupTimelineKey(item.mangaId, item.chapterId)]
 		}
@@ -368,6 +371,10 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 	}
 
 	suspend fun saveTimeline(items: List<LibraryGroupTimelineEditorItem>) = withContext(Dispatchers.Default) {
+		val latestSaved = groupsRepository.getTimeline(groupId, favouriteSpace)
+		requireGroupTimelineCoverage(
+			latestSaved, items.mapTo(HashSet()) { it.mangaId to it.chapter.id },
+		)
 		val orderedItems = items.mapIndexed { index, item ->
 			LibraryGroupTimelineItem(
 				mangaId = item.mangaId,

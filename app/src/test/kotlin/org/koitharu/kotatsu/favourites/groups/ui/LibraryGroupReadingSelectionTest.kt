@@ -63,4 +63,18 @@ class LibraryGroupReadingSelectionTest {
         assertEquals(0, groupContinuePositionFromHistories(timeline, listOf(base.copy(space = 1)), FavouriteSpace.NORMAL))
         assertEquals(0, groupContinuePositionFromHistories(emptyList(), listOf(base), FavouriteSpace.NORMAL))
     }
+
+    @Test fun fullTimelineCoverageIsAccepted() {
+        requireGroupTimelineCoverage(timeline, all)
+    }
+
+    @Test(expected = LibraryGroupTimelineUnavailableException::class)
+    fun incompleteTimelineIsRejectedBeforeSaving() {
+        requireGroupTimelineCoverage(timeline, setOf(1L to 11L, 1L to 12L))
+    }
+
+    @Test(expected = LibraryGroupTimelineUnavailableException::class)
+    fun removedEntryInSubmittedOrderCannotBeSilentlyPersisted() {
+        requireGroupTimelineCoverage(timeline, timeline.take(2).mapTo(HashSet()) { it.mangaId to it.chapterId })
+    }
 }
