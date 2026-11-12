@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.favourites.groups.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -53,6 +54,7 @@ internal fun LibraryGroupAddMembersSheet(
     val screenHeight = LocalConfiguration.current.screenHeightDp
     Column(
         modifier = Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
             .height((screenHeight * 0.78f).coerceAtLeast(280f).dp)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
