@@ -1,7 +1,23 @@
 package org.koitharu.kotatsu.history.ui
 
+import android.content.Context
 import android.os.Bundle
+import android.view.Gravity
+import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.widget.AppCompatEditText
+import androidx.core.view.isGone
+import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.search.SearchBar
+import org.koitharu.kotatsu.main.ui.MainActivity
+import org.koitharu.kotatsu.main.ui.installSharedSearchBarOwner
+import org.koitharu.kotatsu.main.ui.releaseSharedSearchBarOwner
+import org.koitharu.kotatsu.main.ui.updateSharedSearchBarHint
 import android.view.LayoutInflater
 import androidx.core.view.updateLayoutParams
 import com.google.android.material.button.MaterialButtonToggleGroup
@@ -38,9 +54,18 @@ class HistoryListFragment : MangaListFragment() {
 
 	override val viewModel by viewModels<HistoryListViewModel>()
 	override val isSwipeRefreshEnabled = false
+	private var inlineSearchEdit: AppCompatEditText? = null
+	private var inlineSearchActive = false
+	private var restoreInlineSearch = false
+	private var searchBackCallback: OnBackPressedCallback? = null
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
+		restoreInlineSearch = savedInstanceState?.getBoolean(STATE_INLINE_SEARCH)
+			?: viewModel.searchQuery.value.isNotEmpty()
+		searchBackCallback = object : OnBackPressedCallback(false) {
+			override fun handleOnBackPressed() = exitInlineSearch()
+		}.also { requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, it) }
 		RecyclerScrollKeeper(binding.recyclerView).attach()
 		val toggle = layoutInflater.inflate(R.layout.view_manga_novel_toggle, binding.root, false)
 			as MaterialButtonToggleGroup
@@ -58,6 +83,7 @@ class HistoryListFragment : MangaListFragment() {
 			if (viewModel.selectedSection.value != section) {
 				clearListSelection()
 				viewModel.selectSection(section)
+				updateInlineSearchHint()
 				binding.recyclerView.scrollToPosition(0)
 			}
 		}
@@ -75,6 +101,121 @@ class HistoryListFragment : MangaListFragment() {
 			addMenuProvider(HistoryListMenuProvider(binding.root.context, router, viewModel))
 			viewModel.isStatsEnabled.observe(viewLifecycleOwner, MenuInvalidator(requireActivity()))
 		}
+	}
+
+	override fun onSaveInstanceState(outState: Bundle) {
+		outState.putBoolean(STATE_INLINE_SEARCH, restoreInlineSearch)
+		super.onSaveInstanceState(outState)
+	}
+
+	override fun onResume() {
+		super.onResume()
+		if (!isHidden) installHistorySearchHandler()
+	}
+
+	override fun onHiddenChanged(hidden: Boolean) {
+		super.onHiddenChanged(hidden)
+		if (hidden) {
+			exitInlineSearch(clearQuery = false, endSession = false)
+			(activity as? MainActivity)?.releaseSharedSearchBarOwner(this)
+		} else if (view != null) {
+			installHistorySearchHandler()
+		}
+	}
+
+	override fun onDestroyView() {
+		exitInlineSearch(clearQuery = false, endSession = false)
+		(activity as? MainActivity)?.releaseSharedSearchBarOwner(this)
+		inlineSearchEdit?.let { (it.parent as? ViewGroup)?.removeView(it) }
+		inlineSearchEdit = null
+		searchBackCallback = null
+		super.onDestroyView()
+	}
+
+	private fun searchHint() = getString(
+		if (viewModel.selectedSection.value == MangaNovelSection.NOVEL) R.string.search_novel
+		else R.string.search_manga,
+	)
+
+	private fun updateInlineSearchHint() {
+		inlineSearchEdit?.hint = searchHint()
+		(activity as? MainActivity)?.updateSharedSearchBarHint(this, searchHint())
+	}
+
+	private fun installHistorySearchHandler() {
+		val host = activity as? MainActivity ?: return
+		host.installSharedSearchBarOwner(this, searchHint(), ::openInlineSearch)
+		if (restoreInlineSearch) openInlineSearch()
+	}
+
+	fun openInlineSearch() {
+		if (inlineSearchActive || isHidden) return
+		val host = activity as? MainActivity ?: return
+		val bar = host.findViewById<SearchBar>(R.id.search_bar) ?: return
+		val edit = inlineSearchEdit ?: createInlineSearchEdit(bar) ?: return
+		restoreInlineSearch = true
+		inlineSearchActive = true
+		bar.isGone = true
+		edit.isVisible = true
+		searchBackCallback?.isEnabled = true
+		host.findViewById<MaterialButton>(R.id.button_settings)?.apply {
+			setIconResource(R.drawable.ic_arrow_back)
+			contentDescription = getString(R.string.close)
+			setOnClickListener { exitInlineSearch() }
+		}
+		edit.requestFocus()
+		edit.setSelection(edit.text?.length ?: 0)
+		edit.post {
+			(context?.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+				?.showSoftInput(edit, InputMethodManager.SHOW_IMPLICIT)
+		}
+	}
+
+	private fun exitInlineSearch(clearQuery: Boolean = true, endSession: Boolean = true) {
+		val wasActive = inlineSearchActive
+		inlineSearchActive = false
+		if (endSession) restoreInlineSearch = false
+		searchBackCallback?.isEnabled = false
+		if (clearQuery) viewModel.setSearchQuery("")
+		val host = activity as? MainActivity ?: return
+		val bar = host.findViewById<SearchBar>(R.id.search_bar) ?: return
+		inlineSearchEdit?.apply {
+			if (clearQuery) setText("")
+			clearFocus()
+			isGone = true
+		}
+		bar.isVisible = true
+		if (wasActive) host.restoreMainUtilityButton()
+		inlineSearchEdit?.let {
+			(host.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+				?.hideSoftInputFromWindow(it.windowToken, 0)
+		}
+	}
+
+	private fun createInlineSearchEdit(bar: SearchBar): AppCompatEditText? {
+		val parent = bar.parent as? LinearLayout ?: return null
+		val density = resources.displayMetrics.density
+		val edit = AppCompatEditText(requireContext()).apply {
+			layoutParams = LinearLayout.LayoutParams(bar.layoutParams as LinearLayout.LayoutParams)
+			background = bar.background?.constantState?.newDrawable(resources)?.mutate()
+			hint = searchHint()
+			setTextColor(bar.textView.currentTextColor)
+			setHintTextColor(bar.textView.currentHintTextColor)
+			textSize = bar.textView.textSize / resources.displayMetrics.scaledDensity
+			gravity = Gravity.CENTER_VERTICAL
+			isSingleLine = true
+			maxLines = 1
+			minimumHeight = (56f * density).toInt()
+			setPadding((20f * density).toInt(), 0, (20f * density).toInt(), 0)
+			setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_search, 0, 0, 0)
+			compoundDrawablePadding = resources.getDimensionPixelOffset(R.dimen.margin_small)
+			isGone = true
+			setText(viewModel.searchQuery.value)
+			doAfterTextChanged { viewModel.setSearchQuery(it?.toString().orEmpty()) }
+		}
+		parent.addView(edit, parent.indexOfChild(bar) + 1)
+		inlineSearchEdit = edit
+		return edit
 	}
 
 	override fun onScrolledToEnd() = viewModel.requestMoreItems()
@@ -121,6 +262,10 @@ class HistoryListFragment : MangaListFragment() {
 
 			else -> super.onActionItemClicked(controller, mode, item)
 		}
+	}
+
+	private companion object {
+		const val STATE_INLINE_SEARCH = "history_inline_search_active"
 	}
 
 	override fun onCreateAdapter() = HistoryListAdapter(
