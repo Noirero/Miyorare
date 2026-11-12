@@ -69,6 +69,9 @@ import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListWorkOwner
 import org.koitharu.kotatsu.main.ui.MainActivity
+import org.koitharu.kotatsu.main.ui.installSharedSearchBarOwner
+import org.koitharu.kotatsu.main.ui.releaseSharedSearchBarOwner
+import org.koitharu.kotatsu.main.ui.updateSharedSearchBarHint
 import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import javax.inject.Inject
@@ -386,7 +389,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		inlineSearchEdit?.hint = hint
 		viewBinding?.privateSearch?.hint = hint
 		if (!isHidden) {
-			activity?.findViewById<SearchBar>(R.id.search_bar)?.hint = hint
+			(activity as? MainActivity)?.updateSharedSearchBarHint(this, hint)
+			if (activity !is MainActivity) activity?.findViewById<SearchBar>(R.id.search_bar)?.hint = hint
 		}
 		applyCategoryNavigation(displayPreferences.current(type))
 	}
@@ -748,17 +752,32 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		findCurrentFragment() as? FavouritesListFragment
 
 	private fun installFavouriteSearchHandler() {
-		val searchBar = activity?.findViewById<SearchBar>(R.id.search_bar) ?: return
-		searchBar.setOnClickListener { enterInlineSearch() }
+		val hint = getString(if (contentTypeStore.selectedType.value == FavouriteContentType.NOVEL) {
+			R.string.search_novel
+		} else {
+			R.string.search_manga
+		})
+		val host = activity
+		if (host is MainActivity) {
+			host.installSharedSearchBarOwner(this, hint, ::enterInlineSearch)
+		} else {
+			host?.findViewById<SearchBar>(R.id.search_bar)?.setOnClickListener { enterInlineSearch() }
+		}
 	}
 
 	private fun restoreGlobalSearchHandler() {
 		val host = activity ?: return
+		if (host is MainActivity) {
+			host.releaseSharedSearchBarOwner(this)
+			return
+		}
 		val searchBar = host.findViewById<SearchBar>(R.id.search_bar) ?: return
 		val searchView = host.findViewById<SearchView>(R.id.search_view) ?: return
 		searchBar.hint = getString(R.string.search_manga)
 		searchBar.setOnClickListener { searchView.show() }
 	}
+
+	fun openInlineSearch() = enterInlineSearch()
 
 	private fun enterInlineSearch() {
 		if (inlineSearchActive) return
@@ -784,6 +803,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	private fun exitInlineSearch(clearQuery: Boolean = true, endSession: Boolean = true) {
+		val wasActive = inlineSearchActive
 		inlineSearchActive = false
 		searchBackCallback?.isEnabled = false
 		if (endSession) {
@@ -801,9 +821,9 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			isGone = true
 		}
 		searchBar.isVisible = true
-		if (host is org.koitharu.kotatsu.main.ui.MainActivity) {
-			host.restoreMainUtilityButton()
-		} else {
+		if (host is MainActivity) {
+			if (wasActive) host.restoreMainUtilityButton()
+		} else if (wasActive) {
 			host.findViewById<MaterialButton>(R.id.button_settings)?.apply {
 				setIconResource(R.drawable.ic_settings)
 				contentDescription = getString(R.string.settings)
