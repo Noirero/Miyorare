@@ -3,7 +3,8 @@ package org.koitharu.kotatsu.favourites.groups.ui
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
-import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupMember
@@ -18,7 +19,12 @@ class LibraryGroupMemberCandidatesTest {
             id = id, title = name, coverUrl = null, members = mangaIds.map(::member),
             createdAt = 0L, space = space,
         )
-    private fun title(id: Long) = SampleData.manga.copy(id = id, title = "Title $id")
+    private fun title(id: Long) = Manga(
+        id = id, title = "Title $id", altTitles = emptySet(), url = "/$id",
+        publicUrl = "https://fixture.invalid/$id", rating = 0f, contentRating = null,
+        coverUrl = null, tags = emptySet(), state = null, authors = emptySet(),
+        source = MangaSource("MIHON_123"),
+    )
 
     @Test fun excludesCurrentMembersAndMarksSameSpaceConflicts() {
         val current = group(1, "Current", FavouriteSpace.NORMAL, 11, 12)

@@ -364,7 +364,7 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 		var best = 0
 		for (mangaId in timeline.mapTo(LinkedHashSet()) { it.mangaId }) {
 			val history = database.getHistoryDao().find(mangaId) ?: continue
-			if (history.space != favouriteSpace.dbValue || history.deletedAt != 0L) continue
+			if (!isGroupHistoryEligible(history, favouriteSpace)) continue
 			val index = timeline.indexOfLast { item ->
 				item.mangaId == mangaId && item.chapterId == history.chapterId
 			}

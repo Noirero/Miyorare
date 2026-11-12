@@ -2,8 +2,12 @@ package org.koitharu.kotatsu.favourites.groups.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.history.data.HistoryEntity
 
 class LibraryGroupReadingSelectionTest {
     private val timeline = listOf(
@@ -36,5 +40,15 @@ class LibraryGroupReadingSelectionTest {
     @Test fun resolvedCountReflectsPersistedTimelineWithoutDataMutation() {
         assertEquals(3, unresolvedGroupTimelineCount(timeline, emptySet()))
         assertEquals(0, unresolvedGroupTimelineCount(timeline, all))
+    }
+    @Test fun historyProgressCannotCrossNormalPrivateBoundary() {
+        val privateHistory = HistoryEntity(
+            mangaId = 1L, createdAt = 0L, updatedAt = 0L, chapterId = 11L,
+            page = 3, scroll = 0f, percent = 0f, deletedAt = 0L,
+            chaptersCount = 3, space = FavouriteSpace.PRIVATE.dbValue,
+        )
+        assertFalse(isGroupHistoryEligible(privateHistory, FavouriteSpace.NORMAL))
+        assertTrue(isGroupHistoryEligible(privateHistory, FavouriteSpace.PRIVATE))
+        assertFalse(isGroupHistoryEligible(privateHistory.copy(deletedAt = 1L), FavouriteSpace.PRIVATE))
     }
 }

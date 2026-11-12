@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.favourites.groups.ui
 
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.history.data.HistoryEntity
 
 /**
  * Select a single saved timeline entry, never infer a cross-manga sequence from a collection.
@@ -21,3 +23,7 @@ internal fun unresolvedGroupTimelineCount(
     timeline: List<LibraryGroupTimelineItem>,
     availableChapters: Set<Pair<Long, Long>>,
 ): Int = timeline.count { it.mangaId to it.chapterId !in availableChapters }
+
+/** A history row from the other library space must never drive Group resume. */
+internal fun isGroupHistoryEligible(history: HistoryEntity, space: FavouriteSpace): Boolean =
+    history.space == space.dbValue && history.deletedAt == 0L
