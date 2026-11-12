@@ -201,6 +201,7 @@ private fun GroupContent(
 					text = stringResource(R.string.library_group_members_section),
 					style = MaterialTheme.typography.titleMedium,
 					fontWeight = FontWeight.SemiBold,
+					color = MaterialTheme.colorScheme.onSurface,
 					modifier = Modifier.weight(1f),
 				)
 				TextButton(onClick = onAddMembers) { Text(stringResource(R.string.library_group_add_members)) }
