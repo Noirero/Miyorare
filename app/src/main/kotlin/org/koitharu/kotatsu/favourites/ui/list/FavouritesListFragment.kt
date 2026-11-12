@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.favourites.ui.list
 
 import android.content.DialogInterface
+import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
@@ -35,6 +37,8 @@ import coil3.size.Size
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.textfield.TextInputLayout
 import com.google.android.material.textfield.TextInputEditText
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
@@ -60,6 +64,7 @@ import org.koitharu.kotatsu.core.ui.MiyorarePopupPlacement
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.showMiyorareGlassMenu
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
 import org.koitharu.kotatsu.core.ui.neonGlass
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
@@ -69,6 +74,8 @@ import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
 import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.FragmentListBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
@@ -1002,6 +1009,7 @@ class FavouritesListFragment : MangaListFragment() {
 
 		val content = layoutInflater.inflate(R.layout.sheet_library_group_action, null, false)
 		val sheet = BottomSheetDialog(requireContext())
+		val palette = requireContext().miyorareViewPaletteFromPreferences()
 		val summary = content.findViewById<android.widget.TextView>(R.id.group_action_summary)
 		val create = content.findViewById<MaterialButton>(R.id.group_action_create)
 		val createForm = content.findViewById<View>(R.id.group_action_create_form)
@@ -1011,12 +1019,35 @@ class FavouritesListFragment : MangaListFragment() {
 		val searchBox = content.findViewById<View>(R.id.group_action_search)
 		val search = content.findViewById<TextInputEditText>(R.id.group_action_search_input)
 		val groupList = content.findViewById<LinearLayout>(R.id.group_action_list)
+		palette?.let { colors ->
+			content.setBackgroundColor(colors.surface)
+			content.findViewById<android.widget.TextView>(R.id.group_action_title).setTextColor(colors.onSurface)
+			summary.setTextColor(colors.onSurfaceVariant)
+			content.findViewById<android.widget.TextView>(R.id.group_action_available_title).setTextColor(colors.onSurface)
+			titleInput.setTextColor(colors.onSurface)
+			search.setTextColor(colors.onSurface)
+			for (fieldId in listOf(R.id.group_action_title_field, R.id.group_action_search)) {
+				content.findViewById<TextInputLayout>(fieldId).apply {
+					boxStrokeColor = colors.primary
+					defaultHintTextColor = ColorStateList.valueOf(colors.onSurfaceVariant)
+				}
+			}
+			create.backgroundTintList = ColorStateList.valueOf(colors.surfaceContainerHigh)
+			create.setTextColor(colors.primary)
+			create.strokeColor = ColorStateList.valueOf(colors.outlineVariant)
+			save.backgroundTintList = ColorStateList.valueOf(colors.button)
+			save.setTextColor(colors.onButton)
+		}
 		val count = mangaIds.size
 		summary.text = resources.getQuantityString(R.plurals.library_group_selected_manga, count, count)
 
 		val groupRows = groups.map { group ->
 			MaterialButton(requireContext()).apply {
 				isAllCaps = false
+				palette?.let { colors ->
+					backgroundTintList = ColorStateList.valueOf(colors.surfaceContainerHigh)
+					setTextColor(colors.onSurface)
+				}
 				text = "${group.title} · " + resources.getQuantityString(
 					R.plurals.library_group_members, group.members.size, group.members.size,
 				)
@@ -1053,10 +1084,19 @@ class FavouritesListFragment : MangaListFragment() {
 			save.isEnabled = false
 			viewLifecycleScope.launch {
 				runCatching { viewModel.createLibraryGroup(title, mangaIds) }
-					.onSuccess {
-						Toast.makeText(requireContext(), R.string.library_group_created, Toast.LENGTH_SHORT).show()
+					.onSuccess { groupId ->
 						sheet.dismiss()
 						mode?.finish()
+						view?.let { root ->
+							Snackbar.make(root, R.string.library_group_created, Snackbar.LENGTH_LONG)
+								.setAction(R.string.library_group_view_group) {
+									startActivity(
+										Intent(requireContext(), FavouritesActivity::class.java)
+											.putExtra(FavouritesActivity.EXTRA_LIBRARY_GROUP_ID, groupId)
+											.putExtra(EXTRA_FAVOURITE_SPACE, viewModel.favouriteSpace.dbValue),
+									)
+								}.also { bar -> palette?.let { bar.setActionTextColor(it.primary) } }.show()
+						}
 					}
 					.onFailure {
 						save.isEnabled = true

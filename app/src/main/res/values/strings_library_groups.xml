@@ -92,6 +92,7 @@
 	<string name="library_group_tracking_error">Unable to update Group tracking.</string>
 	<string name="library_group_tracking_choose_action">Tracking action</string>
 	<string name="library_group_tracking_search">Search tracking title</string>
+	<string name="library_group_view_group">View group</string>
 	<string name="library_group_search">Search groups</string>
 	<string name="library_group_reading_unset">Read each manga separately, or set an advanced chapter order to read across manga.</string>
 	<string name="library_group_reading_saved">Custom chapter order: %1$d entries</string>
