@@ -1,6 +1,48 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# The History A/B workload is the last, GPU-heavy class in the full suite.
+# Two observed CI runs lost the emulator during it after 390+ tests. Execute
+# exactly that class in a separate, fresh emulator action while keeping every
+# selected test mandatory. The planner and reusable proof still include it.
+HISTORY_SCROLL_CLASS=org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest
+
+strip_fresh_emulator_class() {
+  local class_list="$1"
+  local item
+  local selected=()
+  local matched=false
+  IFS=',' read -r -a requested <<< "$class_list"
+  for item in "${requested[@]}"; do
+    [[ -n "$item" ]] || { echo 'Empty runtime class token' >&2; return 1; }
+    if [[ "$item" == "$HISTORY_SCROLL_CLASS" ]]; then
+      matched=true
+    else
+      selected+=("$item")
+    fi
+  done
+  [[ "$matched" == true && ${#selected[@]} -gt 0 ]] || {
+    echo 'Cannot isolate History benchmark: exact full-suite class is absent or no other class remains' >&2
+    return 1
+  }
+  ( IFS=','; printf '%s\n' "${selected[*]}" )
+}
+
+if [[ "${1:-}" == --self-test ]]; then
+  expected="test.A,test.B"
+  result="$(strip_fresh_emulator_class "test.A,$HISTORY_SCROLL_CLASS,test.B")"
+  [[ "$result" == "$expected" ]] || exit 1
+  if strip_fresh_emulator_class "test.A,test.B" 2>/dev/null; then exit 1; fi
+  if strip_fresh_emulator_class "$HISTORY_SCROLL_CLASS" 2>/dev/null; then exit 1; fi
+  echo 'Fresh-emulator History class split: PASS'
+  exit 0
+fi
+
+if [[ "${RUN_HISTORY_BENCHMARK_IN_FRESH_EMULATOR:-false}" == true ]]; then
+  RUNTIME_CLASSES="$(strip_fresh_emulator_class "${RUNTIME_CLASSES:-}")"
+  printf 'History scroll benchmark reserved for a separate mandatory emulator session.\n'
+fi
+
 if [[ "${RUN_RUNTIME_ISOLATION:-false}" == "true" ]]; then
   bash .github/scripts/run-kotatsu-runtime-isolation-test.sh
 fi

@@ -134,6 +134,8 @@ jobs:
         run: |
           bash .github/scripts/select-pr-runtime-tests.sh --self-test
           bash -n .github/scripts/run-selected-android-runtime.sh
+          bash .github/scripts/run-selected-android-runtime.sh --self-test
+          bash -n .github/scripts/run-history-scroll-benchmark.sh
           python3 .github/scripts/targeted-ci-diagnostics.py --self-test
 
       - name: Install browser auth helper tooling
@@ -286,6 +288,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         env:
           RUNTIME_CLASSES: ${{ steps.runtime-plan.outputs.classes }}
+          RUN_HISTORY_BENCHMARK_IN_FRESH_EMULATOR: ${{ needs.runtime-risk.outputs.full == 'true' && contains(steps.runtime-plan.outputs.classes, 'org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest') }}
           RUN_RUNTIME_ISOLATION: ${{ steps.runtime-plan.outputs.run_runtime_isolation }}
           RUN_MIGRATION_PERSISTENCE: ${{ steps.runtime-plan.outputs.run_migration_persistence }}
         with:
@@ -296,6 +299,28 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: bash .github/scripts/run-selected-android-runtime.sh
+
+      - name: Preserve full-suite results before separate History benchmark
+        if: steps.android-proof.outputs.reuse != 'true' && needs.runtime-risk.outputs.full == 'true' && contains(steps.runtime-plan.outputs.classes, 'org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest')
+        run: |
+          set -euo pipefail
+          test -d app/build/outputs/androidTest-results/connected
+          mkdir -p app/build/reports/android-runtime-diagnostics/full-suite
+          cp -a app/build/outputs/androidTest-results/connected app/build/reports/android-runtime-diagnostics/full-suite/test-results
+
+      # The full-size History A/B benchmark stays mandatory. A second fresh
+      # emulator avoids retained guest/GPU state from the main 390+ tests.
+      - name: Run mandatory History benchmark on fresh Android 15 emulator
+        if: steps.android-proof.outputs.reuse != 'true' && needs.runtime-risk.outputs.full == 'true' && contains(steps.runtime-plan.outputs.classes, 'org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest')
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/run-history-scroll-benchmark.sh
 
       # A proof is published only after actual Android execution succeeds.
       # Never publish a reusable proof from an already reused run.
