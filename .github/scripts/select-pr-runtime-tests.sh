@@ -118,6 +118,12 @@ add_history_visual_suite() {
 add_history_suite() {
   add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   add_history_visual_suite
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryCoverABRuntimeTest
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryScrollBenchmarkTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest
+  fi
   MAPPED=true
 }
 
@@ -202,6 +208,12 @@ add_full_suite() {
   fi
 
   add_history_visual_suite
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryCoverABRuntimeTest
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryScrollBenchmarkTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest
+  fi
 
   # Execute scoped View-palette regressions in full Android 15 runs when present.
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/core/ui/dialog/ModernConfirmationDialogColorsTest.kt ]]; then

@@ -16,6 +16,7 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.children
 import androidx.core.view.isVisible
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.widgets.BadgeView
 import org.koitharu.kotatsu.list.ui.model.ModernCoverReadingState
@@ -45,6 +46,8 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 	private var styledMetrics: FavouriteCoverOverlayMetrics? = null
 	private var styledWidth = -1
 	private var styledActionSize = -1
+	/** Debug-only trace hook enabled by the History A/B probe. */
+	internal var debugTraceHistoryMeasure = false
 	private val density get() = resources.displayMetrics.density
 
 	init {
@@ -126,6 +129,9 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		setMeasuredDimension(w, h)
 		if (w <= 0 || h <= 0) return
 		val value = model ?: return
+		val tracing = BuildConfig.DEBUG && debugTraceHistoryMeasure && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q && android.os.Trace.isEnabled()
+		if (tracing) android.os.Trace.beginSection("HistoryModernOverlayMeasure")
+		try {
 		val metrics = FavouriteCoverOverlayMetrics.resolve(w / density, h / density)
 		fun px(dp: Float) = (dp * density).roundToInt()
 		val inset = px(metrics.inset)
@@ -345,6 +351,9 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		place(metadata, inset, titleTop - gap - metadata.measuredHeight)
 		place(action, w - inset - target, bottom - target)
 		updateAccessibility(value)
+		} finally {
+			if (tracing) android.os.Trace.endSection()
+		}
 	}
 
 	private fun updateAccessibility(value: ModernCoverState) {

@@ -23,6 +23,7 @@ open class MangaListAdapter(
 	localCinematic: Boolean = false,
 	normalFavouritesCardBorder: Boolean = false,
 	headerRowClickable: Boolean = false,
+	debugHistoryOverlayBypass: (() -> Boolean)? = null,
 ) : BaseListAdapter<ListModel>() {
 
 	init {
@@ -39,7 +40,7 @@ open class MangaListAdapter(
 			else mangaListDetailedItemAD(listener, titleClickListener, coverContext))
 		addDelegate(
 			ListItemType.MANGA_GRID,
-			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider, coverContext, localCinematic, normalFavouritesCardBorder),
+			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider, coverContext, localCinematic, normalFavouritesCardBorder, debugHistoryOverlayBypass),
 		)
 		addDelegate(ListItemType.FOOTER_LOADING, loadingFooterAD())
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())
