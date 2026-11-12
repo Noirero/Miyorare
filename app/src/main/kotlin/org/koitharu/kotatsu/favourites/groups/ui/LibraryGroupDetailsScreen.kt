@@ -450,12 +450,16 @@ private fun GroupMemberRow(
 			modifier = Modifier.padding(12.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
-			AsyncImage(
-				model = ImageRequest.Builder(context).data(cover).mangaExtra(member.manga).build(),
-				contentDescription = member.manga.title,
-				modifier = Modifier.size(width = 56.dp, height = 76.dp),
-				contentScale = ContentScale.Crop,
-			)
+			key(cover, member.member.source) {
+				AndroidView(
+					factory = { ctx -> CoverImageView(ctx).apply {
+						scaleType = ImageView.ScaleType.CENTER_CROP
+						contentDescription = member.manga.title
+						loadGroupCoverWhenAttached(cover, MangaSource(member.member.source))
+					} },
+					modifier = Modifier.size(width = 56.dp, height = 76.dp).clip(RoundedCornerShape(8.dp)),
+				)
+			}
 			Spacer(Modifier.width(12.dp))
 			Column(Modifier.weight(1f)) {
 				Text(
