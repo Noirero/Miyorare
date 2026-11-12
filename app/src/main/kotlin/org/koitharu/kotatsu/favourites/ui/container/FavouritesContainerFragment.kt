@@ -71,6 +71,7 @@ import org.koitharu.kotatsu.favourites.ui.list.FavouritesListWorkOwner
 import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.main.ui.installSharedSearchBarOwner
 import org.koitharu.kotatsu.main.ui.releaseSharedSearchBarOwner
+import org.koitharu.kotatsu.main.ui.ownsSharedSearchBar
 import org.koitharu.kotatsu.main.ui.updateSharedSearchBarHint
 import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
@@ -820,9 +821,10 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			clearFocus()
 			isGone = true
 		}
-		searchBar.isVisible = true
+		val ownsSearchBar = host !is MainActivity || host.ownsSharedSearchBar(this)
+		if (ownsSearchBar) searchBar.isVisible = true
 		if (host is MainActivity) {
-			if (wasActive) host.restoreMainUtilityButton()
+			if (wasActive && ownsSearchBar) host.restoreMainUtilityButton()
 		} else if (wasActive) {
 			host.findViewById<MaterialButton>(R.id.button_settings)?.apply {
 				setIconResource(R.drawable.ic_settings)
