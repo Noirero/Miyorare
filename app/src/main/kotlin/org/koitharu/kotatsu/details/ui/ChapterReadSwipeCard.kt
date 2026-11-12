@@ -40,7 +40,7 @@ import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import kotlin.math.roundToInt
 
 /**
- * Left: mark unread chapter as read. Right: mark read chapter as unread.
+ * Left toggles read/unread; right toggles Details-owned page bookmarks for image chapters.
  * The content always settles back instead of being dismissed from the LazyColumn.
  * Status is supplied by the chapter presentation; this component owns no persisted state.
  */
@@ -50,6 +50,8 @@ internal fun ChapterReadSwipeCard(
     selectionActive: Boolean = false,
     onMarkRead: () -> Unit,
     onMarkUnread: () -> Unit,
+    onBookmarkToggle: () -> Unit,
+    bookmarkEnabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -65,7 +67,9 @@ internal fun ChapterReadSwipeCard(
     val markReadLabel = stringResource(R.string.mark_as_read)
     val markUnreadLabel = stringResource(R.string.mark_as_unread)
     val markingRead = translation < 0f
-    val enabled = if (markingRead) item.isUnread else !item.isUnread
+    val enabled = markingRead || bookmarkEnabled
+    val readActionLabel = if (item.isUnread) markReadLabel else markUnreadLabel
+    val bookmarkActionLabel = stringResource(if (item.isSwipeBookmarked) R.string.bookmark_remove else R.string.bookmark_add)
     val colors = MaterialTheme.colorScheme
     val actionColor = when {
         !enabled -> colors.surfaceVariant
@@ -82,16 +86,18 @@ internal fun ChapterReadSwipeCard(
         modifier = Modifier
             .fillMaxWidth()
             .semantics {
-                customActions = if (selectionActive) emptyList() else listOf(
-                    CustomAccessibilityAction(markReadLabel) {
-                        if (item.isUnread) { onMarkRead(); true } else false
-                    },
-                    CustomAccessibilityAction(markUnreadLabel) {
-                        if (!item.isUnread) { onMarkUnread(); true } else false
-                    },
-                )
+                customActions = if (selectionActive) emptyList() else buildList {
+                    add(CustomAccessibilityAction(readActionLabel) {
+                        if (item.isUnread) onMarkRead() else onMarkUnread()
+                        true
+                    })
+                    if (bookmarkEnabled) add(CustomAccessibilityAction(bookmarkActionLabel) {
+                        onBookmarkToggle()
+                        true
+                    })
+                }
             }
-            .pointerInput(item.chapter.id, item.isUnread, selectionActive) {
+            .pointerInput(item.chapter.id, item.isUnread, item.isSwipeBookmarked, selectionActive, bookmarkEnabled) {
                 if (!selectionActive) detectHorizontalDragGestures(
                     onDragStart = { dragX = 0f; dragging = true },
                     onDragCancel = { dragging = false; dragX = 0f },
@@ -99,8 +105,10 @@ internal fun ChapterReadSwipeCard(
                         val finalX = dragX
                         dragging = false
                         dragX = 0f
-                        if (finalX <= -threshold && item.isUnread) onMarkRead()
-                        if (finalX >= threshold && !item.isUnread) onMarkUnread()
+                        if (finalX <= -threshold) {
+                            if (item.isUnread) onMarkRead() else onMarkUnread()
+                        }
+                        if (finalX >= threshold && bookmarkEnabled) onBookmarkToggle()
                     },
                     onHorizontalDrag = { change, delta ->
                         change.consume()
@@ -124,13 +132,13 @@ internal fun ChapterReadSwipeCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        painter = painterResource(if (markingRead) R.drawable.ic_eye_check else R.drawable.ic_eye_off),
+                        painter = painterResource(if (!markingRead) R.drawable.ic_bookmark else if (item.isUnread) R.drawable.ic_eye_check else R.drawable.ic_eye_off),
                         contentDescription = null,
                         tint = actionForeground,
                         modifier = Modifier.size(20.dp),
                     )
                     Text(
-                        text = if (markingRead) markReadLabel else markUnreadLabel,
+                        text = if (markingRead) readActionLabel else bookmarkActionLabel,
                         style = MaterialTheme.typography.labelMedium,
                         color = actionForeground,
                     )

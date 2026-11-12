@@ -131,15 +131,32 @@ class DiscoverySearchBarOwnershipRuntimeTest {
 			scenario.onActivity { activity ->
 				assertEquals(activity.getString(R.string.search_manga), activity.viewBinding.searchBar.hint.toString())
 				activity.viewBinding.searchBar.performClick()
-				assertTrue(activity.viewBinding.searchView.isShowing)
-				activity.viewBinding.searchView.hide()
+				assertFalse(activity.viewBinding.searchView.isShowing)
+				assertEquals(activity.getString(R.string.close), activity.viewBinding.buttonSettings.contentDescription)
+				activity.viewBinding.buttonSettings.performClick()
 			}
 
 			scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_favorites }
 			instrumentation.waitForIdleSync()
 			scenario.onActivity { activity ->
 				activity.viewBinding.searchBar.performClick()
+				assertFalse(activity.viewBinding.searchView.isShowing)
 				assertEquals(activity.getString(R.string.close), activity.viewBinding.buttonSettings.contentDescription)
+			}
+
+			scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_history }
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				activity.viewBinding.searchBar.performClick()
+				assertFalse(activity.viewBinding.searchView.isShowing)
+				activity.viewBinding.buttonSettings.performClick()
+			}
+			scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_explore }
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				activity.viewBinding.searchBar.performClick()
+				assertTrue(activity.viewBinding.searchView.isShowing)
+				activity.viewBinding.searchView.hide()
 			}
 
 			scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_discovery_hub }

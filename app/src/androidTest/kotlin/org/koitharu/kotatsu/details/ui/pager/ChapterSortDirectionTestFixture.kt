@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.local.library.LocalContentReader
 import java.util.UUID
 import javax.inject.Inject
 
@@ -38,6 +39,7 @@ class ChapterSortDirectionTestFixture @Inject constructor(
 	private val repositories: MangaRepository.Factory,
 	private val personalRepository: ChapterPersonalRepository,
 	private val progressRepository: ChapterProgressRepository,
+    private val localContentReader: LocalContentReader,
 ) {
 	suspend fun withIsolatedPreferences(block: suspend Session.() -> Unit) {
 		val target = InstrumentationRegistry.getInstrumentation().targetContext
@@ -98,6 +100,7 @@ class ChapterSortDirectionTestFixture @Inject constructor(
 					chapterListOptionsStore = restoredStore,
 					chapterPersonalRepository = personalRepository,
 					chapterProgressRepository = progressRepository,
+                    localContentReader = localContentReader,
 				) {
 					override fun reload() = Unit
 				}
