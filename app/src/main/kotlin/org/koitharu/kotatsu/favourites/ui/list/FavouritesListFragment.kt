@@ -179,11 +179,7 @@ class FavouritesListFragment : MangaListFragment() {
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
-		// Targeted Android 16 landscape experiment: keep the existing portrait workaround
-		// intact, but allow normal requestLayout/isLayoutRequested semantics in landscape.
-		// The old override can hide required remeasurement of a narrow ViewPager2 page.
-		binding.recyclerView.isVP2BugWorkaroundEnabled =
-			resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE
+		binding.recyclerView.isVP2BugWorkaroundEnabled = true
 		binding.recyclerView.addOnScrollListener(coverPrefetchScrollListener)
 		binding.recyclerView.addOnLayoutChangeListener(diagnosticLayoutListener)
 		logListGeometry("view_created", binding.recyclerView)
@@ -229,14 +225,6 @@ class FavouritesListFragment : MangaListFragment() {
 				}
 			}
 		}
-	}
-
-	override fun onConfigurationChanged(newConfig: Configuration) {
-		super.onConfigurationChanged(newConfig)
-		// MainActivity handles orientation config changes without recreation.
-		// Re-evaluate when an already-attached pager page survives rotation.
-		viewBinding?.recyclerView?.isVP2BugWorkaroundEnabled =
-			newConfig.orientation != Configuration.ORIENTATION_LANDSCAPE
 	}
 
 	override fun onDestroyView() {
