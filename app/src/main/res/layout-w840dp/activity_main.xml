@@ -287,8 +287,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:hint="@string/search_hint"
-            android:theme="@style/ThemeOverlay.Kotatsu.SearchText"
-            >
+            android:theme="@style/ThemeOverlay.Kotatsu.SearchText">
 
             <org.koitharu.kotatsu.core.ui.list.fastscroll.FastScrollRecyclerView
                 android:id="@+id/recyclerView_search"
