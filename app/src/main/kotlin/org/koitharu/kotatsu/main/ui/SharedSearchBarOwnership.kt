@@ -43,5 +43,8 @@ internal fun MainActivity.releaseSharedSearchBarOwner(owner: Any) {
 	searchBar.setOnClickListener { searchView.show() }
 }
 
+internal fun MainActivity.ownsSharedSearchBar(owner: Any): Boolean =
+	findViewById<SearchBar>(R.id.search_bar)?.getTag(R.id.shared_search_owner) === owner
+
 internal fun MainActivity.hasSharedSearchBar(): Boolean =
 	findViewById<SearchBar>(R.id.search_bar) != null
