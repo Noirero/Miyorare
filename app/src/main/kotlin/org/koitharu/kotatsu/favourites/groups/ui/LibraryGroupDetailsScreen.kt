@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.favourites.groups.ui
 
+import android.widget.ImageView
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +52,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,8 +65,8 @@ import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
-import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
+import org.koitharu.kotatsu.image.ui.CoverImageView
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
 import org.koitharu.kotatsu.favourites.groups.tracking.LibraryGroupTracking
 import org.koitharu.kotatsu.parsers.model.MangaChapter
@@ -368,21 +372,24 @@ private fun GroupHeader(
 }
 
 /**
- * Same four-slot collage as the Library Group grid card. A custom Group cover still wins.
- * Source-aware image requests match CoverImageView's existing group grid loading path.
+ * Reuse the grid's exact CoverImageView loader and shared four-slot cover order.
+ * Custom Group cover wins; original manga covers and their stored data are untouched.
  */
 @Composable
 private fun GroupCover(group: LibraryGroup, modifier: Modifier = Modifier) {
-	val context = LocalContext.current
 	val customCover = group.coverUrl?.takeIf(String::isNotBlank)
 	val shape = RoundedCornerShape(14.dp)
 	if (customCover != null) {
-		AsyncImage(
-			model = ImageRequest.Builder(context).data(customCover).build(),
-			contentDescription = group.title,
-			modifier = modifier.clip(shape),
-			contentScale = ContentScale.Crop,
-		)
+		key(customCover) {
+			AndroidView(
+				factory = { context -> CoverImageView(context).apply {
+					scaleType = ImageView.ScaleType.CENTER_CROP
+					contentDescription = group.title
+					setImageAsync(customCover, manga = null)
+				} },
+				modifier = modifier.clip(shape),
+			)
+		}
 		return
 	}
 	val slots = collageCoverSlots(group.members)
@@ -395,19 +402,15 @@ private fun GroupCover(group: LibraryGroup, modifier: Modifier = Modifier) {
 			Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
 				repeat(2) { col ->
 					val member = slots[row * 2 + col]
-					val source = MangaSource(member.source)
-					val request = remember(context, member.displayCoverUrl, member.source) {
-						ImageRequest.Builder(context)
-							.data(member.displayCoverUrl)
-							.mangaSourceExtra(source)
-							.build()
+					key(member.mangaId, member.source, member.displayCoverUrl) {
+						AndroidView(
+							factory = { context -> CoverImageView(context).apply {
+								scaleType = ImageView.ScaleType.CENTER_CROP
+								setImageAsync(member.displayCoverUrl, MangaSource(member.source))
+							} },
+							modifier = Modifier.weight(1f).fillMaxHeight(),
+						)
 					}
-					AsyncImage(
-						model = request,
-						contentDescription = null,
-						modifier = Modifier.weight(1f).fillMaxHeight(),
-						contentScale = ContentScale.Crop,
-					)
 				}
 			}
 		}
