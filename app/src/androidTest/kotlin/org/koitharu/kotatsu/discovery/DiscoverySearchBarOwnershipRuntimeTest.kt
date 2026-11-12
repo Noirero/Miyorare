@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.discovery
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
+import android.os.Looper
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -12,6 +13,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import okhttp3.OkHttpClient
 import dagger.hilt.android.testing.BindValue
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -27,6 +29,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.AlternativeSearchEvent
+import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.discovery.data.CatalogSnapshotStore
@@ -48,6 +51,9 @@ class DiscoverySearchBarOwnershipRuntimeTest {
 	@get:Rule(order = 1) val compose = createEmptyComposeRule()
 
 	@Inject lateinit var settings: AppSettings
+	// Resolve the singleton on the instrumentation thread before MainActivity's
+	// ViewModel accesses it on the UI thread. Production forbids constructing it there.
+	@Inject @BaseHttpClient lateinit var prewarmedBaseHttpClient: OkHttpClient
 
 	private val providers = listOf(ScrobblerService.ANILIST, ScrobblerService.MAL, ScrobblerService.KITSU).map { service ->
 		object : TrackerCatalogProvider {
@@ -82,7 +88,11 @@ class DiscoverySearchBarOwnershipRuntimeTest {
 	private var previous: Map<String, *> = emptyMap<String, Any>()
 
 	@Before fun setup() {
+		check(Looper.myLooper() != Looper.getMainLooper()) {
+			"HTTP client test setup must run off the UI thread"
+		}
 		hilt.inject()
+		check(::prewarmedBaseHttpClient.isInitialized)
 		previous = PreferenceManager.getDefaultSharedPreferences(app).all
 		runCatching { WorkManager.getInstance(app) }.getOrElse { WorkManager.initialize(app, Configuration.Builder().build()) }
 		settings.isOnboardingCompleted = true
