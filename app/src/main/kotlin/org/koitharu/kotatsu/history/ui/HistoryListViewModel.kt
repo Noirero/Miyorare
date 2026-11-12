@@ -135,7 +135,7 @@ class HistoryListViewModel @Inject constructor(
 	)
 
 	private val limit = MutableStateFlow(PAGE_SIZE)
-	private val searchQueryState = MutableStateFlow(savedStateHandle[KEY_HISTORY_SEARCH_QUERY] ?: "")
+	private val searchQueryState = MutableStateFlow(savedStateHandle.get<String>(KEY_HISTORY_SEARCH_QUERY).orEmpty())
 	val searchQuery: StateFlow<String> = searchQueryState
 
 	fun setSearchQuery(query: String) {
