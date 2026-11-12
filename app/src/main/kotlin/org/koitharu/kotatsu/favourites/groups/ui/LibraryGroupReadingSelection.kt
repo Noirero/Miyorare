@@ -27,3 +27,21 @@ internal fun unresolvedGroupTimelineCount(
 /** A history row from the other library space must never drive Group resume. */
 internal fun isGroupHistoryEligible(history: HistoryEntity, space: FavouriteSpace): Boolean =
     history.space == space.dbValue && history.deletedAt == 0L
+
+/** Resume uses the newest matching space-owned History row, not furthest tracking progress. */
+internal fun groupContinuePositionFromHistories(
+    timeline: List<LibraryGroupTimelineItem>,
+    histories: List<HistoryEntity>,
+    space: FavouriteSpace,
+): Int {
+    val indices = timeline.withIndex().associate { (index, chapter) ->
+        (chapter.mangaId to chapter.chapterId) to index
+    }
+    return histories.asSequence()
+        .filter { isGroupHistoryEligible(it, space) }
+        .mapNotNull { history ->
+            indices[history.mangaId to history.chapterId]?.let { history.updatedAt to it }
+        }
+        .maxWithOrNull(compareBy<Pair<Long, Int>> { it.first }.thenBy { it.second })
+        ?.second?.plus(1) ?: 0
+}

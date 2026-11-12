@@ -157,7 +157,7 @@ private fun GroupContent(
 		member.chapters.map { member.member.mangaId to it.id }
 	}
 	val missingTimelineCount = unresolvedGroupTimelineCount(state.timeline, availableChapterIds)
-	val continueEntry = selectGroupContinueEntry(state.timeline, state.trackingProgress, availableChapterIds)
+	val continueEntry = selectGroupContinueEntry(state.timeline, state.continuePosition, availableChapterIds)
 	val continueMember = continueEntry?.let { membersById[it.mangaId] }
 	val continueChapter = continueEntry?.let { target ->
 		continueMember?.chapters?.firstOrNull { it.id == target.chapterId }

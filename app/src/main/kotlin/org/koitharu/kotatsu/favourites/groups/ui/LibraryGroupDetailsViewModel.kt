@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.backup.local.domain.CustomCoverCodec
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.model.withOverride
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -62,6 +63,7 @@ data class LibraryGroupDetailsState(
 	val timeline: List<LibraryGroupTimelineItem> = emptyList(),
 	val tracking: List<LibraryGroupTracking> = emptyList(),
 	val trackingProgress: Int = 0,
+	val continuePosition: Int = 0,
 	val isLoading: Boolean = true,
 	val error: String? = null,
 )
@@ -72,6 +74,7 @@ private data class LibraryGroupReloadData(
 	val timeline: List<LibraryGroupTimelineItem>,
 	val tracking: List<LibraryGroupTracking>,
 	val progress: Int,
+	val continuePosition: Int,
 )
 
 @HiltViewModel
@@ -129,6 +132,7 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 					timeline = timeline,
 					tracking = trackingRepository.get(groupId),
 					progress = calculateTrackingProgress(timeline),
+					continuePosition = calculateContinuePosition(timeline),
 				)
 			}.onSuccess { data ->
 				val firstId = data.members.first().member.mangaId
@@ -138,6 +142,7 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 					timeline = data.timeline,
 					tracking = data.tracking,
 					trackingProgress = data.progress,
+					continuePosition = data.continuePosition,
 					isLoading = false,
 				)
 				if (data.members.first().chapters.isEmpty()) loadMember(firstId, force = false)
@@ -356,7 +361,17 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 			space = favouriteSpace,
 		)
 		val progress = calculateTrackingProgress(orderedItems)
-		_state.update { it.copy(timeline = orderedItems, trackingProgress = progress) }
+		val reading = calculateContinuePosition(orderedItems)
+		_state.update { it.copy(timeline = orderedItems, trackingProgress = progress, continuePosition = reading) }
+	}
+
+	private suspend fun calculateContinuePosition(timeline: List<LibraryGroupTimelineItem>): Int {
+		if (timeline.isEmpty()) return 0
+		val histories = ArrayList<HistoryEntity>()
+		for (mangaId in timeline.mapTo(LinkedHashSet()) { it.mangaId }) {
+			database.getHistoryDao().find(mangaId)?.let(histories::add)
+		}
+		return groupContinuePositionFromHistories(timeline, histories, favouriteSpace)
 	}
 
 	private suspend fun calculateTrackingProgress(timeline: List<LibraryGroupTimelineItem>): Int {
