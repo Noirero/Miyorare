@@ -118,6 +118,7 @@ jobs:
           test "$(git -C candidate rev-parse HEAD)" = "$EXPECTED_SHA"
           test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')" = "$EXPECTED_SHA"
           python3 trusted/.github/scripts/targeted-ci-diagnostics.py --self-test
+          python3 trusted/.github/scripts/targeted-android-watchdog.py --self-test
           cd candidate
           python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py --validate-only \
             --platform "$TARGET_PLATFORM" --targets "$TEST_TARGETS" \
@@ -175,7 +176,8 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            cd candidate && python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py \
+            cd candidate && python3 ../trusted/.github/scripts/targeted-android-watchdog.py -- \
+              python3 ../trusted/.github/scripts/targeted-ci-diagnostics.py \
               --platform "$TARGET_PLATFORM" --targets "$TEST_TARGETS" \
               --mode "$TEST_MODE" --repeats "$TEST_REPEATS" --expected-sha "$EXPECTED_SHA" --pr-number "$PR_NUMBER"
 
