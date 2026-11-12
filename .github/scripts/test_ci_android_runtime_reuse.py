@@ -213,7 +213,7 @@ class AndroidReuseTests(unittest.TestCase):
         self.assertTrue(machinery_changed(set()))
         self.assertFalse(machinery_changed({"app/src/main/kotlin/org/example/Foo.kt"}))
         self.assertRaises(ValueError, build_scope, env(), lambda _: b"uses: reactivecircus/android-emulator-runner@v2")
-        self.assertNotEqual(digest(scope()), digest(build_scope(env(), lambda path: RUNNER_ACTION if path.endswith(".yml") else b"changed")))
+        self.assertNotEqual(digest(scope()), digest(build_scope(env(), lambda path: RUNNER_ACTION * 2 if path.endswith(".yml") else b"changed")))
         self.assertRaises(ValueError, build_scope, {**env(), "RUNTIME_MODE": "targeted"}, fixture_file)
         self.assertRaises(ValueError, build_scope, {**env(), "RUNTIME_CLASSES": "a,a"}, fixture_file)
 
