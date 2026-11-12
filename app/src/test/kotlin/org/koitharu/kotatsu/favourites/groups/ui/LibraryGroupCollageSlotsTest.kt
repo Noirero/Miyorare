@@ -17,6 +17,6 @@ class LibraryGroupCollageSlotsTest {
     }
 
     @Test fun emptyMembersHaveNoSlots() {
-        assertEquals(emptyList<Int>(), collageCoverSlots(emptyList()))
+        assertEquals(emptyList<Int>(), collageCoverSlots<Int>(emptyList()))
     }
 }
