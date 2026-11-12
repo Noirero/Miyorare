@@ -149,9 +149,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			return
 		}
 		setContentView(ActivityMainBinding.inflate(layoutInflater))
-		// Bind global search before fragments can claim the bar for their inline search.
-		// CoordinatorLayout's automatic anchor binding otherwise runs during layout and
-		// may replace the Favourites/History click handler after their first onResume.
+		// Wire global search before destination fragments install inline handlers.
+		// SearchView.Behavior binds the anchored bar during layout only when it is
+		// not yet set up; early setup prevents it from replacing an inline owner.
 		viewBinding.searchView.setupWithSearchBar(viewBinding.searchBar)
 		setSupportActionBar(viewBinding.searchBar)
 		viewBinding.root.applyMiyorareSharedMainChrome()
