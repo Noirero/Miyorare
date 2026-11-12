@@ -203,6 +203,11 @@ add_full_suite() {
 
   add_history_visual_suite
 
+  # Unified Group's searchable member picker has its own Android UI regression.
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/favourites/groups/ui/LibraryGroupAddMembersRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupAddMembersRuntimeTest
+  fi
+
   # Execute scoped View-palette regressions in full Android 15 runs when present.
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/core/ui/dialog/ModernConfirmationDialogColorsTest.kt ]]; then
     add_class org.koitharu.kotatsu.core.ui.dialog.ModernConfirmationDialogColorsTest
