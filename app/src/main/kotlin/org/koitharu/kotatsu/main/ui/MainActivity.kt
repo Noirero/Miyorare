@@ -305,6 +305,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	}
 
 	override fun onFragmentChanged(fragment: Fragment, fromUser: Boolean) {
+		if ((fragment is FavouritesContainerFragment || fragment is HistoryListFragment) &&
+			viewBinding.searchView.isShowing
+		) {
+			viewBinding.searchView.hide()
+		}
 		adjustFabVisibility(topFragment = fragment)
 		adjustAppbar(topFragment = fragment)
 		updateLandscapeHeaderTitle(fragment)
@@ -324,9 +329,17 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	}
 
 	override fun onSupportNavigateUp(): Boolean {
-		if (!viewBinding.searchView.isShowing) {
-			viewBinding.searchView.show()
+		when (val destination = navigationDelegate.primaryFragment) {
+			is FavouritesContainerFragment -> {
+				destination.openInlineSearch()
+				return true
+			}
+			is HistoryListFragment -> {
+				destination.openInlineSearch()
+				return true
+			}
 		}
+		if (!viewBinding.searchView.isShowing) viewBinding.searchView.show()
 		return true
 	}
 
