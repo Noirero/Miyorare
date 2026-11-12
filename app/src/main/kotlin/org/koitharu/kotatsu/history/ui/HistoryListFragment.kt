@@ -17,6 +17,7 @@ import com.google.android.material.search.SearchBar
 import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.main.ui.installSharedSearchBarOwner
 import org.koitharu.kotatsu.main.ui.releaseSharedSearchBarOwner
+import org.koitharu.kotatsu.main.ui.ownsSharedSearchBar
 import org.koitharu.kotatsu.main.ui.updateSharedSearchBarHint
 import android.view.LayoutInflater
 import androidx.core.view.updateLayoutParams
@@ -184,8 +185,9 @@ class HistoryListFragment : MangaListFragment() {
 			clearFocus()
 			isGone = true
 		}
-		bar.isVisible = true
-		if (wasActive) host.restoreMainUtilityButton()
+		val ownsSearchBar = host.ownsSharedSearchBar(this)
+		if (ownsSearchBar) bar.isVisible = true
+		if (wasActive && ownsSearchBar) host.restoreMainUtilityButton()
 		inlineSearchEdit?.let {
 			(host.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
 				?.hideSoftInputFromWindow(it.windowToken, 0)
