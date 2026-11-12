@@ -101,16 +101,20 @@ class HistoryScrollBenchmarkTest {
 			assertEquals("All offline covers must be decodable, or image conditions differ", coverFiles.size, decoded)
 			Log.i(TAG, "setup groups=8 cards=240 unique_covers=${coverFiles.size} predecoded=$decoded source=local_file network=none")
 
+			Log.i(TAG, "phase=launch_activity")
 			ActivityScenario.launch(
 				org.koitharu.kotatsu.scrobbling.mangaupdates.ui.MangaUpdatesAuthActivity::class.java,
 			).use { scenario ->
+				Log.i(TAG, "phase=activity_launched")
 				lateinit var probe: FrameProbe
 				scenario.onActivity { activity -> probe = FrameProbe(activity.window, activity.windowManager.defaultDisplay.refreshRate) }
+				Log.i(TAG, "phase=frame_probe_installed")
 				try {
 					for ((mode, columns, hideTitle) in listOf(
 						Triple("grid", 3, false),
 						Triple("cover", 2, true),
 					)) {
+						Log.i(TAG, "mode=$mode phase=build_rows")
 						val rows = makeRows(coverFiles, hideTitle)
 						var bypass = false
 						lateinit var recycler: RecyclerView
@@ -155,7 +159,9 @@ class HistoryScrollBenchmarkTest {
 								addView(recycler)
 							}
 						}
+						Log.i(TAG, "mode=$mode phase=wait_for_idle")
 						instrumentation.waitForIdleSync()
+						Log.i(TAG, "mode=$mode phase=idle_ready")
 						// Counterbalance cache/order effects: A1 -> B1 -> B2 -> A2, both item sizes.
 						for ((label, off) in listOf("A1" to false, "B1" to true, "B2" to true, "A2" to false)) {
 							scenario.onActivity {
