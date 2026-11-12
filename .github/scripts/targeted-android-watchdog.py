@@ -7,7 +7,6 @@ exit code; this collector never converts a failure into a passing result.
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
 import threading
@@ -116,6 +115,24 @@ class HostWatchdog:
                 (self.output / "app-native-backtrace-error.txt").write_text(str(exc))
                 log.write(f"native_backtrace_unavailable {type(exc).__name__}\n")
             log.write("anr_directory " + command_output(["adb", "shell", "ls", "-lt", "/data/anr"], timeout=3) + "\n")
+            # Some emulator images permit shell to read ART's generated traces;
+            # preserve them immediately if accessible, before QEMU disconnects.
+            try:
+                latest = subprocess.run(
+                    ["adb", "shell", "sh", "-c", "ls -t /data/anr/anr_* 2>/dev/null | head -n 1"],
+                    capture_output=True, text=True, timeout=3, check=False,
+                ).stdout.strip()
+                if latest.startswith("/data/anr/anr_") and "\n" not in latest and " " not in latest:
+                    trace = subprocess.run(["adb", "exec-out", "cat", latest],
+                                           capture_output=True, timeout=5, check=False)
+                    if trace.returncode == 0 and trace.stdout:
+                        (self.output / "app-java-anr.txt").write_bytes(trace.stdout)
+                        log.write(f"java_anr_captured path={latest!r} bytes={len(trace.stdout)}\n")
+                    else:
+                        log.write(f"java_anr_unavailable path={latest!r} exit={trace.returncode} "
+                                  f"stderr={trace.stderr.decode(errors='replace')[:300]!r}\n")
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                log.write(f"java_anr_unavailable {type(exc).__name__}: {exc}\n")
         except (OSError, subprocess.TimeoutExpired) as exc:
             log.write(f"thread_dump_unavailable {type(exc).__name__}: {exc}\n")
         log.flush()
