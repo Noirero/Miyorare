@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.history.data
 
-import android.database.DatabaseUtils.sqlEscapeString
 import androidx.room.withTransaction
 import dagger.Reusable
 import kotlinx.coroutines.flow.Flow
@@ -380,6 +379,6 @@ internal fun historyContentSectionPredicate(
 internal fun historyTitleSearchPredicate(rawQuery: String): String? {
 	val query = rawQuery.trim().takeIf { it.isNotEmpty() } ?: return null
 	val escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-	val pattern = sqlEscapeString("%$escaped%")
+	val pattern = "'%" + escaped.replace("'", "''") + "%'"
 	return "(manga.title LIKE $pattern ESCAPE char(92) OR manga.alt_title LIKE $pattern ESCAPE char(92))"
 }
