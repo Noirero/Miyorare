@@ -89,7 +89,12 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	 * This intentionally fails closed for legacy/unindexed or ambiguous shared-space files.
 	 * Users can still remove their WorkManager history without touching any physical files.
 	 */
-	suspend fun deleteOwnedDownloadAtRoot(remoteManga: Manga, selectedRoot: File, space: FavouriteSpace) {
+	suspend fun deleteOwnedDownloadAtRoot(
+		remoteManga: Manga,
+		selectedRoot: File,
+		space: FavouriteSpace,
+		expectedFile: File? = null,
+	) {
 		require(!remoteManga.isLocal) { "Only remote download tasks may delete their downloaded container" }
 		// The downloader locks a chapter-hydrated Manga from the repository. Use the same
 		// representation here rather than a metadata-only Downloads row.
@@ -104,6 +109,9 @@ class DeleteLocalMangaUseCase @Inject constructor(
 				throw IOException("The selected download's original file is unavailable. Files were kept.")
 			}
 			val resolvedPath = if (ExhentaiDownloadedCopy.isOfficial(lockedManga)) {
+				if (expectedFile == null || expectedFile.canonicalFile != file) {
+					throw IOException("The selected job does not own the current ExHentai archive. Files were kept.")
+				}
 				val exact = ExhentaiDownloadedCopy.find(lockedManga, file, withDetails = false)
 					?.takeIf { file.isFile && it.verified }
 					?: throw IOException("Cannot verify the selected ExHentai archive. Files were kept.")

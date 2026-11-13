@@ -150,6 +150,8 @@ class DownloadWorker @AssistedInject constructor(
 	private val notificationThrottler = Throttler(150)
 	private val statePublishMutex = Mutex()
 
+	private var committedExhentaiPath: String? = null
+
 	override suspend fun doWork(): Result {
 		setForeground(getForegroundInfo())
 		// Register pause controls immediately after the foreground card becomes visible. Previously the
@@ -212,7 +214,10 @@ class DownloadWorker @AssistedInject constructor(
 			// this download has finished its user-visible transfer.
 			pruneResumeCache()
 			DownloadPauseStore.clear(applicationContext, id)
-			Result.success(currentState.toWorkData())
+			val state = currentState.toWorkData()
+			val receipt = committedExhentaiPath
+			Result.success(if (receipt == null) state else androidx.work.Data.Builder()
+				.putAll(state).putString(EXHENTAI_COMMITTED_PATH, receipt).build())
 		} catch (_: CancellationException) {
 			withContext(NonCancellable) {
 				val notification = notificationFactory.create(currentState.copy(isStopped = true))
@@ -540,7 +545,9 @@ class DownloadWorker @AssistedInject constructor(
 				output.finish()
 				val localManga = if (isExhentai) {
 					withContext(NonCancellable) {
-						registerExhentaiArtifact(mangaDetails, task, checkNotNull(output.committedFile))
+						registerExhentaiArtifact(mangaDetails, task, checkNotNull(output.committedFile)).also {
+							committedExhentaiPath = it.file.canonicalPath
+						}
 					}
 				} else {
 					recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
@@ -1050,3 +1057,5 @@ class DownloadWorker @AssistedInject constructor(
 		const val TAG = "download"
 	}
 }
+
+internal const val EXHENTAI_COMMITTED_PATH = "exhentai_committed_path"
