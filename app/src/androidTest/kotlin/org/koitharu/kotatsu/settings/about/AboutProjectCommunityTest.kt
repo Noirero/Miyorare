@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
@@ -24,6 +25,21 @@ import org.koitharu.kotatsu.R
 class AboutProjectCommunityTest {
 	@get:Rule val compose = createComposeRule()
 
+	@Test fun aboutShowsCreditsEntryInsteadOfUpstreamCards() {
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		var openedCredits = false
+		compose.setContent {
+			MaterialTheme {
+				AboutProjectCommunity(onOpenLink = { _, _ -> }, onOpenProjectCredits = { openedCredits = true })
+			}
+		}
+		compose.onNodeWithText(context.getString(R.string.about_dropsauce_name)).assertDoesNotExist()
+		compose.onNodeWithText(context.getString(R.string.about_project_credits_title))
+			.assertIsDisplayed()
+			.performClick()
+		compose.runOnIdle { assertEquals(true, openedCredits) }
+	}
+
 	@Test fun iconActionsRemainReachableAndOpenDistinctDestinationsAtLargeFontScale() {
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		val opened = mutableListOf<Pair<Int, Int>>()
@@ -32,7 +48,7 @@ class AboutProjectCommunityTest {
 				val density = LocalDensity.current
 				CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
 					Column(Modifier.width(320.dp).verticalScroll(rememberScrollState())) {
-						AboutProjectCommunity { url, project -> opened += url to project }
+						AboutProjectCredits { url, project -> opened += url to project }
 					}
 				}
 			}
