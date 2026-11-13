@@ -9,6 +9,7 @@ import androidx.appcompat.view.ActionMode
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.shape.MaterialShapeDrawable
@@ -126,6 +127,28 @@ class ChaptersPagesSheet : BaseAdaptiveSheet<SheetChaptersPagesBinding>(),
 		applyDetailsSheetSurface(sheetDialog)
 		if (viewModel is DetailsViewModel) {
 			configureDetailsChapterSheet(sheetDialog, resetToHalfExpanded = true)
+			// The bottom sheet itself is full-height but starts at a 62% visible offset.
+			// Measure the pager against that visible area, not the offscreen sheet body.
+			sheetDialog?.findViewById<View>(materialR.id.design_bottom_sheet)
+				?.doOnLayout { sheet -> sheet.post(::updateDetailsSheetViewport) }
+		}
+	}
+
+	private fun updateDetailsSheetViewport() {
+		if (viewModel !is DetailsViewModel) return
+		val sheet = (dialog as? BottomSheetDialog)?.findViewById<View>(materialR.id.design_bottom_sheet)
+			?: return
+		val parentHeight = (sheet.parent as? View)?.height ?: return
+		if (parentHeight <= 0) return
+		val binding = viewBinding ?: return
+		val viewportHeight = detailsSheetVisibleBodyHeight(
+			parentHeight = parentHeight,
+			sheetTop = sheet.top,
+			headerHeight = binding.headerBar.height,
+			toolbarHeight = binding.toolbar.height,
+		)
+		if (binding.layoutTouchBlock.layoutParams.height != viewportHeight) {
+			binding.layoutTouchBlock.updateLayoutParams { height = viewportHeight }
 		}
 	}
 
@@ -191,6 +214,9 @@ class ChaptersPagesSheet : BaseAdaptiveSheet<SheetChaptersPagesBinding>(),
 	override fun onStateChanged(sheet: View, newState: Int) {
 		val binding = viewBinding ?: return
 		binding.layoutTouchBlock.isTouchEventsAllowed = dialog != null || newState != STATE_COLLAPSED
+		if (viewModel is DetailsViewModel && newState != STATE_DRAGGING && newState != STATE_SETTLING) {
+			binding.root.post(::updateDetailsSheetViewport)
+		}
 		if (newState == STATE_DRAGGING || newState == STATE_SETTLING) {
 			return
 		}
@@ -301,3 +327,11 @@ class ChaptersPagesSheet : BaseAdaptiveSheet<SheetChaptersPagesBinding>(),
 		private const val DRAG_HANDLE_COLLAPSE_START = 0.65f
 	}
 }
+
+/** Height the page/chapter viewport can actually display below the visible sheet header. */
+internal fun detailsSheetVisibleBodyHeight(
+	parentHeight: Int,
+	sheetTop: Int,
+	headerHeight: Int,
+	toolbarHeight: Int,
+): Int = (parentHeight - sheetTop - headerHeight - toolbarHeight).coerceAtLeast(0)
