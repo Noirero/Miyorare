@@ -1293,6 +1293,7 @@ internal fun InlineChapterCard(
 	onManageClick: () -> Unit,
 	onPersonalClick: () -> Unit,
 	onNoteClick: () -> Unit,
+	canAnimateTitle: () -> Boolean = { false },
 ) {
 	val context = LocalContext.current
 	val palette = LocalMiyorareVisualPalette.current
@@ -1414,7 +1415,7 @@ internal fun InlineChapterCard(
 
 			Column(modifier = Modifier.weight(1f)) {
 				Row(verticalAlignment = Alignment.CenterVertically) {
-					Text(
+					PanningChapterTitle(
 						text = item.getTitle(context.resources),
 						style = MaterialTheme.typography.bodyMedium,
 						fontWeight = when {
@@ -1423,8 +1424,7 @@ internal fun InlineChapterCard(
 							else -> FontWeight.Medium
 						},
 						color = mainColor,
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
+						canAnimate = canAnimateTitle,
 						modifier = Modifier.weight(1f, fill = false),
 					)
 					if (item.isNew && item.isUnread) {
