@@ -623,6 +623,23 @@ class DownloadMaintenanceRegressionTest {
 		assertNull(local.findSavedMangaInRoot(b, root))
 	}
 
+	@Test fun recordedLegacyOwnershipBlocksAnotherGalleryFromBorrowingTheFile() = runBlocking {
+		val a = galleryFixture(812320)
+		val b = galleryFixture(812321)
+		val directory = folder("downloads/Same title")
+		val cbz = chapterFile(directory, "Chapter.cbz")
+		val before = cbz.readBytes()
+		// No owner is known yet: both galleries may use the legacy read fallback.
+		assertEquals(cbz.canonicalFile, local.findSavedMangaInRoot(b, root)?.file?.canonicalFile)
+		data.storeManga(a, replaceExisting = true, detailsFetched = true)
+		db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(
+			mangaId = a.id, space = FavouriteSpace.NORMAL.dbValue, path = directory.canonicalPath,
+		))
+		assertEquals(cbz.canonicalFile, local.findSavedMangaInRoot(a, root)?.file?.canonicalFile)
+		assertNull(local.findSavedMangaInRoot(b, root))
+		assertArrayEquals(before, cbz.readBytes())
+	}
+
 	private fun galleryFixture(gid: Long): Manga {
 		val url = "https://exhentai.org/g/$gid/token/"
 		val source = MissingMangaSource(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)

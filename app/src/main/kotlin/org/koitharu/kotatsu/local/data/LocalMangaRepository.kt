@@ -296,22 +296,36 @@ class LocalMangaRepository @Inject constructor(
 		LocalMangaParser(localManga.url.toUri()).getMangaInfo()?.takeUnless { it.isLocal }
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
+	internal suspend fun findExhentaiAtPath(
+		remote: Manga,
+		path: File,
+		withDetails: Boolean,
+		space: FavouriteSpace? = null,
+	): ExhentaiDownloadedCopy.Match? {
+		val match = ExhentaiDownloadedCopy.find(remote, path, withDetails) ?: return null
+		if (favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(remote.id, space, match.local.file, match.verified)) {
+			return null
+		}
+		return match
+	}
+
 	internal suspend fun findExhentaiInRoots(
 		remote: Manga,
 		roots: Collection<File>,
 		withDetails: Boolean,
+		space: FavouriteSpace? = null,
 	): LocalManga? = withContext(Dispatchers.IO) {
 		val hints = favouriteDownloadOwnershipIndex.pathsForManga(remote.id) + listOfNotNull(localMangaIndex.findIndexedPath(remote.id))
 		for (hint in hints.distinct()) {
 			if (!hint.isInsideAny(roots)) continue
-			ExhentaiDownloadedCopy.find(remote, hint, withDetails)?.takeIf { it.verified }?.let {
+			findExhentaiAtPath(remote, hint, withDetails, space)?.takeIf { it.verified }?.let {
 				return@withContext it.local
 			}
 		}
 		var legacy: LocalManga? = null
 		for (root in roots) {
 			for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote)) {
-				val match = ExhentaiDownloadedCopy.find(remote, path, withDetails) ?: continue
+				val match = findExhentaiAtPath(remote, path, withDetails, space) ?: continue
 				if (match.verified) return@withContext match.local
 				if (legacy == null) legacy = match.local
 			}
@@ -322,7 +336,7 @@ class LocalMangaRepository @Inject constructor(
 				root, remote.source.name, remote.title, remote.publicUrl, remote.url,
 			) ?: continue
 			if (!path.isInsideAny(listOf(root))) continue
-			ExhentaiDownloadedCopy.find(remote, path, withDetails)?.let { return@withContext it.local }
+			findExhentaiAtPath(remote, path, withDetails, space)?.let { return@withContext it.local }
 		}
 		null
 	}
@@ -365,7 +379,7 @@ class LocalMangaRepository @Inject constructor(
 		runCatchingCancellable {
 			if (!file.exists()) return@runCatchingCancellable null
 			if (ExhentaiDownloadedCopy.isOfficial(remoteManga)) {
-				return@runCatchingCancellable ExhentaiDownloadedCopy.find(remoteManga, file, withDetails)?.local
+				return@runCatchingCancellable findExhentaiAtPath(remoteManga, file, withDetails)?.local
 			}
 			if (withDetails) {
 				buildFastIndexedDirectoryCopy(remoteManga, file)?.let { indexed ->
@@ -758,7 +772,7 @@ class LocalMangaRepository @Inject constructor(
 
 	internal suspend fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
 		if (ExhentaiDownloadedCopy.isOfficial(remoteManga)) {
-			return ExhentaiDownloadedCopy.find(remoteManga, localManga.file, withDetails = true)?.local
+			return findExhentaiAtPath(remoteManga, localManga.file, withDetails = true)?.local
 				?: localManga.copy(manga = localManga.manga.copy(chapters = emptyList()))
 		}
 		val migrated = localMangaIndex.linkMigratedDownloadChapters(remoteManga.id, localManga)

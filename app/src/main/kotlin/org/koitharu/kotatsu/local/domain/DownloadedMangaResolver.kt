@@ -66,11 +66,12 @@ class DownloadedMangaResolver @Inject constructor(
 		if (ownership != null) {
 			val ownedFile = File(ownership.path)
 			if (roots.any { ownedFile.isInside(it) }) {
-				localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)?.let { saved ->
-					if (!ExhentaiDownloadedCopy.isOfficial(manga) || saved.file.canonicalFile == ownedFile.canonicalFile ||
-						database.getFavouriteDownloadIndexDao().findEntriesByPath(saved.file.canonicalPath)
-							.none { it.space != favouriteSpace.dbValue }) return saved
+				val saved = if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+					localMangaRepository.findExhentaiAtPath(manga, ownedFile, withDetails = true, space = favouriteSpace)?.local
+				} else {
+					localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)
 				}
+				if (saved != null) return saved
 			}
 		}
 
@@ -80,7 +81,7 @@ class DownloadedMangaResolver @Inject constructor(
 		// persist ownership after checking favourite membership and chapter evidence.
 		if (!canInferSpaceFromPath()) return null
 		if (ExhentaiDownloadedCopy.isOfficial(manga)) {
-			return localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true)
+			return localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = favouriteSpace)
 		}
 
 		// With distinct roots the global Local index is safe as a compatibility hint, but it still has

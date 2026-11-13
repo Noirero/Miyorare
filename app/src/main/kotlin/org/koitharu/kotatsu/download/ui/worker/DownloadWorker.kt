@@ -605,18 +605,11 @@ class DownloadWorker @AssistedInject constructor(
 		val rootPath = root.canonicalFile.toPath()
 		val owned = dao.findEntry(space.dbValue, manga.id)?.path?.let(::File)
 		if (owned != null && owned.canonicalFile.toPath().startsWith(rootPath)) {
-			ExhentaiDownloadedCopy.find(manga, owned, withDetails = true)?.let { match ->
+			localMangaRepository.findExhentaiAtPath(manga, owned, withDetails = true, space = space)?.let { match ->
 				if (match.verified || match.local.file.canonicalFile == owned.canonicalFile) return match.local
 			}
 		}
-		val candidate = localMangaRepository.findSavedMangaInRoot(manga, root, withDetails = true) ?: return null
-		val file = candidate.file.canonicalFile
-		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
-		// An unindexed legacy match is still usable. A physical file already registered to the other
-		// space is not a completed download for this task, even if both roots point at the same disk.
-		val paths = listOfNotNull(file.path, file.parentFile?.path)
-		if (dao.findEntriesByPaths(paths).any { it.space == otherSpace.dbValue }) return null
-		return candidate
+		return localMangaRepository.findExhentaiInRoots(manga, listOf(root), withDetails = true, space = space)
 	}
 
 	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File, strict: Boolean = false) {
