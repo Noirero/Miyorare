@@ -713,6 +713,32 @@ class DownloadMaintenanceRegressionTest {
 		}
 	}
 
+	@Test fun staleExhentaiTaskCannotDeleteAnArchiveAtAReusedPath() = runBlocking {
+		val manga = galleryFixture(812370)
+		val space = FavouriteSpace.NORMAL
+		val oldRequest = java.util.UUID.randomUUID()
+		val newRequest = java.util.UUID.randomUUID()
+		fun receipt(id: java.util.UUID) =
+			org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Receipt(space, id)
+		val old = writeGalleryFixture(manga, false, byteArrayOf(91), receipt = receipt(oldRequest))
+		check(old.delete())
+		check(old.parentFile?.delete() == true)
+		val replacement = writeGalleryFixture(manga, false, byteArrayOf(92), receipt = receipt(newRequest))
+		assertEquals(old.canonicalFile, replacement.canonicalFile)
+		data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+		val dao = db.getFavouriteDownloadIndexDao()
+		dao.upsert(FavouriteDownloadIndexEntity(mangaId = manga.id, space = space.dbValue, path = replacement.canonicalPath))
+		val before = replacement.readBytes()
+		val failure = runCatching {
+			deleteLocal.deleteOwnedDownloadAtRoot(manga, root, space, old, oldRequest)
+		}.exceptionOrNull()
+		assertTrue(failure is java.io.IOException)
+		assertArrayEquals(before, replacement.readBytes())
+		assertEquals(replacement.canonicalPath, dao.findEntry(space.dbValue, manga.id)?.path)
+		deleteLocal.deleteOwnedDownloadAtRoot(manga, root, space, replacement, newRequest)
+		assertFalse(replacement.exists())
+	}
+
 	@Test fun exhentaiReservationCannotReplaceAFileCreatedAfterReservation() {
 		val directory = folder("reservations")
 		val victim = byteArrayOf(3, 4, 5)

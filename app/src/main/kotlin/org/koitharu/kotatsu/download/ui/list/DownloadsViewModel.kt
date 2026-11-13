@@ -387,21 +387,22 @@ class DownloadsViewModel @Inject constructor(
 						"This manga has downloads in multiple folders. Files were kept."
 					}
 					val committed = if (ExhentaiDownloadedCopy.isOfficial(manga)) {
-						val paths = row.workIds.map { id ->
+						val archives = row.workIds.map { id ->
 							val completed = works.firstOrNull { it.id == id && it.state == WorkInfo.State.SUCCEEDED }
-							checkNotNull(completed?.outputData?.getString(EXHENTAI_COMMITTED_PATH)) {
+							val path = checkNotNull(completed?.outputData?.getString(EXHENTAI_COMMITTED_PATH)) {
 								"Cannot verify the exact ExHentai archive from this download. Files were kept."
 							}
-						}.distinct()
-						check(paths.size == 1) { "Selected jobs produced different ExHentai archives. Files were kept." }
-						File(paths.single())
+							File(path) to id
+						}
+						check(archives.size == 1) { "Cannot verify a single ExHentai archive for the selected jobs. Files were kept." }
+						archives.single()
 					} else null
 					Triple(row.workIds, manga, roots.single() to committed)
 				}
 				for ((groupWorkIds, manga, destination) in targets) {
 					val (root, committed) = destination
 					if (committed == null) deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace)
-					else deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace, committed)
+					else deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace, committed.first, committed.second)
 					// Keep each completed group's history consistent even if a later
 					// selected manga fails its own filesystem deletion.
 					workScheduler.delete(groupWorkIds)
