@@ -189,7 +189,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			settings = settings,
 		)
 		navigationDelegate.addOnFragmentChangedListener(this)
-		navigationDelegate.onExploreReselected = {
+		navigationDelegate.onExploreReselected = exploreReselected@{
+			if ((navigationDelegate.primaryFragment as? ExploreFragment)?.focusSourceSearch() == true) {
+				return@exploreReselected
+			}
 			if (isSearchFullyShown) {
 				viewBinding.searchView.hide()
 			} else if (!viewBinding.searchView.isShowing) {
@@ -334,6 +337,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 
 	override fun onSupportNavigateUp(): Boolean {
 		when (val destination = navigationDelegate.primaryFragment) {
+			is ExploreFragment -> if (destination.focusSourceSearch()) return true
 			is FavouritesContainerFragment -> {
 				destination.openInlineSearch()
 				return true
