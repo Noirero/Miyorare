@@ -53,4 +53,5 @@
 	<string name="about_dropsauce_summary">Project Miyorare was forked from.</string>
 	<string name="about_url_dropsauce_github" translatable="false">https://github.com/HuzaifaKhalid1311/DropSauce</string>
 	<string name="about_url_dropsauce_discord" translatable="false">https://discord.gg/PTd2bYgz9m</string>
+	<string name="about_project_credits_title">Project credits</string>
 </resources>
