@@ -16,6 +16,7 @@ import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import android.view.WindowManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
@@ -34,6 +35,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import coil3.request.ImageRequest
 import coil3.size.Size
+import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -1116,6 +1118,12 @@ class FavouritesListFragment : MangaListFragment() {
 		if (groups.isEmpty()) create.performClick()
 		sheet.setContentView(content)
 		sheet.show()
+		// Keep the focused title/search field above the IME instead of obscuring the sheet.
+		sheet.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+		sheet.behavior.apply {
+			skipCollapsed = true
+			state = BottomSheetBehavior.STATE_EXPANDED
+		}
 	}
 
 	private fun handleLibraryGroupTarget(target: LibraryGroup, mangaIds: List<Long>, mode: ActionMode?) {

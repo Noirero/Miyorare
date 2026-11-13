@@ -1,7 +1,5 @@
 package org.koitharu.kotatsu.favourites.groups.ui
 
-import android.widget.ImageView
-import android.view.View
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -43,7 +41,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,7 +50,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -66,12 +62,11 @@ import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
+import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
-import org.koitharu.kotatsu.image.ui.CoverImageView
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
 import org.koitharu.kotatsu.favourites.groups.tracking.LibraryGroupTracking
 import org.koitharu.kotatsu.parsers.model.MangaChapter
-import org.koitharu.kotatsu.parsers.model.MangaSource as ParserMangaSource
 
 private data class ReadingTimelineRowUi(
 	val position: Int,
@@ -374,24 +369,21 @@ private fun GroupHeader(
 }
 
 /**
- * Reuse the grid's exact CoverImageView loader and shared four-slot cover order.
- * Custom Group cover wins; original manga covers and their stored data are untouched.
+ * Use Compose's Coil image loader inside Compose rather than waiting for a hosted View to attach.
+ * Preserve the grid's source-aware cover requests and shared four-slot ordering.
  */
 @Composable
 private fun GroupCover(group: LibraryGroup, modifier: Modifier = Modifier) {
+	val context = LocalContext.current
 	val customCover = group.coverUrl?.takeIf(String::isNotBlank)
 	val shape = RoundedCornerShape(14.dp)
 	if (customCover != null) {
-		key(customCover) {
-			AndroidView(
-				factory = { context -> CoverImageView(context).apply {
-					scaleType = ImageView.ScaleType.CENTER_CROP
-					contentDescription = group.title
-					loadGroupCoverWhenAttached(customCover, source = null)
-				} },
-				modifier = modifier.clip(shape),
-			)
-		}
+		AsyncImage(
+			model = ImageRequest.Builder(context).data(customCover).build(),
+			contentDescription = group.title,
+			modifier = modifier.clip(shape),
+			contentScale = ContentScale.Crop,
+		)
 		return
 	}
 	val slots = collageCoverSlots(group.members)
@@ -404,38 +396,18 @@ private fun GroupCover(group: LibraryGroup, modifier: Modifier = Modifier) {
 			Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
 				repeat(2) { col ->
 					val member = slots[row * 2 + col]
-					key(member.mangaId, member.source, member.displayCoverUrl) {
-						AndroidView(
-							factory = { context -> CoverImageView(context).apply {
-								scaleType = ImageView.ScaleType.CENTER_CROP
-								loadGroupCoverWhenAttached(member.displayCoverUrl, MangaSource(member.source))
-							} },
-							modifier = Modifier.weight(1f).fillMaxHeight(),
-						)
-					}
+					AsyncImage(
+						model = ImageRequest.Builder(context)
+							.data(member.displayCoverUrl)
+							.mangaSourceExtra(MangaSource(member.source))
+							.build(),
+						contentDescription = member.displayTitle,
+						contentScale = ContentScale.Crop,
+						modifier = Modifier.weight(1f).fillMaxHeight(),
+					)
 				}
 			}
 		}
-	}
-}
-
-/**
- * AndroidView creates its child before attachment. Wait until the View has a lifecycle owner
- * before issuing the same CoverImageView request as the library grid; dispose when detached.
- */
-private fun CoverImageView.loadGroupCoverWhenAttached(url: String?, source: ParserMangaSource?) {
-	addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-		override fun onViewAttachedToWindow(view: View) {
-			if (source == null) setImageAsync(url, manga = null)
-			else setImageAsync(url, source)
-		}
-		override fun onViewDetachedFromWindow(view: View) {
-			disposeImage()
-		}
-	})
-	if (isAttachedToWindow) {
-		if (source == null) setImageAsync(url, manga = null)
-		else setImageAsync(url, source)
 	}
 }
 
@@ -451,16 +423,12 @@ private fun GroupMemberRow(
 			modifier = Modifier.padding(12.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
-			key(cover, member.member.source) {
-				AndroidView(
-					factory = { ctx -> CoverImageView(ctx).apply {
-						scaleType = ImageView.ScaleType.CENTER_CROP
-						contentDescription = member.manga.title
-						loadGroupCoverWhenAttached(cover, MangaSource(member.member.source))
-					} },
-					modifier = Modifier.size(width = 56.dp, height = 76.dp).clip(RoundedCornerShape(8.dp)),
-				)
-			}
+			AsyncImage(
+				model = ImageRequest.Builder(context).data(cover).mangaExtra(member.manga).build(),
+				contentDescription = member.manga.title,
+				modifier = Modifier.size(width = 56.dp, height = 76.dp).clip(RoundedCornerShape(8.dp)),
+				contentScale = ContentScale.Crop,
+			)
 			Spacer(Modifier.width(12.dp))
 			Column(Modifier.weight(1f)) {
 				Text(
