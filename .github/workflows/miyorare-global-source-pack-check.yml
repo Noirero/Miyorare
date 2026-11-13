@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Checkout Miyorare
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Checkout pinned Gekkoushi source
         uses: actions/checkout@v5
@@ -169,5 +171,45 @@ jobs:
         with:
           name: miyorare-global-staging
           path: build/miyorare-source-packs/global/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build isolated owner-validation APK
+        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Build from the exact PR head, not GitHub's synthetic merge commit.
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          assets=app/src/debug/assets/global-validation
+          mkdir -p "$assets"
+          cp build/miyorare-source-packs/global/miyorare-global-gekkoushi.jar "$assets/"
+          sha256sum "$assets/miyorare-global-gekkoushi.jar" | cut -d ' ' -f 1 > "$assets/sha256"
+          git rev-parse HEAD > "$assets/revision"
+          bash gradlew :app:assembleDebug -PMIYORARE_GLOBAL_VALIDATION=true --max-workers=2 --no-daemon --stacktrace
+          mkdir -p build/global-validation
+          cp app/build/outputs/apk/debug/app-debug.apk build/global-validation/miyorare-global-validation.apk
+          cp "$assets/revision" "$assets/sha256" build/global-validation/
+
+      - name: Enable KVM for Global validation
+        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Verify bundled official Global on Android 15
+        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          script: bash .github/scripts/verify-global-validation-apk.sh
+
+      - name: Upload verified owner-validation APK
+        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+        uses: actions/upload-artifact@v4
+        with:
+          name: miyorare-global-validation-apk
+          path: build/global-validation/
           if-no-files-found: error
           retention-days: 7

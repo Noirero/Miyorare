@@ -51,7 +51,9 @@ android {
 	}
 	buildTypes {
 		debug {
-			applicationIdSuffix = '.debug'
+			def globalValidation = project.findProperty('MIYORARE_GLOBAL_VALIDATION') == 'true'
+			applicationIdSuffix = globalValidation ? '.debug.globalvalidation' : '.debug'
+			manifestPlaceholders['globalValidationEnabled'] = globalValidation.toString()
 		}
 		preview {
 			versionNameSuffix = '-beta'

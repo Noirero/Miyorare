@@ -6,6 +6,16 @@
 
     <application>
         <activity
+            android:name="org.koitharu.kotatsu.tsuki.GlobalValidationActivity"
+            android:enabled="${globalValidationEnabled}"
+            android:exported="true"
+            android:label="Miyorare Global Validation">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
             android:name="org.koitharu.kotatsu.main.ui.MainActivity"
             android:theme="@style/Theme.Miyorare.Splash" />
         <activity
