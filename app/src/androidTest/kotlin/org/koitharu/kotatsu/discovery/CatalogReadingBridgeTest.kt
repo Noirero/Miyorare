@@ -20,11 +20,13 @@ import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.alternatives.domain.AlternativeSearchEvent
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.discovery.data.*
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.discovery.ui.*
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService as Service
 import javax.inject.Inject
 
@@ -141,10 +143,9 @@ class CatalogReadingBridgeTest {
 		assertEquals(single, vm.state.value.resolution.scope)
 	}
 	@Test fun singleScopeBuildsAnExclusivePoolFromEnabledCompatibleSources() {
-		val selected = SampleData.manga.source
-		val other = object : org.koitharu.kotatsu.parsers.model.MangaSource by selected {
-			override val name: String = "other-source"
-		}
+		val selected = readingSourceFixture(TsukiPluginProvider.MIYORARE)
+		val other = readingSourceFixture(TsukiPluginProvider.GEKKOUSHI)
+		assertTrue(selectCatalogSource(listOf(LocalMangaSource), CatalogMediaKind.MANGA, LocalMangaSource.name).isEmpty())
 		assertEquals(listOf(selected), selectCatalogSource(listOf(other, selected), CatalogMediaKind.MANGA, selected.name))
 		assertTrue(selectCatalogSource(listOf(other), CatalogMediaKind.MANGA, selected.name).isEmpty())
 		assertTrue(selectCatalogSource(listOf(selected), CatalogMediaKind.NOVEL, selected.name).isEmpty())

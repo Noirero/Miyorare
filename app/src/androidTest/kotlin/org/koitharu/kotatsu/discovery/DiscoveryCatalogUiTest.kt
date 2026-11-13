@@ -16,7 +16,8 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.discovery.ui.*
-import org.koitharu.kotatsu.tsuki.model.*
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
+import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService as Service
 
 class DiscoveryCatalogUiTest {
@@ -140,17 +141,8 @@ class DiscoveryCatalogUiTest {
 
 	@Test fun readingSourcePickerSelectsOneScopeWithoutOpeningManga() {
 		val descriptor = TsukiSourceDescriptor("fixture-source", "Same catalogue", "en", "MANGA")
-		fun source(provider: TsukiPluginProvider): TsukiMangaSource {
-			val plugin = TsukiPluginDescriptor(
-				pluginId = "fixture", displayName = "Fixture", provider = provider, version = "1",
-				origin = "test", sha256 = "", fileSize = 0L, lastModified = 0L, requiredApi = null,
-				compatibility = TsukiCompatibilityStatus.COMPATIBLE, state = TsukiPluginState.ENABLED,
-				sources = listOf(descriptor), enabledSourceNames = setOf(descriptor.name),
-			)
-			return TsukiMangaSource(plugin, descriptor)
-		}
-		val pinned = source(TsukiPluginProvider.MIYORARE)
-		val source = source(TsukiPluginProvider.GEKKOUSHI)
+		val pinned = readingSourceFixture(TsukiPluginProvider.MIYORARE, descriptor)
+		val source = readingSourceFixture(TsukiPluginProvider.GEKKOUSHI, descriptor)
 		val picker = mutableStateOf(CatalogSourcePickerState(
 			visible = true, sources = listOf(CatalogReadingSource(pinned, pinned = true), CatalogReadingSource(source, pinned = false)),
 		))
@@ -182,19 +174,27 @@ class DiscoveryCatalogUiTest {
 		val list = compose.onNodeWithTag("catalog_scope_picker")
 		list.performScrollToKey(pinned.name)
 		compose.onNodeWithText(context.getString(R.string.hub_scope_pinned_section, 1)).assertExists()
-		compose.onNodeWithTag("catalog_scope_option_${pinned.name}").assert(
-			hasText(context.getString(R.string.explore_source_origin_miyorare_pack)),
-		)
+		val pinnedRow = hasTestTag("catalog_scope_option_${pinned.name}")
+		compose.onNode(
+			hasText(context.getString(R.string.explore_source_origin_miyorare_pack)) and hasAnyAncestor(pinnedRow),
+			useUnmergedTree = true,
+		).assertIsDisplayed()
 		list.performScrollToKey(source.name)
 		compose.onNodeWithText(context.getString(R.string.hub_scope_other_section, 1)).assertExists()
-		compose.onNodeWithTag("catalog_scope_option_${source.name}").assert(
-			hasText(context.getString(R.string.explore_source_origin_gekkoushi)),
-		).performClick()
-		compose.onNodeWithTag("catalog_source_scope").assert(hasText(context.getString(
-			R.string.hub_scope_source_with_origin,
-			descriptor.title,
-			context.getString(R.string.explore_source_origin_gekkoushi),
-		)))
+		val selectedRow = hasTestTag("catalog_scope_option_${source.name}")
+		compose.onNode(
+			hasText(context.getString(R.string.explore_source_origin_gekkoushi)) and hasAnyAncestor(selectedRow),
+			useUnmergedTree = true,
+		).assertIsDisplayed()
+		compose.onNode(selectedRow).performClick()
+		compose.onNode(
+			hasText(context.getString(
+				R.string.hub_scope_source_with_origin,
+				descriptor.title,
+				context.getString(R.string.explore_source_origin_gekkoushi),
+			)) and hasAnyAncestor(hasTestTag("catalog_source_scope")),
+			useUnmergedTree = true,
+		).assertIsDisplayed()
 		compose.runOnIdle {
 			assertEquals(CatalogSearchScope.Single(source.name), selected)
 			assertFalse(opened)
