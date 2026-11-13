@@ -37,14 +37,20 @@ import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.LocalDownloadScanner
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.MangaIndex
+import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.io.File
 import java.security.MessageDigest
+import org.koitharu.kotatsu.core.prefs.DownloadFormat
+import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
+import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
+import java.util.zip.ZipFile
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
@@ -59,6 +65,7 @@ class DownloadMaintenanceRegressionTest {
 	@Inject lateinit var index: LocalMangaIndex
 	@Inject lateinit var local: LocalMangaRepository
 	@Inject lateinit var resolver: DownloadedMangaResolver
+	@Inject lateinit var deleteLocal: DeleteLocalMangaUseCase
 	@Inject lateinit var favourites: FavouritesRepository
 	@Inject @org.koitharu.kotatsu.local.data.LocalStorageChanges lateinit var events: kotlinx.coroutines.flow.MutableSharedFlow<LocalManga?>
 	private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
@@ -561,6 +568,81 @@ class DownloadMaintenanceRegressionTest {
 			rows.any { it.chapter.id == second.id && it.isDownloaded })
 		assertTrue(chapter2.isFile)
 		assertArrayEquals("A read-only Details lookup must not rewrite the user's index", originalIndex, indexFile.readBytes())
+	}
+
+	@Test fun fullExhentaiTitleFindsLegacyFileOnlyWithinRequestedRoot() = runBlocking {
+		val seed = remote()
+		val source = MissingMangaSource(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val gallery = "/g/210/token/"
+		val chapter = seed.chapters!!.single().copy(title = "Chapter", source = source, url = gallery)
+		val remote = seed.copy(
+			title = "[Circle] Aaaa (29) [English]",
+			source = source,
+			url = gallery,
+			publicUrl = "https://e-hentai.org$gallery",
+			chapters = listOf(chapter),
+		)
+		// A missing installed parser has no Tsuki source directory metadata. Use the historical
+		// direct layout for this offline fixture, without installing a plugin or fetching metadata.
+		val legacyFolder = folder("downloads/Aaaa")
+		val cbz = chapterFile(legacyFolder, "Chapter.cbz")
+		val original = cbz.readBytes()
+		val found = checkNotNull(local.findSavedMangaInRoot(remote, root))
+		assertEquals(cbz.canonicalFile, found.file.canonicalFile)
+		assertTrue(found.manga.chapters.orEmpty().any { it.id == chapter.id && it.source == LocalMangaSource })
+		assertNull(local.findSavedMangaInRoot(remote, File(root, "private")))
+		assertArrayEquals(original, cbz.readBytes())
+		assertEquals(setOf("Chapter.cbz"), legacyFolder.list().orEmpty().toSet())
+	}
+
+	@Test fun sameTitleExhentaiCopiesResolveByArtifactAndDeleteIndependently() = runBlocking {
+		val a = galleryFixture(812310)
+		val b = galleryFixture(812311)
+		val first = writeGalleryFixture(a, false, byteArrayOf(11, 12))
+		assertNull(local.findSavedMangaInRoot(b, root))
+		val second = writeGalleryFixture(b, true, byteArrayOf(21, 22))
+		assertEquals(first.parentFile, second.parentFile)
+		assertEquals("Chapter.cbz", first.name)
+		assertTrue(second.name.contains("812311"))
+		val owner = db.getFavouriteDownloadIndexDao()
+		val space = FavouriteSpace.NORMAL
+		for ((manga, file) in listOf(a to first, b to second)) {
+			data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+			owner.upsert(FavouriteDownloadIndexEntity(mangaId = manga.id, space = space.dbValue, path = file.canonicalPath))
+			assertEquals(file.canonicalFile, local.findSavedMangaInRoot(manga, root)?.file?.canonicalFile)
+			assertEquals(file.canonicalFile, resolver.findSavedManga(manga, space)?.file?.canonicalFile)
+		}
+		fun contents(file: File) = ZipFile(file).use { zip ->
+			zip.getInputStream(zip.entries().nextElement()).use { it.readBytes() }
+		}
+		assertArrayEquals(byteArrayOf(21, 22), contents(second))
+		assertTrue(deleteLocal.deleteExhentaiCopy(b, space, second))
+		assertFalse(second.exists())
+		assertArrayEquals(byteArrayOf(11, 12), contents(first))
+		assertEquals(first.canonicalFile, resolver.findSavedManga(a, space)?.file?.canonicalFile)
+		assertNull(local.findSavedMangaInRoot(b, root))
+	}
+
+	private fun galleryFixture(gid: Long): Manga {
+		val url = "https://exhentai.org/g/$gid/token/"
+		val source = MissingMangaSource(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		return SampleData.manga.copy(id = gid, title = "Same title", url = url, publicUrl = url, source = source,
+			chapters = listOf(SampleData.chapter.copy(id = gid + 1000000, title = "Chapter", url = url, source = source)))
+	}
+
+	private suspend fun writeGalleryFixture(manga: Manga, appendId: Boolean, bytes: ByteArray): File {
+		val page = File(root, "fixture.jpg").apply { writeBytes(bytes) }
+		val output = LocalMangaOutput.createExhentaiArchive(root, manga, DownloadFormat.MULTIPLE_CBZ, appendId)
+		try {
+			val chapter = requireNotNull(manga.chapters).single()
+			output.addPage(IndexedValue(0, chapter), page, 0, org.koitharu.kotatsu.core.util.MimeTypes.getMimeTypeFromExtension(page.name))
+			output.flushChapter(chapter)
+			output.finish()
+			return checkNotNull(output.committedFile)
+		} finally {
+			output.close()
+			page.delete()
+		}
 	}
 
 	private fun remote(): Manga {

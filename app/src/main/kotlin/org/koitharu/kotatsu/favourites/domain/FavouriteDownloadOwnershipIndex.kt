@@ -65,6 +65,9 @@ class FavouriteDownloadOwnershipIndex @Inject constructor(
 		}
 	}
 
+	internal suspend fun pathsForManga(mangaId: Long): List<File> =
+		db.getFavouriteDownloadIndexDao().findEntries(listOf(mangaId)).map { File(it.path) }
+
 	suspend fun removePath(file: File) {
 		db.getFavouriteDownloadIndexDao().deleteByPath(file.canonicalOrAbsolute())
 	}

@@ -419,8 +419,9 @@ fun mangaGridItemAD(
 				if (tracingOverlayBind) android.os.Trace.endSection()
 			}
 		}
-		binding.textViewTitleOverlay.text = item.title
-		binding.textViewTitle.text = item.title
+		val displayTitle = item.displayTitle(binding.root.context)
+		binding.textViewTitleOverlay.text = displayTitle
+		binding.textViewTitle.text = displayTitle
 		binding.textViewTitleOverlay.isVisible = isTitleOverCover && !effectiveCoverOverlay
 		binding.viewScrim.isVisible = isTitleOverCover
 		binding.textViewTitle.isVisible = !item.isTitleHidden && !isTitleOverCover

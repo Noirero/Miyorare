@@ -39,6 +39,7 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.parsers.util.sizeOrZero
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
 import org.koitharu.kotatsu.settings.storage.DirectoryModel
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.io.File
 import javax.inject.Inject
 
@@ -58,6 +59,14 @@ class DownloadDialogViewModel @Inject constructor(
 	val manga = savedStateHandle.require<Array<ParcelableManga>>(AppRouter.KEY_MANGA).map {
 		it.manga
 	}
+	private val officialGallery = manga.singleOrNull()?.takeIf {
+		EhentaiSourceFamily.isOfficialSource(it.source.name)
+	}
+	val supportsSeparateExhentaiCopy = officialGallery != null
+	val supportsExhentaiFilenameId = officialGallery?.let {
+		(EhentaiSourceFamily.galleryId(it.publicUrl, it.url) ?: 0L) > 0L
+	} == true
+
 	private val explicitSpace = savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE)?.let {
 		FavouriteSpace.fromArgument(it)
 	}
@@ -101,6 +110,8 @@ class DownloadDialogViewModel @Inject constructor(
 		format: DownloadFormat?,
 		destination: DirectoryModel?,
 		allowMetered: Boolean,
+		appendGalleryId: Boolean = false,
+		separateCopy: Boolean = false,
 	) {
 		launchLoadingJob(Dispatchers.Default) {
 			val space = resolveFavouriteSpace()
@@ -110,16 +121,22 @@ class DownloadDialogViewModel @Inject constructor(
 				throw kotlin.io.AccessDeniedException(selectedRoot)
 			}
 			val tasks = mangaDetails.get().map { m ->
+				val isOfficialExhentai = officialGallery != null && EhentaiSourceFamily.isOfficialSource(m.source.name)
+				val selectedFormat = if (isOfficialExhentai) format ?: settings.preferredDownloadFormat else format
+				val separate = isOfficialExhentai && separateCopy
 				val chapters = checkNotNull(m.chapters) { "Manga \"${m.title}\" cannot be loaded" }
 				m to DownloadTask(
 					mangaId = m.id,
 					isPaused = !startNow,
 					isSilent = false,
-					chaptersIds = chaptersMacro.getChaptersIds(m.id, chapters)?.toLongArray(),
+					chaptersIds = if (separate) null else chaptersMacro.getChaptersIds(m.id, chapters)?.toLongArray(),
 					destination = selectedRoot,
-					format = if (m.isNovelContent) null else format,
+					format = if (m.isNovelContent) null else selectedFormat,
 					allowMeteredNetwork = allowMetered,
 					favouriteSpace = space,
+					appendGalleryIdToChapterFile = isOfficialExhentai && appendGalleryId &&
+						supportsExhentaiFilenameId && selectedFormat != DownloadFormat.SINGLE_CBZ,
+					downloadSeparateCopy = separate,
 				)
 			}
 			scheduler.schedule(tasks)

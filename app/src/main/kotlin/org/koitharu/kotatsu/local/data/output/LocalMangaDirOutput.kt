@@ -16,14 +16,26 @@ import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import java.io.File
 import java.util.zip.Deflater
 
-class LocalMangaDirOutput(
+class LocalMangaDirOutput private constructor(
 	rootFile: File,
 	private val manga: Manga,
-	prepareForDownload: Boolean = false,
+	prepareForDownload: Boolean,
+	private val newArchive: ExhentaiNewArchive?,
+	private val galleryId: Long?,
 ) : LocalMangaOutput(rootFile) {
+
+	constructor(rootFile: File, manga: Manga, prepareForDownload: Boolean = false) :
+		this(rootFile, manga, prepareForDownload, null, null)
+
+	internal constructor(newArchive: ExhentaiNewArchive, manga: Manga, galleryId: Long?) :
+		this(checkNotNull(newArchive.target.parentFile), manga, false, newArchive, galleryId)
+
+	internal override val committedFile: File?
+		get() = if (newArchive == null) super.committedFile else newArchive.target.takeIf { newArchive.isCommitted }
 
 	private val chaptersOutput = HashMap<MangaChapter, ZipOutput>()
 	// Keep metadata only in memory while downloading. Mihon-style chapter folders should contain CBZ files only.
@@ -60,8 +72,9 @@ class LocalMangaDirOutput(
 		mutex.withLock {
 			val output = chaptersOutput.getOrPut(chapter.value) {
 				ZipOutput(
-					File(rootFile, chapterFileName(chapter) + SUFFIX_TMP),
+					newArchive?.staging ?: File(rootFile, chapterFileName(chapter) + SUFFIX_TMP),
 					compressionLevel = Deflater.NO_COMPRESSION,
+					archiveComment = galleryId?.let(ExhentaiChapterOwnership::comment),
 				)
 			}
 			val name = buildString {
@@ -101,6 +114,7 @@ class LocalMangaDirOutput(
 	}
 
 	override suspend fun cleanup() = mutex.withLock {
+		if (newArchive != null) return@withLock
 		for (output in chaptersOutput.values) {
 			output.file.deleteAwait()
 		}
@@ -113,8 +127,10 @@ class LocalMangaDirOutput(
 	}
 
 	override fun close() {
-		for (output in chaptersOutput.values) {
-			output.closeQuietly()
+		try {
+			for (output in chaptersOutput.values) output.closeQuietly()
+		} finally {
+			newArchive?.close()
 		}
 	}
 
@@ -180,6 +196,11 @@ class LocalMangaDirOutput(
 			e
 		}
 		if (e == null) {
+			if (newArchive != null) {
+				check(file == newArchive.staging)
+				newArchive.commit()
+				return@runInterruptible
+			}
 			val resFile = File(file.absolutePath.removeSuffix(SUFFIX_TMP))
 			if (!file.renameTo(resFile)) {
 				// Some Android/external-storage stacks can reject rename even inside one directory.
@@ -196,6 +217,7 @@ class LocalMangaDirOutput(
 	}
 
 	private fun chapterFileName(chapter: IndexedValue<MangaChapter>): String {
+		newArchive?.let { return it.target.name }
 		index.getChapterFileName(chapter.value.id)?.let {
 			return it
 		}

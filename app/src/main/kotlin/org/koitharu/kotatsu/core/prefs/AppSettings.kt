@@ -681,6 +681,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		}
 		set(value) = prefs.edit { putEnumValue(KEY_PROGRESS_INDICATORS, value) }
 
+	val exhentaiFullTitle: Boolean get() = prefs.getBoolean(KEY_EXHENTAI_FULL_TITLE, false)
+
 	var detailsUiMode: DetailsUiMode
 		get() = prefs.getEnumValue(KEY_DETAILS_UI, COMPACT)
 		set(value) = prefs.edit { putEnumValue(KEY_DETAILS_UI, value) }
@@ -1578,6 +1580,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_SEARCH_SUGGESTION_TYPES = "search_suggest_types"
 		const val KEY_QUICK_FILTER = "quick_filter"
 		const val KEY_COLLAPSE_DESCRIPTION = "description_collapse"
+		const val KEY_EXHENTAI_FULL_TITLE = "exhentai_full_title"
 		const val KEY_MANGA_LIST_BADGES = "manga_list_badges"
 		const val KEY_NOVEL_SOURCE_IDS = "novel_source_ids"
 		const val KEY_GLOBAL_SEARCH_NOVEL_SCOPE = "global_search_novel_scope"

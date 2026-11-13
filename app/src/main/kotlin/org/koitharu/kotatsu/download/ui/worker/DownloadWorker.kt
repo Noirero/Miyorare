@@ -83,10 +83,13 @@ import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.core.util.ext.withTicker
 import org.koitharu.kotatsu.core.util.ext.writeAllCancellable
 import org.koitharu.kotatsu.core.util.progress.RealtimeEtaEstimator
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.domain.DownloadPhase
 import org.koitharu.kotatsu.download.domain.DownloadProgress
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
@@ -120,6 +123,7 @@ class DownloadWorker @AssistedInject constructor(
 	@PageCache private val cache: LocalStorageCache,
 	private val database: MangaDatabase,
 	private val localMangaRepository: LocalMangaRepository,
+	private val destinationStore: DownloadDestinationStore,
 	private val mangaLock: MangaLock,
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
@@ -257,23 +261,50 @@ class DownloadWorker @AssistedInject constructor(
 	private suspend fun downloadMangaImpl(subject: Manga, task: DownloadTask) {
 		var manga = subject
 		mangaLock.withLock(manga) {
-			val destination = localMangaRepository.getOutputDir(manga, task.destination)
+			val requestedRoot = task.destination ?: if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+				destinationStore.effectiveRoot(task.favouriteSpace)
+			} else null
+			val destination = localMangaRepository.getOutputDir(manga, requestedRoot)
 			checkNotNull(destination) { applicationContext.getString(R.string.cannot_find_available_storage) }
 			var output: LocalMangaOutput? = null
 			var isCompleted = false
+			var isExhentai = false
 			try {
 				if (manga.isLocal) {
 					manga = localMangaRepository.getRemoteManga(manga)
 						?: error("Cannot obtain remote manga instance")
 				}
-				val chaptersToSkip = getDoneChapters(manga, destination).toMutableSet()
+				isExhentai = ExhentaiDownloadedCopy.isOfficial(manga)
+				val chaptersToSkip = if (isExhentai) mutableSetOf<Long>() else getDoneChapters(manga, destination).toMutableSet()
 				val repo = mangaRepositoryFactory.create(manga.source)
 				val mangaDetails = if (manga.chapters.isNullOrEmpty() || manga.description.isNullOrEmpty()) repo.getDetails(manga) else manga
-				output = LocalMangaOutput.getOrCreate(
-					root = destination,
-					manga = mangaDetails,
-					format = task.format ?: settings.preferredDownloadFormat,
-				)
+				val format = task.format ?: settings.preferredDownloadFormat
+				if (isExhentai && task.downloadSeparateCopy) {
+					check(org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.galleryId(mangaDetails.publicUrl, mangaDetails.url)?.let { it > 0 } == true) {
+						"Cannot identify the ExHentai gallery for a separate copy"
+					}
+				}
+				if (isExhentai && !task.downloadSeparateCopy) {
+					val saved = findCompletedExhentaiCopy(mangaDetails, destination, task.favouriteSpace)
+					val requested = getChapters(mangaDetails, task)
+					val savedIds = saved?.manga?.chapters.orEmpty().mapTo(HashSet()) { it.id }
+					if (saved != null && requested.isNotEmpty() && requested.all { it.value.id in savedIds }) {
+						publishState(currentState.copy(
+							localManga = saved,
+							totalChapters = requested.size,
+							downloadedChapters = requested.size,
+							isIndeterminate = false,
+							isFinalizing = false,
+						))
+						isCompleted = true
+						return@withLock
+					}
+				}
+				output = if (isExhentai) {
+					LocalMangaOutput.createExhentaiArchive(destination, mangaDetails, format, task.appendGalleryIdToChapterFile)
+				} else {
+					LocalMangaOutput.getOrCreate(destination, mangaDetails, format)
+				}
 				val coverUrl = mangaDetails.largeCoverUrl.ifNullOrEmpty { mangaDetails.coverUrl }
 				if (!coverUrl.isNullOrEmpty()) {
 					downloadFile(coverUrl, destination, repo).let { file ->
@@ -490,7 +521,7 @@ class DownloadWorker @AssistedInject constructor(
 					if (accounting.requestedChapterCompleted) {
 						completedRequestedChapters++
 					}
-					if (accounting.durableArtifactAvailable) {
+					if (accounting.durableArtifactAvailable && !isExhentai) {
 						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 					}
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
@@ -508,10 +539,17 @@ class DownloadWorker @AssistedInject constructor(
 				publishState(currentState.copy(isIndeterminate = true, isFinalizing = true, phase = DownloadPhase.FINALIZING, retryAttempt = 0, eta = -1L, isStuck = false))
 				output.mergeWithExisting()
 				output.finish()
-				recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
-				val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
-				localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
-				localStorageChanges.emit(localManga)
+				val localManga = if (isExhentai) {
+					withContext(NonCancellable) {
+						registerExhentaiArtifact(mangaDetails, task, checkNotNull(output.committedFile))
+					}
+				} else {
+					recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
+					LocalMangaParser(output.rootFile).getManga(withDetails = false).also {
+						localMangaRepository.rememberDownloadedIdentity(mangaDetails, it)
+						localStorageChanges.emit(it)
+					}
+				}
 				publishState(
 					currentState.copy(
 						localManga = localManga,
@@ -533,7 +571,11 @@ class DownloadWorker @AssistedInject constructor(
 				withContext(NonCancellable) {
 					runCatchingCancellable { output?.cleanup() }.onFailure(Throwable::printStackTraceDebug)
 					output?.closeQuietly()
-					if (!isCompleted && output != null && output.rootFile.exists()) {
+					val committed = output?.committedFile
+					if (!isCompleted && isExhentai && committed != null) {
+						runCatchingCancellable { registerExhentaiArtifact(manga, task, committed) }
+							.onFailure(Throwable::printStackTraceDebug)
+					} else if (!isCompleted && !isExhentai && output != null && output.rootFile.exists()) {
 						runCatchingCancellable {
 							val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
 							// mangaDetails is scoped to the try block; the resolved remote seed keeps the same
@@ -542,14 +584,43 @@ class DownloadWorker @AssistedInject constructor(
 							localStorageChanges.emit(localManga)
 						}.onFailure(Throwable::printStackTraceDebug)
 					}
-					destination.listFiles(TempFileFilter())?.forEach { it.deleteAwait() }
+					if (!isExhentai) destination.listFiles(TempFileFilter())?.forEach { it.deleteAwait() }
 				}
 			}
 		}
 	}
 
-	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File) {
-		runCatchingCancellable {
+	private suspend fun registerExhentaiArtifact(manga: Manga, task: DownloadTask, file: File): LocalManga {
+		val local = checkNotNull(ExhentaiDownloadedCopy.find(manga, file, withDetails = false)?.local) {
+			"Committed ExHentai archive cannot be read"
+		}
+		recordDownloadOwnership(manga.id, task, file, strict = true)
+		localMangaRepository.rememberDownloadedIdentity(manga, local)
+		localStorageChanges.emit(local)
+		return local
+	}
+
+	private suspend fun findCompletedExhentaiCopy(manga: Manga, root: File, space: FavouriteSpace): LocalManga? {
+		val dao = database.getFavouriteDownloadIndexDao()
+		val rootPath = root.canonicalFile.toPath()
+		val owned = dao.findEntry(space.dbValue, manga.id)?.path?.let(::File)
+		if (owned != null && owned.canonicalFile.toPath().startsWith(rootPath)) {
+			ExhentaiDownloadedCopy.find(manga, owned, withDetails = true)?.let { match ->
+				if (match.verified || match.local.file.canonicalFile == owned.canonicalFile) return match.local
+			}
+		}
+		val candidate = localMangaRepository.findSavedMangaInRoot(manga, root, withDetails = true) ?: return null
+		val file = candidate.file.canonicalFile
+		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+		// An unindexed legacy match is still usable. A physical file already registered to the other
+		// space is not a completed download for this task, even if both roots point at the same disk.
+		val paths = listOfNotNull(file.path, file.parentFile?.path)
+		if (dao.findEntriesByPaths(paths).any { it.space == otherSpace.dbValue }) return null
+		return candidate
+	}
+
+	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File, strict: Boolean = false) {
+		val result = runCatchingCancellable {
 			val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
 			val dao = database.getFavouriteDownloadIndexDao()
 			val current = dao.findEntry(task.favouriteSpace.dbValue, mangaId)
@@ -563,6 +634,7 @@ class DownloadWorker @AssistedInject constructor(
 				)
 			}
 		}.onFailure(Throwable::printStackTraceDebug)
+		if (strict) result.getOrThrow()
 	}
 
 	private suspend fun <R> runFailsafe(block: suspend () -> R): R? {

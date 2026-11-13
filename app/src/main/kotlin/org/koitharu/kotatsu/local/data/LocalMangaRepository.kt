@@ -207,6 +207,7 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	suspend fun deleteChapters(manga: Manga, ids: Set<Long>) = lock.withLock(manga) {
+		check(!ExhentaiDownloadedCopy.isOfficial(manga)) { "ExHentai remote deletion requires a verified space-owned artifact" }
 		val subject = if (manga.isLocal) manga else checkNotNull(findSavedManga(manga, withDetails = true)) {
 			"Manga is not stored on local storage"
 		}.manga
@@ -295,7 +296,41 @@ class LocalMangaRepository @Inject constructor(
 		LocalMangaParser(localManga.url.toUri()).getMangaInfo()?.takeUnless { it.isLocal }
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
+	internal suspend fun findExhentaiInRoots(
+		remote: Manga,
+		roots: Collection<File>,
+		withDetails: Boolean,
+	): LocalManga? = withContext(Dispatchers.IO) {
+		val hints = favouriteDownloadOwnershipIndex.pathsForManga(remote.id) + listOfNotNull(localMangaIndex.findIndexedPath(remote.id))
+		for (hint in hints.distinct()) {
+			if (!hint.isInsideAny(roots)) continue
+			ExhentaiDownloadedCopy.find(remote, hint, withDetails)?.takeIf { it.verified }?.let {
+				return@withContext it.local
+			}
+		}
+		var legacy: LocalManga? = null
+		for (root in roots) {
+			for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote)) {
+				val match = ExhentaiDownloadedCopy.find(remote, path, withDetails) ?: continue
+				if (match.verified) return@withContext match.local
+				if (legacy == null) legacy = match.local
+			}
+		}
+		if (legacy != null) return@withContext legacy
+		for (root in roots) {
+			val path = org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver.findUniqueDirectory(
+				root, remote.source.name, remote.title, remote.publicUrl, remote.url,
+			) ?: continue
+			if (!path.isInsideAny(listOf(root))) continue
+			ExhentaiDownloadedCopy.find(remote, path, withDetails)?.let { return@withContext it.local }
+		}
+		null
+	}
+
 	suspend fun findSavedMangaIndexed(remoteManga: Manga): LocalManga? = withContext(Dispatchers.IO) {
+		if (ExhentaiDownloadedCopy.isOfficial(remoteManga)) {
+			return@withContext findExhentaiInRoots(remoteManga, storageManager.getReadableDirs(), true)
+		}
 		runCatchingCancellable {
 			findSavedMangaAtExpectedPath(remoteManga, withDetails = true, preferFastIndexedDirectory = true)?.let {
 				return@runCatchingCancellable it
@@ -329,6 +364,9 @@ class LocalMangaRepository @Inject constructor(
 	): LocalManga? = withContext(Dispatchers.IO) {
 		runCatchingCancellable {
 			if (!file.exists()) return@runCatchingCancellable null
+			if (ExhentaiDownloadedCopy.isOfficial(remoteManga)) {
+				return@runCatchingCancellable ExhentaiDownloadedCopy.find(remoteManga, file, withDetails)?.local
+			}
 			if (withDetails) {
 				buildFastIndexedDirectoryCopy(remoteManga, file)?.let { indexed ->
 					if (rememberIdentity) rememberDownloadedIdentity(remoteManga, indexed)
@@ -353,6 +391,9 @@ class LocalMangaRepository @Inject constructor(
 		roots: Collection<File>,
 	): LocalManga? = withContext(Dispatchers.IO) {
 		runCatchingCancellable {
+			if (ExhentaiDownloadedCopy.isOfficial(remoteManga)) {
+				return@runCatchingCancellable findExhentaiInRoots(remoteManga, roots, true)
+			}
 			val remoteIds = remoteManga.chapters.orEmpty().mapTo(HashSet()) { it.id }
 			if (remoteIds.isEmpty() || roots.isEmpty()) return@runCatchingCancellable null
 			val candidatesByPath = LinkedHashMap<String, LocalManga>()
@@ -393,7 +434,14 @@ class LocalMangaRepository @Inject constructor(
 	 * triggering a broad filesystem scan. Legacy sidecar-free downloads now use the indexed
 	 * title/chapter-evidence bridge, which persists an alias after the first successful recovery.
 	 */
-	suspend fun findSavedManga(remoteManga: Manga, withDetails: Boolean = true): LocalManga? = runCatchingCancellable {
+	suspend fun findSavedManga(remoteManga: Manga, withDetails: Boolean = true): LocalManga? {
+		if (ExhentaiDownloadedCopy.isOfficial(remoteManga)) return runCatchingCancellable {
+			findExhentaiInRoots(remoteManga, storageManager.getReadableDirs(), withDetails)
+		}.onFailure { it.printStackTraceDebug() }.getOrNull()
+		return findSavedMangaDefault(remoteManga, withDetails)
+	}
+
+	private suspend fun findSavedMangaDefault(remoteManga: Manga, withDetails: Boolean): LocalManga? = runCatchingCancellable {
 		findSavedMangaAtExpectedPath(remoteManga, withDetails)?.let {
 			return@runCatchingCancellable it
 		}
@@ -479,13 +527,14 @@ class LocalMangaRepository @Inject constructor(
 		preferFastIndexedDirectory: Boolean = false,
 	): LocalManga? {
 		for (dir in storageManager.getReadableDirs()) {
-			val output = LocalMangaOutput.get(dir, remoteManga) ?: continue
+			val expected = LocalMangaOutput.get(dir, remoteManga)
+			val output = expected ?: LocalMangaOutput.findLegacyExhentaiTitle(dir, remoteManga) ?: continue
 			try {
 				if (preferFastIndexedDirectory && withDetails) {
 					buildFastIndexedDirectoryCopy(remoteManga, output.rootFile)?.let { return it }
 				}
 				LocalMangaParser.getOrNull(output.rootFile)?.getManga(withDetails)?.let {
-					rememberDownloadedIdentity(remoteManga, it)
+					if (expected != null) rememberDownloadedIdentity(remoteManga, it)
 					return linkDownloadedChapters(remoteManga, it)
 				}
 			} finally {
@@ -708,6 +757,10 @@ class LocalMangaRepository @Inject constructor(
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
 	internal suspend fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
+		if (ExhentaiDownloadedCopy.isOfficial(remoteManga)) {
+			return ExhentaiDownloadedCopy.find(remoteManga, localManga.file, withDetails = true)?.local
+				?: localManga.copy(manga = localManga.manga.copy(chapters = emptyList()))
+		}
 		val migrated = localMangaIndex.linkMigratedDownloadChapters(remoteManga.id, localManga)
 		LegacySplitChapterCompat.linkToRemote(remoteManga, migrated)?.let { return it }
 		// Keep Details, downloaded badges and Reader on one canonical matcher. In particular, a

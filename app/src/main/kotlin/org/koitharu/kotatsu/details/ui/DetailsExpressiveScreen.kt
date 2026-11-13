@@ -181,6 +181,8 @@ fun DetailsExpressiveScreen(
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
+	var fullExhentaiTitle by rememberBooleanPref(AppSettings.KEY_EXHENTAI_FULL_TITLE, false)
+	val visibleTitle = details?.displayTitle(fullExhentaiTitle).orEmpty()
 	val swipeBookmarkEnabled = manga?.let { !it.isNovelContent && !it.isEpub } == true
 	val managed = manga?.url?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it) } == true
 	val galleryAvailable = managed && indexedLocalBook?.contentType == org.koitharu.kotatsu.local.library.LocalContentType.MANGA
@@ -318,7 +320,7 @@ fun DetailsExpressiveScreen(
 			if (galleryAvailable && gallerySelected) {
 				LocalChapterGallery(
 					chapters = chapters,
-					mangaTitle = manga?.title.orEmpty(),
+					mangaTitle = visibleTitle,
 					topPadding = topInset,
 					bottomPadding = bottomContentPadding,
 					coverForChapter = coverForChapter,
@@ -347,6 +349,7 @@ fun DetailsExpressiveScreen(
 							centered = centered,
 							manga = manga,
 							details = details,
+							displayTitle = visibleTitle,
 							sourceTitle = sourceTitle,
 							accent = accentColor,
 							imageLoader = imageLoader,
@@ -406,6 +409,8 @@ fun DetailsExpressiveScreen(
 							manga = manga,
 							details = details,
 							accent = accentColor,
+							fullExhentaiTitle = fullExhentaiTitle,
+							onToggleExhentaiTitle = { fullExhentaiTitle = !fullExhentaiTitle },
 						)
 					}
 

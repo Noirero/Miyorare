@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +63,7 @@ import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 import org.koitharu.kotatsu.core.util.FileSize
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
@@ -74,9 +76,20 @@ internal fun DescriptionCard(
 	manga: Manga,
 	details: MangaDetails?,
 	accent: Color,
+	fullExhentaiTitle: Boolean = false,
+	onToggleExhentaiTitle: () -> Unit = {},
 ) {
 	val text = description?.toString()?.trim().orEmpty()
 	val displayText = text.ifEmpty { stringResource(R.string.no_description) }
+	val sourceManga = details?.sourceManga ?: manga
+	val alternativeTitles = if (EhentaiSourceFamily.isOfficialSource(sourceManga.source.name)) {
+		sourceManga.altTitles.map(String::trim).filter { title ->
+			title.isNotEmpty() && !title.equals(sourceManga.title.trim(), ignoreCase = true) &&
+				!title.equals(manga.title.trim(), ignoreCase = true)
+		}.distinct()
+	} else {
+		emptyList()
+	}
 	val formattedText = remember(displayText) { formatDescriptionMarkdown(displayText) }
 	val collapseEnabled by rememberBooleanPref(AppSettings.KEY_COLLAPSE_DESCRIPTION, true)
 	var expanded by rememberSaveable(collapseEnabled) { mutableStateOf(!collapseEnabled) }
@@ -113,6 +126,26 @@ internal fun DescriptionCard(
 			}
 		}
 		Spacer(Modifier.height(10.dp))
+		if (details?.isOfficialExhentai == true) {
+			TextButton(onClick = onToggleExhentaiTitle) {
+				Text(stringResource(if (fullExhentaiTitle) R.string.exhentai_use_compact_title else R.string.exhentai_use_full_title))
+			}
+		}
+		if (alternativeTitles.isNotEmpty()) {
+			Text(
+				text = stringResource(R.string.exhentai_alternative_title),
+				style = MaterialTheme.typography.labelLarge,
+				fontWeight = FontWeight.SemiBold,
+			)
+			SelectionContainer {
+				Text(
+					text = alternativeTitles.joinToString("\n"),
+					style = MaterialTheme.typography.bodyMedium,
+					modifier = Modifier.fillMaxWidth(),
+				)
+			}
+			Spacer(Modifier.height(10.dp))
+		}
 		SelectionContainer {
 			Text(
 				text = formattedText,

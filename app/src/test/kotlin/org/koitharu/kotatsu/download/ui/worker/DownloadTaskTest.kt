@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.download.ui.worker
 
+import androidx.work.Data
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
@@ -41,6 +42,27 @@ class DownloadTaskTest {
 		assertNotEquals(task(chapters = null).uniqueWorkName(), task(chapters = longArrayOf(1L, 2L)).uniqueWorkName())
 	}
 
+	@Test
+	fun `existing work data defaults to ordinary download behavior`() {
+		val legacy = DownloadTask(Data.Builder().putLong("manga_id", 42L).build())
+		assertEquals(false, legacy.appendGalleryIdToChapterFile)
+		assertEquals(false, legacy.downloadSeparateCopy)
+	}
+
+	@Test
+	fun `chapter filename and separate copy choices survive reconstruction`() {
+		val regular = task(chapters = longArrayOf(7L))
+		val named = task(chapters = longArrayOf(7L), appendGalleryId = true)
+		val separate = task(chapters = longArrayOf(7L), separateCopy = true)
+		val both = task(chapters = longArrayOf(7L), appendGalleryId = true, separateCopy = true)
+		val requests = listOf(regular, named, separate, both)
+		assertEquals(4, requests.map { it.uniqueWorkName() }.toSet().size)
+		for (request in requests) {
+			val restored = DownloadTask(request.toData())
+			assertEquals(request, restored)
+			assertEquals(request.uniqueWorkName(), restored.uniqueWorkName())
+		}
+	}
 	private fun task(
 		chapters: LongArray?,
 		destination: File = File("/tmp/downloads"),
@@ -49,6 +71,8 @@ class DownloadTaskTest {
 		paused: Boolean = false,
 		silent: Boolean = false,
 		metered: Boolean = true,
+		appendGalleryId: Boolean = false,
+		separateCopy: Boolean = false,
 	) = DownloadTask(
 		mangaId = 42L,
 		isPaused = paused,
@@ -58,5 +82,7 @@ class DownloadTaskTest {
 		format = format,
 		allowMeteredNetwork = metered,
 		favouriteSpace = space,
+		appendGalleryIdToChapterFile = appendGalleryId,
+		downloadSeparateCopy = separateCopy,
 	)
 }

@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
@@ -95,6 +96,8 @@ class LegacyFavouriteDownloadReconciler @Inject constructor(
 				if (!canInferSpaceFromPath && candidate.id in membershipBySpace.getValue(otherSpace)) continue
 				val remote = mangaDataRepository.findMangaById(candidate.id, withChapters = true) ?: continue
 				val linked = localMangaRepository.findSavedMangaIndexedByTitle(remote, roots) ?: continue
+				if (ExhentaiDownloadedCopy.isOfficial(remote) &&
+					(!canInferSpaceFromPath || ExhentaiDownloadedCopy.find(remote, linked.file, withDetails = false)?.verified != true)) continue
 				// Persist verified ownership before publishing/marking completion, as DownloadWorker does.
 				// SharedFlow delivery alone does not guarantee its asynchronous index collector has committed.
 				database.getFavouriteDownloadIndexDao().upsert(listOf(

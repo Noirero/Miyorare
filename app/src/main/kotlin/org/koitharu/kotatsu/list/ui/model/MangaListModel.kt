@@ -2,6 +2,10 @@ package org.koitharu.kotatsu.list.ui.model
 
 import android.content.Context
 import androidx.core.text.bold
+import androidx.preference.PreferenceManager
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import org.koitharu.kotatsu.sources.compat.ExhentaiTitlePolicy
 import androidx.core.text.buildSpannedString
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.withOverride
@@ -23,6 +27,14 @@ sealed class MangaListModel : ListModel {
 	val title: String
 		get() = override?.title.ifNullOrEmpty { manga.title }
 
+	internal fun displayTitle(context: Context): String {
+		val custom = override?.title?.takeIf { it.isNotEmpty() }
+		if (custom != null) return custom
+		if (!EhentaiSourceFamily.isOfficialSource(source.name) ||
+			PreferenceManager.getDefaultSharedPreferences(context).getBoolean(AppSettings.KEY_EXHENTAI_FULL_TITLE, false)) return manga.title
+		return ExhentaiTitlePolicy.compactTitle(manga.title)
+	}
+
 	val coverUrl: String?
 		get() = override?.coverUrl.ifNullOrEmpty { manga.coverUrl }
 
@@ -33,7 +45,7 @@ sealed class MangaListModel : ListModel {
 
 	open fun getSummary(context: Context): CharSequence = buildSpannedString {
 		bold {
-			append(manga.title)
+			append(if (EhentaiSourceFamily.isOfficialSource(source.name)) displayTitle(context) else manga.title)
 		}
 		appendLine()
 		if (manga.tags.isNotEmpty()) {

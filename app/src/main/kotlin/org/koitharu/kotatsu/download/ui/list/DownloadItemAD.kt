@@ -1,5 +1,9 @@
 package org.koitharu.kotatsu.download.ui.list
 
+import androidx.preference.PreferenceManager
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import org.koitharu.kotatsu.sources.compat.ExhentaiTitlePolicy
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -382,7 +386,12 @@ fun downloadItemAD(
 		// Progress ticks use a lightweight payload; avoid restarting a cover request or rewriting a
 		// stable title for every worker update.
 		if (payloads.isEmpty()) {
-			binding.textViewTitle.text = item.manga?.title ?: getString(R.string.unknown)
+			binding.textViewTitle.text = item.manga?.let { manga ->
+				if (EhentaiSourceFamily.isOfficialSource(manga.source.name) &&
+					!PreferenceManager.getDefaultSharedPreferences(binding.root.context).getBoolean(AppSettings.KEY_EXHENTAI_FULL_TITLE, false)) {
+					ExhentaiTitlePolicy.compactTitle(manga.title)
+				} else manga.title
+			} ?: getString(R.string.unknown)
 			val coverUrl = item.manga?.coverUrl
 			if (coverUrl.isNullOrBlank()) {
 				binding.imageViewCover.disposeImage()

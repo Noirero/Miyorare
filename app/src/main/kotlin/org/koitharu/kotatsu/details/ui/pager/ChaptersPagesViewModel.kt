@@ -72,6 +72,7 @@ import org.koitharu.kotatsu.local.data.isEpub
 import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.local.library.LocalContentReader
 import org.koitharu.kotatsu.local.library.ReaderBackingLeaseContext
+import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -802,13 +803,20 @@ abstract class ChaptersPagesViewModel(
 			}
 			return
 		}
-		val m = mangaDetails.value?.local?.manga
+		val details = mangaDetails.value
+		val local = details?.local
+		val m = local?.manga
 		if (m == null) {
 			errorEvent.call(FileNotFoundException())
 			return
 		}
 		launchLoadingJob(Dispatchers.Default) {
-			deleteLocalMangaUseCase(m)
+			val remote = details?.sourceManga
+			if (remote != null && ExhentaiDownloadedCopy.isOfficial(remote)) {
+				check(deleteLocalMangaUseCase.deleteExhentaiCopy(remote, favouriteSpace, local.file)) {
+					"Downloaded ExHentai gallery is unavailable"
+				}
+			} else deleteLocalMangaUseCase(m)
 			onMangaRemoved.call(m)
 		}
 	}
