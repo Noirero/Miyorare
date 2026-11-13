@@ -113,7 +113,9 @@
 		<item quantity="other">%d chapters</item>
 	</plurals>
 	<string name="library_group_add_members">Add manga</string>
-	<string name="library_group_search_manga">Search manga or source</string>
+	<string name="library_group_select_from_favourites">Choose manga already saved in Favorites.</string>
+	<string name="library_group_search_manga">Search manga in Favorites</string>
+	<string name="library_group_already_in_group">Already in %1$s</string>
 	<string name="library_group_no_eligible">No matching manga available in this library.</string>
 	<string name="library_group_selected_count">%1$d selected</string>
 	<string name="library_group_continue_reading">Continue reading</string>

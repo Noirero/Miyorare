@@ -1116,14 +1116,25 @@ class FavouritesListFragment : MangaListFragment() {
 			}
 		}
 		if (groups.isEmpty()) create.performClick()
+		// Some edge-to-edge devices do not resize the sheet window when the keyboard opens.
+		// Add only the IME area not already reserved for the navigation bar to the
+		// scrollable sheet's height; this lifts the editable form above the keyboard.
+		val originalBottomPadding = content.paddingBottom
+		ViewCompat.setOnApplyWindowInsetsListener(content) { view, insets ->
+			val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+			val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+			val extra = (imeBottom - navBottom).coerceAtLeast(0)
+			view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, originalBottomPadding + extra)
+			insets
+		}
 		sheet.setContentView(content)
 		sheet.show()
-		// Keep the focused title/search field above the IME instead of obscuring the sheet.
 		sheet.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 		sheet.behavior.apply {
 			skipCollapsed = true
 			state = BottomSheetBehavior.STATE_EXPANDED
 		}
+		ViewCompat.requestApplyInsets(content)
 	}
 
 	private fun handleLibraryGroupTarget(target: LibraryGroup, mangaIds: List<Long>, mode: ActionMode?) {
