@@ -1,11 +1,14 @@
 package org.koitharu.kotatsu.favourites.ui.container
 
 import android.content.Context
+import android.content.res.Configuration
+import android.os.Build
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
@@ -36,6 +39,7 @@ import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -69,6 +73,10 @@ import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListWorkOwner
 import org.koitharu.kotatsu.main.ui.MainActivity
+import org.koitharu.kotatsu.main.ui.installSharedSearchBarOwner
+import org.koitharu.kotatsu.main.ui.releaseSharedSearchBarOwner
+import org.koitharu.kotatsu.main.ui.ownsSharedSearchBar
+import org.koitharu.kotatsu.main.ui.updateSharedSearchBarHint
 import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import javax.inject.Inject
@@ -99,17 +107,94 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var displayedContentType: FavouriteContentType? = null
 	private var pendingCategoryRestore: FavouriteContentType? = null
 	private val listWorkOwner = FavouritesListWorkOwner()
+	private var diagnosticPageSelections = 0
+	private var diagnosticPagerLayouts = 0
+	// Android 16 landscape can transiently report a zero measured width for ViewPager2's
+	// internal RecyclerView even while the pager remains full width. FragmentStateAdapter
+	// then measures page holders at 150–212px and churns unrelated category fragments.
+	// Make the *pager's internal viewport* exact-width after the first real layout, rather
+	// than trying to resize the manga grid or page holders downstream. Keep the normal
+	// MATCH_PARENT contract on portrait / older Android versions.
+	private val pagerViewportWidthListener = View.OnLayoutChangeListener { view, left, _, right, _, _, _, _, _ ->
+		val pager = view as ViewPager2
+		val internal = pager.recyclerView ?: return@OnLayoutChangeListener
+		val availableWidth = right - left - pager.paddingLeft - pager.paddingRight
+		if (availableWidth <= 0) return@OnLayoutChangeListener
+		val exactLandscape = Build.VERSION.SDK_INT >= 36 &&
+			resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+		val desiredWidth = if (exactLandscape) availableWidth else ViewGroup.LayoutParams.MATCH_PARENT
+		val params = internal.layoutParams
+		if (params.width != desiredWidth) {
+			val previous = params.width
+			// Idempotent: request another measure only when the actual pager width changes.
+			params.width = desiredWidth
+			internal.layoutParams = params
+			if (PerformanceDiagnostics.enabled) {
+				logPagerDiagnostic(
+					"inner_width_constraint",
+					"pager_w=$availableWidth inner_w=${internal.width} inner_m=${internal.measuredWidth} " +
+						"old_lp=$previous new_lp=$desiredWidth android=${Build.VERSION.SDK_INT}",
+				)
+			}
+		}
+	}
+
+	private val diagnosticPagerLayoutListener = View.OnLayoutChangeListener {
+		view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+		if (PerformanceDiagnostics.enabled && diagnosticPagerLayouts < 20 &&
+			(right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop)
+		) {
+			diagnosticPagerLayouts++
+			val pager = view as ViewPager2
+			val orientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
+			logPagerDiagnostic(
+				"pager_layout",
+				"orientation=$orientation pager_width=${pager.width} pager_height=${pager.height} " +
+					"page=${pager.currentItem} tabs=${categories.size} " +
+					"created=${pagerAdapter?.diagnosticCreationCount ?: 0}",
+			)
+		}
+	}
+
+	private fun logPagerDiagnostic(event: String, details: String) {
+		if (!PerformanceDiagnostics.enabled) return
+		Log.i("FavouritesPager", "trace=${PerformanceDiagnostics.ownerTrace(this)?.id ?: "none"} event=$event $details")
+		PerformanceDiagnostics.captureDiagnostic("FavouritesPager", event, this, details)
+	}
 
 	internal val isListWorkActive: Boolean
 		get() = listWorkOwner.isActive(hasView = view != null, hidden = isHidden)
 
 	private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
 		override fun onPageSelected(position: Int) {
+			if (PerformanceDiagnostics.enabled) {
+				diagnosticPageSelections++
+				if (diagnosticPageSelections <= 3 || diagnosticPageSelections % 10 == 0) {
+					logPagerDiagnostic(
+						"page_selected",
+						"position=$position selected_events=$diagnosticPageSelections " +
+							"scroll_state=${viewBinding?.pager?.scrollState ?: -1} " +
+							"created=${pagerAdapter?.diagnosticCreationCount ?: 0}",
+					)
+				}
+			}
 			if (pendingCategoryRestore == null) {
 				rememberCurrentCategory()
 			}
 			updateCategoryPickerLabel()
 			activity?.invalidateOptionsMenu()
+		}
+
+		override fun onPageScrollStateChanged(state: Int) {
+			if (PerformanceDiagnostics.enabled) {
+				logPagerDiagnostic(
+					"page_scroll_state",
+					"state=$state page=${viewBinding?.pager?.currentItem ?: -1} " +
+						"selected_events=$diagnosticPageSelections " +
+						"created=${pagerAdapter?.diagnosticCreationCount ?: 0} " +
+						"child_fragments=${childFragmentManager.fragments.size}",
+				)
+			}
 		}
 	}
 
@@ -142,6 +227,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			itemAnimator = null
 		}
 		binding.pager.registerOnPageChangeCallback(pageChangeCallback)
+		binding.pager.addOnLayoutChangeListener(pagerViewportWidthListener)
+		binding.pager.addOnLayoutChangeListener(diagnosticPagerLayoutListener)
 		TabLayoutMediator(
 			binding.tabs,
 			binding.pager,
@@ -156,7 +243,20 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		binding.buttonCategorySet.setOnClickListener { anchor ->
 			org.koitharu.kotatsu.favourites.ui.sets.showCategorySetMenu(anchor, childFragmentManager, viewModel.sets.value, viewModel.activeSet.value?.setId, viewModel.favouriteSpace) { set ->
 				rememberCurrentCategory()
-				viewModel.selectSet(set)
+				if (viewModel.activeSet.value?.setId != set.setId) {
+					// Existing repository/list/render spans can now be correlated to one Set switch.
+					// No Set name, content, or ID is included in diagnostic labels.
+					PerformanceDiagnostics.navigation("favourites", "favourites_set_switch", this)
+					if (PerformanceDiagnostics.enabled) {
+						diagnosticPageSelections = 0
+						logPagerDiagnostic(
+							"set_switch_requested",
+							"pager_index=${binding.pager.currentItem} tabs=${binding.tabs.tabCount} " +
+								"created=${pagerAdapter?.diagnosticCreationCount ?: 0}",
+						)
+					}
+					viewModel.selectSet(set)
+				}
 			}
 		}
 		viewModel.activeSet.observe(viewLifecycleOwner) { set ->
@@ -260,6 +360,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		updateListWorkActivity()
 		rememberCurrentCategory()
 		viewBinding?.pager?.unregisterOnPageChangeCallback(pageChangeCallback)
+		viewBinding?.pager?.removeOnLayoutChangeListener(pagerViewportWidthListener)
+		viewBinding?.pager?.removeOnLayoutChangeListener(diagnosticPagerLayoutListener)
 		exitInlineSearch(clearQuery = false, endSession = false)
 		restoreGlobalSearchHandler()
 		inlineSearchEdit?.let { edit -> (edit.parent as? ViewGroup)?.removeView(edit) }
@@ -386,7 +488,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		inlineSearchEdit?.hint = hint
 		viewBinding?.privateSearch?.hint = hint
 		if (!isHidden) {
-			activity?.findViewById<SearchBar>(R.id.search_bar)?.hint = hint
+			(activity as? MainActivity)?.updateSharedSearchBarHint(this, hint)
+			if (activity !is MainActivity) activity?.findViewById<SearchBar>(R.id.search_bar)?.hint = hint
 		}
 		applyCategoryNavigation(displayPreferences.current(type))
 	}
@@ -408,6 +511,16 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			binding.pager.setCurrentItem(0, false)
 		}
 		applyCategoryNavigation(displayPreferences.current(contentTypeStore.selectedType.value))
+		PerformanceDiagnostics.milestone(this, "favourites_set_tabs_committed")
+		if (PerformanceDiagnostics.enabled) {
+			logPagerDiagnostic(
+				"categories_applied",
+				"category_count=${value.size} pager_index=${binding.pager.currentItem} " +
+					"tabs=${binding.tabs.tabCount} restored_type=${restoreType != null} " +
+					"created=${pagerAdapter?.diagnosticCreationCount ?: 0} " +
+					"child_fragments=${childFragmentManager.fragments.size}",
+			)
+		}
 	}
 
 	private fun isCategoryListForType(
@@ -748,17 +861,32 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		findCurrentFragment() as? FavouritesListFragment
 
 	private fun installFavouriteSearchHandler() {
-		val searchBar = activity?.findViewById<SearchBar>(R.id.search_bar) ?: return
-		searchBar.setOnClickListener { enterInlineSearch() }
+		val hint = getString(if (contentTypeStore.selectedType.value == FavouriteContentType.NOVEL) {
+			R.string.search_novel
+		} else {
+			R.string.search_manga
+		})
+		val host = activity
+		if (host is MainActivity) {
+			host.installSharedSearchBarOwner(this, hint, ::enterInlineSearch)
+		} else {
+			host?.findViewById<SearchBar>(R.id.search_bar)?.setOnClickListener { enterInlineSearch() }
+		}
 	}
 
 	private fun restoreGlobalSearchHandler() {
 		val host = activity ?: return
+		if (host is MainActivity) {
+			host.releaseSharedSearchBarOwner(this)
+			return
+		}
 		val searchBar = host.findViewById<SearchBar>(R.id.search_bar) ?: return
 		val searchView = host.findViewById<SearchView>(R.id.search_view) ?: return
 		searchBar.hint = getString(R.string.search_manga)
 		searchBar.setOnClickListener { searchView.show() }
 	}
+
+	fun openInlineSearch() = enterInlineSearch()
 
 	private fun enterInlineSearch() {
 		if (inlineSearchActive) return
@@ -784,6 +912,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	private fun exitInlineSearch(clearQuery: Boolean = true, endSession: Boolean = true) {
+		val wasActive = inlineSearchActive
 		inlineSearchActive = false
 		searchBackCallback?.isEnabled = false
 		if (endSession) {
@@ -800,10 +929,11 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			clearFocus()
 			isGone = true
 		}
-		searchBar.isVisible = true
-		if (host is org.koitharu.kotatsu.main.ui.MainActivity) {
-			host.restoreMainUtilityButton()
-		} else {
+		val ownsSearchBar = host !is MainActivity || host.ownsSharedSearchBar(this)
+		if (ownsSearchBar) searchBar.isVisible = true
+		if (host is MainActivity) {
+			if (wasActive && ownsSearchBar) host.restoreMainUtilityButton()
+		} else if (wasActive) {
 			host.findViewById<MaterialButton>(R.id.button_settings)?.apply {
 				setIconResource(R.drawable.ic_settings)
 				contentDescription = getString(R.string.settings)
@@ -872,6 +1002,10 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 				),
 			)
 		}
+		// The Modern landscape heading lives in MainActivity, unlike the inline title.
+		// Keep its existing Private Favourites entry point while this fragment owns the app bar.
+		appBar.findViewById<View>(R.id.text_landscape_favourites_title)
+			?.setOnClickListener { switchFavouritesSpace() }
 		applyHeaderScrollMode(appBar, header)
 	}
 
@@ -911,6 +1045,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	fun detachTabsFromAppBar() {
 		val binding = viewBinding ?: return
+		(activity as? AppBarOwner)?.appBar?.findViewById<View>(R.id.text_landscape_favourites_title)
+			?.setOnClickListener(null)
 		restoreHostAppBarScrollMode()
 		val header = binding.layoutCategoryHeader
 		if (header.parent === binding.layoutContent) return

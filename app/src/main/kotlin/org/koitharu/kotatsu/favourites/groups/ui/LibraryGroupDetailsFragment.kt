@@ -13,8 +13,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.text.HtmlCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.fragment.app.viewModels
@@ -22,6 +24,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
@@ -88,6 +91,9 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 						onOpenMember = { member -> router.openDetails(member.manga) },
 						onChapterClick = ::openChapter,
 						onEditGroup = ::openEditGroup,
+						onManageMembers = ::openMemberManager,
+						onAddMembers = ::openAddMembers,
+						onContinueChapter = ::openContinueChapter,
 						onManageTimeline = ::openTimelineEditor,
 						onManagePlacement = ::openCategoryPlacement,
 						onManageTracking = ::openTrackingManager,
@@ -101,6 +107,7 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 
 	override fun onResume() {
 		super.onResume()
+		viewModel.refreshReadingProgress()
 		if (!resumeTrackingSetupAfterSettings) return
 		resumeTrackingSetupAfterSettings = false
 		if (viewModel.availableTrackingServices().isNotEmpty()) {
@@ -118,12 +125,24 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 		return insets
 	}
 
-	private fun openChapter(member: LibraryGroupDetailsMemberUi, chapter: MangaChapter) {
+	private fun openContinueChapter(member: LibraryGroupDetailsMemberUi, chapter: MangaChapter) {
+		viewLifecycleOwner.lifecycleScope.launch {
+			val position = runCatching { viewModel.getReaderResumeState(member, chapter) }
+				.getOrElse { showMessage(R.string.library_group_navigation_error); return@launch }
+			openChapter(member, chapter, position)
+		}
+	}
+
+	private fun openChapter(
+		member: LibraryGroupDetailsMemberUi,
+		chapter: MangaChapter,
+		position: ReaderState = ReaderState(chapterId = chapter.id, page = 0, scroll = 0),
+	) {
 		val manga = member.manga
 		val intent = ReaderIntent.Builder(requireContext())
 			.manga(manga)
 			.branch(chapter.branch)
-			.state(ReaderState(chapterId = chapter.id, page = 0, scroll = 0))
+			.state(position)
 			.libraryGroup(viewModel.groupId, viewModel.favouriteSpace.dbValue)
 			.build()
 		router.openReader(intent)
@@ -398,10 +417,161 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 		}
 	}
 
+
+	private fun openAddMembers() {
+		viewLifecycleOwner.lifecycleScope.launch {
+			val candidates = runCatching { viewModel.loadAddCandidates() }
+				.getOrElse { showMessage(R.string.library_group_error); return@launch }
+			val sheet = BottomSheetDialog(requireContext())
+			val content = ComposeView(requireContext()).apply {
+				setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+				setContent {
+					MiyorareTheme {
+						LibraryGroupAddMembersSheet(
+							candidates = candidates,
+							onCancel = { sheet.dismiss() },
+							onAdd = { ids ->
+								sheet.dismiss()
+								if (ids.isNotEmpty()) confirmAddMembers(ids)
+							},
+						)
+					}
+				}
+			}
+			sheet.setContentView(content)
+			sheet.show()
+		}
+	}
+
+	private fun confirmAddMembers(ids: List<Long>) {
+		viewLifecycleOwner.lifecycleScope.launch {
+			val conflicts = runCatching { viewModel.findMoveConflicts(ids) }
+				.getOrElse { showMessage(R.string.library_group_error); return@launch }
+			if (conflicts.isEmpty()) {
+				commitAddMembers(ids, moveExisting = false)
+				return@launch
+			}
+			val groupTitle = viewModel.state.value.group?.title ?: return@launch
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(R.string.library_group_move_title)
+				.setMessage(getString(
+					R.string.library_group_move_existing_confirm,
+					conflicts.joinToString(", ") { it.title }, groupTitle,
+				))
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(R.string._continue) { _, _ -> commitAddMembers(ids, moveExisting = true) }
+				.show()
+		}
+	}
+
+	private fun commitAddMembers(ids: List<Long>, moveExisting: Boolean) {
+		viewLifecycleOwner.lifecycleScope.launch {
+			runCatching { viewModel.addMembers(ids, moveExisting) }
+				.onSuccess { result ->
+					val message = if (result.addedCount == 0) R.string.library_group_already_member
+					else 0
+					if (message != 0) showMessage(message)
+					else view?.let { Snackbar.make(
+						it, getString(
+							R.string.library_group_add_result,
+							result.addedCount, result.movedCount, result.dissolvedGroupCount,
+						), Snackbar.LENGTH_LONG,
+					).show() }
+				}
+				.onFailure { showMessage(R.string.library_group_error) }
+		}
+	}
+
+	/** Compact reordering surface; member data and reading state remain owned by the library. */
+	private fun openMemberManager() {
+		val group = viewModel.state.value.group ?: return
+		val members = viewModel.state.value.members.map { LibraryGroupManageItem(it.member, it.manga) }
+		if (members.size < 2) return
+		var manager: androidx.appcompat.app.AlertDialog? = null
+		val adapter = LibraryGroupManageAdapter(members) { item ->
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(item.member.displayTitle)
+				.setItems(
+					arrayOf(getString(R.string.library_group_open_member), getString(R.string.library_group_remove_member)),
+				) { _, which ->
+					when (which) {
+						0 -> router.openDetails(item.manga)
+						1 -> {
+							manager?.dismiss()
+							confirmRemoveGroupMember(group, item)
+						}
+					}
+				}.show()
+		}
+		val maxHeight = (resources.displayMetrics.heightPixels * 0.55f).toInt()
+		val list = object : RecyclerView(requireContext()) {
+			override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+				super.onMeasure(widthMeasureSpec, View.MeasureSpec.makeMeasureSpec(maxHeight, View.MeasureSpec.AT_MOST))
+			}
+		}.apply {
+			layoutManager = LinearLayoutManager(requireContext())
+			this.adapter = adapter
+		}
+		ItemTouchHelper(
+			object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {
+				override fun onMove(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean =
+					adapter.move(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
+				override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) = Unit
+			},
+		).attachToRecyclerView(list)
+		val dialog = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.library_group_manage_order)
+			.setMessage(R.string.library_group_member_manage_hint)
+			.setView(list)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setNeutralButton(R.string.library_group_natural_sort, null)
+			.setPositiveButton(R.string.library_group_save_order, null)
+			.create()
+		manager = dialog
+		dialog.setOnShowListener {
+			dialog.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener { adapter.naturalSort() }
+			dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+				val save = dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+				save.isEnabled = false
+				viewLifecycleOwner.lifecycleScope.launch {
+					runCatching { viewModel.reorderMembers(adapter.snapshotIds()) }
+						.onSuccess { dialog.dismiss(); showMessage(R.string.library_group_updated) }
+						.onFailure { save.isEnabled = true; showMessage(R.string.library_group_error) }
+				}
+			}
+		}
+		dialog.show()
+	}
+
+	private fun confirmRemoveGroupMember(group: org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup, item: LibraryGroupManageItem) {
+		val dissolves = group.members.size <= 2
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.library_group_remove_member)
+			.setMessage(if (dissolves) R.string.library_group_remove_member_dissolve_confirm else R.string.library_group_remove_member_confirm)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.remove) { _, _ ->
+				viewLifecycleOwner.lifecycleScope.launch {
+					runCatching { viewModel.removeGroupMember(item.member.mangaId) }
+						.onSuccess { wasDissolved ->
+							if (wasDissolved) requireActivity().finish()
+							else showMessage(R.string.library_group_removed)
+						}
+						.onFailure { showMessage(R.string.library_group_error) }
+				}
+			}
+			.show()
+	}
+
 	private fun openTimelineEditor() {
 		viewLifecycleOwner.lifecycleScope.launch {
 			val items = runCatching { viewModel.prepareTimelineEditor() }
-				.getOrElse { showMessage(R.string.library_group_timeline_error); return@launch }
+				.getOrElse { error ->
+					showMessage(
+						if (error is LibraryGroupTimelineUnavailableException) R.string.library_group_timeline_unavailable_edit
+						else R.string.library_group_timeline_error,
+					)
+					return@launch
+				}
 			if (items.isEmpty()) {
 				showMessage(R.string.library_group_timeline_empty)
 				return@launch
@@ -414,7 +584,7 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 		val context = requireContext()
 		val adapter = LibraryGroupTimelineAdapter(items)
 		val padding = (16 * resources.displayMetrics.density).toInt()
-		val maxListHeight = (resources.displayMetrics.heightPixels * 0.42f).toInt()
+		val maxListHeight = (resources.displayMetrics.heightPixels * 0.62f).toInt()
 		val list = object : RecyclerView(context) {
 			override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
 				val cappedHeightSpec = View.MeasureSpec.makeMeasureSpec(maxListHeight, View.MeasureSpec.AT_MOST)
@@ -435,10 +605,26 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 			},
 		).attachToRecyclerView(list)
 
+		val jump = TextInputEditText(context).apply {
+			hint = getString(R.string.library_group_find_chapter)
+			inputType = android.text.InputType.TYPE_CLASS_TEXT
+			doAfterTextChanged { query ->
+				val position = adapter.findFirstMatching(query?.toString().orEmpty())
+				if (position >= 0) list.scrollToPosition(position)
+			}
+		}
+		val container = android.widget.LinearLayout(context).apply {
+			orientation = android.widget.LinearLayout.VERTICAL
+			addView(jump, android.widget.LinearLayout.LayoutParams(
+				android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+				android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+			).apply { setMargins(padding, 0, padding, padding / 2) })
+			addView(list)
+		}
 		val dialog = MaterialAlertDialogBuilder(context)
 			.setTitle(R.string.library_group_timeline)
 			.setMessage(R.string.library_group_timeline_summary)
-			.setView(list)
+			.setView(container)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setNeutralButton(R.string.library_group_natural_sort, null)
 			.setPositiveButton(R.string.library_group_save_order, null)
@@ -451,7 +637,13 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 				viewLifecycleOwner.lifecycleScope.launch {
 					runCatching { viewModel.saveTimeline(adapter.snapshot()) }
 						.onSuccess { dialog.dismiss(); showMessage(R.string.library_group_timeline_saved) }
-						.onFailure { saveButton.isEnabled = true; showMessage(R.string.library_group_timeline_error) }
+						.onFailure { error ->
+							saveButton.isEnabled = true
+							showMessage(
+								if (error is LibraryGroupTimelineUnavailableException) R.string.library_group_timeline_unavailable_edit
+								else R.string.library_group_timeline_error,
+							)
+						}
 				}
 			}
 		}

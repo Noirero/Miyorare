@@ -10,7 +10,7 @@ import urllib.request
 import zipfile
 
 from ci_android_runtime_reuse import (
-    ANDROID_JOB, REAL_STEP, PROOF_ARTIFACT, APK_ARTIFACT,
+    ANDROID_JOB, REAL_STEP, HISTORY_CLASS, PROOF_ARTIFACT, APK_ARTIFACT,
     PROOF_FILE, SCHEMA, MACHINERY, artifact_id, build_scope, canonical,
     digest, eligible_run, extract_apk, find_proof, matching_proof,
     read_proof_zip, real_android_job, machinery_changed, SafeArtifactRedirect, main,
@@ -188,6 +188,25 @@ class AndroidReuseTests(unittest.TestCase):
                 self.assertEqual(main(), 0)
             self.assertIn("reuse=false", output.read_text())
             self.assertIn("source_run_id=", output.read_text())
+
+    def test_history_benchmark_is_excluded_but_runtime_remains_required(self):
+        self.assertRaises(ValueError, build_scope,
+                          {**env(), "RUNTIME_CLASSES": "org.test.Foo," + HISTORY_CLASS},
+                          fixture_file)
+        self.assertTrue(real_android_job([job()]))
+        self.assertFalse(real_android_job([job(step="skipped")]))
+        self.assertFalse(real_android_job([job(step="failure")]))
+        self.assertNotIn(".github/scripts/run-history-scroll-benchmark.sh", MACHINERY)
+
+    def test_runtime_scope_requires_exactly_one_pinned_emulator(self):
+        self.assertRaises(
+            ValueError, build_scope, env(),
+            lambda path: RUNNER_ACTION * 2 if path.endswith(".yml") else b"file:" + path.encode(),
+        )
+        self.assertRaises(
+            ValueError, build_scope, env(),
+            lambda path: b"no emulator action" if path.endswith(".yml") else b"file:" + path.encode(),
+        )
 
     def test_M_runtime_machinery_guard_and_execution_inputs(self):
         for changed in MACHINERY:

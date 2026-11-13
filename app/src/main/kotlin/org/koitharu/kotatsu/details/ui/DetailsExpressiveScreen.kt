@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.ui.input.pointer.pointerInput
 import org.koitharu.kotatsu.parsers.model.MangaChapter
+import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.local.data.isEpub
 
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -123,6 +125,7 @@ class DetailsExpressiveActions(
 	val onChapterRangeToggle: (ChapterRange) -> Unit = {},
 	val onChapterMarkRead: (ChapterListItem) -> Unit = {},
 	val onChapterMarkUnread: (ChapterListItem) -> Unit = {},
+	val onChapterBookmarkToggle: (ChapterListItem) -> Unit = {},
 	val onChaptersMarkRead: (Set<Long>) -> Unit = {},
 	val onChaptersMarkUnread: (Set<Long>) -> Unit = {},
 	val onReleasePredictionClick: () -> Unit = {},
@@ -178,6 +181,7 @@ fun DetailsExpressiveScreen(
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
+	val swipeBookmarkEnabled = manga?.let { !it.isNovelContent && !it.isEpub } == true
 	val managed = manga?.url?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it) } == true
 	val galleryAvailable = managed && indexedLocalBook?.contentType == org.koitharu.kotatsu.local.library.LocalContentType.MANGA
 	var gallerySelected by rememberSaveable(manga?.id) { mutableStateOf(false) }
@@ -452,6 +456,8 @@ fun DetailsExpressiveScreen(
 								item = chapter,
 								onMarkRead = { actions.onChapterMarkRead(chapter) },
 								onMarkUnread = { actions.onChapterMarkUnread(chapter) },
+                                onBookmarkToggle = { actions.onChapterBookmarkToggle(chapter) },
+                                bookmarkEnabled = swipeBookmarkEnabled,
 								selectionActive = selectedChapterIds.isNotEmpty(),
 							) {
 								InlineChapterCard(
@@ -479,6 +485,8 @@ fun DetailsExpressiveScreen(
 						item = chapter,
 						onMarkRead = { actions.onChapterMarkRead(chapter) },
 						onMarkUnread = { actions.onChapterMarkUnread(chapter) },
+                                onBookmarkToggle = { actions.onChapterBookmarkToggle(chapter) },
+                                bookmarkEnabled = swipeBookmarkEnabled,
 						selectionActive = selectedChapterIds.isNotEmpty(),
 					) {
 						InlineChapterCard(

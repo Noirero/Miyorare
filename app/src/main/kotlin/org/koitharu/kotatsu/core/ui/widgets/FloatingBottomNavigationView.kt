@@ -53,6 +53,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	private val labeledState = MutableStateFlow(true)
 	private val navColorsState = MutableStateFlow(readNavColors())
 	private val continueVisibleState = MutableStateFlow(false)
+	private val continueOnLeftState = MutableStateFlow(false)
 	private val legacyNavigationState = MutableStateFlow(false)
 	private var continueClickListener: (() -> Unit)? = null
 	private var continueLongClickListener: (() -> Unit)? = null
@@ -77,6 +78,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 				val labeled by labeledState.collectAsState()
 				val navColors by navColorsState.collectAsState()
 				val showContinue by continueVisibleState.collectAsState()
+				val continueOnLeft by continueOnLeftState.collectAsState()
 				val useLegacy by legacyNavigationState.collectAsState()
 				// Normal navigation keeps the approved Favourites glass/geometry on every destination.
 				// selectedId still moves the active indicator; only the container style remains stable.
@@ -125,6 +127,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							onItemLongClick = ::dispatchItemLongClick,
 							modifier = Modifier.wrapContentWidth(),
 							showContinue = showContinue,
+							continueOnLeft = continueOnLeft,
 							emphasizeFavourites = emphasizeFavourites,
 							onContinueClick = { continueClickListener?.invoke() },
 							onContinueLongClick = { continueLongClickListener?.invoke() },
@@ -191,6 +194,11 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	/** Toggle the standalone circular "continue reading" button rendered next to the Classic bar. */
 	fun setContinueVisible(value: Boolean) {
 		continueVisibleState.value = value
+	}
+
+	/** Relocates only the standalone Continue Reading control, without changing menu item order. */
+	fun setContinueButtonOnLeft(value: Boolean) {
+		continueOnLeftState.value = value
 	}
 
 	fun setOnContinueClickListener(listener: (() -> Unit)?) {

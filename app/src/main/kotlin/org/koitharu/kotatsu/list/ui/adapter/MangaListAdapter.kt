@@ -22,6 +22,8 @@ open class MangaListAdapter(
 	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
 	localCinematic: Boolean = false,
 	normalFavouritesCardBorder: Boolean = false,
+	headerRowClickable: Boolean = false,
+	debugHistoryOverlayBypass: (() -> Boolean)? = null,
 ) : BaseListAdapter<ListModel>() {
 
 	init {
@@ -38,14 +40,14 @@ open class MangaListAdapter(
 			else mangaListDetailedItemAD(listener, titleClickListener, coverContext))
 		addDelegate(
 			ListItemType.MANGA_GRID,
-			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider, coverContext, localCinematic, normalFavouritesCardBorder),
+			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider, coverContext, localCinematic, normalFavouritesCardBorder, debugHistoryOverlayBypass),
 		)
 		addDelegate(ListItemType.FOOTER_LOADING, loadingFooterAD())
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())
 		addDelegate(ListItemType.STATE_ERROR, errorStateListAD(listener))
 		addDelegate(ListItemType.FOOTER_ERROR, errorFooterAD(listener))
 		addDelegate(ListItemType.STATE_EMPTY, emptyStateListAD(listener, localCinematic))
-		addDelegate(ListItemType.HEADER, listHeaderAD(listener, localCinematic))
+		addDelegate(ListItemType.HEADER, listHeaderAD(listener, localCinematic, rowClickable = headerRowClickable))
 		addDelegate(ListItemType.SMART_LOCAL_PANEL, smartLocalPanelAD(listener))
 		addDelegate(ListItemType.SMART_LOCAL_RESUME, smartLocalResumeAD(listener))
 		addDelegate(ListItemType.SMART_LOCAL_COLLECTION_HEADER, smartLocalCollectionHeaderAD(listener))

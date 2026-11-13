@@ -56,4 +56,20 @@
 		<item quantity="one">%1$d more title to review</item>
 		<item quantity="other">%1$d more titles to review</item>
 	</plurals>
+	<plurals name="history_accordion_titles">
+		<item quantity="one">%1$s title</item>
+		<item quantity="other">%1$s titles</item>
+	</plurals>
+	<plurals name="history_accordion_active_days">
+		<item quantity="one">%1$s active day</item>
+		<item quantity="other">%1$s active days</item>
+	</plurals>
+	<plurals name="history_accordion_active_months">
+		<item quantity="one">%1$s active month</item>
+		<item quantity="other">%1$s active months</item>
+	</plurals>
+	<plurals name="history_accordion_show_more">
+		<item quantity="one">Show %1$s more</item>
+		<item quantity="other">Show %1$s more</item>
+	</plurals>
 </resources>

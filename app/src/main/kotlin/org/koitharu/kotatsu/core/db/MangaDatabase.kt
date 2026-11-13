@@ -69,6 +69,7 @@ import org.koitharu.kotatsu.core.db.migrations.Migration48To49
 import org.koitharu.kotatsu.core.db.migrations.Migration50To51
 import org.koitharu.kotatsu.core.db.migrations.Migration51To52
 import org.koitharu.kotatsu.core.db.migrations.Migration53To54
+import org.koitharu.kotatsu.core.db.migrations.Migration54To55
 import org.koitharu.kotatsu.core.db.migrations.Migration52To53
 import org.koitharu.kotatsu.core.db.migrations.Migration2To3
 import org.koitharu.kotatsu.core.db.migrations.Migration3To4
@@ -120,7 +121,7 @@ import org.koitharu.kotatsu.details.data.ChapterProgressDao
 import org.koitharu.kotatsu.details.data.ChapterProgressEntity
 import org.koitharu.kotatsu.details.data.ChapterPersonalEntity
 
-const val DATABASE_VERSION = 54
+const val DATABASE_VERSION = 55
 
 @Database(
 	entities = [
@@ -173,7 +174,7 @@ fun getDatabaseMigrations(context: Context): Array<Migration> = arrayOf(
 	Migration37To38(), Migration38To39(), Migration39To40(), Migration40To41(), Migration41To42(), Migration42To43(),
 	Migration43To44(), Migration44To45(), Migration45To46(), Migration46To47(), Migration47To48(), Migration48To49(), Migration49To50(),
 	Migration50To51(),
-    Migration51To52(), Migration52To53(), Migration53To54(),
+    Migration51To52(), Migration52To53(), Migration53To54(), Migration54To55(),
 )
 
 fun MangaDatabase(context: Context): MangaDatabase = Room

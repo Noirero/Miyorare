@@ -20,6 +20,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil3.size.Size
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -56,6 +57,7 @@ fun mangaGridItemAD(
 	coverContext: ModernCoverContext = ModernCoverContext.LEGACY,
 	localCinematic: Boolean = false,
 	normalFavouritesCardBorder: Boolean = false,
+	debugHistoryOverlayBypass: (() -> Boolean)? = null,
 ) = adapterDelegateViewBinding<MangaGridModel, ListModel, ItemMangaGridBinding>(
 	{ inflater, parent -> ItemMangaGridBinding.inflate(inflater, parent, false) },
 ) {
@@ -346,32 +348,48 @@ fun mangaGridItemAD(
 		}
 
 		val isTitleOverCover = item.isTitleOverCover && !item.isTitleHidden
-		binding.favouriteCoverOverlays.isVisible = usesCoverOverlay
-		if (usesCoverOverlay) {
+		// Debug A/B: isolate Modern overlay cost without changing pagination, image requests or data.
+		// Only History supplies a probe callback; default and all release builds remain unchanged.
+		val historyProbe = BuildConfig.DEBUG && debugHistoryOverlayBypass != null
+		val effectiveCoverOverlay = resolveHistoryCoverOverlay(
+			configured = usesCoverOverlay,
+			modern = usesModernCover,
+			probeEnabled = historyProbe,
+			bypassRequested = historyProbe && debugHistoryOverlayBypass?.invoke() == true,
+		)
+		binding.favouriteCoverOverlays.debugTraceHistoryMeasure = historyProbe
+		binding.favouriteCoverOverlays.isVisible = effectiveCoverOverlay
+		if (effectiveCoverOverlay) {
 			binding.layoutIndicators.apply {
 				translationX = 0f
 				translationY = 0f
 				alpha = 1f
 			}
+			val tracingOverlayBind = historyProbe && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q && android.os.Trace.isEnabled()
+			if (tracingOverlayBind) android.os.Trace.beginSection("HistoryModernOverlayBind")
+			try {
 			binding.favouriteCoverOverlays.bind(
 				ModernCoverState.from(item, if (localCinematic) ModernCoverContext.COLLECTION else coverContext)
 					.let { if (localCinematic) it.copy(legacyCounter = item.counter, isLocalSource = true, languageLabel = null) else it },
 			) { view ->
 				clickListener.onReadClick(item.toMangaWithOverride(), view)
 			}
+			} finally {
+				if (tracingOverlayBind) android.os.Trace.endSection()
+			}
 		}
 		binding.textViewTitleOverlay.text = item.title
 		binding.textViewTitle.text = item.title
-		binding.textViewTitleOverlay.isVisible = isTitleOverCover && !usesCoverOverlay
+		binding.textViewTitleOverlay.isVisible = isTitleOverCover && !effectiveCoverOverlay
 		binding.viewScrim.isVisible = isTitleOverCover
 		binding.textViewTitle.isVisible = !item.isTitleHidden && !isTitleOverCover
 		binding.progressView.setProgress(item.progress, PAYLOAD_PROGRESS_CHANGED in payloads)
-		binding.imageViewPin.isVisible = item.isPinned && !usesCoverOverlay
+		binding.imageViewPin.isVisible = item.isPinned && !effectiveCoverOverlay
 		binding.textViewLanguage.text = item.languageLabel
-		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank() && !usesCoverOverlay
+		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank() && !effectiveCoverOverlay
 
-		binding.imageViewContinue.isVisible = item.showContinueReading && !usesCoverOverlay
-		if (item.showContinueReading && !usesCoverOverlay) {
+		binding.imageViewContinue.isVisible = item.showContinueReading && !effectiveCoverOverlay
+		if (item.showContinueReading && !effectiveCoverOverlay) {
 			binding.imageViewContinue.setOnClickListener { view ->
 				clickListener.onReadClick(item.toMangaWithOverride(), view)
 			}
@@ -386,12 +404,12 @@ fun mangaGridItemAD(
 			item.isLocalSource,
 			item.isFavorite,
 			item.counter,
-			useModernCoverOverlay = usesCoverOverlay,
+			useModernCoverOverlay = effectiveCoverOverlay,
 		)
 		// Legacy Corner Mark offsets belong only to the legacy renderer.
 		binding.layoutIndicators.updateLayoutParams<FrameLayout.LayoutParams> {
 			topMargin = context.resources.getDimensionPixelSize(R.dimen.card_indicator_offset) +
-				if (!usesCoverOverlay && (item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
+				if (!effectiveCoverOverlay && (item.isSaved || item.isFavorite) && (isTitleOverCover || item.isPinned)) {
 					context.resources.getDimensionPixelSize(R.dimen.manga_status_ribbon_height) +
 						context.resources.getDimensionPixelSize(R.dimen.library_indicator_spacing)
 				} else 0
@@ -402,7 +420,7 @@ fun mangaGridItemAD(
 			persistCover = coverContext == ModernCoverContext.COLLECTION,
 		)
 		binding.badge.number = item.counter
-		binding.badge.isVisible = item.counter > 0 && !usesCoverOverlay
+		binding.badge.isVisible = item.counter > 0 && !effectiveCoverOverlay
 	}
 }
 

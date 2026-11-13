@@ -215,6 +215,9 @@ class DetailsExpressiveActivity :
 				Toast.LENGTH_SHORT,
 			).show()
 		}
+		viewModel.onSwipeBookmarkMessage
+            .filterNot { router.isChapterPagesSheetShown() }
+            .observeEvent(this) { message -> Toast.makeText(this, message, Toast.LENGTH_SHORT).show() }
 		viewModel.onActionDone
 			.filterNot { router.isChapterPagesSheetShown() }
 			.observeEvent(this, ReversibleActionObserver(viewBinding.composeView))
@@ -385,6 +388,7 @@ class DetailsExpressiveActivity :
 			onChapterClick = ::openChapter,
 			onChapterMarkRead = { item -> viewModel.setChapterReadState(item.chapter.id, true) },
 			onChapterMarkUnread = { item -> viewModel.setChapterReadState(item.chapter.id, false) },
+            onChapterBookmarkToggle = viewModel::toggleChapterSwipeBookmark,
 			onChaptersMarkRead = { ids -> viewModel.setChaptersReadState(ids, true) },
 			onChaptersMarkUnread = { ids -> viewModel.setChaptersReadState(ids, false) },
 			onChapterPersonalClick = viewModel::editChapterPersonal,

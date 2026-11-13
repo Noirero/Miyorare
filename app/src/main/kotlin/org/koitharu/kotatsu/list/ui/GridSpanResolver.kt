@@ -2,8 +2,10 @@ package org.koitharu.kotatsu.list.ui
 
 import android.content.res.Resources
 import android.view.View
+import androidx.core.view.ancestors
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import org.koitharu.kotatsu.R
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -41,14 +43,10 @@ class GridSpanResolver(
 			return
 		}
 		val width = abs(right - left)
-		// Ignore implausibly small widths. While the RecyclerView lives inside a ViewPager2
-		// (e.g. the favourites pager) it can momentarily be laid out at a tiny transient width
-		// during page settling/rotation. Trusting such a value would lower the span count to the
-		// minimum and blow every cover up to full size. A real full-width grid is always at least
-		// one cell wide, so anything narrower than that is a transient we must skip.
-		if (width < cellWidth) {
-			return
-		}
+		// ViewPager2 can lay out a page at an intermediate width that is still larger
+		// than one cell. Keep the previous span count until the full pager width arrives;
+		// FitHeightGridLayoutManager already skips drawing the same transient pass.
+		if (!isUsableWidth(rv, width)) return
 		resolveGridSpanCount(width)
 		(rv.layoutManager as? GridLayoutManager)?.spanCount = spanCount
 	}
@@ -62,7 +60,7 @@ class GridSpanResolver(
 			return
 		}
 		val innerWidth = lm.width - lm.paddingEnd - lm.paddingStart
-		if (innerWidth >= cellWidth) {
+		if (isUsableWidth(rv, lm.width) && innerWidth >= cellWidth) {
 			resolveGridSpanCount(innerWidth)
 			lm.spanCount = spanCount
 		}
@@ -80,11 +78,16 @@ class GridSpanResolver(
 			lm?.spanCount = spanCount
 		} else if (lm != null) {
 			val innerWidth = lm.width - lm.paddingEnd - lm.paddingStart
-			if (cellWidth > 0f && innerWidth >= cellWidth) {
+			if (cellWidth > 0f && isUsableWidth(rv, lm.width) && innerWidth >= cellWidth) {
 				resolveGridSpanCount(innerWidth)
 				lm.spanCount = spanCount
 			}
 		}
+	}
+
+	private fun isUsableWidth(rv: RecyclerView, width: Int): Boolean {
+		val pagerWidth = rv.ancestors.filterIsInstance<ViewPager2>().firstOrNull()?.measuredWidth ?: 0
+		return isUsableGridWidth(width, pagerWidth, cellWidth)
 	}
 
 	private fun resolveGridSpanCount(width: Int) {
@@ -92,3 +95,7 @@ class GridSpanResolver(
 		spanCount = estimatedCount.coerceAtLeast(2)
 	}
 }
+
+/** The grid must not adopt an intermediate ViewPager2 width, even if it fits multiple cells. */
+internal fun isUsableGridWidth(width: Int, pagerWidth: Int, cellWidth: Float): Boolean =
+	width >= cellWidth && (pagerWidth <= 0 || width >= pagerWidth)

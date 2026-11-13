@@ -140,6 +140,25 @@ class DiagnosticsSessionTest {
 		assertTrue(summary.contains("image.local_GENERATION_FAILED.failure count=1 failures=1 total_ms=120"))
 	}
 
+	@Test fun `Favourites diagnostic timeline survives logcat sink failure and is bounded`() {
+		val session = DiagnosticsSession("test", { ns }) { error("logcat unavailable") }
+		val trace = session.navigation("favourites", "favourites_set_switch")
+		repeat(500) { index ->
+			advance(1)
+			session.captureDiagnostic("FavouritesPager", "categories_commit", trace, "count=$index")
+		}
+		val summary = session.stop()
+		assertTrue(summary.contains("diagnostic_snapshot_total=500"))
+		assertTrue(summary.contains("diagnostic_count=FavouritesPager.categories_commit count=500"))
+		assertTrue(summary.contains("snapshot seq=1 t_ms=1 trace=${trace.id}"))
+		assertTrue(summary.contains("snapshot seq=500 t_ms=500 trace=${trace.id}"))
+		assertFalse(summary.contains("snapshot seq=100 t_ms="))
+		assertEquals(288, summary.lineSequence().count { it.startsWith("snapshot seq=") })
+		advance(50)
+		session.captureDiagnostic("FavouritesPager", "fragment_create", trace, "ignored")
+		assertEquals(summary, session.stop())
+	}
+
 	@Test fun `concurrent repository completions preserve all counts`() {
 		val session = session()
 		val threads = List(4) {

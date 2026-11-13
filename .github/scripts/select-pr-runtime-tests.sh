@@ -99,6 +99,7 @@ add_discovery_suite() {
   add_class org.koitharu.kotatsu.discovery.DiscoveryCatalogUiTest
   add_class org.koitharu.kotatsu.discovery.CatalogReadingBridgeTest
   add_class org.koitharu.kotatsu.discovery.DiscoveryNavigationRuntimeTest
+  add_class org.koitharu.kotatsu.discovery.DiscoverySearchBarOwnershipRuntimeTest
   MAPPED=true
 }
 
@@ -107,8 +108,20 @@ add_database_suite() {
   MAPPED=true
 }
 
+add_history_visual_suite() {
+  # History-specific real View/locale/theme runtime acceptance.
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryAccordionVisualRuntimeTest
+  fi
+}
+
 add_history_suite() {
+  # Performance benchmark is standalone/manual, not PR runtime coverage.
   add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
+  add_history_visual_suite
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryCoverABRuntimeTest
+  fi
   MAPPED=true
 }
 
@@ -176,6 +189,7 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.discovery.DiscoveryCatalogUiTest
   add_class org.koitharu.kotatsu.discovery.CatalogReadingBridgeTest
   add_class org.koitharu.kotatsu.discovery.DiscoveryNavigationRuntimeTest
+  add_class org.koitharu.kotatsu.discovery.DiscoverySearchBarOwnershipRuntimeTest
   add_class org.koitharu.kotatsu.core.db.CategorySetsMigrationTest
   add_class org.koitharu.kotatsu.favourites.CategorySetsRuntimeTest
   add_class org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest
@@ -189,6 +203,17 @@ add_full_suite() {
 
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/data/PrivateHistoryIsolationRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
+  fi
+
+  add_history_visual_suite
+
+  # Include the searchable Group picker in full Android 15 regression coverage.
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/favourites/groups/ui/LibraryGroupAddMembersRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupAddMembersRuntimeTest
+  fi
+
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.history.ui.HistoryCoverABRuntimeTest
   fi
 
   # Execute scoped View-palette regressions in full Android 15 runs when present.
@@ -510,6 +535,10 @@ self_test() {
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
   grep -q '^mode=targeted$' <<<"$out"
   grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
+  ! grep -q 'HistoryScrollBenchmarkTest' <<<"$out"
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
+    grep -q 'HistoryAccordionVisualRuntimeTest' <<<"$out"
+  fi
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/library/LocalContentReader.kt')"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
@@ -528,6 +557,7 @@ self_test() {
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/discovery/data/CatalogJson.kt')"
   grep -q 'DiscoveryCatalogUiTest' <<<"$out"
   grep -q 'DiscoveryNavigationRuntimeTest' <<<"$out"
+  grep -q 'DiscoverySearchBarOwnershipRuntimeTest' <<<"$out"
   ! grep -q 'CategorySetsUiTest' <<<"$out"
 
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')"
@@ -557,8 +587,12 @@ self_test() {
   grep -q 'CategorySetsUiTest' <<<"$out"
   grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
+    grep -q 'HistoryAccordionVisualRuntimeTest' <<<"$out"
+  fi
   grep -q '^run_runtime_isolation=true$' <<<"$out"
   grep -q '^run_migration_persistence=true$' <<<"$out"
+  ! grep -q 'HistoryScrollBenchmarkTest' <<<"$out"
 
   classify_self_test
   policy_self_test

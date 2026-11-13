@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import dagger.Reusable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toEntity
@@ -12,6 +13,9 @@ import org.koitharu.kotatsu.core.db.entity.toMangaList
 import org.koitharu.kotatsu.core.db.entity.toMangaTags
 import org.koitharu.kotatsu.core.db.entity.toMangaTagsList
 import org.koitharu.kotatsu.core.model.MangaHistory
+import org.koitharu.kotatsu.core.model.MangaNovelSection
+import org.koitharu.kotatsu.core.model.MangaSource as resolveMangaSource
+import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.model.toMangaSources
@@ -20,6 +24,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode
 import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.mapItems
+import org.koitharu.kotatsu.core.util.ext.flattenLatest
 import org.koitharu.kotatsu.history.domain.model.MangaWithHistory
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
@@ -97,22 +102,53 @@ class HistoryRepository @Inject constructor(
 		limit: Int,
 		minUpdatedAt: Long = 0L,
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
+		section: MangaNovelSection? = null,
+		maxUpdatedAtExclusive: Long? = null,
+		searchQuery: String = "",
 	): Flow<List<MangaWithHistory>> {
-		if (space == FavouriteSpace.NORMAL && ListFilterOption.Downloaded in filterOptions) {
-			return localObserver.observeAll(order, filterOptions, limit, minUpdatedAt)
-		}
-		val flow = if (space == FavouriteSpace.PRIVATE) {
-			db.getHistoryDao().observeAllPrivate(order, filterOptions, limit, minUpdatedAt)
-		} else {
-			db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt)
-		}
-		return flow.mapItems {
-			MangaWithHistory(
-				it.toManga(),
-				it.history.toMangaHistory(),
-			)
-		}.distinctUntilChanged()
+		val predicates = if (section == null) flowOf(null) else db.getHistoryDao()
+			.observeSourceNames()
+			.map { names ->
+				val novelNames = names.filter { resolveMangaSource(it).isNovelSource }
+				historyContentSectionPredicate(section, novelNames)
+			}
+			.distinctUntilChanged()
+		return predicates.map { predicate ->
+			val scopedPredicate = listOfNotNull(predicate, historyTitleSearchPredicate(searchQuery))
+				.joinToString(" AND ") { "($it)" }.ifEmpty { null }
+			if (space == FavouriteSpace.NORMAL && ListFilterOption.Downloaded in filterOptions) {
+				localObserver.observeAll(order, filterOptions, limit, minUpdatedAt, scopedPredicate, maxUpdatedAtExclusive)
+			} else {
+				val flow = if (space == FavouriteSpace.PRIVATE) {
+					db.getHistoryDao().observeAllPrivate(order, filterOptions, limit, minUpdatedAt, scopedPredicate, maxUpdatedAtExclusive)
+				} else {
+					db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt, scopedPredicate, maxUpdatedAtExclusive)
+				}
+				flow.mapItems {
+					MangaWithHistory(it.toManga(), it.history.toMangaHistory())
+				}.distinctUntilChanged()
+			}
+		}.flattenLatest()
 	}
+
+	/** Uses the exact same Manga/Novel source predicate and Normal/Private scope as the paged feed. */
+	fun observeHistoryTimestamps(
+		filterOptions: Set<ListFilterOption>,
+		space: FavouriteSpace,
+		section: MangaNovelSection,
+		searchQuery: String = "",
+	): Flow<List<Long>> = db.getHistoryDao().observeSourceNames()
+		.map { names ->
+			val novelNames = names.filter { resolveMangaSource(it).isNovelSource }
+			historyContentSectionPredicate(section, novelNames)
+		}
+		.distinctUntilChanged()
+		.map { predicate ->
+			val scopedPredicate = listOfNotNull(predicate, historyTitleSearchPredicate(searchQuery))
+				.joinToString(" AND ") { "($it)" }
+			db.getHistoryDao().observeHistoryTimestamps(filterOptions, space, scopedPredicate)
+		}
+		.flattenLatest()
 
 	fun observeOne(id: Long): Flow<MangaHistory?> {
 		return db.getHistoryDao().observe(id).map {
@@ -312,4 +348,37 @@ internal fun canAdvanceFromTracking(
 	}
 	val currentIndex = history?.let { item -> chapters.indexOfFirst { it.id == item.chapterId } } ?: -1
 	return history == null || currentIndex >= 0 && targetIndex > currentIndex
+}
+
+/**
+ * Query-only predicate, never a schema migration. The source namespace matches isNovelSource;
+ * LOCAL also uses the canonical .epub / 00.Novel path rules. Always quote stored source names.
+ */
+internal fun historyContentSectionPredicate(
+	section: MangaNovelSection,
+	novelSourceNames: Collection<String>,
+): String {
+	val sources = novelSourceNames.distinct().sorted()
+	val novelSource = if (sources.isEmpty()) "0" else
+		"manga.source IN (" + sources.joinToString(",") { "'" + it.replace("'", "''") + "'" } + ")"
+	val path = "lower(replace(manga.url, char(92), '/'))"
+	// Match isNovelContentPath: only the URL path, not query/fragment text, has an EPUB suffix.
+	val noFragment = "substr($path, 1, instr($path || '#', '#') - 1)"
+	val clean = "substr($noFragment, 1, instr($noFragment || '?', '?') - 1)"
+	val localNovel = "(manga.source = 'LOCAL' AND (" +
+		"$path LIKE '%/00.novel/%' OR $path LIKE '00.novel/%' OR " +
+		"$clean LIKE '%/00.novel' OR $clean LIKE '%.epub'))"
+	val novel = "($novelSource OR $localNovel)"
+	return if (section == MangaNovelSection.NOVEL) novel else "NOT $novel"
+}
+
+/**
+ * Apply title matching in SQL before pagination/date aggregation. Escape LIKE metacharacters and
+ * SQL apostrophes so user-entered %, _ and backslashes are treated as literal title characters.
+ */
+internal fun historyTitleSearchPredicate(rawQuery: String): String? {
+	val query = rawQuery.trim().takeIf { it.isNotEmpty() } ?: return null
+	val escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+	val pattern = "'%" + escaped.replace("'", "''") + "%'"
+	return "(manga.title LIKE $pattern ESCAPE char(92) OR manga.alt_title LIKE $pattern ESCAPE char(92))"
 }

@@ -16,6 +16,7 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.children
 import androidx.core.view.isVisible
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.widgets.BadgeView
 import org.koitharu.kotatsu.list.ui.model.ModernCoverReadingState
@@ -45,6 +46,8 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 	private var styledMetrics: FavouriteCoverOverlayMetrics? = null
 	private var styledWidth = -1
 	private var styledActionSize = -1
+	/** Debug-only trace hook enabled by the History A/B probe. */
+	internal var debugTraceHistoryMeasure = false
 	private val density get() = resources.displayMetrics.density
 
 	init {
@@ -126,6 +129,9 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		setMeasuredDimension(w, h)
 		if (w <= 0 || h <= 0) return
 		val value = model ?: return
+		val tracing = BuildConfig.DEBUG && debugTraceHistoryMeasure && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q && android.os.Trace.isEnabled()
+		if (tracing) android.os.Trace.beginSection("HistoryModernOverlayMeasure")
+		try {
 		val metrics = FavouriteCoverOverlayMetrics.resolve(w / density, h / density)
 		fun px(dp: Float) = (dp * density).roundToInt()
 		val inset = px(metrics.inset)
@@ -171,7 +177,27 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			chapterCounter.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_outline, radius)
 			chapterCounter.setPadding(padding * 2, padding, padding * 2, padding)
 			counterIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
-			val counterIconSize = px(metrics.statusSize * 0.7f)
+			// Fit the real badge + visible status count before choosing horizontal/vertical packing.
+			// For 3-digit unread counts the natural measured badge width, not the nominal
+			// circle diameter, is the constraint. Do not reduce the clickable action target.
+			val activeStatuses = statusItems.filter { it.isVisible }
+			val compact = metrics.scale < 0.8f
+			val statusGap = if (compact) px(minOf(metrics.gap, 1f)) else gap
+			val horizontalStatusPadding = if (compact) px(minOf(metrics.padding, 1f)) else padding
+			// Outer unread width includes frame padding; otherwise rounded icon tiles can
+			// overflow by a pixel and force a second row on 5-column compact covers.
+			val leadingWidth = if (value.readingState == ModernCoverReadingState.NONE) 0f
+				else (diameter + padding * 2) / density
+			val fittedStatusSize = px(metrics.fittedStatusSize(innerWidth / density, leadingWidth, activeStatuses.size))
+			// dp-fit can round each of three tiles up independently. Reserve real pixel
+			// widths for the unread frame, between-group gap and all status spacing.
+			val statusSize = if (compact && value.readingState != ModernCoverReadingState.NONE &&
+				activeStatuses.size > 1) {
+				val remainingPx = innerWidth - (diameter + padding * 2) - gap -
+					horizontalStatusPadding * 2 - statusGap * (activeStatuses.size - 1)
+				minOf(fittedStatusSize, (remainingPx / activeStatuses.size).coerceAtLeast(px(12f)))
+			} else fittedStatusSize
+			val counterIconSize = (statusSize * 0.7f).roundToInt()
 			counterIcon.layoutParams = LinearLayout.LayoutParams(counterIconSize, counterIconSize).apply { marginEnd = gap }
 			counterNumber.backgroundTintList = null
 			counterNumber.background = null
@@ -180,20 +206,19 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			counterNumber.includeFontPadding = false
 			counterNumber.setPadding(0, 0, 0, 0)
 			statuses.background = shape(R.color.favourite_cover_protection, R.color.favourite_cover_outline, radius)
-			statuses.setPadding(padding, padding, padding, padding)
-			val activeStatuses = statusItems.filter { it.isVisible }
-			val statusSize = px(metrics.statusSize)
-			statuses.orientation = if (activeStatuses.size * statusSize + max(0, activeStatuses.size - 1) * gap + padding * 2 <= innerWidth) {
+			statuses.setPadding(horizontalStatusPadding, padding, horizontalStatusPadding, padding)
+			statuses.orientation = if (activeStatuses.size * statusSize +
+				max(0, activeStatuses.size - 1) * statusGap + horizontalStatusPadding * 2 <= innerWidth) {
 				LinearLayout.HORIZONTAL
 			} else LinearLayout.VERTICAL
 			statusItems.forEachIndexed { index, icon ->
 				icon.imageTintList = ColorStateList.valueOf(if (index == 2) color(R.color.favourite_cover_pin) else Color.WHITE)
 				icon.background = shape(R.color.favourite_cover_item, R.color.favourite_cover_outline, radius * 0.7f)
-				val iconPadding = px(3f * metrics.scale)
+				val iconPadding = px(if (metrics.scale < 0.8f) 2f * metrics.scale else 3f * metrics.scale)
 				icon.setPadding(iconPadding, iconPadding, iconPadding, iconPadding)
 				icon.layoutParams = LinearLayout.LayoutParams(statusSize, statusSize).apply {
 					if (icon.isVisible && icon !== activeStatuses.firstOrNull()) {
-						if (statuses.orientation == LinearLayout.HORIZONTAL) leftMargin = gap else topMargin = gap
+						if (statuses.orientation == LinearLayout.HORIZONTAL) leftMargin = statusGap else topMargin = gap
 					}
 				}
 			}
@@ -227,7 +252,35 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		measureNatural(titleView, innerWidth)
 		if (titleView.measuredHeight > bottom) showTitle = false
 		var titleTop = bottom - if (showTitle) titleView.measuredHeight else 0
-		val topLimit = titleTop - gap
+		var topLimit = titleTop - gap
+		// Compact cards can be shorter than a title + reading badge + permanent statuses.
+		// Preserve the status information before the optional over-cover title, rather than
+		// silently dropping unread/bookmark/download indicators just to keep two title lines.
+		// The full title remains available via the existing tooltip/accessibility description.
+		measureNatural(unread, w)
+		if (metrics.scale < 0.8f && showTitle) {
+			val statusesPresent = statusItems.any { it.isVisible }
+			val hasUnread = value.readingState != ModernCoverReadingState.NONE
+			val bothOnTop = !statusesPresent || !hasUnread ||
+				unread.measuredWidth + statuses.measuredWidth + gap <= innerWidth
+			val requiredTopHeight = when {
+				!statusesPresent && !hasUnread -> 0
+				!statusesPresent -> unread.measuredHeight
+				!hasUnread -> statuses.measuredHeight
+				bothOnTop -> maxOf(unread.measuredHeight, statuses.measuredHeight)
+				else -> statuses.measuredHeight + gap + unread.measuredHeight
+			}
+			// In compact covers the title yields to status information even if it is
+			// physically impossible to show *every* indicator. Previous logic kept the
+			// title precisely when the badges needed its space, hiding all indicators.
+			if (top + requiredTopHeight + gap > titleTop) {
+				showTitle = false
+				titleTop = bottom
+				// Reserved 18dp progress zone begins here. No second padding is needed
+				// between an omitted title and the progress boundary.
+				topLimit = h - px(FavouriteCoverOverlayMetrics.PROGRESS_RESERVED_DP)
+			}
+		}
 		if (statuses.measuredHeight + top > topLimit || statuses.measuredWidth > innerWidth) showStatuses = false
 		place(statuses, w - inset - statuses.measuredWidth, top)
 		var usedTop = if (showStatuses) top + statuses.measuredHeight else if (isSelected) top else inset
@@ -257,7 +310,10 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		measureNatural(metadata, w)
 		val showMetadata = (value.isLocalSource || !value.languageLabel.isNullOrBlank()) &&
 			metadata.measuredWidth <= innerWidth && (usedTop + gap <= titleTop - gap - metadata.measuredHeight ||
-				(value.isLocalSource && !showTitle && metadata.measuredHeight + inset <= titleTop))
+				// Legacy LOCAL fallback ignores usedTop; on compact cards it could overlap
+				// unread/status chrome after the title yields its slot to those indicators.
+				(metrics.scale >= 0.8f && value.isLocalSource && !showTitle &&
+					metadata.measuredHeight + inset <= titleTop))
 		val target = px(FavouriteCoverOverlayMetrics.ACTION_TOUCH_DP)
 		if (styledActionSize != px(metrics.actionSize)) {
 			val circleInset = ((target - px(metrics.actionSize)) / 2).coerceAtLeast(0)
@@ -295,6 +351,9 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 		place(metadata, inset, titleTop - gap - metadata.measuredHeight)
 		place(action, w - inset - target, bottom - target)
 		updateAccessibility(value)
+		} finally {
+			if (tracing) android.os.Trace.endSection()
+		}
 	}
 
 	private fun updateAccessibility(value: ModernCoverState) {

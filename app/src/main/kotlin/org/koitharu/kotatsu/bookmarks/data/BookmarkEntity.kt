@@ -4,6 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import org.koitharu.kotatsu.core.db.entity.MangaEntity
+import org.koitharu.kotatsu.bookmarks.domain.BOOKMARK_ORIGIN_READER
 
 @Entity(
 	tableName = "bookmarks",
@@ -27,4 +28,5 @@ data class BookmarkEntity(
 	@ColumnInfo(name = "created_at") val createdAt: Long,
 	@ColumnInfo(name = "percent") val percent: Float,
 	@ColumnInfo(name = "note") val note: String? = null,
+	@ColumnInfo(name = "origin", defaultValue = "'READER'") val origin: String = BOOKMARK_ORIGIN_READER,
 )

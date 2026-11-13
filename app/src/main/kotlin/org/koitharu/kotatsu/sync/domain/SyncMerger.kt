@@ -313,7 +313,13 @@ object SyncMerger {
 			} else {
 				val items = LinkedHashMap<Long, BookmarkBackup.Item>()
 				for (item in existing.bookmarks) items[item.pageId] = item
-				for (item in group.bookmarks) if (!items.containsKey(item.pageId)) items[item.pageId] = item
+				for (item in group.bookmarks) {
+                    val current = items[item.pageId]
+                    // A manually owned bookmark wins a conflict with a swipe-generated bookmark.
+                    if (current == null || (current.origin == "DETAILS_SWIPE" && item.origin == "READER")) {
+                        items[item.pageId] = item
+                    }
+                }
 				byManga[group.manga.id] = BookmarkBackup(existing.manga, items.values.toList())
 			}
 		}

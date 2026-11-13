@@ -157,7 +157,7 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 	}
 
 	private fun configureModernLibraryGroupChrome() {
-		val palette = miyorareViewPaletteFromPreferences() ?: return
+		val palette = miyorareViewPaletteFromPreferences(privateFavourites = isPrivateMode) ?: return
 		window.decorView.background = MiyorareHeaderShapeDrawable(
 			palette = palette,
 			variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,

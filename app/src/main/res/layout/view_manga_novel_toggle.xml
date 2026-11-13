@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.button.MaterialButtonToggleGroup
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto"
+	android:id="@+id/manga_novel_toggle"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:layout_marginStart="16dp"
+	android:layout_marginTop="8dp"
+	android:layout_marginEnd="16dp"
+	android:layout_marginBottom="8dp"
+	android:background="@drawable/bg_favourites_segment_group"
+	android:padding="3dp"
+	app:checkedButton="@id/button_section_manga"
+	app:selectionRequired="true"
+	app:singleSelection="true">
+
+	<com.google.android.material.button.MaterialButton
+		android:id="@+id/button_section_manga"
+		style="?attr/materialButtonOutlinedStyle"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_weight="1"
+		android:minHeight="46dp"
+		android:text="@string/content_type_manga"
+		android:textAllCaps="false"
+		android:textColor="@color/favourites_segment_text"
+		app:backgroundTint="@color/favourites_segment_background"
+		app:cornerRadius="20dp"
+		app:strokeWidth="0dp" />
+
+	<com.google.android.material.button.MaterialButton
+		android:id="@+id/button_section_novel"
+		style="?attr/materialButtonOutlinedStyle"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_weight="1"
+		android:minHeight="46dp"
+		android:text="@string/content_type_novel"
+		android:textAllCaps="false"
+		android:textColor="@color/favourites_segment_text"
+		app:backgroundTint="@color/favourites_segment_background"
+		app:cornerRadius="20dp"
+		app:strokeWidth="0dp" />
+</com.google.android.material.button.MaterialButtonToggleGroup>

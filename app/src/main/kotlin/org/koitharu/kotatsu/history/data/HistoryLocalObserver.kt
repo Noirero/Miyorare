@@ -23,7 +23,9 @@ class HistoryLocalObserver @Inject constructor(
 		filterOptions: Set<ListFilterOption>,
 		limit: Int,
 		minUpdatedAt: Long = 0L,
-	) = db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt).mapToLocal()
+		contentPredicate: String? = null,
+		maxUpdatedAtExclusive: Long? = null,
+	) = db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt, contentPredicate, maxUpdatedAtExclusive).mapToLocal()
 
 	override fun toManga(e: HistoryWithManga) = e.manga.toManga(e.tags.toMangaTags(), null)
 
