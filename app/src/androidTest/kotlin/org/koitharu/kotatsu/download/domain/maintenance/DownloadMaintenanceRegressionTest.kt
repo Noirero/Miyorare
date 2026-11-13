@@ -640,6 +640,46 @@ class DownloadMaintenanceRegressionTest {
 		assertArrayEquals(before, cbz.readBytes())
 	}
 
+	@Test fun plainExhentaiCopiesKeepIndependentPathsOnASharedRoot() = runBlocking {
+		prefs.edit(commit = true) { putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path) }
+		val a = galleryFixture(812330)
+		val b = galleryFixture(812331)
+		val first = writeGalleryFixture(a, false, byteArrayOf(31, 32))
+		val second = writeGalleryFixture(b, false, byteArrayOf(41, 42))
+		assertEquals("Chapter.cbz", first.name)
+		assertEquals(first.name, second.name)
+		assertNotEquals(first.parentFile, second.parentFile)
+		val owners = db.getFavouriteDownloadIndexDao()
+		for ((manga, space, file) in listOf(
+			Triple(a, FavouriteSpace.NORMAL, first), Triple(b, FavouriteSpace.PRIVATE, second),
+		)) {
+			data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+			owners.upsert(FavouriteDownloadIndexEntity(mangaId = manga.id, space = space.dbValue, path = file.canonicalPath))
+			val saved = resolver.findSavedManga(manga, space)
+			assertEquals(file.canonicalFile, saved?.file?.canonicalFile)
+			assertEquals(file.toUri().toString(), saved?.manga?.chapters?.single()?.url)
+		}
+		assertNull(resolver.findSavedManga(a, FavouriteSpace.PRIVATE))
+		assertNull(resolver.findSavedManga(b, FavouriteSpace.NORMAL))
+		val firstBytes = first.readBytes()
+		assertTrue(deleteLocal.deleteExhentaiCopy(b, FavouriteSpace.PRIVATE, second))
+		assertFalse(second.exists())
+		assertArrayEquals(firstBytes, first.readBytes())
+		assertEquals(first.canonicalPath, owners.findEntry(FavouriteSpace.NORMAL.dbValue, a.id)?.path)
+	}
+
+	@Test fun exhentaiReservationCannotReplaceAFileCreatedAfterReservation() {
+		val directory = folder("reservations")
+		val victim = byteArrayOf(3, 4, 5)
+		org.koitharu.kotatsu.local.data.output.ExhentaiNewArchive.reserve(directory, "Gallery", "Chapter.cbz", false).use {
+			it.staging.writeBytes(byteArrayOf(1, 2))
+			it.target.writeBytes(victim)
+			assertTrue(runCatching { it.commit() }.isFailure)
+			assertArrayEquals(victim, it.target.readBytes())
+		}
+		assertEquals(setOf("Chapter.cbz"), File(directory, "Gallery").list().orEmpty().toSet())
+	}
+
 	private fun galleryFixture(gid: Long): Manga {
 		val url = "https://exhentai.org/g/$gid/token/"
 		val source = MissingMangaSource(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
