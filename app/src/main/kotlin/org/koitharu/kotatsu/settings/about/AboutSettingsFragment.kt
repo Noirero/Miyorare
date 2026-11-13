@@ -24,18 +24,22 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -48,12 +52,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
@@ -417,22 +419,13 @@ private fun AboutCommunityCard(
 private fun AboutProjectCard(project: AboutProject, onOpenLink: (Int, Int) -> Unit) {
 	val title = stringResource(project.title)
 	val summary = stringResource(project.summary)
-	val labelStyle = MaterialTheme.typography.labelMedium
-	val density = LocalDensity.current
-	val measurer = rememberTextMeasurer()
-	val github = stringResource(project.githubLabel)
-	val discord = if (project.discord != null) stringResource(project.discordLabel) else null
-	// Inline only when both action labels fit at their current type size, with room for the identity.
-	val actionsWidth = with(density) {
-		measurer.measure(github, labelStyle).size.width.toDp() + AboutActionChrome +
-			if (discord == null) 0.dp else {
-				measurer.measure(discord, labelStyle).size.width.toDp() + AboutActionChrome + AboutActionGap
-			}
-	}
+	val fontScale = LocalDensity.current.fontScale
+	val actionCount = 1 + (if (project.discord != null) 1 else 0) + (if (project.extraGithub != null) 1 else 0)
+	val actionsWidth = AboutActionTarget * actionCount + AboutActionGap * (actionCount - 1)
 	AboutCommunityCard(title = title) {
 		BoxWithConstraints(Modifier.fillMaxWidth()) {
 			val inline = project.extraGithub == null &&
-				maxWidth >= 154.dp * density.fontScale.coerceAtLeast(1f) + 21.dp + actionsWidth
+				maxWidth >= 154.dp * fontScale.coerceAtLeast(1f) + 21.dp + actionsWidth
 			if (inline) {
 				Row(
 					modifier = Modifier.fillMaxWidth(),
@@ -483,11 +476,9 @@ private fun AboutProjectIdentity(
 }
 
 private val AboutActionGap = 6.dp
-private val AboutActionPadding = 10.dp
-private val AboutActionIcon = 16.dp
-private val AboutActionIconGap = 4.dp
-// Allow a couple of pixels for independent rounding of padding and icon sizes.
-private val AboutActionChrome = AboutActionPadding * 2 + AboutActionIcon + AboutActionIconGap + 2.dp
+private val AboutActionTarget = 48.dp
+private val AboutActionVisualSize = 38.dp
+private val AboutActionIcon = 18.dp
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -518,6 +509,7 @@ private fun AboutProjectActions(
 	}
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AboutProjectLink(
 	@StringRes label: Int,
@@ -529,22 +521,22 @@ private fun AboutProjectLink(
 	val description = stringResource(R.string.about_project_link_description, projectTitle, text)
 	val colors = MaterialTheme.colorScheme
 	val accent = if (icon == R.drawable.ic_discord) colors.secondary else colors.primary
-	OutlinedButton(
-		onClick = onClick,
-		// Reserve Material's interactive target without making the visual pill 48 dp tall.
-		modifier = Modifier.minimumInteractiveComponentSize().heightIn(min = 34.dp),
-		shape = CircleShape,
-		colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.onSurface),
-		border = BorderStroke(1.dp, accent.copy(alpha = 0.72f)),
-		contentPadding = PaddingValues(horizontal = AboutActionPadding, vertical = 4.dp),
+	TooltipBox(
+		positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+		tooltip = { PlainTooltip { Text(text) } },
+		state = rememberTooltipState(),
 	) {
-		Row(
-			modifier = Modifier.clearAndSetSemantics { contentDescription = description },
-			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(AboutActionIconGap),
+		OutlinedButton(
+			onClick = onClick,
+			modifier = Modifier.minimumInteractiveComponentSize()
+				.size(AboutActionVisualSize)
+				.semantics { contentDescription = description },
+			shape = CircleShape,
+			colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+			border = BorderStroke(1.dp, accent.copy(alpha = 0.72f)),
+			contentPadding = PaddingValues(0.dp),
 		) {
-			Icon(painterResource(icon), contentDescription = null, tint = accent, modifier = Modifier.size(AboutActionIcon))
-			Text(text, style = MaterialTheme.typography.labelMedium)
+			Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(AboutActionIcon))
 		}
 	}
 }
