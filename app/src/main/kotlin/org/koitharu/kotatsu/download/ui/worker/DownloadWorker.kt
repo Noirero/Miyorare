@@ -545,10 +545,10 @@ class DownloadWorker @AssistedInject constructor(
 					}
 				} else {
 					recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
-					LocalMangaParser(output.rootFile).getManga(withDetails = false).also {
-						localMangaRepository.rememberDownloadedIdentity(mangaDetails, it)
-						localStorageChanges.emit(it)
-					}
+					val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
+					localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
+					localStorageChanges.emit(localManga)
+					localManga
 				}
 				publishState(
 					currentState.copy(
