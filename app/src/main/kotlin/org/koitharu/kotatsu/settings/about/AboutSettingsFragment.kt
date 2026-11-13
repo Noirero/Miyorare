@@ -343,6 +343,10 @@ private fun AboutProjectCard(project: AboutProject, shape: Shape, onOpenLink: (I
 	BoxWithConstraints(Modifier.fillMaxWidth()) {
 		val inline = maxWidth >= 350.dp && LocalDensity.current.fontScale <= 1.05f
 		val actions: @Composable () -> Unit = { AboutProjectActions(project, title, onOpenLink) }
+		val stackedActions: @Composable () -> Unit = {
+			Spacer(Modifier.height(4.dp))
+			actions()
+		}
 		SettingsItem(
 			title = title,
 			modifier = Modifier.fillMaxWidth(),
@@ -351,12 +355,7 @@ private fun AboutProjectCard(project: AboutProject, shape: Shape, onOpenLink: (I
 			iconColors = CategoryPalette.forKey("about"),
 			tintIcon = project != miyorareProject,
 			shape = shape,
-			supportingContent = if (inline) null else {
-				{
-					Spacer(Modifier.height(4.dp))
-					actions()
-				}
-			},
+			supportingContent = if (inline) null else stackedActions,
 			trailing = if (inline) actions else null,
 		)
 	}
