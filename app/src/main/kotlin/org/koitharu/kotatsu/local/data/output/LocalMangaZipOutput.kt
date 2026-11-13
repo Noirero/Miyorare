@@ -23,11 +23,13 @@ class LocalMangaZipOutput private constructor(
 	rootFile: File,
 	manga: Manga,
 	private val newArchive: ExhentaiNewArchive?,
+	archiveComment: String?,
 ) : LocalMangaOutput(rootFile) {
 
-	constructor(rootFile: File, manga: Manga) : this(rootFile, manga, null)
+	constructor(rootFile: File, manga: Manga) : this(rootFile, manga, null, null)
 
-	internal constructor(newArchive: ExhentaiNewArchive, manga: Manga) : this(newArchive.target, manga, newArchive)
+	internal constructor(newArchive: ExhentaiNewArchive, manga: Manga, archiveComment: String?) :
+		this(newArchive.target, manga, newArchive, archiveComment)
 
 	internal override val committedFile: File?
 		get() = if (newArchive == null) super.committedFile else rootFile.takeIf { newArchive.isCommitted }
@@ -35,6 +37,7 @@ class LocalMangaZipOutput private constructor(
 	private val output = ZipOutput(
 		newArchive?.staging ?: File(rootFile.path + ".tmp"),
 		compressionLevel = Deflater.NO_COMPRESSION,
+		archiveComment = archiveComment,
 	)
 	private val index = MangaIndex(null)
 	private val mutex = Mutex()

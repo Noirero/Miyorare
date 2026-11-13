@@ -195,6 +195,11 @@ class DownloadMaintenanceUseCase @Inject constructor(
 				file.listFiles()?.any { ExhentaiChapterOwnership.inspect(it) is ExhentaiChapterOwnership.Evidence.Owned } == true)) {
 			return item(DownloadMaintenanceStatus.NO_CHANGE_REQUIRED, DownloadMaintenanceReason.OWNERSHIP_UNKNOWN)
 		}
+		// A scoped archive is published with its own gallery/space receipt. The generic
+		// repair path must not reassign it from favourites membership or a stale title index.
+		if ((ExhentaiChapterOwnership.inspect(file) as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt != null) {
+			return item(DownloadMaintenanceStatus.NO_CHANGE_REQUIRED, DownloadMaintenanceReason.VERIFIED)
+		}
 		val initialSnapshot = if (file.isDirectory) snapshot(file) else emptyList()
 		val parser = LocalMangaParser.getOrNull(file) ?: return item(DownloadMaintenanceStatus.NO_CHANGE_REQUIRED, DownloadMaintenanceReason.UNSUPPORTED_ARTIFACT)
 		val indexFile = File(file, LocalMangaOutput.ENTRY_NAME_INDEX)

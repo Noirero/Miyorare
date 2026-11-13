@@ -18,6 +18,7 @@ import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterFileName
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import org.koitharu.kotatsu.sources.compat.ExhentaiTitlePolicy
 import org.koitharu.kotatsu.sources.compat.VerifiedSourceAliases
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
@@ -105,6 +106,7 @@ sealed class LocalMangaOutput(
 			manga: Manga,
 			format: DownloadFormat,
 			appendGalleryId: Boolean,
+			receipt: ExhentaiChapterOwnership.Receipt? = null,
 		): LocalMangaOutput = withContext(Dispatchers.IO) {
 			require(EhentaiSourceFamily.isOfficialSource(manga.source.name))
 			require(manga.chapters?.size == 1) { "ExHentai must expose exactly one gallery chapter" }
@@ -130,8 +132,12 @@ sealed class LocalMangaOutput(
 				source, manga.title.toReadableFileName(), chapterName, appendGalleryId && !single,
 			)
 			try {
-				if (single) LocalMangaZipOutput(reservation, manga)
-				else LocalMangaDirOutput(reservation, manga, galleryId)
+				val archiveComment = galleryId?.let {
+					if (receipt != null) ExhentaiChapterOwnership.scopedComment(it, receipt, single)
+					else if (!single) ExhentaiChapterOwnership.comment(it) else null
+				}
+				if (single) LocalMangaZipOutput(reservation, manga, archiveComment)
+				else LocalMangaDirOutput(reservation, manga, archiveComment)
 			} catch (e: Exception) {
 				reservation.close()
 				throw e

@@ -79,10 +79,10 @@ class DownloadedMangaResolver @Inject constructor(
 		// owns an unindexed legacy artifact. Do not let opening Details manufacture ownership for the
 		// active space; the background legacy reconciler is the only compatibility path allowed to
 		// persist ownership after checking favourite membership and chapter evidence.
-		if (!canInferSpaceFromPath()) return null
 		if (ExhentaiDownloadedCopy.isOfficial(manga)) {
 			return localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = favouriteSpace)
 		}
+		if (!canInferSpaceFromPath()) return null
 
 		// With distinct roots the global Local index is safe as a compatibility hint, but it still has
 		// to live inside the requested space before it can be accepted and persisted as ownership.

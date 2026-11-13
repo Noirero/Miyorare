@@ -695,6 +695,24 @@ class DownloadMaintenanceRegressionTest {
 		assertNull(local.findSavedMangaInRoot(galleryFixture(812342), root))
 	}
 
+	@Test fun sharedRootRecoveryUsesTheArchiveReceiptNotThePath() = runBlocking {
+		prefs.edit(commit = true) { putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path) }
+		val manga = galleryFixture(812360)
+		val request = java.util.UUID.randomUUID()
+		val receipt = org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Receipt(FavouriteSpace.PRIVATE, request)
+		val bytes = byteArrayOf(81, 82)
+		val file = writeGalleryFixture(manga, false, bytes, receipt = receipt)
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.PRIVATE.dbValue, manga.id))
+		assertNull(resolver.findSavedManga(manga, FavouriteSpace.NORMAL))
+		assertEquals(file.canonicalFile, resolver.findSavedManga(manga, FavouriteSpace.PRIVATE)?.file?.canonicalFile)
+		assertNull(local.findExhentaiInRoots(manga, listOf(root), false, FavouriteSpace.PRIVATE, java.util.UUID.randomUUID()))
+		val recovered = local.findExhentaiInRoots(manga, listOf(root), false, FavouriteSpace.PRIVATE, request)
+		assertEquals(file.canonicalFile, recovered?.file?.canonicalFile)
+		ZipFile(checkNotNull(recovered).file).use { zip ->
+			assertArrayEquals(bytes, zip.getInputStream(zip.entries().nextElement()).use { it.readBytes() })
+		}
+	}
+
 	@Test fun exhentaiReservationCannotReplaceAFileCreatedAfterReservation() {
 		val directory = folder("reservations")
 		val victim = byteArrayOf(3, 4, 5)
@@ -719,9 +737,10 @@ class DownloadMaintenanceRegressionTest {
 		appendId: Boolean,
 		bytes: ByteArray,
 		format: DownloadFormat = DownloadFormat.MULTIPLE_CBZ,
+		receipt: org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Receipt? = null,
 	): File {
 		val page = File(root, "fixture.jpg").apply { writeBytes(bytes) }
-		val output = LocalMangaOutput.createExhentaiArchive(root, manga, format, appendId)
+		val output = LocalMangaOutput.createExhentaiArchive(root, manga, format, appendId, receipt)
 		try {
 			val chapter = requireNotNull(manga.chapters).single()
 			output.addPage(IndexedValue(0, chapter), page, 0, org.koitharu.kotatsu.core.util.MimeTypes.getMimeTypeFromExtension(page.name))

@@ -16,7 +16,6 @@ import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
-import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import java.io.File
 import java.util.zip.Deflater
 
@@ -25,14 +24,14 @@ class LocalMangaDirOutput private constructor(
 	private val manga: Manga,
 	prepareForDownload: Boolean,
 	private val newArchive: ExhentaiNewArchive?,
-	private val galleryId: Long?,
+	private val archiveComment: String?,
 ) : LocalMangaOutput(rootFile) {
 
 	constructor(rootFile: File, manga: Manga, prepareForDownload: Boolean = false) :
 		this(rootFile, manga, prepareForDownload, null, null)
 
-	internal constructor(newArchive: ExhentaiNewArchive, manga: Manga, galleryId: Long?) :
-		this(checkNotNull(newArchive.target.parentFile), manga, false, newArchive, galleryId)
+	internal constructor(newArchive: ExhentaiNewArchive, manga: Manga, archiveComment: String?) :
+		this(checkNotNull(newArchive.target.parentFile), manga, false, newArchive, archiveComment)
 
 	internal override val committedFile: File?
 		get() = if (newArchive == null) super.committedFile else newArchive.target.takeIf { newArchive.isCommitted }
@@ -74,7 +73,7 @@ class LocalMangaDirOutput private constructor(
 				ZipOutput(
 					newArchive?.staging ?: File(rootFile, chapterFileName(chapter) + SUFFIX_TMP),
 					compressionLevel = Deflater.NO_COMPRESSION,
-					archiveComment = galleryId?.let(ExhentaiChapterOwnership::comment),
+					archiveComment = archiveComment,
 				)
 			}
 			val name = buildString {

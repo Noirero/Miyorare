@@ -281,6 +281,21 @@ class DownloadWorker @AssistedInject constructor(
 						?: error("Cannot obtain remote manga instance")
 				}
 				isExhentai = ExhentaiDownloadedCopy.isOfficial(manga)
+				if (isExhentai && runAttemptCount > 0) {
+					val recovered = localMangaRepository.findExhentaiInRoots(
+						manga, listOf(destination), withDetails = false, space = task.favouriteSpace, request = id,
+					)
+					if (recovered != null) {
+						withContext(NonCancellable) {
+							registerExhentaiArtifact(manga, task, recovered.file)
+							committedExhentaiPath = recovered.file.canonicalPath
+						}
+						publishState(currentState.copy(localManga = recovered, totalChapters = 1, downloadedChapters = 1,
+							isIndeterminate = false, isFinalizing = false))
+						isCompleted = true
+						return@withLock
+					}
+				}
 				val chaptersToSkip = if (isExhentai) mutableSetOf<Long>() else getDoneChapters(manga, destination).toMutableSet()
 				if (isExhentai && !task.downloadSeparateCopy && !manga.chapters.isNullOrEmpty() &&
 					publishExistingExhentaiCopy(manga, destination, task)) {
@@ -303,7 +318,10 @@ class DownloadWorker @AssistedInject constructor(
 				output = if (isExhentai) {
 					// Keep the reservation reachable by finally even if cancellation occurs on the IO return.
 					withContext(NonCancellable) {
-						LocalMangaOutput.createExhentaiArchive(destination, mangaDetails, format, task.appendGalleryIdToChapterFile)
+						LocalMangaOutput.createExhentaiArchive(
+							destination, mangaDetails, format, task.appendGalleryIdToChapterFile,
+							org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Receipt(task.favouriteSpace, id),
+						)
 					}
 				} else {
 					LocalMangaOutput.getOrCreate(destination, mangaDetails, format)

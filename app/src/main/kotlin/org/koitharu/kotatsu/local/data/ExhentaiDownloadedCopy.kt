@@ -16,10 +16,12 @@ import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterFileName
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import java.io.File
+import java.util.UUID
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 
 /** Resolve one physical artifact, not ownership of a title directory. Never modifies user files. */
 internal object ExhentaiDownloadedCopy {
-	data class Match(val local: LocalManga, val verified: Boolean)
+	data class Match(val local: LocalManga, val verified: Boolean, val receipt: ExhentaiChapterOwnership.Receipt? = null)
 
 	fun isOfficial(manga: Manga): Boolean = EhentaiSourceFamily.isOfficialSource(manga.source.name)
 
@@ -32,20 +34,45 @@ internal object ExhentaiDownloadedCopy {
 		return if (id != null && storedId != null) id == storedId else remote.id == origin.id
 	}
 
-	suspend fun find(remote: Manga, path: File, withDetails: Boolean): Match? = withContext(Dispatchers.IO) {
+	suspend fun find(
+		remote: Manga,
+		path: File,
+		withDetails: Boolean,
+		space: FavouriteSpace? = null,
+		request: UUID? = null,
+	): Match? = withContext(Dispatchers.IO) {
 		if (!isOfficial(remote)) return@withContext null
 		runCatchingCancellable {
-			if (path.isDirectory) findInDirectory(remote, path.canonicalFile, withDetails)
-			else findArchive(remote, path.canonicalFile, withDetails)
+			if (path.isDirectory) findInDirectory(remote, path.canonicalFile, withDetails, space, request)
+			else findArchive(remote, path.canonicalFile, withDetails, space, request)
 		}.getOrNull()
 	}
 
-	private suspend fun findArchive(remote: Manga, file: File, withDetails: Boolean): Match? {
+	private fun ExhentaiChapterOwnership.Evidence.Owned.matches(
+		galleryId: Long?,
+		space: FavouriteSpace?,
+		request: UUID?,
+	): Boolean = this.galleryId == galleryId &&
+		(space == null || receipt == null || receipt.space == space) &&
+		(request == null || receipt?.request == request)
+
+	private suspend fun findArchive(
+		remote: Manga,
+		file: File,
+		withDetails: Boolean,
+		space: FavouriteSpace? = null,
+		request: UUID? = null,
+	): Match? {
 		return when (val evidence = ExhentaiChapterOwnership.inspect(file)) {
-			is ExhentaiChapterOwnership.Evidence.Owned ->
-				if (evidence.galleryId == remote.galleryId()) chapterCopy(remote, file, withDetails, true) else null
+			is ExhentaiChapterOwnership.Evidence.Owned -> {
+				if (!evidence.matches(remote.galleryId(), space, request)) return null
+				val match = if (evidence.single) indexedArchive(remote, file, withDetails)
+				else chapterCopy(remote, file, withDetails, true)
+				match?.copy(receipt = evidence.receipt)
+			}
 			ExhentaiChapterOwnership.Evidence.Unusable -> null
 			ExhentaiChapterOwnership.Evidence.Unmarked -> {
+				if (request != null) return null
 				val parser = LocalMangaParser.getOrNull(file) ?: return null
 				val origin = parser.getMangaInfo()
 				if (origin != null) {
@@ -60,16 +87,32 @@ internal object ExhentaiDownloadedCopy {
 		}
 	}
 
-	private suspend fun findInDirectory(remote: Manga, dir: File, withDetails: Boolean): Match? {
+	private suspend fun indexedArchive(remote: Manga, file: File, withDetails: Boolean): Match? {
+		val parser = LocalMangaParser.getOrNull(file) ?: return null
+		val origin = parser.getMangaInfo() ?: return null
+		if (!originMatches(remote, origin)) return null
+		val local = parser.getManga(withDetails)
+		if (withDetails && local.manga.chapters.isNullOrEmpty()) return null
+		return Match(LegacyChapterDownloadCompat.linkToRemote(remote, local), true)
+	}
+
+	private suspend fun findInDirectory(
+		remote: Manga,
+		dir: File,
+		withDetails: Boolean,
+		space: FavouriteSpace?,
+		request: UUID?,
+	): Match? {
 		val entries = dir.listFiles { f -> f.isFile && f.extension.equals("cbz", ignoreCase = true) } ?: return null
 		val candidates = entries.filter { it.canonicalFile == it }.associateWith(ExhentaiChapterOwnership::inspect)
 		val galleryId = remote.galleryId()
 		if (galleryId != null) {
-			val exact = candidates.filterValues { it == ExhentaiChapterOwnership.Evidence.Owned(galleryId) }.keys
+			val exact = candidates.filterValues { (it as? ExhentaiChapterOwnership.Evidence.Owned)?.matches(galleryId, space, request) == true }.keys
 			val named = exact.filter { it.name.equals(ExhentaiChapterFileName.withGalleryId(galleryId), true) }
-			(named.singleOrNull() ?: exact.singleOrNull())?.let { return chapterCopy(remote, it, withDetails, true) }
+			(named.singleOrNull() ?: exact.singleOrNull())?.let { return findArchive(remote, it, withDetails, space, request) }
 			if (exact.isNotEmpty()) return null
 		}
+		if (request != null) return null
 		val unknownFiles = LinkedHashSet<File>()
 		val embeddedMatches = ArrayList<File>()
 		for ((file, evidence) in candidates) {

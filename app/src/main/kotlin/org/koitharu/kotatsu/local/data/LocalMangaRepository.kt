@@ -301,8 +301,9 @@ class LocalMangaRepository @Inject constructor(
 		path: File,
 		withDetails: Boolean,
 		space: FavouriteSpace? = null,
+		request: java.util.UUID? = null,
 	): ExhentaiDownloadedCopy.Match? {
-		val match = ExhentaiDownloadedCopy.find(remote, path, withDetails) ?: return null
+		val match = ExhentaiDownloadedCopy.find(remote, path, withDetails, space, request) ?: return null
 		if (favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(remote.id, space, match.local.file, match.verified)) {
 			return null
 		}
@@ -314,17 +315,20 @@ class LocalMangaRepository @Inject constructor(
 		roots: Collection<File>,
 		withDetails: Boolean,
 		space: FavouriteSpace? = null,
+		request: java.util.UUID? = null,
 	): LocalManga? = withContext(Dispatchers.IO) {
 		// Inference uses the artifact's path, not just whether active roots differ. Historical
 		// roots can still overlap even after Normal and Private are configured separately.
 		val otherRoots = space?.let {
 			downloadDestinationStore.readableRoots(if (it == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL)
 		}.orEmpty()
+		fun ExhentaiDownloadedCopy.Match.allowed(): Boolean =
+			!local.file.isInsideAny(otherRoots) || (space != null && receipt?.space == space)
 		val hints = favouriteDownloadOwnershipIndex.pathsForManga(remote.id) + listOfNotNull(localMangaIndex.findIndexedPath(remote.id))
 		for (hint in hints.distinct()) {
 			if (!hint.isInsideAny(roots)) continue
-			findExhentaiAtPath(remote, hint, withDetails, space)?.takeIf {
-				it.verified && !it.local.file.isInsideAny(otherRoots)
+			findExhentaiAtPath(remote, hint, withDetails, space, request)?.takeIf {
+				it.verified && it.allowed()
 			}?.let {
 				return@withContext it.local
 			}
@@ -332,8 +336,8 @@ class LocalMangaRepository @Inject constructor(
 		var legacy: LocalManga? = null
 		for (root in roots) {
 			for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote)) {
-				val match = findExhentaiAtPath(remote, path, withDetails, space) ?: continue
-				if (match.local.file.isInsideAny(otherRoots)) continue
+				val match = findExhentaiAtPath(remote, path, withDetails, space, request) ?: continue
+				if (!match.allowed()) continue
 				if (match.verified) return@withContext match.local
 				if (legacy == null) legacy = match.local
 			}
@@ -343,13 +347,14 @@ class LocalMangaRepository @Inject constructor(
 		val recovered = LinkedHashMap<File, LocalManga>()
 		for (root in roots) {
 			for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote, recoverSuffixes = true)) {
-				val match = findExhentaiAtPath(remote, path, withDetails, space) ?: continue
-				if (!match.verified || match.local.file.isInsideAny(otherRoots)) continue
+				val match = findExhentaiAtPath(remote, path, withDetails, space, request) ?: continue
+				if (!match.verified || !match.allowed()) continue
 				recovered[match.local.file.canonicalFile] = match.local
 				if (recovered.size > 1) return@withContext null
 			}
 		}
 		recovered.values.singleOrNull()?.let { return@withContext it }
+		if (request != null) return@withContext null
 		if (legacy != null) return@withContext legacy
 		for (root in roots) {
 			val path = org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver.findUniqueDirectory(
@@ -357,7 +362,7 @@ class LocalMangaRepository @Inject constructor(
 			) ?: continue
 			if (!path.isInsideAny(listOf(root))) continue
 			findExhentaiAtPath(remote, path, withDetails, space)?.let {
-				if (!it.local.file.isInsideAny(otherRoots)) return@withContext it.local
+				if (it.allowed()) return@withContext it.local
 			}
 		}
 		null
