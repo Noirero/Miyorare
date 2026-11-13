@@ -16,4 +16,16 @@
 	<string name="about_verbose_logging_title">Pencatatan verbose</string>
 	<string name="about_verbose_logging_enabled_summary">Sedang merekam — nonaktifkan untuk menyimpan log sebagai .txt</string>
 	<string name="about_verbose_logging_disabled_summary">Nonaktif secara default untuk menjaga performa</string>
+
+	<string name="about_this_project_section">MIYORARE (PROYEK INI)</string>
+	<string name="about_upstream_section">UPSTREAM &amp; KREDIT</string>
+	<string name="about_miyorare_project_summary">Pembaca manga yang dikelola secara independen</string>
+	<string name="about_kotatsu_project_summary">Pembaca manga dan ekosistem parser</string>
+	<string name="about_mihon_project_summary">Pembaca manga dan ekosistem ekstensi</string>
+	<string name="about_lnreader_project_summary">Pembaca novel ringan untuk Android</string>
+	<string name="about_tachiyomi_project_summary">Pembaca manga yang tidak lagi dikembangkan</string>
+	<string name="about_project_link_description">%1$s · %2$s</string>
+	<string name="about_tsuki_uma_gekkoushi_summary">Repositori dan komunitas</string>
+	<string name="about_dropsauce_summary">Proyek asal Miyorare</string>
+	<string name="about_project_credits_title">Kredit proyek</string>
 </resources>

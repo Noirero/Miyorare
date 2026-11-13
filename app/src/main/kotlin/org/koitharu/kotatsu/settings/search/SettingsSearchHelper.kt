@@ -36,6 +36,7 @@ import org.koitharu.kotatsu.settings.ReaderSettingsFragment
 import org.koitharu.kotatsu.settings.StorageSettingsFragment
 import org.koitharu.kotatsu.settings.SuggestionsSettingsFragment
 import org.koitharu.kotatsu.settings.about.AboutSettingsFragment
+import org.koitharu.kotatsu.settings.about.ProjectCreditsFragment
 import org.koitharu.kotatsu.settings.appearance.PreviewSettingsFragment
 import org.koitharu.kotatsu.settings.discord.DiscordSettingsFragment
 import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
@@ -408,10 +409,16 @@ class SettingsSearchHelper @Inject constructor(
                 addItem("changelog", R.string.changelog, R.string.changelog_summary, crumbs, AboutSettingsFragment::class.java)
             }
             group(sectionCrumbs, R.string.about_project_community_section) { crumbs ->
-                addItem("about_github", R.string.source_code, breadcrumbs = crumbs, fragmentClass = AboutSettingsFragment::class.java)
                 addItem("about_license", R.string.about_license_title, R.string.about_license_summary, crumbs, AboutSettingsFragment::class.java)
-                addItem("about_credits", R.string.about_credits_title, R.string.about_credits_summary, crumbs, AboutSettingsFragment::class.java)
-                addItem("about_discord", R.string.discord, breadcrumbs = crumbs, fragmentClass = AboutSettingsFragment::class.java)
+                addItem("about_miyorare", R.string.about_brand_name, R.string.about_miyorare_project_summary, crumbs, AboutSettingsFragment::class.java, keywordText = listOf(ctx.getString(R.string.source_code), "GitHub", "Discord"))
+                addItem("about_project_credits", R.string.about_project_credits_title, breadcrumbs = crumbs, fragmentClass = AboutSettingsFragment::class.java, keywordText = listOf(ctx.getString(R.string.about_credits_title)))
+                val creditCrumbs = crumbs + ctx.getString(R.string.about_project_credits_title)
+                addItem("about_dropsauce", R.string.about_dropsauce_name, R.string.about_dropsauce_summary, creditCrumbs, ProjectCreditsFragment::class.java)
+                addItem("about_kotatsu", R.string.about_kotatsu_name, R.string.about_kotatsu_project_summary, creditCrumbs, ProjectCreditsFragment::class.java)
+                addItem("about_mihon", R.string.about_mihon_name, R.string.about_mihon_project_summary, creditCrumbs, ProjectCreditsFragment::class.java)
+                addItem("about_lnreader", R.string.about_lnreader_name, R.string.about_lnreader_project_summary, creditCrumbs, ProjectCreditsFragment::class.java)
+                addItem("about_tachiyomi", R.string.about_tachiyomi_name, R.string.about_tachiyomi_project_summary, creditCrumbs, ProjectCreditsFragment::class.java)
+                addItem("about_tsuki_uma_gekkoushi", R.string.about_tsuki_uma_gekkoushi_name, R.string.about_tsuki_uma_gekkoushi_summary, creditCrumbs, ProjectCreditsFragment::class.java)
             }
             group(sectionCrumbs, R.string.about_advanced_section) { crumbs ->
                 addItem(AppSettings.KEY_VERBOSE_LOGGING, R.string.about_verbose_logging_title, breadcrumbs = crumbs, fragmentClass = AboutSettingsFragment::class.java)
