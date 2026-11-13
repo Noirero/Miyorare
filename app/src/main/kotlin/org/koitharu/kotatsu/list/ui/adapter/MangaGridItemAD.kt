@@ -18,6 +18,9 @@ import androidx.core.widget.ImageViewCompat
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import coil3.request.ErrorResult
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import coil3.size.Size
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.BuildConfig
@@ -184,6 +187,42 @@ fun mangaGridItemAD(
 		.setAllCornerSizes(modernCoverRadius)
 		.build()
 
+	val coverBorderState = if (isNormalModernFavourites && normalFavouritesCardBorder) {
+		FavouritesCoverBorderState()
+	} else null
+
+	fun syncLoadingBorder() {
+		val state = coverBorderState ?: return
+		val hidden = state.isPending
+		binding.imageViewCover.strokeWidth = if (!hidden && normalBorderStyle.hasStroke) {
+			MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP * density
+		} else 0f
+		if ((itemView.getTag(R.id.tag_favourites_cover_pending) == true) != hidden) {
+			itemView.setTag(R.id.tag_favourites_cover_pending, hidden)
+			(itemView.parent as? RecyclerView)?.invalidate()
+		}
+	}
+
+	if (coverBorderState != null) {
+		// One listener per holder. A payload rebind can reuse the current Coil request.
+		binding.imageViewCover.addImageRequestListener(object : ImageRequest.Listener {
+			override fun onStart(request: ImageRequest) {
+				coverBorderState.start(request.data, request)
+				syncLoadingBorder()
+			}
+
+			override fun onSuccess(request: ImageRequest, result: SuccessResult) {
+				coverBorderState.finish(request)
+				syncLoadingBorder()
+			}
+
+			override fun onError(request: ImageRequest, result: ErrorResult) {
+				coverBorderState.finish(request)
+				syncLoadingBorder()
+			}
+		})
+	}
+
 	fun applyGridAppearance(isModern: Boolean, visualScale: Float) {
 		binding.imageViewCover.setAspectRatioOverride(
 			(MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO / visualScale)
@@ -200,6 +239,7 @@ fun mangaGridItemAD(
 				hasCollectionBorder -> MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP * density
 				else -> defaultCoverStrokeWidth
 			}
+			syncLoadingBorder()
 			binding.viewScrim.background = modernScrim
 			binding.textViewTitle.setTextColor(if (normalNeon) normalGlass!!.content else onSurface)
 			binding.textViewTitle.setTextSize(
@@ -307,6 +347,7 @@ fun mangaGridItemAD(
 	}
 
 	bind { payloads ->
+		coverBorderState?.bind(item.coverUrl)
 		itemView.setTooltipCompat(item.getSummary(context))
 		val visualScaleProvider = gridVisualScaleProvider
 		val visualScale = visualScaleProvider?.invoke()?.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
