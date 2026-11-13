@@ -70,7 +70,19 @@ internal object ExhentaiDownloadedCopy {
 			(named.singleOrNull() ?: exact.singleOrNull())?.let { return chapterCopy(remote, it, withDetails, true) }
 			if (exact.isNotEmpty()) return null
 		}
-		val unknownFiles = candidates.filterValues { it == ExhentaiChapterOwnership.Evidence.Unmarked }.keys
+		val unknownFiles = LinkedHashSet<File>()
+		val embeddedMatches = ArrayList<File>()
+		for ((file, evidence) in candidates) {
+			if (evidence != ExhentaiChapterOwnership.Evidence.Unmarked) continue
+			val embedded = LocalMangaParser.getOrNull(file)?.getMangaInfo()
+			when {
+				embedded == null -> unknownFiles += file
+				originMatches(remote, embedded) -> embeddedMatches += file
+				// A readable name is not allowed to override another archive's own metadata.
+			}
+		}
+		embeddedMatches.singleOrNull()?.let { return findArchive(remote, it, withDetails) }
+		if (embeddedMatches.isNotEmpty()) return null
 		if (unknownFiles.isEmpty()) return null
 		val parser = LocalMangaParser.getOrNull(dir) ?: return null
 		val origin = parser.getMangaInfo()

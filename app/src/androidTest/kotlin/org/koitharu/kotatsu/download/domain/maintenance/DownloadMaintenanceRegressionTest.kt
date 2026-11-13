@@ -668,6 +668,19 @@ class DownloadMaintenanceRegressionTest {
 		assertEquals(first.canonicalPath, owners.findEntry(FavouriteSpace.NORMAL.dbValue, a.id)?.path)
 	}
 
+	@Test fun embeddedLegacyArchiveIdentityOverridesTheChapterBasename() = runBlocking {
+		val a = galleryFixture(812350)
+		val b = galleryFixture(812351)
+		val single = writeGalleryFixture(a, false, byteArrayOf(71, 72), DownloadFormat.SINGLE_CBZ)
+		val directory = folder("downloads/Same title")
+		val legacy = File(directory, "Chapter.cbz")
+		check(single.renameTo(legacy))
+		val before = legacy.readBytes()
+		assertNull(local.findSavedMangaInRoot(b, root))
+		assertEquals(legacy.canonicalFile, local.findSavedMangaInRoot(a, root)?.file?.canonicalFile)
+		assertArrayEquals(before, legacy.readBytes())
+	}
+
 	@Test fun publishedPlainExhentaiArchiveIsRecoveredWithoutAnAlias() = runBlocking {
 		val a = galleryFixture(812340)
 		val b = galleryFixture(812341)
@@ -701,9 +714,14 @@ class DownloadMaintenanceRegressionTest {
 			chapters = listOf(SampleData.chapter.copy(id = gid + 1000000, title = "Chapter", url = url, source = source)))
 	}
 
-	private suspend fun writeGalleryFixture(manga: Manga, appendId: Boolean, bytes: ByteArray): File {
+	private suspend fun writeGalleryFixture(
+		manga: Manga,
+		appendId: Boolean,
+		bytes: ByteArray,
+		format: DownloadFormat = DownloadFormat.MULTIPLE_CBZ,
+	): File {
 		val page = File(root, "fixture.jpg").apply { writeBytes(bytes) }
-		val output = LocalMangaOutput.createExhentaiArchive(root, manga, DownloadFormat.MULTIPLE_CBZ, appendId)
+		val output = LocalMangaOutput.createExhentaiArchive(root, manga, format, appendId)
 		try {
 			val chapter = requireNotNull(manga.chapters).single()
 			output.addPage(IndexedValue(0, chapter), page, 0, org.koitharu.kotatsu.core.util.MimeTypes.getMimeTypeFromExtension(page.name))
