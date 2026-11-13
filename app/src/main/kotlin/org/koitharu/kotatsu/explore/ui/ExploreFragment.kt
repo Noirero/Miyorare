@@ -1,22 +1,28 @@
 package org.koitharu.kotatsu.explore.ui
 
+import android.content.Context
 import android.content.DialogInterface
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.view.ActionMode
+import androidx.appcompat.widget.AppCompatEditText
+import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.Insets
 import androidx.core.view.WindowInsetsCompat
@@ -30,10 +36,12 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
+import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.badge.BadgeDrawable
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.search.SearchBar
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.tabs.TabLayoutMediator
@@ -79,6 +87,10 @@ import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDispl
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.adapter.bindBadge
 import org.koitharu.kotatsu.list.ui.model.ListHeader
+import org.koitharu.kotatsu.main.ui.MainActivity
+import org.koitharu.kotatsu.main.ui.installSharedSearchBarOwner
+import org.koitharu.kotatsu.main.ui.ownsSharedSearchBar
+import org.koitharu.kotatsu.main.ui.releaseSharedSearchBarOwner
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.util.Locale
 import javax.inject.Inject
@@ -101,6 +113,8 @@ class ExploreFragment :
 	private var tabsMediator: TabLayoutMediator? = null
 	private var pageChangeCallback: ViewPager2.OnPageChangeCallback? = null
 	private var sourceFilterDialogOpenPending = false
+	private var sourceSearchField: AppCompatEditText? = null
+	private var sourceSearchBackCallback: OnBackPressedCallback? = null
 
 	/** Page lists, indexed by page position. Both are created up-front by the pager. */
 	private val pages = arrayOfNulls<RecyclerView>(2)
@@ -236,7 +250,10 @@ class ExploreFragment :
 			tab.setText(if (position == 1) R.string.store_kind_novel else R.string.store_kind_manga)
 		}.also { it.attach() }
 		actionModeDelegate.addListener(this)
-		addMenuProvider(ExploreMenuProvider(router, viewModel, ::showSourceFilterDialog))
+		sourceSearchBackCallback = object : OnBackPressedCallback(false) {
+			override fun handleOnBackPressed() = closeSourceSearch()
+		}.also { requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, it) }
+		addMenuProvider(ExploreMenuProvider(router, viewModel, ::toggleSourceSearch, ::showSourceFilterDialog))
 		viewModel.headerContent.observe(viewLifecycleOwner, headerAdapter)
 		viewModel.contentFilter.observe(viewLifecycleOwner) { filter ->
 			val checkedId = when (filter) {
@@ -312,15 +329,123 @@ class ExploreFragment :
 			})
 		}
 		pages[pageIndex] = recyclerView
-		viewModel.sources.observe(viewLifecycleOwner) { content ->
-			adapter.emit(content[isNovel])
+		adapter.onSourceItemsCommitted = {
 			recyclerView.post {
-				applyExplorePageInsets(recyclerView)
-				if (viewBinding?.pager?.currentItem == pageIndex) {
-					updateStickyLanguageHeader(recyclerView)
+				if (pages[pageIndex] === recyclerView) {
+					applyExplorePageInsets(recyclerView)
+					if (viewBinding?.pager?.currentItem == pageIndex) {
+						updateStickyLanguageHeader(recyclerView)
+					}
 				}
 			}
 		}
+		adapter.setSourceQuery(sourceSearchField?.text?.toString().orEmpty())
+		viewModel.sources.observe(viewLifecycleOwner) { content ->
+			adapter.submitSourceItems(content[isNovel])
+		}
+	}
+
+	private fun toggleSourceSearch() {
+		if (sourceSearchField != null) {
+			closeSourceSearch()
+			return
+		}
+		val host = activity as? MainActivity ?: return
+		if (isHidden || !isResumed) return
+		val bar = host.findViewById<SearchBar>(R.id.search_bar) ?: return
+		val parent = bar.parent as? LinearLayout ?: return
+		val density = bar.resources.displayMetrics.density
+		val field = AppCompatEditText(bar.context).apply {
+			layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+			hint = getString(R.string.explore_search_sources)
+			setTextColor(bar.textView.currentTextColor)
+			setHintTextColor(bar.textView.currentHintTextColor)
+			setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, bar.textView.textSize)
+			setSingleLine(true)
+			background = null
+			setPadding(0, 0, 0, 0)
+			setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_search, 0, 0, 0)
+			compoundDrawablePadding = resources.getDimensionPixelOffset(R.dimen.margin_small)
+		}
+		val clearButton = AppCompatImageButton(bar.context).apply {
+			val size = (48 * density).toInt()
+			layoutParams = LinearLayout.LayoutParams(size, size)
+			background = null
+			setImageResource(R.drawable.ic_close)
+			imageTintList = ColorStateList.valueOf(bar.textView.currentTextColor)
+			contentDescription = getString(R.string.clear)
+			isVisible = false
+			setOnClickListener { field.text?.clear() }
+		}
+		val searchRow = LinearLayout(bar.context).apply {
+			layoutParams = LinearLayout.LayoutParams(bar.layoutParams as LinearLayout.LayoutParams)
+			gravity = Gravity.CENTER_VERTICAL
+			minimumHeight = bar.height.coerceAtLeast((48 * density).toInt())
+			background = bar.background?.constantState?.newDrawable(resources)?.mutate()
+			setPaddingRelative((16 * density).toInt(), 0, 0, 0)
+			addView(field)
+			addView(clearButton)
+		}
+		field.doAfterTextChanged { text ->
+			if (sourceSearchField === field) {
+				clearButton.isVisible = !text.isNullOrEmpty()
+				applySourceQuery(text?.toString().orEmpty())
+			}
+		}
+		host.installSharedSearchBarOwner(this, getString(R.string.explore_search_sources)) { focusSourceSearch() }
+		sourceSearchField = field
+		parent.addView(searchRow, parent.indexOfChild(bar) + 1)
+		bar.isVisible = false
+		sourceSearchBackCallback?.isEnabled = true
+		host.findViewById<AppBarLayout>(R.id.appbar)?.setExpanded(true, false)
+		viewBinding?.exploreAppBar?.setExpanded(true, false)
+		resetSourcePageScrollPositions()
+		focusSourceSearch()
+	}
+
+	internal fun focusSourceSearch(): Boolean {
+		val field = sourceSearchField ?: return false
+		field.requestFocus()
+		field.post {
+			if (sourceSearchField === field && field.isShown && field.hasFocus()) {
+				(field.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+					?.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
+			}
+		}
+		return true
+	}
+
+	private fun closeSourceSearch() {
+		val field = sourceSearchField ?: return
+		sourceSearchField = null
+		sourceSearchBackCallback?.isEnabled = false
+		(field.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+			?.hideSoftInputFromWindow(field.windowToken, 0)
+		val searchRow = field.parent as? View
+		(searchRow?.parent as? ViewGroup)?.removeView(searchRow)
+		val host = activity as? MainActivity
+		if (host != null && host.ownsSharedSearchBar(this)) {
+			host.findViewById<SearchBar>(R.id.search_bar)?.isVisible = true
+			host.releaseSharedSearchBarOwner(this)
+		}
+		applySourceQuery("")
+	}
+
+	private fun applySourceQuery(query: String) {
+		pages.forEach { page ->
+			(page?.adapter as? ExploreAdapter)?.setSourceQuery(query)
+			page?.scrollToPosition(0)
+		}
+	}
+
+	override fun onPause() {
+		closeSourceSearch()
+		super.onPause()
+	}
+
+	override fun onHiddenChanged(hidden: Boolean) {
+		super.onHiddenChanged(hidden)
+		if (hidden) closeSourceSearch()
 	}
 
 	private fun resetSourcePageScrollPositions() {
@@ -434,6 +559,8 @@ class ExploreFragment :
 	}
 
 	override fun onDestroyView() {
+		closeSourceSearch()
+		sourceSearchBackCallback = null
 		actionModeDelegate.removeListener(this)
 		tabsMediator?.detach()
 		tabsMediator = null
