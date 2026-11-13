@@ -58,6 +58,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -129,6 +130,7 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 					onWhatsNew = ::openWhatsNew,
 					onChangelog = ::openChangelog,
 					onOpenLink = ::openLink,
+					onOpenProjectCredits = ::openProjectCredits,
 					onVerboseLoggingToggle = viewModel::setVerboseLogging,
 					onOpenDeveloperTools = ::openDeveloperTools,
 				)
@@ -181,15 +183,12 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 		)
 	}
 
-	private fun openLink(@StringRes urlRes: Int, titleRes: Int) {
-		val opened = router.openExternalBrowser(getString(urlRes), getString(titleRes))
-		if (!opened) {
-			Snackbar.make(
-				requireView(),
-				R.string.operation_not_supported,
-				Snackbar.LENGTH_SHORT,
-			).show()
-		}
+	private fun openProjectCredits() {
+		(activity as? SettingsActivity)?.openFragment(
+			ProjectCreditsFragment::class.java,
+			null,
+			isFromRoot = false,
+		)
 	}
 
 	private fun onUpdateAvailable(version: AppVersion?) {
@@ -198,6 +197,35 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 		} else {
 			startActivity(Intent(requireContext(), AppUpdateActivity::class.java))
 		}
+	}
+}
+
+class ProjectCreditsFragment : BaseComposeSettingsFragment(R.string.about_project_credits_title) {
+
+	override fun onCreateView(
+		inflater: LayoutInflater,
+		container: ViewGroup?,
+		savedInstanceState: Bundle?,
+	): View = ComposeView(requireContext()).apply {
+		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+		setContent {
+			MiyorareTheme {
+				SettingsScaffold {
+					item { AboutProjectCredits { url, title -> openLink(url, title) } }
+				}
+			}
+		}
+	}
+}
+
+private fun Fragment.openLink(@StringRes urlRes: Int, titleRes: Int) {
+	val opened = router.openExternalBrowser(getString(urlRes), getString(titleRes))
+	if (!opened) {
+		Snackbar.make(
+			requireView(),
+			R.string.operation_not_supported,
+			Snackbar.LENGTH_SHORT,
+		).show()
 	}
 }
 
@@ -210,6 +238,7 @@ private fun AboutScreen(
 	onWhatsNew: () -> Unit,
 	onChangelog: () -> Unit,
 	onOpenLink: (urlRes: Int, titleRes: Int) -> Unit,
+	onOpenProjectCredits: () -> Unit,
 	onVerboseLoggingToggle: (Boolean) -> Unit,
 	onOpenDeveloperTools: () -> Unit,
 ) {
@@ -258,7 +287,7 @@ private fun AboutScreen(
 			}
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
-		item { AboutProjectCommunity(onOpenLink) }
+		item { AboutProjectCommunity(onOpenLink, onOpenProjectCredits) }
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
 			SettingsGroup(title = stringResource(R.string.about_advanced_section)) {
@@ -345,41 +374,61 @@ private val upstreamProjects = listOf(
 )
 
 @Composable
-internal fun AboutProjectCommunity(onOpenLink: (Int, Int) -> Unit) {
+internal fun AboutProjectCommunity(
+	onOpenLink: (Int, Int) -> Unit,
+	onOpenProjectCredits: () -> Unit,
+) {
 	Column(Modifier.fillMaxWidth()) {
 		AboutCommunityHeading(R.string.about_project_community_section, primary = true)
-		Spacer(Modifier.height(10.dp))
-		AboutCommunityHeading(R.string.about_this_project_section)
 		Spacer(Modifier.height(8.dp))
-		AboutProjectCard(miyorareProject, onOpenLink)
-		Spacer(Modifier.height(16.dp))
+		Column(verticalArrangement = Arrangement.spacedBy(MiyorareVisualTokens.SPACING_S_DP.dp)) {
+			AboutProjectCard(miyorareProject, onOpenLink)
+			AboutCommunityNavigationCard(
+				title = stringResource(R.string.about_project_credits_title),
+				icon = R.drawable.ic_book_page,
+				onClick = onOpenProjectCredits,
+			)
+			AboutCommunityNavigationCard(
+				title = stringResource(R.string.about_license_title),
+				summary = stringResource(R.string.about_license_summary),
+				icon = R.drawable.ic_info_outline,
+				onClick = { onOpenLink(R.string.url_project_license, R.string.about_license_title) },
+			)
+		}
+	}
+}
+
+@Composable
+internal fun AboutProjectCredits(onOpenLink: (Int, Int) -> Unit) {
+	Column(Modifier.fillMaxWidth()) {
 		AboutCommunityHeading(R.string.about_upstream_section)
 		Spacer(Modifier.height(8.dp))
 		Column(verticalArrangement = Arrangement.spacedBy(MiyorareVisualTokens.SPACING_S_DP.dp)) {
 			upstreamProjects.forEach { project -> AboutProjectCard(project, onOpenLink) }
-			AboutCommunityCard(
-				title = stringResource(R.string.about_license_title),
-				onClick = { onOpenLink(R.string.url_project_license, R.string.about_license_title) },
-			) {
-				Row(
-					modifier = Modifier.fillMaxWidth(),
-					verticalAlignment = Alignment.CenterVertically,
-					horizontalArrangement = Arrangement.spacedBy(12.dp),
-				) {
-					AboutProjectIdentity(
-						stringResource(R.string.about_license_title),
-						stringResource(R.string.about_license_summary),
-						R.drawable.ic_info_outline,
-						modifier = Modifier.weight(1f),
-					)
-					Icon(
-						painterResource(R.drawable.ic_arrow_forward),
-						contentDescription = null,
-						tint = MaterialTheme.colorScheme.onSurfaceVariant,
-						modifier = Modifier.size(18.dp),
-					)
-				}
-			}
+		}
+	}
+}
+
+@Composable
+private fun AboutCommunityNavigationCard(
+	title: String,
+	@DrawableRes icon: Int,
+	onClick: () -> Unit,
+	summary: String? = null,
+) {
+	AboutCommunityCard(title = title, onClick = onClick) {
+		Row(
+			modifier = Modifier.fillMaxWidth(),
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(12.dp),
+		) {
+			AboutProjectIdentity(title, summary, icon, modifier = Modifier.weight(1f))
+			Icon(
+				painterResource(R.drawable.ic_arrow_forward),
+				contentDescription = null,
+				tint = MaterialTheme.colorScheme.onSurfaceVariant,
+				modifier = Modifier.size(18.dp),
+			)
 		}
 	}
 }
@@ -436,7 +485,7 @@ private fun AboutProjectCard(project: AboutProject, onOpenLink: (Int, Int) -> Un
 						Modifier.padding(horizontal = 10.dp).width(1.dp).height(34.dp)
 							.background(MaterialTheme.colorScheme.outlineVariant),
 					)
-					AboutProjectActions(project, title, onOpenLink, Modifier.width(actionsWidth))
+					AboutProjectActions(project, title, onOpenLink, inline = true)
 				}
 			} else {
 				Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -452,7 +501,7 @@ private fun AboutProjectCard(project: AboutProject, onOpenLink: (Int, Int) -> Un
 @Composable
 private fun AboutProjectIdentity(
 	title: String,
-	summary: String,
+	summary: String?,
 	@DrawableRes icon: Int,
 	modifier: Modifier = Modifier,
 	keepArtwork: Boolean = false,
@@ -470,7 +519,9 @@ private fun AboutProjectIdentity(
 		)
 		Column(Modifier.weight(1f)) {
 			Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-			Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			if (summary != null) {
+				Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			}
 		}
 	}
 }
@@ -486,13 +537,9 @@ private fun AboutProjectActions(
 	project: AboutProject,
 	title: String,
 	onOpenLink: (Int, Int) -> Unit,
-	modifier: Modifier = Modifier,
+	inline: Boolean = false,
 ) {
-	FlowRow(
-		modifier = modifier,
-		horizontalArrangement = Arrangement.spacedBy(AboutActionGap),
-		verticalArrangement = Arrangement.spacedBy(2.dp),
-	) {
+	val links: @Composable () -> Unit = {
 		AboutProjectLink(project.githubLabel, R.drawable.ic_github, title) {
 			onOpenLink(project.github, project.title)
 		}
@@ -506,6 +553,14 @@ private fun AboutProjectActions(
 				onOpenLink(url, project.title)
 			}
 		}
+	}
+	if (inline) {
+		Row(horizontalArrangement = Arrangement.spacedBy(AboutActionGap)) { links() }
+	} else {
+		FlowRow(
+			horizontalArrangement = Arrangement.spacedBy(AboutActionGap),
+			verticalArrangement = Arrangement.spacedBy(2.dp),
+		) { links() }
 	}
 }
 
@@ -521,22 +576,24 @@ private fun AboutProjectLink(
 	val description = stringResource(R.string.about_project_link_description, projectTitle, text)
 	val colors = MaterialTheme.colorScheme
 	val accent = if (icon == R.drawable.ic_discord) colors.secondary else colors.primary
-	TooltipBox(
-		positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-		tooltip = { PlainTooltip { Text(text) } },
-		state = rememberTooltipState(),
-	) {
-		OutlinedButton(
-			onClick = onClick,
-			modifier = Modifier.minimumInteractiveComponentSize()
-				.size(AboutActionVisualSize)
-				.semantics { contentDescription = description },
-			shape = CircleShape,
-			colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
-			border = BorderStroke(1.dp, accent.copy(alpha = 0.72f)),
-			contentPadding = PaddingValues(0.dp),
+	Box(Modifier.size(AboutActionTarget), contentAlignment = Alignment.Center) {
+		TooltipBox(
+			positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+			tooltip = { PlainTooltip { Text(text) } },
+			state = rememberTooltipState(),
 		) {
-			Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(AboutActionIcon))
+			OutlinedButton(
+				onClick = onClick,
+				modifier = Modifier.minimumInteractiveComponentSize()
+					.size(AboutActionVisualSize)
+					.semantics { contentDescription = description },
+				shape = CircleShape,
+				colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+				border = BorderStroke(1.dp, accent.copy(alpha = 0.72f)),
+				contentPadding = PaddingValues(0.dp),
+			) {
+				Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(AboutActionIcon))
+			}
 		}
 	}
 }
