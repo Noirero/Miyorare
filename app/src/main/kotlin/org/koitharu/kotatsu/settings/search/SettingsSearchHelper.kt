@@ -410,6 +410,7 @@ class SettingsSearchHelper @Inject constructor(
             group(sectionCrumbs, R.string.about_project_community_section) { crumbs ->
                 addItem("about_license", R.string.about_license_title, R.string.about_license_summary, crumbs, AboutSettingsFragment::class.java)
                 addItem("about_miyorare", R.string.about_brand_name, R.string.about_miyorare_project_summary, crumbs, AboutSettingsFragment::class.java, keywordText = listOf(ctx.getString(R.string.source_code), "GitHub", "Discord", ctx.getString(R.string.about_credits_title)))
+                addItem("about_dropsauce", R.string.about_dropsauce_name, R.string.about_dropsauce_summary, crumbs, AboutSettingsFragment::class.java)
                 addItem("about_kotatsu", R.string.about_kotatsu_name, R.string.about_kotatsu_project_summary, crumbs, AboutSettingsFragment::class.java)
                 addItem("about_mihon", R.string.about_mihon_name, R.string.about_mihon_project_summary, crumbs, AboutSettingsFragment::class.java)
                 addItem("about_lnreader", R.string.about_lnreader_name, R.string.about_lnreader_project_summary, crumbs, AboutSettingsFragment::class.java)
