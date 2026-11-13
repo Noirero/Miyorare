@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_scope_label">Search in</string>
+    <string name="hub_scope_preferred">Use preferences</string>
+    <string name="hub_scope_all_enabled">All enabled sources</string>
+    <string name="hub_scope_preferred_description">Use your Alternatives search settings.</string>
+    <string name="hub_scope_all_description">Search all enabled sources for this content type.</string>
+    <string name="hub_scope_pick_specific">Choose a specific source</string>
+    <string name="hub_scope_filter">Search source names</string>
+    <string name="hub_scope_pinned">Pinned source</string>
+    <string name="hub_scope_searching">Searching: %1$s…</string>
+    <string name="hub_scope_empty">No results for this title (%1$s).</string>
+    <string name="hub_scope_source_error">Could not reach %1$s.</string>
+    <string name="hub_scope_incomplete">Search incomplete. Some sources could not be reached.</string>
+    <string name="hub_scope_no_sources">No eligible sources for this scope (%1$s).</string>
+    <string name="hub_scope_selection_unavailable">This result is no longer available to open.</string>
+    <string name="hub_scope_retry">Try again</string>
+    <string name="hub_scope_try_all">Try all enabled sources</string>
+    <string name="hub_scope_edit_query">Edit search query</string>
+    <string name="hub_scope_loading_sources">Loading available sources…</string>
+    <string name="hub_scope_sources_error">Could not load available sources.</string>
+    <string name="hub_scope_no_picker_sources">No enabled sources for this content type.</string>
+    <string name="hub_scope_no_name_matches">No source names match.</string>
+    <string name="hub_scope_searching_single">Searching %1$s…</string>
+    <string name="hub_scope_empty_single">No results in %1$s.</string>
+    <string name="hub_scope_origin_kotatsu_runtime">Kotatsu Runtime</string>
+    <string name="hub_scope_pinned_section">Pinned (%1$d)</string>
+    <string name="hub_scope_other_section">Others (%1$d)</string>
+    <string name="hub_scope_source_with_origin">%1$s · %2$s</string>
+    <string name="hub_scope_variant_group">%1$s (%2$d)</string>
+    <string name="hub_scope_expand_languages">Show language variants</string>
+    <string name="hub_scope_collapse_languages">Hide language variants</string>
+</resources>
