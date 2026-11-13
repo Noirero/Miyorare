@@ -803,7 +803,7 @@ class ExploreFragment :
 		if (sourceSelectionController?.onItemClick(item.id) == true) {
 			return
 		}
-		router.openList(item.source, null, null)
+		router.openSourceOverview(item.source)
 	}
 
 	override fun onItemLongClick(item: MangaSourceItem, view: View): Boolean {

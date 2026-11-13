@@ -48,6 +48,9 @@ interface MangaRepository {
 
 	val sortOrders: Set<SortOrder>
 
+	/** Resolve catalogue capabilities before advertising shelves for a cold source. */
+	suspend fun resolveCatalogSortOrders(): Set<SortOrder> = sortOrders
+
 	var defaultSortOrder: SortOrder
 
 	val filterCapabilities: MangaListFilterCapabilities

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="source_overview_latest">Latest</string>
+    <string name="source_overview_see_all">See all</string>
+    <string name="source_overview_load_failed">Could not load this shelf</string>
+</resources>

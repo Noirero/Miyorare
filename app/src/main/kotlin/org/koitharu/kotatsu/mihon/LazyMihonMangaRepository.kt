@@ -60,6 +60,8 @@ class LazyMihonMangaRepository(
 	override val sortOrders: Set<SortOrder>
 		get() = delegate?.sortOrders ?: EnumSet.allOf(SortOrder::class.java)
 
+	override suspend fun resolveCatalogSortOrders(): Set<SortOrder> = resolve().sortOrders
+
 	override var defaultSortOrder: SortOrder
 		get() = delegate?.defaultSortOrder ?: SortOrder.POPULARITY
 		set(value) {
