@@ -37,6 +37,12 @@ class KotatsuMangaRepository(
 			return if (mapped.isEmpty()) EnumSet.of(SortOrder.POPULARITY, SortOrder.RELEVANCE) else EnumSet.copyOf(mapped)
 		}
 
+	override suspend fun resolveCatalogSortOrders(): Set<SortOrder> = withContext(Dispatchers.IO) {
+		runtimeManager.runtime().sortOrders(source.sourceKey).mapNotNullTo(mutableSetOf()) { name ->
+			runCatching { SortOrder.valueOf(name) }.getOrNull()
+		}
+	}
+
 	override var defaultSortOrder: SortOrder
 		get() = settings.defaultSortOrder?.takeIf { it in sortOrders } ?: sortOrders.first()
 		set(value) { settings.defaultSortOrder = value }

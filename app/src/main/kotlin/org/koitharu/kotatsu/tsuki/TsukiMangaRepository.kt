@@ -50,6 +50,10 @@ class TsukiMangaRepository(
 			return if (mapped.isEmpty()) EnumSet.of(SortOrder.POPULARITY) else EnumSet.copyOf(mapped)
 		}
 
+	override suspend fun resolveCatalogSortOrders(): Set<SortOrder> = withContext(Dispatchers.IO) {
+		runtime.getHandle(source).parser.availableSortOrders.mapTo(mutableSetOf()) { it.toMiyorare() }
+	}
+
 	override var defaultSortOrder: SortOrder
 		get() {
 			sourceSettings.defaultSortOrder?.let { stored ->

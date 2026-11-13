@@ -53,6 +53,7 @@ import org.koitharu.kotatsu.core.util.ext.setTextAndVisible
 import org.koitharu.kotatsu.core.util.ext.start
 import org.koitharu.kotatsu.databinding.ActivityMangaListBinding
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
+import org.koitharu.kotatsu.explore.ui.SourceOverviewActivity
 import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.filter.ui.FilterHeaderFragment
 import org.koitharu.kotatsu.mihon.MihonFilterMapper
@@ -111,7 +112,8 @@ class MangaListActivity :
 		}
 		configureSortButton()
 		applyTitle()
-		initList(source, filter, sortOrder)
+		initList(source, filter, sortOrder, savedInstanceState == null &&
+			intent.getBooleanExtra(SourceOverviewActivity.EXTRA_SHOW_FILTERS, false))
 	}
 
 	override fun onResume() {
@@ -307,7 +309,7 @@ class MangaListActivity :
 		ViewCompat.requestApplyInsets(viewBinding.root)
 	}
 
-	private fun initList(source: MangaSource, filter: MangaListFilter?, sortOrder: SortOrder?) {
+	private fun initList(source: MangaSource, filter: MangaListFilter?, sortOrder: SortOrder?, showFilters: Boolean) {
 		val fm = supportFragmentManager
 		val existingFragment = fm.findFragmentById(R.id.container)
 		if (existingFragment is FilterCoordinator.Owner) {
@@ -323,8 +325,12 @@ class MangaListActivity :
 				replace(R.id.container, fragment)
 				runOnCommit { initFilter(fragment) }
 				if (filter != null || sortOrder != null) {
-					runOnCommit(ApplyFilterRunnable(fragment, filter, sortOrder))
+					runOnCommit(ApplyFilterRunnable(fragment, filter, sortOrder,
+						intent.getBooleanExtra(SourceOverviewActivity.EXTRA_TRANSIENT_SORT, false)))
 				}
+				if (showFilters) runOnCommit { viewBinding.root.post {
+					if (!isFinishing && !fm.isStateSaved) router.showFilterSheet()
+				} }
 			}
 		}
 	}
@@ -406,11 +412,13 @@ class MangaListActivity :
 		private val filterOwner: FilterCoordinator.Owner,
 		private val filter: MangaListFilter?,
 		private val sortOrder: SortOrder?,
+		private val transientSort: Boolean,
 	) : Runnable {
 
 		override fun run() {
 			if (sortOrder != null) {
-				filterOwner.filterCoordinator.setSortOrder(sortOrder)
+				if (transientSort) filterOwner.filterCoordinator.setSessionSortOrder(sortOrder)
+				else filterOwner.filterCoordinator.setSortOrder(sortOrder)
 			}
 			if (filter != null) {
 				filterOwner.filterCoordinator.setAdjusted(filter)

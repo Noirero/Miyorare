@@ -98,6 +98,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.ui.config.ScrobblerConfigActivity
 import org.koitharu.kotatsu.scrobbling.common.ui.selector.ScrobblingSelectorSheet
 import org.koitharu.kotatsu.search.domain.SearchKind
+import org.koitharu.kotatsu.explore.ui.SourceOverviewActivity
 import org.koitharu.kotatsu.search.ui.MangaListActivity
 import org.koitharu.kotatsu.search.ui.multi.SearchActivity
 import org.koitharu.kotatsu.settings.SettingsActivity
@@ -132,7 +133,26 @@ class AppRouter private constructor(
 
     /** Activities **/
 
-    fun openList(source: MangaSource, filter: MangaListFilter?, sortOrder: SortOrder?) {
+    fun openList(source: MangaSource, filter: MangaListFilter?, sortOrder: SortOrder?) =
+        openSourceCatalog(source, filter, sortOrder)
+
+    fun openSourceOverview(source: MangaSource) =
+        openSourceCatalog(source, null, null, overview = true)
+
+    fun openSourceShelf(source: MangaSource, sortOrder: SortOrder) =
+        openSourceCatalog(source, null, sortOrder, transientSort = true)
+
+    fun openSourceFilters(source: MangaSource) =
+        openSourceCatalog(source, null, null, showFilters = true)
+
+    private fun openSourceCatalog(
+        source: MangaSource,
+        filter: MangaListFilter?,
+        sortOrder: SortOrder?,
+        overview: Boolean = false,
+        transientSort: Boolean = false,
+        showFilters: Boolean = false,
+    ) {
         val context = contextOrNull() ?: return
         // The extension is not installed, so the list could only ever show an
         // UnsupportedSourceException — offer the extensions catalog instead of opening it.
@@ -151,7 +171,13 @@ class AppRouter private constructor(
             )
             return
         }
-        startActivity(listIntent(context, source, filter, sortOrder, resolveFavouriteSpace()))
+        val intent = listIntent(context, source, filter, sortOrder, resolveFavouriteSpace())
+        if (overview && source.unwrap() != org.koitharu.kotatsu.core.model.LocalMangaSource) {
+            intent.setClass(context, SourceOverviewActivity::class.java)
+        }
+        if (transientSort) intent.putExtra(SourceOverviewActivity.EXTRA_TRANSIENT_SORT, true)
+        if (showFilters) intent.putExtra(SourceOverviewActivity.EXTRA_SHOW_FILTERS, true)
+        startActivity(intent)
     }
 
     fun openList(tag: MangaTag) = openList(tag.source, MangaListFilter(tags = setOf(tag)), null)

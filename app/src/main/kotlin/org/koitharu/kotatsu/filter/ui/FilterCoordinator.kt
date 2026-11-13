@@ -450,8 +450,12 @@ class FilterCoordinator @Inject constructor(
         Snapshot(order, filter)
     }
 
+    fun setSessionSortOrder(order: SortOrder) {
+        currentSortOrder.value = order
+    }
+
     fun setSortOrder(newSortOrder: SortOrder) {
-        currentSortOrder.value = newSortOrder
+        setSessionSortOrder(newSortOrder)
         repository.defaultSortOrder = newSortOrder
     }
 
