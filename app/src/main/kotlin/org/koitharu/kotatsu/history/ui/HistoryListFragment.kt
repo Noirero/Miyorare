@@ -3,13 +3,17 @@ package org.koitharu.kotatsu.history.ui
 import android.content.Context
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.widget.AppCompatEditText
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
+import androidx.core.view.updatePadding
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import com.google.android.material.button.MaterialButton
@@ -63,6 +67,11 @@ class HistoryListFragment : MangaListFragment() {
 	private var inlineSearchActive = false
 	private var restoreInlineSearch = false
 	private var searchBackCallback: OnBackPressedCallback? = null
+	private val bottomNavLayoutListener = View.OnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+		if (bottom - top != oldBottom - oldTop) {
+			view?.let(ViewCompat::requestApplyInsets)
+		}
+	}
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
@@ -72,6 +81,9 @@ class HistoryListFragment : MangaListFragment() {
 			override fun handleOnBackPressed() = exitInlineSearch()
 		}.also { requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, it) }
 		RecyclerScrollKeeper(binding.recyclerView).attach()
+		// History rows and accordion actions must stay outside the floating nav's touch area.
+		binding.recyclerView.clipToPadding = true
+		(activity as? MainActivity)?.bottomNav?.addOnLayoutChangeListener(bottomNavLayoutListener)
 		val toggle = layoutInflater.inflate(R.layout.view_manga_novel_toggle, binding.root, false)
 			as MaterialButtonToggleGroup
 		binding.root.addView(toggle)
@@ -116,6 +128,18 @@ class HistoryListFragment : MangaListFragment() {
 		}
 	}
 
+	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
+		val result = super.onApplyWindowInsets(v, insets)
+		val systemBottom = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+		val navBarHeight = (activity as? MainActivity)?.bottomNav?.height ?: 0
+		val bottomPadding = resources.getDimensionPixelOffset(R.dimen.list_spacing_normal) +
+			maxOf(systemBottom, navBarHeight)
+		viewBinding?.recyclerView?.let { list ->
+			if (list.paddingBottom != bottomPadding) list.updatePadding(bottom = bottomPadding)
+		}
+		return result
+	}
+
 	override fun onSaveInstanceState(outState: Bundle) {
 		outState.putBoolean(STATE_INLINE_SEARCH, restoreInlineSearch)
 		super.onSaveInstanceState(outState)
@@ -137,6 +161,7 @@ class HistoryListFragment : MangaListFragment() {
 	}
 
 	override fun onDestroyView() {
+		(activity as? MainActivity)?.bottomNav?.removeOnLayoutChangeListener(bottomNavLayoutListener)
 		exitInlineSearch(clearQuery = false, endSession = false)
 		(activity as? MainActivity)?.releaseSharedSearchBarOwner(this)
 		inlineSearchEdit?.let { (it.parent as? ViewGroup)?.removeView(it) }
