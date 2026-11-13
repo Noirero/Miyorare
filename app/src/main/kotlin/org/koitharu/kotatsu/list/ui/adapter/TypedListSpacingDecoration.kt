@@ -130,6 +130,8 @@ class TypedListSpacingDecoration(
 		val gridLayoutManager = layoutManager as? GridLayoutManager ?: return position == itemCount - 1
 		val spanCount = gridLayoutManager.spanCount
 		if (spanCount <= 0) return position == itemCount - 1
+		// Each item occupies at least one span, so only the last spanCount positions can be in the final row.
+		if (position < itemCount - spanCount) return false
 		val spanSizeLookup = gridLayoutManager.spanSizeLookup
 		return spanSizeLookup.getSpanGroupIndex(position, spanCount) ==
 			spanSizeLookup.getSpanGroupIndex(itemCount - 1, spanCount)
