@@ -286,7 +286,12 @@ private data class AboutProject(
 	@DrawableRes val icon: Int,
 	@StringRes val github: Int,
 	@StringRes val discord: Int? = null,
+	@StringRes val githubLabel: Int = R.string.about_github_label,
+	@StringRes val discordLabel: Int = R.string.discord,
+	val extraGithub: AboutGithubLink? = null,
 )
+
+private data class AboutGithubLink(@StringRes val url: Int, @StringRes val label: Int)
 
 private val miyorareProject = AboutProject(
 	R.string.about_brand_name, R.string.about_miyorare_project_summary,
@@ -296,7 +301,10 @@ private val miyorareProject = AboutProject(
 private val upstreamProjects = listOf(
 	AboutProject(
 		R.string.about_kotatsu_name, R.string.about_kotatsu_project_summary,
-		R.drawable.ic_manga_source, R.string.about_url_kotatsu_github,
+		R.drawable.ic_manga_source, R.string.about_url_kotatsu_github, R.string.about_url_kotatsu_redo_discord,
+		githubLabel = R.string.about_github_kotatsu_label,
+		discordLabel = R.string.about_discord_kotatsu_redo_label,
+		extraGithub = AboutGithubLink(R.string.about_url_kotatsu_redo_github, R.string.about_github_kotatsu_redo_label),
 	),
 	AboutProject(
 		R.string.about_mihon_name, R.string.about_mihon_project_summary,
@@ -309,6 +317,12 @@ private val upstreamProjects = listOf(
 	AboutProject(
 		R.string.about_tachiyomi_name, R.string.about_tachiyomi_project_summary,
 		R.drawable.ic_manga_source, R.string.about_url_tachiyomi_github,
+	),
+	AboutProject(
+		R.string.about_tsuki_uma_gekkoushi_name, R.string.about_tsuki_uma_gekkoushi_summary,
+		R.drawable.ic_manga_source, R.string.about_url_uma_github, R.string.about_url_tsuki_uma_gekkoushi_discord,
+		githubLabel = R.string.about_github_uma_label,
+		extraGithub = AboutGithubLink(R.string.about_url_gekkoushi_github, R.string.about_github_gekkoushi_label),
 	),
 )
 
@@ -341,7 +355,7 @@ private fun AboutProjectCommunity(onOpenLink: (Int, Int) -> Unit) {
 private fun AboutProjectCard(project: AboutProject, shape: Shape, onOpenLink: (Int, Int) -> Unit) {
 	val title = stringResource(project.title)
 	BoxWithConstraints(Modifier.fillMaxWidth()) {
-		val inline = maxWidth >= 350.dp && LocalDensity.current.fontScale <= 1.05f
+		val inline = project.extraGithub == null && maxWidth >= 350.dp && LocalDensity.current.fontScale <= 1.05f
 		val actions: @Composable () -> Unit = { AboutProjectActions(project, title, onOpenLink) }
 		val stackedActions: @Composable () -> Unit = {
 			Spacer(Modifier.height(4.dp))
@@ -368,11 +382,16 @@ private fun AboutProjectActions(project: AboutProject, title: String, onOpenLink
 		horizontalArrangement = Arrangement.spacedBy(6.dp),
 		verticalArrangement = Arrangement.spacedBy(4.dp),
 	) {
-		AboutProjectLink(R.string.about_github_label, R.drawable.ic_github, title) {
+		AboutProjectLink(project.githubLabel, R.drawable.ic_github, title) {
 			onOpenLink(project.github, project.title)
 		}
+		project.extraGithub?.let { link ->
+			AboutProjectLink(link.label, R.drawable.ic_github, title) {
+				onOpenLink(link.url, project.title)
+			}
+		}
 		project.discord?.let { url ->
-			AboutProjectLink(R.string.discord, R.drawable.ic_discord, title) {
+			AboutProjectLink(project.discordLabel, R.drawable.ic_discord, title) {
 				onOpenLink(url, project.title)
 			}
 		}
