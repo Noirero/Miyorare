@@ -80,7 +80,9 @@ class DiscoverySearchBarOwnershipRuntimeTest {
 
 	@BindValue @JvmField val sourceResolution: CatalogSourceResolution = object : CatalogSourceResolution {
 		override suspend fun known(key: TrackerCatalogKey): List<Manga> = emptyList()
-		override suspend fun search(details: TrackerCatalogDetails, allSources: Boolean): Flow<AlternativeSearchEvent> = emptyFlow()
+		override suspend fun availableSources(kind: CatalogMediaKind) = emptyList<org.koitharu.kotatsu.discovery.domain.CatalogReadingSource>()
+		override suspend fun search(details: TrackerCatalogDetails, scope: org.koitharu.kotatsu.discovery.domain.CatalogSearchScope): org.koitharu.kotatsu.discovery.domain.CatalogReadingSearch =
+			org.koitharu.kotatsu.discovery.domain.CatalogReadingSearch(emptyFlow(), canExpand = false)
 		override suspend fun canOpen(manga: Manga, kind: CatalogMediaKind): Boolean = false
 	}
 
