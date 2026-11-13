@@ -122,7 +122,11 @@ class AlternativesUseCase @Inject constructor(
 
 	private suspend fun getSources(
 		isNovel: Boolean, excludedSource: MangaSource?, mode: SearchSourceMode, preferredLanguages: Set<String>,
-	): List<MangaSource> {
+	): List<MangaSource> = getSourceSelection(isNovel, excludedSource, mode, preferredLanguages).sources
+
+	private suspend fun getSourceSelection(
+		isNovel: Boolean, excludedSource: MangaSource?, mode: SearchSourceMode, preferredLanguages: Set<String>,
+	): TitleSourceSelection {
 		sourcesRepository.ensureExternalSourcesReady()
 		val enabled = sourcesRepository.getEnabledSources()
 			.filter { it != excludedSource && it.isNovelContentSource == isNovel }
@@ -137,13 +141,14 @@ class AlternativesUseCase @Inject constructor(
 			}
 			SearchSourceMode.ALL_SOURCES -> enabled
 		}
-		return scoped.sortedWith(
+		val ordered = scoped.sortedWith(
 			compareBy<MangaSource>(
 				{ if (it in pinned) 0 else 1 },
 				{ if (it.matchesPreferredLanguage(preferredLanguages)) 0 else 1 },
 				{ popularOrder[it] ?: Int.MAX_VALUE },
 			),
 		)
+		return TitleSourceSelection(ordered, scoped.size < enabled.size)
 	}
 
 	suspend operator fun invoke(
@@ -160,8 +165,10 @@ class AlternativesUseCase @Inject constructor(
 	}
 
 	/** Metadata supplies a title and kind, never a fabricated parser Manga. */
-	internal suspend fun getTitleSources(isNovel: Boolean, mode: SearchSourceMode, preferredLanguages: Set<String>): List<MangaSource> =
-		getSources(isNovel, null, mode, preferredLanguages)
+	internal data class TitleSourceSelection(val sources: List<MangaSource>, val canExpand: Boolean)
+
+	internal suspend fun getTitleSources(isNovel: Boolean, mode: SearchSourceMode, preferredLanguages: Set<String>): TitleSourceSelection =
+		getSourceSelection(isNovel, null, mode, preferredLanguages)
 
 	internal fun searchTitle(title: String, sources: List<MangaSource>): Flow<AlternativeSearchEvent> {
 		val query = title.trim()

@@ -53,7 +53,7 @@ class CatalogReadingBridgeTest {
 		override suspend fun known(key: TrackerCatalogKey) = known
 		override suspend fun canOpen(manga: Manga, kind: CatalogMediaKind) = allowed
 		override suspend fun availableSources(kind: CatalogMediaKind) = emptyList<org.koitharu.kotatsu.discovery.domain.CatalogReadingSource>()
-		override suspend fun search(details: TrackerCatalogDetails, scope: org.koitharu.kotatsu.discovery.domain.CatalogSearchScope): Flow<AlternativeSearchEvent> = flow {
+		override suspend fun search(details: TrackerCatalogDetails, scope: org.koitharu.kotatsu.discovery.domain.CatalogSearchScope): CatalogReadingSearch = CatalogReadingSearch(flow {
 			searches++
 			scopes += scope
 			val blocked = if (scope == CatalogSearchScope.Preferred) gate else null
@@ -63,7 +63,7 @@ class CatalogReadingBridgeTest {
 			} finally {
 				if (blocked != null) cancelled.complete(Unit)
 			}
-		}
+		}, canExpand = scope == CatalogSearchScope.Preferred)
 	}
 	@Before fun setup() {
 		hilt.inject()
@@ -108,8 +108,10 @@ class CatalogReadingBridgeTest {
 	@Test fun noSourceLeavesMetadataIntactAndAllSourceRetryIsExplicit() {
 		main { vm.read() }; waitFor { resolver.searches == 1 && !vm.state.value.resolution.searching }
 		assertTrue(vm.state.value.resolution.candidates.isEmpty()); assertNotNull(vm.state.value.details)
+		assertTrue(vm.state.value.resolution.canExpand)
 		main { vm.startResolution(CatalogSearchScope.AllEnabled) }; waitFor { resolver.searches == 2 && !vm.state.value.resolution.searching }
 		assertEquals(CatalogSearchScope.AllEnabled, vm.state.value.resolution.scope)
+		assertFalse(vm.state.value.resolution.canExpand)
 	}
 	@Test fun exactPersistedSourceOpensWithoutExtensionFanoutAndIsRecheckedAtClick() = runBlocking {
 		resolver.known = listOf(SampleData.manga)
@@ -137,6 +139,15 @@ class CatalogReadingBridgeTest {
 		assertEquals(listOf(CatalogSearchScope.Preferred, single), resolver.scopes.toList())
 		assertEquals(listOf(selected), vm.state.value.resolution.candidates)
 		assertEquals(single, vm.state.value.resolution.scope)
+	}
+	@Test fun singleScopeBuildsAnExclusivePoolFromEnabledCompatibleSources() {
+		val selected = SampleData.manga.source
+		val other = object : org.koitharu.kotatsu.parsers.model.MangaSource by selected {
+			override val name: String = "other-source"
+		}
+		assertEquals(listOf(selected), selectCatalogSource(listOf(other, selected), CatalogMediaKind.MANGA, selected.name))
+		assertTrue(selectCatalogSource(listOf(other), CatalogMediaKind.MANGA, selected.name).isEmpty())
+		assertTrue(selectCatalogSource(listOf(selected), CatalogMediaKind.NOVEL, selected.name).isEmpty())
 	}
 	@Test fun privacyEligibilityIsRecheckedBeforeChosenSourceCanOpen() = runBlocking {
 		resolver.candidates = listOf(SampleData.manga)

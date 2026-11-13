@@ -44,6 +44,7 @@ data class CatalogResolutionState(
 	val scope: CatalogSearchScope = CatalogSearchScope.Preferred,
 	val sourceLabel: String? = null,
 	val noEligibleSources: Boolean = false,
+	val canExpand: Boolean = false,
 	val selectionUnavailable: Boolean = false,
 )
 
@@ -366,11 +367,12 @@ class TrackerCatalogViewModel @Inject constructor(
 			val scores = mutableMapOf<Pair<String, Long>, Int>()
 			fun current() = token == generation && sourceToken == sourceGeneration
 			try {
-				val search = withContext(Dispatchers.Default) { resolver.search(details, scope) }
-				if (search == null) {
-					if (current()) mutableState.update { it.copy(resolution = it.resolution.copy(noEligibleSources = true)) }
-					return@launch
+				val plan = withContext(Dispatchers.Default) { resolver.search(details, scope) }
+				if (!current()) return@launch
+				mutableState.update {
+					it.copy(resolution = it.resolution.copy(canExpand = plan.canExpand, noEligibleSources = plan.events == null))
 				}
+				val search = plan.events ?: return@launch
 				search.flowOn(Dispatchers.Default).takeWhile { state.value.resolution.candidates.size < CatalogCachePolicy.MAX_CANDIDATES }.collect { event ->
 					if (!current()) return@collect
 					when (event) {

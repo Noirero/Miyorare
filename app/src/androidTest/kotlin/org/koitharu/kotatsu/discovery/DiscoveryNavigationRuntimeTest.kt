@@ -57,9 +57,9 @@ class DiscoveryNavigationRuntimeTest {
 	@BindValue @JvmField val sourceResolution: CatalogSourceResolution = object : CatalogSourceResolution {
 		override suspend fun known(key: TrackerCatalogKey): List<Manga> = checkNotNull(knownForDetails) { "Home must not resolve sources" }
 		override suspend fun availableSources(kind: CatalogMediaKind) = emptyList<org.koitharu.kotatsu.discovery.domain.CatalogReadingSource>()
-		override suspend fun search(details: TrackerCatalogDetails, scope: org.koitharu.kotatsu.discovery.domain.CatalogSearchScope): kotlinx.coroutines.flow.Flow<org.koitharu.kotatsu.alternatives.domain.AlternativeSearchEvent> {
+		override suspend fun search(details: TrackerCatalogDetails, scope: org.koitharu.kotatsu.discovery.domain.CatalogSearchScope): org.koitharu.kotatsu.discovery.domain.CatalogReadingSearch {
 			checkNotNull(knownForDetails) { "Home must not search sources" }
-			return kotlinx.coroutines.flow.emptyFlow()
+			return org.koitharu.kotatsu.discovery.domain.CatalogReadingSearch(kotlinx.coroutines.flow.emptyFlow(), canExpand = false)
 		}
 		override suspend fun canOpen(manga: Manga, kind: CatalogMediaKind) = manga in knownForDetails.orEmpty()
 	}

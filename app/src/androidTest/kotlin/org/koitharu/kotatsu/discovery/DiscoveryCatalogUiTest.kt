@@ -130,8 +130,10 @@ class DiscoveryCatalogUiTest {
 		var fallback = false
 		compose.setContent { MaterialTheme { screen(state.value, onGlobal = { fallback = true }) } }
 		compose.onNodeWithText("Another source result").assertExists()
-		compose.runOnIdle { state.value = state.value.copy(resolution = CatalogResolutionState(visible = true)) }
+		compose.runOnIdle { state.value = state.value.copy(resolution = CatalogResolutionState(visible = true, canExpand = true)) }
 		compose.onNodeWithTag("catalog_source_empty").assertExists(); compose.onNodeWithTag("catalog_all_sources").assertExists()
+		compose.runOnIdle { state.value = state.value.copy(resolution = CatalogResolutionState(visible = true, canExpand = false)) }
+		compose.onNodeWithTag("catalog_all_sources").assertDoesNotExist()
 		compose.onNodeWithTag("catalog_global_search").performClick(); assertTrue(fallback)
 	}
 

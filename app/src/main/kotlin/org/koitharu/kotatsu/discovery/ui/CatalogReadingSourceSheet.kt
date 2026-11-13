@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
@@ -33,6 +34,7 @@ import coil3.request.ImageRequest
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getLanguageCode
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.discovery.domain.CatalogSearchScope
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -67,7 +69,7 @@ internal fun CatalogReadingSourceSheet(
 		scrimColor = colors.scrim.copy(alpha = 0.48f),
 	) {
 		if (picker.visible) {
-			CatalogSourcePicker(picker, resolution.scope, onScope, onOpenPicker, onClosePicker)
+			CatalogSourcePicker(picker, resolution.scope, imageLoader, onScope, onOpenPicker, onClosePicker)
 		} else {
 			LazyColumn(
 				modifier = Modifier.fillMaxWidth(),
@@ -136,7 +138,7 @@ internal fun CatalogReadingSourceSheet(
 					CatalogReadingCandidate(manga, imageLoader, onSource)
 				}
 				if (!resolution.searching && !resolution.failedSources && resolution.candidates.isEmpty() &&
-					resolution.scope != CatalogSearchScope.AllEnabled
+					resolution.canExpand
 				) item {
 					OutlinedButton(
 						onClick = { onScope(CatalogSearchScope.AllEnabled, null) },
@@ -157,6 +159,7 @@ internal fun CatalogReadingSourceSheet(
 private fun CatalogSourcePicker(
 	picker: CatalogSourcePickerState,
 	active: CatalogSearchScope,
+	imageLoader: ImageLoader,
 	onScope: (CatalogSearchScope, String?) -> Unit,
 	onRetry: () -> Unit,
 	onClose: () -> Unit,
@@ -229,7 +232,23 @@ private fun CatalogSourcePicker(
 				subtitle = entry.source.getLanguageCode(),
 				selected = active == scope,
 				onClick = { onScope(scope, name) },
-				badge = name.take(1),
+				sourceIcon = {
+					val request = remember(context, entry.source) {
+						ImageRequest.Builder(context).data(entry.source.faviconUri()).build()
+					}
+					val fallback = painterResource(R.drawable.ic_manga_source)
+					AsyncImage(
+						model = request,
+						imageLoader = imageLoader,
+						contentDescription = null,
+						placeholder = fallback,
+						error = fallback,
+						fallback = fallback,
+						contentScale = ContentScale.Fit,
+						modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
+							.background(colors.secondaryContainer).padding(3.dp),
+					)
+				},
 				pinned = entry.pinned,
 			)
 		}
@@ -242,7 +261,7 @@ private fun CatalogScopeOption(
 	subtitle: String?,
 	selected: Boolean,
 	onClick: () -> Unit,
-	badge: String? = null,
+	sourceIcon: (@Composable () -> Unit)? = null,
 	pinned: Boolean = false,
 ) {
 	val colors = MaterialTheme.colorScheme
@@ -259,16 +278,10 @@ private fun CatalogScopeOption(
 		ListItem(
 			headlineContent = { Text(title, fontWeight = FontWeight.SemiBold) },
 			supportingContent = subtitle?.let { label -> { Text(label) } },
-			leadingContent = badge?.let { initial ->
-				{
-					Box(Modifier.size(34.dp).background(colors.secondaryContainer, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-						Text(initial, color = colors.onSecondaryContainer, style = MaterialTheme.typography.titleSmall)
-					}
-				}
-			},
+			leadingContent = sourceIcon,
 			trailingContent = {
 				if (pinned) Icon(Icons.Default.Star, stringResource(R.string.hub_scope_pinned), Modifier.size(18.dp), tint = colors.primary)
-				if (badge == null || selected) RadioButton(selected = selected, onClick = null)
+				if (sourceIcon == null || selected) RadioButton(selected = selected, onClick = null)
 			},
 			colors = ListItemDefaults.colors(
 				containerColor = androidx.compose.ui.graphics.Color.Transparent,

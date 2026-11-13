@@ -26,9 +26,14 @@ sealed interface CatalogSearchScope {
 
 data class CatalogReadingSource(val source: MangaSource, val pinned: Boolean)
 
+data class CatalogReadingSearch(
+	val events: Flow<AlternativeSearchEvent>?,
+	val canExpand: Boolean,
+)
+
 interface CatalogSourceResolution {
 	suspend fun known(key: TrackerCatalogKey): List<Manga>
-	suspend fun search(details: TrackerCatalogDetails, scope: CatalogSearchScope): Flow<AlternativeSearchEvent>?
+	suspend fun search(details: TrackerCatalogDetails, scope: CatalogSearchScope): CatalogReadingSearch
 	suspend fun availableSources(kind: CatalogMediaKind): List<CatalogReadingSource>
 	suspend fun canOpen(manga: Manga, kind: CatalogMediaKind): Boolean
 }
@@ -51,12 +56,16 @@ class CatalogSourceResolver @Inject constructor(
 	}
 
 	/** Called only by the explicit reading CTA. The existing Alternatives engine owns source work. */
-	override suspend fun search(details: TrackerCatalogDetails, scope: CatalogSearchScope): Flow<AlternativeSearchEvent>? {
+	override suspend fun search(details: TrackerCatalogDetails, scope: CatalogSearchScope): CatalogReadingSearch {
 		val kind = details.item.key.kind
-		val pool = when (scope) {
+		val selection = when (scope) {
 			is CatalogSearchScope.Single -> {
 				sources.ensureExternalSourcesReady()
-				selectCatalogSource(sources.getEnabledSources(), kind, scope.sourceName)
+				val enabled = sources.getEnabledSources().filter {
+					it != LocalMangaSource && it.isNovelContentSource == (kind == CatalogMediaKind.NOVEL)
+				}
+				val selected = selectCatalogSource(enabled, kind, scope.sourceName)
+				AlternativesUseCase.TitleSourceSelection(selected, enabled.any { it.name != scope.sourceName })
 			}
 			CatalogSearchScope.Preferred, CatalogSearchScope.AllEnabled -> alternatives.getTitleSources(
 				kind == CatalogMediaKind.NOVEL,
@@ -64,10 +73,12 @@ class CatalogSourceResolver @Inject constructor(
 				preferences.preferredLanguages,
 			)
 		}
-		if (pool.isEmpty()) return null
-		return alternatives.searchTitle(details.item.title, pool).filter { event ->
-			event !is AlternativeSearchEvent.Result || eligibleCatalogCandidate(event.manga, kind, !settings.isNsfwContentDisabled)
+		val events = selection.sources.takeIf { it.isNotEmpty() }?.let { pool ->
+			alternatives.searchTitle(details.item.title, pool).filter { event ->
+				event !is AlternativeSearchEvent.Result || eligibleCatalogCandidate(event.manga, kind, !settings.isNsfwContentDisabled)
+			}
 		}
+		return CatalogReadingSearch(events, selection.canExpand)
 	}
 
 	override suspend fun availableSources(kind: CatalogMediaKind): List<CatalogReadingSource> {
