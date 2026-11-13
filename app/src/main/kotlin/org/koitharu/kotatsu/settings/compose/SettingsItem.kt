@@ -64,6 +64,7 @@ fun SettingsItem(
 	accentColor: Color? = null,
 	onClick: (() -> Unit)? = null,
 	hapticEffect: HapticEffect? = null,
+	supportingContent: @Composable (() -> Unit)? = null,
 	trailing: @Composable (() -> Unit)? = null,
 ) {
 	val visualPalette = LocalMiyorareVisualPalette.current
@@ -182,6 +183,7 @@ fun SettingsItem(
 						color = accentColor?.copy(alpha = if (enabled) 0.8f else 0.48f) ?: secondaryTextColor(enabled),
 					)
 				}
+				supportingContent?.invoke()
 			}
 			if (trailing != null) {
 				Spacer(Modifier.width(8.dp))
