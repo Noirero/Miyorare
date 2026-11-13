@@ -154,15 +154,20 @@ class DiscoveryCatalogUiTest {
 		val picker = mutableStateOf(CatalogSourcePickerState(
 			visible = true, sources = listOf(CatalogReadingSource(pinned, pinned = true), CatalogReadingSource(source, pinned = false)),
 		))
+		val resolution = mutableStateOf(CatalogResolutionState(visible = true))
 		var selected: CatalogSearchScope? = null
 		var opened = false
 		compose.setContent {
 			MaterialTheme {
 				CatalogReadingSourceSheet(
-					resolution = CatalogResolutionState(visible = true),
+					resolution = resolution.value,
 					picker = picker.value,
 					imageLoader = loader,
-					onScope = { scope, _ -> selected = scope; picker.value = CatalogSourcePickerState() },
+					onScope = { scope, label ->
+						selected = scope
+						resolution.value = resolution.value.copy(scope = scope, sourceLabel = label)
+						picker.value = CatalogSourcePickerState()
+					},
 					onOpenPicker = {},
 					onClosePicker = {},
 					onDismiss = {},
@@ -176,13 +181,20 @@ class DiscoveryCatalogUiTest {
 		compose.onNodeWithTag("catalog_scope_source_query").performTextClearance()
 		val list = compose.onNodeWithTag("catalog_scope_picker")
 		list.performScrollToKey(pinned.name)
+		compose.onNodeWithText(context.getString(R.string.hub_scope_pinned_section, 1)).assertExists()
 		compose.onNodeWithTag("catalog_scope_option_${pinned.name}").assert(
 			hasText(context.getString(R.string.explore_source_origin_miyorare_pack)),
 		)
 		list.performScrollToKey(source.name)
+		compose.onNodeWithText(context.getString(R.string.hub_scope_other_section, 1)).assertExists()
 		compose.onNodeWithTag("catalog_scope_option_${source.name}").assert(
 			hasText(context.getString(R.string.explore_source_origin_gekkoushi)),
 		).performClick()
+		compose.onNodeWithTag("catalog_source_scope").assert(hasText(context.getString(
+			R.string.hub_scope_source_with_origin,
+			descriptor.title,
+			context.getString(R.string.explore_source_origin_gekkoushi),
+		)))
 		compose.runOnIdle {
 			assertEquals(CatalogSearchScope.Single(source.name), selected)
 			assertFalse(opened)

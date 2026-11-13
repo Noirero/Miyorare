@@ -24,4 +24,7 @@
     <string name="hub_scope_searching_single">Mencari di %1$s…</string>
     <string name="hub_scope_empty_single">Tidak ada hasil di %1$s.</string>
     <string name="hub_scope_origin_kotatsu_runtime">Kotatsu Runtime</string>
+    <string name="hub_scope_pinned_section">Disematkan (%1$d)</string>
+    <string name="hub_scope_other_section">Lainnya (%1$d)</string>
+    <string name="hub_scope_source_with_origin">%1$s · %2$s</string>
 </resources>

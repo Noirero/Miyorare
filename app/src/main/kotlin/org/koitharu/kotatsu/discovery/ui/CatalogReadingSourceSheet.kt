@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -173,6 +174,7 @@ private fun CatalogSourcePicker(
 	val type = MaterialTheme.typography
 	var query by remember { mutableStateOf("") }
 	val visible = picker.sources.filter { it.source.getTitle(context).contains(query.trim(), ignoreCase = true) }
+	val pinnedCount = visible.count { it.pinned }
 	LazyColumn(
 		modifier = Modifier.fillMaxWidth().testTag("catalog_scope_picker"),
 		contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
@@ -228,7 +230,16 @@ private fun CatalogSourcePicker(
 				Text(stringResource(if (picker.sources.isEmpty()) R.string.hub_scope_no_picker_sources else R.string.hub_scope_no_name_matches))
 			}
 		}
-		items(visible, key = { it.source.name }) { entry ->
+		itemsIndexed(visible, key = { _, entry -> entry.source.name }) { index, entry ->
+			if (pinnedCount > 0 && (index == 0 || index == pinnedCount)) {
+				Text(
+					text = if (entry.pinned) stringResource(R.string.hub_scope_pinned_section, pinnedCount)
+					else stringResource(R.string.hub_scope_other_section, visible.size - pinnedCount),
+					style = type.labelLarge,
+					color = colors.onSurfaceVariant,
+					modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+				)
+			}
 			val name = entry.source.getTitle(context)
 			val scope = CatalogSearchScope.Single(entry.source.name)
 			val origin = if (entry.source.unwrap() is KotatsuMangaSource) {
@@ -236,13 +247,15 @@ private fun CatalogSourcePicker(
 			} else {
 				entry.source.exploreSourceOrigin().titleRes()
 			}
+			val originLabel = stringResource(origin)
+			val sourceLabel = stringResource(R.string.hub_scope_source_with_origin, name, originLabel)
 			CatalogScopeOption(
 				title = name,
 				subtitle = entry.source.getLanguageCode(),
-				originLabel = stringResource(origin),
+				originLabel = originLabel,
 				modifier = Modifier.testTag("catalog_scope_option_${entry.source.name}"),
 				selected = active == scope,
-				onClick = { onScope(scope, name) },
+				onClick = { onScope(scope, sourceLabel) },
 				sourceIcon = {
 					val request = remember(context, entry.source) {
 						ImageRequest.Builder(context).data(entry.source.faviconUri()).build()
