@@ -414,6 +414,7 @@ class SettingsSearchHelper @Inject constructor(
                 addItem("about_mihon", R.string.about_mihon_name, R.string.about_mihon_project_summary, crumbs, AboutSettingsFragment::class.java)
                 addItem("about_lnreader", R.string.about_lnreader_name, R.string.about_lnreader_project_summary, crumbs, AboutSettingsFragment::class.java)
                 addItem("about_tachiyomi", R.string.about_tachiyomi_name, R.string.about_tachiyomi_project_summary, crumbs, AboutSettingsFragment::class.java)
+                addItem("about_tsuki_uma_gekkoushi", R.string.about_tsuki_uma_gekkoushi_name, R.string.about_tsuki_uma_gekkoushi_summary, crumbs, AboutSettingsFragment::class.java)
             }
             group(sectionCrumbs, R.string.about_advanced_section) { crumbs ->
                 addItem(AppSettings.KEY_VERBOSE_LOGGING, R.string.about_verbose_logging_title, breadcrumbs = crumbs, fragmentClass = AboutSettingsFragment::class.java)
