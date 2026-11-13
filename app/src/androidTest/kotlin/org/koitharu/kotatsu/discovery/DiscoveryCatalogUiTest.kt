@@ -98,7 +98,7 @@ class DiscoveryCatalogUiTest {
 
 	@androidx.compose.runtime.Composable
 	private fun screen(state: CatalogScreenState, onRead: () -> Unit = {}, onSource: (org.koitharu.kotatsu.parsers.model.Manga) -> Unit = {}, onSearch: () -> Unit = {}, onNext: () -> Unit = {}, onGlobal: () -> Unit = {}, onProvider: () -> Unit = {}) {
-		TrackerCatalogScreen(state, null, loader, {}, {}, onSearch, {}, {}, onNext, {}, onProvider, onRead, {}, {}, onGlobal, onSource)
+		TrackerCatalogScreen(state, null, loader, {}, {}, onSearch, {}, {}, onNext, {}, onProvider, onRead, { _, _ -> }, {}, onGlobal, onSource)
 	}
 
 	@Test fun searchAndSeeAllUseCatalogueCardsAndRealPaginationAction() {
@@ -134,4 +134,36 @@ class DiscoveryCatalogUiTest {
 		compose.onNodeWithTag("catalog_source_empty").assertExists(); compose.onNodeWithTag("catalog_all_sources").assertExists()
 		compose.onNodeWithTag("catalog_global_search").performClick(); assertTrue(fallback)
 	}
+
+	@Test fun readingSourcePickerSelectsOneScopeWithoutOpeningManga() {
+		val source = SampleData.manga.source
+		val picker = mutableStateOf(CatalogSourcePickerState(visible = true, sources = listOf(CatalogReadingSource(source, pinned = true))))
+		var selected: CatalogSearchScope? = null
+		var opened = false
+		compose.setContent {
+			MaterialTheme {
+				CatalogReadingSourceSheet(
+					resolution = CatalogResolutionState(visible = true),
+					picker = picker.value,
+					imageLoader = loader,
+					onScope = { scope, _ -> selected = scope; picker.value = CatalogSourcePickerState() },
+					onOpenPicker = {},
+					onClosePicker = {},
+					onDismiss = {},
+					onRetry = {},
+					onGlobalSearch = {},
+					onSource = { opened = true },
+				)
+			}
+		}
+		compose.onNodeWithTag("catalog_scope_source_query").performScrollTo().performTextInput("no-such-source")
+		compose.onNodeWithTag("catalog_scope_source_query").performTextClearance()
+		compose.onNodeWithTag("catalog_scope_picker").performScrollToIndex(4)
+		compose.onNodeWithContentDescription(context.getString(R.string.hub_scope_pinned)).performClick()
+		compose.runOnIdle {
+			assertEquals(CatalogSearchScope.Single(source.name), selected)
+			assertFalse(opened)
+		}
+	}
+
 }

@@ -48,10 +48,21 @@ class CatalogReadingBridgeTest {
 	private class Resolver : CatalogSourceResolution {
 		var known = emptyList<Manga>(); var candidates = emptyList<Manga>(); var searches = 0; var allowed = true
 		var gate: CompletableDeferred<Unit>? = null
+		val scopes = java.util.concurrent.CopyOnWriteArrayList<CatalogSearchScope>()
+		val cancelled = CompletableDeferred<Unit>()
 		override suspend fun known(key: TrackerCatalogKey) = known
 		override suspend fun canOpen(manga: Manga, kind: CatalogMediaKind) = allowed
-		override suspend fun search(details: TrackerCatalogDetails, allSources: Boolean): Flow<AlternativeSearchEvent> = flow {
-			searches++; gate?.await(); for (candidate in candidates) emit(AlternativeSearchEvent.Result(candidate))
+		override suspend fun availableSources(kind: CatalogMediaKind) = emptyList<org.koitharu.kotatsu.discovery.domain.CatalogReadingSource>()
+		override suspend fun search(details: TrackerCatalogDetails, scope: org.koitharu.kotatsu.discovery.domain.CatalogSearchScope): Flow<AlternativeSearchEvent> = flow {
+			searches++
+			scopes += scope
+			val blocked = if (scope == CatalogSearchScope.Preferred) gate else null
+			try {
+				blocked?.await()
+				for (candidate in candidates) emit(AlternativeSearchEvent.Result(candidate))
+			} finally {
+				if (blocked != null) cancelled.complete(Unit)
+			}
 		}
 	}
 	@Before fun setup() {
@@ -97,8 +108,8 @@ class CatalogReadingBridgeTest {
 	@Test fun noSourceLeavesMetadataIntactAndAllSourceRetryIsExplicit() {
 		main { vm.read() }; waitFor { resolver.searches == 1 && !vm.state.value.resolution.searching }
 		assertTrue(vm.state.value.resolution.candidates.isEmpty()); assertNotNull(vm.state.value.details)
-		main { vm.startResolution(allSources = true) }; waitFor { resolver.searches == 2 && !vm.state.value.resolution.searching }
-		assertTrue(vm.state.value.resolution.allSources)
+		main { vm.startResolution(CatalogSearchScope.AllEnabled) }; waitFor { resolver.searches == 2 && !vm.state.value.resolution.searching }
+		assertEquals(CatalogSearchScope.AllEnabled, vm.state.value.resolution.scope)
 	}
 	@Test fun exactPersistedSourceOpensWithoutExtensionFanoutAndIsRecheckedAtClick() = runBlocking {
 		resolver.known = listOf(SampleData.manga)
@@ -110,6 +121,22 @@ class CatalogReadingBridgeTest {
 		main { vm.read() }; waitFor { resolver.searches == 1 }
 		main { vm.closeResolution() }; gate.complete(Unit)
 		assertFalse(vm.state.value.resolution.visible); assertTrue(vm.state.value.resolution.candidates.isEmpty())
+	}
+	@Test fun switchingToSingleSourceCancelsTheOldScopeAndOnlyShowsNewResults() = runBlocking {
+		val gate = CompletableDeferred<Unit>()
+		resolver.gate = gate
+		main { vm.read() }
+		waitFor { resolver.scopes.size == 1 }
+		val selected = SampleData.manga.copy(id = 123L)
+		resolver.candidates = listOf(selected)
+		val single = CatalogSearchScope.Single(selected.source.name)
+		main { vm.startResolution(single, "Selected source") }
+		withTimeout(5000) { resolver.cancelled.await() }
+		gate.complete(Unit)
+		waitFor { !vm.state.value.resolution.searching && vm.state.value.resolution.candidates.isNotEmpty() }
+		assertEquals(listOf(CatalogSearchScope.Preferred, single), resolver.scopes.toList())
+		assertEquals(listOf(selected), vm.state.value.resolution.candidates)
+		assertEquals(single, vm.state.value.resolution.scope)
 	}
 	@Test fun privacyEligibilityIsRecheckedBeforeChosenSourceCanOpen() = runBlocking {
 		resolver.candidates = listOf(SampleData.manga)

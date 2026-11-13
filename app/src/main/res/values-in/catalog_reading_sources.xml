@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_scope_label">Cari di</string>
+    <string name="hub_scope_preferred">Sesuai preferensi</string>
+    <string name="hub_scope_all_enabled">Semua source aktif</string>
+    <string name="hub_scope_preferred_description">Gunakan pengaturan pencarian Alternatives.</string>
+    <string name="hub_scope_all_description">Cari di semua source aktif untuk jenis konten ini.</string>
+    <string name="hub_scope_pick_specific">Pilih source spesifik</string>
+    <string name="hub_scope_filter">Cari nama source</string>
+    <string name="hub_scope_pinned">Source disematkan</string>
+    <string name="hub_scope_searching">Sedang mencari: %1$s…</string>
+    <string name="hub_scope_empty">Tidak ada hasil untuk judul ini (%1$s).</string>
+    <string name="hub_scope_source_error">%1$s tidak dapat diakses.</string>
+    <string name="hub_scope_incomplete">Pencarian belum lengkap. Sebagian source tidak dapat diakses.</string>
+    <string name="hub_scope_no_sources">Tidak ada source yang bisa dicari dalam cakupan ini (%1$s).</string>
+    <string name="hub_scope_selection_unavailable">Hasil ini tidak lagi bisa dibuka.</string>
+    <string name="hub_scope_retry">Coba lagi</string>
+    <string name="hub_scope_try_all">Coba di semua source</string>
+    <string name="hub_scope_edit_query">Ubah kata kunci</string>
+    <string name="hub_scope_loading_sources">Memuat source yang tersedia…</string>
+    <string name="hub_scope_sources_error">Daftar source tidak dapat dimuat.</string>
+    <string name="hub_scope_no_picker_sources">Tidak ada source aktif untuk jenis konten ini.</string>
+    <string name="hub_scope_no_name_matches">Tidak ada nama source yang cocok.</string>
+    <string name="hub_scope_searching_single">Mencari di %1$s…</string>
+    <string name="hub_scope_empty_single">Tidak ada hasil di %1$s.</string>
+</resources>

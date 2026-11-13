@@ -160,10 +160,13 @@ class AlternativesUseCase @Inject constructor(
 	}
 
 	/** Metadata supplies a title and kind, never a fabricated parser Manga. */
-	suspend fun searchTitle(title: String, isNovel: Boolean, mode: SearchSourceMode, preferredLanguages: Set<String>): Flow<AlternativeSearchEvent> {
+	internal suspend fun getTitleSources(isNovel: Boolean, mode: SearchSourceMode, preferredLanguages: Set<String>): List<MangaSource> =
+		getSources(isNovel, null, mode, preferredLanguages)
+
+	internal fun searchTitle(title: String, sources: List<MangaSource>): Flow<AlternativeSearchEvent> {
 		val query = title.trim()
 		require(query.isNotEmpty())
-		return searchSources(query, getSources(isNovel, null, mode, preferredLanguages), null, MAX_DETAIL_CANDIDATES)
+		return searchSources(query, sources, null, MAX_DETAIL_CANDIDATES)
 	}
 
 	/**
