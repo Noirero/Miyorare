@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# PR Android runtime must never schedule the optional History A/B performance benchmark.
-# Reject a bad class plan rather than silently skipping a selected test.
-HISTORY_SCROLL_CLASS=org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest
+# History A/B performance is a standalone manual diagnostic, not a PR runtime gate.
+# Reject accidental scheduling rather than silently skipping a selected test.
+HISTORY_PERF_CLASS=org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest
 
-reject_history_benchmark() {
+reject_history_perf_class() {
   local classes=",${1:-},"
-  if [[ "$classes" == *",$HISTORY_SCROLL_CLASS,"* ]]; then
-    echo 'History scroll benchmark is standalone/manual, not a PR runtime class.' >&2
+  if [[ "$classes" == *",$HISTORY_PERF_CLASS,"* ]]; then
+    echo 'History performance benchmark cannot run inside PR Android runtime.' >&2
     return 1
   fi
 }
 
 if [[ "${1:-}" == --self-test ]]; then
-  reject_history_benchmark 'test.A,test.B'
-  if reject_history_benchmark "test.A,$HISTORY_SCROLL_CLASS,test.B" 2>/dev/null; then exit 1; fi
-  echo 'PR runtime History benchmark exclusion guard: PASS'
+  reject_history_perf_class 'test.A,test.B'
+  if reject_history_perf_class "test.A,$HISTORY_PERF_CLASS,test.B" 2>/dev/null; then exit 1; fi
+  if reject_history_perf_class "$HISTORY_PERF_CLASS" 2>/dev/null; then exit 1; fi
+  echo 'History benchmark exclusion guard: PASS'
   exit 0
 fi
 
-reject_history_benchmark "${RUNTIME_CLASSES:-}"
+reject_history_perf_class "${RUNTIME_CLASSES:-}"
 
 if [[ "${RUN_RUNTIME_ISOLATION:-false}" == "true" ]]; then
   bash .github/scripts/run-kotatsu-runtime-isolation-test.sh
