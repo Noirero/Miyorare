@@ -147,7 +147,14 @@ private fun SourceOverview(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(state.shelves, key = { it.order.name }) { shelf ->
-                        ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+                        ElevatedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.elevatedCardColors(
+                                containerColor = colors.surface,
+                                contentColor = colors.onSurface,
+                            ),
+                        ) {
                             Row(
                                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
