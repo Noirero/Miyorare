@@ -93,7 +93,11 @@ private fun SourceOverview(
 ) {
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
+    val colors = MaterialTheme.colorScheme
     Scaffold(
+        // The Classic theme bridge maps the host surface pair; its background may still be a Material default.
+        containerColor = colors.surface,
+        contentColor = colors.onSurface,
         contentWindowInsets = WindowInsets.safeDrawing,
         floatingActionButton = {
             if (state.shelves.isNotEmpty()) {
