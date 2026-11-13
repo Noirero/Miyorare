@@ -34,8 +34,6 @@ import androidx.core.text.HtmlCompat
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.model.getLanguageCode
-import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.discovery.domain.*
@@ -59,7 +57,7 @@ fun TrackerCatalogScreen(
 	onItem: (TrackerCatalogKey) -> Unit,
 	onProviderPage: () -> Unit,
 	onRead: () -> Unit,
-	onAllSources: () -> Unit,
+	onScope: (CatalogSearchScope, String?) -> Unit,
 	onCloseResolution: () -> Unit,
 	onGlobalSearch: () -> Unit,
 	onSource: (Manga) -> Unit,
@@ -73,6 +71,9 @@ fun TrackerCatalogScreen(
 	onCloseTrackingEditor: () -> Unit = {},
 	onRemoveTracking: () -> Unit = {},
 	onManageTracking: () -> Unit = {},
+	onOpenSourcePicker: () -> Unit = {},
+	onCloseSourcePicker: () -> Unit = {},
+	onRetryResolution: () -> Unit = {},
 ) {
 	val palette = LocalMiyorareVisualPalette.current
 	val scaffoldColor = if (palette.isModern) Color.Transparent else MaterialTheme.colorScheme.background
@@ -114,45 +115,18 @@ fun TrackerCatalogScreen(
 	}
 
 	if (state.resolution.visible) {
-		ModalBottomSheet(
-			onDismissRequest = onCloseResolution,
-			modifier = Modifier.testTag("catalog_source_sheet"),
-			containerColor = if (palette.isModern) MaterialTheme.colorScheme.surface.copy(alpha = 0.96f) else MaterialTheme.colorScheme.surface,
-		) {
-			LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-				item { Text(stringResource(R.string.hub_source_choices), style = MaterialTheme.typography.titleLarge) }
-				if (state.resolution.searching) item {
-					LinearProgressIndicator(Modifier.fillMaxWidth())
-					Text(stringResource(R.string.hub_source_searching))
-				}
-				if (state.resolution.failedSources) item { Text(stringResource(R.string.hub_source_partial)) }
-				if (!state.resolution.searching && state.resolution.candidates.isEmpty()) item {
-					Text(stringResource(R.string.hub_source_empty), Modifier.testTag("catalog_source_empty"))
-				}
-				items(state.resolution.candidates, key = { "${it.source.name}_${it.id}" }) { manga ->
-					OutlinedCard(
-						onClick = { onSource(manga) },
-						modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).testTag("catalog_source_${manga.source.name}_${manga.id}"),
-					) {
-						ListItem(
-							headlineContent = { Text(manga.title) },
-							supportingContent = { Text(listOfNotNull(manga.source.getTitle(LocalContext.current), manga.source.getLanguageCode()).joinToString(" · ")) },
-							colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-						)
-					}
-				}
-				if (!state.resolution.allSources) item {
-					TextButton(onClick = onAllSources, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("catalog_all_sources")) {
-						Text(stringResource(R.string.hub_all_sources))
-					}
-				}
-				item {
-					TextButton(onClick = onGlobalSearch, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("catalog_global_search")) {
-						Text(stringResource(R.string.hub_global_search))
-					}
-				}
-			}
-		}
+		CatalogReadingSourceSheet(
+			resolution = state.resolution,
+			picker = state.sourcePicker,
+			imageLoader = imageLoader,
+			onScope = onScope,
+			onOpenPicker = onOpenSourcePicker,
+			onClosePicker = onCloseSourcePicker,
+			onDismiss = onCloseResolution,
+			onRetry = onRetryResolution,
+			onGlobalSearch = onGlobalSearch,
+			onSource = onSource,
+		)
 	}
 
 	CatalogTrackingEditorSheet(

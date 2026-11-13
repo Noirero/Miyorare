@@ -58,7 +58,6 @@ import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.util.ActionModeListener
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
-import org.koitharu.kotatsu.core.ui.util.SpanSizeResolver
 import org.koitharu.kotatsu.core.util.ext.addMenuProvider
 import org.koitharu.kotatsu.core.util.ext.consumeAllSystemBarsInsets
 import org.koitharu.kotatsu.core.util.ext.findAppCompatDelegate
@@ -291,7 +290,14 @@ class ExploreFragment :
 		)
 		with(recyclerView) {
 			this.adapter = adapter
-			SpanSizeResolver(this, resources.getDimensionPixelSize(R.dimen.explore_grid_width)).attach()
+			addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+				val manager = layoutManager as? GridLayoutManager ?: return@addOnLayoutChangeListener
+				val columns = resolveExploreGridColumns() ?: return@addOnLayoutChangeListener
+				if (manager.spanCount != columns) {
+					manager.spanCount = columns
+					manager.spanSizeLookup.invalidateSpanGroupIndexCache()
+				}
+			}
 			addItemDecoration(TypedListSpacingDecoration(context, false))
 			checkNotNull(sourceSelectionController).attachToRecyclerView(this)
 			isNestedScrollingEnabled = true
@@ -325,10 +331,22 @@ class ExploreFragment :
 		}
 	}
 
+	private fun RecyclerView.resolveExploreGridColumns(): Int? {
+		val configuration = resources.configuration
+		return exploreGridColumns(
+			widthPx = width - paddingLeft - paddingRight,
+			targetWidthPx = resources.getDimensionPixelSize(R.dimen.explore_grid_width),
+			compactLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
+				configuration.smallestScreenWidthDp < 600,
+		)
+	}
+
 	private fun RecyclerView.applyLayoutManager(isGrid: Boolean) {
 		val adapter = adapter as? ExploreAdapter ?: return
+		val currentManager = layoutManager
+		if (currentManager != null && (currentManager is GridLayoutManager) == isGrid) return
 		layoutManager = if (isGrid) {
-			GridLayoutManager(context, 4).also { lm ->
+			GridLayoutManager(context, resolveExploreGridColumns() ?: 4).also { lm ->
 				lm.spanSizeLookup = ExploreGridSpanSizeLookup(adapter, lm)
 			}
 		} else {
