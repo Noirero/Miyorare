@@ -134,6 +134,8 @@ jobs:
         run: |
           bash .github/scripts/select-pr-runtime-tests.sh --self-test
           bash -n .github/scripts/run-selected-android-runtime.sh
+          bash .github/scripts/run-selected-android-runtime.sh --self-test
+          bash -n .github/scripts/run-history-scroll-benchmark.sh
           python3 .github/scripts/targeted-ci-diagnostics.py --self-test
 
       - name: Install browser auth helper tooling

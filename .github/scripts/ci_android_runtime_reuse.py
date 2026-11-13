@@ -21,9 +21,10 @@ import urllib.request
 import zipfile
 from typing import Any, Callable
 
-SCHEMA = 1
+SCHEMA = 2
 ANDROID_JOB = "Android runtime validation — Android 15"
 REAL_STEP = "Run selected Android 15 runtime validation"
+HISTORY_CLASS = "org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest"
 PROOF_ARTIFACT = "android-runtime-scope-proof"
 PROOF_FILE = "android-runtime-scope-proof.json"
 APK_ARTIFACT = "on-device-cover-debug-apk"
@@ -74,6 +75,8 @@ def build_scope(env: dict[str, str], file_bytes: Callable[[str], bytes]) -> dict
     classes = classes_raw.split(",") if classes_raw else []
     if any(not item or item != item.strip() for item in classes) or len(set(classes)) != len(classes):
         raise ValueError("invalid runtime class list")
+    if HISTORY_CLASS in classes:
+        raise ValueError("History performance benchmark must not run in PR Android runtime")
     isolation = boolean(env["RUN_RUNTIME_ISOLATION"])
     migration = boolean(env["RUN_MIGRATION_PERSISTENCE"])
     if not classes and not isolation and not migration:
@@ -90,7 +93,7 @@ def build_scope(env: dict[str, str], file_bytes: Callable[[str], bytes]) -> dict
         workflow_bytes,
     )
     if len(runner_shas) != 1:
-        raise ValueError("Android emulator action must be pinned to one immutable SHA")
+        raise ValueError("PR Android runtime must have exactly one pinned emulator session")
     runner_action = "reactivecircus/android-emulator-runner@" + runner_shas[0].decode("ascii")
     inputs = {path: hashlib.sha256(file_bytes(path)).hexdigest() for path in EXECUTION_INPUTS}
     return {
@@ -138,13 +141,13 @@ def eligible_run(run: dict[str, Any], *, current_id: int, workflow_id: int,
 
 def real_android_job(jobs: list[dict[str, Any]]) -> bool:
     for job in jobs:
-        if (job.get("name") == ANDROID_JOB
-                and job.get("status") == "completed"
-                and job.get("conclusion") == "success"
-                and any(s.get("name") == REAL_STEP
-                        and s.get("status") == "completed"
-                        and s.get("conclusion") == "success"
-                        for s in (job.get("steps") or []))):
+        if job.get("name") != ANDROID_JOB or job.get("status") != "completed" or job.get("conclusion") != "success":
+            continue
+        steps = job.get("steps") or []
+        def passed(name: str) -> bool:
+            return any(s.get("name") == name and s.get("status") == "completed"
+                       and s.get("conclusion") == "success" for s in steps)
+        if passed(REAL_STEP):
             return True
     return False
 
@@ -227,7 +230,7 @@ def find_proof(runs: list[dict[str, Any]], jobs_for_run: Callable[[int], list[di
             continue
         run_id = int(run["id"])
         if not real_android_job(jobs_for_run(run_id)):
-            continue  # A successful reused job can never prove another run.
+            continue  # Real selected Android runtime step is mandatory; no reuse chains.
         artifacts = artifacts_for_run(run_id)
         proof_id = artifact_id(artifacts, PROOF_ARTIFACT)
         if proof_id is None:

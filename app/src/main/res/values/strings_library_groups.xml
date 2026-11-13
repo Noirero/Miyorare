@@ -53,7 +53,7 @@
 	<string name="library_group_reading_timeline">Reading timeline</string>
 	<string name="library_group_reading_timeline_summary">This list follows the saved Advanced Timeline exactly, including chapters interleaved between different manga.</string>
 	<string name="library_group_members_section">Members</string>
-	<string name="library_group_members_summary">Original manga entries stay separate here for details, refresh, and source chapter access.</string>
+	<string name="library_group_members_summary">Each original manga keeps its own details, chapters, and reading history.</string>
 	<string name="library_group_source_entries">Original / source entries</string>
 	<string name="library_group_source_entries_summary">Manage the original manga entries without crowding the main Group Details screen. Details, refresh, and source chapters remain available here.</string>
 	<string name="library_group_pick_cover">Choose cover</string>
@@ -92,6 +92,18 @@
 	<string name="library_group_tracking_error">Unable to update Group tracking.</string>
 	<string name="library_group_tracking_choose_action">Tracking action</string>
 	<string name="library_group_tracking_search">Search tracking title</string>
+	<string name="library_group_view_group">View group</string>
+	<string name="library_group_search">Search groups</string>
+	<string name="library_group_search_empty">No matching groups</string>
+	<string name="library_group_reading_unset">Read each manga separately, or set an advanced chapter order to read across manga.</string>
+	<string name="library_group_reading_saved">Custom chapter order: %1$d entries</string>
+	<string name="library_group_show_chapters">Show chapters</string>
+	<string name="library_group_hide_chapters">Hide chapters</string>
+	<string name="library_group_member_manage_hint">Long-press and drag to reorder. Tap a manga to open it or remove it from the group.</string>
+	<plurals name="library_group_selected_manga">
+		<item quantity="one">%d manga selected</item>
+		<item quantity="other">%d manga selected</item>
+	</plurals>
 	<plurals name="library_group_members">
 		<item quantity="one">%d manga</item>
 		<item quantity="other">%d manga</item>
@@ -100,4 +112,15 @@
 		<item quantity="one">%d chapter</item>
 		<item quantity="other">%d chapters</item>
 	</plurals>
+	<string name="library_group_add_members">Add manga</string>
+	<string name="library_group_select_from_favourites">Choose manga already saved in Favorites.</string>
+	<string name="library_group_search_manga">Search manga in Favorites</string>
+	<string name="library_group_already_in_group">Already in %1$s</string>
+	<string name="library_group_no_eligible">No matching manga available in this library.</string>
+	<string name="library_group_selected_count">%1$d selected</string>
+	<string name="library_group_continue_reading">Continue reading</string>
+	<string name="library_group_reading_unavailable">The next saved chapter is unavailable. Check the source entries before continuing.</string>
+	<string name="library_group_timeline_unavailable_edit">Some saved chapters are unavailable. Refresh the source entries before editing the reading order; your saved order is unchanged.</string>
+	<string name="library_group_timeline_unresolved">%1$d saved chapter(s) are not currently available. Refresh their source entries.</string>
+	<string name="library_group_find_chapter">Find chapter to jump to</string>
 </resources>

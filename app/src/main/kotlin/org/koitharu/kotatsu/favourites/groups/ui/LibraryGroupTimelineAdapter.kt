@@ -78,6 +78,17 @@ class LibraryGroupTimelineAdapter(
 		notifyDataSetChanged()
 	}
 
+	/** Jump only changes viewport position; it never filters or mutates the persisted order. */
+	fun findFirstMatching(query: String): Int {
+		val normalized = query.trim()
+		if (normalized.isEmpty()) return -1
+		return items.indexOfFirst { item ->
+			item.mangaTitle.contains(normalized, ignoreCase = true) ||
+				item.chapter.title?.contains(normalized, ignoreCase = true) == true ||
+				item.chapter.number.toString().contains(normalized)
+		}
+	}
+
 	fun snapshot(): List<LibraryGroupTimelineEditorItem> = items.toList()
 
 	private fun chapterTitle(item: LibraryGroupTimelineEditorItem): String =

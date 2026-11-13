@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.favourites.ui.list
 
 import android.content.DialogInterface
+import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
@@ -14,11 +16,14 @@ import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import android.view.WindowManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
 import androidx.core.view.ViewCompat
 import androidx.core.view.ancestors
 import androidx.core.view.WindowInsetsCompat
@@ -30,7 +35,13 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import coil3.request.ImageRequest
 import coil3.size.Size
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.textfield.TextInputLayout
+import com.google.android.material.textfield.TextInputEditText
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -55,6 +66,7 @@ import org.koitharu.kotatsu.core.ui.MiyorarePopupPlacement
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.showMiyorareGlassMenu
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
 import org.koitharu.kotatsu.core.ui.neonGlass
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
@@ -64,6 +76,8 @@ import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
 import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.FragmentListBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
@@ -988,53 +1002,139 @@ class FavouritesListFragment : MangaListFragment() {
 		).show()
 	}
 
+	/** One theme-aware selection surface instead of nested create/add action dialogs. */
 	private fun showLibraryGroupActionDialog(mangaIds: List<Long>, mode: ActionMode?) {
 		if (mangaIds.isEmpty()) return
+		val groups = viewModel.getLibraryGroupsForAdd()
 		val canCreate = mangaIds.size >= 2
-		val canAddExisting = viewModel.hasLibraryGroups
-		when {
-			canCreate && canAddExisting -> {
-				val actions = arrayOf(
-					getString(R.string.library_group_create_new),
-					getString(R.string.library_group_add_existing),
+		if (!canCreate && groups.isEmpty()) return
+
+		val content = layoutInflater.inflate(R.layout.sheet_library_group_action, null, false)
+		val sheet = BottomSheetDialog(requireContext())
+		val palette = requireContext().miyorareViewPaletteFromPreferences(
+			privateFavourites = viewModel.favouriteSpace == FavouriteSpace.PRIVATE,
+		)
+		val summary = content.findViewById<android.widget.TextView>(R.id.group_action_summary)
+		val create = content.findViewById<MaterialButton>(R.id.group_action_create)
+		val createForm = content.findViewById<View>(R.id.group_action_create_form)
+		val titleInput = content.findViewById<TextInputEditText>(R.id.group_action_title_input)
+		val save = content.findViewById<MaterialButton>(R.id.group_action_create_save)
+		val availableTitle = content.findViewById<View>(R.id.group_action_available_title)
+		val searchBox = content.findViewById<View>(R.id.group_action_search)
+		val search = content.findViewById<TextInputEditText>(R.id.group_action_search_input)
+		val groupList = content.findViewById<LinearLayout>(R.id.group_action_list)
+		val noResults = content.findViewById<android.widget.TextView>(R.id.group_action_no_results)
+		palette?.let { colors ->
+			content.setBackgroundColor(colors.surface)
+			content.findViewById<android.widget.TextView>(R.id.group_action_title).setTextColor(colors.onSurface)
+			summary.setTextColor(colors.onSurfaceVariant)
+			noResults.setTextColor(colors.onSurfaceVariant)
+			content.findViewById<android.widget.TextView>(R.id.group_action_available_title).setTextColor(colors.onSurface)
+			titleInput.setTextColor(colors.onSurface)
+			search.setTextColor(colors.onSurface)
+			for (fieldId in listOf(R.id.group_action_title_field, R.id.group_action_search)) {
+				content.findViewById<TextInputLayout>(fieldId).apply {
+					boxStrokeColor = colors.primary
+					defaultHintTextColor = ColorStateList.valueOf(colors.onSurfaceVariant)
+				}
+			}
+			create.backgroundTintList = ColorStateList.valueOf(colors.surfaceContainerHigh)
+			create.setTextColor(colors.primary)
+			create.strokeColor = ColorStateList.valueOf(colors.outlineVariant)
+			save.backgroundTintList = ColorStateList.valueOf(colors.button)
+			save.setTextColor(colors.onButton)
+		}
+		val count = mangaIds.size
+		summary.text = resources.getQuantityString(R.plurals.library_group_selected_manga, count, count)
+
+		val groupRows = groups.map { group ->
+			MaterialButton(requireContext()).apply {
+				isAllCaps = false
+				palette?.let { colors ->
+					backgroundTintList = ColorStateList.valueOf(colors.surfaceContainerHigh)
+					setTextColor(colors.onSurface)
+				}
+				text = "${group.title} · " + resources.getQuantityString(
+					R.plurals.library_group_members, group.members.size, group.members.size,
 				)
-				MaterialAlertDialogBuilder(requireContext())
-					.setTitle(R.string.library_group_action)
-					.setItems(actions) { _, which ->
-						when (which) {
-							0 -> showCreateLibraryGroupDialog(mangaIds, mode)
-							1 -> showAddToExistingLibraryGroupDialog(mangaIds, mode)
+				setOnClickListener {
+					sheet.dismiss()
+					handleLibraryGroupTarget(group, mangaIds, mode)
+				}
+			}.also { groupList.addView(it) }
+		}
+		searchBox.isVisible = groups.size > 4
+		availableTitle.isVisible = groups.isNotEmpty()
+		search.doAfterTextChanged { value ->
+			val query = value?.toString()?.trim().orEmpty()
+			var matches = 0
+			groups.forEachIndexed { index, group ->
+				val visible = query.isEmpty() || group.title.contains(query, ignoreCase = true)
+				groupRows[index].isVisible = visible
+				if (visible) matches++
+			}
+			noResults.isVisible = matches == 0 && groups.isNotEmpty()
+		}
+		create.isVisible = canCreate
+		create.setOnClickListener {
+			create.isVisible = false
+			createForm.isVisible = true
+			availableTitle.isVisible = false
+			searchBox.isVisible = false
+			groupList.isVisible = false
+			noResults.isVisible = false
+			titleInput.requestFocus()
+			titleInput.selectAll()
+		}
+		save.setOnClickListener {
+			val title = titleInput.text?.toString()?.trim().orEmpty()
+			if (title.isEmpty()) {
+				titleInput.error = getString(R.string.library_group_title_hint)
+				return@setOnClickListener
+			}
+			save.isEnabled = false
+			viewLifecycleScope.launch {
+				runCatching { viewModel.createLibraryGroup(title, mangaIds) }
+					.onSuccess { groupId ->
+						sheet.dismiss()
+						mode?.finish()
+						view?.let { root ->
+							Snackbar.make(root, R.string.library_group_created, Snackbar.LENGTH_LONG)
+								.setAction(R.string.library_group_view_group) {
+									startActivity(
+										Intent(requireContext(), FavouritesActivity::class.java)
+											.putExtra(FavouritesActivity.EXTRA_LIBRARY_GROUP_ID, groupId)
+											.putExtra(EXTRA_FAVOURITE_SPACE, viewModel.favouriteSpace.dbValue),
+									)
+								}.also { bar -> palette?.let { bar.setActionTextColor(it.primary) } }.show()
 						}
 					}
-					.setNegativeButton(android.R.string.cancel, null)
-					.show()
+					.onFailure {
+						save.isEnabled = true
+						showLibraryGroupError(it)
+					}
 			}
-			canCreate -> showCreateLibraryGroupDialog(mangaIds, mode)
-			canAddExisting -> showAddToExistingLibraryGroupDialog(mangaIds, mode)
 		}
-	}
-
-	private fun showAddToExistingLibraryGroupDialog(mangaIds: List<Long>, mode: ActionMode?) {
-		val groups = viewModel.getLibraryGroupsForAdd()
-		if (groups.isEmpty()) {
-			Toast.makeText(requireContext(), R.string.library_group_no_available, Toast.LENGTH_SHORT).show()
-			return
+		if (groups.isEmpty()) create.performClick()
+		// Some edge-to-edge devices do not resize the sheet window when the keyboard opens.
+		// Add only the IME area not already reserved for the navigation bar to the
+		// scrollable sheet's height; this lifts the editable form above the keyboard.
+		val originalBottomPadding = content.paddingBottom
+		ViewCompat.setOnApplyWindowInsetsListener(content) { view, insets ->
+			val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+			val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+			val extra = (imeBottom - navBottom).coerceAtLeast(0)
+			view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, originalBottomPadding + extra)
+			insets
 		}
-		val labels = groups.map { group ->
-			val count = resources.getQuantityString(
-				R.plurals.library_group_members,
-				group.members.size,
-				group.members.size,
-			)
-			"${group.title} · $count"
-		}.toTypedArray()
-		MaterialAlertDialogBuilder(requireContext())
-			.setTitle(R.string.library_group_add_to)
-			.setItems(labels) { _, which ->
-				groups.getOrNull(which)?.let { target -> handleLibraryGroupTarget(target, mangaIds, mode) }
-			}
-			.setNegativeButton(android.R.string.cancel, null)
-			.show()
+		sheet.setContentView(content)
+		sheet.show()
+		sheet.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+		sheet.behavior.apply {
+			skipCollapsed = true
+			state = BottomSheetBehavior.STATE_EXPANDED
+		}
+		ViewCompat.requestApplyInsets(content)
 	}
 
 	private fun handleLibraryGroupTarget(target: LibraryGroup, mangaIds: List<Long>, mode: ActionMode?) {
@@ -1078,31 +1178,6 @@ class FavouritesListFragment : MangaListFragment() {
 				mode?.finish()
 			}.onFailure(::showLibraryGroupError)
 		}
-	}
-
-	private fun showCreateLibraryGroupDialog(mangaIds: List<Long>, mode: ActionMode?) {
-		if (mangaIds.size < 2) return
-		val input = EditText(requireContext()).apply {
-			hint = getString(R.string.library_group_title_hint)
-			setText(R.string.library_group_default_title)
-			selectAll()
-			inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-		}
-		MaterialAlertDialogBuilder(requireContext())
-			.setTitle(R.string.library_group_create)
-			.setView(input)
-			.setNegativeButton(android.R.string.cancel, null)
-			.setPositiveButton(R.string.library_group_create) { _, _ ->
-				val title = input.text?.toString().orEmpty()
-				viewLifecycleScope.launch {
-					runCatching { viewModel.createLibraryGroup(title, mangaIds) }
-						.onSuccess {
-							Toast.makeText(requireContext(), R.string.library_group_created, Toast.LENGTH_SHORT).show()
-							mode?.finish()
-						}
-						.onFailure(::showLibraryGroupError)
-				}
-			}.show()
 	}
 
 	private fun showLibraryGroupActions(group: LibraryGroup) {

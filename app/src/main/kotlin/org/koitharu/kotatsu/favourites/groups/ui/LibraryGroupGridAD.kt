@@ -54,11 +54,11 @@ fun libraryGroupGridAD(
 		if (customCover != null) {
 			binding.imageViewCustom.setImageAsync(customCover, manga = null)
 		} else {
-			val members = item.group.members.take(collageViews.size)
+			val slots = collageCoverSlots(item.group.members, collageViews.size)
 			collageViews.forEachIndexed { index, imageView ->
-				val member = members[index % members.size]
-				imageView.isVisible = true
-				imageView.setImageAsync(member.displayCoverUrl, MangaSource(member.source))
+				val member = slots.getOrNull(index)
+				imageView.isVisible = member != null
+				if (member != null) imageView.setImageAsync(member.displayCoverUrl, MangaSource(member.source))
 			}
 		}
 	}

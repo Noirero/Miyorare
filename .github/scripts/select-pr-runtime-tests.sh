@@ -116,7 +116,7 @@ add_history_visual_suite() {
 }
 
 add_history_suite() {
-  # History scroll performance is measured manually, not in required PR runtime.
+  # Performance benchmark is standalone/manual, not PR runtime coverage.
   add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   add_history_visual_suite
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
@@ -206,6 +206,12 @@ add_full_suite() {
   fi
 
   add_history_visual_suite
+
+  # Include the searchable Group picker in full Android 15 regression coverage.
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/favourites/groups/ui/LibraryGroupAddMembersRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupAddMembersRuntimeTest
+  fi
+
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.history.ui.HistoryCoverABRuntimeTest
   fi
@@ -587,7 +593,6 @@ self_test() {
   grep -q '^run_runtime_isolation=true$' <<<"$out"
   grep -q '^run_migration_persistence=true$' <<<"$out"
   ! grep -q 'HistoryScrollBenchmarkTest' <<<"$out"
-  bash .github/scripts/run-selected-android-runtime.sh --self-test
 
   classify_self_test
   policy_self_test
