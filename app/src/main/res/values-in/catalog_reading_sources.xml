@@ -23,4 +23,5 @@
     <string name="hub_scope_no_name_matches">Tidak ada nama source yang cocok.</string>
     <string name="hub_scope_searching_single">Mencari di %1$s…</string>
     <string name="hub_scope_empty_single">Tidak ada hasil di %1$s.</string>
+    <string name="hub_scope_origin_kotatsu_runtime">Kotatsu Runtime</string>
 </resources>

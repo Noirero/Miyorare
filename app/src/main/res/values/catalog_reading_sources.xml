@@ -23,4 +23,5 @@
     <string name="hub_scope_no_name_matches">No source names match.</string>
     <string name="hub_scope_searching_single">Searching %1$s…</string>
     <string name="hub_scope_empty_single">No results in %1$s.</string>
+    <string name="hub_scope_origin_kotatsu_runtime">Kotatsu Runtime</string>
 </resources>

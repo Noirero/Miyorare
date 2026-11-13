@@ -34,9 +34,13 @@ import coil3.request.ImageRequest
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getLanguageCode
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.discovery.domain.CatalogSearchScope
+import org.koitharu.kotatsu.explore.ui.adapter.exploreSourceOrigin
+import org.koitharu.kotatsu.explore.ui.adapter.titleRes
+import org.koitharu.kotatsu.kotatsu.model.KotatsuMangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -227,9 +231,16 @@ private fun CatalogSourcePicker(
 		items(visible, key = { it.source.name }) { entry ->
 			val name = entry.source.getTitle(context)
 			val scope = CatalogSearchScope.Single(entry.source.name)
+			val origin = if (entry.source.unwrap() is KotatsuMangaSource) {
+				R.string.hub_scope_origin_kotatsu_runtime
+			} else {
+				entry.source.exploreSourceOrigin().titleRes()
+			}
 			CatalogScopeOption(
 				title = name,
 				subtitle = entry.source.getLanguageCode(),
+				originLabel = stringResource(origin),
+				modifier = Modifier.testTag("catalog_scope_option_${entry.source.name}"),
 				selected = active == scope,
 				onClick = { onScope(scope, name) },
 				sourceIcon = {
@@ -255,12 +266,15 @@ private fun CatalogSourcePicker(
 	}
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CatalogScopeOption(
 	title: String,
 	subtitle: String?,
 	selected: Boolean,
 	onClick: () -> Unit,
+	modifier: Modifier = Modifier,
+	originLabel: String? = null,
 	sourceIcon: (@Composable () -> Unit)? = null,
 	pinned: Boolean = false,
 ) {
@@ -271,13 +285,34 @@ private fun CatalogScopeOption(
 		shape = shape,
 		color = if (selected) colors.primaryContainer else colors.surface,
 		contentColor = if (selected) colors.onPrimaryContainer else colors.onSurface,
-		modifier = Modifier.fillMaxWidth()
+		modifier = modifier.fillMaxWidth()
 			.semantics { this.selected = selected }
 			.then(if (selected) Modifier.border(1.dp, colors.primary, shape) else Modifier),
 	) {
 		ListItem(
 			headlineContent = { Text(title, fontWeight = FontWeight.SemiBold) },
-			supportingContent = subtitle?.let { label -> { Text(label) } },
+			supportingContent = if (originLabel == null) {
+				subtitle?.let { label -> { Text(label) } }
+			} else {
+				{
+					FlowRow(
+						horizontalArrangement = Arrangement.spacedBy(6.dp),
+						verticalArrangement = Arrangement.spacedBy(4.dp),
+						modifier = Modifier.padding(top = 2.dp),
+					) {
+						subtitle?.takeIf { it.isNotBlank() }?.let { Text(it, modifier = Modifier.align(Alignment.CenterVertically)) }
+						Text(
+							text = originLabel,
+							style = MaterialTheme.typography.labelSmall,
+							color = colors.onSecondaryContainer,
+							modifier = Modifier.align(Alignment.CenterVertically)
+								.background(colors.secondaryContainer, CircleShape)
+								.border(1.dp, colors.outlineVariant, CircleShape)
+								.padding(horizontal = 8.dp, vertical = 3.dp),
+						)
+					}
+				}
+			},
 			leadingContent = sourceIcon,
 			trailingContent = {
 				if (pinned) Icon(Icons.Default.Star, stringResource(R.string.hub_scope_pinned), Modifier.size(18.dp), tint = colors.primary)

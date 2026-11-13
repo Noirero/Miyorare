@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.discovery.ui.*
+import org.koitharu.kotatsu.tsuki.model.*
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService as Service
 
 class DiscoveryCatalogUiTest {
@@ -138,8 +139,21 @@ class DiscoveryCatalogUiTest {
 	}
 
 	@Test fun readingSourcePickerSelectsOneScopeWithoutOpeningManga() {
-		val source = SampleData.manga.source
-		val picker = mutableStateOf(CatalogSourcePickerState(visible = true, sources = listOf(CatalogReadingSource(source, pinned = true))))
+		val descriptor = TsukiSourceDescriptor("fixture-source", "Same catalogue", "en", "MANGA")
+		fun source(provider: TsukiPluginProvider): TsukiMangaSource {
+			val plugin = TsukiPluginDescriptor(
+				pluginId = "fixture", displayName = "Fixture", provider = provider, version = "1",
+				origin = "test", sha256 = "", fileSize = 0L, lastModified = 0L, requiredApi = null,
+				compatibility = TsukiCompatibilityStatus.COMPATIBLE, state = TsukiPluginState.ENABLED,
+				sources = listOf(descriptor), enabledSourceNames = setOf(descriptor.name),
+			)
+			return TsukiMangaSource(plugin, descriptor)
+		}
+		val pinned = source(TsukiPluginProvider.MIYORARE)
+		val source = source(TsukiPluginProvider.GEKKOUSHI)
+		val picker = mutableStateOf(CatalogSourcePickerState(
+			visible = true, sources = listOf(CatalogReadingSource(pinned, pinned = true), CatalogReadingSource(source, pinned = false)),
+		))
 		var selected: CatalogSearchScope? = null
 		var opened = false
 		compose.setContent {
@@ -160,8 +174,15 @@ class DiscoveryCatalogUiTest {
 		}
 		compose.onNodeWithTag("catalog_scope_source_query").performScrollTo().performTextInput("no-such-source")
 		compose.onNodeWithTag("catalog_scope_source_query").performTextClearance()
-		compose.onNodeWithTag("catalog_scope_picker").performScrollToIndex(4)
-		compose.onNodeWithContentDescription(context.getString(R.string.hub_scope_pinned)).performClick()
+		val list = compose.onNodeWithTag("catalog_scope_picker")
+		list.performScrollToKey(pinned.name)
+		compose.onNodeWithTag("catalog_scope_option_${pinned.name}").assert(
+			hasText(context.getString(R.string.explore_source_origin_miyorare_pack)),
+		)
+		list.performScrollToKey(source.name)
+		compose.onNodeWithTag("catalog_scope_option_${source.name}").assert(
+			hasText(context.getString(R.string.explore_source_origin_gekkoushi)),
+		).performClick()
 		compose.runOnIdle {
 			assertEquals(CatalogSearchScope.Single(source.name), selected)
 			assertFalse(opened)
