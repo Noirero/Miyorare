@@ -13,6 +13,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -71,10 +73,22 @@ fun DiscoveryHubScreen(
 	// bar is pinned. Consume that propagated inset instead of guessing a device-specific nav height.
 	val bottomContentPadding = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding() + 16.dp
 
+	val windowWidth = LocalConfiguration.current.screenWidthDp.coerceAtLeast(1).dp
 	PullToRefreshBox(
 		isRefreshing = state.refreshing,
 		onRefresh = onRefresh,
-		modifier = Modifier.fillMaxSize().testTag("discovery_hub"),
+		modifier = Modifier
+			.layout { measurable, constraints ->
+				// The landscape View host can probe with an unspecified width before its final pass.
+				// Keep that probe finite for the nested horizontal rails; preserve normal sizing.
+				val bounded = if (constraints.hasBoundedWidth) constraints else {
+					constraints.copy(maxWidth = maxOf(constraints.minWidth, windowWidth.roundToPx()))
+				}
+				val placeable = measurable.measure(bounded)
+				layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+			}
+			.fillMaxSize()
+			.testTag("discovery_hub"),
 	) {
 		LazyColumn(
 			state = list,
