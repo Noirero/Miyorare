@@ -21,10 +21,9 @@ import urllib.request
 import zipfile
 from typing import Any, Callable
 
-SCHEMA = 1
+SCHEMA = 2
 ANDROID_JOB = "Android runtime validation — Android 15"
 REAL_STEP = "Run selected Android 15 runtime validation"
-HISTORY_STEP = "Run mandatory History benchmark on fresh Android 15 emulator"
 HISTORY_CLASS = "org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest"
 PROOF_ARTIFACT = "android-runtime-scope-proof"
 PROOF_FILE = "android-runtime-scope-proof.json"
@@ -33,7 +32,6 @@ MACHINERY = frozenset({
     ".github/workflows/pr-compile-unit-check.yml",
     ".github/scripts/select-pr-runtime-tests.sh",
     ".github/scripts/run-selected-android-runtime.sh",
-    ".github/scripts/run-history-scroll-benchmark.sh",
     ".github/scripts/ci_android_runtime_reuse.py",
     ".github/scripts/test_ci_android_runtime_reuse.py",
 })
@@ -41,7 +39,6 @@ EXECUTION_INPUTS = (
     ".github/workflows/pr-compile-unit-check.yml",
     ".github/scripts/select-pr-runtime-tests.sh",
     ".github/scripts/run-selected-android-runtime.sh",
-    ".github/scripts/run-history-scroll-benchmark.sh",
     ".github/scripts/run-kotatsu-runtime-isolation-test.sh",
     ".github/scripts/check-migration-process-persistence.sh",
     ".github/scripts/collect-android-runtime-diagnostics.sh",
@@ -78,6 +75,8 @@ def build_scope(env: dict[str, str], file_bytes: Callable[[str], bytes]) -> dict
     classes = classes_raw.split(",") if classes_raw else []
     if any(not item or item != item.strip() for item in classes) or len(set(classes)) != len(classes):
         raise ValueError("invalid runtime class list")
+    if HISTORY_CLASS in classes:
+        raise ValueError("History performance benchmark must not run in PR Android runtime")
     isolation = boolean(env["RUN_RUNTIME_ISOLATION"])
     migration = boolean(env["RUN_MIGRATION_PERSISTENCE"])
     if not classes and not isolation and not migration:
@@ -93,8 +92,8 @@ def build_scope(env: dict[str, str], file_bytes: Callable[[str], bytes]) -> dict
         rb"(?m)^\s+uses:\s+reactivecircus/android-emulator-runner@([0-9a-f]{40})\s*$",
         workflow_bytes,
     )
-    if len(runner_shas) != 2 or len(set(runner_shas)) != 1:
-        raise ValueError("Both Android emulator sessions must use one identical pinned SHA")
+    if len(runner_shas) != 1:
+        raise ValueError("PR Android runtime must have exactly one pinned emulator session")
     runner_action = "reactivecircus/android-emulator-runner@" + runner_shas[0].decode("ascii")
     inputs = {path: hashlib.sha256(file_bytes(path)).hexdigest() for path in EXECUTION_INPUTS}
     return {
@@ -140,7 +139,7 @@ def eligible_run(run: dict[str, Any], *, current_id: int, workflow_id: int,
     )
 
 
-def real_android_job(jobs: list[dict[str, Any]], *, history_required: bool = False) -> bool:
+def real_android_job(jobs: list[dict[str, Any]]) -> bool:
     for job in jobs:
         if job.get("name") != ANDROID_JOB or job.get("status") != "completed" or job.get("conclusion") != "success":
             continue
@@ -148,7 +147,7 @@ def real_android_job(jobs: list[dict[str, Any]], *, history_required: bool = Fal
         def passed(name: str) -> bool:
             return any(s.get("name") == name and s.get("status") == "completed"
                        and s.get("conclusion") == "success" for s in steps)
-        if passed(REAL_STEP) and (not history_required or passed(HISTORY_STEP)):
+        if passed(REAL_STEP):
             return True
     return False
 
@@ -230,9 +229,8 @@ def find_proof(runs: list[dict[str, Any]], jobs_for_run: Callable[[int], list[di
         if not eligible_run(run, current_id=current_id, workflow_id=workflow_id, scope=scope):
             continue
         run_id = int(run["id"])
-        history_required = scope["runtime"]["full"] and HISTORY_CLASS in scope["runtime"]["classes"]
-        if not real_android_job(jobs_for_run(run_id), history_required=history_required):
-            continue  # Both mandatory real emulator sessions must succeed; no reuse chains.
+        if not real_android_job(jobs_for_run(run_id)):
+            continue  # Real selected Android runtime step is mandatory; no reuse chains.
         artifacts = artifacts_for_run(run_id)
         proof_id = artifact_id(artifacts, PROOF_ARTIFACT)
         if proof_id is None:

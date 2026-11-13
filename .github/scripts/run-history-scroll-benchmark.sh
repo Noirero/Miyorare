@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Mandatory full-size History A/B workload, isolated on a *fresh* Android 15 VM.
-# This command must fail closed on a missing, skipped or failed testcase.
+# Standalone, explicitly requested History A/B performance diagnostic (not a PR runtime gate).
+# When executed manually on a prepared Android device/emulator, fail closed on a missing, skipped or failed testcase.
 benchmark_class=org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest
 bash .github/scripts/collect-android-runtime-diagnostics.sh \
   ./gradlew connectedDebugAndroidTest --max-workers=2 --no-daemon --stacktrace \

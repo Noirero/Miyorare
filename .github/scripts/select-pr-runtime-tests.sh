@@ -116,13 +116,11 @@ add_history_visual_suite() {
 }
 
 add_history_suite() {
+  # Performance benchmark is standalone/manual, not PR runtime coverage.
   add_class org.koitharu.kotatsu.history.data.PrivateHistoryIsolationRuntimeTest
   add_history_visual_suite
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.history.ui.HistoryCoverABRuntimeTest
-  fi
-  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryScrollBenchmarkTest.kt ]]; then
-    add_class org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest
   fi
   MAPPED=true
 }
@@ -216,9 +214,6 @@ add_full_suite() {
 
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryCoverABRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.history.ui.HistoryCoverABRuntimeTest
-  fi
-  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryScrollBenchmarkTest.kt ]]; then
-    add_class org.koitharu.kotatsu.history.ui.HistoryScrollBenchmarkTest
   fi
 
   # Execute scoped View-palette regressions in full Android 15 runs when present.
@@ -540,6 +535,7 @@ self_test() {
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt')"
   grep -q '^mode=targeted$' <<<"$out"
   grep -q 'PrivateHistoryIsolationRuntimeTest' <<<"$out"
+  ! grep -q 'HistoryScrollBenchmarkTest' <<<"$out"
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
     grep -q 'HistoryAccordionVisualRuntimeTest' <<<"$out"
   fi
@@ -596,6 +592,7 @@ self_test() {
   fi
   grep -q '^run_runtime_isolation=true$' <<<"$out"
   grep -q '^run_migration_persistence=true$' <<<"$out"
+  ! grep -q 'HistoryScrollBenchmarkTest' <<<"$out"
 
   classify_self_test
   policy_self_test
