@@ -452,6 +452,7 @@ fun DetailsExpressiveScreen(
 							key = { it.detailsLazyListKey() },
 							contentType = { "chapter" },
 						) { chapter ->
+							val chapterKey = chapter.detailsLazyListKey()
 							ChapterReadSwipeCard(
 								item = chapter,
 								onMarkRead = { actions.onChapterMarkRead(chapter) },
@@ -472,6 +473,9 @@ fun DetailsExpressiveScreen(
 									onManageClick = actions.onChaptersClick,
 									onPersonalClick = { actions.onChapterPersonalClick(chapter) },
 									onNoteClick = { noteChapter = chapter },
+									canAnimateTitle = {
+										!listState.isScrollInProgress && listState.layoutInfo.visibleItemsInfo.any { it.key == chapterKey }
+									},
 								)
 							}
 						}
@@ -481,6 +485,7 @@ fun DetailsExpressiveScreen(
 					key = { it.detailsLazyListKey() },
 					contentType = { "chapter" },
 				) { chapter ->
+					val chapterKey = chapter.detailsLazyListKey()
 					ChapterReadSwipeCard(
 						item = chapter,
 						onMarkRead = { actions.onChapterMarkRead(chapter) },
@@ -501,6 +506,9 @@ fun DetailsExpressiveScreen(
 							onManageClick = actions.onChaptersClick,
 							onPersonalClick = { actions.onChapterPersonalClick(chapter) },
 							onNoteClick = { noteChapter = chapter },
+							canAnimateTitle = {
+								!listState.isScrollInProgress && listState.layoutInfo.visibleItemsInfo.any { it.key == chapterKey }
+							},
 						)
 					}
 				}
