@@ -5,13 +5,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
@@ -38,11 +38,14 @@ import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
+import org.koitharu.kotatsu.discovery.domain.CatalogReadingSource
 import org.koitharu.kotatsu.discovery.domain.CatalogSearchScope
 import org.koitharu.kotatsu.explore.ui.adapter.exploreSourceOrigin
 import org.koitharu.kotatsu.explore.ui.adapter.titleRes
 import org.koitharu.kotatsu.kotatsu.model.KotatsuMangaSource
+import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -174,7 +177,9 @@ private fun CatalogSourcePicker(
 	val type = MaterialTheme.typography
 	var query by remember { mutableStateOf("") }
 	val visible = picker.sources.filter { it.source.getTitle(context).contains(query.trim(), ignoreCase = true) }
-	val pinnedCount = visible.count { it.pinned }
+	val groups = remember(visible) { groupCatalogPickerSources(visible) }
+	val pinnedCount = groups.count { it.pinned }
+	var expandedKey by remember { mutableStateOf<String?>(null) }
 	LazyColumn(
 		modifier = Modifier.fillMaxWidth().testTag("catalog_scope_picker"),
 		contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
@@ -209,7 +214,7 @@ private fun CatalogSourcePicker(
 			Text(stringResource(R.string.hub_scope_pick_specific), style = type.titleSmall, modifier = Modifier.padding(vertical = 4.dp))
 			OutlinedTextField(
 				value = query,
-				onValueChange = { query = it },
+				onValueChange = { query = it; expandedKey = null },
 				modifier = Modifier.fillMaxWidth().testTag("catalog_scope_source_query"),
 				label = { Text(stringResource(R.string.hub_scope_filter)) },
 				leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
@@ -230,53 +235,116 @@ private fun CatalogSourcePicker(
 				Text(stringResource(if (picker.sources.isEmpty()) R.string.hub_scope_no_picker_sources else R.string.hub_scope_no_name_matches))
 			}
 		}
-		itemsIndexed(visible, key = { _, entry -> entry.source.name }) { index, entry ->
+		groups.forEachIndexed { index, group ->
 			if (pinnedCount > 0 && (index == 0 || index == pinnedCount)) {
-				Text(
-					text = if (entry.pinned) stringResource(R.string.hub_scope_pinned_section, pinnedCount)
-					else stringResource(R.string.hub_scope_other_section, visible.size - pinnedCount),
-					style = type.labelLarge,
-					color = colors.onSurfaceVariant,
-					modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-				)
-			}
-			val name = entry.source.getTitle(context)
-			val scope = CatalogSearchScope.Single(entry.source.name)
-			val origin = if (entry.source.unwrap() is KotatsuMangaSource) {
-				R.string.hub_scope_origin_kotatsu_runtime
-			} else {
-				entry.source.exploreSourceOrigin().titleRes()
-			}
-			val originLabel = stringResource(origin)
-			val sourceLabel = stringResource(R.string.hub_scope_source_with_origin, name, originLabel)
-			CatalogScopeOption(
-				title = name,
-				subtitle = entry.source.getLanguageCode(),
-				originLabel = originLabel,
-				modifier = Modifier.testTag("catalog_scope_option_${entry.source.name}"),
-				selected = active == scope,
-				onClick = { onScope(scope, sourceLabel) },
-				sourceIcon = {
-					val request = remember(context, entry.source) {
-						ImageRequest.Builder(context).data(entry.source.faviconUri()).build()
-					}
-					val fallback = painterResource(R.drawable.ic_manga_source)
-					AsyncImage(
-						model = request,
-						imageLoader = imageLoader,
-						contentDescription = null,
-						placeholder = fallback,
-						error = fallback,
-						fallback = fallback,
-						contentScale = ContentScale.Fit,
-						modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
-							.background(colors.secondaryContainer).padding(3.dp),
+				item(key = "catalog-section-$index") {
+					Text(
+						text = if (group.pinned) stringResource(R.string.hub_scope_pinned_section, pinnedCount)
+						else stringResource(R.string.hub_scope_other_section, groups.size - pinnedCount),
+						style = type.labelLarge,
+						color = colors.onSurfaceVariant,
+						modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
 					)
-				},
-				pinned = entry.pinned,
-			)
+				}
+			}
+			if (group.variants.size == 1) {
+				val entry = group.variants.single()
+				item(key = entry.source.name) {
+					CatalogSourceVariantOption(entry, active, imageLoader, onScope)
+				}
+			} else {
+				val expanded = expandedKey == group.key
+				item(key = group.key) {
+					val source = group.variants.first().source
+					CatalogScopeOption(
+						title = stringResource(R.string.hub_scope_variant_group, source.getTitle(context), group.variants.size),
+						subtitle = null,
+						originLabel = stringResource(R.string.explore_source_origin_extension_store),
+						modifier = Modifier.testTag("catalog_scope_group_${group.key}"),
+						selected = group.variants.any { active == CatalogSearchScope.Single(it.source.name) },
+						onClick = { expandedKey = if (expanded) null else group.key },
+						sourceIcon = { CatalogPickerSourceIcon(source, imageLoader) },
+						pinned = group.pinned,
+						expanded = expanded,
+					)
+				}
+				if (expanded) items(group.variants, key = { it.source.name }) { entry ->
+					CatalogSourceVariantOption(entry, active, imageLoader, onScope, nested = true)
+				}
+			}
 		}
+
 	}
+}
+
+private data class CatalogPickerGroup(val key: String, val variants: List<CatalogReadingSource>) {
+	val pinned: Boolean get() = variants.any { it.pinned }
+}
+
+/** Presentation only: never collapse the IDs passed to the resolver. */
+private fun groupCatalogPickerSources(sources: List<CatalogReadingSource>): List<CatalogPickerGroup> =
+	sources.groupBy { entry ->
+		val store = entry.source.unwrap() as? MihonMangaSource
+		if (store == null) entry.source.name else "store:${store.pkgName}:${store.displayName}"
+	}.flatMap { (key, entries) ->
+		val languages = entries.mapNotNull { it.source.getLanguageCode() }.distinct()
+		if (languages.size > 1) listOf(CatalogPickerGroup(key, entries))
+		else entries.map { CatalogPickerGroup(it.source.name, listOf(it)) }
+	}.sortedByDescending { it.pinned }
+
+@Composable
+private fun CatalogSourceVariantOption(
+	entry: CatalogReadingSource,
+	active: CatalogSearchScope,
+	imageLoader: ImageLoader,
+	onScope: (CatalogSearchScope, String?) -> Unit,
+	nested: Boolean = false,
+) {
+	val source = entry.source
+	val name = source.getTitle(LocalContext.current)
+	val scope = CatalogSearchScope.Single(source.name)
+	val language = source.getLanguageCode()
+	val origin = if (source.unwrap() is KotatsuMangaSource) {
+		R.string.hub_scope_origin_kotatsu_runtime
+	} else {
+		source.exploreSourceOrigin().titleRes()
+	}
+	val originLabel = stringResource(origin)
+	val nameWithLanguage = if (source.unwrap() is MihonMangaSource && !language.isNullOrBlank()) {
+		stringResource(R.string.hub_scope_source_with_origin, name, language)
+	} else name
+	val sourceLabel = stringResource(R.string.hub_scope_source_with_origin, nameWithLanguage, originLabel)
+	CatalogScopeOption(
+		title = name,
+		subtitle = language,
+		originLabel = originLabel,
+		modifier = (if (nested) Modifier.padding(start = 24.dp) else Modifier)
+			.testTag("catalog_scope_option_${source.name}"),
+		selected = active == scope,
+		onClick = { onScope(scope, sourceLabel) },
+		sourceIcon = { CatalogPickerSourceIcon(source, imageLoader) },
+		pinned = entry.pinned,
+	)
+}
+
+@Composable
+private fun CatalogPickerSourceIcon(source: MangaSource, imageLoader: ImageLoader) {
+	val context = LocalContext.current
+	val request = remember(context, source) {
+		ImageRequest.Builder(context).data(source.faviconUri()).build()
+	}
+	val fallback = painterResource(R.drawable.ic_manga_source)
+	AsyncImage(
+		model = request,
+		imageLoader = imageLoader,
+		contentDescription = null,
+		placeholder = fallback,
+		error = fallback,
+		fallback = fallback,
+		contentScale = ContentScale.Fit,
+		modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
+			.background(MaterialTheme.colorScheme.secondaryContainer).padding(3.dp),
+	)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -290,6 +358,7 @@ private fun CatalogScopeOption(
 	originLabel: String? = null,
 	sourceIcon: (@Composable () -> Unit)? = null,
 	pinned: Boolean = false,
+	expanded: Boolean? = null,
 ) {
 	val colors = MaterialTheme.colorScheme
 	val shape = RoundedCornerShape(14.dp)
@@ -329,7 +398,14 @@ private fun CatalogScopeOption(
 			leadingContent = sourceIcon,
 			trailingContent = {
 				if (pinned) Icon(Icons.Default.Star, stringResource(R.string.hub_scope_pinned), Modifier.size(18.dp), tint = colors.primary)
-				if (sourceIcon == null || selected) RadioButton(selected = selected, onClick = null)
+				if (expanded != null) {
+					Icon(
+						if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+						stringResource(if (expanded) R.string.hub_scope_collapse_languages else R.string.hub_scope_expand_languages),
+					)
+				} else if (sourceIcon == null || selected) {
+					RadioButton(selected = selected, onClick = null)
+				}
 			},
 			colors = ListItemDefaults.colors(
 				containerColor = androidx.compose.ui.graphics.Color.Transparent,

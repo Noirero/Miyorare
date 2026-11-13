@@ -7,6 +7,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
+import eu.kanade.tachiyomi.source.CatalogueSource
+import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import kotlinx.coroutines.flow.MutableSharedFlow
 import org.junit.After
 import org.junit.Assert.*
@@ -199,6 +201,48 @@ class DiscoveryCatalogUiTest {
 			assertEquals(CatalogSearchScope.Single(source.name), selected)
 			assertFalse(opened)
 		}
+	}
+
+	@Test fun storeLanguagesExpandWithoutSearchAndSelectTheExactVariant() {
+		fun store(id: Long, language: String, pkg: String = "fixture.akuma") =
+			MihonMangaSource(object : CatalogueSource {
+				override val id = id
+				override val name = "Akuma"
+				override val lang = language
+			}, pkg)
+		val all = store(1001, "all")
+		val english = store(1002, "en")
+		val indonesian = store(1003, "id")
+		val otherPackage = store(1004, "en", "other.akuma")
+		val sources = listOf(all, english, indonesian, otherPackage).map {
+			CatalogReadingSource(it, pinned = it == english)
+		}
+		var selected: CatalogSearchScope? = null
+		compose.setContent {
+			MaterialTheme {
+				CatalogReadingSourceSheet(
+					resolution = CatalogResolutionState(visible = true),
+					picker = CatalogSourcePickerState(visible = true, sources = sources),
+					imageLoader = loader,
+					onScope = { scope, _ -> selected = scope },
+					onOpenPicker = {}, onClosePicker = {}, onDismiss = {}, onRetry = {},
+					onGlobalSearch = {}, onSource = { error("A picker row must not open manga") },
+				)
+			}
+		}
+		val group = "store:fixture.akuma:Akuma"
+		val list = compose.onNodeWithTag("catalog_scope_picker")
+		list.performScrollToKey(group)
+		compose.onNodeWithText("Akuma (3)").assertExists()
+		compose.onNodeWithTag("catalog_scope_option_${indonesian.name}").assertDoesNotExist()
+		list.performScrollToKey(otherPackage.name)
+		compose.onNodeWithTag("catalog_scope_option_${otherPackage.name}").assertExists()
+		list.performScrollToKey(group)
+		compose.onNodeWithTag("catalog_scope_group_$group").performClick()
+		compose.runOnIdle { assertNull(selected) }
+		list.performScrollToKey(indonesian.name)
+		compose.onNodeWithTag("catalog_scope_option_${indonesian.name}").performClick()
+		compose.runOnIdle { assertEquals(CatalogSearchScope.Single(indonesian.name), selected) }
 	}
 
 }
