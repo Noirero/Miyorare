@@ -122,6 +122,7 @@
 				android:name="com.samsung.android.support.REMOTE_ACTION"
 				android:resource="@xml/remote_action" />
 		</activity>
+		<activity android:name=".explore.ui.SourceOverviewActivity" android:exported="false" />
 		<activity
 			android:name="org.koitharu.kotatsu.search.ui.MangaListActivity"
 			android:exported="true"

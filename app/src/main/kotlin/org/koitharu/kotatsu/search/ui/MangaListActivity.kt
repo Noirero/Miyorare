@@ -53,6 +53,7 @@ import org.koitharu.kotatsu.core.util.ext.setTextAndVisible
 import org.koitharu.kotatsu.core.util.ext.start
 import org.koitharu.kotatsu.databinding.ActivityMangaListBinding
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
+import org.koitharu.kotatsu.explore.ui.SourceOverviewActivity
 import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.filter.ui.FilterHeaderFragment
 import org.koitharu.kotatsu.mihon.MihonFilterMapper
@@ -67,6 +68,8 @@ import org.koitharu.kotatsu.remotelist.ui.RemoteListFragment
 import kotlin.math.roundToInt
 
 private const val SORT_BUTTON_MAX_WIDTH_FRACTION = 0.45f
+private const val STATE_SHELF_SORT = "shelf_session_sort"
+private const val STATE_SHELF_FILTER = "shelf_session_filter"
 
 @AndroidEntryPoint
 class MangaListActivity :
@@ -93,12 +96,20 @@ class MangaListActivity :
 	// Original (attr-defined) expanded height of the collapsing toolbar, captured before growing
 	// it to make room for the language subtitle line.
 	private var expandedBaseHeight = -1
+	private val isShelfSession: Boolean
+		get() = intent.getBooleanExtra(SourceOverviewActivity.EXTRA_TRANSIENT_SORT, false)
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		setContentView(ActivityMangaListBinding.inflate(layoutInflater))
-		val filter = intent.getParcelableExtraCompat<ParcelableMangaListFilter>(AppRouter.KEY_FILTER)?.filter
-		val sortOrder = intent.getSerializableExtraCompat<SortOrder>(AppRouter.KEY_SORT_ORDER)
+		val restoredShelf = if (isShelfSession) restoreShelfSession(savedInstanceState) else null
+		val filter = restoredShelf?.listFilter
+			?: intent.getParcelableExtraCompat<ParcelableMangaListFilter>(AppRouter.KEY_FILTER)?.filter
+		val sortOrder = restoredShelf?.sortOrder
+			?: intent.getSerializableExtraCompat<SortOrder>(AppRouter.KEY_SORT_ORDER)
+		if (restoredShelf != null) {
+			findFilterOwner()?.filterCoordinator?.let { restoreShelfSession(it, restoredShelf) }
+		}
 		// Refresh the wrapper by exact source ID without redirecting to a sibling language.
 		val resolved = sourcesRepository.resolveActiveSource(MangaSource(intent.getStringExtra(AppRouter.KEY_SOURCE)))
 		source = resolved.source
@@ -111,7 +122,32 @@ class MangaListActivity :
 		}
 		configureSortButton()
 		applyTitle()
-		initList(source, filter, sortOrder)
+		initList(source, filter, sortOrder, savedInstanceState == null &&
+			intent.getBooleanExtra(SourceOverviewActivity.EXTRA_SHOW_FILTERS, false))
+	}
+
+	override fun onSaveInstanceState(outState: Bundle) {
+		if (isShelfSession) {
+			findFilterOwner()?.filterCoordinator?.snapshot()?.let { snapshot ->
+				outState.putString(STATE_SHELF_SORT, snapshot.sortOrder.name)
+				outState.putParcelable(STATE_SHELF_FILTER, ParcelableMangaListFilter(snapshot.listFilter))
+			}
+		}
+		super.onSaveInstanceState(outState)
+	}
+
+	@Suppress("DEPRECATION")
+	private fun restoreShelfSession(state: Bundle?): FilterCoordinator.Snapshot? {
+		val name = state?.getString(STATE_SHELF_SORT) ?: return null
+		val order = SortOrder.entries.firstOrNull { it.name == name } ?: return null
+		val filter = state.getParcelable<ParcelableMangaListFilter>(STATE_SHELF_FILTER)?.filter
+			?: MangaListFilter.EMPTY
+		return FilterCoordinator.Snapshot(order, filter)
+	}
+
+	private fun restoreShelfSession(coordinator: FilterCoordinator, snapshot: FilterCoordinator.Snapshot) {
+		coordinator.setSessionSortOrder(snapshot.sortOrder)
+		coordinator.set(snapshot.listFilter)
 	}
 
 	override fun onResume() {
@@ -243,9 +279,12 @@ class MangaListActivity :
 	 * fragment, so only the title would change while the content stayed on the old language.
 	 */
 	private fun reloadList(newSource: MangaSource) {
+		val shelf = if (isShelfSession) findFilterOwner()?.filterCoordinator?.snapshot() else null
 		supportFragmentManager.commit {
 			setReorderingAllowed(true)
-			replace(R.id.container, RemoteListFragment.newInstance(newSource))
+			val fragment = RemoteListFragment.newInstance(newSource)
+			replace(R.id.container, fragment)
+			if (shelf != null) runOnCommit { restoreShelfSession(fragment.filterCoordinator, shelf) }
 			// The filter header/side capture their FilterCoordinator at creation, so recreate them
 			// too — otherwise they keep driving the old source's list.
 			if (viewBinding.containerFilterHeader != null) {
@@ -307,7 +346,7 @@ class MangaListActivity :
 		ViewCompat.requestApplyInsets(viewBinding.root)
 	}
 
-	private fun initList(source: MangaSource, filter: MangaListFilter?, sortOrder: SortOrder?) {
+	private fun initList(source: MangaSource, filter: MangaListFilter?, sortOrder: SortOrder?, showFilters: Boolean) {
 		val fm = supportFragmentManager
 		val existingFragment = fm.findFragmentById(R.id.container)
 		if (existingFragment is FilterCoordinator.Owner) {
@@ -323,8 +362,12 @@ class MangaListActivity :
 				replace(R.id.container, fragment)
 				runOnCommit { initFilter(fragment) }
 				if (filter != null || sortOrder != null) {
-					runOnCommit(ApplyFilterRunnable(fragment, filter, sortOrder))
+					runOnCommit(ApplyFilterRunnable(fragment, filter, sortOrder,
+						isShelfSession))
 				}
+				if (showFilters) runOnCommit { viewBinding.root.post {
+					if (!isFinishing && !fm.isStateSaved) router.showFilterSheet()
+				} }
 			}
 		}
 	}
@@ -406,11 +449,13 @@ class MangaListActivity :
 		private val filterOwner: FilterCoordinator.Owner,
 		private val filter: MangaListFilter?,
 		private val sortOrder: SortOrder?,
+		private val transientSort: Boolean,
 	) : Runnable {
 
 		override fun run() {
 			if (sortOrder != null) {
-				filterOwner.filterCoordinator.setSortOrder(sortOrder)
+				if (transientSort) filterOwner.filterCoordinator.setSessionSortOrder(sortOrder)
+				else filterOwner.filterCoordinator.setSortOrder(sortOrder)
 			}
 			if (filter != null) {
 				filterOwner.filterCoordinator.setAdjusted(filter)

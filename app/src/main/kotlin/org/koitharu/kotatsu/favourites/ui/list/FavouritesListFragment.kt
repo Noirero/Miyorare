@@ -1509,6 +1509,11 @@ class FavouritesListFragment : MangaListFragment() {
 					child.findViewById<View>(R.id.chips_tags) != null
 				) continue
 				if (shouldDrawGlow) {
+				val viewType = parent.getChildViewHolder(child).itemViewType
+				if (viewType == ListItemType.STATE_LOADING.ordinal ||
+					viewType == ListItemType.FOOTER_LOADING.ordinal ||
+					child.getTag(R.id.tag_favourites_cover_pending) == true
+				) continue
 					bounds.set(
 						child.left + glowInset + child.translationX,
 						child.top + glowInset + child.translationY,

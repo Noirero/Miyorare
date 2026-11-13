@@ -138,7 +138,10 @@ class TrackerCatalogActivity : BaseActivity<ActivityTrackerCatalogBinding>() {
 							onItem = { startActivity(detailsIntent(this, it)) },
 							onProviderPage = { state.details?.item?.providerUrl?.let { router.openExternalBrowser(it) } },
 							onRead = viewModel::read,
-							onAllSources = { viewModel.startResolution(allSources = true) },
+							onScope = viewModel::startResolution,
+							onOpenSourcePicker = viewModel::openSourcePicker,
+							onCloseSourcePicker = viewModel::closeSourcePicker,
+							onRetryResolution = viewModel::retryResolution,
 							onCloseResolution = viewModel::closeResolution,
 							onGlobalSearch = {
 							viewModel.closeResolution()

@@ -6,6 +6,7 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.recyclerview.widget.RecyclerView
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getLanguageCode
+import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.widgets.TipView
@@ -17,6 +18,7 @@ import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.adapter.emptyStateListAD
 import org.koitharu.kotatsu.list.ui.adapter.loadingStateAD
 import org.koitharu.kotatsu.list.ui.adapter.tipAD
+import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.TipModel
@@ -73,6 +75,9 @@ class ExploreAdapter(
 	private var hostContext: Context? = null
 	private var selectedOrigin = ExploreSourceOriginFilter.ALL
 	private var selectedLanguage: String? = null
+	private var sourceQuery = ""
+	private val isSearchingSources get() = sourceQuery.isNotEmpty()
+	var onSourceItemsCommitted: (() -> Unit)? = null
 	private var pinnedSectionExpanded = true
 	private val collapsedSourceSections = mutableSetOf<ExploreSourceSection>()
 	private val collapsedPluginOrigins = mutableSetOf<ExploreSourceOrigin>()
@@ -84,11 +89,13 @@ class ExploreAdapter(
 		override fun onListHeaderClick(item: ListHeader, view: View) {
 			when (val payload = item.payload) {
 				is ExplorePinnedHeaderPayload -> {
+					if (isSearchingSources) return
 					pinnedSectionExpanded = !pinnedSectionExpanded
 					refreshSourceSections()
 				}
 
 				is ExploreSourceSectionHeaderPayload -> {
+					if (isSearchingSources) return
 					if (!collapsedSourceSections.add(payload.section)) {
 						collapsedSourceSections.remove(payload.section)
 					}
@@ -96,6 +103,7 @@ class ExploreAdapter(
 				}
 
 				is ExploreSourceOriginHeaderPayload -> {
+					if (isSearchingSources) return
 					if (!collapsedPluginOrigins.add(payload.origin)) {
 						collapsedPluginOrigins.remove(payload.origin)
 					}
@@ -103,6 +111,7 @@ class ExploreAdapter(
 				}
 
 				is ExploreSourceLanguageHeaderPayload -> {
+					if (isSearchingSources) return
 					if (!expandedLanguageGroups.add(payload.group)) {
 						expandedLanguageGroups.remove(payload.group)
 					}
@@ -140,6 +149,18 @@ class ExploreAdapter(
 		rebuildStickyLanguageTitles(displayed)
 	}
 
+	fun submitSourceItems(value: List<ListModel>) {
+		rawItems = value
+		refreshSourceSections()
+	}
+
+	fun setSourceQuery(query: String) {
+		val normalized = query.trim()
+		if (sourceQuery == normalized) return
+		sourceQuery = normalized
+		refreshSourceSections()
+	}
+
 	override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
 		super.onAttachedToRecyclerView(recyclerView)
 		hostContext = recyclerView.context
@@ -163,8 +184,10 @@ class ExploreAdapter(
 	private fun refreshSourceSections() {
 		if (hostContext == null || rawItems.isEmpty()) return
 		val displayed = buildDisplayedItems(rawItems)
-		setItems(displayed)
-		rebuildStickyLanguageTitles(displayed)
+		setItems(displayed) {
+			rebuildStickyLanguageTitles(displayed)
+			onSourceItemsCommitted?.invoke()
+		}
 	}
 
 	private fun rebuildStickyLanguageTitles(displayed: List<ListModel>) {
@@ -214,11 +237,17 @@ class ExploreAdapter(
 		selectedLanguage?.let { language ->
 			if (language !in availableLanguages) selectedLanguage = null
 		}
-		val filteredSources = selectedLanguage?.let { language ->
+		val languageFiltered = selectedLanguage?.let { language ->
 			originFiltered.filter { item ->
 				normalizeLanguageCode(item.source.mangaSource.getLanguageCode()) == language
 			}
 		} ?: originFiltered
+		// Apply the query after eligibility filters so typing never invalidates those selections.
+		val filteredSources = if (isSearchingSources) {
+			languageFiltered.filter { it.source.getTitle(context).contains(sourceQuery, ignoreCase = true) }
+		} else {
+			languageFiltered
+		}
 		val pinned = filteredSources.filter { it.source.isPinned }
 		val sources = filteredSources.filterNot { it.source.isPinned }
 
@@ -239,6 +268,10 @@ class ExploreAdapter(
 
 		return buildList(items.size + 18) {
 			add(ExploreSourceFiltersItem(selectedOrigin, selectedLanguage))
+			if (isSearchingSources && filteredSources.isEmpty()) {
+				add(EmptyState(R.drawable.ic_empty_common, R.string.nothing_found, 0, 0))
+				return@buildList
+			}
 			appendPinnedSection(pinned)
 			appendSourceSection(context, ExploreSourceSection.MIYORARE_PACKS, miyorare)
 			appendSourceSection(context, ExploreSourceSection.EXTENSION_STORE, store)
@@ -249,16 +282,17 @@ class ExploreAdapter(
 
 	private fun MutableList<ListModel>.appendPinnedSection(sources: List<MangaSourceItem>) {
 		if (sources.isEmpty()) return
+		val expanded = isSearchingSources || pinnedSectionExpanded
 		add(
 			ListHeader(
 				textRes = R.string.pinned_sources,
 				payload = ExplorePinnedHeaderPayload(
-					expanded = pinnedSectionExpanded,
+					expanded = expanded,
 					sourceCount = sources.size,
 				),
 			),
 		)
-		if (pinnedSectionExpanded) addAll(sources)
+		if (expanded) addAll(sources)
 	}
 
 	private fun MutableList<ListModel>.appendSourceSection(
@@ -267,7 +301,7 @@ class ExploreAdapter(
 		sources: List<MangaSourceItem>,
 	) {
 		if (sources.isEmpty()) return
-		val expanded = section !in collapsedSourceSections
+		val expanded = isSearchingSources || section !in collapsedSourceSections
 		val family = when (section) {
 			ExploreSourceSection.MIYORARE_PACKS -> ExploreSourceFamily.MIYORARE_PACKS
 			ExploreSourceSection.EXTENSION_STORE -> ExploreSourceFamily.EXTENSION_STORE
@@ -295,7 +329,7 @@ class ExploreAdapter(
 		PLUGIN_ORIGIN_ORDER.forEach { origin ->
 			val originSources = sources.filter { it.exploreSourceOrigin() == origin }
 			if (originSources.isEmpty()) return@forEach
-			val expanded = origin !in collapsedPluginOrigins
+			val expanded = isSearchingSources || origin !in collapsedPluginOrigins
 			add(
 				ListHeader(
 					textRes = origin.titleRes(),
@@ -333,7 +367,7 @@ class ExploreAdapter(
 				),
 			)
 
-		if (scope !in initializedLanguageScopes) {
+		if (!isSearchingSources && scope !in initializedLanguageScopes) {
 			val initialLanguage = languageGroups.firstOrNull { it.key == preferredLanguage }?.key
 				?: languageGroups.firstOrNull()?.key
 			if (initialLanguage != null) {
@@ -344,7 +378,7 @@ class ExploreAdapter(
 
 		languageGroups.forEach { (language, languageSources) ->
 			val group = ExploreSourceLanguageGroup(scope, language)
-			val languageExpanded = group in expandedLanguageGroups
+			val languageExpanded = isSearchingSources || group in expandedLanguageGroups
 			val flag = getExternalExtensionLanguageFlag(language)
 			val languageTitle = buildString {
 				if (flag.isNotBlank()) {

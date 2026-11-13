@@ -64,6 +64,8 @@ fun SettingsItem(
 	accentColor: Color? = null,
 	onClick: (() -> Unit)? = null,
 	hapticEffect: HapticEffect? = null,
+	// Specialized content shares the card surface, click behavior and Settings Search highlight.
+	contentOverride: @Composable (() -> Unit)? = null,
 	trailing: @Composable (() -> Unit)? = null,
 ) {
 	val visualPalette = LocalMiyorareVisualPalette.current
@@ -135,6 +137,10 @@ fun SettingsItem(
 				),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
+			if (contentOverride != null) {
+				contentOverride()
+				return@Row
+			}
 			if (icon != null) {
 				when {
 					modernIcons -> SettingsIconModern(

@@ -6,9 +6,7 @@
 	<item
 		android:id="@+id/action_source_search"
 		android:icon="@drawable/ic_search"
-		android:title="@string/explore_search_sources"
-		app:actionViewClass="androidx.appcompat.widget.SearchView"
-		app:showAsAction="ifRoom|collapseActionView" />
+		android:title="@string/explore_search_sources" />
 
 	<!-- This controls whether NSFW sources may appear at all; the visible header buttons below remain
 	     the actual All / SFW / NSFW content filter. -->

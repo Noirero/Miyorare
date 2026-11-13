@@ -7,6 +7,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
+import eu.kanade.tachiyomi.source.CatalogueSource
+import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import kotlinx.coroutines.flow.MutableSharedFlow
 import org.junit.After
 import org.junit.Assert.*
@@ -16,6 +18,8 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.discovery.ui.*
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
+import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService as Service
 
 class DiscoveryCatalogUiTest {
@@ -98,7 +102,7 @@ class DiscoveryCatalogUiTest {
 
 	@androidx.compose.runtime.Composable
 	private fun screen(state: CatalogScreenState, onRead: () -> Unit = {}, onSource: (org.koitharu.kotatsu.parsers.model.Manga) -> Unit = {}, onSearch: () -> Unit = {}, onNext: () -> Unit = {}, onGlobal: () -> Unit = {}, onProvider: () -> Unit = {}) {
-		TrackerCatalogScreen(state, null, loader, {}, {}, onSearch, {}, {}, onNext, {}, onProvider, onRead, {}, {}, onGlobal, onSource)
+		TrackerCatalogScreen(state, null, loader, {}, {}, onSearch, {}, {}, onNext, {}, onProvider, onRead, { _, _ -> }, {}, onGlobal, onSource)
 	}
 
 	@Test fun searchAndSeeAllUseCatalogueCardsAndRealPaginationAction() {
@@ -130,8 +134,115 @@ class DiscoveryCatalogUiTest {
 		var fallback = false
 		compose.setContent { MaterialTheme { screen(state.value, onGlobal = { fallback = true }) } }
 		compose.onNodeWithText("Another source result").assertExists()
-		compose.runOnIdle { state.value = state.value.copy(resolution = CatalogResolutionState(visible = true)) }
+		compose.runOnIdle { state.value = state.value.copy(resolution = CatalogResolutionState(visible = true, canExpand = true)) }
 		compose.onNodeWithTag("catalog_source_empty").assertExists(); compose.onNodeWithTag("catalog_all_sources").assertExists()
+		compose.runOnIdle { state.value = state.value.copy(resolution = CatalogResolutionState(visible = true, canExpand = false)) }
+		compose.onNodeWithTag("catalog_all_sources").assertDoesNotExist()
 		compose.onNodeWithTag("catalog_global_search").performClick(); assertTrue(fallback)
 	}
+
+	@Test fun readingSourcePickerSelectsOneScopeWithoutOpeningManga() {
+		val descriptor = TsukiSourceDescriptor("fixture-source", "Same catalogue", "en", "MANGA")
+		val pinned = readingSourceFixture(TsukiPluginProvider.MIYORARE, descriptor)
+		val source = readingSourceFixture(TsukiPluginProvider.GEKKOUSHI, descriptor)
+		val picker = mutableStateOf(CatalogSourcePickerState(
+			visible = true, sources = listOf(CatalogReadingSource(pinned, pinned = true), CatalogReadingSource(source, pinned = false)),
+		))
+		val resolution = mutableStateOf(CatalogResolutionState(visible = true))
+		var selected: CatalogSearchScope? = null
+		var opened = false
+		compose.setContent {
+			MaterialTheme {
+				CatalogReadingSourceSheet(
+					resolution = resolution.value,
+					picker = picker.value,
+					imageLoader = loader,
+					onScope = { scope, label ->
+						selected = scope
+						resolution.value = resolution.value.copy(scope = scope, sourceLabel = label)
+						picker.value = CatalogSourcePickerState()
+					},
+					onOpenPicker = {},
+					onClosePicker = {},
+					onDismiss = {},
+					onRetry = {},
+					onGlobalSearch = {},
+					onSource = { opened = true },
+				)
+			}
+		}
+		compose.onNodeWithTag("catalog_scope_source_query").performScrollTo().performTextInput("no-such-source")
+		compose.onNodeWithTag("catalog_scope_source_query").performTextClearance()
+		val list = compose.onNodeWithTag("catalog_scope_picker")
+		list.performScrollToKey(pinned.name)
+		compose.onNodeWithText(context.getString(R.string.hub_scope_pinned_section, 1)).assertExists()
+		val pinnedRow = hasTestTag("catalog_scope_option_${pinned.name}")
+		compose.onNode(
+			hasText(context.getString(R.string.explore_source_origin_miyorare_pack)) and hasAnyAncestor(pinnedRow),
+			useUnmergedTree = true,
+		).assertIsDisplayed()
+		list.performScrollToKey(source.name)
+		compose.onNodeWithText(context.getString(R.string.hub_scope_other_section, 1)).assertExists()
+		val selectedRow = hasTestTag("catalog_scope_option_${source.name}")
+		compose.onNode(
+			hasText(context.getString(R.string.explore_source_origin_gekkoushi)) and hasAnyAncestor(selectedRow),
+			useUnmergedTree = true,
+		).assertIsDisplayed()
+		compose.onNode(selectedRow).performClick()
+		compose.onNode(
+			hasText(context.getString(
+				R.string.hub_scope_source_with_origin,
+				descriptor.title,
+				context.getString(R.string.explore_source_origin_gekkoushi),
+			)) and hasAnyAncestor(hasTestTag("catalog_source_scope")),
+			useUnmergedTree = true,
+		).assertIsDisplayed()
+		compose.runOnIdle {
+			assertEquals(CatalogSearchScope.Single(source.name), selected)
+			assertFalse(opened)
+		}
+	}
+
+	@Test fun storeLanguagesExpandWithoutSearchAndSelectTheExactVariant() {
+		fun store(id: Long, language: String, pkg: String = "fixture.akuma") =
+			MihonMangaSource(object : CatalogueSource {
+				override val id = id
+				override val name = "Akuma"
+				override val lang = language
+			}, pkg)
+		val all = store(1001, "all")
+		val english = store(1002, "en")
+		val indonesian = store(1003, "id")
+		val otherPackage = store(1004, "en", "other.akuma")
+		val sources = listOf(all, english, indonesian, otherPackage).map {
+			CatalogReadingSource(it, pinned = it == english)
+		}
+		var selected: CatalogSearchScope? = null
+		compose.setContent {
+			MaterialTheme {
+				CatalogReadingSourceSheet(
+					resolution = CatalogResolutionState(visible = true),
+					picker = CatalogSourcePickerState(visible = true, sources = sources),
+					imageLoader = loader,
+					onScope = { scope, _ -> selected = scope },
+					onOpenPicker = {}, onClosePicker = {}, onDismiss = {}, onRetry = {},
+					onGlobalSearch = {}, onSource = { error("A picker row must not open manga") },
+				)
+			}
+		}
+		val group = "store:fixture.akuma:Akuma"
+		val list = compose.onNodeWithTag("catalog_scope_picker")
+		list.performScrollToKey(group)
+		compose.onNodeWithText("Akuma (3)").assertExists()
+		compose.onNodeWithTag("catalog_scope_option_${indonesian.name}").assertDoesNotExist()
+		list.performScrollToKey(otherPackage.name)
+		compose.onNodeWithTag("catalog_scope_option_${otherPackage.name}").assertExists()
+		list.performScrollToKey(group)
+		compose.onNodeWithTag("catalog_scope_group_$group").performClick()
+		compose.runOnIdle { assertNull(selected) }
+		list.performScrollToKey(indonesian.name)
+		compose.onNodeWithTag("catalog_scope_option_${indonesian.name}").performClick()
+		compose.runOnIdle { assertEquals(CatalogSearchScope.Single(indonesian.name), selected) }
+	}
+
 }
