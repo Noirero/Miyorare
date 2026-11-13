@@ -17,4 +17,24 @@
 	<string name="about_verbose_logging_title">Verbose logging</string>
 	<string name="about_verbose_logging_enabled_summary">Recording — turn off to save log as .txt</string>
 	<string name="about_verbose_logging_disabled_summary">Off by default to preserve performance</string>
+
+	<string name="about_this_project_section">MIYORARE (THIS PROJECT)</string>
+	<string name="about_upstream_section">UPSTREAM &amp; CREDITS</string>
+	<string name="about_miyorare_project_summary">Independently maintained manga reader</string>
+	<string name="about_kotatsu_project_summary">Manga reader and parser ecosystem</string>
+	<string name="about_mihon_project_summary">Manga reader and extension ecosystem</string>
+	<string name="about_lnreader_project_summary">Light novel reader for Android</string>
+	<string name="about_tachiyomi_project_summary">Discontinued manga reader</string>
+	<string name="about_project_link_description">%1$s · %2$s</string>
+	<string name="about_kotatsu_name" translatable="false">Kotatsu</string>
+	<string name="about_mihon_name" translatable="false">Mihon</string>
+	<string name="about_lnreader_name" translatable="false">LNReader</string>
+	<string name="about_tachiyomi_name" translatable="false">Tachiyomi</string>
+	<string name="about_github_label" translatable="false">GitHub</string>
+	<string name="about_url_kotatsu_github" translatable="false">https://github.com/KotatsuApp/Kotatsu</string>
+	<string name="about_url_mihon_github" translatable="false">https://github.com/mihonapp/mihon</string>
+	<string name="about_url_mihon_discord" translatable="false">https://discord.gg/mihon</string>
+	<string name="about_url_lnreader_github" translatable="false">https://github.com/lnreader/lnreader</string>
+	<string name="about_url_lnreader_discord" translatable="false">https://discord.com/invite/QdcWN4MD63</string>
+	<string name="about_url_tachiyomi_github" translatable="false">https://github.com/tachiyomiorg</string>
 </resources>
