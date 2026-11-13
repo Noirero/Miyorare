@@ -26,7 +26,7 @@
 	<string name="about_lnreader_project_summary">Light novel reader for Android</string>
 	<string name="about_tachiyomi_project_summary">Discontinued manga reader</string>
 	<string name="about_project_link_description">%1$s · %2$s</string>
-	<string name="about_kotatsu_name" translatable="false">Kotatsu</string>
+	<string name="about_kotatsu_name" translatable="false">Kotatsu / Kotatsu-Redo</string>
 	<string name="about_mihon_name" translatable="false">Mihon</string>
 	<string name="about_lnreader_name" translatable="false">LNReader</string>
 	<string name="about_tachiyomi_name" translatable="false">Tachiyomi</string>
@@ -37,4 +37,16 @@
 	<string name="about_url_lnreader_github" translatable="false">https://github.com/lnreader/lnreader</string>
 	<string name="about_url_lnreader_discord" translatable="false">https://discord.com/invite/QdcWN4MD63</string>
 	<string name="about_url_tachiyomi_github" translatable="false">https://github.com/tachiyomiorg</string>
+	<string name="about_tsuki_uma_gekkoushi_summary">Repositories and community</string>
+	<string name="about_tsuki_uma_gekkoushi_name" translatable="false">Tsuki / UMA / Gekkoushi</string>
+	<string name="about_github_kotatsu_label" translatable="false">GitHub Kotatsu</string>
+	<string name="about_github_kotatsu_redo_label" translatable="false">GitHub Kotatsu-Redo</string>
+	<string name="about_discord_kotatsu_redo_label" translatable="false">Discord Kotatsu-Redo</string>
+	<string name="about_github_uma_label" translatable="false">GitHub UMA</string>
+	<string name="about_github_gekkoushi_label" translatable="false">GitHub Gekkoushi</string>
+	<string name="about_url_kotatsu_redo_github" translatable="false">https://github.com/Kotatsu-Redo/Kotatsu-Redo</string>
+	<string name="about_url_kotatsu_redo_discord" translatable="false">https://discord.gg/YNRHp7GwXu</string>
+	<string name="about_url_uma_github" translatable="false">https://github.com/InvalidDavid/UMA</string>
+	<string name="about_url_gekkoushi_github" translatable="false">https://github.com/Gekkoushi/plugin</string>
+	<string name="about_url_tsuki_uma_gekkoushi_discord" translatable="false">https://discord.gg/CyJeVDP7Cw</string>
 </resources>
