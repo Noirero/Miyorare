@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.explore.ui
 
 import android.os.Bundle
+import android.view.View
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +22,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowInsetsCompat
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import dagger.hilt.android.AndroidEntryPoint
@@ -66,6 +68,8 @@ class SourceOverviewActivity : BaseActivity<ActivitySourceOverviewBinding>() {
             }
         }
     }
+
+    override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat = insets
 
     override fun isNsfwContent() = model.state.map { it.source.isNsfw() }
 

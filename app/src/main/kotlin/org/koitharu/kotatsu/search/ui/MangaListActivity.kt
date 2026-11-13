@@ -247,7 +247,12 @@ class MangaListActivity :
 	private fun reloadList(newSource: MangaSource) {
 		supportFragmentManager.commit {
 			setReorderingAllowed(true)
-			replace(R.id.container, RemoteListFragment.newInstance(newSource))
+			val fragment = RemoteListFragment.newInstance(newSource)
+			replace(R.id.container, fragment)
+			if (intent.getBooleanExtra(SourceOverviewActivity.EXTRA_TRANSIENT_SORT, false)) {
+				val order = intent.getSerializableExtraCompat<SortOrder>(AppRouter.KEY_SORT_ORDER)
+				runOnCommit { order?.let(fragment.filterCoordinator::setSessionSortOrder) }
+			}
 			// The filter header/side capture their FilterCoordinator at creation, so recreate them
 			// too — otherwise they keep driving the old source's list.
 			if (viewBinding.containerFilterHeader != null) {
@@ -313,6 +318,9 @@ class MangaListActivity :
 		val fm = supportFragmentManager
 		val existingFragment = fm.findFragmentById(R.id.container)
 		if (existingFragment is FilterCoordinator.Owner) {
+			if (intent.getBooleanExtra(SourceOverviewActivity.EXTRA_TRANSIENT_SORT, false)) {
+				sortOrder?.let(existingFragment.filterCoordinator::setSessionSortOrder)
+			}
 			initFilter(existingFragment)
 		} else {
 			fm.commit {

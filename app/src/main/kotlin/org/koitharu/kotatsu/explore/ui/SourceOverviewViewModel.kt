@@ -48,7 +48,7 @@ class SourceOverviewViewModel @Inject constructor(
                     Triple(source, repository, sourceShelfOrders(repository.resolveCatalogSortOrders()))
                 }
                 sources.trackUsage(source)
-                mutableState.value = State(source, orders.map(::Shelf), loading = false, openCatalog = orders.isEmpty())
+                mutableState.value = State(source, orders.map { Shelf(it) }, loading = false, openCatalog = orders.isEmpty())
                 for (order in orders) {
                     val shelf = try {
                         val entries = withContext(Dispatchers.IO) {
