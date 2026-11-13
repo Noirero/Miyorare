@@ -43,6 +43,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.nav.router
@@ -288,6 +289,7 @@ class ExploreFragment :
 			this,
 			mangaClickListener = { manga, _ -> router.openDetails(manga) },
 			onTipClose = { viewModel.dismissLanguageTip() },
+			traceLanguage = { event, detail -> traceLanguageScroll(recyclerView, event, detail) },
 		)
 		with(recyclerView) {
 			this.adapter = adapter
@@ -298,6 +300,10 @@ class ExploreFragment :
 			applyLayoutManager(viewModel.isGrid.value)
 			applyExplorePageInsets(this)
 			addOnScrollListener(object : RecyclerView.OnScrollListener() {
+				override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+					traceLanguageScroll(recyclerView, "scroll_state", "state=$newState")
+				}
+
 				override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
 					if (viewBinding?.pager?.currentItem == pageIndex) {
 						updateStickyLanguageHeader(recyclerView)
@@ -373,6 +379,19 @@ class ExploreFragment :
 		)
 	}
 
+	private fun traceLanguageScroll(recyclerView: RecyclerView, event: String, detail: String) {
+		if (!org.koitharu.kotatsu.BuildConfig.DEBUG) return
+		val manager = recyclerView.layoutManager as? LinearLayoutManager
+		val first = manager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
+		val top = manager?.findViewByPosition(first)?.top
+		PerformanceDiagnostics.captureDiagnostic(
+			"explore_language_scroll", event, this,
+			"page=${pages.indexOf(recyclerView)} adapter=${System.identityHashCode(recyclerView.adapter)} " +
+				"orientation=${resources.configuration.orientation} scroll=${recyclerView.scrollState} " +
+				"first=$first top=$top count=${recyclerView.adapter?.itemCount} $detail",
+		)
+	}
+
 	private fun updateStickyLanguageHeader(recyclerView: RecyclerView?) {
 		val binding = viewBinding ?: return
 		val layoutManager = recyclerView?.layoutManager as? LinearLayoutManager
@@ -380,6 +399,9 @@ class ExploreFragment :
 		val firstVisiblePosition = layoutManager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
 		val title = adapter?.getStickyLanguageTitle(firstVisiblePosition)
 		if (binding.stickyLanguageHeader.text != title) {
+			if (recyclerView != null) {
+				traceLanguageScroll(recyclerView, "sticky_change", "visible=${!title.isNullOrBlank()}")
+			}
 			binding.stickyLanguageHeader.text = title
 		}
 		val visible = !title.isNullOrBlank()

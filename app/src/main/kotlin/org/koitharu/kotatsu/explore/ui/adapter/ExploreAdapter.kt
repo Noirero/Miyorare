@@ -67,6 +67,7 @@ class ExploreAdapter(
 	clickListener: OnListItemClickListener<MangaSourceItem>,
 	mangaClickListener: OnListItemClickListener<Manga>,
 	onTipClose: (TipModel) -> Unit,
+	private val traceLanguage: (String, String) -> Unit = { _, _ -> },
 ) : BaseListAdapter<ListModel>() {
 
 	private var rawItems: List<ListModel> = emptyList()
@@ -103,6 +104,9 @@ class ExploreAdapter(
 				}
 
 				is ExploreSourceLanguageHeaderPayload -> {
+					val wasExpanded = payload.group in expandedLanguageGroups
+					traceLanguage("language_click",
+						"${payload.group.traceKey()} from=$wasExpanded to=${!wasExpanded} target=${view.javaClass.simpleName}")
 					if (!expandedLanguageGroups.add(payload.group)) {
 						expandedLanguageGroups.remove(payload.group)
 					}
@@ -136,6 +140,7 @@ class ExploreAdapter(
 	override suspend fun emit(value: List<ListModel>?) {
 		rawItems = value.orEmpty()
 		val displayed = buildDisplayedItems(rawItems)
+		traceLanguage("items_emitted", "raw=${rawItems.size} displayed=${displayed.size} expanded=${expandedLanguageGroups.size}")
 		super.emit(displayed)
 		rebuildStickyLanguageTitles(displayed)
 	}
@@ -159,6 +164,9 @@ class ExploreAdapter(
 	 */
 	fun getStickyLanguageTitle(firstVisiblePosition: Int): CharSequence? =
 		stickyLanguageTitles.getOrNull(firstVisiblePosition)
+
+	private fun ExploreSourceLanguageGroup.traceKey(): String =
+		"section=${scope.section.name} origin=${scope.origin?.name ?: "none"} lang=${language.take(20)}"
 
 	private fun refreshSourceSections() {
 		if (hostContext == null || rawItems.isEmpty()) return
@@ -337,7 +345,9 @@ class ExploreAdapter(
 			val initialLanguage = languageGroups.firstOrNull { it.key == preferredLanguage }?.key
 				?: languageGroups.firstOrNull()?.key
 			if (initialLanguage != null) {
-				expandedLanguageGroups += ExploreSourceLanguageGroup(scope, initialLanguage)
+				val group = ExploreSourceLanguageGroup(scope, initialLanguage)
+				traceLanguage("language_initial", "${group.traceKey()} to=true")
+				expandedLanguageGroups += group
 			}
 			initializedLanguageScopes += scope
 		}
@@ -422,6 +432,7 @@ class ExploreAdapter(
 					collapsedSourceSections.clear()
 					collapsedPluginOrigins.clear()
 					initializedLanguageScopes.clear()
+					traceLanguage("language_reset", "reason=origin_filter expanded=${expandedLanguageGroups.size}")
 					expandedLanguageGroups.clear()
 					refreshSourceSections()
 				}
