@@ -7,21 +7,28 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,10 +37,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -59,6 +70,7 @@ import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.CategoryPalette
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
+import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
 import org.koitharu.kotatsu.settings.developer.DeveloperToolsFragment
@@ -190,8 +202,6 @@ private fun AboutScreen(
 	val updateColors = CategoryPalette.forKey("downloads")
 	val whatsNewColors = CategoryPalette.forKey("favourites")
 	val changelogColors = CategoryPalette.forKey("services")
-	val sourceColors = CategoryPalette.forKey("about")
-	val discordColors = CategoryPalette.forKey("services")
 	val loggingColors = CategoryPalette.forKey("downloads")
 	val developerColors = CategoryPalette.forKey("extensions")
 
@@ -234,50 +244,7 @@ private fun AboutScreen(
 			}
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
-		item {
-			SettingsGroup(title = stringResource(R.string.about_project_community_section)) {
-				item { pos ->
-					ActionSettingsItem(
-						title = stringResource(R.string.source_code),
-						subtitle = stringResource(R.string.about_source_code_summary),
-						icon = R.drawable.ic_github,
-						iconColors = sourceColors,
-						shape = pos.shape,
-						onClick = { onOpenLink(R.string.url_github, R.string.source_code) },
-					)
-				}
-				item { pos ->
-					ActionSettingsItem(
-						title = stringResource(R.string.about_license_title),
-						subtitle = stringResource(R.string.about_license_summary),
-						icon = R.drawable.ic_info_outline,
-						iconColors = sourceColors,
-						shape = pos.shape,
-						onClick = { onOpenLink(R.string.url_project_license, R.string.about_license_title) },
-					)
-				}
-				item { pos ->
-					ActionSettingsItem(
-						title = stringResource(R.string.about_credits_title),
-						subtitle = stringResource(R.string.about_credits_summary),
-						icon = R.drawable.ic_github,
-						iconColors = sourceColors,
-						shape = pos.shape,
-						onClick = { onOpenLink(R.string.url_project_credits, R.string.about_credits_title) },
-					)
-				}
-				item { pos ->
-					ActionSettingsItem(
-						title = stringResource(R.string.discord),
-						subtitle = stringResource(R.string.about_discord_summary),
-						icon = R.drawable.ic_discord,
-						iconColors = discordColors,
-						shape = pos.shape,
-						onClick = { onOpenLink(R.string.url_discord_web, R.string.discord) },
-					)
-				}
-			}
-		}
+		item { AboutProjectCommunity(onOpenLink) }
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
 			SettingsGroup(title = stringResource(R.string.about_advanced_section)) {
@@ -309,6 +276,126 @@ private fun AboutScreen(
 			}
 		}
 		item { Spacer(Modifier.height(24.dp).fillMaxWidth()) }
+	}
+}
+
+
+private data class AboutProject(
+	@StringRes val title: Int,
+	@StringRes val summary: Int,
+	@DrawableRes val icon: Int,
+	@StringRes val github: Int,
+	@StringRes val discord: Int? = null,
+)
+
+private val miyorareProject = AboutProject(
+	R.string.about_brand_name, R.string.about_miyorare_project_summary,
+	R.drawable.ic_launcher_main_art, R.string.url_github, R.string.url_discord_web,
+)
+
+private val upstreamProjects = listOf(
+	AboutProject(
+		R.string.about_kotatsu_name, R.string.about_kotatsu_project_summary,
+		R.drawable.ic_manga_source, R.string.about_url_kotatsu_github,
+	),
+	AboutProject(
+		R.string.about_mihon_name, R.string.about_mihon_project_summary,
+		R.drawable.ic_manga_source, R.string.about_url_mihon_github, R.string.about_url_mihon_discord,
+	),
+	AboutProject(
+		R.string.about_lnreader_name, R.string.about_lnreader_project_summary,
+		R.drawable.ic_book_page, R.string.about_url_lnreader_github, R.string.about_url_lnreader_discord,
+	),
+	AboutProject(
+		R.string.about_tachiyomi_name, R.string.about_tachiyomi_project_summary,
+		R.drawable.ic_manga_source, R.string.about_url_tachiyomi_github,
+	),
+)
+
+@Composable
+private fun AboutProjectCommunity(onOpenLink: (Int, Int) -> Unit) {
+	Column {
+		SettingsGroup(title = stringResource(R.string.about_project_community_section)) {}
+		SettingsGroup(title = stringResource(R.string.about_this_project_section)) {
+			item { pos -> AboutProjectCard(miyorareProject, pos.shape, onOpenLink) }
+		}
+		SettingsGroup(title = stringResource(R.string.about_upstream_section)) {
+			upstreamProjects.forEach { project ->
+				item { pos -> AboutProjectCard(project, pos.shape, onOpenLink) }
+			}
+			item { pos ->
+				ActionSettingsItem(
+					title = stringResource(R.string.about_license_title),
+					subtitle = stringResource(R.string.about_license_summary),
+					icon = R.drawable.ic_info_outline,
+					iconColors = CategoryPalette.forKey("about"),
+					shape = pos.shape,
+					onClick = { onOpenLink(R.string.url_project_license, R.string.about_license_title) },
+				)
+			}
+		}
+	}
+}
+
+@Composable
+private fun AboutProjectCard(project: AboutProject, shape: Shape, onOpenLink: (Int, Int) -> Unit) {
+	val title = stringResource(project.title)
+	BoxWithConstraints(Modifier.fillMaxWidth()) {
+		val inline = maxWidth >= 350.dp && LocalDensity.current.fontScale <= 1.05f
+		val actions: @Composable () -> Unit = { AboutProjectActions(project, title, onOpenLink) }
+		SettingsItem(
+			title = title,
+			modifier = Modifier.fillMaxWidth(),
+			subtitle = stringResource(project.summary),
+			icon = project.icon,
+			iconColors = CategoryPalette.forKey("about"),
+			tintIcon = project != miyorareProject,
+			shape = shape,
+			supportingContent = if (inline) null else {
+				{
+					Spacer(Modifier.height(4.dp))
+					actions()
+				}
+			},
+			trailing = if (inline) actions else null,
+		)
+	}
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AboutProjectActions(project: AboutProject, title: String, onOpenLink: (Int, Int) -> Unit) {
+	FlowRow(
+		horizontalArrangement = Arrangement.spacedBy(6.dp),
+		verticalArrangement = Arrangement.spacedBy(4.dp),
+	) {
+		AboutProjectLink(R.string.about_github_label, R.drawable.ic_github, title) {
+			onOpenLink(project.github, project.title)
+		}
+		project.discord?.let { url ->
+			AboutProjectLink(R.string.discord, R.drawable.ic_discord, title) {
+				onOpenLink(url, project.title)
+			}
+		}
+	}
+}
+
+@Composable
+private fun AboutProjectLink(
+	@StringRes label: Int,
+	@DrawableRes icon: Int,
+	projectTitle: String,
+	onClick: () -> Unit,
+) {
+	val text = stringResource(label)
+	val description = stringResource(R.string.about_project_link_description, projectTitle, text)
+	OutlinedButton(
+		onClick = onClick,
+		modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = description },
+		contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+	) {
+		Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(16.dp))
+		Text(text, modifier = Modifier.padding(start = 4.dp))
 	}
 }
 
