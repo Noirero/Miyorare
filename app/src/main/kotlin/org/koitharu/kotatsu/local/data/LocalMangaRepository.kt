@@ -315,10 +315,17 @@ class LocalMangaRepository @Inject constructor(
 		withDetails: Boolean,
 		space: FavouriteSpace? = null,
 	): LocalManga? = withContext(Dispatchers.IO) {
+		// Inference uses the artifact's path, not just whether active roots differ. Historical
+		// roots can still overlap even after Normal and Private are configured separately.
+		val otherRoots = space?.let {
+			downloadDestinationStore.readableRoots(if (it == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL)
+		}.orEmpty()
 		val hints = favouriteDownloadOwnershipIndex.pathsForManga(remote.id) + listOfNotNull(localMangaIndex.findIndexedPath(remote.id))
 		for (hint in hints.distinct()) {
 			if (!hint.isInsideAny(roots)) continue
-			findExhentaiAtPath(remote, hint, withDetails, space)?.takeIf { it.verified }?.let {
+			findExhentaiAtPath(remote, hint, withDetails, space)?.takeIf {
+				it.verified && !it.local.file.isInsideAny(otherRoots)
+			}?.let {
 				return@withContext it.local
 			}
 		}
@@ -326,17 +333,32 @@ class LocalMangaRepository @Inject constructor(
 		for (root in roots) {
 			for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote)) {
 				val match = findExhentaiAtPath(remote, path, withDetails, space) ?: continue
+				if (match.local.file.isInsideAny(otherRoots)) continue
 				if (match.verified) return@withContext match.local
 				if (legacy == null) legacy = match.local
 			}
 		}
+		// Publication may survive process death before the Room alias is recorded. Recover
+		// only one independently verified artifact; never guess between same-gallery copies.
+		val recovered = LinkedHashMap<File, LocalManga>()
+		for (root in roots) {
+			for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote, recoverSuffixes = true)) {
+				val match = findExhentaiAtPath(remote, path, withDetails, space) ?: continue
+				if (!match.verified || match.local.file.isInsideAny(otherRoots)) continue
+				recovered[match.local.file.canonicalFile] = match.local
+				if (recovered.size > 1) return@withContext null
+			}
+		}
+		recovered.values.singleOrNull()?.let { return@withContext it }
 		if (legacy != null) return@withContext legacy
 		for (root in roots) {
 			val path = org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver.findUniqueDirectory(
 				root, remote.source.name, remote.title, remote.publicUrl, remote.url,
 			) ?: continue
 			if (!path.isInsideAny(listOf(root))) continue
-			findExhentaiAtPath(remote, path, withDetails, space)?.let { return@withContext it.local }
+			findExhentaiAtPath(remote, path, withDetails, space)?.let {
+				if (!it.local.file.isInsideAny(otherRoots)) return@withContext it.local
+			}
 		}
 		null
 	}

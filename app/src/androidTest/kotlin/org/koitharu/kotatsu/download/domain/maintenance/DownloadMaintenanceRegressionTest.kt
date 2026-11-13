@@ -668,6 +668,20 @@ class DownloadMaintenanceRegressionTest {
 		assertEquals(first.canonicalPath, owners.findEntry(FavouriteSpace.NORMAL.dbValue, a.id)?.path)
 	}
 
+	@Test fun publishedPlainExhentaiArchiveIsRecoveredWithoutAnAlias() = runBlocking {
+		val a = galleryFixture(812340)
+		val b = galleryFixture(812341)
+		val first = writeGalleryFixture(a, false, byteArrayOf(51, 52))
+		val second = writeGalleryFixture(b, false, byteArrayOf(61, 62))
+		assertNotEquals(first.parentFile, second.parentFile)
+		val recovered = local.findSavedMangaInRoot(b, root)
+		assertEquals(second.canonicalFile, recovered?.file?.canonicalFile)
+		java.util.zip.ZipFile(checkNotNull(recovered).file).use { zip ->
+			assertArrayEquals(byteArrayOf(61, 62), zip.getInputStream(zip.entries().nextElement()).use { it.readBytes() })
+		}
+		assertNull(local.findSavedMangaInRoot(galleryFixture(812342), root))
+	}
+
 	@Test fun exhentaiReservationCannotReplaceAFileCreatedAfterReservation() {
 		val directory = folder("reservations")
 		val victim = byteArrayOf(3, 4, 5)

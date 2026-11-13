@@ -152,15 +152,23 @@ sealed class LocalMangaOutput(
 			) ?: findLegacy(root, manga, DownloadFormat.AUTOMATIC, prepareForDownload = false)
 		}
 
-		/** Bounded deterministic candidates. Verified aliases supply collision-suffix paths. */
-		internal fun exhentaiReadCandidates(root: File, manga: Manga): List<File> {
+		/** Bounded title candidates. Suffixed paths are recovery-only, never legacy identity. */
+		internal fun exhentaiReadCandidates(root: File, manga: Manga, recoverSuffixes: Boolean = false): List<File> {
 			val rootPath = root.canonicalFile.toPath()
 			val source = getSourceDirectory(File(root, DOWNLOADS_DIR_NAME), manga)
 			val names = setOf(manga.title.toReadableFileName(), ExhentaiTitlePolicy.legacyFolderTitle(manga.title).toReadableFileName())
 			val parents = linkedSetOf(source).apply { addAll(legacySourceDirectories(root, manga)) }
 			return parents.flatMap { parent ->
 				if (!parent.canonicalFile.toPath().startsWith(rootPath)) return@flatMap emptyList()
-				names.flatMap { name -> listOf(File(parent, name), File(parent, "$name.cbz")) }
+				if (recoverSuffixes) {
+					parent.listFiles { child ->
+						val stem = child.name.removeSuffix(".cbz")
+						val base = stem.substringBeforeLast('_', "")
+						val suffix = stem.substringAfterLast('_').toIntOrNull()
+						base in names && suffix != null && suffix in 1 until ExhentaiNewArchive.MAX_CANDIDATES &&
+							stem == "${base}_$suffix"
+					}.orEmpty().toList()
+				} else names.flatMap { name -> listOf(File(parent, name), File(parent, "$name.cbz")) }
 			}.filter { file ->
 				val canonical = file.canonicalFile
 				canonical.parentFile == file.parentFile?.canonicalFile && canonical.toPath() != rootPath &&

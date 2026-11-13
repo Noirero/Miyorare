@@ -38,7 +38,7 @@ internal class ExhentaiNewArchive private constructor(
 	companion object {
 		private val lock = Any()
 		private val active = HashSet<ExhentaiNewArchive>()
-		private const val MAX_CANDIDATES = 128
+		internal const val MAX_CANDIDATES = 128
 
 		/** Null chapterName denotes SINGLE_CBZ. Plain chapter files use a fresh title directory. */
 		fun reserve(
