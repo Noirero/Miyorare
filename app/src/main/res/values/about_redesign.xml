@@ -50,7 +50,7 @@
 	<string name="about_url_gekkoushi_github" translatable="false">https://github.com/Gekkoushi/plugin</string>
 	<string name="about_url_tsuki_uma_gekkoushi_discord" translatable="false">https://discord.gg/CyJeVDP7Cw</string>
 	<string name="about_dropsauce_name" translatable="false">Dropsauce</string>
-	<string name="about_dropsauce_summary">Comic and novel reader for Android</string>
+	<string name="about_dropsauce_summary">Project Miyorare was forked from.</string>
 	<string name="about_url_dropsauce_github" translatable="false">https://github.com/HuzaifaKhalid1311/DropSauce</string>
 	<string name="about_url_dropsauce_discord" translatable="false">https://discord.gg/PTd2bYgz9m</string>
 </resources>
