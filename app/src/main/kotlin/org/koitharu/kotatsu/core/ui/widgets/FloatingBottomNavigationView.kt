@@ -323,8 +323,11 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 				val target = if (action == MotionEvent.ACTION_UP && !drag.cancelled) {
 					drag.targetAt(event.x + windowPosition[0], event.y + windowPosition[1])
 				} else null
-				showTabPreview(null)
-				if (target != null) onTabDragCommit?.invoke(target)
+				try {
+					if (target != null) onTabDragCommit?.invoke(target)
+				} finally {
+					showTabPreview(null)
+				}
 			}
 		}
 		return drag.captured || super.dispatchTouchEvent(event)

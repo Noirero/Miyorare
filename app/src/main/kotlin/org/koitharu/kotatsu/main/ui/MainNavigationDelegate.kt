@@ -284,10 +284,10 @@ class MainNavigationDelegate(
 		clearTabPreview()
 	}
 
-	private fun clearTabPreview() {
+	private fun clearTabPreview(keepFavouritesWork: Boolean = false) {
 		val preview = tabPreview ?: return
 		tabPreview = null
-		preview.favourites?.setTabPreviewVisible(false)
+		if (!keepFavouritesWork) preview.favourites?.setTabPreviewVisible(false)
 		preview.target.visibility = preview.targetVisibility
 		preview.current.visibility = preview.currentVisibility
 		preview.externalHeader?.let { (view, visibility) -> view.visibility = visibility }
@@ -333,15 +333,19 @@ class MainNavigationDelegate(
 	}
 
 	private fun commitTabDrag(@IdRes itemId: Int) {
-		clearTabPreview()
 		if (fragmentManager.isStateSaved || primaryFragment?.let(::getItemId) == itemId ||
 			navBar.menu.findItem(itemId)?.isVisible != true
 		) return
+		// Transfer the already-visible Favorites producer to RESUMED without
+		// cancelling it in between. A different release target gets no handoff.
+		val favourites = tabPreview?.favourites.takeIf { itemId == R.id.nav_favorites }
+		clearTabPreview(keepFavouritesWork = favourites != null)
 		committingTabDrag = true
 		try {
 			navBar.selectedItemId = itemId
 		} finally {
 			committingTabDrag = false
+			favourites?.setTabPreviewVisible(false)
 		}
 	}
 
