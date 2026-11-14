@@ -11,7 +11,20 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.CookieJar
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import org.koitharu.kotatsu.core.cache.MemoryContentCache
+import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.main.ui.MainActivity
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
+import org.koitharu.kotatsu.tsuki.runtime.TsukiPluginRuntime
+import org.koitharu.kotatsu.tsuki.runtime.TsukiWebViewExecutor
+import org.koitharu.kotatsu.tsuki.runtime.toMiyorare
+import org.koitharu.kotatsu.tsuki.runtime.toTsuki
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import java.io.File
@@ -22,6 +35,8 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class GlobalValidationActivity : FragmentActivity() {
 	@Inject lateinit var plugins: TsukiPluginManager
+	@Inject lateinit var memoryCache: MemoryContentCache
+	@Inject lateinit var webViewExecutor: TsukiWebViewExecutor
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -29,7 +44,14 @@ class GlobalValidationActivity : FragmentActivity() {
 		setContentView(status)
 		lifecycleScope.launch {
 			try {
-				val proof = withContext(Dispatchers.IO) { installBundledGlobal() }
+				val proof = withContext(Dispatchers.IO) {
+					val identityProof = installBundledGlobal()
+					if (intent.getBooleanExtra("verify_title_fixture", false)) {
+						val source = plugins.getAvailableSources().single { EhentaiSourceFamily.isOfficialSource(it.name) }
+						verifyTitleFixture(source)
+					}
+					identityProof
+				}
 				Log.i(TAG, proof)
 				startActivity(Intent(this@GlobalValidationActivity, MainActivity::class.java))
 				finish()
@@ -78,6 +100,56 @@ class GlobalValidationActivity : FragmentActivity() {
 		} finally {
 			jar.delete()
 		}
+	}
+
+	/** Use the installed DEX and production loader, replacing only the HTTP response. */
+	private suspend fun verifyTitleFixture(source: TsukiMangaSource) {
+		val seedTitle = "[List prefix] Fixture (Ongoing) [List suffix]"
+		val fullTitle = "[Detail prefix] Fixture (Ongoing) [Spanish] [Translator]"
+		val alternative = "[Alt prefix] Alternative [Alt suffix]"
+		val gallery = "/g/4323075/testtoken/"
+		val requests = java.util.concurrent.ConcurrentLinkedQueue<String>()
+		val client = OkHttpClient.Builder().addInterceptor { chain ->
+			val request = chain.request()
+			val path = request.url.encodedPath
+			requests.add(path)
+			val html = when (path) {
+				"/" -> """
+					<table class="itg"><tbody><tr><td></td><td>
+					<a href="$gallery"><div class="glink">$seedTitle</div><div></div></a>
+					</td></tr></tbody></table>
+				""".trimIndent()
+				gallery, gallery.trimEnd('/') -> """
+					<div class="gm"><div id="gd2">
+					<h1 id="gn">$fullTitle</h1><h1 id="gj">$alternative</h1>
+					</div></div>
+				""".trimIndent()
+				else -> error("Unexpected fixture request: $path")
+			}
+			Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200)
+				.message("OK").body("<html><body>$html</body></html>".toResponseBody("text/html".toMediaType()))
+				.build()
+		}.build()
+		val runtime = TsukiPluginRuntime(applicationContext, plugins, client, CookieJar.NO_COOKIES, webViewExecutor)
+		val handle = runtime.getHandle(source)
+		val parser = handle.parser
+		Log.i(TAG, "TITLE_TRACE parser=${parser.javaClass.name} loader=${parser.javaClass.classLoader?.javaClass?.name} jar=${handle.source.plugin.sha256}")
+		val rawSeed = parser.getList(0, tsuki.model.SortOrder.NEWEST, tsuki.model.MangaListFilter.EMPTY).single()
+		Log.i(TAG, "TITLE_TRACE list=${rawSeed.title}")
+		val seed = rawSeed.toMiyorare(handle.source)
+		val rawDetails = parser.getDetails(seed.toTsuki(handle.rawSource, handle.source))
+		Log.i(TAG, "TITLE_TRACE detail=${rawDetails.title} alt=${rawDetails.altTitles}")
+		val repository = TsukiMangaRepository(source, memoryCache, applicationContext, runtime)
+		val details = repository.getFreshDetails(seed)
+		val display = MangaDetails(details)
+		val full = display.displayTitle(full = true)
+		val compact = display.displayTitle(full = false)
+		Log.i(TAG, "TITLE_TRACE repo=${details.title} full=$full compact=$compact paths=$requests")
+		check(rawSeed.title == seedTitle) { "List parser discarded source title segments" }
+		check(rawDetails.title == fullTitle && rawDetails.altTitles == setOf(alternative)) { "Detail parser discarded source title segments" }
+		check(details.title == fullTitle && full == fullTitle && compact == "Fixture (Ongoing)") { "Repository or presentation changed the source title" }
+		check(EhentaiSourceFamily.isOfficialSource(details.source.name))
+		Log.i(TAG, "TITLE_FIXTURE_OK")
 	}
 
 	private companion object {
