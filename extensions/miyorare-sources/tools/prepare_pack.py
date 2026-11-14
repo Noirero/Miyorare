@@ -49,19 +49,52 @@ def load_manifest(path: Path, pack_name: str) -> tuple[dict, dict]:
     return root, pack
 
 
+def apply_doujindesu_compatibility(upstream: Path, language_dir: Path) -> list[str]:
+    """Preserve signed page URLs and the existing DOUJINDESU runtime identity."""
+    entry = language_dir / "nsfw/DoujinDesu.kt"
+    parser = upstream / "src/main/kotlin/tsuki/parsers/DoujinDesuParser.kt"
+    old_transform = "    private fun transformPageUrl(page: String): String = when {"
+    edits = (
+        (
+            entry,
+            '@MangaSourceParser("DOUJINDESU", "DoujinDesu", "id", ContentType.HENTAI)',
+            '@MangaSourceParser("DOUJINDESU", "Doujindesu", "id", ContentType.HENTAI)',
+        ),
+        (
+            parser,
+            old_transform,
+            old_transform + """
+        // The CDN signs the original path and query. Legacy path repair is for unsigned URLs only.
+        page.substringAfter('?', "").substringBefore('#').split('&')
+            .any { it.startsWith("X-Amz-Signature=", ignoreCase = true) } -> page""",
+        ),
+    )
+    updates = []
+    for target, before, after in edits:
+        if not target.is_file():
+            fail(f"Doujindesu compatibility target missing: {target.relative_to(upstream)}")
+        original = target.read_text(encoding="utf-8")
+        if original.count(before) != 1:
+            fail(f"Doujindesu compatibility needs review: {target.relative_to(upstream)}")
+        updates.append((target, original.replace(before, after, 1)))
+
+    for target, updated in updates:
+        target.write_text(updated, encoding="utf-8")
+    return [entry.relative_to(language_dir).as_posix(), parser.relative_to(upstream).as_posix()]
+
+
 def apply_miyorare_overlays(
     upstream: Path,
     language_dir: Path,
     pack_name: str,
     requested: list[str],
 ) -> list[str]:
-    """Replace selected UMA parsers with narrow first-party compatibility overlays."""
+    """Apply narrow first-party compatibility overlays to the selected UMA parsers."""
     source_root = Path(__file__).resolve().parents[1] / "overlays" / "uma" / pack_name
-    if not source_root.is_dir():
-        return []
-
     requested_set = set(requested)
     copied: list[str] = []
+    if pack_name == "id" and "nsfw/DoujinDesu.kt" in requested_set:
+        copied.extend(apply_doujindesu_compatibility(upstream, language_dir))
     for source in sorted(source_root.rglob("*.kt")):
         relative = source.relative_to(source_root).as_posix()
         if relative not in requested_set:
