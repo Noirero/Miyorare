@@ -107,7 +107,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var displayedContentType: FavouriteContentType? = null
 	private var pendingCategoryRestore: FavouriteContentType? = null
 	private val listWorkOwner = FavouritesListWorkOwner()
-	private var isTabPreviewVisible = false
+	internal var isTabPreviewVisible = false
+		private set
 	private var diagnosticPageSelections = 0
 	private var diagnosticPagerLayouts = 0
 	// Android 16 landscape can transiently report a zero measured width for ViewPager2's

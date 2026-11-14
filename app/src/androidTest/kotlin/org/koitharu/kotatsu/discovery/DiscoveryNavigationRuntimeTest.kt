@@ -8,6 +8,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.Lifecycle
 import org.koitharu.kotatsu.local.ui.LocalListFragment
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
+import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.preference.PreferenceManager
@@ -219,10 +220,21 @@ class DiscoveryNavigationRuntimeTest {
 				assertTrue(preview.isListWorkActive)
 				assertEquals(R.id.nav_discovery_hub, activity.bottomNav!!.selectedItemId)
 			}
+			compose.waitUntil(10000) {
+				var active = false
+				scenario.onActivity { activity ->
+					val preview = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+					active = preview.childFragmentManager.fragments.filterIsInstance<FavouritesListFragment>()
+						.any { it.isHidden && it.isListWorkActive }
+				}
+				active
+			}
 			send(MotionEvent.ACTION_CANCEL, favouritesAfterRestore, 64)
 			scenario.onActivity { activity ->
 				val preview = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
 				assertFalse(preview.isListWorkActive)
+				assertTrue(preview.childFragmentManager.fragments.filterIsInstance<FavouritesListFragment>()
+					.none { it.isListWorkActive })
 				assertEquals(View.GONE, preview.requireView().visibility)
 			}
 		}
