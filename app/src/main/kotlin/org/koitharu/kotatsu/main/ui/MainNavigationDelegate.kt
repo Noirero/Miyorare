@@ -287,6 +287,7 @@ class MainNavigationDelegate(
 	private fun clearTabPreview() {
 		val preview = tabPreview ?: return
 		tabPreview = null
+		preview.favourites?.setTabPreviewVisible(false)
 		preview.target.visibility = preview.targetVisibility
 		preview.current.visibility = preview.currentVisibility
 		preview.externalHeader?.let { (view, visibility) -> view.visibility = visibility }
@@ -322,10 +323,12 @@ class MainNavigationDelegate(
 		tabPreview = TabPreview(
 			currentView, currentView.visibility, targetView, targetView.visibility,
 			externalHeader?.let { it to it.visibility },
+			target as? FavouritesContainerFragment,
 		)
 		externalHeader?.visibility = View.INVISIBLE
 		currentView.visibility = View.INVISIBLE
 		targetView.visibility = View.VISIBLE
+		(target as? FavouritesContainerFragment)?.setTabPreviewVisible(true)
 		return true
 	}
 
@@ -348,6 +351,7 @@ class MainNavigationDelegate(
 		val target: View,
 		val targetVisibility: Int,
 		val externalHeader: Pair<View, Int>?,
+		val favourites: FavouritesContainerFragment?,
 	)
 
 	private fun newBottomTab(type: Class<out Fragment>): Fragment = instantiateFragment(type).apply {

@@ -202,16 +202,19 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	}
 
 	fun setComposeLabeled(value: Boolean) {
+		if (labeledState.value != value) cancelTabDrag()
 		labeledState.value = value
 	}
 
 	/** Toggle the standalone circular "continue reading" button rendered next to the Classic bar. */
 	fun setContinueVisible(value: Boolean) {
+		if (continueVisibleState.value != value) cancelTabDrag()
 		continueVisibleState.value = value
 	}
 
 	/** Relocates only the standalone Continue Reading control, without changing menu item order. */
 	fun setContinueButtonOnLeft(value: Boolean) {
+		if (continueOnLeftState.value != value) cancelTabDrag()
 		continueOnLeftState.value = value
 	}
 

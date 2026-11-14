@@ -204,6 +204,27 @@ class DiscoveryNavigationRuntimeTest {
 			send(MotionEvent.ACTION_CANCEL, away, 64)
 			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed()
 			assertEquals(1, calls.get())
+
+			// Recreate on Home: Favorites has no retained list producer from this Activity.
+			scenario.recreate()
+			compose.waitForIdle()
+			val (favouritesAfterRestore, _, homeAfterRestore) = tabCenters()
+			downTime = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, homeAfterRestore, 0)
+			send(MotionEvent.ACTION_MOVE, favouritesAfterRestore, 32)
+			scenario.onActivity { activity ->
+				val preview = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+				assertTrue(preview.isHidden)
+				assertEquals(Lifecycle.State.STARTED, preview.lifecycle.currentState)
+				assertTrue(preview.isListWorkActive)
+				assertEquals(R.id.nav_discovery_hub, activity.bottomNav!!.selectedItemId)
+			}
+			send(MotionEvent.ACTION_CANCEL, favouritesAfterRestore, 64)
+			scenario.onActivity { activity ->
+				val preview = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+				assertFalse(preview.isListWorkActive)
+				assertEquals(View.GONE, preview.requireView().visibility)
+			}
 		}
 	}
 

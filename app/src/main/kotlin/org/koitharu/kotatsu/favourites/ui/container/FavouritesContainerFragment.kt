@@ -107,6 +107,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var displayedContentType: FavouriteContentType? = null
 	private var pendingCategoryRestore: FavouriteContentType? = null
 	private val listWorkOwner = FavouritesListWorkOwner()
+	private var isTabPreviewVisible = false
 	private var diagnosticPageSelections = 0
 	private var diagnosticPagerLayouts = 0
 	// Android 16 landscape can transiently report a zero measured width for ViewPager2's
@@ -163,7 +164,16 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	internal val isListWorkActive: Boolean
-		get() = listWorkOwner.isActive(hasView = view != null, hidden = isHidden)
+		get() = listWorkOwner.isActive(
+			hasView = view != null, hidden = isHidden, previewVisible = isTabPreviewVisible,
+		)
+
+	/** Preview needs the list producer, not RESUMED lifecycle or shared chrome ownership. */
+	internal fun setTabPreviewVisible(visible: Boolean) {
+		if (isTabPreviewVisible == visible) return
+		isTabPreviewVisible = visible
+		updateListWorkActivity()
+	}
 
 	private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
 		override fun onPageSelected(position: Int) {
@@ -356,6 +366,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	override fun onDestroyView() {
+		isTabPreviewVisible = false
 		listWorkOwner.onDestroyView()
 		updateListWorkActivity()
 		rememberCurrentCategory()

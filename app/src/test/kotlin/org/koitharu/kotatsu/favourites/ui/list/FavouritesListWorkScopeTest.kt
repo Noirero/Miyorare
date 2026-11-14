@@ -373,6 +373,18 @@ class FavouritesListWorkScopeTest {
 	}
 
 	@Test
+	fun `hidden tab preview enables producer only while its view is started and visible as a preview`() {
+		val owner = FavouritesListWorkOwner()
+		assertFalse(owner.isActive(hasView = true, hidden = true, previewVisible = true))
+		owner.onStart()
+		assertFalse(owner.isActive(hasView = false, hidden = true, previewVisible = true))
+		assertTrue(owner.isActive(hasView = true, hidden = true, previewVisible = true))
+		assertFalse(owner.isActive(hasView = true, hidden = true))
+		owner.onStop()
+		assertFalse(owner.isActive(hasView = true, hidden = true, previewVisible = true))
+	}
+
+	@Test
 	fun `activation withdrawn before its producer is scheduled does not query the database`() = runTest {
 		val work = FavouritesListWorkScope()
 		var queries = 0
