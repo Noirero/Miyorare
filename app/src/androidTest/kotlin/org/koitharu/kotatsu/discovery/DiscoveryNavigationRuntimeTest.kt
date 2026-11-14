@@ -5,6 +5,8 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.lifecycle.Lifecycle
 import org.koitharu.kotatsu.local.ui.LocalListFragment
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
@@ -165,14 +167,24 @@ class DiscoveryNavigationRuntimeTest {
 			compose.waitForIdle()
 			assertEquals(listOf(start, custom, home), tabCenters())
 			send(MotionEvent.ACTION_MOVE, home, 64)
-			compose.waitUntil(10000) { compose.onAllNodesWithTag("catalog_spotlight").fetchSemanticsNodes().isNotEmpty() }
-			compose.onNodeWithTag("catalog_home_list").assertIsDisplayed()
 			scenario.onActivity { activity ->
 				val preview = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
 				assertEquals(View.VISIBLE, preview.requireView().visibility)
+				assertEquals(Lifecycle.State.STARTED, preview.lifecycle.currentState)
 				assertTrue(preview.isHidden)
 				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
 			}
+			val homeList = compose.onNodeWithTag("catalog_home_list").assertIsDisplayed()
+			compose.onNodeWithTag("catalog_provider_selector").assertIsDisplayed()
+			// Spotlight is a lazy item, not a readiness signal: Favorites still owns
+			// the app-bar space during preview, so this item can be below the viewport.
+			compose.waitUntil(10000) {
+				val keyIndex = homeList.fetchSemanticsNode().config.getOrNull(SemanticsProperties.IndexForKey)
+				keyIndex?.invoke("spotlight")?.let { it >= 0 } == true
+			}
+			homeList.performScrollToKey("spotlight")
+			compose.onNodeWithTag("catalog_spotlight").assertIsDisplayed()
+			homeList.performScrollToIndex(0)
 			send(MotionEvent.ACTION_CANCEL, home, 96)
 			compose.waitForIdle()
 			scenario.onActivity { activity ->
