@@ -731,9 +731,25 @@ import androidx.collection.MutableIntObjectMap
         fail("Pinned ExHentai parser changed: getPages block not found exactly once")
     text = text.replace(old_get_pages, new_get_pages, 1)
 
+    # Preserve source titles; only the host UI should decide how to display them.
+    text = preserve_exhentai_titles(text)
     parser.write_text(text, encoding="utf-8")
     print("Applied Miyorare EXHENTAI canonical-family performance overlay")
 
+
+def preserve_exhentai_titles(text: str) -> str:
+    replacements = (
+        ('title = rawTitle.cleanupTitle(),', 'title = rawTitle,'),
+        ('title?.getElementById("gn")?.text()?.cleanupTitle() ?: manga.title',
+         'title?.getElementById("gn")?.text()?.nullIfEmpty() ?: manga.title'),
+        ('title?.getElementById("gj")?.text()?.cleanupTitle()?.nullIfEmpty()',
+         'title?.getElementById("gj")?.text()?.nullIfEmpty()'),
+    )
+    for old, new in replacements:
+        if text.count(old) != 1:
+            fail(f"Pinned ExHentai title anchor changed: {old}")
+        text = text.replace(old, new, 1)
+    return text
 
 def prepare(manifest: Path, gekkoushi_upstream: Path, pack_name: str) -> None:
     root = json.loads(manifest.read_text(encoding="utf-8"))

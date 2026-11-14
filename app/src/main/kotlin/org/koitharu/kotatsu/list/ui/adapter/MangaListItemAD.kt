@@ -50,7 +50,7 @@ fun mangaListItemAD(
 			binding.textViewSubtitle.setTextColor(ContextCompat.getColor(context, R.color.smart_local_muted))
 		}
 		itemView.setTooltipCompat(item.getSummary(context))
-		binding.textViewTitle.text = item.title
+		binding.textViewTitle.text = item.displayTitle(binding.root.context)
 		val info = buildList {
 			if (item.isFavorite) add(context.getString(R.string.in_library))
 			item.subtitle.takeIf { it.isNotBlank() }?.let(::add)

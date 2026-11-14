@@ -19,14 +19,25 @@ import java.io.File
 import java.util.zip.Deflater
 import java.util.zip.ZipFile
 
-class LocalMangaZipOutput(
+class LocalMangaZipOutput private constructor(
 	rootFile: File,
 	manga: Manga,
+	private val newArchive: ExhentaiNewArchive?,
+	archiveComment: String?,
 ) : LocalMangaOutput(rootFile) {
 
+	constructor(rootFile: File, manga: Manga) : this(rootFile, manga, null, null)
+
+	internal constructor(newArchive: ExhentaiNewArchive, manga: Manga, archiveComment: String?) :
+		this(newArchive.target, manga, newArchive, archiveComment)
+
+	internal override val committedFile: File?
+		get() = if (newArchive == null) super.committedFile else rootFile.takeIf { newArchive.isCommitted }
+
 	private val output = ZipOutput(
-		File(rootFile.path + ".tmp"),
+		newArchive?.staging ?: File(rootFile.path + ".tmp"),
 		compressionLevel = Deflater.NO_COMPRESSION,
+		archiveComment = archiveComment,
 	)
 	private val index = MangaIndex(null)
 	private val mutex = Mutex()
@@ -43,7 +54,7 @@ class LocalMangaZipOutput(
 	}
 
 	override suspend fun mergeWithExisting() = mutex.withLock {
-		if (rootFile.exists()) {
+		if (newArchive == null && rootFile.exists()) {
 			runInterruptible(Dispatchers.IO) {
 				mergeWith(rootFile)
 			}
@@ -98,6 +109,7 @@ class LocalMangaZipOutput(
 	 * so only the chapter that was in progress is lost.
 	 */
 	override suspend fun cleanup() = mutex.withLock {
+		if (newArchive != null) return@withLock
 		if (isFinished || completedChapters == 0) {
 			output.file.deleteAwait()
 			return@withLock
@@ -118,11 +130,16 @@ class LocalMangaZipOutput(
 				output.finish()
 			}
 		}
-		replaceRootFile(output.file)
+		if (newArchive == null) replaceRootFile(output.file)
+		else runInterruptible(Dispatchers.IO) { newArchive.commit() }
 	}
 
 	override fun close() {
-		output.close()
+		try {
+			output.close()
+		} finally {
+			newArchive?.close()
+		}
 	}
 
 	private fun replaceFilteredRootFile() {

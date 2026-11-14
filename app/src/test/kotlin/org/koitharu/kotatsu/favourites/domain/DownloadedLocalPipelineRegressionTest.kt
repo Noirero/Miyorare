@@ -43,6 +43,19 @@ class DownloadedLocalPipelineRegressionTest {
 		assertTrue(finish >= 0 && ownership > finish && alias > ownership && event > alias)
 	}
 
+	@Test fun `ExHentai completion registers the committed archive before publishing`() {
+		val worker = source("download/ui/worker/DownloadWorker.kt")
+		val finish = worker.indexOf("output.finish()")
+		val register = worker.indexOf("registerExhentaiArtifact(mangaDetails,task,checkNotNull(output.committedFile))", finish)
+		assertTrue(finish >= 0 && register > finish)
+		val registration = worker.substringAfter("privatesuspendfunregisterExhentaiArtifact(")
+			.substringBefore("privatesuspendfunfindCompletedExhentaiCopy(")
+		val ownership = registration.indexOf("recordDownloadOwnership(manga.id,task,file,strict=true)")
+		val alias = registration.indexOf("rememberDownloadedIdentity(manga,local)", ownership)
+		val event = registration.indexOf("localStorageChanges.emit(local)", alias)
+		assertTrue(ownership >= 0 && alias > ownership && event > alias)
+	}
+
 	@Test fun `every icon binding caller commits the final set`() {
 		// Card adapters delegate to the manga-specific badge owner. The grid caller also passes
 		// the explicit Modern cover authority; the nested binding still commits.

@@ -388,6 +388,7 @@ fun mangaGridItemAD(
 			}
 		}
 
+		val displayTitle = item.displayTitle(binding.root.context)
 		val isTitleOverCover = item.isTitleOverCover && !item.isTitleHidden
 		// Debug A/B: isolate Modern overlay cost without changing pagination, image requests or data.
 		// Only History supplies a probe callback; default and all release builds remain unchanged.
@@ -411,6 +412,7 @@ fun mangaGridItemAD(
 			try {
 			binding.favouriteCoverOverlays.bind(
 				ModernCoverState.from(item, if (localCinematic) ModernCoverContext.COLLECTION else coverContext)
+					.copy(title = displayTitle)
 					.let { if (localCinematic) it.copy(legacyCounter = item.counter, isLocalSource = true, languageLabel = null) else it },
 			) { view ->
 				clickListener.onReadClick(item.toMangaWithOverride(), view)
@@ -419,8 +421,8 @@ fun mangaGridItemAD(
 				if (tracingOverlayBind) android.os.Trace.endSection()
 			}
 		}
-		binding.textViewTitleOverlay.text = item.title
-		binding.textViewTitle.text = item.title
+		binding.textViewTitleOverlay.text = displayTitle
+		binding.textViewTitle.text = displayTitle
 		binding.textViewTitleOverlay.isVisible = isTitleOverCover && !effectiveCoverOverlay
 		binding.viewScrim.isVisible = isTitleOverCover
 		binding.textViewTitle.isVisible = !item.isTitleHidden && !isTitleOverCover

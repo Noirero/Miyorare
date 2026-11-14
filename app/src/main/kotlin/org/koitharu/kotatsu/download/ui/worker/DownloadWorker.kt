@@ -29,6 +29,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
@@ -83,10 +84,13 @@ import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.core.util.ext.withTicker
 import org.koitharu.kotatsu.core.util.ext.writeAllCancellable
 import org.koitharu.kotatsu.core.util.progress.RealtimeEtaEstimator
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.domain.DownloadPhase
 import org.koitharu.kotatsu.download.domain.DownloadProgress
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
@@ -120,6 +124,7 @@ class DownloadWorker @AssistedInject constructor(
 	@PageCache private val cache: LocalStorageCache,
 	private val database: MangaDatabase,
 	private val localMangaRepository: LocalMangaRepository,
+	private val destinationStore: DownloadDestinationStore,
 	private val mangaLock: MangaLock,
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
@@ -144,6 +149,8 @@ class DownloadWorker @AssistedInject constructor(
 	private val etaEstimator = RealtimeEtaEstimator()
 	private val notificationThrottler = Throttler(150)
 	private val statePublishMutex = Mutex()
+
+	private var committedExhentaiPath: String? = null
 
 	override suspend fun doWork(): Result {
 		setForeground(getForegroundInfo())
@@ -207,7 +214,10 @@ class DownloadWorker @AssistedInject constructor(
 			// this download has finished its user-visible transfer.
 			pruneResumeCache()
 			DownloadPauseStore.clear(applicationContext, id)
-			Result.success(currentState.toWorkData())
+			val state = currentState.toWorkData()
+			val receipt = committedExhentaiPath
+			Result.success(if (receipt == null) state else androidx.work.Data.Builder()
+				.putAll(state).putString(EXHENTAI_COMMITTED_PATH, receipt).build())
 		} catch (_: CancellationException) {
 			withContext(NonCancellable) {
 				val notification = notificationFactory.create(currentState.copy(isStopped = true))
@@ -257,23 +267,66 @@ class DownloadWorker @AssistedInject constructor(
 	private suspend fun downloadMangaImpl(subject: Manga, task: DownloadTask) {
 		var manga = subject
 		mangaLock.withLock(manga) {
-			val destination = localMangaRepository.getOutputDir(manga, task.destination)
+			val requestedRoot = task.destination ?: if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+				destinationStore.effectiveRoot(task.favouriteSpace)
+			} else null
+			val destination = localMangaRepository.getOutputDir(manga, requestedRoot)
 			checkNotNull(destination) { applicationContext.getString(R.string.cannot_find_available_storage) }
 			var output: LocalMangaOutput? = null
 			var isCompleted = false
+			var isExhentai = false
 			try {
 				if (manga.isLocal) {
 					manga = localMangaRepository.getRemoteManga(manga)
 						?: error("Cannot obtain remote manga instance")
 				}
-				val chaptersToSkip = getDoneChapters(manga, destination).toMutableSet()
+				isExhentai = ExhentaiDownloadedCopy.isOfficial(manga)
+				if (isExhentai && runAttemptCount > 0) {
+					val recovered = localMangaRepository.findExhentaiInRoots(
+						manga, listOf(destination), withDetails = false, space = task.favouriteSpace, request = id,
+					)
+					if (recovered != null) {
+						withContext(NonCancellable) {
+							registerExhentaiArtifact(manga, task, recovered.file)
+							committedExhentaiPath = recovered.file.canonicalPath
+						}
+						publishState(currentState.copy(localManga = recovered, totalChapters = 1, downloadedChapters = 1,
+							isIndeterminate = false, isFinalizing = false))
+						isCompleted = true
+						return@withLock
+					}
+				}
+				val chaptersToSkip = if (isExhentai) mutableSetOf<Long>() else getDoneChapters(manga, destination).toMutableSet()
+				if (isExhentai && !task.downloadSeparateCopy && !manga.chapters.isNullOrEmpty() &&
+					publishExistingExhentaiCopy(manga, destination, task)) {
+					isCompleted = true
+					return@withLock
+				}
 				val repo = mangaRepositoryFactory.create(manga.source)
 				val mangaDetails = if (manga.chapters.isNullOrEmpty() || manga.description.isNullOrEmpty()) repo.getDetails(manga) else manga
-				output = LocalMangaOutput.getOrCreate(
-					root = destination,
-					manga = mangaDetails,
-					format = task.format ?: settings.preferredDownloadFormat,
-				)
+				val format = task.format ?: settings.preferredDownloadFormat
+				if (isExhentai && task.downloadSeparateCopy) {
+					check(org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.galleryId(mangaDetails.publicUrl, mangaDetails.url)?.let { it > 0 } == true) {
+						"Cannot identify the ExHentai gallery for a separate copy"
+					}
+				}
+				if (isExhentai && !task.downloadSeparateCopy && mangaDetails !== manga &&
+					publishExistingExhentaiCopy(mangaDetails, destination, task)) {
+					isCompleted = true
+					return@withLock
+				}
+				output = if (isExhentai) {
+					// Keep the reservation reachable by finally even if cancellation occurs on the IO return.
+					withContext(NonCancellable) {
+						LocalMangaOutput.createExhentaiArchive(
+							destination, mangaDetails, format, task.appendGalleryIdToChapterFile,
+							org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Receipt(task.favouriteSpace, id),
+						)
+					}
+				} else {
+					LocalMangaOutput.getOrCreate(destination, mangaDetails, format)
+				}
+				if (isExhentai) currentCoroutineContext().ensureActive()
 				val coverUrl = mangaDetails.largeCoverUrl.ifNullOrEmpty { mangaDetails.coverUrl }
 				if (!coverUrl.isNullOrEmpty()) {
 					downloadFile(coverUrl, destination, repo).let { file ->
@@ -490,7 +543,7 @@ class DownloadWorker @AssistedInject constructor(
 					if (accounting.requestedChapterCompleted) {
 						completedRequestedChapters++
 					}
-					if (accounting.durableArtifactAvailable) {
+					if (accounting.durableArtifactAvailable && !isExhentai) {
 						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 					}
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
@@ -508,10 +561,19 @@ class DownloadWorker @AssistedInject constructor(
 				publishState(currentState.copy(isIndeterminate = true, isFinalizing = true, phase = DownloadPhase.FINALIZING, retryAttempt = 0, eta = -1L, isStuck = false))
 				output.mergeWithExisting()
 				output.finish()
-				recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
-				val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
-				localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
-				localStorageChanges.emit(localManga)
+				val localManga = if (isExhentai) {
+					withContext(NonCancellable) {
+						registerExhentaiArtifact(mangaDetails, task, checkNotNull(output.committedFile)).also {
+							committedExhentaiPath = it.file.canonicalPath
+						}
+					}
+				} else {
+					recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
+					val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
+					localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
+					localStorageChanges.emit(localManga)
+					localManga
+				}
 				publishState(
 					currentState.copy(
 						localManga = localManga,
@@ -533,7 +595,11 @@ class DownloadWorker @AssistedInject constructor(
 				withContext(NonCancellable) {
 					runCatchingCancellable { output?.cleanup() }.onFailure(Throwable::printStackTraceDebug)
 					output?.closeQuietly()
-					if (!isCompleted && output != null && output.rootFile.exists()) {
+					val committed = output?.committedFile
+					if (!isCompleted && isExhentai && committed != null) {
+						runCatchingCancellable { registerExhentaiArtifact(manga, task, committed) }
+							.onFailure(Throwable::printStackTraceDebug)
+					} else if (!isCompleted && !isExhentai && output != null && output.rootFile.exists()) {
 						runCatchingCancellable {
 							val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
 							// mangaDetails is scoped to the try block; the resolved remote seed keeps the same
@@ -542,14 +608,51 @@ class DownloadWorker @AssistedInject constructor(
 							localStorageChanges.emit(localManga)
 						}.onFailure(Throwable::printStackTraceDebug)
 					}
-					destination.listFiles(TempFileFilter())?.forEach { it.deleteAwait() }
+					if (!isExhentai) destination.listFiles(TempFileFilter())?.forEach { it.deleteAwait() }
 				}
 			}
 		}
 	}
 
-	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File) {
-		runCatchingCancellable {
+	private suspend fun registerExhentaiArtifact(manga: Manga, task: DownloadTask, file: File): LocalManga {
+		val local = checkNotNull(ExhentaiDownloadedCopy.find(manga, file, withDetails = false)?.local) {
+			"Committed ExHentai archive cannot be read"
+		}
+		recordDownloadOwnership(manga.id, task, file, strict = true)
+		localMangaRepository.rememberDownloadedIdentity(manga, local)
+		localStorageChanges.emit(local)
+		return local
+	}
+
+	private suspend fun publishExistingExhentaiCopy(manga: Manga, destination: File, task: DownloadTask): Boolean {
+		val saved = findCompletedExhentaiCopy(manga, destination, task.favouriteSpace) ?: return false
+		val requested = getChapters(manga, task)
+		val savedIds = saved.manga.chapters.orEmpty().mapTo(HashSet()) { it.id }
+		if (requested.isEmpty() || requested.any { it.value.id !in savedIds }) return false
+		publishState(currentState.copy(
+			localManga = saved,
+			totalChapters = requested.size,
+			downloadedChapters = requested.size,
+			isIndeterminate = false,
+			isFinalizing = false,
+		))
+		return true
+	}
+
+	private suspend fun findCompletedExhentaiCopy(manga: Manga, root: File, space: FavouriteSpace): LocalManga? {
+		val dao = database.getFavouriteDownloadIndexDao()
+		val rootPath = root.canonicalFile.toPath()
+		val owned = dao.findEntry(space.dbValue, manga.id)?.path?.let(::File)
+		if (owned != null && owned.canonicalFile.toPath().startsWith(rootPath)) {
+			localMangaRepository.findExhentaiAtPath(manga, owned, withDetails = true, space = space)?.let { match ->
+				if (match.verified || match.local.file.canonicalFile == owned.canonicalFile) return match.local
+			}
+		}
+		return localMangaRepository.findExhentaiInRoots(manga, listOf(root), withDetails = true, space = space)
+	}
+
+	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File, strict: Boolean = false) {
+		val result = runCatchingCancellable {
 			val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
 			val dao = database.getFavouriteDownloadIndexDao()
 			val current = dao.findEntry(task.favouriteSpace.dbValue, mangaId)
@@ -563,6 +666,7 @@ class DownloadWorker @AssistedInject constructor(
 				)
 			}
 		}.onFailure(Throwable::printStackTraceDebug)
+		if (strict) result.getOrThrow()
 	}
 
 	private suspend fun <R> runFailsafe(block: suspend () -> R): R? {
@@ -971,3 +1075,5 @@ class DownloadWorker @AssistedInject constructor(
 		const val TAG = "download"
 	}
 }
+
+internal const val EXHENTAI_COMMITTED_PATH = "exhentai_committed_path"

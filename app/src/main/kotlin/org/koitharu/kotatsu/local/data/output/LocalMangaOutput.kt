@@ -16,6 +16,10 @@ import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterFileName
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
+import org.koitharu.kotatsu.sources.compat.ExhentaiTitlePolicy
 import org.koitharu.kotatsu.sources.compat.VerifiedSourceAliases
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import java.io.File
@@ -25,6 +29,8 @@ import java.util.Locale
 sealed class LocalMangaOutput(
 	val rootFile: File,
 ) : Closeable {
+
+	internal open val committedFile: File? get() = rootFile.takeIf(File::exists)
 
 	abstract suspend fun mergeWithExisting()
 
@@ -95,6 +101,49 @@ sealed class LocalMangaOutput(
 				}
 		}
 
+		internal suspend fun createExhentaiArchive(
+			root: File,
+			manga: Manga,
+			format: DownloadFormat,
+			appendGalleryId: Boolean,
+			receipt: ExhentaiChapterOwnership.Receipt? = null,
+		): LocalMangaOutput = withContext(Dispatchers.IO) {
+			require(EhentaiSourceFamily.isOfficialSource(manga.source.name))
+			require(manga.chapters?.size == 1) { "ExHentai must expose exactly one gallery chapter" }
+			val galleryId = EhentaiSourceFamily.galleryId(manga.publicUrl, manga.url)?.takeIf { it > 0L }
+			val single = format == DownloadFormat.SINGLE_CBZ
+			val chapterName = when {
+				single -> null
+				appendGalleryId -> ExhentaiChapterFileName.withGalleryId(checkNotNull(galleryId) {
+					"Cannot verify the ExHentai gallery ID for the requested filename"
+				})
+				else -> ExhentaiChapterFileName.PLAIN
+			}
+			val downloads = File(root, DOWNLOADS_DIR_NAME)
+			val source = getSourceDirectory(downloads, manga)
+			val canonicalRoot = root.canonicalFile
+			check(downloads.canonicalFile.parentFile == canonicalRoot &&
+				source.canonicalFile.toPath().startsWith(downloads.canonicalFile.toPath())) {
+				"ExHentai download directory is outside the selected storage"
+			}
+			check(source.isDirectory || source.mkdirs() || source.isDirectory) { "Cannot create source directory $source" }
+			if (source != downloads) File(source, SOURCE_DIR_MARKER).createNewFile()
+			val reservation = ExhentaiNewArchive.reserve(
+				source, manga.title.toReadableFileName(), chapterName, appendGalleryId && !single,
+			)
+			try {
+				val archiveComment = galleryId?.let {
+					if (receipt != null) ExhentaiChapterOwnership.scopedComment(it, receipt, single)
+					else if (!single) ExhentaiChapterOwnership.comment(it) else null
+				}
+				if (single) LocalMangaZipOutput(reservation, manga, archiveComment)
+				else LocalMangaDirOutput(reservation, manga, archiveComment)
+			} catch (e: Exception) {
+				reservation.close()
+				throw e
+			}
+		}
+
 		suspend fun get(root: File, manga: Manga): LocalMangaOutput? = withContext(Dispatchers.IO) {
 			val isNovel = manga.source.isNovelSource
 			val downloadsRoot = File(root, DOWNLOADS_DIR_NAME)
@@ -107,6 +156,53 @@ sealed class LocalMangaOutput(
 				format = DownloadFormat.AUTOMATIC,
 				prepareForDownload = false,
 			) ?: findLegacy(root, manga, DownloadFormat.AUTOMATIC, prepareForDownload = false)
+		}
+
+		/** Bounded title candidates. Suffixed paths are recovery-only, never legacy identity. */
+		internal fun exhentaiReadCandidates(root: File, manga: Manga, recoverSuffixes: Boolean = false): List<File> {
+			val rootPath = root.canonicalFile.toPath()
+			val source = getSourceDirectory(File(root, DOWNLOADS_DIR_NAME), manga)
+			val names = setOf(manga.title.toReadableFileName(), ExhentaiTitlePolicy.legacyFolderTitle(manga.title).toReadableFileName())
+			val parents = linkedSetOf(source).apply { addAll(legacySourceDirectories(root, manga)) }
+			return parents.flatMap { parent ->
+				if (!parent.canonicalFile.toPath().startsWith(rootPath)) return@flatMap emptyList()
+				if (recoverSuffixes) {
+					parent.listFiles { child ->
+						val stem = child.name.removeSuffix(".cbz")
+						val base = stem.substringBeforeLast('_', "")
+						val suffix = stem.substringAfterLast('_').toIntOrNull()
+						base in names && suffix != null && suffix in 1 until ExhentaiNewArchive.MAX_CANDIDATES &&
+							stem == "${base}_$suffix"
+					}.orEmpty().toList()
+				} else names.flatMap { name -> listOf(File(parent, name), File(parent, "$name.cbz")) }
+			}.filter { file ->
+				val canonical = file.canonicalFile
+				canonical.parentFile == file.parentFile?.canonicalFile && canonical.toPath() != rootPath &&
+					canonical.toPath().startsWith(rootPath) && file.exists()
+			}.distinctBy { it.canonicalFile }
+		}
+
+		/** A pre-upgrade name is a read candidate, never a write/delete target or ownership proof. */
+		internal suspend fun findLegacyExhentaiTitle(root: File, manga: Manga): LocalMangaOutput? {
+			if (!EhentaiSourceFamily.isOfficialSource(manga.source.name)) return null
+			val legacyTitle = ExhentaiTitlePolicy.legacyFolderTitle(manga.title)
+			if (legacyTitle.toReadableFileName() == manga.title.toReadableFileName()) return null
+			return withContext(Dispatchers.IO) {
+				val rootPath = root.canonicalFile.toPath()
+				val sourceRoot = getSourceDirectory(File(root, DOWNLOADS_DIR_NAME), manga)
+				val candidates = linkedSetOf(sourceRoot).apply { addAll(legacySourceDirectories(root, manga)) }
+				for (candidate in candidates) {
+					val candidatePath = candidate.canonicalFile.toPath()
+					if (!candidatePath.startsWith(rootPath)) continue
+					val output = getImpl(
+						candidate, manga, onlyIfExists = true, format = DownloadFormat.AUTOMATIC,
+						prepareForDownload = false, lookupTitle = legacyTitle, recoverReplacement = false,
+					) ?: continue
+					if (output.rootFile.canonicalFile.toPath().parent == candidatePath) return@withContext output
+					output.close()
+				}
+				null
+			}
 		}
 
 		private suspend fun findLegacy(
@@ -234,17 +330,19 @@ sealed class LocalMangaOutput(
 			onlyIfExists: Boolean,
 			format: DownloadFormat,
 			prepareForDownload: Boolean,
+			lookupTitle: String = manga.title,
+			recoverReplacement: Boolean = true,
 		): LocalMangaOutput? {
 			mutex.withLock {
 				var i = 0
-				val baseName = manga.title.toReadableFileName()
+				val baseName = lookupTitle.toReadableFileName()
 				val isNovel = manga.source.isNovelSource
 				while (true) {
 					val fileName = if (i == 0) baseName else baseName + "_$i"
 					val dir = File(root, fileName)
 					val zip = File(root, "$fileName.cbz")
 					val epub = File(root, "$fileName.epub")
-					recoverInterruptedRootReplacement(zip)
+					if (recoverReplacement) recoverInterruptedRootReplacement(zip)
 					i++
 					if (isNovel) {
 						return when {

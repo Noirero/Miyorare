@@ -20,7 +20,9 @@ import org.koitharu.kotatsu.core.util.ext.getParcelableExtraCompat
 import org.koitharu.kotatsu.core.util.ext.powerManager
 import org.koitharu.kotatsu.core.util.ext.withPartialWakeLock
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.parsers.model.Manga
 import javax.inject.Inject
@@ -36,6 +38,9 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 
 	@Inject
 	lateinit var downloadedMangaResolver: DownloadedMangaResolver
+
+	@Inject
+	lateinit var deleteLocalManga: DeleteLocalMangaUseCase
 
 	override fun onCreate() {
 		super.onCreate()
@@ -62,6 +67,12 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 				// then resolve the physical copy inside the space that launched the action. Without
 				// this boundary a Private delete could hit a Normal copy from the global Local index.
 				val remote = mangaDataRepository.findMangaById(manga.id, withChapters = true) ?: manga
+				if (ExhentaiDownloadedCopy.isOfficial(remote)) {
+					check(deleteLocalManga.deleteExhentaiCopy(remote, favouriteSpace, chapterIds = chaptersIds)) {
+						"Downloaded ExHentai gallery is unavailable"
+					}
+					return@withPartialWakeLock
+				}
 				checkNotNull(downloadedMangaResolver.findSavedManga(remote, favouriteSpace)) {
 					"Downloaded manga not found in ${favouriteSpace.name.lowercase()} storage"
 				}.manga

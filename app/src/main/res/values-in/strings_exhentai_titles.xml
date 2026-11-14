@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="exhentai_alternative_title">Judul alternatif</string>
+    <string name="exhentai_download_append_id">Tambahkan ID galeri ke nama file</string>
+    <string name="exhentai_download_separate_copy">Unduh salinan terpisah</string>
+    <string name="exhentai_download_separate_copy_hint">Pertahankan file lama, meski galeri ini terlihat sudah diunduh</string>
+    <string name="exhentai_use_full_title">Tampilkan Judul Lengkap</string>
+    <string name="exhentai_use_compact_title">Tampilkan Judul Ringkas</string>
+</resources>

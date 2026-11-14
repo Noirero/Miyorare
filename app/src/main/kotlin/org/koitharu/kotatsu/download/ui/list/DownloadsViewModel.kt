@@ -43,6 +43,9 @@ import org.koitharu.kotatsu.core.util.ext.calculateTimeAgo
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.isEmpty
 import org.koitharu.kotatsu.download.domain.DownloadState
+import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
+import org.koitharu.kotatsu.download.ui.worker.EXHENTAI_COMMITTED_PATH
+import java.io.File
 import org.koitharu.kotatsu.download.ui.list.chapters.DownloadChapter
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
@@ -353,7 +356,8 @@ class DownloadsViewModel @Inject constructor(
 				}) { "A selected manga is currently downloading. Files were kept." }
 				// Recheck WorkManager itself, not just the UI's potentially delayed StateFlow.
 				// This also sees jobs in the other favourite space.
-				for (work in workScheduler.observeWorks().first()) {
+				val works = workScheduler.observeWorks().first()
+				for (work in works) {
 					if (work.state.isFinished) continue
 					val task = checkNotNull(workScheduler.getTask(work.id)) {
 						"Cannot inspect an active download task. Files were kept."
@@ -382,10 +386,23 @@ class DownloadsViewModel @Inject constructor(
 					check(roots.size == 1) {
 						"This manga has downloads in multiple folders. Files were kept."
 					}
-					Triple(row.workIds, manga, roots.single())
+					val committed = if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+						val archives = row.workIds.map { id ->
+							val completed = works.firstOrNull { it.id == id && it.state == WorkInfo.State.SUCCEEDED }
+							val path = checkNotNull(completed?.outputData?.getString(EXHENTAI_COMMITTED_PATH)) {
+								"Cannot verify the exact ExHentai archive from this download. Files were kept."
+							}
+							File(path) to id
+						}
+						check(archives.size == 1) { "Cannot verify a single ExHentai archive for the selected jobs. Files were kept." }
+						archives.single()
+					} else null
+					Triple(row.workIds, manga, roots.single() to committed)
 				}
-				for ((groupWorkIds, manga, root) in targets) {
-					deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace)
+				for ((groupWorkIds, manga, destination) in targets) {
+					val (root, committed) = destination
+					if (committed == null) deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace)
+					else deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace, committed.first, committed.second)
 					// Keep each completed group's history consistent even if a later
 					// selected manga fails its own filesystem deletion.
 					workScheduler.delete(groupWorkIds)

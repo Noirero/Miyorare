@@ -24,7 +24,11 @@ suspend fun LocalMangaRepository.findSavedMangaInRoot(
 	root: File,
 	withDetails: Boolean = true,
 ): LocalManga? = runCatchingCancellable {
+	if (ExhentaiDownloadedCopy.isOfficial(remoteManga)) {
+		return@runCatchingCancellable findExhentaiInRoots(remoteManga, listOf(root), withDetails)
+	}
 	val output = LocalMangaOutput.get(root, remoteManga)
+		?: LocalMangaOutput.findLegacyExhentaiTitle(root, remoteManga)
 	if (output != null) {
 		val local = try {
 			LocalMangaParser.getOrNull(output.rootFile)?.getManga(withDetails)

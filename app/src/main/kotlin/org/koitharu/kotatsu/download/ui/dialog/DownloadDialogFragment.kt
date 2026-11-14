@@ -96,6 +96,10 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 		var startNow by rememberSaveable { mutableStateOf(true) }
 		var formatIndex by rememberSaveable { mutableIntStateOf(-1) }
 		var destinationIndex by rememberSaveable { mutableIntStateOf(0) }
+		var appendGalleryId by rememberSaveable { mutableStateOf(false) }
+		val separateCopy = selectedOption == OPTION_SEPARATE_COPY
+		val canAppendGalleryId = viewModel.supportsExhentaiFilenameId &&
+			(DownloadFormat.entries.getOrNull(formatIndex) ?: defaultFormat) != DownloadFormat.SINGLE_CBZ
 
 		LaunchedEffect(defaultFormat, isNovelOnly) {
 			formatIndex = if (isNovelOnly) -1 else defaultFormat?.ordinal ?: -1
@@ -190,6 +194,31 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 						},
 						onSelect = { selectedOption = OPTION_UNREAD_CHAPTERS },
 					)
+				}
+
+				if (viewModel.supportsSeparateExhentaiCopy) {
+					OptionRow(
+						selected = separateCopy,
+						title = stringResource(R.string.exhentai_download_separate_copy),
+						subtitle = stringResource(R.string.exhentai_download_separate_copy_hint),
+						onSelect = { selectedOption = OPTION_SEPARATE_COPY },
+					)
+				}
+				if (canAppendGalleryId) {
+					Row(
+						modifier = Modifier
+							.fillMaxWidth()
+							.heightIn(min = 48.dp)
+							.padding(horizontal = 8.dp),
+						verticalAlignment = Alignment.CenterVertically,
+					) {
+						Text(
+							text = stringResource(R.string.exhentai_download_append_id),
+							style = MaterialTheme.typography.bodyLarge,
+							modifier = Modifier.weight(1f),
+						)
+						Switch(checked = appendGalleryId, onCheckedChange = { appendGalleryId = it })
+					}
 				}
 
 				if (isOptionsLoading) {
@@ -311,6 +340,7 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 						startNow = startNow,
 						formatIndex = formatIndex,
 						destinationIndex = destinationIndex,
+						appendGalleryId = canAppendGalleryId && appendGalleryId,
 					)
 				}
 			}
@@ -421,10 +451,11 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 		startNow: Boolean,
 		formatIndex: Int,
 		destinationIndex: Int,
+		appendGalleryId: Boolean,
 	) {
 		val options = viewModel.chaptersSelectOptions.value
 		val macro = when (selectedOption) {
-			OPTION_WHOLE_MANGA -> options.wholeManga
+			OPTION_WHOLE_MANGA, OPTION_SEPARATE_COPY -> options.wholeManga
 			OPTION_WHOLE_BRANCH -> options.wholeBranch ?: return
 			OPTION_FIRST_CHAPTERS -> options.firstChapters ?: return
 			OPTION_UNREAD_CHAPTERS -> options.unreadChapters ?: return
@@ -436,6 +467,8 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 			format = DownloadFormat.entries.getOrNull(formatIndex),
 			destination = viewModel.availableDestinations.value.getOrNull(destinationIndex),
 			allowMetered = allowMetered,
+			appendGalleryId = appendGalleryId,
+			separateCopy = selectedOption == OPTION_SEPARATE_COPY,
 		)
 	}
 
@@ -504,6 +537,7 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 		private const val OPTION_WHOLE_BRANCH = 1
 		private const val OPTION_FIRST_CHAPTERS = 2
 		private const val OPTION_UNREAD_CHAPTERS = 3
+		private const val OPTION_SEPARATE_COPY = 4
 
 		fun registerCallback(
 			fm: FragmentManager,
