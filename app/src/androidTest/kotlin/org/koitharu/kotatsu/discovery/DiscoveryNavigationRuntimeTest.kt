@@ -237,6 +237,22 @@ class DiscoveryNavigationRuntimeTest {
 					.none { it.isListWorkActive })
 				assertEquals(View.GONE, preview.requireView().visibility)
 			}
+
+			val (releaseFavorites, _, fromHome) = tabCenters()
+			downTime = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, fromHome, 0)
+			send(MotionEvent.ACTION_MOVE, releaseFavorites, 32)
+			send(MotionEvent.ACTION_UP, releaseFavorites, 64)
+			scenario.onActivity { activity ->
+				val manager = activity.supportFragmentManager
+				val selected = manager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+				assertEquals(View.VISIBLE, selected.requireView().visibility)
+				assertEquals(Lifecycle.State.RESUMED, selected.lifecycle.currentState)
+				assertTrue(selected.isListWorkActive)
+				assertFalse(selected.isTabPreviewVisible)
+				assertEquals(0, manager.backStackEntryCount)
+			}
 		}
 	}
 
