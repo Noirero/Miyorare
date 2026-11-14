@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="favourites_system_label_local">Lokal</string>
+    <string name="favourites_system_label_downloaded">Diunduh</string>
+    <string name="favourites_system_label_in_progress">Belum Selesai</string>
+    <string name="favourites_system_label_completed">Selesai</string>
+</resources>
