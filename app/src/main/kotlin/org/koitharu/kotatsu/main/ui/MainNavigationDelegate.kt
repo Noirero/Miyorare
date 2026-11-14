@@ -36,6 +36,8 @@ import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.util.RecyclerViewOwner
+import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
+import org.koitharu.kotatsu.core.ui.widgets.DragNavigationRailView
 import org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView
 import org.koitharu.kotatsu.core.ui.widgets.SlidingBottomNavigationView
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
@@ -66,6 +68,8 @@ class MainNavigationDelegate(
 	NavigationBarView.OnItemReselectedListener, View.OnClickListener {
 
 	private val listeners = LinkedList<OnFragmentChangedListener>()
+	private var tabPreview: TabPreview? = null
+	private var committingTabDrag = false
 	val navRailHeader = (navBar as? NavigationRailView)?.headerView?.let {
 		NavigationRailFabBinding.bind(it)
 	}
@@ -129,6 +133,7 @@ class MainNavigationDelegate(
 			createMenu(settings.mainNavItems, navBar.menu)
 		}
 		(navBar as? FloatingBottomNavigationView)?.let { floating ->
+			floating.setTabDragListeners(::previewTab, ::commitTabDrag)
 			floating.setComposeItems(settings.mainNavItems)
 			floating.setComposeLabeled(settings.isNavLabelsVisible)
 			floating.setUseLegacyNavigation(settings.isLegacyNavigationBar)
@@ -136,6 +141,7 @@ class MainNavigationDelegate(
 				if (itemId == R.id.nav_favorites) openPrivateFavourites()
 			}
 		}
+		(navBar as? DragNavigationRailView)?.setTabDragListeners(::previewTab, ::commitTabDrag)
 		installNativePrivateLongClick()
 		observeSettings(lifecycleOwner)
 		val fragment = primaryFragment
@@ -207,6 +213,7 @@ class MainNavigationDelegate(
 
 	fun setItemVisibility(@IdRes itemId: Int, isVisible: Boolean) {
 		val item = navBar.menu.findItem(itemId) ?: return
+		if (item.isVisible != isVisible) (navBar as? DragNavigationRailView)?.cancelTabDrag()
 		item.isVisible = isVisible
 		(navBar as? FloatingBottomNavigationView)?.setComposeItemVisibility(itemId, isVisible)
 		if (item.isChecked && !isVisible) {
@@ -240,23 +247,25 @@ class MainNavigationDelegate(
 	}
 
 	private fun onNavigationItemSelected(@IdRes itemId: Int): Boolean {
-		val newFragment = when (itemId) {
-			R.id.nav_history -> HistoryListFragment::class.java
-			R.id.nav_favorites -> FavouritesContainerFragment::class.java
-			R.id.nav_explore -> ExploreFragment::class.java
-			R.id.nav_feed -> FeedFragment::class.java
-			R.id.nav_local -> LocalListFragment::class.java
-			R.id.nav_suggestions -> SuggestionsFragment::class.java
-			R.id.nav_bookmarks -> AllBookmarksFragment::class.java
-			R.id.nav_updated -> UpdatesFragment::class.java
-			R.id.nav_reader_journey -> ReaderJourneyFragment::class.java
-			R.id.nav_discovery_hub -> DiscoveryHubFragment::class.java
-			else -> return false
-		}
+		val newFragment = fragmentClassForItem(itemId) ?: return false
 		if (!setPrimaryFragment(newFragment)) {
 			onNavigationItemReselected()
 		}
 		return true
+	}
+
+	private fun fragmentClassForItem(@IdRes itemId: Int): Class<out Fragment>? = when (itemId) {
+		R.id.nav_history -> HistoryListFragment::class.java
+		R.id.nav_favorites -> FavouritesContainerFragment::class.java
+		R.id.nav_explore -> ExploreFragment::class.java
+		R.id.nav_feed -> FeedFragment::class.java
+		R.id.nav_local -> LocalListFragment::class.java
+		R.id.nav_suggestions -> SuggestionsFragment::class.java
+		R.id.nav_bookmarks -> AllBookmarksFragment::class.java
+		R.id.nav_updated -> UpdatesFragment::class.java
+		R.id.nav_reader_journey -> ReaderJourneyFragment::class.java
+		R.id.nav_discovery_hub -> DiscoveryHubFragment::class.java
+		else -> null
 	}
 
 	private fun getItemId(fragment: Fragment) = when (fragment) {
@@ -273,7 +282,92 @@ class MainNavigationDelegate(
 		else -> 0
 	}
 
+	internal fun cancelTabDrag() {
+		(navBar as? FloatingBottomNavigationView)?.cancelTabDrag()
+		(navBar as? DragNavigationRailView)?.cancelTabDrag()
+		clearTabPreview()
+	}
+
+	private fun clearTabPreview(keepFavouritesWork: Boolean = false) {
+		val preview = tabPreview ?: return
+		tabPreview = null
+		if (!keepFavouritesWork) preview.favourites?.setTabPreviewVisible(false)
+		preview.target.visibility = preview.targetVisibility
+		preview.current.visibility = preview.currentVisibility
+		preview.externalHeader?.let { (view, visibility) -> view.visibility = visibility }
+	}
+
+	private fun previewTab(@IdRes itemId: Int?): Boolean {
+		clearTabPreview()
+		if (itemId == null) return true
+		if (fragmentManager.isStateSaved || navBar.menu.findItem(itemId)?.isVisible != true) return false
+		val current = primaryFragment ?: return false
+		if (getItemId(current) == itemId) return true
+		val currentView = current.view ?: return false
+		val type = fragmentClassForItem(itemId) ?: return false
+		val target = fragmentManager.findFragmentByTag(type.name) ?: newBottomTab(type).also { fragment ->
+			// First visit can load content, but doesn't resume the tab or hand off shared chrome.
+			fragmentManager.beginTransaction()
+				.setReorderingAllowed(true)
+				.add(R.id.container, fragment, type.name)
+				.hide(fragment)
+				.setMaxLifecycle(fragment, Lifecycle.State.STARTED)
+				.commitNow()
+		}
+		if (!target.isHidden) return false
+		val targetView = target.view ?: return false
+		// Fragment.show/hide dispatches search/app bar/account refresh hooks. Change
+		// only root view visibility during preview; preserve the committed lifecycle.
+		// Favorites reparents its category header to the activity app bar. Hide it
+		// for another tab's preview without changing app-bar ownership or layout.
+		val externalHeader = if (current is FavouritesContainerFragment) {
+			(navBar.context.findActivity() as? AppBarOwner)?.appBar
+				?.findViewById<View>(R.id.layout_category_header)
+		} else null
+		tabPreview = TabPreview(
+			currentView, currentView.visibility, targetView, targetView.visibility,
+			externalHeader?.let { it to it.visibility },
+			target as? FavouritesContainerFragment,
+		)
+		externalHeader?.visibility = View.INVISIBLE
+		currentView.visibility = View.INVISIBLE
+		targetView.visibility = View.VISIBLE
+		(target as? FavouritesContainerFragment)?.setTabPreviewVisible(true)
+		return true
+	}
+
+	private fun commitTabDrag(@IdRes itemId: Int) {
+		if (fragmentManager.isStateSaved || primaryFragment?.let(::getItemId) == itemId ||
+			navBar.menu.findItem(itemId)?.isVisible != true
+		) return
+		// Transfer the already-visible Favorites producer to RESUMED without
+		// cancelling it in between. A different release target gets no handoff.
+		val favourites = tabPreview?.favourites.takeIf { itemId == R.id.nav_favorites }
+		clearTabPreview(keepFavouritesWork = favourites != null)
+		committingTabDrag = true
+		try {
+			navBar.selectedItemId = itemId
+		} finally {
+			committingTabDrag = false
+			favourites?.setTabPreviewVisible(false)
+		}
+	}
+
+	private data class TabPreview(
+		val current: View,
+		val currentVisibility: Int,
+		val target: View,
+		val targetVisibility: Int,
+		val externalHeader: Pair<View, Int>?,
+		val favourites: FavouritesContainerFragment?,
+	)
+
+	private fun newBottomTab(type: Class<out Fragment>): Fragment = instantiateFragment(type).apply {
+		arguments = buildBundle(1) { putBoolean(AppRouter.KEY_IS_BOTTOMTAB, true) }
+	}
+
 	private fun setPrimaryFragment(fragmentClass: Class<out Fragment>): Boolean {
+		cancelTabDrag()
 		if (fragmentManager.isStateSaved || fragmentClass.isInstance(primaryFragment)) {
 			return false
 		}
@@ -284,7 +378,7 @@ class MainNavigationDelegate(
 			.setReorderingAllowed(true)
 		val involvesFavourites = fragmentClass == FavouritesContainerFragment::class.java ||
 			current is FavouritesContainerFragment
-		if (!involvesFavourites) {
+		if (!involvesFavourites && !committingTabDrag) {
 			transaction.setCustomAnimations(
 				R.anim.m3_fade_through_enter,
 				R.anim.m3_fade_through_exit,
@@ -302,11 +396,7 @@ class MainNavigationDelegate(
 			shownFragment = existing
 			transaction.show(existing)
 		} else {
-			shownFragment = instantiateFragment(fragmentClass).apply {
-				arguments = buildBundle(1) {
-					putBoolean(AppRouter.KEY_IS_BOTTOMTAB, true)
-				}
-			}
+			shownFragment = newBottomTab(fragmentClass)
 			transaction.add(R.id.container, shownFragment, tag)
 		}
 		PerformanceDiagnostics.bind(shownFragment, trace)
@@ -319,7 +409,7 @@ class MainNavigationDelegate(
 			val shown = primaryFragment ?: shownFragment
 			onFragmentChanged(shown, fromUser = true)
 		}
-		transaction.commit()
+		if (committingTabDrag) transaction.commitNow() else transaction.commit()
 		return true
 	}
 
@@ -388,6 +478,7 @@ class MainNavigationDelegate(
 				val items = settings.mainNavItems
 				if ((0 until navBar.menu.size).map { navBar.menu.getItem(it).itemId } != items.map { item -> item.id }) {
 					val selected = getItemId(primaryFragment ?: return@onEach)
+					cancelTabDrag()
 					navBar.menu.clear()
 					createMenu(items, navBar.menu)
 					(navBar as? FloatingBottomNavigationView)?.setComposeItems(items)
@@ -424,6 +515,7 @@ class MainNavigationDelegate(
 				},
 			)
 		}
+		(navBar as? DragNavigationRailView)?.cancelTabDrag()
 		(navBar as? FloatingBottomNavigationView)?.setComposeLabeled(value)
 		navRailHeader?.buttonExpand?.isVisible = value
 		if (!value) {
@@ -440,6 +532,7 @@ class MainNavigationDelegate(
 		if (navBar !is NavigationRailView) {
 			return
 		}
+		(navBar as? DragNavigationRailView)?.cancelTabDrag()
 		if (value) {
 			navBar.expand()
 			navRailHeader?.run {

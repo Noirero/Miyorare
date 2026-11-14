@@ -44,9 +44,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -120,6 +124,9 @@ fun FloatingNavBar(
 	emphasizeFavourites: Boolean = false,
 	onContinueClick: () -> Unit = {},
 	onContinueLongClick: () -> Unit = {},
+	previewId: Int? = null,
+	indicatorMoving: Boolean = false,
+	onTabBounds: (Int, Rect) -> Unit = { _, _ -> },
 ) {
 	if (items.isEmpty()) return
 	val context = LocalContext.current
@@ -388,7 +395,11 @@ fun FloatingNavBar(
 				items.forEach { item ->
 					FloatingNavItem(
 						item = item,
-						selected = item.id == selectedId,
+						selected = item.id == (previewId ?: selectedId),
+						showSelectionChrome = !indicatorMoving,
+						layoutSelected = item.id == selectedId,
+						hideLabel = previewId != null && previewId != selectedId,
+						modifier = Modifier.onGloballyPositioned { onTabBounds(item.id, it.boundsInWindow()) },
 						showLabel = showLabels,
 						colors = effectiveColors,
 						isMiyorareModern = isMiyorareModern,
@@ -454,15 +465,19 @@ private fun FloatingContinueButton(
 private fun FloatingNavItem(
 	item: FloatingNavBarItem,
 	selected: Boolean,
+	showSelectionChrome: Boolean,
+	layoutSelected: Boolean,
+	hideLabel: Boolean,
 	showLabel: Boolean,
 	colors: FloatingNavBarColors,
 	isMiyorareModern: Boolean,
 	emphasizeFavourites: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
+	modifier: Modifier = Modifier,
 ) {
 	val container by animateColorAsState(
-		targetValue = if (selected) Color(colors.selectedContainer) else Color.Transparent,
+		targetValue = if (selected && showSelectionChrome) Color(colors.selectedContainer) else Color.Transparent,
 		animationSpec = FloatSpec_Color,
 		label = "navItemContainer",
 	)
@@ -502,7 +517,7 @@ private fun FloatingNavItem(
 			ColorUtils.blendARGB(selectedAccent.toArgb(), Color.White.toArgb(), 0.42f),
 		)
 	}
-	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
+	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected && showSelectionChrome) {
 		Modifier.drawBehind {
 			val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
 			drawRoundRect(
@@ -529,7 +544,7 @@ private fun FloatingNavItem(
 	} else {
 		Modifier
 	}
-	val selectedBrush = if (isMiyorareModern && emphasizeFavourites && selected) {
+	val selectedBrush = if (isMiyorareModern && emphasizeFavourites && selected && showSelectionChrome) {
 		Brush.horizontalGradient(
 			listOf(
 				container,
@@ -542,7 +557,7 @@ private fun FloatingNavItem(
 	}
 
 	Box(
-		modifier = Modifier
+		modifier = modifier
 			.then(selectedChrome)
 			.height(
 				if (isMiyorareModern && emphasizeFavourites) {
@@ -582,7 +597,7 @@ private fun FloatingNavItem(
 					tint = content,
 					modifier = Modifier.size(
 						when {
-							isMiyorareModern && emphasizeFavourites && selected ->
+							isMiyorareModern && emphasizeFavourites && layoutSelected ->
 								MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ICON_DP.dp
 							isMiyorareModern && emphasizeFavourites ->
 								MiyorareFavouritesVisualSpec.BOTTOM_NAV_ICON_DP.dp
@@ -593,7 +608,9 @@ private fun FloatingNavItem(
 				)
 			}
 			AnimatedVisibility(
-				visible = selected && showLabel,
+				// Keep the committed label's space until UP so the hit regions and
+				// the icons agree throughout the gesture.
+				visible = layoutSelected && showLabel,
 				enter = expandHorizontally(animationSpec = FloatSpec_Size, expandFrom = Alignment.Start) +
 					fadeIn(animationSpec = FloatSpec_Float),
 				exit = shrinkHorizontally(animationSpec = FloatSpec_Size, shrinkTowards = Alignment.Start) +
@@ -615,7 +632,9 @@ private fun FloatingNavItem(
 						else -> 20.sp
 					},
 					maxLines = 1,
-					modifier = Modifier.padding(start = if (isMiyorareModern) 6.dp else 8.dp),
+					modifier = Modifier
+						.alpha(if (hideLabel) 0f else 1f)
+						.padding(start = if (isMiyorareModern) 6.dp else 8.dp),
 				)
 			}
 		}

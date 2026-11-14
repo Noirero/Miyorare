@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.util.AttributeSet
+import android.view.MotionEvent
 import android.view.View
+import android.graphics.Canvas
 import android.view.ViewGroup
 import androidx.annotation.IdRes
 import androidx.compose.foundation.layout.Box
@@ -15,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
@@ -50,6 +53,9 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 
 	private val composeItemsState = MutableStateFlow<List<FloatingNavBarItem>>(emptyList())
 	private val selectedIdState = MutableStateFlow(0)
+	private val previewIdState = MutableStateFlow<Int?>(null)
+	private val tabBounds = mutableMapOf<Int, Rect>()
+	private val movingIndicator = MutableStateFlow(false)
 	private val labeledState = MutableStateFlow(true)
 	private val navColorsState = MutableStateFlow(readNavColors())
 	private val continueVisibleState = MutableStateFlow(false)
@@ -67,6 +73,22 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		FavouriteSpace.NORMAL.dbValue,
 	) == FavouriteSpace.PRIVATE.dbValue
 
+	private val tabDrag = NavigationTabDrag(
+		host = this,
+		vertical = false,
+		visibleSlots = {
+			val items = composeItemsState.value
+			items.mapNotNull { item -> tabBounds[item.id]?.takeUnless { it.isEmpty }?.let { item.id to it } }
+				.takeIf { it.size == items.size }.orEmpty()
+		},
+		selectedId = { selectedItemId },
+		accent = {
+			if (navColorsState.value.selectedContainer == Color.BLACK) Color.WHITE
+			else context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
+		},
+		onIndicatorChanged = { movingIndicator.value = it },
+	)
+
 	private val composeView: ComposeView = ComposeView(context).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
@@ -75,6 +97,8 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 			org.koitharu.kotatsu.settings.compose.MiyorareTheme {
 				val items by composeItemsState.collectAsState()
 				val selectedId by selectedIdState.collectAsState()
+				val previewId by previewIdState.collectAsState()
+				val indicatorMoving by movingIndicator.collectAsState()
 				val labeled by labeledState.collectAsState()
 				val navColors by navColorsState.collectAsState()
 				val showContinue by continueVisibleState.collectAsState()
@@ -113,6 +137,9 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							onItemLongClick = ::dispatchItemLongClick,
 							modifier = Modifier.fillMaxWidth(),
 							emphasizeFavourites = emphasizeFavourites,
+							previewId = previewId,
+							indicatorMoving = indicatorMoving,
+							onTabBounds = { id, bounds -> if (useLegacyNavigation) tabBounds[id] = bounds },
 						)
 					} else {
 						FloatingNavBar(
@@ -131,6 +158,9 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							emphasizeFavourites = emphasizeFavourites,
 							onContinueClick = { continueClickListener?.invoke() },
 							onContinueLongClick = { continueLongClickListener?.invoke() },
+							previewId = previewId,
+							indicatorMoving = indicatorMoving,
+							onTabBounds = { id, bounds -> if (!useLegacyNavigation) tabBounds[id] = bounds },
 						)
 					}
 				}
@@ -162,6 +192,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		get() = MAX_RENDERED_ITEMS
 
 	override fun setSelectedItemId(@IdRes itemId: Int) {
+		cancelTabDrag()
 		super.setSelectedItemId(itemId)
 		selectedIdState.value = selectedItemId
 	}
@@ -188,16 +219,19 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	}
 
 	fun setComposeLabeled(value: Boolean) {
+		if (labeledState.value != value) cancelTabDrag()
 		labeledState.value = value
 	}
 
 	/** Toggle the standalone circular "continue reading" button rendered next to the Classic bar. */
 	fun setContinueVisible(value: Boolean) {
+		if (continueVisibleState.value != value) cancelTabDrag()
 		continueVisibleState.value = value
 	}
 
 	/** Relocates only the standalone Continue Reading control, without changing menu item order. */
 	fun setContinueButtonOnLeft(value: Boolean) {
+		if (continueOnLeftState.value != value) cancelTabDrag()
 		continueOnLeftState.value = value
 	}
 
@@ -216,6 +250,8 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 
 	fun setUseLegacyNavigation(value: Boolean) {
 		if (useLegacyNavigation == value) return
+		cancelTabDrag()
+		tabBounds.clear()
 		useLegacyNavigation = value
 		legacyNavigationState.value = value
 		updateNavigationMode()
@@ -229,6 +265,30 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	fun setComposeItemVisibility(@IdRes itemId: Int, isVisible: Boolean) {
 		if (isVisible) hiddenIds.remove(itemId) else hiddenIds.add(itemId)
 		rebuildComposeItems()
+	}
+
+	internal fun setTabDragListeners(preview: (Int?) -> Boolean, commit: (Int) -> Unit) {
+		tabDrag.preview = { id ->
+			val accepted = preview(id)
+			previewIdState.value = id.takeIf { accepted }
+			accepted
+		}
+		tabDrag.commit = commit
+	}
+
+	internal fun cancelTabDrag() = tabDrag.cancel()
+
+	override fun onDetachedFromWindow() {
+		tabDrag.reset()
+		super.onDetachedFromWindow()
+	}
+
+	override fun dispatchTouchEvent(event: MotionEvent): Boolean =
+		tabDrag.dispatch(event) { super.dispatchTouchEvent(it) }
+
+	override fun dispatchDraw(canvas: Canvas) {
+		super.dispatchDraw(canvas)
+		tabDrag.draw(canvas)
 	}
 
 	private fun dispatchItemLongClick(@IdRes itemId: Int) {
@@ -256,6 +316,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 			)
 			if (out.size >= maxRenderedItems) break
 		}
+		if (composeItemsState.value.map { it.id } != out.map { it.id }) cancelTabDrag()
 		composeItemsState.value = out
 		selectedIdState.value = selectedItemId
 	}

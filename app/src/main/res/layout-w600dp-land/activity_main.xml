@@ -8,7 +8,7 @@
 	android:orientation="horizontal"
 	tools:context=".main.ui.MainActivity">
 
-	<com.google.android.material.navigationrail.NavigationRailView
+	<org.koitharu.kotatsu.core.ui.widgets.DragNavigationRailView
 		android:id="@+id/navRail"
 		android:layout_width="wrap_content"
 		android:layout_height="match_parent"

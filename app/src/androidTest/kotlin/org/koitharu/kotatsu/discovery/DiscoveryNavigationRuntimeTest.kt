@@ -1,6 +1,25 @@
 package org.koitharu.kotatsu.discovery
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration as AndroidConfiguration
+import org.koitharu.kotatsu.core.ui.widgets.DragNavigationRailView
+import org.koitharu.kotatsu.core.ui.widgets.NavigationTabDrag
+import androidx.compose.ui.geometry.Rect as SlotRect
+import android.graphics.Rect
+import android.os.SystemClock
+import android.view.MotionEvent
+import android.view.View
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.lifecycle.Lifecycle
+import org.koitharu.kotatsu.local.ui.LocalListFragment
+import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
+import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.preference.PreferenceManager
@@ -122,6 +141,278 @@ class DiscoveryNavigationRuntimeTest {
 			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed(); assertEquals(1, calls.get())
 		}
 	}
+	@Test fun floatingDragPreviewsCustomTabAndHomeBeforeRelease() {
+		assertTabDragPreviewsCustomTabAndHome(legacy = false)
+	}
+
+	@Test fun legacyDragPreviewsCustomTabAndHomeBeforeRelease() {
+		assertTabDragPreviewsCustomTabAndHome(legacy = true)
+	}
+
+	@Test fun dragIndicatorMovesWithinOneSlotWithoutRepeatedPreview() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val host = View(app)
+			val slop = android.view.ViewConfiguration.get(app).scaledTouchSlop.toFloat().coerceAtLeast(1f)
+			val slots = listOf(
+				1 to SlotRect(0f, 0f, 10 * slop, 4 * slop),
+				2 to SlotRect(10 * slop, 0f, 20 * slop, 4 * slop),
+			)
+			val previews = mutableListOf<Int?>()
+			val drag = NavigationTabDrag(
+				host, vertical = false, visibleSlots = { slots }, selectedId = { 1 },
+				accent = { android.graphics.Color.RED }, onIndicatorChanged = {},
+			)
+			drag.preview = { previews.add(it); it != 2 }
+			val down = SystemClock.uptimeMillis()
+			fun send(action: Int, x: Float, elapsed: Long) {
+				val event = MotionEvent.obtain(down, down + elapsed, action, x * slop, 2 * slop, 0)
+				try { assertTrue(drag.dispatch(event) { true }) } finally { event.recycle() }
+			}
+			try {
+				send(MotionEvent.ACTION_DOWN, 5f, 0)
+				send(MotionEvent.ACTION_MOVE, 7f, 16)
+				assertEquals(7 * slop, checkNotNull(drag.indicatorBounds).center.x, 0.01f)
+				send(MotionEvent.ACTION_MOVE, 9f, 32)
+				assertEquals(9 * slop, checkNotNull(drag.indicatorBounds).center.x, 0.01f)
+				assertEquals(listOf(1), previews)
+				send(MotionEvent.ACTION_MOVE, 12f, 48)
+				assertNull("Rejected preview must not advertise a different tab", drag.indicatorBounds)
+			} finally {
+				drag.reset()
+			}
+		}
+	}
+
+	@Test fun landscapeRailPreviewsAndCommitsWithModernPreference() {
+		assertLandscapeRailDrag(legacy = false)
+	}
+
+	@Test fun landscapeRailPreviewsAndCommitsWithLegacyPreference() {
+		assertLandscapeRailDrag(legacy = true)
+	}
+
+	private fun assertLandscapeRailDrag(legacy: Boolean) {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, legacy).commit()
+		launch().use { scenario ->
+			scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+			compose.waitUntil(15000) {
+				var ready = false
+				scenario.onActivity { activity ->
+					val rail = activity.findViewById<DragNavigationRailView>(R.id.navRail)
+					ready = activity.resources.configuration.orientation == AndroidConfiguration.ORIENTATION_LANDSCAPE &&
+						rail?.findViewById<View>(R.id.nav_discovery_hub)?.let { it.isShown && it.height > 0 } == true
+				}
+				ready
+			}
+			fun send(action: Int, id: Int, down: Long, elapsed: Long) = scenario.onActivity { activity ->
+				val rail = checkNotNull(activity.findViewById<DragNavigationRailView>(R.id.navRail))
+				val item = checkNotNull(rail.findViewById<View>(id))
+				val visible = Rect()
+				assertTrue(item.getLocalVisibleRect(visible))
+				val railOrigin = IntArray(2).also { rail.getLocationInWindow(it) }
+				val itemOrigin = IntArray(2).also { item.getLocationInWindow(it) }
+				val event = MotionEvent.obtain(down, down + elapsed, action,
+					itemOrigin[0] - railOrigin[0] + visible.exactCenterX(),
+					itemOrigin[1] - railOrigin[1] + visible.exactCenterY(), 0)
+				try {
+					assertTrue(rail.dispatchTouchEvent(event))
+				} finally {
+					event.recycle()
+				}
+			}
+			var down = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, R.id.nav_favorites, down, 0)
+			send(MotionEvent.ACTION_MOVE, R.id.nav_local, down, 32)
+			scenario.onActivity { activity ->
+				val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+				assertEquals(View.VISIBLE, local.requireView().visibility)
+				assertTrue(local.isHidden)
+			}
+			send(MotionEvent.ACTION_MOVE, R.id.nav_discovery_hub, down, 64)
+			compose.waitUntil(10000) {
+				var ready = false
+				scenario.onActivity { activity ->
+					val rail = activity.findViewById<DragNavigationRailView>(R.id.navRail)
+					assertEquals(R.id.nav_favorites, rail.selectedItemId)
+					val home = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
+					assertTrue(home.isHidden)
+					assertEquals(Lifecycle.State.STARTED, home.lifecycle.currentState)
+					val host = home.requireView() as ComposeView
+					val root = host.getChildAt(0) as? ViewRootForTest ?: return@onActivity
+					val provider = root.semanticsOwner.unmergedRootSemanticsNode.findPreviewTag("catalog_provider_selector")
+					ready = host.isShown && host.alpha > 0f && host.getGlobalVisibleRect(Rect()) &&
+						provider?.boundsInWindow?.isEmpty == false
+				}
+				ready
+			}
+			send(MotionEvent.ACTION_CANCEL, R.id.nav_discovery_hub, down, 96)
+			scenario.onActivity { activity ->
+				val home = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
+				assertEquals(View.GONE, home.requireView().visibility)
+				assertEquals(R.id.nav_favorites, activity.findViewById<DragNavigationRailView>(R.id.navRail).selectedItemId)
+			}
+			down = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, R.id.nav_favorites, down, 0)
+			send(MotionEvent.ACTION_MOVE, R.id.nav_discovery_hub, down, 32)
+			send(MotionEvent.ACTION_UP, R.id.nav_discovery_hub, down, 64)
+			compose.onNodeWithTag("catalog_home_list").assertIsDisplayed()
+			scenario.onActivity { activity ->
+				assertEquals(R.id.nav_discovery_hub, activity.findViewById<DragNavigationRailView>(R.id.navRail).selectedItemId)
+				assertEquals(0, activity.supportFragmentManager.backStackEntryCount)
+			}
+		}
+	}
+
+	private fun assertTabDragPreviewsCustomTabAndHome(legacy: Boolean) {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, legacy).commit()
+		launch().use { scenario ->
+			compose.waitForIdle()
+			fun tabCenters() = listOf(NavItem.FAVORITES, NavItem.LOCAL, NavItem.DISCOVERY_HUB).map {
+				compose.onNodeWithContentDescription(app.getString(it.navTitle)).fetchSemanticsNode().boundsInWindow.center
+			}
+			var downTime = SystemClock.uptimeMillis()
+			fun send(action: Int, point: Offset, elapsed: Long) = scenario.onActivity { activity ->
+				val bar = checkNotNull(activity.bottomNav)
+				val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+				val event = MotionEvent.obtain(
+					downTime, downTime + elapsed, action, point.x - origin[0], point.y - origin[1], 0,
+				)
+				try {
+					bar.dispatchTouchEvent(event)
+				} finally {
+					event.recycle()
+				}
+			}
+			val (start, custom, home) = tabCenters()
+			send(MotionEvent.ACTION_DOWN, start, 0)
+			send(MotionEvent.ACTION_MOVE, custom, 32)
+			scenario.onActivity { activity ->
+				val preview = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+				assertEquals(View.VISIBLE, preview.requireView().visibility)
+				assertEquals(Lifecycle.State.STARTED, preview.lifecycle.currentState)
+				assertTrue(preview.isHidden)
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+			}
+			compose.waitForIdle()
+			assertEquals(listOf(start, custom, home), tabCenters())
+			send(MotionEvent.ACTION_MOVE, home, 64)
+			scenario.onActivity { activity ->
+				val preview = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
+				assertEquals(View.VISIBLE, preview.requireView().visibility)
+				assertEquals(Lifecycle.State.STARTED, preview.lifecycle.currentState)
+				assertTrue(preview.isHidden)
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+			}
+			// Compose's test registry only exposes RESUMED roots. Read the STARTED
+			// preview's own semantics on main without promoting its lifecycle.
+			compose.waitUntil(10000) {
+				var ready = false
+				scenario.onActivity { activity ->
+					val preview = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
+					val host = preview.requireView() as ComposeView
+					val root = host.getChildAt(0) as? ViewRootForTest ?: return@onActivity
+					val semantics = root.semanticsOwner.unmergedRootSemanticsNode
+					val list = semantics.findPreviewTag("catalog_home_list")
+					val provider = semantics.findPreviewTag("catalog_provider_selector")
+					val spotlightIndex = list?.config?.getOrNull(SemanticsProperties.IndexForKey)?.invoke("spotlight")
+					ready = host.isShown && host.alpha > 0f && host.getGlobalVisibleRect(Rect()) &&
+						list?.boundsInWindow?.isEmpty == false && provider?.boundsInWindow?.isEmpty == false &&
+						spotlightIndex != null && spotlightIndex >= 0
+				}
+				ready
+			}
+			send(MotionEvent.ACTION_CANCEL, home, 96)
+			compose.waitForIdle()
+			scenario.onActivity { activity ->
+				val fragments = activity.supportFragmentManager.fragments
+				assertEquals(View.VISIBLE, fragments.filterIsInstance<FavouritesContainerFragment>().single().requireView().visibility)
+				assertEquals(View.GONE, fragments.filterIsInstance<DiscoveryHubFragment>().single().requireView().visibility)
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+			}
+			val (startAgain, localAgain, homeAgain) = tabCenters()
+			downTime = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, startAgain, 0)
+			send(MotionEvent.ACTION_MOVE, localAgain, 32)
+			send(MotionEvent.ACTION_MOVE, homeAgain, 64)
+			send(MotionEvent.ACTION_UP, homeAgain, 96)
+			compose.waitForIdle()
+			scenario.onActivity { activity ->
+				val manager = activity.supportFragmentManager
+				val selected = manager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
+				assertFalse(selected.isHidden)
+				assertEquals(Lifecycle.State.RESUMED, selected.lifecycle.currentState)
+				assertEquals(R.id.nav_discovery_hub, activity.bottomNav!!.selectedItemId)
+				assertEquals(0, manager.backStackEntryCount)
+			}
+			compose.onNodeWithTag("catalog_home_list").performScrollToNode(hasTestTag("catalog_section_NOVEL_TOP_RATED"))
+			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed()
+			val (_, away, committedHome) = tabCenters()
+			downTime = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, committedHome, 0)
+			send(MotionEvent.ACTION_MOVE, away, 32)
+			send(MotionEvent.ACTION_CANCEL, away, 64)
+			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed()
+			assertEquals(1, calls.get())
+
+			// Recreate on Home: Favorites has no retained list producer from this Activity.
+			scenario.recreate()
+			compose.waitForIdle()
+			val (favouritesAfterRestore, _, homeAfterRestore) = tabCenters()
+			downTime = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, homeAfterRestore, 0)
+			send(MotionEvent.ACTION_MOVE, favouritesAfterRestore, 32)
+			scenario.onActivity { activity ->
+				val preview = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+				assertTrue(preview.isHidden)
+				assertEquals(Lifecycle.State.STARTED, preview.lifecycle.currentState)
+				assertTrue(preview.isListWorkActive)
+				assertEquals(R.id.nav_discovery_hub, activity.bottomNav!!.selectedItemId)
+			}
+			compose.waitUntil(10000) {
+				var active = false
+				scenario.onActivity { activity ->
+					val preview = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+					active = preview.childFragmentManager.fragments.filterIsInstance<FavouritesListFragment>()
+						.any { it.isHidden && it.isListWorkActive }
+				}
+				active
+			}
+			send(MotionEvent.ACTION_CANCEL, favouritesAfterRestore, 64)
+			scenario.onActivity { activity ->
+				val preview = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+				assertFalse(preview.isListWorkActive)
+				assertTrue(preview.childFragmentManager.fragments.filterIsInstance<FavouritesListFragment>()
+					.none { it.isListWorkActive })
+				assertEquals(View.GONE, preview.requireView().visibility)
+			}
+
+			val (releaseFavorites, _, fromHome) = tabCenters()
+			downTime = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, fromHome, 0)
+			send(MotionEvent.ACTION_MOVE, releaseFavorites, 32)
+			send(MotionEvent.ACTION_UP, releaseFavorites, 64)
+			scenario.onActivity { activity ->
+				val manager = activity.supportFragmentManager
+				val selected = manager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+				assertEquals(View.VISIBLE, selected.requireView().visibility)
+				assertEquals(Lifecycle.State.RESUMED, selected.lifecycle.currentState)
+				assertTrue(selected.isListWorkActive)
+				assertFalse(selected.isTabPreviewVisible)
+				assertEquals(0, manager.backStackEntryCount)
+			}
+		}
+	}
+
+	private fun SemanticsNode.findPreviewTag(tag: String): SemanticsNode? {
+		if (config.getOrNull(SemanticsProperties.TestTag) == tag) return this
+		return children.firstNotNullOfOrNull { it.findPreviewTag(tag) }
+	}
+
 	@Test fun classicLegacyMigrationAndRecreationPreserveFixedRootSelectionWithoutRefetch() {
 		settings.setMiyorareDesignStyle(MiyorareDesignStyle.CLASSIC)
 		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, true)
