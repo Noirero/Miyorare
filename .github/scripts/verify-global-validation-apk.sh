@@ -11,9 +11,6 @@ for ((attempt=0; attempt<45; attempt++)); do
   if grep -Fq "$proof" <<<"$logs"; then
     grep -F 'TITLE_TRACE' <<<"$logs" | tee "$dir/title-trace.txt"
     grep -F 'TITLE_FIXTURE_OK' <<<"$logs"
-    adb logcat -d -s ExhentaiTitleTrace:I > "$dir/live-title-probe-fixture.txt"
-    grep -F 'gallery=4323075 http status=200' "$dir/live-title-probe-fixture.txt"
-    grep -F 'gallery=4323075 repository jar=' "$dir/live-title-probe-fixture.txt"
     printf '%s\n' "$proof" | tee "$dir/android-15-proof.txt"
     exit 0
   fi

@@ -58,7 +58,6 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.sources.compat.ExhentaiTitleTrace
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.DetailsUiMode
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
@@ -184,16 +183,6 @@ fun DetailsExpressiveScreen(
 	val manga = details?.toManga()
 	var fullExhentaiTitle by rememberBooleanPref(AppSettings.KEY_EXHENTAI_FULL_TITLE, false)
 	val visibleTitle = details?.displayTitle(fullExhentaiTitle).orEmpty()
-	val traceSource = details?.sourceManga
-	if (ExhentaiTitleTrace.enabled(LocalContext.current.packageName) && traceSource != null &&
-		ExhentaiTitleTrace.matches(traceSource.source.name, traceSource.publicUrl, traceSource.url)
-	) {
-		LaunchedEffect(traceSource.title, visibleTitle, fullExhentaiTitle, details?.isLoaded) {
-			ExhentaiTitleTrace.record("details",
-				"loaded=${details?.isLoaded} full=$fullExhentaiTitle " +
-					"source=${ExhentaiTitleTrace.fingerprint(traceSource.title)} shown=${ExhentaiTitleTrace.fingerprint(visibleTitle)}")
-		}
-	}
 	val swipeBookmarkEnabled = manga?.let { !it.isNovelContent && !it.isEpub } == true
 	val managed = manga?.url?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it) } == true
 	val galleryAvailable = managed && indexedLocalBook?.contentType == org.koitharu.kotatsu.local.library.LocalContentType.MANGA

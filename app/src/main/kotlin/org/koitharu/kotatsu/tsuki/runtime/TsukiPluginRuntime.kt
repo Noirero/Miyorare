@@ -10,8 +10,6 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.jsoup.HttpStatusException
-import org.jsoup.Jsoup
-import org.koitharu.kotatsu.sources.compat.ExhentaiTitleTrace
 import org.koitharu.kotatsu.core.exceptions.CloudFlareBlockedException
 import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
 import org.koitharu.kotatsu.core.network.BaseHttpClient
@@ -50,8 +48,6 @@ class TsukiPluginRuntime @Inject constructor(
 	private val cookieJar: CookieJar,
 	private val webViewExecutor: TsukiWebViewExecutor,
 ) {
-
-	internal val titleTraceEnabled get() = ExhentaiTitleTrace.enabled(context.packageName)
 
 	data class ParserHandle internal constructor(
 		val source: TsukiMangaSource,
@@ -713,30 +709,11 @@ class TsukiPluginRuntime @Inject constructor(
 				builder.header("User-Agent", runtime.webViewExecutor.defaultUserAgent ?: tsuki.network.UserAgents.FIREFOX_MOBILE)
 			}
 			val routed = builder.build()
-			val response = if (parser != null) {
+			return if (parser != null) {
 				parser.intercept(ProxyChain(chain, routed))
 			} else {
 				chain.proceed(routed)
 			}
-			if (runtime.titleTraceEnabled && rawSource != null && ExhentaiTitleTrace.matches(
-					TsukiSourceIdentity(plugin.provider, plugin.pluginId, rawSource.name).storedName,
-					routed.url.toString(),
-				)) {
-				try {
-					val doc = Jsoup.parse(response.peekBody(1024L * 1024L).string())
-					val scoped = doc.selectFirst("div.gm #gd2")
-					ExhentaiTitleTrace.record("http",
-						"status=${response.code} jar=${plugin.sha256} " +
-							"gn=${ExhentaiTitleTrace.fingerprint(doc.getElementById("gn")?.text())} " +
-							"scopedGn=${ExhentaiTitleTrace.fingerprint(scoped?.getElementById("gn")?.text())} " +
-							"gj=${ExhentaiTitleTrace.fingerprint(doc.getElementById("gj")?.text())}")
-				} catch (_: IOException) {
-					ExhentaiTitleTrace.record("http", "peek_failed")
-				} catch (_: RuntimeException) {
-					ExhentaiTitleTrace.record("http", "probe_failed")
-				}
-			}
-			return response
 		}
 	}
 
